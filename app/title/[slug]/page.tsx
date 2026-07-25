@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Row from "../../components/Row";
 import { LevelBadge, LiveBadge } from "../../components/Badge";
-import { allItems, getItem, kindOf, relatedTo } from "../../lib/data";
+import { RemindButton, SaveButton } from "../../components/CollectionButton";
+import { allItems, allFacets, facetHref, getItem, kindOf, relatedTo } from "../../lib/data";
 
 /* Pre-render a detail page for every known item. */
 export function generateStaticParams() {
@@ -28,6 +29,7 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
   const kind = kindOf(item);
   const related = relatedTo(item);
   const lessonCount = item.lessons ?? (kind === "formation" ? 8 : 0);
+  const topics = allFacets.filter((f) => item.topics?.includes(f.key));
 
   return (
     <div className="pb-[var(--safe-y)]">
@@ -58,6 +60,22 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
             )}
           </div>
 
+          {/* Facet chips — one D-pad press from a title to everything like it. */}
+          {topics.length > 0 && (
+            <div className="flex flex-wrap gap-[0.6rem]">
+              {topics.map((f) => (
+                <Link
+                  key={f.key}
+                  href={facetHref(f)}
+                  data-focusable
+                  className="focusable rounded-full bg-white/10 px-[1rem] py-[0.35rem] text-[1rem] font-semibold text-[var(--text-medium)]"
+                >
+                  {f.label}
+                </Link>
+              ))}
+            </div>
+          )}
+
           <h1 className="font-display max-w-[34ch] text-[3.8rem] font-extrabold leading-[1.04] tracking-tight text-[var(--text-high)] [text-shadow:0_0.2rem_1.5rem_rgba(0,0,0,0.5)]">
             {item.title}
           </h1>
@@ -74,14 +92,7 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
 
           <div className="mt-[0.6rem] flex flex-wrap items-center gap-[1rem]">
             {item.live === "upcoming" ? (
-              <button
-                data-focusable
-                data-focus-default
-                className="focusable rounded-[var(--radius)] px-[1.6rem] py-[0.8rem] text-[1.25rem] font-bold text-black shadow-[0_0.6rem_1.6rem_rgba(227,185,107,0.35)]"
-                style={{ background: "var(--gold-grad)" }}
-              >
-                🔔 Me rappeler
-              </button>
+              <RemindButton id={item.id} />
             ) : (
               <Link
                 href={`/watch/${item.id}`}
@@ -96,12 +107,7 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
                 {item.live === "live" ? "Regarder en direct" : item.progress ? "Reprendre" : "Lecture"}
               </Link>
             )}
-            <button
-              data-focusable
-              className="focusable rounded-[var(--radius)] bg-white/15 px-[1.4rem] py-[0.8rem] text-[1.25rem] font-semibold text-[var(--text-high)]"
-            >
-              + Ma liste
-            </button>
+            <SaveButton id={item.id} />
             <Link
               href={kind === "sport" ? "/sport" : "/formation"}
               data-focusable

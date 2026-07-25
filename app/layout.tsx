@@ -47,6 +47,8 @@ export default function RootLayout({
         <SpatialNav />
         {/* Content is inset past the collapsed nav rail. */}
         <main className="min-h-screen pl-[5.5rem]">{children}</main>
+        {/* Eye-comfort veil — inert, above every surface including the player. */}
+        <div className="comfort-veil" aria-hidden />
       </body>
     </html>
   );

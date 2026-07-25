@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "run": "run-001",
+  "run": "run-002",
   "mode": "T",
   "rollout": null,
   "experiments": null,
@@ -8,13 +8,16 @@
     "date": "2026-07-25",
     "lint_errors": 0,
     "tsc_errors": 0,
-    "build": "vert (115 pages statiques, Next 16.2.11)",
-    "tests": "21 tests verts (3 suites) + smoke E2E 15/15",
-    "note": "budgets perf web (First Load JS par route) relev\u00e9s en fin de run dans data/perf/",
+    "build": "vert (103 pages statiques, Next 16.2.11)",
+    "tests": "61 tests verts (7 suites) + smoke E2E 29/29",
+    "note": "103 pages (et non 115) : les 12 tuiles de facette ne génèrent plus de fiche ni de lecteur pour un logo, remplacees par 12 pages de facette. Voir data/perf/run-002-baseline.md.",
     "budgets": {
-      "max_chunk_js_ko": 224,
-      "next_dir_mo": 24
+      "max_chunk_js_ko": 232,
+      "next_dir_mo": 24,
+      "total_client_js_kio": 702.5,
+      "total_client_js_margin": 0.1
     }
   },
-  "deps_note": "next 16.2.4 -> 16.2.11 (avis de s\u00e9curit\u00e9 next corrig\u00e9s); 12 highs restants = toolchain dev (eslint/postcss/sharp), fix = majeurs breaking -> backlog"
+  "deps_note": "next 16.2.4 -> 16.2.11 (avis de sécurité next corrigés); 12 highs restants = toolchain dev (eslint/postcss/sharp), fix = majeurs breaking -> backlog",
+  "gates": "qa-gates.sh = lint / typegen / typecheck / tests / build / budget de taille (6 portes)"
 }

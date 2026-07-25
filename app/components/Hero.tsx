@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { MediaItem } from "../lib/data";
 import { LevelBadge, LiveBadge } from "./Badge";
@@ -13,17 +14,25 @@ import { LevelBadge, LiveBadge } from "./Badge";
  */
 export default function Hero({ slides }: { slides: MediaItem[] }) {
   const [i, setI] = useState(0);
+  // Auto-advance is suspended while the focus is inside the hero: the CTAs now
+  // lead somewhere, and a billboard that rotates under a focused button would
+  // play a programme the viewer did not choose.
+  const [engaged, setEngaged] = useState(false);
   const slide = slides[i];
 
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce || slides.length < 2) return;
+    if (reduce || engaged || slides.length < 2) return;
     const t = setInterval(() => setI((p) => (p + 1) % slides.length), 9000);
     return () => clearInterval(t);
-  }, [slides.length]);
+  }, [slides.length, engaged]);
 
   return (
-    <header className="relative z-[2] mb-[1.5rem] h-[58vh] min-h-[24rem] w-full overflow-hidden">
+    <header
+      className="relative z-[2] mb-[1.5rem] h-[58vh] min-h-[24rem] w-full overflow-hidden"
+      onFocus={() => setEngaged(true)}
+      onBlur={() => setEngaged(false)}
+    >
       {/* Backdrop */}
       <div
         key={slide.id}
@@ -49,8 +58,13 @@ export default function Hero({ slides }: { slides: MediaItem[] }) {
         <p className="max-w-[48ch] text-[1.4rem] text-[var(--text-medium)]">{slide.subtitle}</p>
 
         <div className="mt-[0.6rem] flex items-center gap-[1rem]">
-          <button
+          {/* Both CTAs are real destinations — a billboard that does nothing is
+              the fastest way to lose the "what do I watch now?" moment. */}
+          <Link
+            href={`/watch/${slide.id}`}
             data-focusable
+            data-focus-default
+            data-focus-key={`hero:${slide.id}`}
             className="focusable flex items-center gap-[0.6rem] rounded-[var(--radius)] px-[1.7rem] py-[0.85rem] text-[1.25rem] font-bold text-black shadow-[0_0.6rem_1.6rem_rgba(227,185,107,0.35)]"
             style={{ background: "var(--gold-grad)" }}
           >
@@ -58,13 +72,14 @@ export default function Hero({ slides }: { slides: MediaItem[] }) {
               <path d="M8 5v14l11-7z" />
             </svg>
             {slide.live === "live" ? "Regarder en direct" : "Lecture"}
-          </button>
-          <button
+          </Link>
+          <Link
+            href={`/title/${slide.id}`}
             data-focusable
             className="focusable rounded-[var(--radius)] bg-white/15 px-[1.4rem] py-[0.8rem] text-[1.25rem] font-semibold text-[var(--text-high)]"
           >
             Plus d&apos;infos
-          </button>
+          </Link>
 
           {/* Slide indicators — focusable for D-pad control. */}
           {slides.length > 1 && (

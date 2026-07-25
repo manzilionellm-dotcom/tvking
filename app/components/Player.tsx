@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MediaItem } from "../lib/data";
+import { SEEK_STEP, playerKeyAction, seek } from "../lib/playerKeys";
 import { loadResume, positionOf, saveResume, withPosition } from "../lib/resume";
 
 /*
@@ -17,10 +18,6 @@ import { loadResume, positionOf, saveResume, withPosition } from "../lib/resume"
 
 const DURATION = 40; // seconds (mock)
 const UPNEXT_AT = 30; // show Up Next in the last 10s
-
-/* TV remotes surface "back" under several key names depending on the platform
-   (Android TV WebView, Tizen, WebOS, desktop). All of them leave the player. */
-const BACK_KEYS = new Set(["Escape", "Backspace", "GoBack", "BrowserBack", "XF86Back"]);
 
 /* The resume store only changes through this player, never underneath it. */
 const noSubscription = () => () => {};
@@ -85,50 +82,41 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
   const toggle = useCallback(() => setPlaying((p) => !p), []);
   const exit = useCallback(() => router.push(`/title/${item.id}`), [router, item.id]);
 
-  // Remote-control keys: BACK leaves the player, media keys drive transport
-  // directly (they work whatever element holds the focus). Space/k still
-  // toggle when nothing is focused (YouTube convention).
+  // Remote-control keys. The key → action mapping is pure and unit-tested
+  // (lib/playerKeys.ts) because a real set-top box media key cannot be
+  // synthesised in a test; here we only apply the action.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (BACK_KEYS.has(e.key)) {
-        e.preventDefault();
-        exit();
-        return;
-      }
-      switch (e.key) {
-        case "MediaPlayPause":
-          e.preventDefault();
+      const action = playerKeyAction(e.key, document.activeElement === document.body);
+      if (!action) return;
+      e.preventDefault();
+      switch (action) {
+        case "toggle":
           toggle();
           return;
-        case "MediaPlay":
-          e.preventDefault();
+        case "play":
           setPlaying(true);
           return;
-        case "MediaPause":
-          e.preventDefault();
+        case "pause":
           setPlaying(false);
           return;
-        case "MediaStop":
-          e.preventDefault();
+        case "exit":
           exit();
           return;
-        case "MediaRewind":
-          e.preventDefault();
-          setPos((p) => Math.max(0, p - 10));
+        case "next":
+          if (next) router.push(`/watch/${next.id}`);
           return;
-        case "MediaFastForward":
-          e.preventDefault();
-          setPos((p) => Math.min(DURATION, p + 10));
+        case "seekForward":
+          setPos((p) => seek(p, SEEK_STEP, DURATION));
           return;
-      }
-      if ((e.key === " " || e.key === "k") && document.activeElement === document.body) {
-        e.preventDefault();
-        toggle();
+        case "seekBack":
+          setPos((p) => seek(p, -SEEK_STEP, DURATION));
+          return;
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, exit]);
+  }, [toggle, exit, next, router]);
 
   const showUpNext = next && pos >= UPNEXT_AT && !autoCancelled;
   const countdown = Math.max(0, DURATION - pos);
@@ -212,7 +200,7 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
         <div className="flex items-center gap-[1rem]">
           <button
             data-focusable
-            onClick={() => setPos((p) => Math.max(0, p - 10))}
+            onClick={() => setPos((p) => seek(p, -SEEK_STEP, DURATION))}
             className="focusable rounded-full bg-white/12 px-[1rem] py-[0.6rem] text-[1.1rem] font-semibold text-white"
             aria-label="Reculer de 10 secondes"
           >
@@ -238,7 +226,7 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
           </button>
           <button
             data-focusable
-            onClick={() => setPos((p) => Math.min(DURATION, p + 10))}
+            onClick={() => setPos((p) => seek(p, SEEK_STEP, DURATION))}
             className="focusable rounded-full bg-white/12 px-[1rem] py-[0.6rem] text-[1.1rem] font-semibold text-white"
             aria-label="Avancer de 10 secondes"
           >

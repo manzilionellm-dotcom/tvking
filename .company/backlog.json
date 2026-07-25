@@ -1,13 +1,55 @@
 {
   "schema_version": 1,
   "items": [
-    {"id": "B1", "title": "Lecteur vidéo réel (HLS) derrière PlayerService + watchdogs S4 web", "score": "impact max — préalable à toute métrique S3 réelle"},
-    {"id": "B2", "title": "Données réelles (API sport/catalogue) à la place du mock", "score": "haut"},
-    {"id": "B3", "title": "Ma liste persistée + états vides/erreur", "score": "haut"},
-    {"id": "B4", "title": "Recherche fonctionnelle locale (le champ actuel est décoratif)", "score": "moyen"},
-    {"id": "B5", "title": "E2E Playwright chemin critique TV (D-pad only)", "score": "moyen"},
-    {"id": "B6", "title": "SBOM CycloneDX + osv-scanner en CI", "score": "moyen"},
-    {"id": "B7", "title": "Bouton 'Me rappeler' et '+ Ma liste' inertes → câbler ou retirer (loi: pas de fausses fonctionnalités)", "score": "haut"},
-    {"id": "B8", "title": "MODULE D teardown concurrents + Share of Store (accès web requis au run)", "score": "bas ici — vit dans le repo defew-tv"}
+    {
+      "id": "B1",
+      "title": "Lecteur vidéo réel (HLS) derrière PlayerService + watchdogs S4 web",
+      "score": "impact max — préalable à toute métrique S3 réelle"
+    },
+    {
+      "id": "B2",
+      "title": "Données réelles (API sport/catalogue) à la place du mock",
+      "score": "haut"
+    },
+    {
+      "id": "B5",
+      "title": "E2E Playwright chemin critique TV (D-pad only)",
+      "score": "moyen"
+    },
+    {
+      "id": "B6",
+      "title": "SBOM CycloneDX + osv-scanner en CI",
+      "score": "moyen"
+    },
+    {
+      "id": "B8",
+      "title": "MODULE D teardown concurrents + Share of Store (accès web requis au run)",
+      "score": "bas ici — vit dans le repo defew-tv"
+    },
+    {
+      "id": "B9",
+      "title": "Notifications réelles pour les rappels (le rappel est posé et visible, mais rien ne notifie hors de l'app — exige une surface native/box)",
+      "score": "haut — suite directe de B7"
+    },
+    {
+      "id": "B10",
+      "title": "Ma liste / rappels partagés entre appareils (aujourd'hui locaux à la box)",
+      "score": "moyen — dépend d'un compte, absent du repo"
+    },
+    {
+      "id": "B11",
+      "title": "Saisie vocale de la recherche (recherche §5 : la voix prime sur le clavier D-pad)",
+      "score": "moyen"
+    },
+    {
+      "id": "B12",
+      "title": "EPG (grille de programme) pour les chaînes live — conçu en recherche §5, non implémenté (exige de vraies données de programmation)",
+      "score": "moyen, bloqué par B2"
+    }
+  ],
+  "closed_run_002": [
+    "B3 — Ma liste persistée + états vides",
+    "B4 — Recherche fonctionnelle locale",
+    "B7 — boutons inertes câblés"
   ]
 }

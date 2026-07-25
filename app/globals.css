@@ -52,6 +52,10 @@
   --radius: 0.75rem;
   --radius-lg: 1.25rem;
 
+  /* ---- Eye comfort (Réglages): software dim + warm white point ---- */
+  --comfort-dim: 0;
+  --comfort-warm: 0;
+
   /* ---- Focus motion ---- */
   --focus-scale: 1.08;
 }
@@ -111,6 +115,28 @@ body::after {
   pointer-events: none;
   z-index: 1;
   background: radial-gradient(130% 120% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.45));
+}
+
+/*
+  Eye-comfort veil. Sits above everything (including the player) and is inert to
+  input. Two stacked effects: a black veil lowers perceived luminance, a warm
+  multiply veil shifts the white point towards 5000K — the documented pair for
+  dark-room viewing comfort. Both are 0 unless the viewer enables the mode.
+*/
+.comfort-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  background: rgba(0, 0, 0, var(--comfort-dim));
+}
+.comfort-veil::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(255, 172, 92);
+  opacity: var(--comfort-warm);
+  mix-blend-mode: multiply;
 }
 
 /* Royal display voice — elegant serif for large titles only. */

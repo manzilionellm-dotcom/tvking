@@ -1,5 +1,6 @@
+import FacetNav from "../components/FacetNav";
 import Row from "../components/Row";
-import { sportRows } from "../lib/data";
+import { sportFacets, sportRows } from "../lib/data";
 
 export default function SportPage() {
   return (
@@ -15,6 +16,7 @@ export default function SportPage() {
           Live, scores, calendrier et replays — classés par état et par discipline.
         </p>
       </header>
+      <FacetNav facets={sportFacets} allHref="/sport" allLabel="Tout le sport" />
       {sportRows.map((row) => (
         <Row key={row.id} row={row} />
       ))}

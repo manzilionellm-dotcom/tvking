@@ -1,5 +1,6 @@
+import FacetNav from "../components/FacetNav";
 import Row from "../components/Row";
-import { formationRows } from "../lib/data";
+import { formationFacets, formationRows } from "../lib/data";
 
 export default function FormationPage() {
   return (
@@ -15,6 +16,7 @@ export default function FormationPage() {
           Parcours par niveau, durée et intervenant — votre progression vous suit.
         </p>
       </header>
+      <FacetNav facets={formationFacets} allHref="/formation" allLabel="Toute la formation" />
       {formationRows.map((row) => (
         <Row key={row.id} row={row} />
       ))}

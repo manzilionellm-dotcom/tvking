@@ -18,10 +18,16 @@ pratiques documentées. Le référentiel complet, sourcé, est dans
   contraste WCAG AA (≥ 4.5:1).
 - **Navigation D-pad** — déplacement du focus vers l'élément le plus proche
   (`SpatialNav`), état de focus net (anneau + agrandissement + élévation).
-- **UX engageante mais maîtrisée** — hero billboard, rangées personnalisées,
-  « Reprendre », autoplay « À suivre » **avec compte à rebours annulable**.
-- **Réglages** — taille du texte et compensation d'overscan ajustables par
-  l'utilisateur (persistés), avec aperçu de la zone de sécurité.
+- **UX engageante mais maîtrisée** — hero billboard (rotation suspendue dès qu'on
+  le focus), rangées personnalisées, « Reprendre » alimentée par la position de
+  lecture réelle, autoplay « À suivre » **avec compte à rebours annulable**.
+- **Navigation à facettes** — une page par discipline (`/sport/[discipline]`) et
+  par thème (`/formation/[theme]`), avec chips de filtrage : le chemin court
+  quand on sait à peu près ce qu'on cherche.
+- **Rien d'inerte** — « + Ma liste », « 🔔 Me rappeler » et la recherche sont
+  persistés et fonctionnels (stockage versionné `tvking.v1.*`).
+- **Réglages** — taille du texte, compensation d'overscan et **confort visuel**
+  (écran moins lumineux, blanc plus chaud en pièce sombre), tous persistés.
 
 ## Structure
 
@@ -32,9 +38,16 @@ app/
   sport/  formation/          Catégories (live/replay ; niveaux/progression)
   title/[slug]/               Page détail d'un contenu
   watch/[slug]/               Lecteur + « À suivre »
-  search/  list/  reglages/   Recherche, Ma liste, Réglages
-  components/                 Sidebar, Hero, Row, MediaCard, Badge, Player…
-  lib/data.ts                 Modèle de contenu (mock) + lookups
+  sport/[discipline]/         Page de facette (discipline)
+  formation/[theme]/          Page de facette (thème)
+  search/  list/  reglages/   Recherche (clavier D-pad), Ma liste + rappels, Réglages
+  error.tsx  global-error.tsx Écrans d'erreur 10-foot (jamais d'écran blanc)
+  components/                 Sidebar, Hero, Row, MediaCard, Badge, Player, FacetNav…
+  lib/data.ts                 Modèle de contenu (mock) + facettes + lookups
+  lib/collections.ts          Ma liste / rappels persistés (pur + testé)
+  lib/search.ts               Recherche locale sans accents (pur + testé)
+  lib/playerKeys.ts           Contrat des touches de télécommande (pur + testé)
+  lib/resume.ts  lib/spatial.ts  Reprise persistée, géométrie du D-pad
 docs/RESEARCH-TV-UX.md        Recherche sourcée (le référentiel de conception)
 ```
 
@@ -45,6 +58,8 @@ npm install
 npm run dev      # http://localhost:3000
 npm run build    # build de production
 npm run lint
+npm test         # suites unitaires (logique pure)
+npm run qa       # la porte complète : lint · typegen · tsc · tests · build · budget de taille
 ```
 
 > Navigation : flèches (D-pad) pour déplacer le focus, Entrée/Espace pour activer.

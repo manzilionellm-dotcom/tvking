@@ -1,0 +1,26 @@
+# RUN-002 — MODE T (transformation), périmètre TV BOX UNIQUEMENT
+# Mobile (workflows 7motion téléphone / console maître, PR #5 mobile-premium) : INTERDIT DE TOUCHER.
+# Origine du run : revue des builds (Actions + releases + PR ouvertes) → « ce qui était conçu et
+# jamais posé dans l'app TV ». Sources : docs/RESEARCH-TV-UX.md (ancres), backlog run-001, PR #6
+# (fondations qualité TV, ouverte et non mergée depuis le 2026-07-24).
+[x] R0 REVUE DES BUILDS — 31 workflows, 22 releases, 7 PR ; état du dernier build TV web (qa-gates
+    sur main : vert) et des canaux APK TV (tv-prod 2026-07-11, cinema-test 2026-07-22)
+[x] R1 Écart conception → code établi et tracé (voir decisions.md, §run-002)
+[x] B7 Boutons inertes câblés : « + Ma liste » et « 🔔 Me rappeler » (stockage versionné v1)
+[x] B3 « Ma liste » réelle (persistée) + rangée « Mes rappels » + état vide avec CTA
+[x] B4 Recherche fonctionnelle : filtre local insensible aux accents + clavier D-pad + état vide
+[x] F1 Navigation à facettes (recherche §5) : 12 pages statiques /sport/[discipline] et
+    /formation/[theme], chips de facette, puces de thème sur la fiche
+[x] F2 Tuiles de facette : ne génèrent plus de fiche détail « pour un logo » (défaut de conception)
+[x] F3 CTA du hero réels (Lecture → lecteur, Plus d'infos → fiche) + rotation suspendue au focus
+[x] S2b Rangée « Reprendre » alimentée par la reprise persistée (le store était écrit, jamais relu)
+[x] S7c Touche MediaTrackNext (contrat télécommande pur + testé) — enchaîne sur le suivant
+[x] Q1 Frontières d'erreur TV (app/error.tsx, app/global-error.tsx) + télémétrie sans PII
+    — conçues dans la PR #6, jamais mergées
+[x] Q2 Confort visuel (recherche §3 : luminance ~120-180 nits, point blanc plus chaud) dans Réglages
+[x] Q3 Porte de taille du JS client dans qa-gates (baseline commitée, marge +10 %)
+[x] T5b Tests : 61 unitaires verts (spatial, resume, collections, search, playerKeys, telemetry,
+    invariants catalogue + facettes)
+[x] QA finale — qa-gates.sh exit 0 (lint · typegen · tsc · 61 tests · build 103 pages · budget)
+    + smoke E2E Chromium 1920×1080 : 29/29 PASS, zéro erreur console
+[x] Push sur claude/tv-app-builds-review-kz8d5a

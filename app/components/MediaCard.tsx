@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { MediaItem } from "../lib/data";
 import { LevelBadge, LiveBadge } from "./Badge";
+import { ReminderFlag } from "./CollectionButton";
 
 /* Card widths per shape. 16:9 is the default video card; 1:1 for logos/topics;
    2:3 for course "posters" — the three Android TV card aspect ratios. */
@@ -16,7 +17,7 @@ export default function MediaCard({ item }: { item: MediaItem }) {
 
   return (
     <Link
-      href={`/title/${item.id}`}
+      href={item.href ?? `/title/${item.id}`}
       data-focusable
       data-focus-key={`card:${item.id}`}
       className="card focusable group relative block shrink-0 cursor-pointer text-left"
@@ -48,6 +49,9 @@ export default function MediaCard({ item }: { item: MediaItem }) {
             {item.badge}
           </div>
         )}
+
+        {/* "Rappel activé" — the third state of the sport tri-state model. */}
+        {item.live === "upcoming" && <ReminderFlag id={item.id} />}
 
         {/* Live clock + score overlay (bottom). */}
         {(item.clock || item.score) && (

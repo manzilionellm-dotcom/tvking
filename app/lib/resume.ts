@@ -101,20 +101,35 @@ export function positionOf(store: ResumeStore, id: string): number | null {
 
 /* ------------------------- browser-side thin wrappers ---------------------- */
 
+/*
+ * Parsed-store cache keyed on the raw string. useSyncExternalStore compares
+ * snapshots by identity, so a fresh object on every read would loop forever;
+ * re-parsing only when the stored string actually changed keeps the snapshot
+ * stable (and saves a JSON.parse per render).
+ */
+let cache: { raw: string | null; store: ResumeStore } | null = null;
+
 export function loadResume(): ResumeStore {
   if (typeof window === "undefined") return emptyStore();
+  let raw: string | null = null;
   try {
-    return parseStore(window.localStorage.getItem(RESUME_KEY));
+    raw = window.localStorage.getItem(RESUME_KEY);
   } catch {
     return emptyStore();
   }
+  if (cache && cache.raw === raw) return cache.store;
+  const store = parseStore(raw);
+  cache = { raw, store };
+  return store;
 }
 
 export function saveResume(store: ResumeStore): void {
   if (typeof window === "undefined") return;
+  const raw = JSON.stringify(store);
   try {
-    window.localStorage.setItem(RESUME_KEY, JSON.stringify(store));
+    window.localStorage.setItem(RESUME_KEY, raw);
   } catch {
     // Storage full or unavailable — resume is a nicety, never a crash.
   }
+  cache = { raw, store };
 }

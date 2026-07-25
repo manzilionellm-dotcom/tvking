@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { PREFS } from "../components/Preferences";
+import { PREFS, applyComfort } from "../components/Preferences";
 
 /*
  * Tiny external store over localStorage so the controls read/write persisted
@@ -13,16 +13,23 @@ function subscribe(cb: () => void) {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
-function readPref(key: string) {
-  return typeof window === "undefined" ? "1" : localStorage.getItem(key) ?? "1";
+function readPref(key: string, fallback = "1") {
+  return typeof window === "undefined" ? fallback : localStorage.getItem(key) ?? fallback;
 }
 function writePref(key: string, cssVar: string, value: string) {
   localStorage.setItem(key, value);
   document.documentElement.style.setProperty(cssVar, value);
   listeners.forEach((l) => l());
 }
-function usePref(key: string) {
-  return useSyncExternalStore(subscribe, () => readPref(key), () => "1");
+function usePref(key: string, fallback = "1") {
+  return useSyncExternalStore(subscribe, () => readPref(key, fallback), () => fallback);
+}
+
+/** Comfort is a named level, not a scale: it drives two CSS variables at once. */
+function writeComfort(value: string) {
+  localStorage.setItem(PREFS.comfort, value);
+  applyComfort(value);
+  listeners.forEach((l) => l());
 }
 
 /*
@@ -40,6 +47,12 @@ const TEXT_OPTS: Opt[] = [
   { label: "Standard", value: "1", hint: "Recommandé" },
   { label: "Grand", value: "1.15", hint: "Lecture facile" },
   { label: "Très grand", value: "1.3", hint: "Vision réduite" },
+];
+
+const COMFORT_OPTS: Opt[] = [
+  { label: "Désactivé", value: "off", hint: "Image d'origine" },
+  { label: "Doux", value: "doux", hint: "Soirée, lumière tamisée" },
+  { label: "Nuit", value: "nuit", hint: "Pièce sombre, moins de bleu" },
 ];
 
 const SAFE_OPTS: Opt[] = [
@@ -97,6 +110,7 @@ function Group({
 export default function ReglagesPage() {
   const ui = usePref(PREFS.uiScale);
   const safe = usePref(PREFS.safeScale);
+  const comfort = usePref(PREFS.comfort, "off");
 
   const pickUi = (v: string) => writePref(PREFS.uiScale, "--ui-scale", v);
   const pickSafe = (v: string) => writePref(PREFS.safeScale, "--safe-scale", v);
@@ -123,6 +137,14 @@ export default function ReglagesPage() {
         opts={SAFE_OPTS}
         current={safe}
         onPick={pickSafe}
+      />
+
+      <Group
+        title="Confort visuel"
+        desc="En pièce sombre, un écran moins lumineux et un blanc plus chaud fatiguent moins les yeux (moins de lumière bleue)."
+        opts={COMFORT_OPTS}
+        current={comfort}
+        onPick={writeComfort}
       />
 
       {/* Live preview frame: a dashed outline showing the current safe area. */}
