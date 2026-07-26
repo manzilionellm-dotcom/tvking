@@ -1,10 +1,11 @@
 # ============================================================================
 #  add-tv-domain.yml — Branche tv.7themotion.com sur l'app TV (hébergée Vercel).
 #
-#  But : que la TV s'ouvre sur https://tv.7themotion.com au lieu d'une URL
-#  *.vercel.app. Le workflow pose UNIQUEMENT l'enregistrement DNS côté
-#  Cloudflare ; l'ajout du domaine dans le projet Vercel se fait côté Vercel
-#  (Project → Settings → Domains), il n'existe pas d'API Cloudflare pour ça.
+#  But : que la TV s'ouvre sur https://tv.7themotion.com au lieu de l'URL
+#  github.io. Le workflow pose UNIQUEMENT l'enregistrement DNS côté Cloudflare ;
+#  le domaine se déclare aussi côté hébergeur — pour GitHub Pages, en relançant
+#  « Deploy TV app (Pages) » avec l'entrée custom_domain (elle écrit le fichier
+#  CNAME du site).
 #
 #  Même esprit que add-download-domain.yml (côté APK) : ADDITIF, IDEMPOTENT,
 #  et incapable de toucher autre chose.
@@ -31,9 +32,9 @@ on:
         default: 'tv.7themotion.com'
         type: string
       target:
-        description: 'Cible CNAME (donnée par Vercel : cname.vercel-dns.com)'
+        description: 'Cible CNAME de l''hébergeur (GitHub Pages par défaut)'
         required: true
-        default: 'cname.vercel-dns.com'
+        default: 'manzilionellm-dotcom.github.io'
         type: string
 
 permissions:
@@ -112,7 +113,8 @@ jobs:
 
           if [ "$(echo "$OUT" | jq -r '.success')" = "true" ]; then
             echo "✅ DNS posé : $HOST → $TARGET (DNS only)."
-            echo "   Côté Vercel : Project → Settings → Domains → Add → $HOST"
+            echo "   Côté hébergeur : relance « Deploy TV app (Pages) » avec"
+            echo "   custom_domain=$HOST pour que le site se déclare sur ce nom."
             echo "   (le certificat est émis dans la minute qui suit)"
             exit 0
           fi
