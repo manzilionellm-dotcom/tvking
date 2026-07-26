@@ -1,5 +1,5 @@
 # ============================================================================
-#  add-tv-domain.yml — Branche tv.7themotion.com sur l'app TV (hébergée Vercel).
+#  add-tv-domain.yml — Branche tv.7themotion.com sur l'app TV (GitHub Pages).
 #
 #  But : que la TV s'ouvre sur https://tv.7themotion.com au lieu de l'URL
 #  github.io. Le workflow pose UNIQUEMENT l'enregistrement DNS côté Cloudflare ;
@@ -12,8 +12,8 @@
 #    - refuse tout hôte qui n'est pas un sous-domaine de la zone visée ;
 #    - refuse la liste noire des hôtes déjà en service (99999, dl, @, www) ;
 #    - si l'enregistrement existe déjà et pointe au bon endroit → ne fait rien ;
-#    - `proxied: false` (nuage gris) : Vercel doit voir la vraie requête pour
-#      émettre son certificat, un proxy Cloudflare devant casse l'émission.
+#    - `proxied: false` (nuage gris) : l'hébergeur doit voir la vraie requête
+#      pour émettre son certificat, un proxy Cloudflare devant casse l'émission.
 #
 #  Lancer : Actions → « Add TV domain » → Run workflow.
 #  Réutilise le secret CLOUDFLARE_API_TOKEN déjà en place. Le token doit avoir
@@ -92,7 +92,7 @@ jobs:
 
           BODY=$(jq -n --arg h "$HOST" --arg c "$TARGET" \
             '{type:"CNAME", name:$h, content:$c, ttl:1, proxied:false,
-              comment:"App TV (Vercel) — posé par add-tv-domain.yml"}')
+              comment:"App TV — posé par add-tv-domain.yml"}')
 
           if [ -n "$ID" ]; then
             if [ "$CUR" = "$TARGET" ] && [ "$CUR_TYPE" = "CNAME" ] && [ "$PROXIED" = "false" ]; then
