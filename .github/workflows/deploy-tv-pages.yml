@@ -1,0 +1,124 @@
+# ============================================================================
+#  deploy-tv-pages.yml — Publie l'app TV (web) en ligne, sur GitHub Pages.
+#
+#  POURQUOI : avoir un lien qu'on ouvre sur la box / le navigateur sans rien
+#  installer, mis à jour tout seul à chaque push — et sans dépendre d'un
+#  hébergeur tiers ni d'un compte à connecter.
+#
+#  COMMENT : l'app est 100 % statique (103 pages SSG), donc `next build` avec
+#  STATIC_EXPORT=1 produit un dossier `out/` de fichiers plats que Pages sert
+#  tel quel. Le préfixe d'URL (/tvking) vient de actions/configure-pages ; avec
+#  un domaine dédié il n'y a pas de préfixe.
+#
+#  GARDE-FOUS :
+#    - ne touche à aucun workflow APK (mobile ET TV) : c'est le site web ;
+#    - `.nojekyll` obligatoire, sinon Pages (Jekyll) ignore le dossier `_next`
+#      et la page s'affiche sans styles ni JavaScript ;
+#    - le domaine dédié n'est écrit (fichier CNAME) que si on le demande
+#      explicitement en lançant le workflow à la main : tant que le DNS n'est
+#      pas posé, écrire un CNAME casserait le lien github.io.
+# ============================================================================
+
+name: Deploy TV app (Pages)
+
+on:
+  workflow_dispatch:
+    inputs:
+      custom_domain:
+        description: 'Domaine dédié (ex. tv.7themotion.com). Vide = lien github.io.'
+        required: false
+        default: ''
+        type: string
+  push:
+    branches:
+      - main
+      - 'claude/tv-app-builds-review-**'
+    paths:
+      - 'app/**'
+      - 'public/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'next.config.ts'
+      - 'postcss.config.mjs'
+      - 'tsconfig.json'
+      - '.github/workflows/deploy-tv-pages.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Une seule publication à la fois ; on ne coupe pas un déploiement en cours.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Export statique
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Install (lockfile strict)
+        run: npm ci
+
+      # Domaine dédié → site servi à la racine, donc aucun préfixe d'URL.
+      # (Calculé dans un step : en expression GitHub, `A && '' || B` retombe
+      # toujours sur B, la chaîne vide étant fausse.)
+      - name: Préfixe d'URL
+        id: bp
+        run: |
+          if [ -n "${{ inputs.custom_domain }}" ]; then
+            echo "value=" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ steps.pages.outputs.base_path }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build (export statique)
+        env:
+          STATIC_EXPORT: '1'
+          NEXT_BASE_PATH: ${{ steps.bp.outputs.value }}
+        run: npm run build
+
+      - name: Fichiers de service Pages
+        run: |
+          set -e
+          # Sans .nojekyll, Pages ignore /_next/** (dossiers commençant par _).
+          touch out/.nojekyll
+          if [ -n "${{ inputs.custom_domain }}" ]; then
+            echo -n "${{ inputs.custom_domain }}" > out/CNAME
+            echo "Domaine dédié demandé : ${{ inputs.custom_domain }}"
+          fi
+          echo "Pages exportées : $(find out -name '*.html' | wc -l)"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    name: Mise en ligne
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Lien
+        run: 'echo "✅ En ligne : ${{ steps.deployment.outputs.page_url }}"'
