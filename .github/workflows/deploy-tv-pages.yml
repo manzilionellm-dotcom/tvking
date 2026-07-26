@@ -10,6 +10,8 @@
 #  tel quel. Le préfixe d'URL (/tvking) vient de actions/configure-pages ; avec
 #  un domaine dédié il n'y a pas de préfixe.
 #
+#  PRÉ-REQUIS (une seule fois) : Settings → Pages → Source « GitHub Actions ».
+#
 #  GARDE-FOUS :
 #    - ne touche à aucun workflow APK (mobile ET TV) : c'est le site web ;
 #    - `.nojekyll` obligatoire, sinon Pages (Jekyll) ignore le dossier `_next`
@@ -66,11 +68,14 @@ jobs:
           node-version: 22
           cache: npm
 
+      # Pré-requis, UNE SEULE FOIS, par le propriétaire du dépôt :
+      #   Settings → Pages → Build and deployment → Source : « GitHub Actions ».
+      # Le jeton d'Actions n'a pas le droit de créer le site Pages lui-même
+      # (« Resource not accessible by integration ») : on ne tente donc pas
+      # l'activation automatique, on lit simplement la configuration.
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Install (lockfile strict)
         run: npm ci
