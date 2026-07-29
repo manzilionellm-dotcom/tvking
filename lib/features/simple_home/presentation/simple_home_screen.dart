@@ -377,7 +377,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           // Mode invité — toujours accessible depuis l'accueil : inviter un
           // ami, entrer un code, ou envoyer son identifiant.
           IconButton(
-            tooltip: 'Mode invité',
+            tooltip: context.l10n.guestScreenTitle,
             icon: const Icon(Icons.card_giftcard_rounded),
             onPressed: () => openGuestScreen(context),
           ),
@@ -548,7 +548,7 @@ class _GuestEntryCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'On t’a invité ?',
+                    context.l10n.homeGuestCardTitle,
                     style: AppTextStyles.headlineMedium.copyWith(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -556,7 +556,7 @@ class _GuestEntryCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Entre le code d’un ami, ou envoie-lui ton identifiant.',
+                    context.l10n.homeGuestCardBody,
                     style: AppTextStyles.bodyMedium.copyWith(
                       fontSize: 12,
                       color: AppColors.textSecondary,
@@ -601,7 +601,7 @@ class _GuestEntryBar extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Inviter un ami · prêter · j’ai un code',
+                  context.l10n.homeGuestBarLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.bodyLarge.copyWith(

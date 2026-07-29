@@ -2601,6 +2601,35 @@
       }
     }
   },
+  "homeGuestCardTitle": "On t’a invité ?",
+  "@homeGuestCardTitle": {
+    "description": "Carte mode invité (écran d’activation) : titre."
+  },
+  "homeGuestCardBody": "Entre le code d’un ami, ou envoie-lui ton identifiant.",
+  "@homeGuestCardBody": {
+    "description": "Carte mode invité (écran d’activation) : sous-texte."
+  },
+  "homeGuestBarLabel": "Inviter un ami · prêter · j’ai un code",
+  "@homeGuestBarLabel": {
+    "description": "Barre fine mode invité en haut de l’accueil rempli."
+  },
+  "homeHiddenCategoriesTitle": "Catégories masquées",
+  "@homeHiddenCategoriesTitle": {
+    "description": "Feuille des catégories masquées : titre."
+  },
+  "homeHiddenCategoriesEmpty": "Aucune catégorie masquée.",
+  "@homeHiddenCategoriesEmpty": {
+    "description": "Feuille des catégories masquées : aucune catégorie masquée."
+  },
+  "homeHiddenCountManage": "{count, plural, =1{1 masquée · Gérer} other{{count} masquées · Gérer}}",
+  "@homeHiddenCountManage": {
+    "description": "Rappel du nombre de catégories masquées + accès Gérer.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "heroForYou": "POUR VOUS",
   "heroFeaturedOfDay": "FAVORI DU JOUR",
   "nowPlayingProgram": "En ce moment · {program}",

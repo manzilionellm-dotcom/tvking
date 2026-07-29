@@ -219,7 +219,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                     child: Text(
-                      'Catégories masquées',
+                      ctx.l10n.homeHiddenCategoriesTitle,
                       style: AppTextStyles.bodyLarge
                           .copyWith(fontWeight: FontWeight.w700),
                     ),
@@ -227,7 +227,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
                   if (hidden.isEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                      child: Text('Aucune catégorie masquée.',
+                      child: Text(ctx.l10n.homeHiddenCategoriesEmpty,
                           style: AppTextStyles.bodyMedium.copyWith(
                               fontSize: 13,
                               color: AppColors.textSecondary)),
@@ -248,7 +248,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
                               trailing: TextButton(
                                 onPressed: () => HiddenCategoriesStore.instance
                                     .unhide(c),
-                                child: const Text('Afficher'),
+                                child: Text(ctx.l10n.tvSourceShowValue),
                               ),
                             ),
                         ],
@@ -759,7 +759,8 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
                       icon: Icon(Icons.visibility_off_rounded,
                           size: 18, color: AppColors.textTertiary),
                       label: Text(
-                        '${HiddenCategoriesStore.instance.count} masquée(s) · Gérer',
+                        context.l10n.homeHiddenCountManage(
+                            HiddenCategoriesStore.instance.count),
                         style: AppTextStyles.labelSmall.copyWith(
                             fontSize: 12, color: AppColors.textTertiary),
                       ),
