@@ -1230,7 +1230,9 @@ class _RailSearchButton extends StatelessWidget {
                   size: 20, color: focused ? TvTokens.bg : TvTokens.gold),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Recherche intelligente',
+                // Clé tvTmSmartSearch (8 langues) : le libellé était en dur
+                // en français → invisible pour les autres locales.
+                child: Text(context.l10n.tvTmSmartSearch,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

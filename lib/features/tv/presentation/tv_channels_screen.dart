@@ -327,7 +327,8 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   // ---- Colonne 1 : catégories ----
   Widget _categories() {
     return _panel(
-      title: 'Catégories',
+      // Clé categoriesTitle (8 langues) : plus de « Catégories » en dur.
+      title: context.l10n.categoriesTitle,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -372,7 +373,10 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                 final int ri = real.indexOf(cat);
                 return _RowTile(
                   key: ValueKey<String>(cat),
-                  label: cat,
+                  // AFFICHAGE SEUL : la pseudo-catégorie _kAll passe par la clé
+                  // tvTmAllChannels (8 langues) ; la valeur interne reste
+                  // intacte (elle sert de sentinelle aux comparaisons).
+                  label: cat == _kAll ? context.l10n.tvTmAllChannels : cat,
                   count: _countFor(cat),
                   active: cat == _cat,
                   autofocus: i == 0,
@@ -405,17 +409,19 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
 
   // ---- Colonne 2 : chaînes ----
   Widget _channels() {
+    // Clés tvTabChannels / tvTmNoChannelInGroup (8 langues) : libellés en dur
+    // remplacés — mêmes textes FR qu'avant, mais traduits partout.
     if (_visible.isEmpty) {
       return _panel(
-        title: 'Chaînes',
-        child: const Center(
-          child: Text('Aucune chaîne dans ce groupe',
-              style: TextStyle(color: TvTokens.muted, fontSize: 16)),
+        title: context.l10n.tvTabChannels,
+        child: Center(
+          child: Text(context.l10n.tvTmNoChannelInGroup,
+              style: const TextStyle(color: TvTokens.muted, fontSize: 16)),
         ),
       );
     }
     return _panel(
-      title: 'Chaînes · ${_visible.length}',
+      title: '${context.l10n.tvTabChannels} · ${_visible.length}',
       child: ListView.builder(
         // Extent MESURÉ (prototype) : la liste peut porter le bouquet
         // entier (10 000+ sur « Toutes ») — sans extent, chaque frame de
@@ -521,7 +527,8 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                       flex: 2,
                       child: _ActionButton(
                         icon: Icons.play_arrow_rounded,
-                        label: 'Regarder',
+                        // Clé tvWatch (8 langues) — « Regarder » était en dur.
+                        label: context.l10n.tvWatch,
                         primary: true,
                         onSelect: () {
                           final int idx = _visible
@@ -536,7 +543,9 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                         icon: _favs.contains(ch.id)
                             ? Icons.star_rounded
                             : Icons.star_outline_rounded,
-                        label: 'Favori',
+                        // Clé tvPlayerFavorite (8 langues) — même libellé que
+                        // le bouton Favori du lecteur.
+                        label: context.l10n.tvPlayerFavorite,
                         onSelect: () =>
                             FavoritesRepository.instance.toggle(ch.id),
                       ),
@@ -545,7 +554,9 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                     Expanded(
                       child: _ActionButton(
                         icon: Icons.search_rounded,
-                        label: 'Rechercher',
+                        // Clé tvNavSearch (8 langues) : « Recherche » remplace
+                        // le « Rechercher » en dur (même sens, enfin traduit).
+                        label: context.l10n.tvNavSearch,
                         onSelect: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
                               builder: (_) => const TvSearchScreen()),
@@ -625,7 +636,8 @@ class _HomeTile extends StatelessWidget {
                   size: 18, color: focused ? TvTokens.gold : TvTokens.mutedDim),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Accueil',
+                // Clé navHome (8 langues) — « Accueil » était en dur.
+                child: Text(context.l10n.navHome,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -670,7 +682,9 @@ class _SearchTile extends StatelessWidget {
                   size: 20, color: focused ? TvTokens.bg : TvTokens.gold),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Recherche intelligente',
+                // Clé tvTmSmartSearch (8 langues) : le libellé était en dur
+                // en français → invisible pour les autres locales.
+                child: Text(context.l10n.tvTmSmartSearch,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
