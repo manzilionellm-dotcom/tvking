@@ -755,6 +755,14 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
       // la coupe (elle repartira au prochain `resumed`).
       _activationTimer?.cancel();
       _activationTimer = null;
+      // Idem pour la RECONNEXION : sans ces cancel, un socket tué par l'OS
+      // en arrière-plan faisait rouvrir des sockets indéfiniment (backoff)
+      // alors que l'app n'est pas visible. Le `resumed` fait de toute
+      // façon un forceReconnect immédiat — rien n'est perdu.
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+      _stableTimer?.cancel();
+      _stableTimer = null;
     }
   }
 

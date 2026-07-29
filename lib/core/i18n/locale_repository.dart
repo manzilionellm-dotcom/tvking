@@ -58,14 +58,21 @@ class LocaleRepository extends ChangeNotifier {
   Locale? get locale => _locale;
 
   Future<void> initialize() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? stored = prefs.getString(_kKey);
-    if (stored == null || stored.isEmpty || stored == 'system') {
-      _locale = null;
-    } else {
-      _locale = Locale(stored);
+    // Best-effort (même modèle qu'AccentController) : un échec de
+    // SharedPreferences AVANT runApp ne doit JAMAIS tuer le boot —
+    // on retombe sur le défaut sûr (« Système », _locale = null).
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? stored = prefs.getString(_kKey);
+      if (stored == null || stored.isEmpty || stored == 'system') {
+        _locale = null;
+      } else {
+        _locale = Locale(stored);
+      }
+      notifyListeners();
+    } catch (_) {
+      // best-effort : en cas d'échec on reste sur le défaut (Système).
     }
-    notifyListeners();
   }
 
   Future<void> setLocale(Locale? locale) async {

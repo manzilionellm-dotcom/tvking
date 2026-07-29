@@ -17,6 +17,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
+import 'core/app/safe_mode_app.dart';
 import 'core/backend/backend_hosts.dart';
 import 'core/realtime/admin_message_banner.dart';
 import 'core/realtime/realtime_sync_service.dart';
@@ -100,24 +101,61 @@ Future<void> bootApp() async {
   // (retiré de son pubspec). La conversion garde la vidéo intacte (copie).
   recordingTsToMp4Hook = FfmpegConverter.tsToMp4;
 
-  // libmpv natif — AVANT runApp pour ne pas crasher au premier lecteur.
-  // GARDÉ : sur un appareil exotique où la lib native manque/échoue
-  // (UnsatisfiedLinkError…), l'app NE DOIT PAS mourir au boot. On capte,
-  // on signale, et on continue : le lecteur échouera proprement plus tard
-  // (chaque écran lecteur a déjà ses propres try/catch).
-  try {
-    MediaKit.ensureInitialized();
-  } catch (e, s) {
-    CrashReporting.instance
-        .recordError(e, s, context: 'MediaKit.ensureInitialized');
-  }
-
   // DISJONCTEUR anti-boucle de redémarrage (cf. core/app/boot_guard.dart) :
-  // si l'app s'est relancée plusieurs fois de suite (crash natif type
-  // mémoire en ré-important une grosse source), on saute le ré-import
-  // distant plus bas pour casser la boucle.
+  // même modèle à JALONS que la TV (main_tv.dart). Posé AVANT toute étape
+  // risquée (mpv compris) pour que le compteur soit persisté d'abord.
   await BootGuard.instance.beginBoot();
 
+  // ====================================================================
+  //  MODE SANS ÉCHEC (modèle TV) — boucle de crash détectée par BootGuard.
+  //  On n'initialise RIEN de risqué (pas de mpv, pas de repos lourds, AUCUN
+  //  import distant) : on ouvre l'écran de RÉCUPÉRATION ciblé selon l'endroit
+  //  du dernier crash, puis on s'arrête là. C'est ce qui CASSE la boucle
+  //  « ouvre/ferme » au lieu de refaire l'action qui tue.
+  // ====================================================================
+  if (BootGuard.instance.isInSafeMode) {
+    // Langue chargée pour que l'écran de récup s'affiche dans la bonne langue.
+    await LocaleRepository.instance.initialize();
+    runApp(SafeModeApp(failedPhase: BootGuard.instance.lastFailedPhase));
+    return; // on ne va PAS plus loin (rien de risqué).
+  }
+  // Boot normal : on note le jalon « moteur prêt » (avant tout import).
+  await BootGuard.instance.markPhase(BootPhase.flutterUp);
+
+  // CEINTURE DE SÉCURITÉ : tout le bloc d'inits pré-runApp est sous
+  // try/catch. Si une étape échoue de façon inattendue (prefs corrompues,
+  // plugin KO…), on signale et on lance QUAND MÊME l'app avec les défauts —
+  // sans ça, une exception ici = écran noir définitif (runApp jamais appelé).
+  try {
+    // libmpv natif — AVANT runApp pour ne pas crasher au premier lecteur.
+    // GARDÉ : sur un appareil exotique où la lib native manque/échoue
+    // (UnsatisfiedLinkError…), l'app NE DOIT PAS mourir au boot. On capte,
+    // on signale, et on continue : le lecteur échouera proprement plus tard
+    // (chaque écran lecteur a déjà ses propres try/catch).
+    try {
+      MediaKit.ensureInitialized();
+    } catch (e, s) {
+      CrashReporting.instance
+          .recordError(e, s, context: 'MediaKit.ensureInitialized');
+    }
+
+    await _initBeforeRunApp();
+  } catch (e, s) {
+    CrashReporting.instance.recordError(e, s, context: 'bootApp');
+  }
+
+  runApp(const TvKingApp());
+
+  // Jalon « 1er frame rendu » : l'UI s'est affichée au moins une fois
+  // (même modèle que main_tv.dart — plus de reset aveugle par timer).
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    BootGuard.instance.markPhase(BootPhase.firstFrame);
+  });
+}
+
+/// Bloc d'inits pré-runApp (extrait de [bootApp] pour tenir sous la
+/// ceinture try/catch ci-dessus sans indenter 200 lignes).
+Future<void> _initBeforeRunApp() async {
   // Rotation auto autorisée sur toutes les orientations supportées.
   // Sans ça, même quand l'utilisateur incline son téléphone en mode
   // paysage pour regarder un film, l'écran reste verrouillé en portrait
@@ -143,18 +181,31 @@ Future<void> bootApp() async {
   // Démarre les repos en parallèle — non bloquant pour le first frame.
   // Les écrans qui en dépendent rebuildent via les Streams au fur et
   // à mesure que les données arrivent.
-  unawaited(PlaylistRepository.instance.initialize().then((_) {
+  unawaited(PlaylistRepository.instance.initialize().then((_) async {
     // Modèle « tout géré par le revendeur » : on récupère la source
     // IPTV assignée à cet appareil par sa MAC (panel admin) et on la
     // charge automatiquement. Le client n'a rien à saisir. Puis on purge
     // toute source qui n'a pas marché (0 chaîne) pour ne rien laisser
     // traîner.
-    // MODE SANS ÉCHEC : on saute ce ré-import (étape la plus gourmande,
-    // suspect n°1 d'un crash mémoire en boucle) → l'app ouvre sur le cache.
-    if (!BootGuard.instance.safeMode) {
-      RemoteSourceRepository.sync().then((_) {
+    // IMPORT DISTANT = étape risquée → JALONNÉE (même modèle que main_tv) :
+    // à sa FIN (succès ou rien à importer), on déclare le boot RÉUSSI —
+    // c'est le SEUL reset du compteur anti-boucle (plus de reset par timer).
+    // RÉCUPÉRATION : si l'utilisateur a choisi « démarrer sans réimporter »
+    // dans l'écran mode sans échec, on SAUTE l'auto-import ce boot-ci.
+    final bool skipAutoImport =
+        await BootGuard.instance.consumeSkipAutoImport();
+    if (skipAutoImport || BootGuard.instance.safeMode) {
+      await BootGuard.instance.markBootSucceeded();
+    } else {
+      await BootGuard.instance.markPhase(BootPhase.importStart);
+      // sync() ne throw jamais (renvoie un résultat) : on marque donc le
+      // boot réussi dès qu'il a terminé, quel que soit le résultat —
+      // l'app, elle, a démarré sans crasher, c'est ça « un boot réussi ».
+      unawaited(RemoteSourceRepository.sync().then((_) async {
         PlaylistRepository.instance.pruneEmptyPlaylists();
-      });
+        await BootGuard.instance.markPhase(BootPhase.importDone);
+        await BootGuard.instance.markBootSucceeded();
+      }));
     }
 
     // Sauvegarde cloud par MAC : démarre l'upload automatique (à chaque
@@ -344,12 +395,6 @@ Future<void> bootApp() async {
   Future<void>.delayed(const Duration(seconds: 4), () {
     NotificationService.instance.checkAnnouncement();
   });
-
-  runApp(const TvKingApp());
-
-  // App lancée : si elle tient quelques secondes, on efface l'historique de
-  // boucle de crash (un démarrage réussi « pardonne » les crashs précédents).
-  BootGuard.instance.scheduleStableReset();
 }
 
 class TvKingApp extends StatelessWidget {
@@ -470,12 +515,25 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   bool _adShow = false;
   bool _adDone = false;
 
+  /// Timer de secours de [_resolveAd] — CONSERVÉ pour être annulé dès que le
+  /// fetch répond (sinon un setState orphelin part 2,5 s après) et en dispose.
+  Timer? _adFallbackTimer;
+
   /// Résout la pub de démarrage SANS jamais bloquer l'accueil plus de 2,5 s.
   Future<void> _resolveAd() async {
-    Timer(const Duration(milliseconds: 2500), () {
+    _adFallbackTimer = Timer(const Duration(milliseconds: 2500), () {
       if (mounted && !_adResolved) setState(() => _adResolved = true);
     });
-    await StartupAdRepository.instance.fetch();
+    // Best-effort : borne dure de 2 s sur le fetch réseau — au-delà (ou en
+    // cas d'erreur), on continue sans pub plutôt que d'attendre le timer.
+    try {
+      await StartupAdRepository.instance
+          .fetch()
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // Réseau lent/KO : on continue avec la config par défaut (pas de pub).
+    }
+    _adFallbackTimer?.cancel();
     final bool show = await StartupAdRepository.instance.shouldShow();
     if (mounted) {
       setState(() {
@@ -569,6 +627,9 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
       (_) => _maybeCheckUpdate(),
     );
     _resolveAd();
+    // NB : les trois lectures de prefs ci-dessous ont chacune un .catchError
+    // avec un DÉFAUT SÛR — sans ça, une exception laissait le flag à null
+    // → splash infini. Défaut choisi = le MOINS destructeur pour le client.
     OnboardingState.instance.hasCompleted().then((bool done) {
       if (mounted) {
         setState(() {
@@ -577,6 +638,10 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
           // (taille d'ecran). Plus de drapeau `_devicePicked`.
         });
       }
+    }).catchError((Object _) {
+      // Défaut : onboarding considéré FAIT — ne jamais re-forcer un tuto
+      // (retiré du flow de toute façon) ni bloquer l'entrée dans l'app.
+      if (mounted) setState(() => _onboardingDone = true);
     });
 
     // Verrouillage à l'ouverture = OPT-IN (désactivé par défaut). Sur une
@@ -589,6 +654,10 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     final FlavorConfig flavor = FlavorConfig.current;
     LockSettings.instance.isLockEnabled().then((bool enabled) {
       if (mounted) setState(() => _lockEnabled = enabled);
+    }).catchError((Object _) {
+      // Défaut : verrou DÉSACTIVÉ (l'option est opt-in, défaut produit) —
+      // moins destructeur que d'exiger une empreinte qu'on ne peut vérifier.
+      if (mounted) setState(() => _lockEnabled = false);
     });
 
     // Gate âge : uniquement Red Room. Sur The Few, on by-pass
@@ -598,6 +667,10 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
         if (mounted) {
           setState(() => _ageGateConfirmed = ok);
         }
+      }).catchError((Object _) {
+        // Défaut : confirmé — un échec de prefs ne doit pas enfermer le
+        // client sur un gate hérité (le flavor actuel ne l'exige jamais).
+        if (mounted) setState(() => _ageGateConfirmed = true);
       });
     } else {
       _ageGateConfirmed = true;
@@ -622,6 +695,7 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     SubscriptionState.instance.removeListener(_onSubscriptionChanged);
     WidgetsBinding.instance.removeObserver(this);
     _updateTimer?.cancel();
+    _adFallbackTimer?.cancel();
     super.dispose();
   }
 

@@ -27,18 +27,25 @@ class ThemeModeRepository extends ChangeNotifier {
   ThemeMode get mode => _mode;
 
   Future<void> initialize() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? stored = prefs.getString(_kKey);
-    switch (stored) {
-      case 'light':
-        _mode = ThemeMode.light;
-      case 'system':
-        _mode = ThemeMode.system;
-      case 'dark':
-      default:
-        _mode = ThemeMode.dark;
+    // Best-effort (même modèle qu'AccentController) : un échec de
+    // SharedPreferences AVANT runApp ne doit JAMAIS tuer le boot —
+    // on garde le défaut sûr (Cinema / dark).
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? stored = prefs.getString(_kKey);
+      switch (stored) {
+        case 'light':
+          _mode = ThemeMode.light;
+        case 'system':
+          _mode = ThemeMode.system;
+        case 'dark':
+        default:
+          _mode = ThemeMode.dark;
+      }
+      notifyListeners();
+    } catch (_) {
+      // best-effort : en cas d'échec on reste sur le défaut (Cinema).
     }
-    notifyListeners();
   }
 
   Future<void> setMode(ThemeMode mode) async {

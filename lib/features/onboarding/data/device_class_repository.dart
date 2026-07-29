@@ -70,17 +70,24 @@ class DeviceClassRepository extends ChangeNotifier {
       effectiveFor(context) == DeviceClass.tv;
 
   Future<void> initialize() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? stored = prefs.getString(_kKey);
-    switch (stored) {
-      case 'phone':
-        _choice = DeviceClass.phone;
-      case 'tv':
-        _choice = DeviceClass.tv;
-      default:
-        _choice = DeviceClass.auto;
+    // Best-effort (même modèle qu'AccentController) : un échec de
+    // SharedPreferences AVANT runApp ne doit JAMAIS tuer le boot —
+    // on garde le défaut sûr (auto = détection au runtime).
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? stored = prefs.getString(_kKey);
+      switch (stored) {
+        case 'phone':
+          _choice = DeviceClass.phone;
+        case 'tv':
+          _choice = DeviceClass.tv;
+        default:
+          _choice = DeviceClass.auto;
+      }
+      notifyListeners();
+    } catch (_) {
+      // best-effort : en cas d'échec on reste sur le défaut (auto).
     }
-    notifyListeners();
   }
 
   Future<void> setChoice(DeviceClass choice) async {

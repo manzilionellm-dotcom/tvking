@@ -113,7 +113,14 @@ class UpdateService {
     }
     try {
       final PackageInfo info = await PackageInfo.fromPlatform();
-      final int current = int.tryParse(info.buildNumber) ?? 0;
+      final int? current = int.tryParse(info.buildNumber);
+      if (current == null) {
+        // buildNumber illisible : impossible de comparer. AVANT, on
+        // retombait sur 0 → toute version distante paraissait « plus
+        // récente » → proposition de MAJ en BOUCLE, install comprise.
+        // On préfère ne rien proposer du tout (fail-open).
+        return const UpdateCheckResult(UpdateAvailability.unavailable);
+      }
 
       final http.Response r = await http
           .get(Uri.parse(manifestUrl))
@@ -224,23 +231,59 @@ class UpdateService {
       }
 
       client = http.Client();
-      final http.StreamedResponse resp =
-          await client.send(http.Request('GET', Uri.parse(update.url)));
+      // Timeout de CONNEXION (30 s) : sans lui, un serveur muet laissait le
+      // téléchargement suspendu pour toujours (spinner infini côté client).
+      final http.StreamedResponse resp = await client
+          .send(http.Request('GET', Uri.parse(update.url)))
+          .timeout(const Duration(seconds: 30));
       if (resp.statusCode != 200) return false;
 
+      // Plafond DUR : aucun de nos APK n'approche 300 Mo — au-delà, c'est
+      // une réponse aberrante (mauvaise URL, page d'erreur géante…) qu'on
+      // refuse d'écrire jusqu'à saturer le stockage.
+      const int maxBytes = 300 * 1024 * 1024;
       final int total = resp.contentLength ?? 0;
       int received = 0;
-      sink = file.openWrite();
-      await for (final List<int> chunk in resp.stream) {
-        sink.add(chunk);
+      // `out` (non-nullable) pour écrire ; `sink` garde la référence pour
+      // la fermeture best-effort du `finally` en cas d'exception.
+      final IOSink out = file.openWrite();
+      sink = out;
+      // Timeout INTER-CHUNK (60 s) : un flux qui se fige (réseau mort sans
+      // FIN TCP) jette un TimeoutException → catch global → false.
+      await for (final List<int> chunk
+          in resp.stream.timeout(const Duration(seconds: 60))) {
+        out.add(chunk);
         received += chunk.length;
+        if (received > maxBytes) {
+          await out.close();
+          sink = null;
+          try {
+            await file.delete();
+          } catch (_) {}
+          if (kDebugMode) {
+            debugPrint('[Update] téléchargement > 300 Mo — abandonné');
+          }
+          return false;
+        }
         if (total > 0 && onProgress != null) {
           onProgress(received / total);
         }
       }
-      await sink.flush();
-      await sink.close();
+      await out.flush();
+      await out.close();
       sink = null;
+
+      // INTÉGRITÉ : fichier tronqué (connexion coupée proprement avant la
+      // fin) → APK corrompu, l'installateur échouerait ou pire. On jette.
+      if (total > 0 && received != total) {
+        try {
+          await file.delete();
+        } catch (_) {}
+        if (kDebugMode) {
+          debugPrint('[Update] téléchargement tronqué ($received/$total)');
+        }
+        return false;
+      }
 
       // Lance l'installateur Android (necessite la permission
       // REQUEST_INSTALL_PACKAGES, ajoutee au manifest par le CI).

@@ -152,6 +152,9 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // Déjà des chaînes ? on arrête le sondage (cas course / retour écran).
     if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
       _activationPoll?.cancel();
+      // Remise à null OBLIGATOIRE : le réarmement plus bas fait `??=` —
+      // sans ça, un timer annulé mais non-null bloquait tout réarmement.
+      _activationPoll = null;
       return;
     }
     _polling = true;
@@ -172,6 +175,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // charger entre-temps → on ne double pas.
     if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
       _activationPoll?.cancel();
+      _activationPoll = null; // (cf. `??=` du réarmement plus bas)
       return;
     }
 
@@ -179,6 +183,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // catégories/chaînes qui s'ajoutent en direct. Le client VOIT le
     // téléchargement, sans avoir rien tapé.
     _activationPoll?.cancel();
+    _activationPoll = null; // (cf. `??=` du réarmement après import raté)
     _importing = true;
     try {
       await runImportWithProgress<RemoteSyncResult>(
