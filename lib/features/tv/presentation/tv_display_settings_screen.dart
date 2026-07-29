@@ -48,6 +48,9 @@ class TvDisplaySettingsScreen extends StatelessWidget {
                   children: <Widget>[
                     _squareBtn(
                       icon: Icons.remove_rounded,
+                      // Focus initial de l'écran (1er élément focusable) —
+                      // sans lui, rien n'était atteignable au D-pad.
+                      autofocus: true,
                       onSelect: () => d.setOverscan(d.overscanPct - 1),
                     ),
                     Container(
@@ -141,9 +144,14 @@ class TvDisplaySettingsScreen extends StatelessWidget {
         style: const TextStyle(fontSize: 14, color: TvTokens.muted),
       );
 
-  Widget _squareBtn({required IconData icon, required VoidCallback onSelect}) {
+  Widget _squareBtn({
+    required IconData icon,
+    required VoidCallback onSelect,
+    bool autofocus = false,
+  }) {
     return TvFocusBuilder(
       scale: TvFocusScale.small,
+      autofocus: autofocus,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         return Container(

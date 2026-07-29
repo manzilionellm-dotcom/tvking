@@ -18,6 +18,7 @@ import '../../security/data/parental_controls.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_components.dart';
 import 'tv_shell.dart';
 
 class TvParentalScreen extends StatefulWidget {
@@ -66,9 +67,9 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
     final bool def = await AppPinSettings.instance.isUsingDefault();
     if (mounted) {
       setState(() => _usingDefaultPin = def);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.tvParentalUpdated)),
-      );
+      // Toast maison : aucun Scaffold dans l'arbre TV → le SnackBar
+      // d'avant ne s'affichait jamais. Cf. showTvToast (tv_components.dart).
+      showTvToast(context, context.l10n.tvParentalUpdated);
     }
   }
 

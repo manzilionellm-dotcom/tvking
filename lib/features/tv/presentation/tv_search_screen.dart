@@ -23,7 +23,7 @@ import 'tv_series_screen.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
-import 'tv_player_screen.dart';
+import 'tv_player_launcher.dart';
 
 class TvSearchScreen extends StatefulWidget {
   const TvSearchScreen({super.key});
@@ -290,11 +290,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       onSelect: () {
         // La recherche a servi (on ouvre un résultat) → on la mémorise.
         SearchHistoryRepository.instance.add(_q);
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => TvPlayerScreen(channels: list, startIndex: i),
-          ),
-        );
+        // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart).
+        unawaited(openTvPlayer(context, channels: list, startIndex: i));
       },
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -344,12 +341,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
           isLive: false,
           logoUrl: m.posterUrl,
         );
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                TvPlayerScreen(channels: <Channel>[ch], startIndex: 0),
-          ),
-        );
+        // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart).
+        unawaited(
+            openTvPlayer(context, channels: <Channel>[ch], startIndex: 0));
       },
       child: _posterAndTitle(m.posterUrl, m.name, Icons.movie_rounded),
     );

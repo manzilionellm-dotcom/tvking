@@ -33,7 +33,7 @@ import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
 import 'tv_home_template_screen.dart';
 import 'tv_live_screen.dart';
-import 'tv_player_screen.dart';
+import 'tv_player_launcher.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
@@ -611,14 +611,12 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
         _slots.map((_FavSlot s) => s.channel).toList(growable: false);
     if (list.isEmpty || index < 0 || index >= list.length) return;
     final String playedId = list[index].id; // on retiendra CETTE chaîne
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
-      ),
-    );
+    // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart).
+    final bool opened =
+        await openTvPlayer(context, channels: list, startIndex: index);
     // RETOUR du lecteur : on DÉSIGNE la chaîne quittée pour que SA carte
     // reprenne le focus (on revient où on était, pas en haut de l'accueil).
-    if (!mounted) return;
+    if (!opened || !mounted) return;
     setState(() => _restoreId = playedId);
     _scrollToId(playedId);
   }

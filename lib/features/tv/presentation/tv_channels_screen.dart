@@ -37,7 +37,7 @@ import '../core/tv_logo.dart';
 import '../core/tv_tokens.dart';
 import 'widgets/tv_category_reorder.dart';
 import 'tv_live_preview.dart';
-import 'tv_player_screen.dart';
+import 'tv_player_launcher.dart';
 import 'tv_search_screen.dart';
 
 const String _kAll = 'Toutes les chaînes';
@@ -279,12 +279,13 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     // Libère le lecteur d'APERÇU avant d'ouvrir le plein écran (l'écran reste
     // monté sous la route poussée : sans ça, les 2 flux resteraient ouverts).
     setState(() => _previewLive = false);
-    await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => TvPlayerScreen(channels: channels, startIndex: i),
-    ));
-    if (mounted) setState(() => _previewLive = true);
+    // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart) ;
+    // settleFirst = l'aperçu doit être démonté avant le push (endOfFrame).
+    final bool opened = await openTvPlayer(context,
+        channels: channels, startIndex: i, settleFirst: true);
+    // Ouverture IGNORÉE (double appui) → on ne relance PAS l'aperçu : le
+    // 1er appel, encore en vol, le fera à son propre retour.
+    if (opened && mounted) setState(() => _previewLive = true);
   }
 
   int _countFor(String cat) =>

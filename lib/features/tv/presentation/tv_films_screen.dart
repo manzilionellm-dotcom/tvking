@@ -52,7 +52,7 @@ import '../data/greeting_repository.dart';
 import '../../vod/data/vod_download_service.dart';
 import 'tv_components.dart';
 import 'tv_movie_detail_screen.dart';
-import 'tv_player_screen.dart';
+import 'tv_player_launcher.dart';
 
 class TvFilmsScreen extends StatefulWidget {
   const TvFilmsScreen({super.key});
@@ -75,6 +75,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   static int _focusIndex = 0;
 
   bool _loading = true;
+  // Dernier chargement en ÉCHEC (DatabaseException, réseau…) : affiche
+  // l'état d'erreur + « Réessayer » au lieu du squelette éternel.
+  bool _error = false;
   List<VodMovie> _all = const <VodMovie>[];
   List<String> _cats = const <String>[];
   Map<String, List<VodMovie>> _byCat = const <String, List<VodMovie>>{};
@@ -146,13 +149,26 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // [silent] = mise à jour en arrière-plan : on NE remontre PAS le
     // squelette — l'écran actuel reste affiché jusqu'au setState final.
     if (mounted && !silent) setState(() => _loading = true);
-    final List<VodMovie> movies =
-        await VodRepository.instance.fetchMovies(forceRefresh: force);
-    await RecentVodRepository.instance.load();
-    await VodWatchlistRepository.instance.load();
-    // Positions de reprise (« Continuer à regarder ») : chargées une seule
-    // fois — le vrai load() est branché au démarrage, ceci est un filet.
-    await PlaybackPositionRepository.instance.ensureLoaded();
+    final List<VodMovie> movies;
+    try {
+      movies = await VodRepository.instance.fetchMovies(forceRefresh: force);
+      await RecentVodRepository.instance.load();
+      await VodWatchlistRepository.instance.load();
+      // Positions de reprise (« Continuer à regarder ») : chargées une seule
+      // fois — le vrai load() est branché au démarrage, ceci est un filet.
+      await PlaybackPositionRepository.instance.ensureLoaded();
+    } catch (_) {
+      // FILET (DatabaseException & co) : sans lui, le squelette de
+      // chargement restait affiché POUR TOUJOURS (ni erreur, ni retry).
+      // On garde le catalogue déjà affiché s'il existe (échec silencieux) ;
+      // sinon build montre l'état d'erreur avec « Réessayer ».
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = true;
+      });
+      return;
+    }
     if (!mounted) return;
     // Groupement UNE fois par catégorie (ordre d'apparition). Les listes
     // référencent les mêmes objets VodMovie → pas de duplication mémoire.
@@ -186,6 +202,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
       _watchlist = VodWatchlistRepository.instance.items;
       _inList = _watchlist.map((VodMovie m) => m.id).toSet();
       _loading = false;
+      _error = false;
     });
     // Catalogue prêt → on demande en tâche de fond le BACKDROP du film
     // vedette (même règle que la fiche : appel get_vod_info mis en cache
@@ -315,15 +332,14 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
         list.map(_asChannel).toList(growable: false);
     // Budget « Regarder → première frame < 2,5 s » : chrono depuis L'APPUI.
     CinePerf.start(CinePerf.playToFirstFrame);
-    Navigator.of(context)
-        .push(TvCineRoute<void>(
-          builder: (_) => TvPlayerScreen(channels: channels, startIndex: index),
-        ))
-        .then((_) {
-      if (mounted) {
+    // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart).
+    unawaited(openTvPlayer(context,
+            channels: channels, startIndex: index, cineRoute: true)
+        .then((bool opened) {
+      if (opened && mounted) {
         setState(() => _recent = RecentVodRepository.instance.items);
       }
-    });
+    }));
   }
 
   /// OK sur une vignette de film → FICHE DÉTAIL (façon Netflix) : synopsis,
@@ -369,12 +385,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
       logoUrl: e.posterUrl,
     );
     CinePerf.start(CinePerf.playToFirstFrame);
-    Navigator.of(context).push(
-      TvCineRoute<void>(
-        builder: (_) =>
-            TvPlayerScreen(channels: <Channel>[c], startIndex: 0),
-      ),
-    );
+    // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart).
+    unawaited(openTvPlayer(context,
+        channels: <Channel>[c], startIndex: 0, cineRoute: true));
   }
 
   /// Adapte une entrée de reprise en VodMovie D'AFFICHAGE (vignette de la
@@ -394,6 +407,14 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
       // Squelette « respirant » : la structure de la page (vedette +
       // rangées) apparaît tout de suite — perception de fluidité premium.
       return const TvSkeletonRails(withHero: true, rails: 2);
+    }
+    // Échec de chargement SANS catalogue à montrer → erreur + « Réessayer »
+    // (focusable D-pad). Un échec silencieux garde l'écran existant.
+    if (_error && _all.isEmpty) {
+      return TvErrorRetryState(
+        message: context.l10n.playerStreamInterrupted,
+        onRetry: _load,
+      );
     }
     if (_all.isEmpty) {
       return Center(

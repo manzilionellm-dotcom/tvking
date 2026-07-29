@@ -9,6 +9,8 @@
 //    • en cours → met en pause ; en pause/erreur → reprend.
 //  Un appui long / bouton supprime le fichier (libère la place).
 // =========================================================
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
@@ -18,7 +20,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/vod_titles.dart';
-import 'tv_player_screen.dart';
+import 'tv_player_launcher.dart';
 
 class TvDownloadsScreen extends StatefulWidget {
   const TvDownloadsScreen({super.key});
@@ -67,11 +69,9 @@ class _TvDownloadsScreenState extends State<TvDownloadsScreen> {
       isLive: false,
       logoUrl: d.posterUrl,
     );
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: <Channel>[c], startIndex: 0),
-      ),
-    );
+    // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart).
+    unawaited(
+        openTvPlayer(context, channels: <Channel>[c], startIndex: 0));
   }
 
   void _onSelect(VodDownload d) {

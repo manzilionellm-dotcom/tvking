@@ -13,6 +13,8 @@
 //  chaînes par PlaylistRepository.getChannelsByExternalIds (déjà utilisée
 //  par la rangée Favoris du Direct — lecture seule, bornée).
 // =========================================================
+import 'dart:async' show unawaited;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -24,7 +26,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
-import 'tv_player_screen.dart';
+import 'tv_player_launcher.dart';
 import 'tv_shell.dart';
 
 /// Noms proposés à la création (clic direct, pas de clavier), traduits
@@ -101,6 +103,10 @@ class _TvCollectionsScreenState extends State<TvCollectionsScreen> {
                     padding: const EdgeInsets.only(bottom: 12),
                     child: TvFocusBuilder(
                       scale: TvFocusScale.large,
+                      // Focus initial : la 1re collection prend le focus à
+                      // l'ouverture (sans ça, rien n'était atteignable au
+                      // D-pad sur cet écran).
+                      autofocus: identical(c, cols.first),
                       onSelect: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) => TvShell(
@@ -166,6 +172,9 @@ class _TvCollectionsScreenState extends State<TvCollectionsScreen> {
                       for (final String n in available)
                         TvFocusBuilder(
                           scale: TvFocusScale.small,
+                          // Focus initial de repli : quand il n'y a AUCUNE
+                          // collection, la 1re pastille de création le prend.
+                          autofocus: cols.isEmpty && n == available.first,
                           onSelect: () => repo.create(n),
                           builder: (BuildContext context, bool focused) {
                             final Color bg =
@@ -312,6 +321,9 @@ class _TvCollectionDetailScreenState
                     // 1er OK → « Confirmer ? », 2e OK → suppression.
                     TvFocusBuilder(
                       scale: TvFocusScale.small,
+                      // Focus initial du détail (1er élément focusable —
+                      // sans risque : la suppression demande 2 OK).
+                      autofocus: true,
                       onSelect: () {
                         if (_confirmDelete) {
                           repo.delete(col.name);
@@ -392,12 +404,12 @@ class _TvCollectionDetailScreenState
                             padding: const EdgeInsets.only(right: 10),
                             child: _ChannelTile(
                               channel: chans[i],
-                              onSelect: () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => TvPlayerScreen(
-                                      channels: chans, startIndex: i),
-                                ),
-                              ),
+                              // Verrou anti-double-lecteur partagé
+                              // (cf. tv_player_launcher.dart).
+                              onSelect: () => unawaited(openTvPlayer(
+                                  context,
+                                  channels: chans,
+                                  startIndex: i)),
                             ),
                           ),
                         );

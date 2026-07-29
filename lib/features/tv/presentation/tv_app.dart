@@ -490,20 +490,27 @@ class _TvGateState extends State<TvGate> {
             // TEMPLATE D'ACCUEIL au choix : « Classique » = home historique
             // (repli sûr), « Grandes tuiles » = lanceur façon IBO. Se
             // reconstruit à chaud quand l'utilisateur change de template.
-            : ListenableBuilder(
-                listenable: TvHomeTemplateRepository.instance,
-                builder: (BuildContext context, Widget? _) {
-                  switch (TvHomeTemplateRepository.instance.template) {
-                    case TvHomeTemplate.launcher:
-                      return const TvLauncherHomeScreen();
-                    case TvHomeTemplate.rails:
-                      return const TvRailsHomeScreen();
-                    case TvHomeTemplate.tivimate:
-                      return const TvTivimateHomeScreen();
-                    case TvHomeTemplate.classic:
-                      return const TvHomeScreen();
-                  }
-                },
+            // ÉCRAN DE VEILLE anti burn-in : posé ICI pour couvrir les 4
+            // templates (il n'enveloppait que le Classique → les accueils
+            // IBO/Rails/TiviMate pouvaient marquer une dalle OLED). Son
+            // garde-fou route.isCurrent reste valable : il ne s'arme que
+            // quand l'accueil est la route visible (jamais en lecture).
+            : TvScreensaverWatcher(
+                child: ListenableBuilder(
+                  listenable: TvHomeTemplateRepository.instance,
+                  builder: (BuildContext context, Widget? _) {
+                    switch (TvHomeTemplateRepository.instance.template) {
+                      case TvHomeTemplate.launcher:
+                        return const TvLauncherHomeScreen();
+                      case TvHomeTemplate.rails:
+                        return const TvRailsHomeScreen();
+                      case TvHomeTemplate.tivimate:
+                        return const TvTivimateHomeScreen();
+                      case TvHomeTemplate.classic:
+                        return const TvHomeScreen();
+                    }
+                  },
+                ),
               );
     // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
@@ -710,10 +717,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
         if (didPop) return;
         _onBack();
       },
-      // ÉCRAN DE VEILLE anti burn-in : ne s'arme QUE quand l'ACCUEIL est la
-      // route visible (jamais pendant la lecture ni sur un autre écran).
-      child: TvScreensaverWatcher(
-        child: Focus(
+      // ÉCRAN DE VEILLE anti burn-in : désormais posé au niveau de TvGate
+      // (il couvre les 4 templates d'accueil, plus seulement celui-ci).
+      child: Focus(
         // OBSERVATEUR de touches uniquement : non focusable, hors traversée,
         // renvoie toujours `ignored` (cf. _onHomeKey). Sert seulement à capter
         // la séquence cachée HAUT-HAUT-BAS-BAS sans gêner la navigation.
@@ -786,7 +792,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           ],
         ),
         ),
-      ),
       ),
     );
   }

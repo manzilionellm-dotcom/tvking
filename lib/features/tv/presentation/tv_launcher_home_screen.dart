@@ -36,6 +36,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_memory_guard.dart';
 import '../core/tv_tokens.dart';
+import 'tv_app.dart' show RestartWidget, showExitDialog;
 import 'tv_channels_screen.dart';
 import 'tv_components.dart';
 import 'tv_films_screen.dart';
@@ -43,7 +44,7 @@ import 'tv_guide_grid_screen.dart';
 import 'tv_home_template_screen.dart';
 import 'tv_live_preview.dart';
 import 'tv_movie_detail_screen.dart';
-import 'tv_player_screen.dart';
+import 'tv_player_launcher.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
@@ -182,13 +183,15 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   /// Lecture plein écran : l'aperçu héro est LIBÉRÉ d'abord (l'accueil reste
   /// monté sous la route poussée — sans ça, 2 flux resteraient ouverts).
   Future<void> _play(List<Channel> list, int index) async {
+    if (list.isEmpty || index < 0 || index >= list.length) return;
     setState(() => _previewLive = false);
-    await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
-    ));
-    if (mounted) setState(() => _previewLive = true);
+    // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart) ;
+    // settleFirst = l'aperçu doit être démonté avant le push (endOfFrame).
+    final bool opened = await openTvPlayer(context,
+        channels: list, startIndex: index, settleFirst: true);
+    // Ouverture IGNORÉE (double appui) → on ne relance PAS l'aperçu : le
+    // 1er appel, encore en vol, le fera à son propre retour.
+    if (opened && mounted) setState(() => _previewLive = true);
   }
 
   void _playHero() {
@@ -200,26 +203,16 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   }
 
   Future<void> _confirmExit() async {
-    final bool? quit = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext d) => AlertDialog(
-        backgroundColor: TvTokens.card,
-        title: Text('Quitter SEVEN ?',
-            style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700)),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(d, false),
-            child: Text('Annuler', style: TvTokens.ui(TvDimens.body)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(d, true),
-            child: Text('Quitter',
-                style: TvTokens.ui(TvDimens.body, color: TvTokens.goldBright)),
-          ),
-        ],
-      ),
-    );
-    if (quit == true) await SystemNavigator.pop();
+    // Boîte Quitter COMMUNE (showExitDialog, cf. tv_app.dart) : boutons
+    // focusables avec AUTOFOCUS (l'AlertDialog local était inatteignable au
+    // D-pad seul) et libellés traduits (plus de « Quitter SEVEN ? » en dur).
+    final String? action = await showExitDialog(context);
+    if (!mounted) return;
+    if (action == 'restart') {
+      RestartWidget.restart(context);
+    } else if (action == 'quit') {
+      await SystemNavigator.pop();
+    }
   }
 
   @override

@@ -27,7 +27,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
-import 'tv_player_screen.dart';
+import 'tv_player_launcher.dart';
 import 'tv_shell.dart';
 import 'tv_timeline_guide_screen.dart';
 
@@ -93,11 +93,9 @@ class _TvGuideGridScreenState extends State<TvGuideGridScreen> {
   }
 
   void _play(int index) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: _channels, startIndex: index),
-      ),
-    );
+    // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart).
+    unawaited(
+        openTvPlayer(context, channels: _channels, startIndex: index));
   }
 
   @override
@@ -177,6 +175,9 @@ class _TvGuideGridScreenState extends State<TvGuideGridScreen> {
               return _GuideRow(
                 key: ValueKey<String>(_channels[i].id),
                 channel: _channels[i],
+                // Focus initial : la 1re ligne prend le focus à l'ouverture
+                // (sans ça, aucun élément n'était atteignable au D-pad).
+                autofocus: i == 0,
                 onPlay: () => _play(i),
               );
             },
@@ -190,10 +191,18 @@ class _TvGuideGridScreenState extends State<TvGuideGridScreen> {
 /// Une ligne du guide : logo + nom + (émission EN COURS avec progression) +
 /// (à suivre). L'EPG est chargé À LA DEMANDE pour CETTE chaîne.
 class _GuideRow extends StatefulWidget {
-  const _GuideRow({required this.channel, required this.onPlay, super.key});
+  const _GuideRow({
+    required this.channel,
+    required this.onPlay,
+    this.autofocus = false,
+    super.key,
+  });
 
   final Channel channel;
   final VoidCallback onPlay;
+
+  /// Focus initial de l'écran (1re ligne du guide).
+  final bool autofocus;
 
   @override
   State<_GuideRow> createState() => _GuideRowState();
@@ -251,6 +260,7 @@ class _GuideRowState extends State<_GuideRow> {
     return TvFocusable(
       scale: TvFocusScale.small,
       baseColor: TvTokens.card,
+      autofocus: widget.autofocus,
       onSelect: widget.onPlay,
       onLongPress: _toggleFavorite,
       child: Padding(

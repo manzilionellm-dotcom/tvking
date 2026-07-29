@@ -119,6 +119,9 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
                   // version côté mobile — accès support, semi-caché).
                   TvFocusBuilder(
                     scale: TvFocusScale.small,
+                    // Focus initial de l'écran (1er élément focusable) —
+                    // sans lui, rien n'était atteignable au D-pad.
+                    autofocus: true,
                     onSelect: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => const TvDiagnosticsScreen(),

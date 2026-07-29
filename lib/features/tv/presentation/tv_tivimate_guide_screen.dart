@@ -28,6 +28,7 @@ import '../../epg/domain/epg_program.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
+import 'tv_components.dart';
 import 'tv_player_screen.dart';
 
 // ---- Palette TiviMate (tokens §1 de la fiche) ----
@@ -175,15 +176,10 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
   }
 
   void _toast(String msg) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: _tmPanel,
-        content: Text(msg, style: const TextStyle(color: _tmText, fontSize: 15)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    // Toast maison via l'Overlay racine : il n'y a AUCUN Scaffold dans
+    // l'arbre TV (TvShell = Material transparent) → le SnackBar d'avant ne
+    // s'affichait jamais. Cf. showTvToast (tv_components.dart).
+    showTvToast(context, msg);
   }
 
   @override

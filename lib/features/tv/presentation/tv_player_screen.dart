@@ -155,6 +155,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   Timer? _zapSettle;
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
 
+  // Vrai pendant qu'un écran est poussé PAR-DESSUS le lecteur (guide,
+  // multi-vue) : la lecture est SUSPENDUE (cf. _suspendPlayback) et le
+  // lifecycle `resumed` ne doit PAS relancer le flux sous l'écran poussé —
+  // c'est le retour du push (await) qui s'en charge.
+  bool _pushedOverPlayer = false;
+
   // ----- « Dernière chaîne » (recall, style câble US) -----
   // Index de la chaîne d'AVANT le dernier changement : « 0 » seul y retourne
   // (match ↔ film en un appui). Un numéro de chaîne ne commence jamais par 0.
@@ -383,22 +389,34 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       if (mounted) setState(() => _favIds = ids);
     });
     _open(reuse: true); // historique / présence pour la 1re chaîne
+    _stability.openChannel(DateTime.now());
+    _armPeriodicTimers();
+  }
+
+  /// Arme (ou ré-arme) les 3 timers périodiques du lecteur. Extraits
+  /// d'initState pour être ANNULABLES en veille / navigation (cf.
+  /// _suspendPlayback) puis ré-armés au retour (cf. _resumePlayback) —
+  /// sans ça, le watchdog anti-gel « réparait » en arrière-plan un flux
+  /// volontairement à l'arrêt (jusqu'à 5 reconnexions amont, puis _fatal).
+  void _armPeriodicTimers() {
     // Chien de garde : aucune progression depuis 15 s → reconnexion
     // (décision déléguée à _freeze, cf. FreezeRecoveryPolicy.onTick).
     // Le MÊME tick (toutes les 4 s) sert AUSSI de sauvegarde périodique de la
     // position VOD (reprise « Reprendre à 42:15 ») : pas de timer de plus →
     // zéro réveil supplémentaire, zéro coût quand on est en DIRECT (no-op).
-    _stability.openChannel(DateTime.now());
+    _watchdog?.cancel();
     _watchdog = Timer.periodic(_watchEvery, (_) {
       _onFreezeAction(_freeze.onTick(DateTime.now()));
       _savePlaybackPosition();
       _stabilityTick();
     });
     // Garde l'app « en ligne » + chaîne à jour pendant le visionnage.
+    _presenceTimer?.cancel();
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
         (_) => SubscriptionState.instance.syncWithBackend());
     // « Tu regardes encore ? » : vérification 1×/min, déclenchée seulement
     // après _kStillAfter d'inactivité totale (et jamais en enregistrement).
+    _stillTimer?.cancel();
     _stillTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (_askStillWatching || _isRecording) return;
       if (DateTime.now().difference(_lastUserAction) >= _kStillAfter) {
@@ -406,6 +424,44 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         if (mounted) setState(() => _askStillWatching = true);
       }
     });
+  }
+
+  /// SUSPEND la lecture (mise en veille de l'app, ou écran poussé PAR-DESSUS
+  /// le lecteur : guide, multi-vue) : position VOD figée, son coupé, et
+  /// SURTOUT arrêt des timers périodiques + garde-fou de démarrage. Sans ça,
+  /// le watchdog (tick 4 s) continuait de tourner sur un flux à l'arrêt →
+  /// FreezeRecoveryPolicy enchaînait jusqu'à 5 reconnexions amont en
+  /// arrière-plan puis _fatal=true → écran d'erreur au retour.
+  void _suspendPlayback() {
+    // L'OS peut TUER l'app une fois en arrière-plan (Home, multitâche) :
+    // on fige la position VOD MAINTENANT pour ne pas perdre la reprise.
+    _savePlaybackPosition();
+    _controller.pause();
+    _watchdog?.cancel();
+    _watchdog = null;
+    _stillTimer?.cancel();
+    _stillTimer = null;
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+    _startupWatchdog?.cancel();
+  }
+
+  /// REPREND la lecture après [_suspendPlayback] : machines d'état ré-armées
+  /// comme au chargement (budget anti-gel neuf, session de stabilité neuve),
+  /// flux relancé — DIRECT → reconnexion complète via _loadCurrentUrl() (le
+  /// flux amont est probablement mort pendant la coupure), FILM → simple
+  /// play() (le fichier n'a pas bougé) — puis timers périodiques ré-armés.
+  void _resumePlayback() {
+    _freeze.openChannel(DateTime.now()); // horloge fraîche : pas de watchdog immédiat
+    _resetStabilitySession();
+    _rebufferTimes.clear(); // reprise → budget rebuffer neuf
+    if (_isVod) {
+      _controller.play();
+    } else {
+      if (mounted && _fatal) setState(() => _fatal = false);
+      unawaited(_loadCurrentUrl());
+    }
+    _armPeriodicTimers();
   }
 
   // Couper le son quand on QUITTE / minimise l'app (Home, multitâche) : pas de
@@ -417,12 +473,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
-        // L'OS peut TUER l'app une fois en arrière-plan (Home, multitâche) :
-        // on fige la position VOD MAINTENANT pour ne pas perdre la reprise.
-        _savePlaybackPosition();
-        _controller.pause();
+        // Pause + ARRÊT des timers périodiques : en veille, le watchdog
+        // continuait de « réparer » le flux en arrière-plan (5 reconnexions
+        // amont puis écran d'erreur au réveil). Cf. _suspendPlayback.
+        _suspendPlayback();
       case AppLifecycleState.resumed:
-        _controller.play();
+        // Un écran est poussé PAR-DESSUS le lecteur (guide, multi-vue) →
+        // c'est le retour du push (await) qui relancera, pas le lifecycle.
+        if (_pushedOverPlayer) break;
+        _resumePlayback();
       case AppLifecycleState.inactive:
         break; // transitions brèves (dialogue…) → on ne coupe pas
     }
@@ -1468,19 +1527,20 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
 
   // MULTI-VUE (2 chaînes) : réservée aux box assez puissantes (2 décodeurs).
   // Sur une petite box, on n'essaie PAS (message) → on protège la stabilité.
-  void _openMultiView() {
+  Future<void> _openMultiView() async {
     if (!multiViewSupported()) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(context.l10n.tvMultiViewUnavailable),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      // Toast maison (pas de SnackBar : AUCUN Scaffold dans l'arbre du
+      // lecteur → le SnackBar ne s'affichait jamais).
+      _flash(context.l10n.tvMultiViewUnavailable);
       _showOverlayTemporarily();
       return;
     }
-    Navigator.of(context).push(
+    // Le lecteur reste MONTÉ sous l'écran poussé : sans suspension, il
+    // continuait de décoder ET de tenir la connexion pendant que les 2
+    // tuiles multi-vue ouvraient les leurs (mortel sur compte 1-connexion).
+    _pushedOverPlayer = true;
+    _suspendPlayback();
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvMultiViewScreen(
           channels: widget.channels,
@@ -1488,17 +1548,29 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         ),
       ),
     );
+    _pushedOverPlayer = false;
+    if (!mounted) return;
+    _resumePlayback();
     _showOverlayTemporarily();
   }
 
   // Ouvre le GUIDE de la chaîne en cours : émission actuelle + « à suivre »,
   // avec possibilité de poser une ALARME (rappel) sur un programme.
-  void _openGuide() {
-    Navigator.of(context).push(
+  Future<void> _openGuide() async {
+    // Même règle que la multi-vue : le lecteur est SUSPENDU avant le push
+    // (sinon il décodait + tenait la connexion sous le guide, et « Revoir »
+    // pouvait empiler un 2e lecteur → 2 ExoPlayer + 2 connexions), puis
+    // relancé proprement au retour (live → reconnexion, VOD → play).
+    _pushedOverPlayer = true;
+    _suspendPlayback();
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvChannelProgramsScreen(channel: _current),
       ),
     );
+    _pushedOverPlayer = false;
+    if (!mounted) return;
+    _resumePlayback();
     _showOverlayTemporarily();
   }
 

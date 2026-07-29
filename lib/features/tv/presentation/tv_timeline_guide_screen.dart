@@ -24,9 +24,9 @@ import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../playlists/data/playlist_repository.dart';
-import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_components.dart';
 import 'tv_player_screen.dart';
 
 class TvTimelineGuideScreen extends StatefulWidget {
@@ -169,16 +169,10 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
   }
 
   void _toast(String msg) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: TvTokens.card,
-        content: Text(msg,
-            style: TextStyle(color: TvTokens.text, fontSize: TvDimens.body)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    // Toast maison via l'Overlay racine : il n'y a AUCUN Scaffold dans
+    // l'arbre TV (TvShell = Material transparent) → le SnackBar d'avant ne
+    // s'affichait jamais. Cf. showTvToast (tv_components.dart).
+    showTvToast(context, msg);
   }
 
   @override

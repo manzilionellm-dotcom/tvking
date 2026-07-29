@@ -4,6 +4,8 @@
 //  Logo (vrai asset), Card (filet or), Button (CTA or), Pill (prix),
 //  EmptyState. Tout référence TvTokens — zéro couleur en dur.
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -30,6 +32,57 @@ String tvWhatsAppUrl(String mac) {
       'Bonjour, je souhaite activer The Few TV.'
       '${code.isEmpty ? '' : ' Mon code : $code'}');
   return 'https://wa.me/$kWhatsAppPhone?text=$msg';
+}
+
+// ----- Toast maison TV (remplace les SnackBar) ---------------------------
+// L'arbre TV n'a AUCUN Scaffold (TvShell = Material transparent) : un
+// ScaffoldMessenger.showSnackBar ne s'affichait donc JAMAIS. Ce toast passe
+// par l'Overlay racine (toujours présent sous MaterialApp) → visible partout,
+// zéro impact sur la mise en page et sur le focus D-pad (IgnorePointer).
+OverlayEntry? _tvToastEntry;
+Timer? _tvToastTimer;
+
+/// Petit message éphémère en bas de l'écran (~3 s), même style que le toast
+/// du lecteur. Un nouvel appel remplace le message en cours.
+void showTvToast(BuildContext context, String msg) {
+  final OverlayState? overlay =
+      Overlay.maybeOf(context, rootOverlay: true);
+  if (overlay == null) return; // pas d'Overlay (tests isolés) → silencieux
+  _tvToastTimer?.cancel();
+  _tvToastEntry?.remove();
+  final OverlayEntry entry = OverlayEntry(
+    builder: (BuildContext context) => Positioned(
+      left: 0,
+      right: 0,
+      bottom: 48,
+      child: IgnorePointer(
+        child: Center(
+          child: Material(
+            type: MaterialType.transparency,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              decoration: BoxDecoration(
+                color: TvTokens.card,
+                borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                border: Border.all(color: TvTokens.line),
+              ),
+              child: Text(msg,
+                  style: TvTokens.ui(TvDimens.body, color: TvTokens.text)),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  _tvToastEntry = entry;
+  overlay.insert(entry);
+  _tvToastTimer = Timer(const Duration(seconds: 3), () {
+    if (_tvToastEntry == entry) {
+      _tvToastEntry = null;
+      entry.remove();
+    }
+  });
 }
 
 /// Panneau QR « Scanne-moi » → WhatsApp du revendeur, MAC pré-remplie.
@@ -252,6 +305,73 @@ class TvEmptyState extends StatelessWidget {
             child: Text(subtitle,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(16, color: TvTokens.mutedDim)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// État d'ERREUR de chargement : message + bouton « Réessayer » focusable
+/// au D-pad (AUTOFOCUS — sans lui, aucun élément n'a le focus et l'écran est
+/// inutilisable à la télécommande). Affiché quand un catalogue (Films/Séries)
+/// n'a pas pu se charger : sans ce filet, une DatabaseException laissait le
+/// squelette de chargement affiché POUR TOUJOURS.
+class TvErrorRetryState extends StatelessWidget {
+  const TvErrorRetryState({
+    super.key,
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const Icon(Icons.cloud_off_rounded,
+              size: 52, color: TvTokens.mutedDim),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: 460,
+            child: Text(message,
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(16, color: TvTokens.mutedDim)),
+          ),
+          const SizedBox(height: 22),
+          TvFocusBuilder(
+            autofocus: true,
+            scale: TvFocusScale.large,
+            onSelect: onRetry,
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color fg =
+                  focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+              return Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(TvTokens.rButton),
+                  border: Border.all(
+                      color: focused ? TvTokens.gold : TvTokens.line),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(Icons.refresh_rounded, size: 22, color: fg),
+                    const SizedBox(width: 10),
+                    Text(context.l10n.tvRetry,
+                        style: TvTokens.ui(18,
+                            weight: FontWeight.w700, color: fg)),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),

@@ -33,7 +33,7 @@ import '../core/vod_titles.dart';
 import '../data/cine_perf.dart';
 import '../data/greeting_repository.dart';
 import 'tv_components.dart';
-import 'tv_player_screen.dart';
+import 'tv_player_launcher.dart';
 
 class TvSeriesScreen extends StatefulWidget {
   const TvSeriesScreen({super.key});
@@ -51,6 +51,9 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   static int _focusIndex = 0;
 
   bool _loading = true;
+  // Dernier chargement en ÉCHEC (DatabaseException, réseau…) : affiche
+  // l'état d'erreur + « Réessayer » au lieu du squelette éternel.
+  bool _error = false;
   List<VodSeries> _all = const <VodSeries>[];
   List<String> _cats = const <String>[];
   // Séries NOUVELLES au catalogue (badge NOUVEAU) et séries suivies ayant
@@ -103,8 +106,21 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     // [silent] = mise à jour arrière-plan : pas de squelette, l'écran actuel
     // reste affiché jusqu'au setState final.
     if (mounted && !silent) setState(() => _loading = true);
-    final List<VodSeries> series =
-        await SeriesRepository.instance.fetchSeries();
+    final List<VodSeries> series;
+    try {
+      series = await SeriesRepository.instance.fetchSeries();
+    } catch (_) {
+      // FILET (DatabaseException & co) : sans lui, le squelette de
+      // chargement restait affiché POUR TOUJOURS (ni erreur, ni retry).
+      // On garde le catalogue déjà affiché s'il existe (échec silencieux) ;
+      // sinon build montre l'état d'erreur avec « Réessayer ».
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = true;
+      });
+      return;
+    }
     if (!mounted) return;
     // Groupement UNE fois par catégorie (ordre d'apparition) → une rangée
     // horizontale par catégorie, façon Netflix. Mêmes objets référencés :
@@ -127,6 +143,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
       _cats = cats;
       _byCat = byCat;
       _loading = false;
+      _error = false;
     });
     _reconcileEngagement(series);
   }
@@ -182,6 +199,14 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   Widget build(BuildContext context) {
     // Squelette « respirant » (structure de la page) plutôt qu'une roue.
     if (_loading) return const TvSkeletonRails(withHero: true, rails: 2);
+    // Échec de chargement SANS catalogue à montrer → erreur + « Réessayer »
+    // (focusable D-pad). Un échec silencieux garde l'écran existant.
+    if (_error && _all.isEmpty) {
+      return TvErrorRetryState(
+        message: context.l10n.tvSeriesLoadFailed,
+        onRetry: _load,
+      );
+    }
     if (_all.isEmpty) {
       return Center(
         child: Column(
@@ -909,11 +934,9 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
         .toList(growable: false);
     // Budget « Regarder → première frame < 2,5 s » : chrono depuis L'APPUI.
     CinePerf.start(CinePerf.playToFirstFrame);
-    Navigator.of(context).push(
-      TvCineRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
-      ),
-    );
+    // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart).
+    unawaited(openTvPlayer(context,
+        channels: list, startIndex: index, cineRoute: true));
   }
 
   @override

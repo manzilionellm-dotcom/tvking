@@ -31,9 +31,10 @@ import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import 'widgets/tv_category_reorder.dart';
+import 'tv_app.dart' show RestartWidget, showExitDialog;
 import 'tv_films_screen.dart';
 import 'tv_home_template_screen.dart';
-import 'tv_player_screen.dart';
+import 'tv_player_launcher.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
 import 'tv_series_screen.dart';
@@ -253,11 +254,9 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
 
   void _play(int index) {
     if (_visible.isEmpty) return;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: _visible, startIndex: index),
-      ),
-    );
+    // Verrou anti-double-lecteur partagé (cf. tv_player_launcher.dart).
+    unawaited(
+        openTvPlayer(context, channels: _visible, startIndex: index));
   }
 
   void _open(Widget screen) {
@@ -281,32 +280,16 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     final bool moved =
         FocusScope.of(context).focusInDirection(TraversalDirection.left);
     if (moved) return; // il restait un cran à gauche → on a juste reculé
-    // Déjà tout à gauche : on demande confirmation avant de quitter l'app.
-    final bool? quit = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext d) => AlertDialog(
-        backgroundColor: _tmPanel,
-        title: const Text('Quitter l’application ?',
-            style: TextStyle(
-                color: _tmText, fontSize: 22, fontWeight: FontWeight.w700)),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(d, false),
-            child: const Text('Annuler',
-                style: TextStyle(color: _tmText2, fontSize: 18)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(d, true),
-            child: const Text('Quitter',
-                style: TextStyle(
-                    color: _tmAccent,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-    if (quit == true) await SystemNavigator.pop();
+    // Déjà tout à gauche : boîte Quitter COMMUNE (showExitDialog, cf.
+    // tv_app.dart) — boutons focusables avec AUTOFOCUS (l'AlertDialog local
+    // était inatteignable au D-pad seul) et libellés traduits.
+    final String? action = await showExitDialog(context);
+    if (!mounted) return;
+    if (action == 'restart') {
+      RestartWidget.restart(context);
+    } else if (action == 'quit') {
+      await SystemNavigator.pop();
+    }
   }
 
   @override
