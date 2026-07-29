@@ -18,6 +18,7 @@ import 'package:media_kit/media_kit.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/backend/backend_hosts.dart';
+import 'core/profiles/profiles_repository.dart';
 import 'core/realtime/admin_message_banner.dart';
 import 'core/realtime/realtime_sync_service.dart';
 import 'core/crash/crash_reporting.dart';
@@ -67,6 +68,7 @@ import 'features/playlists/data/remote_source_repository.dart';
 import 'features/pricing/data/pricing_repository.dart';
 import 'core/flavor/flavor.dart';
 import 'features/security/data/age_gate_settings.dart';
+import 'features/security/data/parental_controls.dart';
 import 'features/security/data/biometric_auth.dart';
 import 'features/security/data/lock_settings.dart';
 import 'features/security/presentation/age_gate_screen.dart';
@@ -175,6 +177,22 @@ Future<void> bootApp() async {
   unawaited(RecentlyWatchedRepository.instance.initialize());
   unawaited(RecentSearchesRepository.instance.initialize());
   unawaited(WatchHistoryRepository.instance.initialize());
+  // PROFILS FAMILLE (même dispositif que le boot TV, main_tv.dart
+  // « Profils famille ») : chargés AVANT les dépôts qui SUFFIXENT leurs
+  // clés par profil (WatchStatsService, PlaybackPositionRepository…) pour
+  // que leur PREMIER load lise déjà les clés du profil actif — sans ça,
+  // ils liraient les données « Famille » puis les afficheraient au mauvais
+  // profil jusqu'à la prochaine bascule. AWAIT assumé (une lecture
+  // SharedPreferences, quasi instantanée) avec le même timeout de sécurité
+  // que la TV : prefs lent ne retarde jamais le boot.
+  await ProfilesRepository.instance
+      .load()
+      .timeout(const Duration(seconds: 2), onTimeout: () {});
+  // CONTRÔLE PARENTAL (Mode Enfants) : même appel que le boot TV (étape
+  // « 8 » de main_tv.dart). Fire-and-forget, ne throw jamais — l'état est
+  // lu par Réglages > Contrôle parental et par les écrans qui masquent
+  // l'Adulte.
+  unawaited(ParentalControls.instance.load());
   // Rétention (systèmes qui existaient mais n'étaient démarrés qu'en TV —
   // on les active AUSSI sur mobile) :
   //   • WatchStatsService : minutes/jour + top chaînes (dashboard « stats »)

@@ -23,9 +23,12 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../player/data/player_settings.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../playlists/presentation/playlists_screen.dart';
+import '../../profiles/presentation/profile_picker_screen.dart';
 import '../../recordings/presentation/recordings_screen.dart';
+import '../../security/data/app_pin_settings.dart';
 import '../../security/data/biometric_auth.dart';
 import '../../security/data/lock_settings.dart';
+import '../../security/data/parental_controls.dart';
 import '../../subscription/presentation/subscription_card.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -63,6 +66,31 @@ class SettingsScreen extends StatelessWidget {
             // ====== LANGUE ======
             _SectionTitle(context.l10n.settingsLanguage),
             const _LanguagePicker(),
+
+            // ====== PROFILS FAMILLE ======
+            //  Parité avec la TV (tv_profiles_screen) : chacun son univers
+            //  (derniers vus, recherches, collections), favoris partagés.
+            //  L'écran mobile réutilise le MÊME ProfilesRepository.
+            _SectionTitle(context.l10n.tvProfilesTitle),
+            _ActionTile(
+              icon: Icons.people_alt_rounded,
+              title: context.l10n.tvManageProfiles,
+              subtitle: context.l10n.tvSettingsProfiles,
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ProfilePickerScreen(),
+                ),
+              ),
+            ),
+
+            // ====== CONTRÔLE PARENTAL ======
+            //  Parité avec la TV (tv_parental_screen) : Mode Enfants qui
+            //  masque l'Adulte, gardé par le PIN de l'app (AppPinSettings).
+            //  Le désactiver exige le code — un enfant ne peut pas le
+            //  couper lui-même.
+            _SectionTitle(context.l10n.tvParentalTitle),
+            const _KidsModeTile(),
+            const _ParentalPinTile(),
 
             // ====== LECTEUR ======
             _SectionTitle(context.l10n.settingsPlayer),
@@ -369,6 +397,255 @@ class _LockToggleTileState extends State<_LockToggleTile> {
       onChanged: _toggle,
     );
   }
+}
+
+// ============================================================
+//  Contrôle parental (parité tv_parental_screen, en Material mobile)
+// ============================================================
+
+/// Interrupteur « Mode Enfants ». Activer = libre ; désactiver = code
+/// parental obligatoire (sinon un enfant le couperait lui-même) — même
+/// règle que la TV. L'état vient du ValueNotifier de ParentalControls,
+/// donc la tuile se met à jour toute seule (y compris si la TV/le même
+/// appareil bascule ailleurs).
+class _KidsModeTile extends StatelessWidget {
+  const _KidsModeTile();
+
+  Future<void> _toggle(BuildContext context, bool wantOn) async {
+    if (!wantOn) {
+      final bool ok =
+          await _askParentalPin(context, context.l10n.tvParentalEnterCode);
+      if (!ok) return;
+    }
+    await ParentalControls.instance.setKidsMode(wantOn);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: ParentalControls.instance.kidsMode,
+      builder: (BuildContext context, bool kids, _) {
+        return _SwitchTile(
+          icon: Icons.child_care_rounded,
+          title: context.l10n.tvParentalKidsMode,
+          subtitle: kids
+              ? context.l10n.tvParentalKidsOn
+              : context.l10n.tvParentalKidsOff,
+          value: kids,
+          onChanged: (bool v) => _toggle(context, v),
+        );
+      },
+    );
+  }
+}
+
+/// Tuile « Changer le code PIN » parental. Le sous-titre alerte tant que
+/// le code par défaut (0000) est en place — même avertissement que la TV.
+class _ParentalPinTile extends StatefulWidget {
+  const _ParentalPinTile();
+
+  @override
+  State<_ParentalPinTile> createState() => _ParentalPinTileState();
+}
+
+class _ParentalPinTileState extends State<_ParentalPinTile> {
+  bool _usingDefaultPin = true;
+
+  @override
+  void initState() {
+    super.initState();
+    AppPinSettings.instance.isUsingDefault().then((bool v) {
+      if (mounted) setState(() => _usingDefaultPin = v);
+    });
+  }
+
+  Future<void> _changePin() async {
+    // 1) Code actuel, 2) nouveau code + confirmation, 3) persistance.
+    final bool ok =
+        await _askParentalPin(context, context.l10n.tvParentalCurrentCode);
+    if (!ok || !mounted) return;
+    final String? next = await _pickNewParentalPin(context);
+    if (next == null) return;
+    try {
+      await AppPinSettings.instance.setPin(next);
+    } catch (_) {
+      // Le dialog a déjà validé longueur/format — ceinture et bretelles.
+    }
+    final bool def = await AppPinSettings.instance.isUsingDefault();
+    if (!mounted) return;
+    setState(() => _usingDefaultPin = def);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.l10n.tvParentalUpdated)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _ActionTile(
+      icon: Icons.pin_rounded,
+      title: context.l10n.tvParentalChangePin,
+      subtitle: _usingDefaultPin
+          ? context.l10n.tvParentalDefaultPinWarning
+          : context.l10n.tvParentalCustomPinSet,
+      onTap: _changePin,
+    );
+  }
+}
+
+/// Demande le code parental (clavier numérique) et le vérifie via
+/// AppPinSettings (anti-brute-force inclus : le blocage croissant est
+/// affiché avec son compte à rebours). Retourne true si le code est bon.
+Future<bool> _askParentalPin(BuildContext context, String title) async {
+  final TextEditingController ctrl = TextEditingController();
+  String? error;
+  final bool? ok = await showDialog<bool>(
+    context: context,
+    builder: (BuildContext ctx) => StatefulBuilder(
+      builder: (BuildContext ctx, StateSetter setState) => AlertDialog(
+        backgroundColor: AppColors.surfaceHigh,
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              ctx.l10n.tvParentalPinSubtitle,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 12,
+                color: AppColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              obscureText: true,
+              maxLength: 8,
+              keyboardType: TextInputType.number,
+            ),
+            if (error != null)
+              Text(
+                error!,
+                style: AppTextStyles.bodyMedium.copyWith(
+                  fontSize: 12,
+                  color: AppColors.live,
+                ),
+              ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(ctx.l10n.buttonCancel),
+          ),
+          TextButton(
+            onPressed: () async {
+              final String pin = ctrl.text.trim();
+              if (pin.length < 4) {
+                setState(() => error = ctx.l10n.lockPinTooShort);
+                return;
+              }
+              final bool good = await AppPinSettings.instance.verify(pin);
+              if (good) {
+                if (ctx.mounted) Navigator.of(ctx).pop(true);
+                return;
+              }
+              final Duration lock =
+                  await AppPinSettings.instance.lockoutRemaining();
+              if (!ctx.mounted) return;
+              setState(() => error = lock > Duration.zero
+                  ? ctx.l10n.lockPinLocked(lock.inSeconds)
+                  : ctx.l10n.tvParentalWrongCode);
+            },
+            child: Text(ctx.l10n.buttonContinue),
+          ),
+        ],
+      ),
+    ),
+  );
+  return ok ?? false;
+}
+
+/// Choisit un NOUVEAU code parental (saisie + confirmation dans le même
+/// dialog). Retourne le code validé (4-8 chiffres), ou null si annulé.
+Future<String?> _pickNewParentalPin(BuildContext context) async {
+  final TextEditingController first = TextEditingController();
+  final TextEditingController second = TextEditingController();
+  String? error;
+  return showDialog<String>(
+    context: context,
+    builder: (BuildContext ctx) => StatefulBuilder(
+      builder: (BuildContext ctx, StateSetter setState) => AlertDialog(
+        backgroundColor: AppColors.surfaceHigh,
+        title: Text(ctx.l10n.tvParentalNewCode),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              ctx.l10n.tvParentalNewCodeSubtitle,
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontSize: 12,
+                color: AppColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: first,
+              autofocus: true,
+              obscureText: true,
+              maxLength: 8,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: ctx.l10n.tvParentalNewCode,
+              ),
+            ),
+            TextField(
+              controller: second,
+              obscureText: true,
+              maxLength: 8,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: ctx.l10n.tvParentalConfirmCode,
+              ),
+            ),
+            if (error != null)
+              Text(
+                error!,
+                style: AppTextStyles.bodyMedium.copyWith(
+                  fontSize: 12,
+                  color: AppColors.live,
+                ),
+              ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(ctx.l10n.buttonCancel),
+          ),
+          TextButton(
+            onPressed: () {
+              final String pin = first.text.trim();
+              // Mêmes règles que AppPinSettings.setPin (4-8 chiffres).
+              if (pin.length < 4 ||
+                  pin.length > 8 ||
+                  !RegExp(r'^\d+$').hasMatch(pin)) {
+                setState(() => error = ctx.l10n.lockPinTooShort);
+                return;
+              }
+              if (pin != second.text.trim()) {
+                setState(() => error = ctx.l10n.tvParentalCodesMismatch);
+                return;
+              }
+              Navigator.of(ctx).pop(pin);
+            },
+            child: Text(ctx.l10n.buttonContinue),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _SectionTitle extends StatelessWidget {
