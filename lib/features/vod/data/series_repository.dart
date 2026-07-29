@@ -76,33 +76,45 @@ class SeriesRepository extends ChangeNotifier {
     encode: encodeSeriesCatalog,
   );
 
-  /// Empreinte de la source active (même contrat que VodRepository).
-  Future<String> _sourceKey() async {
-    final List<Playlist> playlists =
-        await PlaylistRepository.instance.getAllPlaylists();
-    for (final Playlist p in playlists) {
-      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
-        return '${p.xtreamServer}|${p.xtreamUsername ?? ''}'
-            .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      }
+  /// Playlist Xtream de référence — playlist ACTIVE d'abord (audit
+  /// 2026-07-29 : on servait la plus récemment créée, jamais is_active=1 ;
+  /// avec deux comptes, les Séries venaient du mauvais compte), repli sur
+  /// la première Xtream sinon. Même contrat que VodRepository.
+  Future<Playlist?> _xtreamSource() async {
+    final Playlist? active =
+        await PlaylistRepository.instance.getActivePlaylist();
+    if (active != null &&
+        active.type == PlaylistType.xtream &&
+        (active.xtreamServer ?? '').isNotEmpty) {
+      return active;
     }
-    return 'none';
-  }
-
-  /// Construit un client Xtream depuis la playlist active (ou null si aucune).
-  Future<XtreamClient?> _client() async {
     final List<Playlist> playlists =
         await PlaylistRepository.instance.getAllPlaylists();
     for (final Playlist p in playlists) {
       if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
-        return XtreamClient(
-          serverUrl: p.xtreamServer!,
-          username: p.xtreamUsername ?? '',
-          password: p.xtreamPassword ?? '',
-        );
+        return p;
       }
     }
     return null;
+  }
+
+  /// Empreinte de la source active (même contrat que VodRepository).
+  Future<String> _sourceKey() async {
+    final Playlist? p = await _xtreamSource();
+    if (p == null) return 'none';
+    return '${p.xtreamServer}|${p.xtreamUsername ?? ''}'
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+  }
+
+  /// Construit un client Xtream depuis la playlist de référence (ou null).
+  Future<XtreamClient?> _client() async {
+    final Playlist? p = await _xtreamSource();
+    if (p == null) return null;
+    return XtreamClient(
+      serverUrl: p.xtreamServer!,
+      username: p.xtreamUsername ?? '',
+      password: p.xtreamPassword ?? '',
+    );
   }
 
   /// Catalogue des séries UNIFIÉ : part Xtream (get_series) + part M3U
@@ -177,7 +189,17 @@ class SeriesRepository extends ChangeNotifier {
       StreamDiagnostics.instance.recordEvent('séries', m, level: level);
 
   /// Appel réseau brut — AUCUN effet de bord sur _cache.
-  Future<List<VodSeries>> _fetchFromNetwork() async {
+  /// DÉDUP IN-FLIGHT (audit 2026-07-29) : même protection que
+  /// VodRepository — un `get_series` en cours est partagé au lieu d'être
+  /// dupliqué par des appelants concurrents.
+  Future<List<VodSeries>>? _netInFlight;
+
+  Future<List<VodSeries>> _fetchFromNetwork() {
+    return _netInFlight ??=
+        _fetchFromNetworkInner().whenComplete(() => _netInFlight = null);
+  }
+
+  Future<List<VodSeries>> _fetchFromNetworkInner() async {
     final XtreamClient? client = await _client();
     if (client == null) return const <VodSeries>[];
     try {

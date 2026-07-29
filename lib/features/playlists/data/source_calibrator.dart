@@ -194,14 +194,21 @@ class SourceCalibrator {
   //  E/S par défaut (production) — remplacées dans les tests
   // ---------------------------------------------------------------
 
-  Future<XtreamAccountInfo> _fetchAccount() {
+  Future<XtreamAccountInfo> _fetchAccount() async {
     if (_accountFetcher != null) return _accountFetcher();
-    return XtreamClient(
+    // dispose() (audit 2026-07-29) : l'instance n'était jamais libérée —
+    // son HttpClient (sockets keep-alive) fuyait à chaque calibration.
+    final XtreamClient client = XtreamClient(
       serverUrl: playlist.xtreamServer ?? '',
       username: playlist.xtreamUsername ?? '',
       password: playlist.xtreamPassword ?? '',
       timeout: kAccountTimeout,
-    ).fetchAccountInfo();
+    );
+    try {
+      return await client.fetchAccountInfo();
+    } finally {
+      client.dispose();
+    }
   }
 
   /// 3 chaînes LIVE échantillon : début / milieu / fin de la liste —

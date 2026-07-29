@@ -29,7 +29,8 @@ class PlaylistDatabase {
   // chaîne, imposés par certains panels IPTV — sinon 403 à la lecture).
   // v6 ajoute `url_formats` à la table playlists (format d'URL gagnant
   // mémorisé PAR SOURCE par la cascade Xtream — zapping sans re-sonde).
-  static const int _kDbVersion = 6;
+  // v7 ajoute l'index de pagination `idx_channels_page` (audit 2026-07-29).
+  static const int _kDbVersion = 7;
 
   Database? _db;
 
@@ -130,6 +131,11 @@ class PlaylistDatabase {
     ''');
     await db.execute('''
       CREATE INDEX idx_channels_category ON channels(category)
+    ''');
+    // v7 : index couvrant de la pagination keyset (voir _onUpgrade).
+    await db.execute('''
+      CREATE INDEX idx_channels_page
+      ON channels(playlist_id, is_live, category, local_id)
     ''');
 
     // v3 : sessions de visionnage pour le Hook Model (Continue Watching,
@@ -258,6 +264,26 @@ class PlaylistDatabase {
       // appareils dont la base portait déjà la colonne (bug terrain du
       // 2026-07-08 — l'ajout de source était impossible).
       await _addColumnIfMissing(db, 'playlists', 'url_formats', 'TEXT');
+    }
+    if (oldVersion < 7) {
+      // v7 (audit 2026-07-29) : index COUVRANT le chemin de lecture
+      // principal — getChannelsPage filtre `playlist_id + is_live +
+      // category` avec keyset/tri sur `local_id`. Aucun index existant ne
+      // couvrait ce prédicat : SQLite triait toute la catégorie à CHAQUE
+      // page de défilement (30 k–100 k lignes). IDEMPOTENT (IF NOT EXISTS)
+      // et DÉFENSIF : sur une base héritée dont `channels` n'aurait pas
+      // toutes les colonnes, un index — pur accélérateur — ne doit JAMAIS
+      // faire échouer la migration (leçon du bug terrain 2026-07-08).
+      try {
+        await db.execute('''
+          CREATE INDEX IF NOT EXISTS idx_channels_page
+          ON channels(playlist_id, is_live, category, local_id)
+        ''');
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[DB] idx_channels_page non créé (base héritée ?) : $e');
+        }
+      }
     }
   }
 }

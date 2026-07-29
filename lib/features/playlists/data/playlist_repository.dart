@@ -163,13 +163,18 @@ class PlaylistRepository {
 
     final int? activeId =
         activeRows.isNotEmpty ? activeRows.first['id'] as int : null;
-    if (activeId == null) {
+    if (activeId == null && !_orphanPurgeDone) {
       // Aucune playlist active. AVANT de tout renvoyer, on PURGE les
       // chaînes orphelines (dont la playlist a été supprimée) : sur les
       // bases créées avant l'activation des clés étrangères, le CASCADE
       // n'avait pas joué et ces chaînes « fantômes » réapparaissaient
       // après suppression de toutes les listes. Cette purge guérit ces
       // bases au premier passage → l'écran se vide vraiment.
+      // UNE FOIS PAR SESSION (audit 2026-07-29) : ce DELETE `NOT IN
+      // (sous-requête)` balaye toute la table ; il était rejoué à CHAQUE
+      // getAllChannels sans playlist active (donc à chaque émission
+      // d'état), sur le chemin critique du démarrage.
+      _orphanPurgeDone = true;
       await db.delete(
         'channels',
         where: 'playlist_id NOT IN (SELECT id FROM playlists)',
@@ -1142,7 +1147,30 @@ class PlaylistRepository {
   /// charge les nouvelles. Le `playlistId` reste le même.
   ///
   /// Retourne `true` si la sync a réussi, lance une Exception sinon.
-  Future<bool> refreshPlaylist(Playlist playlist) async {
+  /// Verrou PAR PLAYLIST (audit 2026-07-29) : refreshStale (boot T+3 s) et
+  /// refreshAll (bouton + timer 24 h) pouvaient se chevaucher sur la MÊME
+  /// source → deux fetch + deux parses simultanés (pic mémoire doublé, le
+  /// motif « Anti-concurrence P1-1 » ne couvrait que refreshAll) puis deux
+  /// séquences DELETE/INSERT entrelacées. Un refresh en cours est PARTAGÉ
+  /// par les appelants concurrents au lieu d'être dupliqué.
+  final Map<int, Future<bool>> _refreshInFlight = <int, Future<bool>>{};
+
+  /// Purge des chaînes orphelines : une seule fois par session (cf.
+  /// getAllChannels).
+  bool _orphanPurgeDone = false;
+
+  Future<bool> refreshPlaylist(Playlist playlist) {
+    final int? id = playlist.id;
+    if (id == null) return Future<bool>.value(false);
+    final Future<bool>? inFlight = _refreshInFlight[id];
+    if (inFlight != null) return inFlight;
+    final Future<bool> run = _refreshPlaylistInner(playlist)
+        .whenComplete(() => _refreshInFlight.remove(id));
+    _refreshInFlight[id] = run;
+    return run;
+  }
+
+  Future<bool> _refreshPlaylistInner(Playlist playlist) async {
     if (playlist.id == null) return false;
     final Database db = await PlaylistDatabase.instance.database;
 
@@ -1163,13 +1191,17 @@ class PlaylistRepository {
         if (parsed.channels.isEmpty) {
           throw Exception(l10nNow.m3uRefreshNoChannels);
         }
-        // Remplace les chaînes existantes
-        await db.delete(
-          'channels',
-          where: 'playlist_id = ?',
-          whereArgs: <Object>[playlist.id!],
-        );
-        await _insertChannels(parsed.channels);
+        // Remplace les chaînes existantes — en TRANSACTION : atomique
+        // (crash au milieu = ancienne liste intacte) et invisible des
+        // lectures concurrentes (plus de fenêtre « source vide »).
+        await db.transaction((Transaction txn) async {
+          await txn.delete(
+            'channels',
+            where: 'playlist_id = ?',
+            whereArgs: <Object>[playlist.id!],
+          );
+          await _insertChannels(parsed.channels, executor: txn);
+        });
         await _updatePlaylistMetrics(
           playlist.copyWith(
             channelCount: parsed.channels.length,
@@ -1209,12 +1241,15 @@ class PlaylistRepository {
         if (channels.isEmpty) {
           throw Exception(l10nNow.xtreamRefreshNoChannels);
         }
-        await db.delete(
-          'channels',
-          where: 'playlist_id = ?',
-          whereArgs: <Object>[playlist.id!],
-        );
-        await _insertChannels(channels);
+        // Même transaction atomique que le chemin M3U ci-dessus.
+        await db.transaction((Transaction txn) async {
+          await txn.delete(
+            'channels',
+            where: 'playlist_id = ?',
+            whereArgs: <Object>[playlist.id!],
+          );
+          await _insertChannels(channels, executor: txn);
+        });
         await _updatePlaylistMetrics(
           playlist.copyWith(
             channelCount: channels.length,
@@ -1326,11 +1361,19 @@ class PlaylistRepository {
   ///   - Après : 27 batches de 1 000 = ~25s total mais l'UI se
   ///     rafraîchit toutes les ~900ms (chunk + emit) — sensation
   ///     "ça avance" au lieu de "ça dort".
-  Future<void> _insertChannels(List<Channel> channels) async {
+  /// [executor] (audit 2026-07-29) : permet d'insérer DANS une transaction
+  /// (refreshPlaylist enveloppe delete+insert — sinon un crash au milieu
+  /// laissait la source amputée, et toute lecture concurrente voyait une
+  /// playlist partielle pendant ~25 s sur un gros bouquet).
+  Future<void> _insertChannels(
+    List<Channel> channels, {
+    DatabaseExecutor? executor,
+  }) async {
     CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
         'sqlite.insert.start', channels: channels.length);
     const int chunkSize = 1000;
-    final Database db = await PlaylistDatabase.instance.database;
+    final DatabaseExecutor db =
+        executor ?? await PlaylistDatabase.instance.database;
     for (int i = 0; i < channels.length; i += chunkSize) {
       final int end = (i + chunkSize > channels.length)
           ? channels.length

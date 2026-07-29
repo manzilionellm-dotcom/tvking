@@ -64,10 +64,28 @@ abstract final class RemoteSourceRepository {
   /// charge-la tout de suite ». Best-effort, jamais bloquant.
   static void signalPushed() => pushedTick.value++;
 
+  /// Synchro en cours (dédup in-flight). `sync()` est appelé par PLUSIEURS
+  /// boucles concurrentes (timer 5 min, sondage d'activation, WebSocket,
+  /// boot) : sans ce verrou, deux appels simultanés pouvaient importer la
+  /// MÊME source deux fois (check-then-act non atomique dans `_applySource`)
+  /// et doubler le pic mémoire de l'import. Tant qu'une passe tourne, tout
+  /// nouvel appel reçoit le MÊME Future.
+  static Future<RemoteSyncResult>? _inFlight;
+
+  /// Seam de test : remplace le corps réel (`_doSync`, qui touche le réseau)
+  /// pour vérifier la dédup in-flight sans aucune E/S. `null` en production.
+  @visibleForTesting
+  static Future<RemoteSyncResult> Function()? debugSyncBody;
+
   /// Récupère la source assignée à cet appareil et la charge si besoin.
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
-  static Future<RemoteSyncResult> sync() async {
+  static Future<RemoteSyncResult> sync() =>
+      _inFlight ??= (debugSyncBody ?? _doSync)()
+          .whenComplete(() => _inFlight = null);
+
+  /// Corps réel de [sync] — ne pas appeler directement (pas de dédup).
+  static Future<RemoteSyncResult> _doSync() async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;

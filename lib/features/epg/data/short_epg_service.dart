@@ -31,18 +31,35 @@ class ShortEpgService {
   static const Duration _ttl = Duration(minutes: 10);
   static const int _cacheMax = 300;
 
+  /// DÉDUP IN-FLIGHT (audit 2026-07-29) : le cache n'était écrit qu'APRÈS
+  /// la réponse — N sollicitations rapprochées de la même chaîne (rebuilds,
+  /// focus TV qui passe et repasse) partaient TOUTES en réseau, chacune
+  /// avec un XtreamClient neuf. Une requête en cours est partagée.
+  final Map<String, Future<List<EpgProgram>>> _inFlight =
+      <String, Future<List<EpgProgram>>>{};
+
   /// Programmes à venir de [channel] via `get_short_epg`. `[]` si la chaîne
   /// n'est pas Xtream, si sa playlist n'a plus d'identifiants, ou si le
   /// panel ne répond rien d'exploitable.
-  Future<List<EpgProgram>> upcomingFor(Channel channel) async {
+  Future<List<EpgProgram>> upcomingFor(Channel channel) {
     final String? streamId = _xtreamStreamId(channel.id);
-    if (streamId == null) return const <EpgProgram>[];
+    if (streamId == null) return Future<List<EpgProgram>>.value(const <EpgProgram>[]);
 
     final ({DateTime at, List<EpgProgram> programs})? hit = _cache[channel.id];
     if (hit != null && DateTime.now().difference(hit.at) <= _ttl) {
-      return hit.programs;
+      return Future<List<EpgProgram>>.value(hit.programs);
     }
 
+    final Future<List<EpgProgram>>? pending = _inFlight[channel.id];
+    if (pending != null) return pending;
+    final Future<List<EpgProgram>> run = _fetchUpcoming(channel, streamId)
+        .whenComplete(() => _inFlight.remove(channel.id));
+    _inFlight[channel.id] = run;
+    return run;
+  }
+
+  Future<List<EpgProgram>> _fetchUpcoming(
+      Channel channel, String streamId) async {
     List<EpgProgram> programs = const <EpgProgram>[];
     XtreamClient? client;
     try {

@@ -90,37 +90,52 @@ class VodRepository extends ChangeNotifier {
     encode: encodeVodCatalog,
   );
 
+  /// Playlist Xtream de référence pour le Cinéma. AUDIT 2026-07-29 : on
+  /// prenait « la première Xtream de getAllPlaylists » — trié
+  /// `created_at DESC`, donc la plus RÉCEMMENT AJOUTÉE, jamais
+  /// `is_active = 1`. Avec deux comptes, le Cinéma affichait le catalogue
+  /// d'un compte DIFFÉRENT des chaînes live (et mettait en cache ses
+  /// streamUrl). Désormais : la playlist ACTIVE d'abord, repli sur la
+  /// première Xtream sinon (compte M3U actif + compte Xtream secondaire).
+  Future<Playlist?> _xtreamSource() async {
+    final Playlist? active =
+        await PlaylistRepository.instance.getActivePlaylist();
+    if (active != null &&
+        active.type == PlaylistType.xtream &&
+        (active.xtreamServer ?? '').isNotEmpty) {
+      return active;
+    }
+    final List<Playlist> playlists =
+        await PlaylistRepository.instance.getAllPlaylists();
+    for (final Playlist p in playlists) {
+      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
+        return p;
+      }
+    }
+    return null;
+  }
+
   /// Empreinte de la source ACTIVE (serveur + utilisateur Xtream). Le cache
   /// disque n'est relu QUE si elle correspond — jamais le catalogue d'un
   /// ancien compte après un « Changer la source ».
   Future<String> _sourceKey() async {
-    final List<Playlist> playlists =
-        await PlaylistRepository.instance.getAllPlaylists();
-    for (final Playlist p in playlists) {
-      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
-        return '${p.xtreamServer}|${p.xtreamUsername ?? ''}'
-            .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-      }
-    }
-    return 'none';
+    final Playlist? p = await _xtreamSource();
+    if (p == null) return 'none';
+    return '${p.xtreamServer}|${p.xtreamUsername ?? ''}'
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
   }
 
-  /// Construit un client Xtream depuis la première playlist Xtream active
+  /// Construit un client Xtream depuis la playlist Xtream de référence
   /// (`null` si le compte est M3U seul → pas de VOD, pas de get_vod_info).
   Future<XtreamClient?> _client({Duration? timeout}) async {
-    final List<Playlist> playlists =
-        await PlaylistRepository.instance.getAllPlaylists();
-    for (final Playlist p in playlists) {
-      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
-        return XtreamClient(
-          serverUrl: p.xtreamServer!,
-          username: p.xtreamUsername ?? '',
-          password: p.xtreamPassword ?? '',
-          timeout: timeout ?? const Duration(seconds: 20),
-        );
-      }
-    }
-    return null;
+    final Playlist? p = await _xtreamSource();
+    if (p == null) return null;
+    return XtreamClient(
+      serverUrl: p.xtreamServer!,
+      username: p.xtreamUsername ?? '',
+      password: p.xtreamPassword ?? '',
+      timeout: timeout ?? const Duration(seconds: 20),
+    );
   }
 
   /// Renvoie le catalogue de films UNIFIÉ : part Xtream (get_vod_streams)
@@ -205,9 +220,21 @@ class VodRepository extends ChangeNotifier {
   void _diag(String m, {String level = 'info'}) =>
       StreamDiagnostics.instance.recordEvent('cinéma', m, level: level);
 
+  /// DÉDUP IN-FLIGHT (audit 2026-07-29) : deux écrans qui demandaient le
+  /// catalogue avant que `_cache` soit rempli lançaient DEUX
+  /// `get_vod_streams` complets (dizaines de Mo + isolate de parse chacun,
+  /// sur des comptes souvent limités en connexions). Un fetch en cours est
+  /// désormais PARTAGÉ par les appelants concurrents.
+  Future<List<VodMovie>>? _netInFlight;
+
   /// Appel réseau brut (liste vide en cas d'erreur — fail-open, et AUCUN
   /// effet de bord sur _cache : c'est l'appelant qui décide quoi garder).
-  Future<List<VodMovie>> _fetchFromNetwork() async {
+  Future<List<VodMovie>> _fetchFromNetwork() {
+    return _netInFlight ??=
+        _fetchFromNetworkInner().whenComplete(() => _netInFlight = null);
+  }
+
+  Future<List<VodMovie>> _fetchFromNetworkInner() async {
     final XtreamClient? client = await _client();
     if (client == null) return const <VodMovie>[];
     try {
