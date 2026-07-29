@@ -49,6 +49,7 @@ import 'features/channels/data/watch_history_repository.dart';
 import 'features/stats/data/engagement_service.dart';
 import 'features/stats/data/watch_stats_service.dart';
 import 'features/vod/data/playback_position_repository.dart';
+import 'features/vod/data/vod_download_service.dart';
 import 'features/simple_home/presentation/simple_home_screen.dart';
 import 'features/admin/data/admin_credentials.dart';
 import 'features/device/data/device_identity.dart';
@@ -66,6 +67,7 @@ import 'features/playlists/data/remote_source_repository.dart';
 import 'features/pricing/data/pricing_repository.dart';
 import 'core/flavor/flavor.dart';
 import 'features/security/data/age_gate_settings.dart';
+import 'features/security/data/biometric_auth.dart';
 import 'features/security/data/lock_settings.dart';
 import 'features/security/presentation/age_gate_screen.dart';
 import 'features/security/presentation/lock_screen.dart';
@@ -73,6 +75,7 @@ import 'features/recordings/data/recording_repository.dart';
 import 'features/recordings/data/ffmpeg_converter.dart';
 import 'core/app/master_console.dart';
 import 'features/subscription/data/subscription_state.dart';
+import 'features/subscription/presentation/guest_screen.dart';
 import 'features/subscription/presentation/subscription_gate.dart';
 
 void main() {
@@ -181,6 +184,14 @@ Future<void> bootApp() async {
   unawaited(WatchStatsService.instance.start());
   unawaited(EngagementService.instance.load());
   unawaited(PlaybackPositionRepository.instance.load());
+  // TÉLÉCHARGEMENTS HORS-LIGNE : recharge la liste des films/épisodes déjà
+  // téléchargés (même appel que le boot TV, main_tv.dart « 8z »). Sans ce
+  // load, l'état des téléchargements n'existait sur mobile qu'après un
+  // passage par l'écran Cinéma — le lecteur ne trouvait donc pas les
+  // fichiers locaux (localFile) tant que Cinéma n'avait pas été ouvert.
+  // Lecture SharedPreferences, non bloquant, ne throw jamais (try/catch
+  // interne) — fire-and-forget comme les autres init.
+  unawaited(VodDownloadService.instance.load());
   unawaited(EpgRepository.instance.initialize());
   unawaited(
     // Phase 1 / F-01 : juste apres l'init, on balaie les fiches
@@ -451,6 +462,13 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   // que le lock est activé, on affiche `LockScreen` au lieu de l'app.
   bool? _lockEnabled;
   bool _unlocked = false;
+  // L'appareil SAIT-il s'authentifier (capteur biométrique OU PIN/schéma
+  // système) ? `null` = réponse local_auth pas encore arrivée. Sert à ne
+  // sauter le verrou sur un appareil classé « TV » QUE s'il n'a réellement
+  // aucun moyen d'auth (vraie box) — une tablette 10-12" paysage est classée
+  // TV par l'heuristique DeviceClass.auto mais possède capteur/PIN : sans ce
+  // test, son verrou biométrique était silencieusement ignoré.
+  bool? _canAuthenticate;
   // Confirmation 18+ (héritée de l'ancienne variante Red Room, retirée).
   // `requireAgeGate` étant désormais toujours `false`, ce gate ne
   // s'affiche jamais — la valeur est posée à `true` dans initState.
@@ -469,6 +487,12 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   bool _adResolved = false;
   bool _adShow = false;
   bool _adDone = false;
+
+  // CONSOLE MAÎTRE : la promesse de master_console.dart (« s'ouvre
+  // DIRECTEMENT sur le générateur de tests ») est tenue par un push
+  // automatique UNIQUE post-frame — ce flag empêche de re-pousser le
+  // générateur à chaque rebuild du ListenableBuilder.
+  bool _consolePushed = false;
 
   /// Résout la pub de démarrage SANS jamais bloquer l'accueil plus de 2,5 s.
   Future<void> _resolveAd() async {
@@ -590,6 +614,13 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     LockSettings.instance.isLockEnabled().then((bool enabled) {
       if (mounted) setState(() => _lockEnabled = enabled);
     });
+    // Capacité d'auth de l'appareil, chargée en parallèle (réponse quasi
+    // immédiate — appel plugin local, zéro réseau). `isSupported()` ne throw
+    // jamais (wrapper) : `false` en cas d'erreur → sur box, comportement
+    // inchangé (pas de blocage).
+    BiometricAuth.instance.isSupported().then((bool ok) {
+      if (mounted) setState(() => _canAuthenticate = ok);
+    });
 
     // Gate âge : uniquement Red Room. Sur The Few, on by-pass
     // directement avec `true` pour ne pas bloquer le boot.
@@ -656,17 +687,38 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
       );
     }
 
-    // 0b) Verrouillage biométrique — TÉLÉPHONE UNIQUEMENT. Sur TV (Android
-    //     TV / Fire TV) il n'y a NI capteur d'empreinte NI clavier tactile
-    //     pratique : l'écran de verrouillage n'a aucun sens et bloque
-    //     l'utilisateur. On le saute donc complètement sur les téléviseurs.
+    // 0b) Verrouillage biométrique. AVANT : sauté dès que l'appareil était
+    //     classé « TV » — or l'heuristique DeviceClass.auto classe aussi une
+    //     TABLETTE 10"+ paysage comme TV, et son verrou (activé par le user
+    //     dans Réglages > Sécurité) était alors ignoré en silence. La bonne
+    //     question n'est pas « est-ce une TV ? » mais « l'appareil PEUT-il
+    //     s'authentifier ? » (local_auth.isDeviceSupported) :
+    //       • capteur/PIN présent (téléphone, tablette) → verrou affiché,
+    //         MÊME si l'écran est classé TV ;
+    //       • vraie box TV sans aucun moyen d'auth → pas de blocage
+    //         (comportement historique conservé).
     //     Ne s'applique qu'au cold start ; pas de re-lock au retour de
     //     background (choix UX).
     final bool isTvDevice = DeviceClassRepository.instance.isTvFor(context);
-    if (_lockEnabled == true && !_unlocked && !isTvDevice) {
-      return LockScreen(
-        onUnlocked: () => setState(() => _unlocked = true),
-      );
+    if (_lockEnabled == true && !_unlocked) {
+      // Téléphone/écran non-TV : verrou direct, sans attendre local_auth
+      // (LockScreen a de toute façon son PIN app en parachute).
+      if (!isTvDevice) {
+        return LockScreen(
+          onUnlocked: () => setState(() => _unlocked = true),
+        );
+      }
+      // Classé TV : on attend la (rapide) réponse de local_auth avant de
+      // trancher — sinon on risquerait un frame d'accueil déverrouillé
+      // sur tablette avant l'apparition du verrou.
+      if (_canAuthenticate == null) return const _Splash();
+      if (_canAuthenticate == true) {
+        return LockScreen(
+          onUnlocked: () => setState(() => _unlocked = true),
+        );
+      }
+      // Box sans capteur ni PIN système : on n'affiche rien (un LockScreen
+      // y serait une impasse sans clavier tactile pratique).
     }
 
     // 1) DevicePicker + 2) Onboarding : SUPPRIMES (decision produit
@@ -720,7 +772,33 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
             // propres sources M-Trio/Xtream comme dans l'app cliente, puis
             // envoie des tests via l'entrée invité (débloquée par sa MAC maître,
             // avec la boîte noire). On saute juste la pub de démarrage.
-            if (kMasterConsole) return const SimpleHomeScreen();
+            //
+            // Ouverture DIRECTE sur le générateur de tests (promesse de
+            // master_console.dart) : SimpleHomeScreen reste la racine et on
+            // pousse GuestScreen(consoleMode: true) une seule fois, post-frame.
+            // Choisi plutôt que « GuestScreen en home » parce que :
+            //   • le back (geste/bouton système) ramène à l'accueil complet —
+            //     indispensable pour gérer ses sources comme dans l'app
+            //     cliente (le pouvoir « tests » reste verrouillé serveur) ;
+            //   • aucune bifurcation dans le flux d'activation/StreamBuilder
+            //     de SimpleHomeScreen — zéro risque de régression là-bas.
+            // Le push est placé ICI (et pas dans initState) pour rester
+            // DERRIÈRE les gates prioritaires : mise à jour forcée et blocage
+            // abonnement s'affichent avant, comme pour l'app cliente.
+            if (kMasterConsole) {
+              if (!_consolePushed) {
+                _consolePushed = true;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  Navigator.of(this.context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const GuestScreen(consoleMode: true),
+                    ),
+                  );
+                });
+              }
+              return const SimpleHomeScreen();
+            }
             if (!_adResolved) return const _Splash();
             if (_adShow && !_adDone) {
               return StartupAdScreen(

@@ -1,9 +1,11 @@
 # =========================================================
-#  verify-app-link.yml — Prouve que l'app (99999) enregistre les MAC
+#  verify-app-link.yml — Vérifie les liens du domaine app.7themotion.com
 # =========================================================
-#  Simule un appareil : POST /api/heartbeat sur 99999.7themotion.com
-#  (l'adresse que l'app appelle). Si le nouveau worker repond et que la
-#  MAC s'enregistre, elle apparaitra dans le panel (onglet Appareils).
+#  1) Liens de téléchargement masqués (proxy Cloudflare, GitHub caché) :
+#     /test (TV cinema-test) · /fone (téléphone phone-test)
+#     /tv (TV prod) · /app (mobile prod)
+#     Chaque lien doit répondre 200 et servir un vrai APK (magic bytes ZIP).
+#  2) API du worker (heartbeat) — sanity check que le bon worker répond.
 # =========================================================
 
 name: Verify app link
@@ -25,7 +27,34 @@ jobs:
       BASE: 'https://app.7themotion.com'
       MAC: 'MK:0A:0A:0A:0A:0A'
     steps:
-      - name: Heartbeat + status via 99999
+      - name: Liens de téléchargement (domaine, GitHub masqué)
+        run: |
+          fail=0
+          for slug in test fone tv app; do
+            echo "== $BASE/$slug =="
+            # Range 0-3 : on ne télécharge que les 4 premiers octets ("PK\3\4"
+            # = APK/ZIP) — assez pour prouver que le lien sert le fichier.
+            # -L : certains slugs (ex. /app) répondent 302 → on suit et on
+            # note la destination pour vérifier ce que voit l'utilisateur.
+            out=$(curl -sL -m 30 -r 0-3 -D /tmp/h -o /tmp/b \
+              -w '%{http_code} %{url_effective}' "$BASE/$slug" || echo 'ERR')
+            code=${out%% *}; final=${out#* }
+            magic=$(head -c 2 /tmp/b || true)
+            echo "HTTP $code — magic: $magic"
+            echo "URL finale : $final"
+            case "$final" in
+              *github.com*) echo "⚠️ $slug: redirection VISIBLE vers GitHub (identité exposée si collé dans un navigateur)";;
+            esac
+            grep -i -E 'content-(type|disposition|length|range)' /tmp/h | tail -3 || true
+            case "$code" in
+              200|206) [ "$magic" = "PK" ] || { echo "❌ $slug: pas un APK"; fail=1; } ;;
+              *) echo "❌ $slug: HTTP $code"; fail=1 ;;
+            esac
+            echo ""
+          done
+          exit $fail
+
+      - name: Heartbeat + status (sanity worker)
         run: |
           echo "== 1) Heartbeat (simule l'app) =="
           curl -s -m 20 -X POST "$BASE/api/heartbeat" \

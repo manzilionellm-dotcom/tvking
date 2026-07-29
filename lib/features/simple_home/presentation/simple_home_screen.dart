@@ -74,6 +74,25 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
   /// ouvrir un second (tick du sondage OU signal temps réel pendant l'import).
   bool _importing = false;
 
+  /// Garde anti-empilement de la barre du bas : un double-tap rapide sur
+  /// « Favoris » / « IA » / « Ajouter » déclenchait DEUX push (ou deux
+  /// feuilles) — le 2e tap partait avant que la 1re route ne couvre l'écran.
+  /// Un seul écran secondaire à la fois ; le flag se libère au retour (pop).
+  bool _navBusy = false;
+
+  /// Ouvre un écran/feuille depuis la barre du bas, protégé par [_navBusy].
+  /// `open` retourne le Future de la route poussée (ou de la feuille) : on
+  /// l'attend pour ne relâcher la garde qu'au retour sur l'accueil.
+  Future<void> _openFromBottomBar(Future<void> Function() open) async {
+    if (_navBusy || !mounted) return;
+    _navBusy = true;
+    try {
+      await open();
+    } finally {
+      _navBusy = false;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -444,6 +463,10 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: <Widget>[
+          // « Accueil » : la barre n'existe QUE sur l'accueil (les autres
+          // onglets sont des routes plein écran qui la recouvrent), donc
+          // `active: true` reflète bien la réalité ici — et taper l'onglet
+          // courant ne doit rien faire (comportement standard des bottom bars).
           _BottomNavItem(
             icon: Icons.home_rounded,
             label: context.l10n.navHome,
@@ -454,8 +477,11 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             icon: Icons.favorite_rounded,
             label: context.l10n.navFavorites,
             active: false,
-            onTap: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(builder: (_) => const FavoritesScreen()),
+            onTap: () => _openFromBottomBar(
+              () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                    builder: (_) => const FavoritesScreen()),
+              ),
             ),
           ),
           // Recherche IA (langage naturel), mise en avant (ember) au centre.
@@ -464,8 +490,10 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             label: context.l10n.navAi,
             active: false,
             accent: true,
-            onTap: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+            onTap: () => _openFromBottomBar(
+              () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+              ),
             ),
           ),
           // « Ajouter » = activation par code MAC (pas de M3U/Xtream).
@@ -473,7 +501,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             icon: Icons.add_circle_outline_rounded,
             label: context.l10n.buttonAdd,
             active: false,
-            onTap: () => showActivationSheet(context),
+            onTap: () => _openFromBottomBar(() => showActivationSheet(context)),
           ),
         ],
       ),
