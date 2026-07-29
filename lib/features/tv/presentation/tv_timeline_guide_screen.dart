@@ -17,12 +17,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -49,6 +51,9 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
   int _cursor = 0;
   bool _hasMore = true;
   bool _loading = false;
+  // 1re page arrivée (même sémantique que le Guide « Maintenant/À suivre ») :
+  // permet de distinguer CHARGEMENT (spinner) et SOURCE VIDE (message).
+  bool _ready = false;
 
   // ----- Fenêtre de temps -----
   // Départ arrondi à la demi-heure INFÉRIEURE (comme le câble US), décalable
@@ -88,16 +93,32 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
   Future<void> _loadMore() async {
     if (_loading || !_hasMore) return;
     _loading = true;
-    final ({List<Channel> channels, int nextCursor, bool hasMore}) page =
-        await PlaylistRepository.instance
-            .getChannelsPage(afterLocalId: _cursor, limit: _kPageSize);
-    if (!mounted) return;
-    setState(() {
-      _channels.addAll(page.channels);
-      _cursor = page.nextCursor;
-      _hasMore = page.hasMore;
-    });
-    _loading = false;
+    // try/finally ALIGNÉ sur le Guide « Maintenant/À suivre » : avant, une
+    // exception SQLite laissait `_loading` à true POUR TOUJOURS → plus aucun
+    // chargement possible (spinner infini au 1er échec).
+    try {
+      final ({List<Channel> channels, int nextCursor, bool hasMore}) page =
+          await PlaylistRepository.instance
+              .getChannelsPage(afterLocalId: _cursor, limit: _kPageSize);
+      if (!mounted) return;
+      setState(() {
+        _channels.addAll(page.channels);
+        _cursor = page.nextCursor;
+        _hasMore = page.hasMore;
+        _ready = true;
+      });
+    } catch (_) {
+      // On fige proprement la pagination (l'itemBuilder ne relance plus la
+      // même requête en boucle) au lieu de bloquer l'écran.
+      if (mounted) {
+        setState(() {
+          _ready = true;
+          _hasMore = false;
+        });
+      }
+    } finally {
+      _loading = false;
+    }
   }
 
   void _shiftWindow(int minutes) {
@@ -191,7 +212,13 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
         (DateTime.now().millisecondsSinceEpoch - startMs) / 60000 * _pxPerMin;
     final bool nowVisible = nowDx >= 0 && nowDx <= timelineW;
 
-    return Column(
+    // Scaffold TRANSPARENT (visuel inchangé) : ScaffoldMessenger n'affiche
+    // les SnackBar qu'à travers un Scaffold ENREGISTRÉ — sans lui, les
+    // messages de _toast (« Programme à venir », « Replay indisponible »)
+    // ne s'affichaient JAMAIS (l'écran est poussé dans un TvShell nu).
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           // ----- En-tête : titre + heures -----
@@ -263,39 +290,49 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
           ),
           // ----- Lignes chaînes -----
           Expanded(
-            child: _channels.isEmpty
+            // Spinner UNIQUEMENT pendant le 1er chargement : une source sans
+            // chaîne affichait un spinner INFINI — on montre le même message
+            // que le Guide « Maintenant/À suivre ».
+            child: !_ready
                 ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    addAutomaticKeepAlives: false,
-                    itemExtent: _rowH + 6,
-                    itemCount: _channels.length,
-                    itemBuilder: (BuildContext context, int i) {
-                      // Pagination : on précharge en approchant de la fin.
-                      if (i >= _channels.length - 12) _loadMore();
-                      final int idx = i;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: _GuideRow(
-                          channel: _channels[i],
-                          autofocus: i == 0,
-                          startMs: startMs,
-                          endMs: endMs,
-                          pxPerMin: _pxPerMin,
-                          chanColW: _chanColW,
-                          rowH: _rowH,
-                          nowDx: nowVisible ? nowDx : null,
-                          onPlay: () => _play(idx),
-                          epgGeneration: _epgGeneration,
-                          canReplay: (EpgProgram p) =>
-                              _canReplay(_channels[idx], p),
-                          onBlock: (EpgProgram p) =>
-                              _onBlock(idx, _channels[idx], p),
-                        ),
-                      );
-                    },
-                  ),
+                : _channels.isEmpty
+                    ? Center(
+                        child: Text(context.l10n.tvNoChannels,
+                            style:
+                                TvTokens.ui(18, color: TvTokens.mutedDim)),
+                      )
+                    : ListView.builder(
+                        addAutomaticKeepAlives: false,
+                        itemExtent: _rowH + 6,
+                        itemCount: _channels.length,
+                        itemBuilder: (BuildContext context, int i) {
+                          // Pagination : on précharge en approchant de la fin.
+                          if (i >= _channels.length - 12) _loadMore();
+                          final int idx = i;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: _GuideRow(
+                              channel: _channels[i],
+                              autofocus: i == 0,
+                              startMs: startMs,
+                              endMs: endMs,
+                              pxPerMin: _pxPerMin,
+                              chanColW: _chanColW,
+                              rowH: _rowH,
+                              nowDx: nowVisible ? nowDx : null,
+                              onPlay: () => _play(idx),
+                              epgGeneration: _epgGeneration,
+                              canReplay: (EpgProgram p) =>
+                                  _canReplay(_channels[idx], p),
+                              onBlock: (EpgProgram p) =>
+                                  _onBlock(idx, _channels[idx], p),
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
+      ),
     );
   }
 
@@ -364,10 +401,24 @@ class _GuideRowState extends State<_GuideRow> {
   /// change — jamais sur un simple tic d'horloge de l'écran.
   late Future<List<(EpgProgram, bool)>> _progs;
 
+  // ALIGNEMENT INTER-GUIDES : le cœur favori suit le dépôt (toggle est
+  // asynchrone ; le repaint arrive par le stream, comme au Guide
+  // « Maintenant/À suivre »).
+  StreamSubscription<Set<String>>? _favSub;
+
   @override
   void initState() {
     super.initState();
     _progs = _load();
+    _favSub = FavoritesRepository.instance.favoritesStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _favSub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -399,10 +450,19 @@ class _GuideRowState extends State<_GuideRow> {
             autofocus: widget.autofocus,
             scale: TvFocusScale.small,
             onSelect: widget.onPlay,
+            // ALIGNEMENT INTER-GUIDES : appui LONG = favori, même raccourci
+            // que le Guide « Maintenant/À suivre » et le Direct (il manquait
+            // ici → geste incohérent d'un guide à l'autre).
+            onLongPress: () {
+              FavoritesRepository.instance.toggle(widget.channel.id);
+              HapticFeedback.selectionClick();
+            },
             builder: (BuildContext context, bool focused) {
               final Color bg = focused ? TvTokens.gold : TvTokens.card;
               final Color fg =
                   focused ? const Color(0xFF1A1206) : TvTokens.text;
+              final bool fav =
+                  FavoritesRepository.instance.isFavorite(widget.channel.id);
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 alignment: Alignment.centerLeft,
@@ -411,12 +471,29 @@ class _GuideRowState extends State<_GuideRow> {
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: TvTokens.lineSoft),
                 ),
-                child: Text(
-                  widget.channel.cleanName,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700, color: fg),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        widget.channel.cleanName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: fg),
+                      ),
+                    ),
+                    // Cœur favori (même repère que le Guide) — couleur fg au
+                    // focus : l'or serait invisible sur le fond or.
+                    if (fav)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Icon(Icons.favorite_rounded,
+                            size: 14,
+                            color: focused ? fg : TvTokens.gold),
+                      ),
+                  ],
                 ),
               );
             },

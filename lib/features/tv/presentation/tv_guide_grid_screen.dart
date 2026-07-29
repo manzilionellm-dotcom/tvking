@@ -87,6 +87,17 @@ class _TvGuideGridScreenState extends State<TvGuideGridScreen> {
         _hasMore = page.hasMore;
         _ready = true;
       });
+    } catch (_) {
+      // PANNE SQLITE (base occupée…) : sans ce garde-fou, `_ready` restait
+      // false → spinner INFINI, et l'itemBuilder relançait la même requête
+      // en boucle. On fige la pagination ; le listener de channelsStream
+      // relancera un _reload dès que la source bouge.
+      if (mounted) {
+        setState(() {
+          _ready = true;
+          _hasMore = false;
+        });
+      }
     } finally {
       _loading = false;
     }
@@ -209,18 +220,57 @@ class _GuideRowState extends State<_GuideRow> {
   EpgProgram? _nowProg;
   EpgProgram? _nextProg;
   Timer? _epgTimer;
+  Timer? _refreshTimer;
+  StreamSubscription<void>? _epgSub;
+  StreamSubscription<Set<String>>? _favSub;
 
   @override
   void initState() {
     super.initState();
     _nowProg = EpgRepository.instance.cachedCurrent(widget.channel.id);
     _epgTimer = Timer(const Duration(milliseconds: 250), _load);
+    // NOW/NEXT RÉELLEMENT À JOUR : le guide reste ouvert de longues minutes —
+    // sans ce tic, la barre de progression restait FIGÉE et une émission
+    // terminée restait affichée « en cours » jusqu'à un défilement.
+    _refreshTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) => _tick());
+    // Import EPG en cours : la ligne se remplit dès l'arrivée d'un lot —
+    // sinon un guide ouvert PENDANT l'import restait vide (même correctif
+    // que la grille horaire, cf. epgGeneration).
+    _epgSub = EpgRepository.instance.changes.listen((_) {
+      if (mounted) _load();
+    });
+    // Le cœur suit les favoris d'où qu'ils changent (lecteur, autre écran,
+    // bascule d'univers) — `toggle` est asynchrone, un setState immédiat
+    // lisait le cache AVANT la bascule.
+    _favSub = FavoritesRepository.instance.favoritesStream.listen((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _epgTimer?.cancel();
+    _refreshTimer?.cancel();
+    _epgSub?.cancel();
+    _favSub?.cancel();
     super.dispose();
+  }
+
+  // Tic 30 s : repeint la progression, et re-requête dès que l'émission
+  // affichée est finie (ou que « à suivre » a commencé) → la ligne bascule
+  // toute seule sur le programme suivant.
+  void _tick() {
+    if (!mounted) return;
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    final bool ended = _nowProg != null && _nowProg!.stopTime <= nowMs;
+    final bool nextStarted =
+        _nextProg != null && _nextProg!.startTime <= nowMs;
+    if (ended || nextStarted) {
+      _load();
+    } else if (_nowProg != null) {
+      setState(() {}); // avance la barre de progression
+    }
   }
 
   // On charge EN PARALLÈLE l'émission en cours et la suivante (2 requêtes
@@ -233,15 +283,23 @@ class _GuideRowState extends State<_GuideRow> {
     ]);
     if (!mounted) return;
     setState(() {
-      _nowProg = res[0] ?? _nowProg;
+      // Repli sur l'ancien « en cours » UNIQUEMENT s'il est encore à
+      // l'antenne : l'ancien `?? _nowProg` ré-affichait une émission
+      // TERMINÉE quand la requête ne trouvait plus rien.
+      final int nowMs = DateTime.now().millisecondsSinceEpoch;
+      _nowProg = res[0] ??
+          ((_nowProg != null && _nowProg!.stopTime > nowMs)
+              ? _nowProg
+              : null);
       _nextProg = res[1];
     });
   }
 
   void _toggleFavorite() {
+    // Le repaint du cœur arrive via favoritesStream (cf. initState) : le
+    // toggle est asynchrone, un setState immédiat n'y voyait rien.
     FavoritesRepository.instance.toggle(widget.channel.id);
     HapticFeedback.selectionClick();
-    if (mounted) setState(() {}); // rafraîchit le cœur immédiatement
   }
 
   @override
