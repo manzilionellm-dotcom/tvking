@@ -27,6 +27,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/support/support_choice_sheet.dart';
 import '../../../core/support/vip_support.dart';
 import '../../../core/theme/app_colors.dart';
@@ -118,9 +119,9 @@ class _GuestScreenState extends State<GuestScreen> {
       await SubscriptionState.instance.syncWithBackend();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             behavior: SnackBarBehavior.floating,
-            content: Text('Abonnement repris — c’est de nouveau à toi. 👍'),
+            content: Text(context.l10n.guestReclaimedSnack),
           ),
         );
       }
@@ -137,7 +138,7 @@ class _GuestScreenState extends State<GuestScreen> {
         elevation: 0,
         automaticallyImplyLeading: !console, // pas de « retour » : c'est l'app
         title: Text(
-          console ? 'Console de test' : 'Mode invité',
+          console ? context.l10n.guestConsoleTitle : context.l10n.guestScreenTitle,
           style: AppTextStyles.headlineMedium.copyWith(fontSize: 18),
         ),
       ),
@@ -198,13 +199,12 @@ class _GuestScreenState extends State<GuestScreen> {
       _BlackBox(mac: _mac),
       const SizedBox(height: 18),
       Text(
-        'Console de test — codes & accès illimités',
+        context.l10n.guestConsoleHeadline,
         style: AppTextStyles.headlineLarge.copyWith(fontSize: 22, height: 1.2),
       ),
       const SizedBox(height: 6),
       Text(
-        'Génère un code ou active quelqu’un par son identifiant : il reçoit un '
-        'accès complet le temps du test (1 h…), autant de fois que tu veux.',
+        context.l10n.guestConsoleIntro,
         style: AppTextStyles.bodyMedium.copyWith(
           fontSize: 13,
           color: AppColors.textSecondary,
@@ -224,7 +224,7 @@ class _GuestScreenState extends State<GuestScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                'Cette MAC n’est pas encore « maître »',
+                context.l10n.guestConsoleNotMasterTitle,
                 style: AppTextStyles.bodyLarge.copyWith(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
@@ -233,8 +233,8 @@ class _GuestScreenState extends State<GuestScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Ajoute cet identifiant dans le panel (Comptes maîtres) pour '
-                'débloquer l’envoi de tests : ${_macNu.isEmpty ? '…' : _macNu}',
+                context.l10n
+                    .guestConsoleNotMasterBody(_macNu.isEmpty ? '…' : _macNu),
                 style: AppTextStyles.bodyMedium
                     .copyWith(fontSize: 12, color: AppColors.textSecondary),
               ),
@@ -260,14 +260,12 @@ class _Intro extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          'Invité, ou tu as ton propre code ?',
+          context.l10n.guestIntroTitle,
           style: AppTextStyles.headlineLarge.copyWith(fontSize: 22, height: 1.2),
         ),
         const SizedBox(height: 8),
         Text(
-          'Un ami t’a invité ? Tape son code, ou envoie-lui ton identifiant '
-          'pour qu’il t’active à distance. Tu regardes avec lui, puis tu '
-          'pourras t’abonner pour continuer.',
+          context.l10n.guestIntroBody,
           style: AppTextStyles.bodyMedium.copyWith(
             fontSize: 13,
             color: AppColors.textSecondary,
@@ -286,20 +284,23 @@ class _GuestPassBanner extends StatelessWidget {
   const _GuestPassBanner({required this.pass});
   final Map<String, dynamic> pass;
 
-  String get _modeLabel => switch ((pass['mode'] ?? '').toString()) {
-        'lend' => 'Abonnement prêté',
-        'test' => 'Essai',
-        _ => 'On regarde ensemble',
+  String _modeLabel(BuildContext context) =>
+      switch ((pass['mode'] ?? '').toString()) {
+        'lend' => context.l10n.guestPassModeLend,
+        'test' => context.l10n.guestPassModeTest,
+        _ => context.l10n.guestPassModeTogether,
       };
 
-  String _remaining() {
+  String _remaining(BuildContext context) {
     final int ms = (pass['ms_left'] as num?)?.toInt() ?? 0;
-    if (ms <= 0) return 'Ton accès invité est terminé.';
+    if (ms <= 0) return context.l10n.guestPassEnded;
     final int totalMin = (ms / 60000).floor();
     final int h = totalMin ~/ 60;
     final int m = totalMin % 60;
-    if (h > 0) return 'Encore ${h}h ${m.toString().padLeft(2, '0')} min.';
-    return 'Encore $m min.';
+    if (h > 0) {
+      return context.l10n.guestPassLeftHours(h, m.toString().padLeft(2, '0'));
+    }
+    return context.l10n.guestPassLeftMinutes(m);
   }
 
   @override
@@ -325,7 +326,7 @@ class _GuestPassBanner extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  _modeLabel,
+                  _modeLabel(context),
                   style: AppTextStyles.headlineMedium.copyWith(
                     fontSize: 15,
                     color: AppColors.accent,
@@ -337,13 +338,13 @@ class _GuestPassBanner extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            _remaining(),
+            _remaining(context),
             style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
           ),
           if (channel != null && channel['name'] != null) ...<Widget>[
             const SizedBox(height: 4),
             Text(
-              'Chaîne partagée : ${channel['name']}',
+              context.l10n.guestSharedChannel('${channel['name']}'),
               style: AppTextStyles.bodyMedium
                   .copyWith(fontSize: 12, color: AppColors.textSecondary),
             ),
@@ -351,7 +352,7 @@ class _GuestPassBanner extends StatelessWidget {
           if (inviter != null && inviter.isNotEmpty) ...<Widget>[
             const SizedBox(height: 2),
             Text(
-              'Invité par $inviter',
+              context.l10n.guestInvitedBy(inviter),
               style: AppTextStyles.bodyMedium
                   .copyWith(fontSize: 12, color: AppColors.textTertiary),
             ),
@@ -375,14 +376,17 @@ class _LoanOwnerBanner extends StatelessWidget {
   final bool busy;
   final VoidCallback onReclaim;
 
-  String _remaining() {
+  String _remaining(BuildContext context) {
     final int ms = (loan['ms_left'] as num?)?.toInt() ?? 0;
-    if (ms <= 0) return 'Retour imminent.';
+    if (ms <= 0) return context.l10n.guestLoanReturnImminent;
     final int totalMin = (ms / 60000).floor();
     final int h = totalMin ~/ 60;
     final int m = totalMin % 60;
-    if (h > 0) return 'Retour auto dans ${h}h ${m.toString().padLeft(2, '0')}.';
-    return 'Retour auto dans $m min.';
+    if (h > 0) {
+      return context.l10n
+          .guestLoanReturnInHours(h, m.toString().padLeft(2, '0'));
+    }
+    return context.l10n.guestLoanReturnInMinutes(m);
   }
 
   @override
@@ -405,7 +409,7 @@ class _LoanOwnerBanner extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Tu as prêté ton abonnement',
+                  context.l10n.guestLoanBannerTitle,
                   style: AppTextStyles.headlineMedium.copyWith(
                     fontSize: 15,
                     color: AppColors.accent,
@@ -417,7 +421,7 @@ class _LoanOwnerBanner extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '${guest != null && guest.isNotEmpty ? 'Prêté à $guest. ' : ''}${_remaining()}',
+            '${guest != null && guest.isNotEmpty ? '${context.l10n.guestLoanLentTo(guest)} ' : ''}${_remaining(context)}',
             style: AppTextStyles.bodyMedium.copyWith(fontSize: 13),
           ),
           const SizedBox(height: 12),
@@ -426,7 +430,9 @@ class _LoanOwnerBanner extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: busy ? null : onReclaim,
               icon: const Icon(Icons.undo_rounded, size: 18),
-              label: Text(busy ? 'Reprise…' : 'Reprendre mon abonnement'),
+              label: Text(busy
+                  ? context.l10n.guestReclaiming
+                  : context.l10n.guestReclaimButton),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accent,
                 foregroundColor: AppColors.voidSurface,
@@ -506,10 +512,10 @@ class _BlackBoxState extends State<_BlackBox> {
   @override
   Widget build(BuildContext context) {
     // Garanties d'architecture (toujours vraies par conception).
-    const List<String> facts = <String>[
-      'Aucune structure (famille/test) n’est envoyée au fournisseur.',
-      'La liste des maîtres vit uniquement dans le panel.',
-      'Chaque test est coupé automatiquement à l’échéance.',
+    final List<String> facts = <String>[
+      context.l10n.guestBlackboxFact1,
+      context.l10n.guestBlackboxFact2,
+      context.l10n.guestBlackboxFact3,
     ];
     final List<({int level, String label, String detail, String fix})> rows = _checks;
     // Verdict serveur si présent, sinon calculé depuis les lignes.
@@ -542,7 +548,7 @@ class _BlackBoxState extends State<_BlackBox> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Boîte noire — diagnostic',
+                  context.l10n.guestBlackboxTitle,
                   style: AppTextStyles.headlineMedium
                       .copyWith(fontSize: 16, fontWeight: FontWeight.w800),
                 ),
@@ -584,12 +590,12 @@ class _BlackBoxState extends State<_BlackBox> {
           const SizedBox(height: 4),
           Text(
             !_done
-                ? 'Analyse active en cours… (façade, liste, chaîne)'
+                ? context.l10n.guestBlackboxScanning
                 : (rows.isEmpty
-                    ? 'Backend injoignable — réessaie dans un instant.'
+                    ? context.l10n.guestBlackboxUnreachable
                     : (allGreen
-                        ? 'Tout est vert ✓ — copie VIP, fournisseur aveugle.'
-                        : 'À corriger — suis les conseils sous les points ambre/rouge.')),
+                        ? context.l10n.guestBlackboxAllGreen
+                        : context.l10n.guestBlackboxFix)),
             style: AppTextStyles.bodyMedium.copyWith(
               fontSize: 12.5,
               color: headColor,
@@ -692,7 +698,7 @@ class _RedeemCardState extends State<_RedeemCard> {
   Future<void> _submit() async {
     final String code = _code.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (code.length != 6) {
-      setState(() => _message = 'Entre les 6 chiffres du code.');
+      setState(() => _message = context.l10n.guestRedeemEnterSixDigits);
       return;
     }
     if (widget.mac.isEmpty) return;
@@ -706,8 +712,7 @@ class _RedeemCardState extends State<_RedeemCard> {
       setState(() {
         _busy = false;
         _ok = true;
-        _message = 'C’est bon ! Profite du programme. À la fin, tu pourras '
-            't’abonner pour continuer. 🎉';
+        _message = context.l10n.guestRedeemSuccess;
       });
       // Synchronise : la licence invité vient d'être posée côté serveur →
       // l'app bascule en « payé » et la source partagée se charge.
@@ -718,17 +723,16 @@ class _RedeemCardState extends State<_RedeemCard> {
     setState(() {
       _busy = false;
       _message = switch ((r?['error'] ?? '').toString()) {
-        'code_invalid' => 'Code inconnu. Vérifie les 6 chiffres.',
-        'code_used' => 'Ce code a déjà été utilisé.',
-        'code_expired' => 'Ce code a expiré. Demande-en un nouveau.',
-        'own_code' => 'C’est ton propre code 🙂',
-        'issuer_not_paid' => 'L’abonnement de ton ami n’est plus actif.',
-        'issuer_quota' => 'Ton ami a atteint ses invitations de la semaine.',
-        'already_active' => 'Ton appareil a déjà un accès actif.',
-        'already_used_once' =>
-          'Tu as déjà profité d’un pass gratuit. Pour continuer, abonne-toi.',
-        '' => 'Connexion impossible. Réessaie.',
-        _ => 'Impossible d’activer ce code.',
+        'code_invalid' => context.l10n.guestErrCodeInvalid,
+        'code_used' => context.l10n.guestErrCodeUsed,
+        'code_expired' => context.l10n.guestErrCodeExpired,
+        'own_code' => context.l10n.guestErrOwnCode,
+        'issuer_not_paid' => context.l10n.guestErrIssuerNotPaid,
+        'issuer_quota' => context.l10n.guestErrIssuerQuota,
+        'already_active' => context.l10n.guestErrAlreadyActive,
+        'already_used_once' => context.l10n.guestErrAlreadyUsedOnce,
+        '' => context.l10n.guestErrConnection,
+        _ => context.l10n.guestErrRedeemGeneric,
       };
     });
   }
@@ -737,8 +741,8 @@ class _RedeemCardState extends State<_RedeemCard> {
   Widget build(BuildContext context) {
     return _Card(
       icon: Icons.vpn_key_rounded,
-      title: 'J’ai un code',
-      subtitle: 'Un ami t’a donné un code à 6 chiffres ? Tape-le ici.',
+      title: context.l10n.guestRedeemTitle,
+      subtitle: context.l10n.guestRedeemSubtitle,
       children: <Widget>[
         TextField(
           controller: _code,
@@ -778,7 +782,11 @@ class _RedeemCardState extends State<_RedeemCard> {
           child: FilledButton.icon(
             onPressed: (_busy || _ok) ? null : _submit,
             icon: Icon(_ok ? Icons.check_rounded : Icons.login_rounded, size: 18),
-            label: Text(_busy ? 'Patiente…' : (_ok ? 'Activé' : 'Activer mon accès')),
+            label: Text(_busy
+                ? context.l10n.guestWait
+                : (_ok
+                    ? context.l10n.guestRedeemDone
+                    : context.l10n.guestRedeemButton)),
             style: FilledButton.styleFrom(
               backgroundColor: _ok ? AppColors.success : AppColors.accent,
               foregroundColor: AppColors.voidSurface,
@@ -813,10 +821,8 @@ class _ShareMacCard extends StatelessWidget {
     final String display = macNu.isEmpty ? '??:??:??:??:??' : macNu;
     return _Card(
       icon: Icons.qr_code_2_rounded,
-      title: 'Pas de code ? Envoie ton identifiant',
-      subtitle:
-          'Montre ton identifiant à celui qui t’invite : il t’active à '
-          'distance, tu n’as rien d’autre à faire.',
+      title: context.l10n.guestShareMacTitle,
+      subtitle: context.l10n.guestShareMacSubtitle,
       children: <Widget>[
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
@@ -850,13 +856,13 @@ class _ShareMacCard extends StatelessWidget {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             behavior: SnackBarBehavior.floating,
-                            content: Text('Identifiant copié : $macNu',
+                            content: Text(context.l10n.idCopied(macNu),
                                 style: AppTextStyles.bodyMedium),
                           ),
                         );
                       },
                 icon: const Icon(Icons.copy_rounded, size: 16),
-                label: const Text('Copier'),
+                label: Text(context.l10n.buttonCopy),
               ),
             ),
             const SizedBox(width: 10),
@@ -866,8 +872,7 @@ class _ShareMacCard extends StatelessWidget {
                     ? null
                     : () async {
                         final String msg =
-                            'Salut ! Invite-moi sur l’appli : mon identifiant '
-                            'est $macNu';
+                            context.l10n.guestShareMacWhatsApp(macNu);
                         final bool ok =
                             await VipSupport.openWhatsApp(customMessage: msg);
                         if (!context.mounted) return;
@@ -876,7 +881,7 @@ class _ShareMacCard extends StatelessWidget {
                         }
                       },
                 icon: const Icon(Icons.send_rounded, size: 16),
-                label: const Text('Envoyer'),
+                label: Text(context.l10n.buttonSend),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.accent,
                   foregroundColor: AppColors.voidSurface,
@@ -921,22 +926,20 @@ class _InviteCardState extends State<_InviteCard> {
   int _lendHours = 24; // durée du prêt (24 ou 48)
   int _testHours = 1; // durée maître (en heures) : 1 h … 8760 h (1 an)
 
-  /// Durées offertes par un compte MAÎTRE : du test 1 h jusqu'à 1 an.
-  /// (heures, libellé, sous-libellé). 720 h = 1 mois, 8760 h = 1 an.
-  static const List<(int, String, String)> _masterDurations = <(int, String, String)>[
-    (1, '1 h', 'test'),
-    (720, '1 mois', ''),
-    (1440, '2 mois', ''),
-    (4320, '6 mois', ''),
-    (8760, '1 an', ''),
-  ];
+  /// Durées offertes par un compte MAÎTRE : du test 1 h jusqu'à 1 an
+  /// (en heures). 720 h = 1 mois, 8760 h = 1 an. Libellés via l10n.
+  static const List<int> _masterDurations = <int>[1, 720, 1440, 4320, 8760];
 
-  /// Libellé lisible d'une durée en heures (pour les messages).
-  String _durLabel(int hours) {
-    for (final (int h, String label, String _) in _masterDurations) {
-      if (h == hours) return label;
-    }
-    return '$hours h';
+  /// Libellé lisible d'une durée en heures (puces + messages).
+  String _durLabel(BuildContext context, int hours) {
+    return switch (hours) {
+      1 => context.l10n.guestDur1h,
+      720 => context.l10n.guestDur1Month,
+      1440 => context.l10n.guestDur2Months,
+      4320 => context.l10n.guestDur6Months,
+      8760 => context.l10n.guestDur1Year,
+      _ => context.l10n.guestDurHours(hours),
+    };
   }
   bool _busy = false;
   String? _code;
@@ -969,7 +972,7 @@ class _InviteCardState extends State<_InviteCard> {
     setState(() {
       _busy = false;
       if (r == null) {
-        _message = 'Connexion impossible. Réessaie.';
+        _message = context.l10n.guestErrConnection;
       } else if (r['ok'] == true) {
         _code = (r['code'] ?? '').toString();
       } else {
@@ -982,7 +985,7 @@ class _InviteCardState extends State<_InviteCard> {
   Future<void> _grantByMac() async {
     final String g = _normalizeMac(_friendMac.text);
     if (g.isEmpty) {
-      setState(() => _message = 'Entre l’identifiant de ton ami.');
+      setState(() => _message = context.l10n.guestEnterFriendId);
       return;
     }
     setState(() {
@@ -999,11 +1002,12 @@ class _InviteCardState extends State<_InviteCard> {
     setState(() {
       _busy = false;
       if (r == null) {
-        _message = 'Connexion impossible. Réessaie.';
+        _message = context.l10n.guestErrConnection;
       } else if (r['ok'] == true) {
         _message = widget.isMaster
-            ? 'Envoyé ! Ton contact a ${_durLabel(_ensembleHours)} d’accès complet. 🎉'
-            : 'Activé ! Ton ami a 5 h pour regarder avec toi. 🎉';
+            ? context.l10n
+                .guestGrantSentMaster(_durLabel(context, _ensembleHours))
+            : context.l10n.guestGrantSentTogether;
       } else {
         _message = _errText((r['error'] ?? '').toString());
       }
@@ -1014,7 +1018,7 @@ class _InviteCardState extends State<_InviteCard> {
   Future<void> _lend() async {
     final String g = _normalizeMac(_friendMac.text);
     if (g.isEmpty) {
-      setState(() => _message = 'Entre l’identifiant de ton ami.');
+      setState(() => _message = context.l10n.guestEnterFriendId);
       return;
     }
     setState(() {
@@ -1027,10 +1031,9 @@ class _InviteCardState extends State<_InviteCard> {
     setState(() {
       _busy = false;
       if (r == null) {
-        _message = 'Connexion impossible. Réessaie.';
+        _message = context.l10n.guestErrConnection;
       } else if (r['ok'] == true) {
-        _message = 'Prêté ! Ton ami a $_lendHours h. Toi, tu es en pause — '
-            'ça te revient tout seul à la fin (ou reprends quand tu veux).';
+        _message = context.l10n.guestLendSuccess(_lendHours);
       } else {
         _message = _errText((r['error'] ?? '').toString());
       }
@@ -1041,17 +1044,14 @@ class _InviteCardState extends State<_InviteCard> {
   }
 
   String _errText(String e) => switch (e) {
-        'not_paid' =>
-          'Le partage est réservé aux abonnés. Active ton abonnement d’abord.',
-        'issuer_quota' =>
-          'Tu as utilisé tes invitations de la semaine. Ça se renouvelle bientôt.',
-        'already_active' => 'Cet appareil a déjà un accès actif.',
-        'already_used_once' => 'Cet appareil a déjà profité d’un pass gratuit.',
-        'loan_active' =>
-          'Tu as déjà un prêt en cours. Reprends-le d’abord pour en refaire un.',
-        'same_device' => 'C’est ton propre appareil 🙂',
-        'own_code' => 'C’est ta propre adresse 🙂',
-        _ => 'Action impossible pour le moment.',
+        'not_paid' => context.l10n.guestErrNotPaid,
+        'issuer_quota' => context.l10n.guestErrQuotaSelf,
+        'already_active' => context.l10n.guestErrDeviceActive,
+        'already_used_once' => context.l10n.guestErrDeviceUsedOnce,
+        'loan_active' => context.l10n.guestErrLoanActive,
+        'same_device' => context.l10n.guestErrSameDevice,
+        'own_code' => context.l10n.guestErrOwnAddress,
+        _ => context.l10n.guestErrGeneric,
       };
 
   @override
@@ -1061,11 +1061,12 @@ class _InviteCardState extends State<_InviteCard> {
       icon: widget.isMaster
           ? Icons.workspace_premium_rounded
           : Icons.card_giftcard_rounded,
-      title: widget.isMaster ? 'Envoyer un test' : 'Inviter un ami',
+      title: widget.isMaster
+          ? context.l10n.guestInviteTestTitle
+          : context.l10n.guestInviteTitle,
       subtitle: widget.isMaster
-          ? 'Mode maître : envoie un test à qui tu veux, autant que tu veux.'
-          : 'Deux façons de partager : regarder ensemble, ou lui prêter '
-              'ton abonnement.',
+          ? context.l10n.guestInviteMasterSubtitle
+          : context.l10n.guestInviteSubtitle,
       children: <Widget>[
         // Bandeau « mode maître » : envoi illimité, durée au choix (dont 1 h).
         if (widget.isMaster) ...<Widget>[
@@ -1083,7 +1084,7 @@ class _InviteCardState extends State<_InviteCard> {
                   Icon(Icons.bolt_rounded, color: AppColors.accent, size: 18),
                   const SizedBox(width: 6),
                   Text(
-                    'Compte maître — tests illimités',
+                    context.l10n.guestMasterBanner,
                     style: AppTextStyles.bodyLarge.copyWith(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
@@ -1093,7 +1094,7 @@ class _InviteCardState extends State<_InviteCard> {
                 ]),
                 const SizedBox(height: 10),
                 Text(
-                  'Durée de l’accès',
+                  context.l10n.guestAccessDuration,
                   style: AppTextStyles.labelSmall
                       .copyWith(fontSize: 10, color: AppColors.textTertiary),
                 ),
@@ -1103,11 +1104,10 @@ class _InviteCardState extends State<_InviteCard> {
                   spacing: 8,
                   runSpacing: 8,
                   children: <Widget>[
-                    for (final (int h, String label, String hint)
-                        in _masterDurations)
+                    for (final int h in _masterDurations)
                       _MasterDurChip(
-                        label: label,
-                        hint: hint,
+                        label: _durLabel(context, h),
+                        hint: h == 1 ? context.l10n.guestDurTestHint : '',
                         on: _testHours == h,
                         onTap: () => setState(() => _testHours = h),
                       ),
@@ -1124,8 +1124,8 @@ class _InviteCardState extends State<_InviteCard> {
           Row(
             children: <Widget>[
               _FlowTab(
-                label: 'Ensemble',
-                hint: '5 h · tu gardes tes chaînes',
+                label: context.l10n.guestFlowTogether,
+                hint: context.l10n.guestFlowTogetherHint,
                 on: !lend,
                 onTap: () => setState(() {
                   _flow = 'together';
@@ -1134,8 +1134,8 @@ class _InviteCardState extends State<_InviteCard> {
               ),
               const SizedBox(width: 10),
               _FlowTab(
-                label: 'Prêter',
-                hint: '24-48 h · tu passes en pause',
+                label: context.l10n.guestFlowLend,
+                hint: context.l10n.guestFlowLendHint,
                 on: lend,
                 onTap: () => setState(() {
                   _flow = 'lend';
@@ -1171,7 +1171,7 @@ class _InviteCardState extends State<_InviteCard> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Donne ce code à ton ami — valable 48 h.',
+              context.l10n.guestCodeShareHint,
               style: AppTextStyles.bodyMedium
                   .copyWith(fontSize: 12, color: AppColors.textTertiary),
             ),
@@ -1183,8 +1183,10 @@ class _InviteCardState extends State<_InviteCard> {
               onPressed: _busy ? null : _generate,
               icon: const Icon(Icons.qr_code_2_rounded, size: 18),
               label: Text(_busy
-                  ? 'Patiente…'
-                  : (_code == null ? 'Générer un code' : 'Nouveau code')),
+                  ? context.l10n.guestWait
+                  : (_code == null
+                      ? context.l10n.guestGenerateCode
+                      : context.l10n.guestNewCode)),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accent,
                 foregroundColor: AppColors.voidSurface,
@@ -1194,7 +1196,7 @@ class _InviteCardState extends State<_InviteCard> {
           ),
           const SizedBox(height: 14),
           Text(
-            '— ou active-le directement par son identifiant —',
+            context.l10n.guestOrActivateById,
             textAlign: TextAlign.center,
             style: AppTextStyles.bodyMedium
                 .copyWith(fontSize: 12, color: AppColors.textTertiary),
@@ -1209,9 +1211,7 @@ class _InviteCardState extends State<_InviteCard> {
               border: Border.all(color: AppColors.border),
             ),
             child: Text(
-              'Tu prêtes TON abonnement complet. Pendant le prêt, toi tu es en '
-              'pause. À la fin, ça revient tout seul sur ton appareil (ou tu le '
-              'reprends quand tu veux).',
+              context.l10n.guestLendExplain,
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 12,
                 color: AppColors.textSecondary,
@@ -1223,15 +1223,15 @@ class _InviteCardState extends State<_InviteCard> {
           Row(
             children: <Widget>[
               _DurChip(
-                label: '24 h',
-                hint: 'max',
+                label: context.l10n.guestDur24h,
+                hint: context.l10n.guestDurMaxHint,
                 on: _lendHours == 24,
                 onTap: () => setState(() => _lendHours = 24),
               ),
               const SizedBox(width: 10),
               _DurChip(
-                label: '48 h',
-                hint: 'max',
+                label: context.l10n.guestDur48h,
+                hint: context.l10n.guestDurMaxHint,
                 on: _lendHours == 48,
                 onTap: () => setState(() => _lendHours = 48),
               ),
@@ -1248,7 +1248,7 @@ class _InviteCardState extends State<_InviteCard> {
             letterSpacing: 1.2,
           ),
           decoration: InputDecoration(
-            hintText: 'Identifiant de l’ami',
+            hintText: context.l10n.guestFriendIdHint,
             filled: true,
             fillColor: AppColors.surfaceHigh,
             border: OutlineInputBorder(
@@ -1264,7 +1264,9 @@ class _InviteCardState extends State<_InviteCard> {
               ? FilledButton.icon(
                   onPressed: _busy ? null : _lend,
                   icon: const Icon(Icons.volunteer_activism_rounded, size: 18),
-                  label: Text(_busy ? 'Patiente…' : 'Prêter mon abonnement'),
+                  label: Text(_busy
+                      ? context.l10n.guestWait
+                      : context.l10n.guestLendButton),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.accent,
                     foregroundColor: AppColors.voidSurface,
@@ -1274,7 +1276,9 @@ class _InviteCardState extends State<_InviteCard> {
               : OutlinedButton.icon(
                   onPressed: _busy ? null : _grantByMac,
                   icon: const Icon(Icons.bolt_rounded, size: 18),
-                  label: Text(_busy ? 'Patiente…' : 'Activer par identifiant'),
+                  label: Text(_busy
+                      ? context.l10n.guestWait
+                      : context.l10n.guestActivateById),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.accent,
                     side:

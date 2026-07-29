@@ -4020,5 +4020,439 @@
   "tvNextEpisode": "Épisode suivant",
   "@tvNextEpisode": {
     "description": "Pastille « Épisode suivant » sur les 30 dernières secondes d'un épisode (lecteur TV)"
+  },
+  "guestScreenTitle": "Mode invité",
+  "@guestScreenTitle": {
+    "description": "Titre de l’écran mode invité (AppBar)."
+  },
+  "guestConsoleTitle": "Console de test",
+  "@guestConsoleTitle": {
+    "description": "Titre de l’AppBar en mode console maître (build dédié)."
+  },
+  "guestConsoleHeadline": "Console de test — codes & accès illimités",
+  "@guestConsoleHeadline": {
+    "description": "Gros titre de la console de test maître."
+  },
+  "guestConsoleIntro": "Génère un code ou active quelqu’un par son identifiant : il reçoit un accès complet le temps du test (1 h…), autant de fois que tu veux.",
+  "@guestConsoleIntro": {
+    "description": "Texte d’intro de la console de test (envoi de codes/accès illimités)."
+  },
+  "guestConsoleNotMasterTitle": "Cette MAC n’est pas encore « maître »",
+  "@guestConsoleNotMasterTitle": {
+    "description": "Encart console : cette MAC n’est pas encore un compte maître."
+  },
+  "guestConsoleNotMasterBody": "Ajoute cet identifiant dans le panel (Comptes maîtres) pour débloquer l’envoi de tests : {mac}",
+  "@guestConsoleNotMasterBody": {
+    "description": "Encart console : comment débloquer l’envoi de tests, avec l’identifiant (MAC) de l’appareil.",
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "guestIntroTitle": "Invité, ou tu as ton propre code ?",
+  "@guestIntroTitle": {
+    "description": "Titre d’intro de l’écran invité."
+  },
+  "guestIntroBody": "Un ami t’a invité ? Tape son code, ou envoie-lui ton identifiant pour qu’il t’active à distance. Tu regardes avec lui, puis tu pourras t’abonner pour continuer.",
+  "@guestIntroBody": {
+    "description": "Texte d’intro de l’écran invité : code ou envoi d’identifiant."
+  },
+  "guestPassModeLend": "Abonnement prêté",
+  "@guestPassModeLend": {
+    "description": "Bandeau pass invité : mode « abonnement prêté »."
+  },
+  "guestPassModeTest": "Essai",
+  "@guestPassModeTest": {
+    "description": "Bandeau pass invité : mode « essai » (test)."
+  },
+  "guestPassModeTogether": "On regarde ensemble",
+  "@guestPassModeTogether": {
+    "description": "Bandeau pass invité : mode « on regarde ensemble »."
+  },
+  "guestPassEnded": "Ton accès invité est terminé.",
+  "@guestPassEnded": {
+    "description": "Bandeau pass invité : le pass est terminé."
+  },
+  "guestPassLeftHours": "Encore {hours}h {minutes} min.",
+  "@guestPassLeftHours": {
+    "description": "Bandeau pass invité : temps restant (heures + minutes, minutes déjà formatées sur 2 chiffres).",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "guestPassLeftMinutes": "Encore {minutes} min.",
+  "@guestPassLeftMinutes": {
+    "description": "Bandeau pass invité : temps restant (minutes seulement).",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "guestSharedChannel": "Chaîne partagée : {channel}",
+  "@guestSharedChannel": {
+    "description": "Bandeau pass invité : nom de la chaîne partagée.",
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "guestInvitedBy": "Invité par {inviter}",
+  "@guestInvitedBy": {
+    "description": "Bandeau pass invité : identifiant du parrain.",
+    "placeholders": {
+      "inviter": {
+        "type": "String"
+      }
+    }
+  },
+  "guestLoanBannerTitle": "Tu as prêté ton abonnement",
+  "@guestLoanBannerTitle": {
+    "description": "Bandeau propriétaire : abonnement actuellement prêté."
+  },
+  "guestLoanLentTo": "Prêté à {name}.",
+  "@guestLoanLentTo": {
+    "description": "Bandeau propriétaire : à qui l’abonnement est prêté.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "guestLoanReturnImminent": "Retour imminent.",
+  "@guestLoanReturnImminent": {
+    "description": "Bandeau propriétaire : le prêt revient d’un instant à l’autre."
+  },
+  "guestLoanReturnInHours": "Retour auto dans {hours}h {minutes}.",
+  "@guestLoanReturnInHours": {
+    "description": "Bandeau propriétaire : retour auto du prêt (heures + minutes, minutes déjà formatées sur 2 chiffres).",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "String"
+      }
+    }
+  },
+  "guestLoanReturnInMinutes": "Retour auto dans {minutes} min.",
+  "@guestLoanReturnInMinutes": {
+    "description": "Bandeau propriétaire : retour auto du prêt (minutes seulement).",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "guestReclaiming": "Reprise…",
+  "@guestReclaiming": {
+    "description": "Bouton Reprendre pendant l’opération (busy)."
+  },
+  "guestReclaimButton": "Reprendre mon abonnement",
+  "@guestReclaimButton": {
+    "description": "Bouton : reprendre son abonnement prêté."
+  },
+  "guestReclaimedSnack": "Abonnement repris — c’est de nouveau à toi. 👍",
+  "@guestReclaimedSnack": {
+    "description": "Snackbar après reprise réussie de l’abonnement."
+  },
+  "guestBlackboxTitle": "Boîte noire — diagnostic",
+  "@guestBlackboxTitle": {
+    "description": "Titre de la boîte noire (diagnostic sécurité, console maître)."
+  },
+  "guestBlackboxScanning": "Analyse active en cours… (façade, liste, chaîne)",
+  "@guestBlackboxScanning": {
+    "description": "Boîte noire : analyse en cours."
+  },
+  "guestBlackboxUnreachable": "Backend injoignable — réessaie dans un instant.",
+  "@guestBlackboxUnreachable": {
+    "description": "Boîte noire : backend injoignable."
+  },
+  "guestBlackboxAllGreen": "Tout est vert ✓ — copie VIP, fournisseur aveugle.",
+  "@guestBlackboxAllGreen": {
+    "description": "Boîte noire : verdict tout vert."
+  },
+  "guestBlackboxFix": "À corriger — suis les conseils sous les points ambre/rouge.",
+  "@guestBlackboxFix": {
+    "description": "Boîte noire : verdict à corriger."
+  },
+  "guestBlackboxFact1": "Aucune structure (famille/test) n’est envoyée au fournisseur.",
+  "@guestBlackboxFact1": {
+    "description": "Boîte noire : garantie d’architecture n°1 (rien n’est envoyé au fournisseur)."
+  },
+  "guestBlackboxFact2": "La liste des maîtres vit uniquement dans le panel.",
+  "@guestBlackboxFact2": {
+    "description": "Boîte noire : garantie d’architecture n°2 (liste des maîtres dans le panel)."
+  },
+  "guestBlackboxFact3": "Chaque test est coupé automatiquement à l’échéance.",
+  "@guestBlackboxFact3": {
+    "description": "Boîte noire : garantie d’architecture n°3 (coupure auto des tests)."
+  },
+  "guestRedeemTitle": "J’ai un code",
+  "@guestRedeemTitle": {
+    "description": "Carte « j’ai un code » : titre."
+  },
+  "guestRedeemSubtitle": "Un ami t’a donné un code à 6 chiffres ? Tape-le ici.",
+  "@guestRedeemSubtitle": {
+    "description": "Carte « j’ai un code » : sous-titre."
+  },
+  "guestRedeemEnterSixDigits": "Entre les 6 chiffres du code.",
+  "@guestRedeemEnterSixDigits": {
+    "description": "Erreur de saisie : il faut les 6 chiffres du code."
+  },
+  "guestRedeemSuccess": "C’est bon ! Profite du programme. À la fin, tu pourras t’abonner pour continuer. 🎉",
+  "@guestRedeemSuccess": {
+    "description": "Message de succès après activation d’un code invité."
+  },
+  "guestErrCodeInvalid": "Code inconnu. Vérifie les 6 chiffres.",
+  "@guestErrCodeInvalid": {
+    "description": "Erreur redeem : code inconnu."
+  },
+  "guestErrCodeUsed": "Ce code a déjà été utilisé.",
+  "@guestErrCodeUsed": {
+    "description": "Erreur redeem : code déjà utilisé."
+  },
+  "guestErrCodeExpired": "Ce code a expiré. Demande-en un nouveau.",
+  "@guestErrCodeExpired": {
+    "description": "Erreur redeem : code expiré."
+  },
+  "guestErrOwnCode": "C’est ton propre code 🙂",
+  "@guestErrOwnCode": {
+    "description": "Erreur redeem : l’utilisateur tape son propre code."
+  },
+  "guestErrIssuerNotPaid": "L’abonnement de ton ami n’est plus actif.",
+  "@guestErrIssuerNotPaid": {
+    "description": "Erreur redeem : l’abonnement du parrain n’est plus actif."
+  },
+  "guestErrIssuerQuota": "Ton ami a atteint ses invitations de la semaine.",
+  "@guestErrIssuerQuota": {
+    "description": "Erreur redeem : le parrain a épuisé ses invitations hebdo."
+  },
+  "guestErrAlreadyActive": "Ton appareil a déjà un accès actif.",
+  "@guestErrAlreadyActive": {
+    "description": "Erreur redeem : l’appareil a déjà un accès actif."
+  },
+  "guestErrAlreadyUsedOnce": "Tu as déjà profité d’un pass gratuit. Pour continuer, abonne-toi.",
+  "@guestErrAlreadyUsedOnce": {
+    "description": "Erreur redeem : le pass gratuit a déjà été consommé."
+  },
+  "guestErrConnection": "Connexion impossible. Réessaie.",
+  "@guestErrConnection": {
+    "description": "Erreur réseau générique (redeem/invite)."
+  },
+  "guestErrRedeemGeneric": "Impossible d’activer ce code.",
+  "@guestErrRedeemGeneric": {
+    "description": "Erreur redeem générique."
+  },
+  "guestWait": "Patiente…",
+  "@guestWait": {
+    "description": "Libellé de bouton pendant une action en cours."
+  },
+  "guestRedeemDone": "Activé",
+  "@guestRedeemDone": {
+    "description": "Bouton « j’ai un code » une fois l’accès activé."
+  },
+  "guestRedeemButton": "Activer mon accès",
+  "@guestRedeemButton": {
+    "description": "Bouton : activer son accès avec le code."
+  },
+  "guestShareMacTitle": "Pas de code ? Envoie ton identifiant",
+  "@guestShareMacTitle": {
+    "description": "Carte « envoyer ma MAC » : titre."
+  },
+  "guestShareMacSubtitle": "Montre ton identifiant à celui qui t’invite : il t’active à distance, tu n’as rien d’autre à faire.",
+  "@guestShareMacSubtitle": {
+    "description": "Carte « envoyer ma MAC » : sous-titre."
+  },
+  "guestShareMacWhatsApp": "Salut ! Invite-moi sur l’appli : mon identifiant est {mac}",
+  "@guestShareMacWhatsApp": {
+    "description": "Message WhatsApp pré-rempli pour envoyer son identifiant au parrain.",
+    "placeholders": {
+      "mac": {
+        "type": "String"
+      }
+    }
+  },
+  "guestInviteTitle": "Inviter un ami",
+  "@guestInviteTitle": {
+    "description": "Carte inviter : titre pour un abonné."
+  },
+  "guestInviteTestTitle": "Envoyer un test",
+  "@guestInviteTestTitle": {
+    "description": "Carte inviter : titre pour un compte maître (envoi de tests)."
+  },
+  "guestInviteSubtitle": "Deux façons de partager : regarder ensemble, ou lui prêter ton abonnement.",
+  "@guestInviteSubtitle": {
+    "description": "Carte inviter : sous-titre pour un abonné (ensemble ou prêt)."
+  },
+  "guestInviteMasterSubtitle": "Mode maître : envoie un test à qui tu veux, autant que tu veux.",
+  "@guestInviteMasterSubtitle": {
+    "description": "Carte inviter : sous-titre pour un compte maître."
+  },
+  "guestMasterBanner": "Compte maître — tests illimités",
+  "@guestMasterBanner": {
+    "description": "Bandeau compte maître : tests illimités."
+  },
+  "guestAccessDuration": "Durée de l’accès",
+  "@guestAccessDuration": {
+    "description": "Libellé au-dessus des puces de durée (console maître)."
+  },
+  "guestDur1h": "1 h",
+  "@guestDur1h": {
+    "description": "Durée maître : 1 heure."
+  },
+  "guestDur1Month": "1 mois",
+  "@guestDur1Month": {
+    "description": "Durée maître : 1 mois."
+  },
+  "guestDur2Months": "2 mois",
+  "@guestDur2Months": {
+    "description": "Durée maître : 2 mois."
+  },
+  "guestDur6Months": "6 mois",
+  "@guestDur6Months": {
+    "description": "Durée maître : 6 mois."
+  },
+  "guestDur1Year": "1 an",
+  "@guestDur1Year": {
+    "description": "Durée maître : 1 an."
+  },
+  "guestDurHours": "{hours} h",
+  "@guestDurHours": {
+    "description": "Durée maître générique en heures (repli).",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "guestDurTestHint": "test",
+  "@guestDurTestHint": {
+    "description": "Sous-libellé de la puce 1 h (test)."
+  },
+  "guestDur24h": "24 h",
+  "@guestDur24h": {
+    "description": "Puce de durée de prêt : 24 h."
+  },
+  "guestDur48h": "48 h",
+  "@guestDur48h": {
+    "description": "Puce de durée de prêt : 48 h."
+  },
+  "guestDurMaxHint": "max",
+  "@guestDurMaxHint": {
+    "description": "Sous-libellé des puces de prêt (durée max)."
+  },
+  "guestFlowTogether": "Ensemble",
+  "@guestFlowTogether": {
+    "description": "Onglet de flux : regarder ensemble."
+  },
+  "guestFlowTogetherHint": "5 h · tu gardes tes chaînes",
+  "@guestFlowTogetherHint": {
+    "description": "Sous-libellé de l’onglet ensemble (5 h, on garde ses chaînes)."
+  },
+  "guestFlowLend": "Prêter",
+  "@guestFlowLend": {
+    "description": "Onglet de flux : prêter son abonnement."
+  },
+  "guestFlowLendHint": "24-48 h · tu passes en pause",
+  "@guestFlowLendHint": {
+    "description": "Sous-libellé de l’onglet prêter (24-48 h, pause)."
+  },
+  "guestCodeShareHint": "Donne ce code à ton ami — valable 48 h.",
+  "@guestCodeShareHint": {
+    "description": "Sous le code généré : le donner à l’ami, validité 48 h."
+  },
+  "guestGenerateCode": "Générer un code",
+  "@guestGenerateCode": {
+    "description": "Bouton : générer un code d’invitation."
+  },
+  "guestNewCode": "Nouveau code",
+  "@guestNewCode": {
+    "description": "Bouton : générer un nouveau code (un code existe déjà)."
+  },
+  "guestOrActivateById": "— ou active-le directement par son identifiant —",
+  "@guestOrActivateById": {
+    "description": "Séparateur : ou activer directement par identifiant."
+  },
+  "guestLendExplain": "Tu prêtes TON abonnement complet. Pendant le prêt, toi tu es en pause. À la fin, ça revient tout seul sur ton appareil (ou tu le reprends quand tu veux).",
+  "@guestLendExplain": {
+    "description": "Encart d’explication du prêt d’abonnement (pause + retour auto)."
+  },
+  "guestLendButton": "Prêter mon abonnement",
+  "@guestLendButton": {
+    "description": "Bouton : prêter son abonnement."
+  },
+  "guestActivateById": "Activer par identifiant",
+  "@guestActivateById": {
+    "description": "Bouton : activer l’ami par son identifiant."
+  },
+  "guestFriendIdHint": "Identifiant de l’ami",
+  "@guestFriendIdHint": {
+    "description": "Placeholder du champ identifiant de l’ami."
+  },
+  "guestEnterFriendId": "Entre l’identifiant de ton ami.",
+  "@guestEnterFriendId": {
+    "description": "Erreur de saisie : identifiant de l’ami manquant."
+  },
+  "guestGrantSentTogether": "Activé ! Ton ami a 5 h pour regarder avec toi. 🎉",
+  "@guestGrantSentTogether": {
+    "description": "Succès : ami activé pour 5 h (flux ensemble)."
+  },
+  "guestGrantSentMaster": "Envoyé ! Ton contact a {duration} d’accès complet. 🎉",
+  "@guestGrantSentMaster": {
+    "description": "Succès maître : test envoyé, avec la durée en toutes lettres.",
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "guestLendSuccess": "Prêté ! Ton ami a {hours} h. Toi, tu es en pause — ça te revient tout seul à la fin (ou reprends quand tu veux).",
+  "@guestLendSuccess": {
+    "description": "Succès : abonnement prêté pour N heures.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "guestErrNotPaid": "Le partage est réservé aux abonnés. Active ton abonnement d’abord.",
+  "@guestErrNotPaid": {
+    "description": "Erreur invite : partage réservé aux abonnés."
+  },
+  "guestErrQuotaSelf": "Tu as utilisé tes invitations de la semaine. Ça se renouvelle bientôt.",
+  "@guestErrQuotaSelf": {
+    "description": "Erreur invite : quota d’invitations hebdo atteint."
+  },
+  "guestErrDeviceActive": "Cet appareil a déjà un accès actif.",
+  "@guestErrDeviceActive": {
+    "description": "Erreur invite : l’appareil cible a déjà un accès actif."
+  },
+  "guestErrDeviceUsedOnce": "Cet appareil a déjà profité d’un pass gratuit.",
+  "@guestErrDeviceUsedOnce": {
+    "description": "Erreur invite : l’appareil cible a déjà consommé son pass gratuit."
+  },
+  "guestErrLoanActive": "Tu as déjà un prêt en cours. Reprends-le d’abord pour en refaire un.",
+  "@guestErrLoanActive": {
+    "description": "Erreur invite : un prêt est déjà en cours."
+  },
+  "guestErrSameDevice": "C’est ton propre appareil 🙂",
+  "@guestErrSameDevice": {
+    "description": "Erreur invite : l’utilisateur cible son propre appareil."
+  },
+  "guestErrOwnAddress": "C’est ta propre adresse 🙂",
+  "@guestErrOwnAddress": {
+    "description": "Erreur invite : l’utilisateur tape sa propre adresse."
+  },
+  "guestErrGeneric": "Action impossible pour le moment.",
+  "@guestErrGeneric": {
+    "description": "Erreur invite générique."
   }
 }
