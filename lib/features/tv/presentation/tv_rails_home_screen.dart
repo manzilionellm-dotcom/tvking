@@ -28,6 +28,9 @@ import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+// RestartWidget : le vrai « rechargement logiciel » de l'app (source +
+// abonnement re-synchronisés, accueil reconstruit) — pour le bouton ⟳.
+import 'tv_app.dart' show RestartWidget;
 import 'tv_components.dart';
 import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
@@ -36,6 +39,7 @@ import 'tv_live_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_recordings_screen.dart';
+import 'tv_screensaver.dart';
 import 'tv_search_screen.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
@@ -155,7 +159,11 @@ class TvRailsHomeScreen extends StatelessWidget {
         if (didPop) return;
         _confirmExit(context);
       },
-      child: Container(
+      // ÉCRAN DE VEILLE anti burn-in (parité accueil Classique) : sans lui,
+      // une box laissée sur ce template marquait la dalle OLED. Le watcher
+      // ne s'arme que quand l'accueil est la route visible (garde interne).
+      child: TvScreensaverWatcher(
+        child: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -181,7 +189,12 @@ class TvRailsHomeScreen extends StatelessWidget {
                       const Spacer(),
                       _TopIcon(
                           icon: Icons.refresh_rounded,
-                          onSelect: () => _open(context, const TvLiveScreen())),
+                          // RELOAD réel : ce bouton ⟳ ouvrait « En direct »
+                          // (doublon du héro et de la tuile Direct) — rien ne
+                          // se rechargeait. On déclenche le rechargement
+                          // logiciel (même action que « Redémarrer » de la
+                          // boîte Quitter), conforme au rôle du bouton.
+                          onSelect: () => RestartWidget.restart(context)),
                       const SizedBox(width: 10),
                       _TopIcon(
                           icon: Icons.person_outline_rounded,
@@ -305,15 +318,15 @@ class TvRailsHomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   // ---- Rail FAVORIS EN DIRECT (vraie donnée) ----
-                  Text('Favoris en direct',
-                      style: TvTokens.ui(TvDimens.title,
-                          weight: FontWeight.w600, color: _rTitle)),
-                  const SizedBox(height: 8),
-                  const SizedBox(height: 168, child: _LiveFavoritesRail()),
+                  // Le TITRE vit désormais DANS le rail : sans favoris, le
+                  // bloc ENTIER se replie (avant, « Favoris en direct »
+                  // restait affiché au-dessus d'une zone vide).
+                  const _LiveFavoritesRail(),
                 ],
               ),
             ),
           ),
+        ),
         ),
       ),
     );
@@ -519,6 +532,13 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
   List<_FavSlot> _slots = <_FavSlot>[];
   bool _loading = true;
   StreamSubscription<Set<String>>? _favSub;
+  StreamSubscription<List<Channel>>? _chanSub;
+  StreamSubscription<void>? _epgSub;
+
+  /// Tic lent : le programme EN COURS et sa barre de progression sont
+  /// figés au moment du calcul — sans tic, une émission finie restait
+  /// affichée toute la soirée (patron MiniEpgNowNext, en plus espacé).
+  Timer? _ticker;
 
   // Défilement propre au rail : sert à REVENIR sur la chaîne quittée au retour
   // du lecteur (si sa carte a défilé hors écran).
@@ -537,12 +557,29 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
         FavoritesRepository.instance.favoritesStream.listen((Set<String> _) {
       _recompute();
     });
+    // Le rail dépend AUSSI de la PLAYLIST (requête SQL sur `channels`) : au
+    // boot il se calcule souvent AVANT la fin de l'ingestion (0 ligne en
+    // base → rail vide) et un changement de source n'émettait rien ici →
+    // favoris invisibles/périmés jusqu'au redémarrage. Même double écoute
+    // (favoris + chaînes) que l'écran « En direct » (tv_live_screen).
+    _chanSub = PlaylistRepository.instance.channelsStream
+        .listen((List<Channel> _) => _recompute());
+    // L'EPG s'importe APRÈS le 1er rendu (téléchargement XMLTV) : sans
+    // cette écoute, toutes les cartes restaient sur « En direct » sans
+    // programme jusqu'au prochain toggle ★ (patron tv_guide_screen).
+    _epgSub = EpgRepository.instance.changes.listen((_) => _recompute());
+    _ticker = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (_slots.isNotEmpty) _recompute();
+    });
     _recompute();
   }
 
   @override
   void dispose() {
     _favSub?.cancel();
+    _chanSub?.cancel();
+    _epgSub?.cancel();
+    _ticker?.cancel();
     _scroll.dispose();
     super.dispose();
   }
@@ -619,8 +656,17 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
     // RETOUR du lecteur : on DÉSIGNE la chaîne quittée pour que SA carte
     // reprenne le focus (on revient où on était, pas en haut de l'accueil).
     if (!mounted) return;
-    setState(() => _restoreId = playedId);
-    _scrollToId(playedId);
+    // Si la chaîne a été RETIRÉE des favoris PENDANT la lecture (★ dans le
+    // lecteur), sa carte n'existe plus : sans repli, AUCUN node ne reprenait
+    // le focus → télécommande muette au retour. On retombe sur la 1re carte.
+    final bool stillThere =
+        _slots.any((_FavSlot s) => s.channel.id == playedId);
+    final String? target = stillThere
+        ? playedId
+        : (_slots.isEmpty ? null : _slots.first.channel.id);
+    if (target == null) return; // plus aucun favori → rail replié
+    setState(() => _restoreId = target);
+    _scrollToId(target);
   }
 
   /// Amène la carte de [id] dans la vue (si besoin) pour qu'elle se construise
@@ -645,26 +691,43 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
   Widget build(BuildContext context) {
     if (_loading) return const SizedBox.shrink();
     if (_slots.isEmpty) return const SizedBox.shrink();
-    return ListView.separated(
-      controller: _scroll,
-      scrollDirection: Axis.horizontal,
-      itemCount: _slots.length,
-      separatorBuilder: (_, __) => const SizedBox(width: 14),
-      itemBuilder: (BuildContext context, int i) {
-        final _FavSlot slot = _slots[i];
-        // Clé STABLE (par id) : le focus SUIT la carte même si la liste change
-        // d'ordre pendant la lecture → la restauration du focus fonctionne.
-        return _FavCard(
-          key: ValueKey<String>(slot.channel.id),
-          slot: slot,
-          // Autofocus initial sur la 1re carte SEULEMENT si on ne revient pas du
-          // lecteur (sinon c'est la chaîne quittée qui doit reprendre le focus).
-          autofocus: _restoreId == null && i == 0,
-          restoreFocus: slot.channel.id == _restoreId,
-          onRestored: () => _restoreId = null,
-          onSelect: () => _play(i),
-        );
-      },
+    // Titre + liste dans le MÊME widget : sans favoris, tout se replie
+    // ensemble (le titre seul au-dessus du vide faisait « cassé »).
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text('Favoris en direct',
+            style: TvTokens.ui(TvDimens.title,
+                weight: FontWeight.w600, color: _rTitle)),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 168,
+          child: ListView.separated(
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            itemCount: _slots.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            itemBuilder: (BuildContext context, int i) {
+              final _FavSlot slot = _slots[i];
+              // Clé STABLE (par id) : le focus SUIT la carte même si la liste
+              // change d'ordre pendant la lecture → la restauration du focus
+              // fonctionne.
+              return _FavCard(
+                key: ValueKey<String>(slot.channel.id),
+                slot: slot,
+                // Autofocus initial sur la 1re carte SEULEMENT si on ne
+                // revient pas du lecteur (sinon c'est la chaîne quittée qui
+                // doit reprendre le focus).
+                autofocus: _restoreId == null && i == 0,
+                restoreFocus: slot.channel.id == _restoreId,
+                onRestored: () => _restoreId = null,
+                onSelect: () => _play(i),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

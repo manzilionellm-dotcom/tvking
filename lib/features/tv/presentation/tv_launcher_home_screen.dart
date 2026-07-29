@@ -46,6 +46,7 @@ import 'tv_movie_detail_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_recordings_screen.dart';
+import 'tv_screensaver.dart';
 import 'tv_search_screen.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
@@ -102,6 +103,13 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   List<Channel>? _byIdSource;
   Map<String, Channel>? _byIdCache;
 
+  /// Jeton anti-course (même patron que _FavoritesGrid) : deux événements
+  /// playlist/zapping rapprochés lancent deux _recomputeHero async — sans
+  /// jeton, le PLUS LENT (parti sur l'ANCIENNE liste de chaînes, avant un
+  /// changement de source) pouvait écraser le résultat frais et laisser en
+  /// héro une chaîne d'une source supprimée (aperçu/lecture morts).
+  int _heroGen = 0;
+
   Map<String, Channel> _byId(List<Channel> all) {
     if (!identical(all, _byIdSource)) {
       _byIdSource = all;
@@ -111,6 +119,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   }
 
   Future<void> _recomputeHero() async {
+    final int gen = ++_heroGen;
     final List<Channel> all = PlaylistRepository.instance.currentChannels;
     if (all.isEmpty) {
       if (mounted) setState(() => _hero = null);
@@ -150,6 +159,8 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
       }
     }
     hero ??= all.first;
+    // Seule la passe la plus RÉCENTE écrit (cf. _heroGen ci-dessus).
+    if (gen != _heroGen) return;
     if (mounted && (_hero?.id != hero.id || _heroFromHabit != habit)) {
       setState(() {
         _hero = hero;
@@ -230,7 +241,12 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
         if (didPop) return;
         _confirmExit();
       },
-      child: Container(
+      // ÉCRAN DE VEILLE anti burn-in (parité accueil Classique) : ce
+      // template garde un APERÇU VIDÉO permanent — sans veilleur, une box
+      // laissée 10 min sur l'accueil marquait la dalle OLED. Le watcher ne
+      // s'arme que quand l'accueil est la route visible (garde-fou interne).
+      child: TvScreensaverWatcher(
+        child: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -278,6 +294,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
               ),
             ),
           ),
+        ),
         ),
       ),
     );
@@ -542,18 +559,27 @@ class _FavoritesGrid extends StatefulWidget {
 class _FavoritesGridState extends State<_FavoritesGrid> {
   List<Channel> _favs = <Channel>[];
   StreamSubscription<Set<String>>? _sub;
+  StreamSubscription<List<Channel>>? _chanSub;
 
   @override
   void initState() {
     super.initState();
     _sub = FavoritesRepository.instance.favoritesStream
         .listen((Set<String> _) => _recompute());
+    // La grille dépend AUSSI de la PLAYLIST (requête SQL sur `channels`) :
+    // au boot elle se calcule souvent AVANT la fin de l'ingestion (0 ligne
+    // en base → grille vide) et un changement de source n'émettait rien ici
+    // → favoris invisibles/périmés jusqu'au redémarrage. Même double écoute
+    // (favoris + chaînes) que l'écran « En direct » (tv_live_screen).
+    _chanSub = PlaylistRepository.instance.channelsStream
+        .listen((List<Channel> _) => _recompute());
     _recompute();
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _chanSub?.cancel();
     super.dispose();
   }
 
@@ -723,16 +749,33 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
   void initState() {
     super.initState();
     _deferred = Timer(const Duration(seconds: 4), () => unawaited(_load()));
+    // Le catalogue VOD est un ChangeNotifier (stale-while-revalidate) : le
+    // rafraîchissement réseau silencieux et l'invalidation M3U (changement
+    // de source) notifient APRÈS notre chargement unique — sans écoute, le
+    // rail restait vide (1er boot, catalogue arrivé du réseau ensuite) ou
+    // périmé (ancienne source) jusqu'au redémarrage. Le _load de relance
+    // répond depuis la mémoire du dépôt : aucun re-réseau.
+    VodRepository.instance.addListener(_onCatalogChanged);
+  }
+
+  void _onCatalogChanged() {
+    if (mounted) unawaited(_load());
   }
 
   @override
   void dispose() {
     _deferred?.cancel();
+    VodRepository.instance.removeListener(_onCatalogChanged);
     super.dispose();
   }
 
+  /// Jeton anti-course (patron _FavoritesGrid) : timer différé + notification
+  /// catalogue peuvent se chevaucher — seule la passe la plus récente écrit.
+  int _loadGen = 0;
+
   Future<void> _load() async {
     if (!mounted) return;
+    final int gen = ++_loadGen;
     try {
       final List<VodMovie> all = await VodRepository.instance.fetchMovies();
       // « Derniers ajoutés » : id numérique DÉCROISSANT (les panels Xtream
@@ -767,14 +810,15 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
           bubbleUp(keep - 1);
         }
       }
-      if (mounted) {
+      if (mounted && gen == _loadGen) {
         setState(() {
           _movies = top;
           _loaded = true;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _loaded = true); // pas de VOD → rail replié
+      // pas de VOD → rail replié
+      if (mounted && gen == _loadGen) setState(() => _loaded = true);
     }
   }
 
