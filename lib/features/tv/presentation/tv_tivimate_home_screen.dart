@@ -35,6 +35,7 @@ import 'tv_films_screen.dart';
 import 'tv_home_template_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_recordings_screen.dart';
+import 'tv_screensaver.dart';
 import 'tv_search_screen.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
@@ -142,7 +143,18 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       _byGroup = byGroup;
       if (!_groups.contains(_group)) _group = _kAllGroup;
       _visible = _channelsFor(_group);
-      _preview.value ??= _visible.isNotEmpty ? _visible.first : null;
+      // RESYNC / CHANGEMENT de playlist : l'aperçu peut pointer une chaîne
+      // qui n'existe plus (ou une instance périmée). Le `??=` d'avant ne le
+      // réalignait JAMAIS → l'en-tête gardait une « chaîne fantôme » (nom +
+      // EPG de l'ancienne playlist) jusqu'au prochain cran de D-pad. On
+      // resynchronise sur l'instance fraîche, ou la 1re chaîne visible.
+      final String? previewId = _preview.value?.id;
+      final int keep = previewId == null
+          ? -1
+          : _visible.indexWhere((Channel c) => c.id == previewId);
+      _preview.value = keep >= 0
+          ? _visible[keep]
+          : (_visible.isNotEmpty ? _visible.first : null);
       _loading = false;
     });
   }
@@ -210,13 +222,31 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     _selectGroup(g);
   }
 
+  /// Le Retour qui POSE le groupe est consommé au KeyDown ; il faut AUSSI
+  /// avaler son KeyUp. Sinon (le mode étant déjà terminé au relâchement,
+  /// `_reorderGroup == null`), l'UP non géré remontait à Android qui
+  /// déclenchait le back SYSTÈME → `_onBack()` déplaçait le focus vers le
+  /// rail (voire ouvrait la boîte « Quitter ») juste après avoir posé.
+  bool _swallowBackUp = false;
+
   /// Mode déplacement : HAUT/BAS déplacent le groupe saisi ; GAUCHE/DROITE
   /// neutralisées ; Retour/Échap pose.
   KeyEventResult _onReorderKey(FocusNode node, KeyEvent event) {
+    final LogicalKeyboardKey k = event.logicalKey;
+    final bool isBack = k == LogicalKeyboardKey.goBack ||
+        k == LogicalKeyboardKey.escape ||
+        k == LogicalKeyboardKey.browserBack;
+    if (event is KeyUpEvent) {
+      // Relâchement du Retour qui vient de poser le groupe (cf. doc de
+      // _swallowBackUp) : avalé, pour ne pas déclencher le back système.
+      if (isBack && _swallowBackUp) {
+        _swallowBackUp = false;
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
     final String? rg = _reorderGroup;
     if (rg == null) return KeyEventResult.ignored;
-    if (event is KeyUpEvent) return KeyEventResult.ignored;
-    final LogicalKeyboardKey k = event.logicalKey;
     if (k == LogicalKeyboardKey.arrowUp) {
       if (_canMoveUp(rg)) _moveReorder(rg, -1);
       return KeyEventResult.handled;
@@ -229,9 +259,8 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
         k == LogicalKeyboardKey.arrowRight) {
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.goBack ||
-        k == LogicalKeyboardKey.escape ||
-        k == LogicalKeyboardKey.browserBack) {
+    if (isBack) {
+      _swallowBackUp = true;
       _endReorder();
       return KeyEventResult.handled;
     }
@@ -317,7 +346,12 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
         if (didPop) return;
         await _onBack();
       },
-      child: Container(
+      // ÉCRAN DE VEILLE anti burn-in (parité avec les accueils Classique,
+      // Lanceur et Rails) : une box laissée sur cet accueil affichait le
+      // rail et la grille en continu → marquage OLED. Le watcher ne s'arme
+      // que quand l'accueil est la route visible (garde-fou interne).
+      child: TvScreensaverWatcher(
+        child: Container(
         color: _tmBg,
         child: Material(
           type: MaterialType.transparency,
@@ -331,6 +365,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
               ],
             ),
           ),
+        ),
         ),
       ),
     );
@@ -591,32 +626,38 @@ class _RailIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Onglet COURANT (pas de onSelect) : rendu DIRECT, sans TvFocusBuilder.
+    // Passer par `enabled: false` enveloppait l'icône dans le voile
+    // « désactivé » de TvFocusable (Opacity 0.45) → le pill bleu accent de
+    // l'onglet ACTIF apparaissait délavé. Même rendu, toujours non focusable.
+    if (onSelect == null) return _pill(focused: false);
     return TvFocusBuilder(
       scale: TvFocusScale.small,
-      enabled: onSelect != null,
       onSelect: onSelect,
-      builder: (BuildContext context, bool focused) {
-        final Color bg = focused
-            ? _tmText // pill blanc au focus
-            : active
-                ? _tmAccent
-                : Colors.transparent;
-        final Color fg = focused
-            ? _tmBg
-            : active
-                ? _tmText
-                : _tmText3;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Icon(icon, size: 26, color: fg),
-        );
-      },
+      builder: (BuildContext context, bool focused) => _pill(focused: focused),
+    );
+  }
+
+  Widget _pill({required bool focused}) {
+    final Color bg = focused
+        ? _tmText // pill blanc au focus
+        : active
+            ? _tmAccent
+            : Colors.transparent;
+    final Color fg = focused
+        ? _tmBg
+        : active
+            ? _tmText
+            : _tmText3;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 140),
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Icon(icon, size: 26, color: fg),
     );
   }
 }

@@ -98,16 +98,26 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
   Future<void> _loadMore() async {
     if (_loading || !_hasMore) return;
     _loading = true;
-    final ({List<Channel> channels, int nextCursor, bool hasMore}) page =
-        await PlaylistRepository.instance
-            .getChannelsPage(afterLocalId: _cursor, limit: _kPageSize);
-    if (!mounted) return;
-    setState(() {
-      _channels.addAll(page.channels);
-      _cursor = page.nextCursor;
-      _hasMore = page.hasMore;
-    });
-    _loading = false;
+    // try/finally : sans lui, une exception SQLite (ou un démontage pendant
+    // l'await) laissait _loading=true → plus AUCUNE page ne se chargeait,
+    // spinner éternel. Même filet que le guide grid/timeline.
+    try {
+      final ({List<Channel> channels, int nextCursor, bool hasMore}) page =
+          await PlaylistRepository.instance
+              .getChannelsPage(afterLocalId: _cursor, limit: _kPageSize);
+      if (!mounted) return;
+      setState(() {
+        _channels.addAll(page.channels);
+        _cursor = page.nextCursor;
+        _hasMore = page.hasMore;
+      });
+    } catch (_) {
+      // Échec de lecture : on arrête la pagination proprement ; l'état
+      // « Aucune chaîne » ou la liste déjà chargée reste utilisable.
+      if (mounted) setState(() => _hasMore = false);
+    } finally {
+      _loading = false;
+    }
   }
 
   void _shiftWindow(int minutes) {
@@ -199,7 +209,14 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
       color: _tmBg,
       child: Material(
         type: MaterialType.transparency,
-        child: SafeArea(
+        // Scaffold TRANSPARENT obligatoire : les toasts (« Programme à
+        // venir », « Replay indisponible ») passent par ScaffoldMessenger,
+        // qui ne les AFFICHE que sur un Scaffold DESCENDANT — cette route
+        // n'en avait aucun, donc OK sur une case non lisible ne montrait
+        // RIEN (message avalé, ressenti « bouton mort »).
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
             child: Column(
@@ -268,17 +285,29 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
                   ],
                 ),
                 const SizedBox(height: 6),
+                // Libellé ALIGNÉ sur le vrai comportement : gauche/droite
+                // naviguent entre les cases (le décalage ±30 min se fait par
+                // les boutons ⟨ ⟩ ci-dessus) — l'ancien texte promettait
+                // « gauche/droite : ±30 min » et semblait donc « cassé ».
                 Text(
-                  'Haut/bas : chaîne · gauche/droite : ±30 min · OK : regarder',
+                  'Flèches : naviguer · OK : regarder / revoir · ⟨ ⟩ : ±30 min',
                   style: const TextStyle(color: _tmText3, fontSize: 12),
                 ),
                 const SizedBox(height: 8),
                 // ----- Lignes chaînes -----
                 Expanded(
                   child: _channels.isEmpty
-                      ? const Center(
-                          child:
-                              CircularProgressIndicator(color: _tmAccent))
+                      // Playlist VIDE : `hasMore` retombe à false dès la 1re
+                      // page → message clair au lieu d'un spinner INFINI
+                      // (l'écran semblait planté quand aucune chaîne n'était
+                      // chargée).
+                      ? Center(
+                          child: _hasMore
+                              ? const CircularProgressIndicator(
+                                  color: _tmAccent)
+                              : const Text('Aucune chaîne',
+                                  style: TextStyle(
+                                      color: _tmText2, fontSize: 18)))
                       : ListView.builder(
                           addAutomaticKeepAlives: false,
                           itemExtent: _rowH + 6,
@@ -311,6 +340,7 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
                 ),
               ],
             ),
+          ),
           ),
         ),
       ),
@@ -485,6 +515,12 @@ class _GuideRowState extends State<_GuideRow> {
                   AsyncSnapshot<List<(EpgProgram, bool)>> snap) {
                 final List<(EpgProgram, bool)> progs =
                     snap.data ?? const <(EpgProgram, bool)>[];
+                // « Aucune info » (parité TiviMate) : requête TERMINÉE et
+                // zéro programme dans la fenêtre → libellé discret. Avant,
+                // la piste restait muette et la grille semblait cassée pour
+                // les chaînes sans EPG.
+                final bool noData = progs.isEmpty &&
+                    snap.connectionState == ConnectionState.done;
                 return Stack(
                   clipBehavior: Clip.hardEdge,
                   children: <Widget>[
@@ -496,6 +532,12 @@ class _GuideRowState extends State<_GuideRow> {
                         ),
                       ),
                     ),
+                    if (noData)
+                      const Center(
+                        child: Text('Aucune info',
+                            style:
+                                TextStyle(color: _tmText3, fontSize: 12)),
+                      ),
                     for (final (EpgProgram, bool) e in progs)
                       _block(e.$1, e.$2),
                     if (widget.nowDx != null)
