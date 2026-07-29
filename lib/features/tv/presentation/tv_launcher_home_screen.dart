@@ -7,7 +7,8 @@
 //    • en haut à droite  : grille « Chaînes Favorites » (accès direct) ;
 //    • au centre         : 5 grandes tuiles — En direct, Films, Séries,
 //      Replay, Rechercher ;
-//    • en bas            : rail « Derniers films ajoutés ».
+//    • en bas            : rail « Derniers films ajoutés » + rangée
+//      « Reprendre » (dernières chaînes regardées — repliée sans historique).
 //  La STRUCTURE vient d'IBO (pattern UX standard IPTV) ; les COULEURS et la
 //  typo restent 100 % SEVEN (noir mat + or — jamais de clonage du thème
 //  violet, conformément au principe accepté par le client).
@@ -24,11 +25,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../security/data/parental_controls.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
@@ -290,6 +293,12 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                   }, onResume: () {
                     if (mounted) setState(() => _previewLive = true);
                   })),
+                  // ---- REPRENDRE (récemment regardé) ----
+                  // Hauteur INTRINSÈQUE (pas d'Expanded) : la rangée se
+                  // replie ENTIÈREMENT sans historique — aucun trou. La
+                  // lecture passe par _play (aperçu héro suspendu d'abord :
+                  // jamais 2 flux).
+                  _ResumeRail(onPlay: _play),
                 ],
               ),
             ),
@@ -917,6 +926,158 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
                   weight: FontWeight.w600, color: TvTokens.muted)),
         ),
       );
+}
+
+/// Rangée « Reprendre » : les dernières chaînes regardées, comme la rangée
+/// « Reprendre » de l'écran En direct (tv_live_screen). MÊME source et MÊMES
+/// règles : RecentlyWatchedRepository (IDs, plus récent d'abord), résolution
+/// par external_id (requête BORNÉE, jamais de scan du bouquet), filtre Mode
+/// Enfants, 8 cartes max. OK = lecture de la liste « récents » à l'index de
+/// la carte (mêmes paramètres que le rail du Direct), via _play de l'écran
+/// (l'aperçu héro est suspendu d'abord). Repliée ENTIÈREMENT quand vide.
+class _ResumeRail extends StatefulWidget {
+  const _ResumeRail({required this.onPlay});
+  final Future<void> Function(List<Channel> list, int index) onPlay;
+
+  @override
+  State<_ResumeRail> createState() => _ResumeRailState();
+}
+
+class _ResumeRailState extends State<_ResumeRail> {
+  List<Channel> _recent = const <Channel>[];
+  StreamSubscription<List<String>>? _sub;
+  StreamSubscription<List<Channel>>? _chanSub;
+
+  /// Même borne que la rangée « Reprendre » du Direct (~8 dernières chaînes).
+  static const int _kMax = 8;
+
+  /// Jeton anti-course (patron _FavoritesGrid) : deux événements rapprochés
+  /// (zapping + playlist) lancent deux _recompute — seule la passe la plus
+  /// récente écrit.
+  int _gen = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Historique en direct : chaque chaîne ouverte remonte en tête du rail.
+    _sub = RecentlyWatchedRepository.instance.stream
+        .listen((List<String> _) => _recompute());
+    // Même DOUBLE écoute que _FavoritesGrid : la résolution id→Channel
+    // dépend de la PLAYLIST (requête SQL sur `channels`) — au boot comme au
+    // changement de source, c'est ce flux qui rend le rail affichable/frais.
+    _chanSub = PlaylistRepository.instance.channelsStream
+        .listen((List<Channel> _) => _recompute());
+    // Mode Enfants : re-filtrage immédiat quand le parent (dés)active.
+    ParentalControls.instance.kidsMode.addListener(_recompute);
+    _recompute();
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _chanSub?.cancel();
+    ParentalControls.instance.kidsMode.removeListener(_recompute);
+    super.dispose();
+  }
+
+  Future<void> _recompute() async {
+    final int gen = ++_gen;
+    final List<String> ids = RecentlyWatchedRepository.instance.current;
+    if (ids.isEmpty) {
+      if (mounted) setState(() => _recent = const <Channel>[]);
+      return;
+    }
+    // Résolution BORNÉE par external_id (patron tv_live_screen), puis remise
+    // dans l'ordre HISTORIQUE (le plus récent d'abord), pas l'ordre playlist.
+    final Map<String, Channel> byId = <String, Channel>{
+      for (final Channel c in await PlaylistRepository.instance
+          .getChannelsByExternalIds(ids))
+        c.id: c,
+    };
+    final bool kids = ParentalControls.instance.kidsMode.value;
+    final List<Channel> out = <Channel>[];
+    for (final String id in ids) {
+      final Channel? c = byId[id];
+      if (c == null) continue; // chaîne disparue de la source → carte omise
+      if (kids && c.genre == ChannelGenre.adult) continue;
+      out.add(c);
+      if (out.length == _kMax) break;
+    }
+    if (mounted && gen == _gen) setState(() => _recent = out);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Repliée ENTIÈREMENT quand vide : ni titre orphelin, ni trou (le
+    // SizedBox.shrink ne réserve aucune hauteur dans la colonne).
+    if (_recent.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          // Même clé l10n que la rangée « Reprendre » du Direct, même style
+          // de titre que « DERNIERS FILMS AJOUTÉS » juste au-dessus.
+          Text(context.l10n.resumeEyebrow,
+              style: TvTokens.ui(12,
+                  weight: FontWeight.w700,
+                  color: TvTokens.mutedDim,
+                  spacing: 1.4)),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 64,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _recent.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (BuildContext c, int i) {
+                final Channel ch = _recent[i];
+                return TvFocusBuilder(
+                  scale: TvFocusScale.small,
+                  // OK = lecture : liste « récents » + index, comme le rail
+                  // du Direct (_openPlayerWith(recentList, i)).
+                  onSelect: () => widget.onPlay(_recent, i),
+                  builder: (BuildContext c, bool f) => Container(
+                    width: 210,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    // Même langage que les tuiles favorites du Lanceur
+                    // (fond tile, hairline, focus sel + liseré or).
+                    decoration: BoxDecoration(
+                      color: f ? TvTokens.sel : TvTokens.tile,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: f ? TvTokens.gold : TvTokens.hairline),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        // TvChannelLogo : décodage borné + monogramme de
+                        // repli intégrés (jamais de carte vide).
+                        TvChannelLogo(
+                            logoUrl: ch.logoUrl,
+                            label: ch.cleanName,
+                            size: 44,
+                            radius: 8),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(ch.cleanName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TvTokens.ui(12,
+                                  weight: FontWeight.w600,
+                                  color: TvTokens.text)),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Petit bouton-icône de la barre du haut (Compte, Réglages, Quitter…).

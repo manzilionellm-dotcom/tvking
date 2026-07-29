@@ -70,6 +70,20 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
   StreamSubscription<void>? _epgSub;
   int _epgGeneration = 0;
 
+  // ----- COMPTABILITÉ DE FOCUS (décalage ±30 min) -----
+  // Au shift, les blocs sont RECONSTRUITS (nouvelle fenêtre → nouvelles
+  // requêtes EPG) : sans comptabilité, Flutter réutilisait l'élément au même
+  // RANG dans la pile et le focus atterrissait sur une émission quelconque.
+  // On mémorise donc AVANT le shift (chaîne focusée, heure focusée = milieu
+  // de la partie visible du bloc) ; après reconstruction, la ligne de la
+  // MÊME chaîne redonne le focus au bloc couvrant cette heure (repli :
+  // premier bloc visible de la ligne, sinon cellule chaîne).
+  String? _focusedChannelId; // chaîne du bloc actuellement focusé
+  EpgProgram? _focusedProgram; // émission du bloc actuellement focusé
+  String? _restoreChannelId; // restauration en attente (posée par le shift)
+  int? _restoreTimeMs;
+  int _restoreGen = 0; // chaque shift ré-arme la restauration (cf. _GuideRow)
+
   @override
   void initState() {
     super.initState();
@@ -128,7 +142,46 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
     DateTime next = _windowStart.add(Duration(minutes: minutes));
     if (next.isBefore(lo)) next = lo;
     if (next.isAfter(hi)) next = hi;
-    if (next != _windowStart) setState(() => _windowStart = next);
+    if (next == _windowStart) return;
+    // Comptabilité de focus : si un bloc est focusé au moment du shift
+    // (chips activées au TACTILE pendant une navigation D-pad, par ex.),
+    // on mémorise (chaîne, heure) pour le retrouver après reconstruction.
+    // Focus sur une chip / une cellule chaîne → rien à restaurer.
+    final EpgProgram? p = _focusedProgram;
+    if (p != null && _focusedChannelId != null) {
+      final int oldStart = _windowStart.millisecondsSinceEpoch;
+      final int oldEnd = oldStart + _windowMin * 60 * 1000;
+      // Milieu de la PARTIE VISIBLE du bloc (un bloc peut déborder la fenêtre).
+      final int visFrom = p.startTime < oldStart ? oldStart : p.startTime;
+      final int visTo = p.stopTime > oldEnd ? oldEnd : p.stopTime;
+      int t = visFrom + (visTo - visFrom) ~/ 2;
+      // Ramené DANS la nouvelle fenêtre : un shift peut sortir l'heure
+      // mémorisée du champ — on vise alors le bord le plus proche (le focus
+      // « suit » le décalage au lieu de disparaître).
+      final int ns = next.millisecondsSinceEpoch;
+      final int ne = ns + _windowMin * 60 * 1000;
+      if (t < ns) t = ns;
+      if (t >= ne) t = ne - 60000; // dernière minute de la fenêtre
+      _restoreChannelId = _focusedChannelId;
+      _restoreTimeMs = t;
+      _restoreGen++;
+    }
+    setState(() => _windowStart = next);
+  }
+
+  /// Suivi du bloc focusé (gain/perte), remonté par les lignes. Simple mémo
+  /// pour la comptabilité de focus du shift — AUCUNE reconstruction ici.
+  void _onBlockFocusChange(Channel channel, EpgProgram p, bool focused) {
+    if (focused) {
+      _focusedChannelId = channel.id;
+      _focusedProgram = p;
+    } else if (_focusedChannelId == channel.id &&
+        _focusedProgram?.startTime == p.startTime) {
+      // On n'efface que si la perte concerne LE bloc mémorisé : l'ordre
+      // perte→gain entre deux blocs n'est pas garanti par le FocusManager.
+      _focusedChannelId = null;
+      _focusedProgram = null;
+    }
   }
 
   void _play(int index) {
@@ -326,6 +379,19 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
                                   _canReplay(_channels[idx], p),
                               onBlock: (EpgProgram p) =>
                                   _onBlock(idx, _channels[idx], p),
+                              onBlockFocusChange: (EpgProgram p, bool f) =>
+                                  _onBlockFocusChange(_channels[idx], p, f),
+                              restoreTimeMs:
+                                  _restoreChannelId == _channels[i].id
+                                      ? _restoreTimeMs
+                                      : null,
+                              restoreGen: _restoreGen,
+                              onFocusRestored: () {
+                                // Demande consommée (pas de setState : rien
+                                // de visuel ne dépend de ces champs).
+                                _restoreChannelId = null;
+                                _restoreTimeMs = null;
+                              },
                             ),
                           );
                         },
@@ -367,6 +433,10 @@ class _GuideRow extends StatefulWidget {
     required this.epgGeneration,
     required this.canReplay,
     required this.onBlock,
+    required this.onBlockFocusChange,
+    required this.restoreTimeMs,
+    required this.restoreGen,
+    required this.onFocusRestored,
   });
 
   final Channel channel;
@@ -390,6 +460,21 @@ class _GuideRow extends StatefulWidget {
   /// OK sur une case d'émission.
   final void Function(EpgProgram) onBlock;
 
+  /// Gain/perte de focus d'un bloc — l'écran tient sa comptabilité de focus
+  /// (mémorise le bloc focusé pour le retrouver après un shift ±30 min).
+  final void Function(EpgProgram, bool focused) onBlockFocusChange;
+
+  /// Heure (ms epoch) à re-focuser dans CETTE ligne après un shift — `null`
+  /// si la ligne n'est pas concernée. Couplée à [restoreGen].
+  final int? restoreTimeMs;
+
+  /// Génération de la demande de restauration : chaque shift l'incrémente,
+  /// la ligne ne la traite qu'UNE fois (anti re-vol de focus au rebuild).
+  final int restoreGen;
+
+  /// Restauration effectuée (ou tentée) → l'écran nettoie sa demande.
+  final VoidCallback onFocusRestored;
+
   @override
   State<_GuideRow> createState() => _GuideRowState();
 }
@@ -406,6 +491,25 @@ class _GuideRowState extends State<_GuideRow> {
   // « Maintenant/À suivre »).
   StreamSubscription<Set<String>>? _favSub;
 
+  // ----- Comptabilité de focus (shift ±30 min) -----
+  // Un FocusNode PAR BLOC, indexé par l'heure de DÉBUT de l'émission — les
+  // blocs sont aussi KEYÉS par cette heure (cf. _block) : sans clé ni node
+  // stable, Flutter réutilisait l'élément au même RANG de la pile et le
+  // focus restait « au rang », pas à l'émission. Purgés à chaque
+  // rechargement (cf. _pruneNodes) + dispose : pas de fuite.
+  final Map<int, FocusNode> _blockNodes = <int, FocusNode>{};
+
+  /// Cellule chaîne : repli de restauration quand la ligne n'a aucun bloc
+  /// visible (trou d'EPG) — le focus reste au moins sur la BONNE chaîne.
+  final FocusNode _cellNode = FocusNode();
+
+  /// Dernière génération de restauration TRAITÉE. Initialisée à la valeur
+  /// courante : une ligne montée APRÈS le shift (scroll) ne vole pas le focus.
+  late int _restoredGen = widget.restoreGen;
+
+  FocusNode _nodeFor(int startMs) =>
+      _blockNodes.putIfAbsent(startMs, FocusNode.new);
+
   @override
   void initState() {
     super.initState();
@@ -418,6 +522,11 @@ class _GuideRowState extends State<_GuideRow> {
   @override
   void dispose() {
     _favSub?.cancel();
+    _cellNode.dispose();
+    for (final FocusNode n in _blockNodes.values) {
+      n.dispose();
+    }
+    _blockNodes.clear();
     super.dispose();
   }
 
@@ -434,9 +543,71 @@ class _GuideRowState extends State<_GuideRow> {
 
   Future<List<(EpgProgram, bool)>> _load() => EpgRepository.instance
       .programsBetween(widget.channel.id, widget.startMs, widget.endMs)
-      .then((List<EpgProgram> list) => <(EpgProgram, bool)>[
-            for (final EpgProgram p in list) (p, widget.canReplay(p))
-          ]);
+      .then((List<EpgProgram> list) {
+        _pruneNodes(list);
+        return <(EpgProgram, bool)>[
+          for (final EpgProgram p in list) (p, widget.canReplay(p))
+        ];
+      });
+
+  /// Purge des FocusNodes des blocs SORTIS de la fenêtre — POST-FRAME : les
+  /// anciens widgets Focus doivent être démontés avant le dispose. Un node
+  /// encore ATTACHÉ (context non nul — deux chargements qui se chevauchent)
+  /// est épargné : il sera repris à la purge suivante. Sans cette purge, la
+  /// map accumulait un node par émission à chaque shift (fuite bornée mais
+  /// réelle sur une box qui reste des heures sur le guide).
+  void _pruneNodes(List<EpgProgram> keep) {
+    final Set<int> keys = <int>{for (final EpgProgram p in keep) p.startTime};
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return; // dispose() a déjà tout libéré
+      _blockNodes.removeWhere((int k, FocusNode n) {
+        if (keys.contains(k) || n.context != null) return false;
+        n.dispose();
+        return true;
+      });
+    });
+  }
+
+  /// Largeur VISIBLE d'un bloc dans la fenêtre (géométrie partagée avec
+  /// _block : les blocs < 8 px ne sont pas montés — jamais de focus dessus).
+  double _blockWidth(EpgProgram p) {
+    final double left =
+        ((p.startTime - widget.startMs) / 60000).clamp(0, 1e9) * widget.pxPerMin;
+    final double right =
+        ((widget.endMs - p.stopTime) / 60000).clamp(0, 1e9) * widget.pxPerMin;
+    final double windowW =
+        (widget.endMs - widget.startMs) / 60000 * widget.pxPerMin;
+    return (windowW - left - right).clamp(0, windowW).toDouble();
+  }
+
+  /// Restauration du focus après un shift ±30 min : dès que les blocs de la
+  /// NOUVELLE fenêtre sont construits, redonne le focus au bloc de cette
+  /// ligne qui COUVRE l'heure mémorisée (repli : premier bloc visible,
+  /// sinon cellule chaîne). Appelée pendant le build → l'effet de bord est
+  /// différé post-frame (les nodes ciblés sont attachés dans CE build).
+  void _maybeRestoreFocus(List<(EpgProgram, bool)> progs) {
+    final int? t = widget.restoreTimeMs;
+    if (t == null || widget.restoreGen == _restoredGen) return;
+    _restoredGen = widget.restoreGen; // une seule tentative par shift
+    EpgProgram? target;
+    EpgProgram? firstVisible;
+    for (final (EpgProgram, bool) e in progs) {
+      final EpgProgram p = e.$1;
+      if (_blockWidth(p) < 8) continue;
+      firstVisible ??= p;
+      if (p.startTime <= t && t < p.stopTime) {
+        target = p;
+        break;
+      }
+    }
+    target ??= firstVisible;
+    final FocusNode node =
+        target != null ? _nodeFor(target.startTime) : _cellNode;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) node.requestFocus();
+      widget.onFocusRestored();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -448,6 +619,9 @@ class _GuideRowState extends State<_GuideRow> {
           height: widget.rowH,
           child: TvFocusBuilder(
             autofocus: widget.autofocus,
+            // Node possédé par la ligne : repli de restauration de focus
+            // quand la fenêtre décalée n'a plus aucun bloc sur cette chaîne.
+            focusNode: _cellNode,
             scale: TvFocusScale.small,
             onSelect: widget.onPlay,
             // ALIGNEMENT INTER-GUIDES : appui LONG = favori, même raccourci
@@ -513,6 +687,10 @@ class _GuideRowState extends State<_GuideRow> {
                   AsyncSnapshot<List<(EpgProgram, bool)>> snap) {
                 final List<(EpgProgram, bool)> progs =
                     snap.data ?? const <(EpgProgram, bool)>[];
+                // Restauration APRÈS l'arrivée des données de la nouvelle
+                // fenêtre (pas pendant l'attente : la liste vide déclencherait
+                // le repli cellule alors que les blocs arrivent).
+                if (snap.hasData) _maybeRestoreFocus(progs);
                 return Stack(
                   clipBehavior: Clip.hardEdge,
                   children: <Widget>[
@@ -551,11 +729,7 @@ class _GuideRowState extends State<_GuideRow> {
     // Position/longueur du bloc, ROGNÉES à la fenêtre visible.
     final double left =
         ((p.startTime - widget.startMs) / 60000).clamp(0, 1e9) * widget.pxPerMin;
-    final double right =
-        ((widget.endMs - p.stopTime) / 60000).clamp(0, 1e9) * widget.pxPerMin;
-    final double windowW = (widget.endMs - widget.startMs) / 60000 * widget.pxPerMin;
-    final double width =
-        (windowW - left - right).clamp(0, windowW).toDouble();
+    final double width = _blockWidth(p);
     if (width < 8) return const SizedBox.shrink();
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
     final bool onAir = p.startTime <= nowMs && nowMs < p.stopTime;
@@ -564,14 +738,21 @@ class _GuideRowState extends State<_GuideRow> {
     // venir ne montre la pastille replay qu'une fois commencée.
     final bool replayable = archivable && p.startTime <= nowMs;
     return Positioned(
+      // CLÉ PAR ÉMISSION (comptabilité de focus) : sans elle, Flutter
+      // rapproche les blocs par RANG après un shift ±30 min — l'état de
+      // focus (et le FocusNode fourni, jamais relu après initState) restait
+      // collé au rang, donc à une émission QUELCONQUE de la nouvelle fenêtre.
+      key: ValueKey<int>(p.startTime),
       left: left,
       top: 3,
       bottom: 3,
       width: width - 3, // petit interstice entre blocs
       // Case FOCUSABLE : OK = regarder (en direct) / ⟲ revoir (passé + archive).
       child: TvFocusBuilder(
+        focusNode: _nodeFor(p.startTime),
         scale: TvFocusScale.small,
         onSelect: () => widget.onBlock(p),
+        onFocusChange: (bool f) => widget.onBlockFocusChange(p, f),
         builder: (BuildContext context, bool focused) {
           final Color bg = focused
               ? TvTokens.gold
