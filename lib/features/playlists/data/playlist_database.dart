@@ -71,6 +71,20 @@ class PlaylistDatabase {
   Future<void> debugUpgrade(Database db, int oldVersion, int newVersion) =>
       _onUpgrade(db, oldVersion, newVersion);
 
+  /// Accès de TEST à la création du schéma (audit 2026-07-29 : permet de
+  /// tester les requêtes réelles contre le VRAI schéma en SQLite FFI —
+  /// la régression `resyncEpgAll` lisait une colonne inexistante et
+  /// aucun test ne pouvait l'attraper sans ce point d'entrée).
+  @visibleForTesting
+  Future<void> debugCreate(Database db) => _onCreate(db, _kDbVersion);
+
+  /// Injecte une base déjà ouverte (tests uniquement — SQLite FFI en
+  /// mémoire). Ne ferme pas l'ancienne : réservé aux tests.
+  @visibleForTesting
+  void debugSetDatabase(Database db) {
+    _db = db;
+  }
+
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
       CREATE TABLE playlists (

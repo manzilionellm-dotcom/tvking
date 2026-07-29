@@ -35,6 +35,7 @@ import '../../../core/observability/structured_logger.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/security/secret_cipher.dart';
+import '../../channels/data/smart_search.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
@@ -768,20 +769,43 @@ class PlaylistRepository {
       for (final Playlist p in all) {
         final String? epgUrl = p.epgUrl;
         if (p.id == null || epgUrl == null || epgUrl.isEmpty) continue;
-        final List<Map<String, Object?>> rows = await db.query(
-          'channels',
-          columns: <String>['id'],
-          where: 'playlist_id = ?',
-          whereArgs: <Object>[p.id!],
-        );
-        final Set<String> ids =
-            rows.map((Map<String, Object?> r) => r['id'].toString()).toSet();
+        final Set<String> ids = await epgChannelIdsForPlaylist(p.id!, db: db);
         if (ids.isEmpty) continue;
         await _syncEpgForIds(ids, epgUrl);
       }
-    } catch (_) {
-      // Silencieux — jamais de crash pour un rafraîchissement de guide.
+    } catch (e) {
+      // Jamais de crash pour un rafraîchissement de guide — mais plus de
+      // silence : c'est ce silence qui a masqué la régression ci-dessus.
+      StructuredLogger.instance.warn(
+        domain: 'epg',
+        event: 'epg.resync_fail',
+        ctx: <String, Object?>{'error': e.toString()},
+      );
     }
+  }
+
+  /// Ids EPG (= `Channel.id` = colonne `external_id`) des chaînes d'une
+  /// playlist. RÉGRESSION (audit 2026-07-29) : ce code lisait
+  /// `columns: ['id']` alors que la table `channels` n'a QUE
+  /// `local_id`/`external_id` → DatabaseException à CHAQUE resync, avalée
+  /// par le catch de `resyncEpgAll` : la resynchronisation périodique du
+  /// guide (12 h, main_tv) n'a JAMAIS eu lieu. Extraite et testée contre
+  /// le vrai schéma (test/features/epg/epg_resync_ids_test.dart).
+  @visibleForTesting
+  Future<Set<String>> epgChannelIdsForPlaylist(
+    int playlistId, {
+    Database? db,
+  }) async {
+    final Database d = db ?? await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> rows = await d.query(
+      'channels',
+      columns: <String>['external_id'],
+      where: 'playlist_id = ?',
+      whereArgs: <Object>[playlistId],
+    );
+    return rows
+        .map((Map<String, Object?> r) => r['external_id'].toString())
+        .toSet();
   }
 
   // ============================================================
@@ -1029,6 +1053,7 @@ class PlaylistRepository {
     _playlistsCache = const <Playlist>[];
     // Même nettoyage anti-fuite que _deletePlaylist (voir plus bas).
     Channel.clearComputedCaches();
+    SmartSearch.clearAll();
   }
 
   // ============================================================
@@ -1272,6 +1297,7 @@ class PlaylistRepository {
     // gardaient les entrées des ids supprimés pour toujours. Vidage
     // complet, recalcul paresseux au prochain accès — coût nul.
     Channel.clearComputedCaches();
+    SmartSearch.clearAll();
     if (wasActive.isNotEmpty) {
       final List<Map<String, Object?>> next = await db.query(
         'playlists',

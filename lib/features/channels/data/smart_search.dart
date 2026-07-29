@@ -449,6 +449,13 @@ abstract final class SmartSearch {
       _docCache.remove(id);
     }
   }
+
+  /// Vidage complet — à appeler à la suppression d'une playlist (audit
+  /// 2026-07-29 : `invalidate` n'avait AUCUN appelant, le cache statique
+  /// grossissait sans jamais rendre la mémoire, y compris après suppression
+  /// de la source ; sur une source 100 k chaînes cela immobilisait des
+  /// dizaines de Mo à vie). Recalcul paresseux à la frappe suivante.
+  static void clearAll() => _docCache.clear();
 }
 
 /// Texte pré-normalisé d'une chaîne, prêt à matcher.

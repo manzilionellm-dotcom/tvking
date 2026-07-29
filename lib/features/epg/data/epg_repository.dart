@@ -23,6 +23,7 @@ import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
 import '../../../core/observability/structured_logger.dart';
+import '../../playlists/data/iptv_http.dart';
 import '../../playlists/data/playlist_database.dart';
 import '../domain/epg_program.dart';
 import 'xmltv_parser.dart';
@@ -96,6 +97,26 @@ class EpgRepository {
       CREATE INDEX IF NOT EXISTS idx_epg_channel_time
       ON epg_programs(channel_id, start_time)
     ''');
+    // ANTI-DOUBLONS (audit 2026-07-29) : l'import XMLTV ré-insérait toute la
+    // fenêtre future à chaque sync (aucune contrainte d'unicité) → la table
+    // doublait à chaque refresh et le guide affichait les programmes en
+    // double. Index UNIQUE (channel_id, start_time) + insertion en REPLACE.
+    // Les bases existantes peuvent déjà contenir des doublons : on les purge
+    // UNE fois (garde : l'index n'existe pas encore) avant de créer l'index.
+    final List<Map<String, Object?>> hasUniq = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_epg_uniq'",
+    );
+    if (hasUniq.isEmpty) {
+      await db.execute('''
+        DELETE FROM epg_programs WHERE id NOT IN (
+          SELECT MIN(id) FROM epg_programs GROUP BY channel_id, start_time
+        )
+      ''');
+      await db.execute('''
+        CREATE UNIQUE INDEX idx_epg_uniq
+        ON epg_programs(channel_id, start_time)
+      ''');
+    }
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_epg_start_time
       ON epg_programs(start_time)
@@ -198,16 +219,35 @@ class EpgRepository {
     try {
       await initialize();
 
-      final http.Client client = httpClient ?? http.Client();
+      // Client IPTV (audit 2026-07-29) : l'URL EPG d'un compte Xtream pointe
+      // sur le MÊME panel que le M3U/player_api — qui, eux, passent par
+      // createIptvHttpClient() (certificats auto-signés tolérés + DoH). Le
+      // client standard faisait échouer la sync EPG sur ces panels.
+      final http.Client client = httpClient ?? createIptvHttpClient();
       try {
         final http.Request req = http.Request('GET', Uri.parse(url));
-        final http.StreamedResponse resp = await client.send(req);
+        // Timeout de connexion/en-têtes : sans lui, un serveur qui accepte la
+        // connexion sans répondre gardait `_syncing = true` pour toute la
+        // session (plus aucune sync EPG jusqu'au redémarrage).
+        final http.StreamedResponse resp = await client
+            .send(req)
+            .timeout(const Duration(seconds: 30));
         if (resp.statusCode != 200) {
           throw Exception('HTTP ${resp.statusCode}');
         }
 
-        // Source de bytes (gzip décompressé si nécessaire)
-        Stream<List<int>> bytes = resp.stream;
+        // Source de bytes (gzip décompressé si nécessaire). Timeout
+        // inter-chunk : un flux qui se fige (serveur mort en cours de
+        // transfert) libère la sync au lieu de pendre indéfiniment.
+        Stream<List<int>> bytes = resp.stream.timeout(
+          const Duration(seconds: 60),
+          onTimeout: (EventSink<List<int>> sink) {
+            sink.addError(
+              TimeoutException('Flux XMLTV figé (60 s sans données)'),
+            );
+            sink.close();
+          },
+        );
         final String lower = url.toLowerCase();
         final bool isGzip = lower.endsWith('.gz') ||
             lower.endsWith('.gzip') ||
@@ -256,7 +296,13 @@ class EpgRepository {
             for (final Map<String, Object?> row in rows) {
               // Remap alias → id de chaîne (cf. commentaire ci-dessus). Les
               // ids déjà canoniques (M3U tvg-id) passent inchangés.
-              batch.insert('epg_programs', remapProgramRow(row, aliases));
+              batch.insert(
+                'epg_programs',
+                remapProgramRow(row, aliases),
+                // REPLACE + index unique (channel_id, start_time) : une
+                // re-sync remplace le programme au lieu de le dupliquer.
+                conflictAlgorithm: ConflictAlgorithm.replace,
+              );
             }
             await batch.commit(noResult: true);
           },

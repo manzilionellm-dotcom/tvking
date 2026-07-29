@@ -105,10 +105,18 @@ class XmltvParser {
         done.completeError(Exception('XMLTV isolate crash: $e'));
       }
     });
+    // AUDIT 2026-07-29 : la sortie de l'isolate fait la COURSE avec la
+    // chaîne d'écritures SQLite (`writes`). Le chemin nominal est :
+    // total reçu → l'isolate retourne (exit part) → le dernier commit
+    // SQLite se termine → done.complete. Si l'événement exit est délivré
+    // avant la fin du commit (latence DB réelle : quasi systématique),
+    // l'ancien code déclarait à tort « terminé avant la fin » et la sync
+    // échouait alors que tout s'était bien passé. On n'alerte donc que si
+    // l'isolate meurt AVANT d'avoir émis son total (OOM, kill) — c'est le
+    // seul cas anormal ; après le total, `writes` pilote la fin.
+    bool totalReceived = false;
     onIsolateExit.listen((Object? _) {
-      // Sortie AVANT le total = anormal (le chemin nominal envoie le
-      // total, puis le parent tue l'isolate lui-même dans le finally).
-      if (!done.isCompleted) {
+      if (!totalReceived && !done.isCompleted) {
         done.completeError(
             Exception('XMLTV isolate terminé avant la fin du parse'));
       }
@@ -141,6 +149,7 @@ class XmltvParser {
         writes = writes.then((_) => onBatch(rows));
       } else if (msg is int) {
         // Fin normale : total émis — après la dernière écriture.
+        totalReceived = true;
         writes.then((_) {
           if (!done.isCompleted) done.complete(msg);
         }).catchError((Object e, StackTrace st) {
