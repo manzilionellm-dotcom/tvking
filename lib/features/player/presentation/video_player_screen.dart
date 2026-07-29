@@ -117,7 +117,8 @@ class VideoPlayerScreen extends StatefulWidget {
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
-class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+    with WidgetsBindingObserver {
   // INSTANCE mpv JETABLE (fix connexions 2026-07-08 17:07) : réutiliser
   // la même instance laissait FUIR des connexions à chaque échec
   // (« [lavf] Leaking 1 nested connections (FFmpeg bug) ») — sur un
@@ -136,6 +137,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// prochaine ouverture doit alors passer par le recyclage (une
   /// instance jamais ouverte est neuve : rien à fermer).
   bool _playerOpenedOnce = false;
+
+  /// Posé en tête de dispose() : plus AUCUNE recréation d'instance mpv
+  /// ensuite. Ceinture-bretelles en plus de `mounted` : les `await` de
+  /// _recyclePlayer (stop/dispose bornés à 5 s CHACUN) peuvent se
+  /// terminer APRÈS la fermeture de l'écran — _createPlayer() recréait
+  /// alors une instance mpv + listeners que plus personne ne libérait
+  /// (fuite majeure : connexion fantôme qui occupait le slot du compte).
+  bool _disposed = false;
 
   /// SÉRIALISATION des ouvertures : chaque _openMedia s'enchaîne à la
   /// précédente — JAMAIS deux lectures en vol (comptes 1-connexion).
@@ -359,11 +368,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// déjà appliqué (double `_player.open`), on flag pendant l'animation.
   bool _zapAnimating = false;
 
+  /// `true` quand C'EST NOUS qui avons mis en pause au passage en
+  /// arrière-plan : au retour (resumed), on ne relance QUE dans ce cas —
+  /// jamais par-dessus une pause volontaire de l'utilisateur, ni sur un
+  /// lecteur à l'arrêt (cast / mode télécommande).
+  bool _pausedByLifecycle = false;
+
   @override
   void initState() {
     super.initState();
 
     _currentChannel = widget.channel;
+
+    // Cycle de vie app (Home / multitâche / verrouillage) : même leçon
+    // que le lecteur TV — sans observer, la lecture continuait dans le
+    // vide en arrière-plan et la position VOD se perdait si l'OS tuait
+    // l'app (dispose jamais appelé). Voir didChangeAppLifecycleState.
+    WidgetsBinding.instance.addObserver(this);
 
     // Rapporte tout de suite la chaîne en cours, puis rafraîchit toutes les
     // 3 min tant que le lecteur est ouvert (présence + chaîne à jour).
@@ -559,7 +580,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           _currentChannel.isLive &&
           _playedChannelId == _currentChannel.id;
       if (liveDecoded) {
-        if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) return;
+        if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) {
+          // Budget de reprises épuisé : un `return` nu laissait une image
+          // FIGÉE sans erreur ni bouton (impasse silencieuse). Même sortie
+          // que le watchdog à bout de budget : trace boîte noire + erreur
+          // claire avec CTA « réessayer ».
+          StreamDiagnostics.instance.recordEvent(
+            'player',
+            'EOF live : budget de reprises épuisé '
+                '($_watchdogRecoveries/$_kWatchdogMaxRecoveries) → erreur '
+                'affichée (CTA réessayer) au lieu d\'une image figée muette',
+            level: 'error',
+          );
+          setState(() {
+            _hasError = true;
+            _errorMessage =
+                _blockMessage(context.l10n.playerStreamInterrupted);
+          });
+          return;
+        }
         _watchdogRecoveries++;
         _sessionStats?.onRecovery(); // S3 : zombie devenu donnée
         StreamDiagnostics.instance.recordEvent(
@@ -649,6 +688,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // remontées par media_kit). Indispensable pour diagnostiquer un HLS
     // en 200 qui n'affiche aucune frame.
     _subs.add(_player.stream.log.listen((PlayerLog l) {
+      // Après dispose/recyclage (cancel des subs non attendu), un dernier
+      // événement peut encore arriver : on ne pollue pas la boîte noire
+      // avec les logs d'une instance déjà quittée.
+      if (!mounted) return;
       final bool isError = l.level == 'error' || l.level == 'fatal';
       StreamDiagnostics.instance.recordEvent(
         'mpv',
@@ -661,6 +704,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // flux ouvert — consultables dans l'écran debug caché (appui long
     // sur la version, écran À propos). Même source que l'overlay stats.
     _subs.add(_player.stream.tracks.listen((_) {
+      // Même garde que le listener de logs : pas d'écriture diagnostic
+      // pour une instance dont l'écran est déjà démonté.
+      if (!mounted) return;
       StreamDiagnostics.instance.recordCodecs(
         video: _player.state.track.video.codec,
         audio: _player.state.track.audio.codec,
@@ -770,6 +816,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       await old.dispose().timeout(const Duration(seconds: 5));
     } catch (_) {}
+    // L'écran a pu être FERMÉ pendant les await ci-dessus (stop/dispose
+    // bornés à 5 s chacun) : dispose() est alors déjà passé — recréer
+    // une instance ici la ferait fuir (mpv + listeners jamais libérés).
+    if (!mounted || _disposed) return;
     _createPlayer();
     // ÉTAT DE LECTURE remis à neuf AVANT que les listeners de la nouvelle
     // instance n'émettent (M1) : sinon le watchdog lisait la position 0 de
@@ -885,6 +935,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (_isRecording) {
       _stopRecording();
     }
+    // REPRISE VOD : la position de l'épisode qu'on QUITTE est figée
+    // maintenant — avant, elle n'était écrite que dans dispose(), donc
+    // un zap épisode → épisode la perdait (retour à 0:00 au revisionnage).
+    _saveVodPosition();
     setState(() {
       _currentChannel = next;
       _hasError = false;
@@ -898,6 +952,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // repart à zéro (il ne doit jamais survivre à un zap, même en
       // revenant sur une chaîne qui avait décodé plus tôt).
       _playedChannelId = null;
+      // Le budget de reconnexions appartenait à l'ANCIENNE chaîne : sans
+      // remise à zéro, une chaîne saine héritait d'un budget déjà épuisé
+      // et son premier gel devenait une erreur immédiate.
+      _watchdogRecoveries = 0;
       // (la chaîne change → on le rapporte juste après le setState)
     });
     RecentlyWatchedRepository.instance.record(next.id);
@@ -1115,7 +1173,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _openMediaInner(String realUrl, int gen) async {
-    if (!mounted) return;
+    // `_disposed` : aucune ouverture ne doit survivre à dispose() (une
+    // ouverture qui s'exécuterait ensuite recréerait une instance mpv
+    // orpheline via _recyclePlayer → fuite de connexion).
+    if (!mounted || _disposed) return;
     if (gen != _openGeneration) {
       StreamDiagnostics.instance.recordEvent(
         'player',
@@ -1126,7 +1187,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
     // FERMETURE ATTENDUE + instance mpv neuve AVANT toute connexion.
     await _recyclePlayer();
-    if (!mounted || gen != _openGeneration) return;
+    if (!mounted || _disposed || gen != _openGeneration) return;
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
     // FORMAT MÉMORISÉ (zapping instantané) : si la cascade a déjà trouvé
     // le format d'URL gagnant pour cette source (et ce type de contenu),
@@ -1141,6 +1202,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             StreamBlockedFallback.contentTypeOf(_currentChannel);
         final String? code = await XtreamUrlFormatStore.instance
             .winningFormat(src!.id!, type);
+        // Garde de génération TOUT DE SUITE après l'await : un zap (ou la
+        // fermeture) survenu pendant la lecture du store écrivait sinon
+        // `_adoptedAltUrl` pour l'ANCIENNE chaîne dans l'état de la
+        // nouvelle (la garde n'arrivait que plus bas).
+        if (!mounted || gen != _openGeneration) return;
         // AUTO-CORRECTIF (terrain 2026-07-09) : un format HLS mémorisé
         // pour du LIVE (« live:m3u8 » / « none:m3u8 ») ouvre PLUSIEURS
         // connexions (playlist repollée + segments) et sature les comptes
@@ -1177,6 +1243,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         // mpv lisent PlayerSettings au moment de connecter.
         final String? sourceUa =
             await XtreamUrlFormatStore.instance.sourceUserAgent(src.id!);
+        // Même garde après CHAQUE await : ne pas écraser l'UA global pour
+        // une ouverture déjà dépassée par un zap plus récent.
+        if (!mounted || gen != _openGeneration) return;
         if (sourceUa != null &&
             sourceUa != PlayerSettings.instance.userAgent) {
           await PlayerSettings.instance.setUserAgent(sourceUa);
@@ -1515,6 +1584,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           filePath: path,
         );
       }
+      // `context.l10n` est évalué AVANT l'appel à _toast : après les await
+      // ci-dessus, l'Element peut être désactivé (écran fermé pendant le
+      // démarrage) → il faut vérifier `mounted` AVANT de le lire.
+      if (!mounted) return;
       if (!ok) {
         _toast(context.l10n.recStartFailed);
         return;
@@ -1535,6 +1608,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _toast(context.l10n.recInProgress);
       }
     } catch (e) {
+      // Même précaution : le catch peut se réveiller après la fermeture
+      // de l'écran (context.l10n sur un Element désactivé = crash).
+      if (!mounted) return;
       _toast(context.l10n.startFailedWithError('$e'));
     }
   }
@@ -1575,6 +1651,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       }
     } catch (e) {
+      // Post-await : l'écran a pu être fermé (zap sortant, dispose) —
+      // ne jamais lire context.l10n sur un Element désactivé.
+      if (!mounted) return;
       _toast(context.l10n.recStopError('$e'));
     }
   }
@@ -1865,8 +1944,71 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {});
   }
 
+  // Pause quand on QUITTE / minimise l'app (Home, multitâche, écran
+  // verrouillé) : sinon la lecture (et la connexion IPTV) tournait dans
+  // le vide en arrière-plan — modèle : tv_player_screen. EXCEPTIONS
+  // voulues, à ne JAMAIS casser :
+  //   - PiP : la mini-fenêtre reste visible et DOIT continuer à jouer
+  //     (l'activity est « en pause » côté OS mais l'image est à l'écran) ;
+  //   - mode « Écouteurs » (_audioOnly) : c'est PRÉCISÉMENT du son en
+  //     arrière-plan (foreground service natif, cf. PipService) ;
+  //   - cast : le téléphone est télécommande, la lecture locale est déjà
+  //     à l'arrêt — rien à mettre en pause ni à relancer.
+  // On fige aussi la position VOD MAINTENANT : l'OS peut tuer l'app une
+  // fois cachée, sans jamais passer par dispose().
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        if (PipService.instance.isInPipMode || _audioOnly || _wasCasting) {
+          return;
+        }
+        _saveVodPosition();
+        // Best-effort : un pépin du moteur ne doit pas faire tomber la
+        // mise en arrière-plan de l'app.
+        try {
+          _pausedByLifecycle = _player.state.playing;
+          _player.pause();
+        } catch (_) {}
+      case AppLifecycleState.resumed:
+        if (_pausedByLifecycle) {
+          _pausedByLifecycle = false;
+          try {
+            _player.play();
+          } catch (_) {}
+        }
+      case AppLifecycleState.inactive:
+        break; // transitions brèves (dialogue, PiP…) → on ne coupe pas
+    }
+  }
+
+  /// REPRISE VOD : mémorise la position courante pour le contenu FINI
+  /// uniquement (jamais le live — position sans sens). Le repo applique
+  /// les règles Netflix (< 60 s ignoré, > 95 % = terminé). Fire-and-forget.
+  /// Appelée à la fermeture (dispose), au ZAP (avant de changer de chaîne
+  /// — sinon la position de l'épisode quitté était perdue) et au passage
+  /// en ARRIÈRE-PLAN (l'OS peut tuer l'app sans jamais appeler dispose —
+  /// même leçon que le lecteur TV).
+  void _saveVodPosition() {
+    if (_currentChannel.isLive) return;
+    unawaited(PlaybackPositionRepository.instance.record(
+      key: _currentChannel.id,
+      position: _player.state.position,
+      duration: _player.state.duration,
+      name: _currentChannel.name,
+      streamUrl: _currentChannel.streamUrl,
+      posterUrl: _currentChannel.logoUrl,
+    ));
+  }
+
   @override
   void dispose() {
+    // Plus AUCUNE recréation d'instance mpv après ce point (cf. _disposed :
+    // les await de _recyclePlayer peuvent se terminer après la fermeture).
+    _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
     // S3 : la session de métriques est résumée en UNE ligne boîte noire
     // (TTFF, stalls, rebuffering, erreurs par famille, reconnexions).
     _flushStatsSession();
@@ -1898,21 +2040,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (_watchSessionId > 0) {
       WatchHistoryRepository.instance.endSession(_watchSessionId);
     }
-    // REPRISE VOD : on mémorise la position AVANT de libérer le player, pour
-    // le contenu FINI uniquement (jamais le live — position sans sens). Le
-    // repo applique les règles Netflix (< 60 s ignoré, > 95 % = terminé).
-    // Fire-and-forget : `_player` est encore vivant ici (dispose plus bas).
+    // REPRISE VOD : on mémorise la position AVANT de libérer le player
+    // (logique extraite dans _saveVodPosition, partagée avec le zap et le
+    // passage en arrière-plan). `_player` est encore vivant ici (dispose
+    // plus bas).
     if (!_currentChannel.isLive) {
       final Duration pos = _player.state.position;
       final Duration dur = _player.state.duration;
-      unawaited(PlaybackPositionRepository.instance.record(
-        key: _currentChannel.id,
-        position: pos,
-        duration: dur,
-        name: _currentChannel.name,
-        streamUrl: _currentChannel.streamUrl,
-        posterUrl: _currentChannel.logoUrl,
-      ));
+      _saveVodPosition();
       // TÉLÉCHARGEMENTS INTELLIGENTS (parité TV, mobile) : épisode terminé
       // (règle des 95 %, la même que le repo) → son fichier téléchargé est
       // supprimé et l'épisode SUIVANT de la liste part en file. Le service
@@ -2111,6 +2246,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   void _retry() {
+    // Retry MANUEL = l'utilisateur redonne sa chance au flux : on ré-arme
+    // le budget de reconnexions, sinon le premier gel après le retry
+    // retombait aussitôt sur l'erreur (budget resté épuisé).
+    _watchdogRecoveries = 0;
     setState(() {
       _hasError = false;
       _errorMessage = null;
@@ -2135,7 +2274,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _armStartupTimeout() {
     _startupTimer?.cancel();
     _startupTimer = Timer(_kStartupTimeout, () {
-      if (!mounted || _isPlaying || _hasError) return;
+      // PAS de test `_isPlaying` ici : mpv émet playing=true dès
+      // l'ouverture, AVANT toute frame décodée (cf. note dans le
+      // listener `playing`) — il neutralisait la borne anti-spinner
+      // (404 silencieux = spinner éternel). La preuve de décodage
+      // RÉELLE (`_playedChannelId`) décide seule ci-dessous : le timer
+      // est de toute façon annulé par _markPlaybackStarted dès la 1re
+      // frame — s'il sonne, RIEN n'a décodé pour cette ouverture.
+      if (!mounted || _hasError) return;
       if (_playedChannelId == _currentChannel.id) {
         setState(() {
           _hasError = true;
@@ -2161,8 +2307,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (!mounted) return;
     // Live uniquement (relais TS OU HLS direct) : la VOD/catch-up est
     // seekable, sa position s'arrête légitimement (pause, fin) → ce ne
-    // serait pas un gel.
-    if (widget.overrideUrl != null) return;
+    // serait pas un gel. La garde couvre le catch-up (overrideUrl) ET les
+    // films/épisodes (`!isLive`) : le watchdog s'appliquait à tort à la
+    // VOD et sa « reconnexion » repartait à 0:00 en pleine lecture.
+    if (widget.overrideUrl != null || !_currentChannel.isLive) return;
     // Un VRAI gel = mpv se croit en lecture, ne bufferise pas, aucune
     // erreur affichée, mais la position stagne. Sinon on ne compte rien
     // et on resynchronise la position de référence.

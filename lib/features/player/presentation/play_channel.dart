@@ -40,7 +40,38 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import 'video_player_screen.dart';
 
+/// GARDE ANTI DOUBLE-OUVERTURE (portée process) : un double-tap (ou deux
+/// taps rapprochés sur deux tuiles) traversait deux fois les `await`
+/// ci-dessous et EMPILAIT deux VideoPlayerScreen → deux instances mpv,
+/// deux connexions simultanées (fatal sur les comptes 1-connexion).
+/// Posée AVANT le premier await, libérée en `finally` : tant qu'une
+/// ouverture est en vol (lecteur poussé compris), les taps suivants
+/// sont absorbés sans rien faire.
+bool _opening = false;
+
 Future<void> playChannel(
+  BuildContext context,
+  Channel channel, {
+  List<Channel>? zapPlaylist,
+  String? overrideUrl,
+  String? overrideTitle,
+}) async {
+  if (_opening) return;
+  _opening = true;
+  try {
+    await _playChannelInner(
+      context,
+      channel,
+      zapPlaylist: zapPlaylist,
+      overrideUrl: overrideUrl,
+      overrideTitle: overrideTitle,
+    );
+  } finally {
+    _opening = false;
+  }
+}
+
+Future<void> _playChannelInner(
   BuildContext context,
   Channel channel, {
   List<Channel>? zapPlaylist,
