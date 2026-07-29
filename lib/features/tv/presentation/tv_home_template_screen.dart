@@ -7,11 +7,28 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_home_template.dart';
 import '../core/tv_tokens.dart';
 import 'tv_shell.dart';
+
+/// Libellé LOCALISÉ du template (les clés tvTemplateModelA…D existent dans
+/// les 8 langues). Le getter `label` de l'enum reste le repli technique
+/// (contexte indisponible) — ici on a toujours un BuildContext.
+String _templateLabel(BuildContext context, TvHomeTemplate t) {
+  switch (t) {
+    case TvHomeTemplate.classic:
+      return context.l10n.tvTemplateModelA;
+    case TvHomeTemplate.launcher:
+      return context.l10n.tvTemplateModelB;
+    case TvHomeTemplate.rails:
+      return context.l10n.tvTemplateModelC;
+    case TvHomeTemplate.tivimate:
+      return context.l10n.tvTemplateModelD;
+  }
+}
 
 class TvHomeTemplateScreen extends StatelessWidget {
   const TvHomeTemplateScreen({super.key});
@@ -110,7 +127,7 @@ class _TemplateCard extends StatelessWidget {
               Row(
                 children: <Widget>[
                   Expanded(
-                    child: Text(template.label,
+                    child: Text(_templateLabel(context, template),
                         style: TvTokens.ui(TvDimens.title,
                             weight: FontWeight.w700, color: TvTokens.text)),
                   ),
