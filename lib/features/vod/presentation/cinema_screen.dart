@@ -37,6 +37,18 @@ import '../domain/vod_series.dart';
 import 'movie_detail_screen.dart';
 import 'series_detail_screen.dart';
 
+/// Largeur d'affiche ADAPTATIVE des rangées du Cinéma : 96 dp sur
+/// téléphone (rendu portrait STRICTEMENT inchangé), 124 dp sur tablette
+/// (shortestSide ≥ 600 dp) où 96 dp paraissait minuscule. La taille est
+/// PLAFONNÉE (jamais proportionnelle à l'écran) : pas de jaquettes
+/// géantes étirées en paysage — les rangées affichent simplement plus
+/// d'affiches côte à côte.
+double _posterWidth(BuildContext context) =>
+    MediaQuery.sizeOf(context).shortestSide >= 600 ? 124.0 : 96.0;
+
+/// Hauteur assortie : même ratio d'affiche 96×140 que le design portrait.
+double _posterHeight(double width) => width * 140 / 96;
+
 class CinemaScreen extends StatefulWidget {
   const CinemaScreen({super.key, this.initialTab = 0});
 
@@ -292,6 +304,9 @@ class _PosterRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Hauteur du rail = hauteur d'affiche (adaptative) + libellés (32 dp,
+    // comme le 172 − 140 du design portrait d'origine).
+    final double posterH = _posterHeight(_posterWidth(context));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -307,7 +322,7 @@ class _PosterRail extends StatelessWidget {
                   color: AppColors.textTertiary)),
         ),
         SizedBox(
-          height: 172,
+          height: posterH + 32,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -339,6 +354,10 @@ class _PosterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Taille d'affiche adaptative (96 dp téléphone / 124 dp tablette,
+    // plafonnée) — voir _posterWidth.
+    final double posterW = _posterWidth(context);
+    final double posterH = _posterHeight(posterW);
     return GestureDetector(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -352,12 +371,14 @@ class _PosterCard extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: SizedBox(
-                width: 96,
-                height: 140,
+                width: posterW,
+                height: posterH,
                 child: Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
-                    _poster(movie.posterUrl, title: movie.name),
+                    _poster(movie.posterUrl,
+                        title: movie.name,
+                        memCacheWidth: posterW.round() * 2),
                     // Filet de progression (repère « entamé », comme la TV).
                     if (progress != null)
                       Align(
@@ -399,7 +420,7 @@ class _PosterCard extends StatelessWidget {
             const SizedBox(height: 6),
             if (matchPercent != null)
               SizedBox(
-                width: 96,
+                width: posterW,
                 child: Text(context.l10n.tvMatchPercent(matchPercent!),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -409,7 +430,7 @@ class _PosterCard extends StatelessWidget {
                         color: AppColors.accent)),
               ),
             SizedBox(
-              width: 96,
+              width: posterW,
               child: Text(VodTitles.clean(movie.name),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -423,12 +444,14 @@ class _PosterCard extends StatelessWidget {
   }
 }
 
-/// Affiche avec décodage BORNÉ (192 px de large suffisent pour 96 dp) —
-/// la même règle mémoire que partout ailleurs dans l'app.
+/// Affiche avec décodage BORNÉ ([memCacheWidth] px : 192 par défaut,
+/// soit 2× les 96 dp du téléphone ; les affiches tablette passent 2× leur
+/// largeur adaptative) — la même règle mémoire que partout ailleurs dans
+/// l'app.
 /// Affiche (ou repli LISIBLE quand la source n'a pas de jaquette) : au lieu
 /// d'une carte grise anonyme, on écrit le TITRE dessus (comme la TV / Netflix
 /// — corrige les rangées « Nouveautés » qui semblaient vides).
-Widget _poster(String? url, {String? title}) {
+Widget _poster(String? url, {String? title, int memCacheWidth = 192}) {
   Widget fallback() => ColoredBox(
         color: AppColors.surface,
         child: (title == null || title.isEmpty)
@@ -460,7 +483,7 @@ Widget _poster(String? url, {String? title}) {
   return CachedNetworkImage(
     imageUrl: url,
     fit: BoxFit.cover,
-    memCacheWidth: 192,
+    memCacheWidth: memCacheWidth,
     fadeInDuration: const Duration(milliseconds: 150),
     placeholder: (_, __) => const ColoredBox(color: AppColors.surface),
     errorWidget: (_, __, ___) => fallback(),
@@ -500,6 +523,10 @@ class _SeriesTab extends StatelessWidget {
       })())
           .add(s);
     }
+    // Taille d'affiche adaptative (96 dp téléphone / 124 dp tablette,
+    // plafonnée) — même règle que l'onglet Films, voir _posterWidth.
+    final double posterW = _posterWidth(context);
+    final double posterH = _posterHeight(posterW);
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: <Widget>[
@@ -519,7 +546,7 @@ class _SeriesTab extends StatelessWidget {
                         color: AppColors.textTertiary)),
               ),
               SizedBox(
-                height: 172,
+                height: posterH + 32,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -541,12 +568,14 @@ class _SeriesTab extends StatelessWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
                               child: SizedBox(
-                                width: 96,
-                                height: 140,
+                                width: posterW,
+                                height: posterH,
                                 child: Stack(
                                   fit: StackFit.expand,
                                   children: <Widget>[
-                                    _poster(s.posterUrl, title: s.name),
+                                    _poster(s.posterUrl,
+                                        title: s.name,
+                                        memCacheWidth: posterW.round() * 2),
                                     if (newIds.contains(s.id))
                                       Positioned(
                                         top: 5,
@@ -572,7 +601,7 @@ class _SeriesTab extends StatelessWidget {
                             ),
                             const SizedBox(height: 6),
                             SizedBox(
-                              width: 96,
+                              width: posterW,
                               child: Text(VodTitles.clean(s.name),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,

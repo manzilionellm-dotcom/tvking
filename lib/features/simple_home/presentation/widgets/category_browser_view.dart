@@ -41,8 +41,21 @@ import '../../../channels/presentation/widgets/live_now_favorites_row.dart';
 import '../../../country_home/presentation/widgets/channel_logo.dart';
 import '../../../player/presentation/play_channel.dart';
 import '../../../playlists/data/favorites_repository.dart';
+import '../../../playlists/data/playlist_repository.dart';
+import '../../../playlists/data/remote_source_repository.dart';
 import '../../../vod/data/playback_position_repository.dart';
 import '../../../vod/presentation/cinema_screen.dart';
+
+/// Nombre de colonnes ADAPTATIF pour les listes verticales (catégories et
+/// chaînes) : calculé depuis la LARGEUR RÉELLE au lieu d'être figé à 1
+/// colonne « portrait ». Une ligne pleine largeur est parfaite sur un
+/// téléphone en portrait (≈ 360–430 dp) mais s'étire de façon absurde en
+/// paysage ou sur tablette. Cible ≈ 400 dp par tuile — en dessous de
+/// 800 dp de large on garde EXACTEMENT le rendu portrait actuel (1
+/// colonne), au-delà on passe à 2, 3… (plafonné à 4 pour ne jamais avoir
+/// de tuiles écrasées sur un très grand écran).
+int _adaptiveColumns(double width, {double targetTileWidth = 400}) =>
+    (width ~/ targetTileWidth).clamp(1, 4).toInt();
 
 /// Grands « rayons » de contenu, pour la barre de filtres du haut.
 /// Tout ce qui n'est ni film, ni série, ni adulte tombe dans [tv]
@@ -293,6 +306,42 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
         onDoneReorder: _endReorder,
       ),
     );
+  }
+
+  /// Une « ligne » de groupes en mode multi-colonnes (paysage / tablette) :
+  /// [cols] tuiles côte à côte à partir de [start], complétées par des
+  /// espaces vides pour garder des largeurs égales sur la dernière ligne.
+  /// À 1 colonne (téléphone portrait) on rend la tuile telle quelle —
+  /// AUCUN changement visuel par rapport à avant.
+  Widget _categoryRowsChunk(List<String> cats, int start, int cols,
+      Map<String, List<Channel>> grouped) {
+    if (cols <= 1) return _categoryRowWidget(cats, start, grouped);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        for (int j = start; j < start + cols; j++)
+          Expanded(
+            child: j < cats.length
+                ? _categoryRowWidget(cats, j, grouped)
+                : const SizedBox.shrink(),
+          ),
+      ],
+    );
+  }
+
+  /// TIRER-POUR-RAFRAÎCHIR : le MÊME rafraîchissement réel que le reste de
+  /// l'app — 1) resynchronise la source assignée par le revendeur
+  /// (RemoteSourceRepository.sync : dédupliqué, donc quasi gratuit si rien
+  /// n'a changé, et récupère une source fraîchement poussée), puis
+  /// 2) re-télécharge les playlists existantes (PlaylistRepository.refreshAll,
+  /// le moteur historique du bouton « Actualiser »). On ATTEND la fin réelle
+  /// pour que l'indicateur reflète le vrai travail ; les chaînes fraîches
+  /// arrivent ensuite par channelsStream → l'accueil se reconstruit seul.
+  Future<void> _refreshData() async {
+    // sync() ne throw jamais (renvoie un résultat) ; refreshAll est
+    // best-effort par playlist et possède son propre verrou anti-doublon.
+    await RemoteSourceRepository.sync();
+    await PlaylistRepository.instance.refreshAll();
   }
 
   /// Cache MAC id→chaîne pour le rail « Récemment regardées ». Reconstruit
@@ -640,57 +689,78 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     // power-user) ET donne un vrai accueil scrollable façon Netflix. Chaque
     // rail se cache tout seul quand il est vide (nouvel utilisateur = liste
     // de catégories seule, comme avant).
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 16),
-      children: <Widget>[
-        // Rangée « Reprendre » (Continue Watching VOD) : films/séries
-        // commencés, avec barre de progression. Le hook de retour n°1.
-        _buildResumeVodRail(),
-        // Rayon « Top 10 » : preuve sociale en tête d'accueil. Classement
-        // réel par temps de visionnage, avec repli « tendances du jour ».
-        _buildTopRail(),
-        // Rayon « Récemment regardées » : dernières chaînes ouvertes (max 10).
-        _buildRecentRail(),
-        // Rangée « Favoris en direct maintenant » : les favoris qui diffusent
-        // en ce moment (widget autonome, se cache s'il n'y a rien).
-        const LiveNowFavoritesRow(),
-        // Barre de filtres : seulement s'il y a plus d'un rayon.
-        if (ordered.length > 1) _buildFilterBar(ordered, effective),
-        // Rappel discret des catégories MASQUÉES + accès pour les ré-afficher.
-        if (HiddenCategoriesStore.instance.count > 0)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _openHiddenSheet,
-                icon: Icon(Icons.visibility_off_rounded,
-                    size: 18, color: AppColors.textTertiary),
-                label: Text(
-                  '${HiddenCategoriesStore.instance.count} masquée(s) · Gérer',
-                  style: AppTextStyles.labelSmall.copyWith(
-                      fontSize: 12, color: AppColors.textTertiary),
+    //
+    // PAYSAGE / TABLETTE : LayoutBuilder mesure la largeur réelle et les
+    // groupes passent en 2–4 colonnes au lieu d'une ligne étirée sur toute
+    // la largeur. Les rails horizontaux, eux, ont déjà des tuiles de
+    // largeur FIXE (62/92 dp) : ils s'allongent naturellement sans jamais
+    // produire de tuiles géantes — rien à changer.
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints box) {
+        final int cols = _adaptiveColumns(box.maxWidth);
+        // TIRER-POUR-RAFRAÎCHIR sur le scroll principal de l'accueil.
+        return RefreshIndicator(
+          onRefresh: _refreshData,
+          color: AppColors.accent,
+          backgroundColor: AppColors.surface,
+          child: ListView(
+            // Parent AlwaysScrollable : le geste « tirer » doit marcher même
+            // quand le contenu tient dans l'écran (petite playlist).
+            physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics()),
+            padding: const EdgeInsets.only(bottom: 16),
+            children: <Widget>[
+              // Rangée « Reprendre » (Continue Watching VOD) : films/séries
+              // commencés, avec barre de progression. Le hook de retour n°1.
+              _buildResumeVodRail(),
+              // Rayon « Top 10 » : preuve sociale en tête d'accueil. Classement
+              // réel par temps de visionnage, avec repli « tendances du jour ».
+              _buildTopRail(),
+              // Rayon « Récemment regardées » : dernières chaînes ouvertes (max 10).
+              _buildRecentRail(),
+              // Rangée « Favoris en direct maintenant » : les favoris qui diffusent
+              // en ce moment (widget autonome, se cache s'il n'y a rien).
+              const LiveNowFavoritesRow(),
+              // Barre de filtres : seulement s'il y a plus d'un rayon.
+              if (ordered.length > 1) _buildFilterBar(ordered, effective),
+              // Rappel discret des catégories MASQUÉES + accès pour les ré-afficher.
+              if (HiddenCategoriesStore.instance.count > 0)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _openHiddenSheet,
+                      icon: Icon(Icons.visibility_off_rounded,
+                          size: 18, color: AppColors.textTertiary),
+                      label: Text(
+                        '${HiddenCategoriesStore.instance.count} masquée(s) · Gérer',
+                        style: AppTextStyles.labelSmall.copyWith(
+                            fontSize: 12, color: AppColors.textTertiary),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              // Catégories de la playlist (ordre natif préservé), par
+              // paquets de [cols] tuiles (1 = rendu portrait inchangé).
+              if (cats.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Text(
+                      context.l10n.catEmptyShelf,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                          fontSize: 14, color: AppColors.textSecondary),
+                    ),
+                  ),
+                )
+              else
+                for (int i = 0; i < cats.length; i += cols)
+                  _categoryRowsChunk(cats, i, cols, grouped),
+            ],
           ),
-        // Catégories de la playlist (ordre natif préservé).
-        if (cats.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Center(
-              child: Text(
-                context.l10n.catEmptyShelf,
-                style: AppTextStyles.bodyMedium.copyWith(
-                    fontSize: 14, color: AppColors.textSecondary),
-              ),
-            ),
-          )
-        else
-          for (int i = 0; i < cats.length; i++)
-            _categoryRowWidget(cats, i, grouped),
-      ],
+        );
+      },
     );
   }
 
@@ -768,17 +838,43 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
         ),
         const Divider(height: 1, color: AppColors.surface),
         Expanded(
-          child: ListView.separated(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 16),
-            itemCount: channels.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 4),
-            itemBuilder: (BuildContext context, int i) {
-              final Channel c = channels[i];
-              return _ChannelRow(
-                channel: c,
-                number: i + 1,
-                onTap: () => playChannel(context, c, zapPlaylist: channels),
+          // PAYSAGE / TABLETTE : les lignes de chaînes passent en 2–4
+          // colonnes selon la largeur réelle (1 colonne = rendu portrait
+          // inchangé). Toujours virtualisé : chaque item du builder est une
+          // « rangée » de [cols] chaînes.
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints box) {
+              final int cols = _adaptiveColumns(box.maxWidth);
+              final int rowCount = (channels.length + cols - 1) ~/ cols;
+              return ListView.separated(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 16),
+                itemCount: rowCount,
+                separatorBuilder: (_, __) => const SizedBox(height: 4),
+                itemBuilder: (BuildContext context, int r) {
+                  Widget cell(int i) {
+                    final Channel c = channels[i];
+                    return _ChannelRow(
+                      channel: c,
+                      number: i + 1,
+                      onTap: () =>
+                          playChannel(context, c, zapPlaylist: channels),
+                    );
+                  }
+
+                  if (cols <= 1) return cell(r);
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      for (int j = r * cols; j < (r + 1) * cols; j++)
+                        Expanded(
+                          child: j < channels.length
+                              ? cell(j)
+                              : const SizedBox.shrink(),
+                        ),
+                    ],
+                  );
+                },
               );
             },
           ),
