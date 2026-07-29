@@ -67,17 +67,42 @@ DFT.player = (function () {
     videoEl.style.display = 'none';
   }
 
+  var paused = false;
+
   function play(url) {
     ensureEls();
+    paused = false;
     if (useAvplay) { if (avplayEl) avplayEl.style.display = 'block'; avPlay(url); }
     else htmlPlay(url);
   }
 
   function stop() {
     ensureEls();
+    paused = false;
     if (useAvplay) { avStop(); if (avplayEl) avplayEl.style.display = 'none'; }
     else htmlStop();
   }
 
-  return { play: play, stop: stop };
+  // Pause / reprise (touche média de la télécommande). Best-effort et
+  // TOUJOURS enveloppé : une touche média ne doit jamais planter l'app ni
+  // toucher les chemins play()/stop() existants.
+  function setPaused(on) {
+    try {
+      if (useAvplay) {
+        if (on) { webapis.avplay.pause(); } else { webapis.avplay.play(); }
+      } else if (videoEl) {
+        if (on) { videoEl.pause(); }
+        else { var p = videoEl.play(); if (p && p.catch) p.catch(function () {}); }
+      }
+      paused = on;
+    } catch (e) { /* best-effort */ }
+  }
+
+  function toggle() { setPaused(!paused); }
+
+  return {
+    play: play, stop: stop,
+    toggle: toggle, setPaused: setPaused,
+    isPaused: function () { return paused; },
+  };
 })();

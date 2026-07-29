@@ -11,6 +11,11 @@ window.DFT = window.DFT || {};
 DFT.nav = (function () {
   var current = null;
   var backHandler = null;
+  var mediaHandler = null;                 // branché par l'écran lecteur (app.js)
+  var scene = null;                        // écran courant (pour la mémoire de focus)
+  var memory = (DFT.focusKey && DFT.focusKey.createFocusMemory)
+    ? DFT.focusKey.createFocusMemory()     // { remember(scene,key), recall(scene) }
+    : null;
 
   function focusables() {
     var nodes = document.querySelectorAll('.focusable');
@@ -27,6 +32,8 @@ DFT.nav = (function () {
     if (current && current !== el) current.classList.remove('focused');
     current = el;
     el.classList.add('focused');
+    // Mémorise la place dans l'écran courant, pour la restaurer au retour.
+    if (memory && scene && DFT.focusKey) memory.remember(scene, DFT.focusKey.keyOf(el));
     if (el.scrollIntoView) {
       try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { el.scrollIntoView(); }
     }
@@ -65,12 +72,27 @@ DFT.nav = (function () {
     if (current && typeof current.click === 'function') current.click();
   }
 
+  // Nom de touche média : chaîne KeyboardEvent.key (webOS/navigateur) ou
+  // traduction du keyCode Tizen (DFT.keys.MEDIA). Retourne null sinon.
+  function mediaName(e) {
+    if (typeof e.key === 'string' && e.key.indexOf('Media') === 0) return e.key;
+    if (DFT.keys && DFT.keys.MEDIA && DFT.keys.MEDIA[e.keyCode]) return DFT.keys.MEDIA[e.keyCode];
+    return null;
+  }
+
   function onKey(e) {
     var k = e.keyCode;
     if (DFT.isBack(k)) {
       e.preventDefault();
       if (backHandler) backHandler();
       return;
+    }
+    // Touches média (déjà déclarées par platform.js, jusqu'ici ignorées) :
+    // routées vers l'écran lecteur quand il en a posé un gestionnaire.
+    var mn = mediaName(e);
+    if (mn && DFT.mediaKeys) {
+      var action = DFT.mediaKeys.mediaKeyAction(mn);
+      if (action && mediaHandler) { e.preventDefault(); mediaHandler(action); return; }
     }
     switch (k) {
       case DFT.keys.LEFT:  e.preventDefault(); move('left'); break;
@@ -93,10 +115,31 @@ DFT.nav = (function () {
     else current = null;
   }
 
+  // Entre dans un écran nommé : restaure le focus mémorisé pour cet écran
+  // (RESTAURATION DU FOCUS), sinon retombe sur le 1er focusable. À appeler à
+  // la place de focusFirst() quand on (re)affiche un écran.
+  function enterScene(name) {
+    scene = name || null;
+    var list = focusables();
+    if (!list.length) { current = null; return; }
+    var key = (memory && scene) ? memory.recall(scene) : null;
+    var target = null;
+    if (key && DFT.focusKey) {
+      for (var i = 0; i < list.length; i++) {
+        if (DFT.focusKey.keyOf(list[i]) === key) { target = list[i]; break; }
+      }
+    }
+    setFocus(target || list[0]);
+  }
+
   return {
     init: init,
     setFocus: setFocus,
     focusFirst: focusFirst,
+    enterScene: enterScene,
     onBack: function (fn) { backHandler = fn; },
+    // Gestionnaire des touches média (play/pause/stop) — posé par l'écran
+    // lecteur, remis à null en le quittant. onMedia(null) le débranche.
+    onMedia: function (fn) { mediaHandler = fn || null; },
   };
 })();

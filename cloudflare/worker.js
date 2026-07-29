@@ -2070,7 +2070,7 @@ administrateurs sont stockés sous forme hachée.</p>
 <p>L'application n'est pas destinée aux enfants de moins de 13 ans.</p>
 
 <h2>8. Contact</h2>
-<p>Pour toute question ou demande de suppression : <a href="mailto:lionel930031@gmail.com">lionel930031@gmail.com</a>.</p>
+<p>Pour toute question ou demande de suppression : <a href="mailto:contact@7themotion.com">contact@7themotion.com</a>.</p>
 
 <p class="muted">En utilisant 7 MOTION, vous acceptez la présente politique.</p>
 </div></body></html>`;
@@ -2134,7 +2134,7 @@ garantit ni la disponibilité, ni la légalité, ni la qualité de ces contenus.
 respectifs. L'application n'hébergeant aucun contenu, toute réclamation relative
 à des droits d'auteur doit être adressée au <strong>fournisseur de la source
 concernée</strong>. Pour signaler un usage abusif de l'application :
-<a href="mailto:lionel930031@gmail.com">lionel930031@gmail.com</a>.</p>
+<a href="mailto:contact@7themotion.com">contact@7themotion.com</a>.</p>
 
 <h2>7. Fourniture « en l'état »</h2>
 <p>L'application est fournie « telle quelle », sans garantie de disponibilité
@@ -2149,7 +2149,7 @@ ou partie des fonctionnalités.</p>
 <p>En installant ou en utilisant 7 MOTION, l'utilisateur reconnaît avoir lu et
 accepté les présentes conditions.</p>
 
-<p class="muted">Contact : <a href="mailto:lionel930031@gmail.com">lionel930031@gmail.com</a></p>
+<p class="muted">Contact : <a href="mailto:contact@7themotion.com">contact@7themotion.com</a></p>
 </div></body></html>`;
 }
 
@@ -5965,7 +5965,11 @@ async function handleRequest(request, env, ctx) {
         royal: APK_URL,
         get: APK_URL,
         black7: APK_URL,
-        tv: TV_APK_URL,
+        // NB : `tv` retiré ici volontairement. Le 302 exposait
+        // github.com/manzilionellm-dotcom pendant le téléchargement. `/tv`
+        // tombe désormais sur la route PROXY plus bas (proxyApk TV_APK_URL,
+        // « DeFewTV.apk ») qui sert l'APK via CE domaine — l'identité du
+        // compte GitHub n'apparaît jamais côté client.
       };
       if (DOWNLOADS[slug]) {
         if (request.method !== 'GET' && request.method !== 'HEAD') {
