@@ -23,6 +23,7 @@
 // =========================================================
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:native_video_player/native_video_player.dart';
 
@@ -69,6 +70,16 @@ class TvLivePreview extends StatefulWidget {
   /// 1-connexion consommé pour rien.
   static final RouteObserver<ModalRoute<void>> routeObserver =
       RouteObserver<ModalRoute<void>>();
+
+  /// TESTS UNIQUEMENT (simulateur TV, tests widget) : `true` = l'aperçu ne
+  /// DÉMARRE jamais (il reste sur le repli logo, aucun lecteur créé).
+  /// POURQUOI : en environnement de test il n'y a pas de plateforme native —
+  /// monter une NativeVideoView (PlatformView hybrid composition) ferait
+  /// échouer le test (canal `platform_views` absent). Ce drapeau permet de
+  /// monter les VRAIS écrans d'accueil (qui embarquent l'aperçu) sans lui.
+  /// `false` par défaut → comportement PRODUIT strictement inchangé.
+  @visibleForTesting
+  static bool debugDisableAutoStart = false;
 
   /// Chaîne focalisée dans la colonne du milieu.
   final Channel channel;
@@ -268,6 +279,8 @@ class _TvLivePreviewState extends State<TvLivePreview>
   static const Duration _kResumeAfterRoute = Duration(milliseconds: 1800);
 
   void _schedule({bool afterRouteReturn = false}) {
+    // Tests widget : aperçu neutralisé (cf. debugDisableAutoStart).
+    if (TvLivePreview.debugDisableAutoStart) return;
     if (_covered) return; // un écran est posé par-dessus → aperçu coupé
     _debounce?.cancel();
     // TOUJOURS anti-rebondi ici : le démarrage immédiat d'une SÉLECTION (OK)
@@ -295,6 +308,9 @@ class _TvLivePreviewState extends State<TvLivePreview>
   }
 
   Future<void> _start() async {
+    // Tests widget : aucun démarrage (la branche startImmediately de
+    // didUpdateWidget appelle _start directement — d'où ce second garde).
+    if (TvLivePreview.debugDisableAutoStart) return;
     // Retour de focus sur la chaîne DÉJÀ chargée (sans erreur) : rien à
     // recharger — on relance juste la lecture (mise en pause pendant la
     // navigation) et la vidéo réapparaît instantanément.
