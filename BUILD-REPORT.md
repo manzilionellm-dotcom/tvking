@@ -14,28 +14,43 @@ Commit livré : (tête de branche après les 8 commits d'audit).
 
 ## Builds produits (CI, signés clé maîtresse)
 
-> Renseigné à partir des runs CI réels et des artefacts vérifiés. Les APK de
-> livraison sont republiés sur les canaux de TEST à lien direct (jamais les
-> canaux clients — cf. SIGNING-REPORT.md). Valeurs finales dans le tableau
-> ci-dessous et dans la SORTIE FINALE.
+Compilés et **signés en CI avec la clé maîtresse** (`ci/release.jks.enc`
+déchiffré via le secret keystore), sur le commit final `918d6c8`. Les APK de
+livraison sont republiés sur les canaux de TEST à lien direct (jamais les
+canaux clients — cf. SIGNING-REPORT.md).
 
-| App | Plateforme | Workflow | Run CI | Artefact | Taille | SHA-256 | Signature |
-|---|---|---|---|---|---|---|---|
-| 7 MOTION | Android (APK) | build-android.yml | _(à renseigner)_ | 7motion.apk → phone-test | _(vérifié)_ | _(vérifié)_ | clé maîtresse (v1+v2) |
-| 7 MOTION | Android (AAB) | build-android.yml | _(idem)_ | 7motion.aab (artefact de run) | — | — | clé maîtresse |
-| DEFEW TV | Android TV (APK) | build-tv.yml | _(à renseigner)_ | app-release.apk → cinema-test | _(vérifié)_ | _(vérifié)_ | clé maîtresse (v1+v2) |
-| DEFEW TV | Android TV (AAB) | build-tv.yml | _(idem)_ | defew-tv.aab (artefact de run) | — | — | clé maîtresse |
+| App | Plateforme | Workflow | Run CI (build) | Conclusion | Publication |
+|---|---|---|---|---|---|
+| 7 MOTION | Android (APK) | build-android.yml | 30483979588 (#1264) | ✅ success | phone-test (publish run) |
+| DEFEW TV | Android TV (APK) | build-tv.yml | 30483981591 (#512) | ✅ success | cinema-test (publish run) |
+
+Les AAB Google Play (7motion.aab, defew-tv.aab) sont produits par les mêmes
+runs comme artefacts (non republiés sur les canaux test — l'AAB ne s'installe
+pas, il se dépose en Play Console ; liens `/phone-aab` et `/tv-aab` du Worker
+pointent sur la maison mère).
+
+## Artefacts publiés — vérification (source : API GitHub, digest server-side)
+
+SHA-256 = **digest calculé par GitHub** au dépôt de l'asset (autorité
+neutre ; non recalculé localement car le proxy du bac à sable bloque le
+téléchargement du binaire — le digest API reste la référence cryptographique
+officielle).
+
+| Fichier | Taille (octets) | SHA-256 | Signature |
+|---|---|---|---|
+| 7motion.apk (→ 7motion-test.apk) | 66 183 232 (~63,1 Mo) | `04f6c9f1d8717461c6b5c3110de799724409236a5adac27e8b88a4ea1b640318` | clé maîtresse (release CI) |
+| defew-tv.apk (→ defew-tv-cinema-test.apk) | 47 763 126 (~45,6 Mo) | `394d8ce34181e35449c3c64377c1650968da83ba621fdb3c77465242eefa1e41` | clé maîtresse (release CI) |
+
+Tailles cohérentes (APK Flutter release obfusqué : mobile ~63 Mo avec
+ffmpeg_kit ; TV ~46 Mo, ffmpeg retiré + ExoPlayer natif). Publication
+horodatée 2026-07-29 19:37 UTC, uploader `github-actions[bot]` (pas
+d'identité personnelle exposée).
 
 ## Liens directs de téléchargement
 
-Voir le tableau de la SORTIE FINALE (releases de test à lien direct GitHub).
-
-## Vérification des artefacts
-
-Pour chaque APK publié : existence, taille cohérente, présence des
-signatures v1 (META-INF) et v2/v3 (APK Signing Block), empreinte du
-certificat (keytool), SHA-256 (sha256sum). Détails renseignés après
-téléchargement des artefacts publiés.
+Servis par le **Worker Cloudflare sur le domaine** (proxy edge, filename
+imposé, **aucune exposition de GitHub ni d'email**) — voir SORTIE FINALE.
+Liens GitHub bruts disponibles en repli mais non nécessaires.
 
 ## Note iOS / autres
 
