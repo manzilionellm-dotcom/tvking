@@ -115,7 +115,19 @@ class CrashReporting {
     final CrashBackend? backend = _backend;
     if (backend != null) {
       try {
-        backend(error, stack, context: context, fatal: fatal);
+        // AUDIT 2026-07-29 : le backend distant recevait l'erreur BRUTE
+        // (souvent une ClientException portant l'URI Xtream, identifiants
+        // de l'abonné inclus) — le SEUL des quatre puits à échapper au
+        // caviardage, et justement celui qui exporte hors de l'appareil.
+        // On lui passe la version caviardée, comme aux autres puits.
+        // Le type d'origine est conservé quand le message est déjà sain
+        // (groupement Crashlytics intact) ; sinon message caviardé.
+        backend(
+          '$error' == safeError ? error : Exception(safeError),
+          stack,
+          context: context == null ? null : SecretRedactor.redact(context),
+          fatal: fatal,
+        );
       } catch (e) {
         // Un backend qui plante ne doit PAS faire planter l'app.
         debugPrint('[CrashReporting] backend distant en échec : $e');

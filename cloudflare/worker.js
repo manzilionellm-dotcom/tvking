@@ -5894,7 +5894,7 @@ async function handleRtAdminWs(request, env, url) {
   }
   const token = url.searchParams.get('token') || '';
   const claims = token
-    ? await verifyJwt(token, env.ADMIN_SECRET || 'dev-secret')
+    ? await verifyJwt(token, env.ADMIN_SECRET)
     : null;
   if (!claims) {
     // Forme d'erreur api_v1 : { error: code, message: humain }.

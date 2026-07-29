@@ -178,7 +178,31 @@ async function hmacSha256(secret, msg) {
   return new Uint8Array(sig);
 }
 
+// AUDIT 2026-07-29 : plus AUCUN repli 'dev-secret'. Un secret absent ou
+// trop court = signature/vérification refusée (fail-closed, aligné sur
+// checkAdmin côté worker.js). Sans ça, une instance sans ADMIN_SECRET
+// signait tous ses JWT admin avec une clé publique présente dans le dépôt
+// → forge de jetons super_admin triviale.
+function jwtSecretUsable(secret) {
+  return typeof secret === 'string' && secret.length >= 8;
+}
+
+// Comparaison à temps constant (même contrat que safeEqual de worker.js —
+// dupliquée ici pour éviter un import croisé).
+function timingSafeEqualStr(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ba = new TextEncoder().encode(a);
+  const bb = new TextEncoder().encode(b);
+  if (ba.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ba.length; i++) diff |= ba[i] ^ bb[i];
+  return diff === 0;
+}
+
 async function signJwt(payload, secret, expMinutes = 60 * 24 * 7) {
+  if (!jwtSecretUsable(secret)) {
+    throw new Error('ADMIN_SECRET absent ou trop court — signature refusée');
+  }
   const header = { alg: 'HS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
   const claims = {
@@ -196,10 +220,13 @@ async function signJwt(payload, secret, expMinutes = 60 * 24 * 7) {
 // (/api/v1/rt/ws) avec le MÊME secret HS256 — aucun nouveau secret.
 export async function verifyJwt(token, secret) {
   try {
+    // Fail-closed : sans secret configuré, AUCUN jeton n'est valide.
+    if (!jwtSecretUsable(secret)) return null;
     const [h, p, s] = token.split('.');
     if (!h || !p || !s) return null;
     const expectedSig = b64url(await hmacSha256(secret, `${h}.${p}`));
-    if (s !== expectedSig) return null;
+    // Temps constant (audit 2026-07-29) : `!==` court-circuite.
+    if (!timingSafeEqualStr(s, expectedSig)) return null;
     const claims = JSON.parse(
       new TextDecoder().decode(b64urlDecode(p)),
     );
@@ -254,7 +281,8 @@ async function verifyPassword(plain, stored) {
       keyMat,
       256,
     );
-    return b64url(bits) === hashB64;
+    // Temps constant (audit 2026-07-29) : `===` court-circuite.
+    return timingSafeEqualStr(b64url(bits), hashB64);
   } catch (_) {
     return false;
   }
@@ -278,7 +306,7 @@ async function requireAuth(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const m = auth.match(/^Bearer\s+(.+)$/i);
   if (!m) return { error: errResp('no_auth', 'Missing Authorization header', 401) };
-  const claims = await verifyJwt(m[1], env.ADMIN_SECRET || 'dev-secret');
+  const claims = await verifyJwt(m[1], env.ADMIN_SECRET);
   if (!claims) return { error: errResp('bad_token', 'Invalid or expired token', 401) };
   return { user: claims };
 }
@@ -461,9 +489,14 @@ async function bootstrapSuperAdminIfNeeded(env) {
     'SELECT COUNT(*) as n FROM admin_users',
   ).first();
   if (count && count.n > 0) return false;
+  // AUDIT 2026-07-29 : plus de mot de passe de repli 'change-me'. Sans
+  // ADMIN_SECRET configuré, on NE crée PAS de compte super_admin (sinon :
+  // compte admin aux identifiants publics). Le login renverra
+  // bad_credentials tant que le secret n'est pas posé via wrangler.
+  if (!jwtSecretUsable(env.ADMIN_SECRET)) return false;
   const id = genId('adm');
   const now = Date.now();
-  const pwd = await hashPassword(env.ADMIN_SECRET || 'change-me');
+  const pwd = await hashPassword(env.ADMIN_SECRET);
   await env.DB
     .prepare(
       `INSERT INTO admin_users
@@ -1314,7 +1347,7 @@ async function handleLogin(request, env) {
 
   const token = await signJwt(
     { sub: row.id, email: row.email, role: row.role, name: row.name },
-    env.ADMIN_SECRET || 'dev-secret',
+    env.ADMIN_SECRET,
   );
   return jsonResp({
     token,
@@ -4461,7 +4494,7 @@ async function handleResellerLogin(request, env) {
   const permissions = resellerPerms(row.permissions, level);
   const token = await signJwt(
     { sub: row.id, email: row.email, role: 'reseller', name: row.name, level, permissions },
-    env.ADMIN_SECRET || 'dev-secret',
+    env.ADMIN_SECRET,
   );
   return jsonResp({
     token,

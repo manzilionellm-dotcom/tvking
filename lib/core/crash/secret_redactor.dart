@@ -36,16 +36,49 @@ class SecretRedactor {
   // On garde le nom du paramètre, on masque sa valeur (jusqu'au prochain
   // séparateur & / espace / guillemet / fin).
   static final RegExp _query = RegExp(
-    r'([?&](?:username|password|user|pass|token|u|p)=)[^&\s"'
+    // AUDIT 2026-07-29 : liste élargie — secret/auth/api_key/key/sig/pwd/
+    // access_token/session passaient en clair.
+    r'([?&](?:username|password|user|pass|pwd|token|access_token|session'
+    r'|secret|auth|api_?key|key|sig|u|p)=)[^&\s"'
     "']+",
     caseSensitive: false,
   );
 
+  // En-têtes sensibles sérialisés en texte libre (maps d'en-têtes dans un
+  // ctx de log, dumps de requêtes) : `Authorization: Bearer xxx`,
+  // `X-Admin-Secret: xxx`, `X-Api-Key: xxx`. AUDIT 2026-07-29 : aucun
+  // motif ne les couvrait. Valeur bornée à 256 pour éviter tout backtrack.
+  // La valeur d'en-tête peut contenir un espace (`Bearer <token>`) : on masque
+  // jusqu'au prochain séparateur d'entrée (virgule, accolade, guillemet, fin
+  // de ligne). Borné à 256 pour éviter tout backtrack pathologique.
+  static final RegExp _header = RegExp(
+    r'((?:authorization|x-admin-secret|x-api-key)\s*[:=]\s*)[^,;}\r\n"'
+    "']{1,256}",
+    caseSensitive: false,
+  );
+
+  /// Détection BORNÉE (simple `contains`, aucune regex) d'un nom d'en-tête
+  /// sensible dans la ligne : sert uniquement à la sortie rapide de [redact]
+  /// — les en-têtes n'exigent ni '/' ni '=' (`Authorization: Bearer xxx`),
+  /// ils passeraient sinon sous le radar du raccourci.
+  static bool _maybeHeader(String text) {
+    final String lower = text.toLowerCase();
+    return lower.contains('authorization') ||
+        lower.contains('x-admin-secret') ||
+        lower.contains('x-api-key');
+  }
+
   // Chemin Xtream : .../USER/PASS/ID.ext — on masque les DEUX segments qui
   // précèdent le fichier terminal (schéma /live|/movie|/series ou racine).
   // On préserve les préfixes structurels connus (live/movie/series).
+  // AUDIT 2026-07-29 : le segment terminal exigeait `\d+.ext` — un chemin
+  // `/live/USER/PASS/stream` (sans extension, servi par certains panels)
+  // passait en clair. Sous un préfixe structurel live|movie|series, les
+  // deux segments suivants sont TOUJOURS user/pass : on accepte tout
+  // segment terminal.
   static final RegExp _xtreamPath = RegExp(
-    r'/(live|movie|series)/([^/\s]+)/([^/\s]+)/(\d+\.[a-zA-Z0-9]+)',
+    r'/(live|movie|series)/([^/\s]+)/([^/\s]+)/([^/\s"'
+    "']+)",
     caseSensitive: false,
   );
   static final RegExp _xtreamBarePath = RegExp(
@@ -58,14 +91,17 @@ class SecretRedactor {
   static String redact(String text) {
     if (text.isEmpty) return text;
     // Sortie rapide : tous les motifs sensibles exigent un '/' (chemin ou
-    // scheme://) ou un '=' (paramètre de query). Une ligne qui n'a ni l'un
-    // ni l'autre ne peut rien contenir à caviarder — on évite 4 passes
-    // regex sur le cas de très loin le plus fréquent (ligne de log banale).
-    if (!text.contains('/') && !text.contains('=')) return text;
+    // scheme://) ou un '=' (paramètre de query) — sauf les en-têtes, dont
+    // le nom est cherché par un contains borné (pas de regex sur le cas
+    // de très loin le plus fréquent : la ligne de log banale).
+    if (!text.contains('/') && !text.contains('=') && !_maybeHeader(text)) {
+      return text;
+    }
     try {
       String out = text.replaceAllMapped(
           _userInfo, (Match m) => '${m.group(1)}$_mask:$_mask@');
       out = out.replaceAllMapped(_query, (Match m) => '${m.group(1)}$_mask');
+      out = out.replaceAllMapped(_header, (Match m) => '${m.group(1)}$_mask');
       out = out.replaceAllMapped(
           _xtreamPath, (Match m) => '/${m.group(1)}/$_mask/$_mask/${m.group(4)}');
       out = out.replaceAllMapped(_xtreamBarePath,

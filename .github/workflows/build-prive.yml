@@ -356,7 +356,13 @@ jobs:
           [ "$ok" = 1 ] || { echo "build failed"; exit 1; }
           echo "=== APKs ==="; ls -lah build/app/outputs/flutter-apk/
 
+      # GARDE DE BRANCHE (audit 2026-07-29) : prive-latest est une release
+      # CLIENTE officielle (protégée par cleanup-old-apks). Sans cette
+      # garde, N'IMPORTE QUEL push claude/**|feature/** touchant
+      # main_prive.dart écrasait l'APK distribué aux clients — alignement
+      # sur build-android.yml/build-tv.yml (maison mère uniquement).
       - name: Publish "prive-latest" release
+        if: github.ref_name == 'claude/maison-mere-phone' || github.ref_name == 'main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

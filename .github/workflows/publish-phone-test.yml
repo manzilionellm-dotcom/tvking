@@ -47,8 +47,13 @@ jobs:
       - name: Publier la release phone-test (écrase la précédente)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # AUDIT 2026-07-29 : l'input passait par interpolation directe dans le
+          # script shell (injection de commandes possible via un run_id forgé).
+          # Variable d'environnement + validation stricte ci-dessous.
+          RUN_ID: ${{ inputs.run_id }}
         run: |
           set -e
+          case "$RUN_ID" in (*[!0-9]*|'') echo "run_id invalide"; exit 1;; esac
           ls -la
           mv 7motion.apk 7motion-test.apk
           # Tag recréé à chaque publication : UNE seule release de test.
@@ -56,6 +61,6 @@ jobs:
           gh release create phone-test -R "$GITHUB_REPOSITORY" \
             --prerelease \
             --title "7 MOTION téléphone — APK de test (ne pas diffuser)" \
-            --notes "APK téléphone de test (run ${{ inputs.run_id }}). Signé avec la clé maîtresse : s'installe PAR-DESSUS l'app en place. Lien direct : https://github.com/$GITHUB_REPOSITORY/releases/download/phone-test/7motion-test.apk" \
+            --notes "APK téléphone de test (run $RUN_ID). Signé avec la clé maîtresse : s'installe PAR-DESSUS l'app en place. Lien direct : https://github.com/$GITHUB_REPOSITORY/releases/download/phone-test/7motion-test.apk" \
             7motion-test.apk
           echo "✓ https://github.com/$GITHUB_REPOSITORY/releases/download/phone-test/7motion-test.apk"
