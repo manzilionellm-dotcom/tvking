@@ -66,6 +66,7 @@ import '../data/xtream_url_variants.dart';
 import '../domain/playback_error_taxonomy.dart';
 import '../domain/playback_session_stats.dart';
 import 'aspect_mode_label.dart';
+import 'player_gesture_layer.dart';
 import 'stream_debug_screen.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
@@ -2715,9 +2716,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// Surface de lecture : la vidéo + spinner + stats + overlays.
   /// Extraite pour pouvoir être ré-utilisée à l'identique dans le
   /// PageView et dans le mode mono-page (TV / playlist absente).
+  /// Enveloppée dans [PlayerGestureLayer] : tap = overlay (comme avant),
+  /// plus les gestes MX Player (double-tap ±10 s, volume/luminosité,
+  /// scrub) — voir player_gesture_layer.dart pour le détail.
   Widget _buildPlayerSurface() {
-    return GestureDetector(
+    // Zap TikTok actif = le PageView VERTICAL est déjà propriétaire des
+    // glissés verticaux (même condition que `useTikTokSwipe` dans build).
+    // Les gestes volume/luminosité ne sont alors PAS posés — sinon leur
+    // recognizer, plus profond dans l'arène de gestes, volerait le swipe
+    // de zap au PageView.
+    final bool tikTokZapActif = _canZap && !_isTvUi;
+    return PlayerGestureLayer(
       onTap: _toggleOverlay,
+      // Durée RÉELLE uniquement (VOD / replay) : même gate strict que la
+      // barre de progression — en live, la fenêtre de buffer libmpv
+      // expose une pseudo-durée qui rendrait double-tap et scrub trompeurs.
+      seekEnabled: _showSeekBar,
+      // TV : pas de tactile, on n'enregistre rien de vertical non plus.
+      verticalGesturesEnabled: !tikTokZapActif && !_isTvUi,
+      position: () => _player.state.position,
+      duration: () => _player.state.duration,
+      // Seek DIRECT (sans _seekBy) : la couche affiche son propre
+      // feedback (flash ±10 s / aperçu de scrub), le toast ferait doublon.
+      onSeekTo: (Duration t) => _player.seek(t),
+      // Volume media_kit (0-100) — indépendant du volume système.
+      volume: () => _player.state.volume,
+      onSetVolume: (double v) => _player.setVolume(v),
+      onDoubleTapCenter: _togglePlayPause,
       child: ListenableBuilder(
         listenable: PlayerSettings.instance,
         builder: (BuildContext context, _) {
