@@ -25,8 +25,9 @@ void main() {
     });
 
     test('couvre exactement les 3 causes documentees', () {
-      // Si on ajoute une 4e cause, prevoir aussi le mapping UX dans
-      // `video_player_screen.dart _autoStopMessage(...)`.
+      // Si on ajoute une 4e cause, prevoir aussi le mapping UX cote
+      // presentation (la fiche Recording expose `autoStopReason` brut —
+      // cf. recordings/domain/recording.dart).
       expect(AutoStopReason.values.length, 3);
       expect(
         AutoStopReason.values.map((AutoStopReason r) => r.name).toSet(),
