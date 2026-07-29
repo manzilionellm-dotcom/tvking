@@ -1772,5 +1772,16 @@
   "guestErrLoanActive": "Ya tienes un préstamo en curso. Recupéralo primero para hacer otro.",
   "guestErrSameDevice": "Es tu propio dispositivo 🙂",
   "guestErrOwnAddress": "Es tu propia dirección 🙂",
-  "guestErrGeneric": "Acción imposible por ahora."
+  "guestErrGeneric": "Acción imposible por ahora.",
+  "tvTmAllChannels": "Todos los canales",
+  "tvTmGroups": "Grupos",
+  "tvTmSmartSearch": "Búsqueda inteligente",
+  "tvTmNoChannelInGroup": "No hay canales en este grupo",
+  "tvTmQuitTitle": "¿Salir de la aplicación?",
+  "tvTmNoInfo": "Sin información",
+  "tvTemplateChange": "Cambiar plantilla",
+  "tvTemplateModelA": "Modelo A",
+  "tvTemplateModelB": "Modelo B",
+  "tvTemplateModelC": "Modelo C",
+  "tvTemplateModelD": "Modelo D"
 }

@@ -1778,5 +1778,16 @@
   "guestErrLoanActive": "You already have a loan running. Take it back first to start a new one.",
   "guestErrSameDevice": "That’s your own device 🙂",
   "guestErrOwnAddress": "That’s your own address 🙂",
-  "guestErrGeneric": "Can’t do that right now."
+  "guestErrGeneric": "Can’t do that right now.",
+  "tvTmAllChannels": "All channels",
+  "tvTmGroups": "Groups",
+  "tvTmSmartSearch": "Smart search",
+  "tvTmNoChannelInGroup": "No channels in this group",
+  "tvTmQuitTitle": "Exit the app?",
+  "tvTmNoInfo": "No info",
+  "tvTemplateChange": "Change template",
+  "tvTemplateModelA": "Layout A",
+  "tvTemplateModelB": "Layout B",
+  "tvTemplateModelC": "Layout C",
+  "tvTemplateModelD": "Layout D"
 }

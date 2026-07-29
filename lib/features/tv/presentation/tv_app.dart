@@ -1099,7 +1099,7 @@ class _TemplateButton extends StatelessWidget {
               Icon(Icons.dashboard_customize_rounded, color: fg, size: 22),
               const SizedBox(width: 8),
               Text(
-                'Changer le template',
+                context.l10n.tvTemplateChange,
                 maxLines: 1,
                 softWrap: false,
                 style: TvTokens.ui(15, weight: FontWeight.w700, color: fg),

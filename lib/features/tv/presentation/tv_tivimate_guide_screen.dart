@@ -20,7 +20,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/data/epg_repository.dart';
@@ -61,6 +63,18 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
   bool _hasMore = true;
   bool _loading = false;
 
+  /// Génération de pagination : incrémentée à chaque RECHARGEMENT complet
+  /// (playlist changée). Une page encore EN VOL au moment du reset porte
+  /// l'ancienne génération → son résultat est jeté au retour, sinon elle
+  /// ajoutait des chaînes périmées (mauvais curseur) à la liste fraîche.
+  int _pageGen = 0;
+
+  /// La grille suit la playlist EN DIRECT : chaînes ajoutées/retirées
+  /// (resync du panel, changement de source) apparaissent sans rouvrir
+  /// l'écran. Coalescé : un import émet en rafale → un seul rechargement.
+  StreamSubscription<List<Channel>>? _chanSub;
+  Timer? _reloadDebounce;
+
   // ----- Fenêtre de temps -----
   late DateTime _windowStart = _floorHalfHour(DateTime.now());
   Timer? _clock;
@@ -81,10 +95,32 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
     super.initState();
     _loadMore();
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      // FENÊTRE QUI SUIT L'HEURE : guide laissé ouvert des heures → la ligne
+      // « maintenant » finissait par sortir du bord droit et la grille
+      // montrait du passé. Si « maintenant » dépasse la fenêtre visible, on
+      // la recale sur l'heure courante (même arrondi demi-heure qu'au
+      // premier affichage). Un utilisateur parti explorer le FUTUR n'est
+      // jamais dérangé : sa fenêtre est devant « maintenant ».
+      final DateTime now = DateTime.now();
+      final DateTime rightEdge =
+          _windowStart.add(const Duration(minutes: _windowMin));
+      if (!now.isBefore(rightEdge)) {
+        setState(() => _windowStart = _floorHalfHour(now));
+      } else {
+        setState(() {}); // simple tic : la ligne « maintenant » avance
+      }
     });
     _epgSub = EpgRepository.instance.changes.listen((_) {
       if (mounted) setState(() => _epgGeneration++);
+    });
+    // Chaînes EN DIRECT : un resync de playlist pendant que le guide est
+    // ouvert recharge la liste (avant, il fallait rouvrir l'écran).
+    _chanSub = PlaylistRepository.instance.channelsStream.listen((_) {
+      _reloadDebounce?.cancel();
+      _reloadDebounce = Timer(const Duration(milliseconds: 400), () {
+        if (mounted) _reloadChannels();
+      });
     });
   }
 
@@ -92,12 +128,28 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
   void dispose() {
     _clock?.cancel();
     _epgSub?.cancel();
+    _chanSub?.cancel();
+    _reloadDebounce?.cancel();
     super.dispose();
+  }
+
+  /// Rechargement COMPLET : curseur remis à zéro, pages en vol invalidées
+  /// (génération), puis 1re page fraîche.
+  void _reloadChannels() {
+    _pageGen++; // toute page encore en vol devient périmée
+    _loading = false; // le vol périmé ne bloque plus la nouvelle pagination
+    setState(() {
+      _channels.clear();
+      _cursor = 0;
+      _hasMore = true;
+    });
+    _loadMore();
   }
 
   Future<void> _loadMore() async {
     if (_loading || !_hasMore) return;
     _loading = true;
+    final int gen = _pageGen; // photographie : périmée si reload entre-temps
     // try/finally : sans lui, une exception SQLite (ou un démontage pendant
     // l'await) laissait _loading=true → plus AUCUNE page ne se chargeait,
     // spinner éternel. Même filet que le guide grid/timeline.
@@ -105,7 +157,7 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
       final ({List<Channel> channels, int nextCursor, bool hasMore}) page =
           await PlaylistRepository.instance
               .getChannelsPage(afterLocalId: _cursor, limit: _kPageSize);
-      if (!mounted) return;
+      if (!mounted || gen != _pageGen) return; // page d'une playlist périmée
       setState(() {
         _channels.addAll(page.channels);
         _cursor = page.nextCursor;
@@ -114,9 +166,11 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
     } catch (_) {
       // Échec de lecture : on arrête la pagination proprement ; l'état
       // « Aucune chaîne » ou la liste déjà chargée reste utilisable.
-      if (mounted) setState(() => _hasMore = false);
+      if (mounted && gen == _pageGen) setState(() => _hasMore = false);
     } finally {
-      _loading = false;
+      // Un vol PÉRIMÉ ne touche pas au drapeau : le rechargement qui l'a
+      // invalidé a déjà (peut-être) une page fraîche en cours.
+      if (gen == _pageGen) _loading = false;
     }
   }
 
@@ -131,9 +185,14 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
   }
 
   void _play(int index) {
+    // INSTANTANÉ figé de la liste : `_channels` peut être VIDÉE en place par
+    // _reloadChannels (playlist resynchronisée) pendant que le lecteur est
+    // ouvert — lui passer la référence vivante lui retirait ses chaînes
+    // sous les pieds (zapping cassé, index hors bornes).
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: _channels, startIndex: index),
+        builder: (_) => TvPlayerScreen(
+            channels: List<Channel>.of(_channels), startIndex: index),
       ),
     );
   }
@@ -180,8 +239,8 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
       return;
     }
     _toast(p.startDateTime.isAfter(now)
-        ? 'Programme à venir'
-        : 'Replay indisponible');
+        ? context.l10n.tvProgramUpcoming
+        : context.l10n.tvReplayUnavailable);
   }
 
   void _toast(String msg) {
@@ -230,7 +289,7 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
                       child: Row(
                         children: <Widget>[
                           Text(
-                            _dateLabel(DateTime.now()),
+                            _dateLabel(context, DateTime.now()),
                             style: const TextStyle(
                                 color: _tmAccent,
                                 fontSize: 15,
@@ -290,7 +349,7 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
                 // les boutons ⟨ ⟩ ci-dessus) — l'ancien texte promettait
                 // « gauche/droite : ±30 min » et semblait donc « cassé ».
                 Text(
-                  'Flèches : naviguer · OK : regarder / revoir · ⟨ ⟩ : ±30 min',
+                  context.l10n.tvGuideGridHint,
                   style: const TextStyle(color: _tmText3, fontSize: 12),
                 ),
                 const SizedBox(height: 8),
@@ -305,8 +364,8 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
                           child: _hasMore
                               ? const CircularProgressIndicator(
                                   color: _tmAccent)
-                              : const Text('Aucune chaîne',
-                                  style: TextStyle(
+                              : Text(context.l10n.tvNoChannels,
+                                  style: const TextStyle(
                                       color: _tmText2, fontSize: 18)))
                       : ListView.builder(
                           addAutomaticKeepAlives: false,
@@ -353,13 +412,14 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
     return '$h:$m';
   }
 
-  String _dateLabel(DateTime t) {
-    const List<String> days = <String>[
-      'lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'
-    ];
+  String _dateLabel(BuildContext context, DateTime t) {
+    // Jour ABRÉGÉ dans la langue active (intl, comme l'accueil Classique) :
+    // « lun. » en français, « Mon » en anglais, « الاثنين » en arabe…
+    final String localeName = Localizations.localeOf(context).toString();
+    final String day = DateFormat.E(localeName).format(t);
     final String h = t.hour.toString().padLeft(2, '0');
     final String m = t.minute.toString().padLeft(2, '0');
-    return '${days[t.weekday - 1]} ${t.day} · $h:$m';
+    return '$day ${t.day} · $h:$m';
   }
 }
 
@@ -533,10 +593,10 @@ class _GuideRowState extends State<_GuideRow> {
                       ),
                     ),
                     if (noData)
-                      const Center(
-                        child: Text('Aucune info',
-                            style:
-                                TextStyle(color: _tmText3, fontSize: 12)),
+                      Center(
+                        child: Text(context.l10n.tvTmNoInfo,
+                            style: const TextStyle(
+                                color: _tmText3, fontSize: 12)),
                       ),
                     for (final (EpgProgram, bool) e in progs)
                       _block(e.$1, e.$2),

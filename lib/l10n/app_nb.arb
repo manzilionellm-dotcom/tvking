@@ -1772,5 +1772,16 @@
   "guestErrLoanActive": "Du har allerede et utlån på gang. Ta det tilbake først for å lage et nytt.",
   "guestErrSameDevice": "Det er din egen enhet 🙂",
   "guestErrOwnAddress": "Det er din egen adresse 🙂",
-  "guestErrGeneric": "Handlingen er ikke mulig akkurat nå."
+  "guestErrGeneric": "Handlingen er ikke mulig akkurat nå.",
+  "tvTmAllChannels": "Alle kanaler",
+  "tvTmGroups": "Grupper",
+  "tvTmSmartSearch": "Smart søk",
+  "tvTmNoChannelInGroup": "Ingen kanaler i denne gruppen",
+  "tvTmQuitTitle": "Vil du avslutte appen?",
+  "tvTmNoInfo": "Ingen info",
+  "tvTemplateChange": "Bytt mal",
+  "tvTemplateModelA": "Modell A",
+  "tvTemplateModelB": "Modell B",
+  "tvTemplateModelC": "Modell C",
+  "tvTemplateModelD": "Modell D"
 }

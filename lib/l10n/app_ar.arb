@@ -1772,5 +1772,16 @@
   "guestErrLoanActive": "لديك إعارة جارية بالفعل. استرجعها أولاً لتقوم بأخرى.",
   "guestErrSameDevice": "هذا جهازك أنت 🙂",
   "guestErrOwnAddress": "هذا عنوانك أنت 🙂",
-  "guestErrGeneric": "الإجراء غير ممكن حالياً."
+  "guestErrGeneric": "الإجراء غير ممكن حالياً.",
+  "tvTmAllChannels": "كل القنوات",
+  "tvTmGroups": "المجموعات",
+  "tvTmSmartSearch": "بحث ذكي",
+  "tvTmNoChannelInGroup": "لا توجد قنوات في هذه المجموعة",
+  "tvTmQuitTitle": "هل تريد الخروج من التطبيق؟",
+  "tvTmNoInfo": "لا توجد معلومات",
+  "tvTemplateChange": "تغيير القالب",
+  "tvTemplateModelA": "النموذج A",
+  "tvTemplateModelB": "النموذج B",
+  "tvTemplateModelC": "النموذج C",
+  "tvTemplateModelD": "النموذج D"
 }

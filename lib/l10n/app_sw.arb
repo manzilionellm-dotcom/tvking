@@ -1772,5 +1772,16 @@
   "guestErrLoanActive": "Tayari una mkopo unaoendelea. Urudishe kwanza ili ufanye mwingine.",
   "guestErrSameDevice": "Hiki ni kifaa chako mwenyewe 🙂",
   "guestErrOwnAddress": "Hii ni anwani yako mwenyewe 🙂",
-  "guestErrGeneric": "Kitendo hakiwezekani kwa sasa."
+  "guestErrGeneric": "Kitendo hakiwezekani kwa sasa.",
+  "tvTmAllChannels": "Chaneli zote",
+  "tvTmGroups": "Vikundi",
+  "tvTmSmartSearch": "Utafutaji mahiri",
+  "tvTmNoChannelInGroup": "Hakuna chaneli katika kikundi hiki",
+  "tvTmQuitTitle": "Ungependa kufunga programu?",
+  "tvTmNoInfo": "Hakuna taarifa",
+  "tvTemplateChange": "Badilisha kiolezo",
+  "tvTemplateModelA": "Muundo A",
+  "tvTemplateModelB": "Muundo B",
+  "tvTemplateModelC": "Muundo C",
+  "tvTemplateModelD": "Muundo D"
 }

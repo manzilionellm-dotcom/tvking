@@ -4454,5 +4454,49 @@
   "guestErrGeneric": "Action impossible pour le moment.",
   "@guestErrGeneric": {
     "description": "Erreur invite générique."
+  },
+  "tvTmAllChannels": "Toutes les chaînes",
+  "@tvTmAllChannels": {
+    "description": "Accueil TiviMate : pseudo-groupe en tête de colonne (toutes les chaînes de la playlist)."
+  },
+  "tvTmGroups": "Groupes",
+  "@tvTmGroups": {
+    "description": "Accueil TiviMate : titre de la colonne des groupes (catégories)."
+  },
+  "tvTmSmartSearch": "Recherche intelligente",
+  "@tvTmSmartSearch": {
+    "description": "Gros bouton de recherche globale en tête de la colonne des groupes."
+  },
+  "tvTmNoChannelInGroup": "Aucune chaîne dans ce groupe",
+  "@tvTmNoChannelInGroup": {
+    "description": "Accueil TiviMate : état vide quand le groupe sélectionné n’a aucune chaîne."
+  },
+  "tvTmQuitTitle": "Quitter l’application ?",
+  "@tvTmQuitTitle": {
+    "description": "Accueil TiviMate : titre de la boîte de confirmation avant de quitter l’app."
+  },
+  "tvTmNoInfo": "Aucune info",
+  "@tvTmNoInfo": {
+    "description": "Grille TiviMate : piste EPG sans aucun programme dans la fenêtre."
+  },
+  "tvTemplateChange": "Changer le template",
+  "@tvTemplateChange": {
+    "description": "Gros bouton de l’accueil Classique qui ouvre le sélecteur de template."
+  },
+  "tvTemplateModelA": "Modèle A",
+  "@tvTemplateModelA": {
+    "description": "Nom NEUTRE du template « Classique » dans le sélecteur (aucune marque tierce)."
+  },
+  "tvTemplateModelB": "Modèle B",
+  "@tvTemplateModelB": {
+    "description": "Nom NEUTRE du template « Grandes tuiles » dans le sélecteur."
+  },
+  "tvTemplateModelC": "Modèle C",
+  "@tvTemplateModelC": {
+    "description": "Nom NEUTRE du template « Rails » dans le sélecteur."
+  },
+  "tvTemplateModelD": "Modèle D",
+  "@tvTemplateModelD": {
+    "description": "Nom NEUTRE du template « Panneau chaînes » dans le sélecteur."
   }
 }

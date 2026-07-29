@@ -4,8 +4,10 @@
 //  Réplique de l'accueil TiviMate (liste des chaînes en panneau) :
 //    • rail d'icônes à gauche (Recherche · TV actif · Films · Séries ·
 //      Catch-up · Templates · Réglages)
-//    • colonne des GROUPES (catégories dépliées de la playlist)
+//    • colonne des GROUPES (« ★ Favoris » + « Toutes les chaînes » en tête,
+//      puis les catégories de la playlist)
 //    • liste des CHAÎNES du groupe + APERÇU (logo/nom/n°) et EPG now/next
+//      — appui long OK sur une chaîne = toggle favori (comme partout)
 //  OK sur une chaîne → TvPlayerScreen (ExoPlayer/Media3) → zapping haut/bas.
 //
 //  COULEURS IDENTIQUES à TiviMate (fond #000000, panneaux #12171C, accent
@@ -23,10 +25,12 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/data/category_order_store.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/presentation/widgets/mini_epg_now_next.dart';
+import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
@@ -52,7 +56,13 @@ const Color _tmText2 = Color(0xFFB8BDC4); // texte secondaire
 const Color _tmText3 = Color(0xFF6B7178); // texte tertiaire / n°
 const Color _tmSoft = Color(0xFF3A3E45); // sélection douce (groupe non focus)
 
+// Sentinelles INTERNES des pseudo-groupes (jamais affichées telles quelles :
+// le libellé visible passe par _groupLabel → l10n). « Toutes les chaînes »
+// garde son ancienne valeur (clé de tri/sélection déjà en place) ; le groupe
+// FAVORIS (parité TiviMate : les favoris en tête de liste) utilise une clé
+// technique qu'aucune vraie catégorie prettifiée ne peut produire.
 const String _kAllGroup = 'Toutes les chaînes';
+const String _kFavGroup = 'k.tm.favs';
 
 class TvTivimateHomeScreen extends StatefulWidget {
   const TvTivimateHomeScreen({super.key});
@@ -64,9 +74,16 @@ class TvTivimateHomeScreen extends StatefulWidget {
 class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   StreamSubscription<List<Channel>>? _sub;
   List<Channel> _all = <Channel>[];
-  List<String> _groups = <String>[_kAllGroup];
+  List<String> _groups = <String>[_kFavGroup, _kAllGroup];
   String _group = _kAllGroup;
   List<Channel> _visible = <Channel>[];
+
+  /// FAVORIS (parité TiviMate) : IDs de la portée active + écoute live —
+  /// un toggle (appui long) ou une bascule d'univers repeint le compteur du
+  /// groupe « ★ Favoris », les étoiles des lignes et la liste si on est déjà
+  /// dans ce groupe.
+  StreamSubscription<Set<String>>? _favSub;
+  Set<String> _favIds = <String>{};
 
   /// Chaîne prévisualisée (focus D-pad). ValueNotifier et non champ +
   /// setState : chaque déplacement de focus ne reconstruit QUE l'aperçu
@@ -79,6 +96,13 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Favoris en direct : cache immédiat, puis flux (même patron que
+    // tv_channels_screen / tv_live_screen).
+    _favIds = FavoritesRepository.instance.current;
+    // ignore: discarded_futures
+    FavoritesRepository.instance.initialize();
+    _favSub = FavoritesRepository.instance.favoritesStream
+        .listen(_onFavoritesChanged);
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
     // Ordre PERSONNALISÉ des catégories (partagé partout) + écoute live.
@@ -90,22 +114,50 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   @override
   void dispose() {
     _sub?.cancel();
+    _favSub?.cancel();
     CategoryOrderStore.instance.removeListener(_onCatOrderChanged);
     _preview.dispose();
     super.dispose();
   }
 
+  void _onFavoritesChanged(Set<String> ids) {
+    if (!mounted) return;
+    setState(() {
+      _favIds = ids;
+      _counts[_kFavGroup] = _favoriteChannels().length;
+      if (_group == _kFavGroup) {
+        // On regarde le groupe FAVORIS : la liste suit le toggle en direct.
+        _visible = _channelsFor(_kFavGroup);
+        // L'aperçu peut pointer une chaîne qui vient d'être retirée →
+        // resynchronisation sur l'instance encore visible, ou la 1re.
+        final String? previewId = _preview.value?.id;
+        final int keep = previewId == null
+            ? -1
+            : _visible.indexWhere((Channel c) => c.id == previewId);
+        _preview.value = keep >= 0
+            ? _visible[keep]
+            : (_visible.isNotEmpty ? _visible.first : null);
+      }
+    });
+  }
+
+  /// Chaînes favorites, dans l'ordre de la playlist (bornes : les favoris
+  /// restent une poignée — le filtre O(n) ne tourne qu'au toggle/à l'ingestion,
+  /// jamais pendant le défilement).
+  List<Channel> _favoriteChannels() =>
+      _all.where((Channel c) => _favIds.contains(c.id)).toList();
+
   void _onCatOrderChanged() {
     if (mounted) setState(() => _groups = _orderedGroups(_groups));
   }
 
-  /// Applique l'ordre personnalisé aux VRAIS groupes (« Toutes les chaînes »
-  /// reste toujours en tête).
+  /// Applique l'ordre personnalisé aux VRAIS groupes (« ★ Favoris » et
+  /// « Toutes les chaînes » restent toujours en tête, dans cet ordre).
   List<String> _orderedGroups(List<String> groups) {
     final List<String> pseudo =
-        groups.where((String g) => g == _kAllGroup).toList();
+        groups.where(_isPseudoGroup).toList();
     final List<String> real =
-        groups.where((String g) => g != _kAllGroup).toList();
+        groups.where((String g) => !_isPseudoGroup(g)).toList();
     final List<String> orderedReal =
         CategoryOrderStore.instance.applyOrder(real, (String g) => g);
     return <String>[...pseudo, ...orderedReal];
@@ -122,7 +174,8 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
 
   void _ingest(List<Channel> channels) {
     // Groupes = catégories nettoyées, dans l'ordre de première apparition.
-    final List<String> groups = <String>[_kAllGroup];
+    // « ★ Favoris » puis « Toutes les chaînes » toujours en tête (TiviMate).
+    final List<String> groups = <String>[_kFavGroup, _kAllGroup];
     final Set<String> seen = <String>{};
     final Map<String, int> counts = <String, int>{};
     final Map<String, List<Channel>> byGroup = <String, List<Channel>>{};
@@ -134,6 +187,8 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       (byGroup[g] ??= <Channel>[]).add(c);
     }
     counts[_kAllGroup] = channels.length;
+    counts[_kFavGroup] =
+        channels.where((Channel c) => _favIds.contains(c.id)).length;
     if (!mounted) return;
     setState(() {
       _all = channels;
@@ -164,7 +219,15 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   /// Groupe actuellement « saisi » pour être déplacé (null = aucun).
   String? _reorderGroup;
 
-  bool _isPseudoGroup(String g) => g == _kAllGroup;
+  bool _isPseudoGroup(String g) => g == _kAllGroup || g == _kFavGroup;
+
+  /// Libellé VISIBLE d'un groupe : les sentinelles passent par l10n (langue
+  /// active), les vraies catégories s'affichent telles quelles.
+  String _groupLabel(BuildContext context, String g) {
+    if (g == _kFavGroup) return '★ ${context.l10n.navFavorites}';
+    if (g == _kAllGroup) return context.l10n.tvTmAllChannels;
+    return g;
+  }
 
   List<String> _realGroups() =>
       _groups.where((String g) => !_isPseudoGroup(g)).toList();
@@ -268,6 +331,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   }
 
   List<Channel> _channelsFor(String group) {
+    if (group == _kFavGroup) return _favoriteChannels();
     if (group == _kAllGroup) return _all;
     return _byGroup[group] ?? const <Channel>[];
   }
@@ -315,19 +379,19 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       context: context,
       builder: (BuildContext d) => AlertDialog(
         backgroundColor: _tmPanel,
-        title: const Text('Quitter l’application ?',
-            style: TextStyle(
+        title: Text(d.l10n.tvTmQuitTitle,
+            style: const TextStyle(
                 color: _tmText, fontSize: 22, fontWeight: FontWeight.w700)),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(d, false),
-            child: const Text('Annuler',
-                style: TextStyle(color: _tmText2, fontSize: 18)),
+            child: Text(d.l10n.buttonCancel,
+                style: const TextStyle(color: _tmText2, fontSize: 18)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(d, true),
-            child: const Text('Quitter',
-                style: TextStyle(
+            child: Text(d.l10n.tvQuit,
+                style: const TextStyle(
                     color: _tmAccent,
                     fontSize: 18,
                     fontWeight: FontWeight.w700)),
@@ -430,10 +494,10 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(8, 4, 8, 12),
-            child: Text('Groupes',
-                style: TextStyle(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+            child: Text(context.l10n.tvTmGroups,
+                style: const TextStyle(
                     color: _tmText3,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -465,7 +529,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                 final int ri = real.indexOf(g);
                 return _GroupTile(
                   key: ValueKey<String>(g),
-                  label: g,
+                  label: _groupLabel(context, g),
                   count: _counts[g] ?? 0,
                   active: g == _group,
                   autofocus: false,
@@ -503,9 +567,9 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
           child: CircularProgressIndicator(color: _tmAccent));
     }
     if (_visible.isEmpty) {
-      return const Center(
-        child: Text('Aucune chaîne dans ce groupe',
-            style: TextStyle(color: _tmText2, fontSize: 18)),
+      return Center(
+        child: Text(context.l10n.tvTmNoChannelInGroup,
+            style: const TextStyle(color: _tmText2, fontSize: 18)),
       );
     }
     return Column(
@@ -528,6 +592,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
               number: 8888,
               channel: _visible.first,
               active: false,
+              favorite: false,
               autofocus: false,
               onSelect: () {},
             ),
@@ -558,8 +623,13 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                     number: i + 1,
                     channel: c,
                     active: active,
+                    favorite: _favIds.contains(c.id),
                     autofocus: i == 0,
                     onSelect: () => _play(i),
+                    // Appui long OK = toggle favori (parité avec les autres
+                    // écrans — même geste que tv_channels_screen).
+                    onLongPress: () =>
+                        FavoritesRepository.instance.toggle(c.id),
                   ),
                 ),
               );
@@ -689,10 +759,10 @@ class _TmSearchButton extends StatelessWidget {
                   size: 22, color: focused ? _tmText : _tmAccent),
               const SizedBox(width: 10),
               Expanded(
-                child: Text('Recherche intelligente',
+                child: Text(context.l10n.tvTmSmartSearch,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
                         color: _tmText)),
@@ -871,20 +941,25 @@ class _ActiveWatcherState extends State<_ActiveWatcher> {
   Widget build(BuildContext context) => widget.builder(context, _active);
 }
 
-/// Ligne de chaîne : [n°] [logo] [nom] [► si active]. Focus = pill blanc.
+/// Ligne de chaîne : [n°] [logo] [nom] [★ si favorite] [► si active].
+/// Focus = pill blanc. Appui long = toggle favori (comme partout).
 class _ChannelRow extends StatelessWidget {
   const _ChannelRow({
     required this.number,
     required this.channel,
     required this.active,
+    required this.favorite,
     required this.autofocus,
     required this.onSelect,
+    this.onLongPress,
   });
   final int number;
   final Channel channel;
   final bool active;
+  final bool favorite;
   final bool autofocus;
   final VoidCallback onSelect;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -892,6 +967,7 @@ class _ChannelRow extends StatelessWidget {
       autofocus: autofocus,
       scale: TvFocusScale.small,
       onSelect: onSelect,
+      onLongPress: onLongPress,
       builder: (BuildContext context, bool focused) {
         final Color bg = focused
             ? _tmText
@@ -948,6 +1024,14 @@ class _ChannelRow extends StatelessWidget {
                           active ? FontWeight.w700 : FontWeight.w500),
                 ),
               ),
+              // ★ favori — même jaune que les autres écrans ; sur le pill
+              // blanc (focus), le noir garde le contraste.
+              if (favorite) ...<Widget>[
+                const SizedBox(width: 6),
+                Icon(Icons.star_rounded,
+                    size: 18,
+                    color: focused ? _tmBg : const Color(0xFFFFC107)),
+              ],
               if (active && !focused)
                 const Icon(Icons.play_arrow_rounded,
                     size: 20, color: _tmAccent),
