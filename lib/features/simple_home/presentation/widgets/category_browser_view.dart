@@ -41,6 +41,7 @@ import '../../../channels/presentation/widgets/live_now_favorites_row.dart';
 import '../../../country_home/presentation/widgets/channel_logo.dart';
 import '../../../player/presentation/play_channel.dart';
 import '../../../playlists/data/favorites_repository.dart';
+import '../../../security/data/parental_controls.dart';
 import '../../../playlists/data/playlist_repository.dart';
 import '../../../playlists/data/remote_source_repository.dart';
 import '../../../vod/data/playback_position_repository.dart';
@@ -161,12 +162,17 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     // ignore: discarded_futures
     HiddenCategoriesStore.instance.ensureLoaded();
     HiddenCategoriesStore.instance.addListener(_onOrderChanged);
+    // MODE ENFANTS : quand le réglage bascule (depuis les Réglages), le
+    // rayon Adulte doit apparaître/disparaître immédiatement — même
+    // écoute que côté TV (tv_live_screen).
+    ParentalControls.instance.kidsMode.addListener(_onOrderChanged);
   }
 
   @override
   void dispose() {
     CategoryOrderStore.instance.removeListener(_onOrderChanged);
     HiddenCategoriesStore.instance.removeListener(_onOrderChanged);
+    ParentalControls.instance.kidsMode.removeListener(_onOrderChanged);
     super.dispose();
   }
 
@@ -665,13 +671,32 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
 
     // Rayons présents, dans un ordre fixe et lisible (TV → Cinéma →
     // Série → Adulte). L'adulte reste un rayon À PART, jamais mélangé
-    // au cinéma (demande client).
-    final List<_Bucket> ordered =
-        _Bucket.values.where(present.contains).toList();
+    // au cinéma (demande client). MODE ENFANTS : le rayon Adulte est
+    // masqué entièrement (parité TV) — sauf en flavor Privé où tout le
+    // catalogue est adulte par nature (le masquer viderait l'app).
+    final bool kidsMode = ParentalControls.instance.kidsMode.value &&
+        !FlavorConfig.current.adultOnly;
+    final List<_Bucket> ordered = _Bucket.values
+        .where((b) => present.contains(b) && !(kidsMode && b == _Bucket.adult))
+        .toList();
 
-    // Rayon effectif : celui choisi s'il est présent, sinon le 1er.
+    // Cas limite : catalogue composé UNIQUEMENT de contenu adulte + mode
+    // Enfants → plus aucun rayon. Même message que « aucune catégorie »
+    // plutôt qu'un crash sur ordered.first.
+    if (ordered.isEmpty) {
+      return Center(
+        child: Text(
+          context.l10n.catNoneInPlaylist,
+          style: AppTextStyles.bodyMedium.copyWith(
+              fontSize: 14, color: AppColors.textSecondary),
+        ),
+      );
+    }
+
+    // Rayon effectif : celui choisi s'il est présent (et pas masqué par
+    // le mode Enfants), sinon le 1er.
     final _Bucket effective =
-        (_bucket != null && present.contains(_bucket)) ? _bucket! : ordered.first;
+        (_bucket != null && ordered.contains(_bucket)) ? _bucket! : ordered.first;
 
     // Catégories visibles = celles du rayon actif (plus de « Tout »),
     // RÉORDONNÉES selon le choix de l'usager, puis les MASQUÉES retirées.
