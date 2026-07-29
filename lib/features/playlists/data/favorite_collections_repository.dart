@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/observability/structured_logger.dart';
 import '../../../core/profiles/profiles_repository.dart';
 
 /// Une collection nommée de chaînes favorites.
@@ -108,6 +109,13 @@ class FavoriteCollectionsRepository extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('[Collections] save: $e');
+      // Perte de données silencieuse (collections non persistées) :
+      // l'UI paraît à jour mais tout disparaît au prochain démarrage.
+      StructuredLogger.instance.warn(
+        domain: 'playlist',
+        event: 'collections.save_fail',
+        ctx: <String, Object?>{'error': e.toString()},
+      );
     }
   }
 }

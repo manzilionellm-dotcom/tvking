@@ -33,6 +33,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../features/subscription/data/subscription_backend.dart';
 import '../../features/subscription/data/subscription_state.dart';
 import '../i18n/l10n_now.dart';
+import '../observability/structured_logger.dart';
 
 class NotificationService {
   NotificationService._();
@@ -82,7 +83,15 @@ class NotificationService {
     try {
       final SharedPreferences p = await SharedPreferences.getInstance();
       await p.setBool(key, value);
-    } catch (_) {}
+    } catch (e) {
+      // Réglage non persisté : l'interrupteur reviendra à son ancien
+      // état au prochain boot sans explication → on trace.
+      StructuredLogger.instance.warn(
+        domain: 'notif',
+        event: 'prefs.write_fail',
+        ctx: <String, Object?>{'key': key, 'error': e.toString()},
+      );
+    }
     if (value) {
       await init();
       await requestPermission();
@@ -210,7 +219,9 @@ class NotificationService {
   Future<void> cancelProgramReminder(String channelId, int startMs) async {
     try {
       await _plugin.cancel(_idFor(channelId, startMs));
-    } catch (_) {}
+    } catch (_) {
+      // best-effort : annuler un rappel déjà parti/inexistant peut jeter.
+    }
   }
 
   // ===================================================================

@@ -23,6 +23,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../observability/structured_logger.dart';
+
 abstract final class BackendHosts {
   /// Domaine maison — TOUJOURS essayé en premier (auto-guérison).
   static const String primary = 'https://app.7themotion.com';
@@ -51,7 +53,10 @@ abstract final class BackendHosts {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kPrefKey, base);
-    } catch (_) {}
+    } catch (_) {
+      // best-effort : la bascule en mémoire (`current`) a déjà eu lieu ;
+      // seule la persistance pour le prochain boot est perdue.
+    }
   }
 
   /// Recharge l'hôte mémorisé au boot (si le domaine maison était KO au
@@ -62,6 +67,15 @@ abstract final class BackendHosts {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? saved = prefs.getString(_kPrefKey);
       if (saved == backup) current = backup;
-    } catch (_) {}
+    } catch (e) {
+      // On démarre sur le domaine maison par défaut, mais si celui-ci
+      // était KO au dernier boot, l'app va re-sonder à froid : à tracer
+      // pour comprendre les démarrages lents côté terrain.
+      StructuredLogger.instance.warn(
+        domain: 'net',
+        event: 'backend.load_pref_fail',
+        ctx: <String, Object?>{'error': e.toString()},
+      );
+    }
   }
 }

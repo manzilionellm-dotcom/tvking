@@ -34,6 +34,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../observability/structured_logger.dart';
+
 /// Étapes franchies pendant un démarrage. Persistée à chaque jalon : au boot
 /// suivant, `BootGuard.lastFailedPhase` renvoie la dernière phase atteinte au
 /// démarrage PRÉCÉDENT → on cible la récupération (rendu vs mémoire/import).
@@ -174,7 +176,15 @@ class BootGuard {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kFailCount, 0);
-    } catch (_) {}
+    } catch (e) {
+      // On n'échoue jamais l'action utilisateur, MAIS un reset qui ne se
+      // persiste pas = boucle de mode sans échec au prochain boot → trace.
+      StructuredLogger.instance.warn(
+        domain: 'boot',
+        event: 'guard.pref_write_fail',
+        ctx: <String, Object?>{'key': 'fail_count', 'error': e.toString()},
+      );
+    }
   }
 
   // --- Drapeaux de récupération (posés par l'écran mode sans échec) ---
@@ -185,7 +195,15 @@ class BootGuard {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kSkipAutoImport, value);
-    } catch (_) {}
+    } catch (e) {
+      // Drapeau de récupération non persisté = l'utilisateur retombera
+      // sur l'étape qui plante. On avale, mais on trace.
+      StructuredLogger.instance.warn(
+        domain: 'boot',
+        event: 'guard.pref_write_fail',
+        ctx: <String, Object?>{'key': 'skip_auto_import', 'error': e.toString()},
+      );
+    }
   }
 
   /// Lit ET efface le drapeau « sauter l'auto-import » (consommation one-shot).
@@ -207,7 +225,15 @@ class BootGuard {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kCompatMode, value);
-    } catch (_) {}
+    } catch (e) {
+      // Souhait de compat rendu perdu = l'utilisateur reste bloqué sur
+      // le moteur qui plante. On avale, mais on trace.
+      StructuredLogger.instance.warn(
+        domain: 'boot',
+        event: 'guard.pref_write_fail',
+        ctx: <String, Object?>{'key': 'compat_mode', 'error': e.toString()},
+      );
+    }
   }
 
   /// `true` si le mode compatibilité de rendu a été demandé.

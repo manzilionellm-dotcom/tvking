@@ -293,7 +293,10 @@ class LocalStreamRelay {
       try {
         req.response.statusCode = HttpStatus.badGateway;
         await req.response.close();
-      } catch (_) {}
+      } catch (_) {
+        // best-effort : la réponse est peut-être déjà partiellement
+        // écrite/fermée — l'erreur amont est déjà journalisée au-dessus.
+      }
     } finally {
       client.close(force: true);
     }
@@ -359,7 +362,15 @@ class LocalStreamRelay {
     try {
       await sink.flush();
       await sink.close();
-    } catch (_) {}
+    } catch (_) {
+      // On rend quand même la main (l'UI attend), mais un flush/close
+      // raté = fichier potentiellement tronqué → visible en boîte noire.
+      StructuredLogger.instance.warn(
+        domain: 'rec',
+        event: 'relay.record_close_fail',
+        ctx: <String, Object?>{'filePath': path, 'bytes': bytes},
+      );
+    }
     StructuredLogger.instance.info(
       domain: 'rec',
       event: 'relay.record_stop',
@@ -563,7 +574,9 @@ class LocalStreamRelay {
     try {
       try {
         session.client?.close(force: true);
-      } catch (_) {}
+      } catch (_) {
+        // best-effort : fermeture de l'ancien client avant réouverture.
+      }
       session.client = HttpClient()
         ..connectionTimeout = const Duration(seconds: 30)
         ..idleTimeout = const Duration(minutes: 10)
@@ -625,7 +638,9 @@ class LocalStreamRelay {
         }
         try {
           session.client?.close(force: true);
-        } catch (_) {}
+        } catch (_) {
+          // best-effort : cleanup du client après réponse non-200.
+        }
         return null;
       }
       return cResp;
@@ -661,7 +676,7 @@ class LocalStreamRelay {
   Future<void> _forceReconnectNow(_RelaySession session) async {
     session.stallTimer?.cancel();
     session.stallTimer = null;
-    try { await session.sub?.cancel(); } catch (_) {}
+    try { await session.sub?.cancel(); } catch (_) { /* best-effort : abonnement déjà mort */ }
     session.sub = null;
     session.reconnectFailures = 0; // acte volontaire, pas un échec consécutif
     if (!session.hasConsumers) {
@@ -835,12 +850,23 @@ class LocalStreamRelay {
         session.recordBytes += data.length;
       } catch (e) {
         // Erreur disque (plein, carte éjectée) → on coupe l'enregistrement
-        // mais on NE casse PAS la lecture.
+        // mais on NE casse PAS la lecture. Événement MAJEUR pour
+        // l'utilisateur (son REC s'arrête) → boîte noire, pas que debug.
         if (kDebugMode) debugPrint('[Relay] écriture disque KO: $e');
+        StructuredLogger.instance.error(
+          domain: 'rec',
+          event: 'relay.disk_write_fail',
+          ctx: <String, Object?>{
+            'bytes': session.recordBytes,
+            'error': e.toString(),
+          },
+        );
         session.recordSink = null;
         try {
           sink.close();
-        } catch (_) {}
+        } catch (_) {
+          // best-effort : le sink est déjà en erreur, close peut jeter.
+        }
       }
     }
   }
@@ -859,7 +885,9 @@ class LocalStreamRelay {
     if (_abortIfLineDead(session)) return;
     try {
       await session.sub?.cancel();
-    } catch (_) {}
+    } catch (_) {
+      // best-effort : abonnement upstream déjà mort.
+    }
     session.sub = null;
 
     session.reconnectFailures++;
@@ -930,11 +958,15 @@ class LocalStreamRelay {
     session.stallTimer = null;
     try {
       session.sub?.cancel();
-    } catch (_) {}
+    } catch (_) {
+      // best-effort : cleanup de fermeture de session.
+    }
     session.sub = null;
     try {
       session.client?.close(force: true);
-    } catch (_) {}
+    } catch (_) {
+      // best-effort : cleanup de fermeture de session.
+    }
     session.client = null;
     // On ferme les réponses des lecteurs encore branchés : mpv reçoit
     // une fin de flux (EOF) et peut afficher une erreur au lieu de
@@ -942,7 +974,9 @@ class LocalStreamRelay {
     for (final _PlayerConsumer c in List<_PlayerConsumer>.from(session.players)) {
       try {
         c.res.close();
-      } catch (_) {}
+      } catch (_) {
+        // best-effort : le lecteur a peut-être déjà coupé sa connexion.
+      }
       c.markClosed();
     }
     session.players.clear();
@@ -952,7 +986,10 @@ class LocalStreamRelay {
     if (sink != null) {
       try {
         sink.flush().then((_) => sink.close());
-      } catch (_) {}
+      } catch (_) {
+        // best-effort : fermeture d'un REC orphelin — le stop nominal
+        // (stopRecording) journalise déjà les échecs de close.
+      }
     }
     session.upstreamActive = false;
     _sessions.remove(session.realUrl);

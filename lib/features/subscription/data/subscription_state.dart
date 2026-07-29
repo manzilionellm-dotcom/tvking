@@ -19,6 +19,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/observability/structured_logger.dart';
 import '../../device/data/device_identity.dart';
 import 'subscription_backend.dart';
 
@@ -429,10 +430,20 @@ class SubscriptionState extends ChangeNotifier {
           _activatedAck = false;
           await prefs.setBool(_kActivatedAckKey, false);
         }
-      } catch (_) {}
+      } catch (_) {
+        // best-effort : drapeau de félicitation purement cosmétique —
+        // au pire l'utilisateur est re-félicité une fois.
+      }
       notifyListeners();
     } catch (e) {
       if (kDebugMode) debugPrint('[Subscription] syncWithBackend error: $e');
+      // La sync abonnement qui échoue en boucle = statut payé/essai
+      // jamais rafraîchi. Invisible en release jusqu'ici → boîte noire.
+      StructuredLogger.instance.warn(
+        domain: 'sub',
+        event: 'sync.fail',
+        ctx: <String, Object?>{'error': e.toString()},
+      );
     }
   }
 
@@ -443,6 +454,15 @@ class SubscriptionState extends ChangeNotifier {
       final String mac = await DeviceIdentity.instance.mac;
       _remote = await SubscriptionBackend.getStatus(mac);
       notifyListeners();
-    } catch (_) {}
+    } catch (e) {
+      // On garde l'ancien statut affiché (pull-to-refresh silencieux),
+      // mais l'échec est tracé — sinon impossible de distinguer « rien
+      // de neuf » d'un backend injoignable.
+      StructuredLogger.instance.warn(
+        domain: 'sub',
+        event: 'status.refresh_fail',
+        ctx: <String, Object?>{'error': e.toString()},
+      );
+    }
   }
 }

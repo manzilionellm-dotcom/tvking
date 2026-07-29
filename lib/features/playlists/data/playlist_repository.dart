@@ -779,8 +779,15 @@ class PlaylistRepository {
         if (ids.isEmpty) continue;
         await _syncEpgForIds(ids, epgUrl);
       }
-    } catch (_) {
+    } catch (e) {
       // Silencieux — jamais de crash pour un rafraîchissement de guide.
+      // Mais un resync qui plante avant même la boucle (DB KO, liste
+      // illisible) expliquait des guides éternellement vides → on trace.
+      StructuredLogger.instance.warn(
+        domain: 'epg',
+        event: 'epg.resync_all_fail',
+        ctx: <String, Object?>{'error': e.toString()},
+      );
     }
   }
 
@@ -1057,9 +1064,18 @@ class PlaylistRepository {
         try {
           final bool result = await refreshPlaylist(p);
           if (result) ok++;
-        } catch (_) {
+        } catch (e) {
           // Best-effort — si une playlist échoue, on passe à la
-          // suivante (on ne veut pas bloquer les autres).
+          // suivante (on ne veut pas bloquer les autres). Mais on TRACE :
+          // une source qui ne se rafraîchit plus jamais était invisible.
+          StructuredLogger.instance.warn(
+            domain: 'playlist',
+            event: 'refresh.playlist_fail',
+            ctx: <String, Object?>{
+              'host': Uri.tryParse(p.m3uUrl ?? p.xtreamServer ?? '')?.host,
+              'error': e.toString(),
+            },
+          );
         }
       }
       // Nettoyage : retire toute source qui s'est vidée (code qui n'a
@@ -1109,7 +1125,19 @@ class PlaylistRepository {
       if (last != null && last > cutoff) continue;
       try {
         if (await refreshPlaylist(p)) ok++;
-      } catch (_) {}
+      } catch (e) {
+        // On avale (l'auto-refresh du boot ne doit jamais bloquer la
+        // home) mais on trace : une source périmée qui échoue en boucle
+        // à chaque démarrage était totalement invisible.
+        StructuredLogger.instance.warn(
+          domain: 'playlist',
+          event: 'refresh.stale_fail',
+          ctx: <String, Object?>{
+            'host': Uri.tryParse(p.m3uUrl ?? p.xtreamServer ?? '')?.host,
+            'error': e.toString(),
+          },
+        );
+      }
     }
     return ok;
   }

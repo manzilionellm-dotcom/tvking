@@ -2042,7 +2042,10 @@ class CastManager extends ChangeNotifier {
       await _transport!.resume();
       _state = CastState.casting;
       notifyListeners();
-    } catch (_) {}
+    } catch (_) {
+      // best effort — même logique que pause() : l'état n'est modifié
+      // que si la commande a réussi.
+    }
   }
 
   /// `true` quand le foreground service « cast relais » est actif.
@@ -2137,7 +2140,10 @@ class CastManager extends ChangeNotifier {
     _stopRelayKeepAlive();
     try {
       await _transport?.stop();
-    } catch (_) {}
+    } catch (_) {
+      // best-effort : la TV est peut-être déjà éteinte/déconnectée —
+      // on poursuit le nettoyage local quoi qu'il arrive.
+    }
     // Libère la session relay si on en avait une — évite de
     // garder un mapping orphelin en mémoire.
     if (_currentRelayUrl != null) {

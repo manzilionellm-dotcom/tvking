@@ -177,7 +177,9 @@ class LocalCastServer {
       if (kDebugMode) debugPrint('[LocalCastServer] handler error: $e');
       try {
         await req.response.close();
-      } catch (_) {}
+      } catch (_) {
+        // best-effort : la connexion est peut-être déjà fermée côté TV.
+      }
     }
   }
 
@@ -556,7 +558,10 @@ class LocalCastServer {
             forcedContentType: forcedContentType);
         req.response.statusCode = HttpStatus.ok;
         await req.response.close();
-      } catch (_) {}
+      } catch (_) {
+        // best-effort : réponse HEAD locale — si la TV a déjà raccroché,
+        // le GET qui suit (ou pas) tranchera.
+      }
       return;
     }
 
@@ -632,7 +637,10 @@ class LocalCastServer {
           try {
             out.statusCode = HttpStatus.badGateway;
             await out.close();
-          } catch (_) {}
+          } catch (_) {
+            // best-effort : l'échec upstream est déjà journalisé ; la
+            // réponse est peut-être déjà entamée/fermée.
+          }
           return;
         }
       } finally {
@@ -657,7 +665,9 @@ class LocalCastServer {
     }
     try {
       await out.close();
-    } catch (_) {}
+    } catch (_) {
+      // best-effort : fin de service — la TV a souvent déjà raccroché.
+    }
   }
 
   /// Headers DLNA construits LOCALEMENT (réponse HEAD) : aucun aller-

@@ -372,7 +372,10 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
     if (old != null) {
       try {
         await old.close();
-      } catch (_) {}
+      } catch (_) {
+        // best-effort : socket probablement déjà morte — c'est la
+        // raison même de cette reconnexion forcée.
+      }
     }
     if (_connected) {
       _connected = false;

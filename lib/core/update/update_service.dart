@@ -32,6 +32,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_platform.dart';
+import '../observability/structured_logger.dart';
 import 'build_flags.dart';
 
 class UpdateInfo {
@@ -220,7 +221,9 @@ class UpdateService {
       if (await file.exists()) {
         try {
           await file.delete();
-        } catch (_) {}
+        } catch (_) {
+          // best-effort : un reliquat d'APK sera de toute façon réécrit.
+        }
       }
 
       client = http.Client();
@@ -251,11 +254,23 @@ class UpdateService {
       return res.type == ResultType.done;
     } catch (e) {
       if (kDebugMode) debugPrint('[Update] install error: $e');
+      // Le `false` est géré par l'appelant, mais en release un échec de
+      // téléchargement/installation de MAJ restait invisible → trace.
+      StructuredLogger.instance.warn(
+        domain: 'update',
+        event: 'apk.download_fail',
+        ctx: <String, Object?>{
+          'versionCode': update.versionCode,
+          'error': e.toString(),
+        },
+      );
       return false;
     } finally {
       try {
         await sink?.close();
-      } catch (_) {}
+      } catch (_) {
+        // best-effort : cleanup — l'échec principal est déjà traité.
+      }
       client?.close();
     }
   }

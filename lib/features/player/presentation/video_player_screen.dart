@@ -30,6 +30,7 @@ import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/net/doh_resolver.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/observability/structured_logger.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/live_badge.dart';
@@ -765,7 +766,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final Player old = _player;
     try {
       await old.stop().timeout(const Duration(seconds: 5));
-    } catch (_) {}
+    } catch (_) {
+      // On continue le recyclage quoi qu'il arrive, mais un stop() qui
+      // échoue/expire = connexions potentiellement fuitées → boîte noire.
+      StructuredLogger.instance.warn(
+        domain: 'player',
+        event: 'recycle.stop_fail',
+      );
+    }
     final int stopMs = sw.elapsedMilliseconds;
     StreamDiagnostics.instance.recordEvent(
       'player',
@@ -773,7 +781,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
     try {
       await old.dispose().timeout(const Duration(seconds: 5));
-    } catch (_) {}
+    } catch (_) {
+      // Idem : un dispose() qui expire = instance mpv qui traîne
+      // (RAM/fd). On ne bloque pas le zap, mais on TRACE.
+      StructuredLogger.instance.warn(
+        domain: 'player',
+        event: 'recycle.dispose_fail',
+      );
+    }
     _createPlayer();
     // ÉTAT DE LECTURE remis à neuf AVANT que les listeners de la nouvelle
     // instance n'émettent (M1) : sinon le watchdog lisait la position 0 de
@@ -1609,7 +1624,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           try {
             final File f = File(rec.filePath);
             if (await f.exists()) bytes = await f.length();
-          } catch (_) {}
+          } catch (_) {
+            // best-effort : taille purement cosmétique (toast), le
+            // fichier enregistré n'est pas affecté.
+          }
         }
         await RecordingRepository.instance.finishRecording(rec);
       }

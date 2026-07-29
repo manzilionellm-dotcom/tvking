@@ -35,6 +35,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/i18n/l10n_now.dart';
+import '../../../core/observability/structured_logger.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart';
 import '../domain/playlist.dart';
@@ -116,6 +117,13 @@ class CloudBackupRepository {
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Backup] upload error: $e');
+      // Silencieux pour l'utilisateur (backup opportuniste), mais un
+      // upload qui échoue en boucle = sauvegarde cloud jamais à jour.
+      StructuredLogger.instance.warn(
+        domain: 'backup',
+        event: 'backup.upload_fail',
+        ctx: <String, Object?>{'error': e.toString()},
+      );
     }
   }
 
@@ -190,7 +198,10 @@ class CloudBackupRepository {
         if (f is String && !FavoritesRepository.instance.isFavorite(f)) {
           try {
             await FavoritesRepository.instance.toggle(f);
-          } catch (_) {}
+          } catch (_) {
+            // best-effort : un favori individuel qui ne se ré-insère
+            // pas ne doit pas interrompre la restauration des autres.
+          }
         }
       }
 
@@ -203,6 +214,13 @@ class CloudBackupRepository {
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Backup] restore error: $e');
+      // Échec MAJEUR : sur une réinstallation, l'utilisateur récupère
+      // une app vide sans aucune explication → boîte noire.
+      StructuredLogger.instance.error(
+        domain: 'backup',
+        event: 'backup.restore_fail',
+        ctx: <String, Object?>{'error': e.toString()},
+      );
     }
   }
 }

@@ -16,6 +16,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../observability/structured_logger.dart';
+
 /// Un profil : identifiant stable + nom + emoji d'avatar.
 class TvProfile {
   const TvProfile({required this.id, required this.name, required this.emoji});
@@ -130,6 +132,13 @@ class ProfilesRepository extends ChangeNotifier {
       await prefs.setString(_kActive, _activeId);
     } catch (e) {
       debugPrint('[Profils] save: $e');
+      // Perte de données silencieuse : les profils créés/renommés
+      // disparaîtraient au prochain boot sans explication → on trace.
+      StructuredLogger.instance.warn(
+        domain: 'profiles',
+        event: 'save_fail',
+        ctx: <String, Object?>{'error': e.toString()},
+      );
     }
   }
 }

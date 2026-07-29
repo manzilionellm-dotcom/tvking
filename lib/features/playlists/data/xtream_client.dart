@@ -40,6 +40,7 @@ import 'package:http/http.dart' as http;
 import '../../../core/app/device_memory.dart';
 import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_now.dart';
+import '../../../core/observability/structured_logger.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../player/data/player_settings.dart';
@@ -433,8 +434,15 @@ class XtreamClient {
         }
       } on PlaylistImportTooLarge {
         // Bouquet trop gros pour un seul appel → repli par catégorie.
-      } catch (_) {
-        // Échec réseau/parse du global → repli par catégorie.
+      } catch (e) {
+        // Échec réseau/parse du global → repli par catégorie. Tracé :
+        // un chemin rapide qui échoue systématiquement (serveur qui
+        // coupe le gros appel) rend chaque import beaucoup plus lent.
+        StructuredLogger.instance.warn(
+          domain: 'xtream',
+          event: 'import.fast_path_fail',
+          ctx: <String, Object?>{'error': e.toString()},
+        );
       }
     }
 
