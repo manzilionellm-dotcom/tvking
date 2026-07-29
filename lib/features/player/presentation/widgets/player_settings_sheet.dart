@@ -4,6 +4,7 @@
 //  Bottom sheet glassmorphism qui permet à l'utilisateur
 //  de modifier en cours de lecture :
 //    - Mode d'affichage (16:9, 4:3, fit, fill, etc.)
+//    - Qualité vidéo (variantes HLS : Auto / 1080p…) si ≥ 2 pistes
 //    - Buffer (5-60s)
 //    - Décodage hardware on/off
 //    - Affichage des stats on/off
@@ -11,6 +12,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -22,11 +24,27 @@ class PlayerSettingsSheet extends StatefulWidget {
   const PlayerSettingsSheet({
     required this.currentSpeed,
     required this.onSpeedChange,
+    required this.player,
+    required this.videoTrackId,
+    required this.onVideoTrackChanged,
     super.key,
   });
 
   final double currentSpeed;
   final ValueChanged<double> onSpeedChange;
+
+  /// Instance mpv COURANTE — sert à lister les variantes vidéo du flux
+  /// (pistes HLS) et à appliquer la sélection via `setVideoTrack`.
+  final Player player;
+
+  /// Choix de qualité de la SESSION de lecture (id de piste mpv), `null`
+  /// = « Auto » (mpv choisit). Mémorisé par l'écran appelant seulement —
+  /// jamais persisté : un live n'a pas les mêmes variantes qu'un film.
+  final String? videoTrackId;
+
+  /// Prévient l'écran appelant du nouveau choix (id de piste, `null` =
+  /// Auto) pour qu'il le mémorise le temps de la session.
+  final ValueChanged<String?> onVideoTrackChanged;
 
   static const List<double> kSpeeds = <double>[0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
@@ -37,10 +55,15 @@ class PlayerSettingsSheet extends StatefulWidget {
 class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
   late double _speed;
 
+  /// Choix de qualité local à la feuille (surligne la puce active tout de
+  /// suite, sans attendre la ré-émission du track-list par mpv).
+  String? _videoTrackId;
+
   @override
   void initState() {
     super.initState();
     _speed = widget.currentSpeed;
+    _videoTrackId = widget.videoTrackId;
   }
 
   @override
@@ -92,6 +115,14 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
                           .toList(),
                     ),
                     const SizedBox(height: 22),
+
+                    // ----- Qualité vidéo (variantes HLS) -----
+                    // N'apparaît que si le flux expose ≥ 2 vraies pistes
+                    // vidéo (master playlist HLS multi-variantes). Le
+                    // StreamBuilder suit `tracks` : la section apparaît /
+                    // se met à jour quand mpv découvre les variantes, et
+                    // l'abonnement est libéré avec la feuille.
+                    _qualitySection(context),
 
                     // ----- Buffer -----
                     _sectionTitle(context.l10n.playerBufferSize),
@@ -243,6 +274,121 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
             : Colors.white.withValues(alpha: 0.06),
       ),
     );
+  }
+
+  // ----- Qualité vidéo -----
+
+  /// Section « Qualité » : Auto + une puce par variante vidéo réelle du
+  /// flux (HLS multi-débits). Rendue UNIQUEMENT si ≥ 2 vraies pistes —
+  /// sinon il n'y a rien à choisir et on n'affiche rien du tout
+  /// (pas même le titre).
+  Widget _qualitySection(BuildContext context) {
+    return StreamBuilder<Tracks>(
+      stream: widget.player.stream.tracks,
+      initialData: widget.player.state.tracks,
+      builder: (BuildContext context, AsyncSnapshot<Tracks> snap) {
+        final Tracks tracks = snap.data ?? widget.player.state.tracks;
+        // media_kit préfixe la liste par les pseudo-pistes « auto » et
+        // « no » (cf. player_tracks_sheet, même filtre côté sous-titres).
+        final List<VideoTrack> real = tracks.video
+            .where((VideoTrack t) => t.id != 'auto' && t.id != 'no')
+            .toList()
+          // Plus haute qualité en premier (hauteur, puis débit).
+          ..sort((VideoTrack a, VideoTrack b) {
+            final int h = (b.h ?? 0).compareTo(a.h ?? 0);
+            if (h != 0) return h;
+            return (b.bitrate ?? 0).compareTo(a.bitrate ?? 0);
+          });
+        if (real.length < 2) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _sectionTitle(context.l10n.detailQuality),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                // « Auto » : mpv reprend la main (ABR / 1re variante).
+                _qualityChip(
+                  label: context.l10n.deviceAuto,
+                  selected: _videoTrackId == null,
+                  onSelected: () {
+                    widget.player.setVideoTrack(VideoTrack.auto());
+                    setState(() => _videoTrackId = null);
+                    widget.onVideoTrackChanged(null);
+                  },
+                ),
+                ...real.map((VideoTrack t) => _qualityChip(
+                      label: _videoTrackLabel(context, t),
+                      selected: _videoTrackId == t.id,
+                      onSelected: () {
+                        widget.player.setVideoTrack(t);
+                        setState(() => _videoTrackId = t.id);
+                        widget.onVideoTrackChanged(t.id);
+                      },
+                    )),
+              ],
+            ),
+            const SizedBox(height: 22),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _qualityChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onSelected,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      showCheckmark: false,
+      onSelected: (bool v) {
+        if (!v) return;
+        onSelected();
+      },
+      selectedColor: AppColors.accentPink,
+      backgroundColor: AppColors.surface,
+      labelStyle: AppTextStyles.bodyMedium.copyWith(
+        color: selected ? Colors.white : AppColors.textSecondary,
+        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+      ),
+      side: BorderSide(
+        color: selected
+            ? AppColors.accentPink
+            : Colors.white.withValues(alpha: 0.06),
+      ),
+    );
+  }
+
+  /// Libellé LISIBLE d'une variante : « 1080p — 8 Mb/s » quand mpv
+  /// expose hauteur/débit (`demux-h` / `demux-bitrate`), sinon le title
+  /// de la piste, sinon le repli technique « Piste {id} ».
+  String _videoTrackLabel(BuildContext context, VideoTrack t) {
+    final List<String> parts = <String>[];
+    final int? h = t.h;
+    if (h != null && h > 0) parts.add('${h}p');
+    final int? bitrate = t.bitrate;
+    if (bitrate != null && bitrate > 0) parts.add(_bitrateLabel(bitrate));
+    if (parts.isNotEmpty) return parts.join(' — ');
+    final String? title = t.title;
+    if (title != null && title.isNotEmpty) return title;
+    return context.l10n.trackFallback(t.id);
+  }
+
+  /// `demux-bitrate` mpv est en bits/s. Unités techniques (Mb/s, kb/s)
+  /// volontairement non localisées — mêmes symboles dans toutes les
+  /// langues de l'app.
+  String _bitrateLabel(int bitsPerSecond) {
+    if (bitsPerSecond >= 1000000) {
+      final double mbps = bitsPerSecond / 1000000;
+      return mbps >= 10
+          ? '${mbps.round()} Mb/s'
+          : '${mbps.toStringAsFixed(1)} Mb/s';
+    }
+    return '${(bitsPerSecond / 1000).round()} kb/s';
   }
 
   Widget _toggle({

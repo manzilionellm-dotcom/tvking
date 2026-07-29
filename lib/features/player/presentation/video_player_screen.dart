@@ -521,6 +521,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Sous-titres : dès que les pistes sont connues, on active automatiquement
     // une piste française si elle existe (cf. _maybeAutoSubtitle).
     _subs.add(_player.stream.tracks.listen(_maybeAutoSubtitle));
+    // Qualité vidéo choisie pour la session : réappliquée sur l'instance
+    // NEUVE dès que son track-list expose la piste (cf. _maybeReapplyVideoTrack).
+    _subs.add(_player.stream.tracks.listen(_maybeReapplyVideoTrack));
     _subs.add(_player.stream.playing.listen((bool p) {
       if (mounted) {
         setState(() {
@@ -895,6 +898,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _behindLive = false;
       // La variante de format adoptée était propre à l'ANCIENNE chaîne.
       _adoptedAltUrl = null;
+      // Le choix de qualité aussi : les variantes HLS (et leurs ids mpv)
+      // appartiennent à l'ancien flux → nouvelle chaîne = retour en Auto.
+      _sessionVideoTrackId = null;
+      _sessionVideoTrackApplied = false;
       // Nouvelle SESSION de lecture : le drapeau « a réellement joué »
       // repart à zéro (il ne doit jamais survivre à un zap, même en
       // revenant sur une chaîne qui avait décodé plus tôt).
@@ -1012,6 +1019,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // plusieurs fois par média). Remis à false à chaque nouvelle vidéo.
   bool _autoSubtitleApplied = false;
 
+  /// Qualité vidéo choisie par l'utilisateur (id de piste mpv d'une
+  /// variante HLS), `null` = Auto. Mémorisée PAR SESSION DE LECTURE
+  /// uniquement — jamais persistée : un live n'a pas les mêmes variantes
+  /// qu'un film, et les ids mpv ne valent que pour le flux courant.
+  /// Chaque `_openMedia` recrée l'instance mpv (jetable, cf.
+  /// _recyclePlayer) → le choix est réappliqué dès que le track-list de
+  /// la NOUVELLE instance expose la piste (réouvertures silencieuses :
+  /// reprise EOF, watchdog, retour de cast). Remis à `null` au zap.
+  String? _sessionVideoTrackId;
+
+  /// Garde anti-boucle de `_maybeReapplyVideoTrack` (le track-list est
+  /// émis plusieurs fois par média). Remise à false à chaque ouverture.
+  bool _sessionVideoTrackApplied = false;
+
   /// Active AUTOMATIQUEMENT une piste de sous-titres FRANÇAISE si elle existe
   /// (une seule fois par média). On ne force aucune autre langue et on
   /// n'écrase JAMAIS un choix déjà actif (l'utilisateur garde la main via le
@@ -1042,6 +1063,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       }
     } catch (_) {
       // best-effort : on ne casse jamais la lecture pour un sous-titre.
+    }
+  }
+
+  /// Réapplique la qualité vidéo choisie pour la session (sélecteur
+  /// « Qualité » des réglages) après une réouverture : l'instance mpv est
+  /// jetable, elle repart en Auto à chaque `_openMedia`. Best-effort : si
+  /// la piste voulue n'existe pas (variante d'URL différente adoptée par
+  /// la cascade), on n'insiste pas — mpv reste en Auto.
+  void _maybeReapplyVideoTrack(Tracks t) {
+    if (_sessionVideoTrackApplied) return;
+    final String? wanted = _sessionVideoTrackId;
+    if (wanted == null) return; // Auto = comportement par défaut de mpv
+    try {
+      for (final VideoTrack v in t.video) {
+        if (v.id == wanted) {
+          _player.setVideoTrack(v);
+          _sessionVideoTrackApplied = true;
+          return;
+        }
+      }
+      // Piste absente pour l'instant : le track-list arrive parfois en
+      // plusieurs émissions — on retentera à la prochaine.
+    } catch (_) {
+      // best-effort : on ne casse jamais la lecture pour une variante.
     }
   }
 
@@ -1129,6 +1174,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     await _recyclePlayer();
     if (!mounted || gen != _openGeneration) return;
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
+    // Instance mpv neuve = repart en Auto → la qualité de session (si
+    // choisie) devra être réappliquée quand le track-list arrivera.
+    _sessionVideoTrackApplied = false;
     // FORMAT MÉMORISÉ (zapping instantané) : si la cascade a déjà trouvé
     // le format d'URL gagnant pour cette source (et ce type de contenu),
     // on l'applique DIRECTEMENT — pas de re-cascade à chaque zap. On ne
@@ -2339,6 +2387,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       builder: (_) => PlayerSettingsSheet(
         currentSpeed: _player.state.rate,
         onSpeedChange: (double s) => _player.setRate(s),
+        player: _player,
+        videoTrackId: _sessionVideoTrackId,
+        // Choix de qualité (variante HLS) : mémorisé pour la SESSION de
+        // lecture seulement — réappliqué après les réouvertures
+        // silencieuses (instance mpv jetable, cf. _recyclePlayer), remis
+        // à Auto au zap (les variantes appartiennent à l'ancien flux).
+        onVideoTrackChanged: (String? id) {
+          _sessionVideoTrackId = id;
+          // La feuille vient de l'appliquer sur l'instance courante : la
+          // réapplication ne concerne que les prochaines réouvertures.
+          _sessionVideoTrackApplied = true;
+        },
       ),
     );
     _scheduleHideOverlay();
