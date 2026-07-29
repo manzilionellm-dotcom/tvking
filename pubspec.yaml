@@ -119,6 +119,13 @@ dependencies:
   # lecture vidéo).
   wakelock_plus: ^1.2.10
 
+  # Luminosité écran pour le geste « glissé vertical gauche » du lecteur
+  # mobile (style MX Player) — cf. player_gesture_layer.dart. Déjà présent
+  # TRANSITIVEMENT via media_kit_video ; déclaré en DIRECT car on
+  # l'importe désormais nous-mêmes. NB : screen_brightness_android reste
+  # pinné en 2.1.4 dans dependency_overrides (2.1.5 casse le build CI).
+  screen_brightness: ^2.1.0
+
   # SharedPreferences pour persister les réglages utilisateur
   # (taille du buffer, ratio préféré, etc.) entre les sessions.
   shared_preferences: ^2.3.4
