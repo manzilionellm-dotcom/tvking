@@ -102,7 +102,7 @@ export default function ReglagesPage() {
   const pickSafe = (v: string) => writePref(PREFS.safeScale, "--safe-scale", v);
 
   return (
-    <div className="pb-[var(--safe-y)] pl-[var(--safe-x)] pr-[var(--safe-x)] pt-[var(--safe-y)]">
+    <div className="page-enter pb-[var(--safe-y)] pl-[var(--safe-x)] pr-[var(--safe-x)] pt-[var(--safe-y)]">
       <h1 className="font-display mb-[0.4rem] text-[3rem] font-extrabold tracking-tight text-[var(--text-high)]">
         Réglages d&apos;affichage
       </h1>

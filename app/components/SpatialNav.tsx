@@ -100,7 +100,9 @@ export default function SpatialNav() {
       if (idx >= 0) {
         e.preventDefault();
         const next = candidates[idx];
-        next.focus();
+        // preventScroll: focus() would jump-scroll instantly and then fight
+        // the smooth scrollIntoView — one smooth glide, no double movement.
+        next.focus({ preventScroll: true });
         next.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
       }
     }
