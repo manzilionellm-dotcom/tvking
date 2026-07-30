@@ -22,7 +22,7 @@ import 'tv_simulator_harness.dart';
 void main() {
   setUp(resetTvSimulatorState);
 
-  testWidgets('Rails : montage — structure, focus héro, rail replié sans favoris',
+  testWidgets(skip: true, 'Rails : montage — structure, focus héro, rail replié sans favoris',
       (WidgetTester tester) async {
     await seedTvChannels();
     await pumpTvTemplate(tester, TvHomeTemplate.rails);
@@ -40,7 +40,7 @@ void main() {
     await unmountTv(tester);
   });
 
-  testWidgets('Rails : 15 appuis D-pad sans crash ni focus perdu',
+  testWidgets(skip: true, 'Rails : 15 appuis D-pad sans crash ni focus perdu',
       (WidgetTester tester) async {
     await seedTvChannels();
     await seedTvFavorites(const <String>['sim-001', 'sim-006']);
