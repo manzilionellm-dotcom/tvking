@@ -89,7 +89,7 @@ export class MockOrigin implements OriginTransport {
   opens = 0;
   active = 0;
   activeMax = 0;
-  #channels = new Set<OriginChannel>();
+  #channels = new Map<OriginChannel, string>();
   #options: MockOriginOptions;
   #failuresLeft: number;
 
@@ -100,6 +100,11 @@ export class MockOrigin implements OriginTransport {
 
   get openChannels(): number {
     return this.#channels.size;
+  }
+
+  /** URLs of the upstream connections open right now. */
+  get openUrls(): string[] {
+    return [...this.#channels.values()];
   }
 
   async open(request: OriginRequest): Promise<OriginResponse> {
@@ -118,7 +123,7 @@ export class MockOrigin implements OriginTransport {
     }
 
     const channel = new OriginChannel();
-    this.#channels.add(channel);
+    this.#channels.set(channel, request.url);
 
     let closed = false;
     const release = () => {
@@ -145,17 +150,19 @@ export class MockOrigin implements OriginTransport {
     };
   }
 
-  /** Publishes to every currently open upstream body. */
-  push(data: Uint8Array): void {
-    for (const channel of this.#channels) channel.push(data);
+  /** Publishes to every open upstream body, or only those whose URL matches. */
+  push(data: Uint8Array, urlContains?: string): void {
+    for (const [channel, url] of this.#channels) {
+      if (urlContains === undefined || url.includes(urlContains)) channel.push(data);
+    }
   }
 
   endAll(): void {
-    for (const channel of [...this.#channels]) channel.end();
+    for (const channel of [...this.#channels.keys()]) channel.end();
   }
 
   failAll(error: Error): void {
-    for (const channel of [...this.#channels]) channel.fail(error);
+    for (const channel of [...this.#channels.keys()]) channel.fail(error);
   }
 }
 

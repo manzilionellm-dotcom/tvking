@@ -6,6 +6,9 @@
 - `server/edge/` : déduplication de flux (single-flight + mutex), cache circulaire, diffusion
   pub/sub sans copie, lissage d'égress (token bucket), sanitisation des en-têtes montants.
   100 tests dédiés dont un e2e sockets réelles (120 clients → 1 connexion origine).
+- Multiplexage M3U : comptes maîtres (catalogue M3U + budget de connexions + empreinte
+  d'appareil), slots virtuels avec bascule de chaîne sans déconnexion, API et tableau de bord
+  d'administration temps réel (SSE). 161 tests dédiés.
 
 ## Prochain (run-002+, ordre I9)
 1. Brancher données réelles (API sport / catalogue) derrière le modèle MediaItem existant.
@@ -17,4 +20,5 @@
 6. SBOM + osv-scanner en CI ; goldens visuels des écrans TV.
 7. MODULE D/V : nécessite accès stores/analytics — CHECKLIST humaine.
 8. Proxy de bord : cas HLS segmenté (manifeste court-TTL + segments) ; TLS/auth côté LAN ;
-   brancher le lecteur (B1) sur `http://<edge>/edge/<id>`.
+   brancher le lecteur (B1) sur `http://<edge>/edge/<compte>/<chaîne>` ; persistance des comptes
+   (aujourd'hui en mémoire + env) ; rôles/audit sur le plan d'administration.

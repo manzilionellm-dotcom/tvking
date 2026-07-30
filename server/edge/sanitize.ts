@@ -137,10 +137,54 @@ export const UPSTREAM_FORWARD_ALLOWLIST: ReadonlySet<string> = new Set(["accept"
 export interface UpstreamIdentity {
   userAgent: string;
   accept?: string;
+  /**
+   * Fixed language token. Pinned because an HTTP runtime that finds the field
+   * missing will insert its own default; the value is identical for every
+   * viewer, so it carries no locale.
+   */
+  acceptLanguage?: string;
   /** Origin-side credentials owned by the edge (never the client's). */
   extra?: Readonly<Record<string, string>>;
   /** `Via` pseudonym; RFC 9110 §7.6.3 allows a made-up name for the host. */
   via?: string;
+}
+
+/**
+ * Master device signatures.
+ *
+ * Every request made on behalf of one master subscription mirrors ONE of these,
+ * byte for byte. The origin therefore sees a single device, not a fleet: no
+ * per-client variation to correlate, count or fingerprint. Which signature to
+ * present is a deployment choice — an origin that only speaks to known player
+ * software gets the matching profile.
+ */
+export const MASTER_DEVICE_PROFILES = {
+  edge: { userAgent: "tvking-edge/1.0", accept: "*/*" },
+  vlc: { userAgent: "VLC/3.0.20 LibVLC/3.0.20", accept: "*/*" },
+  kodi: { userAgent: "Kodi/20.5 (Linux; Android 12) inputstream.adaptive", accept: "*/*" },
+  tivimate: { userAgent: "TiviMate/4.7.0 (Android)", accept: "*/*" },
+  exoplayer: { userAgent: "ExoPlayerLib/2.19.1", accept: "*/*" },
+} as const satisfies Record<string, { userAgent: string; accept: string }>;
+
+export type MasterDeviceName = keyof typeof MASTER_DEVICE_PROFILES;
+
+export function isMasterDeviceName(value: string): value is MasterDeviceName {
+  return Object.prototype.hasOwnProperty.call(MASTER_DEVICE_PROFILES, value);
+}
+
+/** Builds a complete, self-consistent identity from a named device profile. */
+export function masterDevice(
+  name: MasterDeviceName = "edge",
+  overrides: Partial<UpstreamIdentity> = {}
+): UpstreamIdentity {
+  const profile = MASTER_DEVICE_PROFILES[name];
+  return {
+    userAgent: profile.userAgent,
+    accept: profile.accept,
+    acceptLanguage: "*",
+    via: "1.1 tvking-edge",
+    ...overrides,
+  };
 }
 
 export interface SanitizeResult {
@@ -210,10 +254,11 @@ export function buildUpstreamHeaders(
     forwarded.push(name);
   }
 
-  // The edge's own identity always wins over anything forwarded.
+  // The master device signature always wins over anything forwarded.
   headers["user-agent"] = identity.userAgent;
   headers["accept"] = identity.accept ?? headers["accept"] ?? "*/*";
   headers["accept-encoding"] = "identity"; // media is already compressed
+  headers["accept-language"] = identity.acceptLanguage ?? "*";
   headers["via"] = identity.via ?? "1.1 tvking-edge";
   for (const [name, value] of Object.entries(identity.extra ?? {})) {
     headers[name.toLowerCase()] = value;
@@ -223,22 +268,69 @@ export function buildUpstreamHeaders(
 }
 
 /**
- * Names in `headers` that would identify a downstream client. Empty means the
- * request is clean; used by tests and by the dev-time assertion below.
+ * The exact field set a master signature produces, with no request to sanitise.
+ * Two different viewers must yield this same object.
  */
-export function inspectClientMetadata(headers: HeaderBag, identityUserAgent?: string): string[] {
+export function masterSignature(identity: UpstreamIdentity): Record<string, string> {
+  return buildUpstreamHeaders(identity).headers;
+}
+
+/**
+ * Throws unless `headers` mirrors the master signature exactly: same field
+ * names, same values. Any per-client variation — an extra field, a different
+ * value — is a correlation handle for the origin, so it is treated as a fault.
+ */
+export function assertMirrorsMasterSignature(
+  headers: HeaderBag,
+  identity: UpstreamIdentity
+): void {
+  const expected = masterSignature(identity);
+  const actual = normalize(headers);
+  const problems: string[] = [];
+
+  for (const [name, value] of Object.entries(expected)) {
+    if (actual.get(name) !== value) problems.push(`${name} differs from the master signature`);
+  }
+  for (const name of actual.keys()) {
+    if (!(name in expected)) problems.push(`${name} is not part of the master signature`);
+  }
+  if (problems.length > 0) {
+    throw new Error(`upstream request does not mirror the master device: ${problems.join(", ")}`);
+  }
+}
+
+/**
+ * Names in `headers` that would identify a downstream client. Empty means the
+ * request is clean.
+ *
+ * A field whose value is exactly what the master signature prescribes is not
+ * client metadata — `User-Agent: <master device>` and `Accept-Language: *` are
+ * constants of the proxy. Anything else from the identity list is a leak.
+ */
+export function inspectClientMetadata(
+  headers: HeaderBag,
+  identity?: UpstreamIdentity | string
+): string[] {
+  const expected =
+    typeof identity === "string"
+      ? { "user-agent": identity }
+      : identity
+        ? masterSignature(identity)
+        : {};
   const leaks: string[] = [];
   for (const [name, value] of normalize(headers)) {
     if (!CLIENT_IDENTITY_HEADERS.has(name)) continue;
-    // The edge's own static User-Agent is not client metadata.
-    if (name === "user-agent" && value === identityUserAgent) continue;
+    if (expected[name] === value) continue;
     leaks.push(name);
   }
   return leaks;
 }
 
-export function assertNoClientMetadata(headers: HeaderBag, identityUserAgent?: string): void {
-  const leaks = inspectClientMetadata(headers, identityUserAgent);
+export function assertNoClientMetadata(
+  headers: HeaderBag,
+  identity?: UpstreamIdentity | string
+): void {
+  const leaks = inspectClientMetadata(headers, identity);
   if (leaks.length > 0) {
     throw new Error(`upstream request would leak client metadata: ${leaks.join(", ")}`);
   }

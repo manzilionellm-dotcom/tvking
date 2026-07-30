@@ -19,13 +19,26 @@ interface OriginProbe {
   sockets: number;
   maxSockets: number;
   maxConcurrentRequests: number;
+  /**
+   * Sockets the origin already had open at the instant each request arrived —
+   * the moment a provider would count connections against the account. TCP
+   * close is asynchronous, so this (rather than a cumulative socket peak) is
+   * what says whether the edge ever presented itself twice.
+   */
+  socketsOnArrival: number[];
 }
 
 let origin: http.Server;
 let edgeServer: http.Server;
 let edge: EdgeProxy;
 let edgeUrl: string;
-const probe: OriginProbe = { requests: [], sockets: 0, maxSockets: 0, maxConcurrentRequests: 0 };
+const probe: OriginProbe = {
+  requests: [],
+  sockets: 0,
+  maxSockets: 0,
+  maxConcurrentRequests: 0,
+  socketsOnArrival: [],
+};
 let liveRequests = 0;
 
 /** Bytes the origin emits: a fixed pattern, so corruption is detectable. */
@@ -34,6 +47,7 @@ const FRAME = Buffer.alloc(8 * 1024, 0x41);
 beforeAll(async () => {
   origin = http.createServer((req, res) => {
     probe.requests.push({ ...req.headers });
+    probe.socketsOnArrival.push(probe.sockets);
     liveRequests += 1;
     probe.maxConcurrentRequests = Math.max(probe.maxConcurrentRequests, liveRequests);
 
@@ -237,6 +251,43 @@ describe("edge proxy end to end", () => {
     expect(head.status).toBe(200);
     expect(probe.requests.length).toBe(before);
   });
+
+  it("swaps channels on the single slot without closing either socket", async () => {
+    // Two different channels, one master slot, real sockets on both sides.
+    const first = new AbortController();
+    const a = await fetch(`${edgeUrl}/edge/swap-a`, { signal: first.signal });
+    const readerA = a.body?.getReader();
+    expect((await readerA?.read())?.value?.byteLength).toBeGreaterThan(0);
+
+    const second = new AbortController();
+    const b = await fetch(`${edgeUrl}/edge/swap-b`, { signal: second.signal });
+    const readerB = b.body?.getReader();
+    const fromB = await readerB?.read();
+    expect(fromB?.value?.byteLength).toBeGreaterThan(0); // the newcomer is live
+
+    // Across the whole file: never two requests at once, and every request
+    // arrived on an origin that held exactly one socket — the previous one was
+    // already gone, thanks to the settle gap in the slot hand-off.
+    expect(probe.maxConcurrentRequests).toBe(1);
+    expect(Math.max(...probe.socketsOnArrival)).toBe(1);
+
+    // Client A was swapped out, yet its response is neither ended nor errored:
+    // it is simply quiet until the slot comes back.
+    const idle = await Promise.race([
+      readerA?.read().then((r) => (r.done ? "ended" : "data")),
+      new Promise((resolve) => setTimeout(() => resolve("still-open"), 400)),
+    ]);
+    expect(idle).not.toBe("ended");
+
+    const swapped = edge.stats().streams.find((s) => s.key === "default/swap-a");
+    expect(swapped?.state).toBe("starved");
+    expect(swapped?.subscribers).toBe(1);
+
+    first.abort();
+    second.abort();
+    await readerA?.cancel().catch(() => {});
+    await readerB?.cancel().catch(() => {});
+  }, 20_000);
 
   it("404s an unknown stream", async () => {
     const unknown = new EdgeProxy({

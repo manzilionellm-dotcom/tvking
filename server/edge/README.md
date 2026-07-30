@@ -3,24 +3,31 @@
 Service Node autonome (`server/edge/`) placé entre les clients du réseau local
 (TV, téléphones, écrans de test) et l'origine média distante.
 
-Il tient trois promesses :
+Il tient quatre promesses :
 
-1. **Une seule connexion montante.** Quel que soit le nombre de lecteurs
-   simultanés, l'origine ne voit qu'**une** connexion à la fois.
-2. **Zapping gratuit.** Changer de flux — ou y revenir — consomme le cache
-   local : pas de nouvelle poignée de main TCP/TLS, pas de renégociation.
-3. **Aucune métadonnée client ne sort.** L'origine ne voit que l'IP du proxy et
-   des en-têtes constants, identiques pour tous les spectateurs.
+1. **Une connexion montante par slot de compte maître.** Quel que soit le nombre
+   de lecteurs simultanés, le fournisseur ne voit qu'**une** connexion à la fois
+   par ligne d'abonnement (défaut : 1).
+2. **Bascule de chaîne sans coupure.** Demander une autre chaîne pendant que le
+   slot est pris échange la montée : le flux quitté rend son slot mais **garde
+   ses clients connectés** sur le tampon local, et se remet en file pour revenir.
+3. **Zapping gratuit.** Revenir sur un flux encore en cache ne rouvre rien : pas
+   de nouvelle poignée de main TCP/TLS, pas de renégociation.
+4. **Aucune métadonnée client ne sort.** Toutes les requêtes montantes d'un
+   compte sont l'*empreinte d'un seul appareil maître*, identique au bit près.
 
 ## Architecture
 
 ```
-   TV ─┐
-   TV ─┼─▶ server.ts ──▶ EdgeProxy ──▶ StreamHub ──▶ RingBuffer ──▶ Broadcaster ─┐
-   TV ─┘   (HTTP LAN)     (edge.ts)     (hub.ts)     (cache)        (fan-out)     │
-            ▲                │              │                                     │
-            │                │              └── UNE connexion ──▶ origine (WAN)   │
-            └── token bucket (CBR) ◀─────────────────────────────────────────────┘
+   TV ─┐                                    ┌─ SlotPool (1 slot / compte maître)
+   TV ─┼─▶ server.ts ─▶ EdgeProxy ─▶ StreamHub ─▶ RingBuffer ─▶ Broadcaster ─┐
+   TV ─┘   (HTTP LAN)   (routeur)    (hub.ts)     (cache)       (fan-out)     │
+            ▲               │            │                                    │
+            │               │            └── UNE connexion ──▶ origine (WAN)  │
+            │           admin.ts                                              │
+            │        (API + tableau                                           │
+            │          de bord, SSE)                                          │
+            └── token bucket (CBR) ◀──────────────────────────────────────────┘
 ```
 
 | Fichier | Rôle |
@@ -30,10 +37,14 @@ Il tient trois promesses :
 | `ring-buffer.ts` | Cache circulaire borné (octets **et** chunks), stockage par référence |
 | `broadcast.ts` | Diffusion pub/sub asynchrone, file bornée par abonné, politique *drop-oldest* |
 | `token-bucket.ts` | Lissage d'égress (quasi-CBR) + découpage en vues sans copie |
-| `sanitize.ts` | Frontière de vie privée : les en-têtes montants sont **construits**, jamais transférés |
+| `sanitize.ts` | Frontière de vie privée + **empreintes d'appareil maître** |
 | `origin.ts` | Transport HTTP + compteur de connexions montantes actives |
-| `hub.ts` | Machine à états d'un flux : slot, ouverture, pompe, linger, reconnexion |
-| `edge.ts` | Registre des flux + plafond global de connexions montantes |
+| `m3u.ts` | Analyseur M3U étendu (la ligne d'abonnement maître) |
+| `accounts.ts` | Comptes maîtres : catalogue, signature, budget de connexions |
+| `slots.ts` | Allocation de slots virtuels : bascule, éviction LRU, file d'attente |
+| `hub.ts` | Machine à états d'un flux : slot, ouverture, pompe, **bascule**, linger, reconnexion |
+| `edge.ts` | Routeur : comptes, slots, flux, sessions, métriques |
+| `admin.ts` / `dashboard.ts` | API d'administration (jeton) + tableau de bord temps réel |
 | `server.ts` | Façade HTTP LAN (flux, `/healthz`, `/metrics`) |
 | `config.ts` / `main.ts` | Configuration par variables d'environnement + point d'entrée |
 
@@ -49,19 +60,53 @@ hub est donc protégé par un `Mutex`, pas par un booléen.
 
 Deux niveaux :
 
-- **par flux** : `StreamHub` sérialise ses `join()` ; le premier ouvre, les
+- **par chaîne** : `StreamHub` sérialise ses `join()` ; le premier ouvre, les
   autres s'abonnent au même tampon ;
-- **global** : un `Semaphore` plafonne le total à `EDGE_MAX_UPSTREAM`
-  (défaut **1**). Plafond atteint → on libère d'abord les flux que plus personne
-  ne regarde (éviction LRU des hubs en linger), et seulement ensuite on attend.
-  Si l'attente expire, la réponse est un `503` honnête — jamais une deuxième
-  connexion silencieuse.
+- **par compte maître** : un `SlotPool` plafonne les connexions simultanées au
+  budget du fournisseur (défaut **1**). Plafond atteint → voir la bascule
+  ci-dessous ; si rien ne peut être libéré, la réponse est un `503` honnête —
+  jamais une deuxième connexion silencieuse.
 
 Le compteur qui fait foi (`countingTransport`) s'incrémente **à l'appel** de
 `open()`, pas à sa résolution : c'est la seule façon de détecter deux
 connexions qui s'établissent en parallèle.
 
-### 2. Cache circulaire et diffusion sans copie (`ring-buffer.ts`, `broadcast.ts`)
+### 2. Bascule dynamique de chaîne (`slots.ts`, `hub.ts`)
+
+Un client demande une chaîne alors que le slot du compte est pris. Trois
+politiques (`contention`) :
+
+| Politique | Comportement |
+| --- | --- |
+| `swap` (défaut) | Le pool réclame le slot au détenteur le moins précieux |
+| `wait` | Mise en file, `503` à l'expiration |
+| `reject` | `503` immédiat — le spectateur en cours n'est jamais dérangé |
+
+Ordre d'éviction : d'abord les flux que **personne ne regarde** (personne ne le
+remarque), puis le moins récemment sollicité, puis le moins regardé.
+
+Un flux évincé qui a encore des spectateurs ne s'arrête pas : il **passe en
+`starved`**. Sa montée se ferme, son slot repart, mais son `Broadcaster`, son
+cache et **toutes ses sockets clientes restent en place**. Les clients continuent
+sur le tampon (c'est à cela que sert `EDGE_CLIENT_QUEUE_BYTES` : au débit
+d'égress, il dit combien de temps la lecture survit à une bascule), pendant que
+le flux se remet en file — **sans droit de bascule**, sinon deux chaînes
+peuplées se chasseraient l'une l'autre indéfiniment. Le slot libéré revient, il
+rouvre sa montée et reprend la diffusion dans le même `Broadcaster` : le client
+n'a jamais été déconnecté. Passé `EDGE_STARVE_GRACE_MS` sans slot, ses clients
+sont terminés proprement — mieux qu'une socket qui reste muette pour toujours.
+
+Deux détails qui font la différence entre « ça a l'air de marcher » et « le
+fournisseur ne voit jamais deux connexions » :
+
+- le permis libéré est **remis au demandeur**, pas rendu au pot commun (le flux
+  qui s'efface se replacerait sinon en tête et reprendrait son propre slot) ;
+- le slot n'est rendu qu'après fermeture **effective** de la socket, plus un
+  délai de décantation (`EDGE_SWAP_SETTLE_MS`, 100 ms) : fermer une socket
+  localement n'est pas la même chose que l'origine la voyant fermée, et sans ce
+  délai le fournisseur peut compter deux connexions le temps d'un aller-retour.
+
+### 3. Cache circulaire et diffusion sans copie (`ring-buffer.ts`, `broadcast.ts`)
 
 Les chunks sont stockés **par référence** et remis **par référence** : diffuser
 un flux à 200 clients coûte un tampon, pas 200. Les octets sont donc partagés et
@@ -73,12 +118,16 @@ plus vieux octets tomber (*drop-oldest*, comme `tokio::sync::broadcast`) plutôt
 que de faire enfler la mémoire ou de ralentir les autres ; les pertes sont
 comptées, jamais silencieuses.
 
-### 3. Vie privée (`sanitize.ts`)
+### 4. Vie privée et empreinte maître (`sanitize.ts`)
 
 La requête montante n'est pas *filtrée*, elle est **construite** à partir de
-l'identité du proxy. `StreamHub` ne reçoit d'ailleurs jamais les en-têtes du
-client : la frontière est structurelle, pas déclarative — un futur en-tête de
-tracking ne peut pas fuir par oubli.
+l'empreinte d'appareil du compte (`edge`, `vlc`, `kodi`, `tivimate`,
+`exoplayer`). `StreamHub` ne reçoit d'ailleurs jamais les en-têtes du client : la
+frontière est structurelle, pas déclarative — un futur en-tête de tracking ne
+peut pas fuir par oubli. Avant chaque ouverture, `assertMirrorsMasterSignature`
+vérifie que la requête est **exactement** la signature du compte : ni champ en
+plus, ni valeur différente. Deux spectateurs produisent donc la même requête au
+bit près — rien à corréler, rien à compter côté origine.
 
 Ce que l'origine voit, à l'octet près (épinglé par le test e2e) :
 
@@ -103,7 +152,7 @@ Les journaux suivent la même règle : aucun IP client, aucun `User-Agent`, et l
 URL d'origine sont rédigées (`redactUrl`) car elles portent souvent un jeton
 d'abonnement.
 
-### 4. Lissage d'égress (`token-bucket.ts`)
+### 5. Lissage d'égress (`token-bucket.ts`)
 
 Le WAN livre par rafales ; retransmises telles quelles à N clients, elles
 saturent le lien et font trembler la lecture. Chaque client est servi à travers
@@ -114,15 +163,29 @@ en `subarray` — toujours sans copie.
 ## Démarrer
 
 ```bash
-EDGE_ORIGIN_TEMPLATE='https://origine.example/live/{id}.ts' \
+EDGE_ACCOUNTS='[{"id":"master","label":"Ligne principale",
+  "playlistUrl":"https://fournisseur.example/get.php?username=…&type=m3u_plus",
+  "maxConnections":1,"device":"vlc"}]' \
+EDGE_ADMIN_TOKEN='un-jeton-long-et-aleatoire' \
 EDGE_HOST=0.0.0.0 EDGE_PORT=8787 \
 npm run edge
 ```
 
-Le lecteur pointe alors sur `http://<edge>:8787/edge/<id>`.
+Le lecteur pointe alors sur `http://<edge>:8787/edge/<compte>/<chaîne>` (un
+identifiant seul vise le compte `default`), et le tableau de bord est sur
+`http://<edge>:8787/admin/`.
+
+La forme mono-origine reste disponible (`EDGE_STREAM_MAP` ou
+`EDGE_ORIGIN_TEMPLATE`) : elle crée le compte `default`.
 
 | Variable | Défaut | Effet |
 | --- | --- | --- |
+| `EDGE_ACCOUNTS` | — | JSON des comptes maîtres (voir ci-dessous) |
+| `EDGE_ADMIN_TOKEN` | — | Jeton d'administration ; **vide = plan d'admin désactivé** |
+| `EDGE_ADMIN_PREFIX` | `/admin` | Préfixe du plan d'administration |
+| `EDGE_CONTENTION` | `swap` | `swap`, `wait` ou `reject` pour le compte `default` |
+| `EDGE_STARVE_GRACE_MS` | `30000` | Survie d'un flux basculé avant fin de ses clients |
+| `EDGE_SWAP_SETTLE_MS` | `100` | Décantation entre fermeture et réouverture d'une montée |
 | `EDGE_STREAM_MAP` | — | JSON `{"id":"url"}` ; un id absent → 404 (jamais d'URL devinée) |
 | `EDGE_ORIGIN_TEMPLATE` | — | Gabarit avec `{id}` (alternative à la table) |
 | `EDGE_ALLOWED_HOSTS` | — | Liste blanche d'hôtes d'origine (garde-fou SSRF) |
@@ -139,20 +202,57 @@ Le lecteur pointe alors sur `http://<edge>:8787/edge/<id>`.
 | `EDGE_UPSTREAM_HEADERS` | — | JSON d'en-têtes statiques (identifiants **du proxy**) |
 | `EDGE_RECONNECT_*` | `5` / `250 ms` / `5000 ms` | Politique de reconnexion |
 
-Endpoints : `GET /edge/<id>` (flux), `GET /healthz`, `GET /metrics` (JSON :
-connexions montantes, maximum atteint, octets WAN vs LAN, octets économisés).
+Champs d'un compte : `id`, `label`, `playlistUrl` **ou** `channels` **ou**
+`channelTemplate`, `maxConnections` (défaut 1), `device`
+(`edge`/`vlc`/`kodi`/`tivimate`/`exoplayer`), `headers` (identifiants **du
+proxy**), `contention`, `playlistTtlMs`.
+
+### Endpoints
+
+Plan de données : `GET /edge/<compte>/<chaîne>`, `GET /healthz`, `GET /metrics`.
+
+Plan d'administration (jeton `Authorization: Bearer …` ou `X-Admin-Token`) :
+
+| Route | Effet |
+| --- | --- |
+| `GET /admin/` | Tableau de bord (page inerte, sans données) |
+| `GET /admin/overview` | Instantané complet : montées, comptes, flux, sessions, efficacité |
+| `GET /admin/events` | Flux SSE : activité temps réel + instantané périodique |
+| `GET /admin/accounts` | Comptes maîtres (jamais les valeurs des identifiants) |
+| `POST /admin/accounts` | Ajout / mise à jour d'un compte |
+| `DELETE /admin/accounts/:id` | Suppression + arrêt de ses flux |
+| `GET /admin/accounts/:id/channels` | Catalogue M3U (`?refresh=1` pour forcer) |
+| `GET /admin/sessions` | Sessions clientes (identifiants opaques) |
+| `POST /admin/streams/:clé/stop` | Coupe un flux |
+
+Le tableau de bord affiche les montées actives (et le maximum jamais atteint,
+qui doit rester ≤ au budget), les clients connectés et leur chaîne, les bascules,
+et l'efficacité de déduplication (requêtes servies par montée, octets LAN vs
+WAN). Les sessions y sont des identifiants opaques : **le tableau de bord ne peut
+pas montrer ce que le proxy refuse de collecter** — ni IP, ni User-Agent.
 
 ## Vérification
 
-`npm test` — 100 tests dédiés, dont :
+`npm test` — 161 tests dédiés, dont :
 
 - `hub.test.ts` : 150 clients simultanés → **1** ouverture ; churn aléatoire de
   200 tâches join/leave → `activeMax === 1` ; linger, reconnexion, échecs ;
 - `edge.test.ts` : 200 clients sur un flux ; 150 joins concurrents sur 6 chaînes
   avec un seul slot → `activeMax === 1`, le surplus est refusé, pas empilé ;
+- `swap.test.ts` : la bascule — socket cliente conservée, reprise automatique,
+  fin honnête après la grâce, 60 clients zappant sur 6 chaînes avec **un** slot
+  et **zéro** déconnexion ;
+- `slots.test.ts` : arbitrage isolé, dont le cas « le flux qui s'efface ne
+  reprend pas son propre permis » ;
+- `accounts.test.ts` / `m3u.test.ts` : catalogue M3U, cache TTL, single-flight,
+  rafraîchissement en échec qui garde la dernière bonne version ;
+- `admin.test.ts` : authentification, gestion des comptes, SSE, et l'absence de
+  toute donnée personnelle dans les réponses ;
 - `proxy-e2e.test.ts` : sockets réelles — 120 clients HTTP, origine `node:http`
-  qui compte **elle-même** ses requêtes et ses connexions (1 et 1), et vérifie
-  qu'aucune valeur envoyée par les clients n'apparaît dans la requête montante.
+  qui compte **elle-même** ses requêtes et ses connexions, vérifie qu'aucune
+  valeur envoyée par les clients n'apparaît dans la requête montante, et qu'à
+  chaque requête reçue l'origine n'avait **qu'une seule** socket ouverte, y
+  compris pendant une bascule de chaîne.
 
 L'invariant est toujours mesuré à la frontière du transport (ce que l'origine
 pourrait observer), jamais sur un drapeau interne au proxy.
@@ -169,4 +269,10 @@ pourrait observer), jamais sur un drapeau interne au proxy.
   identifiants d'origine : le laisser sur `127.0.0.1` ou derrière un reverse
   proxy du réseau de confiance.
 - **Le cache est vidé à l'arrêt d'un flux** : rejouer du direct vieux de
-  plusieurs secondes serait pire qu'un démarrage propre.
+  plusieurs secondes serait pire qu'un démarrage propre. (Il est **conservé**
+  pendant une bascule — c'est là tout l'intérêt.)
+- **Une chaîne basculée ne re-bascule pas d'elle-même** : elle attend son tour.
+  Avec un seul slot et deux chaînes regardées en permanence, la seconde finit
+  par atteindre `EDGE_STARVE_GRACE_MS` et ses clients sont terminés proprement.
+- **Le plan d'administration n'a pas de gestion d'utilisateurs** : un seul jeton
+  partagé, pas de rôles, pas de journal d'audit.

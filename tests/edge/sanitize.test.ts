@@ -36,11 +36,12 @@ describe("buildUpstreamHeaders", () => {
     const { headers } = buildUpstreamHeaders(identity, clientRequest);
 
     expect(Object.keys(headers).sort()).toEqual(
-      ["accept", "accept-encoding", "user-agent", "via"].sort()
+      ["accept", "accept-encoding", "accept-language", "user-agent", "via"].sort()
     );
+    expect(headers["accept-language"]).toBe("*"); // constant, not the client's
     expect(headers["user-agent"]).toBe("tvking-edge/1.0");
-    expect(inspectClientMetadata(headers, identity.userAgent)).toEqual([]);
-    expect(() => assertNoClientMetadata(headers, identity.userAgent)).not.toThrow();
+    expect(inspectClientMetadata(headers, identity)).toEqual([]);
+    expect(() => assertNoClientMetadata(headers, identity)).not.toThrow();
   });
 
   it("drops every identifying field explicitly, by name", () => {
@@ -87,7 +88,7 @@ describe("buildUpstreamHeaders", () => {
       "USER-AGENT": "Sneaky/1.0",
       Cookie: "sid=1",
     });
-    expect(inspectClientMetadata(headers, identity.userAgent)).toEqual([]);
+    expect(inspectClientMetadata(headers, identity)).toEqual([]);
     expect(headers["user-agent"]).toBe("tvking-edge/1.0");
   });
 
@@ -133,7 +134,7 @@ describe("buildUpstreamHeaders", () => {
 
   it("assertNoClientMetadata throws when a leak is constructed by hand", () => {
     expect(() =>
-      assertNoClientMetadata({ "x-forwarded-for": "192.168.1.44" }, identity.userAgent)
+      assertNoClientMetadata({ "x-forwarded-for": "192.168.1.44" }, identity)
     ).toThrow(/leak client metadata: x-forwarded-for/);
   });
 });

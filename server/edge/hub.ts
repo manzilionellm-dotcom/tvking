@@ -27,7 +27,12 @@ import { RingBuffer, type RingBufferOptions } from "./ring-buffer.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import { Mutex } from "./sync.ts";
 import { UpstreamError, type OriginResponse, type OriginTransport } from "./origin.ts";
-import { assertNoClientMetadata, buildUpstreamHeaders, type UpstreamIdentity } from "./sanitize.ts";
+import {
+  assertMirrorsMasterSignature,
+  buildUpstreamHeaders,
+  type UpstreamIdentity,
+} from "./sanitize.ts";
+import type { SlotLease } from "./slots.ts";
 
 export type HubEvent =
   | { type: "upstream-open"; key: string; attempt: number }
@@ -35,6 +40,8 @@ export type HubEvent =
   | { type: "upstream-close"; key: string; reason: string; bytes: number }
   | { type: "upstream-error"; key: string; message: string }
   | { type: "reconnect"; key: string; attempt: number; delayMs: number }
+  | { type: "starve"; key: string; reason: string; subscribers: number }
+  | { type: "resume"; key: string; subscribers: number }
   | { type: "join"; key: string; subscribers: number }
   | { type: "leave"; key: string; subscribers: number }
   | { type: "linger"; key: string; ms: number };
@@ -60,10 +67,27 @@ export interface StreamHubOptions {
   lingerMs: number;
   reconnect: ReconnectPolicy;
   /**
-   * Global upstream admission. Resolves to the release function; the hub holds
-   * the slot for the whole live period, across reconnects.
+   * Virtual slot admission for the master account. The hub holds the lease for
+   * its whole live period, across reconnects, and gives it back when it stops
+   * or is swapped out. `allowSwap: false` means "queue, do not evict anyone" —
+   * used when a starved channel is waiting to come back.
    */
-  acquireSlot?: () => Promise<() => void>;
+  acquireSlot?: (options: { signal?: AbortSignal; allowSwap?: boolean; waitMs?: number }) => Promise<SlotLease>;
+  /**
+   * How long a swapped-out channel keeps its clients attached while waiting for
+   * the slot to come back. After that they are ended honestly rather than left
+   * staring at a stalled socket.
+   */
+  starveGraceMs?: number;
+  /** Upper bound on waiting for a closing upstream socket to unwind. */
+  quiesceMs?: number;
+  /**
+   * Pause between giving an upstream socket up and letting the next channel
+   * connect. Closing a socket locally is not the same as the ORIGIN seeing it
+   * closed: without this gap the provider can observe the old and the new
+   * connection overlapping for a round trip, and count two.
+   */
+  swapSettleMs?: number;
   clock?: Clock;
   onEvent?: (event: HubEvent) => void;
 }
@@ -75,7 +99,12 @@ export interface JoinOptions {
 
 export interface HubStats {
   key: string;
-  state: "idle" | "live" | "stopping";
+  state: HubState;
+  holdsSlot: boolean;
+  /** Times this channel was swapped out to free its slot. */
+  starves: number;
+  /** Milliseconds spent swapped out with clients still attached. */
+  starvedMs: number;
   subscribers: number;
   bufferedBytes: number;
   bufferedChunks: number;
@@ -87,7 +116,13 @@ export interface HubStats {
   lingering: boolean;
 }
 
-type HubState = "idle" | "live" | "stopping";
+/**
+ * `starved` is the interesting one: no upstream connection, no slot, but the
+ * downstream sockets are still open and draining their buffers while the hub
+ * queues for the slot to come back. That is what makes a channel switch look
+ * instant to the client that caused it and survivable to the ones that did not.
+ */
+export type HubState = "idle" | "live" | "starved" | "stopping";
 
 export class StreamHub {
   #options: StreamHubOptions;
@@ -99,7 +134,11 @@ export class StreamHub {
   #subscribers = 0;
   #abort: AbortController | null = null;
   #pump: Promise<void> | null = null;
-  #releaseSlot: (() => void) | null = null;
+  #lease: SlotLease | null = null;
+  #starveAbort: AbortController | null = null;
+  #starvedAt = 0;
+  #starvedMs = 0;
+  #starves = 0;
   #lingerTimer: AbortController | null = null;
   #generation = 0;
   #contentType: string | null = null;
@@ -137,6 +176,16 @@ export class StreamHub {
     return this.#state === "live" && this.#subscribers === 0;
   }
 
+  /** SlotHolder view: this hub owns a lease on its account's slot pool. */
+  get holdsSlot(): boolean {
+    return this.#lease !== null;
+  }
+
+  /** SlotHolder view: how many downstream clients would notice a swap. */
+  get viewers(): number {
+    return this.#subscribers;
+  }
+
   /** Clock time of the last join/leave — LRU key for eviction. */
   get lastActiveAt(): number {
     return this.#lastActiveAt;
@@ -150,7 +199,10 @@ export class StreamHub {
     return this.#lifecycle.runExclusive(async () => {
       if (this.#closed) throw new UpstreamError("edge stream closed");
       this.#cancelLinger();
-      if (this.#state !== "live") await this.#start();
+      // Joining a starved channel attaches to the buffer and waits for the slot
+      // to come back rather than swapping someone else out — otherwise two
+      // populated channels would take turns evicting each other.
+      if (this.#state !== "live" && this.#state !== "starved") await this.#start();
 
       this.#subscribers += 1;
       this.#lastActiveAt = this.#clock.now();
@@ -170,6 +222,9 @@ export class StreamHub {
     return {
       key: this.key,
       state: this.#state,
+      holdsSlot: this.holdsSlot,
+      starves: this.#starves,
+      starvedMs: this.#starvedMs + (this.#state === "starved" ? this.#clock.now() - this.#starvedAt : 0),
       subscribers: this.#subscribers,
       bufferedBytes: this.#ring.bytes,
       bufferedChunks: this.#ring.size,
@@ -180,6 +235,27 @@ export class StreamHub {
       contentType: this.#contentType,
       lingering: this.#lingerTimer !== null,
     };
+  }
+
+  /**
+   * Gives the account slot back so another channel can use it (SlotHolder).
+   *
+   * With no viewers the hub simply stops. With viewers it STARVES: the upstream
+   * connection closes, the lease is released, but the broadcaster, the ring and
+   * every downstream socket stay exactly as they are. Clients keep playing out
+   * of their buffers while the hub queues for the slot to come back, so a
+   * channel switch never drops anyone else's HTTP connection.
+   */
+  async yieldSlot(reason: string): Promise<boolean> {
+    return this.#lifecycle.runExclusive(async () => {
+      if (!this.#lease || this.#state !== "live") return false;
+      if (this.#subscribers === 0) {
+        await this.#stop(reason);
+        return true;
+      }
+      await this.#starveNow(reason);
+      return true;
+    });
   }
 
   /** Stops the upstream if no client is attached. Used by the LRU evictor. */
@@ -203,14 +279,23 @@ export class StreamHub {
 
   /** Caller MUST hold #lifecycle. */
   async #start(): Promise<void> {
+    const lease = this.#options.acquireSlot
+      ? await this.#options.acquireSlot({ allowSwap: true })
+      : { release: () => {} };
+    await this.#launch(lease);
+  }
+
+  /**
+   * Opens the upstream under an already-granted lease and starts the pump.
+   * Caller MUST hold #lifecycle.
+   */
+  async #launch(lease: SlotLease): Promise<void> {
     const controller = new AbortController();
-    let release: () => void = () => {};
     try {
-      release = this.#options.acquireSlot ? await this.#options.acquireSlot() : () => {};
       const response = await this.#open(controller.signal, 1);
       this.#applyResponse(response);
       this.#abort = controller;
-      this.#releaseSlot = release;
+      this.#lease = lease;
       this.#state = "live";
       this.#generation += 1;
       const generation = this.#generation;
@@ -218,7 +303,7 @@ export class StreamHub {
       this.#pump = this.#run(response, controller, generation);
     } catch (error) {
       controller.abort();
-      release();
+      lease.release();
       this.#emit({
         type: "upstream-error",
         key: this.key,
@@ -229,9 +314,10 @@ export class StreamHub {
   }
 
   async #open(signal: AbortSignal, attempt: number): Promise<OriginResponse> {
-    // Built from the edge identity alone — no downstream input reaches here.
+    // Built from the master signature alone — no downstream input reaches here.
     const headers = buildUpstreamHeaders(this.#options.identity);
-    assertNoClientMetadata(headers.headers, this.#options.identity.userAgent);
+    // Belt and braces: the request must be byte-identical whoever asked for it.
+    assertMirrorsMasterSignature(headers.headers, this.#options.identity);
 
     this.#upstreamOpens += 1;
     this.#emit({ type: "upstream-open", key: this.key, attempt });
@@ -335,11 +421,107 @@ export class StreamHub {
     });
   }
 
+  /**
+   * Live → starved. Caller MUST hold #lifecycle.
+   * Everything downstream is deliberately left untouched.
+   */
+  async #starveNow(reason: string): Promise<void> {
+    this.#generation += 1; // retire the pump before anything else
+    this.#abort?.abort();
+    this.#abort = null;
+    const pump = this.#pump;
+    this.#pump = null;
+
+    // The lease is only handed back once the socket is really gone: releasing
+    // it earlier would let the next channel connect while the provider still
+    // counts this one, which is precisely the overlap the budget forbids.
+    await this.#quiesce(pump);
+    await this.#releaseLease();
+    this.#state = "starved";
+    this.#starvedAt = this.#clock.now();
+    this.#starves += 1;
+    this.#emit({ type: "starve", key: this.key, reason, subscribers: this.#subscribers });
+    this.#queueResume();
+  }
+
+  /** Queues for the slot to come back, under a bounded grace period. */
+  #queueResume(): void {
+    const pending = new AbortController();
+    this.#starveAbort = pending;
+
+    const graceMs = this.#options.starveGraceMs ?? 30_000;
+    void this.#clock.sleep(graceMs, pending.signal).then(async () => {
+      if (pending.signal.aborted) return;
+      // The slot never came back. Ending the subscriptions is the honest
+      // outcome: better a clean end than a socket that stalls forever.
+      await this.#lifecycle.runExclusive(async () => {
+        if (this.#state !== "starved" || this.#starveAbort !== pending) return;
+        await this.#stop(
+          "starve-timeout",
+          new UpstreamError("channel lost its slot on the master account", 503)
+        );
+      });
+    });
+
+    void this.#awaitSlot(pending);
+  }
+
+  async #awaitSlot(pending: AbortController): Promise<void> {
+    if (!this.#options.acquireSlot) return;
+    let lease: SlotLease;
+    try {
+      // allowSwap:false — a starved channel waits its turn, it does not evict
+      // the channel that just took the slot. waitMs:0 — the grace timer above
+      // owns the deadline.
+      lease = await this.#options.acquireSlot({
+        signal: pending.signal,
+        allowSwap: false,
+        waitMs: 0,
+      });
+    } catch {
+      return; // denied or cancelled; the grace timer or #leave() ends the hub
+    }
+
+    await this.#lifecycle.runExclusive(async () => {
+      if (this.#state !== "starved" || pending.signal.aborted || this.#starveAbort !== pending) {
+        lease.release();
+        return;
+      }
+      this.#cancelStarve();
+      try {
+        await this.#launch(lease);
+        this.#starvedMs += this.#clock.now() - this.#starvedAt;
+        this.#emit({ type: "resume", key: this.key, subscribers: this.#subscribers });
+      } catch (error) {
+        await this.#stop(
+          "resume-failed",
+          error instanceof Error ? error : new Error(String(error))
+        );
+      }
+    });
+  }
+
+  #cancelStarve(): void {
+    if (this.#starveAbort) {
+      this.#starveAbort.abort();
+      this.#starveAbort = null;
+    }
+  }
+
   #leave(): void {
     this.#subscribers = Math.max(0, this.#subscribers - 1);
     this.#lastActiveAt = this.#clock.now();
     this.#emit({ type: "leave", key: this.key, subscribers: this.#subscribers });
-    if (this.#subscribers === 0 && this.#state === "live") this.#scheduleLinger();
+    if (this.#subscribers > 0) return;
+    if (this.#state === "live") this.#scheduleLinger();
+    // The last client of a swapped-out channel left: stop queueing for a slot
+    // nobody is waiting for any more.
+    if (this.#state === "starved") {
+      void this.#lifecycle.runExclusive(async () => {
+        if (this.#state !== "starved" || this.#subscribers > 0) return;
+        await this.#stop("starved-abandoned");
+      });
+    }
   }
 
   #scheduleLinger(): void {
@@ -389,20 +571,46 @@ export class StreamHub {
     this.#ring.clear();
     this.#subscribers = 0;
 
-    this.#releaseSlot?.();
-    this.#releaseSlot = null;
+    if (this.#starveAbort) {
+      this.#starvedMs += this.#clock.now() - this.#starvedAt;
+      this.#cancelStarve();
+    }
+
+    await this.#quiesce(pump);
+    await this.#releaseLease();
     this.#state = "idle";
 
-    // Not awaited: a transport that ignores its abort signal would otherwise
-    // hold the lifecycle mutex forever. The generation check in #drain already
-    // prevents a superseded pump from touching the new buffer.
-    if (pump) void pump.catch(() => {});
     this.#emit({
       type: "upstream-close",
       key: this.key,
       reason,
       bytes: this.#bytesFromOrigin,
     });
+  }
+
+  /**
+   * Waits for the pump to finish unwinding — i.e. for the upstream socket to be
+   * closed — but never for longer than `quiesceMs`. The cap uses real time on
+   * purpose: it exists to survive a transport that ignores its abort signal,
+   * and a bounded wait is better than a lifecycle mutex held forever. The
+   * generation check in #drain already prevents a late pump from publishing.
+   */
+  async #quiesce(pump: Promise<void> | null): Promise<void> {
+    if (!pump) return;
+    const capMs = this.#options.quiesceMs ?? 2_000;
+    await Promise.race([pump.catch(() => {}), systemClock.sleep(capMs)]);
+  }
+
+  /**
+   * Hands the lease back after letting the origin notice the socket closing.
+   * Real time again: this models a network round trip, not logical time.
+   */
+  async #releaseLease(): Promise<void> {
+    if (!this.#lease) return;
+    const settleMs = this.#options.swapSettleMs ?? 100;
+    if (settleMs > 0) await systemClock.sleep(settleMs);
+    this.#lease.release();
+    this.#lease = null;
   }
 
   #backoff(attempt: number): number {

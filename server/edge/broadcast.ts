@@ -42,6 +42,7 @@ export class Subscription implements AsyncIterable<StreamChunk> {
   #droppedChunks = 0;
   #lagEvents = 0;
   #onClose: (() => void) | undefined;
+  #closeListeners: Array<() => void> = [];
   #signal: AbortSignal | undefined;
   #onAbort: (() => void) | undefined;
   #detach: (sub: Subscription) => void;
@@ -87,6 +88,19 @@ export class Subscription implements AsyncIterable<StreamChunk> {
     return this.#closed;
   }
 
+  /**
+   * Registers an extra teardown hook (the router books its client session this
+   * way). Runs immediately if the subscription is already closed, so a caller
+   * can never leak a session by registering one instant too late.
+   */
+  addCloseListener(listener: () => void): void {
+    if (this.#closed) {
+      listener();
+      return;
+    }
+    this.#closeListeners.push(listener);
+  }
+
   /** @internal — called by the Broadcaster. */
   push(chunk: StreamChunk): void {
     if (this.#closed || this.#ended) return;
@@ -130,6 +144,9 @@ export class Subscription implements AsyncIterable<StreamChunk> {
     this.#detach(this);
     this.#wake();
     this.#onClose?.();
+    const listeners = this.#closeListeners;
+    this.#closeListeners = [];
+    for (const listener of listeners) listener();
   }
 
   [Symbol.asyncIterator](): AsyncIterator<StreamChunk> {

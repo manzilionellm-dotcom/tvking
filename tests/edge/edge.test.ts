@@ -111,17 +111,18 @@ describe("EdgeProxy — process-wide upstream cap", () => {
     expect(edge.counters.active).toBe(1);
     expect(edge.counters.activeMax).toBe(1); // evicted, not stacked
     expect(edge.counters.opens).toBe(2);
-    expect(edge.stats().streams.find((s) => s.key === "sport-live")?.state).toBe("idle");
+    expect(edge.stats().streams.find((s) => s.key === "default/sport-live")?.state).toBe("idle");
 
     second.subscription.close();
     await edge.shutdown();
   });
 
   it("refuses a second live stream rather than opening a second connection", async () => {
-    const { edge } = makeEdge({ lingerMs: 60_000 });
+    // contention "reject": whoever is watching is never interrupted.
+    const { edge } = makeEdge({ lingerMs: 60_000, contention: "reject" });
     const watched = await edge.subscribe("sport-live"); // held open by a viewer
 
-    await expect(edge.subscribe("formation-1")).rejects.toThrow(/upstream connection limit/);
+    await expect(edge.subscribe("formation-1")).rejects.toThrow(/no free slot/);
     expect(edge.counters.activeMax).toBe(1);
 
     watched.subscription.close();
@@ -159,7 +160,7 @@ describe("EdgeProxy — process-wide upstream cap", () => {
   it("holds the cap under 150 concurrent joins spread over 6 channels", async () => {
     // Deliberately over-subscribed: with one slot, most of these must fail
     // rather than quietly opening a second WAN connection.
-    const { edge, origin } = makeEdge({ lingerMs: 0, slotWaitMs: 40 });
+    const { edge, origin } = makeEdge({ lingerMs: 0, slotWaitMs: 40, contention: "wait" });
     const channels = ["a", "b", "c", "d", "e", "f"];
 
     const outcomes = await Promise.allSettled(
@@ -176,7 +177,7 @@ describe("EdgeProxy — process-wide upstream cap", () => {
     expect(outcomes.some((o) => o.status === "fulfilled")).toBe(true);
     for (const outcome of outcomes) {
       if (outcome.status === "rejected") {
-        expect(String(outcome.reason)).toMatch(/upstream connection limit/);
+        expect(String(outcome.reason)).toMatch(/no free slot/);
       }
     }
 

@@ -33,6 +33,7 @@ function makeHub(overrides: Partial<StreamHubOptions> = {}, originDelayMs = 2): 
     backlogBytes: 64 * 1024,
     subscriberQueueBytes: 256 * 1024,
     lingerMs: 10_000,
+    swapSettleMs: 0, // the settle gap is exercised over real sockets in the e2e
     reconnect: { attempts: 3, baseDelayMs: 100, maxDelayMs: 1000 },
     clock,
     ...overrides,
@@ -199,8 +200,10 @@ describe("StreamHub — upstream failures", () => {
       transport: countingTransport(origin, counters),
       acquireSlot: async () => {
         slots += 1;
-        return () => {
-          slots -= 1;
+        return {
+          release: () => {
+            slots -= 1;
+          },
         };
       },
     });
@@ -334,6 +337,7 @@ describe("StreamHub — privacy boundary", () => {
       "user-agent": "tvking-edge/1.0",
       accept: "*/*",
       "accept-encoding": "identity",
+      "accept-language": "*",
       via: "1.1 tvking-edge",
     });
 

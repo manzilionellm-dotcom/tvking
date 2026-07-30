@@ -10,7 +10,7 @@ describe("loadConfig", () => {
     expect(config.port).toBe(8787);
     expect(config.edge.maxUpstreamConnections).toBe(1);
     expect(config.edge.ring).toEqual({ maxBytes: 16 * 1024 * 1024, maxChunks: 4096 });
-    expect(config.edge.identity.userAgent).toBe("tvking-edge/1.0");
+    expect(config.edge.identity?.userAgent).toBe("tvking-edge/1.0");
     expect(config.edge.lingerMs).toBe(15_000);
   });
 
@@ -31,9 +31,9 @@ describe("loadConfig", () => {
     expect(config.edge.maxUpstreamConnections).toBe(2);
     expect(config.egressBytesPerSecond).toBe(1_500_000);
     expect(config.edge.lingerMs).toBe(3000);
-    expect(config.edge.identity.userAgent).toBe("tvking-edge/2.0");
+    expect(config.edge.identity?.userAgent).toBe("tvking-edge/2.0");
     expect(config.allowedHosts).toEqual(["origin.example", "cdn.example"]);
-    expect(config.edge.identity.extra).toEqual({ "x-origin-key": "secret" });
+    expect(config.edge.identity?.extra).toEqual({ "x-origin-key": "secret" });
   });
 
   it("refuses to start without an origin mapping", () => {

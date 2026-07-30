@@ -7,6 +7,12 @@ export { RingBuffer, type RingBufferOptions, type StreamChunk } from "./ring-buf
 export { Broadcaster, Subscription, type SubscribeOptions } from "./broadcast.ts";
 export { TokenBucket, pace, type PaceOptions, type TokenBucketOptions } from "./token-bucket.ts";
 export {
+  MASTER_DEVICE_PROFILES,
+  assertMirrorsMasterSignature,
+  isMasterDeviceName,
+  masterDevice,
+  masterSignature,
+  type MasterDeviceName,
   CLIENT_IDENTITY_HEADERS,
   DOWNSTREAM_STRIPPED_HEADERS,
   HOP_BY_HOP_HEADERS,
@@ -35,14 +41,39 @@ export {
 export {
   StreamHub,
   type HubEvent,
+  type HubState,
   type HubStats,
   type JoinOptions,
   type ReconnectPolicy,
   type StreamHubOptions,
 } from "./hub.ts";
+export { parseM3u, slugify, type M3uEntry, type M3uPlaylist } from "./m3u.ts";
 export {
+  SlotPool,
+  type ContentionPolicy,
+  type SlotEvent,
+  type SlotHolder,
+  type SlotLease,
+  type SlotPoolOptions,
+} from "./slots.ts";
+export {
+  AccountError,
+  AccountRegistry,
+  type AccountSnapshot,
+  type MasterAccount,
+  type MasterAccountInput,
+  type PlaylistFetcher,
+} from "./accounts.ts";
+export { createAdminRouter, type AdminOptions, type AdminRouter } from "./admin.ts";
+export { DASHBOARD_HTML } from "./dashboard.ts";
+export {
+  DEFAULT_ACCOUNT,
   EdgeProxy,
   UnknownStreamError,
+  parseStreamId,
+  type AccountOverview,
+  type EdgeOverview,
+  type SessionSnapshot,
   type EdgeConfig,
   type EdgeEvent,
   type EdgeStats,
@@ -55,6 +86,7 @@ export {
   ConfigError,
   buildResolver,
   loadConfig,
+  parseAccounts,
   type EdgeRuntimeConfig,
   type Env,
 } from "./config.ts";

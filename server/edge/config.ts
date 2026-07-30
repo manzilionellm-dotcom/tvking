@@ -5,7 +5,8 @@
  */
 
 import type { EdgeConfig, OriginTarget } from "./edge.ts";
-import type { UpstreamIdentity } from "./sanitize.ts";
+import type { MasterAccountInput } from "./accounts.ts";
+import { isMasterDeviceName, type UpstreamIdentity } from "./sanitize.ts";
 
 /** Just the parts of an environment this module reads. */
 export type Env = Readonly<Record<string, string | undefined>>;
@@ -17,6 +18,9 @@ export interface EdgeRuntimeConfig {
   egressBytesPerSecond: number;
   maxClients: number;
   allowedHosts: string[];
+  /** Empty string = admin plane disabled. */
+  adminToken: string;
+  adminPrefix: string;
   edge: Omit<EdgeConfig, "transport">;
 }
 
@@ -79,11 +83,47 @@ export function buildResolver(
   };
 }
 
+/**
+ * `EDGE_ACCOUNTS` holds the master subscription lines, e.g.
+ *   [{"id":"master","playlistUrl":"https://provider/get.php?...","maxConnections":1,
+ *     "device":"vlc","headers":{"x-token":"..."}}]
+ * Validated here rather than at first use, so a typo fails at boot.
+ */
+export function parseAccounts(raw: string | undefined): MasterAccountInput[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new ConfigError("EDGE_ACCOUNTS must be valid JSON");
+  }
+  if (!Array.isArray(parsed)) throw new ConfigError("EDGE_ACCOUNTS must be a JSON array");
+
+  return parsed.map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new ConfigError(`EDGE_ACCOUNTS[${index}] must be an object`);
+    }
+    const account = entry as Record<string, unknown>;
+    if (typeof account.id !== "string" || account.id === "") {
+      throw new ConfigError(`EDGE_ACCOUNTS[${index}].id is required`);
+    }
+    if (account.device !== undefined && !isMasterDeviceName(String(account.device))) {
+      throw new ConfigError(`EDGE_ACCOUNTS[${index}].device is unknown: ${String(account.device)}`);
+    }
+    const contention = account.contention;
+    if (contention !== undefined && !["swap", "wait", "reject"].includes(String(contention))) {
+      throw new ConfigError(`EDGE_ACCOUNTS[${index}].contention must be swap, wait or reject`);
+    }
+    return account as unknown as MasterAccountInput;
+  });
+}
+
 export function loadConfig(env: Env): EdgeRuntimeConfig {
   const map = json(env, "EDGE_STREAM_MAP");
   const template = env.EDGE_ORIGIN_TEMPLATE;
-  if (!map && !template) {
-    throw new ConfigError("set EDGE_STREAM_MAP or EDGE_ORIGIN_TEMPLATE");
+  const accounts = parseAccounts(env.EDGE_ACCOUNTS);
+  if (!map && !template && accounts.length === 0) {
+    throw new ConfigError("set EDGE_ACCOUNTS, EDGE_STREAM_MAP or EDGE_ORIGIN_TEMPLATE");
   }
   if (template && !template.includes("{id}")) {
     throw new ConfigError("EDGE_ORIGIN_TEMPLATE must contain the {id} placeholder");
@@ -95,6 +135,11 @@ export function loadConfig(env: Env): EdgeRuntimeConfig {
     extra: json(env, "EDGE_UPSTREAM_HEADERS") ?? undefined,
     via: env.EDGE_VIA || "1.1 tvking-edge",
   };
+
+  const contention = env.EDGE_CONTENTION || "swap";
+  if (!["swap", "wait", "reject"].includes(contention)) {
+    throw new ConfigError("EDGE_CONTENTION must be swap, wait or reject");
+  }
 
   const allowedHosts = (env.EDGE_ALLOWED_HOSTS ?? "")
     .split(",")
@@ -110,9 +155,17 @@ export function loadConfig(env: Env): EdgeRuntimeConfig {
     egressBytesPerSecond: num(env, "EDGE_EGRESS_BPS", 3 * 1024 * 1024),
     maxClients: num(env, "EDGE_MAX_CLIENTS", 200),
     allowedHosts,
+    // No token, no admin plane: this API can point the proxy at a new origin.
+    adminToken: env.EDGE_ADMIN_TOKEN ?? "",
+    adminPrefix: env.EDGE_ADMIN_PREFIX || "/admin",
     edge: {
-      resolveOrigin: buildResolver(map, template, json(env, "EDGE_UPSTREAM_HEADERS")),
+      accounts,
+      resolveOrigin:
+        map || template ? buildResolver(map, template, json(env, "EDGE_UPSTREAM_HEADERS")) : undefined,
       identity,
+      contention: contention as EdgeConfig["contention"],
+      starveGraceMs: num(env, "EDGE_STARVE_GRACE_MS", 30_000),
+      swapSettleMs: Number(env.EDGE_SWAP_SETTLE_MS ?? 100),
       maxUpstreamConnections: num(env, "EDGE_MAX_UPSTREAM", 1),
       slotWaitMs: num(env, "EDGE_SLOT_WAIT_MS", 10_000),
       ring: {

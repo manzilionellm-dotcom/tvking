@@ -13,6 +13,7 @@ import process from "node:process";
 import { EdgeProxy, type EdgeEvent } from "./edge.ts";
 import { FetchOriginTransport } from "./origin.ts";
 import { createEdgeServer } from "./server.ts";
+import { createAdminRouter } from "./admin.ts";
 import { ConfigError, loadConfig } from "./config.ts";
 
 function main(): void {
@@ -29,25 +30,45 @@ function main(): void {
 
   const log = (line: string) => console.log(`[edge] ${line}`);
 
+  // The edge emits events before the admin router exists, hence the indirection.
+  const listeners: Array<(event: EdgeEvent) => void> = [];
   const edge = new EdgeProxy({
     ...config.edge,
     transport: new FetchOriginTransport({ allowedHosts: config.allowedHosts }),
-    onEvent: (event: EdgeEvent) => log(describe(event)),
+    onEvent: (event: EdgeEvent) => {
+      log(describe(event));
+      for (const listener of listeners) listener(event);
+    },
   });
+
+  const admin = createAdminRouter({
+    edge,
+    token: config.adminToken,
+    prefix: config.adminPrefix,
+  });
+  listeners.push((event) => admin.publish(event));
 
   const server = createEdgeServer({
     edge,
     egressBytesPerSecond: config.egressBytesPerSecond,
     maxClients: config.maxClients,
     pathPrefix: config.pathPrefix,
+    admin,
     log,
   });
 
   server.listen(config.port, config.host, () => {
+    const base = `http://${config.host}:${config.port}`;
     log(
-      `listening on http://${config.host}:${config.port}${config.pathPrefix}<id> ` +
-        `(max ${config.edge.maxUpstreamConnections} upstream connection(s), ` +
+      `listening on ${base}${config.pathPrefix}<account>/<channel> ` +
+        `(${edge.upstreamLimit} upstream connection(s) across ` +
+        `${edge.listAccounts().length} master account(s), ` +
         `${Math.round(config.egressBytesPerSecond / 1024)} KiB/s per client)`
+    );
+    log(
+      admin.enabled
+        ? `admin dashboard on ${base}${config.adminPrefix}/`
+        : "admin plane disabled (set EDGE_ADMIN_TOKEN to enable it)"
     );
   });
 
@@ -56,6 +77,7 @@ function main(): void {
     if (stopping) return;
     stopping = true;
     log(`${signal} received, draining`);
+    admin.close();
     server.close();
     void edge.shutdown().then(() => process.exit(0));
   };

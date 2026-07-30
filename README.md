@@ -39,10 +39,12 @@ server/edge/                  Proxy de bord : déduplication de flux + cache loc
 docs/RESEARCH-TV-UX.md        Recherche sourcée (le référentiel de conception)
 ```
 
-Le proxy de bord (`server/edge/`) est un service Node autonome : une seule
-connexion montante vers l'origine quel que soit le nombre de lecteurs, cache
-circulaire en mémoire, diffusion locale sans copie, et suppression de toute
-métadonnée client avant la sortie WAN. Voir [`server/edge/README.md`](server/edge/README.md).
+Le proxy de bord (`server/edge/`) est un service Node autonome : une connexion
+montante par slot de compte maître (M3U) quel que soit le nombre de lecteurs,
+bascule de chaîne sans déconnecter les clients, cache circulaire en mémoire,
+diffusion locale sans copie, suppression de toute métadonnée client avant la
+sortie WAN, et un tableau de bord d'administration temps réel.
+Voir [`server/edge/README.md`](server/edge/README.md).
 
 ## Démarrer
 

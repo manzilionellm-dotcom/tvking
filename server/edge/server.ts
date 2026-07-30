@@ -15,6 +15,7 @@ import { EdgeProxy, UnknownStreamError } from "./edge.ts";
 import { TokenBucket, pace } from "./token-bucket.ts";
 import { UpstreamError } from "./origin.ts";
 import { systemClock, type Clock } from "./clock.ts";
+import type { AdminRouter } from "./admin.ts";
 
 export interface EdgeServerOptions {
   edge: EdgeProxy;
@@ -26,12 +27,24 @@ export interface EdgeServerOptions {
   maxClients?: number;
   /** URL prefix for stream requests. */
   pathPrefix?: string;
+  /** Admin plane, when configured. Mounted on its own prefix. */
+  admin?: AdminRouter;
   clock?: Clock;
   log?: (line: string) => void;
 }
 
-/** Conservative id charset: no traversal, no scheme smuggling, no query. */
-const STREAM_ID = /^[A-Za-z0-9._~-]{1,128}$/;
+/**
+ * Conservative id charset: no traversal, no scheme smuggling, no query.
+ * A reference is `<channel>` (default account) or `<account>/<channel>`.
+ */
+const ID_PART = /^[A-Za-z0-9._~-]{1,128}$/;
+
+function validStreamRef(ref: string): boolean {
+  const parts = ref.split("/");
+  if (parts.length > 2) return false;
+  // "." and "." match the charset but are path traversal, not identifiers.
+  return parts.every((part) => ID_PART.test(part) && part !== "." && part !== "..");
+}
 
 export function createEdgeServer(options: EdgeServerOptions): http.Server {
   const prefix = options.pathPrefix ?? "/edge/";
@@ -43,6 +56,8 @@ export function createEdgeServer(options: EdgeServerOptions): http.Server {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://edge.local");
     const path = url.pathname;
+
+    if (options.admin?.handle(req, res, path, url)) return;
 
     if (path === "/healthz") {
       sendJson(res, 200, { status: "ok" });
@@ -62,8 +77,12 @@ export function createEdgeServer(options: EdgeServerOptions): http.Server {
       return;
     }
 
-    const streamId = decodeURIComponent(path.slice(prefix.length));
-    if (!STREAM_ID.test(streamId)) {
+    const streamId = path
+      .slice(prefix.length)
+      .split("/")
+      .map((part) => decodeURIComponent(part))
+      .join("/");
+    if (!validStreamRef(streamId)) {
       sendJson(res, 400, { error: "invalid_stream_id" });
       return;
     }
@@ -71,7 +90,9 @@ export function createEdgeServer(options: EdgeServerOptions): http.Server {
     // A HEAD probe must not be able to open a WAN connection: answer it from
     // what the edge already knows.
     if (req.method === "HEAD") {
-      const known = options.edge.stats().streams.find((s) => s.key === streamId);
+      const known = options.edge
+        .stats()
+        .streams.find((s) => s.key === streamId || s.key === `default/${streamId}`);
       res.writeHead(200, {
         "content-type": known?.contentType ?? "video/mp2t",
         "cache-control": "no-store",
@@ -147,6 +168,10 @@ export function createEdgeServer(options: EdgeServerOptions): http.Server {
     }
   }
 
+  // A swapped-out channel keeps its clients attached with no bytes flowing;
+  // an idle-socket timeout would undo exactly that. Request-level timeouts
+  // (headers, body) still apply.
+  server.timeout = 0;
   return server;
 }
 
