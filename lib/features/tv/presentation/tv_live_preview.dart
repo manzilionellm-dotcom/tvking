@@ -265,6 +265,8 @@ class _TvLivePreviewState extends State<TvLivePreview>
       _playingChannelId = null;
       _uiFirstFrame = false;
       _uiHasError = false;
+      _uiPlaying = false;
+      _presented = false;
     }
   }
 
@@ -359,6 +361,8 @@ class _TvLivePreviewState extends State<TvLivePreview>
       _playingChannelId = widget.channel.id;
       _uiFirstFrame = false; // setUrl remet firstFrame à false côté contrôleur
       _uiHasError = false;
+      _uiPlaying = false;
+      _presented = false; // nouvelle chaîne : on ré-attend une vraie image
       _resolving = false;
     });
   }
@@ -378,6 +382,19 @@ class _TvLivePreviewState extends State<TvLivePreview>
   // lecteur, qui faisait travailler l'UI pour rien (fluidité).
   bool _uiFirstFrame = false;
   bool _uiHasError = false;
+  bool _uiPlaying = false;
+
+  // VERROU « aperçu réellement présenté » (correctif cadre NOIR, terrain
+  // 2026-07-30). La `firstFrame` d'ExoPlayer est annoncée dès la PREMIÈRE
+  // trame décodée ; sur certaines box la SurfaceView native peut afficher du
+  // NOIR à cet instant précis (surface pas encore synchronisée, ou trame
+  // noire de début de flux). Retirer le logo sur la SEULE `firstFrame`
+  // laissait alors un cadre 100 % noir SANS repli. On ne masque donc le logo
+  // qu'une fois la lecture VRAIMENT en cours (firstFrame + isPlaying) ; ce
+  // drapeau se VERROUILLE à ce moment-là pour que la vidéo ne re-disparaisse
+  // pas derrière le logo à chaque micro-rebuffer (isPlaying qui retombe).
+  // Remis à false à chaque (re)chargement de chaîne et à chaque dispose.
+  bool _presented = false;
 
   void _onPlayer() {
     if (!mounted) return;
@@ -397,11 +414,17 @@ class _TvLivePreviewState extends State<TvLivePreview>
           ' → repli logo',
           level: 'warn');
     }
-    // Reconstruction UNIQUEMENT sur changement visuel (1re image / erreur).
-    if (c.firstFrame != _uiFirstFrame || c.hasError != _uiHasError) {
+    // Le flux a-t-il VRAIMENT présenté une image animée ? (cf. _presented)
+    if (c.firstFrame && c.isPlaying) _presented = true;
+    // Reconstruction UNIQUEMENT sur changement visuel (1re image / erreur /
+    // lecture en cours) — jamais à chaque tick de position (2×/s).
+    if (c.firstFrame != _uiFirstFrame ||
+        c.hasError != _uiHasError ||
+        c.isPlaying != _uiPlaying) {
       setState(() {
         _uiFirstFrame = c.firstFrame;
         _uiHasError = c.hasError;
+        _uiPlaying = c.isPlaying;
       });
     }
   }
@@ -409,18 +432,35 @@ class _TvLivePreviewState extends State<TvLivePreview>
   @override
   Widget build(BuildContext context) {
     final NativeVideoController? c = _ctrl;
-    // La vidéo ne remplace le logo QU'À la 1re trame dessinée, SANS erreur,
-    // et seulement si le lecteur joue bien LA chaîne focalisée (pendant un
-    // zap, le logo de la nouvelle chaîne recouvre l'ancienne vidéo) →
-    // jamais de cadre noir vide, jamais d'image d'une autre chaîne.
+    // La vidéo ne remplace le logo QU'UNE FOIS RÉELLEMENT PRÉSENTÉE (1re
+    // trame dessinée + lecture EN COURS, cf. _presented), SANS erreur, et
+    // seulement si le lecteur joue bien LA chaîne focalisée (pendant un zap,
+    // le logo de la nouvelle chaîne recouvre l'ancienne vidéo).
+    //
+    // CORRECTIF « cadre NOIR » (terrain 2026-07-30) : on ne se fie plus à la
+    // seule `firstFrame`. Sur certaines box la SurfaceView native peut être
+    // NOIRE au moment exact où `firstFrame` est annoncée (surface pas encore
+    // synchronisée / trame noire de début de flux) — on retirait alors le
+    // logo pour ne montrer que du noir. Désormais on exige `isPlaying` (ou le
+    // verrou `_presented` une fois la lecture réellement partie) : tant que le
+    // flux ne joue pas pour de vrai, on RESTE sur le repli logo — jamais de
+    // cadre noir. Le verrou évite que la vidéo re-disparaisse à chaque
+    // micro-rebuffer.
     final bool sameChannel = _playingChannelId == widget.channel.id;
-    final bool videoReady =
-        c != null && sameChannel && c.firstFrame && !c.hasError;
+    final bool videoReady = c != null &&
+        sameChannel &&
+        !c.hasError &&
+        c.firstFrame &&
+        (c.isPlaying || _presented);
     final bool loading = _resolving ||
-        (c != null && sameChannel && !c.firstFrame && !c.hasError);
+        (c != null && sameChannel && !videoReady && !c.hasError);
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
+        // Fond de base OPAQUE : filet de sécurité ultime — même l'espace d'une
+        // trame (vue vidéo pas encore montée ET repli pas encore peint), la
+        // tuile n'est jamais transparente/noire mais d'un noir CHAUD de marque.
+        color: TvTokens.card,
         borderRadius: BorderRadius.circular(TvDimens.cardRadius),
         border: Border.all(color: TvTokens.hairline),
       ),
@@ -446,6 +486,24 @@ class _TvLivePreviewState extends State<TvLivePreview>
                       label: widget.channel.name,
                       size: 88,
                       radius: 12),
+                  const SizedBox(height: 12),
+                  // NOM de la chaîne TOUJOURS affiché sous le logo. Repli
+                  // ROBUSTE : même si le logo distant se charge en
+                  // transparent / se rend en noir (ou si le monogramme
+                  // n'apparaît pas), l'aperçu reste IDENTIFIABLE et n'est
+                  // jamais un cadre « noir » anonyme. Le fond dégradé opaque
+                  // ci-dessus garantit déjà la lisibilité du texte clair.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      widget.channel.cleanName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TvTokens.ui(TvDimens.label,
+                          weight: FontWeight.w600, color: TvTokens.text),
+                    ),
+                  ),
                   if (loading) ...<Widget>[
                     const SizedBox(height: 10),
                     const SizedBox(
