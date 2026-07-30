@@ -9,10 +9,10 @@
 
 ## Bloc A — Stabilité visuelle & qualité d'image (« comme Netflix »)
 
-- [~] V1. Images nettes partout : fade-in doux, placeholders stables (zéro
+- [x] V1. Images nettes partout : fade-in doux, placeholders stables (zéro
   saut de mise en page), résolution de cache adaptée à la taille réelle
   des tuiles, erreurs d'image silencieuses → monogramme propre.
-- [ ] V2. Squelettes de chargement (shimmer sobre) sur accueil/rails TV et
+- [~] V2. Squelettes de chargement (shimmer sobre) sur accueil/rails TV et
   mobile — plus jamais de spinner nu ni d'écran qui « pop ».
 - [ ] V3. Transitions d'écran cohérentes (fade/slide léger, 150-200 ms) et
   uniformes entre templates.
@@ -34,10 +34,10 @@
 
 ## Bloc B — Intelligence client (l'app apprend ce qu'on aime)
 
-- [~] B11. Rangée « Pour toi » sur l'accueil mobile branchée sur
+- [x] B11. Rangée « Pour toi » sur l'accueil mobile branchée sur
   l'affinity_service existant (il tournait dans le vide depuis la mort
   de l'ancien HomeScreen).
-- [ ] B12. « Pour toi » côté TV (template Classique d'abord).
+- [~] B12. « Pour toi » côté TV (template Classique d'abord).
 - [ ] B13. Reprise intelligente : « Tu regardais X hier soir à cette
   heure-ci » (time_of_day_service existe déjà).
 - [ ] B14. Suggestions par moment de la journée (sport le week-end,
@@ -58,11 +58,13 @@
 
 ## Bloc C — Panel admin intelligent
 
-- [ ] C21. API worker : endpoint « insights » (agrégats des heartbeats
-  existants : appareils actifs/jour, nouveaux, silencieux, versions).
-- [ ] C22. Panel : tableau de bord « Ce qui s'est passé » à la connexion
+- [x] C21. API worker : endpoint « insights » (agrégats des heartbeats
+  existants : appareils actifs/jour, nouveaux, silencieux, versions). ✅ EN PROD
+- [x] C22. Panel : tableau de bord « Ce qui s'est passé » à la connexion
   (nouveautés, comportement du parc, alertes) — la demande exacte du
-  patron.
+  patron. ✅ EN PROD
+- [x] BONUS. 🔬 Labo du Maître : sources M3U privées et étanches, copiées
+  auto sur les appareils maîtres, exclues des stats. ✅ EN PROD
 - [ ] C23. Panel : santé du parc (erreurs remontées par error-log,
   boîtes noires, versions APK en circulation).
 - [ ] C24. Panel : top contenus (dès que B19 alimente les données).
