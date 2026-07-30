@@ -27,7 +27,9 @@ services:
       # 127.0.0.1 uniquement : le reverse proxy de l'hôte publie, pas
       # Docker. Retirer le préfixe expose le port sur toutes les
       # interfaces — un choix à faire sciemment, jamais par défaut.
-      - "127.0.0.1:8787:8787"
+      # EDGE_PUBLISHED_PORT ne change QUE le port de l'hôte (install.sh
+      # --port) ; le conteneur écoute toujours sur 8787.
+      - "127.0.0.1:${EDGE_PUBLISHED_PORT:-8787}:8787"
     volumes:
       # UN SEUL volume porte tout l'état : la base SQLite (abonnés,
       # appareils MAC, catalogue, abonnements) ET les films téléchargés.

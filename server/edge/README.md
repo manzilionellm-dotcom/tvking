@@ -371,9 +371,26 @@ runtime plus les sources.
 
 ```bash
 cd server/edge
+./install.sh
+```
+
+`install.sh` vérifie Docker, **génère** le mot de passe du tableau de bord
+(rien à inventer), demande le lien M3U, écrit `.env`, construit l'image et
+démarre. Il affiche ensuite l'adresse et le mot de passe. Le relancer ne
+réécrit jamais un `.env` existant — les identifiants survivent aux mises à
+jour. `--no-start` prépare la configuration sans démarrer, `--port N` change
+le port publié sur l'hôte.
+
+Pour tout faire à la main :
+
+```bash
 cp .env.example .env        # puis remplir EDGE_ACCOUNTS et EDGE_ADMIN_TOKEN
 docker compose up -d
 ```
+
+> Garder les apostrophes autour du JSON d'`EDGE_ACCOUNTS`. Compose retire les
+> apostrophes encadrantes et un `source .env` préserve les guillemets
+> intérieurs ; sans elles le shell les mange et le service refuse de démarrer.
 
 Le tableau de bord — et son onglet **Cinéma / VOD** — est alors sur
 `http://<serveur>:8787/admin/`, déverrouillé par `EDGE_ADMIN_TOKEN`.
