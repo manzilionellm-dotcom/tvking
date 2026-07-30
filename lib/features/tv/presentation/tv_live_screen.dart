@@ -952,6 +952,17 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     final List<Channel> recentList =
         _recentCh.length > 8 ? _recentCh.sublist(0, 8) : _recentCh;
 
+    // Rangée « Pour toi » (parité mobile B11) : recommandations BORNÉES déjà
+    // calculées par _computeForYou — affinité tirée de l'HISTORIQUE (poids 2) et
+    // des favoris (poids 1), Mode Enfants filtré, doublons de « Reprendre » et
+    // des favoris exclus (aucun scan complet → anti-OOM). REPLI TOTAL : si
+    // l'historique compte MOINS DE 3 chaînes distinctes (_recentIds), on ne
+    // recommande rien et la rangée disparaît — on ne devine pas au hasard, comme
+    // sur mobile. Cap à 12 tuiles (parité mobile) pour un rail vif.
+    final List<Channel> forYouList = _recentIds.length >= 3
+        ? (_forYouCh.length > 12 ? _forYouCh.sublist(0, 12) : _forYouCh)
+        : const <Channel>[];
+
     return Stack(
       children: <Widget>[
         // ----- FOND AMBIANT (§6) : teinte SOMBRE dérivée de la couleur
@@ -1006,6 +1017,17 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                     onRestored: () => _restoreFocusId = null,
                   ),
                   const SizedBox(height: 14),
+                  // Rangée « Pour toi » : se glisse entre « Reprendre » et la
+                  // grille. Elle se MASQUE toute seule (repli total) quand il n'y
+                  // a rien à recommander → aucun trou dans la mise en page.
+                  _ForYouRail(
+                    channels: forYouList,
+                    onPlay: (int i) =>
+                        _openPlayerWith(forYouList, i, fromRail: true),
+                    restoreFocusId:
+                        _restoreFromRail ? _restoreFocusId : null,
+                    onRestored: () => _restoreFocusId = null,
+                  ),
                   Expanded(child: grid),
                 ],
               ),
@@ -1558,6 +1580,67 @@ class _ResumeRail extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Rangée « Pour toi » (Vague B12 — parité mobile B11) : recommandations tirées
+/// de l'affinité (historique) que l'on fait DÉFILER horizontalement. OK =
+/// lecture (chemin habituel via _openPlayerWith). Contrairement à « Reprendre »,
+/// elle DISPARAÎT complètement quand il n'y a rien à recommander (repli total) :
+/// « Pour toi » ne s'affiche que s'il a vraiment de quoi faire DÉCOUVRIR. Les
+/// tuiles réutilisent _ResumeCard → strictement le style des rails existants.
+class _ForYouRail extends StatelessWidget {
+  const _ForYouRail({
+    required this.channels,
+    required this.onPlay,
+    this.restoreFocusId,
+    this.onRestored,
+  });
+
+  final List<Channel> channels;
+  final void Function(int index) onPlay;
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
+
+  @override
+  Widget build(BuildContext context) {
+    // Repli TOTAL : aucune reco → la rangée s'efface (0 hauteur), pas d'état
+    // vide « invitation » comme « Reprendre ». On ne recommande jamais au hasard.
+    if (channels.isEmpty) return const SizedBox.shrink();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+          // Titre via la clé l10n existante (« Pour vous » / « For you »), au
+          // MÊME style d'eyebrow que « Reprendre ».
+          child: Text(context.l10n.tvLiveForYou,
+              style: TvTokens.ui(13,
+                  weight: FontWeight.w800,
+                  color: TvTokens.mutedDim,
+                  spacing: 2)),
+        ),
+        SizedBox(
+          height: 150,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.zero,
+            itemCount: channels.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            itemBuilder: (BuildContext context, int i) => _ResumeCard(
+              channel: channels[i],
+              onPlay: () => onPlay(i),
+              restoreFocusId: restoreFocusId,
+              onRestored: onRestored,
+            ),
+          ),
+        ),
+        // Respiration avant la grille (le rail « Reprendre » a la sienne juste
+        // au-dessus ; ici c'est notre marge basse propre).
+        const SizedBox(height: 14),
       ],
     );
   }
