@@ -188,6 +188,28 @@ export async function deriveKeys(secret: Uint8Array): Promise<ZkKeys> {
 }
 
 /**
+ * Dérive une clé de contenu HLS de 16 octets (AES-128) depuis le secret
+ * d'appareil. C'est une valeur BRUTE (les segments HLS sont chiffrés en
+ * AES-128-CBC natif, qui exige la clé en clair côté lecteur) — elle ne quitte
+ * jamais l'appareil et n'est JAMAIS déposée sur le relais.
+ */
+export async function deriveHlsKey(secret: Uint8Array, label = "tvking/hls/key/v1"): Promise<Uint8Array> {
+  if (secret.length < 16) throw new Error("secret trop court");
+  const master = await crypto.subtle.importKey("raw", secret as BufferSource, "HKDF", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: te.encode(HKDF_SALT) as BufferSource,
+      info: te.encode(label) as BufferSource,
+    },
+    master,
+    128
+  );
+  return new Uint8Array(bits);
+}
+
+/**
  * Identifiant de stockage AVEUGLÉ : HMAC(label) sous la clé de l'appareil.
  * Déterministe pour l'appareil (il retrouve son slot), opaque pour le serveur
  * (aucun lien inversible vers le label ni vers un autre appareil).

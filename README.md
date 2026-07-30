@@ -35,10 +35,12 @@ app/
   search/  list/  reglages/   Recherche, Ma liste, Réglages
   panel/                      Panel maître AVEUGLE (présence/absence uniquement)
   api/vault/[slot]/           Coffre aveugle (blobs chiffrés opaques, taille fixe)
+  api/hls/[stream]/           Relais HLS : playlist M3U8 + segments chiffrés opaques
   api/panel/status/           Statut binaire masqué (auth ADMIN_SECRET)
   components/                 Sidebar, Hero, Row, MediaCard, Badge, Player…
   lib/data.ts                 Modèle de contenu (mock) + lookups
   lib/zk.ts  lib/zkClient.ts  Chiffrement côté client (Zero-Knowledge)
+  lib/hls.ts lib/hlsClient.ts Pipeline HLS chiffré (AES-128 natif, relais aveugle)
   lib/vault.ts                Logique du coffre aveugle (minimisation stricte)
 docs/RESEARCH-TV-UX.md        Recherche sourcée (le référentiel de conception)
 docs/ZERO-KNOWLEDGE.md        Architecture Zero-Knowledge (chiffrement client, panel aveugle)

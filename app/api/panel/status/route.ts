@@ -11,6 +11,7 @@
  * fail-closed si le secret n'est pas configuré.
  */
 
+import { serverRelay, streamPresence } from "../../../lib/hlsStore";
 import { slotPresence, vaultPresence } from "../../../lib/vault";
 import { serverVault } from "../../../lib/vaultStore";
 import { type Presence, isSlotId, timingSafeEqual } from "../../../lib/zk";
@@ -41,10 +42,16 @@ export async function POST(req: Request) {
       : [];
 
   const vault = serverVault();
+  const relay = serverRelay();
   const slots: Record<string, Presence> = {};
+  const streams: Record<string, Presence> = {};
   for (const id of asked) {
-    if (isSlotId(id)) slots[id] = slotPresence(vault, id);
+    if (!isSlotId(id)) continue;
+    // Un même slot aveuglé peut désigner un dépôt (coffre) et/ou un flux (HLS) ;
+    // on n'expose que présent/absent pour chacun, jamais un compte.
+    slots[id] = slotPresence(vault, id);
+    streams[id] = streamPresence(relay, id);
   }
 
-  return Response.json({ vault: vaultPresence(vault), slots });
+  return Response.json({ vault: vaultPresence(vault), slots, streams });
 }

@@ -17,6 +17,7 @@ type Presence = "present" | "absent";
 interface PanelState {
   vault: Presence;
   slots: Record<string, Presence>;
+  streams: Record<string, Presence>;
 }
 
 function PresenceBadge({ state }: { state: Presence }) {
@@ -133,13 +134,22 @@ export default function PanelPage() {
             <span className="text-[1.3rem] font-bold text-[var(--text-high)]">Coffre (global)</span>
             <PresenceBadge state={result.vault} />
           </div>
-          {Object.entries(result.slots).map(([id, state]) => (
+          {Object.keys(result.slots).map((id) => (
             <div
               key={id}
               className="mb-[0.6rem] flex items-center gap-[1rem] rounded-[var(--radius)] bg-[var(--surface-1)] px-[1.2rem] py-[0.8rem]"
             >
               <span className="min-w-0 flex-1 truncate font-mono text-[0.95rem] text-[var(--text-medium)]">{id}</span>
-              <PresenceBadge state={state} />
+              <span className="flex gap-[0.5rem]">
+                <span className="flex items-center gap-[0.4rem]">
+                  <span className="text-[0.85rem] uppercase tracking-wider text-[var(--text-medium)]">Sauvegarde</span>
+                  <PresenceBadge state={result.slots[id]} />
+                </span>
+                <span className="flex items-center gap-[0.4rem]">
+                  <span className="text-[0.85rem] uppercase tracking-wider text-[var(--text-medium)]">Flux</span>
+                  <PresenceBadge state={result.streams[id] ?? "absent"} />
+                </span>
+              </span>
             </div>
           ))}
           <p className="mt-[1rem] text-[1.05rem] italic text-[var(--text-medium)]">

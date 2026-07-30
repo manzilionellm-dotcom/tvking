@@ -85,6 +85,41 @@ test. En particulier :
 | Horodatages d'activité          | ✔ local  | ✖ (non stockés) | ✖     |
 | Présence d'une sauvegarde       | ✔        | ✔ (opaque) | ✔ présent/absent |
 
+## Pipeline HLS chiffré (relais d'indexation aveugle)
+
+Le même principe s'applique au **flux média** via HLS (RFC 8216). Le flux
+binaire unique est découpé en segments ; chaque segment est chiffré **sur
+l'appareil** avant tout envoi, et le serveur ne fait qu'**indexer et relayer**.
+
+Fichiers : `app/lib/hls.ts` (crypto + M3U8), `app/lib/hlsStore.ts` (relais),
+`app/api/hls/[stream]` (playlist), `app/api/hls/[stream]/seg/[seg]` (chunks),
+`app/lib/hlsClient.ts` (publication/lecture).
+
+- **Chiffrement natif** : AES-128-CBC, la méthode `#EXT-X-KEY:METHOD=AES-128`
+  de HLS. Un IV public par segment. Clé de contenu de 16 octets dérivée du
+  secret d'appareil (HKDF, info `tvking/hls/key/v1`).
+- **La clé ne quitte jamais l'appareil** : le M3U8 référence un URI de clé
+  **aveugle** (`tvking-key:v1`), pas un fichier de clé servi par le relais.
+- **Verrou anti-oracle** : `parseManifest` / `putManifest` **rejettent** tout
+  manifeste dont l'URI de clé est `http(s)://` (ou tout schéma réseau). Le
+  relais ne peut donc, même mal configuré, devenir une source de clé.
+- **Chunks opaques** : les segments sont stockés/servis en
+  `application/octet-stream` chiffrés. Le relais ne peut ni les déchiffrer, ni
+  analyser leur contenu audio/vidéo.
+- **Ce que le relais indexe** (inhérent au streaming, donc visible de lui) :
+  l'ordre des segments, leurs durées (`EXTINF`) et les IV publics. La durée
+  totale d'un flux est donc déductible côté serveur — c'est une limite propre à
+  HLS, pas une fuite de contenu. Tout le reste (image, son, clé) lui est fermé.
+
+Lecture avec un lecteur réel (`hls.js`) : brancher un *key loader* /
+*loader* personnalisé qui intercepte l'URI `tvking-key:…` et fournit la clé
+résolue localement (`hlsClient.resolveContentKey()`), sans jamais la demander au
+relais. La fonction `hlsClient.fetchSegment()` illustre la chaîne complète
+récupération → déchiffrement pour un lecteur maison ou un test de bout en bout.
+
+Le panel aveugle rapporte aussi la présence d'un flux (`streams`) sous la même
+forme binaire présent/absent — jamais un nombre de segments ni une durée.
+
 ## Production (Worker Cloudflare)
 
 Le stockage de démo est une Map en mémoire (`app/lib/vaultStore.ts`). Pour le
