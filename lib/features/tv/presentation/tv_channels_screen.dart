@@ -89,6 +89,21 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   /// après l'anti-rebond — l'OK ne fait que CONFIRMER.
   String? _selectedId;
 
+  /// Défilement PROPRE de la colonne CHAÎNES. On le contrôle nous-mêmes pour,
+  /// au RETOUR du lecteur (BACK), restaurer l'offset EXACT où on était (au lieu
+  /// de laisser la liste retomber en haut) et garantir que la carte de la
+  /// chaîne quittée est bien construite (donc re-focusable). Même rôle que le
+  /// ScrollController de la grille de tv_live_screen.
+  final ScrollController _chanScroll = ScrollController();
+
+  /// Chaîne à RE-FOCUSER au retour du lecteur (BACK). Sans ça, le focus
+  /// retombait sur la 1re chaîne (autofocus `i == 0` de la liste) dès qu'un
+  /// rebuild de fond (aperçu/EPG) avait effacé l'enfant focalisé de la portée
+  /// → « ça repart au début de la liste ». Mécanisme déterministe IDENTIQUE à
+  /// tv_live_screen (`restoreFocusId`) : l'écran DÉSIGNE la chaîne quittée, sa
+  /// carte reprend le focus en post-frame, puis on libère le drapeau.
+  String? _restoreFocusId;
+
   @override
   void initState() {
     super.initState();
@@ -111,6 +126,7 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     _favSub?.cancel();
     CategoryOrderStore.instance.removeListener(_onCatOrderChanged);
     _preview.dispose();
+    _chanScroll.dispose();
     super.dispose();
   }
 
@@ -276,6 +292,14 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   Future<void> _play(int i) async {
     if (_visible.isEmpty) return;
     final List<Channel> channels = _visible;
+    // MÉMORISATION AVANT lecture (télécommande normale : BACK revient PILE où
+    // on était) : id de la chaîne lancée → pour re-focuser SA carte au retour ;
+    // offset de défilement courant → pour retrouver la même position dans la
+    // liste. La catégorie sélectionnée (_cat), elle, est un champ d'état :
+    // l'écran restant monté sous le lecteur, elle est déjà préservée.
+    final String? restoreId =
+        (i >= 0 && i < channels.length) ? channels[i].id : null;
+    final double savedOffset = _chanScroll.hasClients ? _chanScroll.offset : 0;
     // Libère le lecteur d'APERÇU avant d'ouvrir le plein écran (l'écran reste
     // monté sous la route poussée : sans ça, les 2 flux resteraient ouverts).
     setState(() => _previewLive = false);
@@ -284,7 +308,21 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => TvPlayerScreen(channels: channels, startIndex: i),
     ));
-    if (mounted) setState(() => _previewLive = true);
+    if (!mounted) return;
+    // RETOUR (BACK) : on ré-arme l'aperçu ET on DÉSIGNE la chaîne quittée pour
+    // que sa carte reprenne le focus (déterministe, survit aux rebuilds de
+    // fond). L'offset de défilement est restauré en post-frame — la carte
+    // cible est alors dans la vue, donc (re)construite et prête à re-focuser.
+    setState(() {
+      _previewLive = true;
+      _restoreFocusId = restoreId;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_chanScroll.hasClients) return;
+      final double target =
+          savedOffset.clamp(0.0, _chanScroll.position.maxScrollExtent);
+      if ((_chanScroll.offset - target).abs() > 0.5) _chanScroll.jumpTo(target);
+    });
   }
 
   int _countFor(String cat) =>
@@ -423,6 +461,9 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
     return _panel(
       title: '${context.l10n.tvTabChannels} · ${_visible.length}',
       child: ListView.builder(
+        // Contrôleur PROPRE : nécessaire pour restaurer l'offset de défilement
+        // au retour du lecteur (cf. _play / _restoreFocusId).
+        controller: _chanScroll,
         // Extent MESURÉ (prototype) : la liste peut porter le bouquet
         // entier (10 000+ sur « Toutes ») — sans extent, chaque frame de
         // scroll re-mesure et la position reste estimée.
@@ -456,6 +497,14 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
               favorite: _favs.contains(ch.id),
               selected: ch.id == _selectedId,
               autofocus: i == 0,
+              // Retour du lecteur : la carte de la chaîne quittée reprend le
+              // focus (déterministe), puis libère le drapeau via onRestored.
+              restoreFocusId: _restoreFocusId,
+              onRestored: () {
+                if (_restoreFocusId != null) {
+                  setState(() => _restoreFocusId = null);
+                }
+              },
               onSelect: () => _onChannelOk(i, ch),
               onFavorite: () => FavoritesRepository.instance.toggle(ch.id),
             ),
@@ -808,6 +857,8 @@ class _ChannelTile extends StatefulWidget {
     required this.autofocus,
     required this.onSelect,
     required this.onFavorite,
+    this.restoreFocusId,
+    this.onRestored,
   });
   final int number;
   final Channel channel;
@@ -820,6 +871,13 @@ class _ChannelTile extends StatefulWidget {
   final VoidCallback onSelect;
   final VoidCallback onFavorite;
 
+  /// Id de la chaîne à re-focuser au retour du lecteur (désigné par l'écran).
+  /// Si == à la nôtre, la carte (re)prend le focus en post-frame.
+  final String? restoreFocusId;
+
+  /// Appelé une fois le focus repris → l'écran libère le drapeau.
+  final VoidCallback? onRestored;
+
   @override
   State<_ChannelTile> createState() => _ChannelTileState();
 }
@@ -827,6 +885,10 @@ class _ChannelTile extends StatefulWidget {
 class _ChannelTileState extends State<_ChannelTile> {
   String? _now;
   Timer? _epgTimer;
+
+  /// FocusNode PROPRE à la carte : nécessaire pour lui rendre le focus au
+  /// retour du lecteur (requestFocus déterministe, cf. build → restoreFocusId).
+  final FocusNode _focusNode = FocusNode(debugLabel: 'chan-tile');
 
   @override
   void initState() {
@@ -851,14 +913,31 @@ class _ChannelTileState extends State<_ChannelTile> {
   @override
   void dispose() {
     _epgTimer?.cancel();
+    _focusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // RESTAURATION DU FOCUS au retour du lecteur (déterministe) : quand l'écran
+    // nous DÉSIGNE (restoreFocusId == notre id), on (re)prend le focus en
+    // post-frame puis on libère le drapeau. Survit aux rebuilds de fond
+    // (aperçu/EPG) qui, sinon, laissaient l'autofocus `i == 0` rappeler la
+    // 1re chaîne → « ça repart au début ». Même patron que tv_live_screen.
+    if (widget.restoreFocusId != null &&
+        widget.restoreFocusId == widget.channel.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (widget.restoreFocusId == widget.channel.id) {
+          _focusNode.requestFocus();
+          widget.onRestored?.call();
+        }
+      });
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: TvFocusBuilder(
+        focusNode: _focusNode,
         autofocus: widget.autofocus,
         scale: TvFocusScale.small,
         onSelect: widget.onSelect,

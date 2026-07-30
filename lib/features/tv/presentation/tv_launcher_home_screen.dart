@@ -72,6 +72,18 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   /// Aperçu héro actif ? Coupé AVANT d'ouvrir un plein écran (jamais 2 flux).
   bool _previewLive = true;
 
+  /// Tuile de navigation à RE-FOCUSER au retour d'un écran poussé (BACK).
+  /// Sans ça, revenir d'un contenu (En direct, Films…) pouvait laisser le
+  /// focus filer ailleurs (autofocus du bouton héro) au lieu de la tuile
+  /// qu'on avait quittée. Même mécanisme déterministe que tv_live_screen /
+  /// tv_channels_screen (`restoreFocusId`) : on désigne la tuile, elle reprend
+  /// le focus en post-frame, puis on libère le drapeau.
+  String? _restoreFocusId;
+
+  void _clearRestore() {
+    if (_restoreFocusId != null) setState(() => _restoreFocusId = null);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -180,7 +192,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   /// route, et le RouteAware de TvLivePreview arrive une frame trop
   /// tard). Même garde que _play : on libère la surface sur une frame
   /// PROPRE avant le push, puis on ré-arme l'aperçu au retour.
-  Future<void> _open(Widget screen) async {
+  Future<void> _open(Widget screen, {String? restoreId}) async {
     setState(() => _previewLive = false);
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
@@ -190,7 +202,13 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
     await Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) =>
             Material(type: MaterialType.transparency, child: screen)));
-    if (mounted) setState(() => _previewLive = true);
+    if (!mounted) return;
+    // RETOUR (BACK) : on ré-arme l'aperçu et, si l'appel désigne une tuile de
+    // navigation, on la RE-FOCUSE (BACK revient sur la tuile quittée).
+    setState(() {
+      _previewLive = true;
+      if (restoreId != null) _restoreFocusId = restoreId;
+    });
   }
 
   /// Lecture plein écran : l'aperçu héro est LIBÉRÉ d'abord (l'accueil reste
@@ -483,31 +501,52 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                 // bouton « Regarder maintenant » n'existe pas non plus — la
                 // télécommande serait morte à l'arrivée. Repli ici.
                 autofocus: _hero == null,
-                onSelect: () => _open(const TvChannelsScreen()))),
+                // Identité stable → re-focus au retour (BACK).
+                restoreId: 'live',
+                restoreFocusId: _restoreFocusId,
+                onRestored: _clearRestore,
+                onSelect: () =>
+                    _open(const TvChannelsScreen(), restoreId: 'live'))),
         const SizedBox(width: 14),
         Expanded(
             child: _NavTile(
                 icon: Icons.movie_rounded,
                 label: 'Films',
-                onSelect: () => _open(const TvFilmsScreen()))),
+                restoreId: 'films',
+                restoreFocusId: _restoreFocusId,
+                onRestored: _clearRestore,
+                onSelect: () =>
+                    _open(const TvFilmsScreen(), restoreId: 'films'))),
         const SizedBox(width: 14),
         Expanded(
             child: _NavTile(
                 icon: Icons.video_library_rounded,
                 label: 'Séries',
-                onSelect: () => _open(const TvSeriesScreen()))),
+                restoreId: 'series',
+                restoreFocusId: _restoreFocusId,
+                onRestored: _clearRestore,
+                onSelect: () =>
+                    _open(const TvSeriesScreen(), restoreId: 'series'))),
         const SizedBox(width: 14),
         Expanded(
             child: _NavTile(
                 icon: Icons.replay_circle_filled_rounded,
                 label: 'Replay',
-                onSelect: () => _open(const TvRecordingsScreen()))),
+                restoreId: 'replay',
+                restoreFocusId: _restoreFocusId,
+                onRestored: _clearRestore,
+                onSelect: () =>
+                    _open(const TvRecordingsScreen(), restoreId: 'replay'))),
         const SizedBox(width: 14),
         Expanded(
             child: _NavTile(
                 icon: Icons.search_rounded,
                 label: 'Rechercher',
-                onSelect: () => _open(const TvSearchScreen()))),
+                restoreId: 'search',
+                restoreFocusId: _restoreFocusId,
+                onRestored: _clearRestore,
+                onSelect: () =>
+                    _open(const TvSearchScreen(), restoreId: 'search'))),
       ],
     );
   }
@@ -694,23 +733,64 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
 }
 
 /// Grande tuile de navigation (En direct, Films, …) — carte SEVEN, focus or.
-class _NavTile extends StatelessWidget {
+class _NavTile extends StatefulWidget {
   const _NavTile(
       {required this.icon,
       required this.label,
       required this.onSelect,
-      this.autofocus = false});
+      this.autofocus = false,
+      this.restoreId,
+      this.restoreFocusId,
+      this.onRestored});
   final IconData icon;
   final String label;
   final VoidCallback onSelect;
   final bool autofocus;
 
+  /// Identité STABLE de cette tuile (ex. 'live') : sert à la RE-FOCUSER au
+  /// retour d'un écran poussé (BACK), via restoreFocusId.
+  final String? restoreId;
+
+  /// Tuile désignée par l'accueil pour reprendre le focus au retour (BACK).
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
+
+  @override
+  State<_NavTile> createState() => _NavTileState();
+}
+
+class _NavTileState extends State<_NavTile> {
+  /// FocusNode PROPRE : nécessaire pour rendre le focus à la tuile au retour.
+  final FocusNode _node = FocusNode(debugLabel: 'nav-tile');
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // RESTAURATION DU FOCUS au retour d'un écran (BACK) : si l'accueil nous
+    // DÉSIGNE (restoreFocusId == notre restoreId), on reprend le focus en
+    // post-frame puis on libère le drapeau. Déterministe → survit à
+    // l'autofocus du bouton héro qui, sinon, pouvait capter le focus.
+    if (widget.restoreId != null &&
+        widget.restoreFocusId != null &&
+        widget.restoreFocusId == widget.restoreId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (widget.restoreFocusId == widget.restoreId) {
+          _node.requestFocus();
+          widget.onRestored?.call();
+        }
+      });
+    }
     return TvFocusBuilder(
-      autofocus: autofocus,
+      focusNode: _node,
+      autofocus: widget.autofocus,
       scale: TvFocusScale.medium,
-      onSelect: onSelect,
+      onSelect: widget.onSelect,
       builder: (BuildContext context, bool focused) {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 140),
@@ -725,11 +805,11 @@ class _NavTile extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(icon,
+              Icon(widget.icon,
                   size: 34,
                   color: focused ? TvTokens.goldBright : TvTokens.text),
               const SizedBox(height: 8),
-              Text(label,
+              Text(widget.label,
                   style: TvTokens.ui(TvDimens.body,
                       weight: FontWeight.w700,
                       color: focused ? TvTokens.text : TvTokens.muted)),
