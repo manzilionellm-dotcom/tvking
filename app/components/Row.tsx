@@ -13,7 +13,7 @@ export default function Row({ row }: { row: RowData }) {
         <span className="inline-block h-[1.3rem] w-[0.28rem] rounded-full" style={{ background: "var(--gold-grad)" }} />
         {row.title}
       </h2>
-      <div className="no-scrollbar flex gap-[1.2rem] overflow-x-auto overflow-y-visible py-[0.5rem] pr-[var(--safe-x)]">
+      <div className="no-scrollbar rail flex gap-[1.2rem] overflow-x-auto overflow-y-visible py-[0.5rem] pr-[var(--safe-x)]">
         {row.items.map((item) => (
           <MediaCard key={item.id} item={item} />
         ))}

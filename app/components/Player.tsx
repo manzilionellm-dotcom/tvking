@@ -85,6 +85,32 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
   const toggle = useCallback(() => setPlaying((p) => !p), []);
   const exit = useCallback(() => router.push(`/title/${item.id}`), [router, item.id]);
 
+  // Cinema mode: controls melt away after a few seconds of playback and any
+  // input (key, pointer, touch) brings them back. They never hide while
+  // paused, at the end, or while the Up Next panel needs a decision.
+  const [controlsAwake, setControlsAwake] = useState(true);
+  const hideTimer = useRef<number | null>(null);
+  const tapWhileHidden = useRef(false);
+  const wake = useCallback(() => {
+    setControlsAwake(true);
+    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => setControlsAwake(false), 3500);
+  }, []);
+
+  useEffect(() => {
+    // Controls start awake (initial state) — only the hide timer needs arming.
+    hideTimer.current = window.setTimeout(() => setControlsAwake(false), 3500);
+    window.addEventListener("keydown", wake);
+    window.addEventListener("pointermove", wake);
+    window.addEventListener("pointerdown", wake);
+    return () => {
+      window.removeEventListener("keydown", wake);
+      window.removeEventListener("pointermove", wake);
+      window.removeEventListener("pointerdown", wake);
+      if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+    };
+  }, [wake]);
+
   // Remote-control keys: BACK leaves the player, media keys drive transport
   // directly (they work whatever element holds the focus). Space/k still
   // toggle when nothing is focused (YouTube convention).
@@ -132,20 +158,40 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
 
   const showUpNext = next && pos >= UPNEXT_AT && !autoCancelled;
   const countdown = Math.max(0, DURATION - pos);
+  const controlsVisible = controlsAwake || !playing || atEnd || Boolean(showUpNext);
+  const chrome = `transition-opacity duration-500 ${
+    controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"
+  }`;
 
   return (
     // data-focus-scope confines D-pad navigation to the player while it covers
     // the app — focus must never land on the sidebar hidden underneath.
-    <div data-focus-scope className="fixed inset-0 z-[60] overflow-hidden bg-black">
-      {/* "Video" surface */}
+    <div
+      data-focus-scope
+      className={`cinema-enter fixed inset-0 z-[60] overflow-hidden bg-black ${
+        controlsVisible ? "" : "cursor-none"
+      }`}
+    >
+      {/* "Video" surface — tapping it toggles play/pause, the universal touch
+          convention. A tap while the controls are hidden only wakes them: the
+          window pointerdown listener wakes before click fires, so the
+          pre-interaction state is captured on pointerdown. */}
       <div
         className="absolute inset-0"
         style={{ background: `linear-gradient(120deg, ${item.art.from}, ${item.art.to})` }}
+        onPointerDown={() => {
+          tapWhileHidden.current = !controlsVisible;
+        }}
+        onClick={() => {
+          if (!tapWhileHidden.current) toggle();
+        }}
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40" />
+      <div
+        className={`pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40 ${chrome}`}
+      />
 
       {/* Title (top) */}
-      <div className="absolute left-[var(--safe-x)] top-[var(--safe-y)] right-[var(--safe-x)]">
+      <div className={`absolute left-[var(--safe-x)] top-[var(--safe-y)] right-[var(--safe-x)] ${chrome}`}>
         <p className="text-[1.05rem] font-semibold uppercase tracking-[0.2em] text-[var(--gold)]">
           {item.live === "live" ? "● En direct" : "Lecture"}
         </p>
@@ -154,7 +200,7 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
 
       {/* Up Next panel */}
       {showUpNext && (
-        <div className="absolute bottom-[7rem] right-[var(--safe-x)] w-[24rem] rounded-[var(--radius-lg)] bg-[var(--surface-2)]/95 p-[1.2rem] shadow-2xl backdrop-blur">
+        <div className="page-enter absolute bottom-[7rem] right-[var(--safe-x)] w-[24rem] rounded-[var(--radius-lg)] bg-[var(--surface-2)]/95 p-[1.2rem] shadow-2xl backdrop-blur">
           <p className="mb-[0.6rem] text-[1rem] font-semibold uppercase tracking-wider text-[var(--text-medium)]">
             À suivre · dans {countdown}s
           </p>
@@ -198,11 +244,16 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
       )}
 
       {/* Transport bar */}
-      <div className="absolute inset-x-0 bottom-0 px-[var(--safe-x)] pb-[var(--safe-y)] pt-[3rem]">
+      <div className={`absolute inset-x-0 bottom-0 px-[var(--safe-x)] pb-[var(--safe-y)] pt-[3rem] ${chrome}`}>
         <div className="mb-[0.8rem] flex items-center gap-[1rem]">
           <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">{fmt(pos)}</span>
           <div className="h-[0.4rem] flex-1 overflow-hidden rounded-full bg-white/20">
-            <div className="h-full" style={{ width: `${(pos / DURATION) * 100}%`, background: "var(--gold-grad)" }} />
+            {/* 1s linear tween matches the tick cadence: the gold fill flows
+                continuously instead of jumping once per second. */}
+            <div
+              className="h-full transition-[width] duration-1000 ease-linear"
+              style={{ width: `${(pos / DURATION) * 100}%`, background: "var(--gold-grad)" }}
+            />
           </div>
           <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">
             {item.live === "live" ? "DIRECT" : fmt(DURATION)}

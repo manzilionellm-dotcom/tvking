@@ -43,9 +43,10 @@
   --ui-scale: 1;     /* text size multiplier */
   --safe-scale: 1;   /* overscan-compensation multiplier */
 
-  /* ---- 10-foot safe area: ~5% per edge, floored to platform minima ---- */
-  --safe-x: calc(max(48px, 5vw) * var(--safe-scale));   /* ~96px @1920 (Android 48dp / tvOS 90pt) */
-  --safe-y: calc(max(27px, 5vh) * var(--safe-scale));   /* ~54px @1920 */
+  /* ---- 10-foot safe area: ~5% per edge, floored to platform minima.
+     On notched phones (viewport-fit=cover) the device inset is the floor. ---- */
+  --safe-x: calc(max(48px, 5vw, env(safe-area-inset-left, 0px) + 16px) * var(--safe-scale));
+  --safe-y: calc(max(27px, 5vh, env(safe-area-inset-top, 0px) + 8px) * var(--safe-scale));
 
   /* ---- Fluid spacing / radii (rem so they scale with the canvas) ---- */
   --gap: 1.5rem;
@@ -82,17 +83,17 @@ html {
   font-size: calc(clamp(11px, 100vw / 120, 22px) * var(--ui-scale));
   background: var(--bg);
   color-scheme: dark;
+  /* Kill the double-tap-to-zoom tap delay and browser touch gestures that
+     fight the UI — taps must feel instantaneous. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
 }
 
 body {
-  /* Deep "throne-room" ambience: a warm gold glow top-right and a cool royal
-     violet glow bottom-left, both very low luminance over the #121212 base so
-     it stays rich without straining the eyes. */
-  background:
-    radial-gradient(125% 85% at 100% -10%, rgba(227, 185, 107, 0.1), transparent 55%),
-    radial-gradient(110% 75% at -10% 110%, rgba(91, 75, 214, 0.12), transparent 55%),
-    var(--bg);
-  background-attachment: fixed;
+  /* No own background: <html> paints the base so the fixed ambience layer
+     (::before, z-index -1) can sit between canvas and content. */
   color: var(--text-high);
   font-family: var(--font-sans), system-ui, sans-serif;
   /* Text floor for 10-foot legibility is ~24px → 1.5rem on the 1920 canvas. */
@@ -101,6 +102,24 @@ body {
   letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  /* No rubber-band chaining into the browser chrome — the app is the screen. */
+  overscroll-behavior-y: none;
+}
+
+/* Deep "throne-room" ambience: a warm gold glow top-right and a cool royal
+   violet glow bottom-left, very low luminance over the #121212 base.
+   Painted on a fixed, composited layer — NOT background-attachment: fixed,
+   which forces a full-page repaint on every scroll frame on mobile. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  transform: translateZ(0);
+  background:
+    radial-gradient(125% 85% at 100% -10%, rgba(227, 185, 107, 0.1), transparent 55%),
+    radial-gradient(110% 75% at -10% 110%, rgba(91, 75, 214, 0.12), transparent 55%);
 }
 
 /* Soft cinematic vignette to frame the screen. */
@@ -110,6 +129,7 @@ body::after {
   inset: 0;
   pointer-events: none;
   z-index: 1;
+  transform: translateZ(0);
   background: radial-gradient(130% 120% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.45));
 }
 
@@ -143,6 +163,73 @@ body::after {
 }
 
 /*
+  Horizontal content rail: cards glide with inertia and settle on a card edge
+  (proximity snap — never fights a fast flick), and a swipe on the rail can't
+  leak into a browser back-gesture or scroll-chain to the page.
+*/
+.rail {
+  scroll-snap-type: x proximity;
+  scroll-padding-inline-start: 0.2rem;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.rail > * {
+  scroll-snap-align: start;
+}
+
+/* Cinematic page entrance — content settles in with a soft rise + fade. */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-enter {
+  animation: page-in 380ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Hero backdrop crossfade — layers stay mounted so opacity really animates. */
+.hero-backdrop {
+  opacity: 0;
+  transition: opacity 900ms ease;
+}
+.hero-backdrop.is-active {
+  opacity: 1;
+}
+
+/* Hero copy (title/subtitle) re-enters softly on each slide change. */
+@keyframes hero-text-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.hero-text-in {
+  animation: hero-text-in 550ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* The player fades in from black like a cinema screen lighting up. */
+@keyframes cinema-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.cinema-enter {
+  animation: cinema-in 550ms ease-out both;
+}
+
+/*
   Focus is the primary navigation affordance on a D-pad. Every focusable element
   gets a clear, distance-legible state: a light ring + scale-up + lift.
   We use :focus-visible so pointer clicks don't trigger the big TV treatment.
@@ -155,19 +242,35 @@ button:focus-visible {
 
 .focusable {
   border-radius: var(--radius);
-  transition: transform 160ms cubic-bezier(0.2, 0.7, 0.2, 1),
-    box-shadow 160ms ease, background-color 160ms ease;
+  transition: transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.15),
+    box-shadow 200ms ease, background-color 160ms ease, opacity 160ms ease;
   outline: none;
 }
 
 .focusable:focus-visible {
-  transform: scale(var(--focus-scale));
+  /* translateZ promotes the element to its own compositor layer for the
+     duration of the scale — no paint on the animation frames. */
+  transform: scale(var(--focus-scale)) translateZ(0);
   box-shadow:
     0 0 0 0.18rem var(--bg),
     0 0 0 0.4rem var(--focus),
     0 1.4rem 2.8rem rgba(0, 0, 0, 0.6),
     0 0 2.6rem rgba(227, 185, 107, 0.4); /* warm gold glow */
   z-index: 5;
+}
+
+/* Pointer users get a gentle lift on hover (never on touch — hover: hover). */
+@media (hover: hover) and (pointer: fine) {
+  .focusable:hover {
+    transform: scale(1.03) translateZ(0);
+  }
+}
+
+/* Tactile press: everything answers the finger instantly with a soft dip,
+   then springs back — the "VIP" touch response. */
+.focusable:active {
+  transform: scale(0.97) translateZ(0);
+  transition-duration: 70ms;
 }
 
 /* Cards scale from their edge nearest the screen centre feels better, but a
@@ -180,7 +283,17 @@ button:focus-visible {
   .focusable {
     transition: box-shadow 120ms ease;
   }
-  .focusable:focus-visible {
+  .focusable:focus-visible,
+  .focusable:hover,
+  .focusable:active {
     transform: none;
+  }
+  .page-enter,
+  .hero-text-in,
+  .cinema-enter {
+    animation: none;
+  }
+  .hero-backdrop {
+    transition: none;
   }
 }

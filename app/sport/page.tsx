@@ -3,7 +3,7 @@ import { sportRows } from "../lib/data";
 
 export default function SportPage() {
   return (
-    <div className="pb-[var(--safe-y)] pl-[var(--safe-x)] pt-[var(--safe-y)]">
+    <div className="page-enter pb-[var(--safe-y)] pl-[var(--safe-x)] pt-[var(--safe-y)]">
       <header className="mb-[1.8rem]">
         <p className="text-[1rem] font-semibold uppercase tracking-[0.2em] text-[var(--sport)]">
           Sport

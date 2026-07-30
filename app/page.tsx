@@ -4,7 +4,7 @@ import { heroSlides, homeRows } from "./lib/data";
 
 export default function Home() {
   return (
-    <div className="pb-[var(--safe-y)]">
+    <div className="page-enter pb-[var(--safe-y)]">
       <Hero slides={heroSlides} />
       <div className="pl-[var(--safe-x)]">
         {homeRows.map((row) => (

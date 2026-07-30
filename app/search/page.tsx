@@ -6,7 +6,7 @@ const SUGGESTIONS = ["Football", "Basket", "Tennis", "F1", "Leadership", "Yoga",
 
 export default function SearchPage() {
   return (
-    <div className="pl-[var(--safe-x)] pr-[var(--safe-x)] pt-[var(--safe-y)]">
+    <div className="page-enter pl-[var(--safe-x)] pr-[var(--safe-x)] pt-[var(--safe-y)]">
       <h1 className="font-display mb-[1.5rem] text-[3rem] font-extrabold tracking-tight text-[var(--text-high)]">
         Rechercher
       </h1>

@@ -30,7 +30,7 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
   const lessonCount = item.lessons ?? (kind === "formation" ? 8 : 0);
 
   return (
-    <div className="pb-[var(--safe-y)]">
+    <div className="page-enter pb-[var(--safe-y)]">
       {/* Backdrop */}
       <header className="relative min-h-[62vh] w-full overflow-hidden">
         <div

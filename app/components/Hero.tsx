@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { MediaItem } from "../lib/data";
 import { LevelBadge, LiveBadge } from "./Badge";
@@ -24,33 +25,43 @@ export default function Hero({ slides }: { slides: MediaItem[] }) {
 
   return (
     <header className="relative z-[2] mb-[1.5rem] h-[58vh] min-h-[24rem] w-full overflow-hidden">
-      {/* Backdrop */}
-      <div
-        key={slide.id}
-        className="absolute inset-0 transition-opacity duration-700"
-        style={{ background: `linear-gradient(120deg, ${slide.art.from}, ${slide.art.to})` }}
-      />
+      {/* Backdrops stay mounted and crossfade — a keyed single layer remounts
+          on each slide change, which skips the transition and hard-cuts. */}
+      {slides.map((s, idx) => (
+        <div
+          key={s.id}
+          aria-hidden={idx !== i}
+          className={`hero-backdrop absolute inset-0 ${idx === i ? "is-active" : ""}`}
+          style={{ background: `linear-gradient(120deg, ${s.art.from}, ${s.art.to})` }}
+        />
+      ))}
       {/* Legibility scrims: bottom + left, so text on artwork stays readable. */}
       <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg)] via-[var(--bg)]/40 to-transparent" />
       <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg)]/90 via-transparent to-transparent" />
 
       <div className="relative flex h-full flex-col justify-end gap-[1rem] px-[var(--safe-x)] pb-[2.5rem]">
-        <div className="flex items-center gap-[0.7rem]">
-          {slide.live && <LiveBadge state={slide.live} />}
-          {slide.level && <LevelBadge level={slide.level} />}
-          {slide.league && (
-            <span className="text-[1rem] font-semibold text-[var(--text-medium)]">{slide.league}</span>
-          )}
+        {/* Copy is keyed per slide so it glides in — the buttons below are NOT
+            keyed: they must keep D-pad focus across auto-advance. */}
+        <div key={slide.id} className="hero-text-in flex flex-col gap-[1rem]">
+          <div className="flex items-center gap-[0.7rem]">
+            {slide.live && <LiveBadge state={slide.live} />}
+            {slide.level && <LevelBadge level={slide.level} />}
+            {slide.league && (
+              <span className="text-[1rem] font-semibold text-[var(--text-medium)]">{slide.league}</span>
+            )}
+          </div>
+
+          <h1 className="font-display max-w-[36ch] text-[4rem] font-extrabold leading-[1.02] tracking-tight text-[var(--text-high)] [text-shadow:0_0.2rem_1.5rem_rgba(0,0,0,0.5)]">
+            {slide.title}
+          </h1>
+          <p className="max-w-[48ch] text-[1.4rem] text-[var(--text-medium)]">{slide.subtitle}</p>
         </div>
 
-        <h1 className="font-display max-w-[36ch] text-[4rem] font-extrabold leading-[1.02] tracking-tight text-[var(--text-high)] [text-shadow:0_0.2rem_1.5rem_rgba(0,0,0,0.5)]">
-          {slide.title}
-        </h1>
-        <p className="max-w-[48ch] text-[1.4rem] text-[var(--text-medium)]">{slide.subtitle}</p>
-
         <div className="mt-[0.6rem] flex items-center gap-[1rem]">
-          <button
+          <Link
+            href={`/watch/${slide.id}`}
             data-focusable
+            data-focus-default
             className="focusable flex items-center gap-[0.6rem] rounded-[var(--radius)] px-[1.7rem] py-[0.85rem] text-[1.25rem] font-bold text-black shadow-[0_0.6rem_1.6rem_rgba(227,185,107,0.35)]"
             style={{ background: "var(--gold-grad)" }}
           >
@@ -58,13 +69,14 @@ export default function Hero({ slides }: { slides: MediaItem[] }) {
               <path d="M8 5v14l11-7z" />
             </svg>
             {slide.live === "live" ? "Regarder en direct" : "Lecture"}
-          </button>
-          <button
+          </Link>
+          <Link
+            href={`/title/${slide.id}`}
             data-focusable
             className="focusable rounded-[var(--radius)] bg-white/15 px-[1.4rem] py-[0.8rem] text-[1.25rem] font-semibold text-[var(--text-high)]"
           >
             Plus d&apos;infos
-          </button>
+          </Link>
 
           {/* Slide indicators — focusable for D-pad control. */}
           {slides.length > 1 && (
@@ -76,7 +88,7 @@ export default function Hero({ slides }: { slides: MediaItem[] }) {
                   aria-label={`Diapositive ${idx + 1}`}
                   onClick={() => setI(idx)}
                   onFocus={() => setI(idx)}
-                  className="focusable h-[0.4rem] rounded-full transition-all"
+                  className="focusable h-[0.4rem] rounded-full transition-[width,background-color] duration-300"
                   style={{
                     width: idx === i ? "2rem" : "0.8rem",
                     background: idx === i ? "var(--gold)" : "rgba(255,255,255,0.35)",

@@ -25,14 +25,20 @@ export const metadata: Metadata = {
 };
 
 // Lock the layout to the device width (1:1 device pixels) so our viewport-based
-// scaling controls the size — no pinch-zoom on a TV.
+// scaling controls the size — no pinch-zoom on a TV. viewport-fit=cover lets
+// the app paint edge-to-edge on notched phones (safe areas handled in CSS).
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
   themeColor: "#121212",
 };
+
+/* Applies saved display preferences before first paint — without this the UI
+   renders at default scale, then visibly "jumps" once React hydrates. */
+const PREFS_BOOT = `try{var r=document.documentElement,u=localStorage.getItem("tvking:uiScale"),s=localStorage.getItem("tvking:safeScale");u&&r.style.setProperty("--ui-scale",u);s&&r.style.setProperty("--safe-scale",s)}catch(e){}`;
 
 export default function RootLayout({
   children,
@@ -41,7 +47,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr" className={`${geistSans.variable} ${playfair.variable} h-full antialiased`}>
-      <body className="min-h-full bg-[var(--bg)]">
+      <body className="min-h-full">
+        <script dangerouslySetInnerHTML={{ __html: PREFS_BOOT }} />
         <Preferences />
         <Sidebar />
         <SpatialNav />
