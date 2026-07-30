@@ -125,12 +125,15 @@ describe("dynamic channel switching on one slot", () => {
     const stalled = sessions.find((s) => s.channel === "tf1");
     expect(stalled?.stalled).toBe(true);
     expect(sessions.find((s) => s.channel === "m6")?.stalled).toBe(false);
-    // The session record carries nothing that identifies a person.
+    // The session record carries nothing that identifies a person: the only
+    // subscriber reference is the operator's own device id, null here.
     expect(Object.keys(sessions[0]).sort()).toEqual(
       [
         "account",
         "bytesDelivered",
         "channel",
+        "deviceId",
+        "deviceLabel",
         "droppedBytes",
         "id",
         "lagEvents",
@@ -139,6 +142,7 @@ describe("dynamic channel switching on one slot", () => {
         "startedAt",
       ].sort()
     );
+    expect(sessions[0].deviceId).toBeNull();
 
     one.subscription.close();
     two.subscription.close();

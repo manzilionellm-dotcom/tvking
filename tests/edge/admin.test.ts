@@ -9,6 +9,12 @@ import { EdgeProxy, type EdgeEvent } from "../../server/edge/edge.ts";
 import { createAdminRouter, type AdminRouter } from "../../server/edge/admin.ts";
 import { createEdgeServer } from "../../server/edge/server.ts";
 import { MockOrigin, bytes, tick } from "./mock-origin.ts";
+import { ManualWallClock } from "../../server/edge/clock.ts";
+import { openDatabase, type Database } from "../../server/edge/db/database.ts";
+import { PortalRepository } from "../../server/edge/portal/devices.ts";
+import { ExpirationEnforcer } from "../../server/edge/portal/enforcer.ts";
+import { VodCatalog } from "../../server/edge/vod/catalog.ts";
+import { ChunkCache } from "../../server/edge/vod/cache.ts";
 
 const TOKEN = "s3cret-admin-token";
 
@@ -17,6 +23,10 @@ let edge: EdgeProxy;
 let admin: AdminRouter;
 let server: http.Server;
 let base: string;
+let db: Database;
+let repo: PortalRepository;
+let catalog: VodCatalog;
+let clock: ManualWallClock;
 
 async function boot(options: { token?: string } = {}) {
   origin = new MockOrigin({ openDelayMs: 1 });
@@ -35,7 +45,22 @@ async function boot(options: { token?: string } = {}) {
     lingerMs: 0,
     onEvent: (event: EdgeEvent) => admin?.publish(event),
   });
-  admin = createAdminRouter({ edge, token: options.token ?? TOKEN, snapshotMs: 50 });
+  db = openDatabase(":memory:");
+  clock = new ManualWallClock("2026-06-01T12:00:00Z");
+  repo = new PortalRepository(db, clock);
+  catalog = new VodCatalog(db, clock);
+  repo.upsertPackage({ name: "full", accountId: "master" });
+
+  admin = createAdminRouter({
+    edge,
+    token: options.token ?? TOKEN,
+    snapshotMs: 50,
+    portal: { repo, enforcer: new ExpirationEnforcer({ repo, edge, wallClock: clock }) },
+    vod: {
+      catalog,
+      cache: new ChunkCache({ db, dir: "/tmp/tvking-admin-test", transport: origin }),
+    },
+  });
   server = createEdgeServer({ edge, egressBytesPerSecond: 8 * 1024 * 1024, admin });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -54,6 +79,7 @@ afterEach(async () => {
   admin.close();
   await edge.shutdown();
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  db.close();
 });
 
 describe("admin plane — access", () => {
@@ -277,5 +303,183 @@ describe("admin plane — monitoring", () => {
   it("404s an unknown admin route", async () => {
     const response = await api("/nope");
     expect(response.status).toBe(404);
+  });
+});
+
+describe("admin plane — subscriber devices", () => {
+  async function addDevice(body: Record<string, unknown>) {
+    const response = await api("/devices", { method: "POST", body: JSON.stringify(body) });
+    return { status: response.status, body: await response.json() };
+  }
+
+  it("creates a device with a plan in one call", async () => {
+    const packages = (await (await api("/packages")).json()).packages;
+    const created = await addDevice({
+      label: "Salon",
+      mac: "00:1a:79:aa:bb:cc",
+      packageId: packages[0].id,
+      plan: "trial-24h",
+    });
+
+    expect(created.status).toBe(200);
+    expect(created.body.device.state).toBe("active");
+    expect(created.body.device.subscription.plan).toBe("trial-24h");
+
+    const listed = (await (await api("/devices")).json()).devices;
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ mac: "00:1A:79:AA:BB:CC", label: "Salon", state: "active" });
+    expect(listed[0].remainingMs).toBe(24 * 3_600_000);
+  });
+
+  it("generates Xtream credentials on demand and shows them exactly once", async () => {
+    const packages = (await (await api("/packages")).json()).packages;
+    const created = await addDevice({ label: "Mobile", username: "auto", packageId: packages[0].id });
+
+    expect(created.body.credentials.username).toMatch(/^tv[0-9a-f]{8}$/);
+    expect(created.body.credentials.password).toMatch(/^[0-9a-f]{12}$/);
+    // Not recoverable afterwards: only the hash is stored.
+    const listed = (await (await api("/devices")).json()).devices;
+    expect(JSON.stringify(listed)).not.toContain(created.body.credentials.password);
+  });
+
+  it("offers exactly the five documented durations", async () => {
+    const plans = (await (await api("/devices")).json()).plans;
+    expect(plans.map((p: { id: string }) => p.id)).toEqual(["trial-24h", "1m", "3m", "6m", "12m"]);
+    expect(plans.find((p: { id: string }) => p.id === "trial-24h").trial).toBe(true);
+  });
+
+  it("grants, extends and revokes", async () => {
+    const packages = (await (await api("/packages")).json()).packages;
+    const created = await addDevice({ mac: "00:1a:79:aa:bb:cc", packageId: packages[0].id });
+    const id = created.body.device.device.id;
+
+    const granted = await (
+      await api(`/devices/${id}/grant`, { method: "POST", body: JSON.stringify({ plan: "3m" }) })
+    ).json();
+    expect(granted.device.state).toBe("active");
+    expect(new Date(granted.subscription.expiresAt).toISOString()).toBe("2026-09-01T12:00:00.000Z");
+
+    const revoked = await (await api(`/devices/${id}/revoke`, { method: "POST" })).json();
+    expect(revoked.revoked).toBe(1);
+    const listed = (await (await api("/devices")).json()).devices;
+    expect(listed[0].state).toBe("revoked");
+  });
+
+  it("rejects an unknown plan with the list of valid ones", async () => {
+    const packages = (await (await api("/packages")).json()).packages;
+    const created = await addDevice({ mac: "00:1a:79:aa:bb:cc", packageId: packages[0].id });
+    const id = created.body.device.device.id;
+
+    const response = await api(`/devices/${id}/grant`, {
+      method: "POST",
+      body: JSON.stringify({ plan: "forever" }),
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).plans).toContain("12m");
+  });
+
+  it("rejects a malformed MAC with a readable reason", async () => {
+    const response = await api("/devices", {
+      method: "POST",
+      body: JSON.stringify({ mac: "not-a-mac" }),
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).detail).toMatch(/invalid MAC/);
+  });
+
+  it("cuts live streams when a device is revoked or deleted", async () => {
+    const packages = (await (await api("/packages")).json()).packages;
+    const created = await addDevice({
+      mac: "00:1a:79:aa:bb:cc",
+      packageId: packages[0].id,
+      plan: "12m",
+    });
+    const id = created.body.device.device.id;
+
+    const joined = await edge.subscribe("master/tf1", { owner: { deviceId: id } });
+    expect(edge.sessionsForDevice(id)).toHaveLength(1);
+
+    const revoked = await (await api(`/devices/${id}/revoke`, { method: "POST" })).json();
+    expect(revoked.droppedSessions).toBe(1);
+    expect(joined.subscription.closed).toBe(true);
+
+    const again = await edge.subscribe("master/tf1", { owner: { deviceId: id } });
+    await api(`/devices/${id}`, { method: "DELETE" });
+    expect(again.subscription.closed).toBe(true);
+  });
+
+  it("reports devices and the enforcer in the overview", async () => {
+    const packages = (await (await api("/packages")).json()).packages;
+    await addDevice({ mac: "00:1a:79:aa:bb:cc", packageId: packages[0].id, plan: "1m" });
+
+    const overview = await (await api("/overview")).json();
+    expect(overview.portal.configured).toBe(true);
+    expect(overview.portal.devices).toHaveLength(1);
+    expect(overview.portal.plans).toHaveLength(5);
+    expect(overview.portal.enforcer).toMatchObject({ running: false, sweeps: 0 });
+  });
+});
+
+describe("admin plane — VOD", () => {
+  it("adds a source, toggles it, and reports the catalogue", async () => {
+    const created = await (
+      await api("/vod/sources", {
+        method: "POST",
+        body: JSON.stringify({ name: "provider-a", url: "http://a/list.m3u", accountId: "master" }),
+      })
+    ).json();
+    expect(created.source.enabled).toBe(true);
+
+    catalog.ingest(created.source.id, [
+      { name: "Dune (2021)", url: "http://a/movie/1.mkv", group: "VOD | SF" },
+    ]);
+
+    const vod = await (await api("/vod")).json();
+    expect(vod.configured).toBe(true);
+    expect(vod.counts.movies).toBe(1);
+    expect(vod.sources[0].name).toBe("provider-a");
+    expect(vod.categories[0].name).toBe("SF");
+    expect(vod.cache).toMatchObject({ chunks: 0, hits: 0 });
+
+    const toggled = await (
+      await api(`/vod/sources/${created.source.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: false }),
+      })
+    ).json();
+    expect(toggled.updated).toBe(true);
+    expect((await (await api("/vod")).json()).sources[0].enabled).toBe(false);
+  });
+
+  it("toggles a category off for subscribers", async () => {
+    const source = catalog.upsertSource({ name: "a", url: "http://a", accountId: "master" });
+    catalog.ingest(source.id, [
+      { name: "Heat (1995)", url: "http://a/movie/1.mkv", group: "VOD | POLAR" },
+    ]);
+    const category = catalog.listCategories("movie")[0];
+
+    await api(`/vod/categories/${category.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled: false }),
+    });
+    expect(catalog.titles({ enabledOnly: true })).toHaveLength(0);
+    expect(catalog.titles({})).toHaveLength(1); // hidden, not deleted
+  });
+
+  it("lists titles for the panel", async () => {
+    const source = catalog.upsertSource({ name: "a", url: "http://a", accountId: "master" });
+    catalog.ingest(source.id, [
+      { name: "Dune (2021)", url: "http://a/movie/1.mkv", group: "VOD | SF" },
+      { name: "Breaking Bad S01E01", url: "http://a/series/1.mkv", group: "SERIES" },
+    ]);
+
+    const movies = await (await api("/vod/titles?kind=movie")).json();
+    expect(movies.titles.map((t: { title: string }) => t.title)).toEqual(["Dune"]);
+  });
+
+  it("says so plainly when there is no ingest worker configured", async () => {
+    const response = await api("/vod/ingest", { method: "POST", body: "{}" });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("no_ingest_worker");
   });
 });

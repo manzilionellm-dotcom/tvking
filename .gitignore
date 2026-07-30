@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# edge proxy runtime state (database, VOD chunk cache)
+/.edge-cache/
+*.db
+*.db-wal
+*.db-shm

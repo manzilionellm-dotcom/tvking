@@ -17,6 +17,42 @@ export interface Clock {
   sleep(ms: number, signal?: AbortSignal): Promise<void>;
 }
 
+/**
+ * Wall-clock time (epoch ms). Deliberately separate from `Clock`: subscriptions
+ * expire on calendar dates, which a monotonic timer cannot express, while
+ * pacing and timeouts must NOT be affected by an NTP step. Mixing the two is
+ * how a clock adjustment either resurrects an expired account or kills a live
+ * stream.
+ */
+export interface WallClock {
+  now(): number;
+}
+
+export const systemWallClock: WallClock = {
+  now: () => Date.now(),
+};
+
+/** Wall clock a test drives by hand. */
+export class ManualWallClock implements WallClock {
+  #t: number;
+
+  constructor(start: number | string = "2026-01-01T00:00:00Z") {
+    this.#t = typeof start === "string" ? Date.parse(start) : start;
+  }
+
+  now(): number {
+    return this.#t;
+  }
+
+  set(value: number | string): void {
+    this.#t = typeof value === "string" ? Date.parse(value) : value;
+  }
+
+  advance(ms: number): void {
+    this.#t += ms;
+  }
+}
+
 export const systemClock: Clock = {
   now() {
     return performance.now();

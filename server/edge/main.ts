@@ -7,14 +7,28 @@
  * horizontally replicated, so the same code behind a serverless function would
  * silently open one upstream per instance — the exact thing this proxy exists
  * to prevent. The TV app talks to this service over the LAN.
+ *
+ * Planes are opt-in and degrade independently: no admin token → no admin plane;
+ * no database → no subscriber portal and no VOD. The streaming core runs either
+ * way, so a misconfigured panel can never take the picture down.
  */
 
 import process from "node:process";
 import { EdgeProxy, type EdgeEvent } from "./edge.ts";
 import { FetchOriginTransport } from "./origin.ts";
-import { createEdgeServer } from "./server.ts";
-import { createAdminRouter } from "./admin.ts";
+import { createEdgeServer, type PortalRouter } from "./server.ts";
+import { createAdminRouter, type AdminOptions } from "./admin.ts";
 import { ConfigError, loadConfig } from "./config.ts";
+import { openDatabase } from "./db/database.ts";
+import { PortalRepository } from "./portal/devices.ts";
+import { ExpirationEnforcer } from "./portal/enforcer.ts";
+import { createXtreamRouter } from "./portal/xtream.ts";
+import { createStalkerRouter } from "./portal/stalker.ts";
+import { VodCatalog } from "./vod/catalog.ts";
+import { VodIngestWorker } from "./vod/ingest.ts";
+import { ChunkCache } from "./vod/cache.ts";
+import { systemWallClock } from "./clock.ts";
+import type { PortalContext } from "./portal/context.ts";
 
 function main(): void {
   let config;
@@ -29,22 +43,79 @@ function main(): void {
   }
 
   const log = (line: string) => console.log(`[edge] ${line}`);
-
-  // The edge emits events before the admin router exists, hence the indirection.
   const listeners: Array<(event: EdgeEvent) => void> = [];
+
+  const transport = new FetchOriginTransport({ allowedHosts: config.allowedHosts });
   const edge = new EdgeProxy({
     ...config.edge,
-    transport: new FetchOriginTransport({ allowedHosts: config.allowedHosts }),
+    transport,
     onEvent: (event: EdgeEvent) => {
       log(describe(event));
       for (const listener of listeners) listener(event);
     },
   });
 
+  // ------------------------------------------------------- optional planes
+  const db = config.databasePath ? openDatabase(config.databasePath) : null;
+  const portals: PortalRouter[] = [];
+  let adminPortal: AdminOptions["portal"];
+  let adminVod: AdminOptions["vod"];
+  let enforcer: ExpirationEnforcer | null = null;
+  let worker: VodIngestWorker | null = null;
+
+  if (db) {
+    const repo = new PortalRepository(db, systemWallClock);
+    const catalog = new VodCatalog(db, systemWallClock);
+    const cache = new ChunkCache({
+      db,
+      dir: config.vod.cacheDir,
+      transport,
+      chunkBytes: config.vod.chunkBytes,
+      maxBytes: config.vod.cacheMaxBytes,
+    });
+
+    enforcer = new ExpirationEnforcer({
+      repo,
+      edge,
+      intervalMs: config.enforcerIntervalMs,
+      onEvent: (event) =>
+        log(`enforce device=${event.device} reason=${event.reason} sessions=${event.sessions}`),
+    });
+    enforcer.start();
+    adminPortal = { repo, enforcer };
+
+    if (config.vod.enabled) {
+      worker = new VodIngestWorker({
+        catalog,
+        intervalMs: config.vod.ingestIntervalMs,
+        fetchPlaylist: (accountId, url, signal) => edge.fetchText(accountId, url, { signal }),
+        onEvent: (event) => log(describe(event as unknown as { type: string })),
+      });
+      worker.start();
+      adminVod = { catalog, cache, worker };
+    }
+
+    if (config.portalEnabled) {
+      const context: PortalContext = {
+        repo,
+        catalog,
+        cache,
+        edge,
+        wallClock: systemWallClock,
+        egressBytesPerSecond: config.egressBytesPerSecond,
+        publicBase: config.publicBase,
+        onEvent: (event) => log(describe(event as unknown as { type: string })),
+      };
+      portals.push(createXtreamRouter(context), createStalkerRouter(context));
+    }
+  }
+
   const admin = createAdminRouter({
     edge,
     token: config.adminToken,
     prefix: config.adminPrefix,
+    portal: adminPortal,
+    vod: adminVod,
   });
   listeners.push((event) => admin.publish(event));
 
@@ -54,6 +125,7 @@ function main(): void {
     maxClients: config.maxClients,
     pathPrefix: config.pathPrefix,
     admin,
+    portals,
     log,
   });
 
@@ -70,6 +142,12 @@ function main(): void {
         ? `admin dashboard on ${base}${config.adminPrefix}/`
         : "admin plane disabled (set EDGE_ADMIN_TOKEN to enable it)"
     );
+    log(
+      portals.length > 0
+        ? `subscriber portals on ${base}/player_api.php (Xtream) and ${base}/portal.php (MAG)`
+        : "subscriber portals disabled (set EDGE_DB to enable them)"
+    );
+    log(worker ? "VOD ingestion worker started" : "VOD plane disabled");
   });
 
   let stopping = false;
@@ -79,13 +157,18 @@ function main(): void {
     log(`${signal} received, draining`);
     admin.close();
     server.close();
-    void edge.shutdown().then(() => process.exit(0));
+    void Promise.all([enforcer?.stop(), worker?.stop()])
+      .then(() => edge.shutdown())
+      .then(() => {
+        db?.close();
+        process.exit(0);
+      });
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
-function describe(event: EdgeEvent): string {
+function describe(event: { type: string } & Record<string, unknown>): string {
   const parts = Object.entries(event)
     .filter(([key]) => key !== "type")
     .map(([key, value]) => `${key}=${String(value)}`);

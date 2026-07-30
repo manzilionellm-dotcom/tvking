@@ -1,21 +1,27 @@
 /*
- * HTTP front-end for the edge proxy (LAN side).
+ * HTTP front-end (LAN side).
  *
- * Responsibilities kept deliberately thin: validate the stream id, join the
- * hub, shape the egress, honour backpressure, and detach on disconnect. All the
- * collapsing logic lives in edge.ts / hub.ts.
+ * Three planes share one port, in this order:
+ *   1. admin   — /admin, token-gated, operator only;
+ *   2. portals — Xtream and Stalker, authenticated per subscriber device;
+ *   3. edge    — /edge/<account>/<channel>, the raw route with no subscriber
+ *                model, for the TV app on a trusted LAN.
  *
  * Privacy note: this server never logs a client IP, User-Agent or any other
  * downstream identifier — logging them here would recreate, on disk, exactly
- * the data the proxy strips on the wire.
+ * the data the proxy strips on the wire. The subscriber identifiers the portals
+ * DO use (MAC, Xtream login) are the operator's own records, not telemetry.
  */
 
 import http from "node:http";
-import { EdgeProxy, UnknownStreamError } from "./edge.ts";
-import { TokenBucket, pace } from "./token-bucket.ts";
-import { UpstreamError } from "./origin.ts";
+import { EdgeProxy } from "./edge.ts";
+import { deliverLive, sendError, sendJson } from "./http/deliver.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import type { AdminRouter } from "./admin.ts";
+
+export interface PortalRouter {
+  handle(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<boolean>;
+}
 
 export interface EdgeServerOptions {
   edge: EdgeProxy;
@@ -25,10 +31,12 @@ export interface EdgeServerOptions {
   burstBytes?: number;
   /** Refuse further clients past this count (memory guard). */
   maxClients?: number;
-  /** URL prefix for stream requests. */
+  /** URL prefix for raw stream requests. */
   pathPrefix?: string;
   /** Admin plane, when configured. Mounted on its own prefix. */
   admin?: AdminRouter;
+  /** Subscriber portals (Xtream, Stalker), tried in order. */
+  portals?: readonly PortalRouter[];
   clock?: Clock;
   log?: (line: string) => void;
 }
@@ -42,7 +50,7 @@ const ID_PART = /^[A-Za-z0-9._~-]{1,128}$/;
 function validStreamRef(ref: string): boolean {
   const parts = ref.split("/");
   if (parts.length > 2) return false;
-  // "." and "." match the charset but are path traversal, not identifiers.
+  // "." and ".." match the charset but are path traversal, not identifiers.
   return parts.every((part) => ID_PART.test(part) && part !== "." && part !== "..");
 }
 
@@ -54,10 +62,21 @@ export function createEdgeServer(options: EdgeServerOptions): http.Server {
   let clients = 0;
 
   const server = http.createServer((req, res) => {
+    void route(req, res).catch((error) => {
+      log(`request failed: ${describe(error)}`);
+      sendError(res, error);
+    });
+  });
+
+  async function route(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", "http://edge.local");
     const path = url.pathname;
 
     if (options.admin?.handle(req, res, path, url)) return;
+
+    for (const portal of options.portals ?? []) {
+      if (await portal.handle(req, res, url)) return;
+    }
 
     if (path === "/healthz") {
       sendJson(res, 200, { status: "ok" });
@@ -108,63 +127,21 @@ export function createEdgeServer(options: EdgeServerOptions): http.Server {
     }
 
     clients += 1;
-    void stream(streamId, req, res)
-      .catch((error) => {
-        log(`stream ${streamId} failed: ${describe(error)}`);
-        if (!res.headersSent) sendError(res, error);
-        else res.destroy();
-      })
-      .finally(() => {
-        clients -= 1;
-      });
-  });
-
-  async function stream(
-    streamId: string,
-    req: http.IncomingMessage,
-    res: http.ServerResponse
-  ): Promise<void> {
-    const controller = new AbortController();
-    const detach = () => controller.abort();
-    res.on("close", detach);
-    req.on("aborted", detach);
-
-    const joined = await options.edge.subscribe(streamId, { signal: controller.signal });
-    if (controller.signal.aborted) {
-      joined.subscription.close();
-      return;
-    }
-
-    res.writeHead(200, {
-      "content-type": joined.contentType ?? "video/mp2t",
-      // The edge cache is the cache. Nothing downstream should store a live
-      // stream, and no intermediary should try to (RFC 9111 §5.2.2.5).
-      "cache-control": "no-store",
-      pragma: "no-cache",
-      connection: "keep-alive",
-      // Disables proxy buffering in front of the edge (nginx et al.).
-      "x-accel-buffering": "no",
-    });
-
-    const bucket = new TokenBucket({
-      bytesPerSecond: options.egressBytesPerSecond,
-      burstBytes: options.burstBytes,
-      clock,
-    });
-
-    const payload = async function* payload(): AsyncGenerator<Uint8Array> {
-      for await (const chunk of joined.subscription) yield chunk.data;
-    };
-
     try {
-      for await (const slice of pace(payload(), bucket, { signal: controller.signal })) {
-        if (controller.signal.aborted) break;
-        // Zero-copy hand-off; Node copies into the socket buffer itself.
-        if (!res.write(slice)) await drain(res, controller.signal);
-      }
+      await deliverLive({
+        edge: options.edge,
+        streamId,
+        req,
+        res,
+        egressBytesPerSecond: options.egressBytesPerSecond,
+        burstBytes: options.burstBytes,
+        clock,
+      });
+    } catch (error) {
+      log(`stream ${streamId} failed: ${describe(error)}`);
+      sendError(res, error);
     } finally {
-      joined.subscription.close();
-      if (!res.writableEnded) res.end();
+      clients -= 1;
     }
   }
 
@@ -173,45 +150,6 @@ export function createEdgeServer(options: EdgeServerOptions): http.Server {
   // (headers, body) still apply.
   server.timeout = 0;
   return server;
-}
-
-function drain(res: http.ServerResponse, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const done = () => {
-      res.off("drain", done);
-      res.off("close", done);
-      signal.removeEventListener("abort", done);
-      resolve();
-    };
-    res.once("drain", done);
-    res.once("close", done);
-    signal.addEventListener("abort", done, { once: true });
-  });
-}
-
-function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
-  const payload = JSON.stringify(body);
-  res.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "content-length": Buffer.byteLength(payload),
-    "cache-control": "no-store",
-  });
-  res.end(payload);
-}
-
-function sendError(res: http.ServerResponse, error: unknown): void {
-  if (error instanceof UnknownStreamError) {
-    sendJson(res, 404, { error: "unknown_stream" });
-    return;
-  }
-  if (error instanceof UpstreamError) {
-    const status = error.status === 503 ? 503 : 502;
-    if (status === 503) res.setHeader("retry-after", "5");
-    sendJson(res, status, { error: "upstream_unavailable" });
-    return;
-  }
-  sendJson(res, 500, { error: "internal_error" });
 }
 
 function describe(error: unknown): string {

@@ -3,7 +3,7 @@
 Service Node autonome (`server/edge/`) placé entre les clients du réseau local
 (TV, téléphones, écrans de test) et l'origine média distante.
 
-Il tient quatre promesses :
+Il tient six promesses :
 
 1. **Une connexion montante par slot de compte maître.** Quel que soit le nombre
    de lecteurs simultanés, le fournisseur ne voit qu'**une** connexion à la fois
@@ -15,6 +15,12 @@ Il tient quatre promesses :
    de nouvelle poignée de main TCP/TLS, pas de renégociation.
 4. **Aucune métadonnée client ne sort.** Toutes les requêtes montantes d'un
    compte sont l'*empreinte d'un seul appareil maître*, identique au bit près.
+5. **Un catalogue Cinéma/VOD unifié.** Plusieurs playlists sont agrégées en
+   **un** catalogue dédoublonné, avec cache disque par tranches : le deuxième
+   spectateur d'un film populaire ne coûte rien au WAN.
+6. **Des abonnés, des durées et une expiration qui mord.** Portails MAC (MAG /
+   Stalker) et Xtream Codes, formules 24 h / 1 / 3 / 6 / 12 mois, et un
+   applicateur qui **coupe les flux en cours** dès l'échéance.
 
 ## Architecture
 
@@ -46,6 +52,16 @@ Il tient quatre promesses :
 | `edge.ts` | Routeur : comptes, slots, flux, sessions, métriques |
 | `admin.ts` / `dashboard.ts` | API d'administration (jeton) + tableau de bord temps réel |
 | `server.ts` | Façade HTTP LAN (flux, `/healthz`, `/metrics`) |
+| `db/schema.ts` / `db/database.ts` | Migrations SQLite numérotées + accès (base intégrée à Node) |
+| `portal/plans.ts` | Durées d'abonnement (mois calendaires, UTC) |
+| `portal/devices.ts` | Abonnés : bouquets, MAC/Xtream, octrois, authentification |
+| `portal/enforcer.ts` | Applicateur d'expiration : coupe les flux dès l'échéance |
+| `portal/xtream.ts` / `portal/stalker.ts` | Portails abonnés (API Xtream, portail MAG) |
+| `vod/classify.ts` | Heuristiques titre/genre/épisode sur les lignes M3U |
+| `vod/catalog.ts` | Catalogue VOD dédoublonné (1 œuvre, N sources) |
+| `vod/ingest.ts` | Ouvrier d'ingestion périodique |
+| `vod/cache.ts` | Cache disque par tranches, LRU indexé en base, Range |
+| `http/deliver.ts` | Livraison HTTP partagée (direct lissé, VOD avec Range) |
 | `config.ts` / `main.ts` | Configuration par variables d'environnement + point d'entrée |
 
 ## Les garanties, et comment elles tiennent
@@ -152,7 +168,71 @@ Les journaux suivent la même règle : aucun IP client, aucun `User-Agent`, et l
 URL d'origine sont rédigées (`redactUrl`) car elles portent souvent un jeton
 d'abonnement.
 
-### 5. Lissage d'égress (`token-bucket.ts`)
+### 5. Agrégation Cinéma / VOD (`vod/`)
+
+L'ouvrier parcourt les sources actives, télécharge chaque playlist **dans le
+budget de connexions du compte** (une actualisation de catalogue est une
+connexion montante comme une autre : si un spectateur occupe le slot, l'ouvrier
+passe son tour et réessaie), ne garde que les lignes qui ressemblent à de la
+VOD, puis les replie dans le catalogue.
+
+Le dédoublonnage est le cœur : les lignes fournisseurs sont des noms de fichiers
+décorés (`FR - Le Grand Bleu (1988) [MULTI 1080p]`). `classify.ts` en extrait
+l'œuvre, l'année, la qualité, la saison/épisode et le genre ; la clé
+`(type, titre normalisé, année)` fait que le même film présent chez quatre
+fournisseurs devient **un** titre avec quatre flux jouables — et donc un
+repli gratuit quand l'un des fournisseurs bronche. Les heuristiques sont
+prudentes : un titre illisible reste tel quel plutôt que d'être mal fusionné.
+
+Piège vécu : `.ts` est **à la fois** un conteneur VOD et l'extension normale
+d'une chaîne en direct. S'en servir comme indice de VOD range toutes les
+chaînes dans la vidéothèque — le chemin `/movie/` tranche, pas l'extension.
+
+Le cache VOD est l'inverse du direct : un fichier fixe, lu à des endroits
+différents par des gens différents. L'unité utile est donc la **tranche
+d'octets** sur disque (4 Mio par défaut), indexée en base pour que l'ordre LRU
+survive à un redémarrage. Les lecteurs concurrents d'une même tranche manquante
+se rejoignent sur **une** requête `Range` (single-flight), et une tranche déjà
+là ne coûte rien. Le `Range` envoyé au fournisseur est un multiple de la taille
+de tranche : identique quel que soit le spectateur, donc sans information sur
+lui — c'est la seule exception admise à la signature maître.
+
+### 6. Abonnés, durées et expiration (`portal/`)
+
+Un **appareil** est une identité d'abonné : une MAC (boîtier MAG) ou un login
+Xtream, rattachée à un **bouquet** (un compte maître, éventuellement restreint
+à des groupes ou des chaînes). Les octrois sont un historique append-only :
+qui a reçu quoi, quand, et qui l'a révoqué.
+
+| Formule | Durée |
+| --- | --- |
+| `trial-24h` | 24 h pile (essai) |
+| `1m` / `3m` / `6m` / `12m` | mois **calendaires**, en UTC |
+
+Mois calendaires et non « 30 jours » : trois mois achetés le 15 mars finissent
+le 15 juin, comme sur la facture. Le jour est ramené à la fin du mois quand il
+n'existe pas (31 janvier + 1 mois = 28 ou 29 février). Renouveler en avance
+**ajoute** au reliquat au lieu de le jeter.
+
+Vérifier l'abonnement à la connexion n'est pas de l'application : un client
+connecté une minute avant l'échéance garderait le flux des heures. L'applicateur
+balaie donc les sessions vivantes et coupe celles dont l'appareil n'est plus en
+règle — expiré, révoqué, désactivé ou supprimé — en réévaluant la base à chaque
+passage plutôt qu'en se fiant à un horodatage capturé à la connexion.
+
+Deux horloges distinctes, volontairement : les abonnements expirent sur des
+dates (horloge murale), le lissage et les délais sur une horloge monotone. Les
+mélanger, c'est laisser un ajustement NTP ressusciter un compte expiré ou tuer
+un flux en cours.
+
+**Sécurité, dit clairement** : une MAC dans un cookie est un identifiant, pas un
+secret ; quiconque connaît une MAC enregistrée peut la présenter. C'est ainsi
+que fonctionne le protocole MAG. Ce qui est fait : la MAC doit être enregistrée
+**et** avoir un abonnement vivant, les liens sont émis contre un jeton
+court-lived lié à cette MAC, et la limite de connexions s'applique. À réserver
+à un réseau de confiance.
+
+### 7. Lissage d'égress (`token-bucket.ts`)
 
 Le WAN livre par rafales ; retransmises telles quelles à N clients, elles
 saturent le lien et font trembler la lecture. Chaque client est servi à travers
@@ -201,6 +281,15 @@ La forme mono-origine reste disponible (`EDGE_STREAM_MAP` ou
 | `EDGE_USER_AGENT` / `EDGE_VIA` | `tvking-edge/1.0` | Identité présentée à l'origine |
 | `EDGE_UPSTREAM_HEADERS` | — | JSON d'en-têtes statiques (identifiants **du proxy**) |
 | `EDGE_RECONNECT_*` | `5` / `250 ms` / `5000 ms` | Politique de reconnexion |
+| `EDGE_DB` | — | Fichier SQLite ; **vide = pas d'abonnés ni de VOD** |
+| `EDGE_PORTAL` | `1` | `0` désactive les portails MAC/Xtream |
+| `EDGE_PUBLIC_BASE` | déduit de `Host` | Base publique des liens générés |
+| `EDGE_ENFORCE_INTERVAL_MS` | `15000` | Période de balayage des expirations |
+| `EDGE_VOD` | `1` | `0` désactive l'ingestion et le cache VOD |
+| `EDGE_VOD_CACHE_DIR` | `./.edge-cache/vod` | Répertoire des tranches |
+| `EDGE_VOD_CHUNK_BYTES` | `4 Mio` | Taille d'une tranche |
+| `EDGE_VOD_CACHE_BYTES` | `2 Gio` | Budget disque (éviction LRU) |
+| `EDGE_VOD_INGEST_INTERVAL_MS` | `6 h` | Période d'ingestion |
 
 Champs d'un compte : `id`, `label`, `playlistUrl` **ou** `channels` **ou**
 `channelTemplate`, `maxConnections` (défaut 1), `device`
@@ -224,16 +313,41 @@ Plan d'administration (jeton `Authorization: Bearer …` ou `X-Admin-Token`) :
 | `GET /admin/accounts/:id/channels` | Catalogue M3U (`?refresh=1` pour forcer) |
 | `GET /admin/sessions` | Sessions clientes (identifiants opaques) |
 | `POST /admin/streams/:clé/stop` | Coupe un flux |
+| `GET/POST /admin/devices` | Abonnés (liste, création avec formule) |
+| `PATCH/DELETE /admin/devices/:id` | Modification / suppression (coupe ses flux) |
+| `POST /admin/devices/:id/grant` | Octroi ou prolongation (`plan`) |
+| `POST /admin/devices/:id/revoke` | Révocation **immédiate** (coupe les flux) |
+| `GET/POST /admin/packages` | Bouquets |
+| `GET /admin/vod` | Catalogue, sources, catégories, statistiques de cache |
+| `POST /admin/vod/sources` · `PATCH/DELETE /admin/vod/sources/:id` | Sources VOD |
+| `PATCH /admin/vod/categories/:id` | Activer/masquer une catégorie |
+| `POST /admin/vod/ingest` | Ingestion immédiate (toutes sources ou une) |
+| `GET /admin/vod/titles` | Titres (filtre `kind`, `search`) |
 
-Le tableau de bord affiche les montées actives (et le maximum jamais atteint,
+Portails abonnés (authentifiés par appareil) :
+
+| Route | Dialecte |
+| --- | --- |
+| `GET /player_api.php` | Xtream : `user_info`, catégories, chaînes, VOD, séries |
+| `GET /get.php?type=m3u_plus` | Xtream : playlist générée (liens vers l'edge) |
+| `GET /live/<user>/<pass>/<id>.ts` | Xtream : flux direct |
+| `GET /movie/<user>/<pass>/<id>.<ext>` | Xtream : VOD (avec `Range`) |
+| `GET /portal.php` | MAG/Stalker : handshake, profil, chaînes, VOD, `create_link` |
+| `GET /stalker/stream/<jeton>/…` | MAG/Stalker : lien émis par le portail |
+
+Le tableau de bord a trois onglets — **Direct**, **Cinéma / VOD**, **Appareils**.
+Il affiche les montées actives (et le maximum jamais atteint,
 qui doit rester ≤ au budget), les clients connectés et leur chaîne, les bascules,
 et l'efficacité de déduplication (requêtes servies par montée, octets LAN vs
 WAN). Les sessions y sont des identifiants opaques : **le tableau de bord ne peut
-pas montrer ce que le proxy refuse de collecter** — ni IP, ni User-Agent.
+pas montrer ce que le proxy refuse de collecter** — ni IP, ni User-Agent. Les
+seules identités affichées sont celles que l'opérateur a lui-même créées (MAC,
+login), avec un compte à rebours d'expiration calé sur l'horloge du serveur, un
+sélecteur de formule, un bouton « Essai 24 h » et une révocation immédiate.
 
 ## Vérification
 
-`npm test` — 161 tests dédiés, dont :
+`npm test` — 245 tests dédiés, dont :
 
 - `hub.test.ts` : 150 clients simultanés → **1** ouverture ; churn aléatoire de
   200 tâches join/leave → `activeMax === 1` ; linger, reconnexion, échecs ;
@@ -248,6 +362,19 @@ pas montrer ce que le proxy refuse de collecter** — ni IP, ni User-Agent.
   rafraîchissement en échec qui garde la dernière bonne version ;
 - `admin.test.ts` : authentification, gestion des comptes, SSE, et l'absence de
   toute donnée personnelle dans les réponses ;
+- `subscriptions.test.ts` : migrations, durées calendaires, authentification, et
+  surtout l'**application de l'expiration** — un flux en cours est coupé à la
+  seconde où l'abonnement se termine, comme à la révocation, la désactivation ou
+  la suppression de l'appareil ;
+- `vod-catalog.test.ts` : dédoublonnage multi-fournisseurs, catégories,
+  idempotence, échec de source sans perte de catalogue, et « l'ingestion
+  n'ouvre jamais une deuxième connexion » ;
+- `vod-cache.test.ts` : `Range` exacts, deuxième lecture à coût WAN nul,
+  25 lecteurs simultanés → une requête, éviction LRU, refus d'un fournisseur
+  sans `Range` ;
+- `portal.test.ts` : sockets réelles — un lecteur Xtream et un boîtier MAG
+  s'authentifient, listent, lisent, se heurtent à la limite de connexions, et
+  se font couper en pleine lecture à l'expiration ;
 - `proxy-e2e.test.ts` : sockets réelles — 120 clients HTTP, origine `node:http`
   qui compte **elle-même** ses requêtes et ses connexions, vérifie qu'aucune
   valeur envoyée par les clients n'apparaît dans la requête montante, et qu'à
@@ -276,3 +403,13 @@ pourrait observer), jamais sur un drapeau interne au proxy.
   par atteindre `EDGE_STARVE_GRACE_MS` et ses clients sont terminés proprement.
 - **Le plan d'administration n'a pas de gestion d'utilisateurs** : un seul jeton
   partagé, pas de rôles, pas de journal d'audit.
+- **L'authentification MAC vaut ce que vaut le protocole MAG** : un identifiant,
+  pas un secret (voir §6).
+- **La VOD partage le budget de connexions du direct** : une tranche manquante
+  prend un slot libre — ou un slot que personne ne regarde — et sinon renvoie
+  503. Un film ne chasse jamais un spectateur du direct.
+- **Pas de métadonnées enrichies** (TMDB & co) : le catalogue ne connaît que ce
+  que les playlists disent. Les affiches viennent de `tvg-logo`.
+- **Les comptes maîtres ne sont toujours pas persistés** (env + API) ; les
+  abonnés et le catalogue, eux, vivent en base.
+- **Pas d'EPG** : `xmltv.php` répond un document vide mais valide.

@@ -58,3 +58,38 @@
 - **Vérifié au navigateur (Chromium + Playwright)** : le tableau de bord a révélé deux bugs que les
   tests ne pouvaient pas voir — CSP `default-src 'none'` qui bloquait son propre `fetch` SSE, et
   annulation comptée comme refus dans les métriques.
+
+# Décisions — catalogue VOD, portails abonnés et durées d'abonnement
+- **SQLite intégré à Node (`node:sqlite`)**, migrations numérotées et transactionnelles : zéro
+  dépendance, un seul fichier à sauvegarder, et la version du schéma fait foi. Le chemin chaud du
+  streaming ne touche jamais la base (abonnés, catalogue et index de cache seulement).
+- **Deux horloges** : les abonnements expirent sur des dates (horloge murale), le lissage et les
+  délais sur une horloge monotone. Les mélanger, c'est laisser un ajustement NTP ressusciter un
+  compte expiré ou couper un flux en cours.
+- **Mois calendaires, pas 30 jours**, en UTC, avec ramenage du jour (31 janvier + 1 mois = 28/29
+  février) ; renouveler en avance ajoute au reliquat au lieu de le jeter.
+- **L'expiration s'applique aux flux en cours** : vérifier à la connexion ne suffit pas (un client
+  connecté une minute avant l'échéance garderait le flux des heures). L'applicateur réévalue la base
+  à chaque balayage — expiré, révoqué, désactivé ou supprimé — et coupe.
+- **Catalogue = une œuvre, N sources** : clé `(type, titre normalisé, année)`. Quatre fournisseurs
+  offrant le même film donnent un titre et quatre flux jouables (repli gratuit). Heuristiques
+  prudentes : un titre illisible reste tel quel plutôt que d'être mal fusionné.
+- **Piège `.ts`** : extension à la fois VOD et live. S'en servir comme indice de VOD classait toutes
+  les chaînes en films — c'est le chemin `/movie/` qui tranche (bug réel, couvert par un test).
+- **Le cache VOD est l'inverse du direct** : fichier fixe lu à des offsets différents → tranches
+  disque de 4 Mio, LRU indexé en base (survit au redémarrage), single-flight par tranche, `Range`
+  aligné sur la grille (donc identique quel que soit le spectateur — seule exception admise à la
+  signature maître).
+- **L'ingestion et le rafraîchissement de catalogue passent par le budget de connexions** : un
+  téléchargement de fond ne doit ni interrompre un spectateur ni devenir la deuxième connexion.
+  S'il n'y a pas de slot libre (ou occupé par un flux que personne ne regarde), on passe son tour.
+- **MAC = identifiant, pas secret** (protocole MAG) : dit explicitement dans le README et l'UI.
+  Mitigations : MAC enregistrée **et** abonnement vivant, liens émis contre un jeton court lié à la
+  MAC, limite de connexions appliquée.
+- **Les identités d'abonnés sont la seule donnée nominative stockée** : ce sont les identifiants que
+  l'opérateur crée, pas de la télémétrie. Rien d'autre sur le spectateur (ni IP, ni User-Agent, ni
+  historique) — le tableau de bord ne peut pas montrer ce que le proxy refuse de collecter.
+- **`res.flushHeaders()` sur le direct** : sans cela Node retient les en-têtes jusqu'au premier
+  octet et une chaîne lente ressemble à une requête bloquée (trouvé en pilotant un vrai lecteur).
+- **Plans optionnels et indépendants** : pas de jeton → pas d'admin ; pas de base → pas de portail
+  ni de VOD. Le cœur streaming tourne dans tous les cas.

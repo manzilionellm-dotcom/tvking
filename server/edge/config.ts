@@ -21,6 +21,19 @@ export interface EdgeRuntimeConfig {
   /** Empty string = admin plane disabled. */
   adminToken: string;
   adminPrefix: string;
+  /** SQLite file for subscribers, VOD catalogue and cache index. */
+  databasePath: string;
+  /** Subscriber portals (MAC / Xtream). Off unless a database is configured. */
+  portalEnabled: boolean;
+  publicBase: string | undefined;
+  enforcerIntervalMs: number;
+  vod: {
+    enabled: boolean;
+    cacheDir: string;
+    chunkBytes: number;
+    cacheMaxBytes: number;
+    ingestIntervalMs: number;
+  };
   edge: Omit<EdgeConfig, "transport">;
 }
 
@@ -158,6 +171,19 @@ export function loadConfig(env: Env): EdgeRuntimeConfig {
     // No token, no admin plane: this API can point the proxy at a new origin.
     adminToken: env.EDGE_ADMIN_TOKEN ?? "",
     adminPrefix: env.EDGE_ADMIN_PREFIX || "/admin",
+    databasePath: env.EDGE_DB || "",
+    // The portals need somewhere to keep subscribers; without a database they
+    // would authorise from thin air, so they stay off.
+    portalEnabled: Boolean(env.EDGE_DB) && env.EDGE_PORTAL !== "0",
+    publicBase: env.EDGE_PUBLIC_BASE || undefined,
+    enforcerIntervalMs: num(env, "EDGE_ENFORCE_INTERVAL_MS", 15_000),
+    vod: {
+      enabled: Boolean(env.EDGE_DB) && env.EDGE_VOD !== "0",
+      cacheDir: env.EDGE_VOD_CACHE_DIR || "./.edge-cache/vod",
+      chunkBytes: num(env, "EDGE_VOD_CHUNK_BYTES", 4 * 1024 * 1024),
+      cacheMaxBytes: num(env, "EDGE_VOD_CACHE_BYTES", 2 * 1024 * 1024 * 1024),
+      ingestIntervalMs: num(env, "EDGE_VOD_INGEST_INTERVAL_MS", 6 * 3_600_000),
+    },
     edge: {
       accounts,
       resolveOrigin:

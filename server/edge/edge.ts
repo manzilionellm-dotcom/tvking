@@ -20,7 +20,7 @@
 import { SingleFlight } from "./singleflight.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import { StreamHub, type HubEvent, type HubStats, type ReconnectPolicy } from "./hub.ts";
-import { SlotPool, type ContentionPolicy, type SlotEvent } from "./slots.ts";
+import { SlotPool, type ContentionPolicy, type SlotEvent, type SlotLease } from "./slots.ts";
 import {
   AccountError,
   AccountRegistry,
@@ -92,6 +92,7 @@ export type EdgeEvent =
   | SlotEvent
   | { type: "session-open"; session: string; account: string; channel: string; clients: number }
   | { type: "session-close"; session: string; account: string; channel: string; clients: number }
+  | { type: "session-dropped"; session: string; account: string; channel: string; reason: string }
   | { type: "account-upsert"; account: string }
   | { type: "account-remove"; account: string }
   | { type: "reject"; key: string; reason: string };
@@ -110,6 +111,9 @@ export interface SessionSnapshot {
   /** Opaque per-connection id. Deliberately NOT derived from anything about
    *  the viewer: no IP, no user agent, no cookie. */
   id: string;
+  /** Subscriber device this session belongs to, when the portal authorised it. */
+  deviceId: number | null;
+  deviceLabel: string | null;
   account: string;
   channel: string;
   startedAt: number;
@@ -196,6 +200,8 @@ interface Session {
   startedAt: number;
   subscription: Subscription;
   hub: StreamHub;
+  deviceId: number | null;
+  deviceLabel: string | null;
 }
 
 export class EdgeProxy {
@@ -222,7 +228,13 @@ export class EdgeProxy {
     );
     this.#accounts = new AccountRegistry({
       clock: this.#clock,
-      fetchPlaylist: (url, identity, signal) => this.#fetchPlaylist(url, identity, signal),
+      // Routed through the slot budget: a channel-map refresh is an upstream
+      // connection like any other.
+      fetchPlaylist: async (url, identity, signal) => {
+        const accountId = this.#accountIdForIdentity(identity);
+        if (!accountId) return this.#fetchPlaylist(url, identity, signal);
+        return this.fetchText(accountId, url, { signal });
+      },
     });
 
     if (config.resolveOrigin) {
@@ -310,7 +322,12 @@ export class EdgeProxy {
    */
   async subscribe(
     streamId: string,
-    options: { signal?: AbortSignal; maxQueueBytes?: number } = {}
+    options: {
+      signal?: AbortSignal;
+      maxQueueBytes?: number;
+      /** Subscriber this session belongs to; lets the enforcer cut it later. */
+      owner?: { deviceId: number; label?: string };
+    } = {}
   ): Promise<EdgeSubscription> {
     if (this.#closed) throw new UpstreamError("edge is shutting down", 503);
     const { account, channel } = parseStreamId(streamId);
@@ -319,7 +336,7 @@ export class EdgeProxy {
 
     const hub = await this.#hub(account, channel, key);
     const subscription = await hub.join(options);
-    const session = this.#openSession(account, channel, subscription, hub);
+    const session = this.#openSession(account, channel, subscription, hub, options.owner);
 
     return {
       subscription,
@@ -354,6 +371,8 @@ export class EdgeProxy {
   sessions(): SessionSnapshot[] {
     return [...this.#sessions.values()].map((session) => ({
       id: session.id,
+      deviceId: session.deviceId,
+      deviceLabel: session.deviceLabel,
       account: session.account,
       channel: session.channel,
       startedAt: session.startedAt,
@@ -482,11 +501,37 @@ export class EdgeProxy {
     });
   }
 
+  /** Ends every session matching `predicate`. Used by the expiry enforcer. */
+  dropSessions(predicate: (session: SessionSnapshot) => boolean, reason = "revoked"): number {
+    let dropped = 0;
+    for (const session of [...this.#sessions.values()]) {
+      const snapshot = this.sessions().find((s) => s.id === session.id);
+      if (!snapshot || !predicate(snapshot)) continue;
+      session.subscription.close();
+      this.#sessions.delete(session.id);
+      dropped += 1;
+      this.#emit({
+        type: "session-dropped",
+        session: session.id,
+        account: session.account,
+        channel: session.channel,
+        reason,
+      });
+    }
+    return dropped;
+  }
+
+  /** Live sessions belonging to one subscriber device. */
+  sessionsForDevice(deviceId: number): SessionSnapshot[] {
+    return this.sessions().filter((session) => session.deviceId === deviceId);
+  }
+
   #openSession(
     account: string,
     channel: string,
     subscription: Subscription,
-    hub: StreamHub
+    hub: StreamHub,
+    owner?: { deviceId: number; label?: string }
   ): Session {
     const session: Session = {
       id: randomSessionId(),
@@ -495,6 +540,8 @@ export class EdgeProxy {
       startedAt: this.#clock.now(),
       subscription,
       hub,
+      deviceId: owner?.deviceId ?? null,
+      deviceLabel: owner?.label ?? null,
     };
     this.#sessions.set(session.id, session);
     this.#emit({
@@ -518,14 +565,46 @@ export class EdgeProxy {
   }
 
   /**
-   * Playlist download. It uses a slot only if one is free — a control-plane
-   * refresh must never interrupt someone's stream, and a stale channel map is
-   * better than a dropped picture.
+   * Lease for a VOD byte fetch. It takes a free slot, or one held by a stream
+   * nobody is watching, and otherwise returns null — a film must not knock a
+   * live viewer off the account it shares with them.
    */
+  async acquireVodLease(accountId: string): Promise<SlotLease | null> {
+    const account = this.#accounts.get(accountId);
+    if (!account) return null;
+    return this.#poolFor(account).tryAcquireIdle(`${accountId}:vod`);
+  }
+
+  /**
+   * Control-plane download (channel map, VOD catalogue). It takes a slot only
+   * if one is free or held by a stream nobody is watching: a background refresh
+   * must never interrupt a viewer, and must never become the second connection
+   * the provider counts. No slot → the caller keeps its stale copy.
+   */
+  async fetchText(
+    accountId: string,
+    url: string,
+    options: { signal?: AbortSignal; maxBytes?: number } = {}
+  ): Promise<string> {
+    const account = this.#accounts.get(accountId);
+    if (!account) throw new UnknownStreamError(`unknown account: ${accountId}`);
+    const pool = this.#poolFor(account);
+    const lease = await pool.tryAcquireIdle(`${accountId}:control`);
+    if (!lease) {
+      throw new UpstreamError(`master account ${accountId} is busy streaming`, 503);
+    }
+    try {
+      return await this.#fetchPlaylist(url, this.#accounts.identity(accountId), options.signal, options.maxBytes);
+    } finally {
+      lease.release();
+    }
+  }
+
   async #fetchPlaylist(
     url: string,
     identity: UpstreamIdentity,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    maxBytes?: number
   ): Promise<string> {
     const controller = new AbortController();
     const onAbort = () => controller.abort();
@@ -540,7 +619,7 @@ export class EdgeProxy {
       if (response.status < 200 || response.status >= 300) {
         throw new UpstreamError(`playlist request failed (HTTP ${response.status})`, response.status);
       }
-      const cap = this.#config.maxPlaylistBytes ?? DEFAULTS.maxPlaylistBytes;
+      const cap = maxBytes ?? this.#config.maxPlaylistBytes ?? DEFAULTS.maxPlaylistBytes;
       const chunks: Uint8Array[] = [];
       let total = 0;
       for await (const chunk of response.body) {
@@ -559,6 +638,14 @@ export class EdgeProxy {
       response.close();
       signal?.removeEventListener("abort", onAbort);
     }
+  }
+
+  /** Maps an identity back to its account so control fetches find their pool. */
+  #accountIdForIdentity(identity: UpstreamIdentity): string | null {
+    for (const account of this.#accounts.list()) {
+      if (this.#accounts.identity(account.id).userAgent === identity.userAgent) return account.id;
+    }
+    return null;
   }
 
   #emit(event: EdgeEvent): void {

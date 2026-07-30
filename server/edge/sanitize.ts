@@ -282,17 +282,24 @@ export function masterSignature(identity: UpstreamIdentity): Record<string, stri
  */
 export function assertMirrorsMasterSignature(
   headers: HeaderBag,
-  identity: UpstreamIdentity
+  identity: UpstreamIdentity,
+  options: { allow?: readonly string[] } = {}
 ): void {
   const expected = masterSignature(identity);
   const actual = normalize(headers);
+  // `allow` exists for exactly one case: VOD range requests, whose value comes
+  // from the cache's chunk grid (a multiple of the chunk size) and is therefore
+  // identical whichever viewer asked. Anything client-derived stays forbidden.
+  const allowed = new Set(options.allow ?? []);
   const problems: string[] = [];
 
   for (const [name, value] of Object.entries(expected)) {
     if (actual.get(name) !== value) problems.push(`${name} differs from the master signature`);
   }
   for (const name of actual.keys()) {
-    if (!(name in expected)) problems.push(`${name} is not part of the master signature`);
+    if (!(name in expected) && !allowed.has(name)) {
+      problems.push(`${name} is not part of the master signature`);
+    }
   }
   if (problems.length > 0) {
     throw new Error(`upstream request does not mirror the master device: ${problems.join(", ")}`);

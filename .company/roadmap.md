@@ -9,6 +9,9 @@
 - Multiplexage M3U : comptes maîtres (catalogue M3U + budget de connexions + empreinte
   d'appareil), slots virtuels avec bascule de chaîne sans déconnexion, API et tableau de bord
   d'administration temps réel (SSE). 161 tests dédiés.
+- Cinéma/VOD + abonnés : base SQLite (migrations), agrégation VOD dédoublonnée, cache disque par
+  tranches (LRU), portails MAC (MAG/Stalker) et Xtream, formules 24 h/1/3/6/12 mois, applicateur
+  d'expiration qui coupe les flux en cours, panneau à onglets. 245 tests dédiés.
 
 ## Prochain (run-002+, ordre I9)
 1. Brancher données réelles (API sport / catalogue) derrière le modèle MediaItem existant.
@@ -22,3 +25,5 @@
 8. Proxy de bord : cas HLS segmenté (manifeste court-TTL + segments) ; TLS/auth côté LAN ;
    brancher le lecteur (B1) sur `http://<edge>/edge/<compte>/<chaîne>` ; persistance des comptes
    (aujourd'hui en mémoire + env) ; rôles/audit sur le plan d'administration.
+9. VOD/abonnés : métadonnées enrichies (affiches, synopsis) ; EPG XMLTV réel ; pré-chargement des
+   tranches suivantes pendant la lecture ; export/facturation des abonnements.

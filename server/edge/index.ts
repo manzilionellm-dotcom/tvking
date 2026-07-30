@@ -1,6 +1,13 @@
 /** Public surface of the edge proxy. */
 
-export { ManualClock, systemClock, type Clock } from "./clock.ts";
+export {
+  ManualClock,
+  ManualWallClock,
+  systemClock,
+  systemWallClock,
+  type Clock,
+  type WallClock,
+} from "./clock.ts";
 export { AbortedError, Deferred, Mutex, Semaphore, withAbort } from "./sync.ts";
 export { SingleFlight } from "./singleflight.ts";
 export { RingBuffer, type RingBufferOptions, type StreamChunk } from "./ring-buffer.ts";
@@ -81,7 +88,76 @@ export {
   type OriginResolver,
   type OriginTarget,
 } from "./edge.ts";
-export { createEdgeServer, type EdgeServerOptions } from "./server.ts";
+export { createEdgeServer, type EdgeServerOptions, type PortalRouter } from "./server.ts";
+export { Database, migrate, openDatabase, schemaVersion, type Row } from "./db/database.ts";
+export { MIGRATIONS, type Migration } from "./db/schema.ts";
+export {
+  PLANS,
+  PLAN_IDS,
+  addMonthsUtc,
+  formatRemaining,
+  isPlanId,
+  planExpiry,
+  renewalStart,
+  type Plan,
+  type PlanId,
+} from "./portal/plans.ts";
+export {
+  PortalError,
+  PortalRepository,
+  generateCredentials,
+  hashPassword,
+  isMac,
+  normalizeMac,
+  verifyPassword,
+  type AccessState,
+  type AuthFailure,
+  type AuthResult,
+  type DeviceInput,
+  type DeviceRecord,
+  type DeviceStatus,
+  type PackageInput,
+  type PackageRecord,
+  type SubscriptionRecord,
+} from "./portal/devices.ts";
+export { ExpirationEnforcer, type EnforcerOptions, type SweepResult } from "./portal/enforcer.ts";
+export {
+  DENIAL_MESSAGES,
+  numericId,
+  packageChannels,
+  type PortalContext,
+  type PortalEvent,
+} from "./portal/context.ts";
+export { createXtreamRouter, type XtreamRouter } from "./portal/xtream.ts";
+export { createStalkerRouter, macFromCookie, type StalkerRouter } from "./portal/stalker.ts";
+export {
+  classify,
+  looksLikeVod,
+  normalizeCategory,
+  normalizeTitle,
+  type ClassifiedItem,
+  type VodKind,
+} from "./vod/classify.ts";
+export {
+  VodCatalog,
+  type IngestEntry,
+  type IngestOutcome,
+  type VodCategory,
+  type VodSource,
+  type VodStream,
+  type VodTitle,
+} from "./vod/catalog.ts";
+export { VodIngestWorker, type IngestReport, type IngestWorkerOptions } from "./vod/ingest.ts";
+export { ChunkCache, VodError, chunkKey, type CacheStats, type VodTarget } from "./vod/cache.ts";
+export {
+  deliverLive,
+  deliverVod,
+  parseRange,
+  sendJson,
+  sendText,
+  type LiveDeliveryOptions,
+  type VodDeliveryOptions,
+} from "./http/deliver.ts";
 export {
   ConfigError,
   buildResolver,

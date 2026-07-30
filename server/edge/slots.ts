@@ -223,6 +223,23 @@ export class SlotPool {
     return this.#lease(key);
   }
 
+  /**
+   * Opportunistic lease for control-plane work (catalogue refreshes, VOD
+   * ingestion): takes a free permit, or reclaims one from a stream NOBODY is
+   * watching, and otherwise gives up. A background download must never
+   * interrupt a viewer — and must never become the second connection either.
+   */
+  async tryAcquireIdle(key: string): Promise<SlotLease | null> {
+    if (this.#queue.length === 0 && this.#take()) return this.#lease(key);
+
+    for (const holder of this.activeHolders()) {
+      if (holder.key === key || holder.viewers > 0) continue;
+      if (!(await holder.yieldSlot(`released for ${key}`))) continue;
+      if (this.#queue.length === 0 && this.#take()) return this.#lease(key);
+    }
+    return null;
+  }
+
   #take(): boolean {
     if (this.#used >= this.#capacity) return false;
     this.#used += 1;
