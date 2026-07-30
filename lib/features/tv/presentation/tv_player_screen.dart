@@ -1480,14 +1480,27 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _showOverlayTemporarily();
       return;
     }
-    Navigator.of(context).push(
+    // FUITE DE CONNEXIONS (terrain 2026-07-30) : ce lecteur reste MONTÉ sous
+    // la route de la multivue et continuait de décoder son flux — pendant que
+    // la multivue en ouvre 2 autres → 3 flux amont simultanés, dépassement de
+    // la limite « max connexions » du fournisseur. On met le lecteur du dessous
+    // en PAUSE avant de pousser (stoppe le décodage) et on REPREND au retour
+    // (le lecteur est toujours là, un simple play() relance sans re-résoudre).
+    // NB : `pause()` stoppe le décodage ; la connexion amont, elle, est refermée
+    // par la détection de silence du relais 1-connexion. Reprise au pop.
+    _controller.pause();
+    Navigator.of(context)
+        .push(
       MaterialPageRoute<void>(
         builder: (_) => TvMultiViewScreen(
           channels: widget.channels,
           startIndex: _index,
         ),
       ),
-    );
+    )
+        .then((_) {
+      if (mounted) _controller.play();
+    });
     _showOverlayTemporarily();
   }
 
