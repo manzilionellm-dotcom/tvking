@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { ManualWallClock } from "../../server/edge/clock.ts";
 import { openDatabase, migrate, schemaVersion, Database } from "../../server/edge/db/database.ts";
+import { MIGRATIONS } from "../../server/edge/db/schema.ts";
 import {
   PortalError,
   PortalRepository,
@@ -34,12 +35,12 @@ describe("schema migrations", () => {
   it("applies once and is idempotent", () => {
     const db = new Database(":memory:");
     const first = migrate(db);
-    expect(first.applied).toEqual([1]);
-    expect(schemaVersion(db)).toBe(1);
+    expect(first.applied).toEqual(MIGRATIONS.map((migration) => migration.version));
+    expect(schemaVersion(db)).toBe(MIGRATIONS.length);
 
     const second = migrate(db);
     expect(second.applied).toEqual([]); // nothing re-applied
-    expect(schemaVersion(db)).toBe(1);
+    expect(schemaVersion(db)).toBe(MIGRATIONS.length);
     db.close();
   });
 
@@ -54,12 +55,30 @@ describe("schema migrations", () => {
       "subscriptions",
       "vod_sources",
       "vod_categories",
-      "vod_titles",
-      "vod_streams",
-      "vod_chunks",
+      "vod_items",
+      "vod_assignments",
     ]) {
       expect(tables).toContain(table);
     }
+    // The aggregation-era tables are gone with the background engine.
+    for (const dropped of ["vod_titles", "vod_streams", "vod_chunks"]) {
+      expect(tables).not.toContain(dropped);
+    }
+    db.close();
+  });
+
+  it("upgrades an existing database in place", () => {
+    const db = new Database(":memory:");
+    migrate(db, MIGRATIONS.slice(0, 1)); // an install from the previous release
+    db.run(
+      "INSERT INTO vod_sources(name, url, account_id, enabled, created_at) VALUES('a', 'http://a', 'master', 1, 0)"
+    );
+
+    const upgrade = migrate(db);
+    expect(upgrade.applied).toEqual([2]);
+    // The source survived; only the aggregation tables were replaced.
+    expect(db.all("SELECT name FROM vod_sources")).toEqual([{ name: "a" }]);
+    expect(db.all("SELECT * FROM vod_items")).toEqual([]);
     db.close();
   });
 

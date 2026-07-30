@@ -12,7 +12,7 @@
  */
 
 import type http from "node:http";
-import { deliverLive, deliverVod, sendJson, sendText } from "../http/deliver.ts";
+import { CONTENT_TYPES, VodError, deliverFile, deliverLive, sendJson, sendText } from "../http/deliver.ts";
 import { PLANS } from "./plans.ts";
 import {
   DENIAL_MESSAGES,
@@ -21,10 +21,11 @@ import {
   formatTimestamp,
   numericId,
   packageChannels,
+  visibleVod,
   withinConnectionLimit,
   type PortalContext,
 } from "./context.ts";
-import type { AuthResult, DeviceStatus, PackageRecord } from "./devices.ts";
+import type { AuthResult, DeviceStatus } from "./devices.ts";
 
 interface Credentials {
   username: string;
@@ -160,9 +161,13 @@ export function createXtreamRouter(context: PortalContext) {
       case "get_vod_categories":
       case "get_series_categories": {
         const kind = action === "get_vod_categories" ? "movie" : "series";
-        const categories = context.catalog
-          .listCategories(kind)
-          .filter((category) => category.enabled && pack.vodEnabled);
+        // Only folders holding something this subscriber was actually given.
+        const categories = pack.vodEnabled
+          ? context.library.visibleCategories(
+              { packageId: pack.id, deviceId: status.device.id },
+              kind
+            )
+          : [];
         sendJson(
           res,
           200,
@@ -176,36 +181,28 @@ export function createXtreamRouter(context: PortalContext) {
       }
       case "get_vod_streams":
       case "get_series": {
-        if (!pack.vodEnabled) {
-          sendJson(res, 200, []);
-          return;
-        }
         const kind = action === "get_vod_streams" ? "movie" : "series";
         const categoryId = url.searchParams.get("category_id");
-        const titles = context.catalog.titles({
+        const items = visibleVod(context, status, {
           kind,
-          enabledOnly: true,
           categoryId: categoryId ? Number(categoryId) : undefined,
-          limit: 1000,
         });
         sendJson(
           res,
           200,
-          titles.map((title, index) => ({
+          items.map((item, index) => ({
             num: index + 1,
-            name: title.year ? `${title.title} (${title.year})` : title.title,
-            title: title.title,
-            year: title.year || "",
+            name: item.year ? `${item.title} (${item.year})` : item.title,
+            title: item.title,
+            year: item.year || "",
             stream_type: kind === "movie" ? "movie" : "series",
-            stream_id: title.id,
-            series_id: title.id,
-            stream_icon: title.poster ?? "",
-            cover: title.poster ?? "",
-            rating: title.rating ?? "",
-            added: String(Math.floor(title.updatedAt / 1000)),
-            category_id: String(title.categoryId ?? ""),
-            container_extension:
-              context.catalog.preferredStream(title.id)?.container ?? "mp4",
+            stream_id: item.id,
+            series_id: item.id,
+            stream_icon: item.poster ?? "",
+            cover: item.poster ?? "",
+            added: String(Math.floor((item.downloadedAt ?? item.updatedAt) / 1000)),
+            category_id: String(item.categoryId ?? ""),
+            container_extension: item.container ?? "mp4",
             direct_source: "",
           }))
         );
@@ -214,38 +211,40 @@ export function createXtreamRouter(context: PortalContext) {
       case "get_vod_info":
       case "get_series_info": {
         const id = Number(url.searchParams.get("vod_id") ?? url.searchParams.get("series_id"));
-        const title = Number.isFinite(id) ? context.catalog.title(id) : null;
-        if (!title || !pack.vodEnabled) {
+        // Resolved through the visibility rules, never straight from the id:
+        // guessing an item number must not hand over someone else's library.
+        const item = visibleVod(context, status).find((candidate) => candidate.id === id);
+        if (!item) {
           sendJson(res, 200, {});
           return;
         }
-        const streams = context.catalog.streams(title.id);
         sendJson(res, 200, {
           info: {
-            name: title.title,
-            year: title.year || "",
-            cover_big: title.poster ?? "",
-            movie_image: title.poster ?? "",
-            plot: title.plot ?? "",
-            rating: title.rating ?? "",
-            genre: title.category ?? "",
+            name: item.title,
+            year: item.year || "",
+            cover_big: item.poster ?? "",
+            movie_image: item.poster ?? "",
+            genre: item.category ?? "",
           },
           movie_data: {
-            stream_id: title.id,
-            name: title.title,
-            added: String(Math.floor(title.updatedAt / 1000)),
-            category_id: String(title.categoryId ?? ""),
-            container_extension: streams[0]?.container ?? "mp4",
+            stream_id: item.id,
+            name: item.title,
+            added: String(Math.floor((item.downloadedAt ?? item.updatedAt) / 1000)),
+            category_id: String(item.categoryId ?? ""),
+            container_extension: item.container ?? "mp4",
           },
-          episodes: streams
-            .filter((stream) => stream.season !== null)
-            .map((stream) => ({
-              id: String(stream.id),
-              episode_num: stream.episode,
-              season: stream.season,
-              title: `${title.title} S${stream.season}E${stream.episode}`,
-              container_extension: stream.container ?? "mp4",
-            })),
+          episodes:
+            item.season === null
+              ? []
+              : [
+                  {
+                    id: String(item.id),
+                    episode_num: item.episode,
+                    season: item.season,
+                    title: item.title,
+                    container_extension: item.container ?? "mp4",
+                  },
+                ],
         });
         return;
       }
@@ -279,15 +278,14 @@ export function createXtreamRouter(context: PortalContext) {
       lines.push(`${base}/live/${user.username}/${user.password}/${id}.ts`);
     }
 
-    if (auth.package.vodEnabled) {
-      for (const title of context.catalog.titles({ enabledOnly: true, limit: 1000 })) {
-        const container = context.catalog.preferredStream(title.id)?.container ?? "mp4";
-        lines.push(
-          `#EXTINF:-1 tvg-name="${title.title}" tvg-logo="${title.poster ?? ""}"` +
-            ` group-title="${title.category ?? "VOD"}",${title.title}`
-        );
-        lines.push(`${base}/movie/${user.username}/${user.password}/${title.id}.${container}`);
-      }
+    for (const item of visibleVod(context, auth.status)) {
+      lines.push(
+        `#EXTINF:-1 tvg-name="${item.title}" tvg-logo="${item.poster ?? ""}"` +
+          ` group-title="${item.category ?? "VOD"}",${item.title}`
+      );
+      lines.push(
+        `${base}/movie/${user.username}/${user.password}/${item.id}.${item.container ?? "mp4"}`
+      );
     }
 
     sendText(res, 200, `${lines.join("\n")}\n`, "audio/x-mpegurl");
@@ -337,39 +335,27 @@ export function createXtreamRouter(context: PortalContext) {
       return;
     }
 
-    await deliverVodTitle(req, res, id, auth.package, owner);
-  }
-
-  async function deliverVodTitle(
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-    titleId: number,
-    pack: PackageRecord,
-    owner: { deviceId: number; label?: string }
-  ): Promise<void> {
-    if (!pack.vodEnabled) {
-      sendJson(res, 403, { error: "vod_not_included" });
-      return;
-    }
-    const title = context.catalog.title(titleId);
-    const stream = title ? context.catalog.preferredStream(title.id) : null;
-    if (!title || !stream) {
+    // VOD is byte-served off local disk; the session book tracks live streams.
+    void owner;
+    const item = visibleVod(context, auth.status).find((candidate) => candidate.id === id);
+    if (!item || !item.filePath) {
       sendJson(res, 404, { error: "unknown_title" });
       return;
     }
-    void owner; // VOD is byte-served; the session book tracks live streams only.
-
-    await deliverVod({
-      cache: context.cache,
-      req,
-      res,
-      contentType: stream.container === "mkv" ? "video/x-matroska" : "video/mp4",
-      target: {
-        url: stream.url,
-        identity: context.edge.accounts.identity(pack.accountId),
-        acquireLease: () => context.edge.acquireVodLease(pack.accountId),
-      },
-    });
+    try {
+      await deliverFile({
+        filePath: item.filePath,
+        req,
+        res,
+        contentType: CONTENT_TYPES[item.container ?? "mp4"] ?? "video/mp4",
+      });
+    } catch (error) {
+      if (error instanceof VodError) {
+        sendJson(res, error.status, { error: "not_downloaded", detail: error.message });
+        return;
+      }
+      throw error;
+    }
   }
 
   /** Returns true when the request belonged to this portal. */

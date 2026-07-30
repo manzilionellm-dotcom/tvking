@@ -139,24 +139,35 @@ export {
   type VodKind,
 } from "./vod/classify.ts";
 export {
-  VodCatalog,
-  type IngestEntry,
-  type IngestOutcome,
+  LibraryError,
+  VodLibrary,
+  type Assignment,
+  type AssignmentTarget,
+  type ImportEntry,
+  type ItemPatch,
+  type ItemQuery,
   type VodCategory,
+  type VodItem,
   type VodSource,
-  type VodStream,
-  type VodTitle,
-} from "./vod/catalog.ts";
-export { VodIngestWorker, type IngestReport, type IngestWorkerOptions } from "./vod/ingest.ts";
-export { ChunkCache, VodError, chunkKey, type CacheStats, type VodTarget } from "./vod/cache.ts";
+  type VodState,
+} from "./vod/library.ts";
 export {
+  VodDownloader,
+  type DownloadEvent,
+  type DownloadReport,
+  type DownloaderOptions,
+  type ImportReport,
+} from "./vod/downloader.ts";
+export {
+  CONTENT_TYPES,
+  VodError,
+  deliverFile,
   deliverLive,
-  deliverVod,
   parseRange,
   sendJson,
   sendText,
+  type FileDeliveryOptions,
   type LiveDeliveryOptions,
-  type VodDeliveryOptions,
 } from "./http/deliver.ts";
 export {
   ConfigError,

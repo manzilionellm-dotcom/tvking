@@ -128,25 +128,43 @@ export const DASHBOARD_HTML = `<!doctype html>
     <div class="tiles">
       <div class="tile"><div class="k">Films</div><div class="v" id="v-movies">–</div></div>
       <div class="tile"><div class="k">Séries</div><div class="v" id="v-series">–</div></div>
-      <div class="tile"><div class="k">Flux catalogués</div><div class="v" id="v-streams">–</div></div>
-      <div class="tile"><div class="k">Cache disque</div><div class="v" id="v-cache">–</div></div>
-      <div class="tile"><div class="k">Taux de cache</div><div class="v" id="v-hit">–</div></div>
+      <div class="tile"><div class="k">Téléchargés</div><div class="v" id="v-ready">–</div></div>
+      <div class="tile"><div class="k">Sur disque</div><div class="v" id="v-bytes">–</div></div>
+      <div class="tile"><div class="k">Attribués</div><div class="v" id="v-assigned">–</div></div>
     </div>
     <div class="block">
-      <h2>Sources VOD <button id="vod-ingest">Ingérer maintenant</button>
-        <button id="vod-add">Ajouter une source</button></h2>
+      <h2>Sources <button id="vod-add">Ajouter une source</button>
+        <span class="pill">ajouter n'importe pas : le catalogue se tire à la demande</span></h2>
       <div class="scroll"><table>
-        <thead><tr><th>Source</th><th>Compte</th><th>Actif</th><th>Dernière ingestion</th>
-          <th>Éléments</th><th>Erreur</th><th></th></tr></thead>
+        <thead><tr><th>Source</th><th>Compte</th><th>Entrées</th><th>Dernier import</th>
+          <th>Éléments</th><th>Erreur</th><th>Actions</th></tr></thead>
         <tbody id="vod-sources"></tbody>
       </table></div>
     </div>
     <div class="block">
-      <h2>Catégories <span class="pill">décocher masque la catégorie pour les abonnés</span></h2>
+      <h2>Dossiers <button id="vod-cat-add">Nouveau dossier</button></h2>
       <div class="scroll"><table>
-        <thead><tr><th>Type</th><th>Catégorie</th><th>Titres</th><th>Active</th></tr></thead>
+        <thead><tr><th>Type</th><th>Dossier</th><th>Titres</th><th>Visible</th><th>Actions</th></tr></thead>
         <tbody id="vod-categories"></tbody>
       </table></div>
+    </div>
+    <div class="block">
+      <h2>Médiathèque
+        <input id="vod-search" placeholder="rechercher un titre" style="min-width:200px">
+        <select id="vod-filter-state">
+          <option value="">tous les états</option>
+          <option value="ready">téléchargés</option>
+          <option value="pending">à télécharger</option>
+          <option value="downloading">en cours</option>
+          <option value="failed">en échec</option>
+        </select></h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Titre</th><th>Type</th><th>Dossier</th><th>Source</th><th>État</th>
+          <th>Taille</th><th>Accès</th><th>Actions</th></tr></thead>
+        <tbody id="vod-items"></tbody>
+      </table></div>
+      <p class="note">Un titre n'est visible par un abonné que s'il est téléchargé
+        <em>et</em> attribué à son bouquet ou à son appareil.</p>
     </div>
   </section>
 
@@ -178,6 +196,17 @@ export const DASHBOARD_HTML = `<!doctype html>
     </div>
   </section>
 </main>
+
+<dialog id="assign-dialog">
+  <h3 id="assign-title">Attribuer</h3>
+  <p class="note" id="assign-hint"></p>
+  <div class="field"><label>Bouquets</label><div id="assign-packages"></div></div>
+  <div class="field"><label>Appareils</label><div id="assign-devices"></div></div>
+  <div class="row" style="margin-top:12px">
+    <button id="assign-cancel">Annuler</button>
+    <button id="assign-save" class="primary">Enregistrer</button>
+  </div>
+</dialog>
 
 <dialog id="device-dialog">
   <h3 id="device-dialog-title">Ajouter un appareil</h3>
@@ -226,7 +255,8 @@ export const DASHBOARD_HTML = `<!doctype html>
     s.className = "pill " + (cls || ""); s.textContent = text; td.appendChild(s); return td;
   };
   const button = (text, onclick, cls) => {
-    const b = document.createElement("button"); b.textContent = text; b.onclick = onclick;
+    const b = document.createElement("button"); b.textContent = text;
+    b.onclick = (event) => onclick(event);
     if (cls) b.className = cls; return b;
   };
   const rows = (tbody, items, build, emptyText) => {
@@ -300,46 +330,160 @@ export const DASHBOARD_HTML = `<!doctype html>
     }, "aucun client connecté");
   }
 
+  const STATES_VOD = { pending: "à télécharger", downloading: "en cours",
+                       ready: "téléchargé", failed: "échec" };
+  let vodFilters = { search: "", state: "" };
+
+  function matchesFilters(item) {
+    if (vodFilters.state && item.state !== vodFilters.state) return false;
+    if (!vodFilters.search) return true;
+    return item.title.toLowerCase().includes(vodFilters.search.toLowerCase());
+  }
+
   function renderVod(vod) {
     if (!vod || !vod.configured) {
       rows($("vod-sources"), [], null, "plan VOD non configuré");
       rows($("vod-categories"), [], null, "plan VOD non configuré");
+      rows($("vod-items"), [], null, "plan VOD non configuré");
       return;
     }
     $("v-movies").textContent = vod.counts.movies;
     $("v-series").textContent = vod.counts.series;
-    $("v-streams").textContent = vod.counts.streams;
-    $("v-cache").textContent = bytes(vod.cache.bytes);
-    $("v-hit").textContent = Math.round(vod.cache.hitRatio * 100) + " %";
+    $("v-ready").textContent = vod.counts.ready + " / " + vod.counts.items;
+    $("v-bytes").textContent = bytes(vod.counts.bytesOnDisk);
+    $("v-assigned").textContent = vod.counts.assigned;
 
     rows($("vod-sources"), vod.sources, (s) => {
       const tr = document.createElement("tr");
-      const toggle = document.createElement("input");
-      toggle.type = "checkbox"; toggle.checked = s.enabled;
-      toggle.onchange = () => send("/vod/sources/" + s.id, "PATCH", { enabled: toggle.checked }).then(refresh);
-      const active = document.createElement("td"); active.appendChild(toggle);
-      tr.append(cell(s.name), cell(s.accountId));
-      tr.appendChild(active);
-      tr.append(cell(s.lastIngestAt ? new Date(s.lastIngestAt).toLocaleString() : "jamais"),
-        cell(s.lastItems), cell(s.lastError || "—"));
+      tr.append(cell(s.name), cell(s.accountId), cell(s.items),
+        cell(s.lastImportAt ? new Date(s.lastImportAt).toLocaleString() : "jamais"),
+        cell(s.lastImportItems), cell(s.lastError || "—"));
       const td = document.createElement("td");
-      td.appendChild(button("Ingérer", () => send("/vod/ingest", "POST", { sourceId: s.id }).then(refresh)));
-      td.appendChild(button("Supprimer", () => send("/vod/sources/" + s.id, "DELETE").then(refresh)));
       td.className = "actions";
+      // THE button: pull this provider's catalogue, right now, once.
+      td.appendChild(button("Télécharger", async (event) => {
+        const target = event.target;
+        target.disabled = true; target.textContent = "…";
+        try { await send("/vod/sources/" + s.id + "/import", "POST"); } finally { await refresh(); }
+      }, "primary"));
+      td.appendChild(button("Supprimer", () => send("/vod/sources/" + s.id, "DELETE").then(refresh)));
       tr.appendChild(td);
       return tr;
-    }, "aucune source VOD");
+    }, "aucune source");
 
     rows($("vod-categories"), vod.categories, (c) => {
       const tr = document.createElement("tr");
+      tr.append(cell(c.kind === "movie" ? "Film" : "Série"), cell(c.name), cell(c.items));
+      const visible = document.createElement("td");
       const toggle = document.createElement("input");
       toggle.type = "checkbox"; toggle.checked = c.enabled;
       toggle.onchange = () => send("/vod/categories/" + c.id, "PATCH", { enabled: toggle.checked }).then(refresh);
-      const td = document.createElement("td"); td.appendChild(toggle);
-      tr.append(cell(c.kind === "movie" ? "Film" : "Série"), cell(c.name), cell(c.titles));
+      visible.appendChild(toggle);
+      tr.appendChild(visible);
+      const td = document.createElement("td");
+      td.className = "actions";
+      td.appendChild(button("Renommer", async () => {
+        const name = prompt("Nouveau nom du dossier ?", c.name);
+        if (name) { await send("/vod/categories/" + c.id, "PATCH", { name }); await refresh(); }
+      }));
+      td.appendChild(button("Supprimer", () => send("/vod/categories/" + c.id, "DELETE").then(refresh)));
       tr.appendChild(td);
       return tr;
-    }, "aucune catégorie");
+    }, "aucun dossier");
+
+    const items = (vod.items || []).filter(matchesFilters);
+    rows($("vod-items"), items, (item) => {
+      const tr = document.createElement("tr");
+      tr.appendChild(cell(item.year ? item.title + " (" + item.year + ")" : item.title));
+      tr.appendChild(cell(item.kind === "movie" ? "Film" : "Série"));
+
+      const folder = document.createElement("td");
+      const select = document.createElement("select");
+      const none = document.createElement("option");
+      none.value = ""; none.textContent = "— aucun —";
+      select.appendChild(none);
+      for (const category of vod.categories.filter((c) => c.kind === item.kind)) {
+        const option = document.createElement("option");
+        option.value = String(category.id); option.textContent = category.name;
+        if (category.id === item.categoryId) option.selected = true;
+        select.appendChild(option);
+      }
+      select.onchange = () => send("/vod/items/" + item.id, "PATCH",
+        { categoryId: select.value ? Number(select.value) : null }).then(refresh);
+      folder.appendChild(select);
+      tr.appendChild(folder);
+
+      tr.appendChild(cell(item.sourceName || "—"));
+      const progress = item.state === "downloading" && item.bytesTotal
+        ? Math.round((item.bytesDone / item.bytesTotal) * 100) + " %"
+        : STATES_VOD[item.state] || item.state;
+      tr.appendChild(pill(progress, item.state === "ready" ? "live"
+        : item.state === "failed" ? "expired" : item.state === "downloading" ? "starved" : "idle"));
+      tr.appendChild(cell(item.state === "ready" ? bytes(item.bytesDone) : "—"));
+      tr.appendChild(cell(item.assignments.length ? item.assignments.length + " cible(s)" : "personne"));
+
+      const actions = document.createElement("td");
+      actions.className = "actions";
+      if (item.state === "downloading") {
+        actions.appendChild(button("Annuler", () =>
+          send("/vod/items/" + item.id + "/download", "DELETE").then(refresh)));
+      } else if (item.state !== "ready") {
+        actions.appendChild(button("Télécharger", async (event) => {
+          const target = event.target;
+          target.disabled = true; target.textContent = "…";
+          try { await send("/vod/items/" + item.id + "/download", "POST"); } finally { await refresh(); }
+        }, "primary"));
+      } else {
+        actions.appendChild(button("Libérer", () =>
+          send("/vod/items/" + item.id + "/file", "DELETE").then(refresh)));
+      }
+      actions.appendChild(button("Renommer", async () => {
+        const title = prompt("Nouveau titre ?", item.title);
+        if (title) { await send("/vod/items/" + item.id, "PATCH", { title }); await refresh(); }
+      }));
+      actions.appendChild(button("Accès", () => openAssign(item)));
+      actions.appendChild(button("Supprimer", () =>
+        send("/vod/items/" + item.id, "DELETE").then(refresh)));
+      tr.appendChild(actions);
+      return tr;
+    }, "médiathèque vide — ajoutez une source puis cliquez « Télécharger »");
+  }
+
+  // Which packages and devices may watch this title.
+  function openAssign(item) {
+    const portal = (snapshot && snapshot.portal) || { packages: [], devices: [] };
+    $("assign-title").textContent = "Accès — " + item.title;
+    $("assign-hint").textContent = item.state === "ready"
+      ? "Cochez les bouquets et appareils qui verront ce titre."
+      : "Ce titre n'est pas encore téléchargé : il restera invisible tant qu'il ne l'est pas.";
+
+    const boxes = (host, list, type, label) => {
+      host.replaceChildren();
+      if (!list.length) { host.textContent = "—"; return; }
+      for (const entry of list) {
+        const row = document.createElement("label");
+        row.style.display = "block";
+        const box = document.createElement("input");
+        box.type = "checkbox"; box.dataset.type = type; box.dataset.id = String(entry.id);
+        box.checked = item.assignments.some((a) => a.type === type && a.id === entry.id);
+        row.appendChild(box);
+        row.appendChild(document.createTextNode(" " + label(entry)));
+        host.appendChild(row);
+      }
+    };
+    boxes($("assign-packages"), portal.packages || [], "package", (p) => p.name);
+    boxes($("assign-devices"), portal.devices || [], "device",
+      (d) => (d.label || d.mac || d.username || ("#" + d.id)));
+
+    $("assign-save").onclick = async () => {
+      const targets = [...document.querySelectorAll("#assign-packages input, #assign-devices input")]
+        .filter((box) => box.checked)
+        .map((box) => ({ type: box.dataset.type, id: Number(box.dataset.id) }));
+      await send("/vod/items/" + item.id + "/assignments", "PUT", { targets });
+      $("assign-dialog").close();
+      await refresh();
+    };
+    $("assign-dialog").showModal();
   }
 
   function renderDevices(portal) {
@@ -481,7 +625,7 @@ export const DASHBOARD_HTML = `<!doctype html>
     }
   };
 
-  $("vod-ingest").onclick = () => send("/vod/ingest", "POST", {}).then(refresh);
+  $("assign-cancel").onclick = () => $("assign-dialog").close();
   $("vod-add").onclick = async () => {
     const name = prompt("Nom de la source VOD ?");
     if (!name) return;
@@ -491,6 +635,21 @@ export const DASHBOARD_HTML = `<!doctype html>
     if (!accountId) return;
     try { await send("/vod/sources", "POST", { name, url, accountId }); await refresh(); }
     catch (error) { log({ type: "error", message: String(error) }); }
+  };
+  $("vod-cat-add").onclick = async () => {
+    const name = prompt("Nom du dossier ?");
+    if (!name) return;
+    const kind = confirm("OK = Films, Annuler = Séries") ? "movie" : "series";
+    try { await send("/vod/categories", "POST", { name, kind }); await refresh(); }
+    catch (error) { log({ type: "error", message: String(error) }); }
+  };
+  $("vod-search").oninput = (event) => {
+    vodFilters.search = event.target.value;
+    if (snapshot) renderVod(snapshot.vod);
+  };
+  $("vod-filter-state").onchange = (event) => {
+    vodFilters.state = event.target.value;
+    if (snapshot) renderVod(snapshot.vod);
   };
 
   for (const tab of document.querySelectorAll("nav button")) {

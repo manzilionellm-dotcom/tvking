@@ -16,7 +16,7 @@
 
 import { randomBytes } from "node:crypto";
 import type http from "node:http";
-import { deliverLive, deliverVod, sendJson } from "../http/deliver.ts";
+import { CONTENT_TYPES, VodError, deliverFile, deliverLive, sendJson } from "../http/deliver.ts";
 import { formatRemaining } from "./plans.ts";
 import {
   DENIAL_MESSAGES,
@@ -25,6 +25,7 @@ import {
   formatTimestamp,
   numericId,
   packageChannels,
+  visibleVod,
   withinConnectionLimit,
   type PortalContext,
 } from "./context.ts";
@@ -209,9 +210,12 @@ export function createStalkerRouter(context: PortalContext) {
         return;
       }
       case "vod:get_categories": {
-        const categories = context.catalog
-          .listCategories("movie")
-          .filter((category) => category.enabled && pack.vodEnabled);
+        const categories = pack.vodEnabled
+          ? context.library.visibleCategories(
+              { packageId: pack.id, deviceId: status.device.id },
+              "movie"
+            )
+          : [];
         js(
           res,
           categories.map((category) => ({
@@ -223,29 +227,22 @@ export function createStalkerRouter(context: PortalContext) {
         return;
       }
       case "vod:get_ordered_list": {
-        if (!pack.vodEnabled) {
-          js(res, { total_items: 0, max_page_items: 0, data: [] });
-          return;
-        }
         const base = baseUrl(context, req.headers.host);
         const token = bearer(req) ?? (mac ? issueTicket(mac) : "");
         const categoryId = url.searchParams.get("category");
-        const titles = context.catalog.titles({
+        const items = visibleVod(context, status, {
           kind: "movie",
-          enabledOnly: true,
           categoryId: categoryId && categoryId !== "*" ? Number(categoryId) : undefined,
-          limit: 500,
         });
-        const data = titles.map((title) => ({
-          id: String(title.id),
-          name: title.title,
-          o_name: title.title,
-          year: title.year ? String(title.year) : "",
-          screenshot_uri: title.poster ?? "",
-          description: title.plot ?? "",
-          rating_imdb: title.rating ?? "",
-          category_id: String(title.categoryId ?? ""),
-          cmd: `${base}/stalker/stream/${token}/movie/${title.id}`,
+        const data = items.map((item) => ({
+          id: String(item.id),
+          name: item.title,
+          o_name: item.title,
+          year: item.year ? String(item.year) : "",
+          screenshot_uri: item.poster ?? "",
+          description: "",
+          category_id: String(item.categoryId ?? ""),
+          cmd: `${base}/stalker/stream/${token}/movie/${item.id}`,
         }));
         js(res, { total_items: data.length, max_page_items: data.length, selected_item: 0, cur_page: 1, data });
         return;
@@ -315,23 +312,25 @@ export function createStalkerRouter(context: PortalContext) {
       sendJson(res, 403, { error: "vod_not_included" });
       return;
     }
-    const title = context.catalog.title(id);
-    const vodStream = title ? context.catalog.preferredStream(title.id) : null;
-    if (!title || !vodStream) {
+    const item = visibleVod(context, auth.status).find((candidate) => candidate.id === id);
+    if (!item || !item.filePath) {
       sendJson(res, 404, { error: "unknown_title" });
       return;
     }
-    await deliverVod({
-      cache: context.cache,
-      req,
-      res,
-      contentType: vodStream.container === "mkv" ? "video/x-matroska" : "video/mp4",
-      target: {
-        url: vodStream.url,
-        identity: context.edge.accounts.identity(auth.package.accountId),
-        acquireLease: () => context.edge.acquireVodLease(auth.package.accountId),
-      },
-    });
+    try {
+      await deliverFile({
+        filePath: item.filePath,
+        req,
+        res,
+        contentType: CONTENT_TYPES[item.container ?? "mp4"] ?? "video/mp4",
+      });
+    } catch (error) {
+      if (error instanceof VodError) {
+        sendJson(res, error.status, { error: "not_downloaded", detail: error.message });
+        return;
+      }
+      throw error;
+    }
   }
 
   async function handle(

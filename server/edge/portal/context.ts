@@ -10,14 +10,12 @@
 import type { EdgeProxy } from "../edge.ts";
 import type { WallClock } from "../clock.ts";
 import type { M3uEntry } from "../m3u.ts";
-import type { ChunkCache } from "../vod/cache.ts";
-import type { VodCatalog } from "../vod/catalog.ts";
+import type { VodLibrary } from "../vod/library.ts";
 import type { AuthFailure, DeviceStatus, PackageRecord, PortalRepository } from "./devices.ts";
 
 export interface PortalContext {
   repo: PortalRepository;
-  catalog: VodCatalog;
-  cache: ChunkCache;
+  library: VodLibrary;
   edge: EdgeProxy;
   wallClock: WallClock;
   egressBytesPerSecond: number;
@@ -30,6 +28,19 @@ export type PortalEvent =
   | { type: "portal-auth"; portal: "xtream" | "stalker"; device: number; label: string }
   | { type: "portal-denied"; portal: "xtream" | "stalker"; reason: AuthFailure }
   | { type: "portal-limit"; device: number; label: string; max: number };
+
+/** The library rows a subscriber may watch: downloaded AND assigned to them. */
+export function visibleVod(
+  context: PortalContext,
+  status: DeviceStatus,
+  query: { kind?: "movie" | "series"; categoryId?: number } = {}
+) {
+  if (!status.package?.vodEnabled) return [];
+  return context.library.visibleItems(
+    { packageId: status.package.id, deviceId: status.device.id },
+    query
+  );
+}
 
 /** Human-readable reason, safe to hand back to a player. */
 export const DENIAL_MESSAGES: Record<AuthFailure, string> = {

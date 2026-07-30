@@ -29,10 +29,10 @@ export interface EdgeRuntimeConfig {
   enforcerIntervalMs: number;
   vod: {
     enabled: boolean;
-    cacheDir: string;
-    chunkBytes: number;
-    cacheMaxBytes: number;
-    ingestIntervalMs: number;
+    /** Where downloaded media lives, one file per library item. */
+    filesDir: string;
+    /** Refuse a single file bigger than this (0 = no limit). */
+    maxFileBytes: number;
   };
   edge: Omit<EdgeConfig, "transport">;
 }
@@ -179,10 +179,8 @@ export function loadConfig(env: Env): EdgeRuntimeConfig {
     enforcerIntervalMs: num(env, "EDGE_ENFORCE_INTERVAL_MS", 15_000),
     vod: {
       enabled: Boolean(env.EDGE_DB) && env.EDGE_VOD !== "0",
-      cacheDir: env.EDGE_VOD_CACHE_DIR || "./.edge-cache/vod",
-      chunkBytes: num(env, "EDGE_VOD_CHUNK_BYTES", 4 * 1024 * 1024),
-      cacheMaxBytes: num(env, "EDGE_VOD_CACHE_BYTES", 2 * 1024 * 1024 * 1024),
-      ingestIntervalMs: num(env, "EDGE_VOD_INGEST_INTERVAL_MS", 6 * 3_600_000),
+      filesDir: env.EDGE_VOD_DIR || "./.edge-cache/vod",
+      maxFileBytes: Number(env.EDGE_VOD_MAX_FILE_BYTES ?? 0),
     },
     edge: {
       accounts,

@@ -133,4 +133,69 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX vod_chunks_lru_idx ON vod_chunks(last_used_at);
     `,
   },
+  {
+    version: 2,
+    name: "manual-vod-library",
+    sql: `
+      -- The catalogue used to be an aggregate: one row per WORK, merged across
+      -- providers, refreshed by a background worker. That model fights manual
+      -- curation — when an operator renames one of four merged entries, there
+      -- is no honest answer to "which title wins?". The library is now flat and
+      -- explicit: one row per imported line, edited by hand, and nothing moves
+      -- unless someone asks for it.
+      DROP TABLE IF EXISTS vod_streams;
+      DROP TABLE IF EXISTS vod_titles;
+      -- Progressive chunk caching went with the background engine: content is
+      -- downloaded whole, on demand, and served from one file.
+      DROP TABLE IF EXISTS vod_chunks;
+
+      CREATE TABLE vod_items (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id   INTEGER REFERENCES vod_sources(id) ON DELETE SET NULL,
+        kind        TEXT    NOT NULL DEFAULT 'movie',
+        title       TEXT    NOT NULL,
+        -- Accent- and case-free copy of the title, for search only. It is NOT a
+        -- dedup key: two identical titles are two entries on purpose.
+        search_key  TEXT    NOT NULL,
+        year        INTEGER NOT NULL DEFAULT 0,
+        category_id INTEGER REFERENCES vod_categories(id) ON DELETE SET NULL,
+        season      INTEGER,
+        episode     INTEGER,
+        poster      TEXT,
+        source_url  TEXT    NOT NULL,
+        container   TEXT,
+        quality     TEXT,
+        -- pending → downloading → ready | failed
+        state       TEXT    NOT NULL DEFAULT 'pending',
+        file_path   TEXT,
+        bytes_total INTEGER NOT NULL DEFAULT 0,
+        bytes_done  INTEGER NOT NULL DEFAULT 0,
+        error       TEXT,
+        imported_at INTEGER NOT NULL,
+        updated_at  INTEGER NOT NULL,
+        downloaded_at INTEGER,
+        -- Re-importing a source updates its lines instead of doubling them;
+        -- the same URL from ANOTHER source stays a separate entry.
+        UNIQUE (source_id, source_url)
+      );
+      CREATE INDEX vod_items_state_idx ON vod_items(state);
+      CREATE INDEX vod_items_category_idx ON vod_items(category_id);
+      CREATE INDEX vod_items_search_idx ON vod_items(search_key);
+
+      -- Who may see what. No assignment = visible to nobody: an operator asked
+      -- for explicit control, so silence means "not shared", never "shared with
+      -- everyone".
+      CREATE TABLE vod_assignments (
+        item_id     INTEGER NOT NULL REFERENCES vod_items(id) ON DELETE CASCADE,
+        target_type TEXT    NOT NULL,
+        target_id   INTEGER NOT NULL,
+        created_at  INTEGER NOT NULL,
+        PRIMARY KEY (item_id, target_type, target_id)
+      );
+      CREATE INDEX vod_assignments_target_idx ON vod_assignments(target_type, target_id);
+
+      ALTER TABLE vod_sources RENAME COLUMN last_ingest_at TO last_import_at;
+      ALTER TABLE vod_sources RENAME COLUMN last_items TO last_import_items;
+    `,
+  },
 ];

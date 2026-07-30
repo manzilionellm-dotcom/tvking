@@ -43,8 +43,9 @@ Le proxy de bord (`server/edge/`) est un service Node autonome : une connexion
 montante par slot de compte maître (M3U) quel que soit le nombre de lecteurs,
 bascule de chaîne sans déconnecter les clients, cache circulaire en mémoire,
 diffusion locale sans copie, suppression de toute métadonnée client avant la
-sortie WAN. Il agrège aussi un catalogue **Cinéma/VOD** dédoublonné (cache
-disque par tranches), sert les abonnés via les portails **MAC (MAG/Stalker)** et
+sortie WAN. Il gère aussi une médiathèque **Cinéma/VOD** locale et manuelle
+(import et téléchargement à la demande, rangement, attribution par abonné),
+sert les abonnés via les portails **MAC (MAG/Stalker)** et
 **Xtream Codes** avec des formules 24 h / 1 / 3 / 6 / 12 mois et une expiration
 qui coupe les flux en cours, le tout piloté depuis un panneau d'administration
 temps réel. Voir [`server/edge/README.md`](server/edge/README.md).

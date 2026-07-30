@@ -15,9 +15,10 @@ Il tient six promesses :
    de nouvelle poignée de main TCP/TLS, pas de renégociation.
 4. **Aucune métadonnée client ne sort.** Toutes les requêtes montantes d'un
    compte sont l'*empreinte d'un seul appareil maître*, identique au bit près.
-5. **Un catalogue Cinéma/VOD unifié.** Plusieurs playlists sont agrégées en
-   **un** catalogue dédoublonné, avec cache disque par tranches : le deuxième
-   spectateur d'un film populaire ne coûte rien au WAN.
+5. **Une médiathèque Cinéma/VOD locale et manuelle.** Rien n'est aspiré en
+   fond : l'opérateur ajoute une source, clique **Télécharger**, range, renomme,
+   supprime, et choisit qui voit quoi. Le média téléchargé est servi depuis le
+   disque — le fournisseur n'est plus jamais sollicité pour le relire.
 6. **Des abonnés, des durées et une expiration qui mord.** Portails MAC (MAG /
    Stalker) et Xtream Codes, formules 24 h / 1 / 3 / 6 / 12 mois, et un
    applicateur qui **coupe les flux en cours** dès l'échéance.
@@ -58,10 +59,9 @@ Il tient six promesses :
 | `portal/enforcer.ts` | Applicateur d'expiration : coupe les flux dès l'échéance |
 | `portal/xtream.ts` / `portal/stalker.ts` | Portails abonnés (API Xtream, portail MAG) |
 | `vod/classify.ts` | Heuristiques titre/genre/épisode sur les lignes M3U |
-| `vod/catalog.ts` | Catalogue VOD dédoublonné (1 œuvre, N sources) |
-| `vod/ingest.ts` | Ouvrier d'ingestion périodique |
-| `vod/cache.ts` | Cache disque par tranches, LRU indexé en base, Range |
-| `http/deliver.ts` | Livraison HTTP partagée (direct lissé, VOD avec Range) |
+| `vod/library.ts` | Médiathèque locale : sources, dossiers, titres, attributions |
+| `vod/downloader.ts` | Moteur à la demande : import de catalogue, téléchargement de fichier |
+| `http/deliver.ts` | Livraison HTTP partagée (direct lissé, fichier local avec Range) |
 | `config.ts` / `main.ts` | Configuration par variables d'environnement + point d'entrée |
 
 ## Les garanties, et comment elles tiennent
@@ -168,34 +168,49 @@ Les journaux suivent la même règle : aucun IP client, aucun `User-Agent`, et l
 URL d'origine sont rédigées (`redactUrl`) car elles portent souvent un jeton
 d'abonnement.
 
-### 5. Agrégation Cinéma / VOD (`vod/`)
+### 5. Médiathèque Cinéma / VOD, manuelle et à la demande (`vod/`)
 
-L'ouvrier parcourt les sources actives, télécharge chaque playlist **dans le
-budget de connexions du compte** (une actualisation de catalogue est une
-connexion montante comme une autre : si un spectateur occupe le slot, l'ouvrier
-passe son tour et réessaie), ne garde que les lignes qui ressemblent à de la
-VOD, puis les replie dans le catalogue.
+Il n'y a **aucune tâche de fond**. Le module a été refait autour de deux gestes
+explicites, parce qu'un ouvrier qui aspire les catalogues fournisseurs en
+continu dépense de la bande WAN et du temps de slot pour du contenu que personne
+n'a demandé, et laisse l'opérateur discuter avec un catalogue qui bouge tout
+seul.
 
-Le dédoublonnage est le cœur : les lignes fournisseurs sont des noms de fichiers
-décorés (`FR - Le Grand Bleu (1988) [MULTI 1080p]`). `classify.ts` en extrait
-l'œuvre, l'année, la qualité, la saison/épisode et le genre ; la clé
-`(type, titre normalisé, année)` fait que le même film présent chez quatre
-fournisseurs devient **un** titre avec quatre flux jouables — et donc un
-repli gratuit quand l'un des fournisseurs bronche. Les heuristiques sont
-prudentes : un titre illisible reste tel quel plutôt que d'être mal fusionné.
+| Geste | Effet |
+| --- | --- |
+| Ajouter une source | Enregistre la ligne fournisseur. **N'importe rien.** |
+| **Télécharger** (source) | Tire la playlist une fois, garde les lignes VOD, crée les entrées |
+| **Télécharger** (titre) | Rapatrie le média sur le disque local, avec reprise |
+| Renommer / Ranger / Supprimer | Édition directe de la médiathèque |
+| Accès | Choisit les bouquets et appareils qui verront ce titre |
 
-Piège vécu : `.ts` est **à la fois** un conteneur VOD et l'extension normale
-d'une chaîne en direct. S'en servir comme indice de VOD range toutes les
-chaînes dans la vidéothèque — le chemin `/movie/` tranche, pas l'extension.
+**Plus de dédoublonnage multi-fournisseurs.** Fusionner le même film venu de
+quatre sources a du sens pour un catalogue automatique et n'en a plus aucun pour
+une médiathèque curatée : dès qu'un opérateur renomme une entrée, il n'y a pas
+de réponse honnête à « lequel des quatre titres gagne ? ». Une ligne importée =
+une entrée. Ré-importer une source met ses lignes à jour **sans écraser les
+renommages**.
 
-Le cache VOD est l'inverse du direct : un fichier fixe, lu à des endroits
-différents par des gens différents. L'unité utile est donc la **tranche
-d'octets** sur disque (4 Mio par défaut), indexée en base pour que l'ordre LRU
-survive à un redémarrage. Les lecteurs concurrents d'une même tranche manquante
-se rejoignent sur **une** requête `Range` (single-flight), et une tranche déjà
-là ne coûte rien. Le `Range` envoyé au fournisseur est un multiple de la taille
-de tranche : identique quel que soit le spectateur, donc sans information sur
-lui — c'est la seule exception admise à la signature maître.
+`classify.ts` reste utilisé, mais pour *lire* une ligne (titre, année, qualité,
+saison/épisode, genre), pas pour fusionner. Piège conservé : `.ts` est à la fois
+un conteneur VOD et l'extension d'une chaîne en direct — c'est le chemin
+`/movie/` qui tranche.
+
+Le téléchargement passe par le budget de connexions du compte (comme tout le
+reste), reprend un `.part` interrompu via un `Range` — seul champ toléré en plus
+de la signature maître —, écrit la progression par paliers, et bascule le
+fichier en place par `rename` à la fin. Annuler n'est pas jeter : le `.part`
+reste pour la reprise. Supprimer une entrée supprime aussi ses octets ; une
+médiathèque qui laisse des fichiers orphelins est un incident disque en attente.
+
+**Visibilité explicite** : un titre n'apparaît chez un abonné que s'il est
+`ready` **et** attribué à son bouquet ou à son appareil. Aucune attribution =
+visible par personne — quand l'objet même de la fonction est de choisir qui a
+quoi, le silence ne peut pas vouloir dire « tout le monde ».
+
+La lecture se fait sur le fichier local avec `Range` (206, `Content-Range`,
+suffixes et plages ouvertes) : pas de connexion montante, pas d'index de cache,
+juste des octets.
 
 ### 6. Abonnés, durées et expiration (`portal/`)
 
@@ -285,11 +300,9 @@ La forme mono-origine reste disponible (`EDGE_STREAM_MAP` ou
 | `EDGE_PORTAL` | `1` | `0` désactive les portails MAC/Xtream |
 | `EDGE_PUBLIC_BASE` | déduit de `Host` | Base publique des liens générés |
 | `EDGE_ENFORCE_INTERVAL_MS` | `15000` | Période de balayage des expirations |
-| `EDGE_VOD` | `1` | `0` désactive l'ingestion et le cache VOD |
-| `EDGE_VOD_CACHE_DIR` | `./.edge-cache/vod` | Répertoire des tranches |
-| `EDGE_VOD_CHUNK_BYTES` | `4 Mio` | Taille d'une tranche |
-| `EDGE_VOD_CACHE_BYTES` | `2 Gio` | Budget disque (éviction LRU) |
-| `EDGE_VOD_INGEST_INTERVAL_MS` | `6 h` | Période d'ingestion |
+| `EDGE_VOD` | `1` | `0` désactive la médiathèque VOD |
+| `EDGE_VOD_DIR` | `./.edge-cache/vod` | Répertoire des médias téléchargés |
+| `EDGE_VOD_MAX_FILE_BYTES` | `0` (sans limite) | Refus au-delà de cette taille |
 
 Champs d'un compte : `id`, `label`, `playlistUrl` **ou** `channels` **ou**
 `channelTemplate`, `maxConnections` (défaut 1), `device`
@@ -318,11 +331,16 @@ Plan d'administration (jeton `Authorization: Bearer …` ou `X-Admin-Token`) :
 | `POST /admin/devices/:id/grant` | Octroi ou prolongation (`plan`) |
 | `POST /admin/devices/:id/revoke` | Révocation **immédiate** (coupe les flux) |
 | `GET/POST /admin/packages` | Bouquets |
-| `GET /admin/vod` | Catalogue, sources, catégories, statistiques de cache |
-| `POST /admin/vod/sources` · `PATCH/DELETE /admin/vod/sources/:id` | Sources VOD |
-| `PATCH /admin/vod/categories/:id` | Activer/masquer une catégorie |
-| `POST /admin/vod/ingest` | Ingestion immédiate (toutes sources ou une) |
-| `GET /admin/vod/titles` | Titres (filtre `kind`, `search`) |
+| `GET /admin/vod` | Médiathèque : compteurs, sources, dossiers, titres |
+| `POST /admin/vod/sources` · `PATCH/DELETE /admin/vod/sources/:id` | Sources (l'ajout n'importe rien) |
+| `POST /admin/vod/sources/:id/import` | **Télécharger** le catalogue de cette source |
+| `GET /admin/vod/items` | Titres (filtres `kind`, `state`, `sourceId`, `categoryId`, `search`) |
+| `PATCH /admin/vod/items/:id` | Renommer, ranger, changer de type |
+| `POST /admin/vod/items/:id/download` · `DELETE` | **Télécharger** le média · annuler |
+| `DELETE /admin/vod/items/:id/file` | Libérer le disque, garder l'entrée |
+| `DELETE /admin/vod/items/:id` | Supprimer l'entrée **et** ses octets |
+| `PUT/POST /admin/vod/items/:id/assignments` | Qui voit ce titre (bouquets, appareils) |
+| `POST /admin/vod/categories` · `PATCH/DELETE /admin/vod/categories/:id` | Dossiers |
 
 Portails abonnés (authentifiés par appareil) :
 
@@ -331,7 +349,7 @@ Portails abonnés (authentifiés par appareil) :
 | `GET /player_api.php` | Xtream : `user_info`, catégories, chaînes, VOD, séries |
 | `GET /get.php?type=m3u_plus` | Xtream : playlist générée (liens vers l'edge) |
 | `GET /live/<user>/<pass>/<id>.ts` | Xtream : flux direct |
-| `GET /movie/<user>/<pass>/<id>.<ext>` | Xtream : VOD (avec `Range`) |
+| `GET /movie/<user>/<pass>/<id>.<ext>` | Xtream : média local (avec `Range`) |
 | `GET /portal.php` | MAG/Stalker : handshake, profil, chaînes, VOD, `create_link` |
 | `GET /stalker/stream/<jeton>/…` | MAG/Stalker : lien émis par le portail |
 
@@ -347,7 +365,7 @@ sélecteur de formule, un bouton « Essai 24 h » et une révocation immédiate.
 
 ## Vérification
 
-`npm test` — 245 tests dédiés, dont :
+`npm test` — 274 tests dédiés, dont :
 
 - `hub.test.ts` : 150 clients simultanés → **1** ouverture ; churn aléatoire de
   200 tâches join/leave → `activeMax === 1` ; linger, reconnexion, échecs ;
@@ -366,12 +384,13 @@ sélecteur de formule, un bouton « Essai 24 h » et une révocation immédiate.
   surtout l'**application de l'expiration** — un flux en cours est coupé à la
   seconde où l'abonnement se termine, comme à la révocation, la désactivation ou
   la suppression de l'appareil ;
-- `vod-catalog.test.ts` : dédoublonnage multi-fournisseurs, catégories,
-  idempotence, échec de source sans perte de catalogue, et « l'ingestion
-  n'ouvre jamais une deuxième connexion » ;
-- `vod-cache.test.ts` : `Range` exacts, deuxième lecture à coût WAN nul,
-  25 lecteurs simultanés → une requête, éviction LRU, refus d'un fournisseur
-  sans `Range` ;
+- `vod-library.test.ts` : deux fournisseurs = **deux** entrées (plus de fusion),
+  renommage préservé au ré-import, dossiers, et les règles de visibilité
+  (rien n'est visible sans attribution, ni sans téléchargement) ;
+- `vod-download.test.ts` : ajouter une source n'importe rien, l'import à la
+  demande, la reprise d'un `.part`, l'annulation qui garde le partiel, le refus
+  quand le compte est occupé, et la lecture locale avec `Range` (206, suffixes,
+  416) sans jamais toucher le fournisseur ;
 - `portal.test.ts` : sockets réelles — un lecteur Xtream et un boîtier MAG
   s'authentifient, listent, lisent, se heurtent à la limite de connexions, et
   se font couper en pleine lecture à l'expiration ;
@@ -405,9 +424,14 @@ pourrait observer), jamais sur un drapeau interne au proxy.
   partagé, pas de rôles, pas de journal d'audit.
 - **L'authentification MAC vaut ce que vaut le protocole MAG** : un identifiant,
   pas un secret (voir §6).
-- **La VOD partage le budget de connexions du direct** : une tranche manquante
-  prend un slot libre — ou un slot que personne ne regarde — et sinon renvoie
-  503. Un film ne chasse jamais un spectateur du direct.
+- **La VOD partage le budget de connexions du direct** : un téléchargement prend
+  un slot libre — ou un slot que personne ne regarde — et sinon échoue avec un
+  message clair. Un film ne chasse jamais un spectateur du direct. En revanche
+  la *lecture* d'un titre téléchargé ne consomme aucun slot.
+- **Un titre non téléchargé n'est pas jouable** : c'est une médiathèque locale,
+  pas un relais. Le catalogue importé sert à choisir quoi rapatrier.
+- **Un seul téléchargement à la fois par titre** ; pas de file d'attente
+  globale ni de reprise automatique au démarrage.
 - **Pas de métadonnées enrichies** (TMDB & co) : le catalogue ne connaît que ce
   que les playlists disent. Les affiches viennent de `tvg-logo`.
 - **Les comptes maîtres ne sont toujours pas persistés** (env + API) ; les

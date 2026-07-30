@@ -5,17 +5,29 @@
  *  - live is an endless shared stream, paced through a token bucket, no length,
  *    no ranges (see server.ts / hub.ts for why a per-client Range would break
  *    the collapse);
- *  - VOD is a file: it answers Range requests so players can seek, and it is
- *    NOT paced, because a file transfer is naturally throttled by the player's
- *    own buffering and TCP backpressure.
+ *  - VOD is a local file on disk: it answers Range requests so players can
+ *    seek, and it is NOT paced, because a file transfer is naturally throttled
+ *    by the player's own buffering and TCP backpressure. Nothing upstream is
+ *    involved — an item is only playable once it has been downloaded.
  */
 
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import type http from "node:http";
 import { TokenBucket, pace } from "../token-bucket.ts";
 import { UnknownStreamError, type EdgeProxy } from "../edge.ts";
 import { UpstreamError } from "../origin.ts";
-import { VodError, type ChunkCache, type VodTarget } from "../vod/cache.ts";
 import { systemClock, type Clock } from "../clock.ts";
+
+export class VodError extends Error {
+  name = "VodError";
+  status: number;
+
+  constructor(message: string, status = 404) {
+    super(message);
+    this.status = status;
+  }
+}
 
 export function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -142,68 +154,82 @@ export async function deliverLive(options: LiveDeliveryOptions): Promise<void> {
   }
 }
 
-export interface VodDeliveryOptions {
-  cache: ChunkCache;
-  target: VodTarget;
+export interface FileDeliveryOptions {
+  filePath: string;
   req: http.IncomingMessage;
   res: http.ServerResponse;
   contentType?: string;
+  /** Sent as Content-Disposition filename when set. */
+  downloadName?: string;
 }
 
 /** RFC 9110 §14.1 — a single range; multipart ranges are not worth it here. */
 export function parseRange(
   header: string | undefined,
-  size: number | null
-): { start: number; end: number | null } | "invalid" | null {
+  size: number
+): { start: number; end: number } | "invalid" | null {
   if (!header) return null;
   const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
   if (!match) return "invalid";
   const [, rawStart, rawEnd] = match;
-
   if (rawStart === "" && rawEnd === "") return "invalid";
+
   if (rawStart === "") {
-    // Suffix range ("last N bytes") needs the size to mean anything.
-    if (size === null) return "invalid";
+    // Suffix range: "the last N bytes".
     const length = Number(rawEnd);
     if (length <= 0) return "invalid";
     return { start: Math.max(0, size - length), end: size - 1 };
   }
   const start = Number(rawStart);
-  const end = rawEnd === "" ? null : Number(rawEnd);
-  if (end !== null && end < start) return "invalid";
-  if (size !== null && start >= size) return "invalid";
-  return { start, end: end === null ? null : end };
+  const end = rawEnd === "" ? size - 1 : Math.min(Number(rawEnd), size - 1);
+  if (start >= size || end < start) return "invalid";
+  return { start, end };
 }
 
-/** Serves a VOD file from the chunk cache, honouring Range. */
-export async function deliverVod(options: VodDeliveryOptions): Promise<void> {
-  const { cache, target, req, res } = options;
-  const controller = new AbortController();
-  const detach = () => controller.abort();
-  res.on("close", detach);
-  req.on("aborted", detach);
+export const CONTENT_TYPES: Readonly<Record<string, string>> = {
+  mkv: "video/x-matroska",
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  mov: "video/quicktime",
+  avi: "video/x-msvideo",
+  ts: "video/mp2t",
+};
 
-  const size = await cache.probeSize(target, controller.signal);
+/**
+ * Serves a downloaded file straight off disk with Range support. This is the
+ * fast path the rewrite is built around: no upstream connection, no cache
+ * bookkeeping, just bytes.
+ */
+export async function deliverFile(options: FileDeliveryOptions): Promise<void> {
+  const { filePath, req, res } = options;
+
+  let size: number;
+  try {
+    const info = await stat(filePath);
+    if (!info.isFile()) throw new VodError("not a file");
+    size = info.size;
+  } catch {
+    throw new VodError("this title is not downloaded");
+  }
+
   const range = parseRange(req.headers.range, size);
   if (range === "invalid") {
-    res.writeHead(416, {
-      "content-range": size === null ? "bytes */*" : `bytes */${size}`,
-      "accept-ranges": "bytes",
-    });
+    res.writeHead(416, { "content-range": `bytes */${size}`, "accept-ranges": "bytes" });
     res.end();
     return;
   }
 
   const start = range?.start ?? 0;
-  const end = range?.end ?? (size === null ? Number.MAX_SAFE_INTEGER : size - 1);
+  const end = range?.end ?? size - 1;
   const headers: Record<string, string> = {
     "content-type": options.contentType ?? "video/mp4",
+    "content-length": String(end - start + 1),
     "accept-ranges": "bytes",
     "cache-control": "no-store",
   };
-  if (size !== null) headers["content-length"] = String(Math.min(end, size - 1) - start + 1);
-  if (range && size !== null) {
-    headers["content-range"] = `bytes ${start}-${Math.min(end, size - 1)}/${size}`;
+  if (range) headers["content-range"] = `bytes ${start}-${end}/${size}`;
+  if (options.downloadName) {
+    headers["content-disposition"] = `inline; filename="${options.downloadName.replace(/["\\]/g, "")}"`;
   }
 
   res.writeHead(range ? 206 : 200, headers);
@@ -212,12 +238,19 @@ export async function deliverVod(options: VodDeliveryOptions): Promise<void> {
     return;
   }
 
+  const controller = new AbortController();
+  const detach = () => controller.abort();
+  res.on("close", detach);
+  req.on("aborted", detach);
+
+  const stream = createReadStream(filePath, { start, end });
   try {
-    for await (const piece of cache.read(target, start, end, controller.signal)) {
+    for await (const piece of stream) {
       if (controller.signal.aborted) break;
-      if (!res.write(piece)) await drain(res, controller.signal);
+      if (!res.write(piece as Uint8Array)) await drain(res, controller.signal);
     }
   } finally {
+    stream.destroy();
     if (!res.writableEnded) res.end();
   }
 }

@@ -13,8 +13,9 @@ import { ManualWallClock } from "../../server/edge/clock.ts";
 import { openDatabase, type Database } from "../../server/edge/db/database.ts";
 import { PortalRepository } from "../../server/edge/portal/devices.ts";
 import { ExpirationEnforcer } from "../../server/edge/portal/enforcer.ts";
-import { VodCatalog } from "../../server/edge/vod/catalog.ts";
-import { ChunkCache } from "../../server/edge/vod/cache.ts";
+import { VodLibrary } from "../../server/edge/vod/library.ts";
+import { VodDownloader } from "../../server/edge/vod/downloader.ts";
+import { masterDevice } from "../../server/edge/sanitize.ts";
 
 const TOKEN = "s3cret-admin-token";
 
@@ -25,7 +26,9 @@ let server: http.Server;
 let base: string;
 let db: Database;
 let repo: PortalRepository;
-let catalog: VodCatalog;
+let library: VodLibrary;
+let downloader: VodDownloader;
+let playlist: string;
 let clock: ManualWallClock;
 
 async function boot(options: { token?: string } = {}) {
@@ -48,18 +51,28 @@ async function boot(options: { token?: string } = {}) {
   db = openDatabase(":memory:");
   clock = new ManualWallClock("2026-06-01T12:00:00Z");
   repo = new PortalRepository(db, clock);
-  catalog = new VodCatalog(db, clock);
+  library = new VodLibrary(db, clock);
   repo.upsertPackage({ name: "full", accountId: "master" });
+  playlist =
+    "#EXTM3U\n" +
+    '#EXTINF:-1 group-title="VOD | SF",Dune (2021)\n' +
+    "http://provider.example/movie/u/p/1.mkv\n" +
+    '#EXTINF:-1 group-title="VOD | POLAR",Heat (1995)\n' +
+    "http://provider.example/movie/u/p/2.mkv\n";
+  downloader = new VodDownloader({
+    library,
+    transport: origin,
+    dir: "/tmp/tvking-admin-vod",
+    identityFor: () => masterDevice("vlc"),
+    fetchPlaylist: async () => playlist,
+  });
 
   admin = createAdminRouter({
     edge,
     token: options.token ?? TOKEN,
     snapshotMs: 50,
     portal: { repo, enforcer: new ExpirationEnforcer({ repo, edge, wallClock: clock }) },
-    vod: {
-      catalog,
-      cache: new ChunkCache({ db, dir: "/tmp/tvking-admin-test", transport: origin }),
-    },
+    vod: { library, downloader },
   });
   server = createEdgeServer({ edge, egressBytesPerSecond: 8 * 1024 * 1024, admin });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -420,66 +433,188 @@ describe("admin plane — subscriber devices", () => {
   });
 });
 
-describe("admin plane — VOD", () => {
-  it("adds a source, toggles it, and reports the catalogue", async () => {
-    const created = await (
-      await api("/vod/sources", {
-        method: "POST",
-        body: JSON.stringify({ name: "provider-a", url: "http://a/list.m3u", accountId: "master" }),
-      })
-    ).json();
-    expect(created.source.enabled).toBe(true);
+describe("admin plane — VOD library", () => {
+  async function addSource() {
+    const response = await api("/vod/sources", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "provider-a",
+        url: "http://provider.example/vod.m3u",
+        accountId: "master",
+      }),
+    });
+    return (await response.json()).source;
+  }
 
-    catalog.ingest(created.source.id, [
-      { name: "Dune (2021)", url: "http://a/movie/1.mkv", group: "VOD | SF" },
-    ]);
+  it("adds a source without importing anything", async () => {
+    const source = await addSource();
+    expect(source.lastImportAt).toBeNull();
 
     const vod = await (await api("/vod")).json();
     expect(vod.configured).toBe(true);
-    expect(vod.counts.movies).toBe(1);
-    expect(vod.sources[0].name).toBe("provider-a");
-    expect(vod.categories[0].name).toBe("SF");
-    expect(vod.cache).toMatchObject({ chunks: 0, hits: 0 });
-
-    const toggled = await (
-      await api(`/vod/sources/${created.source.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ enabled: false }),
-      })
-    ).json();
-    expect(toggled.updated).toBe(true);
-    expect((await (await api("/vod")).json()).sources[0].enabled).toBe(false);
+    expect(vod.sources).toHaveLength(1);
+    expect(vod.counts.items).toBe(0); // nothing was scraped on the way in
+    expect(vod.items).toEqual([]);
   });
 
-  it("toggles a category off for subscribers", async () => {
-    const source = catalog.upsertSource({ name: "a", url: "http://a", accountId: "master" });
-    catalog.ingest(source.id, [
-      { name: "Heat (1995)", url: "http://a/movie/1.mkv", group: "VOD | POLAR" },
-    ]);
-    const category = catalog.listCategories("movie")[0];
+  it("imports the catalogue when Télécharger is pressed", async () => {
+    const source = await addSource();
+    const report = (await (await api(`/vod/sources/${source.id}/import`, { method: "POST" })).json())
+      .report;
 
-    await api(`/vod/categories/${category.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ enabled: false }),
+    expect(report.ok).toBe(true);
+    expect(report.created).toBe(2);
+
+    const vod = await (await api("/vod")).json();
+    expect(vod.counts.items).toBe(2);
+    expect(vod.items.map((item: { title: string }) => item.title).sort()).toEqual(["Dune", "Heat"]);
+    expect(vod.items.every((item: { state: string }) => item.state === "pending")).toBe(true);
+    // Folder names come from the provider's group, tidied: short words stay
+    // upper-case ("SF"), longer ones are capitalised ("Polar").
+    expect(vod.categories.map((c: { name: string }) => c.name).sort()).toEqual(["Polar", "SF"]);
+  });
+
+  it("renames a title and moves it between folders", async () => {
+    const source = await addSource();
+    await api(`/vod/sources/${source.id}/import`, { method: "POST" });
+    const items = (await (await api("/vod/items")).json()).items;
+    const dune = items.find((item: { title: string }) => item.title === "Dune");
+
+    const folder = (
+      await (
+        await api("/vod/categories", {
+          method: "POST",
+          body: JSON.stringify({ kind: "movie", name: "Science-fiction" }),
+        })
+      ).json()
+    ).category;
+
+    const renamed = (
+      await (
+        await api(`/vod/items/${dune.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ title: "Dune — partie 1", categoryId: folder.id }),
+        })
+      ).json()
+    ).item;
+
+    expect(renamed.title).toBe("Dune — partie 1");
+    expect(renamed.category).toBe("Science-fiction");
+  });
+
+  it("renames and deletes a folder without losing its titles", async () => {
+    const source = await addSource();
+    await api(`/vod/sources/${source.id}/import`, { method: "POST" });
+    const categories = (await (await api("/vod")).json()).categories;
+    const sf = categories.find((c: { name: string }) => c.name === "SF");
+
+    const renamed = (
+      await (
+        await api(`/vod/categories/${sf.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name: "Science-fiction" }),
+        })
+      ).json()
+    ).category;
+    expect(renamed.name).toBe("Science-fiction");
+
+    await api(`/vod/categories/${sf.id}`, { method: "DELETE" });
+    const vod = await (await api("/vod")).json();
+    expect(vod.counts.items).toBe(2);
+    expect(vod.items.some((item: { category: string | null }) => item.category === null)).toBe(true);
+  });
+
+  it("assigns a title to packages and devices, and replaces the set", async () => {
+    const source = await addSource();
+    await api(`/vod/sources/${source.id}/import`, { method: "POST" });
+    const item = (await (await api("/vod/items")).json()).items[0];
+    const pack = (await (await api("/packages")).json()).packages[0];
+    const device = (
+      await (
+        await api("/devices", {
+          method: "POST",
+          body: JSON.stringify({ mac: "00:1a:79:aa:bb:cc", packageId: pack.id, plan: "1m" }),
+        })
+      ).json()
+    ).device.device;
+
+    const assigned = (
+      await (
+        await api(`/vod/items/${item.id}/assignments`, {
+          method: "PUT",
+          body: JSON.stringify({
+            targets: [
+              { type: "package", id: pack.id },
+              { type: "device", id: device.id },
+            ],
+          }),
+        })
+      ).json()
+    ).item;
+    expect(assigned.assignments).toHaveLength(2);
+
+    const replaced = (
+      await (
+        await api(`/vod/items/${item.id}/assignments`, {
+          method: "PUT",
+          body: JSON.stringify({ targets: [{ type: "device", id: device.id }] }),
+        })
+      ).json()
+    ).item;
+    expect(replaced.assignments).toEqual([{ type: "device", id: device.id }]);
+  });
+
+  it("downloads a title on demand and can free it again", async () => {
+    const source = await addSource();
+    await api(`/vod/sources/${source.id}/import`, { method: "POST" });
+    const item = (await (await api("/vod/items")).json()).items[0];
+
+    // The mock origin ends its body straight away: a zero-byte download still
+    // exercises the whole path from button to "ready".
+    setTimeout(() => origin.endAll(), 5);
+    const report = (await (await api(`/vod/items/${item.id}/download`, { method: "POST" })).json())
+      .report;
+    expect(report.ok).toBe(true);
+    expect(library.item(item.id)?.state).toBe("ready");
+
+    const freed = await (await api(`/vod/items/${item.id}/file`, { method: "DELETE" })).json();
+    expect(freed.removed).toBe(true);
+    expect(library.item(item.id)?.state).toBe("pending");
+  });
+
+  it("deletes an entry entirely", async () => {
+    const source = await addSource();
+    await api(`/vod/sources/${source.id}/import`, { method: "POST" });
+    const item = (await (await api("/vod/items")).json()).items[0];
+
+    const removed = await (await api(`/vod/items/${item.id}`, { method: "DELETE" })).json();
+    expect(removed.removed).toBe(true);
+    expect(library.item(item.id)).toBeNull();
+  });
+
+  it("filters the library for the panel", async () => {
+    const source = await addSource();
+    await api(`/vod/sources/${source.id}/import`, { method: "POST" });
+
+    const search = await (await api("/vod/items?search=heat")).json();
+    expect(search.items.map((item: { title: string }) => item.title)).toEqual(["Heat"]);
+
+    const pending = await (await api("/vod/items?state=pending")).json();
+    expect(pending.items).toHaveLength(2);
+  });
+
+  it("reports a bad request with a reason", async () => {
+    const response = await api("/vod/sources", {
+      method: "POST",
+      body: JSON.stringify({ name: "x", url: "ftp://nope", accountId: "master" }),
     });
-    expect(catalog.titles({ enabledOnly: true })).toHaveLength(0);
-    expect(catalog.titles({})).toHaveLength(1); // hidden, not deleted
-  });
-
-  it("lists titles for the panel", async () => {
-    const source = catalog.upsertSource({ name: "a", url: "http://a", accountId: "master" });
-    catalog.ingest(source.id, [
-      { name: "Dune (2021)", url: "http://a/movie/1.mkv", group: "VOD | SF" },
-      { name: "Breaking Bad S01E01", url: "http://a/series/1.mkv", group: "SERIES" },
-    ]);
-
-    const movies = await (await api("/vod/titles?kind=movie")).json();
-    expect(movies.titles.map((t: { title: string }) => t.title)).toEqual(["Dune"]);
-  });
-
-  it("says so plainly when there is no ingest worker configured", async () => {
-    const response = await api("/vod/ingest", { method: "POST", body: "{}" });
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("no_ingest_worker");
+    expect((await response.json()).detail).toMatch(/http/);
+  });
+
+  it("still refuses everything without the admin token", async () => {
+    const response = await fetch(`${base}/admin/vod`);
+    expect(response.status).toBe(401);
+    await response.body?.cancel();
   });
 });

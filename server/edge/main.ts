@@ -24,9 +24,8 @@ import { PortalRepository } from "./portal/devices.ts";
 import { ExpirationEnforcer } from "./portal/enforcer.ts";
 import { createXtreamRouter } from "./portal/xtream.ts";
 import { createStalkerRouter } from "./portal/stalker.ts";
-import { VodCatalog } from "./vod/catalog.ts";
-import { VodIngestWorker } from "./vod/ingest.ts";
-import { ChunkCache } from "./vod/cache.ts";
+import { VodLibrary } from "./vod/library.ts";
+import { VodDownloader } from "./vod/downloader.ts";
 import { systemWallClock } from "./clock.ts";
 import type { PortalContext } from "./portal/context.ts";
 
@@ -61,17 +60,20 @@ function main(): void {
   let adminPortal: AdminOptions["portal"];
   let adminVod: AdminOptions["vod"];
   let enforcer: ExpirationEnforcer | null = null;
-  let worker: VodIngestWorker | null = null;
 
   if (db) {
     const repo = new PortalRepository(db, systemWallClock);
-    const catalog = new VodCatalog(db, systemWallClock);
-    const cache = new ChunkCache({
-      db,
-      dir: config.vod.cacheDir,
+    const library = new VodLibrary(db, systemWallClock);
+    // Nothing periodic here: imports and downloads happen when an operator asks.
+    const downloader = new VodDownloader({
+      library,
       transport,
-      chunkBytes: config.vod.chunkBytes,
-      maxBytes: config.vod.cacheMaxBytes,
+      dir: config.vod.filesDir,
+      maxFileBytes: config.vod.maxFileBytes,
+      identityFor: (accountId) => edge.accounts.identity(accountId),
+      acquireLease: (accountId) => edge.acquireVodLease(accountId),
+      fetchPlaylist: (accountId, url, signal) => edge.fetchText(accountId, url, { signal }),
+      onEvent: (event) => log(describe(event as unknown as { type: string })),
     });
 
     enforcer = new ExpirationEnforcer({
@@ -84,22 +86,12 @@ function main(): void {
     enforcer.start();
     adminPortal = { repo, enforcer };
 
-    if (config.vod.enabled) {
-      worker = new VodIngestWorker({
-        catalog,
-        intervalMs: config.vod.ingestIntervalMs,
-        fetchPlaylist: (accountId, url, signal) => edge.fetchText(accountId, url, { signal }),
-        onEvent: (event) => log(describe(event as unknown as { type: string })),
-      });
-      worker.start();
-      adminVod = { catalog, cache, worker };
-    }
+    if (config.vod.enabled) adminVod = { library, downloader };
 
     if (config.portalEnabled) {
       const context: PortalContext = {
         repo,
-        catalog,
-        cache,
+        library,
         edge,
         wallClock: systemWallClock,
         egressBytesPerSecond: config.egressBytesPerSecond,
@@ -147,7 +139,11 @@ function main(): void {
         ? `subscriber portals on ${base}/player_api.php (Xtream) and ${base}/portal.php (MAG)`
         : "subscriber portals disabled (set EDGE_DB to enable them)"
     );
-    log(worker ? "VOD ingestion worker started" : "VOD plane disabled");
+    log(
+      adminVod
+        ? `VOD library ready (${config.vod.filesDir}) — import and download on demand`
+        : "VOD plane disabled"
+    );
   });
 
   let stopping = false;
@@ -157,7 +153,7 @@ function main(): void {
     log(`${signal} received, draining`);
     admin.close();
     server.close();
-    void Promise.all([enforcer?.stop(), worker?.stop()])
+    void Promise.all([enforcer?.stop()])
       .then(() => edge.shutdown())
       .then(() => {
         db?.close();

@@ -93,3 +93,28 @@
   octet et une chaîne lente ressemble à une requête bloquée (trouvé en pilotant un vrai lecteur).
 - **Plans optionnels et indépendants** : pas de jeton → pas d'admin ; pas de base → pas de portail
   ni de VOD. Le cœur streaming tourne dans tous les cas.
+
+# Décisions — médiathèque VOD manuelle (refonte)
+- **Suppression de l'ouvrier d'ingestion périodique et du dédoublonnage multi-fournisseurs.**
+  Fusionner le même film venu de quatre sources a du sens pour un catalogue automatique et plus
+  aucun pour une médiathèque curatée : dès qu'un opérateur renomme une entrée, il n'existe pas de
+  réponse honnête à « lequel des quatre titres gagne ? ». Une ligne importée = une entrée.
+- **Deux gestes explicites** : ajouter une source n'importe rien ; « Télécharger » sur la source
+  tire le catalogue une fois ; « Télécharger » sur un titre rapatrie le média. Rien de périodique.
+- **Migration 2 plutôt qu'édition de la migration 1** : les migrations sont append-only, y compris
+  entre deux commits d'une même branche — un test vérifie qu'une base de la version précédente
+  s'upgrade en place sans perdre ses sources.
+- **Le cache par tranches disparaît avec le moteur de fond** : un fichier téléchargé est servi
+  entier avec `Range` depuis le disque. Plus simple, plus rapide, et le gain WAN est structurel
+  (zéro relecture chez le fournisseur) plutôt que statistique.
+- **Visibilité explicite** : `ready` **et** attribué (bouquet ou appareil). Aucune attribution =
+  personne. Quand l'objet de la fonction est de choisir qui a quoi, le silence ne peut pas vouloir
+  dire « tout le monde ».
+- **Ré-importer ne réécrit pas les renommages** : le fournisseur remet à jour conteneur/qualité,
+  pas le titre édité à la main.
+- **Annuler ≠ jeter** : le `.part` reste pour la reprise ; supprimer une entrée supprime aussi ses
+  octets (une médiathèque qui laisse des orphelins est un incident disque en attente).
+- **Fichiers nommés par id**, pas par titre : un renommage ne doit pas orphaniser les octets.
+- **Régression attrapée par le lint** : le remplacement de bloc dans `admin.ts` avait emporté les
+  routes `/sessions`, `/accounts` et `/streams/:clé/stop` ; l'avertissement « import inutilisé » l'a
+  révélé, les tests existants l'ont confirmé. Les deux ont été restaurées.

@@ -19,9 +19,8 @@ import { EdgeProxy, type EdgeEvent } from "./edge.ts";
 import { DASHBOARD_HTML } from "./dashboard.ts";
 import { PLANS, PLAN_IDS, isPlanId, type PlanId } from "./portal/plans.ts";
 import { PortalError, generateCredentials, type PortalRepository } from "./portal/devices.ts";
-import type { VodCatalog } from "./vod/catalog.ts";
-import type { VodIngestWorker } from "./vod/ingest.ts";
-import type { ChunkCache } from "./vod/cache.ts";
+import { LibraryError, type Assignment, type VodLibrary } from "./vod/library.ts";
+import type { VodDownloader } from "./vod/downloader.ts";
 import type { ExpirationEnforcer } from "./portal/enforcer.ts";
 
 export interface AdminOptions {
@@ -36,11 +35,10 @@ export interface AdminOptions {
     repo: PortalRepository;
     enforcer?: ExpirationEnforcer;
   };
-  /** VOD plane, when the catalogue is configured. */
+  /** VOD plane, when the library is configured. */
   vod?: {
-    catalog: VodCatalog;
-    cache: ChunkCache;
-    worker?: VodIngestWorker;
+    library: VodLibrary;
+    downloader: VodDownloader;
   };
 }
 
@@ -232,74 +230,12 @@ export function createAdminRouter(options: AdminOptions): AdminRouter {
       return;
     }
 
-    // ----------------------------------------------------------------- vod
-    if (route === "/vod" && method === "GET") {
-      json(res, 200, vodOverview());
-      return;
-    }
-    if (route === "/vod/sources" && method === "POST") {
-      const vod = requireVod();
-      const body = (await readJson(req)) as Record<string, unknown>;
-      json(res, 200, {
-        source: vod.catalog.upsertSource({
-          name: String(body.name ?? ""),
-          url: String(body.url ?? ""),
-          accountId: String(body.accountId ?? ""),
-          enabled: body.enabled !== false,
-        }),
-      });
-      return;
-    }
-    const sourceMatch = /^\/vod\/sources\/(\d+)$/.exec(route);
-    if (sourceMatch && method === "PATCH") {
-      const vod = requireVod();
-      const body = (await readJson(req)) as Record<string, unknown>;
-      json(res, 200, {
-        updated: vod.catalog.setSourceEnabled(Number(sourceMatch[1]), body.enabled !== false),
-      });
-      return;
-    }
-    if (sourceMatch && method === "DELETE") {
-      json(res, 200, { removed: requireVod().catalog.removeSource(Number(sourceMatch[1])) });
-      return;
-    }
-    const categoryMatch = /^\/vod\/categories\/(\d+)$/.exec(route);
-    if (categoryMatch && method === "PATCH") {
-      const vod = requireVod();
-      const body = (await readJson(req)) as Record<string, unknown>;
-      json(res, 200, {
-        updated: vod.catalog.setCategoryEnabled(Number(categoryMatch[1]), body.enabled !== false),
-      });
-      return;
-    }
-    if (route === "/vod/ingest" && method === "POST") {
-      const vod = requireVod();
-      if (!vod.worker) {
-        json(res, 400, { error: "no_ingest_worker" });
-        return;
-      }
-      const body = (await readJson(req)) as Record<string, unknown>;
-      const reports = await vod.worker.runOnce({
-        sourceId: typeof body.sourceId === "number" ? body.sourceId : undefined,
-      });
-      json(res, 200, { reports });
-      return;
-    }
-    if (route === "/vod/titles" && method === "GET") {
-      const vod = requireVod();
-      json(res, 200, {
-        titles: vod.catalog.titles({
-          kind: (url.searchParams.get("kind") as "movie" | "series" | null) ?? undefined,
-          search: url.searchParams.get("search") ?? undefined,
-          limit: Number(url.searchParams.get("limit") ?? 100),
-        }),
-      });
-      return;
-    }
     if (route === "/sessions" && method === "GET") {
       json(res, 200, { sessions: edge.sessions() });
       return;
     }
+
+    // ------------------------------------------------------ master accounts
     if (route === "/accounts" && method === "GET") {
       json(res, 200, { accounts: edge.listAccounts() });
       return;
@@ -338,6 +274,152 @@ export function createAdminRouter(options: AdminOptions): AdminRouter {
     if (stopMatch && method === "POST") {
       const stopped = await edge.stopStream(decodeURIComponent(stopMatch[1]));
       json(res, stopped ? 200 : 404, { stopped });
+      return;
+    }
+
+    // ----------------------------------------------------------------- vod
+    if (route === "/vod" && method === "GET") {
+      json(res, 200, vodOverview());
+      return;
+    }
+
+    // Adding a source does NOT import anything: that is a separate button.
+    if (route === "/vod/sources" && method === "POST") {
+      const { library } = requireVod();
+      const body = (await readJson(req)) as Record<string, unknown>;
+      json(res, 200, {
+        source: library.addSource({
+          name: String(body.name ?? ""),
+          url: String(body.url ?? ""),
+          accountId: String(body.accountId ?? ""),
+        }),
+      });
+      return;
+    }
+
+    const sourceMatch = /^\/vod\/sources\/(\d+)$/.exec(route);
+    if (sourceMatch && method === "PATCH") {
+      const { library } = requireVod();
+      const body = (await readJson(req)) as Record<string, unknown>;
+      json(res, 200, {
+        updated: library.setSourceEnabled(Number(sourceMatch[1]), body.enabled !== false),
+      });
+      return;
+    }
+    if (sourceMatch && method === "DELETE") {
+      json(res, 200, { removed: requireVod().library.removeSource(Number(sourceMatch[1])) });
+      return;
+    }
+
+    // "Télécharger" on a source: pull its catalogue once, right now.
+    const importMatch = /^\/vod\/sources\/(\d+)\/import$/.exec(route);
+    if (importMatch && method === "POST") {
+      const { downloader } = requireVod();
+      json(res, 200, { report: await downloader.importSource(Number(importMatch[1])) });
+      return;
+    }
+
+    // ---------------------------------------------------------- vod items
+    if (route === "/vod/items" && method === "GET") {
+      const { library } = requireVod();
+      const categoryParam = url.searchParams.get("categoryId");
+      json(res, 200, {
+        items: library.items({
+          kind: (url.searchParams.get("kind") as "movie" | "series" | null) ?? undefined,
+          state: (url.searchParams.get("state") as never) ?? undefined,
+          sourceId: url.searchParams.get("sourceId")
+            ? Number(url.searchParams.get("sourceId"))
+            : undefined,
+          categoryId:
+            categoryParam === null ? undefined : categoryParam === "" ? null : Number(categoryParam),
+          search: url.searchParams.get("search") ?? undefined,
+          limit: Number(url.searchParams.get("limit") ?? 200),
+        }),
+      });
+      return;
+    }
+
+    const itemMatch = /^\/vod\/items\/(\d+)$/.exec(route);
+    if (itemMatch && method === "PATCH") {
+      const { library } = requireVod();
+      const body = (await readJson(req)) as Record<string, unknown>;
+      json(res, 200, {
+        item: library.updateItem(Number(itemMatch[1]), {
+          title: typeof body.title === "string" ? body.title : undefined,
+          kind: (body.kind as "movie" | "series" | undefined) ?? undefined,
+          categoryId:
+            body.categoryId === undefined ? undefined : body.categoryId === null ? null : Number(body.categoryId),
+          poster: body.poster === undefined ? undefined : (body.poster as string | null),
+          year: body.year === undefined ? undefined : Number(body.year),
+        }),
+      });
+      return;
+    }
+    if (itemMatch && method === "DELETE") {
+      // Removes the entry AND the bytes: a library that keeps orphan files is a
+      // disk-full incident waiting to happen.
+      json(res, 200, { removed: await requireVod().downloader.removeItem(Number(itemMatch[1])) });
+      return;
+    }
+
+    // "Télécharger" on an item: fetch the media onto local disk.
+    const downloadMatch = /^\/vod\/items\/(\d+)\/download$/.exec(route);
+    if (downloadMatch && method === "POST") {
+      const { downloader } = requireVod();
+      json(res, 200, { report: await downloader.download(Number(downloadMatch[1])) });
+      return;
+    }
+    if (downloadMatch && method === "DELETE") {
+      json(res, 200, { cancelled: requireVod().downloader.cancel(Number(downloadMatch[1])) });
+      return;
+    }
+
+    const fileMatch = /^\/vod\/items\/(\d+)\/file$/.exec(route);
+    if (fileMatch && method === "DELETE") {
+      // Frees the disk but keeps the entry, so it can be downloaded again.
+      json(res, 200, { removed: await requireVod().downloader.removeFile(Number(fileMatch[1])) });
+      return;
+    }
+
+    const assignMatch = /^\/vod\/items\/(\d+)\/assignments$/.exec(route);
+    if (assignMatch && (method === "PUT" || method === "POST")) {
+      const { library } = requireVod();
+      const body = (await readJson(req)) as { targets?: Assignment[] };
+      const targets = Array.isArray(body.targets) ? body.targets : [];
+      const item =
+        method === "PUT"
+          ? library.setAssignments(Number(assignMatch[1]), targets)
+          : library.assign(Number(assignMatch[1]), targets);
+      json(res, 200, { item });
+      return;
+    }
+
+    // ----------------------------------------------------- vod categories
+    if (route === "/vod/categories" && method === "POST") {
+      const { library } = requireVod();
+      const body = (await readJson(req)) as Record<string, unknown>;
+      json(res, 200, {
+        category: library.createCategory({
+          kind: (body.kind as "movie" | "series") ?? "movie",
+          name: String(body.name ?? ""),
+        }),
+      });
+      return;
+    }
+    const categoryMatch = /^\/vod\/categories\/(\d+)$/.exec(route);
+    if (categoryMatch && method === "PATCH") {
+      const { library } = requireVod();
+      const body = (await readJson(req)) as Record<string, unknown>;
+      const id = Number(categoryMatch[1]);
+      if (typeof body.name === "string") {
+        json(res, 200, { category: library.renameCategory(id, body.name) });
+        return;
+      }
+      json(res, 200, { updated: library.setCategoryEnabled(id, body.enabled !== false) });
+      return;
+    }
+    if (categoryMatch && method === "DELETE") {
+      json(res, 200, { removed: requireVod().library.removeCategory(Number(categoryMatch[1])) });
       return;
     }
 
@@ -391,14 +473,14 @@ export function createAdminRouter(options: AdminOptions): AdminRouter {
 
   function vodOverview() {
     if (!options.vod) return { configured: false };
-    const { catalog, cache, worker } = options.vod;
+    const { library, downloader } = options.vod;
     return {
       configured: true,
-      counts: catalog.counts(),
-      sources: catalog.listSources(),
-      categories: catalog.listCategories(),
-      cache: cache.stats(),
-      worker: worker ? { running: worker.running, runs: worker.runs, lastRunAt: worker.lastRunAt } : null,
+      counts: library.counts(),
+      sources: library.listSources(),
+      categories: library.listCategories(),
+      items: library.items({ limit: 500 }),
+      downloading: downloader.active,
     };
   }
 
@@ -473,6 +555,10 @@ function json(res: http.ServerResponse, status: number, body: unknown): void {
 }
 
 function fail(res: http.ServerResponse, error: unknown): void {
+  if (error instanceof LibraryError) {
+    json(res, 400, { error: "invalid_request", detail: error.message });
+    return;
+  }
   if (error instanceof PortalError) {
     json(res, 400, { error: "invalid_request", detail: error.message });
     return;

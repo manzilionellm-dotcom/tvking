@@ -16,9 +16,11 @@ import { ExpirationEnforcer } from "../../server/edge/portal/enforcer.ts";
 import { createXtreamRouter } from "../../server/edge/portal/xtream.ts";
 import { createStalkerRouter, macFromCookie } from "../../server/edge/portal/stalker.ts";
 import { numericId } from "../../server/edge/portal/context.ts";
-import { VodCatalog } from "../../server/edge/vod/catalog.ts";
-import { ChunkCache } from "../../server/edge/vod/cache.ts";
+import { VodLibrary } from "../../server/edge/vod/library.ts";
 import { MockOrigin, bytes, tick } from "./mock-origin.ts";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const PLAYLIST = `#EXTM3U
 #EXTINF:-1 tvg-id="tf1" group-title="Généralistes",TF1
@@ -32,7 +34,9 @@ const MAC = "00:1A:79:AA:BB:CC";
 let db: Database;
 let clock: ManualWallClock;
 let repo: PortalRepository;
-let catalog: VodCatalog;
+let library: VodLibrary;
+let vodFile: string;
+let vodDir: string;
 let edge: EdgeProxy;
 let origin: MockOrigin;
 let server: http.Server;
@@ -44,8 +48,9 @@ beforeEach(async () => {
   db = openDatabase(":memory:");
   clock = new ManualWallClock("2026-06-01T12:00:00Z");
   repo = new PortalRepository(db, clock);
-  catalog = new VodCatalog(db, clock);
+  library = new VodLibrary(db, clock);
   origin = new MockOrigin({ openDelayMs: 1 });
+  vodDir = await mkdtemp(path.join(tmpdir(), "tvking-portal-vod-"));
 
   edge = new EdgeProxy({
     accounts: [
@@ -79,15 +84,30 @@ beforeEach(async () => {
   deviceId = device.id;
   repo.grant(device.id, "trial-24h");
 
-  const source = catalog.upsertSource({ name: "vod", url: "http://o/vod.m3u", accountId: "master" });
-  catalog.ingest(source.id, [
-    { name: "Le Grand Bleu (1988)", url: "http://origin.example/movie/u/p/1.mkv", group: "VOD | ACTION" },
-  ]);
+  // A manually curated library: imported, downloaded, then explicitly shared.
+  const source = library.addSource({
+    name: "vod",
+    url: "http://o/vod.m3u",
+    accountId: "master",
+  });
+  const imported = library.registerItem(source.id, {
+    name: "Le Grand Bleu (1988)",
+    url: "http://origin.example/movie/u/p/1.mkv",
+    group: "VOD | ACTION",
+  }).item;
+  vodFile = path.join(vodDir, `${imported.id}.mkv`);
+  await writeFile(vodFile, Buffer.alloc(2048, 0x42));
+  library.setState(imported.id, "ready", {
+    filePath: vodFile,
+    bytesTotal: 2048,
+    bytesDone: 2048,
+    downloadedAt: clock.now(),
+  });
+  library.assign(imported.id, [{ type: "package", id: pack.id }]);
 
   const context = {
     repo,
-    catalog,
-    cache: new ChunkCache({ db, dir: "/tmp/tvking-portal-test", transport: origin }),
+    library,
     edge,
     wallClock: clock,
     egressBytesPerSecond: 16 * 1024 * 1024,
@@ -111,6 +131,7 @@ afterEach(async () => {
   await edge.shutdown();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   db.close();
+  await rm(vodDir, { recursive: true, force: true });
 });
 
 async function watch(url: string, wantBytes = 4): Promise<{ status: number; received: number }> {
@@ -185,13 +206,46 @@ describe("Xtream Codes API", () => {
     expect(streams[0].stream_id).toBe(numericId("tf1"));
   });
 
-  it("lists the VOD catalogue", async () => {
+  it("lists the local VOD library", async () => {
     const movies = await (
       await fetch(`${base}/player_api.php?username=client01&password=s3cret&action=get_vod_streams`)
     ).json();
     expect(movies).toHaveLength(1);
     expect(movies[0].name).toBe("Le Grand Bleu (1988)");
     expect(movies[0].container_extension).toBe("mkv");
+  });
+
+  it("serves a downloaded film from disk, with Range", async () => {
+    const id = library.items()[0].id;
+    const response = await fetch(`${base}/movie/client01/s3cret/${id}.mkv`, {
+      headers: { range: "bytes=0-99" },
+    });
+    expect(response.status).toBe(206);
+    expect(response.headers.get("content-range")).toBe("bytes 0-99/2048");
+    expect(new Uint8Array(await response.arrayBuffer())[0]).toBe(0x42);
+  });
+
+  it("hides a title that is not assigned to the subscriber", async () => {
+    const id = library.items()[0].id;
+    library.setAssignments(id, []);
+
+    const movies = await (
+      await fetch(`${base}/player_api.php?username=client01&password=s3cret&action=get_vod_streams`)
+    ).json();
+    expect(movies).toEqual([]);
+
+    const response = await fetch(`${base}/movie/client01/s3cret/${id}.mkv`);
+    expect(response.status).toBe(404);
+  });
+
+  it("hides a title that has not been downloaded", async () => {
+    const id = library.items()[0].id;
+    library.setState(id, "pending", { filePath: null, bytesDone: 0 });
+
+    const movies = await (
+      await fetch(`${base}/player_api.php?username=client01&password=s3cret&action=get_vod_streams`)
+    ).json();
+    expect(movies).toEqual([]);
   });
 
   it("generates an m3u_plus playlist pointing back at the edge", async () => {
@@ -328,13 +382,23 @@ describe("Stalker / MAG portal", () => {
     await response.body?.cancel();
   });
 
-  it("exposes the VOD catalogue to a MAG box", async () => {
+  it("exposes the local library to a MAG box", async () => {
     const handshake = await portal("type=stb&action=handshake");
     const categories = await portal("type=vod&action=get_categories", handshake.js.token);
     expect(categories.js[0].title).toBe("Action");
 
     const list = await portal("type=vod&action=get_ordered_list", handshake.js.token);
     expect(list.js.data[0].name).toBe("Le Grand Bleu");
+    expect(list.js.data[0].cmd).toMatch(/\/stalker\/stream\/[0-9a-f]{32}\/movie\/\d+$/);
+  });
+
+  it("plays a downloaded film through the link it issued", async () => {
+    const handshake = await portal("type=stb&action=handshake");
+    const list = await portal("type=vod&action=get_ordered_list", handshake.js.token);
+    const response = await fetch(String(list.js.data[0].cmd), { headers: { range: "bytes=0-9" } });
+
+    expect(response.status).toBe(206);
+    expect((await response.arrayBuffer()).byteLength).toBe(10);
   });
 
   it("answers unknown actions with an empty payload instead of an error", async () => {
