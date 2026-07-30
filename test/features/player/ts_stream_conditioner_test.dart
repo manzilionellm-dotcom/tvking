@@ -179,4 +179,195 @@ void main() {
       expect(meter.totalBytes, 1000000 + 7000);
     });
   });
+
+  warmupTests();
+}
+
+// =========================================================
+//  TsWarmupIndex — démarrage à chaud sur IMAGE-CLÉ (correctif macroblocs)
+// =========================================================
+
+/// Paquet TS synthétique paramétrable (188 octets exacts).
+Uint8List tsPacket({
+  required int pid,
+  bool pusi = false,
+  bool rai = false,
+  List<int> payload = const <int>[],
+}) {
+  final Uint8List pkt = Uint8List(kTsPacketSize);
+  pkt[0] = kTsSyncByte;
+  pkt[1] = ((pusi ? 0x40 : 0x00) | ((pid >> 8) & 0x1F));
+  pkt[2] = pid & 0xFF;
+  int cursor;
+  if (rai) {
+    // Champ d'adaptation minimal d'1 octet de drapeaux, RAI posé.
+    pkt[3] = 0x30; // AF + payload
+    pkt[4] = 1; // longueur AF
+    pkt[5] = 0x40; // random_access_indicator
+    cursor = 6;
+  } else {
+    pkt[3] = 0x10; // payload seul
+    cursor = 4;
+  }
+  for (int i = 0; i < payload.length && cursor + i < kTsPacketSize; i++) {
+    pkt[cursor + i] = payload[i];
+  }
+  // Bourrage sans faux 0x47.
+  for (int i = cursor + payload.length; i < kTsPacketSize; i++) {
+    pkt[i] = 0xFF;
+  }
+  return pkt;
+}
+
+/// Section PAT : programme 1 → PMT [pmtPid].
+List<int> patPayload(int pmtPid) => <int>[
+      0x00, // pointer_field
+      0x00, // table_id PAT
+      0xB0, 13, // section_length = 5 + 4 (programme) + 4 (CRC)
+      0x00, 0x01, // transport_stream_id
+      0xC1, 0x00, 0x00, // version/current + section 0/0
+      0x00, 0x01, // program_number 1
+      0xE0 | ((pmtPid >> 8) & 0x1F), pmtPid & 0xFF,
+      0x00, 0x00, 0x00, 0x00, // CRC (non vérifié)
+    ];
+
+/// Section PMT : PCR sur [pcrPid], aucun descripteur ni flux déclaré
+/// (suffisant : seul le pcr_pid nous intéresse).
+List<int> pmtPayload(int pcrPid) => <int>[
+      0x00, // pointer_field
+      0x02, // table_id PMT
+      0xB0, 13, // section_length = 9 + 0 flux + 4 CRC
+      0x00, 0x01, // program_number
+      0xC1, 0x00, 0x00, // version + sections
+      0xE0 | ((pcrPid >> 8) & 0x1F), pcrPid & 0xFF, // pcr_pid
+      0xF0, 0x00, // program_info_length = 0
+      0x00, 0x00, 0x00, 0x00, // CRC
+    ];
+
+void warmupTests() {
+  const int pmtPid = 0x100;
+  const int videoPid = 0x101;
+  const int audioPid = 0x102;
+
+  Uint8List pat() => tsPacket(pid: 0, pusi: true, payload: patPayload(pmtPid));
+  Uint8List pmt() =>
+      tsPacket(pid: pmtPid, pusi: true, payload: pmtPayload(videoPid));
+  Uint8List video({bool key = false}) => tsPacket(pid: videoPid, rai: key);
+  Uint8List audio() => tsPacket(pid: audioPid);
+
+  group('TsWarmupIndex', () {
+    test('PAT → PMT → PCR PID lus, image-clé RAI repérée à son offset', () {
+      final TsWarmupIndex idx = TsWarmupIndex();
+      final BytesBuilder b = BytesBuilder()
+        ..add(pat()) // offset 0
+        ..add(pmt()) // 188
+        ..add(video()) // 376 (pas clé)
+        ..add(audio()) // 564
+        ..add(video(key: true)) // 752 ← image-clé
+        ..add(video()); // 940
+      idx.feed(b.takeBytes());
+      expect(idx.pmtPid, pmtPid);
+      expect(idx.pcrPid, videoPid);
+      expect(idx.lastPatPacket, isNotNull);
+      expect(idx.lastPmtPacket, isNotNull);
+      expect(idx.bestKeyframeOffset, 4 * kTsPacketSize);
+    });
+
+    test('paquets à cheval sur les chunks réseau : même résultat', () {
+      final TsWarmupIndex idx = TsWarmupIndex();
+      final BytesBuilder b = BytesBuilder()
+        ..add(pat())
+        ..add(pmt())
+        ..add(video(key: true))
+        ..add(video());
+      final Uint8List all = b.takeBytes();
+      // Découpes volontairement vicieuses (ni multiples ni diviseurs de 188).
+      for (int i = 0; i < all.length; i += 61) {
+        final int end = (i + 61 < all.length) ? i + 61 : all.length;
+        idx.feed(Uint8List.sublistView(all, i, end));
+      }
+      expect(idx.pcrPid, videoPid);
+      expect(idx.bestKeyframeOffset, 2 * kTsPacketSize);
+    });
+
+    test('RAI audio seul : repli sur n\'importe quel PID de données', () {
+      final TsWarmupIndex idx = TsWarmupIndex();
+      final BytesBuilder b = BytesBuilder()
+        ..add(pat())
+        ..add(pmt())
+        ..add(tsPacket(pid: audioPid, rai: true)) // 376
+        ..add(video());
+      idx.feed(b.takeBytes());
+      // Pas de RAI sur la vidéo (PCR) → le repli « n'importe quel PID ».
+      expect(idx.bestKeyframeOffset, 2 * kTsPacketSize);
+    });
+
+    test('clear() oublie tables et image-clé (reconnexion upstream)', () {
+      final TsWarmupIndex idx = TsWarmupIndex();
+      idx.feed(pat());
+      idx.feed(pmt());
+      idx.feed(video(key: true));
+      expect(idx.bestKeyframeOffset, isNonNegative);
+      idx.clear();
+      expect(idx.lastPatPacket, isNull);
+      expect(idx.lastPmtPacket, isNull);
+      expect(idx.bestKeyframeOffset, -1);
+      expect(idx.pmtPid, -1);
+    });
+
+    test('section PAT tronquée/invalide : rien n\'est cru', () {
+      final TsWarmupIndex idx = TsWarmupIndex();
+      // PAT annoncée mais section_length aberrante (déborde du paquet).
+      final Uint8List bad =
+          tsPacket(pid: 0, pusi: true, payload: <int>[0x00, 0x00, 0xBF, 0xFF]);
+      idx.feed(bad);
+      expect(idx.lastPatPacket, isNull);
+      expect(idx.pmtPid, -1);
+    });
+  });
+
+  group('TsRingBuffer.snapshotFrom + rafale image-clé', () {
+    test('la découpe part exactement de l\'image-clé', () {
+      final TsRingBuffer ring = TsRingBuffer();
+      final TsWarmupIndex idx = TsWarmupIndex();
+      final BytesBuilder b = BytesBuilder()
+        ..add(pat())
+        ..add(pmt())
+        ..add(video())
+        ..add(video(key: true))
+        ..add(audio());
+      final Uint8List all = b.takeBytes();
+      ring.add(all);
+      idx.feed(all);
+      final Uint8List tail = ring.snapshotFrom(idx.bestKeyframeOffset);
+      expect(tail.length, 2 * kTsPacketSize); // image-clé + audio qui suit
+      expect(tail[0], kTsSyncByte);
+      // Le premier paquet de la découpe porte bien le RAI : champ
+      // d'adaptation présent ([3] bit 0x20), longueur ≥ 1, drapeau à [5].
+      expect(tail[3] & 0x20, 0x20);
+      expect(tail[4], greaterThanOrEqualTo(1));
+      expect(tail[5] & 0x40, 0x40);
+    });
+
+    test('image-clé évacuée du tampon : découpe vide (repli ancien burst)',
+        () {
+      final TsRingBuffer ring = TsRingBuffer(capacityBytes: 2 * kTsPacketSize);
+      final TsWarmupIndex idx = TsWarmupIndex();
+      final Uint8List key = video(key: true); // offset 0
+      ring.add(key);
+      idx.feed(key);
+      // Deux paquets de plus : l'image-clé (offset 0) est évacuée.
+      ring.add(video());
+      idx.feed(video());
+      ring.add(audio());
+      idx.feed(audio());
+      expect(ring.snapshotFrom(0), isEmpty);
+    });
+
+    test('offset pas encore atteint : découpe vide', () {
+      final TsRingBuffer ring = TsRingBuffer();
+      ring.add(tsPackets(2));
+      expect(ring.snapshotFrom(10 * kTsPacketSize), isEmpty);
+    });
+  });
 }

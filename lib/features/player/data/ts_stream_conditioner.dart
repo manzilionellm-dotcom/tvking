@@ -205,6 +205,25 @@ class TsRingBuffer {
     }
     return -1;
   }
+
+  /// Contenu retenu À PARTIR de la position GLOBALE [globalOffset] (repère :
+  /// octets alignés depuis le début de session — celui de [TsWarmupIndex]).
+  /// Renvoie vide si la position est déjà évacuée, pas encore atteinte, ou
+  /// ne tombe pas sur un octet de synchro (ceinture-bretelles) — l'appelant
+  /// retombe alors sur [alignedSnapshot].
+  Uint8List snapshotFrom(int globalOffset) {
+    if (_size == 0) return Uint8List(0);
+    final int skip = globalOffset - _dropped;
+    if (skip < 0 || skip >= _size) return Uint8List(0);
+    final Uint8List all = Uint8List(_size);
+    int off = 0;
+    for (final Uint8List c in _chunks) {
+      all.setRange(off, off + c.length, c);
+      off += c.length;
+    }
+    if (all[skip] != kTsSyncByte) return Uint8List(0);
+    return skip == 0 ? all : Uint8List.sublistView(all, skip);
+  }
 }
 
 /// Débitmètre à fenêtre glissante : le relais y déclare chaque paquet reçu,
@@ -256,4 +275,193 @@ class _RateSample {
   const _RateSample(this.time, this.bytes);
   final DateTime time;
   final int bytes;
+}
+
+// =========================================================
+//  DÉMARRAGE À CHAUD SUR IMAGE-CLÉ (correctif macroblocs)
+// =========================================================
+//  CONSTAT TERRAIN (photos client, 2026-07-31) : au (re)branchement d'un
+//  lecteur, la rafale de démarrage à chaud partait du PLUS VIEUX octet du
+//  tampon — un point arbitraire au milieu d'un groupe d'images (GOP). Le
+//  décodeur matériel recevait donc des images P/B SANS leur image de
+//  référence → grosse « bouillie » de macroblocs pendant plusieurs
+//  secondes (et de vieilles images rejouées), le temps qu'une image-clé
+//  arrive au fil de l'eau.
+//
+//  Les lecteurs « pro » (TiviMate, tuners DVB) démarrent proprement : les
+//  TABLES d'abord (PAT + PMT, pour que le démuxeur mappe les PID), puis le
+//  flux À PARTIR DE LA DERNIÈRE IMAGE-CLÉ. Le standard MPEG-TS marque ces
+//  points d'accès : bit RAI (random_access_indicator) du champ
+//  d'adaptation (ISO 13818-1 §2.4.3.5).
+//
+//  [TsWarmupIndex] suit en continu, paquet par paquet (même à cheval sur
+//  les chunks réseau) : la dernière PAT, la dernière PMT (PID lu dans la
+//  PAT), le PID de la PCR (lu dans la PMT — porté par la vidéo dans la
+//  quasi-totalité des mux) et l'offset GLOBAL du dernier paquet RAI. Le
+//  relais assemble alors : PAT + PMT + flux depuis l'image-clé. Si un des
+//  ingrédients manque (flux exotique sans RAI, image-clé déjà évacuée du
+//  tampon), on retombe sur l'ancienne rafale — jamais pire qu'avant.
+//
+//  Pur (zéro I/O), testé octet par octet dans
+//  test/features/player/ts_stream_conditioner_test.dart.
+// =========================================================
+
+class TsWarmupIndex {
+  /// Position globale (en octets, depuis le début du flux ALIGNÉ) du
+  /// prochain octet attendu par [feed]. Même repère que le comptage
+  /// interne de [TsRingBuffer] nourri des mêmes chunks.
+  int _globalOffset = 0;
+
+  /// Reliquat d'un paquet à cheval entre deux chunks réseau.
+  final Uint8List _carry = Uint8List(kTsPacketSize);
+  int _carryLen = 0;
+
+  Uint8List? _lastPat;
+  Uint8List? _lastPmt;
+  int _pmtPid = -1;
+  int _pcrPid = -1;
+
+  /// Offset global du dernier paquet RAI porté par le PID de la PCR (le
+  /// signal image-clé le plus fiable) et, à défaut, par n'importe quel PID
+  /// de données (certains mux ne posent le RAI que sur l'audio).
+  int _lastRaiPcr = -1;
+  int _lastRaiAny = -1;
+
+  /// Dernier paquet PAT complet (copie de 188 octets), ou null.
+  Uint8List? get lastPatPacket => _lastPat;
+
+  /// Dernier paquet PMT complet (copie de 188 octets), ou null.
+  Uint8List? get lastPmtPacket => _lastPmt;
+
+  /// PID de la PMT lu dans la PAT (diagnostic/tests). -1 si inconnu.
+  int get pmtPid => _pmtPid;
+
+  /// PID de la PCR lu dans la PMT (diagnostic/tests). -1 si inconnu.
+  int get pcrPid => _pcrPid;
+
+  /// Offset global du meilleur point d'accès (image-clé) connu, -1 sinon.
+  int get bestKeyframeOffset => _lastRaiPcr >= 0 ? _lastRaiPcr : _lastRaiAny;
+
+  /// Oublie tout (reconnexion upstream : le repère d'octets repart de 0,
+  /// et les tables de l'ancien flux ne décrivent plus le nouveau).
+  void clear() {
+    _globalOffset = 0;
+    _carryLen = 0;
+    _lastPat = null;
+    _lastPmt = null;
+    _pmtPid = -1;
+    _pcrPid = -1;
+    _lastRaiPcr = -1;
+    _lastRaiAny = -1;
+  }
+
+  /// Déclare [chunk] (octets ALIGNÉS, les mêmes que ceux versés au tampon).
+  void feed(List<int> chunk) {
+    if (chunk.isEmpty) return;
+    final Uint8List bytes =
+        chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
+    int i = 0;
+    // 1) Compléter un éventuel paquet à cheval.
+    if (_carryLen > 0) {
+      final int need = kTsPacketSize - _carryLen;
+      final int take = need <= bytes.length ? need : bytes.length;
+      _carry.setRange(_carryLen, _carryLen + take, bytes);
+      _carryLen += take;
+      i += take;
+      if (_carryLen < kTsPacketSize) return; // toujours incomplet
+      _parsePacket(_carry, _globalOffset);
+      _globalOffset += kTsPacketSize;
+      _carryLen = 0;
+    }
+    // 2) Paquets entiers du chunk.
+    while (i + kTsPacketSize <= bytes.length) {
+      _parsePacket(Uint8List.sublistView(bytes, i, i + kTsPacketSize),
+          _globalOffset);
+      _globalOffset += kTsPacketSize;
+      i += kTsPacketSize;
+    }
+    // 3) Mettre de côté le début du paquet suivant.
+    final int rest = bytes.length - i;
+    if (rest > 0) {
+      _carry.setRange(0, rest, bytes, i);
+      _carryLen = rest;
+    }
+  }
+
+  void _parsePacket(Uint8List pkt, int offset) {
+    if (pkt[0] != kTsSyncByte) return; // flux désaligné : on n'invente rien
+    final bool pusi = (pkt[1] & 0x40) != 0;
+    final int pid = ((pkt[1] & 0x1F) << 8) | pkt[2];
+    final int afc = (pkt[3] >> 4) & 0x3;
+    int payloadStart = 4;
+    if (afc == 2 || afc == 3) {
+      final int afLen = pkt[4];
+      // RAI = bit 0x40 du premier octet de drapeaux du champ d'adaptation.
+      if (afLen > 0 && (pkt[5] & 0x40) != 0 && pid != 0 && pid != _pmtPid) {
+        if (pid == _pcrPid) {
+          _lastRaiPcr = offset;
+        } else {
+          _lastRaiAny = offset;
+        }
+      }
+      payloadStart = 5 + afLen;
+    }
+    if (afc == 2 || payloadStart >= kTsPacketSize) return; // pas de payload
+    if (!pusi) {
+      // Les tables PSI qui nous intéressent tiennent dans UN paquet et
+      // commencent toujours avec PUSI ; le reste ne nous concerne pas.
+      return;
+    }
+    if (pid == 0) {
+      final int pmt = _parsePatFirstPmtPid(pkt, payloadStart);
+      if (pmt > 0) {
+        _lastPat = Uint8List.fromList(pkt);
+        if (pmt != _pmtPid) {
+          // Nouveau programme : la PMT (et la PCR) d'avant ne valent plus.
+          _pmtPid = pmt;
+          _lastPmt = null;
+          _pcrPid = -1;
+        }
+      }
+    } else if (pid == _pmtPid) {
+      final int pcr = _parsePmtPcrPid(pkt, payloadStart);
+      if (pcr > 0) {
+        _lastPmt = Uint8List.fromList(pkt);
+        _pcrPid = pcr;
+      }
+    }
+  }
+
+  /// PID de la PMT du premier programme de la PAT (0 = réseau, ignoré).
+  /// -1 si la section est invalide/tronquée — on préfère ne rien croire.
+  static int _parsePatFirstPmtPid(Uint8List pkt, int payloadStart) {
+    int p = payloadStart;
+    if (p >= kTsPacketSize) return -1;
+    p += 1 + pkt[p]; // pointer_field
+    if (p + 8 > kTsPacketSize) return -1;
+    if (pkt[p] != 0x00) return -1; // table_id PAT
+    final int sectionLength = ((pkt[p + 1] & 0x0F) << 8) | pkt[p + 2];
+    final int sectionEnd = p + 3 + sectionLength; // fin CRC comprise
+    if (sectionLength < 9 || sectionEnd > kTsPacketSize) return -1;
+    int q = p + 8; // après transport_stream_id/version/section numbers
+    while (q + 4 <= sectionEnd - 4) {
+      final int programNumber = (pkt[q] << 8) | pkt[q + 1];
+      final int pmtPid = ((pkt[q + 2] & 0x1F) << 8) | pkt[q + 3];
+      if (programNumber != 0) return pmtPid;
+      q += 4;
+    }
+    return -1;
+  }
+
+  /// PID de la PCR dans la PMT. -1 si section invalide/tronquée.
+  static int _parsePmtPcrPid(Uint8List pkt, int payloadStart) {
+    int p = payloadStart;
+    if (p >= kTsPacketSize) return -1;
+    p += 1 + pkt[p]; // pointer_field
+    if (p + 10 > kTsPacketSize) return -1;
+    if (pkt[p] != 0x02) return -1; // table_id PMT
+    final int sectionLength = ((pkt[p + 1] & 0x0F) << 8) | pkt[p + 2];
+    if (sectionLength < 13 || p + 3 + sectionLength > kTsPacketSize) return -1;
+    return ((pkt[p + 8] & 0x1F) << 8) | pkt[p + 9];
+  }
 }

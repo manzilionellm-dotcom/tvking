@@ -446,7 +446,15 @@ class LocalStreamRelay {
     // d'écran noir en moins). Envoi SYNCHRONE avant l'ajout à la liste des
     // lecteurs : aucun risque d'entrelacement avec le fan-out (mono-thread).
     if (session.everStreamed) {
-      final List<int> warmup = session.ring.alignedSnapshot();
+      // CORRECTIF MACROBLOCS (photos client 2026-07-31) : la rafale part de
+      // PAT + PMT + dernière IMAGE-CLÉ (bit RAI) quand l'index les connaît.
+      // Avant, elle partait du plus vieux octet du tampon — souvent en
+      // plein milieu d'un GOP : le décodeur peignait des images P/B sans
+      // référence → bouillie grise à chaque (re)branchement. Repli : si un
+      // ingrédient manque (flux sans RAI, image-clé évacuée), l'ancienne
+      // rafale complète — jamais pire qu'avant.
+      final List<int> warmup =
+          _keyframeWarmup(session) ?? session.ring.alignedSnapshot();
       if (warmup.isNotEmpty) {
         try {
           res.add(warmup);
@@ -547,6 +555,12 @@ class LocalStreamRelay {
       // qui suit (le comptage de frontières deviendrait faux).
       session.aligner = TsSyncAligner();
       session.ring.clear();
+      // Même remise à zéro pour l'index image-clé : son repère d'octets
+      // repart de 0 avec le tampon, et les tables de l'ancien flux ne
+      // décrivent pas forcément celui qui revient (bascule de source côté
+      // provider) — c'est ce mélange qui faisait « une chaîne dans une
+      // autre » à l'écran.
+      session.warmupIndex.clear();
     }
     _attachUpstreamListener(session, resp);
   }
@@ -787,6 +801,24 @@ class LocalStreamRelay {
     );
   }
 
+  /// Rafale de démarrage à chaud PROPRE : tables (PAT + PMT) puis flux à
+  /// partir de la dernière image-clé. `null` si l'index n'a pas encore tous
+  /// les ingrédients → l'appelant retombe sur l'ancienne rafale complète.
+  List<int>? _keyframeWarmup(_RelaySession session) {
+    final TsWarmupIndex idx = session.warmupIndex;
+    final Uint8List? pat = idx.lastPatPacket;
+    final Uint8List? pmt = idx.lastPmtPacket;
+    final int keyframe = idx.bestKeyframeOffset;
+    if (pat == null || pmt == null || keyframe < 0) return null;
+    final Uint8List tail = session.ring.snapshotFrom(keyframe);
+    if (tail.isEmpty) return null; // image-clé déjà évacuée du tampon
+    final BytesBuilder out = BytesBuilder(copy: false)
+      ..add(pat)
+      ..add(pmt)
+      ..add(tail);
+    return out.takeBytes();
+  }
+
   /// Recopie un paquet vers TOUS les consommateurs : le(s) lecteur(s) et
   /// le fichier d'enregistrement s'il est actif.
   void _fanout(_RelaySession session, List<int> chunk) {
@@ -808,7 +840,13 @@ class LocalStreamRelay {
     // Débitmètre (capteur du moniteur de stabilité TV) + mémoire de
     // démarrage à chaud (burst servi aux lecteurs qui se rebranchent).
     session.rateMeter.addBytes(data.length, DateTime.now());
-    if (aligner != null) session.ring.add(data);
+    if (aligner != null) {
+      session.ring.add(data);
+      // Index image-clé (PAT/PMT/RAI) : mêmes octets, même repère de
+      // position que le tampon → la rafale de démarrage à chaud peut
+      // partir de la dernière image-clé au lieu d'un point arbitraire.
+      session.warmupIndex.feed(data);
+    }
     // Lecteurs : on écrit, on retire ceux dont la socket est morte.
     final List<_PlayerConsumer> dead = <_PlayerConsumer>[];
     for (final _PlayerConsumer c in session.players) {
@@ -1013,6 +1051,11 @@ class _RelaySession {
   /// chaud pour un lecteur qui se (re)branche (image de retour quasi
   /// instantanée après un gel, cf. _handleRequest).
   final TsRingBuffer ring = TsRingBuffer();
+
+  /// Index PAT/PMT/image-clé (bit RAI) du flux aligné — nourri des MÊMES
+  /// octets que [ring], remis à zéro avec lui : la rafale de démarrage à
+  /// chaud démarre sur une image-clé au lieu d'un point arbitraire.
+  final TsWarmupIndex warmupIndex = TsWarmupIndex();
 
   /// Débit d'ingestion (fenêtre glissante) — exposé au lecteur TV via
   /// [LocalStreamRelay.ingestBytesPerSecond].
