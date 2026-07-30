@@ -5065,9 +5065,58 @@ async function handlePublicDeviceMessageRead(env, mac, request) {
   return json({ ok: true });
 }
 
+// ===== LABO DU MAÎTRE — lecture des sources de TEST (table lab_sources) =====
+//  Le patron ajoute des M3U/liens Xtream de test depuis le panel
+//  (/api/v1/lab/sources, cf. api_v1.js — table lab_sources, même modèle de
+//  coexistence que app_masters : chaque module la crée à la volée de son
+//  côté). Elles sont servies UNIQUEMENT aux MAC maîtres (app_masters), EN
+//  PLUS de leurs sources normales, par le canal de sync ci-dessous
+//  (handlePublicDeviceSource). Étanchéité PAR CONSTRUCTION : aucun autre
+//  endpoint ne lit cette table, un appareil non-maître ne passe jamais ici.
+//  Cache par isolate 60 s (même pattern que _masterSetCache) : la liste est
+//  petite et change rarement — pas un SELECT par sync d'appareil.
+let _labSourcesCache = { at: 0, items: [] };
+async function readLabSourcesCached(env) {
+  const now = Date.now();
+  if (now - _labSourcesCache.at > 60_000) {
+    const items = [];
+    try {
+      const rs = await env.DB
+        .prepare('SELECT name, source_json FROM lab_sources ORDER BY created_at ASC')
+        .all();
+      for (const r of (rs && rs.results) || []) {
+        try {
+          const s = JSON.parse(r.source_json);
+          // `origin: 'lab'` : marqueur explicite pour l'app/le débogage —
+          // ces items viennent du labo, pas du panel ni du self-service.
+          if (s && s.type) items.push({ ...s, label: s.label || r.name || 'Labo', origin: 'lab' });
+        } catch (_) { /* ligne illisible → ignorée, on ne casse pas le sync */ }
+      }
+    } catch (_) {
+      // Table absente (labo jamais utilisé) ou D1 KO → aucune source labo.
+    }
+    _labSourcesCache = { at: now, items };
+  }
+  return _labSourcesCache.items;
+}
+
 async function handlePublicDeviceSource(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
+
+  // ===== LABO DU MAÎTRE =====
+  //  Une MAC MAÎTRE (app_masters) reçoit EN PLUS ses sources de test
+  //  (lab_sources), ajoutées en FIN de tableau — ses sources normales
+  //  restent premières. Les non-maîtres n'entrent JAMAIS dans ce bloc →
+  //  aucune fuite possible vers un client ou un revendeur.
+  let isMaster = false;
+  let labSources = [];
+  if (env.DB) {
+    try {
+      isMaster = await isMasterCached(env, MAC);
+      if (isMaster) labSources = await readLabSourcesCached(env);
+    } catch (_) { /* best-effort : au doute, pas de sources labo */ }
+  }
 
   // ===== SÉCURITÉ : verrou licence CÔTÉ SERVEUR =====
   //  On ne livre la source (= identifiants IPTV : serveur, user, mdp) QUE
@@ -5080,7 +5129,11 @@ async function handlePublicDeviceSource(env, mac) {
   //    (d1StatusForMac renvoie null ou expired=false) → la source passe.
   //  - Incident DB (lecture statut impossible)         → fail-open (on ne
   //    coupe pas un client légitime sur une panne transitoire).
-  if (env.DB) {
+  //  - Compte MAÎTRE : EXEMPTÉ du verrou (comme il l'est déjà du quota
+  //    d'invitations et de l'obligation de paiement, cf. isMasterMac) —
+  //    ce sont les box du patron, le labo ne doit jamais se retrouver
+  //    « expiré » au milieu d'un test.
+  if (env.DB && !isMaster) {
     try {
       // « Conscient de la famille » : un membre rattaché à un proprio payé
       // n'est PAS bloqué (il hérite de sa licence).
@@ -5136,6 +5189,9 @@ async function handlePublicDeviceSource(env, mac) {
           const { sources_json, updated_at, ...single } = row;
           sources = [single];
         }
+        // LABO : les sources de test du maître s'AJOUTENT à la fin (jamais
+        // à la place) — pour un non-maître, labSources est toujours [].
+        if (labSources.length) sources = sources.concat(labSources);
         return jsonPrivate({ mac: MAC, source: sources[0] || null, sources });
       }
     } catch (_) {
@@ -5180,10 +5236,26 @@ async function handlePublicDeviceSource(env, mac) {
           updated_at: updatedAt,
         };
       }
-      if (source) return jsonPrivate({ mac: MAC, source });
+      if (source) {
+        // LABO : même ajout en fin de tableau que le chemin D1. On ne pose
+        // `sources` que si des sources labo existent, pour ne pas changer
+        // la forme historique de la réponse KV ({mac, source}) chez les
+        // clients existants.
+        if (labSources.length) {
+          return jsonPrivate({ mac: MAC, source, sources: [source, ...labSources] });
+        }
+        return jsonPrivate({ mac: MAC, source });
+      }
     }
   } catch (_) {
     // KV indisponible → pas de source.
+  }
+
+  // LABO : une box maître SANS source normale reçoit quand même ses
+  // sources de test (c'est tout l'intérêt : coller un M3U dans le panel
+  // suffit, la box maître le charge au prochain sync).
+  if (labSources.length) {
+    return jsonPrivate({ mac: MAC, source: labSources[0], sources: labSources });
   }
 
   return jsonPrivate({ mac: MAC, source: null });

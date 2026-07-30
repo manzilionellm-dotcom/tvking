@@ -1166,6 +1166,33 @@ async function apiV1Inner(request, env) {
     return errResp('method_not_allowed', 'unsupported', 405);
   }
 
+  // /lab/sources — LABO DU MAÎTRE : sources M3U/Xtream de TEST privées du
+  // patron, poussées AUTOMATIQUEMENT à toutes les MAC maîtres (app_masters)
+  // par le canal de sync existant (worker.js /api/device-source/:mac).
+  // MÊME GARDE que /insights/overview : rôles admin uniquement — un
+  // revendeur reçoit 403 et ne voit jamais que le labo existe.
+  if (parts[0] === 'lab' && parts[1] === 'sources') {
+    if (isReseller) return errResp('forbidden', 'Admin only', 403);
+    // Push temps réel : les MAC maîtres re-fetchent leurs sources dès
+    // qu'une source labo est créée/supprimée (même mécanique que le push
+    // d'une source du panel, cf. /sources/:mac plus haut). Uniquement les
+    // maîtres : personne d'autre n'est concerné par un changement labo.
+    const rtLab = async () => ({
+      macs: await listMasterMacs(env), what: 'sources', scope: 'sources',
+    });
+    if (parts.length === 2) {
+      if (request.method === 'GET') return handleLabSourcesList(env);
+      if (request.method === 'POST') {
+        return withRt(env, await handleLabSourceAdd(request, env, actor), rtLab);
+      }
+      return errResp('method_not_allowed', 'GET or POST', 405);
+    }
+    if (parts.length === 3 && request.method === 'DELETE') {
+      return withRt(env, await handleLabSourceDelete(request, env, parts[2], actor), rtLab);
+    }
+    return errResp('method_not_allowed', 'unsupported', 405);
+  }
+
   // /admin-monitor — MODE ADMIN MONITORING : sessions admin (surveillance),
   // séparées des stats clients. Gardé par la permission dédiée.
   if (parts[0] === 'admin-monitor' && parts.length === 1) {
@@ -1378,6 +1405,14 @@ async function handleStatsOverview(env, user) {
   const isReseller = user && user.role === 'reseller';
   const rid = isReseller ? user.sub : null;
 
+  // ÉTANCHÉITÉ LABO : les box MAÎTRES (labo de test du patron) ne comptent
+  // pas dans le parc affiché à l'admin (cf. masterExclusionSql — fragment
+  // vide si la table app_masters n'existe pas). Côté REVENDEUR, aucun
+  // filtre nécessaire : ses compteurs sont déjà bornés à SES appareils
+  // (reseller_id = lui), et une box maître n'est jamais assignée à un
+  // revendeur.
+  const exDev = isReseller ? '' : await masterExclusionSql(env, 'devices.mac');
+
   // Compteurs, filtres par revendeur si l'acteur est un revendeur.
   const [customers, devices, licenses, activeLicenses, expiredLicenses, apps] =
     await Promise.all([
@@ -1386,7 +1421,7 @@ async function handleStatsOverview(env, user) {
         : env.DB.prepare('SELECT COUNT(*) as n FROM customers').first(),
       isReseller
         ? env.DB.prepare('SELECT COUNT(*) as n FROM devices WHERE reseller_id = ?').bind(rid).first()
-        : env.DB.prepare('SELECT COUNT(*) as n FROM devices').first(),
+        : env.DB.prepare('SELECT COUNT(*) as n FROM devices WHERE 1=1' + exDev).first(),
       isReseller
         ? env.DB.prepare('SELECT COUNT(*) as n FROM licenses WHERE reseller_id = ?').bind(rid).first()
         : env.DB.prepare('SELECT COUNT(*) as n FROM licenses').first(),
@@ -1474,6 +1509,16 @@ async function handleInsights(env) {
   // double côté panel). SQLite (D1) garantit qu'avec MIN(expires_at) les
   // colonnes nues viennent de la ligne du minimum → on garde l'échéance
   // la plus proche.
+
+  // ÉTANCHÉITÉ LABO : mêmes exclusions des box MAÎTRES que dans
+  // /insights/overview (cf. masterExclusionSql) — le labo du patron ne
+  // doit apparaître ni dans les totaux, ni dans « nouveaux du jour », ni
+  // dans les listes à relancer. NB : online_now est DÉJÀ propre — la
+  // présence des maîtres part dans admin_presence, jamais dans presence
+  // (cf. worker.js recordPresence).
+  const exDev = await masterExclusionSql(env, 'devices.mac');
+  const exD = await masterExclusionSql(env, 'd.mac');
+
   const [onlineNowR, expiring7dR, trialsEndingR, goneQuietR, newTodayR, totalsR] =
     await Promise.all([
       // En ligne MAINTENANT : présence vue dans les 5 dernières minutes
@@ -1492,7 +1537,7 @@ async function handleInsights(env) {
            JOIN devices d ON d.id = l.device_id
            LEFT JOIN customers c ON c.id = l.customer_id
            WHERE l.status = 'active' AND l.expires_at IS NOT NULL
-             AND l.expires_at > ? AND l.expires_at <= ?
+             AND l.expires_at > ? AND l.expires_at <= ?${exD}
            GROUP BY d.mac
            ORDER BY expires_at ASC LIMIT 30`,
         ).bind(now, now + 7 * DAY).all(),
@@ -1508,7 +1553,7 @@ async function handleInsights(env) {
            LEFT JOIN customers c ON c.id = l.customer_id
            WHERE l.status = 'active' AND l.plan LIKE 'trial%'
              AND l.expires_at IS NOT NULL
-             AND l.expires_at > ? AND l.expires_at <= ?
+             AND l.expires_at > ? AND l.expires_at <= ?${exD}
            GROUP BY d.mac
            ORDER BY expires_at ASC LIMIT 30`,
         ).bind(now, now + 2 * DAY).all(),
@@ -1526,32 +1571,35 @@ async function handleInsights(env) {
            WHERE l.status = 'active'
              AND l.plan NOT LIKE 'trial%'
              AND (l.expires_at IS NULL OR l.expires_at > ?)
-             AND d.last_seen_at < ?
+             AND d.last_seen_at < ?${exD}
            GROUP BY d.mac
            ORDER BY d.last_seen_at ASC LIMIT 20`,
         ).bind(now, now - 7 * DAY).all(),
         { results: [] },
       ),
       // Nouveaux appareils DU JOUR (UTC) : le pouls de l'acquisition.
+      // SANS les box maîtres : brancher une box de labo n'est pas une
+      // acquisition — elle fausserait le pouls du jour.
       safe(
         (async () => {
           const startOfDay = new Date(now).setUTCHours(0, 0, 0, 0);
           const [cnt, rs] = await Promise.all([
-            env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE first_seen_at >= ?')
+            env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE first_seen_at >= ?' + exDev)
               .bind(startOfDay).first(),
             env.DB.prepare(
               `SELECT mac, label, first_seen_at FROM devices
-               WHERE first_seen_at >= ? ORDER BY first_seen_at DESC LIMIT 10`,
+               WHERE first_seen_at >= ?${exDev} ORDER BY first_seen_at DESC LIMIT 10`,
             ).bind(startOfDay).all(),
           ]);
           return { cnt, rs };
         })(),
         null,
       ),
-      // Totaux (mêmes définitions que /stats/overview, pour cohérence).
+      // Totaux (mêmes définitions que /stats/overview, pour cohérence —
+      // donc, comme là-bas, SANS les box maîtres du labo).
       safe(
         Promise.all([
-          env.DB.prepare('SELECT COUNT(*) AS n FROM devices').first(),
+          env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE 1=1' + exDev).first(),
           env.DB.prepare(
             `SELECT COUNT(*) AS n FROM licenses
              WHERE status='active' AND (expires_at IS NULL OR expires_at > ?)`,
@@ -1661,6 +1709,18 @@ async function handleInsightsOverview(env) {
   // colonne absente sur une base pas encore migrée ne casse pas le reste.
   const safe = (promise, fallback) => promise.catch(() => fallback);
 
+  // ÉTANCHÉITÉ LABO : les box MAÎTRES (app_masters) sont le labo de test
+  // du patron — multi-flux, versions de dev, erreurs volontaires. Sans
+  // exclusion, chaque session de test gonflerait « actifs/total », ferait
+  // apparaître de fausses versions et salirait le compteur d'erreurs du
+  // parc RÉEL. On exclut donc leur MAC de CHAQUE bloc ci-dessous
+  // (lecture seule respectée : cf. masterExclusionSql — vérification via
+  // sqlite_master, aucun DDL). `exDev` vise devices.mac, `exD` l'alias
+  // d.mac du JOIN licences, `exErr` error_logs.mac.
+  const exDev = await masterExclusionSql(env, 'devices.mac');
+  const exD = await masterExclusionSql(env, 'd.mac');
+  const exErr = await masterExclusionSql(env, 'error_logs.mac');
+
   // Toutes les requêtes sont indépendantes → EN PARALLÈLE (une seule
   // latence D1 au lieu de dix en série ; objectif < 100 ms). Chaque
   // requête est soit un COUNT/GROUP BY borné par la taille de `devices`
@@ -1670,33 +1730,37 @@ async function handleInsightsOverview(env) {
     totalR, active24R, active7R, new7R, silentR, expiringR,
     versionsR, errCountR, errTopR,
   ] = await Promise.all([
-    safe(env.DB.prepare('SELECT COUNT(*) AS n FROM devices').first(), null),
+    // Total du parc : SANS les box maîtres (le labo n'est pas un client).
+    safe(env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE 1=1' + exDev).first(), null),
     // Actifs = au moins un heartbeat dans la fenêtre (idx_devices_lastseen).
+    // SANS les maîtres : une box de test allumée n'est pas un client actif.
     safe(
-      env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE last_seen_at > ?')
+      env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE last_seen_at > ?' + exDev)
         .bind(now - DAY).first(),
       null,
     ),
     safe(
-      env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE last_seen_at > ?')
+      env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE last_seen_at > ?' + exDev)
         .bind(now - 7 * DAY).first(),
       null,
     ),
     // Nouveaux : premier contact < 7 jours. Pas d'index sur first_seen_at,
     // mais on n'en CRÉE pas ici (lecture seule) : un COUNT sur `devices`
     // reste borné par le nombre d'appareils, pas par leur activité.
+    // SANS les maîtres : brancher une box de labo n'est pas une acquisition.
     safe(
-      env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE first_seen_at > ?')
+      env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE first_seen_at > ?' + exDev)
         .bind(now - 7 * DAY).first(),
       null,
     ),
     // Silencieux : plus aucun signe de vie depuis 7 jours. « Les plus
     // récents d'abord » = ceux qui viennent de décrocher, les premiers à
-    // relancer. Borné à 50 (le panel n'affiche pas plus).
+    // relancer. Borné à 50 (le panel n'affiche pas plus). SANS les
+    // maîtres : une box de labo éteinte n'est pas un client à relancer.
     safe(
       env.DB.prepare(
         `SELECT mac, last_seen_at FROM devices
-         WHERE last_seen_at < ? ORDER BY last_seen_at DESC LIMIT 50`,
+         WHERE last_seen_at < ?${exDev} ORDER BY last_seen_at DESC LIMIT 50`,
       ).bind(now - 7 * DAY).all(),
       { results: [] },
     ),
@@ -1711,7 +1775,7 @@ async function handleInsightsOverview(env) {
          FROM licenses l
          JOIN devices d ON d.id = l.device_id
          WHERE l.status = 'active' AND l.expires_at IS NOT NULL
-           AND l.expires_at > ? AND l.expires_at <= ?
+           AND l.expires_at > ? AND l.expires_at <= ?${exD}
          GROUP BY d.mac
          ORDER BY paid_until ASC LIMIT 50`,
       ).bind(now, now + 7 * DAY).all(),
@@ -1720,27 +1784,34 @@ async function handleInsightsOverview(env) {
     // Versions d'app en circulation (devices.app_version, remplie par le
     // heartbeat). Si la colonne n'existe pas encore sur cette base, la
     // requête échoue → fallback null → le champ `versions` est OMIS de
-    // la réponse (le panel est défensif).
+    // la réponse (le panel est défensif). SANS les maîtres : une box de
+    // labo tourne souvent sur une version de DEV pas encore publiée — la
+    // laisser ici ferait croire à un déploiement fantôme dans le parc.
     safe(
       env.DB.prepare(
         `SELECT app_version AS version, COUNT(*) AS n FROM devices
-         WHERE app_version IS NOT NULL AND app_version != ''
+         WHERE app_version IS NOT NULL AND app_version != ''${exDev}
          GROUP BY app_version ORDER BY n DESC LIMIT 20`,
       ).all(),
       null,
     ),
-    // Erreurs des 7 derniers jours (idx_error_logs_created).
+    // Erreurs des 7 derniers jours (idx_error_logs_created). SANS les
+    // maîtres : les tests du labo provoquent des erreurs VOLONTAIRES
+    // (flux cassés, multi-connexions) qui noieraient les vraies erreurs
+    // clients. NOT EXISTS = NULL-safe (les lignes sans MAC restent
+    // comptées, cf. masterExclusionSql).
     safe(
-      env.DB.prepare('SELECT COUNT(*) AS n FROM error_logs WHERE created_at > ?')
+      env.DB.prepare('SELECT COUNT(*) AS n FROM error_logs WHERE created_at > ?' + exErr)
         .bind(now - 7 * DAY).first(),
       null,
     ),
     // Top messages : GROUP BY sur la fenêtre 7 j uniquement (bornée par
-    // l'index created_at), jamais sur toute la table.
+    // l'index created_at), jamais sur toute la table. Même exclusion des
+    // maîtres que le compteur ci-dessus (cohérence count/top).
     safe(
       env.DB.prepare(
         `SELECT message, COUNT(*) AS n FROM error_logs
-         WHERE created_at > ? GROUP BY message ORDER BY n DESC LIMIT 10`,
+         WHERE created_at > ?${exErr} GROUP BY message ORDER BY n DESC LIMIT 10`,
       ).bind(now - 7 * DAY).all(),
       { results: [] },
     ),
@@ -3450,6 +3521,163 @@ async function handleMastersRemove(env, rawMac) {
   await ensureMastersTable(env);
   await env.DB.prepare('DELETE FROM app_masters WHERE mac = ?').bind(mac).run();
   return jsonResp({ ok: true, mac });
+}
+
+// =========================================================
+//  LABO DU MAÎTRE — sources de TEST privées (table lab_sources)
+// =========================================================
+//  Le patron colle ici des M3U (ou liens Xtream) de TEST. Elles sont
+//  poussées AUTOMATIQUEMENT à toutes ses box maîtres, et à ELLES SEULES.
+//
+//  Pourquoi une TABLE DÉDIÉE plutôt qu'un drapeau lab=1 dans
+//  device_sources :
+//   • device_sources = UNE ligne par MAC avec un « trio » (3 sources max
+//     dans sources_json). Y glisser les sources labo entrerait en
+//     collision avec ce plafond ET fuiterait par TOUS les lecteurs
+//     existants (GET /sources/:mac du panel, /references, détail
+//     appareil M-Trio, familles, repli KV…) — chacun aurait dû recevoir
+//     un WHERE d'exclusion, avec un risque d'oubli à chaque évolution.
+//   • Une table à part est étanche PAR CONSTRUCTION : aucun endpoint
+//     revendeur/client ne la lit. Le SEUL lecteur est le canal de sync
+//     de l'app (worker.js handlePublicDeviceSource), et uniquement pour
+//     les MAC présentes dans app_masters.
+//
+//  L'« attache à tous les maîtres » est DYNAMIQUE : pas de table de
+//  jointure — chaque source labo est servie à TOUTES les MAC maîtres au
+//  moment du sync. Un maître déclaré demain reçoit donc les sources labo
+//  existantes sans autre action ; une source supprimée disparaît au sync
+//  suivant (cache isolate ≤ 60 s côté worker + push temps réel rtLab).
+//
+//  LIMITE MULTI-FLUX (honnêteté technique) : le Worker n'impose AUCUNE
+//  limite de connexions simultanées sur les flux — les rate-limits
+//  (rateLimitOk) sont des garde-fous HTTP par IP sur les endpoints API,
+//  pas un comptage de streams. La seule vraie limite multi-flux est
+//  `max_connections` de la ligne chez le FOURNISSEUR Xtream amont : on
+//  ne peut pas exempter ce qu'on ne contrôle pas. (Les maîtres sont déjà
+//  hors stats via admin_presence, cf. recordPresence côté worker.)
+async function ensureLabSourcesTable(env) {
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS lab_sources (' +
+        'id TEXT PRIMARY KEY, name TEXT, url TEXT, ' +
+        'source_json TEXT, created_at INTEGER)',
+    ).run();
+  } catch (_) { /* déjà présente */ }
+}
+
+/// Toutes les MAC maîtres (pour le push temps réel après une mutation labo).
+async function listMasterMacs(env) {
+  try {
+    await ensureMastersTable(env);
+    const rs = await env.DB.prepare('SELECT mac FROM app_masters').all();
+    return ((rs && rs.results) || []).map((r) => String(r.mac).toUpperCase());
+  } catch (_) { return []; }
+}
+
+/// GET /api/v1/lab/sources — liste des sources labo, URL CAVIARDÉE.
+async function handleLabSourcesList(env) {
+  await ensureLabSourcesTable(env);
+  await ensureMastersTable(env);
+  const [rs, mc] = await Promise.all([
+    env.DB.prepare(
+      'SELECT id, name, url, created_at FROM lab_sources ORDER BY created_at DESC',
+    ).all(),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM app_masters').first(),
+  ]);
+  const attached = (mc && Number(mc.n)) || 0;
+  const items = ((rs && rs.results) || []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    // JAMAIS d'identifiant IPTV en clair vers le panel (règle AGENTS.md
+    // n°2) : on réutilise le pattern de caviardage des messages d'erreur
+    // (redactSecrets) → user:pass@host et ?username=…&password=… → ***.
+    url: redactSecrets(r.url || ''),
+    created_at: r.created_at,
+    // Attache DYNAMIQUE (servie au sync à toutes les MAC maîtres du
+    // moment) → le compteur est le même pour chaque source.
+    attached_masters: attached,
+  }));
+  return jsonResp({ items, attached_masters: attached });
+}
+
+/// POST /api/v1/lab/sources {name, url} — crée la source de test et
+/// l'attache (dynamiquement) à toutes les MAC maîtres.
+async function handleLabSourceAdd(request, env, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) { return errResp('bad_json', 'Invalid JSON', 400); }
+  const name = String(body?.name || '').trim().slice(0, 60);
+  const url = String(body?.url || '').trim();
+  if (!name) return errResp('bad_name', 'Donne un nom à la source de test.', 400);
+  if (!url) return errResp('bad_url', 'Colle une URL M3U ou un lien Xtream.', 400);
+  // Même « colle n'importe quoi » que l'activation universelle : URL M3U
+  // simple OU lien Xtream get.php → source normalisée prête pour l'app.
+  const det = autoDetectSource({ url, label: name });
+  if (det.error) return errResp('bad_source', det.error, 400);
+  await ensureLabSourcesTable(env);
+  await ensureMastersTable(env);
+  const id = genId('lab');
+  await env.DB.prepare(
+    'INSERT INTO lab_sources (id, name, url, source_json, created_at) VALUES (?, ?, ?, ?, ?)',
+  ).bind(id, name, url, JSON.stringify(det.source), Date.now()).run();
+  const mc = await env.DB.prepare('SELECT COUNT(*) AS n FROM app_masters').first();
+  // Audit SANS l'URL : elle porte souvent user/pass IPTV — on ne recopie
+  // jamais un identifiant dans audit_logs (même esprit que redactSecrets).
+  await logAudit(env, request, actor, 'lab.source.add',
+    { type: 'lab_source', id }, null, { name, type: det.source.type });
+  return jsonResp({
+    ok: true, id, name, type: det.source.type,
+    attached_masters: (mc && Number(mc.n)) || 0,
+  });
+}
+
+/// DELETE /api/v1/lab/sources/:id — détache + supprime. L'attache étant
+/// DYNAMIQUE, supprimer la ligne suffit : au prochain sync (cache isolate
+/// ≤ 60 s côté worker + push rtLab immédiat) la source disparaît des box.
+async function handleLabSourceDelete(request, env, rawId, actor) {
+  const id = String(rawId || '').trim();
+  await ensureLabSourcesTable(env);
+  const row = await env.DB
+    .prepare('SELECT id, name FROM lab_sources WHERE id = ?').bind(id).first();
+  if (!row) return errResp('not_found', 'Source labo introuvable.', 404);
+  await env.DB.prepare('DELETE FROM lab_sources WHERE id = ?').bind(id).run();
+  await logAudit(env, request, actor, 'lab.source.remove',
+    { type: 'lab_source', id }, { name: row.name }, null);
+  return jsonResp({ ok: true, id });
+}
+
+// ---------------------------------------------------------
+//  STATS PROPRES — exclusion des MAC maîtres des agrégats
+// ---------------------------------------------------------
+//  Les appareils MAÎTRES (table app_masters — les box du patron, cf.
+//  worker.js isMasterMac) servent au LABO : tests multi-flux, versions de
+//  dev, erreurs volontaires… Ils ne doivent JAMAIS gonfler ni salir les
+//  chiffres du parc RÉEL montrés au tableau de bord. Ce helper renvoie un
+//  fragment SQL « AND NOT EXISTS (…) » à concaténer aux requêtes
+//  d'agrégat, pour la colonne MAC passée en argument (constante écrite
+//  par NOUS dans le code appelant — jamais une entrée utilisateur, donc
+//  pas d'injection possible).
+//   • NOT EXISTS (et pas NOT IN) : NULL-safe — une vieille ligne
+//     error_logs sans MAC serait silencieusement éliminée par la
+//     sémantique NULL de NOT IN, pas par NOT EXISTS.
+//   • LECTURE SEULE : l'existence de la table est vérifiée via
+//     sqlite_master (aucun CREATE ici — les handlers d'agrégat sont
+//     strictement read-only). Table absente = aucun maître déclaré →
+//     fragment vide, requêtes inchangées.
+//   • Cache par isolate 60 s : pas un SELECT sqlite_master par compteur.
+let _mastersTableCache = { at: 0, has: false };
+async function masterExclusionSql(env, macCol) {
+  const now = Date.now();
+  if (now - _mastersTableCache.at > 60_000) {
+    let has = false;
+    try {
+      has = !!(await env.DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'app_masters'",
+      ).first());
+    } catch (_) { /* fail-open : au doute, on ne filtre pas */ }
+    _mastersTableCache = { at: now, has };
+  }
+  if (!_mastersTableCache.has) return '';
+  return ` AND NOT EXISTS (SELECT 1 FROM app_masters am WHERE am.mac = ${macCol})`;
 }
 
 // =========================================================
