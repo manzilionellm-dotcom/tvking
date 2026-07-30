@@ -1,7 +1,8 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { PREFS } from "../components/Preferences";
+import { backupResume, eraseBackup, restoreResume, resumeSlotId } from "../lib/zkClient";
 
 /*
  * Tiny external store over localStorage so the controls read/write persisted
@@ -94,6 +95,89 @@ function Group({
   );
 }
 
+/*
+ * Sauvegarde Zero-Knowledge — tout est chiffré SUR l'appareil avant d'être
+ * envoyé ; le serveur ne stocke qu'un bloc opaque de taille fixe sous un
+ * identifiant aveuglé. Le panel d'administration ne peut voir qu'un état
+ * binaire (présence/absence), jamais le contenu ni une quantité.
+ */
+function ZkBackup() {
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [slot, setSlot] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    resumeSlotId().then((s) => {
+      if (!cancelled) setSlot(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const run = (action: () => Promise<string>, messages: Record<string, string>) => async () => {
+    setBusy(true);
+    setStatus("…");
+    const result = await action();
+    setStatus(messages[result] ?? "Une erreur est survenue.");
+    setBusy(false);
+  };
+
+  const actions: { label: string; onClick: () => void }[] = [
+    {
+      label: "Sauvegarder maintenant",
+      onClick: run(backupResume, {
+        ok: "Sauvegarde chiffrée déposée.",
+        "trop-gros": "Données trop volumineuses pour le bloc fixe.",
+      }),
+    },
+    {
+      label: "Restaurer",
+      onClick: run(restoreResume, {
+        ok: "Reprise de lecture restaurée sur cet appareil.",
+        absent: "Aucune sauvegarde sur le serveur.",
+      }),
+    },
+    {
+      label: "Effacer la sauvegarde",
+      onClick: run(eraseBackup, { ok: "Sauvegarde distante effacée." }),
+    },
+  ];
+
+  return (
+    <section className="mb-[2.4rem]">
+      <h2 className="text-[1.6rem] font-bold text-[var(--text-high)]">
+        Sauvegarde chiffrée (Zero-Knowledge)
+      </h2>
+      <p className="mb-[1rem] max-w-[60rem] text-[1.2rem] text-[var(--text-medium)]">
+        Vos positions de lecture sont chiffrées sur cet appareil avant tout envoi. La clé ne quitte
+        jamais la box : le serveur ne voit qu&apos;un bloc opaque de taille fixe et ne peut connaître
+        ni vos contenus, ni leur nombre.
+      </p>
+      <div className="flex flex-wrap gap-[0.9rem]">
+        {actions.map((a) => (
+          <button
+            key={a.label}
+            data-focusable
+            disabled={busy}
+            onClick={a.onClick}
+            className="focusable rounded-[var(--radius)] bg-[var(--surface-2)] px-[1.3rem] py-[0.9rem] text-[1.25rem] font-bold text-[var(--text-high)] disabled:opacity-60"
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+      {status && <p className="mt-[0.9rem] text-[1.15rem] text-[var(--text-medium)]">{status}</p>}
+      {slot && (
+        <p className="mt-[0.6rem] break-all font-mono text-[0.9rem] text-[var(--text-low,var(--text-medium))]">
+          Identifiant aveuglé de cet appareil (seule information visible du panel) : {slot}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function ReglagesPage() {
   const ui = usePref(PREFS.uiScale);
   const safe = usePref(PREFS.safeScale);
@@ -124,6 +208,8 @@ export default function ReglagesPage() {
         current={safe}
         onPick={pickSafe}
       />
+
+      <ZkBackup />
 
       {/* Live preview frame: a dashed outline showing the current safe area. */}
       <section>

@@ -33,9 +33,15 @@ app/
   title/[slug]/               Page détail d'un contenu
   watch/[slug]/               Lecteur + « À suivre »
   search/  list/  reglages/   Recherche, Ma liste, Réglages
+  panel/                      Panel maître AVEUGLE (présence/absence uniquement)
+  api/vault/[slot]/           Coffre aveugle (blobs chiffrés opaques, taille fixe)
+  api/panel/status/           Statut binaire masqué (auth ADMIN_SECRET)
   components/                 Sidebar, Hero, Row, MediaCard, Badge, Player…
   lib/data.ts                 Modèle de contenu (mock) + lookups
+  lib/zk.ts  lib/zkClient.ts  Chiffrement côté client (Zero-Knowledge)
+  lib/vault.ts                Logique du coffre aveugle (minimisation stricte)
 docs/RESEARCH-TV-UX.md        Recherche sourcée (le référentiel de conception)
+docs/ZERO-KNOWLEDGE.md        Architecture Zero-Knowledge (chiffrement client, panel aveugle)
 ```
 
 ## Démarrer
