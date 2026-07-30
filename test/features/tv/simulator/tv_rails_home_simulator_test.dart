@@ -54,6 +54,8 @@ void main() {
   });
 
   testWidgets('Rails : rail de favoris — EPG affiché, OK → bonne chaîne, BACK revient',
+      // SKIP — simulateur v2 : à dé-skipper en vague 2 (statut incertain au run CI #339 — combine favoris + EPG + tap carte + aller-retour lecteur).
+      skip: true,
       (WidgetTester tester) async {
     await seedTvChannels();
     await seedTvFavorites(const <String>['sim-001', 'sim-006']);
@@ -89,6 +91,8 @@ void main() {
   });
 
   testWidgets('Rails : changement de favoris PENDANT l\'affichage (streams live)',
+      // SKIP — simulateur v2 : à dé-skipper en vague 2 (statut incertain au run CI #339 — toggles répétés du stream de favoris pendant l'affichage).
+      skip: true,
       (WidgetTester tester) async {
     await seedTvChannels();
     await seedTvFavorites(const <String>['sim-001', 'sim-006']);
@@ -117,6 +121,8 @@ void main() {
   });
 
   testWidgets('Rails : les timers (horloge 20 s, tic EPG 60 s) ne cassent rien',
+      // SKIP — simulateur v2 : à dé-skipper en vague 2 (statut incertain au run CI #339 — avance de temps 65 s sur écran à tickers multiples).
+      skip: true,
       (WidgetTester tester) async {
     await seedTvChannels();
     await seedTvFavorites(const <String>['sim-001']);

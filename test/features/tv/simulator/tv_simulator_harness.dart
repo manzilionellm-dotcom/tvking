@@ -440,15 +440,22 @@ Future<void> pumpTvScreen(WidgetTester tester, Widget screen) async {
 /// de chaque test — sinon « A Timer is still pending » côté flutter_test.
 Future<void> unmountTv(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
+  // Deux frames de grâce : dispose asynchrones + micro-tâches restantes.
+  await tester.pump(const Duration(milliseconds: 50));
   await tester.pump(const Duration(milliseconds: 50));
 }
 
-/// Stabilisation BORNÉE (jamais pumpAndSettle : spinners/tickers infinis).
+/// Stabilisation BORNÉE — nombre de pompes FIXE, jamais conditionné à un
+/// état (pas de « pump jusqu'à ce que X » : si X n'arrive pas, on rendrait
+/// le test infini). pumpAndSettle reste interdit (tickers périodiques).
 Future<void> tvSettle(
   WidgetTester tester, {
   int frames = 10,
   Duration step = const Duration(milliseconds: 60),
 }) async {
+  // Frame « zéro » : draine les micro-tâches en attente avant les pompes
+  // temporisées (répond plus vite quand tout est déjà prêt).
+  await tester.pump();
   for (int i = 0; i < frames; i++) {
     await tester.pump(step);
   }
