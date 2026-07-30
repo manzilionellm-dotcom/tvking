@@ -363,9 +363,49 @@ seules identités affichées sont celles que l'opérateur a lui-même créées (
 login), avec un compte à rebours d'expiration calé sur l'horloge du serveur, un
 sélecteur de formule, un bouton « Essai 24 h » et une révocation immédiate.
 
+## Déployer sur un serveur
+
+Le service n'a **aucune dépendance npm** — il n'importe que des modules natifs
+de Node. Il n'y a donc ni `npm install`, ni étape de build : l'image, c'est le
+runtime plus les sources.
+
+```bash
+cd server/edge
+cp .env.example .env        # puis remplir EDGE_ACCOUNTS et EDGE_ADMIN_TOKEN
+docker compose up -d
+```
+
+Le tableau de bord — et son onglet **Cinéma / VOD** — est alors sur
+`http://<serveur>:8787/admin/`, déverrouillé par `EDGE_ADMIN_TOKEN`.
+
+Ce qu'il faut prévoir sur la machine :
+
+- **Du disque.** Les films téléchargés vivent dans le volume `edge-data`
+  (`/data/vod`), avec la base SQLite (`/data/edge.db`). Un film pèse ce qu'il
+  pèse chez le fournisseur : compter en centaines de Gio si le catalogue est
+  ambitieux. `EDGE_VOD_MAX_FILE_BYTES` pose un plafond par fichier.
+- **Un seul processus.** L'invariant « une seule montée » est garanti *par
+  processus* : ne pas répliquer le conteneur derrière un répartiteur de charge,
+  chaque instance ouvrirait sa propre connexion au fournisseur.
+- **Un reverse proxy devant.** Le service détient les identifiants IPTV et ne
+  parle ni TLS ni authentification sur le plan des flux. `docker-compose.yml`
+  ne publie donc le port que sur `127.0.0.1` : c'est à Caddy / nginx / Traefik
+  de terminer le TLS et d'exposer. Retirer ce préfixe est un choix délibéré.
+- **`EDGE_PUBLIC_BASE`** doit porter l'URL publique du reverse proxy : c'est
+  elle qui est recopiée dans les liens rendus aux box, pas l'adresse interne du
+  conteneur.
+- **Sauvegarder `/data` suffit** : abonnés, appareils MAC, catalogue,
+  abonnements et médias y sont tous.
+
+Le chemin complet — coller un M3U, importer, télécharger — a été rejoué de bout
+en bout sur cette configuration : ajout d'une source (aucun import automatique),
+clic « Télécharger » sur la source (2 films retenus, la chaîne live du même M3U
+écartée par le classifieur), puis téléchargement d'un titre (fichier écrit sur
+le disque, état `ready`).
+
 ## Vérification
 
-`npm test` — 274 tests dédiés, dont :
+`npm test` — 295 tests dédiés, dont :
 
 - `hub.test.ts` : 150 clients simultanés → **1** ouverture ; churn aléatoire de
   200 tâches join/leave → `activeMax === 1` ; linger, reconnexion, échecs ;

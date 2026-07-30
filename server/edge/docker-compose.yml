@@ -1,0 +1,42 @@
+# =========================================================
+#  Edge proxy — déploiement sur un serveur à soi
+# =========================================================
+#  Démarrage :
+#      cd server/edge
+#      cp .env.example .env      # puis remplir .env
+#      docker compose up -d
+#
+#  Le tableau de bord (onglet « Cinéma / VOD ») est ensuite sur
+#      http://<serveur>:8787/admin/
+#  et demande le jeton EDGE_ADMIN_TOKEN.
+#
+#  ⚠️ Ce service détient les identifiants IPTV de tes comptes maîtres et
+#  ne parle ni TLS ni authentification sur le plan des flux. Ne l'expose
+#  PAS directement sur Internet : mets-le derrière un reverse proxy qui
+#  termine le TLS (Caddy, nginx, Traefik), ou garde-le sur un réseau de
+#  confiance / un VPN.
+# =========================================================
+services:
+  edge:
+    build: .
+    image: tvking-edge
+    container_name: tvking-edge
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # 127.0.0.1 uniquement : le reverse proxy de l'hôte publie, pas
+      # Docker. Retirer le préfixe expose le port sur toutes les
+      # interfaces — un choix à faire sciemment, jamais par défaut.
+      - "127.0.0.1:8787:8787"
+    volumes:
+      # UN SEUL volume porte tout l'état : la base SQLite (abonnés,
+      # appareils MAC, catalogue, abonnements) ET les films téléchargés.
+      # Le sauvegarder, c'est sauvegarder le service entier.
+      - edge-data:/data
+    # Les films sont écrits par flux dans /data/vod ; la mémoire du
+    # processus, elle, est bornée par le ring buffer et les files
+    # clients (EDGE_RING_BYTES, EDGE_CLIENT_QUEUE_BYTES).
+    stop_grace_period: 20s
+
+volumes:
+  edge-data:

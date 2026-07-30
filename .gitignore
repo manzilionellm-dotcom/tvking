@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# …sauf le gabarit de déploiement de l'edge : il ne contient aucun secret,
+# uniquement les noms de variables et des valeurs d'exemple à remplacer.
+!server/edge/.env.example
 
 # vercel
 .vercel
