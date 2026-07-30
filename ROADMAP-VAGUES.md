@@ -27,7 +27,7 @@
   en-tête 200 px qui déborde).
 - [ ] V8. Mode faible bande passante : qualité d'image réduite
   automatiquement quand le réseau rame (déjà détecté par l'app).
-- [ ] V9. Écrans d'erreur « à la Netflix » : illustration + action claire,
+- [x] V9. Écrans d'erreur « à la Netflix » : illustration + action claire,
   jamais de texte technique brut.
 - [ ] V10. Polissage typographique : échelle cohérente, contrastes AA,
   textes tronqués proprement partout.
@@ -37,7 +37,7 @@
 - [x] B11. Rangée « Pour toi » sur l'accueil mobile branchée sur
   l'affinity_service existant (il tournait dans le vide depuis la mort
   de l'ancien HomeScreen).
-- [~] B12. « Pour toi » côté TV (template Classique d'abord).
+- [x] B12. « Pour toi » côté TV (template Classique d'abord).
 - [ ] B13. Reprise intelligente : « Tu regardais X hier soir à cette
   heure-ci » (time_of_day_service existe déjà).
 - [ ] B14. Suggestions par moment de la journée (sport le week-end,
@@ -68,7 +68,7 @@
 - [ ] C23. Panel : santé du parc (erreurs remontées par error-log,
   boîtes noires, versions APK en circulation).
 - [ ] C24. Panel : top contenus (dès que B19 alimente les données).
-- [ ] C25. Alertes proactives : « 12 boxes n'ont pas donné signe de vie
+- [x] C25. Alertes proactives : « 12 boxes n'ont pas donné signe de vie
   depuis 7 jours », « 3 clients expirent cette semaine ».
 - [ ] C26. Rapport hebdo automatique (résumé simple, envoyé/affiché).
 
