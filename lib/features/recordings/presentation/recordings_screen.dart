@@ -29,6 +29,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/friendly_error_view.dart';
 import '../../epg/presentation/epg_format.dart';
 import '../data/gallery_exporter.dart';
 import '../data/http_recording_downloader.dart';
@@ -69,31 +70,14 @@ class RecordingsScreen extends StatelessWidget {
   }
 
   Widget _empty(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(
-              Icons.movie_filter_outlined,
-              size: 56,
-              color: AppColors.textMuted,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              context.l10n.recordingsEmptyTitle,
-              style: AppTextStyles.bodyLarge,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              context.l10n.recordingsEmptySubtitle,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium,
-            ),
-          ],
-        ),
-      ),
+    // Écran d'erreur convivial partagé (V9), variante « vide » : ce n'est
+    // pas une panne, juste « rien à afficher pour l'instant ». On garde
+    // l'icône métier (pellicule) plutôt que la boîte générique.
+    return FriendlyErrorView.mobile(
+      kind: FriendlyErrorKind.empty,
+      icon: Icons.movie_filter_outlined,
+      title: context.l10n.recordingsEmptyTitle,
+      message: context.l10n.recordingsEmptySubtitle,
     );
   }
 }
@@ -609,25 +593,17 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
             child: Video(controller: _controller),
           ),
           // Message clair en cas de fichier vide / illisible (au lieu
-          // d'un écran noir muet).
+          // d'un écran noir muet). On passe par l'écran d'erreur convivial
+          // partagé (V9) : icône selon le type + message humain + bouton
+          // « Retour ». Le fichier illisible n'est PAS « réessayable » (il
+          // ne se réparera pas tout seul) → une seule action, Retour.
           if (_errorMsg != null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    const Icon(Icons.error_outline_rounded,
-                        color: Colors.white70, size: 48),
-                    const SizedBox(height: 12),
-                    Text(
-                      _errorMsg!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ],
-                ),
-              ),
+            FriendlyErrorView.mobile(
+              kind: FriendlyErrorKind.unknown,
+              title: context.l10n.tvRecPlayErrorTitle,
+              message: _errorMsg,
+              secondaryLabel: context.l10n.buttonBack,
+              onSecondary: () => Navigator.of(context).pop(),
             ),
           // Watermark "THE FEWS" — marque de l'app par-dessus la vidéo
           // (coin bas-droite, style logo chaîne). Affiché EN PERMANENCE :
