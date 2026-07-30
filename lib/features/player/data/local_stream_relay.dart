@@ -127,6 +127,34 @@ class LocalStreamRelay {
   /// une seule fois et distribuée à ses consommateurs.
   final Map<String, _RelaySession> _sessions = <String, _RelaySession>{};
 
+  /// URL de la SEULE lecture intentionnelle en cours (posée par
+  /// [closeOtherPlaybacks], donc par [playUrlFor] / [hlsPlaylistUrlFor]).
+  ///
+  /// SÉRIALISATION STRICTE « 1 connexion » : le serveur local ouvre
+  /// l'upstream PARESSEUSEMENT — seulement quand le lecteur (mpv/ExoPlayer)
+  /// se connecte à la route `/s`. Lors d'un ZAP RAPIDE (France 2 → 3 → 4),
+  /// le lecteur lance la connexion locale d'une chaîne PUIS l'abandonne pour
+  /// la suivante, mais sa requête peut tout de même arriver jusqu'au serveur
+  /// APRÈS coup. Sans garde-fou, on ouvrirait alors une 2e connexion AMONT
+  /// (la chaîne déjà quittée) le temps que le lecteur la referme → deux flux
+  /// amont qui se chevauchent = dépassement TRANSITOIRE de la limite « max
+  /// connexions » du fournisseur (le bug terrain). On ne laisse donc ouvrir
+  /// un upstream QUE pour cette URL (ou pour une chaîne en cours
+  /// d'enregistrement) — cf. [_handleRequestInner]. `null` = aucune lecture
+  /// encore demandée ; `''` = toutes lectures coupées (ex. avant un
+  /// enchaînement d'épisode).
+  String? _currentPlaybackUrl;
+
+  /// Nombre de connexions AMONT actuellement ouvertes par le relais (une au
+  /// plus par session vivante). Observabilité HONNÊTE de la garantie
+  /// « 1 connexion » : en lecture normale il vaut 0 ou 1 ; il peut valoir 2
+  /// de façon LÉGITIME quand l'enregistrement d'une chaîne survit au zap vers
+  /// une autre (REC + live = 2 flux voulus). ATTENTION : ne compte QUE les
+  /// flux passés PAR le relais — la multi-vue ouvre ses flux EN DIRECT (hors
+  /// relais), ils échappent à ce comptage (cf. tv_multiview_screen.dart).
+  int get activeUpstreamCount =>
+      _sessions.values.where((_RelaySession s) => s.upstreamActive).length;
+
   /// Jitter des reconnexions (désynchronise les reprises simultanées).
   final Random _reconnectJitter = Random();
 
@@ -160,7 +188,11 @@ class LocalStreamRelay {
     // sinon les relais des chaînes quittées continuaient leurs
     // reconnexions en boucle en parallèle (sessions zombies, bug terrain
     // du 2026-07-08 : France 2 → 3 → 4 = 3 boucles simultanées).
-    closeOtherPlaybacks(realUrl);
+    // On ATTEND la fermeture des sessions quittées AVANT de rendre la main :
+    // la nouvelle connexion amont ne sera ouverte (paresseusement, au moment
+    // où le lecteur se connecte à l'URL renvoyée) qu'APRÈS que les anciennes
+    // ont été coupées → jamais deux connexions amont qui se chevauchent.
+    await closeOtherPlaybacks(realUrl);
     final String token = Uri.encodeComponent(realUrl);
     return 'http://127.0.0.1:$_port/s?u=$token';
   }
@@ -168,7 +200,23 @@ class LocalStreamRelay {
   /// Ferme toutes les sessions de lecture SAUF celle de [keepRealUrl].
   /// Les sessions qui enregistrent sont préservées (l'enregistrement
   /// d'une chaîne survit au zapping vers une autre).
-  void closeOtherPlaybacks(String keepRealUrl) {
+  ///
+  /// [keepRealUrl] devient la SEULE lecture intentionnelle : on l'enregistre
+  /// dans [_currentPlaybackUrl] pour que le serveur local refuse d'ouvrir un
+  /// upstream pour toute AUTRE chaîne (garde-fou anti-zap, cf.
+  /// [_handleRequestInner]). Passer `''` = « plus aucune lecture » (les
+  /// futures connexions de lecteur seront ignorées jusqu'au prochain
+  /// [playUrlFor]).
+  ///
+  /// `async` À DESSEIN : on ATTEND l'annulation PROPRE de l'abonnement amont
+  /// (le « fetch en vol ») de chaque session quittée avant de poursuivre, de
+  /// sorte qu'aucun octet de l'ancienne chaîne ne peut plus arriver et que sa
+  /// socket amont est bien en fermeture AVANT que la nouvelle n'ouvre la
+  /// sienne. `_closeSession` force déjà la fermeture de la socket
+  /// (`client.close(force: true)`) de façon synchrone ; l'`await` ci-dessous
+  /// verrouille en plus l'ordre côté abonnement.
+  Future<void> closeOtherPlaybacks(String keepRealUrl) async {
+    _currentPlaybackUrl = keepRealUrl;
     for (final _RelaySession s
         in List<_RelaySession>.from(_sessions.values)) {
       if (s.realUrl == keepRealUrl) continue;
@@ -181,6 +229,13 @@ class LocalStreamRelay {
         'Changement de chaîne → session précédente fermée '
             '(${StreamDiagnostics.maskCredentials(s.realUrl)})',
       );
+      // Annulation PROPRE du fetch amont en vol AVANT la fermeture du reste.
+      try {
+        await s.sub?.cancel();
+      } catch (_) {
+        // best-effort : abonnement upstream déjà mort.
+      }
+      s.sub = null;
       _closeSession(s);
     }
   }
@@ -209,8 +264,8 @@ class LocalStreamRelay {
   /// absolues) — seul le petit document texte transite ici.
   Future<String> hlsPlaylistUrlFor(String realUrl) async {
     await _ensureServer();
-    // Une seule lecture à la fois : ferme les sessions TS restantes.
-    closeOtherPlaybacks(realUrl);
+    // Une seule lecture à la fois : ferme (et attend) les sessions TS restantes.
+    await closeOtherPlaybacks(realUrl);
     final String token = Uri.encodeComponent(realUrl);
     return 'http://127.0.0.1:$_port/hls?u=$token';
   }
@@ -432,6 +487,34 @@ class LocalStreamRelay {
     }
     if (req.uri.path != '/s' || realUrl == null || realUrl.isEmpty) {
       req.response.statusCode = HttpStatus.notFound;
+      await req.response.close();
+      return;
+    }
+
+    // GARDE-FOU ANTI-ZAP (fuite transitoire de connexion amont).
+    // L'upstream s'ouvre paresseusement ICI, à la connexion du lecteur. Lors
+    // d'un zap rapide, la requête d'une chaîne DÉJÀ QUITTÉE peut arriver après
+    // que le lecteur a basculé sur la suivante : l'ouvrir créerait une 2e
+    // connexion amont fantôme (chevauchement → limite « max connexions »
+    // dépassée côté fournisseur). On n'ouvre donc l'upstream QUE pour la
+    // lecture intentionnelle courante (_currentPlaybackUrl, posée par
+    // playUrlFor/hlsPlaylistUrlFor) — ou pour une chaîne déjà en cours
+    // d'enregistrement (REC + live légitimes). Toute autre = chaîne quittée :
+    // on renvoie 204 (aucun contenu) et on ferme SANS ouvrir d'amont.
+    if (_currentPlaybackUrl != null &&
+        realUrl != _currentPlaybackUrl &&
+        !isRecording(realUrl)) {
+      if (kDebugMode) {
+        debugPrint('[Relay] connexion lecteur OBSOLÈTE (zap) ignorée : '
+            '${_short(realUrl)} ≠ courante '
+            '${_short(_currentPlaybackUrl ?? '')}');
+      }
+      StreamDiagnostics.instance.recordEvent(
+        'relay',
+        'Connexion de lecteur d\'une chaîne déjà quittée ignorée (zap '
+            'rapide) → aucune 2e connexion amont fantôme ouverte',
+      );
+      req.response.statusCode = HttpStatus.noContent;
       await req.response.close();
       return;
     }

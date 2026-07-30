@@ -10,6 +10,24 @@
 //  mode « low RAM ») — sur une petite box (type Fire Stick 1 Go), on n'essaie
 //  même pas (message clair) plutôt que de risquer un plantage. C'est cohérent
 //  avec la promesse « ça ne crashe jamais ».
+//
+//  CONNEXIONS AMONT (« max connexions » du fournisseur) — CONTRAT EXPLICITE
+//  ----------------------------------------------------------------------
+//  La multi-vue est la SEULE partie de l'app qui ouvre VOLONTAIREMENT plus
+//  d'un flux amont : EXACTEMENT DEUX (une par tuile), c'est son but même.
+//  Ces deux flux sont tirés EN DIRECT par le lecteur natif (URL réelle du
+//  fournisseur), ils NE passent PAS par LocalStreamRelay — ils échappent donc
+//  à la garantie « 1 connexion » et à son comptage (activeUpstreamCount).
+//  Deux règles pour ne pas fuir de connexions :
+//    • ENTRÉE : la multi-vue suppose que l'appelant a DÉJÀ coupé la lecture
+//      normale/aperçu (sinon 1 flux relais + 2 flux directs = 3 connexions
+//      simultanées, le fournisseur croit à un multi-view massif). Voir la
+//      note « LIMITE CONNUE » plus bas : à ce jour c'est à l'appelant de le
+//      faire — la multi-vue ne peut pas couper le lecteur normal sans risquer
+//      de le laisser noir au retour.
+//    • SORTIE (dispose / BACK / plein écran) : CHAQUE contrôleur est libéré
+//      (`dispose()` → `player.release()` natif ferme la socket amont). Aucun
+//      flux fantôme ne doit survivre à la fermeture de cet écran.
 // =========================================================
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -65,12 +83,24 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen>
     _ctrl[1].setVolume(0);
   }
 
-  // App minimisée (Home / veille / autre app) → on COUPE les deux tuiles :
-  // pas de lecture (ni de SON) en arrière-plan sur TV. Le natif a en plus son
-  // propre couvre-feu (pauseAll à l'onStop de l'activité) — ceinture et
-  // bretelles. Au retour, les connexions des deux flux LIVE sont probablement
-  // mortes : on RE-OUVRE les deux URLs (retour au direct immédiat, sans gel)
-  // et on RÉ-APPLIQUE le volume par tuile.
+  // App minimisée (Home / veille / autre app) → on met les deux tuiles en
+  // PAUSE : pas de SON en arrière-plan sur TV. Le natif a en plus son propre
+  // couvre-feu (pauseAll à l'onStop de l'activité) — ceinture et bretelles.
+  // Au retour, les connexions des deux flux LIVE sont probablement mortes :
+  // on RE-OUVRE les deux URLs (retour au direct immédiat, sans gel) et on
+  // RÉ-APPLIQUE le volume par tuile.
+  //
+  // LIMITE CONNUE (hors de notre contrôle ici) : `pause()` arrête la
+  // LECTURE, mais ExoPlayer garde généralement la socket amont OUVERTE (il
+  // ne fait que cesser de tirer des octets). Sur une chaîne à durée finie ça
+  // n'a pas d'incidence, mais sur un LIVE le fournisseur peut continuer de
+  // compter la connexion tant qu'elle n'a pas expiré côté serveur. Couper
+  // VRAIMENT la socket sans détruire le contrôleur exigerait une méthode
+  // native « stop / release-source » que le plugin n'expose pas (il n'a que
+  // `pause` — garde la socket — et `dispose` — la ferme mais interdit toute
+  // reprise sur le même contrôleur). Tant que l'app reste en arrière-plan
+  // ces deux sockets peuvent donc rester ouvertes : c'est une limite du
+  // plugin natif, à corriger côté `native_video_player` (hors de ce fichier).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
@@ -97,8 +127,18 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // TEARDOWN GARANTI « zéro flux fantôme » (BACK, plein écran, ou fermeture) :
+    // on libère CHAQUE contrôleur, donc CHAQUE connexion amont directe. On
+    // enveloppe chaque dispose : si la libération d'UNE tuile levait une
+    // exception, l'AUTRE tuile devait quand même être libérée — sinon sa
+    // socket amont fuyait (le fournisseur continuait de compter la connexion).
     for (final NativeVideoController c in _ctrl) {
-      c.dispose();
+      try {
+        c.dispose();
+      } catch (_) {
+        // best-effort : le natif a peut-être déjà relâché ce lecteur ; on
+        // continue impérativement avec la ou les tuiles suivantes.
+      }
     }
     _focus.dispose();
     super.dispose();
