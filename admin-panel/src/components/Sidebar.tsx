@@ -23,6 +23,14 @@ type NavSection = { titleKey: string; items: NavItem[] };
 
 const OWNER_NAV: NavSection[] = [
   {
+    // Vague C22 — le TABLEAU DE BORD (« Ce qui s'est passé ») en PREMIER :
+    // c'est la page d'accueil après connexion (demande owner).
+    titleKey: 'navsec.pilot',
+    items: [
+      { key: 'nav.dashboard', to: '/' },
+    ],
+  },
+  {
     titleKey: 'navsec.activation',
     items: [
       { key: 'nav.activate',    to: '/activate' },
@@ -64,7 +72,8 @@ const OWNER_NAV: NavSection[] = [
   {
     titleKey: 'navsec.system',
     items: [
-      { key: 'nav.dashboard', to: '/' },
+      // Ancien dashboard KPI (clients, licences, revenu…) → « Statistiques ».
+      { key: 'nav.stats',     to: '/stats' },
       { key: 'nav.online',    to: '/online' },
       { key: 'nav.apps',      to: '/apps' },
       { key: 'nav.history',   to: '/history' },

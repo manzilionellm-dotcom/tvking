@@ -242,8 +242,51 @@ export interface Insights {
     expired_licenses: number;
   };
 }
+// ---------------------------------------------------------
+//  Vague C22 — « Ce qui s'est passé » (tableau de bord de connexion)
+// ---------------------------------------------------------
+//  Résumé calculé côté worker : parc d'appareils (totaux, actifs 24 h /
+//  7 j, nouveaux 7 j), boxes silencieuses, abonnements qui expirent,
+//  répartition des versions d'app et erreurs remontées sur 7 jours.
+//  ⚠️ CONTRAT DÉFENSIF : le worker est déployé EN PARALLÈLE du panel —
+//  chaque champ peut manquer (ancienne version, champ pas encore calculé).
+//  Tout est donc OPTIONNEL ici, et l'UI affiche « — » ou masque la carte.
+//  Les timestamps peuvent arriver en secondes, millisecondes ou ISO :
+//  le panel normalise via toMillis() (utils).
+export interface OverviewSilentDevice {
+  mac?: string | null;
+  last_seen?: number | string | null;   // dernier signe de vie
+}
+export interface OverviewExpiringDevice {
+  mac?: string | null;
+  paid_until?: number | string | null;  // fin d'abonnement payée
+}
+export interface OverviewDevices {
+  total?: number;
+  active_24h?: number;
+  active_7d?: number;
+  new_7d?: number;
+  silent_7d?: OverviewSilentDevice[];   // muettes depuis ≥ 7 jours
+  expiring_7d?: OverviewExpiringDevice[]; // expirent sous 7 jours
+}
+export interface OverviewVersion {
+  version?: string | null;
+  count?: number;
+}
+export interface OverviewErrors {
+  count?: number;
+  top?: { message?: string | null; count?: number }[];
+}
+export interface InsightsOverview {
+  generated_at?: number | string;
+  devices?: OverviewDevices;
+  versions?: OverviewVersion[];
+  errors_7d?: OverviewErrors;
+}
 export const insightsApi = {
   get: () => request<Insights>('/api/v1/insights'),
+  // Tableau de bord affiché à la connexion (auth admin, comme le reste).
+  overview: () => request<InsightsOverview>('/api/v1/insights/overview'),
 };
 
 // =========================================================

@@ -23,6 +23,25 @@ export function formatDateTime(ms: number | null | undefined): string {
   }
 }
 
+/// Normalise un timestamp « au format inconnu » en millisecondes Unix.
+/// Le worker (déployé en parallèle du panel) peut renvoyer des secondes,
+/// des millisecondes ou une chaîne ISO selon les versions — on accepte
+/// tout, défensivement, et on renvoie null si c'est illisible.
+export function toMillis(v: number | string | null | undefined): number | null {
+  if (v == null) return null;
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+    // Heuristique : < 10^12 ⇒ secondes (10^12 ms ≈ année 2001+ en ms).
+    return v < 1e12 ? v * 1000 : v;
+  }
+  if (typeof v === 'string' && v.trim()) {
+    const iso = Date.parse(v);
+    if (!Number.isNaN(iso)) return iso;
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) return n < 1e12 ? n * 1000 : n;
+  }
+  return null;
+}
+
 /// Formate un montant en cents → "12,99 €". Devise par defaut EUR.
 export function formatMoney(cents: number, currency = 'EUR'): string {
   try {

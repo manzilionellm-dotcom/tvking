@@ -31,6 +31,9 @@ const STR: Record<string, Record<Lang, string>> = {
 
   // --- Navigation ---
   'nav.dashboard': { fr: 'Tableau de bord', en: 'Dashboard', ar: 'لوحة التحكم' },
+  // Ancien dashboard KPI (clients, licences, revenu…), déplacé sur /stats
+  // depuis que le « Tableau de bord » C22 est la page d'accueil.
+  'nav.stats': { fr: 'Statistiques', en: 'Statistics', ar: 'الإحصاءات' },
   'nav.activate': { fr: 'Activer un appareil', en: 'Activate a device', ar: 'تفعيل جهاز' },
   'nav.pushSource': { fr: 'Pousser une playlist', en: 'Push a playlist', ar: 'إرسال قائمة تشغيل' },
   'nav.controlCenter': { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
@@ -65,6 +68,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
 
   // --- Sections du menu (regroupement Sidebar) ---
+  'navsec.pilot': { fr: 'Pilotage', en: 'Overview', ar: 'نظرة عامة' },
   'navsec.activation': { fr: 'Activation & abonnés', en: 'Activation & subscribers', ar: 'التفعيل والمشتركون' },
   'navsec.channels': { fr: 'Chaînes & sources', en: 'Channels & sources', ar: 'القنوات والمصادر' },
   'navsec.content': { fr: 'App & contenu', en: 'App & content', ar: 'التطبيق والمحتوى' },

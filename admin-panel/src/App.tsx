@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import {
-  authApi, getToken, setToken, setCurrentUser, isOwnerRole,
+  authApi, getToken, setToken, setCurrentUser, getCurrentUser, isOwnerRole,
   ApiError,
 } from '@/lib/api';
 import { rtConnect, rtDisconnect } from '@/lib/realtime';
 import { LoginPage } from '@/pages/LoginPage';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { OverviewPage } from '@/pages/OverviewPage';
 import { CustomersPage } from '@/pages/CustomersPage';
 import { DevicesPage } from '@/pages/DevicesPage';
 import { AppsPage } from '@/pages/AppsPage';
@@ -113,10 +114,22 @@ export default function App() {
   }
 
   // Logged in
+  // Vague C22 — page d'accueil : le TABLEAU DE BORD « Ce qui s'est passé »
+  // (OverviewPage) pour les rôles admin. Le revendeur garde son dashboard
+  // KPI historique (l'endpoint insights/overview est réservé à l'admin).
+  // L'ancien dashboard chiffres reste accessible pour l'admin sur /stats
+  // (entrée « Statistiques » du menu) — aucune page n'est supprimée.
+  const owner = isOwnerRole(getCurrentUser()?.role);
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/" replace />} />
-      <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
+      <Route
+        path="/"
+        element={owner
+          ? <OverviewPage onLogout={handleLogout} />
+          : <DashboardPage onLogout={handleLogout} />}
+      />
+      <Route path="/stats"       element={<DashboardPage   onLogout={handleLogout} />} />
       <Route path="/activate"    element={<ActivatePage    onLogout={handleLogout} />} />
       {/* Fusionné dans « Activer un appareil » — on redirige l'ancienne URL. */}
       <Route path="/playlists"   element={<Navigate to="/activate" replace />} />

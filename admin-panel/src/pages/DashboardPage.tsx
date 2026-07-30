@@ -116,7 +116,10 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
 
   return (
     <AppLayout
-      title={t('nav.dashboard')}
+      // Pour l'admin, cette page vit désormais sur /stats sous le nom
+      // « Statistiques » (le « Tableau de bord » C22 a pris la racine).
+      // Le revendeur, lui, la garde comme accueil « Tableau de bord ».
+      title={t(owner ? 'nav.stats' : 'nav.dashboard')}
       subtitle={t('dash.subtitle')}
       onLogout={onLogout}
       actions={owner ? (
