@@ -89,19 +89,9 @@ abstract final class RemoteSourceRepository {
       // unique historique si le tableau est absent.
       final Object? list = body['sources'];
       if (list is List && list.isNotEmpty) {
-        RemoteSyncResult agg = RemoteSyncResult.noSource;
-        for (final Object? item in list) {
-          if (item is Map<String, dynamic>) {
-            final RemoteSyncResult r = await _applySource(item);
-            if (r == RemoteSyncResult.loaded) {
-              agg = RemoteSyncResult.loaded;
-            } else if (agg != RemoteSyncResult.loaded &&
-                r == RemoteSyncResult.sourceFailed) {
-              agg = RemoteSyncResult.sourceFailed;
-            }
-          }
-        }
-        return agg;
+        // Même boucle que applySources (règle du labo comprise) : une seule
+        // implémentation, pas deux comportements qui divergent.
+        return applySources(list.whereType<Map<String, dynamic>>().toList());
       }
 
       final Object? src = body['source'];
@@ -183,8 +173,11 @@ abstract final class RemoteSourceRepository {
   }) async {
     RemoteSyncResult agg = RemoteSyncResult.noSource;
     for (final Map<String, dynamic> item in sources) {
-      final RemoteSyncResult r =
-          await _applySource(item, onProgress: onProgress);
+      final RemoteSyncResult r = await _applySource(
+        item,
+        onProgress: onProgress,
+        makeActive: shouldActivate(item, sources),
+      );
       if (r == RemoteSyncResult.loaded) {
         agg = RemoteSyncResult.loaded;
       } else if (agg != RemoteSyncResult.loaded &&
@@ -195,10 +188,40 @@ abstract final class RemoteSourceRepository {
     return agg;
   }
 
+  /// LABO DU MAÎTRE — une source de test a-t-elle le droit de devenir la
+  /// playlist ACTIVE (celle que l'accueil affiche) ?
+  ///
+  /// Chaque import réussi appelle `setActivePlaylist`, donc la DERNIÈRE
+  /// source chargée gagne. Or le worker ajoute les sources labo EN FIN de
+  /// tableau : sans cette règle, une box maître qui a un vrai abonnement
+  /// bascule sur le serveur de test dès qu'on ajoute une source au labo —
+  /// `getAllChannels` ne renvoyant que les chaînes de la playlist active,
+  /// l'app paraît cassée.
+  ///
+  /// Règle : une source `origin: 'lab'` n'est activée QUE si elle est seule
+  /// (box maître sans abonnement — coller un M3U au labo doit suffire à
+  /// l'alimenter). Toute autre source garde le comportement historique.
+  ///
+  /// Fonction PURE (ni base ni réseau) pour rester testable.
+  @visibleForTesting
+  static bool shouldActivate(
+    Map<String, dynamic> source,
+    List<Map<String, dynamic>> all,
+  ) {
+    final bool isLab = (source['origin'] as String?) == 'lab';
+    if (!isLab) return true;
+    final bool hasRealSource = all.any(
+        (Map<String, dynamic> s) => (s['origin'] as String?) != 'lab');
+    return !hasRealSource;
+  }
+
   /// Charge la source en base locale si elle n'y est pas déjà.
   static Future<RemoteSyncResult> _applySource(
     Map<String, dynamic> src, {
     ImportProgressCallback? onProgress,
+    // `false` = importer SANS basculer l'accueil dessus (source labo qui
+    // cohabite avec l'abonnement réel de la box).
+    bool makeActive = true,
   }) async {
     final String type = (src['type'] as String?)?.trim().toLowerCase() ?? '';
     // Nom par défaut LOCALISÉ (langue active au moment de la synchro) :
@@ -236,6 +259,7 @@ abstract final class RemoteSourceRepository {
           username: user,
           password: pass,
           onProgress: onProgress,
+          makeActive: makeActive,
         );
         if (kDebugMode) debugPrint('[RemoteSource] Xtream chargé ($server)');
         return RemoteSyncResult.loaded;
@@ -258,6 +282,7 @@ abstract final class RemoteSourceRepository {
           url: m3u,
           epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
           onProgress: onProgress,
+          makeActive: makeActive,
         );
         if (kDebugMode) debugPrint('[RemoteSource] M3U chargé');
         return RemoteSyncResult.loaded;
