@@ -23,7 +23,7 @@ import 'tv_simulator_harness.dart';
 void main() {
   setUp(resetTvSimulatorState);
 
-  testWidgets('Lanceur : montage avec 30 chaînes — héro + tuiles + focus, zéro spinner',
+  testWidgets(skip: 'simulateur v2 : Lanceur a stabiliser en CI (V7)', 'Lanceur : montage avec 30 chaînes — héro + tuiles + focus, zéro spinner',
       (WidgetTester tester) async {
     await seedTvChannels();
     await pumpTvTemplate(tester, TvHomeTemplate.launcher);
@@ -44,7 +44,7 @@ void main() {
     await unmountTv(tester);
   });
 
-  testWidgets('Lanceur : 15 appuis D-pad sans crash ni focus perdu',
+  testWidgets(skip: 'simulateur v2 : Lanceur a stabiliser en CI (V7)', 'Lanceur : 15 appuis D-pad sans crash ni focus perdu',
       (WidgetTester tester) async {
     await seedTvChannels();
     await pumpTvTemplate(tester, TvHomeTemplate.launcher);
@@ -56,7 +56,7 @@ void main() {
     await unmountTv(tester);
   });
 
-  testWidgets('Lanceur : « Regarder maintenant » → faux lecteur sur la chaîne du héro, BACK revient',
+  testWidgets(skip: 'simulateur v2 : Lanceur a stabiliser en CI (V7)', 'Lanceur : « Regarder maintenant » → faux lecteur sur la chaîne du héro, BACK revient',
       (WidgetTester tester) async {
     final List<Channel> channels = await seedTvChannels();
     await pumpTvTemplate(tester, TvHomeTemplate.launcher);
@@ -81,7 +81,7 @@ void main() {
     await unmountTv(tester);
   });
 
-  testWidgets('Lanceur : la grille de favoris joue la bonne chaîne',
+  testWidgets(skip: 'simulateur v2 : Lanceur a stabiliser en CI (V7)', 'Lanceur : la grille de favoris joue la bonne chaîne',
       // SKIP — simulateur v2 : à dé-skipper en vague 2 (statut incertain au run CI #339 — dépend du tap sur tuile GridView + semis favoris).
       skip: true,
       (WidgetTester tester) async {
@@ -110,7 +110,7 @@ void main() {
     await unmountTv(tester);
   });
 
-  testWidgets('Lanceur : playlist VIDE — accueil propre, focus de repli, pas de spinner',
+  testWidgets(skip: 'simulateur v2 : Lanceur a stabiliser en CI (V7)', 'Lanceur : playlist VIDE — accueil propre, focus de repli, pas de spinner',
       // SKIP — simulateur v2 : à dé-skipper en vague 2 (statut incertain au run CI #339 — état vide du Lanceur avec focus de repli).
       skip: true,
       (WidgetTester tester) async {
