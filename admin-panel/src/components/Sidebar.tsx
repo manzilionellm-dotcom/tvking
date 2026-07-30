@@ -28,6 +28,10 @@ const OWNER_NAV: NavSection[] = [
     titleKey: 'navsec.pilot',
     items: [
       { key: 'nav.dashboard', to: '/' },
+      // Labo du Maître — espace de test PRIVÉ. Présent UNIQUEMENT dans
+      // OWNER_NAV : un revendeur ne verra jamais cette entrée (et la
+      // route /lab le redirige de toute façon vers l'accueil).
+      { key: 'nav.lab', to: '/lab' },
     ],
   },
   {

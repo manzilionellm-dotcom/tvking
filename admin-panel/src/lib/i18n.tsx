@@ -66,6 +66,8 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.adminMonitor': { fr: 'Admin Monitoring', en: 'Admin Monitoring', ar: 'مراقبة المشرف' },
   'nav.families': { fr: 'Famille', en: 'Family', ar: 'العائلة' },
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
+  // Labo du Maître — visible ADMIN uniquement (jamais dans le menu revendeur).
+  'nav.lab': { fr: '🔬 Labo du Maître', en: '🔬 Master Lab', ar: '🔬 مختبر المدير' },
 
   // --- Sections du menu (regroupement Sidebar) ---
   'navsec.pilot': { fr: 'Pilotage', en: 'Overview', ar: 'نظرة عامة' },
@@ -107,6 +109,58 @@ const STR: Record<string, Record<Lang, string>> = {
   'dash.resellers': { fr: 'Revendeurs', en: 'Resellers', ar: 'الموزّعون' },
   'dash.revenue30': { fr: 'Revenu 30j', en: 'Revenue 30d', ar: 'إيراد 30 يوم' },
   'dash.myCredits': { fr: 'Mes crédits', en: 'My credits', ar: 'أرصدتي' },
+
+  // --- Labo du Maître (admin uniquement — espace de test privé) ---
+  'lab.title': { fr: 'Labo du Maître', en: 'Master Lab', ar: 'مختبر المدير' },
+  'lab.subtitle': { fr: 'Espace de test privé', en: 'Private testing space', ar: 'مساحة اختبار خاصة' },
+  'lab.banner': {
+    fr: 'Tout ce qui vit ici est PRIVÉ : sources de test poussées uniquement sur tes appareils maîtres, invisibles des revendeurs et des clients, exclues des statistiques. Teste librement.',
+    en: 'Everything here is PRIVATE: test sources pushed only to your master devices, invisible to resellers and customers, excluded from statistics. Test freely.',
+    ar: 'كل ما هنا خاص: مصادر اختبار تُرسل فقط إلى أجهزتك الرئيسية، غير مرئية للموزّعين والعملاء، ومستثناة من الإحصاءات. اختبر بحرّية.',
+  },
+  'lab.addTitle': { fr: 'Ajouter une source de test', en: 'Add a test source', ar: 'إضافة مصدر اختبار' },
+  'lab.name': { fr: 'Nom', en: 'Name', ar: 'الاسم' },
+  'lab.namePh': { fr: 'Ex. : Test serveur Alpha', en: 'E.g.: Alpha server test', ar: 'مثال: اختبار خادم ألفا' },
+  'lab.url': { fr: 'URL M3U / Xtream', en: 'M3U / Xtream URL', ar: 'رابط M3U / Xtream' },
+  'lab.urlPh': { fr: 'http(s)://…', en: 'http(s)://…', ar: 'http(s)://…' },
+  'lab.add': { fr: 'Ajouter au labo', en: 'Add to lab', ar: 'إضافة إلى المختبر' },
+  'lab.adding': { fr: 'Ajout…', en: 'Adding…', ar: 'جارٍ الإضافة…' },
+  'lab.nameRequired': { fr: 'Donne un nom à la source.', en: 'Give the source a name.', ar: 'أعطِ المصدر اسمًا.' },
+  'lab.invalidUrl': {
+    fr: 'URL invalide — elle doit commencer par http:// ou https://.',
+    en: 'Invalid URL — it must start with http:// or https://.',
+    ar: 'رابط غير صالح — يجب أن يبدأ بـ http:// أو https://.',
+  },
+  'lab.addedOk': {
+    fr: 'Copiée automatiquement sur {n} appareil(s) maître(s).',
+    en: 'Automatically copied to {n} master device(s).',
+    ar: 'نُسخت تلقائيًا إلى {n} جهاز/أجهزة رئيسية.',
+  },
+  'lab.listTitle': { fr: 'Sources du labo', en: 'Lab sources', ar: 'مصادر المختبر' },
+  'lab.masters': { fr: '{n} appareil(s) maître(s)', en: '{n} master device(s)', ar: '{n} جهاز/أجهزة رئيسية' },
+  'lab.delete': { fr: 'Supprimer', en: 'Delete', ar: 'حذف' },
+  'lab.deleting': { fr: 'Suppression…', en: 'Deleting…', ar: 'جارٍ الحذف…' },
+  'lab.deleteConfirm': {
+    fr: 'Supprimer « {name} » ? La source sera retirée de tes appareils maîtres.',
+    en: 'Delete “{name}”? The source will be removed from your master devices.',
+    ar: 'حذف «{name}»؟ سيُزال المصدر من أجهزتك الرئيسية.',
+  },
+  'lab.deletedOk': { fr: 'Source retirée du labo.', en: 'Source removed from the lab.', ar: 'أُزيل المصدر من المختبر.' },
+  'lab.empty': {
+    fr: 'Aucune source dans le labo. Ajoute ta première M3U de test ci-dessus.',
+    en: 'No sources in the lab yet. Add your first test M3U above.',
+    ar: 'لا مصادر في المختبر بعد. أضف أول M3U للاختبار أعلاه.',
+  },
+  'lab.soonTitle': { fr: 'Le Labo arrive bientôt', en: 'The Lab is coming soon', ar: 'المختبر قادم قريبًا' },
+  'lab.soonMsg': {
+    fr: "Le serveur n'expose pas encore le Labo du Maître (mise à jour du worker en cours de déploiement). Rien de cassé : réessaie dans quelques minutes.",
+    en: 'The server does not expose the Master Lab yet (worker update being deployed). Nothing is broken: try again in a few minutes.',
+    ar: 'الخادم لا يوفّر مختبر المدير بعد (تحديث الخادم قيد النشر). لا شيء معطّل: أعد المحاولة بعد دقائق.',
+  },
+  'lab.errorTitle': { fr: 'Impossible de charger le labo', en: 'Could not load the lab', ar: 'تعذّر تحميل المختبر' },
+  'lab.errorAdd': { fr: "Impossible d'ajouter la source.", en: 'Could not add the source.', ar: 'تعذّرت إضافة المصدر.' },
+  'lab.errorDelete': { fr: 'Impossible de supprimer la source.', en: 'Could not delete the source.', ar: 'تعذّر حذف المصدر.' },
+  'lab.retry': { fr: '↻ Réessayer', en: '↻ Retry', ar: '↻ إعادة المحاولة' },
 
   // --- Mon compte ---
   'account.identifier': { fr: 'Identifiant', en: 'Username', ar: 'المعرّف' },

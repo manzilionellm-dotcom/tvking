@@ -36,6 +36,7 @@ import { FamiliesPage } from '@/pages/FamiliesPage';
 import { RadarPage } from '@/pages/RadarPage';
 import { GatewayPage } from '@/pages/GatewayPage';
 import { CreditsPage } from '@/pages/CreditsPage';
+import { LabPage } from '@/pages/LabPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -162,6 +163,15 @@ export default function App() {
       <Route path="/radar" element={<RadarPage onLogout={handleLogout} />} />
       <Route path="/gateway" element={<GatewayPage onLogout={handleLogout} />} />
       <Route path="/credits" element={<CreditsPage onLogout={handleLogout} />} />
+      {/* Labo du Maître : espace de test PRIVÉ, ADMIN UNIQUEMENT — un
+          revendeur qui tape l'URL à la main est renvoyé à l'accueil
+          (l'API refuse de toute façon côté serveur). */}
+      <Route
+        path="/lab"
+        element={owner
+          ? <LabPage onLogout={handleLogout} />
+          : <Navigate to="/" replace />}
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

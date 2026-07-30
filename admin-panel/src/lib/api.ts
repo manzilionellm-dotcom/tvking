@@ -304,6 +304,38 @@ export const backupApi = {
   get: () => request<BackupDump>('/api/v1/backup'),
 };
 
+// =========================================================
+//  LABO DU MAÎTRE (admin uniquement — espace de test PRIVÉ)
+// =========================================================
+//  Sources M3U/Xtream de test poussées UNIQUEMENT sur les appareils
+//  maîtres du patron : invisibles des revendeurs et des clients,
+//  exclues des statistiques. L'URL est déjà MASQUÉE côté serveur
+//  (jamais de flux complet renvoyé au navigateur).
+//  ⚠️ Endpoint déployé en parallèle : le panel doit tolérer un 404
+//  (→ carte « Le Labo arrive bientôt », même pattern qu'OverviewPage).
+export interface LabSource {
+  id: string;
+  name?: string | null;
+  url?: string | null;                       // masquée côté serveur
+  created_at?: number | string | null;
+  attached_masters?: number;                 // nb d'appareils maîtres servis
+}
+export const labApi = {
+  list: () => request<{ sources?: LabSource[] }>('/api/v1/lab/sources'),
+  // Crée la source ET l'attache automatiquement aux appareils maîtres.
+  create: (name: string, url: string) =>
+    request<{ ok?: boolean; source?: LabSource; attached_masters?: number }>(
+      '/api/v1/lab/sources',
+      { method: 'POST', body: { name, url } },
+    ),
+  // Supprime la source (le serveur la retire aussi des appareils maîtres).
+  remove: (id: string) =>
+    request<{ ok?: boolean }>(
+      `/api/v1/lab/sources/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    ),
+};
+
 export interface App {
   id: string;
   name: string;
