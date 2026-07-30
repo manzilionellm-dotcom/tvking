@@ -321,7 +321,10 @@ export interface LabSource {
   attached_masters?: number;                 // nb d'appareils maîtres servis
 }
 export const labApi = {
-  list: () => request<{ sources?: LabSource[] }>('/api/v1/lab/sources'),
+  // `items` = nom historique de la clé côté worker, toujours accepté :
+  // sans lui, un worker antérieur au panel donne un 200 que la page lit
+  // comme « endpoint absent » (carte « Le Labo arrive bientôt »).
+  list: () => request<{ sources?: LabSource[]; items?: LabSource[] }>('/api/v1/lab/sources'),
   // Crée la source ET l'attache automatiquement aux appareils maîtres.
   create: (name: string, url: string) =>
     request<{ ok?: boolean; source?: LabSource; attached_masters?: number }>(

@@ -155,6 +155,13 @@ ok(r.status === 200 && b.items.length === 1 && b.items[0].id === labId, '3 GET �
 ok(b.items[0].attached_masters === 2, '3 attached_masters présent par item');
 ok(!JSON.stringify(b).includes('supersecret'), '3 mot de passe JAMAIS en clair dans la liste');
 ok(/\*\*\*/.test(b.items[0].url), '3 caviardage visible (***) dans l’URL');
+// CONTRAT DU PANEL : LabPage.tsx fait `Array.isArray(r.sources)` et bascule
+// sur la carte « Le Labo arrive bientôt » dès que la clé manque — un 200
+// sans `sources` a exactement l'apparence d'un endpoint non déployé.
+ok(Array.isArray(b.sources) && b.sources.length === 1 && b.sources[0].id === labId,
+  '3 clé `sources` servie au panel (contrat LabPage.tsx)');
+ok(JSON.stringify(b.sources) === JSON.stringify(b.items),
+  '3 `sources` et `items` portent exactement la même liste');
 
 // 4) ÉTANCHÉITÉ PANEL : la liste NORMALE des sources d'une MAC
 //    (GET /api/v1/sources/:mac, celle que voient admin ET revendeurs)

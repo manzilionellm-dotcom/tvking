@@ -3597,7 +3597,13 @@ async function handleLabSourcesList(env) {
     // moment) → le compteur est le même pour chaque source.
     attached_masters: attached,
   }));
-  return jsonResp({ items, attached_masters: attached });
+  // Le panel (LabPage.tsx) exige `sources` : toute réponse sans ce tableau
+  // est traitée comme « endpoint absent » → carte « Le Labo arrive bientôt »
+  // alors que le Worker répond bel et bien 200. On sert donc les DEUX clés :
+  //  • `sources` = contrat documenté en tête de LabPage.tsx (le panel) ;
+  //  • `items`   = nom historique, gardé pour ne rien casser (smoke tests,
+  //    anciens builds du panel encore en cache navigateur).
+  return jsonResp({ sources: items, items, attached_masters: attached });
 }
 
 /// POST /api/v1/lab/sources {name, url} — crée la source de test et

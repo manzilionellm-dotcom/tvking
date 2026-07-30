@@ -77,7 +77,11 @@ export function LabPage({ onLogout }: { onLogout: () => void }) {
         if (seq !== seqRef.current) return;
         // Défense : réponse non conforme (proxy, HTML d'erreur…) →
         // « bientôt » plutôt qu'un crash de rendu.
-        const sources = Array.isArray(r?.sources) ? r.sources : null;
+        // `items` est le nom historique servi par le worker : on l'accepte
+        // aussi, sinon un worker plus ancien que le panel affiche « bientôt »
+        // sur un endpoint qui répond pourtant 200 avec la liste.
+        const sources = Array.isArray(r?.sources) ? r.sources
+          : (Array.isArray(r?.items) ? r.items : null);
         if (!sources) setState({ kind: 'unavailable' });
         else setState({ kind: 'ready', sources });
       })
