@@ -35,8 +35,14 @@ app/
   search/  list/  reglages/   Recherche, Ma liste, Réglages
   components/                 Sidebar, Hero, Row, MediaCard, Badge, Player…
   lib/data.ts                 Modèle de contenu (mock) + lookups
+server/edge/                  Proxy de bord : déduplication de flux + cache local
 docs/RESEARCH-TV-UX.md        Recherche sourcée (le référentiel de conception)
 ```
+
+Le proxy de bord (`server/edge/`) est un service Node autonome : une seule
+connexion montante vers l'origine quel que soit le nombre de lecteurs, cache
+circulaire en mémoire, diffusion locale sans copie, et suppression de toute
+métadonnée client avant la sortie WAN. Voir [`server/edge/README.md`](server/edge/README.md).
 
 ## Démarrer
 
@@ -45,6 +51,8 @@ npm install
 npm run dev      # http://localhost:3000
 npm run build    # build de production
 npm run lint
+npm test         # suite vitest (app + proxy de bord)
+npm run edge     # proxy de bord (voir server/edge/README.md pour la config)
 ```
 
 > Navigation : flèches (D-pad) pour déplacer le focus, Entrée/Espace pour activer.

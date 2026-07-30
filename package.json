@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "edge": "node server/edge/main.ts",
     "typecheck": "tsc --noEmit",
     "qa": "bash scripts/qa-gates.sh"
   },
