@@ -669,6 +669,17 @@ async function apiV1Inner(request, env) {
     return handleInsights(env);
   }
 
+  // /insights/overview — AGRÉGATS du parc (Vague C21) : actifs 24h/7j,
+  // nouveaux, silencieux, échéances, versions d'app en circulation,
+  // erreurs 7j. Complète /insights (listes) avec des COMPTEURS pour le
+  // tableau de bord. Admin uniquement : un revendeur ne voit jamais le
+  // parc global (même règle que /error-logs).
+  if (parts[0] === 'insights' && parts[1] === 'overview'
+      && parts.length === 2 && request.method === 'GET') {
+    if (isReseller) return errResp('forbidden', 'Admin only', 403);
+    return handleInsightsOverview(env);
+  }
+
   // /backup — export JSON de toute la base (filet de sécurité). Owner only.
   if (parts[0] === 'backup' && parts.length === 1) {
     if (a.user.role !== 'super_admin') {
@@ -1590,6 +1601,188 @@ async function handleInsights(env) {
     new_today: newToday,
     totals,
   });
+}
+
+// =========================================================
+//  INSIGHTS / OVERVIEW — agrégats du parc (Vague C21)
+// =========================================================
+//  GET /api/v1/insights/overview (admin) — nourrit le futur tableau de
+//  bord « Ce qui s'est passé » (C22). STRICTEMENT en lecture : aucun
+//  DDL, aucun UPDATE — ce handler ne doit JAMAIS écrire (le worker sert
+//  des clients en production ; on n'ajoute pas d'index ici, on se
+//  contente de ceux déjà posés par ensureScaleSchema côté worker.js :
+//  idx_devices_lastseen et idx_error_logs_created).
+//
+//  Adaptations au schéma RÉEL (le contrat demandé parlait de tables
+//  heartbeats/subscriptions qui n'existent pas telles quelles) :
+//    - « heartbeats »     → colonnes devices.last_seen_at / first_seen_at
+//                           (le heartbeat met à jour la ligne du device,
+//                           il n'y a pas de table d'évènements) ;
+//    - « paid_until »     → licenses.expires_at (NULL = à vie, donc
+//                           jamais dans la fenêtre « expire sous 7 j ») ;
+//    - version d'app      → devices.app_version (TEXT, remplie par le
+//                           heartbeat ; colonne ajoutée à la volée par
+//                           ensureScaleSchema — si elle manque encore
+//                           sur une base, le bloc `versions` est OMIS).
+
+// Caviarde tout ce qui ressemble à un secret dans un message d'erreur
+// AVANT de le renvoyer au panel : les apps loggent parfois des URLs de
+// flux Xtream complètes (user:pass@host, ?username=..&password=..).
+// Règle AGENTS.md n°2 : aucun identifiant IPTV ne doit fuiter, même
+// dans un écran réservé à l'admin (captures d'écran, support…).
+function redactSecrets(s) {
+  return String(s)
+    // http://user:motdepasse@host → http://***@host
+    .replace(/:\/\/[^/\s@]+@/g, '://***@')
+    // password=xxx, token: "xxx", api_key=xxx… (query string, JSON, logs)
+    .replace(
+      /\b(password|passwd|pwd|pass|token|secret|api[_-]?key|authorization|username|user)\b(\s*[=:]\s*)("[^"]*"|'[^']*'|[^&\s,;"']+)/gi,
+      '$1$2***',
+    )
+    // Jetons « Bearer eyJ… » recopiés dans un log d'erreur HTTP.
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer ***');
+}
+
+// Cache mémoire PAR ISOLATE, 60 s (même pattern que _trendingCache dans
+// worker.js). Les agrégats n'ont pas besoin d'être à la seconde près, et
+// un panel qui rafraîchit en boucle ne doit pas marteler D1 de GROUP BY.
+let _insightsOverviewCache = { at: 0, body: null };
+const INSIGHTS_OVERVIEW_CACHE_MS = 60 * 1000;
+
+async function handleInsightsOverview(env) {
+  const now = Date.now();
+  if (_insightsOverviewCache.body
+      && (now - _insightsOverviewCache.at) < INSIGHTS_OVERVIEW_CACHE_MS) {
+    return jsonResp(_insightsOverviewCache.body);
+  }
+  const DAY = 24 * 60 * 60 * 1000;
+
+  // Fail-open PAR BLOC (même filet que handleInsights) : une table ou une
+  // colonne absente sur une base pas encore migrée ne casse pas le reste.
+  const safe = (promise, fallback) => promise.catch(() => fallback);
+
+  // Toutes les requêtes sont indépendantes → EN PARALLÈLE (une seule
+  // latence D1 au lieu de dix en série ; objectif < 100 ms). Chaque
+  // requête est soit un COUNT/GROUP BY borné par la taille de `devices`
+  // (une ligne PAR APPAREIL, pas une table d'évènements), soit filtrée
+  // par un index (last_seen_at, error_logs.created_at) + LIMIT.
+  const [
+    totalR, active24R, active7R, new7R, silentR, expiringR,
+    versionsR, errCountR, errTopR,
+  ] = await Promise.all([
+    safe(env.DB.prepare('SELECT COUNT(*) AS n FROM devices').first(), null),
+    // Actifs = au moins un heartbeat dans la fenêtre (idx_devices_lastseen).
+    safe(
+      env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE last_seen_at > ?')
+        .bind(now - DAY).first(),
+      null,
+    ),
+    safe(
+      env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE last_seen_at > ?')
+        .bind(now - 7 * DAY).first(),
+      null,
+    ),
+    // Nouveaux : premier contact < 7 jours. Pas d'index sur first_seen_at,
+    // mais on n'en CRÉE pas ici (lecture seule) : un COUNT sur `devices`
+    // reste borné par le nombre d'appareils, pas par leur activité.
+    safe(
+      env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE first_seen_at > ?')
+        .bind(now - 7 * DAY).first(),
+      null,
+    ),
+    // Silencieux : plus aucun signe de vie depuis 7 jours. « Les plus
+    // récents d'abord » = ceux qui viennent de décrocher, les premiers à
+    // relancer. Borné à 50 (le panel n'affiche pas plus).
+    safe(
+      env.DB.prepare(
+        `SELECT mac, last_seen_at FROM devices
+         WHERE last_seen_at < ? ORDER BY last_seen_at DESC LIMIT 50`,
+      ).bind(now - 7 * DAY).all(),
+      { results: [] },
+    ),
+    // Échéances sous 7 jours. GROUP BY d.mac : un appareil peut porter
+    // plusieurs licences (cf. handleInsights) — on garde la plus proche.
+    // `paid_until` du contrat = licenses.expires_at dans notre schéma
+    // (il n'y a pas de table `subscriptions`). NULL = à vie → exclu
+    // d'office par la fenêtre bornée.
+    safe(
+      env.DB.prepare(
+        `SELECT d.mac AS mac, MIN(l.expires_at) AS paid_until
+         FROM licenses l
+         JOIN devices d ON d.id = l.device_id
+         WHERE l.status = 'active' AND l.expires_at IS NOT NULL
+           AND l.expires_at > ? AND l.expires_at <= ?
+         GROUP BY d.mac
+         ORDER BY paid_until ASC LIMIT 50`,
+      ).bind(now, now + 7 * DAY).all(),
+      { results: [] },
+    ),
+    // Versions d'app en circulation (devices.app_version, remplie par le
+    // heartbeat). Si la colonne n'existe pas encore sur cette base, la
+    // requête échoue → fallback null → le champ `versions` est OMIS de
+    // la réponse (le panel est défensif).
+    safe(
+      env.DB.prepare(
+        `SELECT app_version AS version, COUNT(*) AS n FROM devices
+         WHERE app_version IS NOT NULL AND app_version != ''
+         GROUP BY app_version ORDER BY n DESC LIMIT 20`,
+      ).all(),
+      null,
+    ),
+    // Erreurs des 7 derniers jours (idx_error_logs_created).
+    safe(
+      env.DB.prepare('SELECT COUNT(*) AS n FROM error_logs WHERE created_at > ?')
+        .bind(now - 7 * DAY).first(),
+      null,
+    ),
+    // Top messages : GROUP BY sur la fenêtre 7 j uniquement (bornée par
+    // l'index created_at), jamais sur toute la table.
+    safe(
+      env.DB.prepare(
+        `SELECT message, COUNT(*) AS n FROM error_logs
+         WHERE created_at > ? GROUP BY message ORDER BY n DESC LIMIT 10`,
+      ).bind(now - 7 * DAY).all(),
+      { results: [] },
+    ),
+  ]);
+
+  const cnt = (r) => (r && Number(r.n)) || 0;
+  const body = {
+    generated_at: now,
+    devices: {
+      total: cnt(totalR),
+      active_24h: cnt(active24R),
+      active_7d: cnt(active7R),
+      new_7d: cnt(new7R),
+      silent_7d: (silentR.results || []).map((r) => ({
+        mac: r.mac,
+        last_seen: r.last_seen_at, // nom du contrat panel (≠ nom colonne)
+      })),
+      expiring_7d: (expiringR.results || []).map((r) => ({
+        mac: r.mac,
+        paid_until: r.paid_until,
+      })),
+    },
+    errors_7d: {
+      count: cnt(errCountR),
+      top: (errTopR.results || []).map((r) => ({
+        // Caviarder AVANT de tronquer : un secret coupé à la frontière
+        // des 120 caractères resterait sinon partiellement lisible.
+        message: redactSecrets(r.message || '').slice(0, 120),
+        count: Number(r.n) || 0,
+      })),
+    },
+  };
+  // `versions` seulement si la colonne app_version est disponible.
+  if (versionsR) {
+    body.versions = (versionsR.results || []).map((r) => ({
+      version: r.version,
+      count: Number(r.n) || 0,
+    }));
+  }
+
+  _insightsOverviewCache = { at: now, body };
+  return jsonResp(body);
 }
 
 // =========================================================
