@@ -162,6 +162,26 @@ const STR: Record<string, Record<Lang, string>> = {
   'lab.errorDelete': { fr: 'Impossible de supprimer la source.', en: 'Could not delete the source.', ar: 'تعذّر حذف المصدر.' },
   'lab.retry': { fr: '↻ Réessayer', en: '↻ Retry', ar: '↻ إعادة المحاولة' },
 
+  // --- Tableau de bord : bandeau d'alertes proactives (Vague C25) ---
+  // Le {n} est interpolé côté page (le t() ne gère pas les variables).
+  'overview.alertsTitle': { fr: 'Alertes', en: 'Alerts', ar: 'التنبيهات' },
+  'overview.alertExpiring': {
+    fr: '⏰ {n} abonnement(s) expirent cette semaine',
+    en: '⏰ {n} subscription(s) expiring this week',
+    ar: '⏰ {n} اشتراك ينتهي هذا الأسبوع',
+  },
+  'overview.alertSilent': {
+    fr: '🔇 {n} box(es) silencieuse(s) depuis 7 jours',
+    en: '🔇 {n} box(es) silent for 7 days',
+    ar: '🔇 {n} جهاز صامت منذ 7 أيام',
+  },
+  'overview.alertErrors': {
+    fr: "⚠️ Pic d'erreurs — {n} sur 7 j",
+    en: '⚠️ Error spike — {n} over 7 days',
+    ar: '⚠️ ارتفاع في الأخطاء — {n} خلال 7 أيام',
+  },
+  'overview.alertAction': { fr: 'Voir', en: 'View', ar: 'عرض' },
+
   // --- Mon compte ---
   'account.identifier': { fr: 'Identifiant', en: 'Username', ar: 'المعرّف' },
   'account.role': { fr: 'Rôle', en: 'Role', ar: 'الدور' },

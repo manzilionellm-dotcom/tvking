@@ -28,9 +28,24 @@ import {
   type InsightsOverview, type OverviewSilentDevice, type OverviewExpiringDevice,
 } from '@/lib/api';
 import { formatDateTime, toMillis, cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 /// Nombre de lignes montrées avant de replier une liste d'alerte.
 const LIST_FOLD = 5;
+
+/// Seuil du « pic d'erreurs » : au-delà de ce nombre d'erreurs remontées
+/// sur 7 jours, le bandeau d'alertes signale une anomalie. En-dessous,
+/// c'est du bruit de fond normal → on ne dit rien.
+const ERROR_SPIKE_THRESHOLD = 50;
+
+/// Interpolation minimaliste : remplace {n} dans une clé i18n (le t() du
+/// panel ne gère pas les variables — même approche que LabPage).
+function fmt(s: string, vars: Record<string, string | number>): string {
+  return Object.entries(vars).reduce(
+    (acc, [k, v]) => acc.split(`{${k}}`).join(String(v)),
+    s,
+  );
+}
 
 /// Affiche un compteur, ou « — » si le worker n'a pas (encore) le champ.
 function num(v: number | undefined): string {
@@ -61,11 +76,21 @@ type LoadState =
   | { kind: 'error'; message: string };
 
 export function OverviewPage({ onLogout }: { onLogout: () => void }) {
+  const t = useT();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
   // Numéro de requête : une réponse périmée ne doit jamais setState
   // (même garde-fou que le reste du panel).
   const seqRef = useRef(0);
+
+  // Ancres pour le bandeau d'alertes : cliquer une alerte fait défiler
+  // jusqu'à la carte détaillée correspondante (plutôt que de dupliquer
+  // les listes ici).
+  const attentionRef = useRef<HTMLDivElement>(null);
+  const healthRef = useRef<HTMLDivElement>(null);
+  const scrollToCard = (ref: React.RefObject<HTMLDivElement>) => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   const load = useCallback((isRefresh = false) => {
     const seq = ++seqRef.current;
@@ -116,6 +141,17 @@ export function OverviewPage({ onLogout }: { onLogout: () => void }) {
   const hasAttention = !!dev && (dev.silent_7d !== undefined || dev.expiring_7d !== undefined);
   const hasHealth = data?.errors_7d !== undefined && data?.errors_7d !== null;
   const versions = Array.isArray(data?.versions) ? data!.versions! : null;
+
+  // ----- Bandeau d'alertes proactives (Vague C25) -----------------------
+  // Comptes 100 % défensifs : champ absent / non-tableau → 0 → pas d'alerte.
+  const expiringCount = Array.isArray(dev?.expiring_7d) ? dev!.expiring_7d!.length : 0;
+  const silentCount = Array.isArray(dev?.silent_7d) ? dev!.silent_7d!.length : 0;
+  const errorsCount = typeof data?.errors_7d?.count === 'number'
+    && Number.isFinite(data.errors_7d.count)
+    ? data.errors_7d.count
+    : 0;
+  // Une erreur ne devient une alerte que si elle dépasse le seuil de « pic ».
+  const errorSpike = errorsCount > ERROR_SPIKE_THRESHOLD;
 
   return (
     <AppLayout
@@ -171,6 +207,20 @@ export function OverviewPage({ onLogout }: { onLogout: () => void }) {
 
       {data && (
         <>
+          {/* ===== Bandeau d'alertes proactives — TOUT EN HAUT =====
+              N'apparaît QUE s'il y a du concret à traiter. Sinon, accueil
+              propre (aucun bandeau). */}
+          <AlertsBanner
+            t={t}
+            expiringCount={expiringCount}
+            silentCount={silentCount}
+            errorsCount={errorsCount}
+            errorSpike={errorSpike}
+            onExpiring={() => scrollToCard(attentionRef)}
+            onSilent={() => scrollToCard(attentionRef)}
+            onErrors={() => scrollToCard(healthRef)}
+          />
+
           {/* ===== Cartes chiffres — le pouls du parc ===== */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard label="Appareils totaux" value={num(dev?.total)} />
@@ -181,31 +231,37 @@ export function OverviewPage({ onLogout }: { onLogout: () => void }) {
 
           {/* ===== Cartes détaillées ===== */}
           <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
-            {/* ⚠️ Attention : les 2 alertes proactives demandées. */}
+            {/* ⚠️ Attention : les 2 alertes proactives demandées.
+                Ancre (attentionRef) : cible du défilement depuis le bandeau. */}
             {hasAttention && (
-              <SectionCard
-                title="⚠️ Attention"
-                badge={(dev?.silent_7d?.length ?? 0) + (dev?.expiring_7d?.length ?? 0)}
-                badgeTone="warning"
-              >
-                {dev?.silent_7d !== undefined && (
-                  <SilentList items={dev.silent_7d ?? []} />
-                )}
-                {dev?.expiring_7d !== undefined && (
-                  <ExpiringList items={dev.expiring_7d ?? []} />
-                )}
-              </SectionCard>
+              <div ref={attentionRef}>
+                <SectionCard
+                  title="⚠️ Attention"
+                  badge={(dev?.silent_7d?.length ?? 0) + (dev?.expiring_7d?.length ?? 0)}
+                  badgeTone="warning"
+                >
+                  {dev?.silent_7d !== undefined && (
+                    <SilentList items={dev.silent_7d ?? []} />
+                  )}
+                  {dev?.expiring_7d !== undefined && (
+                    <ExpiringList items={dev.expiring_7d ?? []} />
+                  )}
+                </SectionCard>
+              </div>
             )}
 
-            {/* Santé : erreurs remontées par les apps sur 7 jours. */}
+            {/* Santé : erreurs remontées par les apps sur 7 jours.
+                Ancre (healthRef) : cible du défilement « pic d'erreurs ». */}
             {hasHealth && (
-              <SectionCard
-                title="Santé"
-                badge={data.errors_7d?.count ?? 0}
-                badgeTone={(data.errors_7d?.count ?? 0) > 0 ? 'error' : 'success'}
-              >
-                <ErrorsBlock errors={data.errors_7d!} />
-              </SectionCard>
+              <div ref={healthRef}>
+                <SectionCard
+                  title="Santé"
+                  badge={data.errors_7d?.count ?? 0}
+                  badgeTone={(data.errors_7d?.count ?? 0) > 0 ? 'error' : 'success'}
+                >
+                  <ErrorsBlock errors={data.errors_7d!} />
+                </SectionCard>
+              </div>
             )}
 
             {/* Versions : répartition du parc par version d'app. */}
@@ -227,6 +283,98 @@ export function OverviewPage({ onLogout }: { onLogout: () => void }) {
         </>
       )}
     </AppLayout>
+  );
+}
+
+// =========================================================
+//  Bandeau d'alertes proactives (Vague C25)
+// =========================================================
+//  Affiché TOUT EN HAUT du tableau de bord, AVANT les cartes chiffres.
+//  Il ne montre QUE ce qui est actionnable :
+//    • ⏰ abonnements qui expirent cette semaine ;
+//    • 🔇 boxes silencieuses depuis 7 jours ;
+//    • ⚠️ pic d'erreurs (au-delà du seuil ERROR_SPIKE_THRESHOLD).
+//  Si aucune alerte → le composant ne rend RIEN (accueil propre).
+//  Chaque ligne = icône (dans le libellé) + compteur + action « Voir »
+//  qui fait défiler jusqu'à la carte détaillée concernée.
+// =========================================================
+function AlertsBanner({
+  t, expiringCount, silentCount, errorsCount, errorSpike,
+  onExpiring, onSilent, onErrors,
+}: {
+  t: (k: string) => string;
+  expiringCount: number;
+  silentCount: number;
+  errorsCount: number;
+  errorSpike: boolean;
+  onExpiring: () => void;
+  onSilent: () => void;
+  onErrors: () => void;
+}) {
+  // On assemble la liste des alertes réellement actionnables.
+  // tone : 'warning' (ambre) pour l'informatif urgent, 'danger' (braise)
+  // pour l'anomalie technique (pic d'erreurs).
+  const alerts: {
+    key: string; label: string; tone: 'warning' | 'danger'; onClick: () => void;
+  }[] = [];
+
+  if (expiringCount > 0) {
+    alerts.push({
+      key: 'expiring',
+      label: fmt(t('overview.alertExpiring'), { n: expiringCount }),
+      tone: 'warning',
+      onClick: onExpiring,
+    });
+  }
+  if (silentCount > 0) {
+    alerts.push({
+      key: 'silent',
+      label: fmt(t('overview.alertSilent'), { n: silentCount }),
+      tone: 'warning',
+      onClick: onSilent,
+    });
+  }
+  if (errorSpike) {
+    alerts.push({
+      key: 'errors',
+      label: fmt(t('overview.alertErrors'), { n: errorsCount }),
+      tone: 'danger',
+      onClick: onErrors,
+    });
+  }
+
+  // Rien d'actionnable → aucun bandeau (exigence : accueil propre).
+  if (alerts.length === 0) return null;
+
+  return (
+    <div className="mb-6 rounded-xl border border-warning/25 bg-warning/[0.06] px-4 py-3">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-warning">
+        {t('overview.alertsTitle')}
+      </p>
+      <div className="flex flex-col gap-2">
+        {alerts.map((a) => {
+          const toneCls = a.tone === 'danger'
+            ? 'border-accent/30 bg-accent/10 text-accent-bright hover:border-accent/50'
+            : 'border-warning/25 bg-warning/10 text-warning hover:border-warning/45';
+          return (
+            <button
+              key={a.key}
+              type="button"
+              onClick={a.onClick}
+              className={cn(
+                'flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-xs font-semibold transition',
+                toneCls,
+              )}
+            >
+              <span className="min-w-0 flex-1">{a.label}</span>
+              <span className="shrink-0 text-[11px] font-medium opacity-80">
+                {t('overview.alertAction')} →
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
