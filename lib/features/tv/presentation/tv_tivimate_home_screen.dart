@@ -27,6 +27,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/data/category_order_store.dart';
+import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/presentation/widgets/mini_epg_now_next.dart';
@@ -35,6 +36,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_memory_guard.dart';
+import 'tv_components.dart';
 import 'widgets/tv_category_reorder.dart';
 import 'tv_films_screen.dart';
 import 'tv_home_template_screen.dart';
@@ -101,6 +103,25 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   /// suivant (même garde que le Lanceur).
   bool _previewLive = true;
 
+  /// RETOUR INTELLIGENT (parité Lanceur/Rails) : chaîne dont la LIGNE doit
+  /// reprendre le focus au retour du lecteur — la chaîne réellement
+  /// regardée en dernier (le zapping haut/bas du lecteur a pu changer de
+  /// chaîne), sinon celle qu'on avait ouverte. Sans ça, les lignes étant
+  /// recréées par le builder, le focus repartait sur la 1re chaîne
+  /// (« BACK repart en haut »).
+  String? _restoreFocusId;
+
+  /// Défilement de la LISTE des chaînes : sert à ramener la ligne quittée
+  /// dans la vue au retour du lecteur (si elle a défilé hors écran, son
+  /// widget n'existe plus → rien ne pourrait reprendre le focus).
+  final ScrollController _listScroll = ScrollController();
+
+  /// Hauteur d'UNE ligne de chaîne — doit rester alignée sur le
+  /// prototypeItem de la liste : logo 44 + padding vertical 8×2 +
+  /// marge verticale 3×2. Sert au jumpTo approché (patron _scrollToId du
+  /// rail de favoris du template Rails).
+  static const double _kRowExtent = 66;
+
   @override
   void initState() {
     super.initState();
@@ -125,6 +146,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     _favSub?.cancel();
     CategoryOrderStore.instance.removeListener(_onCatOrderChanged);
     _preview.dispose();
+    _listScroll.dispose();
     super.dispose();
   }
 
@@ -349,6 +371,28 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       _group = group;
       _visible = _channelsFor(group);
       _preview.value = _visible.isNotEmpty ? _visible.first : null;
+      // Changement de groupe = nouvelle liste : un drapeau de restauration
+      // qui pointerait une chaîne absente resterait armé pour rien.
+      _restoreFocusId = null;
+    });
+  }
+
+  /// Amène la ligne de [id] dans la vue (si besoin) pour qu'elle se
+  /// construise et puisse reprendre le focus au retour du lecteur (patron
+  /// _scrollToId du rail de favoris du template Rails).
+  void _scrollToId(String id) {
+    final int idx = _visible.indexWhere((Channel c) => c.id == id);
+    if (idx < 0) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_listScroll.hasClients) return;
+      final double target = (idx * _kRowExtent)
+          .clamp(0.0, _listScroll.position.maxScrollExtent);
+      final double top = _listScroll.offset;
+      final double bottom = top + _listScroll.position.viewportDimension;
+      final double rowTop = idx * _kRowExtent;
+      if (rowTop < top || rowTop + _kRowExtent > bottom) {
+        _listScroll.jumpTo(target);
+      }
     });
   }
 
@@ -360,7 +404,8 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   }
 
   Future<void> _play(int index) async {
-    if (_visible.isEmpty) return;
+    if (_visible.isEmpty || index < 0 || index >= _visible.length) return;
+    final String openedId = _visible[index].id;
     await _suspendPreview();
     if (!mounted) return;
     await Navigator.of(context).push(
@@ -368,7 +413,26 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
         builder: (_) => TvPlayerScreen(channels: _visible, startIndex: index),
       ),
     );
-    if (mounted) setState(() => _previewLive = true);
+    if (!mounted) return;
+    // RETOUR INTELLIGENT : on re-focuse la chaîne RÉELLEMENT regardée en
+    // dernier — le zapping haut/bas du lecteur a pu changer de chaîne
+    // (l'historique est alimenté par le lecteur à chaque zap). Repli sur
+    // la chaîne ouverte si l'historique ne recoupe pas la liste visible.
+    String target = openedId;
+    for (final String id in RecentlyWatchedRepository.instance.current) {
+      if (_visible.any((Channel c) => c.id == id)) {
+        target = id;
+        break;
+      }
+    }
+    setState(() {
+      _previewLive = true;
+      _restoreFocusId = target;
+      // L'aperçu suit aussi la chaîne quittée : cohérent avec le focus.
+      final int ti = _visible.indexWhere((Channel c) => c.id == target);
+      if (ti >= 0) _preview.value = _visible[ti];
+    });
+    _scrollToId(target);
   }
 
   Future<void> _open(Widget screen) async {
@@ -507,6 +571,18 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          // Logo SEVEN + horloge — parité avec les 3 autres templates (D
+          // était le seul accueil sans marque ni heure, audit 2026-07).
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 2, 8, 12),
+            child: Row(
+              children: <Widget>[
+                const TvLogo(width: 76),
+                const Spacer(),
+                const _TmClock(),
+              ],
+            ),
+          ),
           // RECHERCHE INTELLIGENTE — gros bouton en HAUT, bien visible
           // (personnes âgées / fatiguées). Ouvre la recherche globale.
           // Passe par _open : l'aperçu vidéo est suspendu avant le push
@@ -605,10 +681,12 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
         ),
         Expanded(
           child: ListView.builder(
+            controller: _listScroll,
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
             // Rangées à hauteur constante (logo 44 + paddings, nom sur 1
             // ligne) : le prototype fige l'extent → scroll D-pad sans
             // re-mesure, position exacte même sur le bouquet entier.
+            // ⚠️ Hauteur totale = _kRowExtent (66) — garder aligné.
             prototypeItem: _ChannelRow(
               number: 8888,
               channel: _visible.first,
@@ -645,7 +723,12 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                     channel: c,
                     active: active,
                     favorite: _favIds.contains(c.id),
-                    autofocus: i == 0,
+                    // L'autofocus d'entrée (1re ligne) se DÉSARME tant
+                    // qu'une restauration est due — sinon il volait le
+                    // focus à la ligne quittée (« BACK repart en haut »).
+                    autofocus: i == 0 && _restoreFocusId == null,
+                    restoreFocus: c.id == _restoreFocusId,
+                    onRestored: () => _restoreFocusId = null,
                     onSelect: () => _play(i),
                     // Appui long OK = toggle favori (parité avec les autres
                     // écrans — même geste que tv_channels_screen).
@@ -724,6 +807,43 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
 // =========================================================
 //  Sous-widgets
 // =========================================================
+
+/// Horloge 24 h — widget FEUILLE autonome (patron _Clock du template
+/// Rails) : son tic (20 s) ne reconstruit que ce Text, jamais l'écran.
+class _TmClock extends StatefulWidget {
+  const _TmClock();
+
+  @override
+  State<_TmClock> createState() => _TmClockState();
+}
+
+class _TmClockState extends State<_TmClock> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final DateTime now = DateTime.now();
+    final String hh = now.hour.toString().padLeft(2, '0');
+    final String mm = now.minute.toString().padLeft(2, '0');
+    return Text('$hh:$mm',
+        style: const TextStyle(
+            color: _tmText2, fontSize: 18, fontWeight: FontWeight.w600));
+  }
+}
 
 /// Icône du rail gauche. `active` = onglet courant (fond bleu accent).
 class _RailIcon extends StatelessWidget {
@@ -981,7 +1101,10 @@ class _ActiveWatcherState extends State<_ActiveWatcher> {
 
 /// Ligne de chaîne : [n°] [logo] [nom] [★ si favorite] [► si active].
 /// Focus = pill blanc. Appui long = toggle favori (comme partout).
-class _ChannelRow extends StatelessWidget {
+/// FocusNode PROPRE (patron _PlayFocusCard du Lanceur) : nécessaire pour
+/// que la ligne de la chaîne quittée REPRENNE le focus au retour du
+/// lecteur (retour intelligent) — impossible sans node possédé.
+class _ChannelRow extends StatefulWidget {
   const _ChannelRow({
     required this.number,
     required this.channel,
@@ -990,6 +1113,8 @@ class _ChannelRow extends StatelessWidget {
     required this.autofocus,
     required this.onSelect,
     this.onLongPress,
+    this.restoreFocus = false,
+    this.onRestored,
   });
   final int number;
   final Channel channel;
@@ -999,14 +1124,44 @@ class _ChannelRow extends StatelessWidget {
   final VoidCallback onSelect;
   final VoidCallback? onLongPress;
 
+  /// `true` = cette ligne est la chaîne quittée → elle reprend le focus
+  /// en post-frame puis libère le drapeau via [onRestored].
+  final bool restoreFocus;
+  final VoidCallback? onRestored;
+
+  @override
+  State<_ChannelRow> createState() => _ChannelRowState();
+}
+
+class _ChannelRowState extends State<_ChannelRow> {
+  final FocusNode _node = FocusNode(debugLabel: 'tm-channel-row');
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // RESTAURATION au retour du lecteur : déterministe (post-frame), puis
+    // libération du drapeau — survit à l'autofocus de la 1re ligne
+    // (désarmé tant qu'une restauration est due).
+    if (widget.restoreFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.restoreFocus) return;
+        _node.requestFocus();
+        widget.onRestored?.call();
+      });
+    }
     return TvFocusBuilder(
-      autofocus: autofocus,
+      focusNode: _node,
+      autofocus: widget.autofocus,
       scale: TvFocusScale.small,
-      onSelect: onSelect,
-      onLongPress: onLongPress,
+      onSelect: widget.onSelect,
+      onLongPress: widget.onLongPress,
       builder: (BuildContext context, bool focused) {
+        final bool active = widget.active;
         final Color bg = focused
             ? _tmText
             : active
@@ -1035,7 +1190,7 @@ class _ChannelRow extends StatelessWidget {
               SizedBox(
                 width: 44,
                 child: Text(
-                  '$number',
+                  '${widget.number}',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       color: numColor,
@@ -1045,14 +1200,14 @@ class _ChannelRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               TvChannelLogo(
-                  logoUrl: channel.logoUrl,
-                  label: channel.name,
+                  logoUrl: widget.channel.logoUrl,
+                  label: widget.channel.name,
                   size: 44,
                   radius: 8),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
-                  channel.name,
+                  widget.channel.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -1064,7 +1219,7 @@ class _ChannelRow extends StatelessWidget {
               ),
               // ★ favori — même jaune que les autres écrans ; sur le pill
               // blanc (focus), le noir garde le contraste.
-              if (favorite) ...<Widget>[
+              if (widget.favorite) ...<Widget>[
                 const SizedBox(width: 6),
                 Icon(Icons.star_rounded,
                     size: 18,

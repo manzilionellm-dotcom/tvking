@@ -232,9 +232,23 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
       builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
     ));
     if (!mounted) return;
+    // RETOUR INTELLIGENT : si l'utilisateur a ZAPPÉ dans le lecteur, la
+    // carte à re-focuser est celle de la chaîne RÉELLEMENT regardée en
+    // dernier (l'historique est alimenté à chaque zap) — pas celle qu'on
+    // avait ouverte. Repli sur la chaîne ouverte si l'historique ne
+    // recoupe pas la liste jouée (cas limite : filtre Mode Enfants).
+    String? smartId = restoreId;
+    if (restoreId != null) {
+      for (final String id in RecentlyWatchedRepository.instance.current) {
+        if (list.any((Channel c) => c.id == id)) {
+          smartId = id;
+          break;
+        }
+      }
+    }
     setState(() {
       _previewLive = true;
-      if (restoreId != null) _restoreFocusId = restoreId;
+      if (smartId != null) _restoreFocusId = smartId;
     });
   }
 
@@ -257,6 +271,9 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
             style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700)),
         actions: <Widget>[
           TextButton(
+            // AUTOFOCUS (parité template A) : sans lui, la boîte s'ouvrait
+            // sans focus → télécommande muette jusqu'à un appui hasardeux.
+            autofocus: true,
             onPressed: () => Navigator.pop(d, false),
             child: Text('Annuler', style: TvTokens.ui(TvDimens.body)),
           ),

@@ -197,6 +197,16 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
     if (_hero?.id != hero.id) setState(() => _hero = hero);
   }
 
+  /// RETOUR INTELLIGENT (parité Lanceur) : contrôle de l'accueil (tuile de
+  /// navigation, icône du haut, héro) à RE-FOCUSER au retour d'un écran
+  /// poussé (BACK). Sans ça, le focus repartait sur l'élément d'autofocus
+  /// initial au lieu de l'endroit exact qu'on avait quitté.
+  String? _restoreFocusId;
+
+  void _clearRestore() {
+    if (_restoreFocusId != null) setState(() => _restoreFocusId = null);
+  }
+
   /// Suspend l'aperçu héro sur une frame PROPRE (même garde que le Lanceur :
   /// la SurfaceView en hybrid composition laisse sinon sa dernière trame
   /// « percer » par-dessus l'écran poussé — et 2 flux resteraient ouverts).
@@ -209,7 +219,7 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
     if (mounted) setState(() => _previewLive = true);
   }
 
-  Future<void> _open(Widget screen) async {
+  Future<void> _open(Widget screen, {String? restoreId}) async {
     // On ENVELOPPE l'écran poussé dans un Material (transparent) : sans ancêtre
     // Material, Flutter dessine des DOUBLES SOULIGNEMENTS JAUNES sous chaque
     // texte (signal « pas de Material »). Les écrans « bucket » (Réglages,
@@ -221,7 +231,13 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
     await Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) =>
             Material(type: MaterialType.transparency, child: screen)));
-    _resumePreview();
+    if (!mounted) return;
+    // RETOUR (BACK) : l'aperçu se ré-arme et le contrôle quitté reprend le
+    // focus (retour intelligent — jamais « en haut de l'accueil »).
+    setState(() {
+      _previewLive = true;
+      if (restoreId != null) _restoreFocusId = restoreId;
+    });
   }
 
   Future<void> _confirmExit(BuildContext c) async {
@@ -233,6 +249,9 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
             style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700)),
         actions: <Widget>[
           TextButton(
+            // AUTOFOCUS (parité template A) : sans lui, la boîte s'ouvrait
+            // sans focus → télécommande muette jusqu'à un appui hasardeux.
+            autofocus: true,
             onPressed: () => Navigator.pop(d, false),
             child: Text('Annuler', style: TvTokens.ui(TvDimens.body)),
           ),
@@ -294,11 +313,19 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                       const SizedBox(width: 10),
                       _TopIcon(
                           icon: Icons.person_outline_rounded,
-                          onSelect: () => _open(const TvProfilesScreen())),
+                          restoreId: 'profil',
+                          restoreFocusId: _restoreFocusId,
+                          onRestored: _clearRestore,
+                          onSelect: () => _open(const TvProfilesScreen(),
+                              restoreId: 'profil')),
                       const SizedBox(width: 10),
                       _TopIcon(
                           icon: Icons.settings_outlined,
-                          onSelect: () => _open(const TvSettingsScreen())),
+                          restoreId: 'reglages',
+                          restoreFocusId: _restoreFocusId,
+                          onRestored: _clearRestore,
+                          onSelect: () => _open(const TvSettingsScreen(),
+                              restoreId: 'reglages')),
                       const SizedBox(width: 18),
                       const _Clock(),
                     ],
@@ -313,10 +340,15 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                         Expanded(
                           flex: 66,
                           child: _Hero(
-                            autofocus: true,
+                            // L'autofocus d'entrée se désarme quand une
+                            // restauration est due (retour intelligent).
+                            autofocus: _restoreFocusId == null,
                             channel: _hero,
                             previewEnabled: _previewLive,
-                            onSelect: () => _open(const TvLiveScreen()),
+                            restoreFocus: _restoreFocusId == 'hero',
+                            onRestored: _clearRestore,
+                            onSelect: () => _open(const TvLiveScreen(),
+                                restoreId: 'hero'),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -333,7 +365,11 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                                 child: _NavTile(
                                   icon: Icons.star_rounded,
                                   label: 'Favoris',
-                                  onSelect: () => _open(const TvLiveScreen()),
+                                  restoreId: 'favoris',
+                                  restoreFocusId: _restoreFocusId,
+                                  onRestored: _clearRestore,
+                                  onSelect: () => _open(const TvLiveScreen(),
+                                      restoreId: 'favoris'),
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -341,8 +377,12 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                                 child: _NavTile(
                                   icon: Icons.grid_view_rounded,
                                   label: 'Guide',
-                                  onSelect: () =>
-                                      _open(const TvGuideGridScreen()),
+                                  restoreId: 'guide',
+                                  restoreFocusId: _restoreFocusId,
+                                  onRestored: _clearRestore,
+                                  onSelect: () => _open(
+                                      const TvGuideGridScreen(),
+                                      restoreId: 'guide'),
                                 ),
                               ),
                             ],
@@ -361,7 +401,11 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                           child: _NavTile(
                             icon: Icons.live_tv_rounded,
                             label: 'Direct',
-                            onSelect: () => _open(const TvLiveScreen()),
+                            restoreId: 'direct',
+                            restoreFocusId: _restoreFocusId,
+                            onRestored: _clearRestore,
+                            onSelect: () => _open(const TvLiveScreen(),
+                                restoreId: 'direct'),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -369,7 +413,11 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                           child: _NavTile(
                             icon: Icons.movie_rounded,
                             label: 'Films',
-                            onSelect: () => _open(const TvFilmsScreen()),
+                            restoreId: 'films',
+                            restoreFocusId: _restoreFocusId,
+                            onRestored: _clearRestore,
+                            onSelect: () => _open(const TvFilmsScreen(),
+                                restoreId: 'films'),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -377,7 +425,11 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                           child: _NavTile(
                             icon: Icons.video_library_rounded,
                             label: 'Séries',
-                            onSelect: () => _open(const TvSeriesScreen()),
+                            restoreId: 'series',
+                            restoreFocusId: _restoreFocusId,
+                            onRestored: _clearRestore,
+                            onSelect: () => _open(const TvSeriesScreen(),
+                                restoreId: 'series'),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -385,7 +437,11 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                           child: _NavTile(
                             icon: Icons.replay_rounded,
                             label: 'Catch-up',
-                            onSelect: () => _open(const TvRecordingsScreen()),
+                            restoreId: 'catchup',
+                            restoreFocusId: _restoreFocusId,
+                            onRestored: _clearRestore,
+                            onSelect: () => _open(const TvRecordingsScreen(),
+                                restoreId: 'catchup'),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -393,7 +449,11 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                           child: _NavTile(
                             icon: Icons.search_rounded,
                             label: 'Recherche',
-                            onSelect: () => _open(const TvSearchScreen()),
+                            restoreId: 'recherche',
+                            restoreFocusId: _restoreFocusId,
+                            onRestored: _clearRestore,
+                            onSelect: () => _open(const TvSearchScreen(),
+                                restoreId: 'recherche'),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -401,8 +461,11 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                           child: _NavTile(
                             icon: Icons.dashboard_customize_rounded,
                             label: 'Templates',
-                            onSelect: () =>
-                                _open(const TvHomeTemplateScreen()),
+                            restoreId: 'templates',
+                            restoreFocusId: _restoreFocusId,
+                            onRestored: _clearRestore,
+                            onSelect: () => _open(const TvHomeTemplateScreen(),
+                                restoreId: 'templates'),
                           ),
                         ),
                       ],
@@ -430,16 +493,55 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
 }
 
 /// Icône de la barre haute (reload / profil / réglages).
-class _TopIcon extends StatelessWidget {
-  const _TopIcon({required this.icon, required this.onSelect});
+/// FocusNode PROPRE : au retour d'un écran ouvert depuis cette icône
+/// (BACK), elle REPREND le focus (retour intelligent, patron Lanceur).
+class _TopIcon extends StatefulWidget {
+  const _TopIcon(
+      {required this.icon,
+      required this.onSelect,
+      this.restoreId,
+      this.restoreFocusId,
+      this.onRestored});
   final IconData icon;
   final VoidCallback onSelect;
 
+  /// Identité STABLE de cette icône (ex. 'profil') pour la restauration.
+  final String? restoreId;
+
+  /// Contrôle désigné par l'accueil pour reprendre le focus au retour.
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
+
+  @override
+  State<_TopIcon> createState() => _TopIconState();
+}
+
+class _TopIconState extends State<_TopIcon> {
+  final FocusNode _node = FocusNode(debugLabel: 'rails-top-icon');
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.restoreId != null &&
+        widget.restoreFocusId != null &&
+        widget.restoreFocusId == widget.restoreId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (widget.restoreFocusId == widget.restoreId) {
+          _node.requestFocus();
+          widget.onRestored?.call();
+        }
+      });
+    }
     return TvFocusBuilder(
+      focusNode: _node,
       scale: TvFocusScale.small,
-      onSelect: onSelect,
+      onSelect: widget.onSelect,
       pressedBuilder: (BuildContext context, bool focused, bool pressed) {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 160),
@@ -464,7 +566,8 @@ class _TopIcon extends StatelessWidget {
                   ]
                 : null,
           ),
-          child: Icon(icon, size: 28, color: focused ? _rText : _rMuted),
+          child: Icon(widget.icon,
+              size: 28, color: focused ? _rText : _rMuted),
         );
       },
     );
@@ -509,12 +612,14 @@ class _ClockState extends State<_Clock> {
 /// n'était qu'une icône statique. L'aperçu réutilise TOUTE la mécanique
 /// éprouvée de TvLivePreview (muet, anti-rebond, repli logo, moteur natif).
 /// PETITE BOX (profil léger) : pas de vidéo permanente — logo de la chaîne.
-class _Hero extends StatelessWidget {
+class _Hero extends StatefulWidget {
   const _Hero({
     required this.onSelect,
     this.autofocus = false,
     this.channel,
     this.previewEnabled = true,
+    this.restoreFocus = false,
+    this.onRestored,
   });
   final VoidCallback onSelect;
   final bool autofocus;
@@ -526,13 +631,39 @@ class _Hero extends StatelessWidget {
   /// `false` = aperçu suspendu (un écran va être poussé — jamais 2 flux).
   final bool previewEnabled;
 
+  /// `true` = l'accueil désigne le héro pour reprendre le focus au retour
+  /// (BACK) de l'écran qu'il avait ouvert (retour intelligent).
+  final bool restoreFocus;
+  final VoidCallback? onRestored;
+
+  @override
+  State<_Hero> createState() => _HeroState();
+}
+
+class _HeroState extends State<_Hero> {
+  final FocusNode _node = FocusNode(debugLabel: 'rails-hero');
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final Channel? ch = channel;
+    if (widget.restoreFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.restoreFocus) return;
+        _node.requestFocus();
+        widget.onRestored?.call();
+      });
+    }
+    final Channel? ch = widget.channel;
     return TvFocusBuilder(
-      autofocus: autofocus,
+      focusNode: _node,
+      autofocus: widget.autofocus,
       scale: TvFocusScale.medium,
-      onSelect: onSelect,
+      onSelect: widget.onSelect,
       pressedBuilder: (BuildContext context, bool focused, bool pressed) {
         return _railsShell(
           focused: focused,
@@ -544,7 +675,7 @@ class _Hero extends StatelessWidget {
               fit: StackFit.expand,
               children: <Widget>[
                 if (ch != null && !TvMemoryGuard.instance.lowSpec)
-                  TvLivePreview(channel: ch, enabled: previewEnabled)
+                  TvLivePreview(channel: ch, enabled: widget.previewEnabled)
                 else if (ch != null)
                   Center(
                       child: TvChannelLogo(
@@ -616,21 +747,59 @@ class _Hero extends StatelessWidget {
 }
 
 /// Tuile de navigation (icône + label), style IBO rails.
-class _NavTile extends StatelessWidget {
+/// FocusNode PROPRE (patron _NavTile du Lanceur) : au retour de l'écran
+/// ouvert par cette tuile (BACK), elle REPREND le focus — retour
+/// intelligent, jamais « en haut de l'accueil ».
+class _NavTile extends StatefulWidget {
   const _NavTile({
     required this.icon,
     required this.label,
     required this.onSelect,
+    this.restoreId,
+    this.restoreFocusId,
+    this.onRestored,
   });
   final IconData icon;
   final String label;
   final VoidCallback onSelect;
 
+  /// Identité STABLE de cette tuile (ex. 'films') pour la restauration.
+  final String? restoreId;
+
+  /// Tuile désignée par l'accueil pour reprendre le focus au retour.
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
+
+  @override
+  State<_NavTile> createState() => _NavTileState();
+}
+
+class _NavTileState extends State<_NavTile> {
+  final FocusNode _node = FocusNode(debugLabel: 'rails-nav-tile');
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.restoreId != null &&
+        widget.restoreFocusId != null &&
+        widget.restoreFocusId == widget.restoreId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (widget.restoreFocusId == widget.restoreId) {
+          _node.requestFocus();
+          widget.onRestored?.call();
+        }
+      });
+    }
     return TvFocusBuilder(
+      focusNode: _node,
       scale: TvFocusScale.small,
-      onSelect: onSelect,
+      onSelect: widget.onSelect,
       pressedBuilder: (BuildContext context, bool focused, bool pressed) {
         return _railsShell(
           focused: focused,
@@ -639,11 +808,12 @@ class _NavTile extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(icon, size: 38, color: focused ? _rText : _rMuted),
+              Icon(widget.icon,
+                  size: 38, color: focused ? _rText : _rMuted),
               const SizedBox(height: 9),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Text(label.toUpperCase(),
+                child: Text(widget.label.toUpperCase(),
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -816,15 +986,21 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
       ),
     );
     widget.onResume?.call();
-    // RETOUR du lecteur : on DÉSIGNE la chaîne quittée pour que SA carte
-    // reprenne le focus (on revient où on était, pas en haut de l'accueil).
+    // RETOUR INTELLIGENT : on re-focuse la chaîne RÉELLEMENT regardée en
+    // dernier (le zapping haut/bas du lecteur a pu changer de chaîne —
+    // l'historique est alimenté à chaque zap), sinon la chaîne ouverte.
     if (!mounted) return;
+    String? target;
+    for (final String id in RecentlyWatchedRepository.instance.current) {
+      if (_slots.any((_FavSlot s) => s.channel.id == id)) {
+        target = id;
+        break;
+      }
+    }
     // Si la chaîne a été RETIRÉE des favoris PENDANT la lecture (★ dans le
     // lecteur), sa carte n'existe plus : sans repli, AUCUN node ne reprenait
     // le focus → télécommande muette au retour. On retombe sur la 1re carte.
-    final bool stillThere =
-        _slots.any((_FavSlot s) => s.channel.id == playedId);
-    final String? target = stillThere
+    target ??= _slots.any((_FavSlot s) => s.channel.id == playedId)
         ? playedId
         : (_slots.isEmpty ? null : _slots.first.channel.id);
     if (target == null) return; // plus aucun favori → rail replié
@@ -879,10 +1055,11 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
               return _FavCard(
                 key: ValueKey<String>(slot.channel.id),
                 slot: slot,
-                // Autofocus initial sur la 1re carte SEULEMENT si on ne
-                // revient pas du lecteur (sinon c'est la chaîne quittée qui
-                // doit reprendre le focus).
-                autofocus: _restoreId == null && i == 0,
+                // PAS d'autofocus initial : le héro est LE point d'entrée
+                // de l'accueil. L'ancien autofocus de la 1re carte partait
+                // en COURSE avec celui du héro (le rail se construit après
+                // le chargement SQL → il volait le focus par surprise).
+                autofocus: false,
                 restoreFocus: slot.channel.id == _restoreId,
                 onRestored: () => _restoreId = null,
                 onSelect: () => _play(i),
