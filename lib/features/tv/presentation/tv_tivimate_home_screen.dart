@@ -34,9 +34,11 @@ import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
+import '../core/tv_memory_guard.dart';
 import 'widgets/tv_category_reorder.dart';
 import 'tv_films_screen.dart';
 import 'tv_home_template_screen.dart';
+import 'tv_live_preview.dart';
 import 'tv_player_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_screensaver.dart';
@@ -92,6 +94,12 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   /// sur les gros bouquets).
   final ValueNotifier<Channel?> _preview = ValueNotifier<Channel?>(null);
   bool _loading = true;
+
+  /// Aperçu VIDÉO actif ? Coupé sur une frame propre AVANT tout écran
+  /// poussé (lecteur, réglages…) — jamais 2 flux ouverts, et la SurfaceView
+  /// hybride ne laisse pas sa dernière trame percer par-dessus l'écran
+  /// suivant (même garde que le Lanceur).
+  bool _previewLive = true;
 
   @override
   void initState() {
@@ -344,23 +352,36 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     });
   }
 
-  void _play(int index) {
+  /// Suspend l'aperçu vidéo sur une frame PROPRE avant de pousser un écran,
+  /// puis le ré-arme au retour (BACK). Cf. doc de [_previewLive].
+  Future<void> _suspendPreview() async {
+    setState(() => _previewLive = false);
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
+  Future<void> _play(int index) async {
     if (_visible.isEmpty) return;
-    Navigator.of(context).push(
+    await _suspendPreview();
+    if (!mounted) return;
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvPlayerScreen(channels: _visible, startIndex: index),
       ),
     );
+    if (mounted) setState(() => _previewLive = true);
   }
 
-  void _open(Widget screen) {
+  Future<void> _open(Widget screen) async {
     // Material (transparent) OBLIGATOIRE : sans ancêtre Material, Flutter dessine
     // des DOUBLES SOULIGNEMENTS JAUNES sous chaque texte. Les écrans « bucket »
     // (Réglages, Recherche, Séries, Films…) ne s'enveloppent pas eux-mêmes → on
     // le fait ici (comme le Lanceur) → typographie NETTE, pas de lignes jaunes.
-    Navigator.of(context).push(MaterialPageRoute<void>(
+    await _suspendPreview();
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) =>
             Material(type: MaterialType.transparency, child: screen)));
+    if (mounted) setState(() => _previewLive = true);
   }
 
   /// RETOUR PROGRESSIF (« bout à bout ») — plus JAMAIS de fermeture brutale de
@@ -488,10 +509,10 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
         children: <Widget>[
           // RECHERCHE INTELLIGENTE — gros bouton en HAUT, bien visible
           // (personnes âgées / fatiguées). Ouvre la recherche globale.
+          // Passe par _open : l'aperçu vidéo est suspendu avant le push
+          // (même règle que le rail d'icônes) + Material transparent.
           _TmSearchButton(
-            onSelect: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const TvSearchScreen()),
-            ),
+            onSelect: () => _open(const TvSearchScreen()),
           ),
           const SizedBox(height: 10),
           Padding(
@@ -640,8 +661,14 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     );
   }
 
-  // ---- Aperçu (logo + nom + n° + EPG now/next) ----
+  // ---- Aperçu (logo + nom + EPG now/next + VIDÉO en direct) ----
   Widget _previewHeader(Channel c) {
+    // APERÇU VIDÉO de la chaîne focalisée (parité TiviMate, la référence de
+    // ce template) : vignette muette, anti-rebond ~600 ms (défiler la liste
+    // n'ouvre AUCUN flux pour les chaînes traversées), repli logo — toute
+    // la mécanique éprouvée de TvLivePreview. PETITE BOX (profil léger) :
+    // pas de vidéo permanente — l'en-tête reste logo + EPG.
+    final bool video = !TvMemoryGuard.instance.lowSpec;
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 6),
       padding: const EdgeInsets.all(16),
@@ -677,6 +704,17 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
               ],
             ),
           ),
+          if (video) ...<Widget>[
+            const SizedBox(width: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 256,
+                height: 144, // 16:9
+                child: TvLivePreview(channel: c, enabled: _previewLive),
+              ),
+            ),
+          ],
         ],
       ),
     );

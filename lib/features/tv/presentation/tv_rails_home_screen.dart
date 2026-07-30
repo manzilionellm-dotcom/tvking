@@ -20,6 +20,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
@@ -27,6 +28,8 @@ import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_logo.dart';
+import '../core/tv_memory_guard.dart';
 import '../core/tv_tokens.dart';
 // RestartWidget : le vrai « rechargement logiciel » de l'app (source +
 // abonnement re-synchronisés, accueil reconstruit) — pour le bouton ⟳.
@@ -35,6 +38,7 @@ import 'tv_components.dart';
 import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
 import 'tv_home_template_screen.dart';
+import 'tv_live_preview.dart';
 import 'tv_live_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_profiles_screen.dart';
@@ -113,19 +117,111 @@ Widget _railsShell({
   );
 }
 
-class TvRailsHomeScreen extends StatelessWidget {
+class TvRailsHomeScreen extends StatefulWidget {
   const TvRailsHomeScreen({super.key});
 
-  void _open(BuildContext c, Widget screen) {
+  @override
+  State<TvRailsHomeScreen> createState() => _TvRailsHomeScreenState();
+}
+
+class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
+  StreamSubscription<List<Channel>>? _chanSub;
+  StreamSubscription<List<String>>? _recentSub;
+
+  /// Chaîne du HÉRO (aperçu vidéo) : dernière regardée, sinon 1er favori,
+  /// sinon 1re chaîne — le template promettait « Aperçu » depuis le début,
+  /// le héro n'était qu'une icône statique. Même cascade que le Lanceur.
+  Channel? _hero;
+
+  /// Aperçu héro actif ? Coupé AVANT tout écran poussé (jamais 2 flux).
+  bool _previewLive = true;
+
+  /// Jeton anti-course (patron Lanceur) : deux événements playlist/zapping
+  /// rapprochés lancent deux _recomputeHero — seule la passe la plus
+  /// récente écrit (sinon une chaîne d'une source supprimée pouvait rester
+  /// en héro, aperçu mort).
+  int _heroGen = 0;
+
+  // Map id→Channel MÉMOÏSÉE par identité de liste (patron Lanceur) :
+  // reconstruire une map O(N) du bouquet entier (10-50 k chaînes) à chaque
+  // événement coûtait 10-60 ms pour quelques lookups.
+  List<Channel>? _byIdSource;
+  Map<String, Channel>? _byIdCache;
+
+  Map<String, Channel> _byId(List<Channel> all) {
+    if (!identical(all, _byIdSource)) {
+      _byIdSource = all;
+      _byIdCache = <String, Channel>{for (final Channel c in all) c.id: c};
+    }
+    return _byIdCache!;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _recomputeHero();
+    _chanSub = PlaylistRepository.instance.channelsStream
+        .listen((_) => _recomputeHero());
+    _recentSub = RecentlyWatchedRepository.instance.stream
+        .listen((_) => _recomputeHero());
+  }
+
+  @override
+  void dispose() {
+    _chanSub?.cancel();
+    _recentSub?.cancel();
+    super.dispose();
+  }
+
+  void _recomputeHero() {
+    final int gen = ++_heroGen;
+    final List<Channel> all = PlaylistRepository.instance.currentChannels;
+    if (all.isEmpty) {
+      if (mounted) setState(() => _hero = null);
+      return;
+    }
+    final Map<String, Channel> byId = _byId(all);
+    Channel? hero;
+    for (final String id in RecentlyWatchedRepository.instance.current) {
+      hero = byId[id];
+      if (hero != null) break;
+    }
+    if (hero == null) {
+      for (final String id in FavoritesRepository.instance.current) {
+        hero = byId[id];
+        if (hero != null) break;
+      }
+    }
+    hero ??= all.first;
+    if (gen != _heroGen || !mounted) return;
+    if (_hero?.id != hero.id) setState(() => _hero = hero);
+  }
+
+  /// Suspend l'aperçu héro sur une frame PROPRE (même garde que le Lanceur :
+  /// la SurfaceView en hybrid composition laisse sinon sa dernière trame
+  /// « percer » par-dessus l'écran poussé — et 2 flux resteraient ouverts).
+  Future<void> _suspendPreview() async {
+    setState(() => _previewLive = false);
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
+  void _resumePreview() {
+    if (mounted) setState(() => _previewLive = true);
+  }
+
+  Future<void> _open(Widget screen) async {
     // On ENVELOPPE l'écran poussé dans un Material (transparent) : sans ancêtre
     // Material, Flutter dessine des DOUBLES SOULIGNEMENTS JAUNES sous chaque
     // texte (signal « pas de Material »). Les écrans « bucket » (Réglages,
     // Recherche, Séries, Films…) ne s'enveloppent pas eux-mêmes → on le fait ici
     // (comme le fait déjà le Lanceur). Résultat : typographie NETTE, pas de
     // lignes jaunes.
-    Navigator.of(c).push(MaterialPageRoute<void>(
+    await _suspendPreview();
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) =>
             Material(type: MaterialType.transparency, child: screen)));
+    _resumePreview();
   }
 
   Future<void> _confirmExit(BuildContext c) async {
@@ -198,13 +294,11 @@ class TvRailsHomeScreen extends StatelessWidget {
                       const SizedBox(width: 10),
                       _TopIcon(
                           icon: Icons.person_outline_rounded,
-                          onSelect: () =>
-                              _open(context, const TvProfilesScreen())),
+                          onSelect: () => _open(const TvProfilesScreen())),
                       const SizedBox(width: 10),
                       _TopIcon(
                           icon: Icons.settings_outlined,
-                          onSelect: () =>
-                              _open(context, const TvSettingsScreen())),
+                          onSelect: () => _open(const TvSettingsScreen())),
                       const SizedBox(width: 18),
                       const _Clock(),
                     ],
@@ -220,7 +314,9 @@ class TvRailsHomeScreen extends StatelessWidget {
                           flex: 66,
                           child: _Hero(
                             autofocus: true,
-                            onSelect: () => _open(context, const TvLiveScreen()),
+                            channel: _hero,
+                            previewEnabled: _previewLive,
+                            onSelect: () => _open(const TvLiveScreen()),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -237,8 +333,7 @@ class TvRailsHomeScreen extends StatelessWidget {
                                 child: _NavTile(
                                   icon: Icons.star_rounded,
                                   label: 'Favoris',
-                                  onSelect: () =>
-                                      _open(context, const TvLiveScreen()),
+                                  onSelect: () => _open(const TvLiveScreen()),
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -246,8 +341,8 @@ class TvRailsHomeScreen extends StatelessWidget {
                                 child: _NavTile(
                                   icon: Icons.grid_view_rounded,
                                   label: 'Guide',
-                                  onSelect: () => _open(
-                                      context, const TvGuideGridScreen()),
+                                  onSelect: () =>
+                                      _open(const TvGuideGridScreen()),
                                 ),
                               ),
                             ],
@@ -266,7 +361,7 @@ class TvRailsHomeScreen extends StatelessWidget {
                           child: _NavTile(
                             icon: Icons.live_tv_rounded,
                             label: 'Direct',
-                            onSelect: () => _open(context, const TvLiveScreen()),
+                            onSelect: () => _open(const TvLiveScreen()),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -274,7 +369,7 @@ class TvRailsHomeScreen extends StatelessWidget {
                           child: _NavTile(
                             icon: Icons.movie_rounded,
                             label: 'Films',
-                            onSelect: () => _open(context, const TvFilmsScreen()),
+                            onSelect: () => _open(const TvFilmsScreen()),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -282,8 +377,7 @@ class TvRailsHomeScreen extends StatelessWidget {
                           child: _NavTile(
                             icon: Icons.video_library_rounded,
                             label: 'Séries',
-                            onSelect: () =>
-                                _open(context, const TvSeriesScreen()),
+                            onSelect: () => _open(const TvSeriesScreen()),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -291,8 +385,7 @@ class TvRailsHomeScreen extends StatelessWidget {
                           child: _NavTile(
                             icon: Icons.replay_rounded,
                             label: 'Catch-up',
-                            onSelect: () =>
-                                _open(context, const TvRecordingsScreen()),
+                            onSelect: () => _open(const TvRecordingsScreen()),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -300,8 +393,7 @@ class TvRailsHomeScreen extends StatelessWidget {
                           child: _NavTile(
                             icon: Icons.search_rounded,
                             label: 'Recherche',
-                            onSelect: () =>
-                                _open(context, const TvSearchScreen()),
+                            onSelect: () => _open(const TvSearchScreen()),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -310,7 +402,7 @@ class TvRailsHomeScreen extends StatelessWidget {
                             icon: Icons.dashboard_customize_rounded,
                             label: 'Templates',
                             onSelect: () =>
-                                _open(context, const TvHomeTemplateScreen()),
+                                _open(const TvHomeTemplateScreen()),
                           ),
                         ),
                       ],
@@ -320,8 +412,12 @@ class TvRailsHomeScreen extends StatelessWidget {
                   // ---- Rail FAVORIS EN DIRECT (vraie donnée) ----
                   // Le TITRE vit désormais DANS le rail : sans favoris, le
                   // bloc ENTIER se replie (avant, « Favoris en direct »
-                  // restait affiché au-dessus d'une zone vide).
-                  const _LiveFavoritesRail(),
+                  // restait affiché au-dessus d'une zone vide). Le rail
+                  // suspend l'aperçu héro AVANT d'ouvrir le lecteur (jamais
+                  // 2 flux) et le ré-arme au retour.
+                  _LiveFavoritesRail(
+                      onPlaySuspend: _suspendPreview,
+                      onResume: _resumePreview),
                 ],
               ),
             ),
@@ -408,14 +504,31 @@ class _ClockState extends State<_Clock> {
   }
 }
 
-/// Héro : grande zone « Direct » avec badge Play rouge.
+/// Héro : APERÇU VIDÉO EN DIRECT de la dernière chaîne regardée + badge
+/// « Direct ». La description du template promettait « Aperçu » — le héro
+/// n'était qu'une icône statique. L'aperçu réutilise TOUTE la mécanique
+/// éprouvée de TvLivePreview (muet, anti-rebond, repli logo, moteur natif).
+/// PETITE BOX (profil léger) : pas de vidéo permanente — logo de la chaîne.
 class _Hero extends StatelessWidget {
-  const _Hero({required this.onSelect, this.autofocus = false});
+  const _Hero({
+    required this.onSelect,
+    this.autofocus = false,
+    this.channel,
+    this.previewEnabled = true,
+  });
   final VoidCallback onSelect;
   final bool autofocus;
 
+  /// Chaîne prévisualisée (dernière regardée / 1er favori / 1re chaîne) —
+  /// null tant que la playlist n'est pas ingérée (icône de repli).
+  final Channel? channel;
+
+  /// `false` = aperçu suspendu (un écran va être poussé — jamais 2 flux).
+  final bool previewEnabled;
+
   @override
   Widget build(BuildContext context) {
+    final Channel? ch = channel;
     return TvFocusBuilder(
       autofocus: autofocus,
       scale: TvFocusScale.medium,
@@ -425,36 +538,76 @@ class _Hero extends StatelessWidget {
           focused: focused,
           pressed: pressed,
           radius: 16,
-          child: Stack(
-            children: <Widget>[
-              Center(
-                child: Icon(Icons.live_tv_rounded,
-                    size: 92, color: focused ? _rText : _rMuted),
-              ),
-              Positioned(
-                left: 20,
-                bottom: 20,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 18, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: _rPlay,
-                    borderRadius: BorderRadius.circular(8),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                if (ch != null && !TvMemoryGuard.instance.lowSpec)
+                  TvLivePreview(channel: ch, enabled: previewEnabled)
+                else if (ch != null)
+                  Center(
+                      child: TvChannelLogo(
+                          logoUrl: ch.logoUrl,
+                          label: ch.name,
+                          size: 96,
+                          radius: 14))
+                else
+                  Center(
+                    child: Icon(Icons.live_tv_rounded,
+                        size: 92, color: focused ? _rText : _rMuted),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const Icon(Icons.play_arrow_rounded,
-                          size: 22, color: _rText),
-                      const SizedBox(width: 6),
-                      Text('Direct',
-                          style: TvTokens.ui(TvDimens.body,
-                              weight: FontWeight.w700, color: _rText)),
-                    ],
+                // Bandeau bas : badge Play + nom de la chaîne, sur un voile
+                // violet — lisible par-dessus la vidéo, fidèle au thème.
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(20, 28, 20, 14),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[Colors.transparent, Color(0xCC1B0024)],
+                      ),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _rPlay,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              const Icon(Icons.play_arrow_rounded,
+                                  size: 22, color: _rText),
+                              const SizedBox(width: 6),
+                              Text('Direct',
+                                  style: TvTokens.ui(TvDimens.body,
+                                      weight: FontWeight.w700, color: _rText)),
+                            ],
+                          ),
+                        ),
+                        if (ch != null) ...<Widget>[
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(ch.cleanName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.right,
+                                style: TvTokens.ui(TvDimens.title,
+                                    weight: FontWeight.w700, color: _rText)),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -522,7 +675,12 @@ class _FavSlot {
 /// jamais toucher au lecteur mobile (media_kit). Si aucun favori, le rail
 /// se replie (SizedBox.shrink) — l'accueil reste propre.
 class _LiveFavoritesRail extends StatefulWidget {
-  const _LiveFavoritesRail();
+  const _LiveFavoritesRail({this.onPlaySuspend, this.onResume});
+
+  /// Suspend l'aperçu héro de l'accueil sur une frame propre AVANT d'ouvrir
+  /// le lecteur (jamais 2 flux) ; [onResume] le ré-arme au retour (BACK).
+  final Future<void> Function()? onPlaySuspend;
+  final VoidCallback? onResume;
 
   @override
   State<_LiveFavoritesRail> createState() => _LiveFavoritesRailState();
@@ -648,11 +806,16 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
         _slots.map((_FavSlot s) => s.channel).toList(growable: false);
     if (list.isEmpty || index < 0 || index >= list.length) return;
     final String playedId = list[index].id; // on retiendra CETTE chaîne
+    // L'aperçu héro est LIBÉRÉ d'abord (l'accueil reste monté sous la
+    // route poussée — sans ça, 2 flux resteraient ouverts).
+    await widget.onPlaySuspend?.call();
+    if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
       ),
     );
+    widget.onResume?.call();
     // RETOUR du lecteur : on DÉSIGNE la chaîne quittée pour que SA carte
     // reprenne le focus (on revient où on était, pas en haut de l'accueil).
     if (!mounted) return;

@@ -185,7 +185,24 @@ class _TvLivePreviewState extends State<TvLivePreview>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final ModalRoute<void>? route = ModalRoute.of(context);
-    if (route != null) TvLivePreview.routeObserver.subscribe(this, route);
+    if (route != null) {
+      TvLivePreview.routeObserver.subscribe(this, route);
+      // MONTÉ SOUS UNE ROUTE (terrain : « la vidéo ne vient pas sur le
+      // Modèle B »). Quand on choisit un template depuis l'écran
+      // « Templates », le NOUVEL accueil se monte SOUS cette route encore
+      // affichée — trop tard pour recevoir son didPushNext. Sans ce garde,
+      // l'aperçu se croyait visible : il ouvrait le flux À COUVERT
+      // (connexion 1-conn consommée pour rien) avec une SurfaceView créée
+      // sous une route opaque — sur certaines box, cette surface ne
+      // composite jamais → au retour, le raccourci « déjà chargé » gardait
+      // ce lecteur mort et l'aperçu restait sans image. Ici : couvert tant
+      // que la route n'est pas au sommet ; le didPopNext du retour ré-arme
+      // un cycle COMPLET (lecteur + surface neufs, créés visibles).
+      if (!route.isCurrent && !_covered) {
+        _covered = true;
+        _reset(disposePlayer: true);
+      }
+    }
   }
 
   /// Un écran vient d'être poussé PAR-DESSUS : libération complète du

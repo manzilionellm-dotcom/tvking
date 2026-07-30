@@ -57,9 +57,16 @@ class TvMemoryGuard with WidgetsBindingObserver {
     //    plugin, valeurs neutres en cas d'échec).
     final ({int totalMem, bool isLowRamDevice}) info =
         await NativeDeviceInfo.query();
-    // Seuil ≈ 1,3 Go : couvre les Fire TV Stick Lite / box 1 Go (qui
-    // annoncent souvent ~0,9-1,2 Go utilisables).
-    const int lowSpecThresholdBytes = 1300 * 1000 * 1000;
+    // Seuil ≈ 800 Mo — PARITÉ avec le moteur natif (NativeVideoView.kt).
+    // L'ancien seuil (1,3 Go) classait « petite box » les box COURANTES
+    // 1-2 Go (elles annoncent souvent ~1,0-1,2 Go utilisables) : sur ces
+    // box, l'accueil Lanceur n'affichait JAMAIS sa vidéo héro (logo seul,
+    // profil petite-box) — terrain « la vidéo ne vient pas sur le
+    // Modèle B ». Le natif a déjà corrigé le même seuil pour ses tampons
+    // (« ≤1,2 Go était classé faible RAM → box 1-2 Go courantes ») ; on
+    // s'aligne : seules les VRAIES petites box (Fire TV Stick Lite & co,
+    // ou isLowRamDevice) gardent le profil léger.
+    const int lowSpecThresholdBytes = 800 * 1024 * 1024;
     lowSpec = info.isLowRamDevice ||
         (info.totalMem > 0 && info.totalMem <= lowSpecThresholdBytes);
     if (lowSpec) {
