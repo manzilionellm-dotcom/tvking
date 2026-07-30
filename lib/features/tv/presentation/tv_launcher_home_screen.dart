@@ -662,6 +662,14 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
                           // Mo de RAM par tuile (anti-fermeture).
                           memCacheWidth: 160,
                           memCacheHeight: 160,
+                          // Placeholder = même icône que l'erreur (taille
+                          // fixe → zéro saut) + fade court : le logo se
+                          // fond en douceur au lieu de « pop ». Revue V1.
+                          fadeInDuration: const Duration(milliseconds: 150),
+                          placeholder: (_, __) => const Icon(
+                              Icons.live_tv_rounded,
+                              color: TvTokens.muted,
+                              size: 22),
                           errorWidget: (_, __, ___) => const Icon(
                               Icons.live_tv_rounded,
                               color: TvTokens.muted,
@@ -901,6 +909,11 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
                             // (les jaquettes TMDB font souvent 2000 px).
                             memCacheWidth: 240,
                             memCacheHeight: 360,
+                            // Placeholder = même repli (titre) que l'erreur,
+                            // même taille → zéro saut ; fade court. Revue V1.
+                            fadeInDuration:
+                                const Duration(milliseconds: 150),
+                            placeholder: (_, __) => _posterFallback(m.name),
                             errorWidget: (_, __, ___) =>
                                 _posterFallback(m.name),
                           )

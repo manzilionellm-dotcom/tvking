@@ -426,6 +426,8 @@ class _TizenControls extends StatelessWidget {
                     imageUrl: channel.logoUrl!,
                     fit: BoxFit.contain,
                     memCacheWidth: 160,
+                    // Même fade que tv_player_screen (150 ms) — revue V1.
+                    fadeInDuration: const Duration(milliseconds: 150),
                     placeholder: (_, __) => _initials(),
                     errorWidget: (_, __, ___) => _initials())
                 : _initials(),

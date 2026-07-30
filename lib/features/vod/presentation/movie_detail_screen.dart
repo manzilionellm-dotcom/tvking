@@ -115,6 +115,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                         imageUrl: _info!.backdropUrl!,
                         fit: BoxFit.cover,
                         memCacheWidth: 960,
+                        // Fade doux uniforme (revue images V1) — le défaut
+                        // (500 ms) traînait sur le héros.
+                        fadeInDuration: const Duration(milliseconds: 200),
                         placeholder: (_, __) =>
                             const ColoredBox(color: AppColors.surface),
                         errorWidget: (_, __, ___) =>
@@ -126,6 +129,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                             imageUrl: m.posterUrl!,
                             fit: BoxFit.cover,
                             memCacheWidth: 960,
+                            fadeInDuration:
+                                const Duration(milliseconds: 200),
                             placeholder: (_, __) =>
                                 const ColoredBox(color: AppColors.surface),
                             errorWidget: (_, __, ___) =>
@@ -259,6 +264,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                                         imageUrl: s.posterUrl!,
                                         fit: BoxFit.cover,
                                         memCacheWidth: 192,
+                                        // Même fade que les tuiles du
+                                        // cinéma (150 ms) — uniformité V1.
+                                        fadeInDuration: const Duration(
+                                            milliseconds: 150),
                                         placeholder: (_, __) =>
                                             const ColoredBox(
                                                 color: AppColors.surface),

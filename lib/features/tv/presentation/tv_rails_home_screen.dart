@@ -835,6 +835,14 @@ class _FavCardState extends State<_FavCard> {
                             // Décodage borné (48 px affichés) — anti-OOM.
                             memCacheWidth: 128,
                             memCacheHeight: 128,
+                            // Placeholder = même icône que l'erreur (taille
+                            // fixe → zéro saut) + fade court. Revue V1.
+                            fadeInDuration:
+                                const Duration(milliseconds: 150),
+                            placeholder: (_, __) => const Icon(
+                                Icons.live_tv_rounded,
+                                size: 24,
+                                color: _rMuted),
                             errorWidget: (_, __, ___) => const Icon(
                                 Icons.live_tv_rounded,
                                 size: 24,

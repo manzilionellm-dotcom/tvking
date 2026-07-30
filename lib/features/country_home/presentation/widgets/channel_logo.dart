@@ -48,6 +48,10 @@ class ChannelLogo extends StatelessWidget {
                 height: size,
                 fit: BoxFit.contain,
                 memCacheWidth: (size * 3).round(),
+                // Fade court et doux (revue images V1) : la valeur par
+                // défaut (500 ms) traînait — 200 ms suffit pour éviter le
+                // « pop » sans donner une impression de lenteur.
+                fadeInDuration: const Duration(milliseconds: 200),
                 useOldImageOnUrlChange: true,
                 errorWidget: (_, __, ___) => fallback,
                 placeholder: (_, __) => fallback,

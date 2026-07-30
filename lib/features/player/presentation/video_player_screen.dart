@@ -2959,10 +2959,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                             // pour une vignette.
                             memCacheWidth: 180,
                             fit: BoxFit.contain,
+                            fadeInDuration:
+                                const Duration(milliseconds: 200),
                             errorWidget: (_, __, ___) =>
                                 const SizedBox.shrink(),
+                            // Placeholder DIMENSIONNÉ (60×36) : shrink
+                            // faisait « pousser » la pastille noire à
+                            // l'arrivée du logo (saut visuel). Revue V1.
                             placeholder: (_, __) =>
-                                const SizedBox.shrink(),
+                                const SizedBox(width: 60, height: 36),
                           ),
                         ),
                       ),
@@ -3972,9 +3977,24 @@ class _ZapPreviewPage extends StatelessWidget {
                             // disque (plus de re-fetch après éviction).
                             memCacheWidth: 360,
                             fit: BoxFit.cover,
-                            errorWidget: (_, __, ___) => Text(
-                              _initials(channel.cleanName),
-                              style: AppTextStyles.displayLarge,
+                            // Placeholder = mêmes initiales que l'erreur
+                            // (zéro saut) + fade court ; Center car le
+                            // Text nu se calait en haut-gauche du cadre
+                            // 120 px (contrairement à la branche sans
+                            // logo, centrée par le Container). Revue V1.
+                            fadeInDuration:
+                                const Duration(milliseconds: 200),
+                            placeholder: (_, __) => Center(
+                              child: Text(
+                                _initials(channel.cleanName),
+                                style: AppTextStyles.displayLarge,
+                              ),
+                            ),
+                            errorWidget: (_, __, ___) => Center(
+                              child: Text(
+                                _initials(channel.cleanName),
+                                style: AppTextStyles.displayLarge,
+                              ),
                             ),
                           ),
                         )
@@ -4087,6 +4107,11 @@ class _CastingOverlay extends StatelessWidget {
                             // Carte 104 px : décodage borné ~3× + cache
                             // disque (plus de re-fetch après éviction).
                             memCacheWidth: 312,
+                            // Placeholder = même monogramme que l'erreur
+                            // (zéro saut) + fade court. Revue V1.
+                            fadeInDuration:
+                                const Duration(milliseconds: 200),
+                            placeholder: (_, __) => _monogram(),
                             errorWidget: (_, __, ___) =>
                                 _monogram(),
                           )

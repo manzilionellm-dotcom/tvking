@@ -390,6 +390,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                     imageUrl: url,
                     fit: BoxFit.cover,
                     memCacheWidth: 300,
+                    // Fade court uniforme (150 ms, comme les autres tuiles)
+                    // — le défaut (500 ms) traînait. Revue images V1.
+                    fadeInDuration: const Duration(milliseconds: 150),
                     placeholder: (_, __) => fallback,
                     errorWidget: (_, __, ___) => fallback,
                   ),

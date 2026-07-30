@@ -25,6 +25,8 @@
 //  catégories/chaînes. Aucune dépendance au cast.
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/flavor/flavor.dart';
@@ -32,6 +34,7 @@ import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/haptics/haptics.dart';
+import '../../../channels/data/affinity_service.dart';
 import '../../../channels/data/category_order_store.dart';
 import '../../../channels/data/hidden_categories_store.dart';
 import '../../../channels/domain/channel.dart';
@@ -153,6 +156,14 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
   /// L'ordre est PERSISTÉ (CategoryOrderStore) et partagé partout.
   String? _reorderCat;
 
+  /// Rangée « Pour vous » (Vague B11) : recommandations calculées par
+  /// affinité de genre (AffinityService). Vide = la rangée n'apparaît pas.
+  List<Channel> _forYou = const <Channel>[];
+
+  /// Écoute des « Récemment regardées » : leurs ids sont EXCLUS des recos
+  /// (pas de doublon à l'écran) → tout changement recalcule la rangée.
+  StreamSubscription<List<String>>? _forYouRecentSub;
+
   @override
   void initState() {
     super.initState();
@@ -166,6 +177,27 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     // rayon Adulte doit apparaître/disparaître immédiatement — même
     // écoute que côté TV (tv_live_screen).
     ParentalControls.instance.kidsMode.addListener(_onOrderChanged);
+    // « POUR VOUS » (Vague B11) : la rangée suit ses sources en direct —
+    //   · WatchHistoryRepository (sessions) → scores d'affinité à refaire ;
+    //   · rail « Reprendre » (PlaybackPositionRepository, suffixé PAR PROFIL :
+    //     son load() à la bascule de profil notifie → recos recalculées) ;
+    //   · rail « Récemment regardées » (exclusions).
+    WatchHistoryRepository.instance.addListener(_onWatchHistoryChanged);
+    PlaybackPositionRepository.instance.addListener(_onForYouSourceChanged);
+    _forYouRecentSub = RecentlyWatchedRepository.instance.stream
+        .listen((List<String> _) => _onForYouSourceChanged());
+    // ignore: discarded_futures
+    _recomputeForYou();
+  }
+
+  @override
+  void didUpdateWidget(covariant CategoryBrowserView old) {
+    super.didUpdateWidget(old);
+    // Playlist rafraîchie / changée : les candidats « Pour vous » aussi.
+    if (!identical(old.channels, widget.channels)) {
+      // ignore: discarded_futures
+      _recomputeForYou();
+    }
   }
 
   @override
@@ -173,6 +205,10 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     CategoryOrderStore.instance.removeListener(_onOrderChanged);
     HiddenCategoriesStore.instance.removeListener(_onOrderChanged);
     ParentalControls.instance.kidsMode.removeListener(_onOrderChanged);
+    WatchHistoryRepository.instance.removeListener(_onWatchHistoryChanged);
+    PlaybackPositionRepository.instance.removeListener(_onForYouSourceChanged);
+    // ignore: discarded_futures
+    _forYouRecentSub?.cancel();
     super.dispose();
   }
 
@@ -504,6 +540,173 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     );
   }
 
+  /// L'historique de visionnage a bougé (session démarrée / terminée /
+  /// effacée) : on FORCE le recalcul des scores d'affinité — sinon le TTL
+  /// de 5 min d'AffinityService servirait des scores périmés — puis on
+  /// reconstruit la rangée « Pour vous ».
+  void _onWatchHistoryChanged() {
+    // ignore: discarded_futures
+    _refreshAffinityThenRecompute();
+  }
+
+  Future<void> _refreshAffinityThenRecompute() async {
+    await AffinityService.instance.refresh();
+    await _recomputeForYou();
+  }
+
+  /// Une source d'EXCLUSION de la rangée « Pour vous » a changé (« Reprendre »
+  /// ou « Récemment regardées ») : recos à reconstruire (pas de doublon).
+  void _onForYouSourceChanged() {
+    // ignore: discarded_futures
+    _recomputeForYou();
+  }
+
+  /// « POUR VOUS » (Vague B11) — branche AffinityService sur l'accueil :
+  /// recommande jusqu'à 12 chaînes des genres que l'utilisateur regarde
+  /// RÉELLEMENT (temps de visionnage 30 j), avec ces règles :
+  ///
+  ///   · REPLI TOTAL : moins de 3 chaînes distinctes dans l'historique →
+  ///     rangée absente (aucune reco inventée, contrairement au Top 10 qui
+  ///     a son propre repli « tendances »).
+  ///   · PAS DE DOUBLON à l'écran : les entrées affichées par « Reprendre »
+  ///     et les ids « Récemment regardées » sont exclus → la rangée fait
+  ///     DÉCOUVRIR des chaînes des genres aimés, pas re-lister l'historique.
+  ///   · ADULTE exclu hors flavor Privé (même règle que le Top 10 — couvre
+  ///     aussi le Mode Enfants). En Privé aucun historique n'est enregistré,
+  ///     donc la rangée n'y apparaît jamais.
+  ///   · TRI : genres par affinité décroissante (rankedGenres) ; dans un
+  ///     genre, les chaînes déjà un peu regardées d'abord, puis l'ordre
+  ///     playlist. Coût : une agrégation SQLite + un passage O(n) sur la
+  ///     liste des chaînes.
+  Future<void> _recomputeForYou() async {
+    // Signal minimal : au moins 3 chaînes distinctes regardées sur 30 jours.
+    final Map<String, int> watchTime =
+        await WatchHistoryRepository.instance.watchTimeByChannel(days: 30);
+    int distinct = 0;
+    for (final int v in watchTime.values) {
+      if (v > 0) distinct++;
+    }
+    if (distinct < 3) {
+      _setForYou(const <Channel>[]);
+      return;
+    }
+
+    await AffinityService.instance.ensureFresh();
+    if (AffinityService.instance.rankedGenres.isEmpty) {
+      // Cache calculé AVANT l'arrivée des chaînes (le mapping id→genre était
+      // vide au boot) : on force un recalcul maintenant que la playlist est
+      // en mémoire. Pas de boucle possible : personne n'écoute AffinityService
+      // ici (la chaîne de notification passe par WatchHistoryRepository).
+      await AffinityService.instance.refresh();
+    }
+    final Map<ChannelGenre, double> scores = AffinityService.instance.scores;
+    final List<ChannelGenre> rankedGenres =
+        AffinityService.instance.rankedGenres;
+    if (rankedGenres.isEmpty) {
+      _setForYou(const <Channel>[]);
+      return;
+    }
+
+    // Exclusions = ce que les rails « Reprendre » et « Récemment regardées »
+    // affichent déjà (mêmes sources, mêmes seuils que leurs builders).
+    final Set<String> exclude = <String>{
+      for (final PlaybackPosition p
+          in PlaybackPositionRepository.instance.entries)
+        if (p.progress > 0.02 && p.progress < 0.95) p.key,
+      ...RecentlyWatchedRepository.instance.current,
+    };
+
+    // Candidats regroupés par genre regardé (score > 0), en UN passage sur
+    // la playlist. Adulte exclu hors Privé (même règle que le Top 10).
+    final bool allowAdult = FlavorConfig.current.adultOnly;
+    final Map<ChannelGenre, List<Channel>> byGenre =
+        <ChannelGenre, List<Channel>>{};
+    for (final Channel c in widget.channels) {
+      if ((scores[c.genre] ?? 0) <= 0) continue;
+      if (exclude.contains(c.id)) continue;
+      if (!allowAdult && c.genre == ChannelGenre.adult) continue;
+      (byGenre[c.genre] ??= <Channel>[]).add(c);
+    }
+
+    // Sélection : genres par affinité décroissante ; dans un genre, tri
+    // STABLE par temps de visionnage décroissant puis ordre playlist.
+    final List<Channel> out = <Channel>[];
+    for (final ChannelGenre g in rankedGenres) {
+      final List<Channel> pool = byGenre[g] ?? const <Channel>[];
+      if (pool.isEmpty) continue;
+      final List<int> idx = List<int>.generate(pool.length, (int i) => i);
+      idx.sort((int a, int b) {
+        final int byTime = (watchTime[pool[b].id] ?? 0)
+            .compareTo(watchTime[pool[a].id] ?? 0);
+        return byTime != 0 ? byTime : a.compareTo(b);
+      });
+      for (final int i in idx) {
+        out.add(pool[i]);
+        if (out.length >= 12) break;
+      }
+      if (out.length >= 12) break;
+    }
+    _setForYou(out);
+  }
+
+  void _setForYou(List<Channel> next) {
+    if (!mounted) return;
+    if (next.isEmpty && _forYou.isEmpty) return;
+    setState(() => _forYou = next);
+  }
+
+  /// Rail « Pour vous » : les recommandations de [_recomputeForYou], avec le
+  /// MÊME patron visuel que « Récemment regardées » (vignette [_RecentCard],
+  /// même hauteur, même lecture via playChannel + zapping dans la playlist).
+  /// Se cache tout seul tant qu'il n'y a rien à recommander.
+  Widget _buildForYouRail() {
+    final List<Channel> recos = _forYou;
+    if (recos.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.auto_awesome_rounded,
+                  size: 16, color: AppColors.accent),
+              const SizedBox(width: 6),
+              Text(
+                context.l10n.tvLiveForYou,
+                style: AppTextStyles.headlineMedium.copyWith(
+                  fontSize: 13,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 92,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: recos.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (BuildContext context, int i) {
+              return _RecentCard(
+                channel: recos[i],
+                onTap: () => playChannel(
+                  context,
+                  recos[i],
+                  zapPlaylist: widget.channels,
+                ),
+              );
+            },
+          ),
+        ),
+        const Divider(height: 1, thickness: 0.5, color: AppColors.surface),
+      ],
+    );
+  }
+
   /// Temps de visionnage par chaîne sur 30 jours, calculé UNE SEULE fois
   /// (la requête SQLite ne dépend pas du filtre courant). En mode Privé
   /// le tracking est désactivé → ce Future renvoie une map vide et on
@@ -743,6 +946,9 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
               _buildTopRail(),
               // Rayon « Récemment regardées » : dernières chaînes ouvertes (max 10).
               _buildRecentRail(),
+              // Rayon « Pour vous » (Vague B11) : recommandations par affinité
+              // de genre, SANS doublon avec « Reprendre » / « Récemment ».
+              _buildForYouRail(),
               // Rangée « Favoris en direct maintenant » : les favoris qui diffusent
               // en ce moment (widget autonome, se cache s'il n'y a rien).
               const LiveNowFavoritesRow(),

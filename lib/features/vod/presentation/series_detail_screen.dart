@@ -363,6 +363,9 @@ class _EpisodeTile extends StatelessWidget {
                         imageUrl: poster,
                         fit: BoxFit.cover,
                         memCacheWidth: 192,
+                        // Même fade que les tuiles du cinéma (150 ms) —
+                        // uniformité V1, le défaut (500 ms) traînait.
+                        fadeInDuration: const Duration(milliseconds: 150),
                         placeholder: (_, __) =>
                             const ColoredBox(color: AppColors.surface),
                         errorWidget: (_, __, ___) => const ColoredBox(
