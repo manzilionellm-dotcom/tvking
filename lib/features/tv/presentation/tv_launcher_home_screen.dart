@@ -213,14 +213,29 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
 
   /// Lecture plein écran : l'aperçu héro est LIBÉRÉ d'abord (l'accueil reste
   /// monté sous la route poussée — sans ça, 2 flux resteraient ouverts).
-  Future<void> _play(List<Channel> list, int index) async {
+  Future<void> _play(List<Channel> list, int index,
+      {bool restoreFocus = true}) async {
+    // Id de la chaîne lancée → au RETOUR (BACK), on re-focuse SA carte
+    // (favori / « Reprendre ») au lieu de laisser le focus filer sur le
+    // premier élément. Corrige « BACK repart en haut ». Le héro, lui, est
+    // l'élément par défaut : il se ré-autofocuse tout seul (restoreFocus:false
+    // → _restoreFocusId reste null → autofocus héro actif).
+    final String? restoreId = restoreFocus &&
+            index >= 0 &&
+            index < list.length
+        ? list[index].id
+        : null;
     setState(() => _previewLive = false);
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
     ));
-    if (mounted) setState(() => _previewLive = true);
+    if (!mounted) return;
+    setState(() {
+      _previewLive = true;
+      if (restoreId != null) _restoreFocusId = restoreId;
+    });
   }
 
   void _playHero() {
@@ -228,7 +243,9 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
     if (ch == null) return;
     final List<Channel> all = PlaylistRepository.instance.currentChannels;
     final int idx = all.indexWhere((Channel c) => c.id == ch.id);
-    _play(all, idx < 0 ? 0 : idx);
+    // Héro = élément par défaut → pas de restauration ciblée : au retour, le
+    // bouton héro reprend naturellement le focus (autofocus conditionnel).
+    _play(all, idx < 0 ? 0 : idx, restoreFocus: false);
   }
 
   Future<void> _confirmExit() async {
@@ -316,7 +333,10 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                   // replie ENTIÈREMENT sans historique — aucun trou. La
                   // lecture passe par _play (aperçu héro suspendu d'abord :
                   // jamais 2 flux).
-                  _ResumeRail(onPlay: _play),
+                  _ResumeRail(
+                      onPlay: _play,
+                      restoreFocusId: _restoreFocusId,
+                      onRestored: _clearRestore),
                 ],
               ),
             ),
@@ -439,7 +459,11 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                         ),
                         const SizedBox(width: 12),
                         TvFocusBuilder(
-                          autofocus: true,
+                          // Ne prend le focus au démarrage QUE s'il n'y a pas
+                          // de position à restaurer. Au RETOUR d'une chaîne,
+                          // _restoreFocusId est posé → ce bouton ne rafle plus
+                          // le focus (« BACK repart en haut » corrigé).
+                          autofocus: _restoreFocusId == null,
                           scale: TvFocusScale.small,
                           onSelect: _playHero,
                           builder: (BuildContext context, bool focused) {
@@ -484,7 +508,10 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
     return _Panel(
       title: 'Chaînes Favorites',
       icon: Icons.star_rounded,
-      child: _FavoritesGrid(onPlay: _play),
+      child: _FavoritesGrid(
+          onPlay: _play,
+          restoreFocusId: _restoreFocusId,
+          onRestored: _clearRestore),
     );
   }
 
@@ -597,8 +624,13 @@ class _Panel extends StatelessWidget {
 
 /// Grille des favoris (3 colonnes, logo + nom) — se met à jour en direct.
 class _FavoritesGrid extends StatefulWidget {
-  const _FavoritesGrid({required this.onPlay});
+  const _FavoritesGrid(
+      {required this.onPlay, this.restoreFocusId, this.onRestored});
   final Future<void> Function(List<Channel> list, int index) onPlay;
+
+  /// Chaîne à re-focuser au retour (BACK) : sa carte reprend le focus.
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
 
   @override
   State<_FavoritesGrid> createState() => _FavoritesGridState();
@@ -678,8 +710,10 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
       itemCount: _favs.length,
       itemBuilder: (BuildContext c, int i) {
         final Channel ch = _favs[i];
-        return TvFocusBuilder(
-          scale: TvFocusScale.small,
+        return _PlayFocusCard(
+          key: ValueKey<String>('fav-${ch.id}'),
+          restoreFocus: ch.id == widget.restoreFocusId,
+          onRestored: widget.onRestored,
           onSelect: () => widget.onPlay(_favs, i),
           builder: (BuildContext c, bool f) => Container(
             padding: const EdgeInsets.all(6),
@@ -728,6 +762,61 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Carte qui LIT une chaîne (favori / « Reprendre ») et sait REPRENDRE le
+/// focus au retour (BACK), comme _NavTile pour les tuiles de navigation.
+/// Sans FocusNode propre, impossible de re-focuser la bonne carte : c'est ce
+/// qui manquait au Lanceur (« BACK repartait en haut »).
+class _PlayFocusCard extends StatefulWidget {
+  const _PlayFocusCard({
+    super.key,
+    required this.builder,
+    required this.onSelect,
+    this.scale = TvFocusScale.small,
+    this.restoreFocus = false,
+    this.onRestored,
+  });
+  final Widget Function(BuildContext context, bool focused) builder;
+  final VoidCallback onSelect;
+  final TvFocusScale scale;
+
+  /// true = cette carte est la chaîne quittée → elle reprend le focus.
+  final bool restoreFocus;
+  final VoidCallback? onRestored;
+
+  @override
+  State<_PlayFocusCard> createState() => _PlayFocusCardState();
+}
+
+class _PlayFocusCardState extends State<_PlayFocusCard> {
+  final FocusNode _node = FocusNode(debugLabel: 'play-focus-card');
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // RESTAURATION au retour (BACK) : si on est la chaîne quittée, on reprend
+    // le focus en post-frame puis on libère le drapeau. Déterministe → survit
+    // à l'autofocus du bouton héro (désarmé tant qu'une restauration est due).
+    if (widget.restoreFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.restoreFocus) return;
+        _node.requestFocus();
+        widget.onRestored?.call();
+      });
+    }
+    return TvFocusBuilder(
+      focusNode: _node,
+      scale: widget.scale,
+      onSelect: widget.onSelect,
+      builder: widget.builder,
     );
   }
 }
@@ -1029,8 +1118,13 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
 /// la carte (mêmes paramètres que le rail du Direct), via _play de l'écran
 /// (l'aperçu héro est suspendu d'abord). Repliée ENTIÈREMENT quand vide.
 class _ResumeRail extends StatefulWidget {
-  const _ResumeRail({required this.onPlay});
+  const _ResumeRail(
+      {required this.onPlay, this.restoreFocusId, this.onRestored});
   final Future<void> Function(List<Channel> list, int index) onPlay;
+
+  /// Chaîne à re-focuser au retour (BACK) : sa carte reprend le focus.
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
 
   @override
   State<_ResumeRail> createState() => _ResumeRailState();
@@ -1126,8 +1220,10 @@ class _ResumeRailState extends State<_ResumeRail> {
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (BuildContext c, int i) {
                 final Channel ch = _recent[i];
-                return TvFocusBuilder(
-                  scale: TvFocusScale.small,
+                return _PlayFocusCard(
+                  key: ValueKey<String>('resume-${ch.id}'),
+                  restoreFocus: ch.id == widget.restoreFocusId,
+                  onRestored: widget.onRestored,
                   // OK = lecture : liste « récents » + index, comme le rail
                   // du Direct (_openPlayerWith(recentList, i)).
                   onSelect: () => widget.onPlay(_recent, i),

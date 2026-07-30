@@ -255,6 +255,8 @@ class _TvLivePreviewState extends State<TvLivePreview>
     _session++;
     _debounce?.cancel();
     _debounce = null;
+    _presentGuard?.cancel();
+    _presentGuard = null;
     _resolving = false;
     _loggedFirstFrame = false;
     _loggedError = false;
@@ -356,6 +358,8 @@ class _TvLivePreviewState extends State<TvLivePreview>
       c.addListener(_onPlayer);
     }
     c.setUrl(src.url, userAgent: src.userAgent);
+    _presentGuard?.cancel(); // nouvelle chaîne : on ré-arme sur SA 1re trame
+    _presentGuard = null;
     setState(() {
       _ctrl = c;
       _playingChannelId = widget.channel.id;
@@ -396,6 +400,16 @@ class _TvLivePreviewState extends State<TvLivePreview>
   // Remis à false à chaque (re)chargement de chaîne et à chaque dispose.
   bool _presented = false;
 
+  // FILET DE SÉCURITÉ (bug terrain 2026-07-30, aperçu bloqué sur le logo).
+  // Sur certaines box, la 1re trame est bien rendue mais `isPlaying` n'est
+  // JAMAIS notifié `true` (SurfaceView muette en hybrid-composition, volume 0,
+  // pas de gestion d'audio-focus). Sans filet, `_presented` ne se verrouillait
+  // jamais et l'aperçu restait coincé sur le logo POUR TOUJOURS. Ce timer, armé
+  // dès une 1re trame saine, présente la vidéo après un COURT répit (surface
+  // synchronisée → toujours pas de cadre noir) même si `isPlaying` n'arrive pas.
+  Timer? _presentGuard;
+  static const Duration _kPresentGuard = Duration(milliseconds: 400);
+
   void _onPlayer() {
     if (!mounted) return;
     final NativeVideoController? c = _ctrl;
@@ -416,6 +430,18 @@ class _TvLivePreviewState extends State<TvLivePreview>
     }
     // Le flux a-t-il VRAIMENT présenté une image animée ? (cf. _presented)
     if (c.firstFrame && c.isPlaying) _presented = true;
+    // FILET : 1re trame saine mais `isPlaying` absent → on présente quand même
+    // après un court répit (sinon l'aperçu reste bloqué sur le logo à vie).
+    if (c.firstFrame && !c.hasError && !_presented && _presentGuard == null) {
+      _presentGuard = Timer(_kPresentGuard, () {
+        _presentGuard = null;
+        if (!mounted) return;
+        final NativeVideoController? c2 = _ctrl;
+        if (c2 != null && c2.firstFrame && !c2.hasError && !_presented) {
+          setState(() => _presented = true);
+        }
+      });
+    }
     // Reconstruction UNIQUEMENT sur changement visuel (1re image / erreur /
     // lecture en cours) — jamais à chaque tick de position (2×/s).
     if (c.firstFrame != _uiFirstFrame ||
