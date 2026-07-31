@@ -2409,6 +2409,76 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     await PipService.instance.dismissPipToBackground();
   }
 
+  // ----- GESTES TACTILES (lot mobile avancé) -----
+  /// Position du dernier double-tap (moitié gauche = reculer).
+  Offset? _doubleTapPos;
+
+  /// Scrub horizontal : position de départ + cumul du déplacement.
+  Duration? _scrubBase;
+  double _scrubDx = 0;
+
+  /// Réaffiche l'overlay puis relance son minuteur d'auto-masquage —
+  /// le retour visuel des gestes (barre + compteurs de temps).
+  void _revealOverlay() {
+    if (!mounted) return;
+    if (!_overlayVisible) setState(() => _overlayVisible = true);
+    _scheduleHideOverlay();
+  }
+
+  /// `true` quand un geste de seek a le droit d'agir : contenu à durée
+  /// réelle (VOD/replay — même critère que la barre), pas en mode
+  /// Écouteurs. En DIRECT, la « durée » libmpv n'est que la fenêtre de
+  /// buffer glissante — un seek y serait un piège.
+  bool get _gestureSeekAllowed => _showSeekBar && !_audioOnly && _isSeekable;
+
+  /// Double-tap façon YouTube : gauche = -10 s, droite = +10 s. En DIRECT
+  /// (pas de seek possible) on montre simplement la barre — jamais un
+  /// geste qui ne répond pas.
+  void _onDoubleTapSeek() {
+    final Offset? pos = _doubleTapPos;
+    _doubleTapPos = null;
+    if (pos == null) return;
+    if (!_gestureSeekAllowed) {
+      _revealOverlay();
+      return;
+    }
+    final bool back = pos.dx < MediaQuery.of(context).size.width / 2;
+    HapticFeedback.selectionClick();
+    final Duration target =
+        _player.state.position + Duration(seconds: back ? -10 : 10);
+    unawaited(_player.seek(target < Duration.zero ? Duration.zero : target));
+    _revealOverlay();
+  }
+
+  void _onScrubStart(DragStartDetails d) {
+    if (!_gestureSeekAllowed) return;
+    _scrubBase = _player.state.position;
+    _scrubDx = 0;
+  }
+
+  void _onScrubUpdate(DragUpdateDetails d) {
+    if (_scrubBase == null) return;
+    _scrubDx += d.delta.dx;
+    // La barre reste visible pendant le geste (repère de position).
+    _revealOverlay();
+  }
+
+  void _onScrubEnd(DragEndDetails d) {
+    final Duration? base = _scrubBase;
+    _scrubBase = null;
+    if (base == null || _scrubDx.abs() < 8) return;
+    // Glissement pleine largeur = ±90 s : assez ample pour traverser une
+    // scène, assez fin pour caler un moment précis.
+    final int secs =
+        (_scrubDx / MediaQuery.of(context).size.width * 90).round();
+    if (secs == 0) return;
+    final Duration target = base + Duration(seconds: secs);
+    HapticFeedback.selectionClick();
+    unawaited(
+        _player.seek(target < Duration.zero ? Duration.zero : target));
+    _revealOverlay();
+  }
+
   /// « Réduire » (porté de TV King) : ferme le plein écran et continue la
   /// lecture dans la fenêtre flottante globale (MiniPlayerOverlay, montée
   /// dans MaterialApp.builder). On capture les paramètres AVANT le pop ;
@@ -2785,6 +2855,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget _buildPlayerSurface() {
     return GestureDetector(
       onTap: _toggleOverlay,
+      // GESTES AVANCÉS (lot mobile) — façon YouTube :
+      //   • double-tap moitié gauche / droite = -10 s / +10 s (VOD) ;
+      //   • glissement horizontal = scrub de la timeline (VOD).
+      // Le swipe VERTICAL reste le zap de chaîne (design existant).
+      onDoubleTapDown: (TapDownDetails d) => _doubleTapPos = d.localPosition,
+      onDoubleTap: _onDoubleTapSeek,
+      onHorizontalDragStart: _onScrubStart,
+      onHorizontalDragUpdate: _onScrubUpdate,
+      onHorizontalDragEnd: _onScrubEnd,
       child: ListenableBuilder(
         listenable: PlayerSettings.instance,
         builder: (BuildContext context, _) {
