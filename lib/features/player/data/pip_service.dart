@@ -193,6 +193,18 @@ class PipService extends ChangeNotifier {
     }
   }
 
+  /// Fait DISPARAÎTRE la fenêtre PiP sans tuer la lecture : la tâche
+  /// passe en arrière-plan (moveTaskToBack côté natif), le son continue
+  /// via le service de fond. Utilisé par le bouton 🎧 de la fenêtre :
+  /// appui → plus de fenêtre du tout, juste la voix (façon YouTube).
+  Future<void> dismissPipToBackground() async {
+    try {
+      await _channel.invokeMethod<void>('dismissPipToBackground');
+    } catch (e) {
+      if (kDebugMode) debugPrint('[PiP] dismissPipToBackground failed: $e');
+    }
+  }
+
   /// Handler des appels natif → Dart. Deux events :
   ///   - `onPipModeChanged` quand l'état PiP change ;
   ///   - `onPipRemoteAction` quand un bouton de la fenêtre PiP est

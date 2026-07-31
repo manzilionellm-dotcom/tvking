@@ -379,7 +379,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     PipService.instance.addListener(_onPipChanged);
     // Boutons de la fenêtre PiP système (RemoteActions natives, façon
     // YouTube) : 🎧 Écouteurs et Lecture/Pause agissent sur CE lecteur.
-    PipService.instance.onPipHeadphones = _onPipHeadphones;
+    PipService.instance.onPipHeadphones = () => unawaited(_onPipHeadphones());
     PipService.instance.onPipPlayPause = _togglePlayPause;
     // Aspect ratio par défaut — la plupart des flux IPTV sont 16:9.
     PipService.instance.setAspectRatio(numerator: 16, denominator: 9);
@@ -2381,24 +2381,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// vidéo disparaît, remplacée par un fond noir + une icône casque.
   /// Le moteur `_player` (media_kit) n'est jamais mis en pause : il
   /// Bouton 🎧 de la fenêtre PiP système (RemoteAction native, façon
-  /// YouTube) : bascule le mode Écouteurs. CONTRAIREMENT à
-  /// `_toggleAudioOnly`, on NE demande PAS la permission de notification
-  /// ici — une pop-up système ferait sortir du PiP. Si la permission
-  /// manque, seule la notification est invisible : le son continue dans
-  /// tous les cas (le service de fond démarre quand même).
-  void _onPipHeadphones() {
+  /// YouTube) : la fenêtre DISPARAÎT et le son continue seul en fond
+  /// (mode « radio »). CONTRAIREMENT à `_toggleAudioOnly`, on NE demande
+  /// PAS la permission de notification ici — une pop-up système ferait
+  /// sortir du PiP. Si la permission manque, seule la notification est
+  /// invisible : le son continue dans tous les cas.
+  Future<void> _onPipHeadphones() async {
     if (!mounted) return;
-    final bool enabling = !_audioOnly;
-    setState(() => _audioOnly = enabling);
-    // Le natif rafraîchit les boutons de la fenêtre (🎧 ↔ Vidéo) sur cet
-    // appel — voir MainActivity.refreshPipActions().
-    PipService.instance.setAudioOnlyMode(enabling);
-    if (enabling) {
-      final String title = widget.overrideTitle ?? _currentChannel.cleanName;
-      unawaited(PipService.instance.startBackgroundAudio(title));
-    } else {
-      PipService.instance.stopBackgroundAudio();
+    if (_audioOnly) {
+      // Fenêtre encore visible en mode audio (ex. moveTaskToBack refusé) :
+      // le bouton « Vidéo » réaffiche simplement l'image.
+      setState(() => _audioOnly = false);
+      await PipService.instance.setAudioOnlyMode(false);
+      await PipService.instance.stopBackgroundAudio();
+      return;
     }
+    setState(() => _audioOnly = true);
+    await PipService.instance.setAudioOnlyMode(true);
+    // Le service de fond DOIT démarrer pendant que la tâche est encore
+    // « visible » (le PiP compte) — après moveTaskToBack, Android 12+
+    // peut refuser le démarrage d'un foreground service.
+    final String title = widget.overrideTitle ?? _currentChannel.cleanName;
+    await PipService.instance.startBackgroundAudio(title);
+    // Puis la fenêtre disparaît : plus d'image nulle part, juste la voix.
+    // Revenir dans l'app (icône ou notification) retrouve le lecteur en
+    // mode Écouteurs, d'où on peut réafficher la vidéo.
+    await PipService.instance.dismissPipToBackground();
   }
 
   /// « Réduire » (porté de TV King) : ferme le plein écran et continue la

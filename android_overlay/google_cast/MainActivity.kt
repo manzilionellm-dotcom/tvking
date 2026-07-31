@@ -298,6 +298,14 @@ class MainActivity : FlutterFragmentActivity() {
                         stopBackgroundAudio()
                         result.success(null)
                     }
+                    // Fait DISPARAÎTRE la fenêtre PiP sans tuer la lecture :
+                    // la tâche passe en arrière-plan (la mini-fenêtre se
+                    // ferme), le son continue via PlaybackForegroundService.
+                    // C'est le comportement « radio » du bouton 🎧 : appui →
+                    // plus aucune fenêtre, juste la voix (façon YouTube).
+                    "dismissPipToBackground" -> {
+                        result.success(dismissPipToBackground())
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -387,6 +395,21 @@ class MainActivity : FlutterFragmentActivity() {
             setPictureInPictureParams(params)
         } catch (e: Throwable) {
             Log.w(TAG, "refreshPipActions failed: $e")
+        }
+    }
+
+    /// Ferme la fenêtre PiP en envoyant la tâche en arrière-plan, SANS
+    /// finir l'activité (finish() tuerait le moteur Flutter et donc le
+    /// son). Android n'a pas d'API officielle « quitter le PiP sans
+    /// revenir au premier plan » — moveTaskToBack est le chemin reconnu :
+    /// la mini-fenêtre disparaît, l'activité passe en onStop, et le son
+    /// survit grâce au foreground service + wakelock du mode Écouteurs.
+    private fun dismissPipToBackground(): Boolean {
+        return try {
+            moveTaskToBack(true)
+        } catch (e: Throwable) {
+            Log.w(TAG, "dismissPipToBackground failed: $e")
+            false
         }
     }
 
