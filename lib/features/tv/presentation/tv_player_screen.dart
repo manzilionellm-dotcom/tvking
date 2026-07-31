@@ -44,6 +44,7 @@ import '../../playlists/domain/playlist.dart' as pl;
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
+import '../../stats/data/engagement_service.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../vod/data/playback_position_repository.dart';
@@ -715,6 +716,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
     NowPlaying.instance.set(_current.cleanName);
+    // Streak « jours consécutifs » : comptabilise la journée (idempotent,
+    // 1 fois/jour) — alimente le badge 🔥 de l'accueil TV.
+    unawaited(EngagementService.instance.registerWatch());
     SubscriptionState.instance.syncWithBackend();
     _showOverlayTemporarily();
   }

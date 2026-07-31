@@ -37,6 +37,7 @@ import 'features/playlists/data/remote_source_repository.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/sports/data/sports_repository.dart';
+import 'features/stats/data/engagement_service.dart';
 import 'features/stats/data/watch_stats_service.dart';
 import 'features/tv/data/place_repository.dart';
 import 'features/vod/data/playback_position_repository.dart';
@@ -250,6 +251,12 @@ Future<void> _bootstrap() async {
   //     (déjà alimenté par le lecteur pour le panel). Local à la box, par
   //     profil, zéro réseau, zéro contact lecteur. Cf. watch_stats_service.
   unawaited(WatchStatsService.instance.start());
+
+  // 8a-bis) STREAK (jours de visionnage consécutifs) : le compteur existait
+  //     côté téléphone mais n'était JAMAIS chargé sur TV — le badge 🔥 de
+  //     l'accueil restait invisible. Lecture SharedPreferences, non
+  //     bloquant. Le lecteur TV appelle registerWatch() à la lecture.
+  unawaited(EngagementService.instance.load());
 
   // 8b) SPORT : charge les équipes favorites dès le boot → les matchs de
   //     « ton équipe » sont récupérés et les ALARMES « joue bientôt »

@@ -22,6 +22,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/category_order_store.dart';
 import '../../channels/data/recently_watched_repository.dart';
+import '../../channels/data/time_of_day_service.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
@@ -122,6 +123,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // « Pour vous » : reco BORNÉE (top catégories préférées -> 1re page SQL de
   // chacune, hors déjà-vues). Jamais de scan complet -> anti-OOM.
   List<Channel> _forYouCh = const <Channel>[];
+  // « En ce moment » (lot accro) : rangée HUMEUR/HEURE — le genre suggéré
+  // pour l'heure courante (matin → info, après-midi → sport, soir → films…).
+  // Construite de façon BORNÉE comme « Pour vous » : on classe les
+  // CATÉGORIES (quelques dizaines), pas les 50 000 chaînes.
+  List<Channel> _moodCh = const <Channel>[];
+  ChannelGenre _moodGenre = ChannelGenre.entertainment;
 
   /// Pseudo-catégories (sentinelles internes, pas de vraies catégories de la
   /// source). Résolues par ID (listes BORNÉES) → aucun scan complet de la base.
@@ -275,6 +282,45 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     await _resolveDerivedRails();
     await _computeForYou();
     await _loadCatalog();
+    // Après le catalogue : la rangée humeur a besoin des catégories réelles.
+    await _computeMoodRail();
+  }
+
+  /// Rangée « EN CE MOMENT » : suggère le GENRE du moment (cf.
+  /// TimeOfDayService : 8 h → info, 16 h → sport, 21 h → films…), de façon
+  /// BORNÉE : on classe les CATÉGORIES réelles du catalogue (quelques
+  /// dizaines de chaînes de caractères, pas les chaînes elles-mêmes), puis
+  /// on charge la 1re page SQL des 2 meilleures. Cap à 12 chaînes.
+  Future<void> _computeMoodRail() async {
+    await TimeOfDayService.instance.refresh();
+    final ChannelGenre want = TimeOfDayService.instance.suggestedNow;
+    // Catégories dont le NOM se classe dans le genre voulu.
+    final List<String> cats = _realCatCounts.keys
+        .where((String c) => ChannelClassifier.classifyGenre('', c) == want)
+        .take(2)
+        .toList(growable: false);
+    if (cats.isEmpty) {
+      if (mounted) setState(() => _moodCh = const <Channel>[]);
+      return;
+    }
+    final bool kids = ParentalControls.instance.kidsMode.value;
+    final List<Channel> out = <Channel>[];
+    final Set<String> seen = <String>{};
+    for (final String cat in cats) {
+      final page = await PlaylistRepository.instance
+          .getChannelsPage(category: cat, limit: 20);
+      for (final Channel c in page.channels) {
+        if (kids && _isAdult(c)) continue;
+        if (seen.add(c.id)) out.add(c);
+        if (out.length >= 12) break;
+      }
+      if (out.length >= 12) break;
+    }
+    if (!mounted) return;
+    setState(() {
+      _moodGenre = want;
+      _moodCh = out;
+    });
   }
 
   /// Calcule « Pour vous » de façon BORNÉE (anti-OOM) : on déduit les catégories
@@ -1006,6 +1052,18 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                     onRestored: () => _restoreFocusId = null,
                   ),
                   const SizedBox(height: 14),
+                  // RANGÉE HUMEUR/HEURE (lot accro) : le genre du moment.
+                  // Invisible quand vide (0 hauteur) — le budget vertical
+                  // reste alors identique à avant.
+                  if (_moodCh.isNotEmpty) ...<Widget>[
+                    _MoodRail(
+                      genre: _moodGenre,
+                      channels: _moodCh,
+                      onPlay: (int i) =>
+                          _openPlayerWith(_moodCh, i, fromRail: true),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   Expanded(child: grid),
                 ],
               ),
@@ -1482,6 +1540,61 @@ class _ReorderChevron extends StatelessWidget {
 /// Rangée « Reprendre » (bande haute, à gauche) : les ~8 dernières chaînes
 /// regardées, qu'on fait DÉFILER à la télécommande (horizontal). OK = lecture.
 /// Masquée s'il n'y a pas encore d'historique.
+/// Rangée « EN CE MOMENT : {genre} » (lot accro) : chaînes du genre suggéré
+/// pour l'heure courante. Même langage visuel que la rangée « Reprendre »
+/// (mêmes cartes _ResumeCard), avec l'icône du genre dans le titre.
+class _MoodRail extends StatelessWidget {
+  const _MoodRail({
+    required this.genre,
+    required this.channels,
+    required this.onPlay,
+  });
+
+  final ChannelGenre genre;
+  final List<Channel> channels;
+  final void Function(int index) onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(genre.icon, size: 16, color: TvTokens.goldBright),
+              const SizedBox(width: 6),
+              Text(
+                context.l10n.tvMoodRailTitle(genre.label.toUpperCase()),
+                style: TvTokens.ui(13,
+                    weight: FontWeight.w800,
+                    color: TvTokens.mutedDim,
+                    spacing: 2),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 150,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.zero,
+            itemCount: channels.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            itemBuilder: (BuildContext context, int i) => _ResumeCard(
+              channel: channels[i],
+              onPlay: () => onPlay(i),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ResumeRail extends StatelessWidget {
   const _ResumeRail({
     required this.channels,

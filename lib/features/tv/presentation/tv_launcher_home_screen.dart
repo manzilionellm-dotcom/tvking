@@ -29,6 +29,7 @@ import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
@@ -819,6 +820,10 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (BuildContext c, int i) {
               final VodMovie m = _movies[i];
+              // Fraction déjà vue (barre en bas d'affiche) — null si jamais
+              // entamé. Lecture O(1) dans le repo (≤ 100 entrées).
+              final double? prog =
+                  PlaybackPositionRepository.instance.progressFor(m.id);
               return TvFocusBuilder(
                 scale: TvFocusScale.small,
                 onSelect: () async {
@@ -840,8 +845,11 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
                           color: f ? TvTokens.gold : TvTokens.hairline,
                           width: f ? 2 : 1),
                     ),
-                    child: (m.posterUrl != null && m.posterUrl!.isNotEmpty)
-                        ? CachedNetworkImage(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: <Widget>[
+                        if (m.posterUrl != null && m.posterUrl!.isNotEmpty)
+                          CachedNetworkImage(
                             imageUrl: m.posterUrl!,
                             fit: BoxFit.cover,
                             // Affiche ~110×165 px à l'écran : décodage borné
@@ -851,7 +859,37 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
                             errorWidget: (_, __, ___) =>
                                 _posterFallback(m.name),
                           )
-                        : _posterFallback(m.name),
+                        else
+                          _posterFallback(m.name),
+                        // BARRE DE PROGRESSION (lot accro, effet « envie de
+                        // finir ») : fraction déjà vue en bas de l'affiche —
+                        // même motif que l'écran Films. Absente si jamais
+                        // entamé. `prog` est calculé en tête d'itemBuilder.
+                        if (prog != null)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: SizedBox(
+                              height: 5,
+                              child: Stack(
+                                children: <Widget>[
+                                  Container(
+                                      color: Colors.black
+                                          .withValues(alpha: 0.55)),
+                                  FractionallySizedBox(
+                                    widthFactor: prog.clamp(0.04, 1.0),
+                                    child: Container(
+                                      decoration: const BoxDecoration(
+                                          gradient: TvTokens.cineGradient),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               );

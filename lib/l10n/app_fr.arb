@@ -3053,6 +3053,24 @@
   "miniClose": "Fermer la lecture réduite",
   "miniNext": "Chaîne suivante",
   "miniAudioOnlyCaption": "Audio seulement",
+  "tvStreakDays": "{count} j d'affilée",
+  "@tvStreakDays": {
+    "description": "Badge streak TV : jours de visionnage consécutifs.",
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMoodRailTitle": "EN CE MOMENT : {genre}",
+  "@tvMoodRailTitle": {
+    "description": "Titre de la rangée humeur/heure de l'accueil TV.",
+    "placeholders": {
+      "genre": {
+        "type": "String"
+      }
+    }
+  },
   "adminMissingCredentials": "URL serveur ou secret admin manquant.",
   "adminUrlSecretRequired": "URL et secret obligatoires.",
   "adminServerConfigured": "Serveur configuré. Tu peux maintenant ajouter des clients.",

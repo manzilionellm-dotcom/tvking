@@ -1616,6 +1616,22 @@
   "miniClose": "Close mini player",
   "miniNext": "Next channel",
   "miniAudioOnlyCaption": "Audio only",
+  "tvStreakDays": "{count}-day streak",
+  "@tvStreakDays": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvMoodRailTitle": "RIGHT NOW: {genre}",
+  "@tvMoodRailTitle": {
+    "placeholders": {
+      "genre": {
+        "type": "String"
+      }
+    }
+  },
   "adminMissingCredentials": "Server URL or admin secret missing.",
   "adminUrlSecretRequired": "URL and secret are required.",
   "adminServerConfigured": "Server configured. You can now add clients.",

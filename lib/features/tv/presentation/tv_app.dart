@@ -23,6 +23,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
+import '../../stats/data/engagement_service.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_program_reminders.dart';
@@ -753,6 +754,10 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     TvAmbience.instance.set(TvAmbienceKind.sport);
                   }),
                   const SizedBox(width: 12),
+                  // STREAK 🔥 : jours de visionnage consécutifs (lot accro).
+                  // Chip informatif NON focusable (précédent : _HomeHeader) —
+                  // invisible tant que le streak est < 1.
+                  const _StreakChip(),
                   const _ProfileChip(),
                   const SizedBox(width: 12),
                   // GROS bouton « Changer le template » — ENTRE « Famille » et
@@ -1024,6 +1029,51 @@ class _MatchChipState extends State<_MatchChip> {
 
 /// Pastille du PROFIL ACTIF (en haut, façon Netflix). Un OK ouvre « Qui
 /// regarde ? » pour changer de profil sans quitter l'accueil.
+/// Chip 🔥 « streak » : jours de visionnage CONSÉCUTIFS (EngagementService,
+/// alimenté par le lecteur TV à chaque lecture). Effet « ne casse pas ta
+/// série » du lot accro. Purement informatif : PAS focusable (ne vole pas
+/// le D-pad), invisible tant qu'il n'y a pas au moins 1 jour.
+class _StreakChip extends StatelessWidget {
+  const _StreakChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: EngagementService.instance,
+      builder: (BuildContext context, _) {
+        final int s = EngagementService.instance.streak;
+        if (s < 1) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: Container(
+            height: 50,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+              border: Border.all(color: TvTokens.line, width: 1),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(Icons.local_fire_department_rounded,
+                    size: 20, color: TvTokens.goldBright),
+                const SizedBox(width: 6),
+                Text(
+                  context.l10n.tvStreakDays('$s'),
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TvTokens.ui(15,
+                      weight: FontWeight.w700, color: TvTokens.goldBright),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ProfileChip extends StatelessWidget {
   const _ProfileChip();
 
