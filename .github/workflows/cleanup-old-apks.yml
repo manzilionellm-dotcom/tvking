@@ -37,7 +37,11 @@ jobs:
           #   - prive-latest  → app Privé (produit séparé)
           # « latest » n'est PLUS protégé : c'est désormais un vieux bruit
           # (le client est sur « prod »), donc supprimable.
-          PROTECTED="prod prive-latest"
+          # Décision client 2026-07-31 : côté MOBILE il ne reste que
+          # 3 liens définitifs (prod / master-console / phone-test).
+          # « prive-latest » n'est plus protégé — supprimé sur ordre
+          # explicite du propriétaire.
+          PROTECTED="prod master-console phone-test"
           for t in ${{ inputs.tags }}; do
             skip=0
             for p in $PROTECTED; do
