@@ -9,8 +9,12 @@
 #  d'accueil » → TV King s'installe comme une application (manifeste PWA,
 #  plein écran, icône couronne).
 #
-#  Build : `GITHUB_PAGES=true next build` → export statique dans out/ avec
-#  basePath /tvking (voir next.config.ts).
+#  MÉTHODE : export statique (`GITHUB_PAGES=true next build` → out/ avec
+#  basePath /tvking, voir next.config.ts) poussé sur la branche `gh-pages`.
+#  GitHub sert automatiquement cette branche comme site Pages — aucune
+#  activation manuelle ni permission spéciale requise (contrairement à
+#  actions/configure-pages, refusé au GITHUB_TOKEN : « Resource not
+#  accessible by integration », cf. run 30594163846).
 # ============================================================================
 name: Deploy web (GitHub Pages)
 
@@ -20,17 +24,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write # push de la branche gh-pages
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build export statique
+  deploy:
+    name: Build + push gh-pages
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -43,21 +45,18 @@ jobs:
       - run: npx next build
         env:
           GITHUB_PAGES: "true"
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: out
-
-  deploy:
-    name: Déploiement Pages
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publier out/ sur gh-pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          # .nojekyll : sans lui, Pages (Jekyll) ignore les dossiers _next/.
+          touch out/.nojekyll
+          cd out
+          git init -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Deploy ${GITHUB_SHA::9}"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+          echo "✓ https://manzilionellm-dotcom.github.io/tvking/"
