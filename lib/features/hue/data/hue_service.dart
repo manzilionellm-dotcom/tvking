@@ -30,7 +30,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:multicast_dns/multicast_dns.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../cast/data/multicast_lock.dart';
 
 /// État mémorisé d'une lampe avant la scène cinéma — le strict nécessaire
 /// pour la remettre comme elle était (y compris « éteinte »).
@@ -168,9 +171,147 @@ class HueService extends ChangeNotifier {
     return m?.group(1);
   }
 
-  /// Cherche le pont sur le LAN (~4 s). Mémorise l'IP trouvée (l'ASSOCIATION
-  /// reste à faire si c'est un nouveau pont). null = rien trouvé.
+  /// Extrait les IP candidates de la réponse du service de découverte
+  /// cloud Philips (https://discovery.meethue.com) :
+  ///   [{"id":"…","internalipaddress":"192.168.1.34","port":443}, …]
+  /// Pur → testé unitairement.
+  @visibleForTesting
+  static List<String> parseCloudDiscovery(String body) {
+    try {
+      final Object? parsed = jsonDecode(body);
+      if (parsed is! List) return const <String>[];
+      return parsed
+          .whereType<Map<String, dynamic>>()
+          .map((Map<String, dynamic> e) =>
+              (e['internalipaddress'] ?? '').toString())
+          .where((String ip) => ip.isNotEmpty)
+          .toList(growable: false);
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
+  /// `true` si [ip] répond comme un pont Hue (GET /api/config sans clé
+  /// renvoie au moins name/bridgeid). Sert à VALIDER chaque candidat —
+  /// on ne mémorise jamais une IP au hasard.
+  Future<bool> _verifyBridge(String ip) async {
+    try {
+      final String body =
+          await _httpGet(Uri.parse('http://$ip/api/config'));
+      final Object? cfg = jsonDecode(body);
+      return cfg is Map<String, dynamic> &&
+          (cfg['bridgeid'] != null || cfg['name'] != null);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Cherche le pont sur le LAN (~8 s max) par TROIS méthodes EN
+  /// PARALLÈLE — la première IP VÉRIFIÉE gagne :
+  ///   1. mDNS `_hue._tcp` — la méthode OFFICIELLE des ponts récents
+  ///      (Philips a abandonné SSDP sur les nouveaux firmwares) ;
+  ///   2. découverte cloud Philips (discovery.meethue.com) — marche
+  ///      même quand le routeur bloque le multicast ;
+  ///   3. SSDP — filet pour les vieux ponts v1/v2.
+  /// Un verrou multicast est pris pendant la recherche (sans lui,
+  /// Android FILTRE les réponses mDNS/SSDP — c'était LA panne « ça ne
+  /// détecte pas » sur box). Absent du build → silencieux.
+  /// Mémorise l'IP trouvée (l'ASSOCIATION reste à faire si c'est un
+  /// nouveau pont). null = rien trouvé.
   Future<String?> discoverBridge() async {
+    bool lockTaken = false;
+    try {
+      lockTaken = await MulticastLock.instance.acquire();
+    } catch (_) {}
+    try {
+      final Completer<String?> winner = Completer<String?>();
+      int pending = 3;
+      void done(String? ip) {
+        if (ip != null && !winner.isCompleted) {
+          winner.complete(ip);
+          return;
+        }
+        pending--;
+        if (pending == 0 && !winner.isCompleted) winner.complete(null);
+      }
+
+      unawaited(_discoverViaMdns().then(done, onError: (_) => done(null)));
+      unawaited(_discoverViaCloud().then(done, onError: (_) => done(null)));
+      unawaited(_discoverViaSsdp().then(done, onError: (_) => done(null)));
+
+      final String? ip = await winner.future
+          .timeout(const Duration(seconds: 8), onTimeout: () => null);
+      if (ip != null) {
+        _bridgeIp = ip;
+        await _persistBridge();
+        notifyListeners();
+      }
+      return ip;
+    } finally {
+      if (lockTaken) {
+        try {
+          await MulticastLock.instance.release();
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// mDNS : le pont s'annonce en `_hue._tcp.local`. PTR → SRV → A → IP.
+  Future<String?> _discoverViaMdns() async {
+    final MDnsClient client = MDnsClient();
+    try {
+      await client.start();
+      await for (final PtrResourceRecord ptr in client
+          .lookup<PtrResourceRecord>(
+            ResourceRecordQuery.serverPointer('_hue._tcp.local'),
+          )
+          .timeout(const Duration(seconds: 5))) {
+        await for (final SrvResourceRecord srv in client
+            .lookup<SrvResourceRecord>(
+              ResourceRecordQuery.service(ptr.domainName),
+            )
+            .timeout(const Duration(seconds: 3))) {
+          await for (final IPAddressResourceRecord a in client
+              .lookup<IPAddressResourceRecord>(
+                ResourceRecordQuery.addressIPv4(srv.target),
+              )
+              .timeout(const Duration(seconds: 3))) {
+            final String ip = a.address.address;
+            if (await _verifyBridge(ip)) return ip;
+          }
+        }
+      }
+      return null;
+    } on TimeoutException {
+      return null;
+    } catch (e) {
+      debugPrint('[Hue] mDNS: $e');
+      return null;
+    } finally {
+      client.stop();
+    }
+  }
+
+  /// Cloud Philips : chaque pont s'enregistre auprès de
+  /// discovery.meethue.com — un simple GET HTTPS renvoie son IP locale.
+  /// Aucune donnée envoyée, aucun compte : lecture seule.
+  Future<String?> _discoverViaCloud() async {
+    try {
+      final String body =
+          await _httpGet(Uri.parse('https://discovery.meethue.com/'));
+      for (final String ip in parseCloudDiscovery(body)) {
+        if (await _verifyBridge(ip)) return ip;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[Hue] cloud: $e');
+      return null;
+    }
+  }
+
+  /// SSDP historique (vieux ponts) — la logique d'origine, vérification
+  /// du candidat en plus.
+  Future<String?> _discoverViaSsdp() async {
     RawDatagramSocket? socket;
     try {
       socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
@@ -200,16 +341,12 @@ class HueService extends ChangeNotifier {
         if (ip != null && !found.isCompleted) found.complete(ip);
       });
       final String? ip = await found.future
-          .timeout(const Duration(seconds: 4), onTimeout: () => null);
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
       await sub.cancel();
-      if (ip != null) {
-        _bridgeIp = ip;
-        await _persistBridge();
-        notifyListeners();
-      }
-      return ip;
+      if (ip == null) return null;
+      return await _verifyBridge(ip) ? ip : null;
     } catch (e) {
-      debugPrint('[Hue] discover: $e');
+      debugPrint('[Hue] SSDP: $e');
       return null;
     } finally {
       socket?.close();

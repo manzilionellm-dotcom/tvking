@@ -152,4 +152,22 @@ void main() {
     });
   });
 
+
+  group('parseCloudDiscovery', () {
+    test('réponse nominale → liste des IP internes', () {
+      const String body =
+          '[{"id":"ecb5fafffe000000","internalipaddress":"192.168.1.34",'
+          '"port":443},'
+          '{"id":"aabbcc","internalipaddress":"10.0.0.7"}]';
+      expect(HueService.parseCloudDiscovery(body),
+          <String>['192.168.1.34', '10.0.0.7']);
+    });
+
+    test('réponse vide ou invalide → liste vide, jamais de crash', () {
+      expect(HueService.parseCloudDiscovery('[]'), isEmpty);
+      expect(HueService.parseCloudDiscovery('{}'), isEmpty);
+      expect(HueService.parseCloudDiscovery('pas du json'), isEmpty);
+      expect(HueService.parseCloudDiscovery('[{"id":"x"}]'), isEmpty);
+    });
+  });
 }
