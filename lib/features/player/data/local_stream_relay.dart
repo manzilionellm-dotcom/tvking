@@ -50,6 +50,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data' show BytesBuilder, Uint8List;
 
 import 'package:flutter/foundation.dart';
 
@@ -446,6 +447,14 @@ class LocalStreamRelay {
     // d'écran noir en moins). Envoi SYNCHRONE avant l'ajout à la liste des
     // lecteurs : aucun risque d'entrelacement avec le fan-out (mono-thread).
     if (session.everStreamed) {
+      // RETOUR TERRAIN (2026-07-31, ~02 h 30) : la rafale « depuis la
+      // dernière image-clé » (TsWarmupIndex) a produit SON SANS IMAGE en
+      // plein écran sur les flux dégradés du client (marquage RAI non
+      // fiable → rafale sans image-clé vidéo, le décodeur attend une IDR
+      // qui tarde). REVERT au comportement historique : rafale complète du
+      // tampon — elle contient forcément une image-clé quelque part.
+      // TsWarmupIndex (pur, testé) reste dans ts_stream_conditioner.dart
+      // pour une prochaine tentative INSTRUMENTÉE sur box réelle.
       final List<int> warmup = session.ring.alignedSnapshot();
       if (warmup.isNotEmpty) {
         try {

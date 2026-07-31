@@ -23,11 +23,15 @@ import 'package:flutter/services.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_logo.dart';
+import '../core/tv_memory_guard.dart';
 import '../core/tv_tokens.dart';
+import 'tv_live_preview.dart';
 import 'tv_components.dart';
 import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
@@ -395,48 +399,142 @@ class _ClockState extends State<_Clock> {
   }
 }
 
-/// Héro : grande zone « Direct » avec badge Play rouge.
-class _Hero extends StatelessWidget {
+/// Héro : grande zone « Direct » VIVANTE (demande client 2026-07-31 : le
+/// placeholder icône seule n'était « pas présentable »). Même recette que le
+/// héro du template Lanceur : aperçu vidéo de la dernière chaîne regardée
+/// (repli favori → 1re chaîne), nom de la chaîne, badge « Direct ». Petites
+/// box (lowSpec) : logo seul — pas de vidéo permanente sur l'accueil.
+class _Hero extends StatefulWidget {
   const _Hero({required this.onSelect, this.autofocus = false});
   final VoidCallback onSelect;
   final bool autofocus;
 
   @override
+  State<_Hero> createState() => _HeroState();
+}
+
+class _HeroState extends State<_Hero> {
+  StreamSubscription<List<Channel>>? _chanSub;
+  StreamSubscription<List<String>>? _recentSub;
+  Channel? _hero;
+
+  @override
+  void initState() {
+    super.initState();
+    _recompute();
+    _chanSub =
+        PlaylistRepository.instance.channelsStream.listen((_) => _recompute());
+    _recentSub =
+        RecentlyWatchedRepository.instance.stream.listen((_) => _recompute());
+  }
+
+  @override
+  void dispose() {
+    _chanSub?.cancel();
+    _recentSub?.cancel();
+    super.dispose();
+  }
+
+  /// Dernière regardée → 1er favori → 1re chaîne (mêmes replis que le
+  /// Lanceur, sans la requête « Ma soirée » : le héro Rails reste léger).
+  void _recompute() {
+    final List<Channel> all = PlaylistRepository.instance.currentChannels;
+    if (all.isEmpty) {
+      if (mounted && _hero != null) setState(() => _hero = null);
+      return;
+    }
+    final Map<String, Channel> byId = <String, Channel>{
+      for (final Channel c in all) c.id: c
+    };
+    Channel? hero;
+    for (final String id in RecentlyWatchedRepository.instance.current) {
+      hero = byId[id];
+      if (hero != null) break;
+    }
+    if (hero == null) {
+      for (final String id in FavoritesRepository.instance.current) {
+        hero = byId[id];
+        if (hero != null) break;
+      }
+    }
+    hero ??= all.first;
+    if (mounted && _hero?.id != hero.id) setState(() => _hero = hero);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final Channel? ch = _hero;
     return TvFocusBuilder(
-      autofocus: autofocus,
+      autofocus: widget.autofocus,
       scale: TvFocusScale.medium,
-      onSelect: onSelect,
+      onSelect: widget.onSelect,
       pressedBuilder: (BuildContext context, bool focused, bool pressed) {
         return _railsShell(
           focused: focused,
           pressed: pressed,
           radius: 16,
           child: Stack(
+            fit: StackFit.expand,
             children: <Widget>[
-              Center(
-                child: Icon(Icons.live_tv_rounded,
-                    size: 92, color: focused ? _rText : _rMuted),
-              ),
-              Positioned(
-                left: 20,
-                bottom: 20,
+              // Fond vivant : aperçu vidéo (grosses box) ou logo (lowSpec /
+              // aucune chaîne). TvLivePreview gère seul anti-rebond,
+              // relais 1-connexion, repli image d'émission + logo, et se
+              // libère quand un écran recouvre l'accueil.
+              if (ch == null)
+                Center(
+                    child: Icon(Icons.live_tv_rounded,
+                        size: 92, color: focused ? _rText : _rMuted))
+              else if (TvMemoryGuard.instance.lowSpec)
+                Center(
+                    child: TvChannelLogo(
+                        logoUrl: ch.logoUrl,
+                        label: ch.name,
+                        size: 100,
+                        radius: 14))
+              else
+                TvLivePreview(channel: ch),
+              // Bandeau bas : voile sombre + nom de chaîne + badge Direct.
+              Align(
+                alignment: Alignment.bottomCenter,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 18, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: _rPlay,
-                    borderRadius: BorderRadius.circular(8),
+                  padding: const EdgeInsets.fromLTRB(20, 30, 20, 14),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[Colors.transparent, Color(0xCC250030)],
+                    ),
                   ),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      const Icon(Icons.play_arrow_rounded,
-                          size: 22, color: _rText),
-                      const SizedBox(width: 6),
-                      Text('Direct',
-                          style: TvTokens.ui(TvDimens.body,
-                              weight: FontWeight.w700, color: _rText)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _rPlay,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            const Icon(Icons.play_arrow_rounded,
+                                size: 22, color: _rText),
+                            const SizedBox(width: 6),
+                            Text('Direct',
+                                style: TvTokens.ui(TvDimens.body,
+                                    weight: FontWeight.w700, color: _rText)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      if (ch != null)
+                        Expanded(
+                          child: Text(ch.cleanName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TvTokens.ui(TvDimens.title,
+                                  weight: FontWeight.w800, color: _rText)),
+                        ),
                     ],
                   ),
                 ),

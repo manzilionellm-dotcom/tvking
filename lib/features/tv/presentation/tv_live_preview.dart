@@ -23,10 +23,13 @@
 // =========================================================
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../channels/domain/channel.dart';
+import '../../epg/data/epg_repository.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/data/stream_blocked_fallback.dart';
 import '../../player/data/stream_diagnostics.dart';
@@ -247,6 +250,11 @@ class _TvLivePreviewState extends State<TvLivePreview>
     _resolving = false;
     _loggedFirstFrame = false;
     _loggedError = false;
+    // Porte « mouvement réel » et image d'émission : repartent de zéro à
+    // chaque tentative (nouvelle chaîne = nouveau flux, nouvelle émission).
+    _basePosMs = null;
+    _uiMoving = false;
+    _programImageUrl = null;
     if (disposePlayer) {
       _ctrl?.removeListener(_onPlayer);
       _ctrl?.dispose();
@@ -295,6 +303,9 @@ class _TvLivePreviewState extends State<TvLivePreview>
   }
 
   Future<void> _start() async {
+    // Image de l'émission en cours (IBO Pro) : chargée en parallèle de la
+    // vidéo — elle habille l'attente et reste le visuel si le flux échoue.
+    unawaited(_loadProgramImage(_session));
     // Retour de focus sur la chaîne DÉJÀ chargée (sans erreur) : rien à
     // recharger — on relance juste la lecture (mise en pause pendant la
     // navigation) et la vidéo réapparaît instantanément.
@@ -344,6 +355,9 @@ class _TvLivePreviewState extends State<TvLivePreview>
       _uiFirstFrame = false; // setUrl remet firstFrame à false côté contrôleur
       _uiHasError = false;
       _resolving = false;
+      // Nouveau flux = nouvelle preuve de mouvement à apporter.
+      _basePosMs = null;
+      _uiMoving = false;
     });
   }
 
@@ -363,6 +377,33 @@ class _TvLivePreviewState extends State<TvLivePreview>
   bool _uiFirstFrame = false;
   bool _uiHasError = false;
 
+  // PORTE « MOUVEMENT RÉEL » (terrain 2026-07-31 : cadre d'aperçu VIDE alors
+  // que la boîte noire disait « 1re image aperçu OK ») : sur un flux dégradé,
+  // ExoPlayer peut dessiner UNE image noire/bouillie puis caler — firstFrame
+  // seul ment. La vidéo ne remplace le repli (image d'émission/logo) que
+  // quand la POSITION avance vraiment (> ~400 ms après la 1re image).
+  int? _basePosMs;
+  bool _uiMoving = false;
+
+  /// Image de l'émission EN COURS (EPG iconUrl) — le repli riche façon IBO
+  /// Pro : tant que la vidéo n'est pas prouvée, l'aperçu montre l'émission.
+  String? _programImageUrl;
+
+  /// Charge l'image de l'émission en cours (best-effort, jeton anti-course).
+  Future<void> _loadProgramImage(int session) async {
+    String? url;
+    try {
+      final EpgProgram? p =
+          await EpgRepository.instance.currentProgram(widget.channel.id);
+      final String? icon = p?.iconUrl;
+      if (icon != null && icon.isNotEmpty) url = icon;
+    } catch (_) {
+      // EPG indisponible → le repli reste logo + dégradé, comme avant.
+    }
+    if (!mounted || session != _session || url == null) return;
+    if (url != _programImageUrl) setState(() => _programImageUrl = url);
+  }
+
   void _onPlayer() {
     if (!mounted) return;
     final NativeVideoController? c = _ctrl;
@@ -370,6 +411,18 @@ class _TvLivePreviewState extends State<TvLivePreview>
     if (c.firstFrame && !_loggedFirstFrame) {
       _loggedFirstFrame = true;
       _diag('[${widget.channel.cleanName}] 1re image aperçu OK');
+    }
+    // Mouvement réel : mémorise la position à la 1re image, puis exige une
+    // avance franche avant de déclarer la vidéo « prouvée ».
+    bool moving = _uiMoving;
+    if (c.firstFrame && !c.hasError) {
+      final int pos = c.position.inMilliseconds;
+      _basePosMs ??= pos;
+      if (!moving && pos > _basePosMs! + 400) {
+        moving = true;
+        _diag('[${widget.channel.cleanName}] lecture aperçu confirmée '
+            '(l\'image bouge)');
+      }
     }
     if (c.hasError && !_loggedError) {
       _loggedError = true;
@@ -381,11 +434,15 @@ class _TvLivePreviewState extends State<TvLivePreview>
           ' → repli logo',
           level: 'warn');
     }
-    // Reconstruction UNIQUEMENT sur changement visuel (1re image / erreur).
-    if (c.firstFrame != _uiFirstFrame || c.hasError != _uiHasError) {
+    // Reconstruction UNIQUEMENT sur changement visuel (1re image / erreur /
+    // mouvement prouvé) — jamais sur un simple tick de position.
+    if (c.firstFrame != _uiFirstFrame ||
+        c.hasError != _uiHasError ||
+        moving != _uiMoving) {
       setState(() {
         _uiFirstFrame = c.firstFrame;
         _uiHasError = c.hasError;
+        _uiMoving = moving;
       });
     }
   }
@@ -393,15 +450,18 @@ class _TvLivePreviewState extends State<TvLivePreview>
   @override
   Widget build(BuildContext context) {
     final NativeVideoController? c = _ctrl;
-    // La vidéo ne remplace le logo QU'À la 1re trame dessinée, SANS erreur,
-    // et seulement si le lecteur joue bien LA chaîne focalisée (pendant un
-    // zap, le logo de la nouvelle chaîne recouvre l'ancienne vidéo) →
-    // jamais de cadre noir vide, jamais d'image d'une autre chaîne.
+    // La vidéo ne remplace le repli QUE lorsque l'image BOUGE vraiment
+    // (_uiMoving — firstFrame seul peut être une image noire sur un flux
+    // dégradé), sans erreur, et seulement si le lecteur joue bien LA chaîne
+    // focalisée (pendant un zap, le repli de la nouvelle chaîne recouvre
+    // l'ancienne vidéo) → jamais de cadre noir vide, jamais d'image d'une
+    // autre chaîne.
     final bool sameChannel = _playingChannelId == widget.channel.id;
     final bool videoReady =
-        c != null && sameChannel && c.firstFrame && !c.hasError;
+        c != null && sameChannel && c.firstFrame && !c.hasError && _uiMoving;
     final bool loading = _resolving ||
-        (c != null && sameChannel && !c.firstFrame && !c.hasError);
+        (c != null && sameChannel && !videoReady && !c.hasError);
+    final String? programImage = _programImageUrl;
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -422,23 +482,44 @@ class _TvLivePreviewState extends State<TvLivePreview>
                 ),
               ),
               alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+              child: Stack(
+                fit: StackFit.expand,
                 children: <Widget>[
-                  TvChannelLogo(
-                      logoUrl: widget.channel.logoUrl,
-                      label: widget.channel.name,
-                      size: 88,
-                      radius: 12),
-                  if (loading) ...<Widget>[
-                    const SizedBox(height: 10),
-                    const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: TvTokens.gold),
+                  // Image de l'ÉMISSION en cours (EPG) en fond, assombrie
+                  // pour que logo + spinner restent lisibles — le repli
+                  // riche façon IBO Pro. Décodage borné (anti-OOM).
+                  if (programImage != null)
+                    CachedNetworkImage(
+                      imageUrl: programImage,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 480,
+                      fadeInDuration: const Duration(milliseconds: 200),
+                      placeholder: (_, __) => const SizedBox.shrink(),
+                      errorWidget: (_, __, ___) => const SizedBox.shrink(),
                     ),
-                  ],
+                  if (programImage != null)
+                    const ColoredBox(color: Color(0x8A08080A)),
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        TvChannelLogo(
+                            logoUrl: widget.channel.logoUrl,
+                            label: widget.channel.name,
+                            size: 88,
+                            radius: 12),
+                        if (loading) ...<Widget>[
+                          const SizedBox(height: 10),
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: TvTokens.gold),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),

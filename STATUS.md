@@ -7,6 +7,29 @@
 
 ---
 
+## Session (2026-07-30) — Rappels à l'heure LOCALE (bug « 20 h UTC » soldé)
+
+Branche : `claude/tv-box-fluidity-6qxla9` (reprise de
+`claude/maison-mere-phone` a8a428e). Demande client : passe qualité TV box.
+
+- **Bug soldé (repéré le 2026-07-16, « à traiter plus tard »)** : le nudge
+  « ce soir 20 h » et le rappel d'expiration « 19 h » étaient construits en
+  `tz.TZDateTime(tz.local, …)` alors que `tz.setLocalLocation()` n'est
+  jamais appelé → `tz.local` == UTC → 22 h en France l'été. Corrigé SANS
+  nouvelle dépendance : heure murale calculée avec l'horloge locale de
+  l'appareil (`lib/core/notifications/wall_clock.dart`, fonctions pures),
+  puis planifiée en instant absolu UTC — même technique que les rappels
+  de programme EPG, qui eux étaient déjà justes. Tests :
+  `test/core/notifications/wall_clock_test.dart` (8 cas : bornes 20 h
+  pile, fins de mois/année, J+N sans dérive).
+- Audit fluidité TV box (D-pad/scroll/images) : le baseline est déjà au
+  niveau — transform-only + RepaintBoundary (tv_focusable), zéro
+  BackdropFilter sur l'accueil (§5.2), memCacheWidth partout, blur de la
+  fiche film isolé et décodé petit. Rien de plus à toucher sans mesure
+  terrain (Boîte noire tag « perf »).
+
+---
+
 ## Session (2026-07-17) — EPG « En direct » enfin visible + aperçu cliquable
 
 Branche : `claude/autonomous-mobile-tv-release-r21jqf` (reprise de

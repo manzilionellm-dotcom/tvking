@@ -33,6 +33,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../features/subscription/data/subscription_backend.dart';
 import '../../features/subscription/data/subscription_state.dart';
 import '../i18n/l10n_now.dart';
+import 'wall_clock.dart';
 
 class NotificationService {
   NotificationService._();
@@ -377,6 +378,17 @@ class NotificationService {
 
     final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
 
+    // HEURES MURALES : tz.local == UTC ici (setLocalLocation jamais appelé),
+    // donc « 20 h » construit en tz.local sonnait à 20 h UTC — 22 h en
+    // France l'été. On calcule désormais l'heure murale avec l'horloge
+    // LOCALE de l'appareil (wall_clock.dart, pur/testé) et on planifie
+    // l'INSTANT ABSOLU correspondant — même technique que les rappels de
+    // programme EPG, qui étaient déjà justes.
+    final DateTime deviceNow = DateTime.now();
+    tz.TZDateTime absolute(DateTime local) =>
+        tz.TZDateTime.fromMillisecondsSinceEpoch(
+            tz.UTC, local.millisecondsSinceEpoch);
+
     // 1) « On ne t'a pas vu depuis 3 jours » — annulé/repoussé à chaque
     //    ouverture, donc invisible pour qui revient avant l'échéance.
     await _plugin.cancel(_idDormant);
@@ -387,14 +399,15 @@ class NotificationService {
       'On ne t\'a pas vu depuis quelques jours — on reprend là où tu t\'étais arrêté ?',
     );
 
-    // 2) Nudge quotidien léger à 20 h (« ce soir sur 7 MOTION »), répété.
+    // 2) Nudge quotidien léger à 20 h LOCALES (« ce soir sur 7 MOTION »),
+    //    répété chaque jour à la même heure. La répétition du plugin suit
+    //    l'heure UTC de l'instant planifié : elle reste calée sur 20 h
+    //    locales, et scheduleReEngagement (rappelé à chaque arrivée sur
+    //    l'accueil) la recale après un changement d'heure été/hiver.
     await _plugin.cancel(_idTonight);
-    tz.TZDateTime tonight =
-        tz.TZDateTime(tz.local, now.year, now.month, now.day, 20);
-    if (tonight.isBefore(now)) tonight = tonight.add(const Duration(days: 1));
     await _scheduleAt(
       _idTonight,
-      tonight,
+      absolute(nextLocalOccurrence(deviceNow, 20)),
       'Ce soir sur 7 MOTION',
       'Tes chaînes en direct t\'attendent.',
       repeat: DateTimeComponents.time,
@@ -410,9 +423,9 @@ class NotificationService {
     final bool relevant = st == SubscriptionStatus.trialActive ||
         st == SubscriptionStatus.paid;
     if (relevant && days != null && days >= 1 && days <= 30) {
-      final tz.TZDateTime day = now.add(Duration(days: days - 1));
+      // La veille de l'expiration, à 19 h LOCALES (heure murale appareil).
       final tz.TZDateTime at =
-          tz.TZDateTime(tz.local, day.year, day.month, day.day, 19);
+          absolute(localDayAt(deviceNow, days - 1, 19));
       await _scheduleAt(
         _idTrialEnd,
         at,
