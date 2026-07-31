@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- TV King app icon: gold crown on the #121212 canvas, safe-centred so it
+       survives maskable cropping on Android launchers. -->
+  <rect width="512" height="512" rx="96" fill="#121212"/>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7e0a3"/>
+      <stop offset="0.42" stop-color="#e3b96b"/>
+      <stop offset="1" stop-color="#c9962f"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#g)" d="M116 336l-24-152 84 60 80-104 80 104 84-60-24 152z"/>
+  <rect x="116" y="356" width="280" height="40" rx="12" fill="url(#g)"/>
+</svg>
