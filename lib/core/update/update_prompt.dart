@@ -28,13 +28,12 @@ Future<void> maybePromptUpdate(BuildContext context) async {
   final UpdateInfo? update = await UpdateService.instance.check();
   if (update == null || !context.mounted) return;
 
-  // ANTI-HARCÈLEMENT : si on a DÉJÀ ouvert l'installateur système pour CETTE
-  // version récemment (client qui n'a pas encore installé, ou dont le build
-  // reste plus ancien que la version publiée), on NE rouvre PAS la boîte
-  // « Mettre à jour cette application ? » à chaque reprise d'app / tick. On
-  // réessaiera après le cooldown, ou IMMÉDIATEMENT si une version encore plus
-  // récente sort. (Le bouton MANUEL des Réglages n'est pas concerné.)
-  if (!await UpdateService.instance.shouldAutoInstall(update.versionCode)) {
+  // ANTI-HARCÈLEMENT (règles complètes dans UpdatePolicy) : grâce de 12 h
+  // après une installation fraîche, UNE proposition par 24 h maxi toutes
+  // versions confondues, même version jamais reproposée trop tôt. Seul un
+  // correctif critique (`mandatory` côté serveur) perce la grâce et
+  // l'espacement. (Le bouton MANUEL des Réglages n'est pas concerné.)
+  if (!await UpdateService.instance.shouldAutoInstall(update)) {
     return;
   }
   if (!context.mounted) return;

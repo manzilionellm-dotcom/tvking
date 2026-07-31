@@ -33,6 +33,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_platform.dart';
 import 'build_flags.dart';
+import 'update_policy.dart';
 
 class UpdateInfo {
   const UpdateInfo({
@@ -86,6 +87,12 @@ class UpdateService {
   static const String _tvUpdateTag =
       String.fromEnvironment('TV_UPDATE_TAG', defaultValue: 'tv-prod');
 
+  /// Canal téléphone, même principe (--dart-define=PHONE_UPDATE_TAG).
+  /// Défaut `prod` (canal protégé maison mère) : un APK construit sans le
+  /// define garde le comportement historique.
+  static const String _phoneUpdateTag =
+      String.fromEnvironment('PHONE_UPDATE_TAG', defaultValue: 'prod');
+
   /// `version.json` publié par le CI de la MAISON MÈRE : `prod` (téléphone)
   /// et `tv-prod` (DeFew TV). L'APK mobile et l'APK TV sont des builds
   /// différents (targets, versionCode) → aiguillage par plateforme, posé au
@@ -93,7 +100,7 @@ class UpdateService {
   /// donc jamais écrasés : l'updater trouve toujours la vraie dernière app.
   static String get manifestUrl => AppPlatform.isTv
       ? 'https://github.com/manzilionellm-dotcom/tvking/releases/download/$_tvUpdateTag/version.json'
-      : 'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/version.json';
+      : 'https://github.com/manzilionellm-dotcom/tvking/releases/download/$_phoneUpdateTag/version.json';
 
   /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
   /// sinon `null`. Fail-open : toute erreur → `null`. Utilisé par
@@ -172,34 +179,58 @@ class UpdateService {
 
   static const String _kAutoInstallCodeKey = 'update_auto_install_code_v1';
   static const String _kAutoInstallAtKey = 'update_auto_install_at_v1';
-  static const Duration _kAutoInstallCooldown = Duration(hours: 24);
+  static const String _kLastProposalAtKey = 'update_last_proposal_at_v1';
+  static const String _kFirstRunBuildKey = 'update_first_run_build_v1';
+  static const String _kFirstRunAtKey = 'update_first_run_at_v1';
 
-  /// Auto-MAJ : faut-il (RE)lancer l'installateur système pour [versionCode] ?
-  /// `false` si on l'a déjà lancé pour CETTE version il y a moins de
-  /// [_kAutoInstallCooldown] (→ on n'importune plus le client à chaque reprise).
-  /// En cas de doute (lecture prefs KO), on renvoie `true` : ne jamais BLOQUER
-  /// une vraie mise à jour.
-  Future<bool> shouldAutoInstall(int versionCode) async {
+  /// Auto-MAJ : faut-il proposer [update] MAINTENANT ? Toutes les règles
+  /// anti-harcèlement (grâce d'installation fraîche, une proposition par
+  /// 24 h maxi, même version jamais reproposée trop tôt, `mandatory` qui
+  /// perce) vivent dans [UpdatePolicy] (pur, testé). Ici : lecture des
+  /// horodatages + tampon « première ouverture de CE build ».
+  /// En cas de doute (prefs KO), `true` : ne jamais BLOQUER une vraie MAJ.
+  Future<bool> shouldAutoInstall(UpdateInfo update) async {
     try {
       final SharedPreferences p = await SharedPreferences.getInstance();
-      final int lastCode = p.getInt(_kAutoInstallCodeKey) ?? 0;
-      if (lastCode != versionCode) return true; // nouvelle version → oui
-      final int lastAt = p.getInt(_kAutoInstallAtKey) ?? 0;
       final int now = DateTime.now().millisecondsSinceEpoch;
-      return now - lastAt >= _kAutoInstallCooldown.inMilliseconds;
+      // Tampon d'installation fraîche : au premier passage d'un NOUVEAU
+      // build (buildNumber différent du dernier vu), on horodate. C'est
+      // ce qui donne la « grâce » : celui qui vient d'installer est
+      // tranquille, quoi qu'on publie dans les heures qui suivent.
+      final PackageInfo info = await PackageInfo.fromPlatform();
+      final int build = int.tryParse(info.buildNumber) ?? 0;
+      int firstRunAt;
+      if ((p.getInt(_kFirstRunBuildKey) ?? -1) != build) {
+        firstRunAt = now;
+        await p.setInt(_kFirstRunBuildKey, build);
+        await p.setInt(_kFirstRunAtKey, now);
+      } else {
+        firstRunAt = p.getInt(_kFirstRunAtKey) ?? 0;
+      }
+      return UpdatePolicy.shouldPropose(
+        mandatory: update.mandatory,
+        versionCode: update.versionCode,
+        nowMs: now,
+        lastLaunchedCode: p.getInt(_kAutoInstallCodeKey),
+        lastLaunchedAtMs: p.getInt(_kAutoInstallAtKey),
+        lastProposalAtMs: p.getInt(_kLastProposalAtKey),
+        firstRunAtMs: firstRunAt,
+      );
     } catch (_) {
       return true;
     }
   }
 
   /// Mémorise qu'on VIENT d'ouvrir l'installateur pour [versionCode] (auto-MAJ),
-  /// pour ne pas rouvrir la boîte système à chaque reprise d'app.
+  /// pour ne pas rouvrir la boîte système à chaque reprise d'app — et arme
+  /// l'espacement global (une proposition par 24 h, toutes versions).
   Future<void> markAutoInstallLaunched(int versionCode) async {
     try {
       final SharedPreferences p = await SharedPreferences.getInstance();
+      final int now = DateTime.now().millisecondsSinceEpoch;
       await p.setInt(_kAutoInstallCodeKey, versionCode);
-      await p.setInt(
-          _kAutoInstallAtKey, DateTime.now().millisecondsSinceEpoch);
+      await p.setInt(_kAutoInstallAtKey, now);
+      await p.setInt(_kLastProposalAtKey, now);
     } catch (_) {
       // best-effort : au pire on repropose une fois de trop, jamais un crash.
     }

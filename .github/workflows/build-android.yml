@@ -754,6 +754,17 @@ jobs:
             MASTER_DEFINE="--dart-define=MASTER_CONSOLE=true"
             echo "=== BUILD CONSOLE MAÎTRE (MASTER_CONSOLE=true) ==="
           fi
+          # CANAL DE MAJ TÉLÉPHONE : la maison mère reste sur « prod »
+          # (protégé). Les branches de dev pointent sur « phone-test » — la
+          # release que /fone sert vraiment, dont le version.json n'est posé
+          # que par un geste délibéré (un par lot validé) → plus jamais de
+          # proposition de MAJ vers un build d'une autre branche.
+          if [ "${{ github.ref_name }}" = "claude/maison-mere-phone" ]; then
+            PHONE_UPDATE_TAG="prod"
+          else
+            PHONE_UPDATE_TAG="phone-test"
+          fi
+          echo ">>> Canal MAJ téléphone : $PHONE_UPDATE_TAG"
           ok=
           for attempt in 1 2 3 4; do
             echo "=== Build attempt $attempt ==="
@@ -762,6 +773,7 @@ jobs:
               --obfuscate --split-debug-info=build/symbols \
               --dart-define=APP_BUILD_TS=$BUILD_TS \
               --dart-define=GIT_SHA=${{ github.sha }} \
+              --dart-define=PHONE_UPDATE_TAG="$PHONE_UPDATE_TAG" \
               $MASTER_DEFINE && { ok=1; break; }
             echo "Attempt $attempt failed; retry in 25s"; sleep 25
           done

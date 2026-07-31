@@ -568,7 +568,13 @@ jobs:
           elif [ "${{ github.ref_name }}" = "claude/m3u-stream-playback-fix-cfdr2f" ]; then
             TV_UPDATE_TAG="tv-fix-latest"
           else
-            TV_UPDATE_TAG="tv-latest"
+            # Branches de dev : le canal de MAJ est CINEMA-TEST — la release
+            # que /tv sert VRAIMENT, et dont le version.json n'est posé que
+            # par publish-tv-update.yml (geste délibéré, un par lot validé).
+            # FIN DU HARCÈLEMENT : plus jamais un manifeste-appât (le pont
+            # tv-latest → tv-prod repointait les box de dev vers un VIEUX
+            # build à chaque ouverture d'app).
+            TV_UPDATE_TAG="cinema-test"
           fi
           echo "TV_UPDATE_TAG=$TV_UPDATE_TAG" >> "$GITHUB_ENV"
           echo "TV_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
