@@ -1,0 +1,72 @@
+# ============================================================================
+#  publish-tv-update.yml — Pose le manifeste de MAJ (version.json) des BOX
+#  sur le canal cinema-test + les ANCIENS canaux TV (tv-latest, tv-fix-latest,
+#  cast-fix-tv-latest), pointant vers l'APK cinema-test COURANT.
+#
+#  POURQUOI : fin du harcèlement de mises à jour. Avant, tv-latest portait un
+#  version.json « pont » (versionCode 2100000000 → VIEUX APK tv-prod) : toute
+#  box installée depuis /tv voyait « mise à jour dispo » 3 s après CHAQUE
+#  ouverture et rouvrait l'installateur système en boucle.
+#
+#  PRINCIPE : le versionCode publié est LU dans l'APK réellement en ligne
+#  (aapt dump badging) — jamais inventé. Une box déjà à jour voit
+#  « latest <= current » → silence total. Une box en retard est invitée UNE
+#  fois (l'app applique en plus grâce 12 h + espacement 24 h).
+#
+#  DÉCLENCHEMENT MANUEL uniquement : UN par lot validé, jamais par build.
+# ============================================================================
+name: Publish TV update manifest (anti-harcèlement)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mandatory:
+        description: 'Correctif critique (perce la grâce/espacement côté app)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: version.json → cinema-test + anciens canaux TV
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Lire le versionCode réel de l'APK cinema-test puis poser les manifestes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          APK_URL="https://github.com/$REPO/releases/download/cinema-test/defew-tv-cinema-test.apk"
+          curl -fsSL -o defew.apk "$APK_URL"
+          AAPT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/aapt
+          BADGING=$("$AAPT" dump badging defew.apk | head -1)
+          echo "$BADGING"
+          VC=$(echo "$BADGING" | grep -oE "versionCode='[0-9]+'" | grep -oE '[0-9]+')
+          VN=$(echo "$BADGING" | grep -oE "versionName='[^']+'" | sed "s/versionName='//; s/'//")
+          test -n "$VC"
+          echo ">>> APK cinema-test : versionCode=$VC versionName=$VN"
+          cat > version.json <<JSON
+          {
+            "versionCode": $VC,
+            "versionName": "$VN",
+            "url": "$APK_URL",
+            "mandatory": ${{ inputs.mandatory }}
+          }
+          JSON
+          cat version.json
+          # cinema-test = canal des builds récents ; les 3 anciens canaux
+          # migrent leurs box vers CE MÊME APK (même package, même clé).
+          for TAG in cinema-test tv-latest tv-fix-latest cast-fix-tv-latest; do
+            if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+              gh release upload "$TAG" version.json --clobber --repo "$REPO"
+              echo "✓ $TAG"
+            else
+              echo "· $TAG absent, ignoré"
+            fi
+          done
