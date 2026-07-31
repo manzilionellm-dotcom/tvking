@@ -5942,42 +5942,6 @@ async function handleRequest(request, env, ctx) {
 
     const url = new URL(request.url);
 
-    // ===== Liens de téléchargement « cool » (redirection masquée) =====
-    //  Problème résolu : quand on partage l'URL directe GitHub
-    //  (github.com/manzilionellm-dotcom/tvking/...), l'app Downloader
-    //  AFFICHE cette adresse sur sa page de redirection → ça expose le
-    //  nom du compte (= identité du propriétaire). On sert donc des liens
-    //  COURTS et BRANDÉS qui font une simple redirection 302 vers l'APK.
-    //  L'utilisateur ne tape que le lien cool ; Downloader suit la
-    //  redirection tout seul et ne montre jamais l'URL GitHub.
-    //
-    //  Pour MASQUER COMPLÈTEMENT l'identité, brancher un domaine perso
-    //  sur ce Worker (ex. https://black7.tv/royal). Sur le sous-domaine
-    //  workers.dev, l'hôte reste visible mais l'URL GitHub, elle, est
-    //  cachée.
-    //
-    //  Liens disponibles (insensibles à la casse) — TOUJOURS la dernière
-    //  version (les tags `latest` / `tv-latest` sont réécrits par la CI à
-    //  chaque build, donc ces liens ne périment jamais) :
-    //    /app  /royal  /get  → 7 MOTION mobile (7motion.apk)
-    //    /tv                 → DeFew TV (defew-tv.apk, Downloader/Fire TV)
-    {
-      const slug = url.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-      const DOWNLOADS = {
-        app: APK_URL,
-        royal: APK_URL,
-        get: APK_URL,
-        black7: APK_URL,
-        tv: TV_APK_URL,
-      };
-      if (DOWNLOADS[slug]) {
-        if (request.method !== 'GET' && request.method !== 'HEAD') {
-          return badRequest('only GET supported on download links');
-        }
-        return Response.redirect(DOWNLOADS[slug], 302);
-      }
-    }
-
     // ===== Temps réel (WebSockets → Durable Object RealtimeHub) =====
     // /api/v1/rt/ws DOIT être intercepté AVANT le mount apiV1 : c'est un
     // upgrade WebSocket, pas une requête JSON (auth JWT par query, cf.
@@ -6594,58 +6558,40 @@ async function handleRequest(request, env, ctx) {
     // /dl — proxy l'APK GitHub release a travers le cache edge
     // Cloudflare pour des telechargements rapides depuis Downloader.
     // Variante /dl/release pour aliasing futur (release vs beta).
-    if (
-      (segments.length === 1 && segments[0] === 'dl') ||
-      (segments.length === 2 && segments[0] === 'dl' && segments[1] === 'release')
-    ) {
-      return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
-    }
 
     // /install, /vip, /thefew, /few, /app — alias de téléchargement
     // DIRECT (proxy de l'APK). « lien VIP » propre à donner tel quel :
     // collé dans Downloader, il télécharge l'app immédiatement, SANS
     // passer par aftv.news ni aucun email/compte. Nom de fichier
     // « TheFew.apk » côté client.
-    if (
-      segments.length === 1 &&
-      ['install', 'vip', 'thefew', 'few', 'app'].includes(segments[0])
-    ) {
-      return proxyApk(APK_URL, 'TheFew.apk', url.searchParams.get('v'));
-    }
 
     // /tv, /defewtv, /tvbox, /defew + CODES COURTS MÉMORABLES (/777, /7777,
     // /tv7) — alias de téléchargement DIRECT de l'APK DeFew TV (version TV).
     // TV_APK_URL pointe sur le tag `tv-latest` → TOUJOURS la dernière version.
     // Lien propre à coller dans Downloader. Fichier « DeFewTV.apk ».
-    if (
-      segments.length === 1 &&
-      ['tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7']
-          .includes(segments[0].toLowerCase())
-    ) {
-      return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
+    if (segments.length === 1 && segments[0].toLowerCase() === 'tv') {
+      // LIEN UNIQUE TV BOX — sert TOUJOURS le dernier build publié
+      // (tag cinema-test écrasé à chaque publication). Proxy direct :
+      // le client ne voit ni GitHub ni numéro de build, juste
+      // app.7themotion.com/tv → DeFewTV.apk.
+      return proxyApk(CINEMA_TEST_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
     }
 
     // /test, /demo, /beta — APK de TEST TV (prérelease « cinema-test »,
     // signé clé maîtresse). Lien propre à donner/coller dans Downloader
     // SANS exposer GitHub. Fichier « DeFewTV-test.apk ». Sert TOUJOURS le
     // dernier build de test publié (tag cinema-test écrasé à chaque publish).
-    if (
-      segments.length === 1 &&
-      ['test', 'demo', 'beta'].includes(segments[0].toLowerCase())
-    ) {
-      return proxyApk(CINEMA_TEST_APK_URL, 'DeFewTV-test.apk', url.searchParams.get('v'));
-    }
 
     // /fone, /phone-test, /tel — APK de TEST TÉLÉPHONE (prérelease
     // « phone-test », signé clé maîtresse). Lien propre à donner SANS exposer
     // GitHub. Fichier « 7motion-test.apk ». Sert TOUJOURS le dernier build de
     // test téléphone publié (tag phone-test écrasé à chaque publish).
-    if (
-      segments.length === 1 &&
-      ['fone', 'phone-test', 'phonetest', 'tel', 'test-phone'].includes(
-        segments[0].toLowerCase())
-    ) {
-      return proxyApk(PHONE_TEST_APK_URL, '7motion-test.apk', url.searchParams.get('v'));
+    if (segments.length === 1 && segments[0].toLowerCase() === 'fone') {
+      // LIEN UNIQUE TÉLÉPHONE — sert TOUJOURS le dernier build publié
+      // (tag phone-test écrasé à chaque publication). Nom de fichier
+      // PROPRE (« 7motion.apk », sans « test » ni numéro de build) :
+      // le client ne voit que app.7themotion.com/fone.
+      return proxyApk(PHONE_TEST_APK_URL, '7motion.apk', url.searchParams.get('v'));
     }
 
     // /tv-aab et /phone-aab — App Bundles (.aab) SIGNÉS pour la Google Play
@@ -6862,9 +6808,8 @@ async function handleRequest(request, env, ctx) {
       'cast-receiver', 'cast-skin.css', 'vendor',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
-    if (segments.length === 1 && !RESERVED.has(segments[0].toLowerCase())) {
-      return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
-    }
+    // (Catch-all de téléchargement SUPPRIMÉ le 2026-07-31 sur ordre du
+    // propriétaire : seuls /fone et /tv servent des APK désormais.)
 
     return notFound('Unknown route. Try /, /dl, /config/:mac or /admin/clients');
 }
