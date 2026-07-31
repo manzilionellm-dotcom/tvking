@@ -176,6 +176,23 @@ button:focus-visible {
   opacity: 1;
 }
 
+/*
+  Mobile (<768px): the viewport-proportional TV scaling would shrink text to
+  ~11px on a phone, and the 5% TV safe area wastes precious width. Switch to a
+  fixed, readable base and tight edge padding; the layout swaps the side rail
+  for a bottom tab bar (see MobileNav).
+*/
+@media (max-width: 768px) {
+  html {
+    font-size: calc(13px * var(--ui-scale));
+  }
+  :root {
+    --safe-x: calc(16px * var(--safe-scale));
+    --safe-y: calc(20px * var(--safe-scale));
+    --focus-scale: 1.02; /* touch has no focus ring choreography */
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .focusable {
     transition: box-shadow 120ms ease;

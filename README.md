@@ -1,8 +1,27 @@
 # TV King 👑
 
-Application de streaming **pensée pour la télévision** (expérience « 10-foot UI »),
-centrée sur deux univers : **Sport** (direct, scores, replays) et **Formation**
-(parcours par niveau, progression, intervenants).
+> **But ultime : devenir l'application IPTV mobile n°1 au monde.**
+
+Application de streaming **mobile-first et télévision** (« 10-foot UI »), centrée
+sur quatre univers : **TV en direct (IPTV)** — vos chaînes, vos playlists M3U —
+**Films** (téléchargés sur l'appareil, lecture instantanée), **Sport** (direct,
+scores, replays) et **Formation** (parcours par niveau, progression, intervenants).
+
+## Les trois engagements TV King
+
+1. **Conditions acceptées avant tout** — au premier lancement, l'application ne
+   s'utilise qu'après acceptation des conditions : TV King ne fournit aucun
+   contenu ; les liens et playlists appartiennent à l'utilisateur, qui en est
+   responsable.
+2. **Chaque lien est vérifié avant lecture** — un lien invalide est signalé avec
+   sa raison et n'est jamais envoyé au lecteur : aucune attente sans fin.
+3. **Zéro roue qui tourne** — les films se téléchargent d'eux-mêmes (progression
+   déterminée, en %) et se lisent depuis l'appareil : démarrage immédiat, aucune
+   mise en mémoire tampon, aucun spinner nulle part dans l'application.
+4. **La lecture vous suit** — bouton « Réduire » façon YouTube : la vidéo continue
+   dans une petite fenêtre flottante pendant que vous naviguez, avec tous les
+   contrôles dedans (écouteurs = audio seulement, lecture/pause, suivant,
+   agrandir, fermer).
 
 Le design n'est pas inventé : il applique des normes officielles et des bonnes
 pratiques documentées. Le référentiel complet, sourcé, est dans
@@ -27,14 +46,21 @@ pratiques documentées. Le référentiel complet, sourcé, est dans
 
 ```
 app/
-  layout.tsx                  Shell : sidebar + navigation D-pad + préférences
+  layout.tsx                  Shell : CGU + sidebar (TV) + tabs (mobile) + D-pad
   page.tsx                    Accueil (hero + rangées)
+  tv/                         TV en direct (IPTV) : playlist M3U, liens vérifiés
+  films/                      Films (téléchargés → lecture instantanée)
   sport/  formation/          Catégories (live/replay ; niveaux/progression)
   title/[slug]/               Page détail d'un contenu
   watch/[slug]/               Lecteur + « À suivre »
   search/  list/  reglages/   Recherche, Ma liste, Réglages
-  components/                 Sidebar, Hero, Row, MediaCard, Badge, Player…
+  components/                 ConsentGate, Sidebar, MobileNav, Player, MiniPlayer,
+                              FilmActions…
   lib/data.ts                 Modèle de contenu (mock) + lookups
+  lib/mini.ts                 État global du mini-lecteur flottant
+  lib/m3u.ts  lib/playlist.ts Parseur M3U + playlist persistée (IPTV)
+  lib/consent.ts              Acceptation des CGU, versionnée
+  lib/downloads.ts            Films téléchargés (lecture instantanée)
 docs/RESEARCH-TV-UX.md        Recherche sourcée (le référentiel de conception)
 ```
 
