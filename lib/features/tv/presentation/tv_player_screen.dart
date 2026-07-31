@@ -145,6 +145,20 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   bool _tracksVisible = false;
   int _tracksFocus = 0;
 
+  // ----- Panneau « Récemment » (n°33) : APPUI LONG sur OK en DIRECT -----
+  // Zap rapide vers les dernières chaînes regardées, façon TiviMate. Ouvert
+  // par la RÉPÉTITION clavier d'OK (touche maintenue) quand la barre était
+  // masquée au moment de l'appui — jamais pendant qu'on navigue les boutons
+  // (pas d'ouverture accidentelle par-dessus une action).
+  bool _recentsVisible = false;
+  int _recentsFocus = 0;
+  List<Channel> _recentsList = const <Channel>[];
+
+  /// État de la barre AU MOMENT de l'enfoncement d'OK : la répétition
+  /// n'ouvre le panneau que si la barre était masquée (l'appui initial n'a
+  /// alors fait que la révéler — aucun bouton activé par accident).
+  bool _okDownOverlayWasVisible = false;
+
   /// Mode d'affichage courant (persisté via PlayerSettings — partagé
   /// avec le lecteur mobile, SANS dépendre de media_kit).
   AspectRatioMode _aspect = PlayerSettings.instance.aspectMode;
@@ -1467,6 +1481,52 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _showOverlayTemporarily();
   }
 
+  // ----- Panneau « Récemment » (n°33, appui long OK en direct) -----
+
+  /// Ouvre le panneau avec les dernières chaînes regardées (jusqu'à 8),
+  /// chaîne courante exclue, films exclus (c'est un geste de ZAP direct).
+  /// Rien à proposer (première utilisation) → on ne montre rien.
+  void _openRecents() {
+    final Map<String, Channel> byId = <String, Channel>{
+      for (final Channel c in widget.channels) c.id: c,
+    };
+    final List<Channel> list = <Channel>[];
+    for (final String id in RecentlyWatchedRepository.instance.current) {
+      final Channel? c = byId[id];
+      if (c == null || c.id == _current.id || !c.isLive) continue;
+      list.add(c);
+      if (list.length >= 8) break;
+    }
+    if (list.isEmpty) return;
+    setState(() {
+      _recentsVisible = true;
+      _recentsFocus = 0;
+      _recentsList = list;
+      _overlay = false; // le panneau remplace la barre à l'écran
+    });
+  }
+
+  void _closeRecents() {
+    setState(() => _recentsVisible = false);
+    _showOverlayTemporarily();
+  }
+
+  /// Zappe vers [c] (même séquence que la saisie d'un numéro de chaîne :
+  /// sauvegarde position, mémoire « dernière chaîne », session stabilité).
+  void _zapToChannel(Channel c) {
+    final int idx =
+        widget.channels.indexWhere((Channel x) => x.id == c.id);
+    if (idx < 0) return;
+    _savePlaybackPosition();
+    _prevIndex = _index;
+    _resetStabilitySession();
+    setState(() {
+      _index = idx;
+      _recentsVisible = false;
+    });
+    _open();
+  }
+
   /// Applique la ligne surlignée. La sélection de piste passe par le
   /// MethodChannel du plugin (TrackSelectionOverride ExoPlayer : AUCUN
   /// rebuild du player, pas d'écran noir). Le ratio est 100 % Flutter
@@ -2029,6 +2089,35 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       return KeyEventResult.handled;
     }
 
+    // PANNEAU « RÉCEMMENT » (appui long OK) : capte tout le D-pad, même
+    // modèle que la feuille des pistes. Haut/Bas déplacent le surlignage,
+    // OK zappe vers la chaîne surlignée, Retour ferme sans zapper.
+    if (_recentsVisible) {
+      if (_isOk(k)) {
+        if (isDown &&
+            _recentsFocus >= 0 &&
+            _recentsFocus < _recentsList.length) {
+          _zapToChannel(_recentsList[_recentsFocus]);
+        }
+        return KeyEventResult.handled;
+      }
+      if (_isBackKey(k)) {
+        _closeRecents();
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowUp) {
+        setState(() => _recentsFocus =
+            (_recentsFocus - 1).clamp(0, _recentsList.length - 1));
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowDown) {
+        setState(() => _recentsFocus =
+            (_recentsFocus + 1).clamp(0, _recentsList.length - 1));
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.handled;
+    }
+
     // ÉCRAN D'ERREUR (P1-6) : OK = Réessayer ; le Retour reste géré plus bas
     // (quitter le lecteur). On capte OK ici pour ne pas ouvrir la barre.
     if (_fatal && _isOk(k)) {
@@ -2142,7 +2231,16 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       return KeyEventResult.handled;
     }
     if (_isOk(k)) {
-      if (isDown) _okPressed();
+      if (isDown) {
+        _okDownOverlayWasVisible = _overlay;
+        _okPressed();
+      } else if (!_isVod && !_okDownOverlayWasVisible) {
+        // APPUI LONG (répétition clavier) sur OK en DIRECT, barre masquée
+        // au moment de l'appui → panneau « Récemment » (n°33). L'appui
+        // initial n'avait fait que révéler la barre : aucune action n'a
+        // été déclenchée par accident.
+        _openRecents();
+      }
       return KeyEventResult.handled;
     }
     _showOverlayTemporarily();
@@ -2431,6 +2529,108 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                   // (cf. _handleVodEnded) — jamais en live ni pour un film.
                   // Feuille « Pistes & format d'image » (panneau latéral droit,
                   // focus émulé — cf. _onKey qui lui détourne tout le D-pad).
+                  // Panneau « Récemment » (n°33, appui long OK) : liste des
+                  // dernières chaînes à GAUCHE (la feuille Pistes vit à
+                  // droite), focus émulé — cf. _onKey qui capte le D-pad.
+                  if (_recentsVisible)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 380,
+                        padding: const EdgeInsets.fromLTRB(
+                            TvDimens.safeH, TvDimens.safeV, 24, TvDimens.safeV),
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: <Color>[
+                              Color(0xF20A0A0C),
+                              Color(0x000A0A0C),
+                            ],
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(context.l10n.tvRecently,
+                                style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    color: TvTokens.text)),
+                            const SizedBox(height: 14),
+                            Expanded(
+                              child: ListView.builder(
+                                itemCount: _recentsList.length,
+                                itemBuilder: (BuildContext _, int i) {
+                                  final Channel c = _recentsList[i];
+                                  final bool focused = i == _recentsFocus;
+                                  return Container(
+                                    height: 52,
+                                    margin:
+                                        const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12),
+                                    decoration: BoxDecoration(
+                                      color: focused
+                                          ? Colors.white.withValues(
+                                              alpha: 0.16)
+                                          : Colors.transparent,
+                                      borderRadius:
+                                          BorderRadius.circular(10),
+                                      border: focused
+                                          ? Border.all(
+                                              color: Colors.white70)
+                                          : null,
+                                    ),
+                                    child: Row(
+                                      children: <Widget>[
+                                        if ((c.logoUrl ?? '').isNotEmpty)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(
+                                                    right: 10),
+                                            child: CachedNetworkImage(
+                                              imageUrl: c.logoUrl!,
+                                              width: 34,
+                                              height: 34,
+                                              fit: BoxFit.contain,
+                                              errorWidget: (_, __, ___) =>
+                                                  const SizedBox(
+                                                      width: 34,
+                                                      height: 34),
+                                            ),
+                                          ),
+                                        Expanded(
+                                          child: Text(
+                                            c.cleanName,
+                                            maxLines: 1,
+                                            overflow:
+                                                TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: focused
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w500,
+                                              color: focused
+                                                  ? TvTokens.text
+                                                  : TvTokens.text
+                                                      .withValues(
+                                                          alpha: 0.8),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   if (_tracksVisible)
                     Positioned(
                       top: 0,
