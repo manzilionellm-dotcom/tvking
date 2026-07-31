@@ -50,6 +50,7 @@ import '../../profile/presentation/profile_screen.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../subscription/presentation/guest_screen.dart';
 import '../../ads/presentation/affiliate_card.dart';
+import '../../sports/presentation/sports_screen.dart';
 import 'widgets/announcement_banner.dart';
 import 'widgets/category_browser_view.dart';
 
@@ -471,6 +472,15 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             accent: true,
             onTap: () => Navigator.of(context).push<void>(
               MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+            ),
+          ),
+          // Centre Sportif : scores, équipes suivies, rappels de matchs.
+          _BottomNavItem(
+            icon: Icons.sports_soccer_rounded,
+            label: context.l10n.catSport,
+            active: false,
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(builder: (_) => const SportsScreen()),
             ),
           ),
           // « Ajouter » = activation par code MAC (pas de M3U/Xtream).
