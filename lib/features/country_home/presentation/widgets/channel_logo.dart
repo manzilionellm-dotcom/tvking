@@ -53,6 +53,9 @@ class ChannelLogo extends StatelessWidget {
                 // n'explose plus la mémoire malgré le contain.
                 memCacheHeight: (size * 3).round(),
                 useOldImageOnUrlChange: true,
+                // Apparition VIVE : le fondu par défaut (500 ms) donnait une
+                // impression de lenteur pendant le défilement.
+                fadeInDuration: const Duration(milliseconds: 150),
                 errorWidget: (_, __, ___) => _fallback(),
                 placeholder: (_, __) => _fallback(),
                 imageBuilder:

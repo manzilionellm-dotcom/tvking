@@ -89,11 +89,25 @@ class PlaylistRepository {
   // (accueil, recherche, favoris, EPG, reco) lit les chaînes par ICI, la
   // restriction est héritée partout, sans toucher chaque écran. Sur les
   // flavors normaux (The Few, TV), `adultOnly` = false → aucune restriction.
+  // Cache du filtre flavor par IDENTITÉ de liste (audit fluidité #20) :
+  // `currentChannels` est lu à CHAQUE build de l'accueil — refaire un
+  // where().toList() sur tout le bouquet (flavor adulte) coûtait un scan
+  // O(N) par frame. Tant que _channelsCache n'a pas changé de référence,
+  // on ressert la même liste filtrée.
+  List<Channel>? _flavorFilterFor;
+  List<Channel>? _flavorFilterCache;
+
   List<Channel> _applyFlavorFilter(List<Channel> all) {
     if (!FlavorConfig.current.adultOnly) return all;
-    return all
+    if (identical(_flavorFilterFor, all) && _flavorFilterCache != null) {
+      return _flavorFilterCache!;
+    }
+    final List<Channel> filtered = all
         .where((Channel c) => c.genre == ChannelGenre.adult)
         .toList(growable: false);
+    _flavorFilterFor = all;
+    _flavorFilterCache = filtered;
+    return filtered;
   }
 
   Stream<List<Channel>> get channelsStream =>

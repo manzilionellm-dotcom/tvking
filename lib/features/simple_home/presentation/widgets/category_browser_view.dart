@@ -667,56 +667,73 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     // power-user) ET donne un vrai accueil scrollable façon Netflix. Chaque
     // rail se cache tout seul quand il est vide (nouvel utilisateur = liste
     // de catégories seule, comme avant).
-    return ListView(
+    // SLIVERS (audit fluidité #3) : l'ancien ListView(children:[...])
+    // construisait CHAQUE rangée de catégorie (parfois des centaines) à
+    // CHAQUE rebuild, avant même que le sliver ne choisisse les visibles.
+    // Ici les rails d'en-tête restent des boîtes simples et les catégories
+    // passent par un SliverList.builder : seules les rangées À L'ÉCRAN
+    // existent — le défilement devient indépendant de la taille du bouquet.
+    return CustomScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 16),
-      children: <Widget>[
+      slivers: <Widget>[
         // Rangée « Reprendre » (Continue Watching VOD) : films/séries
         // commencés, avec barre de progression. Le hook de retour n°1.
-        _buildResumeVodRail(),
+        SliverToBoxAdapter(child: _buildResumeVodRail()),
         // Rayon « Top 10 » : preuve sociale en tête d'accueil. Classement
         // réel par temps de visionnage, avec repli « tendances du jour ».
-        _buildTopRail(),
+        SliverToBoxAdapter(child: _buildTopRail()),
         // Rayon « Récemment regardées » : dernières chaînes ouvertes (max 10).
-        _buildRecentRail(),
+        SliverToBoxAdapter(child: _buildRecentRail()),
         // Rangée « Favoris en direct maintenant » : les favoris qui diffusent
         // en ce moment (widget autonome, se cache s'il n'y a rien).
-        const LiveNowFavoritesRow(),
+        const SliverToBoxAdapter(child: LiveNowFavoritesRow()),
         // Barre de filtres : seulement s'il y a plus d'un rayon.
-        if (ordered.length > 1) _buildFilterBar(ordered, effective),
+        if (ordered.length > 1)
+          SliverToBoxAdapter(child: _buildFilterBar(ordered, effective)),
         // Rappel discret des catégories MASQUÉES + accès pour les ré-afficher.
         if (HiddenCategoriesStore.instance.count > 0)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _openHiddenSheet,
-                icon: Icon(Icons.visibility_off_rounded,
-                    size: 18, color: AppColors.textTertiary),
-                label: Text(
-                  '${HiddenCategoriesStore.instance.count} masquée(s) · Gérer',
-                  style: AppTextStyles.labelSmall.copyWith(
-                      fontSize: 12, color: AppColors.textTertiary),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _openHiddenSheet,
+                  icon: Icon(Icons.visibility_off_rounded,
+                      size: 18, color: AppColors.textTertiary),
+                  label: Text(
+                    '${HiddenCategoriesStore.instance.count} masquée(s) · Gérer',
+                    style: AppTextStyles.labelSmall.copyWith(
+                        fontSize: 12, color: AppColors.textTertiary),
+                  ),
                 ),
               ),
             ),
           ),
-        // Catégories de la playlist (ordre natif préservé).
+        // Catégories de la playlist (ordre natif préservé) — construites
+        // PARESSEUSEMENT : seules les rangées visibles existent.
         if (cats.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Center(
-              child: Text(
-                context.l10n.catEmptyShelf,
-                style: AppTextStyles.bodyMedium.copyWith(
-                    fontSize: 14, color: AppColors.textSecondary),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  context.l10n.catEmptyShelf,
+                  style: AppTextStyles.bodyMedium.copyWith(
+                      fontSize: 14, color: AppColors.textSecondary),
+                ),
               ),
             ),
           )
         else
-          for (int i = 0; i < cats.length; i++)
-            _categoryRowWidget(cats, i, grouped),
+          SliverPadding(
+            padding: const EdgeInsets.only(bottom: 16),
+            sliver: SliverList.builder(
+              itemCount: cats.length,
+              itemBuilder: (BuildContext context, int i) =>
+                  _categoryRowWidget(cats, i, grouped),
+            ),
+          ),
       ],
     );
   }
@@ -795,17 +812,40 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
         ),
         const Divider(height: 1, color: AppColors.surface),
         Expanded(
-          child: ListView.separated(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 16),
-            itemCount: channels.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 4),
-            itemBuilder: (BuildContext context, int i) {
-              final Channel c = channels[i];
-              return _ChannelRow(
-                channel: c,
-                number: i + 1,
-                onTap: () => playChannel(context, c, zapPlaylist: channels),
+          // UNE seule écoute des favoris pour TOUTE la liste (audit #9) :
+          // avant, CHAQUE rangée portait son StreamBuilder — un toggle ★
+          // reconstruisait tous les boutons visibles et le défilement
+          // payait un abonnement par ligne. + hauteur FIXE (audit #10) :
+          // itemExtent connu → zéro re-mesurage par frame, positions
+          // exactes, défilement « miel » même à 2 000 chaînes.
+          child: StreamBuilder<Set<String>>(
+            stream: FavoritesRepository.instance.favoritesStream,
+            initialData: FavoritesRepository.instance.current,
+            builder:
+                (BuildContext context, AsyncSnapshot<Set<String>> snap) {
+              final Set<String> favs = snap.data ?? const <String>{};
+              return ListView.builder(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 16),
+                itemExtent: 60,
+                itemCount: channels.length,
+                itemBuilder: (BuildContext context, int i) {
+                  final Channel c = channels[i];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: _ChannelRow(
+                      channel: c,
+                      number: i + 1,
+                      isFav: favs.contains(c.id),
+                      onTap: () {
+                        // Micro-retour haptique : le tap « répond » sous le
+                        // doigt avant même l'ouverture du lecteur.
+                        Haptics.light();
+                        playChannel(context, c, zapPlaylist: channels);
+                      },
+                    ),
+                  );
+                },
               );
             },
           ),
@@ -1075,9 +1115,13 @@ class _GroupReorderChevrons extends StatelessWidget {
 /// Ligne de chaîne : numéro + logo + nom propre. Tape → lecture.
 class _ChannelRow extends StatelessWidget {
   const _ChannelRow(
-      {required this.channel, required this.number, required this.onTap});
+      {required this.channel,
+      required this.number,
+      required this.isFav,
+      required this.onTap});
   final Channel channel;
   final int number;
+  final bool isFav;
   final VoidCallback onTap;
 
   @override
@@ -1118,25 +1162,18 @@ class _ChannelRow extends StatelessWidget {
               ),
               // Cœur favori : ajout/retrait DEPUIS la navigation (avant, le
               // cœur n'existait que dans le player → l'onglet Favoris restait
-              // vide. Friction d'investissement n°1 levée.)
-              StreamBuilder<Set<String>>(
-                stream: FavoritesRepository.instance.favoritesStream,
-                initialData: FavoritesRepository.instance.current,
-                builder:
-                    (BuildContext context, AsyncSnapshot<Set<String>> snap) {
-                  final bool fav = snap.data?.contains(channel.id) ?? false;
-                  return IconButton(
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      fav ? Icons.favorite : Icons.favorite_border,
-                      color: fav ? AppColors.accent : AppColors.textTertiary,
-                      size: 20,
-                    ),
-                    onPressed: () {
-                      Haptics.light();
-                      FavoritesRepository.instance.toggle(channel.id);
-                    },
-                  );
+              // vide. Friction d'investissement n°1 levée.) L'état vient du
+              // StreamBuilder UNIQUE au-dessus de la liste (audit #9).
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  isFav ? Icons.favorite : Icons.favorite_border,
+                  color: isFav ? AppColors.accent : AppColors.textTertiary,
+                  size: 20,
+                ),
+                onPressed: () {
+                  Haptics.light();
+                  FavoritesRepository.instance.toggle(channel.id);
                 },
               ),
               const Icon(Icons.play_arrow_rounded,
