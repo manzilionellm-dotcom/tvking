@@ -381,6 +381,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // YouTube) : 🎧 Écouteurs et Lecture/Pause agissent sur CE lecteur.
     PipService.instance.onPipHeadphones = () => unawaited(_onPipHeadphones());
     PipService.instance.onPipPlayPause = _togglePlayPause;
+    PipService.instance.onNotificationVideo =
+        () => unawaited(_onNotificationVideo());
     // Aspect ratio par défaut — la plupart des flux IPTV sont 16:9.
     PipService.instance.setAspectRatio(numerator: 16, denominator: 9);
 
@@ -1973,6 +1975,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Débranche les boutons PiP : sans lecteur, un tap ne fait rien.
     PipService.instance.onPipHeadphones = null;
     PipService.instance.onPipPlayPause = null;
+    PipService.instance.onNotificationVideo = null;
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     // Restaure portrait-only en quittant le player (l'accueil et les
     // autres écrans sont conçus en portrait).
@@ -2402,11 +2405,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // « visible » (le PiP compte) — après moveTaskToBack, Android 12+
     // peut refuser le démarrage d'un foreground service.
     final String title = widget.overrideTitle ?? _currentChannel.cleanName;
-    await PipService.instance.startBackgroundAudio(title);
+    final bool started =
+        await PipService.instance.startBackgroundAudio(title);
+    if (!started) {
+      // Android a REFUSÉ le service de fond : sans lui, fermer la fenêtre
+      // tuerait le son en quelques secondes. On reste donc en mode
+      // Écouteurs AVEC la fenêtre visible (audio garanti) plutôt que de
+      // promettre une radio qui se tait.
+      return;
+    }
     // Puis la fenêtre disparaît : plus d'image nulle part, juste la voix.
     // Revenir dans l'app (icône ou notification) retrouve le lecteur en
     // mode Écouteurs, d'où on peut réafficher la vidéo.
     await PipService.instance.dismissPipToBackground();
+  }
+
+  /// Bouton « Vidéo » de la NOTIFICATION (mode radio) : Android vient de
+  /// ramener l'app au premier plan (intent de lancement) — on rebascule
+  /// Écouteurs → vidéo, sans passage manuel par l'app. Idempotent.
+  Future<void> _onNotificationVideo() async {
+    if (!mounted || !_audioOnly) return;
+    setState(() => _audioOnly = false);
+    await PipService.instance.setAudioOnlyMode(false);
+    await PipService.instance.stopBackgroundAudio();
   }
 
   // ----- GESTES TACTILES (lot mobile avancé) -----

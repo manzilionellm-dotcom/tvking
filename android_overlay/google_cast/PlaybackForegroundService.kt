@@ -71,7 +71,14 @@ class PlaybackForegroundService : Service() {
         const val EXTRA_STOP_LABEL = "stopLabel"
         const val EXTRA_CHANNEL_NAME = "channelName"
         const val EXTRA_CHANNEL_DESC = "channelDesc"
+        const val EXTRA_VIDEO_LABEL = "videoLabel"
+
+        /// Extra posé sur l'intent de lancement par le bouton « Vidéo »
+        /// de la notification : MainActivity le détecte (onNewIntent) et
+        /// demande à Dart de rebasculer du mode Écouteurs vers la vidéo.
+        const val EXTRA_OPEN_VIDEO = "com.manzilionellm.tvking.OPEN_VIDEO"
         private const val DEFAULT_STOP_LABEL = "Arrêter"
+        private const val DEFAULT_VIDEO_LABEL = "Vidéo"
         private const val DEFAULT_CHANNEL_NAME = "Lecture audio"
         private const val DEFAULT_CHANNEL_DESC =
             "Lecture audio en arrière-plan (mode Écouteurs)"
@@ -89,6 +96,8 @@ class PlaybackForegroundService : Service() {
                 val body = intent.getStringExtra(EXTRA_BODY) ?: DEFAULT_BODY
                 val stopLabel =
                     intent.getStringExtra(EXTRA_STOP_LABEL) ?: DEFAULT_STOP_LABEL
+                val videoLabel =
+                    intent.getStringExtra(EXTRA_VIDEO_LABEL) ?: DEFAULT_VIDEO_LABEL
                 Log.i(TAG, "START background keep-alive: $title ($body)")
                 createChannelIfNeeded(
                     intent.getStringExtra(EXTRA_CHANNEL_NAME) ?: DEFAULT_CHANNEL_NAME,
@@ -96,7 +105,7 @@ class PlaybackForegroundService : Service() {
                 )
                 startForeground(
                     NOTIFICATION_ID,
-                    buildNotification(title, body, stopLabel),
+                    buildNotification(title, body, stopLabel, videoLabel),
                 )
                 acquireLocks()
             }
@@ -148,6 +157,7 @@ class PlaybackForegroundService : Service() {
         title: String,
         body: String = DEFAULT_BODY,
         stopLabel: String = DEFAULT_STOP_LABEL,
+        videoLabel: String = DEFAULT_VIDEO_LABEL,
     ): Notification {
         // Tap sur la notification → ramène l'app au premier plan.
         val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
@@ -176,6 +186,24 @@ class PlaybackForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        // Action « Vidéo » → ramène l'app au premier plan ET rebascule en
+        // vidéo (extra détecté par MainActivity.onNewIntent → Dart). Sans
+        // ce bouton, revenir du mode radio demandait de rouvrir l'app à la
+        // main — lent et pas professionnel.
+        val videoPi: PendingIntent? = if (launch != null) {
+            val videoIntent = Intent(launch).apply {
+                putExtra(EXTRA_OPEN_VIDEO, true)
+            }
+            PendingIntent.getActivity(
+                this,
+                2,
+                videoIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        } else {
+            null
+        }
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(body)
@@ -185,11 +213,14 @@ class PlaybackForegroundService : Service() {
             .setShowWhen(false)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                stopLabel,
-                stopPi,
-            )
+        if (videoPi != null) {
+            builder.addAction(R.drawable.ic_pip_video, videoLabel, videoPi)
+        }
+        builder.addAction(
+            android.R.drawable.ic_menu_close_clear_cancel,
+            stopLabel,
+            stopPi,
+        )
         if (contentPi != null) builder.setContentIntent(contentPi)
         return builder.build()
     }

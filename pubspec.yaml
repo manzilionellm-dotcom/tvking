@@ -9,7 +9,7 @@
 name: tv_king
 description: "The Few — lecteur multimédia premium (Not For Everyone)."
 publish_to: 'none'
-version: 0.3.3+12
+version: 1.0.0+13
 
 environment:
   sdk: ^3.5.0

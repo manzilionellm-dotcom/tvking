@@ -120,6 +120,30 @@ class MainActivity : FlutterFragmentActivity() {
         // Pré-enregistre les boutons PiP dès le démarrage : une entrée en
         // PiP initiée par l'OS trouve toujours 🎧 + ⏯ en place.
         refreshPipActions()
+        consumeOpenVideoExtra(intent)
+    }
+
+    /// Bouton « Vidéo » de la notification (mode radio) : l'intent de
+    /// lancement porte EXTRA_OPEN_VIDEO. On le consomme (une seule fois)
+    /// et on demande à Dart de rebasculer Écouteurs → vidéo.
+    private fun consumeOpenVideoExtra(intent: Intent?) {
+        if (intent?.getBooleanExtra(
+                PlaybackForegroundService.EXTRA_OPEN_VIDEO, false,
+            ) != true
+        ) {
+            return
+        }
+        intent.removeExtra(PlaybackForegroundService.EXTRA_OPEN_VIDEO)
+        // Le canal est câblé dans configureFlutterEngine (déjà fait quand
+        // l'activité existe — cas normal du mode radio). S'il n'est pas
+        // encore prêt (démarrage à froid, audio de toute façon coupé), on
+        // laisse tomber en silence : rien à rebasculer.
+        pipChannel?.invokeMethod("onNotificationVideo", null)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        consumeOpenVideoExtra(intent)
     }
 
     override fun onDestroy() {
@@ -297,6 +321,7 @@ class MainActivity : FlutterFragmentActivity() {
                             call.argument<String>("stopLabel"),
                             call.argument<String>("channelName"),
                             call.argument<String>("channelDesc"),
+                            call.argument<String>("videoLabel"),
                         )
                         result.success(started)
                     }
@@ -465,6 +490,7 @@ class MainActivity : FlutterFragmentActivity() {
         stopLabel: String? = null,
         channelName: String? = null,
         channelDesc: String? = null,
+        videoLabel: String? = null,
     ): Boolean {
         return try {
             val intent = Intent(this, PlaybackForegroundService::class.java).apply {
@@ -481,6 +507,9 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 if (channelDesc != null) {
                     putExtra(PlaybackForegroundService.EXTRA_CHANNEL_DESC, channelDesc)
+                }
+                if (videoLabel != null) {
+                    putExtra(PlaybackForegroundService.EXTRA_VIDEO_LABEL, videoLabel)
                 }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

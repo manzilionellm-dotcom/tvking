@@ -60,6 +60,11 @@ class PipService extends ChangeNotifier {
   VoidCallback? onPipHeadphones;
   VoidCallback? onPipPlayPause;
 
+  /// Bouton « Vidéo » de la NOTIFICATION (mode radio) : l'utilisateur
+  /// veut revenir à l'image sans rouvrir l'app à la main. Le lecteur
+  /// s'enregistre ici et rebascule Écouteurs → vidéo.
+  VoidCallback? onNotificationVideo;
+
   /// Cache du support PiP. Calculé une seule fois au premier
   /// `isSupported()` call (réseau / IO inutiles ensuite).
   Future<bool> isSupported() async {
@@ -174,6 +179,8 @@ class PipService extends ChangeNotifier {
           'stopLabel': l10nNow.castStop,
           'channelName': l10nNow.playbackNotifChannelName,
           'channelDesc': l10nNow.playbackNotifChannelDesc,
+          // Bouton « Vidéo » de la notification (retour à l'image).
+          'videoLabel': l10nNow.playerVideo,
         },
       );
       return started ?? false;
@@ -222,6 +229,8 @@ class PipService extends ChangeNotifier {
           notifyListeners();
         }
         return null;
+      case 'onNotificationVideo':
+        onNotificationVideo?.call();
       case 'onPipRemoteAction':
         final dynamic args = call.arguments;
         final String action =
