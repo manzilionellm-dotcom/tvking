@@ -58,7 +58,7 @@
 // (/api/v1/rt/ws) AVANT de forwarder au Durable Object temps reel.
 import {
   apiV1, verifyJwt, validateFacadeBase,
-  publicCampaignsList, trackCampaignEvent,
+  publicCampaignsList, trackCampaignEvent, ingestAppReport,
 } from './api_v1.js';
 // Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
 // Durable Object « RealtimeHub » (WebSockets appareils + panel) et helper
@@ -6305,6 +6305,25 @@ async function handleRequest(request, env, ctx) {
         const event = body && body.event === 'click' ? 'click' : 'impression';
         if (!Number.isFinite(id) || id <= 0) return badRequest('bad id');
         return json({ ok: await trackCampaignEvent(env, id, event) });
+      } catch (_) {
+        return json({ ok: false });
+      }
+    }
+
+    // /api/reports — Boîte noire du parc (POST public, best-effort).
+    // L'app envoie AU PLUS 1×/24 h un résumé ANONYME de ses échecs de
+    // lecture (jamais d'URL de flux). Le PAYS vient de Cloudflare
+    // (request.cf.country) → vue mondiale du panel « Rapports ».
+    if (segments[0] === 'api' && segments[1] === 'reports' && segments.length === 2) {
+      if (request.method !== 'POST') {
+        return badRequest('only POST supported on /api/reports');
+      }
+      if (!env.DB) return json({ ok: false });
+      try {
+        const body = await request.json();
+        const country = request.cf && request.cf.country
+          ? String(request.cf.country) : '';
+        return json({ ok: await ingestAppReport(env, body || {}, country) });
       } catch (_) {
         return json({ ok: false });
       }

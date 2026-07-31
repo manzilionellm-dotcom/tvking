@@ -60,6 +60,7 @@ const OWNER_NAV: NavSection[] = [
       { key: 'nav.notifications', to: '/notifications' },
       { key: 'nav.forceUpdate',   to: '/force-update' },
       { key: 'nav.reviews',       to: '/reviews' },
+      { key: 'nav.reports',       to: '/rapports' },
     ],
   },
   {

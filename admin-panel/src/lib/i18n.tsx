@@ -40,6 +40,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.theme': { fr: 'Thème', en: 'Theme', ar: 'السمة' },
   'nav.ad': { fr: 'Pub vidéo', en: 'Video ad', ar: 'إعلان فيديو' },
   'nav.affiliation': { fr: 'Affiliation & Pubs', en: 'Affiliation & Ads', ar: 'الإعلانات والتسويق' },
+  'nav.reports': { fr: 'Rapports', en: 'Reports', ar: 'التقارير' },
   'nav.pricing': { fr: 'Tarifs', en: 'Pricing', ar: 'الأسعار' },
   'nav.reviews': { fr: 'Avis clients', en: 'Reviews', ar: 'آراء العملاء' },
   'nav.homeManager': { fr: 'Accueil', en: 'Home', ar: 'الرئيسية' },

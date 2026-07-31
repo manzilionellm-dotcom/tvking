@@ -1211,6 +1211,41 @@ export const campaignsApi = {
 };
 
 // =========================================================
+//  RAPPORTS BOÎTE NOIRE (parc mondial, lecture seule)
+// =========================================================
+//  Chaque app envoie 1×/24 h un résumé anonyme de ses échecs de lecture ;
+//  le pays est déduit côté serveur (Cloudflare). Ici : la vue agrégée.
+export interface ReportBucket { devices: number; failures: number }
+export interface ReportProblem {
+  code: string;
+  count: number;
+  topChannels: { name: string; count: number }[];
+}
+export interface ReportFailure {
+  ts: string; channel: string; host: string;
+  code: string; cause: string; verdict: string;
+}
+export interface ReportRow {
+  device: string; app: 'phone' | 'tv';
+  version_name: string; version_code: number;
+  platform: string; locale: string; country: string; day: string;
+  failure_count: number; failures: ReportFailure[];
+}
+export interface ReportsOverview {
+  days: number; since: string;
+  totals: { reports: number; devices: number; failures: number };
+  byDay: Record<string, ReportBucket>;
+  byCountry: Record<string, ReportBucket>;
+  byApp: Record<string, ReportBucket>;
+  topProblems: ReportProblem[];
+  recent: ReportRow[];
+}
+export const reportsApi = {
+  overview: (days: number) =>
+    request<ReportsOverview>(`/api/v1/reports?days=${days}`),
+};
+
+// =========================================================
 //  TARIFS (prix affichés dans l'app + essai + promo/bonus)
 // =========================================================
 //  L'owner fixe les prix EN € (à vie / 1 an), la durée de l'essai gratuit,

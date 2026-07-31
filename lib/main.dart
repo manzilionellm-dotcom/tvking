@@ -30,6 +30,7 @@ import 'features/ads/presentation/startup_ad_screen.dart';
 import 'features/feedback/data/feedback_repository.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/observability/fleet_reporter.dart';
 import 'core/update/update_prompt.dart';
 import 'core/branding/verified_badge.dart';
 import 'core/theme/app_text_styles.dart' show AppTextStyles;
@@ -559,6 +560,9 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     } finally {
       _updateChecking = false;
     }
+    // Rapport Boîte noire du parc : même cadence que la vérification de
+    // MAJ, mais auto-limité à UN envoi par 24 h et fail-open total.
+    unawaited(FleetReporter.instance.maybeSend());
   }
 
   @override

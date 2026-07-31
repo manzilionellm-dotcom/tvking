@@ -16,6 +16,7 @@ import 'package:intl/intl.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../core/theme/accent_controller.dart';
+import '../../../core/observability/fleet_reporter.dart';
 import '../../../core/update/update_prompt.dart';
 import '../../../core/profiles/profiles_repository.dart';
 import '../../../core/realtime/admin_message_banner.dart';
@@ -424,6 +425,9 @@ class _TvGateState extends State<TvGate> {
   void _checkUpdate() {
     if (!mounted) return;
     unawaited(maybePromptUpdate(context));
+    // Rapport Boîte noire du parc : même cadence (30 s après le boot puis
+    // 12 h), mais auto-limité à UN envoi par 24 h et fail-open total.
+    unawaited(FleetReporter.instance.maybeSend());
   }
 
   @override
