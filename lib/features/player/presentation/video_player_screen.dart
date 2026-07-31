@@ -58,6 +58,7 @@ import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/vod_download_service.dart';
 import '../data/hls_preflight.dart';
 import '../data/local_stream_relay.dart';
+import '../data/mini_player_service.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
 import '../data/stream_blocked_fallback.dart';
@@ -2372,6 +2373,36 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// `_buildPlayerSurface()` ne pose plus le widget `Video` : la surface
   /// vidéo disparaît, remplacée par un fond noir + une icône casque.
   /// Le moteur `_player` (media_kit) n'est jamais mis en pause : il
+  /// « Réduire » (porté de TV King) : ferme le plein écran et continue la
+  /// lecture dans la fenêtre flottante globale (MiniPlayerOverlay, montée
+  /// dans MaterialApp.builder). On capture les paramètres AVANT le pop ;
+  /// le service attend ~600 ms avant d'ouvrir SA propre instance, le temps
+  /// que la nôtre (disposée avec l'écran) libère sa connexion serveur —
+  /// comptes « 1 connexion » compris.
+  void _minimizeToMini() {
+    final Channel channel = _currentChannel;
+    final List<Channel>? zap = widget.zapPlaylist;
+    final String? overrideUrl = widget.overrideUrl;
+    final String? overrideTitle = widget.overrideTitle;
+    // Reprise de position : contenu seekable uniquement (VOD/catch-up) —
+    // un live a une durée nulle, on repart simplement du direct.
+    final Duration? resume = _player.state.duration > Duration.zero
+        ? _player.state.position
+        : null;
+    final bool audioOnly = _audioOnly;
+    unawaited(
+      MiniPlayerService.instance.start(
+        channel: channel,
+        zapPlaylist: zap,
+        overrideUrl: overrideUrl,
+        overrideTitle: overrideTitle,
+        resumePosition: resume,
+        audioOnly: audioOnly,
+      ),
+    );
+    Navigator.of(context).pop();
+  }
+
   /// continue de décoder et de jouer le SON. C'est exactement le
   /// comportement « écran éteint, ça continue » de YouTube.
   void _toggleAudioOnly() {
@@ -3302,6 +3333,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         : context.l10n.playerAudioOnly,
                     iconColor: _audioOnly ? AppColors.accent : null,
                     onTap: _toggleAudioOnly,
+                  ),
+                  // « Réduire » (porté de TV King) : la lecture continue
+                  // dans une petite fenêtre flottante DANS l'app pendant
+                  // que l'utilisateur navigue (≠ PiP système : celui-ci
+                  // reste réservé au passage en arrière-plan).
+                  _ControlButton(
+                    icon: Icons.picture_in_picture_alt_rounded,
+                    label: context.l10n.playerReduce,
+                    onTap: _minimizeToMini,
                   ),
                   // Caster sur n'importe quel écran avec un navigateur
                   // (QR/code, via le Worker — marche même hors Wi-Fi local).

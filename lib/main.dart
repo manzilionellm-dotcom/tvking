@@ -17,6 +17,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
+import 'core/app/root_navigator.dart';
 import 'core/backend/backend_hosts.dart';
 import 'core/realtime/admin_message_banner.dart';
 import 'core/realtime/realtime_sync_service.dart';
@@ -53,12 +54,15 @@ import 'features/simple_home/presentation/simple_home_screen.dart';
 import 'features/admin/data/admin_credentials.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/epg/data/epg_repository.dart';
+import 'features/onboarding/data/consent_state.dart';
 import 'features/onboarding/data/device_class_repository.dart';
 import 'features/onboarding/data/onboarding_state.dart';
+import 'features/onboarding/presentation/consent_screen.dart';
 // Phase 1+/2026-06-01 : DevicePicker + Onboarding supprimes du
 // flow. Imports retires (les fichiers existent toujours dans
 // features/onboarding/presentation/ pour eventuelle reprise).
 import 'features/player/data/player_settings.dart';
+import 'features/player/presentation/mini_player_overlay.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/cloud_backup_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
@@ -414,10 +418,23 @@ class TvKingApp extends StatelessWidget {
                   maxScaleFactor: 1.25,
                 ),
               ),
-              child: child ?? const SizedBox.shrink(),
+              // MINI-LECTEUR FLOTTANT (porté de TV King) : posé ICI, dans
+              // le builder, il flotte au-dessus de TOUTES les routes du
+              // Navigator (home comme écrans poussés) — c'est le seul
+              // point d'accroche vraiment global de l'app. Zéro coût
+              // quand rien ne joue (SizedBox.shrink dans l'overlay).
+              child: Stack(
+                children: <Widget>[
+                  child ?? const SizedBox.shrink(),
+                  const MiniPlayerOverlay(),
+                ],
+              ),
             );
           },
 
+          // Clé racine : permet au mini-lecteur (au-dessus du Navigator)
+          // de rouvrir le plein écran via « Agrandir ».
+          navigatorKey: rootNavigatorKey,
           home: const _AppEntry(),
         );
       },
@@ -451,6 +468,11 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   // que le lock est activé, on affiche `LockScreen` au lieu de l'app.
   bool? _lockEnabled;
   bool _unlocked = false;
+  // Consentement CGU (porté de TV King) : null = pas encore chargé.
+  // Tant que false, la porte ConsentScreen bloque TOUTE l'app — le
+  // lecteur ne fournit aucun contenu, les liens appartiennent à
+  // l'utilisateur, et il doit l'avoir accepté avant d'entrer.
+  bool? _consentAccepted;
   // Confirmation 18+ (héritée de l'ancienne variante Red Room, retirée).
   // `requireAgeGate` étant désormais toujours `false`, ce gate ne
   // s'affiche jamais — la valeur est posée à `true` dans initState.
@@ -569,6 +591,9 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
       (_) => _maybeCheckUpdate(),
     );
     _resolveAd();
+    ConsentState.instance.hasAccepted().then((bool ok) {
+      if (mounted) setState(() => _consentAccepted = ok);
+    });
     OnboardingState.instance.hasCompleted().then((bool done) {
       if (mounted) {
         setState(() {
@@ -630,7 +655,8 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     // Splash tant qu'on n'a pas chargé les flags persistés.
     if (_onboardingDone == null ||
         _lockEnabled == null ||
-        _ageGateConfirmed == null) {
+        _ageGateConfirmed == null ||
+        _consentAccepted == null) {
       return const _Splash();
     }
 
@@ -666,6 +692,18 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     if (_lockEnabled == true && !_unlocked && !isTvDevice) {
       return LockScreen(
         onUnlocked: () => setState(() => _unlocked = true),
+      );
+    }
+
+    // 0c) CONSENTEMENT CGU (porté de TV King) — porte bloquante du premier
+    //     lancement. Contrairement à la branche onboarding ci-dessous
+    //     (désactivée, marquée completed en silence), CELLE-CI RETOURNE
+    //     vraiment un écran : sans acceptation, on n'entre pas. Le refus
+    //     n'offre aucune issue — un bandeau explique que l'app ne peut
+    //     pas être utilisée sans acceptation.
+    if (_consentAccepted == false) {
+      return ConsentScreen(
+        onAccepted: () => setState(() => _consentAccepted = true),
       );
     }
 

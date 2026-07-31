@@ -31,6 +31,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/crash/crash_reporting.dart';
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/network/cellular_guard.dart';
 import '../../cast/data/cast_manager.dart';
 import '../../cast/data/cast_url_resolver.dart';
@@ -38,6 +39,8 @@ import '../../cast/domain/cast_device.dart';
 import '../../cast/presentation/cast_button.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../data/link_check.dart';
+import '../data/mini_player_service.dart';
 import 'video_player_screen.dart';
 
 Future<void> playChannel(
@@ -48,6 +51,23 @@ Future<void> playChannel(
   String? overrideTitle,
 }) async {
   RecentlyWatchedRepository.instance.record(channel.id);
+
+  // Une seule lecture à la fois : si un mini-lecteur flottant tourne
+  // encore, on le ferme (et on libère sa connexion) AVANT d'ouvrir quoi
+  // que ce soit d'autre — crucial pour les comptes « 1 connexion ».
+  await MiniPlayerService.instance.close();
+
+  if (!context.mounted) return;
+  // ENGAGEMENT (porté de TV King) : « chaque lien est vérifié avant
+  // lecture ». Vérification SYNCHRONE (format/protocole/hôte, zéro
+  // réseau) : un lien structurellement illisible n'est JAMAIS envoyé
+  // au lecteur — on affiche la raison tout de suite au lieu de laisser
+  // l'utilisateur regarder un timeout de 25 s.
+  final LinkCheck check = verifyStreamUrl(overrideUrl ?? channel.streamUrl);
+  if (!check.ok) {
+    await _showLinkBlocked(context, check.reason!);
+    return;
+  }
 
   if (!context.mounted) return;
   // Garde données cellulaires (Wi-Fi only / avertissement data). Fail-open :
@@ -115,6 +135,44 @@ Future<void> playChannel(
         overrideUrl: overrideUrl,
         overrideTitle: overrideTitle,
       ),
+    ),
+  );
+}
+
+/// Traduit une raison de refus en libellé court (mêmes formulations
+/// que TV King : « Lien vide », « Adresse illisible », …).
+String linkCheckReasonLabel(BuildContext context, LinkCheckReason reason) {
+  switch (reason) {
+    case LinkCheckReason.empty:
+      return context.l10n.linkReasonEmpty;
+    case LinkCheckReason.unreadable:
+      return context.l10n.linkReasonUnreadable;
+    case LinkCheckReason.scheme:
+      return context.l10n.linkReasonScheme;
+    case LinkCheckReason.noHost:
+      return context.l10n.linkReasonNoHost;
+  }
+}
+
+/// Boîte « Lecture bloquée : lien invalide » — raison claire + geste
+/// correctif, un seul bouton. Jamais de spinner, jamais d'attente.
+Future<void> _showLinkBlocked(
+  BuildContext context,
+  LinkCheckReason reason,
+) async {
+  await showDialog<void>(
+    context: context,
+    builder: (BuildContext ctx) => AlertDialog(
+      title: Text(ctx.l10n.linkBlockedTitle),
+      content: Text(
+        '${linkCheckReasonLabel(ctx, reason)}\n\n${ctx.l10n.linkBlockedHint}',
+      ),
+      actions: <Widget>[
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(ctx.l10n.buttonOk),
+        ),
+      ],
     ),
   );
 }
