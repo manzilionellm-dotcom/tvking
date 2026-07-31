@@ -176,12 +176,21 @@ abstract final class ChannelClassifier {
     return false;
   }
 
+  /// Cache des motifs token — PERF : ce classifieur tourne sur des
+  /// centaines de catégories × ~245 mots-clés à chaque classement ;
+  /// recompiler la RegExp à chaque appel coûtait des centaines de ms
+  /// de jank UI (audit fluidité 2026-07-31). Compilées UNE fois,
+  /// réutilisées ensuite (le jeu de mots-clés est constant).
+  static final Map<String, RegExp> _tokenPatterns = <String, RegExp>{};
+
   /// Cherche [needle] comme "token" (entouré de non-lettres).
   /// Évite que "sport" matche dans "transport".
   static bool _containsAsToken(String text, String needle) {
     if (needle.isEmpty) return false;
-    final RegExp pattern =
-        RegExp(r'(^|[^a-z0-9])' + RegExp.escape(needle) + r'($|[^a-z0-9])');
+    final RegExp pattern = _tokenPatterns.putIfAbsent(
+        needle,
+        () => RegExp(
+            r'(^|[^a-z0-9])' + RegExp.escape(needle) + r'($|[^a-z0-9])'));
     return pattern.hasMatch(text);
   }
 

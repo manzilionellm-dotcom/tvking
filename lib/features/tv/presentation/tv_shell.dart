@@ -2,6 +2,7 @@
 //  tv_shell.dart — Conteneur racine 10-foot (safe area + fond Maison Noir)
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/tv_ambience.dart';
 import '../core/tv_dimens.dart';
@@ -17,22 +18,51 @@ class TvShell extends StatelessWidget {
   final Widget child;
   final bool applySafeArea;
 
+  /// RETOUR UNIVERSEL (audit télécommandes 2026-07-31, D6/D7) : Android ne
+  /// transforme en « back » que KEYCODE_BACK. Les box génériques, claviers
+  /// HID, air-mouses et manettes émettent Échap / browserBack / exit /
+  /// bouton B — qui ne déclenchent JAMAIS popRoute tout seuls : le retour
+  /// était MORT sur ce matériel. Ce handler non-focusable, posé ici dans le
+  /// shell, couvre tous les écrans TV d'un coup. Il laisse passer tout le
+  /// reste (le lecteur, qui gère déjà ces touches, consomme avant nous).
+  static KeyEventResult _onBackKeys(BuildContext context, KeyEvent event) {
+    final LogicalKeyboardKey k = event.logicalKey;
+    final bool isBack = k == LogicalKeyboardKey.escape ||
+        k == LogicalKeyboardKey.browserBack ||
+        k == LogicalKeyboardKey.exit ||
+        k == LogicalKeyboardKey.goBack ||
+        k == LogicalKeyboardKey.gameButtonB;
+    if (!isBack) return KeyEventResult.ignored;
+    // Pop UNE fois au vrai enfoncement ; répétitions et key-UP consommés
+    // (le key-UP relâché vers Android provoquerait un 2e pop).
+    if (event is KeyDownEvent) {
+      Navigator.of(context).maybePop();
+    }
+    return KeyEventResult.handled;
+  }
+
   @override
   Widget build(BuildContext context) {
     // Material TRANSPARENT obligatoire : sans un Material ancêtre, Flutter
     // dessine chaque Text avec un double soulignement jaune (debug). On le
     // met en transparence pour laisser voir le dégradé Maison Noir.
-    final Widget content = Material(
-      type: MaterialType.transparency,
-      child: applySafeArea
-          ? Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: TvDimens.safeH,
-                vertical: TvDimens.safeV,
-              ),
-              child: child,
-            )
-          : child,
+    final Widget content = Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (FocusNode node, KeyEvent event) =>
+          _onBackKeys(context, event),
+      child: Material(
+        type: MaterialType.transparency,
+        child: applySafeArea
+            ? Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: TvDimens.safeH,
+                  vertical: TvDimens.safeV,
+                ),
+                child: child,
+              )
+            : child,
+      ),
     );
     // AMBIANCES INTELLIGENTES : la « lumière » du fond glisse en ~1,6 s vers
     // la teinte de l'univers regardé (or à l'accueil, ambre au cinéma, indigo

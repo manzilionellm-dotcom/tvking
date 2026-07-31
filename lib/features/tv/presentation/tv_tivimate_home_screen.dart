@@ -231,7 +231,12 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     }
     if (k == LogicalKeyboardKey.goBack ||
         k == LogicalKeyboardKey.escape ||
-        k == LogicalKeyboardKey.browserBack) {
+        k == LogicalKeyboardKey.browserBack ||
+        // `exit` / manette B : retour des box Amlogic génériques et des
+        // manettes — sans eux le mode réordonnancement semblait figé
+        // (audit télécommandes D15/D7).
+        k == LogicalKeyboardKey.exit ||
+        k == LogicalKeyboardKey.gameButtonB) {
       _endReorder();
       return KeyEventResult.handled;
     }
@@ -291,6 +296,8 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                 color: _tmText, fontSize: 22, fontWeight: FontWeight.w700)),
         actions: <Widget>[
           TextButton(
+            // Focus initial (audit D5) : sans lui le 1er OK est avalé.
+            autofocus: true,
             onPressed: () => Navigator.pop(d, false),
             child: const Text('Annuler',
                 style: TextStyle(color: _tmText2, fontSize: 18)),
@@ -426,18 +433,26 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
               itemBuilder: (BuildContext context, int i) {
                 final String g = _groups[i];
                 final bool reordering = _reorderGroup == g;
-                final List<String> real = _realGroups();
-                final int ri = real.indexOf(g);
+                // PERF (audit fluidité #5) : _realGroups() copiait puis
+                // scannait TOUTE la liste pour CHAQUE rangée construite,
+                // alors que le résultat ne sert qu'en réordonnancement.
+                final List<String>? real = reordering ? _realGroups() : null;
+                final int ri = real?.indexOf(g) ?? -1;
                 return _GroupTile(
                   key: ValueKey<String>(g),
                   label: g,
                   count: _counts[g] ?? 0,
                   active: g == _group,
-                  autofocus: false,
+                  // Télécommande VIVANTE dès l'arrivée (audit D9) : pendant
+                  // le chargement, la liste de chaînes (seul autofocus de
+                  // l'écran) n'existe pas encore — sans focus initial, OK
+                  // restait mort de longues secondes sur une grosse M3U.
+                  autofocus: _loading && i == 0,
                   reordering: reordering,
                   reorderable: !_isPseudoGroup(g),
                   canMoveUp: reordering && ri > 0,
-                  canMoveDown: reordering && ri >= 0 && ri < real.length - 1,
+                  canMoveDown:
+                      reordering && ri >= 0 && ri < (real?.length ?? 0) - 1,
                   onSelect: () {
                     if (reordering) {
                       _endReorder();

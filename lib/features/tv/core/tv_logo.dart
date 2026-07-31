@@ -76,20 +76,35 @@ class _Monogram extends StatelessWidget {
   final double size;
   final double radius;
 
+  // PERF (audit fluidité 2026-07-31) : ce monogramme est le placeholder de
+  // CHAQUE logo en cours de chargement — regex compilées UNE fois + mémo
+  // des initiales par libellé (borné) au lieu de 2 compilations par build.
+  static final RegExp _reNonWord = RegExp(r'[^A-Za-z0-9À-ÿ ]');
+  static final RegExp _reSpaces = RegExp(r'\s+');
+  static final Map<String, String> _initialsMemo = <String, String>{};
+
   /// Initiales (1–2 lettres) à partir du nom nettoyé.
   static String _initials(String name) {
+    final String? memo = _initialsMemo[name];
+    if (memo != null) return memo;
     final List<String> words = name
         .trim()
-        .replaceAll(RegExp(r'[^A-Za-z0-9À-ÿ ]'), ' ')
-        .split(RegExp(r'\s+'))
+        .replaceAll(_reNonWord, ' ')
+        .split(_reSpaces)
         .where((String w) => w.isNotEmpty)
         .toList();
-    if (words.isEmpty) return '•';
-    if (words.length == 1) {
+    final String out;
+    if (words.isEmpty) {
+      out = '•';
+    } else if (words.length == 1) {
       final String w = words.first;
-      return (w.length >= 2 ? w.substring(0, 2) : w).toUpperCase();
+      out = (w.length >= 2 ? w.substring(0, 2) : w).toUpperCase();
+    } else {
+      out = (words[0][0] + words[1][0]).toUpperCase();
     }
-    return (words[0][0] + words[1][0]).toUpperCase();
+    if (_initialsMemo.length > 4000) _initialsMemo.clear();
+    _initialsMemo[name] = out;
+    return out;
   }
 
   @override

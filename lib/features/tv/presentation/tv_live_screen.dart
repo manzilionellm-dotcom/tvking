@@ -835,10 +835,21 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // Catégorie réelle : on NETTOIE le libellé affiché (FR|/UK|, RAW, 60fps,
     // hevc…) via le curateur PARTAGÉ (lecture seule) + polissage TV. La clé brute
     // reste INTACTE pour le filtrage SQL.
+    // MÉMOÏSÉ (audit fluidité #6) : cette chaîne de regex tournait pour
+    // ~15 rangées visibles à CHAQUE cran de D-pad. Même patron que
+    // _nameMemo / _domCache plus bas.
+    final String? memo = _catLabelMemo[cat];
+    if (memo != null) return memo;
     final String pretty =
         _tvPretty(_tvStripCodec(TitleCurator.curateCategory(cat)));
-    return pretty.isEmpty ? cat : pretty;
+    final String out = pretty.isEmpty ? cat : pretty;
+    if (_catLabelMemo.length > 2000) _catLabelMemo.clear();
+    _catLabelMemo[cat] = out;
+    return out;
   }
+
+  /// Mémo libellé de catégorie (borné) — cf. _catLabel.
+  static final Map<String, String> _catLabelMemo = <String, String>{};
 
   @override
   Widget build(BuildContext context) {
@@ -1147,7 +1158,10 @@ class _CategoryRail extends StatelessWidget {
     }
     if (k == LogicalKeyboardKey.goBack ||
         k == LogicalKeyboardKey.escape ||
-        k == LogicalKeyboardKey.browserBack) {
+        k == LogicalKeyboardKey.browserBack ||
+        // `exit` / manette B : mêmes variantes que le lecteur (audit D15).
+        k == LogicalKeyboardKey.exit ||
+        k == LogicalKeyboardKey.gameButtonB) {
       onDoneReorder();
       return KeyEventResult.handled;
     }

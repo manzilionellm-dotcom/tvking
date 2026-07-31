@@ -14,6 +14,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/tv_focusable.dart';
+
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/app/device_memory.dart';
@@ -140,10 +142,9 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen>
       _setActive(1);
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.select ||
-        k == LogicalKeyboardKey.enter ||
-        k == LogicalKeyboardKey.numpadEnter ||
-        k == LogicalKeyboardKey.gameButtonA) {
+    // Helper PARTAGÉ (audit D3) : la liste locale avait dérivé (Espace
+    // et ▶‖ manquaient → OK mort sur claviers/air-mouse ici).
+    if (isTvSelectKey(k)) {
       _fullscreenActive();
       return KeyEventResult.handled;
     }

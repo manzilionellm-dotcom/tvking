@@ -30,27 +30,31 @@ class ChannelLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String? url = channel.logoUrl;
-    final Widget fallback = _fallback();
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: SizedBox(
         width: size,
         height: size,
         child: (url == null || url.isEmpty)
-            ? fallback
+            ? _fallback()
             // CachedNetworkImage : cache DISQUE en plus du borné mémoire.
             // useOldImageOnUrlChange = l'équivalent du gaplessPlayback
             // d'Image.network ; placeholder = fallback (zéro flash, zéro
-            // spinner) ; imageBuilder = même fond neutre qu'avant.
+            // spinner, construit PARESSEUSEMENT — pas à chaque frame de
+            // scroll quand le logo est déjà en cache) ; imageBuilder =
+            // même fond neutre qu'avant.
             : CachedNetworkImage(
                 imageUrl: url,
                 width: size,
                 height: size,
                 fit: BoxFit.contain,
                 memCacheWidth: (size * 3).round(),
+                // Borne les DEUX axes : un logo très haut (400×2000)
+                // n'explose plus la mémoire malgré le contain.
+                memCacheHeight: (size * 3).round(),
                 useOldImageOnUrlChange: true,
-                errorWidget: (_, __, ___) => fallback,
-                placeholder: (_, __) => fallback,
+                errorWidget: (_, __, ___) => _fallback(),
+                placeholder: (_, __) => _fallback(),
                 imageBuilder:
                     (BuildContext c, ImageProvider<Object> provider) {
                   // Image prête → on la pose sur un fond neutre.

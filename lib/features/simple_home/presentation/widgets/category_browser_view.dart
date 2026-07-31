@@ -543,21 +543,33 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     //    un décalage basé sur la date. On évite le rayon adulte hors mode
     //    Privé (où, lui, tout est adulte par nature).
     final bool allowAdult = FlavorConfig.current.adultOnly;
-    final List<Channel> pool = <Channel>[
-      for (final Channel c in widget.channels)
-        if (!used.contains(c.id) &&
-            (allowAdult || c.genre != ChannelGenre.adult))
-          c,
-    ];
-    if (pool.isEmpty) return top;
+    final List<Channel> chans = widget.channels;
+    if (chans.isEmpty) return top;
     final int dayIndex =
         DateTime.now().difference(DateTime(2026)).inDays.abs();
-    final int start = dayIndex % pool.length;
-    for (int k = 0; k < pool.length && top.length < 10; k++) {
-      top.add(pool[(start + k) % pool.length]);
+    final int start = dayIndex % chans.length;
+    // Balaye AU PLUS une fois la liste à partir du décalage du jour, SANS
+    // copie intermédiaire : l'ancienne version matérialisait jusqu'à
+    // 200 000 chaînes pour n'en garder que 10 (audit fluidité 2026-07-31).
+    // En pratique on s'arrête après ~10 chaînes éligibles.
+    for (int k = 0; k < chans.length && top.length < 10; k++) {
+      final Channel c = chans[(start + k) % chans.length];
+      if (used.contains(c.id)) continue;
+      if (!allowAdult && c.genre == ChannelGenre.adult) continue;
+      top.add(c);
     }
     return top;
   }
+
+  /// Caches par IDENTITÉ de la liste (même principe que _channelsById) :
+  /// regrouper 25 000-200 000 chaînes et re-classer des centaines de
+  /// catégories (~245 regex chacune) à CHAQUE build coûtait des centaines
+  /// de ms de jank (audit fluidité 2026-07-31). On ne recalcule que quand
+  /// la playlist change de référence — un tap de filtre est instantané.
+  Map<String, List<Channel>>? _groupedCache;
+  Map<String, _Bucket>? _bucketCache;
+  List<Channel>? _groupedFor;
+  String? _groupedNoCat;
 
   /// Regroupe les chaînes par catégorie BRUTE (group-title) en
   /// CONSERVANT l'ordre d'apparition — des catégories ET des chaînes.
@@ -565,13 +577,30 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
   Map<String, List<Channel>> _grouped() {
     // Libellé traduit pour les chaînes sans catégorie dans la playlist.
     final String noCat = context.l10n.sectionOthers;
+    if (identical(_groupedFor, widget.channels) &&
+        _groupedNoCat == noCat &&
+        _groupedCache != null) {
+      return _groupedCache!;
+    }
     final Map<String, List<Channel>> map = <String, List<Channel>>{};
     for (final Channel c in widget.channels) {
       final String raw = c.category.trim();
       final String cat = raw.isEmpty ? noCat : raw;
       (map[cat] ??= <Channel>[]).add(c);
     }
+    _groupedCache = map;
+    _bucketCache = null; // dérivé de grouped → invalidé ensemble
+    _groupedFor = widget.channels;
+    _groupedNoCat = noCat;
     return map;
+  }
+
+  /// Rayon de chaque catégorie — dérivé de [_grouped], même cache.
+  Map<String, _Bucket> _buckets(Map<String, List<Channel>> grouped) {
+    return _bucketCache ??= <String, _Bucket>{
+      for (final MapEntry<String, List<Channel>> e in grouped.entries)
+        e.key: _bucketOfCategory(e.key, e.value),
+    };
   }
 
   @override
@@ -609,9 +638,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
     // playlist (PAS de tri alphabétique). On calcule le rayon de chaque
     // catégorie une seule fois, et les rayons réellement présents.
     final List<String> allCats = grouped.keys.toList();
-    final Map<String, _Bucket> catBucket = <String, _Bucket>{
-      for (final String c in allCats) c: _bucketOfCategory(c, grouped[c]!),
-    };
+    final Map<String, _Bucket> catBucket = _buckets(grouped);
     final Set<_Bucket> present = catBucket.values.toSet();
 
     // Rayons présents, dans un ordre fixe et lisible (TV → Cinéma →

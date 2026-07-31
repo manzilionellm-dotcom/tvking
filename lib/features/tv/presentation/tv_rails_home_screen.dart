@@ -95,12 +95,16 @@ Widget _railsShell({
             : (focused ? _rBorderFocus : _rSheen),
         width: focused || pressed ? 2 : 1,
       ),
+      // Halo RÉDUIT (audit fluidité #12) : cette ombre s'empilait sur les
+      // DEUX ombres de focus de TvFocusable (blur 34-40 px) → trois grands
+      // flous ré-rasterisés à chaque frame de la transition de focus, le
+      // « collant » typique des Mali-G31. Le glow TvFocusable porte déjà
+      // le signal ; ici on ne garde qu'un liseré doux bon marché.
       boxShadow: (focused || pressed)
           ? <BoxShadow>[
               BoxShadow(
-                color: halo.withValues(alpha: pressed ? 0.55 : 0.38),
-                blurRadius: 26,
-                spreadRadius: 1,
+                color: halo.withValues(alpha: pressed ? 0.45 : 0.30),
+                blurRadius: 8,
               ),
             ]
           : null,
@@ -133,6 +137,8 @@ class TvRailsHomeScreen extends StatelessWidget {
             style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700)),
         actions: <Widget>[
           TextButton(
+            // Focus initial (audit D5) : sans lui le 1er OK est avalé.
+            autofocus: true,
             onPressed: () => Navigator.pop(d, false),
             child: Text('Annuler', style: TvTokens.ui(TvDimens.body)),
           ),
@@ -648,6 +654,10 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
     return ListView.separated(
       controller: _scroll,
       scrollDirection: Axis.horizontal,
+      // Marge de construction élargie (audit D20) : avec les 250 px par
+      // défaut, la carte suivante n'était parfois pas encore construite
+      // → le D-pad refusait d'avancer sur box lente.
+      cacheExtent: 600,
       itemCount: _slots.length,
       separatorBuilder: (_, __) => const SizedBox(width: 14),
       itemBuilder: (BuildContext context, int i) {

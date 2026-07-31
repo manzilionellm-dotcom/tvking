@@ -26,6 +26,22 @@ import 'tv_tokens.dart';
 /// Intensité du grossissement au focus selon la taille de l'élément.
 enum TvFocusScale { small, medium, large }
 
+/// Touches « OK » reconnues sur TOUTES les télécommandes du marché :
+/// DPAD_CENTER (select), Entrée, Entrée numpad, bouton A de manette,
+/// Espace (claviers / air-mouse) et ▶‖ (sur les télécommandes de
+/// TÉLÉVISEUR pointées vers une box, c'est LE plus gros bouton — audit
+/// télécommandes 2026-07-31, D3). Helper PARTAGÉ par toutes les surfaces
+/// TV pour que la liste ne dérive plus d'un écran à l'autre.
+/// ⚠️ Le LECTEUR garde sa propre liste SANS mediaPlayPause : là-bas,
+/// ▶‖ veut dire lecture/pause, pas OK.
+bool isTvSelectKey(LogicalKeyboardKey k) =>
+    k == LogicalKeyboardKey.select ||
+    k == LogicalKeyboardKey.enter ||
+    k == LogicalKeyboardKey.numpadEnter ||
+    k == LogicalKeyboardKey.gameButtonA ||
+    k == LogicalKeyboardKey.space ||
+    k == LogicalKeyboardKey.mediaPlayPause;
+
 class TvFocusable extends StatefulWidget {
   const TvFocusable({
     super.key,
@@ -126,33 +142,46 @@ class _TvFocusableState extends State<TvFocusable> {
     }
   }
 
-  bool _isSelectKey(LogicalKeyboardKey k) =>
-      k == LogicalKeyboardKey.select ||
-      k == LogicalKeyboardKey.enter ||
-      k == LogicalKeyboardKey.numpadEnter ||
-      k == LogicalKeyboardKey.gameButtonA ||
-      k == LogicalKeyboardKey.space;
+  /// « OK vu à l'enfoncement » : l'activation au relâchement n'est valide
+  /// que si CE widget a vu le key-DOWN correspondant. Sans ça, le key-UP
+  /// orphelin qui suit un changement d'écran déclenché au key-DOWN
+  /// (screensaver, dialog, lecteur) activait tout seul la tuile
+  /// nouvellement focus (audit télécommandes 2026-07-31, D1).
+  bool _downSeen = false;
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (!widget.enabled) return KeyEventResult.ignored;
-    if (!_isSelectKey(event.logicalKey)) return KeyEventResult.ignored;
+    // OK sans AUCUNE action : on laisse REMONTER la touche (un ancêtre
+    // peut vouloir la traiter) au lieu d'avaler le clic dans le vide (D18).
+    if (widget.onSelect == null && widget.onLongPress == null) {
+      return KeyEventResult.ignored;
+    }
+    if (!isTvSelectKey(event.logicalKey)) return KeyEventResult.ignored;
     if (event is KeyDownEvent) {
+      _downSeen = true;
       if (!_pressed) {
         setState(() => _pressed = true);
         widget.onPressChange?.call(true);
       }
-      // Arme l'appui long seulement si un handler est fourni.
+      // SANS appui long (l'immense majorité des tuiles) : on active DÈS
+      // l'enfoncement (D2). Deux raisons de terrain :
+      //   1. certaines box IR / ponts HID bon marché ne délivrent JAMAIS
+      //      le key-UP → OK restait mort sur TOUTE l'app ;
+      //   2. même sémantique que le reste (lecteur, dialogs, Material).
+      if (widget.onLongPress == null) {
+        widget.onSelect?.call();
+        return KeyEventResult.handled;
+      }
+      // AVEC appui long : on arme le timer, le relâchement décide.
       _longFired = false;
       _cancelLongTimer();
-      if (widget.onLongPress != null && widget.enabled) {
-        _longTimer = Timer(_kLongPress, () {
-          _longFired = true;
-          widget.onLongPress!.call();
-        });
-      }
+      _longTimer = Timer(_kLongPress, () {
+        _longFired = true;
+        widget.onLongPress!.call();
+      });
       return KeyEventResult.handled;
     }
-    // Les répétitions clavier (OK maintenu) n'ouvrent rien : le timer décide.
+    // Les répétitions clavier (OK maintenu) n'ouvrent rien de plus.
     if (event is KeyRepeatEvent) {
       return KeyEventResult.handled;
     }
@@ -162,6 +191,13 @@ class _TvFocusableState extends State<TvFocusable> {
         setState(() => _pressed = false);
         widget.onPressChange?.call(false);
       }
+      final bool sawDown = _downSeen;
+      _downSeen = false;
+      // Activation déjà faite à l'enfoncement (pas d'appui long) : rien.
+      if (widget.onLongPress == null) return KeyEventResult.handled;
+      // Key-UP orphelin (l'enfoncement a eu lieu sur un AUTRE écran) :
+      // on n'active rien (D1).
+      if (!sawDown) return KeyEventResult.ignored;
       // Si l'appui long s'est déclenché, on N'OUVRE PAS (onSelect annulé).
       if (_longFired) {
         _longFired = false;
@@ -236,7 +272,13 @@ class _TvFocusableState extends State<TvFocusable> {
             _focused = f;
             if (!f) _pressed = false;
           });
-          if (!f) widget.onPressChange?.call(false);
+          if (!f) {
+            // Perte de focus = l'enfoncement en cours ne compte plus
+            // (évite qu'un key-UP tardif active après un déplacement).
+            _downSeen = false;
+            _cancelLongTimer();
+            widget.onPressChange?.call(false);
+          }
           widget.onFocusChange?.call(f);
         },
         // RepaintBoundary : l'animation de focus (scale + ombre/halo blur

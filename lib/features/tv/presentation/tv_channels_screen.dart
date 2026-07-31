@@ -944,12 +944,7 @@ class _PreviewFrameState extends State<_PreviewFrame> {
     super.dispose();
   }
 
-  bool _isOk(LogicalKeyboardKey k) =>
-      k == LogicalKeyboardKey.select ||
-      k == LogicalKeyboardKey.enter ||
-      k == LogicalKeyboardKey.numpadEnter ||
-      k == LogicalKeyboardKey.gameButtonA ||
-      k == LogicalKeyboardKey.space;
+  bool _isOk(LogicalKeyboardKey k) => isTvSelectKey(k);
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent && _isOk(event.logicalKey)) {

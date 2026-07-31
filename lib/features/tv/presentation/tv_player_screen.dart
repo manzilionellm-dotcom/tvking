@@ -1847,9 +1847,29 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       k == LogicalKeyboardKey.gameButtonA ||
       k == LogicalKeyboardKey.space;
 
+  bool _isBackKey(LogicalKeyboardKey k) =>
+      k == LogicalKeyboardKey.goBack ||
+      k == LogicalKeyboardKey.escape ||
+      k == LogicalKeyboardKey.browserBack ||
+      k == LogicalKeyboardKey.exit ||
+      // Manettes : B = retour (Android ne le traduit pas tout seul).
+      k == LogicalKeyboardKey.gameButtonB;
+
   // Télécommandes universelles : toutes les variantes mènent à l'action.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      // Key-UP d'une touche BACK : CONSOMMÉ. Le laisser repartir vers
+      // Android déclenchait onBackPressed → un DEUXIÈME pop (on sortait
+      // du lecteur ET de la liste d'un seul appui) (audit D4).
+      if (event is KeyUpEvent && _isBackKey(event.logicalKey)) {
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+    // Répétitions (touche MAINTENUE) acceptées : indispensables pour le
+    // seek/zap continu (audit D8). Les actions « une fois » (OK, chiffres,
+    // lecture/pause, retour…) ne réagissent qu'au vrai enfoncement.
+    final bool isDown = event is KeyDownEvent;
     final LogicalKeyboardKey k = event.logicalKey;
 
     // Toute touche = activité → réarme « Tu regardes encore ? » ET remet à
@@ -1940,22 +1960,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       return KeyEventResult.handled;
     }
 
-    // BACK / Retour télécommande (toutes variantes) → quitter le lecteur,
-    // retour à la liste. On gère explicitement pour ne jamais rester coincé.
-    if (k == LogicalKeyboardKey.goBack ||
-        k == LogicalKeyboardKey.escape ||
-        k == LogicalKeyboardKey.browserBack ||
-        k == LogicalKeyboardKey.exit) {
+    // BACK / Retour télécommande (toutes variantes, manette B comprise) →
+    // quitter le lecteur. Pop UNE seule fois (jamais sur une répétition).
+    if (_isBackKey(k)) {
       // Retour = quitter le lecteur (convention YouTube/Netflix). La
       // navigation des boutons se fait à Gauche/Droite + OK.
-      Navigator.of(context).maybePop();
+      if (isDown) Navigator.of(context).maybePop();
       return KeyEventResult.handled;
     }
 
     int di = _digits.indexOf(k);
     if (di < 0) di = _numpad.indexOf(k);
     if (di >= 0) {
-      _onDigit(di);
+      if (isDown) _onDigit(di);
       return KeyEventResult.handled;
     }
 
@@ -2006,36 +2023,50 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       }
       return KeyEventResult.handled;
     }
-    // Touches média AVANCE/RETOUR (télécommandes qui en ont) → seek sur un film.
-    if (k == LogicalKeyboardKey.mediaRewind) {
-      if (_isVod) _seekRelative(const Duration(seconds: -10));
+    // Touches média AVANCE/RETOUR (télécommandes qui en ont) → seek sur un
+    // film. `mediaSkip*` : variantes émises par Fire TV et plusieurs box
+    // Android TV à la place de rewind/fastForward (audit D13). En DIRECT,
+    // seek impossible : on montre la barre au lieu d'ignorer en silence —
+    // sinon l'utilisateur croit sa télécommande cassée (audit D12).
+    if (k == LogicalKeyboardKey.mediaRewind ||
+        k == LogicalKeyboardKey.mediaSkipBackward) {
+      if (_isVod) {
+        _seekRelative(const Duration(seconds: -10));
+      } else {
+        _showOverlayTemporarily();
+      }
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.mediaFastForward) {
-      if (_isVod) _seekRelative(const Duration(seconds: 10));
+    if (k == LogicalKeyboardKey.mediaFastForward ||
+        k == LogicalKeyboardKey.mediaSkipForward) {
+      if (_isVod) {
+        _seekRelative(const Duration(seconds: 10));
+      } else {
+        _showOverlayTemporarily();
+      }
       return KeyEventResult.handled;
     }
 
     if (k == LogicalKeyboardKey.mediaPlayPause ||
         k == LogicalKeyboardKey.mediaPlay ||
         k == LogicalKeyboardKey.mediaPause) {
-      _togglePlayPause();
+      if (isDown) _togglePlayPause();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.mediaStop) {
-      Navigator.of(context).maybePop();
+      if (isDown) Navigator.of(context).maybePop();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.mediaRecord || k == LogicalKeyboardKey.keyR) {
-      _toggleRecording();
+      if (isDown) _toggleRecording();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.keyF) {
-      _toggleFavorite();
+      if (isDown) _toggleFavorite();
       return KeyEventResult.handled;
     }
     if (_isOk(k)) {
-      _okPressed();
+      if (isDown) _okPressed();
       return KeyEventResult.handled;
     }
     _showOverlayTemporarily();

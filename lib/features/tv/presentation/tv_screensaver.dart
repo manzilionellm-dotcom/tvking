@@ -202,7 +202,19 @@ class _TvScreensaverScreenState extends State<_TvScreensaverScreen> {
       autofocus: true,
       // N'importe quelle touche (flèches, OK, Retour…) réveille.
       onKeyEvent: (FocusNode node, KeyEvent event) {
-        if (event is KeyDownEvent) _wake();
+        final LogicalKeyboardKey k = event.logicalKey;
+        // Volume / mute / power : on laisse PASSER au système — les
+        // consommer donnait l'impression d'une box gelée (audit D17).
+        if (k == LogicalKeyboardKey.audioVolumeUp ||
+            k == LogicalKeyboardKey.audioVolumeDown ||
+            k == LogicalKeyboardKey.audioVolumeMute ||
+            k == LogicalKeyboardKey.tvPower) {
+          return KeyEventResult.ignored;
+        }
+        // Réveil au RELÂCHEMENT : se réveiller au key-DOWN laissait le
+        // key-UP orphelin activer la tuile focus de l'écran dessous
+        // (audit D1/D17). Le down est consommé sans effet.
+        if (event is KeyUpEvent) _wake();
         return KeyEventResult.handled;
       },
       child: GestureDetector(

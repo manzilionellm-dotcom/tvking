@@ -209,6 +209,8 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
             style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700)),
         actions: <Widget>[
           TextButton(
+            // Focus initial (audit D5) : sans lui le 1er OK est avalé.
+            autofocus: true,
             onPressed: () => Navigator.pop(d, false),
             child: Text('Annuler', style: TvTokens.ui(TvDimens.body)),
           ),
@@ -816,6 +818,9 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
         Expanded(
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
+            // Marge de construction élargie (audit D20) : traversée D-pad
+            // fiable jusqu'au bout du rail sur box lente.
+            cacheExtent: 600,
             itemCount: _movies.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (BuildContext c, int i) {

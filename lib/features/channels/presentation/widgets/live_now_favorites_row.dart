@@ -18,6 +18,8 @@
 //    - Tap → playChannel
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/i18n/l10n_extension.dart';
@@ -46,14 +48,23 @@ class _LiveNowFavoritesRowState extends State<LiveNowFavoritesRow> {
   List<_LiveSlot> _slots = <_LiveSlot>[];
   bool _loading = true;
 
-  late final Stream<Set<String>> _favStream;
+  // Abonnement STOCKÉ et annulé dans dispose() : sans ça, chaque toggle ★
+  // relançait requêtes SQL + EPG depuis un widget mort, à vie (fuite —
+  // audit fluidité 2026-07-31).
+  StreamSubscription<Set<String>>? _favSub;
 
   @override
   void initState() {
     super.initState();
-    _favStream = FavoritesRepository.instance.favoritesStream;
-    _favStream.listen((Set<String> _) => _recompute());
+    _favSub = FavoritesRepository.instance.favoritesStream
+        .listen((Set<String> _) => _recompute());
     _recompute();
+  }
+
+  @override
+  void dispose() {
+    _favSub?.cancel();
+    super.dispose();
   }
 
   /// Jeton anti-course : deux événements favoris rapprochés = deux requêtes
