@@ -290,7 +290,8 @@ void warmupTests() {
       expect(idx.bestKeyframeOffset, 2 * kTsPacketSize);
     });
 
-    test('RAI audio seul : repli sur n\'importe quel PID de données', () {
+    test('RAI audio seul : PAS de point d\'accès (leçon terrain 2026-07-31)',
+        () {
       final TsWarmupIndex idx = TsWarmupIndex();
       final BytesBuilder b = BytesBuilder()
         ..add(pat())
@@ -298,8 +299,12 @@ void warmupTests() {
         ..add(tsPacket(pid: audioPid, rai: true)) // 376
         ..add(video());
       idx.feed(b.takeBytes());
-      // Pas de RAI sur la vidéo (PCR) → le repli « n'importe quel PID ».
-      expect(idx.bestKeyframeOffset, 2 * kTsPacketSize);
+      // Un RAI audio ne vaut RIEN comme point de départ (rafale sans
+      // image-clé vidéo = son sans image sur box). bestKeyframeOffset ne
+      // retient que le RAI du PID de la PCR ; l'audio reste visible au
+      // diagnostic via lastRaiAnyOffset.
+      expect(idx.bestKeyframeOffset, -1);
+      expect(idx.lastRaiAnyOffset, 2 * kTsPacketSize);
     });
 
     test('clear() oublie tables et image-clé (reconnexion upstream)', () {
