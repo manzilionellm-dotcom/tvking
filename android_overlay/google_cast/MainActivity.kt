@@ -117,6 +117,9 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (e: Throwable) {
             Log.w(TAG, "  ✗ PiP action receiver failed: $e")
         }
+        // Pré-enregistre les boutons PiP dès le démarrage : une entrée en
+        // PiP initiée par l'OS trouve toujours 🎧 + ⏯ en place.
+        refreshPipActions()
     }
 
     override fun onDestroy() {
@@ -258,6 +261,9 @@ class MainActivity : FlutterFragmentActivity() {
                         val den = (call.argument<Int>("den") ?: 9).coerceIn(1, 239)
                         pipAspectNumer = num
                         pipAspectDenom = den
+                        // Re-pose les params : ratio à jour ET boutons
+                        // préservés (une MàJ partielle les effacerait).
+                        refreshPipActions()
                         result.success(null)
                     }
                     "enterPip" -> {
@@ -378,10 +384,19 @@ class MainActivity : FlutterFragmentActivity() {
     /// source de vérité pour l'entrée en PiP ET les rafraîchissements.
     private fun pipParams(): PictureInPictureParams? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
-        return PictureInPictureParams.Builder()
+        val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational(pipAspectNumer, pipAspectDenom))
             .setActions(buildPipActions())
-            .build()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Android 12+ : entrée en PiP pilotée par l'OS (geste Accueil,
+            // navigation gestuelle) — AVEC nos boutons, puisque les params
+            // sont pré-enregistrés. Jamais en mode Écouteurs (pas de
+            // fenêtre vidéo), jamais à l'arrêt, jamais sur TV.
+            builder.setAutoEnterEnabled(
+                playbackActive && !audioOnlyMode && !isTvDevice(),
+            )
+        }
+        return builder.build()
     }
 
     /// Met à jour les boutons de la fenêtre PiP quand l'état change
@@ -389,8 +404,13 @@ class MainActivity : FlutterFragmentActivity() {
     /// sur l'état d'entrée en PiP. No-op hors PiP.
     private fun refreshPipActions() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (isTvDevice()) return // pas de PiP sur TV, aucun param à poser
         try {
-            if (!isInPictureInPictureMode) return
+            // TOUJOURS poser les params, même HORS PiP : si c'est l'OS
+            // (geste Accueil, constructeurs Samsung/Honor…) qui déclenche
+            // le PiP, il ouvre la fenêtre avec les DERNIERS params
+            // enregistrés. Avant, on ne les posait qu'une fois déjà en
+            // PiP → fenêtre système SANS nos boutons 🎧/⏯.
             val params = pipParams() ?: return
             setPictureInPictureParams(params)
         } catch (e: Throwable) {
@@ -533,6 +553,9 @@ class MainActivity : FlutterFragmentActivity() {
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPip, newConfig)
+        // Certaines surcouches constructeur ignorent les actions passées à
+        // l'entrée : on les re-pose dès que le PiP est confirmé.
+        if (isInPip) refreshPipActions()
         pipChannel?.invokeMethod(
             "onPipModeChanged",
             mapOf("inPip" to isInPip),
