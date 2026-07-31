@@ -635,11 +635,44 @@ jobs:
           cp "$OUT/app-release.aab" "$OUT/defew-tv.aab"
           ls -lah "$OUT/defew-tv.aab"
 
+          # ── APK de TEST « identique au Store » ─────────────────────────
+          # Amazon exige de tester le binaire QUE l'on soumet : l'AAB a un
+          # chemin de code différent du sideload (updater coupé, permission
+          # REQUEST_INSTALL_PACKAGES retirée — le manifest est déjà nettoyé
+          # à ce stade). On compile donc un APK avec EXACTEMENT les mêmes
+          # défines et le même manifest que l'AAB → installable sur
+          # Firestick pour dérouler la checklist Amazon sur le vrai
+          # comportement Store. Ne remplace PAS l'APK sideload (déjà
+          # publié plus haut avec son updater intact).
+          ok=
+          for attempt in 1 2 3; do
+            echo "=== Store-test APK build attempt $attempt ==="
+            flutter build apk --release --no-tree-shake-icons \
+              --build-number="$BUILD_NUMBER" \
+              --obfuscate --split-debug-info=build/symbols \
+              --dart-define=PLAY_BUILD=true \
+              --dart-define=GIT_SHA=${{ github.sha }} \
+              --target=lib/main_tv.dart && { ok=1; break; }
+            echo "Attempt $attempt failed; retry in 25s"; sleep 25
+          done
+          [ "$ok" = 1 ] || { echo "Store-test APK build failed"; exit 1; }
+          APKOUT=build/app/outputs/flutter-apk
+          cp "$APKOUT/app-release.apk" "$APKOUT/defew-tv-store-test.apk"
+          ls -lah "$APKOUT/defew-tv-store-test.apk"
+
       - name: Upload AAB TV artifact (Google Play)
         uses: actions/upload-artifact@v4
         with:
           name: defew-tv-playstore-aab-${{ github.sha }}
           path: build/app/outputs/bundle/release/defew-tv.aab
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload Store-test APK artifact (test Firestick du binaire Store)
+        uses: actions/upload-artifact@v4
+        with:
+          name: defew-tv-store-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/defew-tv-store-test.apk
           retention-days: 30
           if-no-files-found: error
 
