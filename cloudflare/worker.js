@@ -56,7 +56,10 @@
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 // verifyJwt est reutilise ici pour authentifier le WebSocket admin
 // (/api/v1/rt/ws) AVANT de forwarder au Durable Object temps reel.
-import { apiV1, verifyJwt, validateFacadeBase } from './api_v1.js';
+import {
+  apiV1, verifyJwt, validateFacadeBase,
+  publicCampaignsList, trackCampaignEvent,
+} from './api_v1.js';
 // Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
 // Durable Object « RealtimeHub » (WebSockets appareils + panel) et helper
 // publishRt() (publication fail-open après une mutation). La classe DO
@@ -6306,6 +6309,41 @@ async function handleRequest(request, env, ctx) {
     if (segments[0] === 'api' && segments[1] === 'ad' && segments.length === 2) {
       if (request.method === 'GET') return await handleGetAd(env);
       return badRequest('only GET supported on /api/ad');
+    }
+
+    // /api/campaigns — Affiliation & bannières (GET public) : campagnes
+    // actives affichées en carte discrète dans l'app. Pilotées depuis le
+    // panel (« Affiliation & Pubs ») SANS rebuild de l'app.
+    if (segments[0] === 'api' && segments[1] === 'campaigns' && segments.length === 2) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/campaigns');
+      }
+      if (!env.DB) return json({ campaigns: [] });
+      try {
+        return json({ campaigns: await publicCampaignsList(env) });
+      } catch (_) {
+        return json({ campaigns: [] });
+      }
+    }
+
+    // /api/campaigns/track — comptage impression/clic (POST public,
+    // best-effort). Corps : {id, event: 'impression'|'click'}. Aucune
+    // donnée exposée : on incrémente un compteur sur une ligne existante.
+    if (segments[0] === 'api' && segments[1] === 'campaigns' &&
+        segments[2] === 'track' && segments.length === 3) {
+      if (request.method !== 'POST') {
+        return badRequest('only POST supported on /api/campaigns/track');
+      }
+      if (!env.DB) return json({ ok: false });
+      try {
+        const body = await request.json();
+        const id = parseInt(body && body.id, 10);
+        const event = body && body.event === 'click' ? 'click' : 'impression';
+        if (!Number.isFinite(id) || id <= 0) return badRequest('bad id');
+        return json({ ok: await trackCampaignEvent(env, id, event) });
+      } catch (_) {
+        return json({ ok: false });
+      }
     }
 
     // /api/pricing — tarifs affichés dans l'app (GET public). Réglés via

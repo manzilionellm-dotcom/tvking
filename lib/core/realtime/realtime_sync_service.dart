@@ -45,6 +45,7 @@ import '../../features/device/data/device_identity.dart';
 import '../../features/playlists/data/remote_source_repository.dart';
 import '../../features/pricing/data/pricing_repository.dart';
 import '../../features/simple_home/data/announcement_repository.dart';
+import '../../features/ads/data/campaign_repository.dart';
 import '../../features/simple_home/data/home_layout_repository.dart';
 import '../../features/subscription/data/now_playing.dart';
 import '../../features/subscription/data/subscription_state.dart';
@@ -686,6 +687,14 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
       AnnouncementRepository.notifyChanged();
     } catch (e) {
       if (kDebugMode) debugPrint('[Realtime] config annonce: $e');
+    }
+    // Affiliation & bannières : la carte de l'accueil écoute ce signal
+    // et re-fetch — une campagne créée/retirée au panel apparaît ou
+    // disparaît en direct.
+    try {
+      CampaignRepository.notifyChanged();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Realtime] config campagnes: $e');
     }
     // Mise à jour forcée : _AppEntry écoute ce signal et relance
     // mustUpdate() — un « Forcer la mise à jour » du panel bloque les

@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../subscription/data/subscription_backend.dart';
+import '../../subscription/data/subscription_state.dart';
 
 /// Config d'une pub vidéo de démarrage.
 @immutable
@@ -71,6 +72,11 @@ class StartupAdRepository {
   Future<bool> shouldShow() async {
     final AdConfig c = _config;
     if (!c.enabled || c.url.isEmpty) return false;
+    // « Acheter sans pubs » : un abonné PAYANT ne voit jamais la pub de
+    // démarrage (même règle que les cartes d'affiliation de l'accueil).
+    if (SubscriptionState.instance.status == SubscriptionStatus.paid) {
+      return false;
+    }
     if (c.freq != 'daily') return true; // 'always' = à chaque ouverture
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();

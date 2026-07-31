@@ -49,6 +49,7 @@ import '../../playlists/presentation/import_progress_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../subscription/presentation/guest_screen.dart';
+import '../../ads/presentation/affiliate_card.dart';
 import 'widgets/announcement_banner.dart';
 import 'widgets/category_browser_view.dart';
 
@@ -243,6 +244,10 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
                   // surtout côté mobile, à l'écran d'accueil ».
                   _GuestEntryBar(onTap: () => openGuestScreen(context)),
                   Expanded(child: CategoryBrowserView(channels: channels)),
+                  // Carte d'affiliation DISCRÈTE (panel « Affiliation &
+                  // Pubs ») : en bas, refermable, jamais pour un abonné
+                  // payant. Zéro hauteur s'il n'y a rien à montrer.
+                  const AffiliateCard(),
                   _buildBottomBar(),
                 ],
               );

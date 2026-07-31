@@ -56,6 +56,7 @@ const OWNER_NAV: NavSection[] = [
       { key: 'nav.featured',      to: '/featured' },
       { key: 'nav.theme',         to: '/theme' },
       { key: 'nav.ad',            to: '/ad' },
+      { key: 'nav.affiliation',   to: '/affiliation' },
       { key: 'nav.notifications', to: '/notifications' },
       { key: 'nav.forceUpdate',   to: '/force-update' },
       { key: 'nav.reviews',       to: '/reviews' },

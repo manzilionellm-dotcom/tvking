@@ -22,6 +22,7 @@ import { OnlinePage } from '@/pages/OnlinePage';
 import { FeaturedPage } from '@/pages/FeaturedPage';
 import { ThemePage } from '@/pages/ThemePage';
 import { AdPage } from '@/pages/AdPage';
+import { AffiliationPage } from '@/pages/AffiliationPage';
 import { TarifsPage } from '@/pages/TarifsPage';
 import { ReviewsPage } from '@/pages/ReviewsPage';
 import { AccountPage } from '@/pages/AccountPage';
@@ -128,6 +129,7 @@ export default function App() {
       <Route path="/featured" element={<FeaturedPage onLogout={handleLogout} />} />
       <Route path="/theme" element={<ThemePage onLogout={handleLogout} />} />
       <Route path="/ad" element={<AdPage onLogout={handleLogout} />} />
+      <Route path="/affiliation" element={<AffiliationPage onLogout={handleLogout} />} />
       <Route path="/tarifs" element={<TarifsPage onLogout={handleLogout} />} />
       <Route path="/reviews" element={<ReviewsPage onLogout={handleLogout} />} />
       <Route path="/customers"   element={<CustomersPage   onLogout={handleLogout} />} />

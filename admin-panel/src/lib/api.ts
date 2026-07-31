@@ -1178,6 +1178,39 @@ export const adApi = {
 };
 
 // =========================================================
+//  AFFILIATION & BANNIÈRES (campagnes cliquables dans l'app)
+// =========================================================
+//  Carte discrète sur l'accueil de l'app : image + titre + bouton CTA.
+//  Le clic ouvre le lien d'affiliation nativement sur Android.
+//  Impressions/clics comptés par l'app → stats temps réel ici.
+export interface Campaign {
+  id: number;
+  kind: 'banner' | 'product';
+  title: string;
+  body: string;
+  image_url: string;
+  target_url: string;
+  cta: string;
+  placement: string;
+  start_hour: number | null;
+  end_hour: number | null;
+  enabled: boolean;
+  created_at: number;
+  impressions: number;
+  clicks: number;
+}
+export type CampaignInput = Partial<Omit<Campaign, 'id' | 'created_at' | 'impressions' | 'clicks'>>;
+export const campaignsApi = {
+  list: () => request<{ campaigns: Campaign[] }>('/api/v1/campaigns'),
+  create: (c: CampaignInput) =>
+    request<{ ok: boolean; campaign: Campaign }>('/api/v1/campaigns', { method: 'POST', body: c }),
+  update: (id: number, c: CampaignInput) =>
+    request<{ ok: boolean; campaign: Campaign }>(`/api/v1/campaigns/${id}`, { method: 'PUT', body: c }),
+  remove: (id: number) =>
+    request<{ ok: boolean }>(`/api/v1/campaigns/${id}`, { method: 'DELETE' }),
+};
+
+// =========================================================
 //  TARIFS (prix affichés dans l'app + essai + promo/bonus)
 // =========================================================
 //  L'owner fixe les prix EN € (à vie / 1 an), la durée de l'essai gratuit,

@@ -1019,6 +1019,35 @@ async function apiV1Inner(request, env) {
     }
   }
 
+  // /campaigns — Affiliation & bannières : campagnes cliquables affichées
+  // dans l'app (carte discrète sur l'accueil), pilotées SANS rebuild.
+  // Owner uniquement. Chaque mutation est diffusée en temps réel (les
+  // apps re-fetchent /api/campaigns aussitôt).
+  if (parts[0] === 'campaigns') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleCampaignsList(env);
+      if (request.method === 'POST') {
+        return withRtConfigBroadcast(env,
+          await handleCampaignCreate(request, env, actor));
+      }
+    }
+    if (parts.length === 2) {
+      const cid = parseInt(parts[1], 10);
+      if (!Number.isFinite(cid)) return errResp('bad_id', 'Invalid id', 400);
+      if (request.method === 'PUT') {
+        return withRtConfigBroadcast(env,
+          await handleCampaignUpdate(request, env, actor, cid));
+      }
+      if (request.method === 'DELETE') {
+        return withRtConfigBroadcast(env,
+          await handleCampaignDelete(request, env, actor, cid));
+      }
+    }
+  }
+
   // /pricing — tarifs affichés dans l'app (à vie / 1 an / essai + promo).
   // Owner uniquement. GET pour relire, PUT pour enregistrer.
   if (parts[0] === 'pricing') {
@@ -2246,6 +2275,196 @@ async function handleAdPut(request, env, actor) {
   await logAudit(env, request, actor, 'ad.save',
     { type: 'app_config', id: null }, null, { url, enabled, skip, freq });
   return jsonResp({ ok: true, enabled: enabled === '1', url, skip, freq });
+}
+
+// =========================================================
+//  AFFILIATION & BANNIÈRES (campaigns) — owner
+// =========================================================
+//  Campagnes cliquables non intrusives : une carte discrète (image +
+//  titre + bouton « Acheter »/CTA) sur l'accueil de l'app. Le lien
+//  s'ouvre nativement sur Android (Intent.ACTION_VIEW via url_launcher).
+//  Compteurs impressions/clics incrémentés par les endpoints PUBLICS
+//  (voir worker.js /api/campaigns/track) → stats temps réel au panel.
+//  `start_hour`/`end_hour` (0-23, optionnels) : ciblage par heure de la
+//  journée, évalué côté APP sur l'heure LOCALE du client.
+
+/// Crée la table si absente (idempotent, comme ensureAppConfigTable).
+export async function ensureCampaignsTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS ad_campaigns (' +
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+      "kind TEXT NOT NULL DEFAULT 'banner', " +
+      "title TEXT NOT NULL DEFAULT '', " +
+      "body TEXT NOT NULL DEFAULT '', " +
+      "image_url TEXT NOT NULL DEFAULT '', " +
+      "target_url TEXT NOT NULL DEFAULT '', " +
+      "cta TEXT NOT NULL DEFAULT '', " +
+      "placement TEXT NOT NULL DEFAULT 'home', " +
+      'start_hour INTEGER, end_hour INTEGER, ' +
+      'enabled INTEGER NOT NULL DEFAULT 1, ' +
+      'created_at INTEGER NOT NULL DEFAULT 0, ' +
+      'impressions INTEGER NOT NULL DEFAULT 0, ' +
+      'clicks INTEGER NOT NULL DEFAULT 0)',
+  ).run();
+}
+
+function campaignRow(r) {
+  return {
+    id: r.id,
+    kind: r.kind === 'product' ? 'product' : 'banner',
+    title: String(r.title || ''),
+    body: String(r.body || ''),
+    image_url: String(r.image_url || ''),
+    target_url: String(r.target_url || ''),
+    cta: String(r.cta || ''),
+    placement: String(r.placement || 'home'),
+    start_hour: r.start_hour == null ? null : Number(r.start_hour),
+    end_hour: r.end_hour == null ? null : Number(r.end_hour),
+    enabled: r.enabled === 1 || r.enabled === '1' || r.enabled === true,
+    created_at: Number(r.created_at || 0),
+    impressions: Number(r.impressions || 0),
+    clicks: Number(r.clicks || 0),
+  };
+}
+
+/// Valide + normalise le corps d'une campagne. Retourne {error} ou {row}.
+function parseCampaignBody(body, { partial = false } = {}) {
+  const out = {};
+  const str = (v, max) => (v == null ? '' : String(v)).trim().slice(0, max);
+  if (!partial || body.kind !== undefined) {
+    out.kind = body.kind === 'product' ? 'product' : 'banner';
+  }
+  if (!partial || body.title !== undefined) out.title = str(body.title, 120);
+  if (!partial || body.body !== undefined) out.body = str(body.body, 300);
+  if (!partial || body.image_url !== undefined) {
+    out.image_url = str(body.image_url, 500);
+  }
+  if (!partial || body.target_url !== undefined) {
+    out.target_url = str(body.target_url, 500);
+  }
+  if (!partial || body.cta !== undefined) out.cta = str(body.cta, 40);
+  if (!partial || body.placement !== undefined) {
+    out.placement = str(body.placement, 30) || 'home';
+  }
+  const hour = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n >= 0 && n <= 23 ? n : null;
+  };
+  if (!partial || body.start_hour !== undefined) {
+    out.start_hour = hour(body.start_hour);
+  }
+  if (!partial || body.end_hour !== undefined) out.end_hour = hour(body.end_hour);
+  if (!partial || body.enabled !== undefined) out.enabled = body.enabled ? 1 : 0;
+  // Un lien est OBLIGATOIRE (c'est une campagne cliquable) et doit être
+  // http(s) — pas de deep-link arbitraire poussé vers tout le parc.
+  if (out.target_url !== undefined && out.target_url !== '' &&
+      !/^https?:\/\//i.test(out.target_url)) {
+    return { error: 'target_url must start with http:// or https://' };
+  }
+  return { row: out };
+}
+
+async function handleCampaignsList(env) {
+  await ensureCampaignsTable(env);
+  const rs = await env.DB
+    .prepare('SELECT * FROM ad_campaigns ORDER BY id DESC LIMIT 200')
+    .all();
+  return jsonResp({ campaigns: (rs.results || []).map(campaignRow) });
+}
+
+async function handleCampaignCreate(request, env, actor) {
+  await ensureCampaignsTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const parsed = parseCampaignBody(body);
+  if (parsed.error) return errResp('bad_campaign', parsed.error, 400);
+  const c = parsed.row;
+  if (!c.target_url) {
+    return errResp('bad_campaign', 'target_url is required', 400);
+  }
+  if (!c.title && !c.image_url) {
+    return errResp('bad_campaign', 'title or image_url is required', 400);
+  }
+  const r = await env.DB.prepare(
+    'INSERT INTO ad_campaigns (kind, title, body, image_url, target_url, ' +
+      'cta, placement, start_hour, end_hour, enabled, created_at) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+  ).bind(c.kind, c.title, c.body, c.image_url, c.target_url, c.cta,
+    c.placement, c.start_hour, c.end_hour, c.enabled, Date.now()).first();
+  await logAudit(env, request, actor, 'campaign.create',
+    { type: 'campaign', id: r ? r.id : null }, null,
+    { kind: c.kind, title: c.title, target_url: c.target_url });
+  return jsonResp({ ok: true, campaign: r ? campaignRow(r) : null });
+}
+
+async function handleCampaignUpdate(request, env, actor, id) {
+  await ensureCampaignsTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const parsed = parseCampaignBody(body, { partial: true });
+  if (parsed.error) return errResp('bad_campaign', parsed.error, 400);
+  const c = parsed.row;
+  const keys = Object.keys(c);
+  if (keys.length === 0) return errResp('bad_campaign', 'Nothing to update', 400);
+  const sets = keys.map((k) => `${k} = ?`).join(', ');
+  const vals = keys.map((k) => c[k]);
+  const r = await env.DB
+    .prepare(`UPDATE ad_campaigns SET ${sets} WHERE id = ? RETURNING *`)
+    .bind(...vals, id).first();
+  if (!r) return errResp('not_found', 'Campaign not found', 404);
+  await logAudit(env, request, actor, 'campaign.update',
+    { type: 'campaign', id }, null, c);
+  return jsonResp({ ok: true, campaign: campaignRow(r) });
+}
+
+async function handleCampaignDelete(request, env, actor, id) {
+  await ensureCampaignsTable(env);
+  await env.DB.prepare('DELETE FROM ad_campaigns WHERE id = ?').bind(id).run();
+  await logAudit(env, request, actor, 'campaign.delete',
+    { type: 'campaign', id }, null, null);
+  return jsonResp({ ok: true });
+}
+
+/// Liste PUBLIQUE (appelée par worker.js /api/campaigns) : uniquement les
+/// campagnes actives, champs utiles à l'app — PAS les compteurs.
+export async function publicCampaignsList(env) {
+  await ensureCampaignsTable(env);
+  const rs = await env.DB
+    .prepare('SELECT * FROM ad_campaigns WHERE enabled = 1 ' +
+      'ORDER BY id DESC LIMIT 20')
+    .all();
+  return (rs.results || []).map((r) => {
+    const c = campaignRow(r);
+    return {
+      id: c.id,
+      kind: c.kind,
+      title: c.title,
+      body: c.body,
+      image_url: c.image_url,
+      target_url: c.target_url,
+      cta: c.cta,
+      placement: c.placement,
+      start_hour: c.start_hour,
+      end_hour: c.end_hour,
+    };
+  });
+}
+
+/// Comptage PUBLIC impression/clic (best-effort, appelé par worker.js).
+/// `true` si la ligne existait. Pas d'auth : on n'incrémente que deux
+/// compteurs bornés à des campagnes existantes — aucune donnée exposée.
+export async function trackCampaignEvent(env, id, event) {
+  await ensureCampaignsTable(env);
+  const col = event === 'click' ? 'clicks' : 'impressions';
+  const r = await env.DB
+    .prepare(`UPDATE ad_campaigns SET ${col} = ${col} + 1 WHERE id = ?`)
+    .bind(id).run();
+  return !!(r && r.meta && r.meta.changes > 0);
 }
 
 // =========================================================
