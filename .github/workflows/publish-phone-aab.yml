@@ -1,0 +1,52 @@
+# ============================================================================
+#  publish-phone-aab.yml — Attache l'AAB Google Play d'un run build-android à
+#  la release « phone-test » existante, pour un LIEN DIRECT sans zip :
+#    https://github.com/<repo>/releases/download/phone-test/7motion.aab
+#
+#  POURQUOI : les artefacts Actions sont servis en .zip et exigent d'être
+#  connecté à GitHub — pénible pour téléverser dans la Play Console. Ici on
+#  obtient le fichier .aab NU, téléchargeable d'un clic.
+#
+#  GARDE-FOUS :
+#    - n'ÉCRASE PAS la release phone-test (upload --clobber du seul asset
+#      7motion.aab) : l'APK de test reste en place ;
+#    - déclenchement MANUEL uniquement (workflow_dispatch) ;
+#    - aucun version.json → invisible pour l'updater in-app.
+# ============================================================================
+name: Publish Phone AAB (lien direct)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID du run build-android dont on publie l''AAB Google Play'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # attacher l'asset à la release phone-test
+  actions: read     # télécharger l'artefact du run build-android
+
+jobs:
+  publish:
+    name: Attache 7motion.aab à phone-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Télécharger l'AAB du run build-android
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 7motion-playstore-aab-*
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+
+      - name: Attacher l'AAB à la release phone-test (asset écrasé si présent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          ls -la
+          test -f 7motion.aab
+          gh release upload phone-test 7motion.aab --clobber -R "$GITHUB_REPOSITORY"
+          echo "✓ https://github.com/$GITHUB_REPOSITORY/releases/download/phone-test/7motion.aab"
