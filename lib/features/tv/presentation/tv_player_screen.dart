@@ -57,6 +57,7 @@ import '../data/freeze_recovery_policy.dart';
 import '../data/playback_failure_log.dart';
 import '../data/quality_ladder.dart';
 import '../data/stream_stability_monitor.dart';
+import '../data/track_memory.dart';
 import '../core/tv_dimens.dart';
 import 'tv_channel_programs_screen.dart';
 import 'tv_components.dart';
@@ -216,6 +217,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   Duration? _pendingResume;
   bool _resumeApplied = false;
 
+  // ----- Mémoire des pistes PAR CHAÎNE (n°40) -----
+  // Le choix VF/VO/sous-titres était perdu au zap. Une fois par ouverture,
+  // dès que le natif remonte les pistes du flux, on réapplique le dernier
+  // choix mémorisé pour CETTE chaîne (cf. TrackMemory, matching par langue).
+  bool _trackMemoryApplied = false;
+
   // ----- Seek Netflix : double-appui = 30 s + bulle de temps -----
   // Deux appuis Gauche/Droite RAPPROCHÉS (même sens, < 500 ms) passent le
   // pas de 10 s à 30 s — pour traverser un générique sans marteler. La
@@ -353,6 +360,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // contente de piloter l'URL et d'écouter l'état.
     _controller = NativeVideoController(initialUrl: _current.streamUrl);
     _controller.addListener(_onPlayer);
+    // Mémoire des pistes par chaîne : chargée une fois (quelques Ko), les
+    // réapplications se font ensuite en mémoire pure (cf. _onPlayer).
+    unawaited(TrackMemory.instance.load());
     // Cascade « échec → sonde → formats » (parité téléphone) : branchée sur
     // les échecs définitifs du relais. Elle possède l'anti-boucle par chaîne.
     _fallback = StreamBlockedFallback(
@@ -510,6 +520,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Reprise VOD : dès que la DURÉE est connue (média préparé + seekable),
     // on peut appliquer le « Reprendre à 42:15 ». No-op en direct / déjà fait.
     if (_isVod) _maybeApplyResume();
+    // Mémoire des pistes : dès que le natif a remonté les pistes du flux
+    // (événement 'tracks'), on réapplique le dernier choix pour CETTE chaîne.
+    _maybeApplyTrackMemory();
     // ----- Pastille « Épisode suivant » sur les 30 DERNIÈRES SECONDES -----
     // « Regarder le générique ou passer » : sur la fin d'un ÉPISODE avec un
     // suivant, une pastille discrète apparaît (OK = enchaîner). Revenir en
@@ -689,6 +702,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // que quand le flux sera prêt (durée connue, cf. _maybeApplyResume).
     _resumeApplied = false;
     _pendingResume = null;
+    // Nouvelle chaîne → sa mémoire de pistes sera réappliquée à l'arrivée
+    // des pistes de CE flux (une seule fois par ouverture).
+    _trackMemoryApplied = false;
     if (_isVod) {
       // BUDGET « Regarder → première frame » : si l'écran amont (fiche,
       // rangée Reprendre) a déjà lancé le chrono à l'appui, on le garde
@@ -1452,12 +1468,23 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     switch (e.kind) {
       case _SheetKind.audio:
         _controller.setAudioTrack(e.index);
+        // Mémoire par chaîne : le choix sera réappliqué au prochain zap
+        // sur cette chaîne (langue si déclarée, index sinon).
+        if (e.index >= 0 && e.index < _controller.audioTracks.length) {
+          unawaited(TrackMemory.instance.saveAudio(_current.id, e.index,
+              _controller.audioTracks[e.index].language));
+        }
         break;
       case _SheetKind.textOff:
         _controller.setSubtitleTrack(-1);
+        unawaited(TrackMemory.instance.saveSubOff(_current.id));
         break;
       case _SheetKind.text:
         _controller.setSubtitleTrack(e.index);
+        if (e.index >= 0 && e.index < _controller.textTracks.length) {
+          unawaited(TrackMemory.instance.saveSub(_current.id, e.index,
+              _controller.textTracks[e.index].language));
+        }
         break;
       case _SheetKind.aspect:
         final AspectRatioMode m = AspectRatioMode.values[e.index];
@@ -1660,6 +1687,39 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     _controller.seekTo(target);
     if (mounted) _flash(context.l10n.tvResumedAt(_fmtClock(target)));
+  }
+
+  /// Réapplique le dernier choix de pistes mémorisé pour la chaîne courante,
+  /// UNE seule fois par ouverture, dès que le natif a remonté les pistes du
+  /// flux (événement 'tracks'). Matching par LANGUE d'abord (stable même si
+  /// l'ordre des pistes change d'un jour à l'autre), repli par index — et si
+  /// rien ne correspond (flux différent), on ne force RIEN : défauts du flux.
+  void _maybeApplyTrackMemory() {
+    if (_trackMemoryApplied) return;
+    final List<TrackInfo> audio = _controller.audioTracks;
+    final List<TrackInfo> text = _controller.textTracks;
+    if (audio.isEmpty && text.isEmpty) return; // pistes pas encore connues
+    _trackMemoryApplied = true; // une seule fois par ouverture
+    final TrackChoice? mem = TrackMemory.instance.recall(_current.id);
+    if (mem == null) return;
+    final String? a = mem.audio;
+    if (a != null && audio.isNotEmpty) {
+      final int? i = TrackMemory.matchIndex(
+          a, audio.map((TrackInfo t) => t.language).toList());
+      if (i != null && !audio[i].selected) _controller.setAudioTrack(i);
+    }
+    final String? s = mem.sub;
+    if (s == 'off') {
+      // Sous-titres coupés explicitement la dernière fois → on les coupe si
+      // le flux en a activé par défaut.
+      if (text.any((TrackInfo t) => t.selected)) {
+        _controller.setSubtitleTrack(-1);
+      }
+    } else if (s != null && text.isNotEmpty) {
+      final int? i = TrackMemory.matchIndex(
+          s, text.map((TrackInfo t) => t.language).toList());
+      if (i != null && !text[i].selected) _controller.setSubtitleTrack(i);
+    }
   }
 
   /// Sauvegarde la position VOD courante (périodique via le tick du watchdog,
