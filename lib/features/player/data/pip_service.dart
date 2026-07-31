@@ -53,6 +53,13 @@ class PipService extends ChangeNotifier {
   /// VideoPlayerScreen pour cacher les overlays et fitter la vidéo.
   bool get isInPipMode => _isInPipMode;
 
+  /// Callbacks des boutons de la fenêtre PiP (RemoteActions natives,
+  /// façon YouTube : 🎧 Écouteurs + Lecture/Pause). Posés par le
+  /// VideoPlayerScreen à l'ouverture, remis à null à sa fermeture.
+  /// Nullables : sans lecteur ouvert, un tap ne fait rien (fail-open).
+  VoidCallback? onPipHeadphones;
+  VoidCallback? onPipPlayPause;
+
   /// Cache du support PiP. Calculé une seule fois au premier
   /// `isSupported()` call (réseau / IO inutiles ensuite).
   Future<bool> isSupported() async {
@@ -186,10 +193,10 @@ class PipService extends ChangeNotifier {
     }
   }
 
-  /// Handler des appels natif → Dart. Pour l'instant un seul
-  /// event : `onPipModeChanged` quand l'état PiP change. Au futur :
-  /// `onMediaActionTriggered` pour les boutons play/pause dans
-  /// la mini-fenêtre PiP (Android offre des contrôles natifs).
+  /// Handler des appels natif → Dart. Deux events :
+  ///   - `onPipModeChanged` quand l'état PiP change ;
+  ///   - `onPipRemoteAction` quand un bouton de la fenêtre PiP est
+  ///     tapé (RemoteAction native : « headphones » ou « playpause »).
   Future<dynamic> _onNativeCall(MethodCall call) async {
     switch (call.method) {
       case 'onPipModeChanged':
@@ -201,6 +208,17 @@ class PipService extends ChangeNotifier {
         if (_isInPipMode != inPip) {
           _isInPipMode = inPip;
           notifyListeners();
+        }
+        return null;
+      case 'onPipRemoteAction':
+        final dynamic args = call.arguments;
+        final String action =
+            args is Map ? (args['action'] as String? ?? '') : '';
+        switch (action) {
+          case 'headphones':
+            onPipHeadphones?.call();
+          case 'playpause':
+            onPipPlayPause?.call();
         }
         return null;
       default:

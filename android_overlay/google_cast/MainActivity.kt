@@ -20,10 +20,17 @@
 
 package com.manzilionellm.tvking
 
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Configuration
+import android.graphics.drawable.Icon
 import android.os.Build
+import android.os.Bundle
 import android.util.Log
 import android.util.Rational
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -44,6 +51,15 @@ class MainActivity : FlutterFragmentActivity() {
         /// Sert à dériver une MAC virtuelle qui SURVIT aux
         /// réinstallations (sinon le client perdrait son abonnement).
         private const val DEVICE_CHANNEL = "com.manzilionellm.tvking/device"
+
+        /// Broadcast interne des boutons de la fenêtre PiP (RemoteActions
+        /// façon YouTube : 🎧 Écouteurs + Lecture/Pause). Reçu par
+        /// `pipActionReceiver` (NOT_EXPORTED) puis routé vers Dart via
+        /// l'event `onPipRemoteAction` du PIP_CHANNEL.
+        private const val PIP_ACTION_INTENT = "com.manzilionellm.tvking.PIP_REMOTE_ACTION"
+        private const val PIP_EXTRA_ACTION = "pip_action"
+        private const val PIP_ACTION_HEADPHONES = "headphones"
+        private const val PIP_ACTION_PLAY_PAUSE = "playpause"
     }
 
     private var castApi: GoogleCastApi? = null
@@ -69,6 +85,48 @@ class MainActivity : FlutterFragmentActivity() {
     /// déclenche PAS le PiP vidéo au passage en arrière-plan : c'est le
     /// PlaybackForegroundService qui garde le SON en vie (écran éteint).
     private var audioOnlyMode: Boolean = false
+
+    /// Reçoit les taps sur les boutons de la fenêtre PiP (RemoteActions)
+    /// et les route vers Dart, qui agit sur le lecteur (bascule Écouteurs,
+    /// play/pause). Enregistré NOT_EXPORTED : seul le PendingIntent de
+    /// l'app peut l'atteindre.
+    private val pipActionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.getStringExtra(PIP_EXTRA_ACTION) ?: return
+            Log.i(TAG, "PiP remote action: $action")
+            pipChannel?.invokeMethod(
+                "onPipRemoteAction",
+                mapOf("action" to action),
+            )
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Fail-open : sans receiver, la fenêtre PiP garde ses boutons mais
+        // les taps ne font rien — jamais de crash au boot pour du PiP.
+        try {
+            val filter = IntentFilter(PIP_ACTION_INTENT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(pipActionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(pipActionReceiver, filter)
+            }
+            Log.i(TAG, "  ✓ PiP action receiver registered")
+        } catch (e: Throwable) {
+            Log.w(TAG, "  ✗ PiP action receiver failed: $e")
+        }
+    }
+
+    override fun onDestroy() {
+        try {
+            unregisterReceiver(pipActionReceiver)
+        } catch (_: Throwable) {
+            // Déjà désenregistré / jamais enregistré : silencieux.
+        }
+        super.onDestroy()
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -187,6 +245,8 @@ class MainActivity : FlutterFragmentActivity() {
                 when (call.method) {
                     "setPlaybackActive" -> {
                         playbackActive = call.argument<Boolean>("active") ?: false
+                        // En PiP, l'icône Lecture/Pause doit suivre l'état réel.
+                        refreshPipActions()
                         result.success(null)
                     }
                     "setAspectRatio" -> {
@@ -210,6 +270,8 @@ class MainActivity : FlutterFragmentActivity() {
                     "setAudioOnlyMode" -> {
                         audioOnlyMode = call.argument<Boolean>("active") ?: false
                         Log.i(TAG, "audioOnlyMode = $audioOnlyMode")
+                        // En PiP, le bouton 🎧 devient « Vidéo » (et vice-versa).
+                        refreshPipActions()
                         result.success(null)
                     }
                     "startBackgroundAudio" -> {
@@ -266,6 +328,68 @@ class MainActivity : FlutterFragmentActivity() {
         ) || packageManager.hasSystemFeature("android.hardware.type.television")
     }
 
+    /// Boutons affichés DANS la fenêtre PiP (RemoteActions), façon
+    /// YouTube : 🎧 Écouteurs (bascule audio seul, l'icône devient
+    /// « Vidéo » quand le mode est actif) + Lecture/Pause. Les taps
+    /// partent en broadcast NOT_EXPORTED vers `pipActionReceiver`,
+    /// qui les route vers Dart (le lecteur agit, puis nous rappelle
+    /// setAudioOnlyMode / setPlaybackActive → refreshPipActions()).
+    private fun buildPipActions(): List<RemoteAction> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return emptyList()
+
+        fun make(code: Int, iconRes: Int, title: String, value: String): RemoteAction {
+            val intent = Intent(PIP_ACTION_INTENT)
+                .setPackage(packageName)
+                .putExtra(PIP_EXTRA_ACTION, value)
+            val pending = PendingIntent.getBroadcast(
+                this,
+                code,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            return RemoteAction(Icon.createWithResource(this, iconRes), title, title, pending)
+        }
+
+        return listOf(
+            make(
+                1,
+                if (audioOnlyMode) R.drawable.ic_pip_video else R.drawable.ic_pip_headphones,
+                if (audioOnlyMode) "Vidéo" else "Écouteurs",
+                PIP_ACTION_HEADPHONES,
+            ),
+            make(
+                2,
+                if (playbackActive) R.drawable.ic_pip_pause else R.drawable.ic_pip_play,
+                if (playbackActive) "Pause" else "Lecture",
+                PIP_ACTION_PLAY_PAUSE,
+            ),
+        )
+    }
+
+    /// Paramètres PiP courants : aspect ratio + boutons. Une seule
+    /// source de vérité pour l'entrée en PiP ET les rafraîchissements.
+    private fun pipParams(): PictureInPictureParams? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        return PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(pipAspectNumer, pipAspectDenom))
+            .setActions(buildPipActions())
+            .build()
+    }
+
+    /// Met à jour les boutons de la fenêtre PiP quand l'état change
+    /// (play/pause, mode Écouteurs). Sans ça, l'icône resterait figée
+    /// sur l'état d'entrée en PiP. No-op hors PiP.
+    private fun refreshPipActions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        try {
+            if (!isInPictureInPictureMode) return
+            val params = pipParams() ?: return
+            setPictureInPictureParams(params)
+        } catch (e: Throwable) {
+            Log.w(TAG, "refreshPipActions failed: $e")
+        }
+    }
+
     /// Entre en PiP MAINTENANT avec le bon aspect ratio. Retourne
     /// true si l'appel a bien été passé à l'OS, false sinon (pas
     /// supporté, exception, etc.).
@@ -273,9 +397,7 @@ class MainActivity : FlutterFragmentActivity() {
         if (!isPipSupportedNative()) return false
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(pipAspectNumer, pipAspectDenom))
-                    .build()
+                val params = pipParams() ?: return false
                 enterPictureInPictureMode(params)
             } else {
                 false

@@ -110,6 +110,16 @@ done
 
 ls -la "$ANDROID_PKG_PATH/"
 
+# --- 1b. Icônes des boutons PiP (RemoteActions) -----
+# La fenêtre PiP système affiche des boutons façon YouTube :
+# 🎧 Écouteurs (audio seul) + Lecture/Pause. Leurs icônes vectorielles
+# vivent dans l'overlay et sont copiées dans les res de l'app. Idempotent.
+mkdir -p android/app/src/main/res/drawable
+for icon in ic_pip_headphones.xml ic_pip_video.xml ic_pip_play.xml ic_pip_pause.xml; do
+  cp -v "$OVERLAY/res/drawable/$icon" "android/app/src/main/res/drawable/$icon"
+done
+echo "✅ Icônes PiP copiées"
+
 # --- 2. Patch build.gradle (dependencies) -----------
 if grep -q "play-services-cast-framework" "$BUILD_GRADLE"; then
   echo "Cast deps déjà présentes dans $BUILD_GRADLE — skip"
