@@ -162,6 +162,11 @@ class NativeVideoController extends ChangeNotifier {
     if (_volume != 1.0) {
       ch.invokeMethod<void>('setVolume', <String, dynamic>{'volume': _volume});
     }
+    // Idem pour la vitesse (VOD) : demandée avant le rattachement → rejouée.
+    if (playbackSpeed != 1.0) {
+      ch.invokeMethod<void>(
+          'setSpeed', <String, dynamic>{'speed': playbackSpeed});
+    }
   }
 
   Future<dynamic> _onNativeCall(MethodCall call) async {
@@ -298,6 +303,20 @@ class NativeVideoController extends ChangeNotifier {
   /// Sélectionne la [index]-ième piste de sous-titres, ou -1 = désactivés.
   void setSubtitleTrack(int index) => _channel?.invokeMethod<void>(
       'setSubtitleTrack', <String, dynamic>{'index': index});
+
+  /// Vitesse de lecture courante (1.0 = normale). Pilotée par l'UI VOD ;
+  /// mémorisée ici pour être rejouée si la PlatformView se rattache.
+  double playbackSpeed = 1.0;
+
+  /// Règle la vitesse de lecture (ExoPlayer setPlaybackSpeed — le pitch
+  /// audio est corrigé par Media3). Bornée [0.25, 3.0]. Le DIRECT n'a pas
+  /// à l'utiliser (l'UI ne la propose qu'en VOD, et le zap remet 1.0).
+  void setPlaybackSpeed(double speed) {
+    playbackSpeed = speed.clamp(0.25, 3.0);
+    _channel?.invokeMethod<void>(
+        'setSpeed', <String, dynamic>{'speed': playbackSpeed});
+    if (!_disposed) notifyListeners();
+  }
 
   /// Règle le volume (0.0 = muet, 1.0 = plein). Sert à la MULTI-VUE : seule la
   /// tuile active garde le son. Conservé pour ré-application au rattachement.

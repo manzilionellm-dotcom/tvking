@@ -705,6 +705,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Nouvelle chaîne → sa mémoire de pistes sera réappliquée à l'arrivée
     // des pistes de CE flux (une seule fois par ouverture).
     _trackMemoryApplied = false;
+    // La vitesse de lecture est PROPRE au contenu quitté : on repart à 1×
+    // (indispensable en zap VOD → direct, sinon le direct serait accéléré).
+    if (_controller.playbackSpeed != 1.0) _controller.setPlaybackSpeed(1.0);
     if (_isVod) {
       // BUDGET « Regarder → première frame » : si l'écran amont (fiche,
       // rangée Reprendre) a déjà lancé le chrono à l'appui, on le garde
@@ -1377,6 +1380,13 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     for (int i = 0; i < text.length; i++) {
       rows.add(_TrackSheetEntry(kind: _SheetKind.text, index: i));
     }
+    // Vitesse de lecture : FILMS/SÉRIES uniquement (accélérer un direct n'a
+    // pas de sens — on rattraperait le présent). Le zap remet 1× (cf. _open).
+    if (_isVod) {
+      for (int i = 0; i < kPlaybackSpeeds.length; i++) {
+        rows.add(_TrackSheetEntry(kind: _SheetKind.speed, index: i));
+      }
+    }
     for (final AspectRatioMode m in AspectRatioMode.values) {
       rows.add(_TrackSheetEntry(
           kind: _SheetKind.aspect, index: AspectRatioMode.values.indexOf(m)));
@@ -1485,6 +1495,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           unawaited(TrackMemory.instance.saveSub(_current.id, e.index,
               _controller.textTracks[e.index].language));
         }
+        break;
+      case _SheetKind.speed:
+        final double v = kPlaybackSpeeds[e.index];
+        _controller.setPlaybackSpeed(v);
+        _flash(context.l10n
+            .speedToast(v % 1 == 0 ? '${v.toInt()}' : '$v'));
         break;
       case _SheetKind.aspect:
         final AspectRatioMode m = AspectRatioMode.values[e.index];
@@ -2426,6 +2442,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         entries: _sheetEntries(),
                         focusedIndex: _tracksFocus,
                         aspect: _aspect,
+                        speed: _controller.playbackSpeed,
                         onActivate: _activateSheetEntry,
                         onClose: _closeTracksSheet,
                       ),
@@ -3285,7 +3302,16 @@ class _UpNextButton extends StatelessWidget {
 //  rebuild du player) ; le ratio est appliqué côté Flutter.
 
 /// Nature d'une ligne actionnable de la feuille.
-enum _SheetKind { audio, textOff, text, aspect }
+enum _SheetKind { audio, textOff, text, speed, aspect }
+
+/// Paliers de vitesse VOD (convention Netflix/YouTube). Le DIRECT n'est
+/// jamais concerné : la section n'apparaît qu'en VOD et le zap remet 1×.
+const List<double> kPlaybackSpeeds = <double>[0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+/// « 1× », « 0.75× » : libellé compact d'un palier de vitesse (le point
+/// décimal est universel sur les télécommandes/claviers TV).
+String speedLabel(double v) =>
+    v % 1 == 0 ? '${v.toInt()}×' : '$v×';
 
 /// Ligne actionnable : sa nature + l'index dans la liste concernée
 /// (piste audio N, piste texte N, mode d'affichage N). textOff : -1.
@@ -3302,6 +3328,7 @@ class _TracksSheet extends StatefulWidget {
     required this.entries,
     required this.focusedIndex,
     required this.aspect,
+    required this.speed,
     required this.onActivate,
     required this.onClose,
   });
@@ -3311,6 +3338,7 @@ class _TracksSheet extends StatefulWidget {
   final List<_TrackSheetEntry> entries;
   final int focusedIndex;
   final AspectRatioMode aspect;
+  final double speed;
   final void Function(_TrackSheetEntry) onActivate;
   final VoidCallback onClose;
 
@@ -3379,6 +3407,8 @@ class _TracksSheetState extends State<_TracksSheet> {
       case _SheetKind.text:
       case _SheetKind.textOff:
         return context.l10n.tracksSubtitles;
+      case _SheetKind.speed:
+        return context.l10n.playerSpeedSection;
       case _SheetKind.aspect:
         return context.l10n.tracksAspectSection;
     }
@@ -3407,6 +3437,9 @@ class _TracksSheetState extends State<_TracksSheet> {
       case _SheetKind.text:
         final TrackInfo t = widget.text[e.index];
         return (_trackLabel(context, t), t.selected);
+      case _SheetKind.speed:
+        final double v = kPlaybackSpeeds[e.index];
+        return (speedLabel(v), v == widget.speed);
       case _SheetKind.aspect:
         final AspectRatioMode m = AspectRatioMode.values[e.index];
         return (m.localizedLabel(context), m == widget.aspect);

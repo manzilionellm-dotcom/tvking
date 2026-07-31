@@ -470,6 +470,13 @@ class NativeVideoView(
                 playerHandler.post { player.seekTo(safe) }
                 result.success(null)
             }
+            "setSpeed" -> {
+                // Vitesse de lecture (VOD) : ExoPlayer corrige le pitch audio
+                // tout seul. Re-bornée ici par prudence (mêmes bornes que Dart).
+                val s = (call.argument<Double>("speed") ?: 1.0).toFloat()
+                playerHandler.post { player.setPlaybackSpeed(s.coerceIn(0.25f, 3.0f)) }
+                result.success(null)
+            }
             "setAudioTrack" -> {
                 // Sélectionne la N-ième piste AUDIO (index dans la liste envoyée
                 // à Dart par onTracksChanged).
