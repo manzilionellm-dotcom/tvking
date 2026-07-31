@@ -2,11 +2,11 @@
 #  publish-tv-aab.yml — Attache l'AAB Android TV d'un run build-tv à la
 #  release « cinema-test » existante, pour un LIEN DIRECT sans zip :
 #    https://github.com/<repo>/releases/download/cinema-test/defew-tv.aab
+#  + l'APK « identique au Store » (mêmes défines/manifest que l'AAB) :
+#    https://github.com/<repo>/releases/download/cinema-test/defew-tv-store-test.apk
+#  → sert au test Firestick exigé par Amazon sur le binaire soumis.
 #
-#  Équivalent TV de publish-phone-aab.yml : fichier .aab NU, téléchargeable
-#  d'un clic pour la Play Console (fiche Android TV).
-#
-#  GARDE-FOUS : n'écrase pas l'APK de test de la release ; déclenchement
+#  GARDE-FOUS : n'écrase pas l'APK sideload de la release ; déclenchement
 #  MANUEL uniquement ; aucun version.json.
 # ============================================================================
 name: Publish TV AAB (lien direct)
@@ -20,24 +20,24 @@ on:
         type: string
 
 permissions:
-  contents: write   # attacher l'asset à la release cinema-test
-  actions: read     # télécharger l'artefact du run build-tv
+  contents: write   # attacher les assets à la release cinema-test
+  actions: read     # télécharger les artefacts du run build-tv
 
 jobs:
   publish:
-    name: Attache defew-tv.aab à cinema-test
+    name: Attache defew-tv.aab (+APK store-test) à cinema-test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Télécharger l'AAB du run build-tv
+      - name: Télécharger l'AAB et l'APK store-test du run build-tv
         uses: actions/download-artifact@v4
         with:
-          pattern: defew-tv-playstore-aab-*
+          pattern: defew-tv-*
           run-id: ${{ inputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           merge-multiple: true
 
-      - name: Attacher l'AAB à la release cinema-test (asset écrasé si présent)
+      - name: Attacher AAB + APK store-test à la release cinema-test
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -46,3 +46,11 @@ jobs:
           test -f defew-tv.aab
           gh release upload cinema-test defew-tv.aab --clobber -R "$GITHUB_REPOSITORY"
           echo "✓ https://github.com/$GITHUB_REPOSITORY/releases/download/cinema-test/defew-tv.aab"
+          # APK « identique au Store » pour le test Firestick (peut être
+          # absent sur les vieux runs d'avant son ajout au workflow).
+          if [ -f defew-tv-store-test.apk ]; then
+            gh release upload cinema-test defew-tv-store-test.apk --clobber -R "$GITHUB_REPOSITORY"
+            echo "✓ https://github.com/$GITHUB_REPOSITORY/releases/download/cinema-test/defew-tv-store-test.apk"
+          else
+            echo "⊙ pas d'APK store-test dans ce run (workflow antérieur)"
+          fi
