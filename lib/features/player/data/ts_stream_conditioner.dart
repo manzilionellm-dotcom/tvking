@@ -340,7 +340,18 @@ class TsWarmupIndex {
   int get pcrPid => _pcrPid;
 
   /// Offset global du meilleur point d'accès (image-clé) connu, -1 sinon.
-  int get bestKeyframeOffset => _lastRaiPcr >= 0 ? _lastRaiPcr : _lastRaiAny;
+  ///
+  /// SEUL le RAI porté par le PID de la PCR compte (c'est la piste vidéo
+  /// dans la quasi-totalité des mux) : un RAI audio est posé à chaque trame
+  /// audio par certains mux — démarrer là donnerait une rafale SANS
+  /// image-clé vidéo → son présent, image absente jusqu'à la prochaine IDR
+  /// du direct (terrain 2026-07-31 : « seulement l'audio »). Pas de RAI
+  /// vidéo → -1 → l'appelant renvoie la rafale complète (comportement
+  /// historique, qui contient forcément une image-clé quelque part).
+  int get bestKeyframeOffset => _lastRaiPcr;
+
+  /// Dernier RAI vu sur un PID NON-vidéo (diagnostic/tests uniquement).
+  int get lastRaiAnyOffset => _lastRaiAny;
 
   /// Oublie tout (reconnexion upstream : le repère d'octets repart de 0,
   /// et les tables de l'ancien flux ne décrivent plus le nouveau).
