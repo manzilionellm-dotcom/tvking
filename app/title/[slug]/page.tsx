@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Row from "../../components/Row";
+import FilmActions from "../../components/FilmActions";
 import { LevelBadge, LiveBadge } from "../../components/Badge";
 import { allItems, getItem, kindOf, relatedTo } from "../../lib/data";
 
@@ -44,6 +45,12 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
           <div className="flex flex-wrap items-center gap-[0.7rem]">
             {item.live && <LiveBadge state={item.live} />}
             {item.level && <LevelBadge level={item.level} />}
+            {item.genre && (
+              <span className="text-[1.05rem] font-semibold text-[var(--text-medium)]">{item.genre}</span>
+            )}
+            {item.year && (
+              <span className="text-[1.05rem] text-[var(--text-medium)]">{item.year}</span>
+            )}
             {item.league && (
               <span className="text-[1.05rem] font-semibold text-[var(--text-medium)]">{item.league}</span>
             )}
@@ -73,7 +80,11 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
           <p className="max-w-[60ch] text-[1.35rem] text-[var(--text-medium)]">{synopsis(item)}</p>
 
           <div className="mt-[0.6rem] flex flex-wrap items-center gap-[1rem]">
-            {item.live === "upcoming" ? (
+            {kind === "film" ? (
+              /* Films: auto-download with a determinate bar, then instant play —
+                 never a buffering spinner. */
+              <FilmActions item={item} />
+            ) : item.live === "upcoming" ? (
               <button
                 data-focusable
                 data-focus-default
@@ -103,7 +114,7 @@ export default async function TitlePage({ params }: PageProps<"/title/[slug]">) 
               + Ma liste
             </button>
             <Link
-              href={kind === "sport" ? "/sport" : "/formation"}
+              href={kind === "sport" ? "/sport" : kind === "film" ? "/films" : "/formation"}
               data-focusable
               className="focusable rounded-[var(--radius)] bg-white/10 px-[1.4rem] py-[0.8rem] text-[1.25rem] font-semibold text-[var(--text-medium)]"
             >

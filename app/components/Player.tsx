@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MediaItem } from "../lib/data";
+import { setMini } from "../lib/mini";
 import { loadResume, positionOf, saveResume, withPosition } from "../lib/resume";
 
 /*
@@ -31,7 +32,17 @@ function fmt(s: number) {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
-export default function Player({ item, next }: { item: MediaItem; next: MediaItem | null }) {
+export default function Player({
+  item,
+  next,
+  onExit,
+}: {
+  item: MediaItem;
+  next: MediaItem | null;
+  /** When set (IPTV channels), leaving the player calls this instead of
+      navigating to a /title page — channels have no detail page. */
+  onExit?: () => void;
+}) {
   const router = useRouter();
   const [pos, setPos] = useState(item.progress ? Math.floor(item.progress * DURATION) : 0);
   const [playing, setPlaying] = useState(true);
@@ -41,6 +52,12 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
 
   useEffect(() => {
     reduceRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }, []);
+
+  // The full-screen player owns playback: any floating mini-player is closed
+  // on entry so two things never play at once.
+  useEffect(() => {
+    setMini(null);
   }, []);
 
   // A previously saved position wins over the mock progress hint. Read via
@@ -83,7 +100,21 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
   const atEnd = pos >= DURATION;
 
   const toggle = useCallback(() => setPlaying((p) => !p), []);
-  const exit = useCallback(() => router.push(`/title/${item.id}`), [router, item.id]);
+  const exit = useCallback(() => {
+    if (onExit) onExit();
+    else router.push(`/title/${item.id}`);
+  }, [onExit, router, item.id]);
+
+  // Minimise to the floating mini-player (YouTube pattern): playback — or
+  // audio alone, via the écouteurs button — continues while the user browses.
+  const minimize = useCallback(
+    (audioOnly: boolean) => {
+      saveResume(withPosition(loadResume(), item.id, pos, DURATION, Date.now()));
+      setMini({ item, next, pos, playing, audioOnly });
+      exit();
+    },
+    [item, next, pos, playing, exit]
+  );
 
   // Remote-control keys: BACK leaves the player, media keys drive transport
   // directly (they work whatever element holds the focus). Space/k still
@@ -244,13 +275,50 @@ export default function Player({ item, next }: { item: MediaItem; next: MediaIte
           >
             10s ⟳
           </button>
-          <Link
-            href={`/title/${item.id}`}
+          {/* Écouteurs: keep the sound, drop the video — goes to the mini-player. */}
+          <button
             data-focusable
-            className="focusable ml-auto rounded-[var(--radius)] bg-white/12 px-[1.3rem] py-[0.7rem] text-[1.1rem] font-semibold text-white"
+            onClick={() => minimize(true)}
+            className="focusable ml-auto flex items-center gap-[0.5rem] rounded-[var(--radius)] bg-white/12 px-[1.1rem] py-[0.7rem] text-[1.1rem] font-semibold text-white"
+            aria-label="Écouter sans la vidéo"
           >
-            ✕ Quitter
-          </Link>
+            <svg className="h-[1.2rem] w-[1.2rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 13a8 8 0 0 1 16 0" strokeLinecap="round" />
+              <rect x="3" y="13" width="4" height="7" rx="1.5" />
+              <rect x="17" y="13" width="4" height="7" rx="1.5" />
+            </svg>
+            Écouteurs
+          </button>
+          {/* Réduire: YouTube-style floating mini-player, video included. */}
+          <button
+            data-focusable
+            onClick={() => minimize(false)}
+            className="focusable flex items-center gap-[0.5rem] rounded-[var(--radius)] bg-white/12 px-[1.1rem] py-[0.7rem] text-[1.1rem] font-semibold text-white"
+            aria-label="Réduire la vidéo"
+          >
+            <svg className="h-[1.2rem] w-[1.2rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M10 20H4v-6M20 4l-9 9M4 20l6-6" />
+              <rect x="13" y="13" width="8" height="6" rx="1" />
+            </svg>
+            Réduire
+          </button>
+          {onExit ? (
+            <button
+              data-focusable
+              onClick={exit}
+              className="focusable rounded-[var(--radius)] bg-white/12 px-[1.3rem] py-[0.7rem] text-[1.1rem] font-semibold text-white"
+            >
+              ✕ Quitter
+            </button>
+          ) : (
+            <Link
+              href={`/title/${item.id}`}
+              data-focusable
+              className="focusable rounded-[var(--radius)] bg-white/12 px-[1.3rem] py-[0.7rem] text-[1.1rem] font-semibold text-white"
+            >
+              ✕ Quitter
+            </Link>
+          )}
         </div>
       </div>
     </div>

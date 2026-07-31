@@ -9,16 +9,18 @@ import { usePathname } from "next/navigation";
  * hovered, keeping information density low (10-foot UI).
  */
 
-const NAV = [
+export const NAV = [
   { href: "/search", label: "Rechercher", icon: "search" },
   { href: "/", label: "Accueil", icon: "home" },
+  { href: "/tv", label: "TV en direct", icon: "tv" },
+  { href: "/films", label: "Films", icon: "film" },
   { href: "/sport", label: "Sport", icon: "sport" },
   { href: "/formation", label: "Formation", icon: "learn" },
   { href: "/list", label: "Ma liste", icon: "list" },
   { href: "/reglages", label: "Réglages", icon: "settings" },
 ] as const;
 
-function Icon({ name }: { name: string }) {
+export function Icon({ name }: { name: string }) {
   const common = "h-[1.6rem] w-[1.6rem]";
   switch (name) {
     case "search":
@@ -31,6 +33,19 @@ function Icon({ name }: { name: string }) {
       return (
         <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M3 11 12 3l9 8" strokeLinecap="round" strokeLinejoin="round" /><path d="M5 10v10h14V10" strokeLinejoin="round" />
+        </svg>
+      );
+    case "tv":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="7" width="18" height="12" rx="2" /><path d="m8 3 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "film":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" />
         </svg>
       );
     case "sport":
@@ -68,7 +83,7 @@ export default function Sidebar() {
 
   return (
     <nav
-      className="group/nav fixed inset-y-0 left-0 z-50 flex w-[5.5rem] flex-col gap-[0.4rem] bg-gradient-to-r from-black/95 to-black/0 py-[var(--safe-y)] pl-[1.2rem] transition-all duration-200 hover:w-[16rem] hover:bg-[var(--bg)]/95 focus-within:w-[16rem] focus-within:bg-[var(--bg)]/95"
+      className="group/nav fixed inset-y-0 left-0 z-50 flex w-[5.5rem] flex-col gap-[0.4rem] bg-gradient-to-r from-black/95 to-black/0 py-[var(--safe-y)] pl-[1.2rem] transition-all duration-200 hover:w-[16rem] hover:bg-[var(--bg)]/95 focus-within:w-[16rem] focus-within:bg-[var(--bg)]/95 max-md:hidden"
     >
       <div className="mb-[1.6rem] flex items-center gap-[0.7rem] pl-[0.3rem]">
         <span className="flex h-[2.6rem] w-[2.6rem] shrink-0 items-center justify-center rounded-[var(--radius)] text-[1.5rem] shadow-[0_0_1.4rem_rgba(227,185,107,0.45)]" style={{ background: "var(--gold-grad)" }}>

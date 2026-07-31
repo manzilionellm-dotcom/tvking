@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "app_id": "tvking-tv",
+  "app_id": "tvking",
   "detected_from": "git remote (manzilionellm-dotcom/tvking) + repo content (Next.js 10-foot TV UI)",
-  "scope": "TV box / 10-foot UI uniquement — le mobile (workflows 7motion phone/master) est HORS PÉRIMÈTRE sur instruction humaine",
+  "scope": "Mobile-first IPTV + TV 10-foot. BUT ULTIME (instruction humaine 2026-07-31) : devenir l'application IPTV mobile n°1 au monde. L'ancien périmètre « TV uniquement » est levé.",
   "stack": {
     "framework": "Next.js 16.2.4 (App Router, SSG)",
     "react": "19.2.4",

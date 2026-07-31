@@ -38,12 +38,20 @@ export interface MediaItem {
 
   /** Long synopsis shown on the detail page (optional; a fallback is generated). */
   description?: string;
+
+  /** Explicit kind override — films can't be inferred from metadata. */
+  kind?: Kind;
+
+  // Film-specific
+  year?: number;
+  genre?: string;
 }
 
 /** Discriminates the content kind from its metadata (drives detail-page UI). */
-export type Kind = "sport" | "formation";
+export type Kind = "sport" | "formation" | "film";
 
 export function kindOf(item: MediaItem): Kind {
+  if (item.kind) return item.kind;
   return item.live || item.score || item.clock || item.startsIn ? "sport" : "formation";
 }
 
@@ -218,12 +226,43 @@ export const formationRows: Row[] = [
   },
 ];
 
+/* ----------------------------------- FILMS --------------------------------- */
+
+/*
+ * Every film is downloaded to the device before playback (see lib/downloads):
+ * playback is instantaneous, there is no buffering and therefore no spinner —
+ * the app's zero-attente rule.
+ */
+export const filmsRows: Row[] = [
+  {
+    id: "films-affiche",
+    title: "À l'affiche",
+    items: [
+      { id: "mv1", title: "La Couronne d'acier", kind: "film", shape: "2:3", art: g("#3a2b5f", "#140f24"), year: 2026, genre: "Aventure", duration: "2h08", badge: "NOUVEAU", description: "Un royaume au bord de la rupture, une héritière que rien ne prédestinait au trône. Une fresque épique au souffle rare." },
+      { id: "mv2", title: "Dernier Sprint", kind: "film", shape: "2:3", art: g("#5f2b3a", "#241019"), year: 2026, genre: "Drame sportif", duration: "1h52", description: "À 34 ans, un sprinteur déchu s'offre une dernière saison pour redevenir champion — et se réconcilier avec son fils." },
+      { id: "mv3", title: "Nuit blanche à Dakar", kind: "film", shape: "2:3", art: g("#244a3a", "#0c1a14"), year: 2025, genre: "Thriller", duration: "1h47", description: "Une journaliste remonte la piste d'une disparition en une seule nuit, des toits de la Médina au port de Dakar." },
+      { id: "mv4", title: "Le Rire du roi", kind: "film", shape: "2:3", art: g("#5f4a2b", "#241910"), year: 2026, genre: "Comédie", duration: "1h38", badge: "TENDANCE", description: "Un humoriste sans succès devient, par erreur, bouffon officiel d'une cour royale très à cheval sur l'étiquette." },
+      { id: "mv5", title: "Fréquence 88.0", kind: "film", shape: "2:3", art: g("#244a4a", "#0c1a1a"), year: 2025, genre: "Science-fiction", duration: "2h14", description: "Une radio pirate capte un signal venu de trente ans dans le futur. Chaque émission change le présent." },
+    ],
+  },
+  {
+    id: "films-famille",
+    title: "Comédies & famille",
+    items: [
+      { id: "mv6", title: "Papa, coach et champion", kind: "film", shape: "2:3", art: g("#2b5f4a", "#10241b"), year: 2025, genre: "Comédie familiale", duration: "1h41", description: "Muté entraîneur de l'équipe poussins de sa fille, un ancien pro découvre que le plus dur reste les goûters." },
+      { id: "mv7", title: "Les Vacances de Sa Majesté", kind: "film", shape: "2:3", art: g("#2b3a6f", "#0f1629"), year: 2026, genre: "Comédie", duration: "1h35", description: "Une reine incognito dans un camping familial : protocole, barbecue et quiproquos garantis." },
+      { id: "mv8", title: "Mon robot et moi", kind: "film", shape: "2:3", art: g("#4a3a6f", "#191229"), year: 2025, genre: "Famille", duration: "1h29", description: "Un enfant timide hérite d'un robot de compagnie démodé — et bien plus courageux qu'il n'en a l'air." },
+      { id: "mv9", title: "La Grande Traversée", kind: "film", shape: "2:3", art: g("#2b4a6f", "#101b29"), year: 2026, genre: "Aventure familiale", duration: "1h56", description: "Deux cousines traversent le pays à vélo pour livrer une lettre qui n'aurait jamais dû se perdre." },
+    ],
+  },
+];
+
 /* ------------------------------- Lookups ----------------------------------- */
 
 /** Every unique item across hero + all rows, keyed by id (first occurrence wins). */
 export const allItems: MediaItem[] = (() => {
   const map = new Map<string, MediaItem>();
-  for (const it of [...heroSlides, ...homeRows, ...sportRows, ...formationRows].flatMap(
+  for (const it of [...heroSlides, ...homeRows, ...sportRows, ...formationRows, ...filmsRows].flatMap(
     (x) => ("items" in x ? x.items : [x])
   )) {
     if (!map.has(it.id)) map.set(it.id, it);
