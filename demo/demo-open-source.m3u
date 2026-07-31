@@ -1,0 +1,30 @@
+#EXTM3U
+# =========================================================
+# Playlist DÉMO — contenus 100 % libres de droits
+# =========================================================
+# Films open source du projet Blender (licence Creative Commons)
+# + flux de test publics. Conçue pour tourner des vidéos de
+# démonstration (Play Console, captures d'écran) sans aucun
+# contenu protégé à l'image.
+# =========================================================
+
+#EXTINF:-1 tvg-logo="" group-title="Films libres",Big Buck Bunny (film libre)
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-logo="" group-title="Films libres",Elephants Dream (film libre)
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-logo="" group-title="Films libres",Sintel (film libre)
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-logo="" group-title="Films libres",Tears of Steel (film libre)
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-logo="" group-title="Films libres",Subaru Outback (démo route)
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-logo="" group-title="Flux HLS (type chaîne)",Big Buck Bunny HLS (flux continu)
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+
+#EXTINF:-1 tvg-logo="" group-title="Flux HLS (type chaîne)",Sintel HLS (flux continu)
+https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8
