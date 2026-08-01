@@ -3916,6 +3916,14 @@
   "tvProfileFamily": "Famille",
   "tvSettingsSources": "Mes sources (ajouter / activer / supprimer)",
   "tvBootResume": "Reprise au démarrage",
+  "tvPlayerRadio": "Radio",
+  "@tvPlayerRadio": {
+    "description": "Bouton mode radio du lecteur TV (n°32)"
+  },
+  "tvRadioModeOn": "Mode radio — le son continue, l'image est coupée.",
+  "@tvRadioModeOn": {
+    "description": "Bandeau du mode radio actif"
+  },
   "@tvBootResume": {
     "description": "Réglage TV : reprise au démarrage (n°2)"
   },

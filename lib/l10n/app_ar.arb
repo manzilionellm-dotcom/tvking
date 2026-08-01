@@ -1161,6 +1161,8 @@
   "tvProfileFamily": "العائلة",
   "tvSettingsSources": "مصادري (إضافة / تفعيل / حذف)",
   "tvBootResume": "الاستئناف عند التشغيل",
+  "tvPlayerRadio": "راديو",
+  "tvRadioModeOn": "وضع الراديو — يستمر الصوت وتتوقف الصورة.",
   "tvBootResumeHelp": "عند فتح التطبيق، يعود مباشرة إلى آخر قناة شاهدتها.",
   "tvSettingsFamily": "اشتراك العائلة (مشاركة، 5 أجهزة)",
   "tvSettingsProfiles": "الملفات الشخصية (لكلٍّ عالمه)",

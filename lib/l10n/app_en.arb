@@ -1192,6 +1192,8 @@
   "tvProfileFamily": "Family",
   "tvSettingsSources": "My sources (add / activate / delete)",
   "tvBootResume": "Resume on startup",
+  "tvPlayerRadio": "Radio",
+  "tvRadioModeOn": "Radio mode — sound keeps playing, picture is off.",
   "tvBootResumeHelp": "When the app opens, jump straight back to the last channel you watched.",
   "tvSettingsFamily": "Family Plan (share, 5 devices)",
   "tvSettingsProfiles": "Profiles (a space for everyone)",

@@ -470,6 +470,20 @@ class NativeVideoView(
                 playerHandler.post { player.seekTo(safe) }
                 result.success(null)
             }
+            "setVideoEnabled" -> {
+                // MODE RADIO (TV) : coupe/rétablit la PISTE VIDÉO — le son
+                // continue, le décodeur vidéo s'arrête (économie réelle de
+                // bande passante et de chauffe sur les box).
+                val on = call.argument<Boolean>("enabled") ?: true
+                playerHandler.post {
+                    player.trackSelectionParameters =
+                        player.trackSelectionParameters.buildUpon()
+                            .setTrackTypeDisabled(
+                                androidx.media3.common.C.TRACK_TYPE_VIDEO, !on)
+                            .build()
+                }
+                result.success(null)
+            }
             "setSpeed" -> {
                 // Vitesse de lecture (VOD) : ExoPlayer corrige le pitch audio
                 // tout seul. Re-bornée ici par prudence (mêmes bornes que Dart).

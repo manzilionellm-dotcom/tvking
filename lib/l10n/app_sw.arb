@@ -1161,6 +1161,8 @@
   "tvProfileFamily": "Familia",
   "tvSettingsSources": "Vyanzo vyangu (ongeza / washa / futa)",
   "tvBootResume": "Endelea unapowasha",
+  "tvPlayerRadio": "Redio",
+  "tvRadioModeOn": "Hali ya redio — sauti inaendelea, picha imezimwa.",
   "tvBootResumeHelp": "Programu inapofunguliwa, inarudi moja kwa moja kwenye kituo ulichotazama mwisho.",
   "tvSettingsFamily": "Usajili wa Familia (shiriki, vifaa 5)",
   "tvSettingsProfiles": "Wasifu (kila mtu na ulimwengu wake)",

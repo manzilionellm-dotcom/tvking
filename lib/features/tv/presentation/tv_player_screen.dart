@@ -137,7 +137,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // déplacent le surlignage, OK active.
   // Ordre : 0=Guide 1=REC 2=Favori 3=Multi 4=Pistes.
   int _btnFocus = -1;
-  static const int _btnCount = 5;
+  static const int _btnCount = 6;
+
+  // ----- MODE RADIO (n°32) : le son continue, l'image est coupée -----
+  // Vraie économie (décodeur vidéo arrêté côté ExoPlayer, bande passante
+  // réduite sur les flux multi-pistes) — pensé pour les stations radio et
+  // chaînes musicales des playlists IPTV. Propre à la chaîne courante :
+  // le zap rétablit l'image (cf. _open).
+  bool _radioMode = false;
 
   // ----- Feuille « Pistes & format d'image » (audio/sous-titres/ratio) ---
   // Panneau latéral focus-émulé (même modèle que la carte « À suivre ») :
@@ -722,6 +729,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // La vitesse de lecture est PROPRE au contenu quitté : on repart à 1×
     // (indispensable en zap VOD → direct, sinon le direct serait accéléré).
     if (_controller.playbackSpeed != 1.0) _controller.setPlaybackSpeed(1.0);
+    // Idem MODE RADIO : l'image revient au zap (sinon la nouvelle chaîne
+    // resterait noire ET le garde-fou « aucune image » la couperait).
+    if (_radioMode) {
+      _radioMode = false;
+      _controller.setVideoEnabled(true);
+    }
     if (_isVod) {
       // BUDGET « Regarder → première frame » : si l'écran amont (fiche,
       // rangée Reprendre) a déjà lancé le chrono à l'appui, on le garde
@@ -1372,7 +1385,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case 4:
         _openTracksSheet();
         break;
+      case 5:
+        _toggleRadioMode();
+        break;
     }
+  }
+
+  /// MODE RADIO (n°32) : bascule la piste vidéo. Le son n'est JAMAIS
+  /// interrompu ; ExoPlayer relance le décodage à la sortie du mode.
+  void _toggleRadioMode() {
+    final bool on = !_radioMode;
+    _controller.setVideoEnabled(!on);
+    setState(() => _radioMode = on);
+    if (on) _flash(context.l10n.tvRadioModeOn);
   }
 
   // ----- Feuille « Pistes & format d'image » ------------------------------
@@ -2431,6 +2456,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                             onFavorite: _toggleFavorite,
                             onMulti: _openMultiView,
                             onTracks: _openTracksSheet,
+                            onRadio: _toggleRadioMode,
+                            radioActive: _radioMode,
                             // ---- Mode FILM (Netflix) ----
                             isVod: _isVod,
                             position: _controller.position,
@@ -2496,6 +2523,48 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: 2,
                                     color: TvTokens.text)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // MODE RADIO (n°32) : habillage plein écran pendant que
+                  // la piste vidéo est coupée (le son continue). Sous la
+                  // barre de contrôles → le bouton « Radio » reste visible
+                  // pour ressortir du mode.
+                  if (_radioMode)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            if ((_current.logoUrl ?? '').isNotEmpty)
+                              CachedNetworkImage(
+                                imageUrl: _current.logoUrl!,
+                                width: 140,
+                                height: 140,
+                                fit: BoxFit.contain,
+                                errorWidget: (_, __, ___) => const Icon(
+                                    Icons.radio_rounded,
+                                    size: 120,
+                                    color: TvTokens.goldBright),
+                              )
+                            else
+                              const Icon(Icons.radio_rounded,
+                                  size: 120, color: TvTokens.goldBright),
+                            const SizedBox(height: 22),
+                            Text(_current.cleanName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 30,
+                                    fontWeight: FontWeight.w800,
+                                    color: TvTokens.text)),
+                            const SizedBox(height: 10),
+                            Text(context.l10n.tvRadioModeOn,
+                                style: const TextStyle(
+                                    fontSize: 16,
+                                    color: TvTokens.muted)),
                           ],
                         ),
                       ),
@@ -2707,6 +2776,8 @@ class _ControlsBar extends StatelessWidget {
     required this.onFavorite,
     required this.onMulti,
     required this.onTracks,
+    required this.onRadio,
+    required this.radioActive,
     required this.isVod,
     required this.position,
     required this.duration,
@@ -2735,6 +2806,8 @@ class _ControlsBar extends StatelessWidget {
   final VoidCallback onFavorite;
   final VoidCallback onMulti;
   final VoidCallback onTracks;
+  final VoidCallback onRadio;
+  final bool radioActive;
 
   // ---- Mode FILM (Netflix) ----
   final bool isVod;
@@ -2839,6 +2912,19 @@ class _ControlsBar extends StatelessWidget {
                   label: context.l10n.tracksTitle,
                   onTap: onTracks,
                   focused: focusedIndex == 4,
+                ),
+                const SizedBox(width: 34),
+                // « Radio » (n°32) : le son continue, l'image est coupée —
+                // pour les stations radio / chaînes musicales des playlists.
+                _CtrlButton(
+                  icon: radioActive
+                      ? Icons.radio_rounded
+                      : Icons.radio_outlined,
+                  label: context.l10n.tvPlayerRadio,
+                  onTap: onRadio,
+                  accent: TvTokens.gold,
+                  active: radioActive,
+                  focused: focusedIndex == 5,
                 ),
               ],
             ),

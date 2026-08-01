@@ -1161,6 +1161,8 @@
   "tvProfileFamily": "Familie",
   "tvSettingsSources": "Mine kilder (tilføj / aktivér / slet)",
   "tvBootResume": "Genoptag ved start",
+  "tvPlayerRadio": "Radio",
+  "tvRadioModeOn": "Radiotilstand — lyden fortsætter, billedet er slukket.",
   "tvBootResumeHelp": "Når appen åbnes, vender den direkte tilbage til den senest sete kanal.",
   "tvSettingsFamily": "Familieabonnement (del, 5 enheder)",
   "tvSettingsProfiles": "Profiler (hver sit univers)",

@@ -167,6 +167,11 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>(
           'setSpeed', <String, dynamic>{'speed': playbackSpeed});
     }
+    // Idem pour le mode radio (piste vidéo coupée).
+    if (!videoEnabled) {
+      ch.invokeMethod<void>(
+          'setVideoEnabled', <String, dynamic>{'enabled': false});
+    }
   }
 
   Future<dynamic> _onNativeCall(MethodCall call) async {
@@ -303,6 +308,19 @@ class NativeVideoController extends ChangeNotifier {
   /// Sélectionne la [index]-ième piste de sous-titres, ou -1 = désactivés.
   void setSubtitleTrack(int index) => _channel?.invokeMethod<void>(
       'setSubtitleTrack', <String, dynamic>{'index': index});
+
+  /// Piste VIDÉO active ? false = MODE RADIO (le son continue, le décodeur
+  /// vidéo est coupé). Mémorisé pour être rejoué au rattachement.
+  bool videoEnabled = true;
+
+  /// Coupe/rétablit la piste vidéo (mode radio TV). Le son n'est jamais
+  /// interrompu ; ExoPlayer relance le décodage vidéo au rétablissement.
+  void setVideoEnabled(bool enabled) {
+    videoEnabled = enabled;
+    _channel?.invokeMethod<void>(
+        'setVideoEnabled', <String, dynamic>{'enabled': enabled});
+    if (!_disposed) notifyListeners();
+  }
 
   /// Vitesse de lecture courante (1.0 = normale). Pilotée par l'UI VOD ;
   /// mémorisée ici pour être rejouée si la PlatformView se rattache.
