@@ -33,6 +33,7 @@ String favoritesScopeForTemplate(TvHomeTemplate t) =>
 /// sélecteur et la persistance restent donc en place, prêts à l'accueillir.
 enum TvHomeTemplate {
   classic, // menu compact en haut, liste des chaînes en grand
+  iptv, // Modèle B (design client) : ambiance selon l'heure, reco + grille
 }
 
 extension TvHomeTemplateInfo on TvHomeTemplate {
@@ -40,6 +41,8 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
     switch (this) {
       case TvHomeTemplate.classic:
         return 'classic';
+      case TvHomeTemplate.iptv:
+        return 'iptv';
     }
   }
 
@@ -49,6 +52,8 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
     switch (this) {
       case TvHomeTemplate.classic:
         return 'Modèle A';
+      case TvHomeTemplate.iptv:
+        return 'Modèle B';
     }
   }
 
@@ -58,6 +63,8 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
     switch (this) {
       case TvHomeTemplate.classic:
         return 'Menu compact en haut, liste des chaînes en grand.';
+      case TvHomeTemplate.iptv:
+        return 'Ambiance selon l\'heure, reco en haut, grille de chaînes.';
     }
   }
 }

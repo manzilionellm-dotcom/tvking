@@ -157,7 +157,63 @@ class _TemplatePreview extends StatelessWidget {
     switch (t) {
       case TvHomeTemplate.classic:
         return _classicMock();
+      case TvHomeTemplate.iptv:
+        return _iptvMock();
     }
+  }
+
+  // Modèle B : bandeau + rangée « reco » + grille 4 colonnes.
+  Widget _iptvMock() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        // Bandeau haut (titre + pastille de mode).
+        SizedBox(
+          height: 8,
+          child: Row(
+            children: <Widget>[
+              Expanded(flex: 2, child: _box()),
+              const Spacer(flex: 5),
+              Expanded(flex: 2, child: _box(color: TvTokens.gold)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        // Rangée « Recommandé pour toi » : cartes larges.
+        SizedBox(
+          height: 26,
+          child: Row(
+            children: <Widget>[
+              for (int i = 0; i < 4; i++) ...<Widget>[
+                Expanded(child: _box(color: i == 0 ? TvTokens.gold : null)),
+                if (i < 3) const SizedBox(width: 5),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Grille 4 colonnes.
+        Expanded(
+          child: Column(
+            children: <Widget>[
+              for (int r = 0; r < 2; r++) ...<Widget>[
+                Expanded(
+                  child: Row(
+                    children: <Widget>[
+                      for (int c = 0; c < 4; c++) ...<Widget>[
+                        Expanded(child: _box()),
+                        if (c < 3) const SizedBox(width: 5),
+                      ],
+                    ],
+                  ),
+                ),
+                if (r < 1) const SizedBox(height: 5),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   // TiviMate : rail d'icônes fin + colonne de groupes + liste de chaînes.

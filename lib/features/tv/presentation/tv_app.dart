@@ -51,6 +51,7 @@ import '../../sports/domain/sport_models.dart';
 import '../core/tv_ambience.dart';
 import '../core/tv_home_template.dart';
 import 'tv_home_template_screen.dart';
+import 'tv_iptv_home_screen.dart';
 import 'tv_live_preview.dart';
 import 'tv_care_nudge.dart';
 import 'tv_night_comfort.dart';
@@ -563,6 +564,8 @@ class _TvGateState extends State<TvGate> {
                   switch (TvHomeTemplateRepository.instance.template) {
                     case TvHomeTemplate.classic:
                       return const TvHomeScreen();
+                    case TvHomeTemplate.iptv:
+                      return const TvIptvHomeScreen();
                   }
                 },
               );
