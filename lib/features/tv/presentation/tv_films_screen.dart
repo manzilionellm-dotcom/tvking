@@ -41,6 +41,7 @@ import '../../vod/data/vod_taste.dart';
 import '../../vod/data/vod_watchlist_repository.dart';
 import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_movie.dart';
+import '../../../widgets/optimized_image.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_poster_prefetch.dart';
@@ -1047,18 +1048,14 @@ class _HeroPoster extends StatelessWidget {
       ),
     );
     if (url == null || url!.isEmpty) return fallback;
-    return CachedNetworkImage(
+    // Widget partagé (lib/widgets/optimized_image.dart) : bornes mémoire ET
+    // disque garanties, repli instantané, fondu — plus aucun réglage à
+    // répéter ni à oublier ici.
+    return OptimizedImage(
       imageUrl: url!,
-      fit: BoxFit.cover,
       memCacheWidth: 480,
-      // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
-      // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
-      // au-delà de 480 px — sur un catalogue de 100 000 titres, c'est
-      // des gigaoctets pour rien.
-      maxWidthDiskCache: 480,
+      fallback: fallback,
       fadeInDuration: const Duration(milliseconds: 150),
-      placeholder: (_, __) => fallback,
-      errorWidget: (_, __, ___) => fallback,
     );
   }
 }

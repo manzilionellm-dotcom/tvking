@@ -250,6 +250,7 @@ dependencies:
   #   stocké sur disque) → la clé n'est nulle part dans les fichiers de l'app.
   encrypt: ^5.0.3
   crypto: ^3.0.6
+  flutter_blurhash: ^0.9.1
 
 # Pin de screen_brightness_android pour eviter la 2.1.5 qui a un
 # build.gradle cassé (bloc kotlin{} top-level inutilisable par notre
