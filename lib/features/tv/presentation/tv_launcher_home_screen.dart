@@ -27,6 +27,9 @@ import 'package:intl/intl.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../epg/data/epg_repository.dart';
+import '../data/channel_reliability.dart';
+import '../data/hero_picker.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../vod/data/playback_position_repository.dart';
@@ -111,6 +114,15 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
     return _byIdCache!;
   }
 
+  /// Candidats du héro (fiables d'abord — n°38) : si l'aperçu du 1er est
+  /// indisponible (chaîne coupée côté fournisseur, photo terrain), l'accueil
+  /// BASCULE tout seul sur le suivant au lieu de rester sur un cadre mort.
+  List<Channel> _candidates = const <Channel>[];
+  int _candIndex = 0;
+
+  /// Programme EPG en cours sur le héro (« En ce moment : … »), best-effort.
+  String? _heroNow;
+
   Future<void> _recomputeHero() async {
     final List<Channel> all = PlaylistRepository.instance.currentChannels;
     if (all.isEmpty) {
@@ -118,8 +130,6 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
       return;
     }
     final Map<String, Channel> byId = _byId(all);
-    Channel? hero;
-    bool habit = false;
     // « MA SOIRÉE » : la chaîne la plus regardée DANS CE CRÉNEAU (heure ± 1,
     // même type de jour). Sur une TV partagée, le contexte temporel prédit
     // mieux que n'importe quel profil (recherche 2024) — et tout reste sur
@@ -131,31 +141,60 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
         _slotId = await WatchHistoryRepository.instance.topChannelForSlot();
         _slotAt = now;
       }
-      if (_slotId != null) {
-        hero = byId[_slotId];
-        habit = hero != null;
-      }
     } catch (_) {
-      // historique indisponible → replis classiques ci-dessous
+      // historique indisponible → replis classiques (récents/favoris)
     }
-    if (hero == null) {
-      for (final String id in RecentlyWatchedRepository.instance.current) {
-        hero = byId[id];
-        if (hero != null) break;
-      }
-    }
-    if (hero == null) {
-      for (final String id in FavoritesRepository.instance.current) {
-        hero = byId[id];
-        if (hero != null) break;
-      }
-    }
-    hero ??= all.first;
+    // Ordre d'affection + fiabilité (brique pure hero_picker, testée) :
+    // les chaînes que la box SAIT défaillantes passent en dernier recours.
+    final List<Channel> candidates = heroCandidates(
+      all: all,
+      byId: byId,
+      slotId: _slotId,
+      recents: RecentlyWatchedRepository.instance.current,
+      favorites: FavoritesRepository.instance.current,
+      isFlaky: ChannelReliability.instance.isFlaky,
+    );
+    if (candidates.isEmpty) return;
+    final Channel hero = candidates.first;
+    final bool habit = _slotId != null && hero.id == _slotId;
     if (mounted && (_hero?.id != hero.id || _heroFromHabit != habit)) {
       setState(() {
+        _candidates = candidates;
+        _candIndex = 0;
         _hero = hero;
         _heroFromHabit = habit;
       });
+      unawaited(_refreshHeroNow(hero));
+    } else {
+      _candidates = candidates;
+    }
+  }
+
+  /// Bascule sur le candidat SUIVANT quand l'aperçu signale que la chaîne
+  /// est injouable (résolution/erreur/aucune image — cf. TvLivePreview
+  /// .onUnavailable). Une seule passe sur la liste, jamais de boucle.
+  void _advanceHero() {
+    if (!mounted) return;
+    final int next = _candIndex + 1;
+    if (next >= _candidates.length) return; // dernier recours : on reste
+    setState(() {
+      _candIndex = next;
+      _hero = _candidates[next];
+      _heroFromHabit = false;
+    });
+    unawaited(_refreshHeroNow(_candidates[next]));
+  }
+
+  /// « En ce moment : … » sous le nom du héro (EPG locale, cache 60 s).
+  Future<void> _refreshHeroNow(Channel hero) async {
+    String? title;
+    try {
+      title = (await EpgRepository.instance.currentProgram(hero.id))?.title;
+    } catch (_) {
+      title = null; // EPG absente → la ligne ne s'affiche pas, c'est tout
+    }
+    if (mounted && _hero?.id == hero.id && title != _heroNow) {
+      setState(() => _heroNow = title);
     }
   }
 
@@ -354,7 +393,14 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                           size: 110,
                           radius: 14))
                 else
-                  TvLivePreview(channel: ch, enabled: _previewLive),
+                  TvLivePreview(
+                    channel: ch,
+                    enabled: _previewLive,
+                    // Chaîne injouable (morte côté fournisseur, photo
+                    // terrain) → l'accueil bascule sur le candidat suivant
+                    // au lieu de garder un grand cadre sans vie.
+                    onUnavailable: _advanceHero,
+                  ),
                 // Bandeau bas : nom de la chaîne + bouton, sur un voile
                 // sombre pour rester lisible par-dessus la vidéo.
                 Align(
@@ -389,12 +435,27 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                           const SizedBox(width: 10),
                         ],
                         Expanded(
-                          child: Text(ch.cleanName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TvTokens.ui(TvDimens.title,
-                                  weight: FontWeight.w800,
-                                  color: TvTokens.text)),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Text(ch.cleanName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TvTokens.ui(TvDimens.title,
+                                      weight: FontWeight.w800,
+                                      color: TvTokens.text)),
+                              // « En ce moment : … » (EPG locale) — UNE
+                              // ligne bornée, comme l'exige la règle
+                              // anti-pliage (bug photo du même jour).
+                              if (_heroNow != null && _heroNow!.isNotEmpty)
+                                Text('En ce moment : $_heroNow',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TvTokens.ui(TvDimens.label,
+                                        color: TvTokens.muted)),
+                            ],
+                          ),
                         ),
                         const SizedBox(width: 12),
                         TvFocusBuilder(

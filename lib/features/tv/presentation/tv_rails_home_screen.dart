@@ -20,6 +20,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
@@ -27,7 +28,12 @@ import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_logo.dart';
+import '../core/tv_memory_guard.dart';
 import '../core/tv_tokens.dart';
+import '../data/channel_reliability.dart';
+import '../data/hero_picker.dart';
+import 'tv_live_preview.dart';
 import 'tv_components.dart';
 import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
@@ -402,28 +408,143 @@ class _ClockState extends State<_Clock> {
 }
 
 /// Héro : grande zone « Direct » avec badge Play rouge.
-class _Hero extends StatelessWidget {
+class _Hero extends StatefulWidget {
   const _Hero({required this.onSelect, this.autofocus = false});
   final VoidCallback onSelect;
   final bool autofocus;
 
   @override
+  State<_Hero> createState() => _HeroState();
+}
+
+/// Héro VIVANT (parité Modèle B) : au lieu d'une icône statique, le cadre
+/// montre l'aperçu EN DIRECT d'une chaîne aimée — candidats ordonnés par la
+/// brique pure hero_picker (récents → favoris → 1re chaîne, fiables d'abord
+/// via le score n°38). Chaîne injouable → bascule auto sur la suivante
+/// (TvLivePreview.onUnavailable) : jamais un grand cadre mort à l'accueil.
+/// Indépendance : état 100 % local à CE template ; petite box → logo seul.
+class _HeroState extends State<_Hero> {
+  StreamSubscription<List<Channel>>? _chanSub;
+  StreamSubscription<List<String>>? _recentSub;
+  List<Channel> _candidates = const <Channel>[];
+  int _index = 0;
+
+  Channel? get _hero =>
+      _index < _candidates.length ? _candidates[_index] : null;
+
+  @override
+  void initState() {
+    super.initState();
+    _recompute();
+    _chanSub = PlaylistRepository.instance.channelsStream
+        .listen((_) => _recompute());
+    _recentSub =
+        RecentlyWatchedRepository.instance.stream.listen((_) => _recompute());
+  }
+
+  @override
+  void dispose() {
+    _chanSub?.cancel();
+    _recentSub?.cancel();
+    super.dispose();
+  }
+
+  // Map id→Channel mémoïsée par identité de liste (parité Modèle B) : le
+  // bouquet fait 10-50 k chaînes — on ne la reconstruit pas à chaque
+  // événement de playlist/zapping.
+  List<Channel>? _byIdSource;
+  Map<String, Channel>? _byIdCache;
+
+  Map<String, Channel> _byId(List<Channel> all) {
+    if (!identical(all, _byIdSource)) {
+      _byIdSource = all;
+      _byIdCache = <String, Channel>{for (final Channel c in all) c.id: c};
+    }
+    return _byIdCache!;
+  }
+
+  void _recompute() {
+    final List<Channel> all = PlaylistRepository.instance.currentChannels;
+    if (all.isEmpty) {
+      if (mounted && _candidates.isNotEmpty) {
+        setState(() {
+          _candidates = const <Channel>[];
+          _index = 0;
+        });
+      }
+      return;
+    }
+    final List<Channel> candidates = heroCandidates(
+      all: all,
+      byId: _byId(all),
+      recents: RecentlyWatchedRepository.instance.current,
+      favorites: FavoritesRepository.instance.current,
+      isFlaky: ChannelReliability.instance.isFlaky,
+    );
+    if (mounted &&
+        (candidates.isEmpty ||
+            _candidates.isEmpty ||
+            candidates.first.id != _candidates.first.id)) {
+      setState(() {
+        _candidates = candidates;
+        _index = 0;
+      });
+    } else {
+      _candidates = candidates;
+    }
+  }
+
+  void _advance() {
+    if (!mounted || _index + 1 >= _candidates.length) return;
+    setState(() => _index++);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final Channel? hero = _hero;
     return TvFocusBuilder(
-      autofocus: autofocus,
+      autofocus: widget.autofocus,
       scale: TvFocusScale.medium,
-      onSelect: onSelect,
+      onSelect: widget.onSelect,
       pressedBuilder: (BuildContext context, bool focused, bool pressed) {
         return _railsShell(
           focused: focused,
           pressed: pressed,
           radius: 16,
           child: Stack(
+            fit: StackFit.expand,
             children: <Widget>[
-              Center(
-                child: Icon(Icons.live_tv_rounded,
-                    size: 92, color: focused ? _rText : _rMuted),
-              ),
+              if (hero == null)
+                Center(
+                  child: Icon(Icons.live_tv_rounded,
+                      size: 92, color: focused ? _rText : _rMuted),
+                )
+              else if (TvMemoryGuard.instance.lowSpec)
+                // Petite box : pas de vidéo permanente à l'accueil — le
+                // logo suffit, le décodeur reste pour la lecture réelle.
+                Center(
+                    child: TvChannelLogo(
+                        logoUrl: hero.logoUrl,
+                        label: hero.name,
+                        size: 96,
+                        radius: 14))
+              else
+                TvLivePreview(
+                  channel: hero,
+                  onUnavailable: _advance,
+                ),
+              // Nom de la chaîne du héro, lisible par-dessus la vidéo.
+              if (hero != null)
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: 74,
+                  child: Text(hero.cleanName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TvTokens.ui(TvDimens.body,
+                          weight: FontWeight.w800, color: _rText)),
+                ),
               Positioned(
                 left: 20,
                 bottom: 20,

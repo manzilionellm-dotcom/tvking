@@ -57,6 +57,7 @@ class TvLivePreview extends StatefulWidget {
     this.startImmediately = false,
     this.debounce = const Duration(milliseconds: 600),
     this.resolver,
+    this.onUnavailable,
   });
 
   /// Observer de navigation GLOBAL (enregistré par TvApp sur son Navigator).
@@ -87,6 +88,14 @@ class TvLivePreview extends StatefulWidget {
 
   /// Résolution d'URL (défaut : [resolveSource]). Surchargé par les tests.
   final TvPreviewResolver? resolver;
+
+  /// Signalé AU PLUS UNE fois par tentative quand l'aperçu ne peut pas
+  /// montrer cette chaîne : résolution d'URL impossible, erreur du lecteur,
+  /// ou AUCUNE image dessinée dans le délai du garde-fou de démarrage.
+  /// L'accueil s'en sert pour basculer sur un AUTRE candidat héro (photo
+  /// terrain 2026-08-01 : chaîne morte côté fournisseur → grand cadre
+  /// inutile). L'aperçu, lui, reste sur le logo — jamais de noir.
+  final VoidCallback? onUnavailable;
 
   /// Parité TvPlayerScreen._loadCurrentUrl : format gagnant mémorisé par la
   /// cascade + signature (UA) gagnante de la source + relais local pour le
@@ -133,6 +142,24 @@ class _TvLivePreviewState extends State<TvLivePreview>
   NativeVideoController? _ctrl;
   Timer? _debounce;
   bool _resolving = false;
+
+  /// Garde-fou de démarrage : un flux « accepté » qui ne dessine JAMAIS de
+  /// première image (serveur qui pend) ne doit pas laisser l'accueil espérer
+  /// indéfiniment — au délai, on signale [TvLivePreview.onUnavailable].
+  Timer? _startupWatchdog;
+  static const Duration _kStartupTimeout = Duration(seconds: 12);
+
+  /// `true` dès que l'indisponibilité de la TENTATIVE courante a été
+  /// signalée — jamais deux signaux pour la même tentative.
+  bool _unavailableFired = false;
+
+  void _fireUnavailable(String reason) {
+    if (_unavailableFired) return;
+    _unavailableFired = true;
+    _diag('[${widget.channel.cleanName}] aperçu indisponible ($reason)',
+        level: 'warn');
+    widget.onUnavailable?.call();
+  }
 
   /// `true` quand un AUTRE écran est posé par-dessus celui-ci (didPushNext) :
   /// l'aperçu reste coupé tant qu'on n'est pas revenu (didPopNext).
@@ -244,6 +271,9 @@ class _TvLivePreviewState extends State<TvLivePreview>
     _session++;
     _debounce?.cancel();
     _debounce = null;
+    _startupWatchdog?.cancel();
+    _startupWatchdog = null;
+    _unavailableFired = false;
     _resolving = false;
     _loggedFirstFrame = false;
     _loggedError = false;
@@ -323,6 +353,7 @@ class _TvLivePreviewState extends State<TvLivePreview>
     }
     if (src == null) {
       setState(() => _resolving = false);
+      _fireUnavailable('résolution impossible');
       return;
     }
     _diag('[$name] lecture aperçu : '
@@ -344,6 +375,20 @@ class _TvLivePreviewState extends State<TvLivePreview>
       _uiFirstFrame = false; // setUrl remet firstFrame à false côté contrôleur
       _uiHasError = false;
       _resolving = false;
+    });
+    // Nouvelle tentative → nouveau droit de signal + garde-fou réarmé :
+    // si NI première image NI erreur n'arrive dans le délai (serveur qui
+    // accepte la connexion puis pend), on prévient l'accueil.
+    _unavailableFired = false;
+    _startupWatchdog?.cancel();
+    final int watchedSession = _session;
+    _startupWatchdog = Timer(_kStartupTimeout, () {
+      if (!mounted || watchedSession != _session) return;
+      final NativeVideoController? w = _ctrl;
+      if (w != null && !w.firstFrame && !w.hasError) {
+        _fireUnavailable('aucune image en '
+            '${_kStartupTimeout.inSeconds} s');
+      }
     });
   }
 
@@ -369,6 +414,7 @@ class _TvLivePreviewState extends State<TvLivePreview>
     if (c == null) return;
     if (c.firstFrame && !_loggedFirstFrame) {
       _loggedFirstFrame = true;
+      _startupWatchdog?.cancel(); // 1re image → garde-fou inutile
       _diag('[${widget.channel.cleanName}] 1re image aperçu OK');
     }
     if (c.hasError && !_loggedError) {
@@ -380,6 +426,8 @@ class _TvLivePreviewState extends State<TvLivePreview>
           ' — ${c.lastErrorCauseMessage ?? c.lastErrorMessage ?? 'lecture impossible'}'
           ' → repli logo',
           level: 'warn');
+      _startupWatchdog?.cancel();
+      _fireUnavailable('erreur lecteur');
     }
     // Reconstruction UNIQUEMENT sur changement visuel (1re image / erreur).
     if (c.firstFrame != _uiFirstFrame || c.hasError != _uiHasError) {
