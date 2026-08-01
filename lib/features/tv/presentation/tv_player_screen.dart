@@ -2583,6 +2583,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                 width: 140,
                                 height: 140,
                                 fit: BoxFit.contain,
+                                // Décodage BORNÉ : un logo de 2000 px n'a
+                                // aucune raison d'occuper la mémoire d'une
+                                // box pour être affiché en 140 px.
+                                memCacheWidth: 300,
+                                fadeInDuration:
+                                    const Duration(milliseconds: 150),
                                 errorWidget: (_, __, ___) => const Icon(
                                     Icons.radio_rounded,
                                     size: 120,
@@ -2704,6 +2710,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                               width: 34,
                                               height: 34,
                                               fit: BoxFit.contain,
+                                              // 34 px à l'écran → on ne
+                                              // décode pas plus (défilement
+                                              // d'une liste de 40 000).
+                                              memCacheWidth: 80,
+                                              fadeInDuration: const Duration(
+                                                  milliseconds: 150),
                                               errorWidget: (_, __, ___) =>
                                                   const SizedBox(
                                                       width: 34,
