@@ -5,11 +5,14 @@
 //  pour l'activer) + l'état de l'abonnement (lu sur le MÊME worker que le
 //  panel). Un bouton focusable rafraîchit le statut.
 // =========================================================
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../device/data/device_identity.dart';
+import '../data/boot_resume.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -53,6 +56,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
     });
+    // Reprise au démarrage : charge l'état persisté (la ligne se met à
+    // jour toute seule via son ListenableBuilder).
+    unawaited(BootResume.instance.load());
   }
 
   Future<void> _refresh() async {
@@ -240,6 +246,72 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Icon(Icons.chevron_right_rounded, color: fg, size: 26),
                   ],
                 ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Reprise au démarrage (n°2) : rouvrir la dernière chaîne
+          //  à l'ouverture de l'app (comportement « vraie TV »). Bascule
+          //  simple, DÉSACTIVÉE par défaut — état lisible sur la ligne.
+          ListenableBuilder(
+            listenable: BootResume.instance,
+            builder: (BuildContext context, Widget? _) {
+              final bool on = BootResume.instance.enabled;
+              return TvFocusBuilder(
+                scale: TvFocusScale.large,
+                onSelect: () =>
+                    unawaited(BootResume.instance.setEnabled(!on)),
+                builder: (BuildContext context, bool focused) {
+                  final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+                  final Color fg = focused
+                      ? const Color(0xFF1A1206)
+                      : TvTokens.goldBright;
+                  return Container(
+                    width: 760,
+                    decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius:
+                            BorderRadius.circular(TvDimens.cardRadius)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 22, vertical: 16),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(Icons.play_circle_outline_rounded,
+                            color: fg, size: 26),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(context.l10n.tvBootResume,
+                                  style: TextStyle(
+                                      fontSize: TvDimens.title,
+                                      fontWeight: FontWeight.w700,
+                                      color: fg)),
+                              const SizedBox(height: 2),
+                              Text(context.l10n.tvBootResumeHelp,
+                                  style: TextStyle(
+                                      fontSize: TvDimens.body,
+                                      color: focused
+                                          ? fg.withValues(alpha: 0.75)
+                                          : TvTokens.muted)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Icon(
+                          on
+                              ? Icons.toggle_on_rounded
+                              : Icons.toggle_off_rounded,
+                          color: on
+                              ? (focused ? fg : TvTokens.goldBright)
+                              : (focused ? fg : TvTokens.muted),
+                          size: 40,
+                        ),
+                      ],
+                    ),
+                  );
+                },
               );
             },
           ),

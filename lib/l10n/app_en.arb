@@ -1191,6 +1191,8 @@
   "tvNavNews": "News",
   "tvProfileFamily": "Family",
   "tvSettingsSources": "My sources (add / activate / delete)",
+  "tvBootResume": "Resume on startup",
+  "tvBootResumeHelp": "When the app opens, jump straight back to the last channel you watched.",
   "tvSettingsFamily": "Family Plan (share, 5 devices)",
   "tvSettingsProfiles": "Profiles (a space for everyone)",
   "tvSettingsDiagnostics": "Black box (diagnostics)",

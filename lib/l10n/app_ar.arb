@@ -1160,6 +1160,8 @@
   "tvNavNews": "الأخبار",
   "tvProfileFamily": "العائلة",
   "tvSettingsSources": "مصادري (إضافة / تفعيل / حذف)",
+  "tvBootResume": "الاستئناف عند التشغيل",
+  "tvBootResumeHelp": "عند فتح التطبيق، يعود مباشرة إلى آخر قناة شاهدتها.",
   "tvSettingsFamily": "اشتراك العائلة (مشاركة، 5 أجهزة)",
   "tvSettingsProfiles": "الملفات الشخصية (لكلٍّ عالمه)",
   "tvSettingsDiagnostics": "الصندوق الأسود (تشخيص)",

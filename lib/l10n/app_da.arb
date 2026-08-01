@@ -1160,6 +1160,8 @@
   "tvNavNews": "Nyheder",
   "tvProfileFamily": "Familie",
   "tvSettingsSources": "Mine kilder (tilføj / aktivér / slet)",
+  "tvBootResume": "Genoptag ved start",
+  "tvBootResumeHelp": "Når appen åbnes, vender den direkte tilbage til den senest sete kanal.",
   "tvSettingsFamily": "Familieabonnement (del, 5 enheder)",
   "tvSettingsProfiles": "Profiler (hver sit univers)",
   "tvSettingsDiagnostics": "Sort boks (diagnostik)",

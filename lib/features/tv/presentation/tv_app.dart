@@ -21,8 +21,12 @@ import '../../../core/update/update_prompt.dart';
 import '../../../core/profiles/profiles_repository.dart';
 import '../../../core/realtime/admin_message_banner.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../security/data/parental_controls.dart';
+import '../data/boot_resume.dart';
+import 'tv_player_screen.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../stats/data/engagement_service.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -411,6 +415,11 @@ class _TvGateState extends State<TvGate> {
   // choisi (ou s'il n'y a qu'un profil), on file directement à l'accueil.
   bool _profileChosen = false;
 
+  // REPRISE AU DÉMARRAGE (n°2) : une seule tentative par lancement, armée
+  // au premier rendu de l'ACCUEIL (donc après le verrou d'abonnement ET le
+  // choix de profil). Réglage opt-in (BootResume, défaut désactivé).
+  bool _bootResumeArmed = false;
+
   @override
   void initState() {
     super.initState();
@@ -442,6 +451,55 @@ class _TvGateState extends State<TvGate> {
 
   void _onChange() {
     if (mounted) setState(() {});
+  }
+
+  /// REPRISE AU DÉMARRAGE (n°2, opt-in) : rouvre le lecteur sur la dernière
+  /// chaîne EN DIRECT regardée. Fail-open à chaque étape : réglage coupé,
+  /// pas d'historique, chaîne introuvable dans la playlist du jour ou
+  /// chaînes pas chargées à temps → on reste simplement sur l'accueil.
+  /// La liste passée au lecteur = les dernières chaînes regardées (jusqu'à
+  /// 8) → Haut/Bas zappe dans son propre historique, cohérent avec le
+  /// panneau « Récemment » du lecteur.
+  Future<void> _maybeBootResume() async {
+    await BootResume.instance.load();
+    if (!BootResume.instance.enabled || !mounted) return;
+    // Chaînes pas encore prêtes (chargement de la source au boot) → on
+    // attend le premier lot, 20 s max, sinon on abandonne en silence.
+    if (PlaylistRepository.instance.currentChannels.isEmpty) {
+      try {
+        await PlaylistRepository.instance.channelsStream
+            .firstWhere((List<Channel> l) => l.isNotEmpty)
+            .timeout(const Duration(seconds: 20));
+      } catch (_) {
+        return;
+      }
+    }
+    await RecentlyWatchedRepository.instance.initialize();
+    final List<String> ids =
+        RecentlyWatchedRepository.instance.current.take(8).toList();
+    if (ids.isEmpty || !mounted) return;
+    final List<Channel> fetched =
+        await PlaylistRepository.instance.getChannelsByExternalIds(ids);
+    final Map<String, Channel> byId = <String, Channel>{
+      for (final Channel c in fetched) c.id: c,
+    };
+    final bool kids = ParentalControls.instance.kidsMode.value;
+    // Ordre HISTORIQUE (le plus récent d'abord) ; DIRECT uniquement (un
+    // film repris au boot serait une surprise — la rangée « Reprendre »
+    // de l'accueil fait déjà ce travail) ; Mode Enfants respecté.
+    final List<Channel> list = <Channel>[
+      for (final String id in ids)
+        if (byId[id] != null &&
+            byId[id]!.isLive &&
+            !(kids && byId[id]!.genre == ChannelGenre.adult))
+          byId[id]!,
+    ];
+    if (list.isEmpty || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvPlayerScreen(channels: list, startIndex: 0),
+      ),
+    );
   }
 
   @override
@@ -484,6 +542,13 @@ class _TvGateState extends State<TvGate> {
     // « Qui regarde ? » en pleine session — perçu comme un bug. Netflix ne
     // montre cet écran QU'AU LANCEMENT ; ensuite on en change via la pastille.
     if (showHome && !needProfilePick) _profileChosen = true;
+    // Reprise au démarrage : dès que l'accueil apparaît (une seule fois),
+    // on tente de rouvrir la dernière chaîne — cf. _maybeBootResume.
+    if (showHome && !needProfilePick && !_bootResumeArmed) {
+      _bootResumeArmed = true;
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => unawaited(_maybeBootResume()));
+    }
     final Widget home = !showHome
         ? const TvShell(child: TvActivationScreen())
         : needProfilePick

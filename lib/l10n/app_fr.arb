@@ -3915,6 +3915,14 @@
   "tvNavNews": "Actu",
   "tvProfileFamily": "Famille",
   "tvSettingsSources": "Mes sources (ajouter / activer / supprimer)",
+  "tvBootResume": "Reprise au démarrage",
+  "@tvBootResume": {
+    "description": "Réglage TV : reprise au démarrage (n°2)"
+  },
+  "tvBootResumeHelp": "À l'ouverture, rouvre directement la dernière chaîne regardée.",
+  "@tvBootResumeHelp": {
+    "description": "Aide du réglage reprise au démarrage"
+  },
   "tvSettingsFamily": "Abonnement Famille (partager, 5 appareils)",
   "tvSettingsProfiles": "Profils (chacun son univers)",
   "tvSettingsDiagnostics": "Boîte noire (diagnostic)",

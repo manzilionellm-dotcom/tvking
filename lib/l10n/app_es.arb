@@ -1160,6 +1160,8 @@
   "tvNavNews": "Actualidad",
   "tvProfileFamily": "Familia",
   "tvSettingsSources": "Mis fuentes (añadir / activar / eliminar)",
+  "tvBootResume": "Reanudar al iniciar",
+  "tvBootResumeHelp": "Al abrir la app, vuelve directamente al último canal que viste.",
   "tvSettingsFamily": "Suscripción Familiar (compartir, 5 dispositivos)",
   "tvSettingsProfiles": "Perfiles (cada uno su universo)",
   "tvSettingsDiagnostics": "Caja negra (diagnóstico)",

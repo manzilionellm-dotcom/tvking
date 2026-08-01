@@ -1160,6 +1160,8 @@
   "tvNavNews": "Nyheter",
   "tvProfileFamily": "Familj",
   "tvSettingsSources": "Mina källor (lägg till / aktivera / ta bort)",
+  "tvBootResume": "Återuppta vid start",
+  "tvBootResumeHelp": "När appen öppnas går den direkt tillbaka till den senast visade kanalen.",
   "tvSettingsFamily": "Familjeabonnemang (dela, 5 enheter)",
   "tvSettingsProfiles": "Profiler (var och en sitt universum)",
   "tvSettingsDiagnostics": "Svart låda (diagnostik)",

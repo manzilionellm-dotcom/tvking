@@ -1160,6 +1160,8 @@
   "tvNavNews": "Habari",
   "tvProfileFamily": "Familia",
   "tvSettingsSources": "Vyanzo vyangu (ongeza / washa / futa)",
+  "tvBootResume": "Endelea unapowasha",
+  "tvBootResumeHelp": "Programu inapofunguliwa, inarudi moja kwa moja kwenye kituo ulichotazama mwisho.",
   "tvSettingsFamily": "Usajili wa Familia (shiriki, vifaa 5)",
   "tvSettingsProfiles": "Wasifu (kila mtu na ulimwengu wake)",
   "tvSettingsDiagnostics": "Sanduku jeusi (uchunguzi)",
