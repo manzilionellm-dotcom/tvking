@@ -1,45 +1,42 @@
 // =========================================================
 //  tv_iptv_home_screen.dart — Modèle B (design fourni par le client)
 // =========================================================
-//  Reprise FIDÈLE de la maquette envoyée par le client :
-//    • thème qui suit l'heure — « Mode soirée » après 19 h, « Mode jour »
-//      sinon (fonds et accent différents, plus doux pour les yeux le soir) ;
-//    • bandeau haut : titre + pastille du mode courant ;
-//    • rangée « Recommandé pour toi » (cartes larges qui défilent) ;
-//    • grille « Toutes les chaînes » en 4 colonnes ;
-//    • carte qui GRANDIT (1,08×) et s'entoure d'un halo à l'accent quand
-//      elle prend le focus.
+//  Reprise FIDÈLE de la maquette corrigée par le client :
+//    • menu LATÉRAL à gauche (260 px, fond plus sombre) : titre IPTV,
+//      les 5 pays, un séparateur, puis Sports / Films / International /
+//      Favoris ;
+//    • à droite : en-tête (nom de la section + pastille du mode) puis une
+//      grille de chaînes en 4 colonnes ;
+//    • sous chaque nom de chaîne, le PROGRAMME EN COURS ;
+//    • ambiance qui suit l'heure — « Mode soirée » après 19 h, « Mode
+//      jour » sinon (fonds et accent différents) ;
+//    • carte qui grandit et s'entoure d'un halo à l'accent au focus.
 //
-//  CE QUI A ÉTÉ ADAPTÉ pour que ce soit un vrai accueil de TV, et non une
-//  maquette :
-//    • les chaînes viennent du bouquet RÉEL (PlaylistRepository) et se
-//      rafraîchissent toutes seules — plus de liste écrite en dur ;
-//    • le focus est un VRAI focus télécommande (TvFocusBuilder : D-pad,
-//      appui OK, tactile) et non un Focus décoratif ;
-//    • OK ouvre la chaîne en plein écran, avec le zap Haut/Bas sur la même
-//      liste que celle affichée ;
-//    • la grille est PARESSEUSE : elle ne construit que les cartes visibles,
-//      donc 40 000 chaînes coûtent autant que 12 ;
-//    • les logos passent par OptimizedImage (décodage et disque bornés) et
-//      retombent sur le monogramme doré quand la chaîne n'a pas d'image —
-//      aucun panel IPTV ne fournit de BlurHash, le repli joue ce rôle ;
-//    • « Recommandé pour toi » n'est pas décoratif : il reprend l'ordre
-//      d'affection (habitude horaire → récents → favoris) et écarte les
-//      chaînes que la box sait défaillantes (hero_picker, n°38).
+//  ADAPTATIONS pour que ce soit un vrai accueil de TV :
+//    • LES 5 PAYS SONT DÉDUITS DU BOUQUET RÉEL (iptv_sections). La
+//      maquette les écrivait en dur (France, UK, US, Allemagne, Espagne)
+//      — or la source du client est belge : cinq sections vides. On garde
+//      sa structure, on remplit avec ce qu'il a vraiment.
+//    • vrai focus télécommande (TvFocusBuilder) au lieu d'un Focus
+//      décoratif : D-pad, OK, tactile — et OK ouvre le plein écran ;
+//    • grille PARESSEUSE : 40 000 chaînes coûtent autant que 12 ;
+//    • programme en cours lu dans l'EPG locale (cache 60 s), seulement
+//      pour les cartes VISIBLES — jamais 40 000 requêtes ;
+//    • logos via OptimizedImage (mémoire et disque bornés) avec repli sur
+//      le monogramme doré.
 // =========================================================
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../../../widgets/optimized_image.dart';
-import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../epg/data/epg_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
-import '../data/channel_reliability.dart';
-import '../data/hero_picker.dart';
+import '../data/iptv_sections.dart';
 import 'tv_player_screen.dart';
 
 class TvIptvHomeScreen extends StatefulWidget {
@@ -51,15 +48,12 @@ class TvIptvHomeScreen extends StatefulWidget {
 
 class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
   StreamSubscription<List<Channel>>? _chanSub;
-  StreamSubscription<List<String>>? _recentSub;
+  StreamSubscription<Set<String>>? _favSub;
+  Timer? _clock;
 
   List<Channel> _all = const <Channel>[];
-  List<Channel> _reco = const <Channel>[];
-
-  /// L'heure décide de l'ambiance. Recalculée à chaque construction, et
-  /// rafraîchie par une minuterie douce : à 19 h pile, l'accueil bascule en
-  /// mode soirée sans que le client ait à quitter l'écran.
-  Timer? _clock;
+  List<IptvSection> _countries = const <IptvSection>[];
+  String _selected = '';
 
   @override
   void initState() {
@@ -67,36 +61,37 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
     _refresh();
     _chanSub =
         PlaylistRepository.instance.channelsStream.listen((_) => _refresh());
-    _recentSub =
-        RecentlyWatchedRepository.instance.stream.listen((_) => _refresh());
+    // L'ambiance suit l'heure : à 19 h pile, l'écran bascule tout seul.
     _clock = Timer.periodic(const Duration(minutes: 5), (_) {
       if (mounted) setState(() {});
+    });
+    _favSub = FavoritesRepository.instance.favoritesStream.listen((_) {
+      if (mounted && _selected == 'favoris') setState(() {});
     });
   }
 
   @override
   void dispose() {
     _chanSub?.cancel();
-    _recentSub?.cancel();
+    _favSub?.cancel();
     _clock?.cancel();
     super.dispose();
   }
 
   void _refresh() {
     final List<Channel> all = PlaylistRepository.instance.currentChannels;
+    final Map<String, int> counts = <String, int>{};
+    for (final Channel c in all) {
+      counts[c.category] = (counts[c.category] ?? 0) + 1;
+    }
+    final List<IptvSection> countries = topCountrySections(counts);
     if (!mounted) return;
     setState(() {
       _all = all;
-      _reco = all.isEmpty
-          ? const <Channel>[]
-          : heroCandidates(
-              all: all,
-              byId: <String, Channel>{for (final Channel c in all) c.id: c},
-              recents: RecentlyWatchedRepository.instance.current,
-              favorites: FavoritesRepository.instance.current,
-              isFlaky: ChannelReliability.instance.isFlaky,
-              max: 12,
-            );
+      _countries = countries;
+      if (_selected.isEmpty) {
+        _selected = countries.isNotEmpty ? countries.first.id : 'international';
+      }
     });
   }
 
@@ -113,6 +108,51 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
   Color get _accent =>
       _isEvening ? const Color(0xFF4ECDC4) : const Color(0xFF00D4FF);
 
+  /// Chaînes de la section choisie. Un seul parcours du bouquet — pas de
+  /// pré-calcul de 40 000 entrées à chaque changement de section.
+  List<Channel> get _visible {
+    final String sel = _selected;
+    if (sel == 'favoris') {
+      final Set<String> favs = FavoritesRepository.instance.current.toSet();
+      return _all.where((Channel c) => favs.contains(c.id)).toList();
+    }
+    if (sel == 'sports') {
+      return _all.where((Channel c) => _matches(c, kSportsKeys)).toList();
+    }
+    if (sel == 'films') {
+      return _all.where((Channel c) => _matches(c, kFilmsKeys)).toList();
+    }
+    if (sel == 'international') {
+      // Tout ce qui n'appartient à aucun des pays listés à gauche.
+      final Set<String> shown =
+          _countries.map((IptvSection s) => s.id).toSet();
+      return _all
+          .where((Channel c) => !shown.contains(countryOfCategory(c.category)))
+          .toList();
+    }
+    return _all
+        .where((Channel c) => countryOfCategory(c.category) == sel)
+        .toList();
+  }
+
+  static bool _matches(Channel c, List<String> keys) {
+    final String up = c.category.toUpperCase();
+    for (final String k in keys) {
+      if (up.contains(k)) return true;
+    }
+    return false;
+  }
+
+  String get _title {
+    for (final IptvSection s in _countries) {
+      if (s.id == _selected) return s.label;
+    }
+    for (final IptvSection s in kIptvFixedSections) {
+      if (s.id == _selected) return s.label;
+    }
+    return 'Chaînes';
+  }
+
   void _play(List<Channel> list, int index) {
     if (list.isEmpty) return;
     Navigator.of(context).push(MaterialPageRoute<void>(
@@ -125,161 +165,278 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final List<Channel> visible = _visible;
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: <Widget>[
-            SliverToBoxAdapter(child: _header()),
-            if (_reco.isNotEmpty) ...<Widget>[
-              SliverToBoxAdapter(child: _sectionTitle('Recommandé pour toi')),
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 220,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    itemCount: _reco.length,
-                    itemBuilder: (BuildContext _, int i) => _ChannelCard(
-                      channel: _reco[i],
-                      accent: _accent,
-                      cardColor: _card,
-                      autofocus: i == 0,
-                      onSelect: () => _play(_reco, i),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-            const SliverToBoxAdapter(child: SizedBox(height: 32)),
-            SliverToBoxAdapter(
-              child: _sectionTitle('Toutes les chaînes  ·  ${_all.length}'),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
-              sliver: SliverGrid(
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  childAspectRatio: 1.1,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                ),
-                // PARESSEUSE : seules les cartes visibles sont construites —
-                // c'est ce qui permet à 40 000 chaînes de coûter autant
-                // qu'une douzaine.
-                delegate: SliverChildBuilderDelegate(
-                  (BuildContext _, int i) => _ChannelCard(
-                    channel: _all[i],
-                    accent: _accent,
-                    cardColor: _card,
-                    isGrid: true,
-                    autofocus: _reco.isEmpty && i == 0,
-                    onSelect: () => _play(_all, i),
-                  ),
-                  childCount: _all.length,
-                ),
-              ),
-            ),
+        child: Row(
+          children: <Widget>[
+            _sidebar(),
+            Expanded(child: _content(visible)),
           ],
         ),
       ),
     );
   }
 
-  Widget _header() => Padding(
-        padding: const EdgeInsets.fromLTRB(32, 24, 32, 16),
-        child: Row(
-          children: <Widget>[
-            const Text(
+  // ---- Menu latéral gauche ----
+  Widget _sidebar() {
+    return Container(
+      width: 260,
+      color: const Color(0xFF0A0E13),
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          const SizedBox(height: 40),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
               'IPTV',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 36,
+                fontSize: 28,
                 fontWeight: FontWeight.w700,
-                letterSpacing: -0.5,
               ),
             ),
-            const Spacer(),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: _accent.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _accent.withValues(alpha: 0.3)),
+          ),
+          const SizedBox(height: 32),
+          for (int i = 0; i < _countries.length; i++)
+            _SidebarItem(
+              section: _countries[i],
+              selected: _selected == _countries[i].id,
+              accent: _accent,
+              autofocus: i == 0,
+              onSelect: () => setState(() => _selected = _countries[i].id),
+            ),
+          const SizedBox(height: 12),
+          Divider(
+            color: Colors.white.withValues(alpha: 0.08),
+            indent: 20,
+            endIndent: 20,
+          ),
+          const SizedBox(height: 8),
+          for (final IptvSection s in kIptvFixedSections)
+            _SidebarItem(
+              section: s,
+              selected: _selected == s.id,
+              accent: _accent,
+              autofocus: _countries.isEmpty && s.id == 'sports',
+              onSelect: () => setState(() => _selected = s.id),
+            ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  // ---- Contenu droit : en-tête + grille ----
+  Widget _content(List<Channel> visible) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 32, 32, 20),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  '$_title  ·  ${visible.length}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
+              const SizedBox(width: 16),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                decoration: BoxDecoration(
+                  color: _accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _isEvening ? 'Mode soirée' : 'Mode jour',
+                  style: TextStyle(color: _accent, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: visible.isEmpty
+              ? Center(
+                  child: Text(
+                    'Aucune chaîne dans cette section.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 16,
+                    ),
+                  ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(28, 0, 28, 40),
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    childAspectRatio: 1.15,
+                    crossAxisSpacing: 18,
+                    mainAxisSpacing: 18,
+                  ),
+                  // PARESSEUSE : seules les cartes visibles sont
+                  // construites — 40 000 chaînes coûtent autant que 12.
+                  itemCount: visible.length,
+                  itemBuilder: (BuildContext _, int i) => _ChannelCard(
+                    key: ValueKey<String>(visible[i].id),
+                    channel: visible[i],
+                    accent: _accent,
+                    cardColor: _card,
+                    onSelect: () => _play(visible, i),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Entrée du menu latéral — focusable à la télécommande.
+class _SidebarItem extends StatelessWidget {
+  const _SidebarItem({
+    required this.section,
+    required this.selected,
+    required this.accent,
+    required this.onSelect,
+    this.autofocus = false,
+  });
+
+  final IptvSection section;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onSelect;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) => AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: selected
+              ? accent.withValues(alpha: 0.18)
+              : (focused ? Colors.white.withValues(alpha: 0.06) : null),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: focused ? accent : (selected ? accent : Colors.transparent),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            Text(section.emoji, style: const TextStyle(fontSize: 16)),
+            const SizedBox(width: 10),
+            Expanded(
               child: Text(
-                _isEvening ? 'Mode soirée' : 'Mode jour',
+                section.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: _accent,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+                  color: selected || focused
+                      ? accent
+                      : Colors.white.withValues(alpha: 0.85),
+                  fontSize: 16,
+                  fontWeight:
+                      selected ? FontWeight.w600 : FontWeight.w400,
                 ),
               ),
             ),
+            if (section.count > 0)
+              Text(
+                '${section.count}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.35),
+                  fontSize: 13,
+                ),
+              ),
           ],
         ),
-      );
-
-  Widget _sectionTitle(String title) => Padding(
-        padding: const EdgeInsets.fromLTRB(32, 8, 32, 16),
-        child: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
+      ),
+    );
+  }
 }
 
-/// Carte de chaîne : grandit et s'allume au focus (spécification client).
-class _ChannelCard extends StatelessWidget {
+/// Carte de chaîne : logo, nom, programme en cours.
+class _ChannelCard extends StatefulWidget {
   const _ChannelCard({
+    super.key,
     required this.channel,
     required this.accent,
     required this.cardColor,
     required this.onSelect,
-    this.isGrid = false,
-    this.autofocus = false,
   });
 
   final Channel channel;
   final Color accent;
   final Color cardColor;
   final VoidCallback onSelect;
-  final bool isGrid;
-  final bool autofocus;
+
+  @override
+  State<_ChannelCard> createState() => _ChannelCardState();
+}
+
+class _ChannelCardState extends State<_ChannelCard> {
+  String? _program;
+
+  @override
+  void initState() {
+    super.initState();
+    // UNE seule lecture EPG par carte VISIBLE (cache mémoire de 60 s côté
+    // dépôt) — la grille étant paresseuse, on ne demande jamais le
+    // programme des 40 000 chaînes.
+    unawaited(_loadProgram());
+  }
+
+  Future<void> _loadProgram() async {
+    String? title;
+    try {
+      title =
+          (await EpgRepository.instance.currentProgram(widget.channel.id))
+              ?.title;
+    } catch (_) {
+      title = null; // EPG absente → la ligne ne s'affiche pas
+    }
+    if (mounted && title != _program) setState(() => _program = title);
+  }
 
   @override
   Widget build(BuildContext context) {
-    // TvFocusBuilder = le VRAI focus télécommande de l'app (D-pad, OK,
-    // tactile). Il porte déjà l'agrandissement : on ne le redouble pas.
+    final Channel c = widget.channel;
+    final String? logo = c.logoUrl;
     return TvFocusBuilder(
-      autofocus: autofocus,
       scale: TvFocusScale.medium,
-      onSelect: onSelect,
+      onSelect: widget.onSelect,
       builder: (BuildContext context, bool focused) => AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-        width: isGrid ? null : 180,
-        margin: isGrid ? EdgeInsets.zero : const EdgeInsets.only(right: 16),
+        duration: const Duration(milliseconds: 160),
         decoration: BoxDecoration(
-          color: cardColor,
+          color: widget.cardColor,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: focused ? accent : Colors.transparent,
+            color: focused ? widget.accent : Colors.transparent,
             width: 2.5,
           ),
           boxShadow: focused
               ? <BoxShadow>[
                   BoxShadow(
-                    color: accent.withValues(alpha: 0.35),
-                    blurRadius: 24,
-                    spreadRadius: 2,
+                    color: widget.accent.withValues(alpha: 0.3),
+                    blurRadius: 20,
                   ),
                 ]
               : const <BoxShadow>[],
@@ -288,38 +445,36 @@ class _ChannelCard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             SizedBox(
-              width: 72,
-              height: 72,
-              child: (channel.logoUrl ?? '').isEmpty
+              width: 64,
+              height: 64,
+              child: (logo == null || logo.isEmpty)
                   ? TvChannelLogo(
                       logoUrl: null,
-                      label: channel.name,
-                      size: 72,
-                      radius: 12,
+                      label: c.name,
+                      size: 64,
+                      radius: 10,
                     )
                   : OptimizedImage(
-                      imageUrl: channel.logoUrl!,
-                      width: 72,
-                      height: 72,
+                      imageUrl: logo,
+                      width: 64,
+                      height: 64,
                       fit: BoxFit.contain,
-                      borderRadius: BorderRadius.circular(12),
-                      // Repli instantané : le monogramme doré de la chaîne
-                      // (aucun panel IPTV ne fournit de BlurHash).
+                      borderRadius: BorderRadius.circular(10),
                       fallback: TvChannelLogo(
                         logoUrl: null,
-                        label: channel.name,
-                        size: 72,
-                        radius: 12,
+                        label: c.name,
+                        size: 64,
+                        radius: 10,
                       ),
                     ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
-                channel.cleanName,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.95),
+                c.cleanName,
+                style: const TextStyle(
+                  color: Colors.white,
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
@@ -328,6 +483,22 @@ class _ChannelCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            if ((_program ?? '').isNotEmpty) ...<Widget>[
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  _program!,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.55),
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ],
         ),
       ),

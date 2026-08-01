@@ -8,7 +8,7 @@
 //    2. la grille « Toutes les chaînes » est PARESSEUSE — avec 40 000
 //       chaînes, seules quelques cartes sont construites (sinon une box
 //       s'écroule à l'ouverture de l'accueil) ;
-//    3. le compteur affiche la vraie taille du bouquet ;
+//    3. le menu latéral affiche les sections fixes du client ;
 //    4. bouquet vide → aucun plantage, l'écran reste utilisable.
 // =========================================================
 import 'package:flutter/material.dart';
@@ -48,8 +48,10 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: TvIptvHomeScreen()));
     await tester.pump();
     expect(tester.takeException(), isNull);
-    // Le titre de section porte le compteur, même à zéro.
-    expect(find.textContaining('Toutes les chaînes'), findsOneWidget);
+    // Le menu latéral est là même sans bouquet, avec ses sections fixes.
+    expect(find.text('IPTV'), findsOneWidget);
+    expect(find.text('Sports'), findsOneWidget);
+    expect(find.text('Favoris'), findsOneWidget);
   });
 
   testWidgets('40 000 chaînes : la grille ne construit que le visible',
