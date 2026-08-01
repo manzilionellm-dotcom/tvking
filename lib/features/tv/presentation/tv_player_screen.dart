@@ -55,6 +55,7 @@ import '../data/cine_perf.dart';
 import '../data/failure_explainer.dart';
 import '../data/freeze_recovery_policy.dart';
 import '../data/playback_failure_log.dart';
+import '../data/channel_reliability.dart';
 import '../data/low_connection_mode.dart';
 import '../data/quality_ladder.dart';
 import '../data/stream_stability_monitor.dart';
@@ -277,6 +278,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // fournisseur (≠ coupure réseau d'un flux qui jouait). Remis à false à chaque
   // ouverture (_open).
   bool _everShownFrame = false;
+
+  // Fiabilité (n°38) : « réussite » déjà comptée pour l'ouverture en cours ?
+  // Remis à false à chaque _open → exactement UN vote par tentative.
+  bool _reliabilityRecorded = false;
   // Erreur ExoPlayer déjà journalisée pour cette ouverture (le listener
   // est appelé à chaque tick — on n'écrit qu'une fois). Remis à false
   // dans _open.
@@ -388,6 +393,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Mode connexion faible : chargé pour que les zaps l'honorent (l'état
     // est en mémoire pure ensuite, cf. _open).
     unawaited(LowConnectionMode.instance.load());
+    // Fiabilité par chaîne : chargée pour que les votes s'additionnent au
+    // lieu d'écraser l'historique (lecture unique, écritures ensuite).
+    unawaited(ChannelReliability.instance.load());
     // Cascade « échec → sonde → formats » (parité téléphone) : branchée sur
     // les échecs définitifs du relais. Elle possède l'anti-boucle par chaîne.
     _fallback = StreamBlockedFallback(
@@ -405,6 +413,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         // gravé dans le journal de la Boîte noire des Réglages. La cascade
         // possède le contexte fin ; ici on capture les codes ExoPlayer réels.
         _recordPlaybackFailure();
+        // Fiabilité par chaîne (n°38) : un échec définitif compte, une
+        // reconnexion réussie entre-temps ne serait pas passée par ici.
+        if (!_isVod) ChannelReliability.instance.recordFailure(_current.id);
         if (!mounted) return;
         setState(() {
           _fatal = true;
@@ -538,6 +549,13 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           _isVod &&
           CinePerf.isRunning(CinePerf.playToFirstFrame)) {
         CinePerf.end(CinePerf.playToFirstFrame, detail: _current.name);
+      }
+      // Fiabilité par chaîne (n°38) : la PREMIÈRE image de cette ouverture
+      // vaut « réussite » — une seule fois par zap (drapeau remis à false
+      // dans _open), en direct seulement.
+      if (!_reliabilityRecorded && !_isVod) {
+        _reliabilityRecorded = true;
+        ChannelReliability.instance.recordSuccess(_current.id);
       }
       _everShownFrame = true;
       _startupWatchdog?.cancel(); // 1re image → garde-fou démarrage inutile
@@ -754,6 +772,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _radioMode = false;
       _controller.setVideoEnabled(true);
     }
+    // Fiabilité (n°38) : nouveau vote possible pour cette ouverture.
+    _reliabilityRecorded = false;
     if (_isVod) {
       // BUDGET « Regarder → première frame » : si l'écran amont (fiche,
       // rangée Reprendre) a déjà lancé le chrono à l'appui, on le garde

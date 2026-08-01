@@ -35,6 +35,7 @@ import '../../playlists/data/remote_source_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
+import '../data/channel_reliability.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
 import 'tv_search_screen.dart';
@@ -241,8 +242,18 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // ignore: discarded_futures
     CategoryOrderStore.instance.ensureLoaded();
     CategoryOrderStore.instance.addListener(_onCatOrderChanged);
+    // FIABILITÉ (n°38) : historique chargé une fois ; chaque nouveau vote
+    // (retour du lecteur) rafraîchit les petits badges des cartes.
+    // ignore: discarded_futures
+    ChannelReliability.instance.load();
+    ChannelReliability.instance.addListener(_onReliabilityChanged);
     // Chargement initial : rangées + catalogue + 1re page.
     _refreshAll();
+  }
+
+  /// Un vote de fiabilité a été enregistré → badges des cartes à jour.
+  void _onReliabilityChanged() {
+    if (mounted) setState(() {});
   }
 
   /// L'ordre personnalisé des catégories a changé (réorganisation par l'usager)
@@ -270,6 +281,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _ambient.dispose();
     ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
     CategoryOrderStore.instance.removeListener(_onCatOrderChanged);
+    ChannelReliability.instance.removeListener(_onReliabilityChanged);
     super.dispose();
   }
 
@@ -2124,6 +2136,17 @@ class _ChannelCardState extends State<_ChannelCard> {
               left: 8,
               child:
                   Icon(Icons.favorite_rounded, size: 15, color: TvTokens.gold),
+            ),
+          // FIABILITÉ (n°38) : petit signal ambre si la chaîne échoue la
+          // plupart du temps CHEZ CE CLIENT (≥ 3 tentatives, < 40 % de
+          // réussite — statistique 100 % locale apprise du lecteur).
+          // Discret : sous le cœur favori s'il est là, sinon à sa place.
+          if (ChannelReliability.instance.isFlaky(channel.id))
+            Positioned(
+              top: fav ? 27 : 8,
+              left: 8,
+              child: const Icon(Icons.signal_cellular_connected_no_internet_0_bar_rounded,
+                  size: 15, color: Color(0xFFE0A040)),
             ),
           // ATTÉNUATION DES VOISINES : voile sombre quand une AUTRE carte a le
           // focus (peinture simple, pas de saveLayer → peu coûteux ; animé).
