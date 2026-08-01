@@ -11,7 +11,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
@@ -33,7 +32,6 @@ import '../../subscription/data/subscription_state.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_program_reminders.dart';
 import '../core/tv_tokens.dart';
-import '../data/greeting_repository.dart';
 import '../data/display_settings.dart';
 import 'tv_activation_screen.dart';
 import 'tv_screensaver.dart';
@@ -41,6 +39,7 @@ import 'tv_components.dart';
 import 'tv_diagnostic_screen.dart';
 import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
+import 'tv_home_header.dart';
 import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
@@ -813,7 +812,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 children: <Widget>[
                   TvLogo(width: 92),
                   const SizedBox(width: 18),
-                  const Expanded(child: _HomeHeader()),
+                  const Expanded(child: TvHomeHeader()),
                   const SizedBox(width: 16),
                   // GRAND MATCH : le match (en direct ou à venir) d'une
                   // équipe favorite, affiché comme la météo. OK → univers
@@ -866,103 +865,9 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   }
 }
 
-/// En-tête personnalisé : Bonjour + ville • météo + heure locale en direct.
-class _HomeHeader extends StatefulWidget {
-  const _HomeHeader();
-  @override
-  State<_HomeHeader> createState() => _HomeHeaderState();
-}
-
-class _HomeHeaderState extends State<_HomeHeader> {
-  Greeting? _g;
-  Timer? _clock;
-  DateTime _now = DateTime.now();
-
-  @override
-  void initState() {
-    super.initState();
-    GreetingRepository.instance.fetch().then((Greeting? g) {
-      if (mounted) setState(() => _g = g);
-    });
-    _clock = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
-    });
-  }
-
-  @override
-  void dispose() {
-    _clock?.cancel();
-    super.dispose();
-  }
-
-  String get _time =>
-      '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
-
-  @override
-  Widget build(BuildContext context) {
-    final Greeting? g = _g;
-    // Jour de la semaine traduit dans la langue active (intl), p. ex.
-    // « Lunes » en espagnol, « måndag » en suédois, « الاثنين » en arabe.
-    final String localeName = Localizations.localeOf(context).toString();
-    final String weekday =
-        toBeginningOfSentenceCase(DateFormat.EEEE(localeName).format(_now)) ?? '';
-    // UN SEUL bloc contexte en haut à gauche : salut + (ville · temp météo ·
-    // jour · heure) sur 2 lignes. L'heure isolée en haut à droite est retirée.
-    final String temp =
-        (g != null && g.tempC != null) ? '${g.tempC!.round()}° ${g.emoji}' : '';
-    final String dayTime = '$weekday · $_time';
-    // LE MOT DU CŒUR : un chiffre de météo, c'est froid — on y ajoute ce
-    // qu'une grand-mère dirait. Tard le soir, on le murmure aussi. Un seul
-    // mot à la fois, discret, dans le même gris que le reste.
-    String heart = '';
-    final int hh = _now.hour;
-    final int wd = _now.weekday;
-    if (hh >= 23 || hh < 5) {
-      heart = context.l10n.tvHeartLate;
-    } else if (g != null && g.tempC != null && g.tempC! <= 8) {
-      heart = context.l10n.tvHeartCoverUp;
-    } else if (g != null && g.tempC != null && g.tempC! >= 30) {
-      heart = context.l10n.tvHeartDrink;
-    } else if (hh >= 5 && hh < 10) {
-      // SALUTATION VIVANTE : l'accueil sent le moment de la semaine.
-      heart = context.l10n.tvHeartCoffee;
-    } else if (wd == DateTime.friday && hh >= 18) {
-      heart = context.l10n.tvHeartWeekend;
-    } else if (wd == DateTime.sunday && hh >= 10 && hh < 20) {
-      heart = context.l10n.tvHeartSunday;
-    } else if (wd == DateTime.monday && hh < 12) {
-      heart = context.l10n.tvHeartMonday;
-    }
-    // ÉPURÉ (réf. design) : plus de « Bonjour ». Un simple cluster
-    // ville · météo · jour · heure, DISCRET, aligné EN HAUT À DROITE.
-    return Align(
-      alignment: Alignment.centerRight,
-      child: Text.rich(
-        TextSpan(
-          style: TvTokens.ui(18, color: TvTokens.mutedDim),
-          children: <InlineSpan>[
-            if (g != null && g.city.isNotEmpty) ...<InlineSpan>[
-              TextSpan(
-                  text: g.city,
-                  style: TvTokens.ui(18,
-                      weight: FontWeight.w600, color: TvTokens.muted)),
-              const TextSpan(text: '   ·   '),
-            ],
-            if (temp.isNotEmpty) TextSpan(text: '$temp   ·   '),
-            TextSpan(text: dayTime),
-            // Le mot du cœur (« couvre-toi bien », « il est tard »…),
-            // légèrement doré pour qu'on le sente sans qu'il crie.
-            if (heart.isNotEmpty)
-              TextSpan(
-                  text: '   ·   $heart',
-                  style: TvTokens.ui(18,
-                      weight: FontWeight.w600, color: TvTokens.goldDeep)),
-          ],
-        ),
-      ),
-    );
-  }
-}
+// En-tête personnalisé (ville · météo · jour · heure) : extrait dans
+// tv_home_header.dart (TvHomeHeader) après le bug terrain du pliage en
+// colonne — désormais borné à UNE ligne et couvert par un widget test.
 /// Pastille « GRAND MATCH » (en haut de l'accueil, comme la météo) :
 /// le match le plus pertinent des ÉQUIPES FAVORITES du client —
 ///   • EN DIRECT (point rouge + score s'il est connu), sinon
