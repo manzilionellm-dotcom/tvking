@@ -175,10 +175,12 @@ complétés par le caviardage global.
 - **Credentials Xtream base64 (non chiffré) vers le Worker sur le chemin
   Chromecast** (`cast_manager.dart`). Par design (backend maison). Recommandé :
   HMAC + token court-vécu plutôt qu'un base64 réversible.
-- **`LocalCastServer.stop()` jamais appelé** — hygiène de ressources (la socket
-  d'écoute LAN reste ouverte après un cast) ; les tokens de relais sont bien
-  purgés (pas de fuite du flux abonné). À brancher quand plus aucune session de
-  cast/browser n'est active.
+- ~~**`LocalCastServer.stop()` jamais appelé**~~ — **CORRIGÉ (2026-08-01)** :
+  fermeture sur inactivité. Quand la dernière session (relais DLNA/HLS via
+  `clearRelay`, ou navigateur via `stopBrowser`) est libérée, une grâce de
+  2 min est armée puis `stop()` ferme la socket d'écoute LAN ; tout nouveau
+  cast pendant la grâce l'annule (un zap ne fait pas churner le bind).
+  *(3 tests `local_cast_server_idle_stop_test` verts)*
 
 ---
 

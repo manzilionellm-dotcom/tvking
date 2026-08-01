@@ -82,9 +82,43 @@ class LocalCastServer {
   String? _browserToken;
   String _browserTitle = '';
 
+  /// Fermeture sur inactivité (résiduel AUDIT-DURCISSEMENT-TV §5) : la
+  /// socket d'écoute LAN restait ouverte À VIE après le dernier cast.
+  /// Quand plus AUCUNE session (relais DLNA/HLS ou navigateur) n'est
+  /// active, on arme une grâce avant `stop()` — assez longue pour
+  /// qu'un zap (clearRelay → registerRelay immédiat) ne fasse pas
+  /// churner le bind ; tout redémarrage annule la minuterie.
+  Timer? _idleStopTimer;
+
+  /// Durée de la grâce avant fermeture — raccourcie par les tests.
+  @visibleForTesting
+  static Duration idleStopGrace = const Duration(minutes: 2);
+
+  bool get _isIdle =>
+      _relays.isEmpty && _hlsSessions.isEmpty && _browserToken == null;
+
+  void _armIdleStopIfIdle() {
+    _idleStopTimer?.cancel();
+    _idleStopTimer = null;
+    if (_server == null || !_isIdle) return;
+    _idleStopTimer = Timer(idleStopGrace, () {
+      _idleStopTimer = null;
+      // Revérifié au tir : une session a pu (re)naître pendant la grâce.
+      if (_server != null && _isIdle) {
+        unawaited(stop());
+        if (kDebugMode) {
+          debugPrint('[LocalCastServer] idle — socket LAN fermée');
+        }
+      }
+    });
+  }
+
   /// Lance le serveur (idempotent — réutilise l'instance existante).
   /// Renvoie le port d'écoute, ou jette une exception si bind échoue.
   Future<int> start() async {
+    // Toute (ré)utilisation annule une fermeture sur inactivité en attente.
+    _idleStopTimer?.cancel();
+    _idleStopTimer = null;
     if (_server != null) return _port;
 
     // On bind sur 0.0.0.0 pour être joignable depuis le LAN
@@ -106,6 +140,8 @@ class LocalCastServer {
   }
 
   Future<void> stop() async {
+    _idleStopTimer?.cancel();
+    _idleStopTimer = null;
     for (final HlsRelaySession s in _hlsSessions.values) {
       s.stop();
     }
@@ -407,6 +443,7 @@ class LocalCastServer {
     final String? lanIp = await _lanIpFor(receiverHost);
     if (lanIp == null) {
       _relays.remove(token);
+      _armIdleStopIfIdle();
       return null;
     }
     // Google Cast : VRAIE session HLS live (segmentation TS côté
@@ -465,9 +502,11 @@ class LocalCastServer {
 
   void clearRelay(String relayUrl) {
     final String? token = _tokenFromUrl(relayUrl);
-    if (token == null) return;
-    _relays.remove(token);
-    _hlsSessions.remove(token)?.stop();
+    if (token != null) {
+      _relays.remove(token);
+      _hlsSessions.remove(token)?.stop();
+    }
+    _armIdleStopIfIdle();
   }
 
   /// Etat REEL de la session HLS derriere [relayUrl], pour enrichir les
@@ -810,6 +849,7 @@ class LocalCastServer {
       _relays.remove(_browserToken);
       _browserToken = null;
     }
+    _armIdleStopIfIdle();
   }
 
   Future<void> _serveCurrent(HttpRequest req) async {
