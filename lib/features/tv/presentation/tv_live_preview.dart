@@ -167,6 +167,14 @@ class _TvLivePreviewState extends State<TvLivePreview>
   /// sur les tentatives suivantes.
   String? _lastUserAgent;
 
+  /// Format d'URL de la tentative EN COURS quand elle vient d'une seconde
+  /// chance (ex. « live:ts »). S'il finit par donner une image, on le
+  /// MÉMORISE pour toute la source : les autres aperçus et le plein écran
+  /// partiront directement sur le bon format (terrain 2026-08-01 — une
+  /// source neuve faisait échouer TOUS les aperçus tant qu'aucune chaîne
+  /// n'avait été ouverte en plein écran, seul chemin qui apprenait).
+  String? _pendingWinningFormat;
+
   /// Phrase AFFICHÉE sous le logo quand aucune image n'arrive : le client
   /// (et toi) savez tout de suite si c'est l'app ou le fournisseur.
   /// `null` tant qu'il n'y a rien d'anormal à dire.
@@ -176,6 +184,28 @@ class _TvLivePreviewState extends State<TvLivePreview>
   /// chaîne ne peut marcher — inutile d'accuser la chaîne ou le réseau.
   void _setWhy(String fallback) {
     _whyNoImage = StreamDiagnostics.instance.subscriptionIssue ?? fallback;
+  }
+
+  /// L'APERÇU APPREND AUSSI (terrain 2026-08-01) : jusqu'ici, seul le
+  /// plein écran mémorisait le format gagnant d'une source. Sur une source
+  /// NEUVE, tous les aperçus échouaient donc tant que le client n'avait pas
+  /// ouvert une chaîne en grand. Désormais, dès qu'une seconde chance donne
+  /// une vraie image, son format est mémorisé pour toute la source.
+  void _rememberWinningFormat() {
+    final String? code = _pendingWinningFormat;
+    _pendingWinningFormat = null;
+    if (code == null) return;
+    final pl.Playlist? src =
+        StreamBlockedFallback.xtreamPlaylistFor(widget.channel);
+    final int? id = src?.id;
+    if (id == null) return;
+    final XtreamContentType type =
+        StreamBlockedFallback.contentTypeOf(widget.channel);
+    _diag('[${widget.channel.cleanName}] format « $code » mémorisé depuis '
+        'l\'aperçu — les prochaines chaînes partiront directement dessus');
+    unawaited(
+      XtreamUrlFormatStore.instance.saveWinningFormat(id, type, code),
+    );
   }
 
   /// Tente la forme d'URL SUIVANTE de la cascade Xtream (au plus
@@ -221,6 +251,7 @@ class _TvLivePreviewState extends State<TvLivePreview>
         '${StreamDiagnostics.maskCredentials(url)}');
     _unavailableFired = false;
     _loggedError = false;
+    _pendingWinningFormat = next.formatCode;
     _ctrl!.setUrl(url, userAgent: _lastUserAgent);
     setState(() {
       _uiFirstFrame = false;
@@ -561,6 +592,7 @@ class _TvLivePreviewState extends State<TvLivePreview>
       _loggedFirstFrame = true;
       _startupWatchdog?.cancel(); // 1re image → garde-fou inutile
       _diag('[${widget.channel.cleanName}] 1re image aperçu OK');
+      _rememberWinningFormat();
     }
     if (c.hasError && !_loggedError) {
       _loggedError = true;
