@@ -19,9 +19,7 @@ import '../../playlists/data/favorites_repository.dart';
 /// favoris historiques (portée `default`) ; « Seven » (IBO/TiviMate) a les
 /// siens (portée `seven`). Chaque univers est autonome sur les favoris.
 String favoritesScopeForTemplate(TvHomeTemplate t) =>
-    t == TvHomeTemplate.classic
-        ? FavoritesRepository.defaultScope
-        : 'seven';
+    t == TvHomeTemplate.classic ? FavoritesRepository.defaultScope : 'seven';
 
 /// LES MODÈLES D'ACCUEIL.
 ///
@@ -67,6 +65,15 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
         return 'Ambiance selon l\'heure, reco en haut, grille de chaînes.';
     }
   }
+}
+
+/// Le modèle SUIVANT dans la liste (cyclique). Sert à la petite pastille de
+/// bascule posée en haut de chaque accueil : le Modèle A affiche « Modèle
+/// B », le Modèle B affiche « Modèle A » — un seul OK suffit, sans passer
+/// par un écran de sélection. Avec un 3ᵉ modèle, la pastille fera le tour.
+TvHomeTemplate otherTemplate(TvHomeTemplate t) {
+  const List<TvHomeTemplate> all = TvHomeTemplate.values;
+  return all[(all.indexOf(t) + 1) % all.length];
 }
 
 TvHomeTemplate _templateFromId(String? id) {

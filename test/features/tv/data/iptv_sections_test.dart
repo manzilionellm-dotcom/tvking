@@ -17,7 +17,16 @@
 //       l'écran retombe alors sur « International », jamais sur du vide.
 // =========================================================
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/tv/data/iptv_sections.dart';
+
+Channel _c(String id, String name, String cat) => Channel(
+      id: id,
+      name: name,
+      category: cat,
+      streamUrl: 'http://panel.example/live/u/p/$id.ts',
+      isLive: true,
+    );
 
 void main() {
   test('reconnaissance du pays dans le nom de catégorie', () {
@@ -63,7 +72,8 @@ void main() {
     expect(a, b);
   });
 
-  test('aucun pays reconnu → aucune section (l\'écran bascule sur '
+  test(
+      'aucun pays reconnu → aucune section (l\'écran bascule sur '
       'International)', () {
     expect(
       topCountrySections(<String, int>{'DIVERS': 10, 'AUTRES': 4}),
@@ -74,5 +84,69 @@ void main() {
   test('sections fixes : l\'ordre demandé par le client', () {
     expect(kIptvFixedSections.map((IptvSection s) => s.id).toList(),
         <String>['sports', 'films', 'international', 'favoris']);
+  });
+
+  // ---------------------------------------------------------
+  //  Tri d'une section (règle du client : Sport → Info → reste)
+  // ---------------------------------------------------------
+  group('tri d\'une section', () {
+    test('le sport passe devant l\'info, l\'info devant le reste', () {
+      final List<Channel> l = <Channel>[
+        _c('a', 'Zed Comedy', 'TV || FRANCE DIVERTISSEMENT'),
+        _c('b', 'BFM TV', 'TV || FRANCE NEWS'),
+        _c('c', 'beIN Sports 1', 'TV || FRANCE SPORT'),
+      ];
+      sortIptvChannels(l);
+      expect(l.map((Channel c) => c.id).toList(), <String>['c', 'b', 'a']);
+    });
+
+    test('à genre égal, la chaîne qui S\'OUVRE le mieux ici passe devant', () {
+      final List<Channel> l = <Channel>[
+        _c('casse', 'AAA Sport', 'TV || FRANCE SPORT'),
+        _c('sûre', 'ZZZ Sport', 'TV || FRANCE SPORT'),
+      ];
+      // Malgré l'alphabet (AAA avant ZZZ), la chaîne fiable passe devant.
+      sortIptvChannels(
+        l,
+        scoreOf: (String id) => id == 'sûre' ? 0.98 : 0.10,
+      );
+      expect(l.first.id, 'sûre');
+    });
+
+    test('chaîne jamais testée : devant la mauvaise, derrière la sûre', () {
+      final List<Channel> l = <Channel>[
+        _c('mauvaise', 'B Sport', 'TV || FRANCE SPORT'),
+        _c('inconnue', 'C Sport', 'TV || FRANCE SPORT'),
+        _c('sûre', 'A Sport', 'TV || FRANCE SPORT'),
+      ];
+      sortIptvChannels(l, scoreOf: (String id) {
+        if (id == 'sûre') return 0.95;
+        if (id == 'mauvaise') return 0.10;
+        return null; // pas assez d'essais → aucun avis
+      });
+      expect(l.map((Channel c) => c.id).toList(),
+          <String>['sûre', 'inconnue', 'mauvaise']);
+    });
+
+    test('sans aucun avis : ordre alphabétique STABLE (rien ne danse)', () {
+      List<Channel> bouquet() => <Channel>[
+            _c('3', 'Canal Sport', 'TV || FRANCE SPORT'),
+            _c('1', 'Alpha Sport', 'TV || FRANCE SPORT'),
+            _c('2', 'beIN Sport', 'TV || FRANCE SPORT'),
+          ];
+      final List<Channel> a = bouquet();
+      final List<Channel> b = bouquet();
+      sortIptvChannels(a);
+      sortIptvChannels(b);
+      expect(a.map((Channel c) => c.id).toList(), <String>['1', '2', '3']);
+      expect(a.map((Channel c) => c.id).toList(),
+          b.map((Channel c) => c.id).toList());
+    });
+
+    test('l\'adulte est toujours relégué en dernier', () {
+      expect(iptvGenreRank(ChannelGenre.adult),
+          greaterThan(iptvGenreRank(ChannelGenre.other)));
+      expect(iptvGenreRank(ChannelGenre.sports), 0);
+    });
   });
 }

@@ -26,9 +26,9 @@ const String kWhatsAppPhone = '18077888909';
 /// Construit le lien wa.me avec un message pré-rempli (code MAC inclus).
 String tvWhatsAppUrl(String mac) {
   final String code = (mac == '…' || mac.isEmpty) ? '' : mac;
-  final String msg = Uri.encodeComponent(
-      'Bonjour, je souhaite activer The Few TV.'
-      '${code.isEmpty ? '' : ' Mon code : $code'}');
+  final String msg =
+      Uri.encodeComponent('Bonjour, je souhaite activer The Few TV.'
+          '${code.isEmpty ? '' : ' Mon code : $code'}');
   return 'https://wa.me/$kWhatsAppPhone?text=$msg';
 }
 
@@ -120,7 +120,8 @@ class TvCard extends StatelessWidget {
           // Filet d'accent or (1px) en haut.
           const SizedBox(
             height: 1,
-            child: DecoratedBox(decoration: BoxDecoration(gradient: TvTokens.goldHairline)),
+            child: DecoratedBox(
+                decoration: BoxDecoration(gradient: TvTokens.goldHairline)),
           ),
           Padding(padding: padding ?? const EdgeInsets.all(24), child: child),
         ],
@@ -136,7 +137,8 @@ class TvSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text.toUpperCase(),
-        style: TvTokens.ui(10.5, weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2.8),
+        style: TvTokens.ui(10.5,
+            weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2.8),
       );
 }
 
@@ -159,10 +161,12 @@ class TvPricePill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Text(label.toUpperCase(),
-              style: TvTokens.ui(15, weight: FontWeight.w600, color: TvTokens.gold, spacing: 2)),
+              style: TvTokens.ui(15,
+                  weight: FontWeight.w600, color: TvTokens.gold, spacing: 2)),
           const SizedBox(width: 12),
           Text(amount,
-              style: TvTokens.display(26, weight: FontWeight.w600, color: TvTokens.goldBright)),
+              style: TvTokens.display(26,
+                  weight: FontWeight.w600, color: TvTokens.goldBright)),
         ],
       ),
     );
@@ -200,7 +204,8 @@ class TvCtaButton extends StatelessWidget {
             border: focused ? Border.all(color: TvTokens.text, width: 2) : null,
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: const Color(0xFFCCB089).withValues(alpha: focused ? 0.55 : 0.35),
+                color: const Color(0xFFCCB089)
+                    .withValues(alpha: focused ? 0.55 : 0.35),
                 blurRadius: focused ? 36 : 24,
                 spreadRadius: -10,
                 offset: const Offset(0, 8),
@@ -300,8 +305,8 @@ class _TvSkeletonRailsState extends State<TvSkeletonRails>
     final Widget bones = _bones();
     if (reduce) return Opacity(opacity: 0.7, child: bones);
     return FadeTransition(
-      opacity: Tween<double>(begin: 0.45, end: 0.9).animate(
-          CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
+      opacity: Tween<double>(begin: 0.45, end: 0.9)
+          .animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
       child: bones,
     );
   }
@@ -320,16 +325,25 @@ class _TvSkeletonRailsState extends State<TvSkeletonRails>
           for (int r = 0; r < widget.rails; r++) ...<Widget>[
             _box(width: 180 + (r.isEven ? 40 : 0), height: 20, radius: 6),
             const SizedBox(height: 12),
-            Row(
-              children: <Widget>[
-                for (int i = 0; i < 6; i++) ...<Widget>[
-                  _box(
-                      width: TvDimens.posterW,
-                      height: TvDimens.posterH,
-                      radius: TvTokens.rSmall),
-                  const SizedBox(width: 12),
+            // Rangée d'affiches FANTÔMES (largeur fixe × 6). On la laisse
+            // défiler horizontalement — sans interaction — pour qu'elle se
+            // fasse simplement rogner quand le panneau est étroit : ce
+            // squelette sert aussi au cinéma du Modèle B, où le menu
+            // latéral prend déjà 260 px.
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const NeverScrollableScrollPhysics(),
+              child: Row(
+                children: <Widget>[
+                  for (int i = 0; i < 6; i++) ...<Widget>[
+                    _box(
+                        width: TvDimens.posterW,
+                        height: TvDimens.posterH,
+                        radius: TvTokens.rSmall),
+                    const SizedBox(width: 12),
+                  ],
                 ],
-              ],
+              ),
             ),
             const SizedBox(height: 24),
           ],

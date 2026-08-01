@@ -13,6 +13,7 @@
 //  par pays, et on garde les 5 plus fournis. Aucun réseau, aucune base :
 //  fonction PURE, donc testable et instantanée.
 // =========================================================
+import '../../channels/domain/channel.dart';
 
 /// Une entrée du menu latéral.
 class IptvSection {
@@ -39,8 +40,13 @@ class IptvSection {
 /// Pays reconnus : mots-clés qu'on cherche dans le nom de catégorie.
 /// L'ordre compte peu ; les libellés sont en français.
 const Map<String, ({String label, String emoji, List<String> keys})>
-    kIptvCountries = <String, ({String label, String emoji, List<String> keys})>{
-  'fr': (label: 'France', emoji: '🇫🇷', keys: <String>['FRANCE', 'FRENCH', 'FR|']),
+    kIptvCountries =
+    <String, ({String label, String emoji, List<String> keys})>{
+  'fr': (
+    label: 'France',
+    emoji: '🇫🇷',
+    keys: <String>['FRANCE', 'FRENCH', 'FR|']
+  ),
   'be': (label: 'Belgique', emoji: '🇧🇪', keys: <String>['BELGI', 'BE|']),
   'uk': (
     label: 'Royaume-Uni',
@@ -57,8 +63,16 @@ const Map<String, ({String label, String emoji, List<String> keys})>
     emoji: '🇩🇪',
     keys: <String>['GERMAN', 'DEUTSCH', 'DE|']
   ),
-  'es': (label: 'Espagne', emoji: '🇪🇸', keys: <String>['SPAIN', 'SPANISH', 'ES|']),
-  'it': (label: 'Italie', emoji: '🇮🇹', keys: <String>['ITALY', 'ITALIA', 'IT|']),
+  'es': (
+    label: 'Espagne',
+    emoji: '🇪🇸',
+    keys: <String>['SPAIN', 'SPANISH', 'ES|']
+  ),
+  'it': (
+    label: 'Italie',
+    emoji: '🇮🇹',
+    keys: <String>['ITALY', 'ITALIA', 'IT|']
+  ),
   'nl': (
     label: 'Pays-Bas',
     emoji: '🇳🇱',
@@ -69,16 +83,24 @@ const Map<String, ({String label, String emoji, List<String> keys})>
     emoji: '🇵🇹',
     keys: <String>['PORTUGAL', 'PORTUGUES', 'PT|']
   ),
-  'ma': (label: 'Maroc', emoji: '🇲🇦', keys: <String>['MOROCCO', 'MAROC', 'MA|']),
+  'ma': (
+    label: 'Maroc',
+    emoji: '🇲🇦',
+    keys: <String>['MOROCCO', 'MAROC', 'MA|']
+  ),
   'ar': (label: 'Monde arabe', emoji: '🌙', keys: <String>['ARABIC', 'ARAB']),
-  'tr': (label: 'Turquie', emoji: '🇹🇷', keys: <String>['TURKEY', 'TURKISH', 'TR|']),
+  'tr': (
+    label: 'Turquie',
+    emoji: '🇹🇷',
+    keys: <String>['TURKEY', 'TURKISH', 'TR|']
+  ),
 };
 
 /// Pays d'une catégorie, ou `null` si on ne reconnaît rien.
 String? countryOfCategory(String category) {
   final String up = category.toUpperCase();
   for (final MapEntry<String,
-      ({String label, String emoji, List<String> keys})> e
+          ({String label, String emoji, List<String> keys})> e
       in kIptvCountries.entries) {
     for (final String k in e.value.keys) {
       if (up.contains(k)) return e.key;
@@ -124,10 +146,74 @@ const List<IptvSection> kIptvFixedSections = <IptvSection>[
   IptvSection(id: 'favoris', label: 'Favoris', emoji: '❤️'),
 ];
 
+/// Rang de genre pour l'ordre voulu par le client dans une section : le
+/// SPORT d'abord, puis l'INFO, puis le reste — l'adulte toujours en
+/// dernier. Fonction pure : testable, aucun état.
+int iptvGenreRank(ChannelGenre g) {
+  switch (g) {
+    case ChannelGenre.sports:
+      return 0;
+    case ChannelGenre.news:
+      return 1;
+    case ChannelGenre.movies:
+      return 2;
+    case ChannelGenre.series:
+      return 3;
+    case ChannelGenre.entertainment:
+      return 4;
+    case ChannelGenre.documentary:
+      return 5;
+    case ChannelGenre.kids:
+      return 6;
+    case ChannelGenre.music:
+      return 7;
+    case ChannelGenre.international:
+    case ChannelGenre.other:
+      return 8;
+    case ChannelGenre.adult:
+      return 9;
+  }
+}
+
+/// Trie EN PLACE les chaînes d'une section : genre (ci-dessus), puis la
+/// chaîne qui s'ouvre le mieux CHEZ CE FOYER (score de fiabilité n°38),
+/// puis l'ordre alphabétique. Ce dernier critère rend le tri STABLE d'un
+/// lancement à l'autre : la grille ne danse jamais.
+///
+/// [scoreOf] renvoie `null` quand la chaîne n'a pas assez d'essais pour
+/// qu'on ait un avis honnête : on la place alors à 0,75 — devant une
+/// chaîne dont on SAIT qu'elle échoue, derrière une valeur sûre.
+void sortIptvChannels(
+  List<Channel> list, {
+  double? Function(String id)? scoreOf,
+}) {
+  list.sort((Channel a, Channel b) {
+    final int byGenre =
+        iptvGenreRank(a.genre).compareTo(iptvGenreRank(b.genre));
+    if (byGenre != 0) return byGenre;
+    final double sa = (scoreOf == null ? null : scoreOf(a.id)) ?? 0.75;
+    final double sb = (scoreOf == null ? null : scoreOf(b.id)) ?? 0.75;
+    final int byScore = sb.compareTo(sa);
+    if (byScore != 0) return byScore;
+    return a.cleanName.toLowerCase().compareTo(b.cleanName.toLowerCase());
+  });
+}
+
 /// Mots-clés des sections thématiques.
 const List<String> kSportsKeys = <String>[
-  'SPORT', 'FOOT', 'LIGUE', 'DAZN', 'BEIN', 'ESPN', 'MOTOGP', 'F1',
+  'SPORT',
+  'FOOT',
+  'LIGUE',
+  'DAZN',
+  'BEIN',
+  'ESPN',
+  'MOTOGP',
+  'F1',
 ];
 const List<String> kFilmsKeys = <String>[
-  'CINEMA', 'CINÉMA', 'MOVIE', 'FILM', 'VOD',
+  'CINEMA',
+  'CINÉMA',
+  'MOVIE',
+  'FILM',
+  'VOD',
 ];

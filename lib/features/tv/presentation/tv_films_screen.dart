@@ -96,6 +96,14 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   VodInfo? _heroInfo;
   String? _heroInfoId;
 
+  // Libellé du rayon « Autres ». Il vient des traductions, et le contexte de
+  // localisation n'est PAS consultable dans initState (assertion Flutter) :
+  // on le lit dans didChangeDependencies — appelé juste après initState,
+  // AVANT le premier rendu — et on le garde ici pour que _load() n'ait plus
+  // à toucher au contexte.
+  String _othersLabel = 'Autres';
+  bool _loadStarted = false;
+
   @override
   void initState() {
     super.initState();
@@ -116,7 +124,18 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // téléchargements terminés (fin de fichier, suppression auto d'un
     // épisode vu par les téléchargements intelligents…).
     VodDownloadService.instance.addListener(_onPositionsChanged);
-    _load();
+    // Le chargement démarre dans didChangeDependencies (juste après, avant
+    // le premier rendu) : il lui faut les traductions.
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _othersLabel = context.l10n.tvOthers;
+    if (!_loadStarted) {
+      _loadStarted = true;
+      unawaited(_load());
+    }
   }
 
   @override
@@ -142,8 +161,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   }
 
   Future<void> _load({bool force = false, bool silent = false}) async {
-    // Libellé du rayon « Autres » capturé AVANT les await (contexte sûr).
-    final String othersLabel = context.l10n.tvOthers;
+    // Libellé du rayon « Autres » : capturé dans didChangeDependencies —
+    // aucun accès au contexte ici (ni avant, ni après les await).
+    final String othersLabel = _othersLabel;
     // [silent] = mise à jour en arrière-plan : on NE remontre PAS le
     // squelette — l'écran actuel reste affiché jusqu'au setState final.
     if (mounted && !silent) setState(() => _loading = true);
@@ -198,7 +218,6 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     }
   }
 
-
   /// VEDETTE façon billboard Netflix (recherche 2026-07-17, guidelines
   /// Android TV « featured carousel ») : le grand visuel du haut est un
   /// contenu CURÉ — il doit TOUJOURS avoir une image. On garde la
@@ -248,12 +267,11 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // 2) Sinon, tirage pondéré par le goût. Aléa 0..1 dérivé de l'horloge
     //    (varie à chaque appui, aucun Random importé).
     if (_all.isEmpty) return;
-    final Map<String, double> aff = VodTaste.affinity(
-        recent: _recent, watchlist: _watchlist);
+    final Map<String, double> aff =
+        VodTaste.affinity(recent: _recent, watchlist: _watchlist);
     final double rng =
         (DateTime.now().microsecondsSinceEpoch % 100000) / 100000.0;
-    final int idx =
-        VodTaste.surpriseIndex(_all, affinity: aff, rngUnit: rng);
+    final int idx = VodTaste.surpriseIndex(_all, affinity: aff, rngUnit: rng);
     if (idx >= 0) _play(<VodMovie>[_all[idx]], 0);
   }
 
@@ -275,7 +293,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     if (_heroInfoId == hero.id) return; // déjà chargé / en cours pour ce film
     _heroInfoId = hero.id;
     final VodInfo? info = await VodRepository.instance.fetchInfo(hero.id);
-    if (!mounted || _heroInfoId != hero.id) return; // vedette changée entre-temps
+    if (!mounted || _heroInfoId != hero.id)
+      return; // vedette changée entre-temps
     setState(() => _heroInfo = info);
   }
 
@@ -312,14 +331,13 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   /// « Derniers vus ». Au retour du lecteur, on rafraîchit la rangée.
   void _play(List<VodMovie> list, int index) {
     RecentVodRepository.instance.add(list[index]);
-    final List<Channel> channels =
-        list.map(_asChannel).toList(growable: false);
+    final List<Channel> channels = list.map(_asChannel).toList(growable: false);
     // Budget « Regarder → première frame < 2,5 s » : chrono depuis L'APPUI.
     CinePerf.start(CinePerf.playToFirstFrame);
     Navigator.of(context)
         .push(TvCineRoute<void>(
-          builder: (_) => TvPlayerScreen(channels: channels, startIndex: index),
-        ))
+      builder: (_) => TvPlayerScreen(channels: channels, startIndex: index),
+    ))
         .then((_) {
       if (mounted) {
         setState(() => _recent = RecentVodRepository.instance.items);
@@ -334,8 +352,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   void _openDetail(VodMovie m) {
     Navigator.of(context)
         .push(TvCineRoute<void>(
-          builder: (_) => TvMovieDetailScreen(movie: m),
-        ))
+      builder: (_) => TvMovieDetailScreen(movie: m),
+    ))
         .then((_) {
       if (!mounted) return;
       setState(() {
@@ -372,8 +390,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     CinePerf.start(CinePerf.playToFirstFrame);
     Navigator.of(context).push(
       TvCineRoute<void>(
-        builder: (_) =>
-            TvPlayerScreen(channels: <Channel>[c], startIndex: 0),
+        builder: (_) => TvPlayerScreen(channels: <Channel>[c], startIndex: 0),
       ),
     );
   }
@@ -439,8 +456,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // SCORE « X % POUR VOUS » : affinité de catégorie bâtie sur l'historique
     // (derniers vus + Ma Liste). Calculée UNE fois ici, lue par chaque
     // affiche. Vide si pas d'historique → aucun score affiché (honnête).
-    final Map<String, double> affinity = VodTaste.affinity(
-        recent: _recent, watchlist: _watchlist);
+    final Map<String, double> affinity =
+        VodTaste.affinity(recent: _recent, watchlist: _watchlist);
     final double maxAffinity = affinity.isEmpty
         ? 0
         : affinity.values.reduce((double a, double b) => a > b ? a : b);
@@ -498,8 +515,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     }
 
     final List<({String title, List<VodMovie> movies, bool resume, bool dl})>
-        rails =
-        <({String title, List<VodMovie> movies, bool resume, bool dl})>[
+        rails = <({String title, List<VodMovie> movies, bool resume, bool dl})>[
       if (resumeMovies.isNotEmpty)
         (
           title: context.l10n.tvRailContinueWatching,
@@ -515,12 +531,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           dl: false
         ),
       if (becauseMovies.isNotEmpty)
-        (
-          title: becauseTitle,
-          movies: becauseMovies,
-          resume: false,
-          dl: false
-        ),
+        (title: becauseTitle, movies: becauseMovies, resume: false, dl: false),
       if (dlMovies.isNotEmpty)
         (
           title: context.l10n.tvDlRail,
@@ -591,8 +602,12 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
               onSurprise: _surpriseMe,
             );
           }
-          final ({String title, List<VodMovie> movies, bool resume, bool dl})
-              rail = rails[i - 1];
+          final ({
+            String title,
+            List<VodMovie> movies,
+            bool resume,
+            bool dl
+          }) rail = rails[i - 1];
           return _Rail(
             railKey: PageStorageKey<String>('films-rail-${rail.title}'),
             title: rail.title,
@@ -999,13 +1014,12 @@ class _HeroButton extends StatelessWidget {
             ? const Color(0xFF1A1206)
             : (primary ? TvTokens.emberBright : TvTokens.text);
         return Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-            border: Border.all(
-                color: primary ? TvTokens.ember : TvTokens.lineSoft),
+            border:
+                Border.all(color: primary ? TvTokens.ember : TvTokens.lineSoft),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1014,9 +1028,7 @@ class _HeroButton extends StatelessWidget {
               const SizedBox(width: 8),
               Text(label,
                   style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: fg)),
+                      fontSize: 16, fontWeight: FontWeight.w800, color: fg)),
             ],
           ),
         );
@@ -1043,8 +1055,8 @@ class _HeroPoster extends StatelessWidget {
         ),
       ),
       child: Center(
-        child: Icon(Icons.theaters_rounded,
-            size: 44, color: TvTokens.emberBright),
+        child:
+            Icon(Icons.theaters_rounded, size: 44, color: TvTokens.emberBright),
       ),
     );
     if (url == null || url!.isEmpty) return fallback;
@@ -1149,8 +1161,7 @@ class _Rail extends StatelessWidget {
                         affinity: affinity, maxAffinity: maxAffinity),
                     progress: progress[movies[i].id],
                     autofocus: i == autofocusIndex,
-                    onFocus:
-                        onCardFocus == null ? null : () => onCardFocus!(i),
+                    onFocus: onCardFocus == null ? null : () => onCardFocus!(i),
                     onPlay: () => onPlay(i),
                     onToggleList: () => onToggleList(i),
                   ),

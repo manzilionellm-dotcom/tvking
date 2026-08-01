@@ -50,7 +50,6 @@ import '../../sports/data/sports_repository.dart';
 import '../../sports/domain/sport_models.dart';
 import '../core/tv_ambience.dart';
 import '../core/tv_home_template.dart';
-import 'tv_home_template_screen.dart';
 import 'tv_iptv_home_screen.dart';
 import 'tv_live_preview.dart';
 import 'tv_care_nudge.dart';
@@ -105,8 +104,7 @@ class TvApp extends StatelessWidget {
         //   2) langue de la TV si on la supporte (match par code langue,
         //      p.ex. en_US → en, ar_MA → ar) ;
         //   3) repli SÛR = ANGLAIS (jamais l'arabe par défaut).
-        localeResolutionCallback:
-            (Locale? device, Iterable<Locale> supported) {
+        localeResolutionCallback: (Locale? device, Iterable<Locale> supported) {
           final Locale? forced = LocaleRepository.instance.locale;
           if (forced != null) return forced;
           if (device != null) {
@@ -365,8 +363,7 @@ class _DialogBtn extends StatelessWidget {
                 ? TvTokens.gold
                 : (primary ? TvTokens.sel : Colors.transparent),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
-            border: Border.all(
-                color: focused ? TvTokens.gold : TvTokens.line),
+            border: Border.all(color: focused ? TvTokens.gold : TvTokens.line),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -422,7 +419,8 @@ class _TvGateState extends State<TvGate> {
     super.initState();
     SubscriptionState.instance.addListener(_onChange);
     ProfilesRepository.instance.addListener(_onChange);
-    _sub = PlaylistRepository.instance.channelsStream.listen((_) => _onChange());
+    _sub =
+        PlaylistRepository.instance.channelsStream.listen((_) => _onChange());
     _updateKick = Timer(const Duration(seconds: 30), _checkUpdate);
     _updateTick =
         Timer.periodic(const Duration(hours: 12), (_) => _checkUpdate());
@@ -507,8 +505,8 @@ class _TvGateState extends State<TvGate> {
     // 24 h / 48 h / 7 j) depuis le panel → la TV doit se débloquer pareil,
     // pas seulement pour un abonnement payant. Ou si le client a apporté sa
     // propre liste (Xtream).
-    final bool active = s == SubscriptionStatus.paid ||
-        s == SubscriptionStatus.trialActive;
+    final bool active =
+        s == SubscriptionStatus.paid || s == SubscriptionStatus.trialActive;
     // VERROU « après 7 jours, paiement obligatoire » : si le SERVEUR a tranché
     // que l'accès est fini (essai expiré) ou coupé (gelé / banni), on BLOQUE —
     // MÊME si des chaînes sont déjà en cache. Sans ça, un client ayant chargé
@@ -679,7 +677,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
   // l'accueil. Le Focus englobant ci-dessous OBSERVE les touches (il renvoie
   // toujours `ignored`) → la navigation directionnelle normale n'est jamais
   // perturbée. On garde seulement les 4 dernières flèches haut/bas.
-  static const List<bool> _diagSeq = <bool>[true, true, false, false]; // H H B B
+  static const List<bool> _diagSeq = <bool>[
+    true,
+    true,
+    false,
+    false
+  ]; // H H B B
   final List<bool> _diagBuf = <bool>[];
   bool _diagOpen = false;
   // Instant du DERNIER appui retenu dans la séquence. La séquence n'est valide
@@ -778,83 +781,77 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
       // route visible (jamais pendant la lecture ni sur un autre écran).
       child: TvScreensaverWatcher(
         child: Focus(
-        // OBSERVATEUR de touches uniquement : non focusable, hors traversée,
-        // renvoie toujours `ignored` (cf. _onHomeKey). Sert seulement à capter
-        // la séquence cachée HAUT-HAUT-BAS-BAS sans gêner la navigation.
-        canRequestFocus: false,
-        skipTraversal: true,
-        onKeyEvent: _onHomeKey,
-        child: TvShell(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            // ----- BARRE HAUTE : marque (gauche) + contexte + MENU COMPACT (droite)
-            //  Le menu de navigation est désormais COMPACT EN HAUT À DROITE : la
-            //  grande colonne de gauche est libérée pour la LISTE des chaînes
-            //  (lisibilité seniors). Le Focus englobant (non focusable) suit
-            //  `_railHasFocus` (cible « Retour » = menu) sans piéger la
-            //  navigation directionnelle.
-            Focus(
-              canRequestFocus: false,
-              skipTraversal: true,
-              onFocusChange: (bool f) {
-                if (f != _railHasFocus) {
-                  setState(() => _railHasFocus = f);
-                }
-              },
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: <Widget>[
-                  TvLogo(width: 92),
-                  const SizedBox(width: 18),
-                  const Expanded(child: TvHomeHeader()),
-                  const SizedBox(width: 16),
-                  // GRAND MATCH : le match (en direct ou à venir) d'une
-                  // équipe favorite, affiché comme la météo. OK → univers
-                  // Sport. Invisible si aucune équipe suivie / aucun match.
-                  _MatchChip(onOpen: () {
-                    setState(() => _selected = TvDest.news);
-                    TvAmbience.instance.set(TvAmbienceKind.sport);
-                  }),
-                  const SizedBox(width: 12),
-                  // STREAK 🔥 : jours de visionnage consécutifs (lot accro).
-                  // Chip informatif NON focusable (précédent : _HomeHeader) —
-                  // invisible tant que le streak est < 1.
-                  const _StreakChip(),
-                  const _ProfileChip(),
-                  const SizedBox(width: 12),
-                  // GROS bouton « Changer le template » — ENTRE « Famille » et
-                  // « Direct ». Ouvre le sélecteur (Classique/IBO/TiviMate).
-                  // « The Few » reste « The Few » ; changer de template bascule
-                  // vers l'univers SEVEN (le picker s'occupe du reste).
-                  _TemplateButton(
-                    onOpen: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const TvHomeTemplateScreen(),
+          // OBSERVATEUR de touches uniquement : non focusable, hors traversée,
+          // renvoie toujours `ignored` (cf. _onHomeKey). Sert seulement à capter
+          // la séquence cachée HAUT-HAUT-BAS-BAS sans gêner la navigation.
+          canRequestFocus: false,
+          skipTraversal: true,
+          onKeyEvent: _onHomeKey,
+          child: TvShell(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                // ----- BARRE HAUTE : marque (gauche) + contexte + MENU COMPACT (droite)
+                //  Le menu de navigation est désormais COMPACT EN HAUT À DROITE : la
+                //  grande colonne de gauche est libérée pour la LISTE des chaînes
+                //  (lisibilité seniors). Le Focus englobant (non focusable) suit
+                //  `_railHasFocus` (cible « Retour » = menu) sans piéger la
+                //  navigation directionnelle.
+                Focus(
+                  canRequestFocus: false,
+                  skipTraversal: true,
+                  onFocusChange: (bool f) {
+                    if (f != _railHasFocus) {
+                      setState(() => _railHasFocus = f);
+                    }
+                  },
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      TvLogo(width: 92),
+                      const SizedBox(width: 18),
+                      const Expanded(child: TvHomeHeader()),
+                      const SizedBox(width: 16),
+                      // GRAND MATCH : le match (en direct ou à venir) d'une
+                      // équipe favorite, affiché comme la météo. OK → univers
+                      // Sport. Invisible si aucune équipe suivie / aucun match.
+                      _MatchChip(onOpen: () {
+                        setState(() => _selected = TvDest.news);
+                        TvAmbience.instance.set(TvAmbienceKind.sport);
+                      }),
+                      const SizedBox(width: 12),
+                      // STREAK 🔥 : jours de visionnage consécutifs (lot accro).
+                      // Chip informatif NON focusable (précédent : _HomeHeader) —
+                      // invisible tant que le streak est < 1.
+                      const _StreakChip(),
+                      const _ProfileChip(),
+                      const SizedBox(width: 12),
+                      // PETITE pastille de bascule (demande client 2026-08-01) :
+                      // plus de gros bouton qui mange la barre — juste le nom de
+                      // l'AUTRE modèle (« Modèle B » ici). Un OK bascule tout de
+                      // suite ; le sélecteur détaillé reste dans les Réglages.
+                      const _TemplateSwitchChip(),
+                      const SizedBox(width: 12),
+                      _CompactNavBar(
+                        selected: _selected,
+                        selectedFocusNode: _railFocus,
+                        onSelect: (TvDest d) {
+                          setState(() => _selected = d);
+                          // AMBIANCE INTELLIGENTE : l'atmosphère de l'app suit
+                          // l'univers ouvert (fondu lent dans TvShell).
+                          TvAmbience.instance.set(_ambienceFor(d));
+                        },
                       ),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  _CompactNavBar(
-                    selected: _selected,
-                    selectedFocusNode: _railFocus,
-                    onSelect: (TvDest d) {
-                      setState(() => _selected = d);
-                      // AMBIANCE INTELLIGENTE : l'atmosphère de l'app suit
-                      // l'univers ouvert (fondu lent dans TvShell).
-                      TvAmbience.instance.set(_ambienceFor(d));
-                    },
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 14),
+                // ----- Panneau de contenu (PLEINE LARGEUR sous la barre) -----
+                Expanded(child: _ContentPanel(dest: _selected)),
+              ],
             ),
-            const SizedBox(height: 14),
-            // ----- Panneau de contenu (PLEINE LARGEUR sous la barre) -----
-            Expanded(child: _ContentPanel(dest: _selected)),
-          ],
+          ),
         ),
-        ),
-      ),
       ),
     );
   }
@@ -886,10 +883,9 @@ class _MatchChipState extends State<_MatchChip> {
     super.initState();
     // Déjà initialisé au boot (main_tv) ; l'appel est idempotent.
     SportsRepository.instance.initialize();
-    _changes = SportsRepository.instance.changesStream
-        .listen((_) => _refresh());
-    _favs = SportsRepository.instance.favoritesStream
-        .listen((_) => _refresh());
+    _changes =
+        SportsRepository.instance.changesStream.listen((_) => _refresh());
+    _favs = SportsRepository.instance.favoritesStream.listen((_) => _refresh());
   }
 
   void _refresh() {
@@ -984,8 +980,7 @@ class _MatchChipState extends State<_MatchChip> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   softWrap: false,
-                  style:
-                      TvTokens.ui(14.5, weight: FontWeight.w600, color: fg),
+                  style: TvTokens.ui(14.5, weight: FontWeight.w600, color: fg),
                 ),
               ),
             ],
@@ -1089,42 +1084,54 @@ class _ProfileChip extends StatelessWidget {
   }
 }
 
-/// GROS bouton « Changer le template » — placé entre « Famille » et « Direct ».
-/// Accent or (bien visible), ouvre le sélecteur de disposition d'accueil.
-class _TemplateButton extends StatelessWidget {
-  const _TemplateButton({required this.onOpen});
-  final VoidCallback onOpen;
+/// PETITE pastille de bascule de modèle — demande client 2026-08-01 :
+/// « les grands templates prennent beaucoup d'espace, juste un petit mot en
+/// haut ». Elle porte le nom de l'AUTRE modèle (dans le Modèle A elle dit
+/// « Modèle B ») et un OK bascule immédiatement. Le sélecteur détaillé, avec
+/// ses maquettes, reste accessible depuis les Réglages.
+class _TemplateSwitchChip extends StatelessWidget {
+  const _TemplateSwitchChip();
 
   @override
   Widget build(BuildContext context) {
-    return TvFocusBuilder(
-      scale: TvFocusScale.medium,
-      onSelect: onOpen,
-      builder: (BuildContext context, bool focused) {
-        final Color bg = focused ? TvTokens.gold : TvTokens.sel;
-        final Color fg =
-            focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
-        return Container(
-          height: 50,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
-            border: Border.all(color: TvTokens.gold, width: 1),
+    return ListenableBuilder(
+      listenable: TvHomeTemplateRepository.instance,
+      builder: (BuildContext context, Widget? _) {
+        final TvHomeTemplate next =
+            otherTemplate(TvHomeTemplateRepository.instance.template);
+        return TvFocusBuilder(
+          scale: TvFocusScale.small,
+          onSelect: () => unawaited(
+            TvHomeTemplateRepository.instance.setTemplate(next),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(Icons.dashboard_customize_rounded, color: fg, size: 22),
-              const SizedBox(width: 8),
-              Text(
-                'Changer le template',
-                maxLines: 1,
-                softWrap: false,
-                style: TvTokens.ui(15, weight: FontWeight.w700, color: fg),
+          builder: (BuildContext context, bool focused) {
+            final Color fg = focused ? TvTokens.goldBright : TvTokens.muted;
+            return Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: focused ? TvTokens.sel : Colors.transparent,
+                borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+                border: Border.all(
+                  color: focused ? TvTokens.gold : TvTokens.line,
+                  width: 1,
+                ),
               ),
-            ],
-          ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.swap_horiz_rounded, color: fg, size: 17),
+                  const SizedBox(width: 6),
+                  Text(
+                    next.label,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: TvTokens.ui(13, weight: FontWeight.w600, color: fg),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -1157,8 +1164,7 @@ class _CompactNavBar extends StatelessWidget {
             selected: TvDest.values[i] == selected,
             // L'item sélectionné porte le node « Retour » (cible du focus quand
             // on revient depuis le contenu).
-            focusNode:
-                TvDest.values[i] == selected ? selectedFocusNode : null,
+            focusNode: TvDest.values[i] == selected ? selectedFocusNode : null,
             onSelect: () => onSelect(TvDest.values[i]),
           ),
         ],

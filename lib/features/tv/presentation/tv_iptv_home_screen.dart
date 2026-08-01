@@ -35,9 +35,13 @@ import '../../epg/data/epg_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_home_template.dart';
 import '../core/tv_logo.dart';
+import '../data/channel_reliability.dart';
 import '../data/iptv_sections.dart';
+import 'tv_films_screen.dart';
 import 'tv_player_screen.dart';
+import 'tv_settings_screen.dart';
 
 class TvIptvHomeScreen extends StatefulWidget {
   const TvIptvHomeScreen({super.key});
@@ -55,10 +59,21 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
   List<IptvSection> _countries = const <IptvSection>[];
   String _selected = '';
 
+  /// Chaînes de la section courante, DÉJÀ filtrées et triées. Calculé une
+  /// seule fois par changement (section, bouquet, favoris) — jamais à
+  /// chaque image : sur 40 000 chaînes, trier à chaque rendu ferait
+  /// saccader le simple déplacement du focus.
+  List<Channel> _visible = const <Channel>[];
+
   @override
   void initState() {
     super.initState();
     _refresh();
+    // Le tri « ce qui marche vraiment chez toi d'abord » lit la fiabilité
+    // apprise (n°38). Elle arrive du disque : on retrie à son arrivée.
+    unawaited(ChannelReliability.instance.load().then((_) {
+      if (mounted) setState(_recompute);
+    }));
     _chanSub =
         PlaylistRepository.instance.channelsStream.listen((_) => _refresh());
     // L'ambiance suit l'heure : à 19 h pile, l'écran bascule tout seul.
@@ -66,7 +81,7 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
       if (mounted) setState(() {});
     });
     _favSub = FavoritesRepository.instance.favoritesStream.listen((_) {
-      if (mounted && _selected == 'favoris') setState(() {});
+      if (mounted && _selected == 'favoris') setState(_recompute);
     });
   }
 
@@ -92,8 +107,23 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
       if (_selected.isEmpty) {
         _selected = countries.isNotEmpty ? countries.first.id : 'international';
       }
+      _recompute();
     });
   }
+
+  /// Changement de section : on recalcule ICI, pas dans build().
+  void _select(String id) {
+    if (id == _selected) return;
+    setState(() {
+      _selected = id;
+      _recompute();
+    });
+  }
+
+  /// Le modèle proposé par la pastille du haut. Cet écran EST le Modèle B,
+  /// donc on part de `iptv` — la pastille dit « Modèle A ».
+  static final TvHomeTemplate _nextTemplate =
+      otherTemplate(TvHomeTemplate.iptv);
 
   // ---- Ambiance selon l'heure (spécification client) ----
   bool get _isEvening {
@@ -108,31 +138,35 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
   Color get _accent =>
       _isEvening ? const Color(0xFF4ECDC4) : const Color(0xFF00D4FF);
 
-  /// Chaînes de la section choisie. Un seul parcours du bouquet — pas de
-  /// pré-calcul de 40 000 entrées à chaque changement de section.
-  List<Channel> get _visible {
+  /// Recalcule la section courante : UN seul parcours du bouquet, puis le
+  /// tri voulu par le client (Sport → Info → le reste, puis la qualité).
+  void _recompute() {
     final String sel = _selected;
+    List<Channel> list;
     if (sel == 'favoris') {
       final Set<String> favs = FavoritesRepository.instance.current.toSet();
-      return _all.where((Channel c) => favs.contains(c.id)).toList();
-    }
-    if (sel == 'sports') {
-      return _all.where((Channel c) => _matches(c, kSportsKeys)).toList();
-    }
-    if (sel == 'films') {
-      return _all.where((Channel c) => _matches(c, kFilmsKeys)).toList();
-    }
-    if (sel == 'international') {
+      list = _all.where((Channel c) => favs.contains(c.id)).toList();
+    } else if (sel == 'sports') {
+      // « Sports » = le sport de TOUS les pays du menu réunis.
+      list = _all
+          .where((Channel c) =>
+              c.genre == ChannelGenre.sports || _matches(c, kSportsKeys))
+          .toList();
+    } else if (sel == 'international') {
       // Tout ce qui n'appartient à aucun des pays listés à gauche.
-      final Set<String> shown =
-          _countries.map((IptvSection s) => s.id).toSet();
-      return _all
+      final Set<String> shown = _countries.map((IptvSection s) => s.id).toSet();
+      list = _all
           .where((Channel c) => !shown.contains(countryOfCategory(c.category)))
           .toList();
+    } else {
+      list = _all
+          .where((Channel c) => countryOfCategory(c.category) == sel)
+          .toList();
     }
-    return _all
-        .where((Channel c) => countryOfCategory(c.category) == sel)
-        .toList();
+    // Ordre demandé par le client : Sport → Info → le reste ; à genre égal,
+    // ce qui s'ouvre le mieux CHEZ LUI passe devant (fiabilité n°38).
+    sortIptvChannels(list, scoreOf: ChannelReliability.instance.scoreOf);
+    _visible = list;
   }
 
   static bool _matches(Channel c, List<String> keys) {
@@ -165,14 +199,13 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<Channel> visible = _visible;
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
         child: Row(
           children: <Widget>[
             _sidebar(),
-            Expanded(child: _content(visible)),
+            Expanded(child: _content(_visible)),
           ],
         ),
       ),
@@ -206,7 +239,7 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
               selected: _selected == _countries[i].id,
               accent: _accent,
               autofocus: i == 0,
-              onSelect: () => setState(() => _selected = _countries[i].id),
+              onSelect: () => _select(_countries[i].id),
             ),
           const SizedBox(height: 12),
           Divider(
@@ -221,7 +254,7 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
               selected: _selected == s.id,
               accent: _accent,
               autofocus: _countries.isEmpty && s.id == 'sports',
-              onSelect: () => setState(() => _selected = s.id),
+              onSelect: () => _select(s.id),
             ),
           const SizedBox(height: 24),
         ],
@@ -229,18 +262,23 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
     );
   }
 
-  // ---- Contenu droit : en-tête + grille ----
+  // ---- Contenu droit : en-tête + grille (ou le CINÉMA) ----
   Widget _content(List<Channel> visible) {
+    // FILMS = le vrai cinéma de l'app (catalogue VOD, affiche vedette,
+    // rangées, fiche détail, reprise de lecture) — pas une grille de
+    // chaînes. Le menu latéral reste à gauche : on ne change que le
+    // panneau de droite.
+    final bool cinema = _selected == 'films';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.fromLTRB(32, 32, 32, 20),
+          padding: const EdgeInsets.fromLTRB(32, 24, 32, 14),
           child: Row(
             children: <Widget>[
               Expanded(
                 child: Text(
-                  '$_title  ·  ${visible.length}',
+                  cinema ? 'Cinéma' : '$_title  ·  ${visible.length}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -251,54 +289,163 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(
-                  color: _accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  _isEvening ? 'Mode soirée' : 'Mode jour',
-                  style: TextStyle(color: _accent, fontSize: 13),
+              // ----- LES OPTIONS QUI MANQUAIENT (demande client) -----
+              // Un petit mot en haut, rien de plus : le nom de l'AUTRE
+              // modèle (bascule immédiate) et l'accès aux Réglages.
+              //
+              // FittedBox : sur un écran étroit (box qui rapporte une
+              // résolution logique riquiqui), le groupe RÉTRÉCIT au lieu de
+              // déborder. Plus jamais d'en-tête « tout mélangé ».
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      // Cet écran EST le Modèle B : la pastille propose donc
+                      // toujours l'autre (« Modèle A »), sans dépendre de
+                      // l'état du dépôt.
+                      _MiniChip(
+                        icon: Icons.swap_horiz_rounded,
+                        label: _nextTemplate.label,
+                        accent: _accent,
+                        onSelect: () => unawaited(
+                          TvHomeTemplateRepository.instance
+                              .setTemplate(_nextTemplate),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      _MiniChip(
+                        icon: Icons.settings_rounded,
+                        label: 'Réglages',
+                        accent: _accent,
+                        onSelect: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const TvSettingsScreen(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: _accent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          _isEvening ? 'Mode soirée' : 'Mode jour',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(color: _accent, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
         ),
-        Expanded(
-          child: visible.isEmpty
-              ? Center(
-                  child: Text(
-                    'Aucune chaîne dans cette section.',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 16,
+        if (cinema)
+          const Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(left: 20, right: 20),
+              child: TvFilmsScreen(),
+            ),
+          )
+        else
+          Expanded(
+            child: visible.isEmpty
+                ? Center(
+                    child: Text(
+                      'Aucune chaîne dans cette section.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 16,
+                      ),
+                    ),
+                  )
+                : GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(28, 0, 28, 40),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      childAspectRatio: 1.15,
+                      crossAxisSpacing: 18,
+                      mainAxisSpacing: 18,
+                    ),
+                    // PARESSEUSE : seules les cartes visibles sont
+                    // construites — 40 000 chaînes coûtent autant que 12.
+                    itemCount: visible.length,
+                    itemBuilder: (BuildContext _, int i) => _ChannelCard(
+                      key: ValueKey<String>(visible[i].id),
+                      channel: visible[i],
+                      accent: _accent,
+                      cardColor: _card,
+                      onSelect: () => _play(visible, i),
                     ),
                   ),
-                )
-              : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(28, 0, 28, 40),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    childAspectRatio: 1.15,
-                    crossAxisSpacing: 18,
-                    mainAxisSpacing: 18,
-                  ),
-                  // PARESSEUSE : seules les cartes visibles sont
-                  // construites — 40 000 chaînes coûtent autant que 12.
-                  itemCount: visible.length,
-                  itemBuilder: (BuildContext _, int i) => _ChannelCard(
-                    key: ValueKey<String>(visible[i].id),
-                    channel: visible[i],
-                    accent: _accent,
-                    cardColor: _card,
-                    onSelect: () => _play(visible, i),
-                  ),
-                ),
-        ),
+          ),
       ],
+    );
+  }
+}
+
+/// Petite pastille d'option en haut à droite (bascule de modèle, Réglages).
+/// Volontairement DISCRÈTE : le client veut « juste un petit mot en haut »,
+/// pas un bandeau qui mange la place du contenu.
+class _MiniChip extends StatelessWidget {
+  const _MiniChip({
+    required this.icon,
+    required this.label,
+    required this.accent,
+    required this.onSelect,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) => AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: focused ? accent.withValues(alpha: 0.18) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: focused ? accent : Colors.white.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              icon,
+              size: 16,
+              color: focused ? accent : Colors.white.withValues(alpha: 0.75),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                color: focused ? accent : Colors.white.withValues(alpha: 0.75),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -353,8 +500,7 @@ class _SidebarItem extends StatelessWidget {
                       ? accent
                       : Colors.white.withValues(alpha: 0.85),
                   fontSize: 16,
-                  fontWeight:
-                      selected ? FontWeight.w600 : FontWeight.w400,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 ),
               ),
             ),
@@ -407,9 +553,8 @@ class _ChannelCardState extends State<_ChannelCard> {
   Future<void> _loadProgram() async {
     String? title;
     try {
-      title =
-          (await EpgRepository.instance.currentProgram(widget.channel.id))
-              ?.title;
+      title = (await EpgRepository.instance.currentProgram(widget.channel.id))
+          ?.title;
     } catch (_) {
       title = null; // EPG absente → la ligne ne s'affiche pas
     }

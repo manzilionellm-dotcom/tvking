@@ -14,7 +14,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/core/flavor/flavor.dart';
+import 'package:tv_king/l10n/generated/app_localizations.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
+import 'package:tv_king/features/tv/presentation/tv_films_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_iptv_home_screen.dart';
 
 List<Channel> _bouquet(int n) => <Channel>[
@@ -44,6 +46,20 @@ void main() {
     expect(find.text('IPTV'), findsOneWidget);
   });
 
+  // Le client : « le template B manque des options — l'option paramètre et
+  // l'option de changer le template A. Juste un petit mot en haut. »
+  testWidgets('les options du haut : bascule de modèle + Réglages',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: TvIptvHomeScreen()));
+    await tester.pump();
+
+    // Depuis le Modèle B, la pastille porte le nom de l'AUTRE modèle.
+    expect(find.text('Modèle A'), findsOneWidget);
+    expect(find.text('Réglages'), findsOneWidget);
+    // …et on ne se propose jamais soi-même.
+    expect(find.text('Modèle B'), findsNothing);
+  });
+
   testWidgets('bouquet vide : aucun plantage', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: TvIptvHomeScreen()));
     await tester.pump();
@@ -52,6 +68,28 @@ void main() {
     expect(find.text('IPTV'), findsOneWidget);
     expect(find.text('Sports'), findsOneWidget);
     expect(find.text('Favoris'), findsOneWidget);
+  });
+
+  // « Côté cinéma, il faut y travailler tellement » : la section Films du
+  // Modèle B n'est PAS une grille de chaînes — c'est le vrai cinéma de
+  // l'app (catalogue VOD, affiche vedette, rangées, fiche détail).
+  testWidgets('Films ouvre le CINÉMA, pas une grille de chaînes',
+      (WidgetTester tester) async {
+    // Le cinéma lit les traductions (rayon « Autres ») : on monte l'écran
+    // avec les mêmes délégués que l'app réelle.
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('fr'),
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      home: const TvIptvHomeScreen(),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('Films'));
+    await tester.pump();
+
+    expect(find.byType(TvFilmsScreen), findsOneWidget);
+    expect(find.text('Cinéma'), findsOneWidget);
   });
 
   testWidgets('40 000 chaînes : la grille ne construit que le visible',
