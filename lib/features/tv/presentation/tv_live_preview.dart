@@ -187,6 +187,16 @@ class _TvLivePreviewState extends State<TvLivePreview>
     if (c == null || _covered || !mounted) return false;
     final XtreamContentType type =
         StreamBlockedFallback.contentTypeOf(widget.channel);
+    if (_triedFormats.isEmpty) {
+      // La 1re tentative a DÉJÀ essayé la forme d'origine — inutile de la
+      // rejouer (terrain 2026-08-01 : l'aperçu re-testait la forme nue qui
+      // venait de renvoyer 404, soit ~4 s perdues avant d'atteindre la
+      // forme « live/… » qui, elle, répond 200).
+      _triedFormats
+        ..add('original')
+        ..add(XtreamUrlVariants.formatCodeOf(widget.channel.streamUrl) ??
+            'original');
+    }
     final XtreamUrlCandidate? next = nextPreviewVariant(
       url: widget.channel.streamUrl,
       type: type,
