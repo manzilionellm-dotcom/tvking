@@ -51,10 +51,7 @@ import '../../sports/domain/sport_models.dart';
 import '../core/tv_ambience.dart';
 import '../core/tv_home_template.dart';
 import 'tv_home_template_screen.dart';
-import 'tv_launcher_home_screen.dart';
 import 'tv_live_preview.dart';
-import 'tv_rails_home_screen.dart';
-import 'tv_tivimate_home_screen.dart';
 import 'tv_care_nudge.dart';
 import 'tv_night_comfort.dart';
 import 'tv_profiles_screen.dart' show tvProfileDisplayName;
@@ -556,19 +553,14 @@ class _TvGateState extends State<TvGate> {
                   onPicked: () => setState(() => _profileChosen = true),
                 ),
               )
-            // TEMPLATE D'ACCUEIL au choix : « Classique » = home historique
-            // (repli sûr), « Grandes tuiles » = lanceur façon IBO. Se
-            // reconstruit à chaud quand l'utilisateur change de template.
+            // TEMPLATE D'ACCUEIL (décision client 2026-08-01) : un SEUL
+            // modèle, le A — la maison historique. Le sélecteur, la
+            // persistance et ce ListenableBuilder restent en place pour
+            // accueillir le second modèle à venir sans rien redéfaire.
             : ListenableBuilder(
                 listenable: TvHomeTemplateRepository.instance,
                 builder: (BuildContext context, Widget? _) {
                   switch (TvHomeTemplateRepository.instance.template) {
-                    case TvHomeTemplate.launcher:
-                      return const TvLauncherHomeScreen();
-                    case TvHomeTemplate.rails:
-                      return const TvRailsHomeScreen();
-                    case TvHomeTemplate.tivimate:
-                      return const TvTivimateHomeScreen();
                     case TvHomeTemplate.classic:
                       return const TvHomeScreen();
                   }

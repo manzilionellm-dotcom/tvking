@@ -23,11 +23,16 @@ String favoritesScopeForTemplate(TvHomeTemplate t) =>
         ? FavoritesRepository.defaultScope
         : 'seven';
 
+/// LES MODÈLES D'ACCUEIL.
+///
+/// Décision client (2026-08-01) : on repart d'UN seul modèle — le A, celui
+/// qui a toujours été la maison. Les trois autres (grandes tuiles, rails,
+/// panneau chaînes) ont été RETIRÉS du code : ils diluaient l'effort de
+/// mise au point sur quatre accueils au lieu d'un seul irréprochable.
+/// Un second modèle viendra, fourni par le client — l'énumération, le
+/// sélecteur et la persistance restent donc en place, prêts à l'accueillir.
 enum TvHomeTemplate {
-  classic, // home historique : menu compact en haut + contenu plein écran
-  launcher, // grandes tuiles façon lanceur (IBO « grille »), simple et direct
-  rails, // aperçu + rangée d'icônes + rail de favoris (IBO « rails »)
-  tivimate, // panneau chaînes (rail + groupes + liste + aperçu EPG) façon TiviMate
+  classic, // menu compact en haut, liste des chaînes en grand
 }
 
 extension TvHomeTemplateInfo on TvHomeTemplate {
@@ -35,12 +40,6 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
     switch (this) {
       case TvHomeTemplate.classic:
         return 'classic';
-      case TvHomeTemplate.launcher:
-        return 'launcher';
-      case TvHomeTemplate.rails:
-        return 'rails';
-      case TvHomeTemplate.tivimate:
-        return 'tivimate';
     }
   }
 
@@ -50,12 +49,6 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
     switch (this) {
       case TvHomeTemplate.classic:
         return 'Modèle A';
-      case TvHomeTemplate.launcher:
-        return 'Modèle B';
-      case TvHomeTemplate.rails:
-        return 'Modèle C';
-      case TvHomeTemplate.tivimate:
-        return 'Modèle D';
     }
   }
 
@@ -65,12 +58,6 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
     switch (this) {
       case TvHomeTemplate.classic:
         return 'Menu compact en haut, liste des chaînes en grand.';
-      case TvHomeTemplate.launcher:
-        return 'Grandes tuiles d\'accès rapide — simple et direct.';
-      case TvHomeTemplate.rails:
-        return 'Aperçu + rangée d\'icônes + rail de favoris en direct.';
-      case TvHomeTemplate.tivimate:
-        return 'Chaînes en panneau à gauche + aperçu et programme à droite.';
     }
   }
 }

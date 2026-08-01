@@ -1,6 +1,12 @@
 // =========================================================
 //  hero_picker.dart — Choix du héro d'accueil (Modèles B/C/D)
 // =========================================================
+//  ⚠️ EN RÉSERVE (2026-08-01) : les modèles B/C qui l'utilisaient ont été
+//  retirés à la demande du client — un seul accueil (Modèle A) est
+//  maintenu. Cette brique reste ici, PURE et TESTÉE, prête pour le second
+//  modèle que le client fournira. Elle ne coûte rien tant qu'on ne
+//  l'appelle pas.
+//
 //  Brique PURE partagée par les templates d'accueil : ordonne les
 //  candidats du grand aperçu (« héro ») et écarte les chaînes que le
 //  score de fiabilité local (n°38) sait défaillantes CHEZ CE CLIENT —
