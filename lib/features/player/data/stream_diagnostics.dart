@@ -23,6 +23,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../tv/data/failure_explainer.dart';
+
 /// Raison CLAIRE d'un échec de lecture, à écrire noir sur blanc à l'écran
 /// pour que le client comprenne (et corrige) tout seul — au lieu d'un écran
 /// noir muet. Déduite de l'état du compte Xtream + du dernier statut HTTP.
@@ -312,6 +314,16 @@ class StreamDiagnostics extends ChangeNotifier {
     _add('xtream', b.toString(), level: healthy ? 'info' : 'error');
     notifyListeners();
   }
+
+  /// Problème d'ABONNEMENT constaté (expiré, banni, inactif) en français,
+  /// ou `null` si le compte est sain. Affiché à l'écran par l'aperçu : la
+  /// cause n°1 des « plus aucune chaîne ne marche » ne doit plus rester
+  /// enterrée dans le journal (terrain 2026-08-01).
+  String? get subscriptionIssue => explainSubscriptionIssue(
+        status: xtreamStatus,
+        expDate: xtreamExpDate,
+        now: DateTime.now(),
+      );
 
   void _add(String tag, String message, {String level = 'info'}) {
     _events.add(StreamDiagEvent(tag: tag, message: message, level: level));

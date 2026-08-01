@@ -294,3 +294,25 @@ class XtreamUrlVariants {
     }
   }
 }
+
+/// SECONDE CHANCE DE L'APERÇU (terrain 2026-08-01) — le plein écran joue,
+/// l'aperçu affiche le logo : le plein écran déroule la cascade complète
+/// tandis que l'aperçu s'arrêtait à la PREMIÈRE forme d'URL. Or beaucoup de
+/// panels ne servent le live que sous `live/USER/PASS/ID.ts` : la forme nue
+/// renvoie HTTP 404 → aperçu mort sur TOUTES les chaînes.
+///
+/// Renvoie le PROCHAIN candidat à tenter pour [url] (type [type]) en sautant
+/// les formats déjà essayés ([tried], par `formatCode`), ou `null` s'il n'en
+/// reste plus. Fonction PURE — l'aperçu s'en sert pour UNE ou DEUX tentatives
+/// supplémentaires seulement (jamais les 8 sondes du plein écran, qui
+/// ouvriraient trop de connexions).
+XtreamUrlCandidate? nextPreviewVariant({
+  required String url,
+  required XtreamContentType type,
+  required Set<String> tried,
+}) {
+  for (final XtreamUrlCandidate c in XtreamUrlVariants.cascadeFor(url, type)) {
+    if (!tried.contains(c.formatCode)) return c;
+  }
+  return null;
+}

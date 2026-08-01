@@ -155,10 +155,71 @@ class _TvLivePreviewState extends State<TvLivePreview>
   /// signalée — jamais deux signaux pour la même tentative.
   bool _unavailableFired = false;
 
+  /// SECONDE CHANCE (terrain 2026-08-01) : formats d'URL déjà essayés pour
+  /// CETTE chaîne. Beaucoup de panels ne servent le live que sous
+  /// `live/USER/PASS/ID.ts` — la forme nue renvoie 404 et l'aperçu mourait
+  /// alors que le plein écran (qui déroule la cascade) jouait très bien.
+  final Set<String> _triedFormats = <String>{};
+  int _variantAttempts = 0;
+  static const int _kMaxVariantAttempts = 2;
+
+  /// Signature (User-Agent) retenue à la résolution — rejouée telle quelle
+  /// sur les tentatives suivantes.
+  String? _lastUserAgent;
+
   /// Phrase AFFICHÉE sous le logo quand aucune image n'arrive : le client
   /// (et toi) savez tout de suite si c'est l'app ou le fournisseur.
   /// `null` tant qu'il n'y a rien d'anormal à dire.
   String? _whyNoImage;
+
+  /// L'ABONNEMENT prime sur tout le reste : si le compte est expiré, AUCUNE
+  /// chaîne ne peut marcher — inutile d'accuser la chaîne ou le réseau.
+  void _setWhy(String fallback) {
+    _whyNoImage = StreamDiagnostics.instance.subscriptionIssue ?? fallback;
+  }
+
+  /// Tente la forme d'URL SUIVANTE de la cascade Xtream (au plus
+  /// [_kMaxVariantAttempts] fois). Renvoie `true` si une nouvelle tentative
+  /// est partie — l'aperçu ne se déclare alors PAS indisponible.
+  Future<bool> _tryNextVariant() async {
+    if (_variantAttempts >= _kMaxVariantAttempts) return false;
+    final NativeVideoController? c = _ctrl;
+    if (c == null || _covered || !mounted) return false;
+    final XtreamContentType type =
+        StreamBlockedFallback.contentTypeOf(widget.channel);
+    final XtreamUrlCandidate? next = nextPreviewVariant(
+      url: widget.channel.streamUrl,
+      type: type,
+      tried: _triedFormats,
+    );
+    if (next == null) return false;
+    _variantAttempts++;
+    _triedFormats.add(next.formatCode);
+    final int session = _session;
+    String url = next.url;
+    // Même plomberie que la 1re tentative : relais local pour le TS
+    // (1 connexion, reconnexion, DoH), URL directe pour le HLS.
+    if (!url.toLowerCase().contains('.m3u8')) {
+      try {
+        url = await LocalStreamRelay.instance.playUrlFor(url);
+      } catch (_) {
+        // relais indisponible → URL directe
+      }
+    }
+    if (!mounted || session != _session || _ctrl == null) return false;
+    _diag('[${widget.channel.cleanName}] seconde chance (${next.formatCode}) : '
+        '${StreamDiagnostics.maskCredentials(url)}');
+    _unavailableFired = false;
+    _loggedError = false;
+    _ctrl!.setUrl(url, userAgent: _lastUserAgent);
+    setState(() {
+      _uiFirstFrame = false;
+      _uiHasError = false;
+      _whyNoImage = null;
+    });
+    _armStartupWatchdog();
+    return true;
+  }
 
   void _fireUnavailable(String reason) {
     if (_unavailableFired) return;
@@ -299,6 +360,12 @@ class _TvLivePreviewState extends State<TvLivePreview>
     _startupWatchdog = null;
     _unavailableFired = false;
     _whyNoImage = null; // nouvelle tentative → on repart sans verdict
+    if (disposePlayer) {
+      // Changement de chaîne / sortie d'écran : le crédit de secondes
+      // chances repart à neuf (il est PAR CHAÎNE).
+      _triedFormats.clear();
+      _variantAttempts = 0;
+    }
     _resolving = false;
     _loggedFirstFrame = false;
     _loggedError = false;
@@ -408,7 +475,7 @@ class _TvLivePreviewState extends State<TvLivePreview>
     if (src == null) {
       setState(() {
         _resolving = false;
-        _whyNoImage = 'Adresse du flux introuvable pour cette chaîne.';
+        _setWhy('Adresse du flux introuvable pour cette chaîne.');
       });
       _fireUnavailable('résolution impossible');
       return;
@@ -425,6 +492,7 @@ class _TvLivePreviewState extends State<TvLivePreview>
       c.setVolume(0); // muet d'office — le son n'arrive qu'en plein écran
       c.addListener(_onPlayer);
     }
+    _lastUserAgent = src.userAgent;
     c.setUrl(src.url, userAgent: src.userAgent);
     setState(() {
       _ctrl = c;
@@ -433,24 +501,29 @@ class _TvLivePreviewState extends State<TvLivePreview>
       _uiHasError = false;
       _resolving = false;
     });
-    // Nouvelle tentative → nouveau droit de signal + garde-fou réarmé :
-    // si NI première image NI erreur n'arrive dans le délai (serveur qui
-    // accepte la connexion puis pend), on prévient l'accueil.
+    // Nouvelle tentative → nouveau droit de signal + garde-fou réarmé.
     _unavailableFired = false;
+    _armStartupWatchdog();
+  }
+
+  /// Garde-fou : si NI première image NI erreur n'arrive dans le délai
+  /// (serveur qui accepte la connexion puis pend), on tente la forme d'URL
+  /// suivante, et à défaut on déclare l'aperçu indisponible.
+  void _armStartupWatchdog() {
     _startupWatchdog?.cancel();
     final int watchedSession = _session;
-    _startupWatchdog = Timer(_kStartupTimeout, () {
+    _startupWatchdog = Timer(_kStartupTimeout, () async {
       if (!mounted || watchedSession != _session) return;
       final NativeVideoController? w = _ctrl;
-      if (w != null && !w.firstFrame && !w.hasError) {
-        // Le serveur a accepté la connexion mais n'envoie aucune image :
-        // le cas typique d'une chaîne coupée côté fournisseur.
-        setState(() => _whyNoImage =
-            'Le serveur répond mais n\'envoie aucune image — chaîne '
-            'probablement coupée chez le fournisseur.');
-        _fireUnavailable('aucune image en '
-            '${_kStartupTimeout.inSeconds} s');
-      }
+      if (w == null || w.firstFrame || w.hasError) return;
+      if (await _tryNextVariant()) return;
+      if (!mounted || watchedSession != _session) return;
+      // Le serveur a accepté la connexion mais n'envoie aucune image :
+      // le cas typique d'une chaîne coupée côté fournisseur.
+      setState(() => _setWhy(
+          'Le serveur répond mais n\'envoie aucune image — chaîne '
+          'probablement coupée chez le fournisseur.'));
+      _fireUnavailable('aucune image en ${_kStartupTimeout.inSeconds} s');
     });
   }
 
@@ -496,8 +569,13 @@ class _TvLivePreviewState extends State<TvLivePreview>
         errorCode: c.lastErrorCode,
         cause: c.lastErrorCauseMessage ?? c.lastErrorMessage,
       );
-      _whyNoImage = why.why;
-      _fireUnavailable('erreur lecteur');
+      // SECONDE CHANCE d'abord : beaucoup de panels ne servent le live que
+      // sous une AUTRE forme d'URL (terrain : 404 en aperçu, plein écran OK).
+      unawaited(_tryNextVariant().then((bool retried) {
+        if (retried || !mounted) return;
+        setState(() => _setWhy(why.why));
+        _fireUnavailable('erreur lecteur');
+      }));
     }
     // Reconstruction UNIQUEMENT sur changement visuel (1re image / erreur).
     if (c.firstFrame != _uiFirstFrame || c.hasError != _uiHasError) {

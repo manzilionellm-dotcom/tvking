@@ -436,3 +436,36 @@ String supportCode({
   }
   return hash.toRadixString(36).toUpperCase().padLeft(6, '0').substring(0, 6);
 }
+
+/// ABONNEMENT — la cause n°1 des « plus rien ne marche » (terrain
+/// 2026-08-01 : compte expiré depuis 17 jours → le panel répondait
+/// HTTP 404 sur CHAQUE chaîne, et le client cherchait le bug dans l'app).
+///
+/// Renvoie une phrase française à afficher TELLE QUELLE quand l'abonnement
+/// lui-même est en cause, ou `null` si le compte est sain (l'échec vient
+/// alors d'ailleurs : réseau, chaîne précise, codec…).
+///
+/// FONCTION PURE : [now] est injecté, aucun accès horloge/réseau → testable.
+String? explainSubscriptionIssue({
+  String? status,
+  DateTime? expDate,
+  required DateTime now,
+}) {
+  if (expDate != null && expDate.isBefore(now)) {
+    final String d = '${expDate.day.toString().padLeft(2, '0')}/'
+        '${expDate.month.toString().padLeft(2, '0')}/${expDate.year}';
+    return 'Ton abonnement a expiré le $d — renouvelle-le chez ton '
+        'fournisseur, les chaînes reviendront seules.';
+  }
+  final String s = (status ?? '').trim().toLowerCase();
+  if (s.isEmpty || s == 'active') return null;
+  if (s == 'expired') {
+    return 'Ton abonnement est expiré — renouvelle-le chez ton fournisseur, '
+        'les chaînes reviendront seules.';
+  }
+  if (s == 'banned' || s == 'disabled') {
+    return 'Ton compte a été désactivé par le fournisseur — contacte-le.';
+  }
+  return 'Ton abonnement n\'est pas actif (état : $status) — contacte ton '
+      'fournisseur.';
+}
