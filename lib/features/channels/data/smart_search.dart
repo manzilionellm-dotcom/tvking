@@ -316,7 +316,58 @@ abstract final class SmartSearch {
   /// Minuscules + accents retirés + tout séparateur/décoration
   /// réduit à UN espace. Publique : l'écran peut l'utiliser pour
   /// surligner les correspondances s'il le souhaite un jour.
+  // MÉMO DE NORMALISATION (fluidité 40 000+ chaînes, demande client
+  // 2026-08-01) : `rank` normalise TROIS textes PAR CHAÎNE (nom, nom curé,
+  // catégorie) à chaque recherche — soit 120 000 parcours caractère par
+  // caractère sur un gros bouquet, sur le thread de l'interface. Or ces
+  // textes ne changent JAMAIS entre deux recherches, et se répètent
+  // massivement (mêmes catégories, mêmes variantes de nom). On mémorise
+  // donc le résultat par texte source : la 1re recherche paie, toutes les
+  // suivantes sont quasi gratuites — taper lettre après lettre redevient
+  // instantané quel que soit le nombre de chaînes.
+  static final Map<String, String> _normMemo = <String, String>{};
+
+  /// Plafond du mémo (bouquets géants) : au-delà on repart à vide plutôt
+  /// que de laisser la mémoire filer sur une box modeste.
+  static const int _kNormMemoMax = 150000;
+
+  /// PRÉ-CHAUFFAGE (fluidité gros bouquets) : normalise le bouquet PAR
+  /// TRANCHES, en rendant la main à l'interface entre chaque — l'animation
+  /// et le D-pad restent parfaitement fluides pendant ce temps. Appelé
+  /// après le chargement des chaînes : quand le client ouvre la recherche,
+  /// tout est déjà prêt et la 1re frappe répond comme la dixième.
+  /// Idempotent et sans effet visible : ne fait que remplir le mémo.
+  static Future<void> warmUp(
+    List<Channel> pool, {
+    int sliceSize = 1500,
+  }) async {
+    for (int i = 0; i < pool.length; i += sliceSize) {
+      final int end =
+          (i + sliceSize < pool.length) ? i + sliceSize : pool.length;
+      for (int j = i; j < end; j++) {
+        final Channel c = pool[j];
+        normalize(c.name);
+        normalize(c.cleanName);
+        normalize(c.category);
+      }
+      // Respiration : l'interface reprend la main entre deux tranches.
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
+  /// Vide le mémo (changement de source, pression mémoire).
+  static void clearNormalizeCache() => _normMemo.clear();
+
   static String normalize(String s) {
+    final String? memo = _normMemo[s];
+    if (memo != null) return memo;
+    final String computed = _normalizeUncached(s);
+    if (_normMemo.length >= _kNormMemoMax) _normMemo.clear();
+    _normMemo[s] = computed;
+    return computed;
+  }
+
+  static String _normalizeUncached(String s) {
     final String lower = s.toLowerCase();
     final StringBuffer out = StringBuffer();
     bool lastWasSpace = true; // évite les espaces de tête/doublés

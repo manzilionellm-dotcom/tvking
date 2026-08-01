@@ -35,6 +35,7 @@ import '../../../core/observability/structured_logger.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/security/secret_cipher.dart';
+import '../../channels/data/smart_search.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
@@ -1364,6 +1365,13 @@ class PlaylistRepository {
     if (!_channelsController.isClosed) {
       _channelsController.add(channels);
     }
+    // FLUIDITÉ GROS BOUQUETS (demande client 2026-08-01 : « 40 000 chaînes
+    // doivent répondre comme 2 ») : on prépare la normalisation de la
+    // recherche EN TRANCHES, pendant que le client navigue. Sans ça, la
+    // toute première frappe payait ~0,5 s sur un très gros bouquet. Aucune
+    // incidence visible : le pré-chauffage rend la main entre chaque
+    // tranche et ne fait que remplir un cache.
+    unawaited(SmartSearch.warmUp(channels));
     if (!_playlistsController.isClosed) {
       _playlistsController.add(playlists);
     }
