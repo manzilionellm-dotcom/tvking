@@ -1,5 +1,5 @@
 // =========================================================
-//  tv_iptv_home_screen_test.dart — Modèle B (design client)
+//  tv_iptv_home_screen_test.dart — Modèle A (accueil principal)
 // =========================================================
 //  Contrat de l'accueil fourni par le client, vérifié dans les
 //  conditions réelles d'une box :
@@ -46,18 +46,27 @@ void main() {
     expect(find.text('IPTV'), findsOneWidget);
   });
 
-  // Le client : « le template B manque des options — l'option paramètre et
-  // l'option de changer le template A. Juste un petit mot en haut. »
+  // Le client : « il manque l'option paramètre et l'option de changer de
+  // template. Juste un petit mot en haut. » Depuis l'inversion, cet écran
+  // EST le Modèle A : la pastille doit donc proposer « Modèle B ».
   testWidgets('les options du haut : bascule de modèle + Réglages',
       (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: TvIptvHomeScreen()));
     await tester.pump();
 
-    // Depuis le Modèle B, la pastille porte le nom de l'AUTRE modèle.
-    expect(find.text('Modèle A'), findsOneWidget);
+    expect(find.text('Modèle B'), findsOneWidget);
     expect(find.text('Réglages'), findsOneWidget);
     // …et on ne se propose jamais soi-même.
-    expect(find.text('Modèle B'), findsNothing);
+    expect(find.text('Modèle A'), findsNothing);
+  });
+
+  // Les deux boutons du haut de menu, dont le « bouton magique » de mise à
+  // jour : l'app va chercher la dernière version et l'installe par-dessus.
+  testWidgets('menu : Rechercher et Mettre à jour', (WidgetTester t) async {
+    await t.pumpWidget(const MaterialApp(home: TvIptvHomeScreen()));
+    await t.pump();
+    expect(find.text('Rechercher…'), findsOneWidget);
+    expect(find.text('Mettre à jour'), findsOneWidget);
   });
 
   testWidgets('bouquet vide : aucun plantage', (WidgetTester tester) async {

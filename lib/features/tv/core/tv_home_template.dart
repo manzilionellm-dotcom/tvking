@@ -7,31 +7,32 @@
 //  quand on change de template. Même modèle que LocaleRepository.
 //
 //  Extensible : pour ajouter un template, on ajoute une valeur à l'enum
-//  + son rendu dans tv_app (sélection du widget de home). Le « Classique »
-//  reste la home historique, inchangée (repli sûr).
+//  + son rendu dans tv_app (sélection du widget de home).
 // =========================================================
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../playlists/data/favorites_repository.dart';
 
-/// Univers de favoris associé à un template : « The Few » (Classique) garde ses
-/// favoris historiques (portée `default`) ; « Seven » (IBO/TiviMate) a les
-/// siens (portée `seven`). Chaque univers est autonome sur les favoris.
+/// Portée des favoris. Les deux modèles PARTAGENT désormais la même liste
+/// (portée `default`) : ce sont deux présentations du MÊME accueil, pas deux
+/// univers. Séparer les favoris datait de l'époque à quatre templates —
+/// avec le Modèle B en accueil principal, ça aurait fait disparaître les
+/// cœurs déjà posés par le client. On garde la fonction (l'API est utilisée
+/// au boot et à chaque bascule) mais elle renvoie toujours la même portée.
 String favoritesScopeForTemplate(TvHomeTemplate t) =>
-    t == TvHomeTemplate.classic ? FavoritesRepository.defaultScope : 'seven';
+    FavoritesRepository.defaultScope;
 
-/// LES MODÈLES D'ACCUEIL.
+/// LES DEUX MODÈLES D'ACCUEIL, dans l'ordre où le client veut les voir.
 ///
-/// Décision client (2026-08-01) : on repart d'UN seul modèle — le A, celui
-/// qui a toujours été la maison. Les trois autres (grandes tuiles, rails,
-/// panneau chaînes) ont été RETIRÉS du code : ils diluaient l'effort de
-/// mise au point sur quatre accueils au lieu d'un seul irréprochable.
-/// Un second modèle viendra, fourni par le client — l'énumération, le
-/// sélecteur et la persistance restent donc en place, prêts à l'accueillir.
+/// Décision client (2026-08-01, deuxième temps) : l'accueil à menu latéral
+/// (`iptv`) devient l'accueil PRINCIPAL — le « Modèle A » — et l'ancien
+/// accueil (`classic`) passe en second, « Modèle B ». On garde les
+/// identifiants techniques d'origine pour ne pas invalider les choix déjà
+/// enregistrés sur les appareils.
 enum TvHomeTemplate {
-  classic, // menu compact en haut, liste des chaînes en grand
-  iptv, // Modèle B (design client) : ambiance selon l'heure, reco + grille
+  iptv, // Modèle A : menu latéral, recherche, cinéma, grille de chaînes
+  classic, // Modèle B : menu compact en haut, liste des chaînes en grand
 }
 
 extension TvHomeTemplateInfo on TvHomeTemplate {
@@ -46,11 +47,16 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
 
   /// Nom court affiché dans le sélecteur. Noms NEUTRES (lettres) — aucune
   /// marque concurrente (ni « IBO » ni « TiviMate ») : ce sont NOS modèles.
+  /// INVERSION demandée par le client (2026-08-01) : « je veux que B soit
+  /// l'app primordiale et A l'app secondaire ». L'accueil à menu latéral
+  /// devient donc le **Modèle A** (et l'accueil par défaut), l'ancien
+  /// devient le **Modèle B**. Les identifiants techniques (`classic`,
+  /// `iptv`) ne changent PAS : les choix déjà enregistrés restent valides.
   String get label {
     switch (this) {
-      case TvHomeTemplate.classic:
-        return 'Modèle A';
       case TvHomeTemplate.iptv:
+        return 'Modèle A';
+      case TvHomeTemplate.classic:
         return 'Modèle B';
     }
   }
@@ -59,10 +65,10 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
   /// jamais citer une app tierce.
   String get description {
     switch (this) {
+      case TvHomeTemplate.iptv:
+        return 'Menu latéral, recherche, cinéma et grille de chaînes.';
       case TvHomeTemplate.classic:
         return 'Menu compact en haut, liste des chaînes en grand.';
-      case TvHomeTemplate.iptv:
-        return 'Ambiance selon l\'heure, reco en haut, grille de chaînes.';
     }
   }
 }
@@ -80,7 +86,10 @@ TvHomeTemplate _templateFromId(String? id) {
   for (final TvHomeTemplate t in TvHomeTemplate.values) {
     if (t.id == id) return t;
   }
-  return TvHomeTemplate.classic; // repli sûr
+  // Repli SÛR = le Modèle A, c'est-à-dire l'accueil à menu latéral
+  // (`iptv`) : c'est lui l'accueil principal depuis la décision client du
+  // 2026-08-01. Un appareil qui n'a jamais choisi ouvre donc dessus.
+  return TvHomeTemplate.iptv;
 }
 
 class TvHomeTemplateRepository extends ChangeNotifier {
@@ -89,7 +98,7 @@ class TvHomeTemplateRepository extends ChangeNotifier {
 
   static const String _kKey = 'tv.home.template.v1';
 
-  TvHomeTemplate _template = TvHomeTemplate.classic;
+  TvHomeTemplate _template = TvHomeTemplate.iptv;
   TvHomeTemplate get template => _template;
 
   /// À appeler UNE fois au boot (avant le 1er rendu de la home).
@@ -98,9 +107,9 @@ class TvHomeTemplateRepository extends ChangeNotifier {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       _template = _templateFromId(prefs.getString(_kKey));
     } catch (_) {
-      _template = TvHomeTemplate.classic;
+      _template = TvHomeTemplate.iptv;
     }
-    // Chaque univers a ses favoris → on aligne la portée sur le template actif.
+    // Portée des favoris (identique pour les deux modèles — cf. plus haut).
     await FavoritesRepository.instance
         .setScope(favoritesScopeForTemplate(_template));
     notifyListeners();
@@ -110,7 +119,7 @@ class TvHomeTemplateRepository extends ChangeNotifier {
   Future<void> setTemplate(TvHomeTemplate t) async {
     if (t == _template) return;
     _template = t;
-    // Bascule d'univers → bascule des favoris (chaque univers a les siens).
+    // Portée des favoris : la même dans les deux modèles (cf. plus haut).
     await FavoritesRepository.instance.setScope(favoritesScopeForTemplate(t));
     notifyListeners();
     try {

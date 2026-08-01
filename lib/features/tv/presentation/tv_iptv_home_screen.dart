@@ -1,5 +1,5 @@
 // =========================================================
-//  tv_iptv_home_screen.dart — Modèle B (design fourni par le client)
+//  tv_iptv_home_screen.dart — Modèle A (accueil principal, design client)
 // =========================================================
 //  Reprise FIDÈLE de la maquette corrigée par le client :
 //    • menu LATÉRAL à gauche (260 px, fond plus sombre) : titre IPTV,
@@ -10,7 +10,13 @@
 //    • sous chaque nom de chaîne, le PROGRAMME EN COURS ;
 //    • ambiance qui suit l'heure — « Mode soirée » après 19 h, « Mode
 //      jour » sinon (fonds et accent différents) ;
-//    • carte qui grandit et s'entoure d'un halo à l'accent au focus.
+//    • carte qui grandit et s'entoure d'un halo à l'accent au focus ;
+//    • en haut du menu : RECHERCHER et METTRE À JOUR ;
+//    • un cœur en coin de carte — appui LONG sur OK pour l'allumer.
+//
+//  C'est l'ACCUEIL PRINCIPAL depuis le 2026-08-01 (« je veux que B soit
+//  l'app primordiale ») : il s'appelle donc « Modèle A », et l'ancien
+//  accueil devient le « Modèle B ».
 //
 //  ADAPTATIONS pour que ce soit un vrai accueil de TV :
 //    • LES 5 PAYS SONT DÉDUITS DU BOUQUET RÉEL (iptv_sections). La
@@ -28,7 +34,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../../core/update/update_prompt.dart';
 import '../../../widgets/optimized_image.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
@@ -41,6 +49,7 @@ import '../data/channel_reliability.dart';
 import '../data/iptv_sections.dart';
 import 'tv_films_screen.dart';
 import 'tv_player_screen.dart';
+import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
 
 class TvIptvHomeScreen extends StatefulWidget {
@@ -65,6 +74,9 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
   /// saccader le simple déplacement du focus.
   List<Channel> _visible = const <Channel>[];
 
+  /// Favoris de la portée active — pour le petit cœur en coin de carte.
+  Set<String> _favs = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -80,8 +92,15 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
     _clock = Timer.periodic(const Duration(minutes: 5), (_) {
       if (mounted) setState(() {});
     });
-    _favSub = FavoritesRepository.instance.favoritesStream.listen((_) {
-      if (mounted && _selected == 'favoris') setState(_recompute);
+    _favs = FavoritesRepository.instance.current.toSet();
+    _favSub =
+        FavoritesRepository.instance.favoritesStream.listen((Set<String> f) {
+      if (!mounted) return;
+      setState(() {
+        _favs = f.toSet();
+        // Dans la section Favoris, retirer un cœur retire la carte.
+        if (_selected == 'favoris') _recompute();
+      });
     });
   }
 
@@ -120,8 +139,8 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
     });
   }
 
-  /// Le modèle proposé par la pastille du haut. Cet écran EST le Modèle B,
-  /// donc on part de `iptv` — la pastille dit « Modèle A ».
+  /// Le modèle proposé par la pastille du haut. Cet écran EST le Modèle A
+  /// (`iptv`) — la pastille propose donc « Modèle B ».
   static final TvHomeTemplate _nextTemplate =
       otherTemplate(TvHomeTemplate.iptv);
 
@@ -232,7 +251,42 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
+          // ----- RECHERCHE (demande client) -----
+          // Le champ de saisie de sa maquette suppose un clavier ; sur une
+          // télécommande, c'est l'écran de recherche de l'app qui fait le
+          // travail : clavier à l'écran au D-pad, dernières recherches,
+          // et résultats sur les CHAÎNES, les FILMS et les SÉRIES.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _MenuActionButton(
+              icon: Icons.search_rounded,
+              label: 'Rechercher…',
+              accent: _accent,
+              onSelect: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TvSearchScreen(),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          // ----- LE BOUTON MAGIQUE (demande client) -----
+          // Un seul OK : l'app va chercher la dernière version en ligne, la
+          // télécharge avec une barre de progression et lance l'installation
+          // PAR-DESSUS (Android remplace l'app sans rien effacer — sources,
+          // favoris et réglages restent). Si tout est déjà à jour, elle le
+          // dit et ne touche à rien.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _MenuActionButton(
+              icon: Icons.system_update_rounded,
+              label: 'Mettre à jour',
+              accent: _accent,
+              onSelect: () => unawaited(checkForUpdatesInteractive(context)),
+            ),
+          ),
+          const SizedBox(height: 20),
           for (int i = 0; i < _countries.length; i++)
             _SidebarItem(
               section: _countries[i],
@@ -384,11 +438,69 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
                       channel: visible[i],
                       accent: _accent,
                       cardColor: _card,
+                      favorite: _favs.contains(visible[i].id),
                       onSelect: () => _play(visible, i),
+                      onToggleFavorite: () => unawaited(
+                        FavoritesRepository.instance.toggle(visible[i].id),
+                      ),
                     ),
                   ),
           ),
       ],
+    );
+  }
+}
+
+/// Gros bouton d'action en haut du menu latéral (Rechercher, Mettre à
+/// jour) — la forme voulue par le client : bien visible, teinté à l'accent,
+/// et pilotable à la télécommande.
+class _MenuActionButton extends StatelessWidget {
+  const _MenuActionButton({
+    required this.icon,
+    required this.label,
+    required this.accent,
+    required this.onSelect,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) => AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: focused ? 0.24 : 0.12),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: accent.withValues(alpha: focused ? 1 : 0.3),
+            width: focused ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(icon, color: accent, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: accent.withValues(alpha: 0.9),
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -519,20 +631,24 @@ class _SidebarItem extends StatelessWidget {
   }
 }
 
-/// Carte de chaîne : logo, nom, programme en cours.
+/// Carte de chaîne : logo, nom, programme en cours, cœur des favoris.
 class _ChannelCard extends StatefulWidget {
   const _ChannelCard({
     super.key,
     required this.channel,
     required this.accent,
     required this.cardColor,
+    required this.favorite,
     required this.onSelect,
+    required this.onToggleFavorite,
   });
 
   final Channel channel;
   final Color accent;
   final Color cardColor;
+  final bool favorite;
   final VoidCallback onSelect;
+  final VoidCallback onToggleFavorite;
 
   @override
   State<_ChannelCard> createState() => _ChannelCardState();
@@ -568,6 +684,13 @@ class _ChannelCardState extends State<_ChannelCard> {
     return TvFocusBuilder(
       scale: TvFocusScale.medium,
       onSelect: widget.onSelect,
+      // APPUI LONG sur OK = ajouter/retirer des favoris. C'est le geste
+      // déjà en place partout ailleurs dans l'app : le cœur de sa maquette
+      // se touche au doigt, une télécommande n'a pas de doigt.
+      onLongPress: () {
+        widget.onToggleFavorite();
+        HapticFeedback.selectionClick();
+      },
       builder: (BuildContext context, bool focused) => AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         decoration: BoxDecoration(
@@ -586,66 +709,96 @@ class _ChannelCardState extends State<_ChannelCard> {
                 ]
               : const <BoxShadow>[],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: <Widget>[
-            SizedBox(
-              width: 64,
-              height: 64,
-              child: (logo == null || logo.isEmpty)
-                  ? TvChannelLogo(
+            // Cœur en coin, comme dans sa maquette : discret quand la
+            // chaîne n'est pas en favori, rouge quand elle l'est.
+            if (widget.favorite)
+              const Positioned(
+                top: 8,
+                right: 8,
+                child: Icon(Icons.favorite, color: Colors.redAccent, size: 18),
+              )
+            else if (focused)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Icon(
+                  Icons.favorite_border,
+                  color: Colors.white.withValues(alpha: 0.35),
+                  size: 18,
+                ),
+              ),
+            _cardBody(c, logo),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cardBody(Channel c, String? logo) {
+    return SizedBox(
+      width: double.infinity,
+      height: double.infinity,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          SizedBox(
+            width: 64,
+            height: 64,
+            child: (logo == null || logo.isEmpty)
+                ? TvChannelLogo(
+                    logoUrl: null,
+                    label: c.name,
+                    size: 64,
+                    radius: 10,
+                  )
+                : OptimizedImage(
+                    imageUrl: logo,
+                    width: 64,
+                    height: 64,
+                    fit: BoxFit.contain,
+                    borderRadius: BorderRadius.circular(10),
+                    fallback: TvChannelLogo(
                       logoUrl: null,
                       label: c.name,
                       size: 64,
                       radius: 10,
-                    )
-                  : OptimizedImage(
-                      imageUrl: logo,
-                      width: 64,
-                      height: 64,
-                      fit: BoxFit.contain,
-                      borderRadius: BorderRadius.circular(10),
-                      fallback: TvChannelLogo(
-                        logoUrl: null,
-                        label: c.name,
-                        size: 64,
-                        radius: 10,
-                      ),
                     ),
+                  ),
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              c.cleanName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 10),
+          ),
+          if ((_program ?? '').isNotEmpty) ...<Widget>[
+            const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
-                c.cleanName,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                _program!,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  fontSize: 12,
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if ((_program ?? '').isNotEmpty) ...<Widget>[
-              const SizedBox(height: 4),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  _program!,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.55),
-                    fontSize: 12,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
