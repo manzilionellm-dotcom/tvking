@@ -37,6 +37,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_memory_guard.dart';
 import '../core/tv_tokens.dart';
+import '../data/tv_preview_arbiter.dart';
 
 /// URL (et signature) effectives à jouer pour un aperçu.
 class TvPreviewSource {
@@ -173,7 +174,22 @@ class _TvLivePreviewState extends State<TvLivePreview>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // ÉTATS INDÉPENDANTS (demande client) : dès qu'un AUTRE écran prend le
+    // créneau d'aperçu (changement de template, ouverture de En direct…),
+    // celui-ci rend son décodeur IMMÉDIATEMENT — plus jamais deux flux qui
+    // se marchent dessus.
+    TvPreviewArbiter.instance.addListener(_onArbiter);
     if (widget.enabled) _schedule();
+  }
+
+  void _onArbiter() {
+    if (!mounted) return;
+    if (_ctrl != null && !TvPreviewArbiter.instance.holds(this)) {
+      _diag('[${widget.channel.cleanName}] créneau repris par un autre écran '
+          '→ libération du décodeur');
+      _reset(disposePlayer: true);
+      setState(() {});
+    }
   }
 
   /// TERRAIN (2026-07-16) : « on quitte l'app TV et l'audio continue en
@@ -260,6 +276,8 @@ class _TvLivePreviewState extends State<TvLivePreview>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     TvLivePreview.routeObserver.unsubscribe(this);
+    TvPreviewArbiter.instance.removeListener(_onArbiter);
+    TvPreviewArbiter.instance.release(this);
     _reset(disposePlayer: true);
     super.dispose();
   }
@@ -278,6 +296,10 @@ class _TvLivePreviewState extends State<TvLivePreview>
     _loggedFirstFrame = false;
     _loggedError = false;
     if (disposePlayer) {
+      // On rend le créneau : le prochain aperçu (autre template, autre
+      // écran) démarrera INSTANTANÉMENT au lieu d'attendre une passation.
+      // Sans effet si quelqu'un d'autre l'a déjà pris.
+      TvPreviewArbiter.instance.release(this);
       _ctrl?.removeListener(_onPlayer);
       _ctrl?.dispose();
       _ctrl = null;
@@ -295,11 +317,25 @@ class _TvLivePreviewState extends State<TvLivePreview>
   /// navigation (l'« accroche » sortie du live → Cinéma). À 1,8 s, une
   /// navigation enchaînée n'ouvre plus RIEN ; celui qui reste sur l'accueil
   /// ne voit qu'un logo ~1 s de plus.
-  static const Duration _kResumeAfterRoute = Duration(milliseconds: 1800);
+  /// RAMENÉ de 1800 à 700 ms (demande client « une seconde c'est beaucoup ») :
+  /// ce répit compensait à l'aveugle le fait que le décodeur du plein écran
+  /// qu'on vient de quitter n'était pas encore rendu. L'ARBITRE sérialise
+  /// désormais les créneaux (un seul aperçu vivant, passation explicite) —
+  /// il ne reste à couvrir que la libération du LECTEUR plein écran, bien
+  /// plus courte.
+  static const Duration _kResumeAfterRoute = Duration(milliseconds: 700);
 
   void _schedule({bool afterRouteReturn = false}) {
     if (_covered) return; // un écran est posé par-dessus → aperçu coupé
     _debounce?.cancel();
+    // DÉMARRAGE INSTANTANÉ (héro d'accueil) : quand l'appelant demande
+    // explicitement zéro anti-rebond, la chaîne est FIXE (elle ne défile
+    // pas sous le focus) — rien à protéger, on part sur-le-champ, sans
+    // même passer par un timer (qui coûterait déjà une frame).
+    if (!afterRouteReturn && widget.debounce == Duration.zero) {
+      _start();
+      return;
+    }
     // TOUJOURS anti-rebondi ici : le démarrage immédiat d'une SÉLECTION (OK)
     // passe par la branche dédiée de didUpdateWidget (transition
     // startImmediately false→true), PAS par ce timer — sinon un simple
@@ -337,8 +373,19 @@ class _TvLivePreviewState extends State<TvLivePreview>
     }
     final int session = _session;
     final String name = widget.channel.cleanName;
-    _diag('[$name] anti-rebond écoulé → résolution de l\'URL d\'aperçu');
+    // PASSATION (états indépendants) : on prend le créneau — tout autre
+    // aperçu vivant (template précédent, écran quitté) libère son décodeur
+    // en recevant la notification. Le délai rendu vaut ZÉRO si personne ne
+    // jouait (ouverture instantanée) ; sinon on laisse le temps au décodeur
+    // sortant d'être réellement rendu avant d'en ouvrir un neuf.
+    final Duration handover = TvPreviewArbiter.instance.acquire(this);
+    _diag('[$name] anti-rebond écoulé → résolution de l\'URL d\'aperçu'
+        '${handover > Duration.zero ? ' (passation ${handover.inMilliseconds} ms)' : ''}');
     setState(() => _resolving = true);
+    if (handover > Duration.zero) {
+      await Future<void>.delayed(handover);
+      if (!mounted || session != _session) return;
+    }
     TvPreviewSource? src;
     try {
       src = await (widget.resolver ?? TvLivePreview.resolveSource)(

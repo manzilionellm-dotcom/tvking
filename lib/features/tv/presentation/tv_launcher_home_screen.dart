@@ -396,6 +396,10 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                   TvLivePreview(
                     channel: ch,
                     enabled: _previewLive,
+                    // INSTANTANÉ (demande client) : la chaîne du héro est
+                    // FIXE — elle ne défile pas sous le focus, donc aucun
+                    // anti-rebond à respecter. L'image part sur-le-champ.
+                    debounce: Duration.zero,
                     // Chaîne injouable (morte côté fournisseur, photo
                     // terrain) → l'accueil bascule sur le candidat suivant
                     // au lieu de garder un grand cadre sans vie.

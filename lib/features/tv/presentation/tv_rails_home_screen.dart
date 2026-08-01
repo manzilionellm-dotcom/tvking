@@ -531,6 +531,8 @@ class _HeroState extends State<_Hero> {
               else
                 TvLivePreview(
                   channel: hero,
+                  // Chaîne FIXE → aucun anti-rebond : image instantanée.
+                  debounce: Duration.zero,
                   onUnavailable: _advance,
                 ),
               // Nom de la chaîne du héro, lisible par-dessus la vidéo.
