@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.view.SurfaceView
+import android.view.TextureView
 import android.view.View
 import android.widget.FrameLayout
 import androidx.media3.common.C
@@ -96,7 +97,22 @@ class NativeVideoView(
         }
     }
 
-    private val surfaceView = SurfaceView(appContext)
+    // RENDU — APERÇU vs PLEIN ÉCRAN (bug terrain 2026-08-01, box Android 11) :
+    // une SurfaceView en composition hybride occupe sa PROPRE couche Android,
+    // Z-ordonnée AU-DESSUS de l'interface Flutter sur beaucoup de box TV. Dans
+    // le grand cadre d'aperçu, elle masquait donc le logo de repli ET le
+    // message explicatif : le client ne voyait qu'un rectangle NOIR tant
+    // qu'aucune image n'arrivait. La TextureView, elle, se compose comme une
+    // vue normale (Flutter dessine par-dessus sans conflit) — c'est le rendu
+    // recommandé pour une vignette. Le PLEIN ÉCRAN garde la SurfaceView :
+    // moins de copies, meilleure tenue 4K, et rien ne se dessine par-dessus.
+    private val surfaceView: SurfaceView? =
+        if (preview) null else SurfaceView(appContext)
+    private val textureView: TextureView? =
+        if (preview) TextureView(appContext) else null
+
+    /// La vue de rendu réellement utilisée (l'une OU l'autre).
+    private val renderView: View = surfaceView ?: textureView!!
 
     // Rendu des SOUS-TITRES : la vidéo est dessinée par MediaCodec directement
     // sur la Surface (elle ne passe pas par Flutter), donc les sous-titres
@@ -224,9 +240,9 @@ class NativeVideoView(
 
         // La SurfaceView ne doit PAS être focusable (sinon elle capte le D-pad
         // qui doit revenir au Focus Flutter) ; on garde l'écran allumé.
-        surfaceView.isFocusable = false
-        surfaceView.isFocusableInTouchMode = false
-        surfaceView.keepScreenOn = true
+        renderView.isFocusable = false
+        renderView.isFocusableInTouchMode = false
+        renderView.keepScreenOn = true
 
         // Tampons anti-coupure MAIS PRUDENTS EN MÉMOIRE (box à RAM limitée).
         // ⚠️ LEÇON : un buffer trop gros (90 s / 64 Mo) faisait planter les box
@@ -378,7 +394,11 @@ class NativeVideoView(
         // setLooper). Postée d'un bloc : elle s'exécute avant tout setUrl
         // (même file, ordre FIFO).
         playerHandler.post {
-            player.setVideoSurfaceView(surfaceView)
+            if (surfaceView != null) {
+                player.setVideoSurfaceView(surfaceView)
+            } else {
+                player.setVideoTextureView(textureView)
+            }
             player.addListener(this)
             player.playWhenReady = true
             // ZAP FLUIDE : garde les décodeurs MediaCodec « chauds » entre deux
@@ -405,7 +425,7 @@ class NativeVideoView(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT,
         )
-        container.addView(surfaceView, match)
+        container.addView(renderView, match)
         subtitleView.setUserDefaultStyle()
         subtitleView.setUserDefaultTextSize()
         container.addView(subtitleView, match)
@@ -795,7 +815,11 @@ class NativeVideoView(
             cancelRetry()
             playerHandler.removeCallbacks(positionPump)
             player.removeListener(this)
-            player.clearVideoSurfaceView(surfaceView)
+            if (surfaceView != null) {
+                player.clearVideoSurfaceView(surfaceView)
+            } else {
+                player.clearVideoTextureView(textureView)
+            }
             player.setForegroundMode(false) // relâche les codecs avant release
             player.release()
         }
