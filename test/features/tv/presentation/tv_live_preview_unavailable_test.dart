@@ -95,4 +95,17 @@ void main() {
         reason: 'un échec d\'une tentative abandonnée ne doit pas faire '
             'basculer le héro');
   });
+
+  testWidgets('l\'app DIT pourquoi il n\'y a pas d\'image (demande client)',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(_host(TvLivePreview(
+      channel: _channel('c1'),
+      debounce: const Duration(milliseconds: 50),
+      resolver: (Channel c) async => throw Exception('panel KO'),
+    )));
+    await tester.pump(const Duration(milliseconds: 80));
+    await tester.pump();
+    // Le client ne doit plus deviner si c'est l'app ou son fournisseur.
+    expect(find.textContaining('introuvable'), findsOneWidget);
+  });
 }

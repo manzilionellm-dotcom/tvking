@@ -37,6 +37,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_memory_guard.dart';
 import '../core/tv_tokens.dart';
+import '../data/failure_explainer.dart';
 import '../data/tv_preview_arbiter.dart';
 
 /// URL (et signature) effectives à jouer pour un aperçu.
@@ -153,6 +154,11 @@ class _TvLivePreviewState extends State<TvLivePreview>
   /// `true` dès que l'indisponibilité de la TENTATIVE courante a été
   /// signalée — jamais deux signaux pour la même tentative.
   bool _unavailableFired = false;
+
+  /// Phrase AFFICHÉE sous le logo quand aucune image n'arrive : le client
+  /// (et toi) savez tout de suite si c'est l'app ou le fournisseur.
+  /// `null` tant qu'il n'y a rien d'anormal à dire.
+  String? _whyNoImage;
 
   void _fireUnavailable(String reason) {
     if (_unavailableFired) return;
@@ -292,6 +298,7 @@ class _TvLivePreviewState extends State<TvLivePreview>
     _startupWatchdog?.cancel();
     _startupWatchdog = null;
     _unavailableFired = false;
+    _whyNoImage = null; // nouvelle tentative → on repart sans verdict
     _resolving = false;
     _loggedFirstFrame = false;
     _loggedError = false;
@@ -399,7 +406,10 @@ class _TvLivePreviewState extends State<TvLivePreview>
       return;
     }
     if (src == null) {
-      setState(() => _resolving = false);
+      setState(() {
+        _resolving = false;
+        _whyNoImage = 'Adresse du flux introuvable pour cette chaîne.';
+      });
       _fireUnavailable('résolution impossible');
       return;
     }
@@ -433,6 +443,11 @@ class _TvLivePreviewState extends State<TvLivePreview>
       if (!mounted || watchedSession != _session) return;
       final NativeVideoController? w = _ctrl;
       if (w != null && !w.firstFrame && !w.hasError) {
+        // Le serveur a accepté la connexion mais n'envoie aucune image :
+        // le cas typique d'une chaîne coupée côté fournisseur.
+        setState(() => _whyNoImage =
+            'Le serveur répond mais n\'envoie aucune image — chaîne '
+            'probablement coupée chez le fournisseur.');
         _fireUnavailable('aucune image en '
             '${_kStartupTimeout.inSeconds} s');
       }
@@ -474,6 +489,14 @@ class _TvLivePreviewState extends State<TvLivePreview>
           ' → repli logo',
           level: 'warn');
       _startupWatchdog?.cancel();
+      // Le POURQUOI humain, depuis la table de traduction déjà testée de
+      // la Boîte noire (codes Media3 stables → phrase française).
+      final PlaybackFailureExplanation why = explainPlaybackFailure(
+        errorCodeName: c.lastErrorCodeName,
+        errorCode: c.lastErrorCode,
+        cause: c.lastErrorCauseMessage ?? c.lastErrorMessage,
+      );
+      _whyNoImage = why.why;
       _fireUnavailable('erreur lecteur');
     }
     // Reconstruction UNIQUEMENT sur changement visuel (1re image / erreur).
@@ -532,6 +555,23 @@ class _TvLivePreviewState extends State<TvLivePreview>
                       height: 18,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: TvTokens.gold),
+                    ),
+                  ],
+                  // LE POURQUOI, À L'ÉCRAN (demande client) : quand aucune
+                  // image ne vient, on ne laisse plus le client deviner si
+                  // c'est l'app ou son fournisseur. Deux lignes maximum,
+                  // discrètes, jamais pendant le chargement normal.
+                  if (!loading && _whyNoImage != null) ...<Widget>[
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Text(
+                        _whyNoImage!,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvTokens.ui(12, color: TvTokens.mutedDim),
+                      ),
                     ),
                   ],
                 ],
