@@ -55,6 +55,7 @@ import '../data/cine_perf.dart';
 import '../data/failure_explainer.dart';
 import '../data/freeze_recovery_policy.dart';
 import '../data/playback_failure_log.dart';
+import '../data/low_connection_mode.dart';
 import '../data/quality_ladder.dart';
 import '../data/stream_stability_monitor.dart';
 import '../data/track_memory.dart';
@@ -384,6 +385,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Mémoire des pistes par chaîne : chargée une fois (quelques Ko), les
     // réapplications se font ensuite en mémoire pure (cf. _onPlayer).
     unawaited(TrackMemory.instance.load());
+    // Mode connexion faible : chargé pour que les zaps l'honorent (l'état
+    // est en mémoire pure ensuite, cf. _open).
+    unawaited(LowConnectionMode.instance.load());
     // Cascade « échec → sonde → formats » (parité téléphone) : branchée sur
     // les échecs définitifs du relais. Elle possède l'anti-boucle par chaîne.
     _fallback = StreamBlockedFallback(
@@ -704,6 +708,21 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   }
 
   void _open({bool reuse = false}) {
+    // MODE CONNEXION FAIBLE (n°37, opt-in) : avant de charger quoi que ce
+    // soit, on redirige vers la déclinaison la plus LÉGÈRE de la même
+    // chaîne (« TF1 SD » plutôt que « TF1 UHD ») si le panel en publie
+    // une. Silencieux et sans récursion : la déclinaison la plus basse
+    // n'a pas de petite sœur → null. L'ABR maison garde son rôle
+    // (rétrogradation en cours de lecture) quand le mode est coupé.
+    if (!_isVod && LowConnectionMode.instance.enabled) {
+      final Channel? light =
+          QualityLadder.lowestQualitySibling(_current, widget.channels);
+      if (light != null) {
+        final int i =
+            widget.channels.indexWhere((Channel c) => c.id == light.id);
+        if (i >= 0) _index = i;
+      }
+    }
     _freeze.openChannel(DateTime.now());
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image

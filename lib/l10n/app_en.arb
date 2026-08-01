@@ -1192,6 +1192,8 @@
   "tvProfileFamily": "Family",
   "tvSettingsSources": "My sources (add / activate / delete)",
   "tvBootResume": "Resume on startup",
+  "tvLowConnection": "Low-connection mode",
+  "tvLowConnectionHelp": "Always picks the lightest version of each channel (SD/HD) when one exists.",
   "tvPlayerRadio": "Radio",
   "tvRadioModeOn": "Radio mode — sound keeps playing, picture is off.",
   "tvBootResumeHelp": "When the app opens, jump straight back to the last channel you watched.",

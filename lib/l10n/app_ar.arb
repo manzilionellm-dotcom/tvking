@@ -1161,6 +1161,8 @@
   "tvProfileFamily": "العائلة",
   "tvSettingsSources": "مصادري (إضافة / تفعيل / حذف)",
   "tvBootResume": "الاستئناف عند التشغيل",
+  "tvLowConnection": "وضع الاتصال الضعيف",
+  "tvLowConnectionHelp": "يختار دائمًا النسخة الأخف لكل قناة (SD/HD) عند توفرها.",
   "tvPlayerRadio": "راديو",
   "tvRadioModeOn": "وضع الراديو — يستمر الصوت وتتوقف الصورة.",
   "tvBootResumeHelp": "عند فتح التطبيق، يعود مباشرة إلى آخر قناة شاهدتها.",

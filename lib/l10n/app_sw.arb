@@ -1161,6 +1161,8 @@
   "tvProfileFamily": "Familia",
   "tvSettingsSources": "Vyanzo vyangu (ongeza / washa / futa)",
   "tvBootResume": "Endelea unapowasha",
+  "tvLowConnection": "Hali ya mtandao dhaifu",
+  "tvLowConnectionHelp": "Huchagua kila mara toleo jepesi zaidi la kila kituo (SD/HD) likiwepo.",
   "tvPlayerRadio": "Redio",
   "tvRadioModeOn": "Hali ya redio — sauti inaendelea, picha imezimwa.",
   "tvBootResumeHelp": "Programu inapofunguliwa, inarudi moja kwa moja kwenye kituo ulichotazama mwisho.",

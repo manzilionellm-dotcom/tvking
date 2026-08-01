@@ -92,4 +92,42 @@ void main() {
       );
     });
   });
+
+  group('lowestQualitySibling (mode connexion faible, n°37)', () {
+    final List<Channel> list = <Channel>[
+      ch('1', 'FR| TF1 UHD'),
+      ch('2', 'FR| TF1 FHD'),
+      ch('3', 'FR| TF1 HD'),
+      ch('4', 'FR| TF1 SD'),
+      ch('5', 'FR| FRANCE 2 FHD'),
+      ch('6', 'FR| FRANCE 2 SD'),
+    ];
+
+    test('vise directement la version LA PLUS légère (UHD → SD)', () {
+      expect(QualityLadder.lowestQualitySibling(list[0], list)?.id, '4');
+      expect(QualityLadder.lowestQualitySibling(list[1], list)?.id, '4');
+      expect(QualityLadder.lowestQualitySibling(list[4], list)?.id, '6');
+    });
+
+    test('déjà la plus légère → null (aucune récursion possible)', () {
+      expect(QualityLadder.lowestQualitySibling(list[3], list), isNull);
+      expect(QualityLadder.lowestQualitySibling(list[5], list), isNull);
+    });
+
+    test('mêmes garde-fous : autre source ou même flux → null', () {
+      final Channel current = ch('a', 'FR| TF1 FHD', playlistId: 1);
+      final Channel otherSrc = ch('b', 'FR| TF1 SD', playlistId: 2);
+      expect(
+        QualityLadder.lowestQualitySibling(
+            current, <Channel>[current, otherSrc]),
+        isNull,
+      );
+      final Channel sameUrl = ch('c', 'FR| TF1 SD', url: current.streamUrl);
+      expect(
+        QualityLadder.lowestQualitySibling(
+            current, <Channel>[current, sameUrl]),
+        isNull,
+      );
+    });
+  });
 }

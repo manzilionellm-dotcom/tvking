@@ -110,4 +110,34 @@ abstract final class QualityLadder {
     }
     return best;
   }
+
+  /// Déclinaison de la MÊME chaîne au rang de qualité LE PLUS BAS
+  /// strictement inférieur à [current] — pour le MODE CONNEXION FAIBLE
+  /// (n°37) : on vise directement la version la plus légère (SD si elle
+  /// existe), pas la marche juste en dessous. Mêmes garde-fous que
+  /// [lowerQualitySibling] ; `null` si [current] est déjà la plus légère.
+  static Channel? lowestQualitySibling(
+    Channel current,
+    List<Channel> channels,
+  ) {
+    final String base = baseNameOf(current.name);
+    if (base.isEmpty) return null;
+    final int currentRank = rankOf(current.quality);
+    Channel? best;
+    int bestRank = 1 << 30;
+    for (final Channel c in channels) {
+      if (identical(c, current) || c.id == current.id) continue;
+      if (c.playlistId != current.playlistId) continue;
+      if (c.isLive != current.isLive) continue;
+      if (c.streamUrl == current.streamUrl) continue;
+      final int r = rankOf(c.quality);
+      if (r >= currentRank) continue;
+      if (baseNameOf(c.name) != base) continue;
+      if (r < bestRank) {
+        best = c;
+        bestRank = r;
+      }
+    }
+    return best;
+  }
 }

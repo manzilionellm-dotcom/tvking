@@ -3916,6 +3916,14 @@
   "tvProfileFamily": "Famille",
   "tvSettingsSources": "Mes sources (ajouter / activer / supprimer)",
   "tvBootResume": "Reprise au démarrage",
+  "tvLowConnection": "Mode connexion faible",
+  "@tvLowConnection": {
+    "description": "Réglage TV : mode connexion faible (n°37)"
+  },
+  "tvLowConnectionHelp": "Choisit d'office la version la plus légère de chaque chaîne (SD/HD) quand elle existe.",
+  "@tvLowConnectionHelp": {
+    "description": "Aide du mode connexion faible"
+  },
   "tvPlayerRadio": "Radio",
   "@tvPlayerRadio": {
     "description": "Bouton mode radio du lecteur TV (n°32)"

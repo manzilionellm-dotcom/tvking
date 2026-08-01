@@ -1161,6 +1161,8 @@
   "tvProfileFamily": "Familie",
   "tvSettingsSources": "Mine kilder (tilføj / aktivér / slet)",
   "tvBootResume": "Genoptag ved start",
+  "tvLowConnection": "Svag forbindelse-tilstand",
+  "tvLowConnectionHelp": "Vælger altid den letteste udgave af hver kanal (SD/HD), når den findes.",
   "tvPlayerRadio": "Radio",
   "tvRadioModeOn": "Radiotilstand — lyden fortsætter, billedet er slukket.",
   "tvBootResumeHelp": "Når appen åbnes, vender den direkte tilbage til den senest sete kanal.",

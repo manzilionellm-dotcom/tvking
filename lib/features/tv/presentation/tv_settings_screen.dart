@@ -13,6 +13,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../device/data/device_identity.dart';
 import '../data/boot_resume.dart';
+import '../data/low_connection_mode.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -56,9 +57,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
     });
-    // Reprise au démarrage : charge l'état persisté (la ligne se met à
-    // jour toute seule via son ListenableBuilder).
+    // Reprise au démarrage + mode connexion faible : charge l'état
+    // persisté (les lignes se mettent à jour via leur ListenableBuilder).
     unawaited(BootResume.instance.load());
+    unawaited(LowConnectionMode.instance.load());
   }
 
   Future<void> _refresh() async {
@@ -290,6 +292,71 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                                       color: fg)),
                               const SizedBox(height: 2),
                               Text(context.l10n.tvBootResumeHelp,
+                                  style: TextStyle(
+                                      fontSize: TvDimens.body,
+                                      color: focused
+                                          ? fg.withValues(alpha: 0.75)
+                                          : TvTokens.muted)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Icon(
+                          on
+                              ? Icons.toggle_on_rounded
+                              : Icons.toggle_off_rounded,
+                          color: on
+                              ? (focused ? fg : TvTokens.goldBright)
+                              : (focused ? fg : TvTokens.muted),
+                          size: 40,
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Mode connexion faible (n°37) : déclinaison la plus légère
+          //  de chaque chaîne choisie d'office (petits débits). Opt-in.
+          ListenableBuilder(
+            listenable: LowConnectionMode.instance,
+            builder: (BuildContext context, Widget? _) {
+              final bool on = LowConnectionMode.instance.enabled;
+              return TvFocusBuilder(
+                scale: TvFocusScale.large,
+                onSelect: () =>
+                    unawaited(LowConnectionMode.instance.setEnabled(!on)),
+                builder: (BuildContext context, bool focused) {
+                  final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+                  final Color fg = focused
+                      ? const Color(0xFF1A1206)
+                      : TvTokens.goldBright;
+                  return Container(
+                    width: 760,
+                    decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius:
+                            BorderRadius.circular(TvDimens.cardRadius)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 22, vertical: 16),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(Icons.network_check_rounded,
+                            color: fg, size: 26),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(context.l10n.tvLowConnection,
+                                  style: TextStyle(
+                                      fontSize: TvDimens.title,
+                                      fontWeight: FontWeight.w700,
+                                      color: fg)),
+                              const SizedBox(height: 2),
+                              Text(context.l10n.tvLowConnectionHelp,
                                   style: TextStyle(
                                       fontSize: TvDimens.body,
                                       color: focused

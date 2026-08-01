@@ -1161,6 +1161,8 @@
   "tvProfileFamily": "Familia",
   "tvSettingsSources": "Mis fuentes (añadir / activar / eliminar)",
   "tvBootResume": "Reanudar al iniciar",
+  "tvLowConnection": "Modo conexión débil",
+  "tvLowConnectionHelp": "Elige siempre la versión más ligera de cada canal (SD/HD) cuando existe.",
   "tvPlayerRadio": "Radio",
   "tvRadioModeOn": "Modo radio: el sonido sigue, la imagen está apagada.",
   "tvBootResumeHelp": "Al abrir la app, vuelve directamente al último canal que viste.",
