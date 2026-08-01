@@ -320,7 +320,12 @@ class _ArtSlideState extends State<_ArtSlide> {
               child: CachedNetworkImage(
                 imageUrl: url,
                 fit: BoxFit.cover,
-                memCacheWidth: 200, // flouté → une petite déco suffit
+                memCacheWidth: 200,
+                // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                // au-delà de 200 px — sur un catalogue de 100 000 titres, c'est
+                // des gigaoctets pour rien.
+                maxWidthDiskCache: 200, // flouté → une petite déco suffit
                 placeholder: (_, __) => const ColoredBox(color: Colors.black),
                 errorWidget: (_, __, ___) =>
                     const ColoredBox(color: Colors.black),
@@ -349,6 +354,11 @@ class _ArtSlideState extends State<_ArtSlide> {
                     imageUrl: url,
                     fit: BoxFit.contain,
                     memCacheWidth: 500,
+                    // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                    // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                    // au-delà de 500 px — sur un catalogue de 100 000 titres, c'est
+                    // des gigaoctets pour rien.
+                    maxWidthDiskCache: 500,
                     placeholder: (_, __) => const SizedBox.shrink(),
                     errorWidget: (_, __, ___) => const SizedBox.shrink(),
                   ),

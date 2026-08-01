@@ -2587,6 +2587,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                 // aucune raison d'occuper la mémoire d'une
                                 // box pour être affiché en 140 px.
                                 memCacheWidth: 300,
+                                // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                                // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                                // au-delà de 300 px — sur un catalogue de 100 000 titres, c'est
+                                // des gigaoctets pour rien.
+                                maxWidthDiskCache: 300,
                                 fadeInDuration:
                                     const Duration(milliseconds: 150),
                                 errorWidget: (_, __, ___) => const Icon(
@@ -2714,6 +2719,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                               // décode pas plus (défilement
                                               // d'une liste de 40 000).
                                               memCacheWidth: 80,
+                                              // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                                              // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                                              // au-delà de 80 px — sur un catalogue de 100 000 titres, c'est
+                                              // des gigaoctets pour rien.
+                                              maxWidthDiskCache: 80,
                                               fadeInDuration: const Duration(
                                                   milliseconds: 150),
                                               errorWidget: (_, __, ___) =>
@@ -2992,6 +3002,11 @@ class _ControlsBar extends StatelessWidget {
                 imageUrl: channel.logoUrl!,
                 fit: BoxFit.contain,
                 memCacheWidth: 160,
+                // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                // au-delà de 160 px — sur un catalogue de 100 000 titres, c'est
+                // des gigaoctets pour rien.
+                maxWidthDiskCache: 160,
                 fadeInDuration: const Duration(milliseconds: 150),
                 placeholder: (_, __) => _initials(),
                 errorWidget: (_, __, ___) => _initials())

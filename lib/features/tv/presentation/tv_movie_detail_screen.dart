@@ -403,6 +403,11 @@ class _SimilarCard extends StatelessWidget {
                 imageUrl: movie.posterUrl!,
                 fit: BoxFit.cover,
                 memCacheWidth: 160,
+                // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                // au-delà de 160 px — sur un catalogue de 100 000 titres, c'est
+                // des gigaoctets pour rien.
+                maxWidthDiskCache: 160,
                 fadeInDuration: const Duration(milliseconds: 150),
                 placeholder: (_, __) => fallback,
                 errorWidget: (_, __, ___) => fallback,
@@ -444,6 +449,11 @@ class _Backdrop extends StatelessWidget {
             imageUrl: p,
             fit: BoxFit.cover,
             memCacheWidth: 160,
+            // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+            // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+            // au-delà de 160 px — sur un catalogue de 100 000 titres, c'est
+            // des gigaoctets pour rien.
+            maxWidthDiskCache: 160,
             fadeInDuration: const Duration(milliseconds: 200),
             placeholder: (_, __) => gradientFallback,
             errorWidget: (_, __, ___) => gradientFallback,
@@ -460,6 +470,11 @@ class _Backdrop extends StatelessWidget {
       imageUrl: b,
       fit: BoxFit.cover,
       memCacheWidth: 960,
+      // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+      // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+      // au-delà de 960 px — sur un catalogue de 100 000 titres, c'est
+      // des gigaoctets pour rien.
+      maxWidthDiskCache: 960,
       fadeInDuration: const Duration(milliseconds: 250),
       placeholder: (_, __) => posterBlur(),
       errorWidget: (_, __, ___) => posterBlur(),

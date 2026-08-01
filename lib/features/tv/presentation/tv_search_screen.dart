@@ -307,6 +307,11 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                       imageUrl: ch.logoUrl!,
                       fit: BoxFit.contain,
                       memCacheWidth: 200,
+                      // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                      // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                      // au-delà de 200 px — sur un catalogue de 100 000 titres, c'est
+                      // des gigaoctets pour rien.
+                      maxWidthDiskCache: 200,
                       fadeInDuration: const Duration(milliseconds: 150),
                       placeholder: (_, __) =>
                           Opacity(opacity: 0.35, child: _ini(ch)),
@@ -390,6 +395,11 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                     imageUrl: url,
                     fit: BoxFit.cover,
                     memCacheWidth: 300,
+                    // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                    // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                    // au-delà de 300 px — sur un catalogue de 100 000 titres, c'est
+                    // des gigaoctets pour rien.
+                    maxWidthDiskCache: 300,
                     placeholder: (_, __) => fallback,
                     errorWidget: (_, __, ___) => fallback,
                   ),

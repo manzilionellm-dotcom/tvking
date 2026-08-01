@@ -142,6 +142,11 @@ class _AmbientBackdrop extends StatelessWidget {
           // le flou — pic RAM ~100× plus gros que nécessaire.
           // + cache DISQUE (plus de re-fetch après éviction/redémarrage).
           memCacheWidth: 64,
+          // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+          // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+          // au-delà de 64 px — sur un catalogue de 100 000 titres, c'est
+          // des gigaoctets pour rien.
+          maxWidthDiskCache: 64,
           // Si elle échoue (404, timeout, format non géré), on retombe
           // sur le dégradé neutre — l'écran ne doit jamais avoir l'air
           // cassé.

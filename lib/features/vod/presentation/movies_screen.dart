@@ -250,6 +250,11 @@ class _MovieRow extends StatelessWidget {
                     // Sans borne, un poster TMDB 500-2000 px était décodé
                     // plein format pour 44 px affichés → pics RAM + jank.
                     memCacheWidth: 132,
+                    // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                    // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                    // au-delà de 132 px — sur un catalogue de 100 000 titres, c'est
+                    // des gigaoctets pour rien.
+                    maxWidthDiskCache: 132,
                     errorWidget: (_, __, ___) => _posterFallback())
                 : _posterFallback(),
           ),

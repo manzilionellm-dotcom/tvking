@@ -548,6 +548,11 @@ class _SeriesHero extends StatelessWidget {
                         imageUrl: series.posterUrl!,
                         fit: BoxFit.cover,
                         memCacheWidth: 480,
+                        // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                        // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                        // au-delà de 480 px — sur un catalogue de 100 000 titres, c'est
+                        // des gigaoctets pour rien.
+                        maxWidthDiskCache: 480,
                         fadeInDuration: const Duration(milliseconds: 150),
                         placeholder: (_, __) => fallback,
                         errorWidget: (_, __, ___) => fallback,
@@ -775,6 +780,11 @@ class _SeriesPoster extends StatelessWidget {
       imageUrl: url,
       fit: BoxFit.cover,
       memCacheWidth: 300,
+      // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+      // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+      // au-delà de 300 px — sur un catalogue de 100 000 titres, c'est
+      // des gigaoctets pour rien.
+      maxWidthDiskCache: 300,
       placeholder: (_, __) => fallback,
       errorWidget: (_, __, ___) => fallback,
     );
@@ -949,6 +959,11 @@ class _TvSeriesDetailScreenState extends State<TvSeriesDetailScreen> {
                   imageUrl: info!.backdropUrl!,
                   fit: BoxFit.cover,
                   memCacheWidth: 960,
+                  // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                  // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                  // au-delà de 960 px — sur un catalogue de 100 000 titres, c'est
+                  // des gigaoctets pour rien.
+                  maxWidthDiskCache: 960,
                   fadeInDuration: const Duration(milliseconds: 250),
                   placeholder: (_, __) => const SizedBox.shrink(),
                   errorWidget: (_, __, ___) => const SizedBox.shrink(),
@@ -1260,6 +1275,11 @@ class _EpisodeRow extends StatelessWidget {
                         imageUrl: episode.posterUrl!,
                         fit: BoxFit.cover,
                         memCacheWidth: 192,
+                        // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                        // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                        // au-delà de 192 px — sur un catalogue de 100 000 titres, c'est
+                        // des gigaoctets pour rien.
+                        maxWidthDiskCache: 192,
                         fadeInDuration: const Duration(milliseconds: 150),
                         placeholder: (_, __) =>
                             const ColoredBox(color: TvTokens.tile),

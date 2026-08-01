@@ -176,6 +176,11 @@ class _TeamSection extends StatelessWidget {
                         imageUrl: team.badge,
                         fit: BoxFit.contain,
                         memCacheWidth: 120,
+                        // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                        // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                        // au-delà de 120 px — sur un catalogue de 100 000 titres, c'est
+                        // des gigaoctets pour rien.
+                        maxWidthDiskCache: 120,
                         fadeInDuration: const Duration(milliseconds: 150),
                         placeholder: (_, __) =>
                             const Icon(Icons.shield_rounded, color: TvTokens.muted),

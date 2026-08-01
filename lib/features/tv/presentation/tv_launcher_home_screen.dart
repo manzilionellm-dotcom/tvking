@@ -694,6 +694,11 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
                           // décoder le PNG 1000×1000 du panel gaspillait des
                           // Mo de RAM par tuile (anti-fermeture).
                           memCacheWidth: 160,
+                          // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                          // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                          // au-delà de 160 px — sur un catalogue de 100 000 titres, c'est
+                          // des gigaoctets pour rien.
+                          maxWidthDiskCache: 160,
                           memCacheHeight: 160,
                           errorWidget: (_, __, ___) => const Icon(
                               Icons.live_tv_rounded,
@@ -925,6 +930,11 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
                             // Affiche ~110×165 px à l'écran : décodage borné
                             // (les jaquettes TMDB font souvent 2000 px).
                             memCacheWidth: 240,
+                            // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                            // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                            // au-delà de 240 px — sur un catalogue de 100 000 titres, c'est
+                            // des gigaoctets pour rien.
+                            maxWidthDiskCache: 240,
                             memCacheHeight: 360,
                             errorWidget: (_, __, ___) =>
                                 _posterFallback(m.name),

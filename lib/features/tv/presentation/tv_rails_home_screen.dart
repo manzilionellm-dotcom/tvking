@@ -904,6 +904,11 @@ class _FavCardState extends State<_FavCard> {
                             fit: BoxFit.contain,
                             // Décodage borné (48 px affichés) — anti-OOM.
                             memCacheWidth: 128,
+                            // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                            // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                            // au-delà de 128 px — sur un catalogue de 100 000 titres, c'est
+                            // des gigaoctets pour rien.
+                            maxWidthDiskCache: 128,
                             memCacheHeight: 128,
                             errorWidget: (_, __, ___) => const Icon(
                                 Icons.live_tv_rounded,

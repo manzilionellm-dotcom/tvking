@@ -426,6 +426,11 @@ class _TizenControls extends StatelessWidget {
                     imageUrl: channel.logoUrl!,
                     fit: BoxFit.contain,
                     memCacheWidth: 160,
+                    // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                    // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                    // au-delà de 160 px — sur un catalogue de 100 000 titres, c'est
+                    // des gigaoctets pour rien.
+                    maxWidthDiskCache: 160,
                     placeholder: (_, __) => _initials(),
                     errorWidget: (_, __, ___) => _initials())
                 : _initials(),

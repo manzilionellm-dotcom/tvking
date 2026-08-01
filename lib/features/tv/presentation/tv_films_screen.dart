@@ -765,6 +765,11 @@ class _HeroBanner extends StatelessWidget {
             // 1000 px : net sur une TV 1080p sans faire exploser la mémoire
             // image (un seul backdrop à la fois → coût négligeable).
             memCacheWidth: 1000,
+            // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+            // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+            // au-delà de 1000 px — sur un catalogue de 100 000 titres, c'est
+            // des gigaoctets pour rien.
+            maxWidthDiskCache: 1000,
             fadeInDuration: const Duration(milliseconds: 220),
             placeholder: (_, __) => const ColoredBox(color: TvTokens.card),
             errorWidget: (_, __, ___) => const ColoredBox(color: TvTokens.card),
@@ -1046,6 +1051,11 @@ class _HeroPoster extends StatelessWidget {
       imageUrl: url!,
       fit: BoxFit.cover,
       memCacheWidth: 480,
+      // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+      // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+      // au-delà de 480 px — sur un catalogue de 100 000 titres, c'est
+      // des gigaoctets pour rien.
+      maxWidthDiskCache: 480,
       fadeInDuration: const Duration(milliseconds: 150),
       placeholder: (_, __) => fallback,
       errorWidget: (_, __, ___) => fallback,
@@ -1359,6 +1369,11 @@ class _PosterCard extends StatelessWidget {
       imageUrl: url,
       fit: BoxFit.cover,
       memCacheWidth: 300,
+      // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+      // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+      // au-delà de 300 px — sur un catalogue de 100 000 titres, c'est
+      // des gigaoctets pour rien.
+      maxWidthDiskCache: 300,
       placeholder: (_, __) => fallback,
       errorWidget: (_, __, ___) => fallback,
     );

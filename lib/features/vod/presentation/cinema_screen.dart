@@ -461,6 +461,11 @@ Widget _poster(String? url, {String? title}) {
     imageUrl: url,
     fit: BoxFit.cover,
     memCacheWidth: 192,
+    // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+    // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+    // au-delà de 192 px — sur un catalogue de 100 000 titres, c'est
+    // des gigaoctets pour rien.
+    maxWidthDiskCache: 192,
     fadeInDuration: const Duration(milliseconds: 150),
     placeholder: (_, __) => const ColoredBox(color: AppColors.surface),
     errorWidget: (_, __, ___) => fallback(),

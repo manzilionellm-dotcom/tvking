@@ -493,6 +493,11 @@ class _ChannelTile extends StatelessWidget {
                             imageUrl: channel.logoUrl!,
                             fit: BoxFit.contain,
                             memCacheWidth: 200,
+                            // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                            // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                            // au-delà de 200 px — sur un catalogue de 100 000 titres, c'est
+                            // des gigaoctets pour rien.
+                            maxWidthDiskCache: 200,
                             fadeInDuration:
                                 const Duration(milliseconds: 150),
                             placeholder: (_, __) =>

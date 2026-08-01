@@ -115,6 +115,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                         imageUrl: _info!.backdropUrl!,
                         fit: BoxFit.cover,
                         memCacheWidth: 960,
+                        // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                        // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                        // au-delà de 960 px — sur un catalogue de 100 000 titres, c'est
+                        // des gigaoctets pour rien.
+                        maxWidthDiskCache: 960,
                         placeholder: (_, __) =>
                             const ColoredBox(color: AppColors.surface),
                         errorWidget: (_, __, ___) =>
@@ -126,6 +131,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                             imageUrl: m.posterUrl!,
                             fit: BoxFit.cover,
                             memCacheWidth: 960,
+                            // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                            // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                            // au-delà de 960 px — sur un catalogue de 100 000 titres, c'est
+                            // des gigaoctets pour rien.
+                            maxWidthDiskCache: 960,
                             placeholder: (_, __) =>
                                 const ColoredBox(color: AppColors.surface),
                             errorWidget: (_, __, ___) =>
@@ -259,6 +269,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                                         imageUrl: s.posterUrl!,
                                         fit: BoxFit.cover,
                                         memCacheWidth: 192,
+                                        // Le DISQUE aussi est borné : sans ça, la box stocke l'affiche
+                                        // en taille d'origine (2000 px) alors qu'on ne l'affiche jamais
+                                        // au-delà de 192 px — sur un catalogue de 100 000 titres, c'est
+                                        // des gigaoctets pour rien.
+                                        maxWidthDiskCache: 192,
                                         placeholder: (_, __) =>
                                             const ColoredBox(
                                                 color: AppColors.surface),
