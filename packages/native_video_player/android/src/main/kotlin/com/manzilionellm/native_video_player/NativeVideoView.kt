@@ -442,6 +442,14 @@ class NativeVideoView(
                     if (url != currentUrl) retryCount = 0
                     currentUrl = url
                     currentUserAgent = ua
+                    // CHARGER UNE URL = LA JOUER (bug terrain 2026-08-01) :
+                    // playWhenReady n'était posé qu'à la construction du
+                    // lecteur. Un pause() antérieur (l'aperçu met en pause
+                    // pendant un zap) laissait playWhenReady à false : le
+                    // média se préparait sans jamais démarrer → aucune 1re
+                    // image, cadre d'aperçu figé. On le relève ici pour TOUS
+                    // les appelants (aperçu, plein écran, multi-vue).
+                    player.playWhenReady = true
                     setMedia(url, ua)
                 }
                 result.success(null)

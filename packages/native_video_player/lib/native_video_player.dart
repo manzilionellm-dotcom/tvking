@@ -140,6 +140,12 @@ class NativeVideoController extends ChangeNotifier {
           ? videoWidth! / videoHeight!
           : null;
 
+  /// Rattachement FORCÉ pour les tests (aucune PlatformView en widget test) :
+  /// permet de vérifier le contrat « setUrl ⇒ la lecture repart » sur un
+  /// MethodChannel simulé.
+  @visibleForTesting
+  void attachForTest(int viewId) => _attach(viewId);
+
   /// Appelé par [NativeVideoView] quand la PlatformView native est créée.
   void _attach(int viewId) {
     if (_attached || _disposed) return;
@@ -156,6 +162,10 @@ class NativeVideoController extends ChangeNotifier {
         'url': url,
         if (_pendingUserAgent != null) 'userAgent': _pendingUserAgent,
       });
+      // Même garantie qu'au setUrl direct : une URL en attente rejouée au
+      // rattachement doit PARTIR (un pause() antérieur ne doit pas geler la
+      // vue toute neuve).
+      ch.invokeMethod<void>('play');
     }
     // Réapplique le volume voulu dès le rattachement (utile en multi-vue où une
     // tuile démarre muette).
@@ -273,6 +283,15 @@ class NativeVideoController extends ChangeNotifier {
         'url': url,
         if (userAgent != null) 'userAgent': userAgent,
       });
+      // REPRISE DE LECTURE (bug terrain 2026-08-01, photos box) : `pause()`
+      // pose `playWhenReady = false` côté ExoPlayer, et `setUrl` ne le
+      // relève PAS — un `pause()` suivi d'un `setUrl` (exactement ce que
+      // fait l'aperçu quand on zappe : il met en pause pendant la
+      // navigation puis charge la nouvelle chaîne) préparait le média
+      // sans jamais le jouer : aucune 1re image, cadre d'aperçu figé,
+      // « l'image ne vient plus en direct ». Charger une URL veut TOUJOURS
+      // dire la jouer — on le redemande explicitement.
+      _channel!.invokeMethod<void>('play');
     } else {
       // Pas encore rattaché : on jouera ça (URL + signature) à l'attach.
       _pendingUrl = url;
