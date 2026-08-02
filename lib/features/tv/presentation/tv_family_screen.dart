@@ -348,7 +348,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                   builder: (BuildContext context, bool focused) {
                     final Color bg = focused ? TvTokens.gold : TvTokens.card;
                     final Color fg = focused
-                        ? const Color(0xFF1A1206)
+                        ? TvTokens.onGold
                         : TvTokens.muted;
                     return Container(
                       padding: const EdgeInsets.symmetric(
@@ -439,7 +439,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
                               final Color bg =
                                   focused ? TvTokens.gold : TvTokens.card;
                               final Color fg = focused
-                                  ? const Color(0xFF1A1206)
+                                  ? TvTokens.onGold
                                   : TvTokens.text;
                               return Container(
                                 padding: const EdgeInsets.symmetric(
@@ -497,7 +497,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
       builder: (BuildContext context, bool focused) {
         final Color bg = focused ? TvTokens.gold : TvTokens.badgeBg;
         final Color fg =
-            focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+            focused ? TvTokens.onGold : TvTokens.goldBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           decoration: BoxDecoration(

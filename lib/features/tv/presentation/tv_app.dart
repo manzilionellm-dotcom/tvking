@@ -353,7 +353,7 @@ class _DialogBtn extends StatelessWidget {
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused
-            ? const Color(0xFF1A1206)
+            ? TvTokens.onGold
             : (primary ? TvTokens.goldBright : TvTokens.text);
         return Container(
           width: double.infinity,

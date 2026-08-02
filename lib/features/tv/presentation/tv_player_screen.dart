@@ -3607,7 +3607,7 @@ class _UpNextButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.text;
+    final Color fg = focused ? TvTokens.onGold : TvTokens.text;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -3878,7 +3878,7 @@ class _TracksSheetState extends State<_TracksSheet> {
                                 : Icons.radio_button_off_rounded,
                             size: 18,
                             color: focused
-                                ? const Color(0xFF1A1206)
+                                ? TvTokens.onGold
                                 : (selected
                                     ? TvTokens.gold
                                     : TvTokens.mutedDim),
@@ -3895,7 +3895,7 @@ class _TracksSheetState extends State<_TracksSheet> {
                                     ? FontWeight.w700
                                     : FontWeight.w500,
                                 color: focused
-                                    ? const Color(0xFF1A1206)
+                                    ? TvTokens.onGold
                                     : TvTokens.text,
                               ),
                             ),

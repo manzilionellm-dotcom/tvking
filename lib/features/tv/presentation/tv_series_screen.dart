@@ -608,7 +608,7 @@ class _SeriesHeroButton extends StatelessWidget {
             ? TvTokens.ember
             : (primary ? TvTokens.emberBadgeBg : TvTokens.sel);
         final Color fg = focused
-            ? const Color(0xFF1A1206)
+            ? TvTokens.onGold
             : (primary ? TvTokens.emberBright : TvTokens.text);
         return Container(
           padding:

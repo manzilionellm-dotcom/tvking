@@ -229,7 +229,7 @@ class _ChoiceCard extends StatelessWidget {
       scale: TvFocusScale.small,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.text;
+        final Color fg = focused ? TvTokens.onGold : TvTokens.text;
         return Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -279,7 +279,7 @@ class _ShortcutChip extends StatelessWidget {
       scale: TvFocusScale.small,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.muted;
+        final Color fg = focused ? TvTokens.onGold : TvTokens.muted;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(

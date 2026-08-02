@@ -348,7 +348,7 @@ class _ActionButton extends StatelessWidget {
       builder: (BuildContext context, bool focused) {
         final Color bg = focused ? TvTokens.gold : TvTokens.sel;
         final Color fg =
-            focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+            focused ? TvTokens.onGold : TvTokens.goldBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
           decoration: BoxDecoration(

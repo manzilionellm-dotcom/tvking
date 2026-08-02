@@ -439,7 +439,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
             ? TvTokens.gold
             : (selected ? TvTokens.sel : TvTokens.card);
         final Color fg = focused
-            ? const Color(0xFF1A1206)
+            ? TvTokens.onGold
             : (selected ? TvTokens.goldBright : TvTokens.muted);
         return Container(
           decoration: BoxDecoration(
@@ -637,7 +637,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
           builder: (BuildContext context, bool focused) {
             final Color bg = focused ? TvTokens.gold : TvTokens.sel;
             final Color fg =
-                focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+                focused ? TvTokens.onGold : TvTokens.goldBright;
             return Container(
               decoration: BoxDecoration(
                   color: bg,

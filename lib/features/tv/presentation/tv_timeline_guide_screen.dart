@@ -402,7 +402,7 @@ class _GuideRowState extends State<_GuideRow> {
             builder: (BuildContext context, bool focused) {
               final Color bg = focused ? TvTokens.gold : TvTokens.card;
               final Color fg =
-                  focused ? const Color(0xFF1A1206) : TvTokens.text;
+                  focused ? TvTokens.onGold : TvTokens.text;
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 alignment: Alignment.centerLeft,
@@ -500,7 +500,7 @@ class _GuideRowState extends State<_GuideRow> {
               ? TvTokens.gold
               : (onAir ? TvTokens.badgeBg : TvTokens.sel);
           final Color fg = focused
-              ? const Color(0xFF1A1206)
+              ? TvTokens.onGold
               : (onAir ? TvTokens.goldBright : TvTokens.text);
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -563,7 +563,7 @@ class _ShiftChip extends StatelessWidget {
           ),
           child: Icon(icon,
               size: 20,
-              color: focused ? const Color(0xFF1A1206) : TvTokens.goldBright),
+              color: focused ? TvTokens.onGold : TvTokens.goldBright),
         );
       },
     );

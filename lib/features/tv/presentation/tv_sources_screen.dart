@@ -245,7 +245,7 @@ class _Pill extends StatelessWidget {
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        final Color fg = focused ? TvTokens.onGold : TvTokens.goldBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           decoration: BoxDecoration(

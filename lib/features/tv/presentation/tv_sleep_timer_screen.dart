@@ -114,7 +114,7 @@ class TvSleepTimerScreen extends StatelessWidget {
         final Color bg = focused
             ? TvTokens.gold
             : (selected ? TvTokens.badgeBg : TvTokens.sel);
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.text;
+        final Color fg = focused ? TvTokens.onGold : TvTokens.text;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
           decoration: BoxDecoration(

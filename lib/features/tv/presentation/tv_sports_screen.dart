@@ -434,7 +434,7 @@ class _IconBtn extends StatelessWidget {
             shape: BoxShape.circle,
           ),
           child: Icon(icon,
-              size: 24, color: focused ? const Color(0xFF1A1206) : TvTokens.muted),
+              size: 24, color: focused ? TvTokens.onGold : TvTokens.muted),
         );
       },
     );
@@ -459,7 +459,7 @@ class _PillButton extends StatelessWidget {
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        final Color fg = focused ? TvTokens.onGold : TvTokens.goldBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
           decoration: BoxDecoration(

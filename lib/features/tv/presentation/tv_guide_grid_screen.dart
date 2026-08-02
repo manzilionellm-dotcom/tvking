@@ -136,7 +136,7 @@ class _TvGuideGridScreenState extends State<TvGuideGridScreen> {
                 builder: (BuildContext context, bool focused) {
                   final Color bg = focused ? TvTokens.gold : TvTokens.card;
                   final Color fg =
-                      focused ? const Color(0xFF1A1206) : TvTokens.text;
+                      focused ? TvTokens.onGold : TvTokens.text;
                   return Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 8),

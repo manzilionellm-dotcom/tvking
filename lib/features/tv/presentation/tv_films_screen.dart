@@ -1011,7 +1011,7 @@ class _HeroButton extends StatelessWidget {
             ? TvTokens.ember
             : (primary ? TvTokens.emberBadgeBg : TvTokens.card);
         final Color fg = focused
-            ? const Color(0xFF1A1206)
+            ? TvTokens.onGold
             : (primary ? TvTokens.emberBright : TvTokens.text);
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
@@ -1276,7 +1276,7 @@ class _PosterCard extends StatelessWidget {
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.check_rounded,
-                            size: 15, color: Color(0xFF1A1206)),
+                            size: 15, color: TvTokens.onGold),
                       ),
                     ),
                   // Pastille « NOUVEAU » (coin haut gauche) — film apparu

@@ -156,7 +156,7 @@ class TvDisplaySettingsScreen extends StatelessWidget {
           ),
           child: Icon(icon,
               size: 28,
-              color: focused ? const Color(0xFF1A1206) : TvTokens.goldBright),
+              color: focused ? TvTokens.onGold : TvTokens.goldBright),
         );
       },
     );
@@ -174,7 +174,7 @@ class TvDisplaySettingsScreen extends StatelessWidget {
         final Color bg = focused
             ? TvTokens.gold
             : (selected ? TvTokens.badgeBg : TvTokens.sel);
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.text;
+        final Color fg = focused ? TvTokens.onGold : TvTokens.text;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
           decoration: BoxDecoration(

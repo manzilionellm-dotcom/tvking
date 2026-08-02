@@ -347,7 +347,7 @@ class _ProgramRow extends StatelessWidget {
                       Icon(Icons.replay_rounded,
                           size: 18,
                           color: focused
-                              ? const Color(0xFF1A1206)
+                              ? TvTokens.onGold
                               : TvTokens.goldBright),
                       const SizedBox(width: 6),
                       Text(context.l10n.tvReplay,
@@ -355,7 +355,7 @@ class _ProgramRow extends StatelessWidget {
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
                               color: focused
-                                  ? const Color(0xFF1A1206)
+                                  ? TvTokens.onGold
                                   : TvTokens.goldBright)),
                     ],
                   ),

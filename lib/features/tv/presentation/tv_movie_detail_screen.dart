@@ -539,7 +539,7 @@ class _ActionButton extends StatelessWidget {
             ? TvTokens.ember
             : (primary ? TvTokens.emberBadgeBg : TvTokens.card);
         final Color fg = focused
-            ? const Color(0xFF1A1206)
+            ? TvTokens.onGold
             : (primary ? TvTokens.emberBright : TvTokens.text);
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),

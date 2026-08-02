@@ -47,6 +47,7 @@ import '../core/tv_home_template.dart';
 import '../core/tv_logo.dart';
 import '../data/channel_reliability.dart';
 import '../data/iptv_sections.dart';
+import 'tv_app.dart' show RestartWidget, showExitDialog;
 import 'tv_films_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_search_screen.dart';
@@ -218,18 +219,42 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _bg,
-      body: SafeArea(
-        child: Row(
-          children: <Widget>[
-            _sidebar(),
-            Expanded(child: _content(_visible)),
-          ],
+    // RETOUR / EXIT (signalé par le client : « quand on retourne pour faire
+    // Exit, ça marche pas »). Le PopScope racine de tv_app laisse la main à
+    // l'accueil ; cet accueil-ci ne la prenait pas, donc le bouton Retour ne
+    // faisait RIEN. Il ouvre maintenant la boîte « Quitter l'application ?
+    // Oui / Non », comme sur l'autre modèle.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? _) async {
+        if (didPop || _exitAsked) return;
+        _exitAsked = true;
+        final String? action = await showExitDialog(context);
+        _exitAsked = false;
+        if (!mounted) return;
+        if (action == 'restart') {
+          RestartWidget.restart(context);
+        } else if (action == 'quit') {
+          await SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: _bg,
+        body: SafeArea(
+          child: Row(
+            children: <Widget>[
+              _sidebar(),
+              Expanded(child: _content(_visible)),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  /// Garde-fou : deux appuis rapides sur Retour ne doivent pas empiler deux
+  /// boîtes de dialogue l'une sur l'autre.
+  bool _exitAsked = false;
 
   // ---- Menu latéral gauche ----
   Widget _sidebar() {

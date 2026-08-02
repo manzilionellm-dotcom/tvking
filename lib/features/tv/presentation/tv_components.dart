@@ -204,7 +204,7 @@ class TvCtaButton extends StatelessWidget {
             border: focused ? Border.all(color: TvTokens.text, width: 2) : null,
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: const Color(0xFFCCB089)
+                color: TvTokens.gold
                     .withValues(alpha: focused ? 0.55 : 0.35),
                 blurRadius: focused ? 36 : 24,
                 spreadRadius: -10,
@@ -214,7 +214,7 @@ class TvCtaButton extends StatelessWidget {
           ),
           child: Text(label,
               style: TvTokens.ui(TvDimens.title,
-                  weight: FontWeight.w600, color: const Color(0xFF1A1206))),
+                  weight: FontWeight.w600, color: TvTokens.onGold)),
         );
       },
     );

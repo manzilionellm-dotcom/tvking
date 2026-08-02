@@ -256,7 +256,7 @@ class _GhostButton extends StatelessWidget {
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg =
-            focused ? const Color(0xFF1A1206) : TvTokens.muted;
+            focused ? TvTokens.onGold : TvTokens.muted;
         return Container(
           padding:
               const EdgeInsets.symmetric(horizontal: 20, vertical: 11),

@@ -561,7 +561,7 @@ class _ServerChip extends StatelessWidget {
               style: TvTokens.ui(15,
                   weight: FontWeight.w600,
                   color: focused
-                      ? const Color(0xFF1A1206)
+                      ? TvTokens.onGold
                       : (selected ? TvTokens.goldBright : TvTokens.muted))),
         );
       },

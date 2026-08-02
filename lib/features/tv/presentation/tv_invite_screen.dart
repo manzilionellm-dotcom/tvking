@@ -801,7 +801,7 @@ class _Chip extends StatelessWidget {
       onSelect: onSelect,
       builder: (BuildContext c, bool f) {
         final Color bg = f ? TvTokens.gold : (on ? TvTokens.sel : TvTokens.card);
-        final Color fg = f ? const Color(0xFF1A1206) : (on ? TvTokens.goldBright : TvTokens.text);
+        final Color fg = f ? TvTokens.onGold : (on ? TvTokens.goldBright : TvTokens.text);
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           decoration: BoxDecoration(
@@ -832,7 +832,7 @@ class _BigButton extends StatelessWidget {
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color bg = focused ? TvTokens.gold : TvTokens.sel;
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        final Color fg = focused ? TvTokens.onGold : TvTokens.goldBright;
         return Container(
           decoration: BoxDecoration(
               color: bg, borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
@@ -869,7 +869,7 @@ class _Key extends StatelessWidget {
         child: Text(label,
             style: TextStyle(
                 fontSize: 22, fontWeight: FontWeight.w800,
-                color: f ? const Color(0xFF1A1206) : TvTokens.text)),
+                color: f ? TvTokens.onGold : TvTokens.text)),
       ),
     );
   }
@@ -959,7 +959,7 @@ class _ChannelPicker extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                         fontSize: 17, fontWeight: FontWeight.w700,
-                                        color: f ? const Color(0xFF1A1206) : TvTokens.text)),
+                                        color: f ? TvTokens.onGold : TvTokens.text)),
                               ),
                             ]),
                           ),

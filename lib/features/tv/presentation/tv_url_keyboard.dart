@@ -360,7 +360,7 @@ class _QuickChip extends StatelessWidget {
           child: Text(label,
               style: TvTokens.mono(14,
                   color: focused
-                      ? const Color(0xFF1A1206)
+                      ? TvTokens.onGold
                       : TvTokens.goldBright)),
         );
       },
@@ -410,7 +410,7 @@ class _Key extends StatelessWidget {
                 style: TvTokens.ui(18,
                     weight: FontWeight.w600,
                     color: focused
-                        ? const Color(0xFF1A1206)
+                        ? TvTokens.onGold
                         : (enabled ? TvTokens.text : TvTokens.mutedDim))),
           );
         },
@@ -519,7 +519,7 @@ class _RepeatKeyState extends State<_RepeatKey> {
                 style: TvTokens.ui(18,
                     weight: FontWeight.w600,
                     color: _focused
-                        ? const Color(0xFF1A1206)
+                        ? TvTokens.onGold
                         : TvTokens.text)),
           ),
         ),
@@ -680,7 +680,7 @@ class _FieldIconButton extends StatelessWidget {
           ),
           child: Icon(icon,
               size: 22,
-              color: focused ? const Color(0xFF1A1206) : TvTokens.muted),
+              color: focused ? TvTokens.onGold : TvTokens.muted),
         );
       },
     );

@@ -69,6 +69,26 @@ void main() {
     expect(find.text('Mettre à jour'), findsOneWidget);
   });
 
+  // Signalé par le client : « quand on retourne pour faire Exit, ça marche
+  // pas ». La cause : le PopScope racine de tv_app laisse la main à
+  // l'accueil, et cet accueil ne la prenait pas — le bouton Retour ne
+  // faisait donc RIEN. L'accueil doit intercepter le retour lui-même.
+  testWidgets('le bouton Retour est intercepté par l\'accueil',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: TvIptvHomeScreen()));
+    await tester.pump();
+
+    final Iterable<Widget> scopes = tester
+        .widgetList(find.byWidgetPredicate((Widget w) => w is PopScope));
+    expect(scopes, isNotEmpty,
+        reason: 'sans PopScope, le bouton Retour ne fait rien du tout');
+    final dynamic scope = scopes.first;
+    expect(scope.canPop, isFalse,
+        reason: 'sans ça, Retour quitte sans rien demander');
+    expect(scope.onPopInvokedWithResult, isNotNull,
+        reason: 'c\'est ce rappel qui ouvre la boîte « Quitter ? »');
+  });
+
   testWidgets('bouquet vide : aucun plantage', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: TvIptvHomeScreen()));
     await tester.pump();

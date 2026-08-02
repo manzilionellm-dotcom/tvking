@@ -647,7 +647,7 @@ class _LangKey extends StatelessWidget {
               children: <Widget>[
                 Icon(Icons.language_rounded,
                     size: 22,
-                    color: focused ? const Color(0xFF1A1206) : TvTokens.goldBright),
+                    color: focused ? TvTokens.onGold : TvTokens.goldBright),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
@@ -657,7 +657,7 @@ class _LangKey extends StatelessWidget {
                     style: TextStyle(
                         fontSize: TvDimens.body,
                         fontWeight: FontWeight.w800,
-                        color: focused ? const Color(0xFF1A1206) : TvTokens.text),
+                        color: focused ? TvTokens.onGold : TvTokens.text),
                   ),
                 ),
               ],
@@ -696,7 +696,7 @@ class _Key extends StatelessWidget {
                 style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
-                    color: focused ? const Color(0xFF1A1206) : TvTokens.text)),
+                    color: focused ? TvTokens.onGold : TvTokens.text)),
           );
         },
       ),

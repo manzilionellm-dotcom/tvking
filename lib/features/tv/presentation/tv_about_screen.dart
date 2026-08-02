@@ -158,7 +158,7 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
               builder: (BuildContext context, bool focused) {
                 final Color bg = focused ? TvTokens.gold : TvTokens.sel;
                 final Color fg =
-                    focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+                    focused ? TvTokens.onGold : TvTokens.goldBright;
                 return Container(
                   width: 760,
                   decoration: BoxDecoration(

@@ -96,7 +96,7 @@ class _ImmersiveTile extends StatelessWidget {
       onSelect: () => AccentController.instance.enableDaily(),
       builder: (BuildContext context, bool focused) {
         final Color bg = focused ? TvTokens.gold : TvTokens.sel;
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        final Color fg = focused ? TvTokens.onGold : TvTokens.goldBright;
         return Container(
           width: 900,
           decoration: BoxDecoration(

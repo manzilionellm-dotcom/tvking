@@ -176,7 +176,7 @@ class _TvFamilyJoinScreenState extends State<TvFamilyJoinScreen> {
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color bg = focused ? TvTokens.gold : TvTokens.sel;
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.text;
+        final Color fg = focused ? TvTokens.onGold : TvTokens.text;
         return Container(
           width: 64,
           height: 56,

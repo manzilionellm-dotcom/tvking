@@ -320,7 +320,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
               style: TextStyle(
                   fontSize: TvDimens.titleS,
                   fontWeight: FontWeight.w700,
-                  color: focused ? const Color(0xFF1A1206) : TvTokens.text)),
+                  color: focused ? TvTokens.onGold : TvTokens.text)),
         );
       },
     );
@@ -395,7 +395,7 @@ class _Key extends StatelessWidget {
                 style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
-                    color: focused ? const Color(0xFF1A1206) : TvTokens.text)),
+                    color: focused ? TvTokens.onGold : TvTokens.text)),
           );
         },
       ),

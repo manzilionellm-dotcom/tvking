@@ -166,7 +166,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                   builder: (BuildContext context, bool focused) {
                     final Color bg = focused ? TvTokens.gold : TvTokens.sel;
                     final Color fg = focused
-                        ? const Color(0xFF1A1206)
+                        ? TvTokens.onGold
                         : TvTokens.goldBright;
                     return Container(
                       decoration: BoxDecoration(
@@ -440,7 +440,7 @@ class _PadButton extends StatelessWidget {
         builder: (BuildContext context, bool focused) {
           final Color bg = focused ? TvTokens.gold : TvTokens.card;
           final Color fg =
-              focused ? const Color(0xFF1A1206) : TvTokens.text;
+              focused ? TvTokens.onGold : TvTokens.text;
           return Container(
             width: 84,
             height: 64,
@@ -499,7 +499,7 @@ class _TogglePill extends StatelessWidget {
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        final Color fg = focused ? TvTokens.onGold : TvTokens.goldBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           decoration: BoxDecoration(

@@ -113,7 +113,7 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
                               final Color bg =
                                   focused ? TvTokens.gold : TvTokens.sel;
                               final Color fg = focused
-                                  ? const Color(0xFF1A1206)
+                                  ? TvTokens.onGold
                                   : TvTokens.goldBright;
                               return Container(
                                 decoration: BoxDecoration(
@@ -250,7 +250,7 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
                             final Color bg =
                                 focused ? TvTokens.gold : TvTokens.card;
                             final Color fg = focused
-                                ? const Color(0xFF1A1206)
+                                ? TvTokens.onGold
                                 : TvTokens.text;
                             return Container(
                               padding: const EdgeInsets.symmetric(
