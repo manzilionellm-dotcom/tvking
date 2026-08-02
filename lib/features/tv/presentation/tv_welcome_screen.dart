@@ -34,6 +34,7 @@
 //  décoratif qui ne saisit rien serait pire que pas de champ du tout.
 // =========================================================
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -77,6 +78,13 @@ class _C {
   static const Color warn = Color(0xFFD69847);
   static const Color bad = Color(0xFFC9584E);
 }
+
+/// Cible minimale d'un élément actionnable à la télécommande, en unités
+/// du canevas 1280 de l'app. La règle « 10-foot » veut au moins 64 :
+/// à trois mètres, un bouton plus petit est difficile à repérer quand le
+/// focus s'y pose, même si le D-pad l'atteint. On l'applique aux
+/// contrôles de cet écran plutôt qu'à leur seule décoration.
+const double _kMinFocusTarget = 64;
 
 class TvWelcomeScreen extends StatefulWidget {
   const TvWelcomeScreen({super.key, this.onReload});
@@ -244,11 +252,23 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
         // de taille fixe : tout se resserre plutôt que de déborder.
         final bool tight = c.maxHeight < 640;
         final double gap = tight ? 20 : 32;
-        final double padH = tight ? 28 : 52;
+        // ZONE TITLE-SAFE (règle 10-foot / overscan). Beaucoup de
+        // téléviseurs — surtout les anciens et ceux réglés en « zoom » —
+        // ROGNENT les bords de l'image. Une marge en pixels fixes ne
+        // protège rien : sur une grande dalle elle est trop petite, sur
+        // une petite elle mange l'écran. On prend donc 5 % de la surface,
+        // avec un plancher : c'est exactement `max(5vw, 48px)`.
+        //
+        // C'est en plus du réglage d'overscan global (Réglages →
+        // Affichage), qui protège TOUTE l'app. Ici on protège l'écran qui
+        // compte le plus : le premier, celui où se trouvent l'identifiant
+        // de l'appareil et le QR du support. Coupés, ils ne servent à rien.
+        final double safeH = math.max(c.maxWidth * 0.05, 48);
+        final double safeV = math.max(c.maxHeight * 0.05, 24);
         return Container(
           color: _C.bg,
           child: Padding(
-            padding: EdgeInsets.fromLTRB(padH, tight ? 14 : 22, padH, 0),
+            padding: EdgeInsets.fromLTRB(safeH, safeV, safeH, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
@@ -266,7 +286,7 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
                     ],
                   ),
                 ),
-                _footer(tight),
+                _footer(tight, safeV),
               ],
             ),
           ),
@@ -367,7 +387,13 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
   }
 
   Widget _tabs(bool tight) {
-    return Row(
+    // Wrap et non Row : une fois la marge title-safe prélevée, la colonne
+    // de gauche se resserre, et les deux onglets peuvent dépasser de
+    // quelques pixels sur une petite dalle. Ils passent alors à la ligne
+    // au lieu de déborder.
+    return Wrap(
+      spacing: tight ? 8 : 12,
+      runSpacing: 10,
       children: <Widget>[
         _TabButton(
           label: 'Xtream Codes',
@@ -376,7 +402,6 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
           tight: tight,
           onSelect: () => setState(() => _tab = 0),
         ),
-        SizedBox(width: tight ? 8 : 12),
         _TabButton(
           label: 'Playlist M3U',
           selected: _tab == 1,
@@ -550,9 +575,12 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
   // ---------------------------------------------------------
   //  6. Pied de page
   // ---------------------------------------------------------
-  Widget _footer(bool tight) {
+  Widget _footer(bool tight, double safeV) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: tight ? 8 : 14),
+      // La moitie de la marge title-safe en bas : le pied de page est
+      // deja discret, il n'a pas besoin des 5 % entiers, mais il ne doit
+      // pas non plus toucher le bord que la TV peut rogner.
+      padding: EdgeInsets.only(top: tight ? 8 : 14, bottom: safeV * 0.6),
       child: Row(
         children: <Widget>[
           Text(
@@ -607,6 +635,8 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
             return AnimatedContainer(
               duration: const Duration(milliseconds: 170),
               curve: Curves.easeOut,
+              constraints: const BoxConstraints(minHeight: _kMinFocusTarget),
+              alignment: Alignment.center,
               padding: EdgeInsets.symmetric(
                 horizontal: tight ? 22 : 30,
                 vertical: tight ? 13 : 17,
@@ -928,6 +958,8 @@ class _TabButton extends StatelessWidget {
         final Color fg = selected || focused ? _C.text : _C.dim;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 160),
+          constraints: const BoxConstraints(minHeight: _kMinFocusTarget * 0.72),
+          alignment: Alignment.center,
           padding: EdgeInsets.symmetric(
             horizontal: tight ? 14 : 20,
             vertical: tight ? 9 : 12,
@@ -1096,8 +1128,12 @@ class _FooterLink extends StatelessWidget {
       scale: TvFocusScale.small,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        return Container(
+          // Le texte est petit — volontairement, c'est un pied de page —
+          // mais sa ZONE de focus, elle, ne l'est pas.
+          constraints: const BoxConstraints(minHeight: _kMinFocusTarget * 0.5),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Text(
             label,
             style: TextStyle(

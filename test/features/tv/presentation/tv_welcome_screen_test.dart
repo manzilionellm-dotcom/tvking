@@ -159,6 +159,49 @@ void main() {
   });
 
   // ---------------------------------------------------------
+  //  RÈGLES « 10-FOOT » : overscan et cibles D-pad
+  // ---------------------------------------------------------
+  //  Beaucoup de téléviseurs ROGNENT les bords de l'image — surtout les
+  //  anciens et ceux réglés en « zoom ». Le contenu utile doit donc
+  //  rester dans la zone dite title-safe : 5 % de la surface, jamais
+  //  moins de 48. Ce n'est pas cosmétique : c'est sur cet écran que se
+  //  trouvent l'identifiant de l'appareil et le QR du support. Coupés,
+  //  ils ne servent plus à rien.
+  group('zone title-safe et cibles à la télécommande', () {
+    testWidgets('rien d\'utile ne touche le bord de l\'écran',
+        (WidgetTester tester) async {
+      const Size size = Size(1280, 720);
+      await _pump(tester, size: size);
+
+      final double minMargin = 1280 * 0.05; // 64
+      for (final Finder f in <Finder>[
+        find.byType(TvLogo),
+        find.text('Bienvenue'),
+        find.byType(TvWhatsAppQr),
+        find.text('Adresse MAC · ton identifiant client'),
+      ]) {
+        final Rect r = tester.getRect(f);
+        expect(r.left, greaterThanOrEqualTo(minMargin - 1),
+            reason: 'trop près du bord gauche : la TV peut le rogner');
+        expect(r.right, lessThanOrEqualTo(size.width - minMargin + 1),
+            reason: 'trop près du bord droit : la TV peut le rogner');
+      }
+    });
+
+    testWidgets('les boutons sont assez grands pour être vus à 3 m',
+        (WidgetTester tester) async {
+      await _pump(tester);
+      // 64 = le minimum « 10-foot » pour une cible actionnable.
+      expect(tester.getSize(find.text('Se connecter')).height + 0, isNotNull);
+      final Finder bouton = find.ancestor(
+        of: find.text('Se connecter'),
+        matching: find.byType(AnimatedContainer),
+      );
+      expect(tester.getSize(bouton.first).height, greaterThanOrEqualTo(64.0));
+    });
+  });
+
+  // ---------------------------------------------------------
   //  LE POINT QUI COMPTE : on n'affiche pas un faux « actif »
   // ---------------------------------------------------------
   testWidgets('sans abonnement connu, on n\'annonce PAS « abonnement actif »',
