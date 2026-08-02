@@ -36,6 +36,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../device/data/device_identity.dart';
 import '../../../core/update/update_prompt.dart';
 import '../../../widgets/optimized_image.dart';
 import '../../channels/domain/channel.dart';
@@ -50,8 +51,11 @@ import '../data/iptv_sections.dart';
 import 'tv_app.dart' show RestartWidget, showExitDialog;
 import 'tv_films_screen.dart';
 import 'tv_player_screen.dart';
+import 'tv_components.dart';
 import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
+import 'tv_shell.dart';
+import 'tv_smart_add_screen.dart';
 
 class TvIptvHomeScreen extends StatefulWidget {
   const TvIptvHomeScreen({super.key});
@@ -78,6 +82,16 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
   /// Favoris de la portée active — pour le petit cœur en coin de carte.
   Set<String> _favs = <String>{};
 
+  /// Identifiant de l'appareil, montré sur l'écran d'accueil quand aucune
+  /// source n'est encore ajoutée : c'est ce code que le client donne à son
+  /// revendeur pour se faire activer.
+  String _mac = '…';
+
+  /// A-t-on au moins UNE source enregistrée ? Ce n'est pas la même chose
+  /// que « zéro chaîne » : au démarrage, le bouquet met un instant à
+  /// arriver. Se fier aux chaînes ferait clignoter l'écran d'accueil.
+  bool _hasSource = true;
+
   @override
   void initState() {
     super.initState();
@@ -93,6 +107,9 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
     _clock = Timer.periodic(const Duration(minutes: 5), (_) {
       if (mounted) setState(() {});
     });
+    DeviceIdentity.instance.mac.then((String m) {
+      if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
+    }).catchError((_) {});
     _favs = FavoritesRepository.instance.current.toSet();
     _favSub =
         FavoritesRepository.instance.favoritesStream.listen((Set<String> f) {
@@ -121,8 +138,12 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
     }
     final List<IptvSection> countries = topCountrySections(counts);
     if (!mounted) return;
+    final bool hasSource =
+        PlaylistRepository.instance.currentPlaylists.isNotEmpty ||
+            all.isNotEmpty;
     setState(() {
       _all = all;
+      _hasSource = hasSource;
       _countries = countries;
       if (_selected.isEmpty) {
         _selected = countries.isNotEmpty ? countries.first.id : 'international';
@@ -241,12 +262,18 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
       child: Scaffold(
         backgroundColor: _bg,
         body: SafeArea(
-          child: Row(
-            children: <Widget>[
-              _sidebar(),
-              Expanded(child: _content(_visible)),
-            ],
-          ),
+          // AUCUNE SOURCE : on ne montre pas un menu vide et un « aucune
+          // chaîne » — c'est un cul-de-sac pour qui vient d'installer. On
+          // montre un vrai accueil : ajouter sa source, son identifiant
+          // d'appareil, et le QR pour joindre son revendeur.
+          child: _hasSource
+              ? Row(
+                  children: <Widget>[
+                    _sidebar(),
+                    Expanded(child: _content(_visible)),
+                  ],
+                )
+              : _welcome(),
         ),
       ),
     );
@@ -255,6 +282,151 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
   /// Garde-fou : deux appuis rapides sur Retour ne doivent pas empiler deux
   /// boîtes de dialogue l'une sur l'autre.
   bool _exitAsked = false;
+
+  // ---- Écran d'ACCUEIL quand aucune source n'est encore ajoutée ----
+  //  Signalé par le client : « le A ne montre rien à quelqu'un qui n'a pas
+  //  le lien ». Un menu vide et un « aucune chaîne » sont un cul-de-sac.
+  //  Ici, tout ce dont un nouvel arrivant a besoin, sur un seul écran :
+  //  ajouter sa source, lire son identifiant d'appareil, et joindre son
+  //  revendeur en scannant un QR.
+  Widget _welcome() {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints c) {
+        // Une box 720p ne laisse qu'environ 640 px utiles en hauteur, et
+        // certaines dalles descendent plus bas. Rien ici n'a de taille
+        // fixe : le QR se met à l'échelle de la place restante, la
+        // colonne de gauche défile en dernier recours, et les deux
+        // boutons secondaires passent à la ligne plutôt que de déborder.
+        final bool tight = c.maxHeight < 620;
+        final double qr = c.maxHeight.clamp(320.0, 900.0) * 0.26;
+        final double pad = tight ? 28 : 48;
+        return Padding(
+          padding:
+              EdgeInsets.fromLTRB(pad, tight ? 20 : 32, pad, tight ? 20 : 32),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      TvLogo(width: tight ? 150 : 190),
+                      SizedBox(height: tight ? 14 : 22),
+                      Text(
+                        'Bienvenue',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: tight ? 30 : 38,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Ajoute la source que ton fournisseur t\'a donnée — '
+                        'un lien M3U ou un compte Xtream. Elle t\'appartient : '
+                        'l\'application ne fournit aucune chaîne.',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.62),
+                          fontSize: tight ? 14 : 16,
+                          height: 1.4,
+                        ),
+                      ),
+                      SizedBox(height: tight ? 18 : 26),
+                      // Le bouton PRINCIPAL, focus par défaut : un nouvel
+                      // arrivant appuie sur OK sans rien chercher.
+                      _WelcomeButton(
+                        icon: Icons.add_link_rounded,
+                        label: 'Ajouter ma source',
+                        accent: _accent,
+                        primary: true,
+                        autofocus: true,
+                        onSelect: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                const TvShell(child: TvSmartAddScreen()),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: <Widget>[
+                          _WelcomeButton(
+                            icon: Icons.settings_rounded,
+                            label: 'Réglages',
+                            accent: _accent,
+                            onSelect: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const TvSettingsScreen(),
+                              ),
+                            ),
+                          ),
+                          _WelcomeButton(
+                            icon: Icons.system_update_rounded,
+                            label: 'Mettre à jour',
+                            accent: _accent,
+                            onSelect: () =>
+                                unawaited(checkForUpdatesInteractive(context)),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: tight ? 18 : 26),
+                      // L'IDENTIFIANT DE L'APPAREIL : c'est ce code que le
+                      // client dicte à son revendeur pour se faire activer.
+                      // Il doit être lisible à trois mètres.
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _card,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: _accent.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(
+                              'Identifiant de cet appareil',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.55),
+                                fontSize: 12,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _mac,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: _accent,
+                                fontSize: tight ? 20 : 24,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 2.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(width: tight ? 24 : 40),
+              // ----- QR : scanner pour écrire au revendeur, code inclus ---
+              TvWhatsAppQr(mac: _mac, size: qr),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   // ---- Menu latéral gauche ----
   Widget _sidebar() {
@@ -526,6 +698,82 @@ class _MenuActionButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Bouton de l'écran d'accueil « aucune source ». `primary` = le bouton
+/// plein, celui vers lequel on veut que l'œil et le focus aillent.
+class _WelcomeButton extends StatelessWidget {
+  const _WelcomeButton({
+    required this.icon,
+    required this.label,
+    required this.accent,
+    required this.onSelect,
+    this.primary = false,
+    this.autofocus = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final VoidCallback onSelect;
+  final bool primary;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: primary ? TvFocusScale.medium : TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = primary
+            ? const Color(0xFF06231F)
+            : (focused ? accent : Colors.white.withValues(alpha: 0.85));
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: EdgeInsets.symmetric(
+            horizontal: primary ? 30 : 20,
+            vertical: primary ? 18 : 13,
+          ),
+          decoration: BoxDecoration(
+            color: primary
+                ? accent
+                : (focused ? accent.withValues(alpha: 0.18) : null),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: focused ? accent : accent.withValues(alpha: 0.3),
+              width: focused ? 2 : 1,
+            ),
+            boxShadow: focused
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.35),
+                      blurRadius: 22,
+                    ),
+                  ]
+                : const <BoxShadow>[],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, color: fg, size: primary ? 24 : 19),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: primary ? 19 : 15,
+                  fontWeight: primary ? FontWeight.w700 : FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
