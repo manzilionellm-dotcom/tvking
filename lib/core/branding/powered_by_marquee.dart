@@ -23,7 +23,7 @@ import '../theme/app_text_styles.dart';
 class PoweredByMarquee extends StatefulWidget {
   const PoweredByMarquee({
     super.key,
-    this.text = 'POWERED BY 7 — THE FEW · NOT FOR EVERYONE',
+    this.text,
     this.duration = const Duration(seconds: 18),
     this.height = 30,
     this.tinted = true,
@@ -34,8 +34,17 @@ class PoweredByMarquee extends StatefulWidget {
   final bool tinted;
 
   /// Le texte qui défile. Sera répété autant de fois que
-  /// nécessaire pour remplir la largeur.
-  final String text;
+  /// nécessaire pour remplir la largeur. `null` (le cas normal) → il est
+  /// DÉDUIT du produit courant : « POWERED BY 7 MOTION · NOT FOR
+  /// EVERYONE ». Avant, le nom était écrit en dur ici — l'app affichait
+  /// donc encore « THE FEW » même après le changement de nom.
+  final String? text;
+
+  /// Texte résolu : nom + signature du produit courant.
+  String get resolvedText =>
+      text ??
+      'POWERED BY ${FlavorConfig.current.appName.toUpperCase()}'
+          ' · ${FlavorConfig.current.appTagline}';
 
   /// Durée d'une boucle complète (le texte traverse l'écran
   /// de droite à gauche en `duration`).
@@ -114,7 +123,7 @@ class _PoweredByMarqueeState extends State<PoweredByMarquee>
                     builder: (BuildContext context, Widget? child) {
                       final TextPainter tp = TextPainter(
                         text: TextSpan(
-                          text: '${widget.text}    ',
+                          text: '${widget.resolvedText}    ',
                           style: style,
                         ),
                         textDirection: TextDirection.ltr,
@@ -124,7 +133,7 @@ class _PoweredByMarqueeState extends State<PoweredByMarquee>
                       final int repeats =
                           ((cons.maxWidth / unit).ceil() + 2).clamp(2, 20);
                       final String full =
-                          List<String>.generate(repeats, (_) => widget.text)
+                          List<String>.generate(repeats, (_) => widget.resolvedText)
                               .join('    ');
                       final double dx =
                           -_ctrl.value * (unit * (repeats / 2));
@@ -154,7 +163,7 @@ class _PoweredByMarqueeState extends State<PoweredByMarquee>
   Widget _staticBand(TextStyle style) {
     return Center(
       child: Text(
-        widget.text,
+        widget.resolvedText,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: style,

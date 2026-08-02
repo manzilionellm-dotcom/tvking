@@ -120,10 +120,16 @@ class FlavorConfig {
   //  Configurations canoniques (utilisées par les mains)
   // -------------------------------------------------------
 
-  /// The Few — lecteur IPTV premium grand public.
+  /// 7 MOTION — lecteur IPTV premium grand public.
+  ///
+  /// Le produit s'est longtemps appelé « The Few » dans l'app alors que la
+  /// fiche Google Play, le domaine et le logo disent « 7 MOTION ». Le client
+  /// tourne ses vidéos de présentation : il faut UN seul nom partout
+  /// (2026-08-02). C'est ce champ qui alimente le splash, l'accueil simple,
+  /// l'onboarding, l'écran À propos et le titre système de l'app.
   static const FlavorConfig sevenMotion = FlavorConfig(
     flavor: Flavor.sevenMotion,
-    appName: 'The Few',
+    appName: '7 MOTION',
     appTagline: 'NOT FOR EVERYONE',
     adultOnly: false,
     biometricMandatory: false,

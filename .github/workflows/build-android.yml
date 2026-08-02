@@ -150,11 +150,11 @@ jobs:
       #     UNIQUEMENT là, juste avant `flutter build appbundle` (étape
       #     « Build release AAB » plus bas). L'APK sideload, déjà empaqueté,
       #     n'est pas affecté. Le `namespace` Kotlin/R reste `…tv_king`.
-      - name: Brand AndroidManifest with The Few label
+      - name: Brand AndroidManifest with 7 MOTION label
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if [ -f "$MANIFEST" ]; then
-            sed -i 's|android:label="tv_king"|android:label="The Few"|g' "$MANIFEST"
+            sed -i 's|android:label="tv_king"|android:label="7 MOTION"|g' "$MANIFEST"
             echo "--- Patched manifest ---"
             grep 'android:label' "$MANIFEST" || true
           fi
@@ -175,8 +175,8 @@ jobs:
             grep 'applicationId' "$G" || true
           fi
           if [ -f "$MANIFEST" ]; then
-            sed -i 's|android:label="The Few"|android:label="7 The Few Master"|g' "$MANIFEST"
-            sed -i 's|android:label="tv_king"|android:label="7 The Few Master"|g' "$MANIFEST"
+            sed -i 's|android:label="7 MOTION"|android:label="7 MOTION Master"|g' "$MANIFEST"
+            sed -i 's|android:label="tv_king"|android:label="7 MOTION Master"|g' "$MANIFEST"
             echo "--- label (console maître) ---"
             grep 'android:label' "$MANIFEST" || true
           fi
