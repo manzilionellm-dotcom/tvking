@@ -49,8 +49,43 @@ void main() {
     testWidgets('la marque et l\'état de la connexion en haut',
         (WidgetTester tester) async {
       await _pump(tester);
-      expect(find.text('7 MOTION'), findsWidgets);
+      expect(find.byType(TvLogo), findsOneWidget);
       expect(find.text('Connexion sécurisée'), findsOneWidget);
+      // Le logo porte déjà le nom : l'écrire à côté l'affichait deux fois.
+      expect(find.text('7 MOTION'), findsNothing);
+    });
+
+    // Le logo est ORANGE, le thème turquoise : posé en permanence, il
+    // écrase la palette. Le client : « il disparaît, il revient, genre il
+    // montre juste qu'il est là. » Il doit donc RESPIRER — et le faire
+    // sans jamais recalculer la mise en page (FadeTransition, pas de
+    // taille animée qui ferait tressauter toute la barre du haut).
+    testWidgets('le logo respire au lieu de rester planté',
+        (WidgetTester tester) async {
+      await _pump(tester);
+
+      // `.first` = l'ancêtre le PLUS PROCHE du logo, donc le nôtre —
+      // MaterialApp en empile d'autres pour ses transitions de route.
+      final Finder fade = find
+          .ancestor(
+            of: find.byType(TvLogo),
+            matching: find.byType(FadeTransition),
+          )
+          .first;
+      expect(fade, findsOneWidget);
+
+      double opacityNow() => tester.widget<FadeTransition>(fade).opacity.value;
+
+      final double start = opacityNow();
+      await tester.pump(const Duration(milliseconds: 1300));
+      final double mid = opacityNow();
+      expect(mid, lessThan(start), reason: 'il doit s\'effacer…');
+
+      // 1300 + 3400 = 4700 ms : bien engagé dans le retour (le cycle
+      // aller-retour dure 5200 ms). Pas +2600 : on retomberait pile sur
+      // le point symétrique, donc sur la MÊME valeur.
+      await tester.pump(const Duration(milliseconds: 3400));
+      expect(opacityNow(), greaterThan(mid), reason: '…puis revenir');
     });
 
     testWidgets('l\'accueil et les deux méthodes de connexion',

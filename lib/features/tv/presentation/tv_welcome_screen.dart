@@ -282,17 +282,10 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
     final bool online = SubscriptionState.instance.remote.exists;
     return Row(
       children: <Widget>[
-        TvLogo(width: tight ? 104 : 128),
-        SizedBox(width: tight ? 12 : 18),
-        Text(
-          FlavorConfig.current.appName,
-          style: TextStyle(
-            color: _C.text,
-            fontSize: tight ? 19 : 23,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.4,
-          ),
-        ),
+        // Le logo PORTE DÉJÀ le nom « 7 MOTION ». Écrire le nom à côté
+        // l'affichait deux fois de suite — repéré sur le rendu avant
+        // build. On laisse donc parler le logo, en plus grand.
+        _BreathingLogo(width: tight ? 168 : 210),
         const Spacer(),
         // Le point vert ne ment pas non plus : il dit si le serveur nous
         // a répondu, pas « tout va bien » par principe.
@@ -671,6 +664,58 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
 // =========================================================
 //  Petites pièces
 // =========================================================
+
+/// Le logo qui RESPIRE : il s'efface presque complètement, puis revient.
+///
+/// Demande du client : « il disparaît, il revient, genre il montre juste
+/// qu'il est là ». La raison est juste — le logo est ORANGE, le thème est
+/// turquoise. Un aplat orange posé en permanence en haut à gauche tire
+/// l'œil et écrase la palette de tout l'écran. En le faisant respirer, la
+/// marque se rappelle au souvenir sans jamais dominer.
+///
+/// Choix d'exécution :
+///   • cycle LENT (5,2 s aller-retour) — un clignotement rapide serait
+///     une alarme, pas une signature ;
+///   • on descend à 0,10 et pas à 0 : le logo s'efface, il ne « saute »
+///     pas hors de l'écran ;
+///   • FadeTransition, donc AUCUN recalcul de mise en page à chaque
+///     image — sur une box modeste, une opacité animée ne coûte rien,
+///     là où une taille animée ferait tressauter toute la barre du haut.
+class _BreathingLogo extends StatefulWidget {
+  const _BreathingLogo({required this.width});
+
+  final double width;
+
+  @override
+  State<_BreathingLogo> createState() => _BreathingLogoState();
+}
+
+class _BreathingLogoState extends State<_BreathingLogo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2600),
+  )..repeat(reverse: true);
+
+  late final Animation<double> _fade = Tween<double>(
+    begin: 1.0,
+    end: 0.10,
+  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOutSine));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: TvLogo(width: widget.width),
+    );
+  }
+}
 
 /// Pastille d'en-tête : un point de couleur ou une icône, puis un mot.
 class _Pill extends StatelessWidget {
