@@ -11,8 +11,8 @@ La fiche générale (Amazon, site, argumentaire) reste dans
 | `icon-512.png` | Icône de l'application | 512 × 512, PNG 32 bits, alpha opaque |
 | `feature-graphic-1024x500.png` | Image de bandeau | 1024 × 500, PNG 32 bits |
 
-Générés depuis `assets/branding/logo_7motion.jpg` (le vrai logo, pas une
-invention). Il manque encore **2 à 8 captures d'écran de téléphone**
+Générés depuis `assets/branding/logo_7_by_mz_src.png` — le logo définitif
+fourni par le client (le 7 noir sur orange, signé « by Mz »). Il manque encore **2 à 8 captures d'écran de téléphone**
 (16:9 ou 9:16) : elles ne peuvent venir que d'un appareil réel. Règle
 absolue sur les captures — **aucun logo ni nom de chaîne réelle visible**.
 
@@ -68,7 +68,7 @@ ORGANISATION
 - Mode Enfants protégé par code
 
 SUR TOUS VOS ÉCRANS
-- Téléphone, tablette, Android TV, Google TV, Fire TV
+- Téléphone, tablette, Android TV, Google TV
 - Diffusion vers un téléviseur via Chromecast ou QR code
 - Vos sources et votre historique vous suivent d'un appareil à l'autre
 
@@ -121,7 +121,7 @@ ORGANISATION
 - PIN-protected Kids Mode
 
 ON EVERY SCREEN
-- Phone, tablet, Android TV, Google TV, Fire TV
+- Phone, tablet, Android TV, Google TV
 - Send to a television via Chromecast or QR code
 - Your sources and history follow you across devices
 
@@ -160,7 +160,7 @@ Rien n'est **partagé** avec un tiers.
 | Activité dans l'app (chaîne en cours, 50 dernières chaînes) | oui | obligatoire | « Récemment », synchro entre appareils | `subscription_backend.dart` |
 | Inventaire des sources (nom, serveur/URL, identifiant ; **jamais le mot de passe**) | oui | obligatoire | support, retrouver ses sources ailleurs | `subscription_backend.dart` |
 | Avis client (note + commentaire) | oui | **facultatif** | support | `feedback_repository.dart` |
-| **Journaux de plantage** | **NON** | — | — | build v14 : `GOOGLE_SERVICES_JSON absent → Crashlytics désactivé`, vérifié dans le journal du run 30727088092 |
+| **Journaux de plantage** | **NON** | — | — | `GOOGLE_SERVICES_JSON absent → Crashlytics désactivé`, vérifié dans le journal de compilation |
 | Photos, vidéos, fichiers | non | — | — | permissions média retirées de l'AAB Play (`build-android.yml`) |
 | Nom, e-mail, contacts, position précise, santé, finances, SMS, micro, caméra | non | — | — | aucun code correspondant |
 
@@ -172,7 +172,7 @@ Rien n'est **partagé** avec un tiers.
   n'y a aucune régie tierce et aucun identifiant publicitaire, mais la
   réponse au formulaire reste **oui**.
 - **Journaux de plantage → ne rien déclarer.** Crashlytics n'était pas actif
-  au build de l'AAB v14. Si le secret est posé un jour, cette ligne devra
+  au build. Si le secret est posé un jour, cette ligne devra
   changer.
 
 ## À ne jamais écrire
@@ -191,4 +191,4 @@ Rien n'est **partagé** avec un tiers.
 3. Politique de confidentialité : `https://app.7themotion.com/confidentialite`
 4. Sécurité des données : recopier le tableau ci-dessus.
 5. Classification du contenu (IARC), public cible (16+), pays, coordonnées.
-6. Créer la version Production avec l'AAB **versionCode 14**, puis déployer.
+6. Créer la version Production avec l'AAB **versionCode 19**, puis déployer.
