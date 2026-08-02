@@ -42,6 +42,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../device/data/device_identity.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../demo/data/demo_mode.dart';
 import '../../playlists/data/source_sync.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_focusable.dart';
@@ -381,6 +382,15 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
           _tabs(tight),
           SizedBox(height: tight ? 12 : 18),
           _tabBody(tight, autofocus: !reloadMode),
+          SizedBox(height: tight ? 12 : 18),
+          // MODE DÉMO — demande du client : « avant de mettre son M3U,
+          // le client doit voir comment ça marche avec de VRAIES
+          // vidéos ». Sur une télé c'est encore plus vrai que sur un
+          // téléphone : personne ne saisit un serveur Xtream à la
+          // télécommande pour « voir si ça vaut le coup ». Un appui, et
+          // l'accueil se remplit d'un bouquet d'exemples qu'il peut
+          // vraiment lancer.
+          _DemoTvButton(tight: tight),
         ],
       ),
     );
@@ -825,6 +835,87 @@ class _SweepShift extends GradientTransform {
   @override
   Matrix4? transform(Rect bounds, {TextDirection? textDirection}) =>
       Matrix4.translationValues(bounds.width * dx, 0, 0);
+}
+
+/// Le bouton « Essayer en mode démo » de l'écran d'accueil TV.
+///
+/// Volontairement SOUS les deux onglets de connexion : celui qui a son
+/// lien doit le saisir, pas être dévié vers une démonstration. Mais
+/// celui qui n'a rien — et sur une télé, c'est le cas le plus fréquent,
+/// personne ne tape un serveur Xtream à la télécommande pour essayer —
+/// trouve enfin quelque chose à faire.
+///
+/// Il disparaît dès que la démo tourne : à ce moment-là l'accueil a des
+/// chaînes, donc cet écran n'est plus affiché du tout.
+class _DemoTvButton extends StatelessWidget {
+  const _DemoTvButton({required this.tight});
+
+  final bool tight;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: () => unawaited(DemoMode.instance.enter()),
+      builder: (BuildContext context, bool focused) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          constraints: const BoxConstraints(minHeight: _kMinFocusTarget * 0.8),
+          alignment: Alignment.centerLeft,
+          padding: EdgeInsets.symmetric(
+            horizontal: tight ? 16 : 22,
+            vertical: tight ? 10 : 13,
+          ),
+          decoration: BoxDecoration(
+            color: focused ? _C.accent.withValues(alpha: 0.16) : null,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: focused ? _C.accent : _C.accent.withValues(alpha: 0.30),
+              width: focused ? 2 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.play_lesson_rounded,
+                  color: focused ? _C.accentSoft : _C.accent,
+                  size: tight ? 18 : 21),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      'Essayer en mode démo',
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: focused ? _C.accentSoft : _C.text,
+                        fontSize: tight ? 15 : 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Des chaînes et des films d\'exemple, tout de suite — '
+                      'pour voir comment ça marche avant d\'ajouter ta source.',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _C.faint,
+                        fontSize: tight ? 12 : 13,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 /// Pastille d'en-tête : un point de couleur ou une icône, puis un mot.

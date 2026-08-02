@@ -156,6 +156,22 @@ void main() {
       expect(find.text('Conditions d\'utilisation'), findsOneWidget);
       expect(find.text('Powered by 7 MOTION'), findsOneWidget);
     });
+
+    // Demande du client : « avant de mettre son M3U, le client doit voir
+    // comment ça marche avec de VRAIES vidéos ». Sur une télé, c'est le
+    // cas le plus fréquent : personne ne saisit un serveur Xtream à la
+    // télécommande juste pour essayer.
+    testWidgets('on peut essayer sans rien saisir : le mode démo',
+        (WidgetTester tester) async {
+      await _pump(tester);
+      expect(find.text('Essayer en mode démo'), findsOneWidget);
+      // …mais SOUS les deux méthodes de connexion : celui qui a son lien
+      // doit le saisir, pas être dévié vers une démonstration.
+      final double demoY =
+          tester.getTopLeft(find.text('Essayer en mode démo')).dy;
+      final double xtreamY = tester.getTopLeft(find.text('Xtream Codes')).dy;
+      expect(demoY, greaterThan(xtreamY));
+    });
   });
 
   // ---------------------------------------------------------

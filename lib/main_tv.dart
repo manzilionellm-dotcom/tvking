@@ -29,6 +29,7 @@ import 'core/realtime/realtime_sync_service.dart';
 import 'core/profiles/profiles_repository.dart';
 import 'core/theme/accent_controller.dart';
 import 'features/channels/data/recently_watched_repository.dart';
+import 'features/demo/data/demo_mode.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/playlist_repository.dart';
@@ -132,6 +133,12 @@ Future<void> _bootstrap() async {
   //    lancement, on repart directement sur l'adresse de secours
   //    mémorisée (retour auto au domaine maison au 1er heartbeat OK).
   await BackendHosts.loadPreferred();
+  // 0b) MODE DÉMO : si la box l'avait laissé actif, on le remet AVANT
+  //     que l'accueil ne se dessine. Sinon le client rallume sa télé sur
+  //     un écran vide, sans comprendre où sont passées les chaînes qu'il
+  //     regardait hier. Une vraie source chargée ensuite reprend la main
+  //     toute seule (son import relit le disque et écrase ce cache).
+  unawaited(DemoMode.instance.restore());
   // 1) Identité stable (MAC) → le panel reconnaît l'appareil TV.
   unawaited(DeviceIdentity.instance.preload());
   // 2) Licence/abonnement : heartbeat + statut depuis le MÊME worker.
