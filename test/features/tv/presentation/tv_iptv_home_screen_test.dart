@@ -23,6 +23,7 @@ import 'package:tv_king/features/playlists/data/playlist_repository.dart';
 import 'package:tv_king/features/playlists/domain/playlist.dart';
 import 'package:tv_king/features/tv/presentation/tv_components.dart';
 import 'package:tv_king/features/tv/presentation/tv_films_screen.dart';
+import 'package:tv_king/features/tv/presentation/tv_welcome_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_iptv_home_screen.dart';
 
 List<Channel> _bouquet(int n) => <Channel>[
@@ -253,13 +254,12 @@ void main() {
       // Le délai d'anti-clignotement passé, l'accueil doit apparaître.
       await tester.pump(const Duration(seconds: 3));
 
-      expect(find.text('Aucune chaîne'), findsOneWidget);
+      expect(find.byType(TvWelcomeScreen), findsOneWidget);
       expect(find.text('Sports'), findsNothing,
           reason: 'le menu vide était le cul-de-sac signalé par le client');
       // Et le bon geste lui est proposé : recharger, pas « ajouter » une
       // source qu'il a déjà.
       expect(find.text('Recharger ma source'), findsOneWidget);
-      expect(find.text('Ajouter ma source'), findsNothing);
     });
 
     // Le revers : ne PAS faire clignoter l'accueil au démarrage. Une
@@ -271,23 +271,7 @@ void main() {
       await pumpWelcome(tester);
 
       expect(find.text('Chargement de tes chaînes…'), findsOneWidget);
-      expect(find.text('Aucune chaîne'), findsNothing);
-    });
-
-    testWidgets('le chemin pour ajouter sa source est le bouton principal',
-        (WidgetTester tester) async {
-      await pumpWelcome(tester);
-      expect(find.text('Ajouter ma source'), findsOneWidget);
-      // Les deux sorties de secours restent à portée de télécommande.
-      expect(find.text('Réglages'), findsOneWidget);
-      expect(find.text('Mettre à jour'), findsOneWidget);
-    });
-
-    testWidgets('l\'identifiant de l\'appareil est affiché en clair',
-        (WidgetTester tester) async {
-      await pumpWelcome(tester);
-      // C'est ce code que le client dicte à son revendeur.
-      expect(find.text('Identifiant de cet appareil'), findsOneWidget);
+      expect(find.byType(TvWelcomeScreen), findsNothing);
     });
 
     testWidgets('un QR permet de joindre le revendeur',
@@ -304,7 +288,10 @@ void main() {
       await pumpWelcome(tester, size: const Size(960, 540));
       expect(tester.takeException(), isNull,
           reason: 'un débordement ici, c\'est la première image de l\'app');
-      expect(find.text('Ajouter ma source'), findsOneWidget);
+      // Le contenu de l'écran est vérifié en détail — et sur quatre
+      // tailles de dalle — dans tv_welcome_screen_test.dart. Ici on
+      // vérifie seulement que l'accueil le monte bien, sans casse.
+      expect(find.byType(TvWelcomeScreen), findsOneWidget);
     });
   });
 }

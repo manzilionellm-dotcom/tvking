@@ -65,23 +65,39 @@ class TvWhatsAppQr extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const Icon(Icons.qr_code_scanner_rounded,
-                color: TvTokens.goldBright, size: 22),
-            const SizedBox(width: 10),
-            Text(context.l10n.tvScanToActivate,
-                style: TvTokens.ui(18,
-                    weight: FontWeight.w700, color: TvTokens.goldBright)),
-          ],
-        ),
-        const SizedBox(height: 6),
+        // Le bloc de texte est BORNÉ à la largeur du QR : sans ça, dans
+        // une colonne étroite (fiche client de l'accueil), le libellé
+        // « Scanne pour activer » débordait de la carte. Il se met donc
+        // à l'échelle du QR, et passe à la ligne plutôt que de sortir.
         SizedBox(
           width: size + 40,
-          child: Text(context.l10n.tvScanHelp,
-              textAlign: TextAlign.center,
-              style: TvTokens.ui(13, color: TvTokens.mutedDim)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.qr_code_scanner_rounded,
+                      color: TvTokens.goldBright,
+                      size: (size * 0.11).clamp(14.0, 22.0)),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      context.l10n.tvScanToActivate,
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      style: TvTokens.ui((size * 0.085).clamp(13.0, 18.0),
+                          weight: FontWeight.w700, color: TvTokens.goldBright),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(context.l10n.tvScanHelp,
+                  textAlign: TextAlign.center,
+                  style: TvTokens.ui(13, color: TvTokens.mutedDim)),
+            ],
+          ),
         ),
       ],
     );
@@ -204,8 +220,7 @@ class TvCtaButton extends StatelessWidget {
             border: focused ? Border.all(color: TvTokens.text, width: 2) : null,
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: TvTokens.gold
-                    .withValues(alpha: focused ? 0.55 : 0.35),
+                color: TvTokens.gold.withValues(alpha: focused ? 0.55 : 0.35),
                 blurRadius: focused ? 36 : 24,
                 spreadRadius: -10,
                 offset: const Offset(0, 8),
