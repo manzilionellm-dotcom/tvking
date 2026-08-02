@@ -9,7 +9,7 @@
 name: tv_king
 description: "The Few — lecteur multimédia premium (Not For Everyone)."
 publish_to: 'none'
-version: 1.0.0+17
+version: 1.0.0+18
 
 environment:
   sdk: ^3.5.0
@@ -304,10 +304,10 @@ flutter_launcher_icons:
   # Fond adaptatif = l'orange du logo : sur les lanceurs qui masquent en
   # rond, le pourtour reste orange au lieu d'une couronne d'une autre
   # couleur.
-  image_path: "assets/branding/icon_7motion_seven.png"
+  image_path: "assets/branding/icon_7_by_mz.png"
   min_sdk_android: 21
-  adaptive_icon_background: "#FF912E"
-  adaptive_icon_foreground: "assets/branding/icon_7motion_seven.png"
+  adaptive_icon_background: "#FA7005"
+  adaptive_icon_foreground: "assets/branding/icon_7_by_mz.png"
 
 flutter:
   uses-material-design: true

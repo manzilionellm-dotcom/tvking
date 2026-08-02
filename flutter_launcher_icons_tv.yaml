@@ -1,10 +1,11 @@
-# Config d'icône SPÉCIFIQUE à DeFew TV (logo « The Few » or sur noir).
+# Config d'icône SPÉCIFIQUE à l'app TV. Depuis le 2026-08-02, elle porte
+# le MÊME logo que le téléphone : le 7 noir sur orange, signé « by Mz ».
 # Utilisée par le workflow build-tv via `flutter_launcher_icons -f`. Le
 # mobile garde sa propre config (dans pubspec.yaml) — non impacté.
 flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/branding/thefew_tv_icon.png"
-  adaptive_icon_background: "#000000"
+  adaptive_icon_background: "#FA7005"
   adaptive_icon_foreground: "assets/branding/thefew_tv_icon.png"
   min_sdk_android: 21

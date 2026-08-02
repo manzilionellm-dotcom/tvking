@@ -66,7 +66,7 @@ class BrandLogo extends StatelessWidget {
         // MÊME image que l'icône du téléphone (2026-08-02) : le 7 seul sur
         // l'orange de la marque. L'app et le Store doivent montrer la même
         // chose — le client tournait ses vidéos avec deux identités.
-        return 'assets/branding/icon_7motion_seven.png';
+        return 'assets/branding/icon_7_by_mz.png';
       case Flavor.prive:
         return 'assets/branding/prive_icon.png';
     }
