@@ -147,6 +147,19 @@ class PlaylistRepository {
     _playlistsCache = List<Playlist>.unmodifiable(playlists);
   }
 
+  /// TESTS UNIQUEMENT : injecte le cache mémoire des chaînes, comme si un
+  /// bouquet venait d'être chargé. Un widget test ne peut pas peupler
+  /// SQLite ; c'est le seul moyen de monter un écran d'accueil REMPLI et
+  /// de le distinguer d'un accueil vide (qui, lui, montre l'écran de
+  /// bienvenue). N'émet rien sur le stream : les écrans lisent
+  /// `currentChannels` à l'initState, ce qui suffit.
+  @visibleForTesting
+  void debugSeedChannels(List<Channel> channels) {
+    _channelsCache = List<Channel>.unmodifiable(channels);
+    _flavorFilterFor = null;
+    _flavorFilterCache = null;
+  }
+
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {

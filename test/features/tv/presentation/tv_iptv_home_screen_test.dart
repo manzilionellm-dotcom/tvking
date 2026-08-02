@@ -9,8 +9,10 @@
 //       chaînes, seules quelques cartes sont construites (sinon une box
 //       s'écroule à l'ouverture de l'accueil) ;
 //    3. le menu latéral affiche les sections fixes du client ;
-//    4. bouquet vide → aucun plantage, l'écran reste utilisable ;
-//    5. AUCUNE source enregistrée → écran d'accueil, pas un menu vide.
+//    4. ZÉRO CHAÎNE → écran d'accueil, jamais un menu vide. Le critère
+//       est le BOUQUET, pas la présence d'une source : une source
+//       enregistrée mais vide menait au même cul-de-sac (signalé deux
+//       fois par le client, photo à l'appui).
 // =========================================================
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,12 +53,29 @@ void main() {
   setUpAll(() => FlavorConfig.setCurrent(FlavorConfig.sevenMotion));
 
   // Le gros des tests ci-dessous vérifie l'accueil D'UN CLIENT ÉQUIPÉ :
-  // il a déjà sa source. On la pose donc avant chaque test, sinon c'est
-  // l'écran de bienvenue qui s'affiche (vérifié séparément à la fin).
-  setUp(() =>
-      PlaylistRepository.instance.debugSeedPlaylists(<Playlist>[_source()]));
-  tearDown(
-      () => PlaylistRepository.instance.debugSeedPlaylists(const <Playlist>[]));
+  // il a sa source ET des chaînes dedans. On pose les deux avant chaque
+  // test — car depuis le correctif signalé par le client, le critère
+  // d'affichage est le BOUQUET, pas la simple présence d'une source.
+  // Sans chaînes, c'est l'écran de bienvenue (vérifié séparément à la fin).
+  setUp(() {
+    PlaylistRepository.instance.debugSeedPlaylists(<Playlist>[_source()]);
+    PlaylistRepository.instance.debugSeedChannels(_bouquet(40));
+  });
+
+  // C'est un écran de TÉLÉVISION : on le rend à la taille d'une box
+  // (1280×720), pas dans la fenêtre 800×600 par défaut du harnais, qui
+  // ne correspond à aucun appareil réel.
+  setUp(() {
+    final TestWidgetsFlutterBinding b = TestWidgetsFlutterBinding.instance;
+    b.platformDispatcher.views.first
+      ..physicalSize = const Size(1280, 720)
+      ..devicePixelRatio = 1.0;
+    addTearDown(b.platformDispatcher.views.first.reset);
+  });
+  tearDown(() {
+    PlaylistRepository.instance.debugSeedPlaylists(const <Playlist>[]);
+    PlaylistRepository.instance.debugSeedChannels(const <Channel>[]);
+  });
 
   testWidgets('le bandeau annonce l\'ambiance de l\'heure courante',
       (WidgetTester tester) async {
@@ -112,11 +131,15 @@ void main() {
         reason: 'c\'est ce rappel qui ouvre la boîte « Quitter ? »');
   });
 
-  testWidgets('bouquet vide : aucun plantage', (WidgetTester tester) async {
+  // Le menu latéral porte les sections FIXES du client, quelles que
+  // soient les catégories réellement présentes dans son bouquet.
+  // (Le cas « bouquet vide » ne passe plus par ici : il montre l'écran
+  // d'accueil — c'est vérifié dans le groupe du bas.)
+  testWidgets('le menu latéral porte les sections fixes du client',
+      (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: TvIptvHomeScreen()));
     await tester.pump();
     expect(tester.takeException(), isNull);
-    // Le menu latéral est là même sans bouquet, avec ses sections fixes.
     expect(find.text('IPTV'), findsOneWidget);
     expect(find.text('Sports'), findsOneWidget);
     expect(find.text('Favoris'), findsOneWidget);
@@ -188,8 +211,10 @@ void main() {
   //  choses dont un nouvel arrivant a besoin — ajouter sa source, lire
   //  son identifiant d'appareil, et joindre son revendeur par QR.
   group('accueil sans aucune source', () {
-    setUp(() =>
-        PlaylistRepository.instance.debugSeedPlaylists(const <Playlist>[]));
+    setUp(() {
+      PlaylistRepository.instance.debugSeedPlaylists(const <Playlist>[]);
+      PlaylistRepository.instance.debugSeedChannels(const <Channel>[]);
+    });
 
     Future<void> pumpWelcome(WidgetTester tester,
         {Size size = const Size(1280, 720)}) async {
@@ -213,6 +238,40 @@ void main() {
       expect(find.text('Bienvenue'), findsOneWidget);
       // …et surtout PAS le menu latéral de l'accueil équipé.
       expect(find.text('Sports'), findsNothing);
+    });
+
+    // LE CAS QUE LE CLIENT A DÛ SIGNALER DEUX FOIS (photo à l'appui) :
+    // une source EST enregistrée, mais elle ne contient aucune chaîne
+    // (abonnement vidé, expiré, ou jamais chargé). Se fier à « a-t-il
+    // une source » le renvoyait sur le menu vide et « Aucune chaîne
+    // dans cette section » — le cul-de-sac qu'on prétendait avoir
+    // supprimé. Le critère, c'est le BOUQUET, pas la source.
+    testWidgets('source enregistrée mais VIDE : on accueille quand même',
+        (WidgetTester tester) async {
+      PlaylistRepository.instance.debugSeedPlaylists(<Playlist>[_source()]);
+      await pumpWelcome(tester);
+      // Le délai d'anti-clignotement passé, l'accueil doit apparaître.
+      await tester.pump(const Duration(seconds: 3));
+
+      expect(find.text('Aucune chaîne'), findsOneWidget);
+      expect(find.text('Sports'), findsNothing,
+          reason: 'le menu vide était le cul-de-sac signalé par le client');
+      // Et le bon geste lui est proposé : recharger, pas « ajouter » une
+      // source qu'il a déjà.
+      expect(find.text('Recharger ma source'), findsOneWidget);
+      expect(find.text('Ajouter ma source'), findsNothing);
+    });
+
+    // Le revers : ne PAS faire clignoter l'accueil au démarrage. Une
+    // source enregistrée met un instant à livrer son bouquet ; pendant
+    // ce temps on patiente, on n'annonce pas « aucune chaîne ».
+    testWidgets('au démarrage, on patiente au lieu de crier « aucune chaîne »',
+        (WidgetTester tester) async {
+      PlaylistRepository.instance.debugSeedPlaylists(<Playlist>[_source()]);
+      await pumpWelcome(tester);
+
+      expect(find.text('Chargement de tes chaînes…'), findsOneWidget);
+      expect(find.text('Aucune chaîne'), findsNothing);
     });
 
     testWidgets('le chemin pour ajouter sa source est le bouton principal',

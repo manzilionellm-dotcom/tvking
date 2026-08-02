@@ -43,6 +43,7 @@ import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/source_sync.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_home_template.dart';
 import '../core/tv_logo.dart';
@@ -87,22 +88,37 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
   /// revendeur pour se faire activer.
   String _mac = '…';
 
-  /// A-t-on au moins UNE source enregistrée ? Ce n'est pas la même chose
-  /// que « zéro chaîne » : au démarrage, le bouquet met un instant à
-  /// arriver. Se fier aux chaînes ferait clignoter l'écran d'accueil.
-  bool _hasSource = true;
+  /// Y a-t-il au moins UNE source enregistrée ? Ne dit RIEN sur le fait
+  /// qu'elle contienne des chaînes — les deux cas mènent à l'accueil,
+  /// mais pas avec le même texte ni le même bouton.
+  bool _hasSource = false;
+
+  /// Le premier chargement est-il retombé ? Au démarrage, le bouquet met
+  /// un instant à arriver du disque : sans ce drapeau, l'écran d'accueil
+  /// clignoterait une demi-seconde avant les chaînes, à chaque ouverture.
+  /// Passe à vrai dès qu'un événement de chaînes arrive, et de toute
+  /// façon au bout de [_kSettleDelay] — un appareil sans aucune source
+  /// n'émettra jamais cet événement, il ne faut pas l'attendre pour rien.
+  bool _settled = false;
+  Timer? _settle;
+  static const Duration _kSettleDelay = Duration(milliseconds: 2500);
 
   @override
   void initState() {
     super.initState();
     _refresh();
+    _settle = Timer(_kSettleDelay, () {
+      if (mounted) setState(() => _settled = true);
+    });
     // Le tri « ce qui marche vraiment chez toi d'abord » lit la fiabilité
     // apprise (n°38). Elle arrive du disque : on retrie à son arrivée.
     unawaited(ChannelReliability.instance.load().then((_) {
       if (mounted) setState(_recompute);
     }));
-    _chanSub =
-        PlaylistRepository.instance.channelsStream.listen((_) => _refresh());
+    _chanSub = PlaylistRepository.instance.channelsStream.listen((_) {
+      _settled = true; // le dépôt a parlé : on sait à quoi s'en tenir
+      _refresh();
+    });
     // L'ambiance suit l'heure : à 19 h pile, l'écran bascule tout seul.
     _clock = Timer.periodic(const Duration(minutes: 5), (_) {
       if (mounted) setState(() {});
@@ -127,6 +143,7 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
     _chanSub?.cancel();
     _favSub?.cancel();
     _clock?.cancel();
+    _settle?.cancel();
     super.dispose();
   }
 
@@ -139,8 +156,7 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
     final List<IptvSection> countries = topCountrySections(counts);
     if (!mounted) return;
     final bool hasSource =
-        PlaylistRepository.instance.currentPlaylists.isNotEmpty ||
-            all.isNotEmpty;
+        PlaylistRepository.instance.currentPlaylists.isNotEmpty;
     setState(() {
       _all = all;
       _hasSource = hasSource;
@@ -262,18 +278,29 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
       child: Scaffold(
         backgroundColor: _bg,
         body: SafeArea(
-          // AUCUNE SOURCE : on ne montre pas un menu vide et un « aucune
-          // chaîne » — c'est un cul-de-sac pour qui vient d'installer. On
-          // montre un vrai accueil : ajouter sa source, son identifiant
-          // d'appareil, et le QR pour joindre son revendeur.
-          child: _hasSource
+          // ZÉRO CHAÎNE = ÉCRAN D'ACCUEIL, quoi qu'il arrive.
+          //
+          // Le critère n'est PAS « a-t-il une source enregistrée » — c'est
+          // l'erreur que le client a dû signaler deux fois. Une source
+          // peut être enregistrée et ne rien contenir (abonnement vidé,
+          // expiré, jamais chargé) : il retombait alors sur un menu vide
+          // et « Aucune chaîne dans cette section ». Un cul-de-sac.
+          //
+          // Le critère, c'est LE BOUQUET. S'il est vide, on accueille —
+          // et le texte s'adapte selon qu'une source existe déjà ou non.
+          child: _all.isNotEmpty
               ? Row(
                   children: <Widget>[
                     _sidebar(),
                     Expanded(child: _content(_visible)),
                   ],
                 )
-              : _welcome(),
+              // Tant que le premier chargement n'est pas retombé et qu'une
+              // source existe, on patiente : sinon l'accueil clignoterait
+              // une demi-seconde à chaque ouverture, avant les chaînes.
+              : (!_settled && _hasSource)
+                  ? _loading()
+                  : _welcome(),
         ),
       ),
     );
@@ -283,13 +310,80 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
   /// boîtes de dialogue l'une sur l'autre.
   bool _exitAsked = false;
 
-  // ---- Écran d'ACCUEIL quand aucune source n'est encore ajoutée ----
+  /// Vrai pendant le rechargement lancé depuis l'écran d'accueil.
+  bool _reloading = false;
+
+  /// « Recharger ma source » — le MÊME moteur que le bouton du téléphone
+  /// (`SourceSync`) : on redemande au serveur la source assignée à cette
+  /// MAC, puis on re-télécharge le bouquet. C'est exactement le geste
+  /// qu'attend quelqu'un dont la source est enregistrée mais vide.
+  Future<void> _reloadSource() async {
+    if (_reloading) return;
+    setState(() => _reloading = true);
+    final SyncReport r = await SourceSync.run();
+    if (!mounted) return;
+    setState(() => _reloading = false);
+    // Si des chaînes sont arrivées, `channelsStream` a déjà rebasculé
+    // l'écran sur l'accueil rempli : inutile d'annoncer quoi que ce soit.
+    if (r.channelsAfter > 0) return;
+    final ScaffoldMessengerState m = ScaffoldMessenger.of(context);
+    m.hideCurrentSnackBar();
+    m.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 6),
+        backgroundColor: const Color(0xFF1A2028),
+        content: Text(
+          syncResultText(r),
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
+      ),
+    );
+  }
+
+  /// Écran d'attente du tout premier chargement. Volontairement nu : il
+  /// ne dure qu'une fraction de seconde, et une box qui affiche un gros
+  /// décor pour le remplacer aussitôt donne une impression de clignotement.
+  Widget _loading() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          TvLogo(width: 170),
+          const SizedBox(height: 26),
+          SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(strokeWidth: 2.4, color: _accent),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Chargement de tes chaînes…',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.6),
+              fontSize: 15,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---- Écran d'ACCUEIL : le bouquet est VIDE ----
   //  Signalé par le client : « le A ne montre rien à quelqu'un qui n'a pas
   //  le lien ». Un menu vide et un « aucune chaîne » sont un cul-de-sac.
-  //  Ici, tout ce dont un nouvel arrivant a besoin, sur un seul écran :
-  //  ajouter sa source, lire son identifiant d'appareil, et joindre son
-  //  revendeur en scannant un QR.
+  //
+  //  DEUX SITUATIONS, deux textes, deux boutons principaux :
+  //    • aucune source enregistrée → « Ajouter ma source » ;
+  //    • une source enregistrée mais VIDE (abonnement vidé, expiré, ou
+  //      jamais chargé) → « Recharger ma source ». Ce deuxième cas est
+  //      celui que le client a rencontré : proposer « Ajouter » à
+  //      quelqu'un qui a déjà sa source ne l'aide pas, il faut lui
+  //      proposer de la relancer.
+  //
+  //  Dans les deux cas : son identifiant d'appareil, et le QR pour
+  //  joindre son revendeur.
   Widget _welcome() {
+    final bool emptySource = _hasSource;
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints c) {
         // Une box 720p ne laisse qu'environ 640 px utiles en hauteur, et
@@ -315,7 +409,7 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
                       TvLogo(width: tight ? 150 : 190),
                       SizedBox(height: tight ? 14 : 22),
                       Text(
-                        'Bienvenue',
+                        emptySource ? 'Aucune chaîne' : 'Bienvenue',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: tight ? 30 : 38,
@@ -324,9 +418,15 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Ajoute la source que ton fournisseur t\'a donnée — '
-                        'un lien M3U ou un compte Xtream. Elle t\'appartient : '
-                        'l\'application ne fournit aucune chaîne.',
+                        emptySource
+                            ? 'Ta source est bien enregistrée, mais elle ne '
+                                'contient aucune chaîne pour l\'instant. '
+                                'Recharge-la, ou demande à ton fournisseur de '
+                                'la remplir.'
+                            : 'Ajoute la source que ton fournisseur t\'a '
+                                'donnée — un lien M3U ou un compte Xtream. '
+                                'Elle t\'appartient : l\'application ne '
+                                'fournit aucune chaîne.',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.62),
                           fontSize: tight ? 14 : 16,
@@ -334,20 +434,32 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
                         ),
                       ),
                       SizedBox(height: tight ? 18 : 26),
-                      // Le bouton PRINCIPAL, focus par défaut : un nouvel
-                      // arrivant appuie sur OK sans rien chercher.
+                      // Le bouton PRINCIPAL, focus par défaut : un appui
+                      // sur OK et il est dans le bon geste, sans chercher.
+                      // « Recharger » quand la source existe déjà — lui
+                      // proposer « Ajouter » ne l'aiderait pas.
                       _WelcomeButton(
-                        icon: Icons.add_link_rounded,
-                        label: 'Ajouter ma source',
+                        icon: emptySource
+                            ? Icons.sync_rounded
+                            : Icons.add_link_rounded,
+                        label: emptySource
+                            ? 'Recharger ma source'
+                            : 'Ajouter ma source',
                         accent: _accent,
                         primary: true,
                         autofocus: true,
-                        onSelect: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                const TvShell(child: TvSmartAddScreen()),
-                          ),
-                        ),
+                        onSelect: () {
+                          if (emptySource) {
+                            unawaited(_reloadSource());
+                          } else {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    const TvShell(child: TvSmartAddScreen()),
+                              ),
+                            );
+                          }
+                        },
                       ),
                       const SizedBox(height: 12),
                       Wrap(
