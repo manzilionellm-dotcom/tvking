@@ -204,21 +204,26 @@ Rien n'est **partagé** avec un tiers.
 
 ## « La fiche ne décrit pas clairement ses fonctionnalités »
 
-Rejet reçu le 2026-08-02, bloquant l'envoi en examen. Google compare le
-TITRE, l'ICÔNE, les CAPTURES et la DESCRIPTION entre eux, et avec l'app.
-Ce qui ne collait pas :
+Blocage reçu le 2026-08-02 : bouton « Envoyer pour examen » désactivé.
+Le libellé du bandeau est vague, mais le détail de la Console ne l'est
+pas — voici ses mots EXACTS :
 
-| Élément | État | Effet |
-|---|---|---|
-| Titre | « Lecteur IPTV – 7 MOTION » | ✅ |
-| Captures | montrent **« The Few »**, version v0.3.2 | ❌ deux marques sur une même fiche |
-| Icône | ancienne flèche blanche | ❌ ne correspond ni au titre ni aux captures |
-| Description | commençait par « est un lecteur… » | ⚠️ dit ce que l'app EST, pas ce qu'elle FAIT |
+> Les captures d'écran présentent des illustrations ou des graphismes
+> promotionnels au lieu de refléter l'expérience réelle dans l'appli.
 
-Le déclencheur n°1 est la **cohérence de marque**, pas la longueur du
-texte : une fiche qui affiche deux noms différents est jugée trompeuse.
-Les descriptions ci-dessus ont été réécrites pour énoncer la fonction dès
-le premier mot, et le déroulé en 3 étapes montre le parcours réel.
+**Un seul point bloque, et c'est les CAPTURES.** Ni le titre, ni l'icône,
+ni la description ne sont mis en cause. Les deux captures en place
+montraient un logo sur fond noir et une carte « Mention légale » : de
+l'habillage, pas l'application en train de fonctionner. Elles auraient
+été refusées même au bon nom.
+
+À NOTER : le champ captures est OBLIGATOIRE (« Importez entre deux et
+huit captures d'écran de téléphone »). On ne peut donc pas vider le
+champ en attendant — il faut remplacer, d'un coup, par les nouvelles.
+
+La Console propose un lien « Continuer quand même », qui prévient que la
+soumission « peut être refusée ». À ne pas utiliser : un refus coûte des
+jours et laisse une trace, alors que le correctif prend dix minutes.
 
 ### Les captures — le point à ne pas bâcler
 
