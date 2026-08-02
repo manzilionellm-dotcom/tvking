@@ -363,8 +363,7 @@ class TvKingApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable:
-          Listenable.merge(<Listenable>[
+      listenable: Listenable.merge(<Listenable>[
         ThemeModeRepository.instance,
         LocaleRepository.instance,
         AccentController.instance,
@@ -705,7 +704,16 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     //     vraiment un écran : sans acceptation, on n'entre pas. Le refus
     //     n'offre aucune issue — un bandeau explique que l'app ne peut
     //     pas être utilisée sans acceptation.
-    if (_consentAccepted == false) {
+    //
+    //     TÉLÉPHONE UNIQUEMENT (décision client 2026-08-02 : « les
+    //     conditions qui ne bloquent pas la télé »). Sur un téléviseur, un
+    //     mur de texte à lire à trois mètres à la télécommande AVANT la
+    //     moindre image est vécu comme une panne. La TV pose la même
+    //     question autrement : l'accueil s'affiche, puis une petite bulle
+    //     demande oui/non sans jamais rien arrêter — cf.
+    //     features/tv/presentation/tv_terms_notice.dart. La réponse est
+    //     stockée sous LA MÊME clé : accepter d'un côté vaut de l'autre.
+    if (_consentAccepted == false && !isTvDevice) {
       return ConsentScreen(
         onAccepted: () => setState(() => _consentAccepted = true),
       );

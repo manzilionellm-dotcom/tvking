@@ -56,6 +56,7 @@ import 'tv_care_nudge.dart';
 import 'tv_night_comfort.dart';
 import 'tv_profiles_screen.dart' show tvProfileDisplayName;
 import 'tv_shell.dart';
+import 'tv_terms_notice.dart';
 import 'tv_who_watching_screen.dart';
 
 /// Largeur LOGIQUE de référence du design TV. Toute l'app est rendue comme
@@ -584,7 +585,17 @@ class _TvGateState extends State<TvGate> {
           await SystemNavigator.pop();
         }
       },
-      child: home,
+      // LES CONDITIONS, SANS BLOQUER LA TÉLÉ (demande client) : pas de
+      // porte de consentement ici — l'accueil s'affiche, et une petite
+      // bulle vient demander oui/non par-dessus, une fois pour toutes.
+      // Elle n'apparaît QUE sur l'accueil : pendant l'activation, le
+      // client a déjà un problème à régler, on ne l'encombre pas.
+      child: showHome
+          ? Stack(
+              fit: StackFit.expand,
+              children: <Widget>[home, const TvTermsNotice()],
+            )
+          : home,
     );
   }
 }
