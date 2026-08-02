@@ -13,7 +13,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 
 /// Nom produit affiché PARTOUT.
-const String kAppName = 'The Few TV';
+const String kAppName = '7 MOTION TV';
 // Logo « naturel » sur fond TRANSPARENT (pas le carré noir, qui se voyait
 // comme un rectangle plus sombre sur les surfaces gris foncé de l'app).
 // Le carré noir reste UNIQUEMENT pour l'icône de lancement (cf. yaml dédié),
@@ -27,7 +27,7 @@ const String kWhatsAppPhone = '18077888909';
 String tvWhatsAppUrl(String mac) {
   final String code = (mac == '…' || mac.isEmpty) ? '' : mac;
   final String msg =
-      Uri.encodeComponent('Bonjour, je souhaite activer The Few TV.'
+      Uri.encodeComponent('Bonjour, je souhaite activer $kAppName.'
           '${code.isEmpty ? '' : ' Mon code : $code'}');
   return 'https://wa.me/$kWhatsAppPhone?text=$msg';
 }
@@ -88,7 +88,7 @@ class TvWhatsAppQr extends StatelessWidget {
   }
 }
 
-/// Logo réel « The Few » (or sur noir).
+/// Logo réel de l'app : la tuile orange au 7 + le nom, sur fond transparent.
 class TvLogo extends StatelessWidget {
   const TvLogo({super.key, this.width = 180});
   final double width;
