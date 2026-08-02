@@ -45,6 +45,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
+import '../../demo/presentation/demo_banner.dart';
 import '../../playlists/presentation/import_progress_screen.dart';
 import '../../playlists/presentation/sync_source_button.dart';
 import '../../profile/presentation/profile_screen.dart';
@@ -229,6 +230,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
               return Column(
                 children: <Widget>[
                   _buildHeader(),
+                  // MODE DÉMO : le rappel qu'on regarde des exemples, et
+                  // la porte de sortie. Permanent tant que la démo tourne
+                  // — un client qui croit avoir un abonnement alors qu'il
+                  // regarde une démonstration, c'est un litige. Invisible
+                  // hors démo (SizedBox.shrink).
+                  const DemoBanner(),
                   // Bandeau « message à tous » (annonce admin). Auto-géré :
                   // ne prend aucune place s'il n'y a rien à montrer.
                   const AnnouncementBanner(),
@@ -288,6 +295,13 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           const SizedBox(height: 22),
           const MacActivationView(),
           const SizedBox(height: 14),
+          // MODE DÉMO — la seule chose à faire, sinon, c'est attendre.
+          // Sans source, l'app ne montre RIEN : le nouvel arrivant ne
+          // peut ni juger le lecteur, ni comprendre la navigation, ni
+          // voir le cinéma. Un bouquet d'exemples lui fait traverser
+          // tout le parcours pendant que son revendeur l'active.
+          const DemoEntryButton(),
+          const SizedBox(height: 8),
           const LegalDisclaimer.compact(),
         ],
       ),

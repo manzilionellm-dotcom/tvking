@@ -160,6 +160,32 @@ class PlaylistRepository {
     _flavorFilterCache = null;
   }
 
+  /// MODE DÉMO : publie un bouquet FICTIF, en mémoire seulement.
+  ///
+  /// Rien n'est écrit en base — c'est délibéré, et ça tient en deux
+  /// raisons. D'abord, sortir de la démo n'a alors rien à nettoyer : on
+  /// republie l'état réel et c'est fini, aucune ligne orpheline ne peut
+  /// survivre à un plantage au mauvais moment. Ensuite, une VRAIE source
+  /// ajoutée pendant la démo reprend naturellement la main : son import
+  /// termine par `_emitCurrentState()`, qui relit SQLite et écrase ce
+  /// cache. Le client passe de la démo à ses chaînes sans qu'on ait la
+  /// moindre bascule à orchestrer.
+  ///
+  /// Liste vide = on ressort de la démo : on relit l'état réel du disque
+  /// et on l'émet, pour que tous les écrans se remettent à jour.
+  void publishDemoChannels(List<Channel> channels) {
+    if (channels.isEmpty) {
+      unawaited(_emitCurrentState());
+      return;
+    }
+    _channelsCache = List<Channel>.unmodifiable(channels);
+    _flavorFilterFor = null;
+    _flavorFilterCache = null;
+    if (!_channelsController.isClosed) {
+      _channelsController.add(_channelsCache);
+    }
+  }
+
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
   Future<void> initialize() async {

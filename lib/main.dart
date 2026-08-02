@@ -53,6 +53,7 @@ import 'features/stats/data/watch_stats_service.dart';
 import 'features/vod/data/playback_position_repository.dart';
 import 'features/simple_home/presentation/simple_home_screen.dart';
 import 'features/admin/data/admin_credentials.dart';
+import 'features/demo/data/demo_mode.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/epg/data/epg_repository.dart';
 import 'features/onboarding/data/consent_state.dart';
@@ -144,6 +145,13 @@ Future<void> bootApp() async {
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
+
+  // MODE DÉMO : si le client l'avait laissé actif, on le remet AVANT
+  // tout le reste. Sinon il rouvrirait l'app sur un écran vide, sans
+  // comprendre où sont passées les chaînes qu'il regardait. Une vraie
+  // source chargée ensuite reprend naturellement la main : son import
+  // termine par une émission qui écrase le bouquet de démonstration.
+  unawaited(DemoMode.instance.restore());
 
   // Démarre les repos en parallèle — non bloquant pour le first frame.
   // Les écrans qui en dépendent rebuildent via les Streams au fur et
