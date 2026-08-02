@@ -28,7 +28,6 @@ import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 // ignore: depend_on_referenced_packages — dart:async fournit unawaited
 
-
 import '../../../core/app/device_memory.dart';
 import '../../../core/crash/crash_reporting.dart';
 import '../../../core/observability/structured_logger.dart';
@@ -47,6 +46,23 @@ import 'm3u_parser.dart';
 import 'playlist_database.dart';
 import 'source_link_utils.dart';
 import 'xtream_client.dart';
+
+/// Le corps reçu ressemble-t-il à une VRAIE playlist M3U ?
+///
+/// Sert à trancher le cas le plus délicat de la synchro : zéro chaîne.
+/// Une source volontairement vidée par le revendeur renvoie un M3U
+/// valide mais sans entrée — il faut alors tomber à zéro chez le client.
+/// Un fournisseur en panne, lui, renvoie une page HTML, un message
+/// d'erreur ou du vide — et là, effacer le bouquet serait une
+/// catastrophe (40 000 chaînes perdues sur un hoquet réseau).
+///
+/// La ligne de partage est le marqueur d'en-tête `#EXTM3U`, que tout
+/// M3U valide porte en première ligne. On tolère les espaces et le BOM
+/// en tête (certains panels en ajoutent).
+bool looksLikeM3uBody(String body) {
+  final String head = body.replaceFirst('﻿', '').trimLeft().toUpperCase();
+  return head.startsWith('#EXTM3U');
+}
 
 /// Résultat individuel d'un import en lot.
 class BatchImportResult {
@@ -283,8 +299,11 @@ class PlaylistRepository {
   Future<List<({String category, int count})>> getActiveCategoryCounts() async {
     final Database db = await PlaylistDatabase.instance.database;
     final int? activeId = await _activePlaylistId(db);
-    final String where = activeId != null ? 'WHERE playlist_id = ? AND is_live = 1' : 'WHERE is_live = 1';
-    final List<Object> args = activeId != null ? <Object>[activeId] : <Object>[];
+    final String where = activeId != null
+        ? 'WHERE playlist_id = ? AND is_live = 1'
+        : 'WHERE is_live = 1';
+    final List<Object> args =
+        activeId != null ? <Object>[activeId] : <Object>[];
     final List<Map<String, Object?>> rows = await db.rawQuery(
       'SELECT category AS c, COUNT(*) AS n, MIN(local_id) AS o '
       'FROM channels $where GROUP BY category ORDER BY o ASC',
@@ -340,7 +359,8 @@ class PlaylistRepository {
     if (category != null) {
       // 'Autres' = catégorie vide/absente dans la source.
       if (category == 'Autres') {
-        where.write(" AND (category = 'Autres' OR category = '' OR category IS NULL)");
+        where.write(
+            " AND (category = 'Autres' OR category = '' OR category IS NULL)");
       } else {
         where.write(' AND category = ?');
         args.add(category);
@@ -353,7 +373,8 @@ class PlaylistRepository {
       orderBy: 'local_id ASC',
       limit: limit,
     );
-    final List<Channel> channels = rows.map(_channelFromMap).toList(growable: false);
+    final List<Channel> channels =
+        rows.map(_channelFromMap).toList(growable: false);
     // Curseur keyset = local_id de la DERNIÈRE ligne brute (avant tout filtre
     // applicatif). On le lit sur la map (le modèle Channel ne l'expose pas).
     final int nextCursor =
@@ -368,7 +389,8 @@ class PlaylistRepository {
 
   /// Recherche LIVE par nom (insensible à la casse), bornée à [limit]. SQL
   /// `LIKE` + LIMIT → jamais de scan complet matérialisé en RAM.
-  Future<List<Channel>> searchLiveChannels(String query, {int limit = 200}) async {
+  Future<List<Channel>> searchLiveChannels(String query,
+      {int limit = 200}) async {
     final String q = query.trim();
     if (q.isEmpty) return const <Channel>[];
     final Database db = await PlaylistDatabase.instance.database;
@@ -402,7 +424,8 @@ class PlaylistRepository {
     for (int i = 0; i < ids.length; i += chunk) {
       final List<String> part =
           ids.sublist(i, (i + chunk > ids.length) ? ids.length : i + chunk);
-      final String placeholders = List<String>.filled(part.length, '?').join(',');
+      final String placeholders =
+          List<String>.filled(part.length, '?').join(',');
       final StringBuffer where =
           StringBuffer('is_live = 1 AND external_id IN ($placeholders)');
       final List<Object> args = <Object>[...part];
@@ -965,8 +988,8 @@ class PlaylistRepository {
         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
       );
       await _updatePlaylistMetrics(saved);
-      onProgress?.call(
-          ImportProgress(phase: ImportPhase.done, channelsFound: count));
+      onProgress
+          ?.call(ImportProgress(phase: ImportPhase.done, channelsFound: count));
 
       // CORRECTIF « les chaînes n'arrivent jamais » : on ACTIVE la
       // playlist Xtream qu'on vient d'ajouter (même raison que pour le
@@ -1009,9 +1032,8 @@ class PlaylistRepository {
     // ce temps et l'utilisateur a l'impression que rien ne s'est
     // passé. Avec : la home se vide instantanément, puis on
     // ré-émet l'état réel à la fin du DELETE pour rester cohérent.
-    final List<Playlist> remainingPlaylists = _playlistsCache
-        .where((Playlist p) => p.id != playlistId)
-        .toList();
+    final List<Playlist> remainingPlaylists =
+        _playlistsCache.where((Playlist p) => p.id != playlistId).toList();
     final List<Channel> remainingChannels = _channelsCache
         .where((Channel c) => c.playlistId != playlistId)
         .toList();
@@ -1132,7 +1154,26 @@ class PlaylistRepository {
   /// charge les nouvelles. Le `playlistId` reste le même.
   ///
   /// Retourne `true` si la sync a réussi, lance une Exception sinon.
-  Future<bool> refreshPlaylist(Playlist playlist) async {
+  ///
+  /// [allowEmpty] — LE MIROIR EXACT, réservé au bouton « Synchroniser »
+  /// que l'utilisateur presse LUI-MÊME. Par défaut (rafraîchissements
+  /// automatiques : démarrage, timer 24 h), une source qui répond « zéro
+  /// chaîne » est traitée comme une PANNE et l'ancien bouquet est
+  /// conservé — sans ce garde-fou, un hoquet du fournisseur effacerait
+  /// 40 000 chaînes chez le client.
+  ///
+  /// Mais le revendeur qui vide volontairement un abonnement doit voir
+  /// l'app tomber à zéro : c'est sa demande explicite (« si j'ai enlevé
+  /// toutes les chaînes, je reste avec zéro chaînes »). Avec
+  /// [allowEmpty], un zéro est donc accepté — MAIS SEULEMENT si le
+  /// serveur a vraiment répondu correctement : identifiants Xtream
+  /// validés, ou corps M3U reconnaissable (`#EXTM3U`). Une page d'erreur
+  /// HTML, un timeout ou un 500 restent une panne, et le bouquet est
+  /// gardé intact.
+  Future<bool> refreshPlaylist(
+    Playlist playlist, {
+    bool allowEmpty = false,
+  }) async {
     if (playlist.id == null) return false;
     final Database db = await PlaylistDatabase.instance.database;
 
@@ -1151,7 +1192,14 @@ class PlaylistRepository {
           maxChannels: DeviceMemory.channelCap,
         );
         if (parsed.channels.isEmpty) {
-          throw Exception(l10nNow.m3uRefreshNoChannels);
+          // Zéro chaîne : est-ce une source VOLONTAIREMENT vidée, ou un
+          // fournisseur en panne qui nous a servi une page d'erreur ? On
+          // ne le devine pas — on le LIT. Un vrai M3U commence par
+          // `#EXTM3U` ; une page HTML, un message d'erreur ou un corps
+          // vide, non. Seul le premier cas autorise la mise à zéro.
+          if (!allowEmpty || !looksLikeM3uBody(body)) {
+            throw Exception(l10nNow.m3uRefreshNoChannels);
+          }
         }
         // Remplace les chaînes existantes
         await db.delete(
@@ -1196,9 +1244,12 @@ class PlaylistRepository {
           playlistId: playlist.id!,
           categories: cats,
         );
-        if (channels.isEmpty) {
+        if (channels.isEmpty && !allowEmpty) {
           throw Exception(l10nNow.xtreamRefreshNoChannels);
         }
+        // Ici, `verifyCredentials()` est déjà passé : le panel a répondu et
+        // a reconnu le compte. Une liste vide est donc une VRAIE liste
+        // vide — l'abonnement a été vidé côté revendeur, pas une panne.
         await db.delete(
           'channels',
           where: 'playlist_id = ?',
@@ -1281,7 +1332,8 @@ class PlaylistRepository {
     // cf. PlaylistDatabase._onConfigure), mais ce delete direct garantit
     // le nettoyage même sur d'anciennes bases et purge toute chaîne déjà
     // orpheline. Sans ça, les chaînes réapparaissaient après suppression.
-    await db.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
+    await db
+        .delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
     await db.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
     // Anti-fuite mémoire : les caches calculés (genre/pays/qualité/nom)
     // gardaient les entrées des ids supprimés pour toujours. Vidage
@@ -1317,13 +1369,13 @@ class PlaylistRepository {
   ///     "ça avance" au lieu de "ça dort".
   Future<void> _insertChannels(List<Channel> channels) async {
     CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
-        'sqlite.insert.start', channels: channels.length);
+        'sqlite.insert.start',
+        channels: channels.length);
     const int chunkSize = 1000;
     final Database db = await PlaylistDatabase.instance.database;
     for (int i = 0; i < channels.length; i += chunkSize) {
-      final int end = (i + chunkSize > channels.length)
-          ? channels.length
-          : i + chunkSize;
+      final int end =
+          (i + chunkSize > channels.length) ? channels.length : i + chunkSize;
       final Batch batch = db.batch();
       for (int j = i; j < end; j++) {
         batch.insert('channels', _channelToMap(channels[j]));
@@ -1331,7 +1383,8 @@ class PlaylistRepository {
       await batch.commit(noResult: true);
     }
     CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
-        'sqlite.insert.done', channels: channels.length);
+        'sqlite.insert.done',
+        channels: channels.length);
     // ANTI-OOM (P1-3) : on N'ÉMET PLUS d'état ICI — ni par tranche, ni à la
     // fin. Chaque appelant ré-émet l'état UNE seule fois APRÈS l'insertion
     // (addM3u/addXtream → setActivePlaylist ; refreshPlaylist →

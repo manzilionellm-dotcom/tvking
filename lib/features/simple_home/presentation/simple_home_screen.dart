@@ -46,6 +46,7 @@ import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/presentation/import_progress_screen.dart';
+import '../../playlists/presentation/sync_source_button.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../subscription/presentation/guest_screen.dart';
@@ -186,8 +187,8 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
       await runImportWithProgress<RemoteSyncResult>(
         context,
         title: context.l10n.activationLoadingTitle,
-        task: (onProgress) =>
-            RemoteSourceRepository.applySources(pending, onProgress: onProgress),
+        task: (onProgress) => RemoteSourceRepository.applySources(pending,
+            onProgress: onProgress),
       );
     } catch (_) {
       // Best-effort : un échec ne doit jamais bloquer l'accueil.
@@ -205,7 +206,6 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,8 +216,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           child: StreamBuilder<List<Channel>>(
             stream: PlaylistRepository.instance.channelsStream,
             initialData: PlaylistRepository.instance.currentChannels,
-            builder:
-                (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
+            builder: (BuildContext context, AsyncSnapshot<List<Channel>> snap) {
               final List<Channel> channels = snap.data ?? const <Channel>[];
 
               // Pas de playlist → écran d'activation par code MAC. (Quand le
@@ -295,7 +294,6 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     );
   }
 
-
   // ----- En-tête (accueil rempli) -----
   Widget _buildHeader() {
     return Padding(
@@ -361,6 +359,11 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
               );
             },
           ),
+          // SYNCHRONISER — le geste réclamé par le client : un appui, et
+          // l'app reflète EXACTEMENT le panel du revendeur, les ajouts
+          // comme les retraits. Posé avant les autres actions : c'est le
+          // bouton qu'on cherche quand « il manque une chaîne ».
+          const SyncSourceButton(),
           // Mode invité — toujours accessible depuis l'accueil : inviter un
           // ami, entrer un code, ou envoyer son identifiant.
           IconButton(
@@ -552,7 +555,8 @@ class _GuestEntryCard extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: AppColors.accent, size: 24),
+            Icon(Icons.chevron_right_rounded,
+                color: AppColors.accent, size: 24),
           ],
         ),
       ),
