@@ -9,7 +9,7 @@
 name: tv_king
 description: "The Few — lecteur multimédia premium (Not For Everyone)."
 publish_to: 'none'
-version: 1.0.0+16
+version: 1.0.0+17
 
 environment:
   sdk: ^3.5.0
@@ -286,20 +286,28 @@ flutter_launcher_icons:
   android: true
   ios: false
   remove_alpha_ios: false
-  # L'ICÔNE DE LA FICHE GOOGLE PLAY, fournie par le client le 2026-08-02 :
-  # triangle de lecture blanc sur dégradé orange. C'est celle qu'il voit
-  # dans la Console, donc c'est celle qui doit être sur le téléphone —
-  # sinon sa vidéo de présentation ne colle pas au Store.
-  # Son fichier avait une bande BLANCHE en bas (reste de capture) :
-  # icon_7motion_orange.png en est la version recarrée, dégradé prolongé
-  # en haut et en bas, sans étirement de la marque.
+  # LE 7 SEUL, centré sur l'orange de la marque (choix client
+  # 2026-08-02, dernier mot). L'icône précédente — triangle de lecture
+  # blanc — est conservée dans assets/branding/icon_7motion_orange.png :
+  # elle reste la version d'origine de la fiche Play, et le client veut
+  # garder les deux.
+  #
+  # Pourquoi le triangle a sauté : il ne portait aucune marque et
+  # rappelait fortement YouTube (triangle blanc plein cadre sur fond
+  # chaud). Le 7 règle les deux à la fois — il appartient au client, et
+  # il ne ressemble plus à rien d'autre sur le magasin.
+  #
+  # Le 7 est DESSINÉ en polygones, pas tapé dans une police : il reste
+  # net du 48 px de l'écran d'accueil au 512 du Store, sans dépendre
+  # d'une fonte installée.
+  #
   # Fond adaptatif = l'orange du logo : sur les lanceurs qui masquent en
   # rond, le pourtour reste orange au lieu d'une couronne d'une autre
   # couleur.
-  image_path: "assets/branding/icon_7motion_orange.png"
+  image_path: "assets/branding/icon_7motion_seven.png"
   min_sdk_android: 21
   adaptive_icon_background: "#FF912E"
-  adaptive_icon_foreground: "assets/branding/icon_7motion_orange.png"
+  adaptive_icon_foreground: "assets/branding/icon_7motion_seven.png"
 
 flutter:
   uses-material-design: true
