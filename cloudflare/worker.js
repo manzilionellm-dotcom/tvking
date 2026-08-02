@@ -1663,7 +1663,7 @@ const PRIVACY_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>The Few — Politique de confidentialité</title>
+<title>7 MOTION / The Few — Politique de confidentialité</title>
 <style>
   body{background:#0A0A0C;color:#EDEAE3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;margin:0;padding:32px}
   .wrap{max-width:780px;margin:0 auto}
@@ -1676,10 +1676,14 @@ const PRIVACY_HTML = `<!doctype html>
 </style>
 </head>
 <body><div class="wrap">
-  <h1>Politique de confidentialité — The Few</h1>
-  <p class="muted">Éditeur : 7 MOTION · Dernière mise à jour : 2026.</p>
+  <h1>Politique de confidentialité</h1>
+  <p class="muted">Applications concernées : <b>7 MOTION</b>
+  (com.manzilionellm.tvking) et <b>The Few TV</b>.<br>
+  Éditeur : <b>The Kung</b> (États-Unis) · Contact :
+  <a href="mailto:contact@7themotion.com">contact@7themotion.com</a><br>
+  Dernière mise à jour : 2 août 2026.</p>
 
-  <p>The Few (« l'application ») est un lecteur multimédia pour téléphones,
+  <p>L'application est un lecteur multimédia pour téléphones,
   téléviseurs et box (Android, Android TV, Fire TV, Google TV). L'application ne fournit, n'héberge ni
   ne revend aucun contenu : l'utilisateur charge sa propre source (liste M3U ou
   identifiants Xtream). Cette politique explique les données traitées et leur
@@ -1721,8 +1725,26 @@ const PRIVACY_HTML = `<!doctype html>
   l'appareil dans notre système efface les données associées.</p>
 
   <h2>6. Âge minimum</h2>
-  <p>L'application s'adresse aux personnes de 16 ans et plus. Un
-  <b>Mode Enfants</b> protégé par code permet de masquer le contenu adulte.</p>
+  <p>L'application s'adresse aux personnes de 16 ans et plus. Elle n'est pas
+  destinée aux enfants et nous ne collectons pas sciemment de données
+  concernant des enfants de moins de 13 ans (COPPA). Un <b>Mode Enfants</b>
+  protégé par code permet de masquer le contenu adulte.</p>
+
+  <h2>6 bis. Résidents des États-Unis</h2>
+  <p>Nous ne vendons ni ne partageons de données personnelles au sens des lois
+  américaines sur la protection de la vie privée, y compris le California
+  Consumer Privacy Act (CCPA/CPRA). Selon votre État de résidence, vous pouvez
+  avoir le droit de demander l'accès à vos données, leur correction ou leur
+  suppression, et de ne pas subir de traitement discriminatoire pour avoir
+  exercé ces droits. Écrivez-nous pour toute demande.</p>
+
+  <h2>6 ter. Suppression de vos données</h2>
+  <p>Il n'y a pas de compte à supprimer : l'application n'en crée aucun. Pour
+  faire effacer les données rattachées à votre appareil, envoyez l'identifiant
+  affiché dans l'écran « À propos » (format <code>MK:XX:XX:XX:XX:XX</code>) à
+  <a href="mailto:contact@7themotion.com">contact@7themotion.com</a>. La
+  suppression est effectuée sous 30 jours et efface l'activation, l'historique
+  et les journaux associés à cet appareil.</p>
 
   <h2>7. Contact</h2>
   <p>Pour toute question relative à cette politique ou à vos données :
