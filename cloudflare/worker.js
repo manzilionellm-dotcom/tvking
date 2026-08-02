@@ -1698,8 +1698,21 @@ const PRIVACY_HTML = `<!doctype html>
     <li><b>Adresse IP et pays</b> (fournis par le réseau) : pour la sécurité, la
       présence « en ligne » et le bon acheminement du service.</li>
     <li><b>Historique de visionnage</b> (identifiants de chaînes récemment
-      ouvertes) : pour proposer « Récemment » / « Pour vous » et synchroniser
-      votre historique entre vos appareils.</li>
+      ouvertes, et la chaîne en cours de lecture) : pour proposer
+      « Récemment » / « Pour vous », synchroniser votre historique entre vos
+      appareils et afficher l'état « en ligne » dans notre outil de
+      support.</li>
+    <li><b>Inventaire de vos sources</b> (nom de la playlist, adresse du
+      serveur Xtream ou lien M3U, identifiant, nombre de chaînes) : pour que
+      le support puisse diagnostiquer une source qui ne répond plus, et pour
+      retrouver vos sources sur vos autres appareils. Le <b>mot de passe de
+      votre source n'est jamais transmis</b>.</li>
+    <li><b>Rapports d'échec de lecture</b> (au plus un par 24 h) : nom de la
+      chaîne, hôte du serveur, code d'erreur du lecteur et cause probable —
+      pour corriger les pannes de lecture. <b>L'adresse complète de vos flux
+      n'y figure jamais.</b></li>
+    <li><b>Avis que vous nous envoyez</b> (note et commentaire), uniquement
+      si vous choisissez d'en envoyer un.</li>
   </ul>
   <p>Nous ne collectons <b>pas</b> votre nom, votre adresse postale, vos
   contacts, ni de données biométriques. Les identifiants de votre source IPTV
@@ -1710,27 +1723,37 @@ const PRIVACY_HTML = `<!doctype html>
   synchronisation de l'expérience entre vos appareils, support technique et
   amélioration de l'application.</p>
 
-  <h2>3. Partage</h2>
-  <p>Nous ne <b>vendons pas</b> vos données et ne les partageons pas à des fins
-  publicitaires. Les données transitent par notre infrastructure d'hébergement
-  (Cloudflare) strictement pour faire fonctionner le service.</p>
+  <h2>3. Annonces</h2>
+  <p>L'application affiche <b>nos propres annonces</b> et des offres de nos
+  partenaires. Elles sont servies par notre seule infrastructure : il n'y a
+  <b>aucune régie publicitaire tierce</b>, aucun identifiant publicitaire et
+  aucun traceur externe. Ces annonces peuvent être choisies selon le
+  <b>pays</b> déduit de votre adresse IP, jamais selon ce que vous regardez.
+  Nous mesurons uniquement le nombre d'affichages et de clics, sans les
+  rattacher à votre appareil.</p>
 
-  <h2>4. Conservation</h2>
+  <h2>4. Partage</h2>
+  <p>Nous ne <b>vendons pas</b> vos données et ne les partageons avec aucun
+  annonceur ni courtier en données. Les données transitent par notre
+  infrastructure d'hébergement (Cloudflare) strictement pour faire
+  fonctionner le service.</p>
+
+  <h2>5. Conservation</h2>
   <p>Données d'activation/abonnement : conservées pendant la durée du service
   puis jusqu'à 24 mois. Journaux techniques et présence : environ 6 mois.</p>
 
-  <h2>5. Vos droits</h2>
+  <h2>6. Vos droits</h2>
   <p>Vous pouvez demander l'accès, la rectification ou la suppression des
   données liées à votre appareil en nous contactant. La suppression de
   l'appareil dans notre système efface les données associées.</p>
 
-  <h2>6. Âge minimum</h2>
+  <h2>7. Âge minimum</h2>
   <p>L'application s'adresse aux personnes de 16 ans et plus. Elle n'est pas
   destinée aux enfants et nous ne collectons pas sciemment de données
   concernant des enfants de moins de 13 ans (COPPA). Un <b>Mode Enfants</b>
   protégé par code permet de masquer le contenu adulte.</p>
 
-  <h2>6 bis. Résidents des États-Unis</h2>
+  <h2>8. Résidents des États-Unis</h2>
   <p>Nous ne vendons ni ne partageons de données personnelles au sens des lois
   américaines sur la protection de la vie privée, y compris le California
   Consumer Privacy Act (CCPA/CPRA). Selon votre État de résidence, vous pouvez
@@ -1738,7 +1761,7 @@ const PRIVACY_HTML = `<!doctype html>
   suppression, et de ne pas subir de traitement discriminatoire pour avoir
   exercé ces droits. Écrivez-nous pour toute demande.</p>
 
-  <h2>6 ter. Suppression de vos données</h2>
+  <h2>9. Suppression de vos données</h2>
   <p>Il n'y a pas de compte à supprimer : l'application n'en crée aucun. Pour
   faire effacer les données rattachées à votre appareil, envoyez l'identifiant
   affiché dans l'écran « À propos » (format <code>MK:XX:XX:XX:XX:XX</code>) à
@@ -1746,7 +1769,7 @@ const PRIVACY_HTML = `<!doctype html>
   suppression est effectuée sous 30 jours et efface l'activation, l'historique
   et les journaux associés à cet appareil.</p>
 
-  <h2>7. Contact</h2>
+  <h2>10. Contact</h2>
   <p>Pour toute question relative à cette politique ou à vos données :
   <a href="mailto:contact@7themotion.com">contact@7themotion.com</a>.</p>
 
