@@ -665,22 +665,30 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
 //  Petites pièces
 // =========================================================
 
-/// Le logo qui RESPIRE : il s'efface presque complètement, puis revient.
+/// Le logo qui RESPIRE et qu'un ÉCLAT balaie.
 ///
-/// Demande du client : « il disparaît, il revient, genre il montre juste
-/// qu'il est là ». La raison est juste — le logo est ORANGE, le thème est
-/// turquoise. Un aplat orange posé en permanence en haut à gauche tire
-/// l'œil et écrase la palette de tout l'écran. En le faisant respirer, la
-/// marque se rappelle au souvenir sans jamais dominer.
+/// Deux demandes du client, dans cet ordre :
+///   1. « il disparaît, il revient, genre il montre juste qu'il est là » —
+///      le logo est ORANGE, le thème turquoise ; un aplat orange posé en
+///      permanence en haut à gauche écrase la palette de tout l'écran ;
+///   2. un « shine sweep » — une bande de lumière qui traverse le logo,
+///      fournie en CSS et transposée ici.
 ///
-/// Choix d'exécution :
-///   • cycle LENT (5,2 s aller-retour) — un clignotement rapide serait
-///     une alarme, pas une signature ;
-///   • on descend à 0,10 et pas à 0 : le logo s'efface, il ne « saute »
-///     pas hors de l'écran ;
-///   • FadeTransition, donc AUCUN recalcul de mise en page à chaque
-///     image — sur une box modeste, une opacité animée ne coûte rien,
-///     là où une taille animée ferait tressauter toute la barre du haut.
+/// UN SEUL contrôleur pilote les deux, sur 4,5 s comme dans le CSS
+/// d'origine. Deux animations indépendantes dériveraient l'une par
+/// rapport à l'autre et finiraient par se contrarier — l'éclat qui
+/// passe pile quand le logo est effacé ne se verrait pas. Ici la
+/// chorégraphie est fixe et lisible :
+///   0 → 25 %   l'éclat traverse, logo à pleine opacité ;
+///   25 → 65 %  le logo s'efface ;
+///   65 → 100 % il revient.
+///
+/// L'éclat est peint en `BlendMode.srcATop` : il n'éclaire QUE les
+/// pixels opaques du logo. Sans ça, une barre blanche traverserait aussi
+/// le vide autour de la tuile — très visible sur un fond noir.
+///
+/// Coût : l'opacité et un dégradé, jamais une taille. Rien n'est remis
+/// en page à chaque image, la barre du haut ne tressaute pas.
 class _BreathingLogo extends StatefulWidget {
   const _BreathingLogo({required this.width});
 
@@ -694,13 +702,47 @@ class _BreathingLogoState extends State<_BreathingLogo>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2600),
-  )..repeat(reverse: true);
+    duration: const Duration(milliseconds: 4500),
+  )..repeat();
 
-  late final Animation<double> _fade = Tween<double>(
-    begin: 1.0,
-    end: 0.10,
-  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOutSine));
+  /// L'opacité : pleine pendant le passage de l'éclat, puis elle baisse
+  /// et remonte. 0,32 au creux — assez bas pour que l'orange lâche la
+  /// vedette, assez haut pour qu'on ne croie pas à un défaut d'écran.
+  late final Animation<double> _fade = TweenSequence<double>(
+    <TweenSequenceItem<double>>[
+      TweenSequenceItem<double>(
+        tween: ConstantTween<double>(1.0),
+        weight: 25,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 1.0, end: 0.32)
+            .chain(CurveTween(curve: Curves.easeInOutSine)),
+        weight: 40,
+      ),
+      TweenSequenceItem<double>(
+        tween: Tween<double>(begin: 0.32, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeInOutSine)),
+        weight: 35,
+      ),
+    ],
+  ).animate(_c);
+
+  /// La position de la bande lumineuse, en largeurs de logo. Elle part
+  /// hors champ à gauche, traverse pendant le premier quart, puis attend
+  /// hors champ à droite — exactement les keyframes du CSS fourni.
+  late final Animation<double> _sweep = TweenSequence<double>(
+    <TweenSequenceItem<double>>[
+      TweenSequenceItem<double>(
+        tween: Tween<double>(begin: -1.1, end: 1.1)
+            .chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 25,
+      ),
+      TweenSequenceItem<double>(
+        tween: ConstantTween<double>(1.1),
+        weight: 75,
+      ),
+    ],
+  ).animate(_c);
 
   @override
   void dispose() {
@@ -710,11 +752,49 @@ class _BreathingLogoState extends State<_BreathingLogo>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fade,
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (BuildContext context, Widget? child) {
+        return Opacity(
+          opacity: _fade.value,
+          child: ShaderMask(
+            // srcATop : la lumière ne se pose que sur le logo lui-même,
+            // jamais sur le vide autour.
+            blendMode: BlendMode.srcATop,
+            shaderCallback: (Rect bounds) => LinearGradient(
+              // Légèrement incliné : c'est le skewX(-20deg) du CSS.
+              begin: const Alignment(-1.0, -0.7),
+              end: const Alignment(1.0, 0.7),
+              colors: const <Color>[
+                Color(0x00FFFFFF),
+                Color(0x26FFFFFF), // 15 %
+                Color(0x73FFFFFF), // 45 %
+                Color(0x26FFFFFF), // 15 %
+                Color(0x00FFFFFF),
+              ],
+              stops: const <double>[0.33, 0.43, 0.50, 0.57, 0.67],
+              transform: _SweepShift(_sweep.value),
+            ).createShader(bounds),
+            child: child,
+          ),
+        );
+      },
+      // Construit UNE fois : l'image ne change pas, seule la lumière
+      // qui la traverse change.
       child: TvLogo(width: widget.width),
     );
   }
+}
+
+/// Décale le dégradé horizontalement, en largeurs de la zone peinte.
+class _SweepShift extends GradientTransform {
+  const _SweepShift(this.dx);
+
+  final double dx;
+
+  @override
+  Matrix4? transform(Rect bounds, {TextDirection? textDirection}) =>
+      Matrix4.translationValues(bounds.width * dx, 0, 0);
 }
 
 /// Pastille d'en-tête : un point de couleur ou une icône, puis un mot.

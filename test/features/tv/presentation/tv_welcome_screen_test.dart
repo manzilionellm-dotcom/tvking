@@ -66,26 +66,48 @@ void main() {
 
       // `.first` = l'ancêtre le PLUS PROCHE du logo, donc le nôtre —
       // MaterialApp en empile d'autres pour ses transitions de route.
-      final Finder fade = find
-          .ancestor(
-            of: find.byType(TvLogo),
-            matching: find.byType(FadeTransition),
-          )
+      final Finder op = find
+          .ancestor(of: find.byType(TvLogo), matching: find.byType(Opacity))
           .first;
-      expect(fade, findsOneWidget);
+      double opacityNow() => tester.widget<Opacity>(op).opacity;
 
-      double opacityNow() => tester.widget<FadeTransition>(fade).opacity.value;
+      // Chorégraphie sur 4500 ms : 0–25 % l'éclat passe (opacité pleine),
+      // 25–65 % le logo s'efface, 65–100 % il revient.
+      expect(opacityNow(), 1.0, reason: 'plein pendant le passage de l\'éclat');
 
-      final double start = opacityNow();
-      await tester.pump(const Duration(milliseconds: 1300));
-      final double mid = opacityNow();
-      expect(mid, lessThan(start), reason: 'il doit s\'effacer…');
+      await tester.pump(const Duration(milliseconds: 2900)); // ~64 %
+      final double low = opacityNow();
+      expect(low, lessThan(0.5), reason: 'il doit vraiment s\'effacer');
 
-      // 1300 + 3400 = 4700 ms : bien engagé dans le retour (le cycle
-      // aller-retour dure 5200 ms). Pas +2600 : on retomberait pile sur
-      // le point symétrique, donc sur la MÊME valeur.
-      await tester.pump(const Duration(milliseconds: 3400));
-      expect(opacityNow(), greaterThan(mid), reason: '…puis revenir');
+      await tester.pump(const Duration(milliseconds: 1400)); // ~95 %
+      expect(opacityNow(), greaterThan(low), reason: '…puis revenir');
+    });
+
+    // Le « shine sweep » fourni par le client, transposé du CSS. Il doit
+    // traverser le logo — et SEULEMENT le logo : peint en srcATop, il
+    // n'éclaire pas le vide autour de la tuile (une barre blanche en
+    // travers du fond noir se verrait comme un défaut).
+    testWidgets('un éclat balaie le logo, et rien d\'autre',
+        (WidgetTester tester) async {
+      await _pump(tester);
+
+      final Finder mask = find
+          .ancestor(of: find.byType(TvLogo), matching: find.byType(ShaderMask))
+          .first;
+      expect(mask, findsOneWidget);
+      expect(tester.widget<ShaderMask>(mask).blendMode, BlendMode.srcATop,
+          reason: 'sans srcATop, la lumière déborde sur le fond');
+
+      // Le dégradé se déplace : deux instants du balayage ne donnent pas
+      // le même shader.
+      final Shader a = tester
+          .widget<ShaderMask>(mask)
+          .shaderCallback(const Rect.fromLTWH(0, 0, 210, 80));
+      await tester.pump(const Duration(milliseconds: 500));
+      final Shader b = tester
+          .widget<ShaderMask>(mask)
+          .shaderCallback(const Rect.fromLTWH(0, 0, 210, 80));
+      expect(identical(a, b), isFalse);
     });
 
     testWidgets('l\'accueil et les deux méthodes de connexion',
