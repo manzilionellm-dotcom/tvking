@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/update/build_flags.dart';
 import '../../../core/update/update_prompt.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../core/support/vip_help_card.dart';
@@ -81,8 +82,7 @@ class SettingsScreen extends StatelessWidget {
                       min: 5,
                       max: 60,
                       divisions: 11,
-                      onChanged: (double v) =>
-                          s.setBufferSeconds(v.toInt()),
+                      onChanged: (double v) => s.setBufferSeconds(v.toInt()),
                     ),
                     _SwitchTile(
                       icon: Icons.memory_rounded,
@@ -237,12 +237,25 @@ class SettingsScreen extends StatelessWidget {
             _SectionTitle(context.l10n.settingsApp),
             // Mise à jour MANUELLE : vérifie prod, propose l'installation
             // directe, ou confirme « tu as déjà la dernière version ».
-            _ActionTile(
-              icon: Icons.system_update_rounded,
-              title: context.l10n.aboutCheckUpdates,
-              subtitle: context.l10n.settingsUpdateSubtitle,
-              onTap: () => checkForUpdatesInteractive(context),
-            ),
+            //
+            // ABSENTE DU BUILD GOOGLE PLAY, pour deux raisons.
+            //  1. Elle ne sert à rien : `UpdateService.checkDetailed()`
+            //     répond « à jour » d'emblée quand `kIsPlayBuild` — le
+            //     client appuierait sur un bouton mort, à chaque fois.
+            //  2. Son sous-titre annonce « Vérifie et INSTALLE la dernière
+            //     version ». Google Play interdit à une app distribuée par
+            //     le Store de se mettre à jour elle-même. Le binaire
+            //     respecte la règle (REQUEST_INSTALL_PACKAGES est retirée
+            //     de l'AAB, et le build échoue si elle y reste), mais le
+            //     TEXTE décrit exactement ce qui est interdit — et un
+            //     relecteur ne lit pas le manifeste, il lit l'écran.
+            if (!kIsPlayBuild)
+              _ActionTile(
+                icon: Icons.system_update_rounded,
+                title: context.l10n.aboutCheckUpdates,
+                subtitle: context.l10n.settingsUpdateSubtitle,
+                onTap: () => checkForUpdatesInteractive(context),
+              ),
             _ActionTile(
               icon: Icons.info_outline_rounded,
               title: context.l10n.settingsAbout,
@@ -411,8 +424,7 @@ class _ActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color iconColor =
-        destructive ? AppColors.live : AppColors.accent;
+    final Color iconColor = destructive ? AppColors.live : AppColors.accent;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -420,8 +432,7 @@ class _ActionTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: Container(
           margin: const EdgeInsets.only(bottom: 6),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(12),
@@ -706,8 +717,7 @@ class _LanguagePicker extends StatelessWidget {
                   // ----- Liste des langues supportées -----
                   ...LocaleRepository.supportedLocales.map((Locale loc) {
                     return _LanguageTile(
-                      label: LocaleRepository
-                              .localeLabels[loc.languageCode] ??
+                      label: LocaleRepository.localeLabels[loc.languageCode] ??
                           loc.languageCode,
                       sublabel: loc.languageCode.toUpperCase(),
                       selected: current?.languageCode == loc.languageCode,
@@ -748,8 +758,7 @@ class _LanguageTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           child: Row(
             children: <Widget>[
               Expanded(
@@ -760,12 +769,10 @@ class _LanguageTile extends StatelessWidget {
                       label,
                       style: AppTextStyles.bodyLarge.copyWith(
                         fontSize: 15,
-                        color: selected
-                            ? AppColors.accent
-                            : AppColors.textPrimary,
-                        fontWeight: selected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
+                        color:
+                            selected ? AppColors.accent : AppColors.textPrimary,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -780,8 +787,7 @@ class _LanguageTile extends StatelessWidget {
                 ),
               ),
               if (selected)
-                Icon(Icons.check_rounded,
-                    color: AppColors.accent, size: 20),
+                Icon(Icons.check_rounded, color: AppColors.accent, size: 20),
             ],
           ),
         ),
@@ -889,8 +895,7 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
                             children: <Widget>[
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: <Widget>[
                                     Text(
                                       entry.key,
@@ -909,8 +914,7 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
                                       entry.value,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style:
-                                          AppTextStyles.bodyMedium.copyWith(
+                                      style: AppTextStyles.bodyMedium.copyWith(
                                         fontSize: 11,
                                         color: AppColors.textMuted,
                                       ),
@@ -945,8 +949,7 @@ class _UserAgentSheetState extends State<_UserAgentSheet> {
                       controller: _controller,
                       minLines: 1,
                       maxLines: 3,
-                      style:
-                          AppTextStyles.bodyMedium.copyWith(fontSize: 12),
+                      style: AppTextStyles.bodyMedium.copyWith(fontSize: 12),
                       decoration: InputDecoration(
                         hintText: context.l10n.settingsUserAgentHint,
                         filled: true,
