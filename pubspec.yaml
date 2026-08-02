@@ -9,7 +9,7 @@
 name: tv_king
 description: "The Few — lecteur multimédia premium (Not For Everyone)."
 publish_to: 'none'
-version: 1.0.0+15
+version: 1.0.0+16
 
 environment:
   sdk: ^3.5.0
@@ -286,16 +286,20 @@ flutter_launcher_icons:
   android: true
   ios: false
   remove_alpha_ios: false
-  # Logo 7 MOTION « chrome & drapeau » fourni par le client le
-  # 2026-08-02. L'image de départ est un visuel PORTRAIT sur fond flou :
-  # inutilisable telle quelle en icône. icon_7motion_us.png en est la
-  # mise au carré — bloc « 7 + MOTION » détouré de son fond flou, posé
-  # sur un aplat bleu nuit, et occupant 60 % du côté pour que le
-  # masque rond/carré-arrondi d'Android ne rogne JAMAIS la marque.
-  image_path: "assets/branding/icon_7motion_us.png"
+  # L'ICÔNE DE LA FICHE GOOGLE PLAY, fournie par le client le 2026-08-02 :
+  # triangle de lecture blanc sur dégradé orange. C'est celle qu'il voit
+  # dans la Console, donc c'est celle qui doit être sur le téléphone —
+  # sinon sa vidéo de présentation ne colle pas au Store.
+  # Son fichier avait une bande BLANCHE en bas (reste de capture) :
+  # icon_7motion_orange.png en est la version recarrée, dégradé prolongé
+  # en haut et en bas, sans étirement de la marque.
+  # Fond adaptatif = l'orange du logo : sur les lanceurs qui masquent en
+  # rond, le pourtour reste orange au lieu d'une couronne d'une autre
+  # couleur.
+  image_path: "assets/branding/icon_7motion_orange.png"
   min_sdk_android: 21
-  adaptive_icon_background: "#0B1220"
-  adaptive_icon_foreground: "assets/branding/icon_7motion_us.png"
+  adaptive_icon_background: "#FF912E"
+  adaptive_icon_foreground: "assets/branding/icon_7motion_orange.png"
 
 flutter:
   uses-material-design: true

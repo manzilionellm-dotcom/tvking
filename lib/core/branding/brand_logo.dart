@@ -63,10 +63,10 @@ class BrandLogo extends StatelessWidget {
   static String get _assetPath {
     switch (FlavorConfig.current.flavor) {
       case Flavor.sevenMotion:
-        // Logo « 7 chrome & drapeau » fourni par le client le 2026-08-02 :
-        // le MÊME visuel que l'icône du téléphone et que la fiche Google
-        // Play. Il tournait ses vidéos avec deux identités à l'écran.
-        return 'assets/branding/icon_7motion_us.png';
+        // MÊME image que l'icône du téléphone et que la fiche Google Play
+        // (2026-08-02) : le client tournait ses vidéos avec deux identités
+        // à l'écran, celle du Store et celle de l'app.
+        return 'assets/branding/icon_7motion_orange.png';
       case Flavor.prive:
         return 'assets/branding/prive_icon.png';
     }
