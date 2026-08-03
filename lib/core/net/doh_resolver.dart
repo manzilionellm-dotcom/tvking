@@ -244,10 +244,14 @@ Future<InternetAddress?> resolveHostForMedia(String host) async {
 
 /// Installe la résolution DoH sur [client] : le DNS système est tenté
 /// d'abord ; en cas d'échec (blocage opérateur), le domaine est résolu
-/// en DoH et la connexion part directement sur l'IP obtenue — le
-/// [HttpClient] conserve le nom d'hôte d'origine pour l'en-tête Host et
-/// le SNI TLS. À réserver aux clients qui parlent aux panels IPTV.
-void installDohResolution(HttpClient client) {
+/// en DoH et la connexion part directement sur l'IP obtenue. En HTTPS,
+/// le TLS est négocié ICI, avec le vrai nom d'hôte en SNI — voir le
+/// commentaire ci-dessous, c'est un bug qui a coûté cher.
+/// À réserver aux clients qui parlent aux panels IPTV.
+void installDohResolution(
+  HttpClient client, {
+  required bool acceptInvalidCertificate,
+}) {
   client.connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) {
     // Connexions via proxy : laissées telles quelles (on ne résout que
     // l'hôte final quand il n'y a pas de proxy).
@@ -256,36 +260,119 @@ void installDohResolution(HttpClient client) {
     }
     final int port =
         uri.port != 0 ? uri.port : (uri.isScheme('https') ? 443 : 80);
-    return _connectResolving(uri.host, port);
+    return _connectResolving(
+      uri.host,
+      port,
+      secure: uri.isScheme('https'),
+      acceptInvalidCertificate: acceptInvalidCertificate,
+    );
   };
 }
 
+// =========================================================
+//  POURQUOI LE TLS EST NÉGOCIÉ ICI, À LA MAIN
+// =========================================================
+//  CAUSE RACINE terrain (boîte noire du 2026-08-03, 18:36). TOUTES les
+//  sources HTTPS échouaient, avec deux messages en alternance :
+//      HttpException: Connection closed before full header was received
+//      HttpException: Invalid request method
+//  Ce sont les erreurs de l'analyseur HTTP de Dart quand la réponse
+//  n'est pas du HTTP — typiquement une alerte TLS binaire, renvoyée
+//  parce que la requête est partie EN CLAIR sur le port 443.
+//
+//  Et c'était exactement ça. Dans `http_impl.dart` du SDK Dart, dès
+//  qu'un `connectionFactory` est posé, la branche sécurisée n'est PLUS
+//  JAMAIS prise :
+//      if (cf != null) { connectionTask = cf(uri, null, null); }
+//      else { connectionTask = isSecure ? SecureSocket.startConnect(…)
+//                                       : Socket.startConnect(…); }
+//  Le socket rendu par la fabrique est utilisé TEL QUEL. Le nôtre était
+//  un socket nu : aucun TLS n'était jamais négocié.
+//
+//  Autrement dit, poser ce résolveur cassait TOUT le HTTPS des clients
+//  concernés — chargement de playlists, sondes HLS, relais. Personne ne
+//  l'avait vu parce que les panels IPTV de nos clients sont en
+//  `http://`, et un socket nu leur convient parfaitement. Il a fallu
+//  une démo servie par des CDN en HTTPS pour le révéler.
+//
+//  Le nom d'hôte est passé en SNI, et ce n'est pas un détail : sur un
+//  CDN mutualisé (Apple, Akamai, Google), une poignée de main TLS qui
+//  présente une IP au lieu d'un nom est rejetée ou renvoie le mauvais
+//  certificat. C'est précisément le cas des hôtes de la démo.
+
 /// DNS système d'abord (rapide, marche partout) ; DoH en repli quand il
 /// échoue (domaine bloqué par l'opérateur). Renvoie un ConnectionTask
-/// vers la première adresse utilisable.
-Future<ConnectionTask<Socket>> _connectResolving(String host, int port) async {
+/// vers la première adresse utilisable, chiffré si [secure].
+Future<ConnectionTask<Socket>> _connectResolving(
+  String host,
+  int port, {
+  required bool secure,
+  required bool acceptInvalidCertificate,
+}) async {
   // Déjà une IP littérale : rien à résoudre.
   final InternetAddress? literal = InternetAddress.tryParse(host);
-  if (literal != null) return Socket.startConnect(literal, port);
+  if (literal != null) return _wrap(literal, port, host, secure, acceptInvalidCertificate);
 
   // 1) DNS système (avec un budget court : sur un réseau qui bloque, il
   //    échoue vite avec « Failed host lookup »).
   try {
     final List<InternetAddress> sys =
         await InternetAddress.lookup(host).timeout(const Duration(seconds: 4));
-    if (sys.isNotEmpty) return Socket.startConnect(preferIpv4(sys), port);
+    if (sys.isNotEmpty) return _wrap(preferIpv4(sys), port, host, secure, acceptInvalidCertificate);
   } catch (_) {
     // blocage / échec → on tente le DoH
   }
 
   // 2) DoH : l'app résout elle-même, l'opérateur ne peut pas filtrer.
   final List<InternetAddress> doh = await DohResolver.instance.resolve(host);
-  if (doh.isNotEmpty) return Socket.startConnect(preferIpv4(doh), port);
+  if (doh.isNotEmpty) return _wrap(preferIpv4(doh), port, host, secure, acceptInvalidCertificate);
 
   // 3) Dernier recours : laisser la connexion échouer avec l'erreur
   //    système native (message clair pour l'utilisateur).
-  return Socket.startConnect(host, port);
+  return _wrap(host, port, host, secure, acceptInvalidCertificate);
 }
+
+/// Ouvre la connexion vers [target], et négocie le TLS si [secure] —
+/// avec [sniHost] comme nom présenté au serveur.
+///
+/// `ConnectionTask.fromSocket` est prévu pour ça : sa documentation dit
+/// mot pour mot « You can use this method to return existing socket
+/// connections in HttpClient.connectionFactory ».
+Future<ConnectionTask<Socket>> _wrap(
+  Object target,
+  int port,
+  String sniHost,
+  bool secure,
+  bool acceptInvalidCertificate,
+) async {
+  final ConnectionTask<Socket> raw = await _startConnect(target, port);
+  if (!secure) return raw;
+  final Future<Socket> tls = raw.socket.then(
+    (Socket s) => SecureSocket.secure(
+      s,
+      host: sniHost,
+      // Décision PRODUIT déjà prise à chaque appelant, et jusqu'ici
+      // INAPPLIQUÉE : `badCertificateCallback` n'était jamais consulté,
+      // puisque le TLS n'avait pas lieu. « Serveurs IPTV https à
+      // certificat auto-signé/expiré : les lecteurs du marché (IBO,
+      // VLC…) les acceptent — sans ça, écran noir sur ces sources alors
+      // que le flux est bon. » On la rend effective ici, mais EXIGÉE
+      // explicitement : personne n'hérite d'un TLS permissif sans
+      // l'écrire. Le résolveur DoH lui-même, lui, valide normalement —
+      // il utilise un client dédié, sans cette fabrique.
+      onBadCertificate: acceptInvalidCertificate ? (_) => true : null,
+    ),
+  );
+  // On garde l'annulation du socket SOUS-JACENT : annuler pendant la
+  // poignée de main doit fermer la connexion TCP, pas la laisser
+  // ouverte en fuite.
+  return ConnectionTask.fromSocket<Socket>(tls, raw.cancel);
+}
+
+Future<ConnectionTask<Socket>> _startConnect(Object target, int port) =>
+    target is InternetAddress
+        ? Socket.startConnect(target, port)
+        : Socket.startConnect(target as String, port);
 
 /// Choisit une adresse IPv4 EN PRIORITÉ dans [addrs], sinon la première.
 ///

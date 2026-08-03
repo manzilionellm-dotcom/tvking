@@ -62,7 +62,7 @@ class HlsPreflight {
       ..userAgent = PlayerSettings.instance.userAgent
       ..badCertificateCallback =
           ((X509Certificate cert, String host, int port) => true);
-    installDohResolution(client); // DNS FAI bloqué → DoH
+    installDohResolution(client, acceptInvalidCertificate: true);
     try {
       final HttpClientRequest req =
           await client.getUrl(Uri.parse(url)).timeout(kTimeout);
@@ -94,7 +94,7 @@ class HlsPreflight {
       ..userAgent = PlayerSettings.instance.userAgent
       ..badCertificateCallback =
           ((X509Certificate cert, String host, int port) => true);
-    installDohResolution(client); // DNS FAI bloqué → DoH
+    installDohResolution(client, acceptInvalidCertificate: true);
     try {
       // ----- 1. Playlist telle que le lecteur l'ouvre -----
       final _Fetched? first = await _fetchText(client, url);

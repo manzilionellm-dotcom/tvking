@@ -196,7 +196,7 @@ void main() {
     };
 
     final HttpClient client = HttpClient();
-    installDohResolution(client);
+    installDohResolution(client, acceptInvalidCertificate: true);
     // Hôte impossible à résoudre en système → forcément passé par le DoH.
     final HttpClientRequest req = await client
         .getUrl(Uri.parse('http://$blocked:${srv.port}/get.php'));

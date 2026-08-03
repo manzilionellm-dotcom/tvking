@@ -227,7 +227,7 @@ class LocalStreamRelay {
       ..userAgent = PlayerSettings.instance.userAgent
       ..badCertificateCallback =
           ((X509Certificate cert, String host, int port) => true);
-    installDohResolution(client); // domaines panel bloqués par le DNS FAI
+    installDohResolution(client, acceptInvalidCertificate: true);
     try {
       final HttpClientRequest up =
           await client.getUrl(Uri.parse(realUrl));
@@ -577,7 +577,7 @@ class LocalStreamRelay {
         // sources alors que le flux est bon (cf. iptv_http.dart).
         ..badCertificateCallback =
             ((X509Certificate cert, String host, int port) => true);
-      installDohResolution(session.client!); // DNS FAI bloqué → DoH
+      installDohResolution(session.client!, acceptInvalidCertificate: true);
 
       final HttpClientRequest cReq =
           await session.client!.getUrl(Uri.parse(url));

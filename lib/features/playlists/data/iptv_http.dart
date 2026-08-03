@@ -33,6 +33,6 @@ http.Client createIptvHttpClient() {
   final HttpClient inner = HttpClient()
     ..badCertificateCallback =
         (X509Certificate cert, String host, int port) => true;
-  installDohResolution(inner);
+  installDohResolution(inner, acceptInvalidCertificate: true);
   return IOClient(inner);
 }
