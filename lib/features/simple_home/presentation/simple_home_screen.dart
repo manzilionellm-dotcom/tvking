@@ -292,16 +292,27 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           // install : soit on a été invité par un ami (mode invité), soit on a
           // son propre identifiant à activer (les blocs ci-dessous).
           _GuestEntryCard(onTap: () => openGuestScreen(context)),
-          const SizedBox(height: 22),
-          const MacActivationView(),
-          const SizedBox(height: 14),
-          // MODE DÉMO — la seule chose à faire, sinon, c'est attendre.
+          const SizedBox(height: 18),
+          // MODE DÉMO — AU-DESSUS du bloc d'activation, et c'est voulu.
+          //
+          // Il était en bas. Il y était vraiment, mais après les offres,
+          // l'identifiant, les boutons Copier/Envoyer et les étapes
+          // suivantes : plus d'un écran de défilement. Personne ne
+          // descend jusque-là, donc pour le client il n'existait pas
+          // (« il n'y a plus moyen de tester »). Un bouton qu'on ne
+          // trouve pas n'est pas un bouton.
+          //
           // Sans source, l'app ne montre RIEN : le nouvel arrivant ne
           // peut ni juger le lecteur, ni comprendre la navigation, ni
-          // voir le cinéma. Un bouquet d'exemples lui fait traverser
-          // tout le parcours pendant que son revendeur l'active.
+          // voir le cinéma. La démo est la SEULE chose à faire pendant
+          // que le revendeur l'active — donc elle se voit sans scroller.
+          // L'activation garde la vedette juste en dessous : c'est une
+          // ligne, pas une carte, et le bandeau permanent rappelle en
+          // continu que ces chaînes sont des exemples.
           const DemoEntryButton(),
-          const SizedBox(height: 8),
+          const SizedBox(height: 18),
+          const MacActivationView(),
+          const SizedBox(height: 14),
           const LegalDisclaimer.compact(),
         ],
       ),
