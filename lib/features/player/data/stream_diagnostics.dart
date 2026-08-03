@@ -23,6 +23,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/observability/structured_logger.dart';
 import '../../tv/data/failure_explainer.dart';
 
 /// Raison CLAIRE d'un échec de lecture, à écrire noir sur blanc à l'écran
@@ -270,6 +271,19 @@ class StreamDiagnostics extends ChangeNotifier {
       _add('player',
           'Codecs: vidéo=${videoCodec ?? '?'} audio=${audioCodec ?? '?'} '
           '${this.resolution ?? ''}');
+      // En clair dans la boîte noire, même quand tout va bien : c'est
+      // la seule ligne qui permet de trancher un « des octets arrivent,
+      // pas d'image ». Un codec absent ici alors que le flux se
+      // télécharge dit tout de suite que le décodeur n'a rien accepté.
+      StructuredLogger.instance.info(
+        domain: 'lecture',
+        event: 'codecs',
+        ctx: <String, Object?>{
+          'video': videoCodec,
+          'audio': audioCodec,
+          'res': this.resolution,
+        },
+      );
       notifyListeners();
     }
   }
@@ -328,7 +342,50 @@ class StreamDiagnostics extends ChangeNotifier {
   void _add(String tag, String message, {String level = 'info'}) {
     _events.add(StreamDiagEvent(tag: tag, message: message, level: level));
     if (_events.length > _kMaxEvents) _events.removeAt(0);
+    _mirrorToBlackBox(tag, message, level);
     notifyListeners();
+  }
+
+  /// PONT VERS LA BOÎTE NOIRE — et pourquoi il existe.
+  ///
+  /// Terrain 2026-08-03 : le client signale un écran noir en mode démo,
+  /// envoie sa boîte noire… et elle ne contient RIEN sur la lecture.
+  /// Les traces du lecteur vivaient uniquement ici, dans un écran qu'il
+  /// faut penser à ouvrir AU BON MOMENT, sur le bon appareil, avant de
+  /// quitter la chaîne. Autant dire jamais. On a donc perdu deux
+  /// allers-retours à diagnostiquer sans données.
+  ///
+  /// Les échecs de lecture partent maintenant AUSSI dans la boîte noire,
+  /// qui est persistée et survit au redémarrage. Deux règles :
+  ///   • seuls `warn` et `error` passent — la boîte noire est une pièce
+  ///     à conviction, pas un flux de debug ; la noyer sous des lignes
+  ///     `info` la rendrait aussi inutile que son silence actuel ;
+  ///   • les codecs passent aussi, en clair. C'est LE renseignement qui
+  ///     manquait : « des octets arrivent, pas d'image » se tranche en
+  ///     lisant le codec réellement négocié.
+  ///
+  /// Ce pont ne touche pas au rendu : il n'ajoute qu'une écriture de
+  /// journal, sur un chemin déjà appelé pour tous ces événements.
+  void _mirrorToBlackBox(String tag, String message, String level) {
+    if (level != 'warn' && level != 'error') return;
+    final Map<String, Object?> ctx = <String, Object?>{
+      'tag': tag,
+      'msg': message,
+      if (videoCodec != null) 'video': videoCodec,
+      if (audioCodec != null) 'audio': audioCodec,
+      if (resolution != null) 'res': resolution,
+      if (httpStatus != null) 'http': httpStatus,
+      // URL masquée : la boîte noire est faite pour être ENVOYÉE, et
+      // une URL Xtream porte le mot de passe du client en clair.
+      if (streamUrl != null) 'url': maskCredentials(streamUrl!),
+    };
+    if (level == 'error') {
+      StructuredLogger.instance
+          .error(domain: 'lecture', event: 'stream.$tag', ctx: ctx);
+    } else {
+      StructuredLogger.instance
+          .warn(domain: 'lecture', event: 'stream.$tag', ctx: ctx);
+    }
   }
 
   // ----- Rapport texte (copiable) -----
