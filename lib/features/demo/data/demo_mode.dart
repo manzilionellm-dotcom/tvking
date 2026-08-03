@@ -23,8 +23,9 @@
 //
 //  2. AUCUN FLUX QUI NE NOUS APPARTIENNE PAS. On n'utilise QUE des
 //     flux de test publics, publiés par leurs éditeurs POUR être
-//     testés (Apple HLS reference streams, mux.dev test-streams).
-//     Jamais une chaîne réelle, jamais un lien de fournisseur.
+//     testés : films libres de la Fondation Blender, flux de référence
+//     Apple HLS, échantillons mux.dev. Jamais une chaîne réelle,
+//     jamais un lien de fournisseur.
 //
 //  3. LE CLIENT SAIT TOUJOURS QU'IL EST EN DÉMO. L'état est persisté
 //     et exposé (`DemoMode.instance.isActive`) pour qu'un bandeau le
@@ -114,57 +115,101 @@ class DemoMode extends ChangeNotifier {
   //  une chaîne réelle, et ça donne une porte de sortie propre si on
   //  doit un jour les filtrer ailleurs.
 
-  /// Flux de test PUBLICS, publiés pour être testés. Rien d'autre n'a le
-  /// droit d'entrer ici.
-  static const String _appleAdv =
+  // ---------------------------------------------------------
+  //  LES SOURCES — et pourquoi elles sont de DEUX natures
+  // ---------------------------------------------------------
+  //  Premier jet : trois playlists HLS, et l'écran est resté NOIR chez
+  //  le client. Les liens n'étaient pas vérifiables d'ici (le réseau de
+  //  build refuse ces hôtes), donc on ne pouvait pas savoir si le
+  //  coupable était le lien, le réseau, ou le chemin HLS du lecteur.
+  //
+  //  D'où le choix ci-dessous, qui n'est pas cosmétique : le DIRECT est
+  //  en HLS, le CINÉMA en MP4 progressif. Ce sont DEUX CHEMINS
+  //  DIFFÉRENTS dans le lecteur —
+  //    • HLS  → playlist normalisée par le relais local, puis mpv ;
+  //    • MP4 (isLive: false) → mpv en direct, Range natif, hors relais.
+  //  Donc la démo répond toute seule à la question qu'on ne pouvait pas
+  //  trancher : si les films partent et que le direct reste noir, c'est
+  //  le chemin HLS ; si RIEN ne part, c'est le réseau de l'appareil.
+  //  Et dans tous les cas le client a quelque chose à montrer.
+  //
+  //  Règle inchangée : QUE des flux de test publics, publiés par leurs
+  //  éditeurs POUR être testés (films libres de la Fondation Blender,
+  //  flux de référence Apple HLS, échantillons mux.dev). Jamais une
+  //  chaîne réelle, jamais un lien de fournisseur.
+
+  // — DIRECT : playlists HLS (le format des vraies chaînes) ————
+  /// Flux de référence Apple. Variante **fmp4** : c'est la moderne, et
+  /// celle que le client a lui-même désignée. (L'ancienne variante `_ts`
+  /// est celle avec laquelle l'écran était noir.)
+  static const String _appleFmp4 =
       'https://devstreaming-cdn.apple.com/videos/streaming/examples/'
-      'img_bipbop_adv_example_ts/master.m3u8';
-  static const String _muxBasic =
+      'img_bipbop_adv_example_fmp4/master.m3u8';
+  static const String _hlsBunny =
       'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
-  static const String _muxPtsShift =
-      'https://test-streams.mux.dev/pts_shift/master.m3u8';
+  static const String _hlsSintel =
+      'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8';
+  static const String _hlsTears =
+      'https://demo.unified-streaming.com/k8s/features/stable/video/'
+      'tears-of-steel/tears-of-steel.ism/.m3u8';
+
+  // — CINÉMA : MP4 progressifs ————————————————————————
+  //  Mêmes films (Blender, licence libre), servis en fichier fini : le
+  //  lecteur les ouvre par son chemin VOD, avec seek et démarrage
+  //  rapide. C'est aussi le chemin le plus dur à casser.
+  static const String _mp4 =
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/';
+  static const String _mp4Bunny = '${_mp4}BigBuckBunny.mp4';
+  static const String _mp4Elephants = '${_mp4}ElephantsDream.mp4';
+  static const String _mp4Sintel = '${_mp4}Sintel.mp4';
+  static const String _mp4Tears = '${_mp4}TearsOfSteel.mp4';
+  // Les trois « Guide » : des clips COURTS (~15 s). Une leçon qui dure
+  // dix minutes n'est pas une leçon.
+  static const String _mp4Short1 = '${_mp4}ForBiggerBlazes.mp4';
+  static const String _mp4Short2 = '${_mp4}ForBiggerEscapes.mp4';
+  static const String _mp4Short3 = '${_mp4}ForBiggerFun.mp4';
 
   static const List<Channel> _live = <Channel>[
     Channel(
       id: 'demo-live-1',
       name: 'Démo Sport',
       category: 'DÉMO || Sport',
-      streamUrl: _muxBasic,
+      streamUrl: _hlsTears,
       isLive: true,
     ),
     Channel(
       id: 'demo-live-2',
       name: 'Démo Info',
       category: 'DÉMO || Info',
-      streamUrl: _appleAdv,
+      streamUrl: _appleFmp4,
       isLive: true,
     ),
     Channel(
       id: 'demo-live-3',
       name: 'Démo Divertissement',
       category: 'DÉMO || Divertissement',
-      streamUrl: _muxPtsShift,
+      streamUrl: _hlsBunny,
       isLive: true,
     ),
     Channel(
       id: 'demo-live-4',
       name: 'Démo Enfants',
       category: 'DÉMO || Enfants',
-      streamUrl: _muxBasic,
+      streamUrl: _hlsBunny,
       isLive: true,
     ),
     Channel(
       id: 'demo-live-5',
       name: 'Démo Musique',
       category: 'DÉMO || Musique',
-      streamUrl: _appleAdv,
+      streamUrl: _hlsSintel,
       isLive: true,
     ),
     Channel(
       id: 'demo-live-6',
       name: 'Démo Documentaire',
       category: 'DÉMO || Documentaire',
-      streamUrl: _muxPtsShift,
+      streamUrl: _hlsTears,
       isLive: true,
     ),
   ];
@@ -182,49 +227,49 @@ class DemoMode extends ChangeNotifier {
       id: 'demo-vod-1',
       name: 'Démo — Film de démonstration 1',
       category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _muxBasic,
+      streamUrl: _mp4Bunny,
       isLive: false,
     ),
     Channel(
       id: 'demo-vod-2',
       name: 'Démo — Film de démonstration 2',
       category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _appleAdv,
+      streamUrl: _mp4Elephants,
       isLive: false,
     ),
     Channel(
       id: 'demo-vod-3',
       name: 'Démo — Film de démonstration 3',
       category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _muxPtsShift,
+      streamUrl: _mp4Sintel,
       isLive: false,
     ),
     Channel(
       id: 'demo-vod-4',
       name: 'Démo — Film de démonstration 4',
       category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _muxBasic,
+      streamUrl: _mp4Tears,
       isLive: false,
     ),
     Channel(
       id: 'demo-tuto-1',
       name: 'Guide 1 — Ajouter ma source',
       category: 'DÉMO FILMS || Guide',
-      streamUrl: _appleAdv,
+      streamUrl: _mp4Short1,
       isLive: false,
     ),
     Channel(
       id: 'demo-tuto-2',
       name: 'Guide 2 — Trouver une chaîne',
       category: 'DÉMO FILMS || Guide',
-      streamUrl: _muxBasic,
+      streamUrl: _mp4Short2,
       isLive: false,
     ),
     Channel(
       id: 'demo-tuto-3',
       name: 'Guide 3 — Envoyer sur ma télé',
       category: 'DÉMO FILMS || Guide',
-      streamUrl: _muxPtsShift,
+      streamUrl: _mp4Short3,
       isLive: false,
     ),
   ];

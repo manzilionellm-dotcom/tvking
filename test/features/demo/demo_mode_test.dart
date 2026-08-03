@@ -96,8 +96,11 @@ void main() {
       // être testés. Un hôte de panel IPTV ici, et on diffuserait le
       // serveur d'un fournisseur dans une app publique.
       const List<String> hotesPermis = <String>[
-        'devstreaming-cdn.apple.com',
-        'test-streams.mux.dev',
+        'devstreaming-cdn.apple.com', // flux de référence Apple HLS
+        'test-streams.mux.dev', // échantillons mux.dev
+        'bitdash-a.akamaihd.net', // Sintel (Blender, licence libre)
+        'demo.unified-streaming.com', // Tears of Steel (idem)
+        'commondatastorage.googleapis.com', // MP4 des mêmes films
       ];
       for (final Channel c in bouquet) {
         final String host = Uri.parse(c.streamUrl).host;
@@ -105,6 +108,34 @@ void main() {
             reason: '« ${c.name} » pointe vers $host');
         expect(c.streamUrl, startsWith('https://'),
             reason: 'un flux de démo en clair passerait mal partout');
+      }
+    });
+  });
+
+  // ---------------------------------------------------------
+  //  LES DEUX FORMATS — ce n'est pas un détail d'implémentation
+  // ---------------------------------------------------------
+  //  Première version : tout en HLS, et l'écran est resté NOIR chez le
+  //  client. Le direct et le cinéma empruntent DEUX chemins distincts
+  //  du lecteur (HLS → playlist normalisée par le relais ; VOD → mpv
+  //  direct avec Range). En gardant un pied dans chacun, la démo dit
+  //  elle-même où ça casse — et il reste toujours quelque chose à
+  //  montrer au client. Ramener les deux sur un seul format, c'est
+  //  reperdre ça sans s'en rendre compte : d'où ces deux tests.
+  group('la démo couvre les deux chemins du lecteur', () {
+    test('le direct est en HLS — le format des vraies chaînes', () {
+      final Iterable<Channel> live = bouquet.where((Channel c) => c.isLive);
+      for (final Channel c in live) {
+        expect(Uri.parse(c.streamUrl).path, endsWith('.m3u8'),
+            reason: '« ${c.name} » n\'exerce pas le chemin HLS');
+      }
+    });
+
+    test('le cinéma est en fichier fini — seek et démarrage rapide', () {
+      final Iterable<Channel> vod = bouquet.where((Channel c) => !c.isLive);
+      for (final Channel c in vod) {
+        expect(Uri.parse(c.streamUrl).path, endsWith('.mp4'),
+            reason: '« ${c.name} » repasserait par le chemin HLS');
       }
     });
   });
