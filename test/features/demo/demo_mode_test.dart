@@ -15,6 +15,10 @@ import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/demo/data/demo_mode.dart';
 
 void main() {
+  // Les clips vivent maintenant SUR l'appareil : sans chemins extraits,
+  // le bouquet est vide par construction. On injecte des chemins
+  // factices pour voir le catalogue complet, sans toucher au disque.
+  DemoMode.debugFakeClipPaths();
   final List<Channel> bouquet = DemoMode.demoChannels;
 
   group('le bouquet couvre tout le parcours', () {
@@ -91,89 +95,50 @@ void main() {
       }
     });
 
-    test('aucun lien de fournisseur : que des flux de test publics', () {
-      // Les seuls hôtes autorisés sont ceux qui publient des flux POUR
-      // être testés. Un hôte de panel IPTV ici, et on diffuserait le
-      // serveur d'un fournisseur dans une app publique.
-      const List<String> hotesPermis = <String>[
-        'devstreaming-cdn.apple.com', // flux de référence Apple HLS
-        'test-streams.mux.dev', // échantillons mux.dev
-        'bitdash-a.akamaihd.net', // Sintel (Blender, licence libre)
-        'demo.unified-streaming.com', // Tears of Steel (idem)
-      ];
+    test('aucun lien de fournisseur ne peut se glisser ici', () {
+      // Motif de refus lourd sur les stores : diffuser le serveur d'un
+      // fournisseur depuis une app publique. Le bouquet étant 100 %
+      // local, la porte est fermée — ce test vérifie qu'elle le reste.
       for (final Channel c in bouquet) {
-        // Le clip embarqué n'a pas d'hôte : il est SUR l'appareil. C'est
-        // justement son intérêt — voir plus bas.
-        if (!c.streamUrl.startsWith('http')) continue;
-        final String host = Uri.parse(c.streamUrl).host;
-        expect(hotesPermis, contains(host),
-            reason: '« ${c.name} » pointe vers $host');
-        expect(c.streamUrl, startsWith('https://'),
-            reason: 'un flux de démo en clair passerait mal partout');
+        expect(c.streamUrl.contains('://'), isFalse,
+            reason: '« ${c.name} » porte une URL');
       }
     });
   });
 
   // ---------------------------------------------------------
-  //  LES HÔTES ET LES CHEMINS — ce que l'écran noir nous a appris
+  //  PLUS AUCUNE URL — la leçon de la journée du 3 août 2026
   // ---------------------------------------------------------
-  //  Le bouquet a été noir pendant une journée entière. On a accusé
-  //  successivement le lien, l'hébergeur, puis le codec. La vraie cause
-  //  était que l'app ne négociait AUCUN TLS (cf. doh_resolver.dart) :
-  //  ce bouquet était son seul consommateur HTTPS, et c'est lui qui a
-  //  fait sortir la panne.
+  //  Le bouquet a été noir une journée entière. On a accusé le lien,
+  //  puis l'hébergeur, puis le codec. La vraie cause était que l'app ne
+  //  négociait AUCUN TLS (cf. doh_resolver.dart) — ce bouquet était son
+  //  seul consommateur HTTPS, et c'est lui qui a fait sortir la panne.
+  //  En chemin, un hébergeur s'est mis à répondre 403.
   //
-  //  Les tests ci-dessous gardent chacun une trace de ces impasses,
-  //  pour qu'on n'y revienne pas par distraction.
-  group('les hôtes et les chemins de la démo', () {
-    // Le clip du client, embarqué dans l'APK. C'est la SEULE entrée du
-    // bouquet qui ne dépende ni du réseau, ni d'un CDN, ni d'une
-    // playlist : si même celle-là reste noire, le problème n'est pas
-    // dehors. Le jour où quelqu'un la « déplacera sur un serveur pour
-    // alléger l'APK », il faudra qu'il voie ce test tomber d'abord.
-    test('le clip embarqué reste LOCAL, jamais une URL', () {
-      final Iterable<Channel> clip =
-          bouquet.where((Channel c) => c.id.startsWith('demo-clip-'));
-      for (final Channel c in clip) {
+  //  Conclusion : le mode démo se déclenche DEVANT un client, il n'a
+  //  pas droit à l'erreur, et il ne dépend donc plus de personne. Les
+  //  clips sont fabriqués et embarqués.
+  //
+  //  Ce test est le gardien de cette décision. Le jour où quelqu'un
+  //  voudra « alléger l'APK en mettant les clips sur un serveur », il
+  //  le verra tomber, et il lira pourquoi.
+  group('le bouquet ne dépend de personne', () {
+    test('aucune URL : QUE des fichiers locaux', () {
+      for (final Channel c in bouquet) {
         expect(c.streamUrl.startsWith('http'), isFalse,
-            reason: '« ${c.name} » repasse par le réseau — on perd le seul '
-                'élément de démo qui ne peut pas tomber en panne');
+            reason: '« ${c.name} » repasse par le réseau — on reperd la '
+                'seule garantie qui compte : une démo qui marche toujours');
+        expect(c.streamUrl, startsWith('/'),
+            reason: 'un chemin relatif ne serait pas lisible par le lecteur');
       }
     });
 
-    test('le direct est en HLS — le format des vraies chaînes', () {
-      final Iterable<Channel> live = bouquet.where((Channel c) => c.isLive);
-      for (final Channel c in live) {
-        expect(Uri.parse(c.streamUrl).path, endsWith('.m3u8'),
-            reason: '« ${c.name} » n\'exerce pas le chemin HLS');
-      }
-    });
-
-    // L'exemple « advanced » d'Apple mêle des variantes HEVC et Dolby
-    // Vision au H.264. On l'a cru coupable de l'écran noir — à tort,
-    // c'était le TLS. On le garde interdit quand même : une seule
-    // famille de codecs, c'est une variable de moins le jour où
-    // quelque chose ira encore de travers. Les formes `_ts` et `_fmp4`
-    // partagent le même jeu de variantes, d'où le motif commun.
-    test('pas d\'exemple Apple « advanced » : HEVC / Dolby Vision', () {
-      for (final Channel c in bouquet) {
-        expect(c.streamUrl.contains('img_bipbop_adv_example'), isFalse,
-            reason: '« ${c.name} » revient sur le flux à variantes HEVC/DV '
-                '— celui qui donnait un écran noir malgré des octets reçus');
-      }
-    });
-
-    // L'hôte des MP4 (`commondatastorage.googleapis.com`) répond
-    // 403 Forbidden — constaté par mpv dans la boîte noire du client, et
-    // sans rapport avec le TLS puisque mpv fait son propre HTTPS. Un
-    // hôte mort n'a rien à faire dans une démo qu'on montre à un client.
-    test('plus aucun lien vers le dépôt Google qui renvoie 403', () {
-      for (final Channel c in bouquet) {
-        expect(c.streamUrl.contains('commondatastorage.googleapis.com'),
-            isFalse,
-            reason: '« ${c.name} » revient sur un hôte dont on a la trace '
-                'qu\'il refuse les requêtes');
-      }
+    test('chaque clip a son propre fichier', () {
+      // Deux entrées qui pointent le même fichier, c'est un catalogue
+      // qui a l'air riche et qui montre six fois la même chose.
+      final Set<String> fichiers =
+          bouquet.map((Channel c) => c.streamUrl).toSet();
+      expect(fichiers.length, bouquet.length);
     });
   });
 

@@ -21,11 +21,11 @@
 //     les stores, et c'est aussi ce qui rend ces écrans utilisables
 //     comme captures de fiche Play Store.
 //
-//  2. AUCUN FLUX QUI NE NOUS APPARTIENNE PAS. On n'utilise QUE des
-//     flux de test publics, publiés par leurs éditeurs POUR être
-//     testés : films libres de la Fondation Blender, flux de référence
-//     Apple HLS, échantillons mux.dev. Jamais une chaîne réelle,
-//     jamais un lien de fournisseur.
+//  2. AUCUN FLUX QUI NE NOUS APPARTIENNE PAS — et désormais aucun
+//     flux TOUT COURT. Les clips sont fabriqués par nous et embarqués
+//     dans l'APK (voir plus bas : c'est le fruit d'une journée passée
+//     à courir après des hébergeurs qui tombent). Jamais une chaîne
+//     réelle, jamais un lien de fournisseur, et plus aucune URL.
 //
 //  3. LE CLIENT SAIT TOUJOURS QU'IL EST EN DÉMO. L'état est persisté
 //     et exposé (`DemoMode.instance.isActive`) pour qu'un bandeau le
@@ -80,7 +80,7 @@ class DemoMode extends ChangeNotifier {
       final SharedPreferences p = await SharedPreferences.getInstance();
       if (p.getBool(_kKey) ?? false) {
         _active = true;
-        await _extractBundledClip();
+        await _extractClips();
         PlaylistRepository.instance.publishDemoChannels(demoChannels);
         notifyListeners();
       }
@@ -92,52 +92,231 @@ class DemoMode extends ChangeNotifier {
   Future<void> enter() async {
     if (_active) return;
     _active = true;
-    await _extractBundledClip();
+    await _extractClips();
     PlaylistRepository.instance.publishDemoChannels(demoChannels);
     notifyListeners();
     unawaited(_persist(true));
   }
 
-  // ---------------------------------------------------------
-  //  LE CLIP EMBARQUÉ — la seule chaîne qui ne peut PAS tomber
-  // ---------------------------------------------------------
-  //  Tout le reste du bouquet dépend d'un hébergeur tiers. On a vu ce
-  //  que ça donne : trois hôtes différents, un écran noir, et personne
-  //  ne pouvait dire si le coupable était le lien, le réseau ou le
-  //  décodeur. Une démo qui tombe en panne DEVANT un client, c'est la
-  //  vente perdue.
+  // =========================================================
+  //  TOUT LE BOUQUET EST EMBARQUÉ — et c'est le fond du sujet
+  // =========================================================
+  //  On a passé une journée entière à courir après des hébergeurs.
+  //  L'un renvoie 403. Un autre exigeait un TLS que l'app ne négociait
+  //  pas. Un troisième nous a fait accuser le codec, à tort. Pendant
+  //  tout ce temps, l'écran restait noir.
   //
-  //  Ce clip-ci vit dans l'APK. On le recopie sur le disque au premier
-  //  passage en démo (mpv lit un fichier, pas un asset Flutter), puis on
-  //  le sert par chemin local : ni HTTPS, ni DNS, ni CDN, ni playlist à
-  //  normaliser. S'il ne s'affiche pas, le problème n'est plus nulle
-  //  part ailleurs que dans le rendu — ce qui est en soi un diagnostic.
-  static const String _kClipAsset = 'assets/demo/7motion_promo.mp4';
-  static String? _clipPath;
+  //  Le mode démo se déclenche DEVANT un client qui n'a pas encore
+  //  d'abonnement. C'est le moment où l'app doit convaincre, et il n'a
+  //  pas droit à l'erreur. Dépendre du serveur de quelqu'un d'autre à
+  //  cet instant précis, c'est accepter que la vente se joue sur la
+  //  disponibilité d'un CDN qu'on ne contrôle pas.
+  //
+  //  Donc : plus une seule URL. Les clips sont FABRIQUÉS (voir
+  //  `tools/generate_demo_clips.py`), livrés dans l'APK, recopiés sur
+  //  le disque au premier passage en démo — mpv lit un fichier, pas un
+  //  asset Flutter — et servis par chemin local. Ni HTTPS, ni DNS, ni
+  //  CDN, ni playlist à normaliser. Coût : ~4 Mo d'APK. Bénéfice : une
+  //  démo qui ne peut pas tomber en panne devant un client.
+  //
+  //  Effet de bord utile : aucun lien de fournisseur ne peut se glisser
+  //  ici, ce qui protège aussi la fiche Play Store.
 
-  /// Chemin du clip une fois recopié, ou `null` s'il n'a pas pu l'être.
-  static String? get clipPath => _clipPath;
+  static const String _kAssetDir = 'assets/demo';
 
-  Future<void> _extractBundledClip() async {
-    if (_clipPath != null) return;
+  /// Un clip du bouquet. `asset` est le nom de fichier dans
+  /// [_kAssetDir] ; `id` sert aussi de clé de chemin extrait.
+  static const List<({
+    String id,
+    String name,
+    String category,
+    String asset,
+    bool isLive,
+  })> _catalogue = <({
+    String id,
+    String name,
+    String category,
+    String asset,
+    bool isLive,
+  })>[
+    // La vidéo du client EN TÊTE : c'est la sienne, elle porte sa
+    // marque, et c'est la meilleure des démonstrations.
+    (
+      id: 'demo-clip-1',
+      name: 'Démo — Découvrir 7 MOTION',
+      category: 'DÉMO || Présentation',
+      asset: '7motion_promo.mp4',
+      isLive: false
+    ),
+    (
+      id: 'demo-live-1',
+      name: 'Démo Sport',
+      category: 'DÉMO || Sport',
+      asset: 'sport.mp4',
+      isLive: true
+    ),
+    (
+      id: 'demo-live-2',
+      name: 'Démo Info',
+      category: 'DÉMO || Info',
+      asset: 'info.mp4',
+      isLive: true
+    ),
+    (
+      id: 'demo-live-3',
+      name: 'Démo Divertissement',
+      category: 'DÉMO || Divertissement',
+      asset: 'divertissement.mp4',
+      isLive: true
+    ),
+    (
+      id: 'demo-live-4',
+      name: 'Démo Enfants',
+      category: 'DÉMO || Enfants',
+      asset: 'enfants.mp4',
+      isLive: true
+    ),
+    (
+      id: 'demo-live-5',
+      name: 'Démo Musique',
+      category: 'DÉMO || Musique',
+      asset: 'musique.mp4',
+      isLive: true
+    ),
+    (
+      id: 'demo-live-6',
+      name: 'Démo Documentaire',
+      category: 'DÉMO || Documentaire',
+      asset: 'documentaire.mp4',
+      isLive: true
+    ),
+    // Le CINÉMA : `isLive: false` suffit à les faire apparaître dans la
+    // section Films — le même chemin que pour une vraie source, donc le
+    // client voit le vrai écran, pas une maquette.
+    (
+      id: 'demo-vod-1',
+      name: 'Démo — Film de démonstration 1',
+      category: 'DÉMO FILMS || Catalogue',
+      asset: 'film1.mp4',
+      isLive: false
+    ),
+    (
+      id: 'demo-vod-2',
+      name: 'Démo — Film de démonstration 2',
+      category: 'DÉMO FILMS || Catalogue',
+      asset: 'film2.mp4',
+      isLive: false
+    ),
+    (
+      id: 'demo-vod-3',
+      name: 'Démo — Film de démonstration 3',
+      category: 'DÉMO FILMS || Catalogue',
+      asset: 'film3.mp4',
+      isLive: false
+    ),
+    (
+      id: 'demo-vod-4',
+      name: 'Démo — Film de démonstration 4',
+      category: 'DÉMO FILMS || Catalogue',
+      asset: 'film4.mp4',
+      isLive: false
+    ),
+    // Les GUIDES : le client apprend en ouvrant une fiche, exactement
+    // comme il ouvrira un film plus tard.
+    (
+      id: 'demo-tuto-1',
+      name: 'Guide 1 — Ajouter ma source',
+      category: 'DÉMO FILMS || Guide',
+      asset: 'guide1.mp4',
+      isLive: false
+    ),
+    (
+      id: 'demo-tuto-2',
+      name: 'Guide 2 — Trouver une chaîne',
+      category: 'DÉMO FILMS || Guide',
+      asset: 'guide2.mp4',
+      isLive: false
+    ),
+    (
+      id: 'demo-tuto-3',
+      name: 'Guide 3 — Envoyer sur ma télé',
+      category: 'DÉMO FILMS || Guide',
+      asset: 'guide3.mp4',
+      isLive: false
+    ),
+  ];
+
+  /// Chemins des clips une fois recopiés sur le disque, par identifiant.
+  static final Map<String, String> _paths = <String, String>{};
+
+  Future<void> _extractClips() async {
+    if (_paths.length == _catalogue.length) return;
+    final Directory dir;
     try {
-      final Directory dir = await getApplicationSupportDirectory();
-      final File out = File('${dir.path}/7motion_promo.mp4');
-      final ByteData data = await rootBundle.load(_kClipAsset);
-      // Réécrit si absent ou de taille différente : une mise à jour de
-      // l'app qui change le clip doit remplacer l'ancien, pas le garder.
-      final int want = data.lengthInBytes;
-      if (!out.existsSync() || await out.length() != want) {
-        await out.writeAsBytes(
-          data.buffer.asUint8List(data.offsetInBytes, want),
-          flush: true,
-        );
-      }
-      _clipPath = out.path;
+      dir = Directory('${(await getApplicationSupportDirectory()).path}/demo');
+      await dir.create(recursive: true);
     } catch (_) {
-      // Disque plein, asset absent d'une variante de build… La démo
-      // marche sans : le clip est un bonus, pas une dépendance.
-      _clipPath = null;
+      return; // Pas de disque : la démo s'ouvrira vide plutôt que cassée.
+    }
+    for (final ({
+      String id,
+      String name,
+      String category,
+      String asset,
+      bool isLive
+    }) c in _catalogue) {
+      try {
+        final File out = File('${dir.path}/${c.asset}');
+        final ByteData data = await rootBundle.load('$_kAssetDir/${c.asset}');
+        final int want = data.lengthInBytes;
+        // Réécrit si absent OU de taille différente : une mise à jour de
+        // l'app qui change un clip doit remplacer l'ancien, pas le garder.
+        if (!out.existsSync() || await out.length() != want) {
+          await out.writeAsBytes(
+            data.buffer.asUint8List(data.offsetInBytes, want),
+            flush: true,
+          );
+        }
+        _paths[c.id] = out.path;
+      } catch (_) {
+        // Un clip manquant fait UNE entrée en moins, pas une vignette
+        // qui ne s'ouvre pas. Le reste du bouquet tient debout.
+      }
+    }
+  }
+
+  /// Le bouquet complet, dans l'ordre : présentation, direct, cinéma,
+  /// guides. Vide tant que [_extractClips] n'a rien pu recopier.
+  static List<Channel> get demoChannels => <Channel>[
+        for (final ({
+          String id,
+          String name,
+          String category,
+          String asset,
+          bool isLive
+        }) c in _catalogue)
+          if (_paths[c.id] != null)
+            Channel(
+              id: c.id,
+              name: c.name,
+              category: c.category,
+              streamUrl: _paths[c.id]!,
+              isLive: c.isLive,
+            ),
+      ];
+
+  /// Renseigne des chemins FACTICES pour que les tests voient le bouquet
+  /// complet sans toucher au disque ni au bundle d'assets.
+  @visibleForTesting
+  static void debugFakeClipPaths() {
+    for (final ({
+      String id,
+      String name,
+      String category,
+      String asset,
+      bool isLive
+    }) c in _catalogue) {
+      _paths[c.id] = '/data/demo/${c.asset}';
     }
   }
 
@@ -155,213 +334,6 @@ class DemoMode extends ChangeNotifier {
       await p.setBool(_kKey, v);
     } catch (_) {}
   }
-
-  // =========================================================
-  //  LE BOUQUET DE DÉMONSTRATION
-  // =========================================================
-  //  Identifiants préfixés `demo-` : impossible de les confondre avec
-  //  une chaîne réelle, et ça donne une porte de sortie propre si on
-  //  doit un jour les filtrer ailleurs.
-
-  // ---------------------------------------------------------
-  //  LES SOURCES — ce que la démo a fini par révéler (2026-08-03)
-  // ---------------------------------------------------------
-  //
-  //  L'écran restait noir sur TOUTES ces sources. On a cherché du côté
-  //  du lien, puis du codec — à tort dans les deux cas. La vraie cause
-  //  était ailleurs et bien plus grave : `installDohResolution` posait
-  //  une fabrique de connexions, et dès qu'il y en a une, le SDK Dart
-  //  ne négocie PLUS le TLS. Tout le HTTPS de l'app partait en clair
-  //  sur le port 443 (cf. doh_resolver.dart). Personne ne l'avait vu
-  //  parce que les panels de nos clients sont en `http://`.
-  //
-  //  Ce bouquet a donc servi à quelque chose de bien plus utile que se
-  //  montrer : il a été le seul consommateur HTTPS de l'app, et c'est
-  //  lui qui a fait sortir la panne.
-  //
-  //  Reste une leçon sur les hôtes eux-mêmes. Le dépôt d'échantillons
-  //  de Google (`commondatastorage.googleapis.com`), où pointaient les
-  //  films, répond `403 Forbidden` — mpv le dit lui-même dans la boîte
-  //  noire, et ce 403 n'a rien à voir avec le TLS puisque mpv fait son
-  //  propre HTTPS, correctement. L'hôte est mort pour nous : on ne
-  //  l'utilise plus.
-  //
-  //  Le cinéma passe donc sur les mêmes hôtes HLS que le direct. On ne
-  //  perd pas le chemin « fichier fini » du lecteur pour autant : le
-  //  clip embarqué du client, lui, EST un fichier local, et c'est même
-  //  la seule entrée qui ne dépende de personne.
-  //
-  //  Règle inchangée : QUE des flux de test publics, publiés par leurs
-  //  éditeurs POUR être testés (films libres de la Fondation Blender,
-  //  flux de référence Apple HLS, échantillons mux.dev). Jamais une
-  //  chaîne réelle, jamais un lien de fournisseur.
-
-  // — DIRECT : playlists HLS (le format des vraies chaînes) ————
-  /// Flux de référence Apple, version **de base** (`bipbop_4x3`) :
-  /// H.264 + AAC, une seule famille de codecs.
-  ///
-  /// PAS la version `img_bipbop_adv_example_*`, qui mêle des variantes
-  /// HEVC et Dolby Vision au H.264.
-  ///
-  /// HONNÊTETÉ SUR CE CHOIX : on l'a d'abord retenue en croyant tenir
-  /// la cause de l'écran noir — décodage matériel actif par défaut, une
-  /// variante que le décodeur refuse, des octets qui arrivent sans
-  /// image. C'était une hypothèse raisonnable, et elle était FAUSSE :
-  /// la vraie cause était l'absence de TLS (cf. l'en-tête ci-dessus).
-  ///
-  /// On garde quand même la version de base, mais pour la bonne raison :
-  /// une seule famille de codecs, c'est une variable de moins le jour
-  /// où quelque chose ira encore de travers.
-  static const String _appleBasic =
-      'https://devstreaming-cdn.apple.com/videos/streaming/examples/'
-      'bipbop_4x3/bipbop_4x3_variant.m3u8';
-  static const String _hlsBunny =
-      'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
-  static const String _hlsSintel =
-      'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8';
-  static const String _hlsTears =
-      'https://demo.unified-streaming.com/k8s/features/stable/video/'
-      'tears-of-steel/tears-of-steel.ism/.m3u8';
-
-  // — CINÉMA ————————————————————————————————————————
-  //  Les mêmes hôtes que le direct. Ils sont désormais les seuls que
-  //  l'on ait vus RÉPONDRE : le dépôt Google qui servait les MP4 rend
-  //  un 403, constaté par mpv dans la boîte noire.
-  //
-  //  Un hôte que l'on ne peut pas vérifier depuis la machine de build
-  //  (le réseau y refuse ces domaines) ne mérite qu'une chose : être
-  //  choisi parmi ceux dont on a la trace qu'ils fonctionnent chez le
-  //  client. C'est le cas de ceux-ci.
-
-  static const List<Channel> _live = <Channel>[
-    Channel(
-      id: 'demo-live-1',
-      name: 'Démo Sport',
-      category: 'DÉMO || Sport',
-      streamUrl: _hlsTears,
-      isLive: true,
-    ),
-    Channel(
-      id: 'demo-live-2',
-      name: 'Démo Info',
-      category: 'DÉMO || Info',
-      streamUrl: _appleBasic,
-      isLive: true,
-    ),
-    Channel(
-      id: 'demo-live-3',
-      name: 'Démo Divertissement',
-      category: 'DÉMO || Divertissement',
-      streamUrl: _hlsBunny,
-      isLive: true,
-    ),
-    Channel(
-      id: 'demo-live-4',
-      name: 'Démo Enfants',
-      category: 'DÉMO || Enfants',
-      streamUrl: _hlsBunny,
-      isLive: true,
-    ),
-    Channel(
-      id: 'demo-live-5',
-      name: 'Démo Musique',
-      category: 'DÉMO || Musique',
-      streamUrl: _hlsSintel,
-      isLive: true,
-    ),
-    Channel(
-      id: 'demo-live-6',
-      name: 'Démo Documentaire',
-      category: 'DÉMO || Documentaire',
-      streamUrl: _hlsTears,
-      isLive: true,
-    ),
-  ];
-
-  /// Le CINÉMA de démo. `isLive: false` suffit à les faire apparaître
-  /// dans la section Films — c'est le même chemin que pour une vraie
-  /// source, donc le client voit le vrai écran, pas une maquette.
-  ///
-  /// Les quatre premiers montrent le catalogue ; les suivants sont des
-  /// LEÇONS : « Comment ajouter ma source », « Comment envoyer sur ma
-  /// télé »… Le client apprend en ouvrant une fiche, exactement comme
-  /// il ouvrira un film plus tard.
-  static const List<Channel> _vod = <Channel>[
-    Channel(
-      id: 'demo-vod-1',
-      name: 'Démo — Film de démonstration 1',
-      category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _hlsBunny,
-      isLive: false,
-    ),
-    Channel(
-      id: 'demo-vod-2',
-      name: 'Démo — Film de démonstration 2',
-      category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _hlsSintel,
-      isLive: false,
-    ),
-    Channel(
-      id: 'demo-vod-3',
-      name: 'Démo — Film de démonstration 3',
-      category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _hlsSintel,
-      isLive: false,
-    ),
-    Channel(
-      id: 'demo-vod-4',
-      name: 'Démo — Film de démonstration 4',
-      category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _hlsTears,
-      isLive: false,
-    ),
-    Channel(
-      id: 'demo-tuto-1',
-      name: 'Guide 1 — Ajouter ma source',
-      category: 'DÉMO FILMS || Guide',
-      streamUrl: _appleBasic,
-      isLive: false,
-    ),
-    Channel(
-      id: 'demo-tuto-2',
-      name: 'Guide 2 — Trouver une chaîne',
-      category: 'DÉMO FILMS || Guide',
-      streamUrl: _hlsBunny,
-      isLive: false,
-    ),
-    Channel(
-      id: 'demo-tuto-3',
-      name: 'Guide 3 — Envoyer sur ma télé',
-      category: 'DÉMO FILMS || Guide',
-      streamUrl: _hlsTears,
-      isLive: false,
-    ),
-  ];
-
-  /// Le bouquet complet : le clip embarqué EN TÊTE, puis direct,
-  /// cinéma et guides.
-  ///
-  /// Le clip d'abord, et pas par vanité de marque : c'est la seule
-  /// entrée du bouquet qui ne dépende ni du réseau, ni d'un CDN, ni
-  /// d'une playlist à normaliser. Un client qui ouvre la démo tombe
-  /// donc sur la vidéo qui a le plus de chances de partir — et si
-  /// même celle-là reste noire, on sait immédiatement que le problème
-  /// n'est pas dehors.
-  ///
-  /// Absent tant que `_extractBundledClip()` n'a pas réussi : mieux
-  /// vaut une entrée en moins qu'une vignette qui ne s'ouvre pas.
-  static List<Channel> get demoChannels => <Channel>[
-        if (_clipPath != null)
-          Channel(
-            id: 'demo-clip-1',
-            name: 'Démo — Découvrir 7 MOTION',
-            category: 'DÉMO || Présentation',
-            streamUrl: _clipPath!,
-            isLive: false,
-          ),
-        ..._live,
-        ..._vod,
-      ];
 
   /// Le guide « Comment ça marche », en clair. Volontairement des
   /// PHRASES et non des captures annotées : une flèche dessinée sur une
