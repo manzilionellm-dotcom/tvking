@@ -27,6 +27,12 @@ on:
       - 'lib/features/channels/**'
       - 'lib/features/playlists/**'
       - 'lib/features/epg/**'
+      # Le mode démo tourne AUSSI sur la TV — c'est même là qu'il sert le
+      # plus : personne ne saisit un serveur Xtream à la télécommande
+      # juste pour essayer. Sans cette ligne, une correction du bouquet de
+      # démo ne reconstruisait pas la TV, et on publiait une box restée
+      # sur l'ancien.
+      - 'lib/features/demo/**'
       # Cœur de LECTURE partagé avec la TV (relais local, fallback 458/cascade,
       # diagnostics, réglages lecteur) : une correction ici DOIT rebuild la TV.
       - 'lib/features/player/**'
