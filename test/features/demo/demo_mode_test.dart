@@ -131,6 +131,23 @@ void main() {
       }
     });
 
+    // Trouvaille terrain (boîte noire du 2026-08-03) : « Démo Info » a
+    // écrit 71 Mo d'enregistrement — donc les octets ARRIVAIENT — et
+    // l'écran restait noir. Le lien et le réseau étaient hors de cause.
+    // Restait le contenu : l'exemple « advanced » d'Apple embarque des
+    // variantes HEVC et Dolby Vision à côté du H.264, et le décodage
+    // matériel est activé par défaut. Une variante que le décodeur ne
+    // sait pas traiter donne exactement ça : des octets, pas d'image.
+    // La version `_fmp4` a le MÊME jeu de variantes que `_ts` — d'où ce
+    // test, qui interdit les deux plutôt qu'un seul.
+    test('pas d\'exemple Apple « advanced » : HEVC / Dolby Vision', () {
+      for (final Channel c in bouquet) {
+        expect(c.streamUrl.contains('img_bipbop_adv_example'), isFalse,
+            reason: '« ${c.name} » revient sur le flux à variantes HEVC/DV '
+                '— celui qui donnait un écran noir malgré des octets reçus');
+      }
+    });
+
     test('le cinéma est en fichier fini — seek et démarrage rapide', () {
       final Iterable<Channel> vod = bouquet.where((Channel c) => !c.isLive);
       for (final Channel c in vod) {

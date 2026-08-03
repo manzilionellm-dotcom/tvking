@@ -139,12 +139,25 @@ class DemoMode extends ChangeNotifier {
   //  chaîne réelle, jamais un lien de fournisseur.
 
   // — DIRECT : playlists HLS (le format des vraies chaînes) ————
-  /// Flux de référence Apple. Variante **fmp4** : c'est la moderne, et
-  /// celle que le client a lui-même désignée. (L'ancienne variante `_ts`
-  /// est celle avec laquelle l'écran était noir.)
-  static const String _appleFmp4 =
+  /// Flux de référence Apple, version **de base** (`bipbop_4x3`) :
+  /// H.264 + AAC, une seule famille de codecs.
+  ///
+  /// PAS la version `img_bipbop_adv_example_*`. Preuve terrain (boîte
+  /// noire du 2026-08-03, 07:18) : « Démo Info » a écrit un
+  /// enregistrement de **71 Mo**. L'appareil ATTEINT donc le CDN et en
+  /// tire du vrai média — le réseau et le lien sont hors de cause — et
+  /// l'écran restait noir quand même. Le suspect qui reste est le
+  /// contenu : l'exemple « advanced » d'Apple embarque des variantes
+  /// HEVC et Dolby Vision à côté du H.264. Le décodage matériel est
+  /// activé par défaut (`player.hardware_decode`) : si le décodeur se
+  /// voit servir une variante qu'il ne sait pas traiter, on obtient
+  /// exactement ça — des octets qui arrivent, et pas d'image.
+  ///
+  /// Passer de `_ts` à `_fmp4` ne changeait donc rien : c'est le MÊME
+  /// jeu de variantes. Ce qu'il fallait retirer, c'est « advanced ».
+  static const String _appleBasic =
       'https://devstreaming-cdn.apple.com/videos/streaming/examples/'
-      'img_bipbop_adv_example_fmp4/master.m3u8';
+      'bipbop_4x3/bipbop_4x3_variant.m3u8';
   static const String _hlsBunny =
       'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
   static const String _hlsSintel =
@@ -181,7 +194,7 @@ class DemoMode extends ChangeNotifier {
       id: 'demo-live-2',
       name: 'Démo Info',
       category: 'DÉMO || Info',
-      streamUrl: _appleFmp4,
+      streamUrl: _appleBasic,
       isLive: true,
     ),
     Channel(
