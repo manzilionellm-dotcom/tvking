@@ -1,0 +1,29 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="demo-7motion_promo" tvg-name="Démo — Découvrir 7 MOTION" group-title="DÉMO || Présentation",Démo — Découvrir 7 MOTION
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/7motion_promo.mp4
+#EXTINF:-1 tvg-id="demo-sport" tvg-name="Démo Sport" group-title="DÉMO || Sport",Démo Sport
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/sport.mp4
+#EXTINF:-1 tvg-id="demo-info" tvg-name="Démo Info" group-title="DÉMO || Info",Démo Info
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/info.mp4
+#EXTINF:-1 tvg-id="demo-divertissement" tvg-name="Démo Divertissement" group-title="DÉMO || Divertissement",Démo Divertissement
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/divertissement.mp4
+#EXTINF:-1 tvg-id="demo-enfants" tvg-name="Démo Enfants" group-title="DÉMO || Enfants",Démo Enfants
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/enfants.mp4
+#EXTINF:-1 tvg-id="demo-musique" tvg-name="Démo Musique" group-title="DÉMO || Musique",Démo Musique
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/musique.mp4
+#EXTINF:-1 tvg-id="demo-documentaire" tvg-name="Démo Documentaire" group-title="DÉMO || Documentaire",Démo Documentaire
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/documentaire.mp4
+#EXTINF:-1 tvg-id="demo-film1" tvg-name="Démo — Film de démonstration 1" group-title="DÉMO FILMS || Catalogue",Démo — Film de démonstration 1
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/film1.mp4
+#EXTINF:-1 tvg-id="demo-film2" tvg-name="Démo — Film de démonstration 2" group-title="DÉMO FILMS || Catalogue",Démo — Film de démonstration 2
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/film2.mp4
+#EXTINF:-1 tvg-id="demo-film3" tvg-name="Démo — Film de démonstration 3" group-title="DÉMO FILMS || Catalogue",Démo — Film de démonstration 3
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/film3.mp4
+#EXTINF:-1 tvg-id="demo-film4" tvg-name="Démo — Film de démonstration 4" group-title="DÉMO FILMS || Catalogue",Démo — Film de démonstration 4
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/film4.mp4
+#EXTINF:-1 tvg-id="demo-guide1" tvg-name="Guide 1 — Ajouter ma source" group-title="DÉMO FILMS || Guide",Guide 1 — Ajouter ma source
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/guide1.mp4
+#EXTINF:-1 tvg-id="demo-guide2" tvg-name="Guide 2 — Trouver une chaîne" group-title="DÉMO FILMS || Guide",Guide 2 — Trouver une chaîne
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/guide2.mp4
+#EXTINF:-1 tvg-id="demo-guide3" tvg-name="Guide 3 — Envoyer sur ma télé" group-title="DÉMO FILMS || Guide",Guide 3 — Envoyer sur ma télé
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/91752734b5b692c4984d67f5698b9fef53ebed55/assets/demo/guide3.mp4
