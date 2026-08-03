@@ -100,7 +100,6 @@ void main() {
         'test-streams.mux.dev', // échantillons mux.dev
         'bitdash-a.akamaihd.net', // Sintel (Blender, licence libre)
         'demo.unified-streaming.com', // Tears of Steel (idem)
-        'commondatastorage.googleapis.com', // MP4 des mêmes films
       ];
       for (final Channel c in bouquet) {
         // Le clip embarqué n'a pas d'hôte : il est SUR l'appareil. C'est
@@ -116,16 +115,17 @@ void main() {
   });
 
   // ---------------------------------------------------------
-  //  LES DEUX FORMATS — ce n'est pas un détail d'implémentation
+  //  LES HÔTES ET LES CHEMINS — ce que l'écran noir nous a appris
   // ---------------------------------------------------------
-  //  Première version : tout en HLS, et l'écran est resté NOIR chez le
-  //  client. Le direct et le cinéma empruntent DEUX chemins distincts
-  //  du lecteur (HLS → playlist normalisée par le relais ; VOD → mpv
-  //  direct avec Range). En gardant un pied dans chacun, la démo dit
-  //  elle-même où ça casse — et il reste toujours quelque chose à
-  //  montrer au client. Ramener les deux sur un seul format, c'est
-  //  reperdre ça sans s'en rendre compte : d'où ces deux tests.
-  group('la démo couvre les deux chemins du lecteur', () {
+  //  Le bouquet a été noir pendant une journée entière. On a accusé
+  //  successivement le lien, l'hébergeur, puis le codec. La vraie cause
+  //  était que l'app ne négociait AUCUN TLS (cf. doh_resolver.dart) :
+  //  ce bouquet était son seul consommateur HTTPS, et c'est lui qui a
+  //  fait sortir la panne.
+  //
+  //  Les tests ci-dessous gardent chacun une trace de ces impasses,
+  //  pour qu'on n'y revienne pas par distraction.
+  group('les hôtes et les chemins de la démo', () {
     // Le clip du client, embarqué dans l'APK. C'est la SEULE entrée du
     // bouquet qui ne dépende ni du réseau, ni d'un CDN, ni d'une
     // playlist : si même celle-là reste noire, le problème n'est pas
@@ -149,15 +149,12 @@ void main() {
       }
     });
 
-    // Trouvaille terrain (boîte noire du 2026-08-03) : « Démo Info » a
-    // écrit 71 Mo d'enregistrement — donc les octets ARRIVAIENT — et
-    // l'écran restait noir. Le lien et le réseau étaient hors de cause.
-    // Restait le contenu : l'exemple « advanced » d'Apple embarque des
-    // variantes HEVC et Dolby Vision à côté du H.264, et le décodage
-    // matériel est activé par défaut. Une variante que le décodeur ne
-    // sait pas traiter donne exactement ça : des octets, pas d'image.
-    // La version `_fmp4` a le MÊME jeu de variantes que `_ts` — d'où ce
-    // test, qui interdit les deux plutôt qu'un seul.
+    // L'exemple « advanced » d'Apple mêle des variantes HEVC et Dolby
+    // Vision au H.264. On l'a cru coupable de l'écran noir — à tort,
+    // c'était le TLS. On le garde interdit quand même : une seule
+    // famille de codecs, c'est une variable de moins le jour où
+    // quelque chose ira encore de travers. Les formes `_ts` et `_fmp4`
+    // partagent le même jeu de variantes, d'où le motif commun.
     test('pas d\'exemple Apple « advanced » : HEVC / Dolby Vision', () {
       for (final Channel c in bouquet) {
         expect(c.streamUrl.contains('img_bipbop_adv_example'), isFalse,
@@ -166,11 +163,16 @@ void main() {
       }
     });
 
-    test('le cinéma est en fichier fini — seek et démarrage rapide', () {
-      final Iterable<Channel> vod = bouquet.where((Channel c) => !c.isLive);
-      for (final Channel c in vod) {
-        expect(Uri.parse(c.streamUrl).path, endsWith('.mp4'),
-            reason: '« ${c.name} » repasserait par le chemin HLS');
+    // L'hôte des MP4 (`commondatastorage.googleapis.com`) répond
+    // 403 Forbidden — constaté par mpv dans la boîte noire du client, et
+    // sans rapport avec le TLS puisque mpv fait son propre HTTPS. Un
+    // hôte mort n'a rien à faire dans une démo qu'on montre à un client.
+    test('plus aucun lien vers le dépôt Google qui renvoie 403', () {
+      for (final Channel c in bouquet) {
+        expect(c.streamUrl.contains('commondatastorage.googleapis.com'),
+            isFalse,
+            reason: '« ${c.name} » revient sur un hôte dont on a la trace '
+                'qu\'il refuse les requêtes');
       }
     });
   });

@@ -164,22 +164,32 @@ class DemoMode extends ChangeNotifier {
   //  doit un jour les filtrer ailleurs.
 
   // ---------------------------------------------------------
-  //  LES SOURCES — et pourquoi elles sont de DEUX natures
+  //  LES SOURCES — ce que la démo a fini par révéler (2026-08-03)
   // ---------------------------------------------------------
-  //  Premier jet : trois playlists HLS, et l'écran est resté NOIR chez
-  //  le client. Les liens n'étaient pas vérifiables d'ici (le réseau de
-  //  build refuse ces hôtes), donc on ne pouvait pas savoir si le
-  //  coupable était le lien, le réseau, ou le chemin HLS du lecteur.
   //
-  //  D'où le choix ci-dessous, qui n'est pas cosmétique : le DIRECT est
-  //  en HLS, le CINÉMA en MP4 progressif. Ce sont DEUX CHEMINS
-  //  DIFFÉRENTS dans le lecteur —
-  //    • HLS  → playlist normalisée par le relais local, puis mpv ;
-  //    • MP4 (isLive: false) → mpv en direct, Range natif, hors relais.
-  //  Donc la démo répond toute seule à la question qu'on ne pouvait pas
-  //  trancher : si les films partent et que le direct reste noir, c'est
-  //  le chemin HLS ; si RIEN ne part, c'est le réseau de l'appareil.
-  //  Et dans tous les cas le client a quelque chose à montrer.
+  //  L'écran restait noir sur TOUTES ces sources. On a cherché du côté
+  //  du lien, puis du codec — à tort dans les deux cas. La vraie cause
+  //  était ailleurs et bien plus grave : `installDohResolution` posait
+  //  une fabrique de connexions, et dès qu'il y en a une, le SDK Dart
+  //  ne négocie PLUS le TLS. Tout le HTTPS de l'app partait en clair
+  //  sur le port 443 (cf. doh_resolver.dart). Personne ne l'avait vu
+  //  parce que les panels de nos clients sont en `http://`.
+  //
+  //  Ce bouquet a donc servi à quelque chose de bien plus utile que se
+  //  montrer : il a été le seul consommateur HTTPS de l'app, et c'est
+  //  lui qui a fait sortir la panne.
+  //
+  //  Reste une leçon sur les hôtes eux-mêmes. Le dépôt d'échantillons
+  //  de Google (`commondatastorage.googleapis.com`), où pointaient les
+  //  films, répond `403 Forbidden` — mpv le dit lui-même dans la boîte
+  //  noire, et ce 403 n'a rien à voir avec le TLS puisque mpv fait son
+  //  propre HTTPS, correctement. L'hôte est mort pour nous : on ne
+  //  l'utilise plus.
+  //
+  //  Le cinéma passe donc sur les mêmes hôtes HLS que le direct. On ne
+  //  perd pas le chemin « fichier fini » du lecteur pour autant : le
+  //  clip embarqué du client, lui, EST un fichier local, et c'est même
+  //  la seule entrée qui ne dépende de personne.
   //
   //  Règle inchangée : QUE des flux de test publics, publiés par leurs
   //  éditeurs POUR être testés (films libres de la Fondation Blender,
@@ -190,19 +200,18 @@ class DemoMode extends ChangeNotifier {
   /// Flux de référence Apple, version **de base** (`bipbop_4x3`) :
   /// H.264 + AAC, une seule famille de codecs.
   ///
-  /// PAS la version `img_bipbop_adv_example_*`. Preuve terrain (boîte
-  /// noire du 2026-08-03, 07:18) : « Démo Info » a écrit un
-  /// enregistrement de **71 Mo**. L'appareil ATTEINT donc le CDN et en
-  /// tire du vrai média — le réseau et le lien sont hors de cause — et
-  /// l'écran restait noir quand même. Le suspect qui reste est le
-  /// contenu : l'exemple « advanced » d'Apple embarque des variantes
-  /// HEVC et Dolby Vision à côté du H.264. Le décodage matériel est
-  /// activé par défaut (`player.hardware_decode`) : si le décodeur se
-  /// voit servir une variante qu'il ne sait pas traiter, on obtient
-  /// exactement ça — des octets qui arrivent, et pas d'image.
+  /// PAS la version `img_bipbop_adv_example_*`, qui mêle des variantes
+  /// HEVC et Dolby Vision au H.264.
   ///
-  /// Passer de `_ts` à `_fmp4` ne changeait donc rien : c'est le MÊME
-  /// jeu de variantes. Ce qu'il fallait retirer, c'est « advanced ».
+  /// HONNÊTETÉ SUR CE CHOIX : on l'a d'abord retenue en croyant tenir
+  /// la cause de l'écran noir — décodage matériel actif par défaut, une
+  /// variante que le décodeur refuse, des octets qui arrivent sans
+  /// image. C'était une hypothèse raisonnable, et elle était FAUSSE :
+  /// la vraie cause était l'absence de TLS (cf. l'en-tête ci-dessus).
+  ///
+  /// On garde quand même la version de base, mais pour la bonne raison :
+  /// une seule famille de codecs, c'est une variable de moins le jour
+  /// où quelque chose ira encore de travers.
   static const String _appleBasic =
       'https://devstreaming-cdn.apple.com/videos/streaming/examples/'
       'bipbop_4x3/bipbop_4x3_variant.m3u8';
@@ -214,21 +223,15 @@ class DemoMode extends ChangeNotifier {
       'https://demo.unified-streaming.com/k8s/features/stable/video/'
       'tears-of-steel/tears-of-steel.ism/.m3u8';
 
-  // — CINÉMA : MP4 progressifs ————————————————————————
-  //  Mêmes films (Blender, licence libre), servis en fichier fini : le
-  //  lecteur les ouvre par son chemin VOD, avec seek et démarrage
-  //  rapide. C'est aussi le chemin le plus dur à casser.
-  static const String _mp4 =
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/';
-  static const String _mp4Bunny = '${_mp4}BigBuckBunny.mp4';
-  static const String _mp4Elephants = '${_mp4}ElephantsDream.mp4';
-  static const String _mp4Sintel = '${_mp4}Sintel.mp4';
-  static const String _mp4Tears = '${_mp4}TearsOfSteel.mp4';
-  // Les trois « Guide » : des clips COURTS (~15 s). Une leçon qui dure
-  // dix minutes n'est pas une leçon.
-  static const String _mp4Short1 = '${_mp4}ForBiggerBlazes.mp4';
-  static const String _mp4Short2 = '${_mp4}ForBiggerEscapes.mp4';
-  static const String _mp4Short3 = '${_mp4}ForBiggerFun.mp4';
+  // — CINÉMA ————————————————————————————————————————
+  //  Les mêmes hôtes que le direct. Ils sont désormais les seuls que
+  //  l'on ait vus RÉPONDRE : le dépôt Google qui servait les MP4 rend
+  //  un 403, constaté par mpv dans la boîte noire.
+  //
+  //  Un hôte que l'on ne peut pas vérifier depuis la machine de build
+  //  (le réseau y refuse ces domaines) ne mérite qu'une chose : être
+  //  choisi parmi ceux dont on a la trace qu'ils fonctionnent chez le
+  //  client. C'est le cas de ceux-ci.
 
   static const List<Channel> _live = <Channel>[
     Channel(
@@ -288,49 +291,49 @@ class DemoMode extends ChangeNotifier {
       id: 'demo-vod-1',
       name: 'Démo — Film de démonstration 1',
       category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _mp4Bunny,
+      streamUrl: _hlsBunny,
       isLive: false,
     ),
     Channel(
       id: 'demo-vod-2',
       name: 'Démo — Film de démonstration 2',
       category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _mp4Elephants,
+      streamUrl: _hlsSintel,
       isLive: false,
     ),
     Channel(
       id: 'demo-vod-3',
       name: 'Démo — Film de démonstration 3',
       category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _mp4Sintel,
+      streamUrl: _hlsSintel,
       isLive: false,
     ),
     Channel(
       id: 'demo-vod-4',
       name: 'Démo — Film de démonstration 4',
       category: 'DÉMO FILMS || Catalogue',
-      streamUrl: _mp4Tears,
+      streamUrl: _hlsTears,
       isLive: false,
     ),
     Channel(
       id: 'demo-tuto-1',
       name: 'Guide 1 — Ajouter ma source',
       category: 'DÉMO FILMS || Guide',
-      streamUrl: _mp4Short1,
+      streamUrl: _appleBasic,
       isLive: false,
     ),
     Channel(
       id: 'demo-tuto-2',
       name: 'Guide 2 — Trouver une chaîne',
       category: 'DÉMO FILMS || Guide',
-      streamUrl: _mp4Short2,
+      streamUrl: _hlsBunny,
       isLive: false,
     ),
     Channel(
       id: 'demo-tuto-3',
       name: 'Guide 3 — Envoyer sur ma télé',
       category: 'DÉMO FILMS || Guide',
-      streamUrl: _mp4Short3,
+      streamUrl: _hlsTears,
       isLive: false,
     ),
   ];
