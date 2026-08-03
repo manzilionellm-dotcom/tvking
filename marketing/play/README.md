@@ -260,3 +260,39 @@ bouquet reconnaissable est le motif de refus le plus fréquent.
 6. Créer la version Production avec l'AAB, puis déployer. Le versionCode
    est posé par le CI (`github.run_number`) — c'est celui que la Console
    affiche qui fait foi, jamais celui du `pubspec`.
+
+## Les captures — fichiers de référence
+
+`screenshots/` contient les trois captures effectivement importées, en
+**1080×1920 PNG** (9:16, sans transparence).
+
+**Ne les transmets jamais par messagerie ni par pièce jointe.** Terrain
+2026-08-03 : envoyées en PNG 1080×1920, elles sont arrivées chez le
+destinataire en **WebP 819×1456** — la messagerie les avait réencodées et
+réduites. La Console a refusé le WebP (« Le fichier que vous avez tenté
+d'importer est d'un type non compatible »), et la version réencodée à la
+main est passée sous les 1080 px, ce qui fait perdre l'éligibilité à la
+promotion Google Play (« incluez au moins 4 captures d'écran d'une
+résolution minimale de 1 080 x 1 080 px »).
+
+C'est aussi l'explication du `819×1456` déjà constaté les jours
+précédents : le problème n'a jamais été la personne qui importait, mais
+le canal de transmission.
+
+Télécharge-les donc **depuis le dépôt**, en octets exacts :
+
+```
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/<SHA>/marketing/play/screenshots/01-accueil-categories.png
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/<SHA>/marketing/play/screenshots/02-lecteur.png
+https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/<SHA>/marketing/play/screenshots/03-envoyer-sur-la-tv.png
+```
+
+### Déclaration « AI asset » de la Console
+
+Réponse correcte : **« Don't label assets »**.
+
+Ce sont de vraies captures de l'application. Les clips visibles à
+l'écran sont dessinés par code (`tools/generate_demo_clips.py` : tracé
+PIL, encodage ffmpeg) — ce n'est pas de l'IA générative. Le seul média
+issu d'une IA générative du projet est le clip de présentation du
+client, et il n'apparaît sur aucune des trois captures.
