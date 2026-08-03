@@ -326,4 +326,9 @@ flutter:
     - assets/branding/thefew_tv_icon.png
     - assets/branding/thefew_logo.png
     - assets/branding/prive_icon.png
+    # Clip de démonstration EMBARQUÉ (1,4 Mo). Dans l'APK et NON sur un
+    # CDN, pour une raison apprise à nos dépens : une démo qui dépend
+    # d'un hébergeur tiers peut tomber en panne devant un client — c'est
+    # précisément ce qui vient d'arriver. Celui-ci joue sans réseau.
+    - assets/demo/7motion_promo.mp4
 

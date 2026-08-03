@@ -103,6 +103,9 @@ void main() {
         'commondatastorage.googleapis.com', // MP4 des mêmes films
       ];
       for (final Channel c in bouquet) {
+        // Le clip embarqué n'a pas d'hôte : il est SUR l'appareil. C'est
+        // justement son intérêt — voir plus bas.
+        if (!c.streamUrl.startsWith('http')) continue;
         final String host = Uri.parse(c.streamUrl).host;
         expect(hotesPermis, contains(host),
             reason: '« ${c.name} » pointe vers $host');
@@ -123,6 +126,21 @@ void main() {
   //  montrer au client. Ramener les deux sur un seul format, c'est
   //  reperdre ça sans s'en rendre compte : d'où ces deux tests.
   group('la démo couvre les deux chemins du lecteur', () {
+    // Le clip du client, embarqué dans l'APK. C'est la SEULE entrée du
+    // bouquet qui ne dépende ni du réseau, ni d'un CDN, ni d'une
+    // playlist : si même celle-là reste noire, le problème n'est pas
+    // dehors. Le jour où quelqu'un la « déplacera sur un serveur pour
+    // alléger l'APK », il faudra qu'il voie ce test tomber d'abord.
+    test('le clip embarqué reste LOCAL, jamais une URL', () {
+      final Iterable<Channel> clip =
+          bouquet.where((Channel c) => c.id.startsWith('demo-clip-'));
+      for (final Channel c in clip) {
+        expect(c.streamUrl.startsWith('http'), isFalse,
+            reason: '« ${c.name} » repasse par le réseau — on perd le seul '
+                'élément de démo qui ne peut pas tomber en panne');
+      }
+    });
+
     test('le direct est en HLS — le format des vraies chaînes', () {
       final Iterable<Channel> live = bouquet.where((Channel c) => c.isLive);
       for (final Channel c in live) {

@@ -38,8 +38,11 @@
 //  ajoutée par-dessus reprend simplement la main.
 // =========================================================
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../channels/domain/channel.dart';
@@ -77,6 +80,7 @@ class DemoMode extends ChangeNotifier {
       final SharedPreferences p = await SharedPreferences.getInstance();
       if (p.getBool(_kKey) ?? false) {
         _active = true;
+        await _extractBundledClip();
         PlaylistRepository.instance.publishDemoChannels(demoChannels);
         notifyListeners();
       }
@@ -88,9 +92,53 @@ class DemoMode extends ChangeNotifier {
   Future<void> enter() async {
     if (_active) return;
     _active = true;
+    await _extractBundledClip();
     PlaylistRepository.instance.publishDemoChannels(demoChannels);
     notifyListeners();
     unawaited(_persist(true));
+  }
+
+  // ---------------------------------------------------------
+  //  LE CLIP EMBARQUÉ — la seule chaîne qui ne peut PAS tomber
+  // ---------------------------------------------------------
+  //  Tout le reste du bouquet dépend d'un hébergeur tiers. On a vu ce
+  //  que ça donne : trois hôtes différents, un écran noir, et personne
+  //  ne pouvait dire si le coupable était le lien, le réseau ou le
+  //  décodeur. Une démo qui tombe en panne DEVANT un client, c'est la
+  //  vente perdue.
+  //
+  //  Ce clip-ci vit dans l'APK. On le recopie sur le disque au premier
+  //  passage en démo (mpv lit un fichier, pas un asset Flutter), puis on
+  //  le sert par chemin local : ni HTTPS, ni DNS, ni CDN, ni playlist à
+  //  normaliser. S'il ne s'affiche pas, le problème n'est plus nulle
+  //  part ailleurs que dans le rendu — ce qui est en soi un diagnostic.
+  static const String _kClipAsset = 'assets/demo/7motion_promo.mp4';
+  static String? _clipPath;
+
+  /// Chemin du clip une fois recopié, ou `null` s'il n'a pas pu l'être.
+  static String? get clipPath => _clipPath;
+
+  Future<void> _extractBundledClip() async {
+    if (_clipPath != null) return;
+    try {
+      final Directory dir = await getApplicationSupportDirectory();
+      final File out = File('${dir.path}/7motion_promo.mp4');
+      final ByteData data = await rootBundle.load(_kClipAsset);
+      // Réécrit si absent ou de taille différente : une mise à jour de
+      // l'app qui change le clip doit remplacer l'ancien, pas le garder.
+      final int want = data.lengthInBytes;
+      if (!out.existsSync() || await out.length() != want) {
+        await out.writeAsBytes(
+          data.buffer.asUint8List(data.offsetInBytes, want),
+          flush: true,
+        );
+      }
+      _clipPath = out.path;
+    } catch (_) {
+      // Disque plein, asset absent d'une variante de build… La démo
+      // marche sans : le clip est un bonus, pas une dépendance.
+      _clipPath = null;
+    }
   }
 
   Future<void> exit() async {
@@ -287,8 +335,30 @@ class DemoMode extends ChangeNotifier {
     ),
   ];
 
-  /// Le bouquet complet : direct + cinéma + guides.
-  static List<Channel> get demoChannels => <Channel>[..._live, ..._vod];
+  /// Le bouquet complet : le clip embarqué EN TÊTE, puis direct,
+  /// cinéma et guides.
+  ///
+  /// Le clip d'abord, et pas par vanité de marque : c'est la seule
+  /// entrée du bouquet qui ne dépende ni du réseau, ni d'un CDN, ni
+  /// d'une playlist à normaliser. Un client qui ouvre la démo tombe
+  /// donc sur la vidéo qui a le plus de chances de partir — et si
+  /// même celle-là reste noire, on sait immédiatement que le problème
+  /// n'est pas dehors.
+  ///
+  /// Absent tant que `_extractBundledClip()` n'a pas réussi : mieux
+  /// vaut une entrée en moins qu'une vignette qui ne s'ouvre pas.
+  static List<Channel> get demoChannels => <Channel>[
+        if (_clipPath != null)
+          Channel(
+            id: 'demo-clip-1',
+            name: 'Démo — Découvrir 7 MOTION',
+            category: 'DÉMO || Présentation',
+            streamUrl: _clipPath!,
+            isLive: false,
+          ),
+        ..._live,
+        ..._vod,
+      ];
 
   /// Le guide « Comment ça marche », en clair. Volontairement des
   /// PHRASES et non des captures annotées : une flèche dessinée sur une
