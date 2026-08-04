@@ -6018,6 +6018,34 @@ async function handleRequest(request, env, ctx) {
       return handleDemoXtream(url, segments);
     }
 
+    // ===== /play — lien de partage propre =====
+    //  L'URL du Play Store contient l'identifiant de l'application :
+    //      play.google.com/store/apps/details?id=com.manzilionellm.tvking
+    //  Cet identifiant porte le nom du propriétaire, et Google ne permet
+    //  JAMAIS de le changer : c'est la clé qui relie les installations,
+    //  les mises à jour et la signature de l'app. Le partager, c'est
+    //  publier son nom à chaque fois.
+    //
+    //  On ne peut pas changer l'adresse, mais on n'est pas obligé de la
+    //  montrer. https://app.7themotion.com/play redirige dessus : c'est
+    //  ce lien-là qu'on donne aux clients, sur les cartes, dans les
+    //  messages. Le nom n'apparaît qu'après la redirection, dans une
+    //  barre d'adresse que presque personne ne lit.
+    //
+    //  Redirection 302 (temporaire) et non 301 : le jour où l'app change
+    //  de magasin ou d'identifiant, on modifie une ligne ici au lieu de
+    //  se battre contre les caches des navigateurs, qui gardent un 301
+    //  pendant des mois.
+    if (segments[0] === 'play' && segments.length === 1) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return badRequest('only GET supported on /play');
+      }
+      return Response.redirect(
+        'https://play.google.com/store/apps/details?id=com.manzilionellm.tvking',
+        302,
+      );
+    }
+
     // ===== Rate-limit applicatif des endpoints publics =====
     //  Limites VOLONTAIREMENT généreuses : un usage normal (l'app pingue au
     //  plus quelques fois/min) n'est jamais gêné, mais on coupe l'énumération
