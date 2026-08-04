@@ -40,3 +40,37 @@ Change-la, ou change les textes dans le script, et relance.
 
 Google les veut **hébergées sur YouTube**, en 16:9, 9:16 et 1:1,
 10 secondes minimum. Elles ne sont pas encore faites.
+
+---
+
+## Les vidéos
+
+| Fichier | Format | Durée |
+|---|---|---|
+| `video-16x9-1920x1080.mp4` | paysage 16:9 | 15 s |
+| `video-9x16-1080x1920.mp4` | portrait 9:16 | 15 s |
+| `video-1x1-1080x1080.mp4` | carré 1:1 | 15 s |
+
+H.264 + AAC. Le minimum exigé par Google est 10 secondes.
+
+### Elles doivent passer par YouTube
+
+Google Ads n'accepte **pas** de fichier vidéo importé directement dans
+une campagne App : il ne prend qu'une URL YouTube. Il faut donc les
+mettre en ligne sur la chaîne YouTube du compte, en **non répertoriée**
+(unlisted) — elles n'apparaissent alors ni dans la chaîne, ni dans les
+recherches, mais Google Ads sait les diffuser.
+
+### Pourquoi elles comptent
+
+Sans vidéo, l'inventaire YouTube est **fermé** à la campagne. Google ne
+diffuse plus que sur une partie de son réseau, la concurrence se
+concentre sur ce qui reste, et le coût par installation monte. Le score
+« Médiocre » n'est pas une amende : c'est un rendement en moins pour le
+même budget.
+
+### Régénérer
+
+```bash
+python3 tools/generate_ad_videos.py marketing/ads
+```
