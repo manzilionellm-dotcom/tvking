@@ -132,12 +132,29 @@ jobs:
           Compress-Archive -Path "$rel/*" -DestinationPath "TheFew-Windows.zip" -Force
           Get-Item "TheFew-Windows.zip" | Format-Table Name, Length
 
+      # ===== INSTALLATEUR — un seul fichier a double-cliquer =====
+      #  Le .zip oblige le client a decompresser, a ne pas sortir l'.exe de
+      #  son dossier, puis a passer SmartScreen : trois occasions
+      #  d'abandonner avant d'avoir vu l'application. Inno Setup est
+      #  preinstalle sur les runners Windows de GitHub. Voir ci/installer.iss.
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "Inno Setup introuvable : $iscc" }
+          $rel = (Resolve-Path "build/windows/x64/runner/Release").Path
+          & $iscc "/DRELDIR=$rel" "/O." "ci/installer.iss"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC a echoue (code $LASTEXITCODE)" }
+          Get-Item "7MOTION-Setup.exe" | Format-Table Name, Length
+
       # Artefact CI (téléchargeable depuis l'onglet Actions, même sans release).
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: TheFew-Windows
-          path: TheFew-Windows.zip
+          path: |
+            TheFew-Windows.zip
+            7MOTION-Setup.exe
           retention-days: 14
 
       # Publication sur la release "windows-latest" (lien stable de partage).
@@ -149,23 +166,28 @@ jobs:
           set -e
           REPO="${{ github.repository }}"
           OUT="TheFew-Windows.zip"
-          NOTES="The Few — build Windows (PC) de prévisualisation.
+          SETUP="7MOTION-Setup.exe"
+          NOTES="7 MOTION — version Windows (PC).
 
-          Décompresse le .zip et lance tv_king.exe (garde TOUS les fichiers du
-          dossier ensemble : l'.exe a besoin de ses .dll voisines). Clavier :
-          flèches = navigation, Entrée = OK, Échap = Retour. Même backend/panel
-          que le mobile et la TV.
+          LE PLUS SIMPLE : télécharge 7MOTION-Setup.exe et double-clique.
+          Windows affichera « Windows a protégé votre ordinateur » parce que
+          le fichier n'est pas signé : clique « Informations complémentaires »
+          puis « Exécuter quand même ».
 
-          Étape 1 : interface + cache des chaînes. La lecture vidéo desktop
-          est en cours de finalisation (étape 2).
+          AUTRE OPTION : TheFew-Windows.zip, à décompresser ENTIÈREMENT avant
+          de lancer tv_king.exe — l'exécutable ne fonctionne pas sans les
+          fichiers qui l'entourent.
+
+          Clavier : flèches = navigation, Entrée = OK, Échap = Retour. Même
+          backend et même panel que le mobile et la TV.
 
           Commit : ${{ github.sha }}"
           if gh release view windows-latest --repo "$REPO" >/dev/null 2>&1; then
             gh release edit windows-latest --repo "$REPO" --notes "$NOTES"
-            gh release upload windows-latest --repo "$REPO" --clobber "$OUT"
+            gh release upload windows-latest --repo "$REPO" --clobber "$OUT" "$SETUP"
           else
             gh release create windows-latest --repo "$REPO" \
               --title "The Few — Windows (dernier build)" \
-              --notes "$NOTES" --prerelease "$OUT"
+              --notes "$NOTES" --prerelease "$OUT" "$SETUP"
           fi
           gh release view windows-latest --repo "$REPO"
