@@ -819,6 +819,22 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      # ===== APK 32 bits — pour l'Amazon Appstore =====
+      #  `--split-per-abi` produit AUSSI un armeabi-v7a, qu'on jetait.
+      #  Or beaucoup de Fire TV Stick (2ᵉ et 3ᵉ génération, encore très
+      #  répandus) sont en 32 BITS : avec le seul arm64, l'Amazon
+      #  Appstore ne proposerait tout simplement pas l'application sur
+      #  ces appareils — sans erreur, sans message, l'app n'apparaît
+      #  pas dans leur boutique. Amazon accepte PLUSIEURS APK par fiche,
+      #  un par architecture : on garde donc les deux.
+      - name: Upload APK 32 bits (Amazon / vieux Fire TV)
+        uses: actions/upload-artifact@v4
+        with:
+          name: 7motion-armeabi-v7a-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          retention-days: 30
+          if-no-files-found: warn
+
       # ===== Google Play : App Bundle (.aab) SIGNÉ =====
       # Google Play n'accepte PAS l'APK : il faut un Android App Bundle
       # (.aab), signé avec la même clé stable (alias sevenmotion). On le
