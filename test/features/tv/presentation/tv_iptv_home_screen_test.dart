@@ -103,13 +103,19 @@ void main() {
     expect(find.text('Modèle A'), findsNothing);
   });
 
-  // Les deux boutons du haut de menu, dont le « bouton magique » de mise à
-  // jour : l'app va chercher la dernière version et l'installe par-dessus.
-  testWidgets('menu : Rechercher et Mettre à jour', (WidgetTester t) async {
+  // Les deux boutons du haut de menu. Celui de mise à jour est LE bouton
+  // fort (demande client : « un vrai, très fort bouton ») : il ouvre un
+  // CHOIX — application, listes de chaînes, mots de passe — au lieu de ne
+  // savoir faire que l'APK. Sa seconde ligne annonce ce choix AVANT
+  // l'appui : sans elle, le client continue de croire à un bouton qui ne
+  // met à jour que l'application, et ne le presse jamais pour ses chaînes.
+  testWidgets('menu : Rechercher et le bouton fort Mise à jour',
+      (WidgetTester t) async {
     await t.pumpWidget(const MaterialApp(home: TvIptvHomeScreen()));
     await t.pump();
     expect(find.text('Rechercher…'), findsOneWidget);
-    expect(find.text('Mettre à jour'), findsOneWidget);
+    expect(find.text('Mise à jour'), findsOneWidget);
+    expect(find.text('App · Chaînes · Mots de passe'), findsOneWidget);
   });
 
   // Signalé par le client : « quand on retourne pour faire Exit, ça marche
