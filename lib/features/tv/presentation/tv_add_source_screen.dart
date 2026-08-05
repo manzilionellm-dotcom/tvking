@@ -46,6 +46,7 @@ class TvAddSourceScreen extends StatefulWidget {
     this.initialServer,
     this.initialUsername,
     this.initialPassword,
+    this.replacePlaylistId,
   });
 
   /// Pré-remplissage (venant de l'aiguillage intelligent : un lien
@@ -53,6 +54,18 @@ class TvAddSourceScreen extends StatefulWidget {
   final String? initialServer;
   final String? initialUsername;
   final String? initialPassword;
+
+  /// MODE RÉPARATION (« Mise à jour → Mots de passe → Identifiants ») :
+  /// id de la source EXISTANTE dont on corrige le compte. Null = mode
+  /// normal, on ajoute une nouvelle source.
+  ///
+  /// Le même écran sert aux deux : la saisie à la télécommande (clavier
+  /// intégré, pré-vol, résumé avant validation) est déjà éprouvée ici, la
+  /// dupliquer ailleurs serait la laisser diverger. Seule l'écriture finale
+  /// change — ajout d'une ligne, ou correction de la ligne existante.
+  final int? replacePlaylistId;
+
+  bool get isRepair => replacePlaylistId != null;
 
   @override
   State<TvAddSourceScreen> createState() => _TvAddSourceScreenState();
@@ -222,8 +235,20 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
 
       // 3) IMPORT VIVANT : compteur de chaînes + catégorie en cours.
       _progress.startStage(context.l10n.tvSourceDownloadingChannels);
-      final Playlist saved =
-          await PlaylistRepository.instance.addXtreamPlaylist(
+      // RÉPARATION : on corrige la source existante au lieu d'en créer une
+      // seconde. Sans ce branchement, un client venu changer son mot de
+      // passe se retrouvait avec DEUX sources — l'ancienne morte et la
+      // nouvelle — et devait deviner laquelle supprimer.
+      final Playlist saved = widget.isRepair
+          ? await PlaylistRepository.instance.updateXtreamCredentials(
+              playlistId: widget.replacePlaylistId!,
+              serverUrl: server,
+              username: user,
+              password: pass,
+              httpClient: client,
+              onProgress: _progress.onImportProgress,
+            )
+          : await PlaylistRepository.instance.addXtreamPlaylist(
         name: _manual
             ? context.l10n.tvSourceDefaultListName
             : (_servers

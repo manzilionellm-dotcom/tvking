@@ -36,7 +36,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/update/update_prompt.dart';
+import '../../../core/update/update_service.dart';
 import '../../../widgets/optimized_image.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
@@ -54,6 +54,8 @@ import 'tv_player_screen.dart';
 import 'tv_components.dart';
 import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
+import 'tv_shell.dart';
+import 'tv_update_hub_screen.dart';
 import 'tv_welcome_screen.dart';
 
 class TvIptvHomeScreen extends StatefulWidget {
@@ -96,6 +98,13 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
   Timer? _settle;
   static const Duration _kSettleDelay = Duration(milliseconds: 2500);
 
+  /// Une version plus récente attend-elle ? Sert UNIQUEMENT à allumer la
+  /// pastille du bouton — aucune boîte de dialogue n'est ouverte d'ici.
+  /// L'invitation à installer reste gouvernée par la politique anti-
+  /// harcèlement (grâce 12 h, espacement 24 h) : ici on informe, on
+  /// n'interrompt pas.
+  bool _updateAvailable = false;
+
   @override
   void initState() {
     super.initState();
@@ -103,6 +112,18 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
     _settle = Timer(_kSettleDelay, () {
       if (mounted) setState(() => _settled = true);
     });
+    // Sondage SILENCIEUX du manifeste (un GET de version.json). Toute
+    // erreur — réseau coupé, manifeste absent — laisse simplement la
+    // pastille éteinte : le bouton reste utilisable, il ne promet rien.
+    unawaited(() async {
+      try {
+        final UpdateInfo? info = await UpdateService.instance.check();
+        if (mounted && info != null) setState(() => _updateAvailable = true);
+      } catch (_) {
+        // Pastille éteinte, rien de plus : l'absence de réseau ne doit pas
+        // faire clignoter un bouton ni remonter une erreur à l'accueil.
+      }
+    }());
     // Le tri « ce qui marche vraiment chez toi d'abord » lit la fiabilité
     // apprise (n°38). Elle arrive du disque : on retrie à son arrivée.
     unawaited(ChannelReliability.instance.load().then((_) {
@@ -394,6 +415,24 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
             ),
           ),
           const SizedBox(height: 24),
+          // ----- MISE À JOUR : LE bouton fort du menu (demande client) -----
+          // Il passe EN PREMIER et en grand : c'est le geste que le client
+          // fait quand « ça ne marche plus », et il ne doit jamais avoir à
+          // le chercher. Un seul OK ouvre le choix — application, listes de
+          // chaînes, mots de passe — au lieu de ne savoir faire que l'APK.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _BigUpdateButton(
+              accent: _accent,
+              updateAvailable: _updateAvailable,
+              onSelect: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TvShell(child: TvUpdateHubScreen()),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
           // ----- RECHERCHE (demande client) -----
           // Le champ de saisie de sa maquette suppose un clavier ; sur une
           // télécommande, c'est l'écran de recherche de l'app qui fait le
@@ -410,22 +449,6 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
                   builder: (_) => const TvSearchScreen(),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          // ----- LE BOUTON MAGIQUE (demande client) -----
-          // Un seul OK : l'app va chercher la dernière version en ligne, la
-          // télécharge avec une barre de progression et lance l'installation
-          // PAR-DESSUS (Android remplace l'app sans rien effacer — sources,
-          // favoris et réglages restent). Si tout est déjà à jour, elle le
-          // dit et ne touche à rien.
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _MenuActionButton(
-              icon: Icons.system_update_rounded,
-              label: 'Mettre à jour',
-              accent: _accent,
-              onSelect: () => unawaited(checkForUpdatesInteractive(context)),
             ),
           ),
           const SizedBox(height: 20),
@@ -596,6 +619,116 @@ class _TvIptvHomeScreenState extends State<TvIptvHomeScreen> {
 /// Gros bouton d'action en haut du menu latéral (Rechercher, Mettre à
 /// jour) — la forme voulue par le client : bien visible, teinté à l'accent,
 /// et pilotable à la télécommande.
+/// LE bouton fort du menu (demande client : « un vrai, très fort bouton »).
+///
+/// Volontairement plus haut et plus contrasté que [_MenuActionButton] : il
+/// porte un fond plein à l'accent au lieu d'un simple voile, une icône dans
+/// un carré, et une seconde ligne qui ANNONCE le choix à venir — le client
+/// sait avant d'appuyer qu'il y trouvera aussi ses chaînes et ses mots de
+/// passe, au lieu de croire à un bouton qui ne fait que l'APK.
+///
+/// La pastille ne s'allume que si une version plus récente existe vraiment
+/// (sondage silencieux à l'ouverture). Pas de pastille permanente : un
+/// badge qui ne s'éteint jamais cesse d'être lu.
+class _BigUpdateButton extends StatelessWidget {
+  const _BigUpdateButton({
+    required this.accent,
+    required this.updateAvailable,
+    required this.onSelect,
+  });
+
+  final Color accent;
+  final bool updateAvailable;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) => AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: focused ? 0.42 : 0.24),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: accent.withValues(alpha: focused ? 1 : 0.55),
+            width: focused ? 2 : 1.4,
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.28),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(
+                    Icons.system_update_rounded,
+                    color: Colors.white,
+                    size: 23,
+                  ),
+                ),
+                if (updateAvailable)
+                  Positioned(
+                    right: -3,
+                    top: -3,
+                    child: Container(
+                      width: 13,
+                      height: 13,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF5A5F),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.black, width: 2),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    updateAvailable
+                        ? 'Mise à jour dispo'
+                        : 'Mise à jour',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'App · Chaînes · Mots de passe',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.72),
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _MenuActionButton extends StatelessWidget {
   const _MenuActionButton({
     required this.icon,

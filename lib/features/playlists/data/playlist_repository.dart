@@ -1060,6 +1060,88 @@ class PlaylistRepository {
   }
 
   // ============================================================
+  //  IDENTIFIANTS — RÉPARATION EN PLACE
+  // ============================================================
+
+  /// Remplace le compte Xtream d'une source EXISTANTE, sans la recréer.
+  ///
+  /// LE BESOIN : un fournisseur qui change le mot de passe d'un abonnement.
+  /// Les chaînes tombent en 401/403 (cf. PlaylistHealthChecker, statut
+  /// `auth`) et le client n'a plus rien — alors que seul un mot de passe a
+  /// bougé.
+  ///
+  /// POURQUOI EN PLACE plutôt que « supprimer puis ré-ajouter » : la ligne
+  /// `playlists` garde son id. Supprimer la source détruit ses chaînes
+  /// (cf. _deletePlaylist) et, avec elles, tout ce qui s'y accroche par id.
+  /// Ici on ne touche qu'aux trois colonnes du compte, puis on re-télécharge
+  /// les chaînes.
+  ///
+  /// GARDE : les identifiants ne sont écrits QU'APRÈS vérification auprès du
+  /// serveur — même pré-vol qu'à l'ajout. Un mot de passe faux ne peut donc
+  /// jamais remplacer un bon : en cas d'échec, [verifyCredentials] lève et la
+  /// base n'a pas bougé.
+  Future<Playlist> updateXtreamCredentials({
+    required int playlistId,
+    required String serverUrl,
+    required String username,
+    required String password,
+    http.Client? httpClient,
+    ImportProgressCallback? onProgress,
+  }) async {
+    // Mêmes nettoyages qu'à l'ajout : un identifiant copié depuis un SMS ou
+    // un mail traîne des caractères invisibles qui le rendent faux alors
+    // qu'il paraît juste à l'écran.
+    serverUrl = SourceLinkUtils.sanitizeXtreamServer(serverUrl);
+    username = SourceLinkUtils.cleanInput(username);
+    password = SourceLinkUtils.cleanInput(password);
+
+    // 1) PRÉ-VOL — rien n'est écrit tant que le compte n'a pas répondu.
+    onProgress?.call(const ImportProgress(phase: ImportPhase.connecting));
+    await XtreamClient(
+      serverUrl: serverUrl,
+      username: username,
+      password: password,
+      httpClient: httpClient,
+    ).verifyCredentials();
+
+    // 2) Écriture sur la ligne existante (l'id ne bouge pas).
+    //
+    // CHIFFREMENT AU REPOS — obligatoire, exactement comme _insertPlaylist :
+    // la lecture (_playlistFromRow) DÉCHIFFRE systématiquement le mot de
+    // passe. Un mot de passe écrit en clair ici ressortirait donc illisible
+    // et la source, pourtant « réparée », retomberait en échec d'auth.
+    // Même repli que l'insertion : si la clé n'est pas disponible, la
+    // valeur reste en clair plutôt que de perdre le compte.
+    await SecretCipher.instance.ensureReady();
+    final Database db = await PlaylistDatabase.instance.database;
+    await db.update(
+      'playlists',
+      <String, Object?>{
+        'xtream_server': serverUrl,
+        'xtream_username': username,
+        'xtream_password': password.isEmpty
+            ? password
+            : SecretCipher.instance.encrypt(password),
+      },
+      where: 'id = ?',
+      whereArgs: <Object>[playlistId],
+    );
+
+    // 3) Re-téléchargement des chaînes avec le compte réparé.
+    final Playlist repaired = (await getAllPlaylists()).firstWhere(
+      (Playlist p) => p.id == playlistId,
+      orElse: () => throw StateError('Source $playlistId introuvable'),
+    );
+    onProgress?.call(const ImportProgress(phase: ImportPhase.downloading));
+    await refreshPlaylist(repaired);
+    // Relecture : channelCount et lastSyncedAt viennent d'être réécrits.
+    return (await getAllPlaylists()).firstWhere(
+      (Playlist p) => p.id == playlistId,
+      orElse: () => repaired,
+    );
+  }
+
+  // ============================================================
   //  SUPPRESSION
   // ============================================================
 
@@ -1343,7 +1425,10 @@ class PlaylistRepository {
     }
     // CHIFFREMENT AU REPOS : on chiffre le mot de passe Xtream AVANT l'écriture
     // en base (fail-open : si la clé n'est pas dispo, la valeur reste en clair).
-    // C'est le SEUL point d'écriture du mot de passe → un seul endroit à chiffrer.
+    // Point d'écriture n°1 sur 2 : l'AJOUT d'une source. Le second est
+    // updateXtreamCredentials (réparation d'un compte en place) — il chiffre
+    // de la même façon. Toute nouvelle écriture du mot de passe DOIT passer
+    // par l'un des deux, sous peine d'illisibilité à la relecture.
     await SecretCipher.instance.ensureReady();
     final Object? pw = map['xtream_password'];
     if (pw is String && pw.isNotEmpty) {
