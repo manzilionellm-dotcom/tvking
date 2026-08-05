@@ -24,6 +24,8 @@ const PALETTE: Art[] = [
 ];
 
 const DEMO_M3U = `#EXTM3U
+#EXTINF:-1 group-title="Test",Chaîne Test
+https://demo.tvking.app/test/index.m3u8
 #EXTINF:-1 group-title="Sport",Sport Royal 1
 https://demo.tvking.app/sport1/index.m3u8
 #EXTINF:-1 group-title="Sport",Sport Royal 2

@@ -106,7 +106,10 @@ body {
     radial-gradient(125% 85% at 100% -10%, rgba(227, 185, 107, 0.1), transparent 55%),
     radial-gradient(110% 75% at -10% 110%, rgba(91, 75, 214, 0.12), transparent 55%),
     var(--bg);
-  background-attachment: fixed;
+  /* PAS de background-attachment: fixed — sur les GPU faibles des box, il
+     force un repaint plein écran des dégradés à chaque défilement et finit
+     par faire tomber le rendu du WebView (écran blanc après quelques
+     minutes d'usage). */
   color: var(--text-high);
   font-family: var(--font-sans), system-ui, sans-serif;
   /* Text floor for 10-foot legibility is ~24px → 1.5rem on the 1920 canvas. */

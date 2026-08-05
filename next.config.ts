@@ -8,6 +8,11 @@ import type { NextConfig } from "next";
 const onPages = process.env.GITHUB_PAGES === "true";
 
 const nextConfig: NextConfig = {
+  // Exposé au client pour enregistrer le service worker au bon chemin
+  // (« /tvking/sw.js » sur Pages, « /sw.js » ailleurs).
+  env: {
+    NEXT_PUBLIC_BASE_PATH: onPages ? "/tvking" : "",
+  },
   ...(onPages && {
     output: "export" as const,
     basePath: "/tvking",
