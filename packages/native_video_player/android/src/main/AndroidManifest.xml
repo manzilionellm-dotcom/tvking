@@ -4,4 +4,12 @@
     <!-- Reprise réseau instantanée (NativeVideoView.registerNetworkCallback) :
          permission NORMALE (accordée à l'installation, aucun dialogue). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- WAKE_MODE_NETWORK (NativeVideoView) : ExoPlayer tient un WifiLock +
+         PartialWakeLock PENDANT la lecture, pour que la radio Wi-Fi de la box
+         ne s'endorme pas au bout de quelques minutes sans appui télécommande.
+         Permission NORMALE elle aussi : aucun dialogue à l'installation.
+         Déclarée DANS le plugin (et pas dans le manifest de l'app) parce que
+         le CI régénère android/ à chaque build via `flutter create` — le
+         manifest du plugin, lui, est fusionné automatiquement et survit. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 </manifest>

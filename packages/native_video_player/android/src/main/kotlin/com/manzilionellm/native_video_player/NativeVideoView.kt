@@ -1,6 +1,7 @@
 package com.manzilionellm.native_video_player
 
 import android.app.ActivityManager
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
@@ -93,6 +94,44 @@ class NativeVideoView(
          */
         fun pauseAll() {
             for (v in instances) v.playerHandler.post { v.player.pause() }
+        }
+
+        /**
+         * PRESSION MÉMOIRE — appelé par le plugin sur onTrimMemory (cf.
+         * [NativeVideoPlayerPlugin]). Sans ça, personne ne rendait de mémoire
+         * quand l'OS en manquait : il finissait par TUER l'app (le « ça s'est
+         * fermé tout seul » du terrain).
+         *
+         * CE QU'ON LIBÈRE : uniquement les APERÇUS (vignettes muettes). Ils
+         * gardent chacun un tampon de 8 Mo + un codec matériel, pour de la
+         * simple décoration. stop() rend le tampon, setForegroundMode(false)
+         * rend le codec.
+         *
+         * CE QU'ON NE TOUCHE JAMAIS : le lecteur en cours. Le but est que la
+         * chaîne CONTINUE pendant qu'on rend de la place autour d'elle — la
+         * couper serait faire à l'app ce qu'on essaie d'éviter.
+         *
+         * Un aperçu repart tout seul : Dart repasse son URL à la prochaine
+         * mise en avant de la vignette.
+         *
+         * Pas de System.gc() ici : il fige le thread appelant (main) le temps
+         * d'une collecte complète — sur box, c'est un à-coup visible, voire un
+         * ANR. On rend la mémoire, on laisse le GC choisir son moment.
+         */
+        fun trimMemory(level: Int) {
+            // RUNNING_CRITICAL = l'app est au PREMIER PLAN et l'OS manque de
+            // mémoire : c'est LE moment où une box tue l'app en pleine
+            // lecture. Les paliers au-dessus (MODERATE/COMPLETE, arrière-plan)
+            // sont couverts par le même geste.
+            if (level < ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) return
+            for (v in instances) {
+                if (!v.preview) continue
+                v.playerHandler.post {
+                    v.player.stop()
+                    v.player.clearMediaItems()
+                    v.player.setForegroundMode(false)
+                }
+            }
         }
     }
 
@@ -367,6 +406,18 @@ class NativeVideoView(
             .setTrackSelector(trackSelector)
             .setBandwidthMeter(bandwidthMeter)
             .setHandleAudioBecomingNoisy(true)
+            // COUPURE APRÈS QUELQUES MINUTES : sur box, le Wi-Fi passe en
+            // économie d'énergie pendant une lecture longue (aucune touche
+            // pressée = l'OS estime l'appareil inactif). La radio s'endort,
+            // le flux .ts se coupe et l'app paraît « plantée ».
+            // WAKE_MODE_NETWORK fait tenir à ExoPlayer un WifiLock + un
+            // PartialWakeLock TANT QUE ça joue, et les relâche seul à la
+            // pause/au release : la radio reste éveillée pile pendant la
+            // lecture, pas une seconde de plus (permission WAKE_LOCK, normale,
+            // accordée à l'installation — cf. AndroidManifest du plugin).
+            // Un APERÇU (vignette muette) n'y a pas droit : il ne doit jamais
+            // empêcher la box de dormir.
+            .setWakeMode(if (preview) C.WAKE_MODE_NONE else C.WAKE_MODE_NETWORK)
             // Looper d'application = thread PLAYER partagé (cf. companion) :
             // les appels au lecteur — release() en tête — ne bloquent plus
             // JAMAIS le main thread. build() depuis le main est le patron
@@ -728,6 +779,12 @@ class NativeVideoView(
 
     /** Charge [url] avec la signature [userAgent] (`null` = défaut de l'init). */
     private fun setMedia(url: String, userAgent: String?) {
+        // Restaure le mode « codecs chauds » si un passage sous pression
+        // mémoire l'avait coupé (cf. companion.trimMemory, aperçus). Sans
+        // cette ligne, une vignette rendue une fois gardait pour toujours son
+        // délai de ré-init au zap. Idempotent : ExoPlayer ignore l'appel si le
+        // mode est déjà actif.
+        player.setForegroundMode(true)
         if (userAgent != null) {
             player.setMediaSource(
                 mediaSourceFactoryFor(userAgent).createMediaSource(buildMediaItem(url)),

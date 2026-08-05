@@ -3,7 +3,9 @@ package com.manzilionellm.native_video_player
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Bundle
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -45,6 +47,24 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
 
     private var infoChannel: MethodChannel? = null
 
+    /**
+     * GARDE-MÉMOIRE. Enregistré sur le CONTEXTE D'APPLICATION plutôt que dans
+     * une classe Application maison : le CI régénère `android/` à chaque build
+     * (`flutter create`), donc tout ce qui vit là-bas est effacé — le plugin,
+     * lui, survit. Aucune ligne de manifest à patcher non plus.
+     *
+     * onLowMemory() ne fait rien de plus : sur les versions qui l'appellent
+     * encore, onTrimMemory(TRIM_MEMORY_COMPLETE) le double systématiquement.
+     */
+    private val memoryCallbacks = object : ComponentCallbacks2 {
+        override fun onTrimMemory(level: Int) = NativeVideoView.trimMemory(level)
+        override fun onConfigurationChanged(newConfig: Configuration) {}
+        @Suppress("OverridingDeprecatedMember")
+        override fun onLowMemory() {}
+    }
+
+    private var appContextForCallbacks: Context? = null
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         binding
             .platformViewRegistry
@@ -57,6 +77,8 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
         // drapeau isLowRamDevice d'Android. Utilisé par le garde-mémoire TV.
         infoChannel = MethodChannel(binding.binaryMessenger, "native_video_player/info")
         val appContext = binding.applicationContext
+        appContext.registerComponentCallbacks(memoryCallbacks)
+        appContextForCallbacks = appContext
         infoChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "deviceInfo" -> {
@@ -79,6 +101,8 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         infoChannel?.setMethodCallHandler(null)
         infoChannel = null
+        appContextForCallbacks?.unregisterComponentCallbacks(memoryCallbacks)
+        appContextForCallbacks = null
         // Chaque NativeVideoView gère son propre cycle de vie par ailleurs
         // (dispose() appelé par Flutter quand la PlatformView est retirée).
     }
