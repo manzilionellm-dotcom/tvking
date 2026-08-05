@@ -1,0 +1,4 @@
+:HL["/tvking/_next/static/chunks/0hbcv39p8y8qw.css","style"]
+:HL["/tvking/_next/static/media/2a65768255d6b625-s.p.3u4lli0-axodc.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/tvking/_next/static/media/caa3a2e1cccd8315-s.p.0wgildi0cnwt9.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"watch","param":null,"prefetchHints":0,"slots":{"children":{"name":"slug","param":{"type":"d","key":"c2","siblings":null},"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}}}},"staleTime":300,"buildId":"0GSy6cQCYdc5OzMmvUtO1"}

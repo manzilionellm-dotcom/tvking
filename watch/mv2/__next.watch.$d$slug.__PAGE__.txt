@@ -1,0 +1,6 @@
+1:"$Sreact.fragment"
+2:I[81447,["/tvking/_next/static/chunks/0qig7p0xj2icq.js","/tvking/_next/static/chunks/0bpx3ay_o5q9o.js","/tvking/_next/static/chunks/3h3bbwj0l2n7s.js"],"default"]
+3:I[97367,["/tvking/_next/static/chunks/0qig7p0xj2icq.js","/tvking/_next/static/chunks/0bpx3ay_o5q9o.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"item":{"id":"mv2","title":"Dernier Sprint","kind":"film","shape":"2:3","art":{"from":"#5f2b3a","to":"#241019"},"year":2026,"genre":"Drame sportif","duration":"1h52","description":"À 34 ans, un sprinteur déchu s'offre une dernière saison pour redevenir champion — et se réconcilier avec son fils."},"next":{"id":"mv1","title":"La Couronne d'acier","kind":"film","shape":"2:3","art":{"from":"#3a2b5f","to":"#140f24"},"year":2026,"genre":"Aventure","duration":"2h08","badge":"NOUVEAU","description":"Un royaume au bord de la rupture, une héritière que rien ne prédestinait au trône. Une fresque épique au souffle rare."}}],[["$","script","script-0",{"src":"/tvking/_next/static/chunks/3h3bbwj0l2n7s.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"0GSy6cQCYdc5OzMmvUtO1"}
+5:null

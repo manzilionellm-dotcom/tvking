@@ -1,0 +1,6 @@
+1:"$Sreact.fragment"
+2:I[81447,["/tvking/_next/static/chunks/0qig7p0xj2icq.js","/tvking/_next/static/chunks/0bpx3ay_o5q9o.js","/tvking/_next/static/chunks/3h3bbwj0l2n7s.js"],"default"]
+3:I[97367,["/tvking/_next/static/chunks/0qig7p0xj2icq.js","/tvking/_next/static/chunks/0bpx3ay_o5q9o.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"item":{"id":"l2","title":"Roland-Garros — Demi-finale","art":{"from":"#3a5f2b","to":"#16240f"},"live":"live","clock":"Set 3","score":"6-4 3-6 2-1","league":"Tennis"},"next":{"id":"hero-ucl","title":"Champions League — Finale en direct","subtitle":"Le sommet du football européen, ce soir à 21h00","art":{"from":"#1f3a5f","to":"#0c1622"},"live":"live","league":"UEFA Champions League","badge":"ÉVÉNEMENT"}}],[["$","script","script-0",{"src":"/tvking/_next/static/chunks/3h3bbwj0l2n7s.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"0GSy6cQCYdc5OzMmvUtO1"}
+5:null

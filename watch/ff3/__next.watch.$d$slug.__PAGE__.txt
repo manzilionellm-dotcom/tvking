@@ -1,0 +1,6 @@
+1:"$Sreact.fragment"
+2:I[81447,["/tvking/_next/static/chunks/0qig7p0xj2icq.js","/tvking/_next/static/chunks/0bpx3ay_o5q9o.js","/tvking/_next/static/chunks/3h3bbwj0l2n7s.js"],"default"]
+3:I[97367,["/tvking/_next/static/chunks/0qig7p0xj2icq.js","/tvking/_next/static/chunks/0bpx3ay_o5q9o.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"item":{"id":"ff3","title":"Étirements & mobilité","art":{"from":"#2b5f4a","to":"#10241b"},"level":"Débutant","duration":"18 min","instructor":"A. Roy"},"next":{"id":"hero-masterclass","title":"Formation — Maîtriser la prise de parole","subtitle":"12 leçons avec une oratrice de renommée mondiale","art":{"from":"#3a2b5f","to":"#140f24"},"level":"Intermédiaire","lessons":12,"badge":"NOUVEAU"}}],[["$","script","script-0",{"src":"/tvking/_next/static/chunks/3h3bbwj0l2n7s.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"0GSy6cQCYdc5OzMmvUtO1"}
+5:null
