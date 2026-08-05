@@ -43,9 +43,12 @@
   --ui-scale: 1;     /* text size multiplier */
   --safe-scale: 1;   /* overscan-compensation multiplier */
 
-  /* ---- 10-foot safe area: ~5% per edge, floored to platform minima ---- */
-  --safe-x: calc(max(48px, 5vw) * var(--safe-scale));   /* ~96px @1920 (Android 48dp / tvOS 90pt) */
-  --safe-y: calc(max(27px, 5vh) * var(--safe-scale));   /* ~54px @1920 */
+  /* ---- 10-foot safe area: ~5% per edge, floored to platform minima ----
+     Version sans max() d'abord (les custom properties ne connaissent pas le
+     repli déclaration-par-déclaration : la dernière gagne toujours) ; le
+     plancher via max() est réappliqué sous @supports plus bas. */
+  --safe-x: calc(5vw * var(--safe-scale));
+  --safe-y: calc(5vh * var(--safe-scale));
 
   /* ---- Fluid spacing / radii (rem so they scale with the canvas) ---- */
   --gap: 1.5rem;
@@ -54,6 +57,15 @@
 
   /* ---- Focus motion ---- */
   --focus-scale: 1.08;
+}
+
+/* Plancher de la zone de sécurité (Android 48dp/27dp) là où max() existe
+   (Chrome 79+) ; les vieux WebView gardent le simple 5 % — suffisant. */
+@supports (padding: max(1px, 2px)) {
+  :root {
+    --safe-x: calc(max(48px, 5vw) * var(--safe-scale));   /* ~96px @1920 (Android 48dp / tvOS 90pt) */
+    --safe-y: calc(max(27px, 5vh) * var(--safe-scale));   /* ~54px @1920 */
+  }
 }
 
 @theme inline {
@@ -79,6 +91,8 @@
   stays sane in small dev windows and doesn't over-scale on ultra-wide.
 */
 html {
+  /* Repli sans clamp() (WebView < Chrome 79) : même échelle, non bornée. */
+  font-size: calc(100vw / 120 * var(--ui-scale));
   font-size: calc(clamp(11px, 100vw / 120, 22px) * var(--ui-scale));
   background: var(--bg);
   color-scheme: dark;
@@ -200,4 +214,32 @@ button:focus-visible {
   .focusable:focus-visible {
     transform: none;
   }
+}
+
+/*
+  ------------------------- Compatibilité vieux box TV -------------------------
+  Les WebView anciens (Android 6/7/8) ignorent certaines propriétés modernes
+  émises par Tailwind v4 ; on redéclare ici, en syntaxe classique, celles dont
+  dépend la STRUCTURE de l'app (le cosmétique peut se dégrader, pas la
+  structure).
+*/
+
+/* inset (Chrome 87+) : sans ce repli, les surfaces plein écran (lecteur,
+   CGU, scrims) ne couvraient rien. */
+@supports not (inset: 0) {
+  .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+  .inset-x-0 { left: 0; right: 0; }
+  .inset-y-0 { top: 0; bottom: 0; }
+}
+
+/* aspect-ratio (Chrome 88+) : les vignettes de chaînes gardent une hauteur. */
+@supports not (aspect-ratio: 16 / 9) {
+  .aspect-video { height: 11.25rem; } /* 20rem de large × 9/16 */
+}
+
+/* Tailwind v4 émet les media queries en syntaxe d'intervalle (width >= …),
+   ignorée avant Chrome 104 : la barre d'onglets mobile s'affichait alors
+   PAR-DESSUS l'interface TV. Redéclaration en syntaxe classique. */
+@media (min-width: 48rem) {
+  nav[aria-label="Navigation principale"] { display: none; }
 }

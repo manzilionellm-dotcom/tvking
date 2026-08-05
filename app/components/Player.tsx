@@ -36,15 +36,21 @@ export default function Player({
   item,
   next,
   onExit,
+  onZap,
 }: {
   item: MediaItem;
   next: MediaItem | null;
   /** When set (IPTV channels), leaving the player calls this instead of
       navigating to a /title page — channels have no detail page. */
   onExit?: () => void;
+  /** Channel zapping (IPTV): +1 next channel, -1 previous (CH+/CH- keys). */
+  onZap?: (delta: 1 | -1) => void;
 }) {
   const router = useRouter();
-  const [pos, setPos] = useState(item.progress ? Math.floor(item.progress * DURATION) : 0);
+  /* A live channel has no duration: it never "ends", is never resumed, and
+     cannot be seeked forward — only VOD gets the full transport. */
+  const isLive = item.live === "live";
+  const [pos, setPos] = useState(item.progress && !isLive ? Math.floor(item.progress * DURATION) : 0);
   const [playing, setPlaying] = useState(true);
   const [autoCancelled, setAutoCancelled] = useState(false);
   const reduceRef = useRef(false);
@@ -69,51 +75,57 @@ export default function Player({
     () => null
   );
   const [seeded, setSeeded] = useState(false);
-  if (savedPos !== null && !seeded) {
+  if (!isLive && savedPos !== null && !seeded) {
     setSeeded(true);
     setPos(Math.min(Math.floor(savedPos), DURATION));
   }
 
   // Persist the playhead every 5s and at the end (where the entry is dropped —
-  // a finished programme must not reappear in "Reprendre").
+  // a finished programme must not reappear in "Reprendre"). Live channels have
+  // nothing to resume: they never enter the store.
   useEffect(() => {
-    if (pos === 0 || (pos % 5 !== 0 && pos < DURATION)) return;
+    if (isLive || pos === 0 || (pos % 5 !== 0 && pos < DURATION)) return;
     saveResume(withPosition(loadResume(), item.id, pos, DURATION, Date.now()));
-  }, [pos, item.id]);
+  }, [pos, item.id, isLive]);
 
   // Advance the mock playhead one tick at a time; stops itself at the end.
+  // A live channel has no end — its clock just keeps counting.
   useEffect(() => {
-    if (!playing || pos >= DURATION) return;
-    const t = setTimeout(() => setPos((p) => Math.min(p + 1, DURATION)), 1000);
+    if (!playing || (!isLive && pos >= DURATION)) return;
+    const t = setTimeout(() => setPos((p) => (isLive ? p + 1 : Math.min(p + 1, DURATION))), 1000);
     return () => clearTimeout(t);
-  }, [playing, pos]);
+  }, [playing, pos, isLive]);
 
   // At the end, auto-advance to the next item unless cancelled / reduced-motion.
   useEffect(() => {
-    if (pos < DURATION || navigatedRef.current) return;
+    if (isLive || pos < DURATION || navigatedRef.current) return;
     if (next && !autoCancelled && !reduceRef.current) {
       navigatedRef.current = true;
       router.push(`/watch/${next.id}`);
     }
-  }, [pos, next, autoCancelled, router]);
+  }, [pos, next, autoCancelled, router, isLive]);
 
-  const atEnd = pos >= DURATION;
+  const atEnd = !isLive && pos >= DURATION;
 
   const toggle = useCallback(() => setPlaying((p) => !p), []);
   const exit = useCallback(() => {
+    // Keep the exact playhead — leaving must not lose up to 5s of progress.
+    if (!isLive && pos > 0 && pos < DURATION) {
+      saveResume(withPosition(loadResume(), item.id, pos, DURATION, Date.now()));
+    }
     if (onExit) onExit();
     else router.push(`/title/${item.id}`);
-  }, [onExit, router, item.id]);
+  }, [onExit, router, item.id, pos, isLive]);
 
   // Minimise to the floating mini-player (YouTube pattern): playback — or
   // audio alone, via the écouteurs button — continues while the user browses.
   const minimize = useCallback(
     (audioOnly: boolean) => {
-      saveResume(withPosition(loadResume(), item.id, pos, DURATION, Date.now()));
+      if (!isLive) saveResume(withPosition(loadResume(), item.id, pos, DURATION, Date.now()));
       setMini({ item, next, pos, playing, audioOnly });
       exit();
     },
-    [item, next, pos, playing, exit]
+    [item, next, pos, playing, exit, isLive]
   );
 
   // Remote-control keys: BACK leaves the player, media keys drive transport
@@ -145,11 +157,27 @@ export default function Player({
           return;
         case "MediaRewind":
           e.preventDefault();
-          setPos((p) => Math.max(0, p - 10));
+          if (!isLive) setPos((p) => Math.max(0, p - 10));
           return;
         case "MediaFastForward":
           e.preventDefault();
-          setPos((p) => Math.min(DURATION, p + 10));
+          if (!isLive) setPos((p) => Math.min(DURATION, p + 10));
+          return;
+        // Channel zapping — CH+/CH- on the remote (PageUp/PageDown on most
+        // Android TV WebViews) switches channel without leaving the player.
+        case "ChannelUp":
+        case "PageUp":
+          if (onZap) {
+            e.preventDefault();
+            onZap(1);
+          }
+          return;
+        case "ChannelDown":
+        case "PageDown":
+          if (onZap) {
+            e.preventDefault();
+            onZap(-1);
+          }
           return;
       }
       if ((e.key === " " || e.key === "k") && document.activeElement === document.body) {
@@ -159,7 +187,7 @@ export default function Player({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, exit]);
+  }, [toggle, exit, isLive, onZap]);
 
   const showUpNext = next && pos >= UPNEXT_AT && !autoCancelled;
   const countdown = Math.max(0, DURATION - pos);
@@ -233,7 +261,13 @@ export default function Player({
         <div className="mb-[0.8rem] flex items-center gap-[1rem]">
           <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">{fmt(pos)}</span>
           <div className="h-[0.4rem] flex-1 overflow-hidden rounded-full bg-white/20">
-            <div className="h-full" style={{ width: `${(pos / DURATION) * 100}%`, background: "var(--gold-grad)" }} />
+            <div
+              className="h-full"
+              style={{
+                width: `${isLive ? 100 : (pos / DURATION) * 100}%`,
+                background: "var(--gold-grad)",
+              }}
+            />
           </div>
           <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">
             {item.live === "live" ? "DIRECT" : fmt(DURATION)}
@@ -241,6 +275,9 @@ export default function Player({
         </div>
 
         <div className="flex items-center gap-[1rem]">
+          {/* No seeking on a live channel — the transport only offers what the
+              stream can actually do. */}
+          {!isLive && (
           <button
             data-focusable
             onClick={() => setPos((p) => Math.max(0, p - 10))}
@@ -249,6 +286,7 @@ export default function Player({
           >
             ⟲ 10s
           </button>
+          )}
           <button
             data-focusable
             data-focus-default
@@ -267,6 +305,7 @@ export default function Player({
               </svg>
             )}
           </button>
+          {!isLive && (
           <button
             data-focusable
             onClick={() => setPos((p) => Math.min(DURATION, p + 10))}
@@ -275,6 +314,29 @@ export default function Player({
           >
             10s ⟳
           </button>
+          )}
+          {/* Zapping: visible controls too, for pointer users and remotes
+              without CH+/CH- keys. */}
+          {onZap && (
+            <>
+              <button
+                data-focusable
+                onClick={() => onZap(-1)}
+                className="focusable rounded-full bg-white/12 px-[1rem] py-[0.6rem] text-[1.1rem] font-semibold text-white"
+                aria-label="Chaîne précédente"
+              >
+                ‹ Chaîne
+              </button>
+              <button
+                data-focusable
+                onClick={() => onZap(1)}
+                className="focusable rounded-full bg-white/12 px-[1rem] py-[0.6rem] text-[1.1rem] font-semibold text-white"
+                aria-label="Chaîne suivante"
+              >
+                Chaîne ›
+              </button>
+            </>
+          )}
           {/* Écouteurs: keep the sound, drop the video — goes to the mini-player. */}
           <button
             data-focusable

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Player from "../components/Player";
 import type { Art, MediaItem } from "../lib/data";
 import { groupChannels, parseM3U, verifyUrl, type Channel } from "../lib/m3u";
@@ -163,9 +163,70 @@ export default function TvPage() {
   );
   const [session, setSession] = useState<Channel[] | null>(null);
   const [nowPlaying, setNowPlaying] = useState<{ ch: Channel; index: number } | null>(null);
+  /* True when opening the player pushed a history entry (see openPlayer). */
+  const pushedHistoryRef = useRef(false);
 
-  const channels = session ?? (persisted !== null ? loadPlaylist().channels : []);
+  const channels = useMemo(
+    () => session ?? (persisted !== null ? loadPlaylist().channels : []),
+    [session, persisted]
+  );
   const hasPlaylist = channels.length > 0;
+  const playerOpen = nowPlaying !== null;
+
+  /*
+   * Sur un box TV, la touche Retour de la télécommande déclenche history.back()
+   * du WebView. Le lecteur n'étant qu'une surcouche (aucune navigation), sans
+   * entrée d'historique à consommer, ce back ferme l'application Android
+   * elle-même — c'était la fermeture systématique au changement de chaîne.
+   * On pousse donc une entrée à l'ouverture (en dupliquant l'état courant du
+   * routeur Next pour ne pas le dérégler), et popstate referme le lecteur.
+   */
+  const openPlayer = (ch: Channel, index: number) => {
+    if (!playerOpen) {
+      pushedHistoryRef.current = false;
+      try {
+        window.history.pushState(window.history.state, "");
+        pushedHistoryRef.current = true;
+      } catch {
+        // pushState indisponible : le lecteur s'ouvre quand même, la touche
+        // Retour retombera sur le comportement natif.
+      }
+    }
+    setNowPlaying({ ch, index });
+  };
+
+  useEffect(() => {
+    if (!playerOpen) return;
+    const onPop = () => setNowPlaying(null);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [playerOpen]);
+
+  const exitPlayer = useCallback(() => {
+    // Consume the entry we pushed so history stays balanced; popstate then
+    // closes the player. Without a pushed entry, close directly.
+    if (pushedHistoryRef.current) {
+      pushedHistoryRef.current = false;
+      window.history.back();
+    } else {
+      setNowPlaying(null);
+    }
+  }, []);
+
+  /* CH+/CH- : zap vers la chaîne lisible suivante/précédente, en boucle. */
+  const zap = useCallback(
+    (delta: 1 | -1) => {
+      setNowPlaying((cur) => {
+        if (!cur) return cur;
+        const playable = channels.filter((c) => verifyUrl(c.url).ok);
+        if (playable.length < 2) return cur;
+        const i = playable.findIndex((c) => c.id === cur.ch.id);
+        const nextCh = playable[(i + delta + playable.length) % playable.length];
+        return { ch: nextCh, index: channels.indexOf(nextCh) };
+      });
+    },
+    [channels]
+  );
 
   const load = (chs: Channel[]) => {
     savePlaylist(withChannels(chs));
@@ -208,7 +269,7 @@ export default function TvPage() {
                       key={ch.id}
                       channel={ch}
                       index={index}
-                      onPlay={() => setNowPlaying({ ch, index })}
+                      onPlay={() => openPlayer(ch, index)}
                     />
                   );
                 })}
@@ -228,9 +289,13 @@ export default function TvPage() {
 
       {nowPlaying && (
         <Player
+          /* key: le changement de chaîne remonte un lecteur neuf (position,
+             lecture) au lieu de garder l'état de la chaîne précédente. */
+          key={nowPlaying.ch.id}
           item={channelAsItem(nowPlaying.ch, nowPlaying.index)}
           next={null}
-          onExit={() => setNowPlaying(null)}
+          onExit={exitPlayer}
+          onZap={zap}
         />
       )}
     </div>

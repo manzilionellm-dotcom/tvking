@@ -64,6 +64,25 @@ app/
 docs/RESEARCH-TV-UX.md        Recherche sourcée (le référentiel de conception)
 ```
 
+## Compatibilité box TV (WebView anciens)
+
+La majorité des box Android embarquent un WebView daté (Chrome 55–90). L'app
+est construite pour eux :
+
+- **`browserslist`** (package.json) : la syntaxe moderne (`?.`, `??`…) est
+  transpilée jusqu'à Chrome 55 / Safari 11.
+- **Polyfills ciblés** (`instrumentation-client.ts` → `app/lib/polyfills.ts`) :
+  `padStart`, `flat/flatMap`, `Object.entries`, `CSS.escape`,
+  `queueMicrotask`, `AbortController`… chargés avant tout code applicatif.
+- **CSS aplati** (postcss.config.mjs) : les `@layer` de Tailwind v4 (ignorés
+  avant Chrome 99 — donc TOUS les utilitaires) sont convertis en cascade
+  classique ; replis `inset`, `aspect-ratio`, `clamp()`, `max()` et media
+  queries classiques dans `globals.css`.
+- **Touche Retour** : ouvrir une chaîne pousse une entrée d'historique ; le
+  BACK de la télécommande ferme le lecteur au lieu de fermer l'application.
+- **Écrans d'erreur** (`app/error.tsx`, `app/global-error.tsx`) : plus jamais
+  d'écran blanc, toujours « Réessayer ».
+
 ## Démarrer
 
 ```bash

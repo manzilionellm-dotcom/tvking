@@ -18,37 +18,43 @@ const DURATION = 40; // seconds — same mock duration as the full player
 export default function MiniPlayer() {
   const router = useRouter();
   const mini = useSyncExternalStore(subscribeMini, getMini, getMiniServer);
+  /* Live channels have no duration: the mini clock keeps counting, nothing
+     ends, and nothing enters the resume store. */
+  const isLive = mini?.item.live === "live";
 
   // Advance the mock playhead one tick at a time while playing.
   useEffect(() => {
-    if (!mini || !mini.playing || mini.pos >= DURATION) return;
-    const t = setTimeout(() => updateMini({ pos: Math.min(mini.pos + 1, DURATION) }), 1000);
+    if (!mini || !mini.playing || (!isLive && mini.pos >= DURATION)) return;
+    const t = setTimeout(
+      () => updateMini({ pos: isLive ? mini.pos + 1 : Math.min(mini.pos + 1, DURATION) }),
+      1000
+    );
     return () => clearTimeout(t);
-  }, [mini]);
+  }, [mini, isLive]);
 
   // Persist the playhead every 5s and at the end (finished → entry dropped),
   // exactly like the full player, so "Reprendre" stays coherent.
   useEffect(() => {
-    if (!mini || mini.pos === 0 || (mini.pos % 5 !== 0 && mini.pos < DURATION)) return;
+    if (!mini || isLive || mini.pos === 0 || (mini.pos % 5 !== 0 && mini.pos < DURATION)) return;
     saveResume(withPosition(loadResume(), mini.item.id, mini.pos, DURATION, Date.now()));
-  }, [mini]);
+  }, [mini, isLive]);
 
   // At the end: chain to the next item if there is one, otherwise close.
   useEffect(() => {
-    if (!mini || mini.pos < DURATION) return;
+    if (!mini || isLive || mini.pos < DURATION) return;
     if (mini.next) {
       setMini({ item: mini.next, next: null, pos: 0, playing: true, audioOnly: mini.audioOnly });
     } else {
       setMini(null);
     }
-  }, [mini]);
+  }, [mini, isLive]);
 
   if (!mini) return null;
   const { item, next, pos, playing, audioOnly } = mini;
 
   const expand = () => {
     // Hand the playhead to the full player through the resume store.
-    saveResume(withPosition(loadResume(), item.id, pos, DURATION, Date.now()));
+    if (!isLive) saveResume(withPosition(loadResume(), item.id, pos, DURATION, Date.now()));
     setMini(null);
     // Catalog items have a /watch page; IPTV channels reopen on the TV page.
     router.push(getItem(item.id) ? `/watch/${item.id}` : "/tv");
@@ -157,7 +163,7 @@ export default function MiniPlayer() {
           <div
             className="h-full"
             style={{
-              width: `${(pos / DURATION) * 100}%`,
+              width: `${isLive ? 100 : (pos / DURATION) * 100}%`,
               background: "var(--gold-grad)",
             }}
           />

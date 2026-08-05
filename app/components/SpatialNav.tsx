@@ -45,6 +45,14 @@ function center(el: HTMLElement): Point {
 /** Last focused [data-focus-key] per pathname — survives navigation, not reload. */
 const focusMemory = new Map<string, string>();
 
+/* Arrow keys inside a text field must move the caret, not the focus — the
+   playlist textarea on /tv would otherwise be impossible to edit. */
+function isEditable(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+}
+
 export default function SpatialNav() {
   const pathname = usePathname();
 
@@ -85,7 +93,7 @@ export default function SpatialNav() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const dir = KEY_TO_DIR[e.key];
-      if (!dir) return;
+      if (!dir || isEditable(e.target)) return;
 
       const all = focusables();
       const active = document.activeElement as HTMLElement | null;
@@ -101,7 +109,12 @@ export default function SpatialNav() {
         e.preventDefault();
         const next = candidates[idx];
         next.focus();
-        next.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        try {
+          next.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        } catch {
+          // Vieux WebView sans ScrollIntoViewOptions : défilement sans animation.
+          next.scrollIntoView(false);
+        }
       }
     }
 
