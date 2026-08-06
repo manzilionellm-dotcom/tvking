@@ -59,9 +59,28 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Flutter
+      # ================================================================
+      #  FLUTTER ÉPINGLÉ 3.32.x — LE correctif « écran noir/blanc + crash
+      #  au démarrage » des box anciennes. `channel: stable` non épinglé
+      #  faisait DÉRIVER le moteur embarqué à chaque build :
+      #   • Flutter 3.35 (août 2025) a relevé le plancher Android de
+      #     l'API 21 à l'API 24 → notre APK (minSdk forcé 21) s'INSTALLAIT
+      #     sur les box Android 5/6/7.0 mais le moteur ne les supportait
+      #     plus → crash/écran noir immédiat au lancement.
+      #   • Flutter 3.44 (mi-2026) a SUPPRIMÉ Skia sur Android 10+ :
+      #     Impeller (Vulkan) obligatoire, opt-out mort — or les pilotes
+      #     Vulkan/GLES des box bas de gamme (Mali-4xx/T-xxx, Amlogic…)
+      #     sont notoirement cassés → écran noir documenté sur Android TV
+      #     (flutter/flutter #177319, #160866, #160647).
+      #  3.32.x = DERNIÈRE ligne stable qui (a) supporte encore l'API 21
+      #  et (b) permet Impeller OFF → rendu Skia éprouvé partout.
+      #  NE PAS remettre `channel: stable` sans revalider ces deux points
+      #  sur box réelle. (Build TV uniquement — le mobile garde son CI.)
+      # ================================================================
+      - name: Setup Flutter (épinglé compat box)
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.32.x'
           channel: 'stable'
           cache: true
 
@@ -134,6 +153,40 @@ jobs:
             sed -i 's#<category android:name="android.intent.category.LAUNCHER"/>#<category android:name="android.intent.category.LAUNCHER"/>\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>#' "$MANIFEST"
           fi
           grep -nE 'leanback|LEANBACK_LAUNCHER|touchscreen' "$MANIFEST" || true
+
+      # ================================================================
+      #  RENDU COMPATIBLE BOX — Impeller OFF (→ Skia) + paysage verrouillé.
+      #   • EnableImpeller=false : sur les GPU de box anciens (pilotes
+      #     Vulkan/GLES cassés), Impeller ouvre sur un ÉCRAN NOIR ou plante
+      #     le rendu vidéo. Skia est le moteur éprouvé depuis 10 ans sur
+      #     exactement ce matériel. (Le souhait « compat rendu » persisté
+      #     par BootGuard.setCompatMode devient effectif ICI, pour tous.)
+      #   • screenOrientation=landscape : certaines box démarrent
+      #     l'activité en portrait puis la re-layoutent → flash blanc/noir
+      #     et parfois un ANR au 1er lancement. On verrouille au niveau
+      #     Android (en plus du verrou Dart de main_tv.dart).
+      #   • uses-feature non requis (micro, caméra, portrait, faketouch) :
+      #     des permissions de plugins IMPLIQUENT ces features « required »
+      #     → des launchers/stores TV refusent l'app ou la cachent.
+      # ================================================================
+      - name: Compatibilité rendu box (Impeller OFF + paysage)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'EnableImpeller' "$MANIFEST"; then
+            sed -i 's|</application>|    <meta-data\n            android:name="io.flutter.embedding.android.EnableImpeller"\n            android:value="false" />\n    </application>|' "$MANIFEST"
+            echo "✓ Impeller OFF (rendu Skia) — anti écran noir GPU box"
+          fi
+          if ! grep -q 'android:screenOrientation' "$MANIFEST"; then
+            sed -i 's|android:name=".MainActivity"|android:name=".MainActivity"\n            android:screenOrientation="landscape"|' "$MANIFEST"
+            echo "✓ paysage verrouillé au niveau activité"
+          fi
+          for FEAT in android.hardware.microphone android.hardware.camera android.hardware.screen.portrait android.hardware.faketouch; do
+            if ! grep -q "$FEAT" "$MANIFEST"; then
+              sed -i "/<manifest /a\\    <uses-feature android:name=\"$FEAT\" android:required=\"false\"/>" "$MANIFEST"
+            fi
+          done
+          grep -nE 'EnableImpeller|screenOrientation|uses-feature' "$MANIFEST" || true
 
       # ALLÉGER L'APK TV (~25-40 Mo) : la TV lit EXCLUSIVEMENT via ExoPlayer
       # (native_video_player), JAMAIS via media_kit/libmpv (qui embarque les
@@ -320,6 +373,56 @@ jobs:
           fi
           grep -n 'largeHeap' "$MANIFEST" || true
 
+      # ================================================================
+      #  ÉCRAN DE LANCEMENT SOMBRE — fin de « l'écran blanc au démarrage ».
+      #  Le template `flutter create` démarre sur un fond BLANC (drawable
+      #  launch_background + NormalTheme clair) : sur une box lente, le
+      #  moteur met plusieurs secondes à rendre le 1er frame → l'utilisateur
+      #  voit un grand écran blanc et croit à un plantage ; si l'app meurt
+      #  pendant l'init, c'est littéralement « écran blanc puis fermeture ».
+      #  On remplace par un fond SOMBRE (#101010, charte TV) avec le logo
+      #  centré, pour le splash (LaunchTheme) ET l'arrière-plan de l'app
+      #  (NormalTheme) — plus AUCUN flash blanc, sur toutes les versions
+      #  d'Android (drawable + drawable-v21 + values + values-night).
+      # ================================================================
+      - name: Écran de lancement sombre (anti écran blanc)
+        run: |
+          set -e
+          RES=android/app/src/main/res
+          for DIR in drawable drawable-v21; do
+            mkdir -p "$RES/$DIR"
+            cat > "$RES/$DIR/launch_background.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+              <item>
+                  <shape android:shape="rectangle">
+                      <solid android:color="#FF101010" />
+                  </shape>
+              </item>
+              <item>
+                  <bitmap
+                      android:gravity="center"
+                      android:src="@drawable/tv_banner" />
+              </item>
+          </layer-list>
+          XML
+          done
+          for DIR in values values-night; do
+            mkdir -p "$RES/$DIR"
+            cat > "$RES/$DIR/styles.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+                  <item name="android:windowBackground">@drawable/launch_background</item>
+              </style>
+              <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+                  <item name="android:windowBackground">@drawable/launch_background</item>
+              </style>
+          </resources>
+          XML
+          done
+          echo "✓ splash + fond d'app sombres (4 fichiers res écrasés)"
+
       # SIGNATURE STABLE — « mise à jour sans désinstaller ».
       # Le build release est signé par signingConfigs.debug, qui lit
       # ~/.android/debug.keystore. Or chaque runner CI en GÉNÈRE un NOUVEAU
@@ -453,6 +556,15 @@ jobs:
               print('minSdk -> 21 (depuis litteral)')
           else:
               print('WARN: minSdk introuvable')
+          # 1a) targetSdk EXPLICITE (35) : ne dépend plus du défaut du SDK
+          #     Flutter épinglé. 35 = exigence Play/Amazon 2025-2026 déjà
+          #     éprouvée par les builds en prod ; on ne suit PAS aveuglément
+          #     les montées de target qui changent des comportements runtime.
+          if re.search(r'targetSdk\s*=\s*flutter\.targetSdkVersion', s):
+              s = re.sub(r'targetSdk\s*=\s*flutter\.targetSdkVersion', 'targetSdk = 35', s)
+              print('targetSdk -> 35 (explicite)')
+          else:
+              print('WARN: targetSdk flutter.targetSdkVersion introuvable (defaut conserve)')
           # 1b) applicationId DISTINCT du mobile. Le build mobile « The Few » ET
           #     le build TV utilisaient TOUS LES DEUX com.manzilionellm.tvking.tv_king,
           #     signés avec des clés DIFFÉRENTES → "Application non installée"

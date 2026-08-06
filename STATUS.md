@@ -7,6 +7,50 @@
 
 ---
 
+## Session (2026-08-06) — Box TV : fin des écrans noirs/blancs au démarrage (compat toutes box)
+
+Branche : `claude/7motion-android-tv-compat-e0rtyp` (base
+`claude/salut-4nby1y`, l'état le plus récent de l'app). Plainte terrain :
+beaucoup de box (surtout anciennes) ouvrent sur un écran NOIR ou BLANC puis
+se ferment. Cause racine trouvée dans le CI, pas dans le Dart : `build-tv.yml`
+utilisait `channel: stable` NON épinglé → le moteur embarqué dérivait à
+chaque build.
+
+### Les 2 dérives moteur qui tuaient les vieilles box
+1. **Flutter 3.35 (août 2025)** : plancher Android relevé API 21 → 24. Notre
+   APK (minSdk forcé 21) s'installait sur Android 5/6/7.0 mais le moteur ne
+   les supportait plus → crash/écran noir immédiat.
+2. **Flutter 3.44 (mi-2026)** : Skia SUPPRIMÉ sur Android 10+, Impeller
+   obligatoire, opt-out mort. Pilotes Vulkan/GLES des box bas de gamme
+   cassés → écran noir documenté sur Android TV (flutter #177319, #160866,
+   #160647). Le `BootGuard.setCompatMode` (« Impeller OFF ») n'avait
+   d'ailleurs JAMAIS été câblé côté manifest/CI.
+
+### Correctifs (tous dans `.github/workflows/build-tv.yml`, zéro Dart)
+- **Flutter épinglé `3.32.x`** : dernière ligne stable qui supporte encore
+  l'API 21 ET l'opt-out Impeller. Plus de dérive silencieuse du moteur.
+- **Impeller OFF via manifest** (`EnableImpeller=false`) → rendu Skia
+  éprouvé sur tous les GPU de box. Le toggle promis par BootGuard est
+  désormais effectif, pour tout le monde.
+- **Écran de lancement SOMBRE** (#101010 + logo centré) pour LaunchTheme ET
+  NormalTheme, `drawable(-v21)` + `values(-night)` : fin de l'écran blanc
+  du template `flutter create` pendant l'init moteur sur box lente.
+- **Paysage verrouillé au niveau Android** (`screenOrientation=landscape`)
+  en plus du verrou Dart : plus de re-layout portrait→paysage au boot.
+- **`uses-feature` non requis** (micro, caméra, portrait, faketouch) : des
+  permissions de plugins impliquaient des features « required » → certains
+  launchers/stores TV cachaient ou refusaient l'app.
+- **`targetSdk = 35` explicite** : ne dépend plus du défaut du SDK.
+
+### À savoir
+- Le build TV (APK sideload + AAB) se déclenche sur push (paths workflow) ;
+  publication box = dispatch manuel `publish-cinema-test` + `publish-tv-update`
+  (inchangé). Le mobile garde son CI/moteur : AUCUNE autre app touchée.
+- Ne PAS remettre `channel: stable` sans revalider API 21 + rendu sur box
+  réelle ancienne.
+
+---
+
 ## Session (2026-07-17) — EPG « En direct » enfin visible + aperçu cliquable
 
 Branche : `claude/autonomous-mobile-tv-release-r21jqf` (reprise de
