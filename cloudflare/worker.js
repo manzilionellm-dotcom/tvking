@@ -56,7 +56,10 @@
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 // verifyJwt est reutilise ici pour authentifier le WebSocket admin
 // (/api/v1/rt/ws) AVANT de forwarder au Durable Object temps reel.
-import { apiV1, verifyJwt, validateFacadeBase } from './api_v1.js';
+import {
+  apiV1, verifyJwt, validateFacadeBase,
+  publicCampaignsList, trackCampaignEvent, ingestAppReport,
+} from './api_v1.js';
 // Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
 // Durable Object « RealtimeHub » (WebSockets appareils + panel) et helper
 // publishRt() (publication fail-open après une mutation). La classe DO
@@ -1667,7 +1670,7 @@ const PRIVACY_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>The Few — Politique de confidentialité</title>
+<title>7 MOTION / The Few — Politique de confidentialité</title>
 <style>
   body{background:#0A0A0C;color:#EDEAE3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;margin:0;padding:32px}
   .wrap{max-width:780px;margin:0 auto}
@@ -1680,10 +1683,14 @@ const PRIVACY_HTML = `<!doctype html>
 </style>
 </head>
 <body><div class="wrap">
-  <h1>Politique de confidentialité — The Few</h1>
-  <p class="muted">Éditeur : 7 MOTION · Dernière mise à jour : 2026.</p>
+  <h1>Politique de confidentialité</h1>
+  <p class="muted">Applications concernées : <b>7 MOTION</b>
+  (com.manzilionellm.tvking) et <b>The Few TV</b>.<br>
+  Éditeur : <b>The Kung</b> (États-Unis) · Contact :
+  <a href="mailto:contact@7themotion.com">contact@7themotion.com</a><br>
+  Dernière mise à jour : 2 août 2026.</p>
 
-  <p>The Few (« l'application ») est un lecteur multimédia pour téléphones,
+  <p>L'application est un lecteur multimédia pour téléphones,
   téléviseurs et box (Android, Android TV, Fire TV, Google TV). L'application ne fournit, n'héberge ni
   ne revend aucun contenu : l'utilisateur charge sa propre source (liste M3U ou
   identifiants Xtream). Cette politique explique les données traitées et leur
@@ -1698,8 +1705,21 @@ const PRIVACY_HTML = `<!doctype html>
     <li><b>Adresse IP et pays</b> (fournis par le réseau) : pour la sécurité, la
       présence « en ligne » et le bon acheminement du service.</li>
     <li><b>Historique de visionnage</b> (identifiants de chaînes récemment
-      ouvertes) : pour proposer « Récemment » / « Pour vous » et synchroniser
-      votre historique entre vos appareils.</li>
+      ouvertes, et la chaîne en cours de lecture) : pour proposer
+      « Récemment » / « Pour vous », synchroniser votre historique entre vos
+      appareils et afficher l'état « en ligne » dans notre outil de
+      support.</li>
+    <li><b>Inventaire de vos sources</b> (nom de la playlist, adresse du
+      serveur Xtream ou lien M3U, identifiant, nombre de chaînes) : pour que
+      le support puisse diagnostiquer une source qui ne répond plus, et pour
+      retrouver vos sources sur vos autres appareils. Le <b>mot de passe de
+      votre source n'est jamais transmis</b>.</li>
+    <li><b>Rapports d'échec de lecture</b> (au plus un par 24 h) : nom de la
+      chaîne, hôte du serveur, code d'erreur du lecteur et cause probable —
+      pour corriger les pannes de lecture. <b>L'adresse complète de vos flux
+      n'y figure jamais.</b></li>
+    <li><b>Avis que vous nous envoyez</b> (note et commentaire), uniquement
+      si vous choisissez d'en envoyer un.</li>
   </ul>
   <p>Nous ne collectons <b>pas</b> votre nom, votre adresse postale, vos
   contacts, ni de données biométriques. Les identifiants de votre source IPTV
@@ -1710,25 +1730,53 @@ const PRIVACY_HTML = `<!doctype html>
   synchronisation de l'expérience entre vos appareils, support technique et
   amélioration de l'application.</p>
 
-  <h2>3. Partage</h2>
-  <p>Nous ne <b>vendons pas</b> vos données et ne les partageons pas à des fins
-  publicitaires. Les données transitent par notre infrastructure d'hébergement
-  (Cloudflare) strictement pour faire fonctionner le service.</p>
+  <h2>3. Annonces</h2>
+  <p>L'application affiche <b>nos propres annonces</b> et des offres de nos
+  partenaires. Elles sont servies par notre seule infrastructure : il n'y a
+  <b>aucune régie publicitaire tierce</b>, aucun identifiant publicitaire et
+  aucun traceur externe. Ces annonces peuvent être choisies selon le
+  <b>pays</b> déduit de votre adresse IP, jamais selon ce que vous regardez.
+  Nous mesurons uniquement le nombre d'affichages et de clics, sans les
+  rattacher à votre appareil.</p>
 
-  <h2>4. Conservation</h2>
+  <h2>4. Partage</h2>
+  <p>Nous ne <b>vendons pas</b> vos données et ne les partageons avec aucun
+  annonceur ni courtier en données. Les données transitent par notre
+  infrastructure d'hébergement (Cloudflare) strictement pour faire
+  fonctionner le service.</p>
+
+  <h2>5. Conservation</h2>
   <p>Données d'activation/abonnement : conservées pendant la durée du service
   puis jusqu'à 24 mois. Journaux techniques et présence : environ 6 mois.</p>
 
-  <h2>5. Vos droits</h2>
+  <h2>6. Vos droits</h2>
   <p>Vous pouvez demander l'accès, la rectification ou la suppression des
   données liées à votre appareil en nous contactant. La suppression de
   l'appareil dans notre système efface les données associées.</p>
 
-  <h2>6. Âge minimum</h2>
-  <p>L'application s'adresse aux personnes de 16 ans et plus. Un
-  <b>Mode Enfants</b> protégé par code permet de masquer le contenu adulte.</p>
+  <h2>7. Âge minimum</h2>
+  <p>L'application s'adresse aux personnes de 16 ans et plus. Elle n'est pas
+  destinée aux enfants et nous ne collectons pas sciemment de données
+  concernant des enfants de moins de 13 ans (COPPA). Un <b>Mode Enfants</b>
+  protégé par code permet de masquer le contenu adulte.</p>
 
-  <h2>7. Contact</h2>
+  <h2>8. Résidents des États-Unis</h2>
+  <p>Nous ne vendons ni ne partageons de données personnelles au sens des lois
+  américaines sur la protection de la vie privée, y compris le California
+  Consumer Privacy Act (CCPA/CPRA). Selon votre État de résidence, vous pouvez
+  avoir le droit de demander l'accès à vos données, leur correction ou leur
+  suppression, et de ne pas subir de traitement discriminatoire pour avoir
+  exercé ces droits. Écrivez-nous pour toute demande.</p>
+
+  <h2>9. Suppression de vos données</h2>
+  <p>Il n'y a pas de compte à supprimer : l'application n'en crée aucun. Pour
+  faire effacer les données rattachées à votre appareil, envoyez l'identifiant
+  affiché dans l'écran « À propos » (format <code>MK:XX:XX:XX:XX:XX</code>) à
+  <a href="mailto:contact@7themotion.com">contact@7themotion.com</a>. La
+  suppression est effectuée sous 30 jours et efface l'activation, l'historique
+  et les journaux associés à cet appareil.</p>
+
+  <h2>10. Contact</h2>
   <p>Pour toute question relative à cette politique ou à vos données :
   <a href="mailto:contact@7themotion.com">contact@7themotion.com</a>.</p>
 
@@ -6018,42 +6066,6 @@ async function handleRequest(request, env, ctx) {
 
     const url = new URL(request.url);
 
-    // ===== Liens de téléchargement « cool » (redirection masquée) =====
-    //  Problème résolu : quand on partage l'URL directe GitHub
-    //  (github.com/manzilionellm-dotcom/tvking/...), l'app Downloader
-    //  AFFICHE cette adresse sur sa page de redirection → ça expose le
-    //  nom du compte (= identité du propriétaire). On sert donc des liens
-    //  COURTS et BRANDÉS qui font une simple redirection 302 vers l'APK.
-    //  L'utilisateur ne tape que le lien cool ; Downloader suit la
-    //  redirection tout seul et ne montre jamais l'URL GitHub.
-    //
-    //  Pour MASQUER COMPLÈTEMENT l'identité, brancher un domaine perso
-    //  sur ce Worker (ex. https://black7.tv/royal). Sur le sous-domaine
-    //  workers.dev, l'hôte reste visible mais l'URL GitHub, elle, est
-    //  cachée.
-    //
-    //  Liens disponibles (insensibles à la casse) — TOUJOURS la dernière
-    //  version (les tags `latest` / `tv-latest` sont réécrits par la CI à
-    //  chaque build, donc ces liens ne périment jamais) :
-    //    /app  /royal  /get  → 7 MOTION mobile (7motion.apk)
-    //    /tv                 → DeFew TV (defew-tv.apk, Downloader/Fire TV)
-    {
-      const slug = url.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-      const DOWNLOADS = {
-        app: APK_URL,
-        royal: APK_URL,
-        get: APK_URL,
-        black7: APK_URL,
-        tv: TV_APK_URL,
-      };
-      if (DOWNLOADS[slug]) {
-        if (request.method !== 'GET' && request.method !== 'HEAD') {
-          return badRequest('only GET supported on download links');
-        }
-        return Response.redirect(DOWNLOADS[slug], 302);
-      }
-    }
-
     // ===== Temps réel (WebSockets → Durable Object RealtimeHub) =====
     // /api/v1/rt/ws DOIT être intercepté AVANT le mount apiV1 : c'est un
     // upgrade WebSocket, pas une requête JSON (auth JWT par query, cf.
@@ -6083,6 +6095,34 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /demo');
       }
       return handleDemoXtream(url, segments);
+    }
+
+    // ===== /play — lien de partage propre =====
+    //  L'URL du Play Store contient l'identifiant de l'application :
+    //      play.google.com/store/apps/details?id=com.manzilionellm.tvking
+    //  Cet identifiant porte le nom du propriétaire, et Google ne permet
+    //  JAMAIS de le changer : c'est la clé qui relie les installations,
+    //  les mises à jour et la signature de l'app. Le partager, c'est
+    //  publier son nom à chaque fois.
+    //
+    //  On ne peut pas changer l'adresse, mais on n'est pas obligé de la
+    //  montrer. https://app.7themotion.com/play redirige dessus : c'est
+    //  ce lien-là qu'on donne aux clients, sur les cartes, dans les
+    //  messages. Le nom n'apparaît qu'après la redirection, dans une
+    //  barre d'adresse que presque personne ne lit.
+    //
+    //  Redirection 302 (temporaire) et non 301 : le jour où l'app change
+    //  de magasin ou d'identifiant, on modifie une ligne ici au lieu de
+    //  se battre contre les caches des navigateurs, qui gardent un 301
+    //  pendant des mois.
+    if (segments[0] === 'play' && segments.length === 1) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return badRequest('only GET supported on /play');
+      }
+      return Response.redirect(
+        'https://play.google.com/store/apps/details?id=com.manzilionellm.tvking',
+        302,
+      );
     }
 
     // ===== Rate-limit applicatif des endpoints publics =====
@@ -6387,6 +6427,60 @@ async function handleRequest(request, env, ctx) {
       return badRequest('only GET supported on /api/ad');
     }
 
+    // /api/campaigns — Affiliation & bannières (GET public) : campagnes
+    // actives affichées en carte discrète dans l'app. Pilotées depuis le
+    // panel (« Affiliation & Pubs ») SANS rebuild de l'app.
+    if (segments[0] === 'api' && segments[1] === 'campaigns' && segments.length === 2) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/campaigns');
+      }
+      if (!env.DB) return json({ campaigns: [] });
+      try {
+        return json({ campaigns: await publicCampaignsList(env) });
+      } catch (_) {
+        return json({ campaigns: [] });
+      }
+    }
+
+    // /api/campaigns/track — comptage impression/clic (POST public,
+    // best-effort). Corps : {id, event: 'impression'|'click'}. Aucune
+    // donnée exposée : on incrémente un compteur sur une ligne existante.
+    if (segments[0] === 'api' && segments[1] === 'campaigns' &&
+        segments[2] === 'track' && segments.length === 3) {
+      if (request.method !== 'POST') {
+        return badRequest('only POST supported on /api/campaigns/track');
+      }
+      if (!env.DB) return json({ ok: false });
+      try {
+        const body = await request.json();
+        const id = parseInt(body && body.id, 10);
+        const event = body && body.event === 'click' ? 'click' : 'impression';
+        if (!Number.isFinite(id) || id <= 0) return badRequest('bad id');
+        return json({ ok: await trackCampaignEvent(env, id, event) });
+      } catch (_) {
+        return json({ ok: false });
+      }
+    }
+
+    // /api/reports — Boîte noire du parc (POST public, best-effort).
+    // L'app envoie AU PLUS 1×/24 h un résumé ANONYME de ses échecs de
+    // lecture (jamais d'URL de flux). Le PAYS vient de Cloudflare
+    // (request.cf.country) → vue mondiale du panel « Rapports ».
+    if (segments[0] === 'api' && segments[1] === 'reports' && segments.length === 2) {
+      if (request.method !== 'POST') {
+        return badRequest('only POST supported on /api/reports');
+      }
+      if (!env.DB) return json({ ok: false });
+      try {
+        const body = await request.json();
+        const country = request.cf && request.cf.country
+          ? String(request.cf.country) : '';
+        return json({ ok: await ingestAppReport(env, body || {}, country) });
+      } catch (_) {
+        return json({ ok: false });
+      }
+    }
+
     // /api/pricing — tarifs affichés dans l'app (GET public). Réglés via
     // le panel « Tarifs » (api/v1/pricing).
     if (segments[0] === 'api' && segments[1] === 'pricing' && segments.length === 2) {
@@ -6635,35 +6729,23 @@ async function handleRequest(request, env, ctx) {
     // /dl — proxy l'APK GitHub release a travers le cache edge
     // Cloudflare pour des telechargements rapides depuis Downloader.
     // Variante /dl/release pour aliasing futur (release vs beta).
-    if (
-      (segments.length === 1 && segments[0] === 'dl') ||
-      (segments.length === 2 && segments[0] === 'dl' && segments[1] === 'release')
-    ) {
-      return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
-    }
 
     // /install, /vip, /thefew, /few, /app — alias de téléchargement
     // DIRECT (proxy de l'APK). « lien VIP » propre à donner tel quel :
     // collé dans Downloader, il télécharge l'app immédiatement, SANS
     // passer par aftv.news ni aucun email/compte. Nom de fichier
     // « TheFew.apk » côté client.
-    if (
-      segments.length === 1 &&
-      ['install', 'vip', 'thefew', 'few', 'app'].includes(segments[0])
-    ) {
-      return proxyApk(APK_URL, 'TheFew.apk', url.searchParams.get('v'));
-    }
 
     // /tv, /defewtv, /tvbox, /defew + CODES COURTS MÉMORABLES (/777, /7777,
     // /tv7) — alias de téléchargement DIRECT de l'APK DeFew TV (version TV).
     // TV_APK_URL pointe sur le tag `tv-latest` → TOUJOURS la dernière version.
     // Lien propre à coller dans Downloader. Fichier « DeFewTV.apk ».
-    if (
-      segments.length === 1 &&
-      ['tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7']
-          .includes(segments[0].toLowerCase())
-    ) {
-      return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
+    if (segments.length === 1 && segments[0].toLowerCase() === 'tv') {
+      // LIEN UNIQUE TV BOX — sert TOUJOURS le dernier build publié
+      // (tag cinema-test écrasé à chaque publication). Proxy direct :
+      // le client ne voit ni GitHub ni numéro de build, juste
+      // app.7themotion.com/tv → DeFewTV.apk.
+      return proxyApk(CINEMA_TEST_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
     }
 
     // /7tv, /seventv, /sevenmotion — téléchargement DIRECT de l'APK
@@ -6680,23 +6762,17 @@ async function handleRequest(request, env, ctx) {
     // signé clé maîtresse). Lien propre à donner/coller dans Downloader
     // SANS exposer GitHub. Fichier « DeFewTV-test.apk ». Sert TOUJOURS le
     // dernier build de test publié (tag cinema-test écrasé à chaque publish).
-    if (
-      segments.length === 1 &&
-      ['test', 'demo', 'beta'].includes(segments[0].toLowerCase())
-    ) {
-      return proxyApk(CINEMA_TEST_APK_URL, 'DeFewTV-test.apk', url.searchParams.get('v'));
-    }
 
     // /fone, /phone-test, /tel — APK de TEST TÉLÉPHONE (prérelease
     // « phone-test », signé clé maîtresse). Lien propre à donner SANS exposer
     // GitHub. Fichier « 7motion-test.apk ». Sert TOUJOURS le dernier build de
     // test téléphone publié (tag phone-test écrasé à chaque publish).
-    if (
-      segments.length === 1 &&
-      ['fone', 'phone-test', 'phonetest', 'tel', 'test-phone'].includes(
-        segments[0].toLowerCase())
-    ) {
-      return proxyApk(PHONE_TEST_APK_URL, '7motion-test.apk', url.searchParams.get('v'));
+    if (segments.length === 1 && segments[0].toLowerCase() === 'fone') {
+      // LIEN UNIQUE TÉLÉPHONE — sert TOUJOURS le dernier build publié
+      // (tag phone-test écrasé à chaque publication). Nom de fichier
+      // PROPRE (« 7motion.apk », sans « test » ni numéro de build) :
+      // le client ne voit que app.7themotion.com/fone.
+      return proxyApk(PHONE_TEST_APK_URL, '7motion.apk', url.searchParams.get('v'));
     }
 
     // /tv-aab et /phone-aab — App Bundles (.aab) SIGNÉS pour la Google Play
@@ -6915,9 +6991,8 @@ async function handleRequest(request, env, ctx) {
       'cast-receiver', 'cast-skin.css', 'vendor',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
-    if (segments.length === 1 && !RESERVED.has(segments[0].toLowerCase())) {
-      return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
-    }
+    // (Catch-all de téléchargement SUPPRIMÉ le 2026-07-31 sur ordre du
+    // propriétaire : seuls /fone et /tv servent des APK désormais.)
 
     return notFound('Unknown route. Try /, /dl, /config/:mac or /admin/clients');
 }
