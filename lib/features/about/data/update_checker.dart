@@ -74,7 +74,7 @@ class UpdateChecker {
   Future<UpdateInfo?> check(
       {Duration timeout = const Duration(seconds: 8)}) async {
     // Play Store : pas d'updater sideload GitHub (MAJ via le Store).
-    if (kIsPlayBuild) return null;
+    if (kIsStoreBuild) return null;
     try {
       final PackageInfo pkg = await PackageInfo.fromPlatform();
       final String current = pkg.version;

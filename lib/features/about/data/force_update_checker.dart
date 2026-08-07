@@ -51,7 +51,7 @@ class ForceUpdateChecker {
       {Duration timeout = const Duration(seconds: 6)}) async {
     // Play Store : la mise à jour forcée passe par le Store, pas par
     // le sideload GitHub. On ne déclenche jamais ce flux côté Play.
-    if (kIsPlayBuild) return false;
+    if (kIsStoreBuild) return false;
     if (kBuildTs <= 0) return false; // build local → jamais bloquant
     try {
       final Uri uri = Uri.parse(

@@ -77,7 +77,7 @@ class SubscriptionCard extends StatelessWidget {
               // BUILD GOOGLE PLAY : le sous-titre essai/expiré cite des prix
               // en € et le site marchand → on ne le montre qu'au client payé
               // (« abonnement actif »), jamais l'argumentaire de vente.
-              if (isPaid || !kIsPlayBuild) ...<Widget>[
+              if (isPaid || !kIsStoreBuild) ...<Widget>[
                 const SizedBox(height: 10),
                 Text(
                   _subtitleFor(context, status),
@@ -95,7 +95,7 @@ class SubscriptionCard extends StatelessWidget {
               // SAUF sur le build Google Play (achat hors Play Billing interdit).
               if (isPaid)
                 _activeConfirm(context)
-              else if (!kIsPlayBuild) ...<Widget>[
+              else if (!kIsStoreBuild) ...<Widget>[
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(

@@ -115,7 +115,7 @@ class UpdateService {
   /// message). L'auto-MAJ passe par [check] et ne voit que `UpdateInfo?`.
   Future<UpdateCheckResult> checkDetailed() async {
     // Play Store : les MAJ viennent du Store, jamais du sideload GitHub.
-    if (kIsPlayBuild) {
+    if (kIsStoreBuild) {
       return const UpdateCheckResult(UpdateAvailability.upToDate);
     }
     try {

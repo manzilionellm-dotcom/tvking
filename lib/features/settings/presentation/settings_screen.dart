@@ -240,7 +240,7 @@ class SettingsScreen extends StatelessWidget {
             //
             // ABSENTE DU BUILD GOOGLE PLAY, pour deux raisons.
             //  1. Elle ne sert à rien : `UpdateService.checkDetailed()`
-            //     répond « à jour » d'emblée quand `kIsPlayBuild` — le
+            //     répond « à jour » d'emblée quand `kIsStoreBuild` — le
             //     client appuierait sur un bouton mort, à chaque fois.
             //  2. Son sous-titre annonce « Vérifie et INSTALLE la dernière
             //     version ». Google Play interdit à une app distribuée par
@@ -249,7 +249,7 @@ class SettingsScreen extends StatelessWidget {
             //     de l'AAB, et le build échoue si elle y reste), mais le
             //     TEXTE décrit exactement ce qui est interdit — et un
             //     relecteur ne lit pas le manifeste, il lit l'écran.
-            if (!kIsPlayBuild)
+            if (!kIsStoreBuild)
               _ActionTile(
                 icon: Icons.system_update_rounded,
                 title: context.l10n.aboutCheckUpdates,

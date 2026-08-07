@@ -30,7 +30,7 @@ class PricingBanner extends StatelessWidget {
     // un simple lecteur ; l'APK sideload GitHub, lui, garde les offres.
     // Auto-gardé ICI pour que TOUS les points d'usage (activation, écran
     // bloquant, feuilles) disparaissent d'un coup, sans oubli possible.
-    if (kIsPlayBuild) return const SizedBox.shrink();
+    if (kIsStoreBuild) return const SizedBox.shrink();
     return ValueListenableBuilder<PricingConfig>(
       valueListenable: PricingRepository.notifier,
       builder: (BuildContext context, PricingConfig p, _) {

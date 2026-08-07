@@ -30,7 +30,7 @@ class PaywallBanner extends StatelessWidget {
     // BUILD GOOGLE PLAY : pas de bandeau « app payante · 5 €/an » — annoncer
     // un prix payé hors Google Play Billing = violation Paiements du Store.
     // Auto-gardé ici pour couvrir tous les points d'usage (accueil, etc.).
-    if (kIsPlayBuild) return const SizedBox.shrink();
+    if (kIsStoreBuild) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
       child: Material(

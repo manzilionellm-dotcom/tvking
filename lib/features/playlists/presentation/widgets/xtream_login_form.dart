@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/update/build_flags.dart';
 import '../../../demo/data/demo_mode.dart';
 import '../../data/import_progress.dart';
 import '../../data/playlist_repository.dart';
@@ -81,9 +82,13 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
     // M3U) : on entre en Mode démo — bouquet fictif embarqué dans l'APK,
     // aucun appel serveur, aucune activation revendeur. Conforme AGENTS.md
     // règle n°2 : ce chemin ne charge AUCUNE URL de flux, uniquement la démo.
+    // BUILD APP STORE iOS : pas de code examinateur ni de bouquet démo —
+    // le playbook iOS (docs/ios-app-store-playbook.md) interdit tout
+    // contenu préchargé dans le binaire ; le reviewer Apple reçoit une
+    // M3U libre et légale dans les notes de review, jamais dans l'app.
     final String maybeCode =
         (_mode == 'm3u' ? _m3uCtrl.text : _userCtrl.text).trim().toUpperCase();
-    if (maybeCode == kReviewAccessCode) {
+    if (!kIsIosStoreBuild && maybeCode == kReviewAccessCode) {
       setState(() {
         _busy = true;
         _error = null;
@@ -224,9 +229,14 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
         ),
         const SizedBox(height: 6),
         Text(
-          _mode == 'm3u'
-              ? context.l10n.loginM3uIntro
-              : context.l10n.loginXtreamIntro,
+          // BUILD APP STORE iOS : les intros classiques disent « le code
+          // que ton revendeur t'a donné » — mention à éviter devant Apple
+          // (5.2.3, facilitation). On affiche une phrase neutre à la place.
+          kIsIosStoreBuild
+              ? context.l10n.activateChannelsSectionDesc
+              : (_mode == 'm3u'
+                  ? context.l10n.loginM3uIntro
+                  : context.l10n.loginXtreamIntro),
           style: AppTextStyles.bodyMedium.copyWith(
             fontSize: 13,
             color: AppColors.textSecondary,

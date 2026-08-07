@@ -168,7 +168,11 @@ jobs:
       - name: Build signed IPA
         if: env.HAS_SECRETS == 'true'
         run: |
+          # IOS_STORE_BUILD=true → build « App Store propre » : pas de prix,
+          # pas d'activation revendeur, pas d'écran bloquant, pas de démo
+          # embarquée (cf. lib/core/update/build_flags.dart).
           flutter build ipa --release \
+            --dart-define=IOS_STORE_BUILD=true \
             --export-options-plist="$RUNNER_TEMP/ExportOptions.plist"
           echo "--- .ipa produit ---"
           ls -lah build/ios/ipa/*.ipa || true

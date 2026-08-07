@@ -35,6 +35,7 @@ import '../../../../core/support/support_choice_sheet.dart';
 import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/update/build_flags.dart';
 import '../../../device/data/device_identity.dart';
 import '../../../pricing/presentation/pricing_banner.dart';
 import '../../../playlists/data/playlist_repository.dart';
@@ -72,7 +73,12 @@ class MacActivationView extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            if (showHeader) ...<Widget>[
+            // BUILD APP STORE iOS : ni l'en-tête « Activate the app at
+            // home » ni le bloc ① (offres + numéro de référence revendeur)
+            // n'existent — Apple interdit le déblocage par code/activation
+            // externe (3.1.1) et lit la mention revendeur comme de la
+            // facilitation (5.2.3). Il ne reste que « J'ai un code ».
+            if (showHeader && !kIsIosStoreBuild) ...<Widget>[
               Text(
                 context.l10n.activateAtHomeTitle,
                 style: AppTextStyles.headlineMedium.copyWith(fontSize: 19),
@@ -90,28 +96,30 @@ class MacActivationView extends StatelessWidget {
             ],
 
             // ============================================================
-            //  ① BLOC DU HAUT — ACTIVER L'APPLICATION
+            //  ① BLOC DU HAUT — ACTIVER L'APPLICATION (absent sur iOS)
             // ============================================================
-            _SectionCard(
-              step: '1',
-              icon: Icons.workspace_premium_rounded,
-              title: context.l10n.activateAppSectionTitle,
-              subtitle: context.l10n.activateAppSectionDesc,
-              children: <Widget>[
-                // Les DEUX offres (à vie / 1 an) — pilotées par le panel.
-                const PricingBanner(),
-                const SizedBox(height: 16),
-                _referenceBlock(context, macNu),
-              ],
-            ),
-
-            const SizedBox(height: 18),
+            if (!kIsIosStoreBuild) ...<Widget>[
+              _SectionCard(
+                step: '1',
+                icon: Icons.workspace_premium_rounded,
+                title: context.l10n.activateAppSectionTitle,
+                subtitle: context.l10n.activateAppSectionDesc,
+                children: <Widget>[
+                  // Les DEUX offres (à vie / 1 an) — pilotées par le panel.
+                  const PricingBanner(),
+                  const SizedBox(height: 16),
+                  _referenceBlock(context, macNu),
+                ],
+              ),
+              const SizedBox(height: 18),
+            ],
 
             // ============================================================
             //  ② BLOC DU BAS — ACTIVER LES CHAÎNES
             // ============================================================
             _SectionCard(
-              step: '2',
+              // Seul bloc restant sur iOS → il devient l'étape « 1 ».
+              step: kIsIosStoreBuild ? '1' : '2',
               icon: Icons.playlist_add_check_rounded,
               title: context.l10n.activateChannelsSectionTitle,
               subtitle: context.l10n.activateChannelsSectionDesc,

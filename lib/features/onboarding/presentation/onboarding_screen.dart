@@ -67,21 +67,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         title: context.l10n.onboardingChannelsTitle,
         description: context.l10n.onboardingChannelsDesc,
       ),
-      _OnboardingPage(
-        icon: Icons.fingerprint_rounded,
-        title: context.l10n.onboardingActivateTitle,
-        description: context.l10n.onboardingActivateDesc,
-        isMacSlide: true,
-      ),
-      _OnboardingPage(
-        icon: Icons.workspace_premium_rounded,
-        title: context.l10n.onboardingPremiumTitle,
-        description: context.l10n.onboardingPremiumDesc,
-      ),
+      // BUILD APP STORE iOS : pas de diapo « numéro de référence →
+      // activation à distance » (déblocage par code externe = 3.1.1).
+      if (!kIsIosStoreBuild)
+        _OnboardingPage(
+          icon: Icons.fingerprint_rounded,
+          title: context.l10n.onboardingActivateTitle,
+          description: context.l10n.onboardingActivateDesc,
+          isMacSlide: true,
+        ),
+      // BUILD APP STORE iOS : pas de diapo « premium » non plus — elle
+      // vante le cast et l'enregistrement, dont les ponts natifs sont
+      // Android-only pour l'instant. Vanter une fonction absente = motif
+      // de rejet Apple 2.3.1 (metadata trompeuse).
+      if (!kIsIosStoreBuild)
+        _OnboardingPage(
+          icon: Icons.workspace_premium_rounded,
+          title: context.l10n.onboardingPremiumTitle,
+          description: context.l10n.onboardingPremiumDesc,
+        ),
       // BUILD GOOGLE PLAY : pas de diapo « essai gratuit puis 5 €/an » —
       // elle cite des prix payés hors Google Play Billing (violation
       // Paiements du Store). L'APK sideload GitHub la garde.
-      if (!kIsPlayBuild)
+      if (!kIsStoreBuild)
         _OnboardingPage(
           icon: Icons.celebration_outlined,
           title: context.l10n.paywallFreeTrialTitle,

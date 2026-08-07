@@ -197,6 +197,28 @@ Non bloquant pour soumettre, mais pour la parité Android :
 
 ---
 
+## 5 bis. ✅ Le drapeau `IOS_STORE_BUILD` (implémenté)
+
+Le build App Store passe `--dart-define=IOS_STORE_BUILD=true` (câblé dans
+`codemagic.yaml` ET `build-ios-release.yml`). Effets, via
+`lib/core/update/build_flags.dart` (`kIsIosStoreBuild` + `kIsStoreBuild`) :
+
+| Retiré du build iOS | Pourquoi (règle Apple) |
+|---|---|
+| Prix €, essai gratuit, boutons d'achat, liens 7themotion.com | 3.1.1 (paiement hors IAP) |
+| Bloc « Activer l'application » (numéro de référence → revendeur) | 3.1.1 (déblocage par code) |
+| Écran bloquant essai/gel (`SubscriptionGateScreen`) | 3.1.1 |
+| Bouton « Vérifier mon abonnement » + mentions « revendeur » | 5.2.3 (facilitation) |
+| Diapos onboarding « activation » et « premium » (cast/enreg. absents d'iOS) | 3.1.1 / 2.3.1 |
+| Mode démo embarqué + code examinateur GPLAYREVIEW | §1 : rien de préchargé dans le binaire |
+| Auto-updater sideload (déjà retiré de tout build store) | 2.5.2 |
+
+Sur iOS, l'app est donc un **lecteur BYO pur** : accueil vide → « J'ai un
+code Xtream » / M3U. Le reviewer Apple reçoit une M3U libre et légale dans
+les notes de review (cf. §1), jamais dans le binaire.
+
+---
+
 ## 6. Sources
 Guidelines Apple (5.2.3, 5.2.1/.2, 2.1, 2.3.1, 3.1.1, 4.3, 1.1.4) :
 https://developer.apple.com/app-store/review/guidelines/ ·

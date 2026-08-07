@@ -17,6 +17,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
+import 'core/update/build_flags.dart';
 import 'core/app/root_navigator.dart';
 import 'core/backend/backend_hosts.dart';
 import 'core/realtime/admin_message_banner.dart';
@@ -767,7 +768,13 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
         ListenableBuilder(
           listenable: SubscriptionState.instance,
           builder: (BuildContext context, _) {
-            if (SubscriptionState.instance.shouldBlockUser) {
+            // BUILD APP STORE iOS : JAMAIS d'écran bloquant essai/gel —
+            // bloquer l'app derrière une réactivation externe est un
+            // motif de rejet Apple direct (3.1.1 : tout déblocage doit
+            // passer par l'achat in-app Apple). Sur iOS l'app reste un
+            // lecteur libre ; le modèle d'abonnement vit hors App Store.
+            if (!kIsIosStoreBuild &&
+                SubscriptionState.instance.shouldBlockUser) {
               return const SubscriptionGateScreen();
             }
             // 3b) PUB VIDÉO de démarrage (pilotée par le panel), juste avant

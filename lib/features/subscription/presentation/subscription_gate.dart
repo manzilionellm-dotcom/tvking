@@ -184,7 +184,7 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
                   // BUILD GOOGLE PLAY : jamais de bouton d'achat vers le site
                   // marchand (paiement hors Play Billing = violation). Le
                   // client Play passe par « Contacter le support » ci-dessus.
-                  if (expired && !kIsPlayBuild)
+                  if (expired && !kIsStoreBuild)
                     SizedBox(
                       height: 54,
                       child: FilledButton.icon(

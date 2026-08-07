@@ -77,10 +77,17 @@ class EmptyStateView extends StatelessWidget {
                     const BrandLogo.splash(),
                     const SizedBox(height: 26),
 
+                    // BUILD APP STORE iOS : titre et description NEUTRES —
+                    // les textes classiques parlent d'« abonnement » et de
+                    // « revendeur », lecture directe « facilitation » chez
+                    // Apple (5.2.3). Sur iOS l'accueil vide dit simplement
+                    // d'entrer son code d'accès.
                     Text(
                       active
                           ? context.l10n.emptyPremiumTitle
-                          : context.l10n.activateSubTitle,
+                          : (kIsIosStoreBuild
+                              ? context.l10n.activateChannelsSectionTitle
+                              : context.l10n.activateSubTitle),
                       textAlign: TextAlign.center,
                       style: AppTextStyles.headlineLarge.copyWith(fontSize: 23),
                     ),
@@ -88,7 +95,9 @@ class EmptyStateView extends StatelessWidget {
                     Text(
                       active
                           ? context.l10n.emptyPremiumWaiting
-                          : context.l10n.activateSubDesc,
+                          : (kIsIosStoreBuild
+                              ? context.l10n.activateChannelsSectionDesc
+                              : context.l10n.activateSubDesc),
                       textAlign: TextAlign.center,
                       style: AppTextStyles.bodyMedium.copyWith(
                         fontSize: 14,
@@ -102,7 +111,7 @@ class EmptyStateView extends StatelessWidget {
                     // sinon la mention d'essai (7 j · 5 €/an) — que le build
                     // Google Play ne montre JAMAIS (prix payé hors Play
                     // Billing = violation Paiements du Store).
-                    if (active || !kIsPlayBuild)
+                    if (active || !kIsStoreBuild)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
@@ -156,12 +165,19 @@ class EmptyStateView extends StatelessWidget {
                         height: 54,
                         child: FilledButton.icon(
                           onPressed: onAddPlaylist,
-                          icon: const Icon(
-                            Icons.support_agent_rounded,
+                          // BUILD APP STORE iOS : « J'ai un code Xtream »
+                          // plutôt qu'« Activer mon abonnement » — pas de
+                          // vocabulaire d'abonnement à vendre devant Apple.
+                          icon: Icon(
+                            kIsIosStoreBuild
+                                ? Icons.vpn_key_rounded
+                                : Icons.support_agent_rounded,
                             size: 22,
                           ),
                           label: Text(
-                            context.l10n.activateMySub,
+                            kIsIosStoreBuild
+                                ? context.l10n.xtreamHaveCode
+                                : context.l10n.activateMySub,
                             style: AppTextStyles.button.copyWith(
                               fontSize: 15,
                               fontWeight: FontWeight.w800,
@@ -177,12 +193,18 @@ class EmptyStateView extends StatelessWidget {
                       const SizedBox(height: 12),
                     ],
 
-                    // « Vérifier mon abonnement » + sondage auto (toujours).
-                    const _SyncNowButton(),
-                    const SizedBox(height: 14),
+                    // « Vérifier mon abonnement » + sondage auto — PAS sur
+                    // le build App Store iOS : ce bouton matérialise le
+                    // parcours « activation à distance par le revendeur »
+                    // qu'Apple interdit (3.1.1 / 5.2.3).
+                    if (!kIsIosStoreBuild) ...<Widget>[
+                      const _SyncNowButton(),
+                      const SizedBox(height: 14),
+                    ],
 
                     // Actif → bouton discret pour revoir son identifiant.
-                    // Inactif → mention « activation à distance ».
+                    // Inactif → mention « activation à distance » (jamais
+                    // sur iOS, même raison que ci-dessus).
                     if (active)
                       TextButton.icon(
                         onPressed: onAddPlaylist,
@@ -192,7 +214,7 @@ class EmptyStateView extends StatelessWidget {
                           foregroundColor: AppColors.textTertiary,
                         ),
                       )
-                    else
+                    else if (!kIsIosStoreBuild)
                       Text(
                         context.l10n.remoteActivationByReseller,
                         textAlign: TextAlign.center,
