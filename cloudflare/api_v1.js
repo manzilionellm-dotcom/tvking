@@ -1030,6 +1030,47 @@ async function apiV1Inner(request, env) {
     }
   }
 
+  // /campaigns — Affiliation & bannières : campagnes cliquables affichées
+  // dans l'app (carte discrète sur l'accueil), pilotées SANS rebuild.
+  // Owner uniquement. Chaque mutation est diffusée en temps réel (les
+  // apps re-fetchent /api/campaigns aussitôt).
+  if (parts[0] === 'campaigns') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1) {
+      if (request.method === 'GET') return handleCampaignsList(env);
+      if (request.method === 'POST') {
+        return withRtConfigBroadcast(env,
+          await handleCampaignCreate(request, env, actor));
+      }
+    }
+    if (parts.length === 2) {
+      const cid = parseInt(parts[1], 10);
+      if (!Number.isFinite(cid)) return errResp('bad_id', 'Invalid id', 400);
+      if (request.method === 'PUT') {
+        return withRtConfigBroadcast(env,
+          await handleCampaignUpdate(request, env, actor, cid));
+      }
+      if (request.method === 'DELETE') {
+        return withRtConfigBroadcast(env,
+          await handleCampaignDelete(request, env, actor, cid));
+      }
+    }
+  }
+
+  // /reports — Rapports Boîte noire du parc mondial (lecture seule).
+  // Owner uniquement. ?days=7 (1..90). Les données arrivent par la route
+  // PUBLIQUE /api/reports (worker.js), une fois par appareil et par jour.
+  if (parts[0] === 'reports') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Owner only', 403);
+    }
+    if (parts.length === 1 && request.method === 'GET') {
+      return handleReportsOverview(request, env);
+    }
+  }
+
   // /pricing — tarifs affichés dans l'app (à vie / 1 an / essai + promo).
   // Owner uniquement. GET pour relire, PUT pour enregistrer.
   if (parts[0] === 'pricing') {
@@ -2510,6 +2551,358 @@ async function handleAdPut(request, env, actor) {
   await logAudit(env, request, actor, 'ad.save',
     { type: 'app_config', id: null }, null, { url, enabled, skip, freq });
   return jsonResp({ ok: true, enabled: enabled === '1', url, skip, freq });
+}
+
+// =========================================================
+//  AFFILIATION & BANNIÈRES (campaigns) — owner
+// =========================================================
+//  Campagnes cliquables non intrusives : une carte discrète (image +
+//  titre + bouton « Acheter »/CTA) sur l'accueil de l'app. Le lien
+//  s'ouvre nativement sur Android (Intent.ACTION_VIEW via url_launcher).
+//  Compteurs impressions/clics incrémentés par les endpoints PUBLICS
+//  (voir worker.js /api/campaigns/track) → stats temps réel au panel.
+//  `start_hour`/`end_hour` (0-23, optionnels) : ciblage par heure de la
+//  journée, évalué côté APP sur l'heure LOCALE du client.
+
+/// Crée la table si absente (idempotent, comme ensureAppConfigTable).
+export async function ensureCampaignsTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS ad_campaigns (' +
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+      "kind TEXT NOT NULL DEFAULT 'banner', " +
+      "title TEXT NOT NULL DEFAULT '', " +
+      "body TEXT NOT NULL DEFAULT '', " +
+      "image_url TEXT NOT NULL DEFAULT '', " +
+      "target_url TEXT NOT NULL DEFAULT '', " +
+      "cta TEXT NOT NULL DEFAULT '', " +
+      "placement TEXT NOT NULL DEFAULT 'home', " +
+      'start_hour INTEGER, end_hour INTEGER, ' +
+      'enabled INTEGER NOT NULL DEFAULT 1, ' +
+      'created_at INTEGER NOT NULL DEFAULT 0, ' +
+      'impressions INTEGER NOT NULL DEFAULT 0, ' +
+      'clicks INTEGER NOT NULL DEFAULT 0)',
+  ).run();
+}
+
+function campaignRow(r) {
+  return {
+    id: r.id,
+    kind: r.kind === 'product' ? 'product' : 'banner',
+    title: String(r.title || ''),
+    body: String(r.body || ''),
+    image_url: String(r.image_url || ''),
+    target_url: String(r.target_url || ''),
+    cta: String(r.cta || ''),
+    placement: String(r.placement || 'home'),
+    start_hour: r.start_hour == null ? null : Number(r.start_hour),
+    end_hour: r.end_hour == null ? null : Number(r.end_hour),
+    enabled: r.enabled === 1 || r.enabled === '1' || r.enabled === true,
+    created_at: Number(r.created_at || 0),
+    impressions: Number(r.impressions || 0),
+    clicks: Number(r.clicks || 0),
+  };
+}
+
+/// Valide + normalise le corps d'une campagne. Retourne {error} ou {row}.
+function parseCampaignBody(body, { partial = false } = {}) {
+  const out = {};
+  const str = (v, max) => (v == null ? '' : String(v)).trim().slice(0, max);
+  if (!partial || body.kind !== undefined) {
+    out.kind = body.kind === 'product' ? 'product' : 'banner';
+  }
+  if (!partial || body.title !== undefined) out.title = str(body.title, 120);
+  if (!partial || body.body !== undefined) out.body = str(body.body, 300);
+  if (!partial || body.image_url !== undefined) {
+    out.image_url = str(body.image_url, 500);
+  }
+  if (!partial || body.target_url !== undefined) {
+    out.target_url = str(body.target_url, 500);
+  }
+  if (!partial || body.cta !== undefined) out.cta = str(body.cta, 40);
+  if (!partial || body.placement !== undefined) {
+    out.placement = str(body.placement, 30) || 'home';
+  }
+  const hour = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) && n >= 0 && n <= 23 ? n : null;
+  };
+  if (!partial || body.start_hour !== undefined) {
+    out.start_hour = hour(body.start_hour);
+  }
+  if (!partial || body.end_hour !== undefined) out.end_hour = hour(body.end_hour);
+  if (!partial || body.enabled !== undefined) out.enabled = body.enabled ? 1 : 0;
+  // Un lien est OBLIGATOIRE (c'est une campagne cliquable) et doit être
+  // http(s) — pas de deep-link arbitraire poussé vers tout le parc.
+  if (out.target_url !== undefined && out.target_url !== '' &&
+      !/^https?:\/\//i.test(out.target_url)) {
+    return { error: 'target_url must start with http:// or https://' };
+  }
+  return { row: out };
+}
+
+async function handleCampaignsList(env) {
+  await ensureCampaignsTable(env);
+  const rs = await env.DB
+    .prepare('SELECT * FROM ad_campaigns ORDER BY id DESC LIMIT 200')
+    .all();
+  return jsonResp({ campaigns: (rs.results || []).map(campaignRow) });
+}
+
+async function handleCampaignCreate(request, env, actor) {
+  await ensureCampaignsTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const parsed = parseCampaignBody(body);
+  if (parsed.error) return errResp('bad_campaign', parsed.error, 400);
+  const c = parsed.row;
+  if (!c.target_url) {
+    return errResp('bad_campaign', 'target_url is required', 400);
+  }
+  if (!c.title && !c.image_url) {
+    return errResp('bad_campaign', 'title or image_url is required', 400);
+  }
+  const r = await env.DB.prepare(
+    'INSERT INTO ad_campaigns (kind, title, body, image_url, target_url, ' +
+      'cta, placement, start_hour, end_hour, enabled, created_at) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+  ).bind(c.kind, c.title, c.body, c.image_url, c.target_url, c.cta,
+    c.placement, c.start_hour, c.end_hour, c.enabled, Date.now()).first();
+  await logAudit(env, request, actor, 'campaign.create',
+    { type: 'campaign', id: r ? r.id : null }, null,
+    { kind: c.kind, title: c.title, target_url: c.target_url });
+  return jsonResp({ ok: true, campaign: r ? campaignRow(r) : null });
+}
+
+async function handleCampaignUpdate(request, env, actor, id) {
+  await ensureCampaignsTable(env);
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const parsed = parseCampaignBody(body, { partial: true });
+  if (parsed.error) return errResp('bad_campaign', parsed.error, 400);
+  const c = parsed.row;
+  const keys = Object.keys(c);
+  if (keys.length === 0) return errResp('bad_campaign', 'Nothing to update', 400);
+  const sets = keys.map((k) => `${k} = ?`).join(', ');
+  const vals = keys.map((k) => c[k]);
+  const r = await env.DB
+    .prepare(`UPDATE ad_campaigns SET ${sets} WHERE id = ? RETURNING *`)
+    .bind(...vals, id).first();
+  if (!r) return errResp('not_found', 'Campaign not found', 404);
+  await logAudit(env, request, actor, 'campaign.update',
+    { type: 'campaign', id }, null, c);
+  return jsonResp({ ok: true, campaign: campaignRow(r) });
+}
+
+async function handleCampaignDelete(request, env, actor, id) {
+  await ensureCampaignsTable(env);
+  await env.DB.prepare('DELETE FROM ad_campaigns WHERE id = ?').bind(id).run();
+  await logAudit(env, request, actor, 'campaign.delete',
+    { type: 'campaign', id }, null, null);
+  return jsonResp({ ok: true });
+}
+
+/// Liste PUBLIQUE (appelée par worker.js /api/campaigns) : uniquement les
+/// campagnes actives, champs utiles à l'app — PAS les compteurs.
+export async function publicCampaignsList(env) {
+  await ensureCampaignsTable(env);
+  const rs = await env.DB
+    .prepare('SELECT * FROM ad_campaigns WHERE enabled = 1 ' +
+      'ORDER BY id DESC LIMIT 20')
+    .all();
+  return (rs.results || []).map((r) => {
+    const c = campaignRow(r);
+    return {
+      id: c.id,
+      kind: c.kind,
+      title: c.title,
+      body: c.body,
+      image_url: c.image_url,
+      target_url: c.target_url,
+      cta: c.cta,
+      placement: c.placement,
+      start_hour: c.start_hour,
+      end_hour: c.end_hour,
+    };
+  });
+}
+
+/// Comptage PUBLIC impression/clic (best-effort, appelé par worker.js).
+/// `true` si la ligne existait. Pas d'auth : on n'incrémente que deux
+/// compteurs bornés à des campagnes existantes — aucune donnée exposée.
+export async function trackCampaignEvent(env, id, event) {
+  await ensureCampaignsTable(env);
+  const col = event === 'click' ? 'clicks' : 'impressions';
+  const r = await env.DB
+    .prepare(`UPDATE ad_campaigns SET ${col} = ${col} + 1 WHERE id = ?`)
+    .bind(id).run();
+  return !!(r && r.meta && r.meta.changes > 0);
+}
+
+// =========================================================
+//  RAPPORTS BOÎTE NOIRE (app_reports) — parc mondial
+// =========================================================
+//  Chaque app (téléphone + TV) envoie AU PLUS une fois par 24 h un résumé
+//  ANONYME de sa Boîte noire : échecs de lecture (chaîne, code d'erreur
+//  Media3 stable, cause — JAMAIS d'URL de flux ni d'identifiants), version
+//  de l'app, plateforme, langue. Le PAYS vient de Cloudflare
+//  (request.cf.country) — c'est ce qui donne la vue « Amérique / Afrique /
+//  Asie » du panel. Une ligne par (appareil, jour) : ré-envoyer le même
+//  jour ÉCRASE la ligne (upsert) → jamais de doublons, volume borné.
+
+/// Crée la table si absente (idempotent).
+export async function ensureReportsTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS app_reports (' +
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+      "device TEXT NOT NULL DEFAULT '', " +
+      "app TEXT NOT NULL DEFAULT 'phone', " +
+      "version_name TEXT NOT NULL DEFAULT '', " +
+      'version_code INTEGER NOT NULL DEFAULT 0, ' +
+      "platform TEXT NOT NULL DEFAULT '', " +
+      "locale TEXT NOT NULL DEFAULT '', " +
+      "country TEXT NOT NULL DEFAULT '', " +
+      "day TEXT NOT NULL DEFAULT '', " +
+      'failure_count INTEGER NOT NULL DEFAULT 0, ' +
+      "failures_json TEXT NOT NULL DEFAULT '[]', " +
+      'created_at INTEGER NOT NULL DEFAULT 0)',
+  ).run();
+  await env.DB.prepare(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_app_reports_device_day ' +
+      'ON app_reports (device, day)',
+  ).run();
+}
+
+/// Ingestion PUBLIQUE (appelée par worker.js /api/reports). Tout est
+/// borné et normalisé ; upsert par (device, jour UTC). `false` = rejet
+/// silencieux (device manquant) — jamais d'erreur remontée à l'app.
+export async function ingestAppReport(env, body, country) {
+  await ensureReportsTable(env);
+  const str = (v, max) => (v == null ? '' : String(v)).trim().slice(0, max);
+  const device = str(body.device, 40);
+  if (!device) return false;
+  const app = body.app === 'tv' ? 'tv' : 'phone';
+  const day = new Date().toISOString().slice(0, 10);
+  let failures = [];
+  if (Array.isArray(body.failures)) {
+    failures = body.failures.slice(0, 50).map((f) => ({
+      ts: str(f && f.ts, 30),
+      channel: str(f && f.channel, 80),
+      host: str(f && f.host, 100),
+      code: str(f && f.code, 60),
+      cause: str(f && f.cause, 160),
+      verdict: str(f && f.verdict, 120),
+    }));
+  }
+  await env.DB.prepare(
+    'INSERT INTO app_reports (device, app, version_name, version_code, ' +
+      'platform, locale, country, day, failure_count, failures_json, ' +
+      'created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
+      'ON CONFLICT(device, day) DO UPDATE SET app = excluded.app, ' +
+      'version_name = excluded.version_name, ' +
+      'version_code = excluded.version_code, ' +
+      'platform = excluded.platform, locale = excluded.locale, ' +
+      'country = excluded.country, ' +
+      'failure_count = excluded.failure_count, ' +
+      'failures_json = excluded.failures_json, ' +
+      'created_at = excluded.created_at',
+  ).bind(device, app, str(body.version_name, 30),
+    Number(body.version_code) || 0, str(body.platform, 60),
+    str(body.locale, 15), str(country, 5), day, failures.length,
+    JSON.stringify(failures), Date.now()).run();
+  return true;
+}
+
+/// Vue OWNER du panel (« Rapports ») : totaux, répartition par jour /
+/// pays / app, top des problèmes (codes d'erreur agrégés avec leurs
+/// chaînes les plus touchées), et les derniers rapports détaillés.
+async function handleReportsOverview(request, env) {
+  await ensureReportsTable(env);
+  let days = parseInt(new URL(request.url).searchParams.get('days') || '7', 10);
+  if (!Number.isFinite(days) || days < 1) days = 7;
+  if (days > 90) days = 90;
+  const since = new Date(Date.now() - days * 86400000)
+    .toISOString().slice(0, 10);
+  const rs = await env.DB.prepare(
+    'SELECT * FROM app_reports WHERE day >= ? ' +
+      'ORDER BY created_at DESC LIMIT 2000',
+  ).bind(since).all();
+  const rows = rs.results || [];
+  const byDay = {};
+  const byCountry = {};
+  const byApp = {};
+  const problems = {};
+  let failures = 0;
+  const bump = (map, key, fc) => {
+    map[key] = map[key] || { devices: 0, failures: 0 };
+    map[key].devices += 1;
+    map[key].failures += fc;
+  };
+  for (const r of rows) {
+    const fc = Number(r.failure_count || 0);
+    failures += fc;
+    bump(byDay, String(r.day || ''), fc);
+    bump(byCountry, String(r.country || '') || '??', fc);
+    bump(byApp, r.app === 'tv' ? 'tv' : 'phone', fc);
+    try {
+      const fl = JSON.parse(r.failures_json || '[]');
+      if (Array.isArray(fl)) {
+        for (const f of fl.slice(0, 50)) {
+          const key = String((f && f.code) || (f && f.cause) || 'inconnu')
+            .slice(0, 80);
+          problems[key] = problems[key] || { count: 0, channels: {} };
+          problems[key].count += 1;
+          const ch = String((f && f.channel) || '').slice(0, 60);
+          if (ch) {
+            problems[key].channels[ch] = (problems[key].channels[ch] || 0) + 1;
+          }
+        }
+      }
+    } catch (_) { /* entrée illisible → sautée, jamais de crash */ }
+  }
+  const devices = new Set(rows.map((r) => String(r.device))).size;
+  const topProblems = Object.entries(problems)
+    .map(([code, v]) => ({
+      code,
+      count: v.count,
+      topChannels: Object.entries(v.channels)
+        .sort((x, y) => y[1] - x[1]).slice(0, 3)
+        .map(([name, n]) => ({ name, count: n })),
+    }))
+    .sort((x, y) => y.count - x.count).slice(0, 20);
+  const recent = rows.slice(0, 50).map((r) => {
+    let fl = [];
+    try {
+      const parsed = JSON.parse(r.failures_json || '[]');
+      if (Array.isArray(parsed)) fl = parsed.slice(0, 5);
+    } catch (_) { /* illisible → liste vide */ }
+    return {
+      device: String(r.device || ''),
+      app: r.app === 'tv' ? 'tv' : 'phone',
+      version_name: String(r.version_name || ''),
+      version_code: Number(r.version_code || 0),
+      platform: String(r.platform || ''),
+      locale: String(r.locale || ''),
+      country: String(r.country || ''),
+      day: String(r.day || ''),
+      failure_count: Number(r.failure_count || 0),
+      failures: fl,
+    };
+  });
+  return jsonResp({
+    days,
+    since,
+    totals: { reports: rows.length, devices, failures },
+    byDay,
+    byCountry,
+    byApp,
+    topProblems,
+    recent,
+  });
 }
 
 // =========================================================
