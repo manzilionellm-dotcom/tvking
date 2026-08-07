@@ -17,7 +17,8 @@
 - Libs **media_kit iOS** (le lecteur mobile marche sur iPhone).
 - **Info.plist** : `NSAllowsArbitraryLoads` (flux IPTV en http://) + `NSBonjourServices`
   / `NSLocalNetworkUsageDescription` (réseau local).
-- **Podfile** : cible **iOS 13** (requise par media_kit).
+- **Podfile + pbxproj** : cible **iOS 14** (media_kit exige 13+,
+  ffmpeg-kit-flutter-new-min exige 14+).
 - Build `--no-codesign` = vérification de compilation (vert ✅).
 
 ## 3. Procédure sur Mac (pour un .ipa publiable)

@@ -97,12 +97,19 @@ jobs:
         if: env.HAS_SECRETS == 'true'
         run: flutter gen-l10n || true
 
-      - name: Bump iOS deployment target to 13.0
+      # 14.0 : media_kit exige 13+, ffmpeg-kit-flutter-new-min exige 14+.
+      # Podfile ET project.pbxproj (c'est ce dernier que Swift Package
+      # Manager vérifie — « Target Integrity »).
+      - name: Bump iOS deployment target to 14.0
         if: env.HAS_SECRETS == 'true'
         run: |
           if [ -f ios/Podfile ]; then
-            sed -i '' "s/# *platform :ios, '[0-9.]*'/platform :ios, '13.0'/" ios/Podfile || true
+            sed -i '' "s/# *platform :ios, '[0-9.]*'/platform :ios, '14.0'/" ios/Podfile || true
             grep -n "platform :ios" ios/Podfile || true
+          fi
+          if [ -f ios/Runner.xcodeproj/project.pbxproj ]; then
+            sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 14.0/g" ios/Runner.xcodeproj/project.pbxproj
+            grep -n "IPHONEOS_DEPLOYMENT_TARGET" ios/Runner.xcodeproj/project.pbxproj | head -4 || true
           fi
 
       - name: Patch Info.plist (ATS + audio fond + cast)

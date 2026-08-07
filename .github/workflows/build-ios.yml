@@ -76,14 +76,23 @@ jobs:
       - name: Generate AppLocalizations from .arb files
         run: flutter gen-l10n || true
 
-      # Version iOS minimale : media_kit (libmpv) exige iOS 13+.
-      # Le Podfile généré commente `platform :ios, '12.0'`.
-      - name: Bump iOS deployment target to 13.0
+      # Version iOS minimale : media_kit (libmpv) exige iOS 13+, et
+      # ffmpeg-kit-flutter-new-min (enregistrement) exige iOS 14+ → 14.0.
+      # DEUX endroits à patcher, sinon échec « Target Integrity » :
+      #   - ios/Podfile (CocoaPods) ;
+      #   - project.pbxproj (IPHONEOS_DEPLOYMENT_TARGET) — c'est LUI que
+      #     Swift Package Manager compare au minimum des packages.
+      - name: Bump iOS deployment target to 14.0
         run: |
           if [ -f ios/Podfile ]; then
-            sed -i '' "s/# *platform :ios, '[0-9.]*'/platform :ios, '13.0'/" ios/Podfile || true
+            sed -i '' "s/# *platform :ios, '[0-9.]*'/platform :ios, '14.0'/" ios/Podfile || true
             echo "--- Podfile platform ---"
             grep -n "platform :ios" ios/Podfile || true
+          fi
+          if [ -f ios/Runner.xcodeproj/project.pbxproj ]; then
+            sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 14.0/g" ios/Runner.xcodeproj/project.pbxproj
+            echo "--- pbxproj deployment target ---"
+            grep -n "IPHONEOS_DEPLOYMENT_TARGET" ios/Runner.xcodeproj/project.pbxproj | head -4 || true
           fi
 
       # Info.plist : config complète pour qu'une app IPTV FONCTIONNE sur

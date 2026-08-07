@@ -47,14 +47,17 @@ workflows:
       - name: Ajouter les libs vidéo iOS de media_kit
         script: flutter pub add media_kit_libs_ios_video
 
-      - name: Podfile (iOS 13) + Info.plist (flux HTTP IPTV, réseau local, export)
+      - name: Podfile (iOS 14) + Info.plist (flux HTTP IPTV, réseau local, export)
         script: |
-          # media_kit exige iOS 13+
+          # media_kit exige iOS 13+, ffmpeg-kit-flutter-new-min exige 14+
+          # → cible 14.0, dans le Podfile ET le project.pbxproj (c'est ce
+          # dernier que Swift Package Manager vérifie : « Target Integrity »).
           if grep -q "platform :ios" ios/Podfile; then
-            sed -i '' "s/.*platform :ios.*/platform :ios, '13.0'/" ios/Podfile
+            sed -i '' "s/.*platform :ios.*/platform :ios, '14.0'/" ios/Podfile
           else
-            printf "platform :ios, '13.0'\n%s" "$(cat ios/Podfile)" > ios/Podfile
+            printf "platform :ios, '14.0'\n%s" "$(cat ios/Podfile)" > ios/Podfile
           fi
+          sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*/IPHONEOS_DEPLOYMENT_TARGET = 14.0/g" ios/Runner.xcodeproj/project.pbxproj
           PL=ios/Runner/Info.plist
           PB=/usr/libexec/PlistBuddy
           # Flux IPTV souvent en http:// → autoriser (sinon bloqués par l'ATS)
