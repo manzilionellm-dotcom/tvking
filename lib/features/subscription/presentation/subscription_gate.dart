@@ -26,6 +26,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/support/support_choice_sheet.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/update/build_flags.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
 import '../../device/data/device_identity.dart';
 import '../../pricing/presentation/pricing_banner.dart';
@@ -180,7 +181,10 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
                   const SizedBox(height: 28),
 
                   // ----- CTA principal — Acheter (uniquement trial) -----
-                  if (expired)
+                  // BUILD GOOGLE PLAY : jamais de bouton d'achat vers le site
+                  // marchand (paiement hors Play Billing = violation). Le
+                  // client Play passe par « Contacter le support » ci-dessus.
+                  if (expired && !kIsPlayBuild)
                     SizedBox(
                       height: 54,
                       child: FilledButton.icon(

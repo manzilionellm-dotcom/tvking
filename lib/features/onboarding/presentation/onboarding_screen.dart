@@ -23,6 +23,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/support/support_choice_sheet.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/update/build_flags.dart';
 import '../../device/data/device_identity.dart';
 import '../data/onboarding_state.dart';
 
@@ -77,11 +78,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         title: context.l10n.onboardingPremiumTitle,
         description: context.l10n.onboardingPremiumDesc,
       ),
-      _OnboardingPage(
-        icon: Icons.celebration_outlined,
-        title: context.l10n.paywallFreeTrialTitle,
-        description: context.l10n.onboardingTrialDesc,
-      ),
+      // BUILD GOOGLE PLAY : pas de diapo « essai gratuit puis 5 €/an » —
+      // elle cite des prix payés hors Google Play Billing (violation
+      // Paiements du Store). L'APK sideload GitHub la garde.
+      if (!kIsPlayBuild)
+        _OnboardingPage(
+          icon: Icons.celebration_outlined,
+          title: context.l10n.paywallFreeTrialTitle,
+          description: context.l10n.onboardingTrialDesc,
+        ),
     ];
   }
 

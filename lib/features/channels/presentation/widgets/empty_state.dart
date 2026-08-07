@@ -25,6 +25,7 @@ import '../../../../core/branding/brand_logo.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/update/build_flags.dart';
 import '../../../playlists/data/playlist_repository.dart';
 import '../../../playlists/data/remote_source_repository.dart';
 import '../../../subscription/data/subscription_state.dart';
@@ -98,7 +99,10 @@ class EmptyStateView extends StatelessWidget {
                     const SizedBox(height: 18),
 
                     // Pastille : plan premium (à vie / expire le …) si actif,
-                    // sinon la mention d'essai (7 j · 5 €/an).
+                    // sinon la mention d'essai (7 j · 5 €/an) — que le build
+                    // Google Play ne montre JAMAIS (prix payé hors Play
+                    // Billing = violation Paiements du Store).
+                    if (active || !kIsPlayBuild)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,

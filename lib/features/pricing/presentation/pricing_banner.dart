@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/update/build_flags.dart';
 import '../data/pricing_repository.dart';
 
 class PricingBanner extends StatelessWidget {
@@ -23,6 +24,13 @@ class PricingBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // BUILD GOOGLE PLAY : ce bloc n'existe pas. Afficher des tarifs en €
+    // payables HORS Google Play Billing viole la règle Paiements du Play
+    // Store (motif de refus classique des lecteurs IPTV). Le build Play est
+    // un simple lecteur ; l'APK sideload GitHub, lui, garde les offres.
+    // Auto-gardé ICI pour que TOUS les points d'usage (activation, écran
+    // bloquant, feuilles) disparaissent d'un coup, sans oubli possible.
+    if (kIsPlayBuild) return const SizedBox.shrink();
     return ValueListenableBuilder<PricingConfig>(
       valueListenable: PricingRepository.notifier,
       builder: (BuildContext context, PricingConfig p, _) {

@@ -63,6 +63,14 @@ class DemoLesson {
   final String body;
 }
 
+/// Code d'accès examinateur (Google Play / stores). Tapé tel quel comme
+/// IDENTIFIANT (ou comme lien M3U) dans le formulaire de connexion, il fait
+/// entrer l'app en Mode démo : bouquet fictif EMBARQUÉ, zéro réseau, zéro
+/// activation revendeur. Répond au motif de refus Play « identifiants
+/// restreints par l'authentification de l'appareil » : l'examen ne dépend
+/// plus d'aucune action côté panel. Insensible à la casse.
+const String kReviewAccessCode = 'GPLAYREVIEW';
+
 class DemoMode extends ChangeNotifier {
   DemoMode._();
   static final DemoMode instance = DemoMode._();

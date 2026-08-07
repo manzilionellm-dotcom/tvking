@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../demo/data/demo_mode.dart';
 import '../../data/import_progress.dart';
 import '../../data/playlist_repository.dart';
 import '../../data/source_link_utils.dart';
@@ -74,6 +75,34 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
     // On capture le messenger AVANT le `await` (le contexte peut être
     // démonté si le parent — une feuille — se ferme via onConnected).
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+
+    // ----- Accès examinateur (Google Play) : le code AVANT tout réseau -----
+    // Le relecteur tape [kReviewAccessCode] comme identifiant (ou comme lien
+    // M3U) : on entre en Mode démo — bouquet fictif embarqué dans l'APK,
+    // aucun appel serveur, aucune activation revendeur. Conforme AGENTS.md
+    // règle n°2 : ce chemin ne charge AUCUNE URL de flux, uniquement la démo.
+    final String maybeCode =
+        (_mode == 'm3u' ? _m3uCtrl.text : _userCtrl.text).trim().toUpperCase();
+    if (maybeCode == kReviewAccessCode) {
+      setState(() {
+        _busy = true;
+        _error = null;
+      });
+      await DemoMode.instance.enter();
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            context.l10n.loginConnected,
+            style: AppTextStyles.bodyMedium,
+          ),
+        ),
+      );
+      widget.onConnected?.call();
+      return;
+    }
 
     // ----- Mode M3U : un seul champ, le lien direct -----
     if (_mode == 'm3u') {

@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/update/build_flags.dart';
 import 'source_choice_sheet.dart';
 
 class PaywallBanner extends StatelessWidget {
@@ -26,6 +27,10 @@ class PaywallBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // BUILD GOOGLE PLAY : pas de bandeau « app payante · 5 €/an » — annoncer
+    // un prix payé hors Google Play Billing = violation Paiements du Store.
+    // Auto-gardé ici pour couvrir tous les points d'usage (accueil, etc.).
+    if (kIsPlayBuild) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
       child: Material(

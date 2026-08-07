@@ -170,4 +170,14 @@ void main() {
       expect(tout, contains('quitte le mode démo'));
     });
   });
+
+  group('le code d\'accès examinateur (Google Play)', () {
+    // Le formulaire de connexion compare la saisie en MAJUSCULES : si le
+    // code déclaré dans la Play Console cessait de correspondre à cette
+    // normalisation, le relecteur serait bloqué → refus assuré.
+    test('déclaré en majuscules, sans espaces, et non vide', () {
+      expect(kReviewAccessCode, isNotEmpty);
+      expect(kReviewAccessCode, kReviewAccessCode.trim().toUpperCase());
+    });
+  });
 }

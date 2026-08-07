@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/update/build_flags.dart';
 import '../data/subscription_state.dart';
 
 class SubscriptionCard extends StatelessWidget {
@@ -73,22 +74,28 @@ class SubscriptionCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 _daysBadge(context, daysLeft, s.isLifetime),
               ],
-              const SizedBox(height: 10),
-              Text(
-                _subtitleFor(context, status),
-                style: AppTextStyles.bodyMedium.copyWith(
-                  fontSize: 12.5,
-                  color: AppColors.textSecondary,
-                  height: 1.45,
+              // BUILD GOOGLE PLAY : le sous-titre essai/expiré cite des prix
+              // en € et le site marchand → on ne le montre qu'au client payé
+              // (« abonnement actif »), jamais l'argumentaire de vente.
+              if (isPaid || !kIsPlayBuild) ...<Widget>[
+                const SizedBox(height: 10),
+                Text(
+                  _subtitleFor(context, status),
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    fontSize: 12.5,
+                    color: AppColors.textSecondary,
+                    height: 1.45,
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: 14),
               // Déjà payé/à vie → AUCUN bouton d'achat ni « offres » (l'essai
               // et l'incitation à activer DISPARAISSENT) : juste la confirmation
-              // « abonnement actif ». Sinon (essai / expiré) → le CTA d'achat.
+              // « abonnement actif ». Sinon (essai / expiré) → le CTA d'achat —
+              // SAUF sur le build Google Play (achat hors Play Billing interdit).
               if (isPaid)
                 _activeConfirm(context)
-              else ...<Widget>[
+              else if (!kIsPlayBuild) ...<Widget>[
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
