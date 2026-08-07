@@ -115,6 +115,13 @@ const TV_APK_URL =
 const CINEMA_TEST_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/cinema-test/defew-tv-cinema-test.apk';
 
+// APK « 7 MOTION TV » (Seven Motion TV, com.sevenmotion.tv.seven_tv) — la
+// 2e app TV, ressuscitée avec le blindage compat box (build-seventv.yml,
+// release `seventv-latest`). Servie via /7tv et /seventv : les box qui
+// l'ont installée en juin gardent leur lien Downloader historique.
+const SEVENTV_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/seventv-latest/seven-tv.apk';
+
 // APK de TEST TÉLÉPHONE (prérelease « phone-test », signé clé maîtresse).
 // Équivalent mobile de CINEMA_TEST_APK_URL. Servi via `/fone` (et /phone-test,
 // /tel) → lien à donner SANS exposer GitHub. Non « latest », aucun
@@ -6659,6 +6666,16 @@ async function handleRequest(request, env, ctx) {
       return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
     }
 
+    // /7tv, /seventv, /sevenmotion — téléchargement DIRECT de l'APK
+    // « 7 MOTION TV » (Seven Motion TV). Lien Downloader HISTORIQUE des box
+    // installées en juin : on le garde vivant. Fichier « SevenMotionTV.apk ».
+    if (
+      segments.length === 1 &&
+      ['7tv', 'seventv', 'sevenmotion'].includes(segments[0].toLowerCase())
+    ) {
+      return proxyApk(SEVENTV_APK_URL, 'SevenMotionTV.apk', url.searchParams.get('v'));
+    }
+
     // /test, /demo, /beta — APK de TEST TV (prérelease « cinema-test »,
     // signé clé maîtresse). Lien propre à donner/coller dans Downloader
     // SANS exposer GitHub. Fichier « DeFewTV-test.apk ». Sert TOUJOURS le
@@ -6744,9 +6761,10 @@ async function handleRequest(request, env, ctx) {
       });
     }
 
-    // (Red Room et les wrappers retirés : /redroom, /7tv, /seventv, /nova
-    //  n'existent plus. Les téléchargements vivent en tête de handler :
-    //  /app /royal /get → mobile, /tv → DeFew TV.)
+    // (Red Room et les wrappers retirés : /redroom et /nova n'existent plus.
+    //  Les téléchargements vivent en tête de handler : /app /royal /get →
+    //  mobile, /tv → DeFew TV, /7tv /seventv → 7 MOTION TV — ces deux
+    //  derniers RESSUSCITÉS : les box de juin gardent leur lien historique.)
 
     // /cast-sign?u=<url> — signe une URL upstream pour le proxy Cast.
     //  Le secret HMAC vit UNIQUEMENT côté Worker (jamais dans l'app publique).
@@ -6893,6 +6911,7 @@ async function handleRequest(request, env, ctx) {
     const RESERVED = new Set([
       'admin', 'config', 'dl', 'install', 'api', 'panel',
       'redroom', 'tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7',
+      '7tv', 'seventv', 'sevenmotion',
       'cast-receiver', 'cast-skin.css', 'vendor',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);

@@ -49,6 +49,29 @@ chaque build.
 - Ne PAS remettre `channel: stable` sans revalider API 21 + rendu sur box
   réelle ancienne.
 
+### Suite de session : « Seven Motion TV » ressuscitée (2e app TV, on garde TOUT)
+Le client a précisé que l'app visée s'appelle **Seven Motion TV**
+(`com.sevenmotion.tv.seven_tv`, label « 7 MOTION TV ») : l'app TV de juin
+2026 (job `build_tv_flutter` de build-android.yml, supprimé ensuite avec la
+release `seventv-latest` et les routes Worker /7tv /seventv — mais les box
+installées l'ont toujours). Décision : ON GARDE LES DEUX apps TV.
+- **`.github/workflows/build-seventv.yml`** (nouveau) : même code
+  (main_tv.dart), identité historique conservée, TOUT le blindage compat
+  de build-tv.yml (Flutter 3.32.x épinglé, Impeller OFF, splash sombre,
+  paysage, minSdk 21 + v1/v2/v3, targetSdk 35, largeHeap, plugins alignés)
+  **plus 2 correctifs propres** : APK **universel ARM 32+64** (l'ancien job
+  était arm64-only → refus d'installer sur box/sticks 32 bits) et
+  **signature stable** (l'ancien job signait avec un keystore debug
+  ALÉATOIRE par run → MAJ par-dessus impossibles). ⚠️ Les installs de juin
+  devront être réinstallées UNE fois (clé différente), ensuite MAJ normales.
+  Publication opt-in : dispatch avec `publish=true` → release
+  `seventv-latest` (seven-tv.apk + version.json, updater aiguillé par
+  `TV_UPDATE_TAG=seventv-latest`).
+- **`cloudflare/worker.js`** : routes /7tv, /seventv (+ /sevenmotion)
+  ressuscitées → `seventv-latest/seven-tv.apk` (fichier client
+  « SevenMotionTV.apk ») ; ajoutées à RESERVED. Redéployer le Worker
+  (workflow deploy-worker) pour activer.
+
 ---
 
 ## Session (2026-07-17) — EPG « En direct » enfin visible + aperçu cliquable
