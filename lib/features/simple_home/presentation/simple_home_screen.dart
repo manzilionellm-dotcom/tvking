@@ -33,6 +33,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/widgets/celebration_overlay.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
+import '../../../core/update/build_flags.dart';
 import '../../stats/data/engagement_service.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/presentation/favorites_screen.dart';
@@ -309,8 +310,18 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
           // L'activation garde la vedette juste en dessous : c'est une
           // ligne, pas une carte, et le bandeau permanent rappelle en
           // continu que ces chaînes sont des exemples.
-          const DemoEntryButton(),
-          const SizedBox(height: 18),
+          //
+          // BUILD APP STORE iOS : AUCUN bouton « mode démo ». Le playbook
+          // Apple (docs/ios-app-store-playbook.md §1 et §5 bis) interdit tout
+          // bouquet PRÉCHARGÉ dans le binaire, même de démonstration : c'est
+          // le motif de retrait 5.2.3 des lecteurs IPTV. Sur iOS l'app doit
+          // rester un lecteur « BYO » pur — l'utilisateur apporte SA playlist.
+          // Google Play et l'APK sideload, eux, gardent la démo : c'est elle
+          // que l'examinateur Play ouvre avec le code GPLAYREVIEW.
+          if (!kIsIosStoreBuild) ...<Widget>[
+            const DemoEntryButton(),
+            const SizedBox(height: 18),
+          ],
           const MacActivationView(),
           const SizedBox(height: 14),
           const LegalDisclaimer.compact(),
