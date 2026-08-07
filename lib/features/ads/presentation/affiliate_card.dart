@@ -23,6 +23,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/update/build_flags.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../data/campaign_repository.dart';
 
@@ -89,6 +90,12 @@ class _AffiliateCardState extends State<AffiliateCard> {
 
   @override
   Widget build(BuildContext context) {
+    // BUILD STORE (Google Play / App Store) : jamais de campagne — le lien
+    // est piloté par le panel et peut pointer vers une page d'achat
+    // d'abonnement, donc un paiement hors facturation du store : motif de
+    // refus direct. La garde vit ICI (pas au point d'usage) pour couvrir
+    // tout futur emplacement sans oubli possible.
+    if (kIsStoreBuild) return const SizedBox.shrink();
     final Campaign? c = _campaign;
     if (c == null) return const SizedBox.shrink();
 

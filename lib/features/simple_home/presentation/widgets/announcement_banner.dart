@@ -25,6 +25,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/update/build_flags.dart';
 import '../../../../l10n/generated/app_localizations.dart';
 import '../../data/announcement_repository.dart';
 
@@ -121,6 +122,12 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
 
   @override
   Widget build(BuildContext context) {
+    // BUILD STORE (Google Play / App Store) : pas de bandeau d'annonce —
+    // son texte et son lien viennent du panel en temps réel, donc un
+    // message tarifaire ou un lien d'achat pourrait s'afficher PENDANT
+    // l'examen (paiement hors facturation du store = refus). L'APK
+    // sideload GitHub garde le canal d'annonces intact.
+    if (kIsStoreBuild) return const SizedBox.shrink();
     final Announcement? a = _announcement;
     if (a == null) return const SizedBox.shrink();
 
