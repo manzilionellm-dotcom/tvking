@@ -49,6 +49,32 @@ chaque build.
 - Ne PAS remettre `channel: stable` sans revalider API 21 + rendu sur box
   réelle ancienne.
 
+### Suite de session : « l'image ne vient pas » → DOUBLE CHEMIN DE RENDU vidéo
+Retour client après les correctifs de démarrage : les deux apps TV s'ouvrent
+mais **l'image vidéo n'arrive pas** dans le lecteur. Cause structurelle : le
+lecteur (packages/native_video_player) rendait la vidéo dans une SurfaceView
+en hybrid composition — une fenêtre Android SÉPARÉE que le compositeur de
+certaines box rate (l'UI Flutter, elle, s'affiche). Aucun chemin unique ne
+couvre 100 % du parc (la SurfaceView avait justement été choisie pour une
+box où la texture mpv/libVLC restait noire).
+
+**Correctif « une bonne fois pour toutes » : les DEUX chemins + bascule auto.**
+- Mode **texture** (NOUVEAU DÉFAUT) : ExoPlayer décode vers une SurfaceTexture
+  Flutter → la vidéo suit le MÊME pipeline que l'interface. Partout où l'app
+  s'affiche, l'image vient. Sous-titres remontés en texte (« cueText ») et
+  dessinés en overlay Flutter.
+- Mode **surface** (secours) : le chemin SurfaceView historique, inchangé.
+- **Watchdog** dans le widget : lecture en cours (son/position OK) mais
+  aucune 1re trame après ~6 s → bascule sur l'autre chemin, ré-attache le
+  controller (la dernière URL est rejouée seule) et **MÉMORISE** le chemin
+  qui marche (SharedPreferences natives, par box). Une bascule max par vue
+  (anti ping-pong).
+- API : NativeVideoRender.mode()/setMode() ; canal info
+  createTexturePlayer/disposeTexturePlayer/get-setRenderMode ; canaux lecteur
+  « native_video_player/t<textureId> » (espace distinct des PlatformViews).
+- AUCUN écran modifié : NativeVideoView décide seul de son chemin (lecteur,
+  aperçus, multivue, diagnostic — tous couverts).
+
 ### Suite de session : « Seven Motion TV » ressuscitée (2e app TV, on garde TOUT)
 Le client a précisé que l'app visée s'appelle **Seven Motion TV**
 (`com.sevenmotion.tv.seven_tv`, label « 7 MOTION TV ») : l'app TV de juin

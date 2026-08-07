@@ -7,6 +7,7 @@ import android.net.Network
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.view.Surface
 import android.view.SurfaceView
 import android.view.View
 import android.widget.FrameLayout
@@ -34,6 +35,7 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
+import io.flutter.view.TextureRegistry
 
 /**
  * LE cœur du correctif « son OK / image noire » + le moteur « qui ne s'arrête
@@ -59,10 +61,30 @@ import io.flutter.plugin.platform.PlatformView
 class NativeVideoView(
     private val appContext: Context,
     messenger: BinaryMessenger,
-    id: Int,
+    // Nom COMPLET du MethodChannel (« native_video_player/<viewId> » pour une
+    // PlatformView, « native_video_player/t<textureId> » pour un lecteur
+    // TEXTURE) — les deux espaces d'ids se chevauchent, un suffixe distinct
+    // évite toute collision de canal.
+    channelName: String,
     // Mode APERÇU (vignette de l'accueil / d'En direct) : tampons réduits —
     // voir le bloc LoadControl dans init{}.
     private val preview: Boolean = false,
+    // ==================================================================
+    //  DOUBLE CHEMIN DE RENDU (correctif terrain « l'image ne vient pas ») :
+    //  certaines box n'affichent JAMAIS une SurfaceView composée en hybrid
+    //  composition (fenêtre Android séparée que le compositeur de la box
+    //  rate), d'autres n'affichent rien via texture. Aucun chemin unique ne
+    //  couvre 100 % du parc.
+    //   • surfaceTextureEntry == null → PlatformView + SurfaceView
+    //     (chemin historique) ;
+    //   • surfaceTextureEntry != null → la vidéo est décodée vers la
+    //     SurfaceTexture de Flutter et rendue par le MÊME pipeline que
+    //     l'interface : partout où l'UI de l'app s'affiche, l'image vient.
+    //  Le choix + la bascule automatique vivent côté Dart (watchdog
+    //  « lecture OK mais aucune 1re trame » → on change de chemin et on
+    //  MÉMORISE celui qui marche sur cette box).
+    // ==================================================================
+    private val surfaceTextureEntry: TextureRegistry.SurfaceTextureEntry? = null,
 ) : PlatformView, MethodChannel.MethodCallHandler, Player.Listener {
 
     companion object {
@@ -105,8 +127,17 @@ class NativeVideoView(
     private val subtitleView = SubtitleView(appContext)
     private val container = FrameLayout(appContext)
 
-    private val channel = MethodChannel(messenger, "native_video_player/$id")
+    private val channel = MethodChannel(messenger, channelName)
     private val player: ExoPlayer
+
+    // Surface construite sur la SurfaceTexture Flutter (mode TEXTURE
+    // uniquement) — gardée pour être libérée proprement au dispose.
+    private var flutterSurface: Surface? = null
+
+    // Garde anti double-dispose : en mode TEXTURE, le teardown est déclenché
+    // par le canal (« dispose ») ; en mode PlatformView, par Flutter. Les
+    // deux peuvent théoriquement se croiser.
+    private var isDisposed = false
 
     // RÉPARTITION DES THREADS (contrat de ce fichier) :
     //   • `handler` (MAIN)         : MethodChannel (les envois vers Dart
@@ -378,7 +409,18 @@ class NativeVideoView(
         // setLooper). Postée d'un bloc : elle s'exécute avant tout setUrl
         // (même file, ordre FIFO).
         playerHandler.post {
-            player.setVideoSurfaceView(surfaceView)
+            val entry = surfaceTextureEntry
+            if (entry != null) {
+                // Mode TEXTURE : MediaCodec décode vers la SurfaceTexture de
+                // Flutter — la trame rejoint le compositeur de l'app, pas une
+                // fenêtre Android séparée. (MediaCodec fixe lui-même la taille
+                // des buffers, pas besoin de setDefaultBufferSize.)
+                val s = Surface(entry.surfaceTexture())
+                flutterSurface = s
+                player.setVideoSurface(s)
+            } else {
+                player.setVideoSurfaceView(surfaceView)
+            }
             player.addListener(this)
             player.playWhenReady = true
             // ZAP FLUIDE : garde les décodeurs MediaCodec « chauds » entre deux
@@ -500,7 +542,14 @@ class NativeVideoView(
                 }
                 result.success(null)
             }
-            "dispose" -> result.success(null)
+            "dispose" -> {
+                // Mode PlatformView : no-op (Flutter appelle dispose() sur la
+                // vue). Mode TEXTURE : aucune PlatformView n'existe → c'est CE
+                // message (envoyé par le controller Dart) qui déclenche le
+                // teardown réel. Idempotent (garde isDisposed).
+                if (surfaceTextureEntry != null) dispose()
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }
@@ -605,10 +654,20 @@ class NativeVideoView(
         }
     }
 
-    // Sous-titres décodés par ExoPlayer → dessinés par la SubtitleView.
-    // Vue Android → main thread obligatoire (le callback arrive sur le
-    // thread player).
+    // Sous-titres décodés par ExoPlayer. Mode PlatformView : dessinés par la
+    // SubtitleView Android par-dessus la SurfaceView. Mode TEXTURE : aucune
+    // vue Android n'existe à l'écran → on remonte le TEXTE des cues à Dart
+    // (« cueText »), qui les dessine en overlay Flutter. Vue Android → main
+    // thread obligatoire (le callback arrive sur le thread player).
     override fun onCues(cueGroup: CueGroup) {
+        if (surfaceTextureEntry != null) {
+            val txt = cueGroup.cues
+                .mapNotNull { it.text?.toString() }
+                .filter { it.isNotBlank() }
+                .joinToString("\n")
+            handler.post { channel.invokeMethod("cueText", txt) }
+            return
+        }
         val cues = cueGroup.cues
         handler.post { subtitleView.setCues(cues) }
     }
@@ -742,6 +801,8 @@ class NativeVideoView(
     // ---- cycle de vie -------------------------------------------------------
 
     override fun dispose() {
+        if (isDisposed) return
+        isDisposed = true
         // Main thread : vues, canal, callbacks système — IMMÉDIAT.
         unregisterNetworkCallback()
         instances.remove(this)
@@ -766,9 +827,21 @@ class NativeVideoView(
             cancelRetry()
             playerHandler.removeCallbacks(positionPump)
             player.removeListener(this)
-            player.clearVideoSurfaceView(surfaceView)
+            if (surfaceTextureEntry != null) {
+                player.clearVideoSurface()
+            } else {
+                player.clearVideoSurfaceView(surfaceView)
+            }
             player.setForegroundMode(false) // relâche les codecs avant release
             player.release()
+            // Mode TEXTURE : la Surface puis l'entrée de texture Flutter sont
+            // libérées APRÈS le release du lecteur (le codec n'écrit plus
+            // dedans) ; l'entrée se libère côté main (contrat TextureRegistry).
+            flutterSurface?.release()
+            flutterSurface = null
+            surfaceTextureEntry?.let { entry ->
+                handler.post { entry.release() }
+            }
         }
     }
 }

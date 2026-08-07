@@ -45,6 +45,11 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
 
     private var infoChannel: MethodChannel? = null
 
+    // Lecteurs en MODE TEXTURE vivants (créés par « createTexturePlayer »,
+    // détruits par « disposeTexturePlayer » ou au détachement du moteur).
+    // Accès main-thread uniquement (MethodChannel + détachement du moteur).
+    private val texturePlayers = HashMap<Long, NativeVideoView>()
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         binding
             .platformViewRegistry
@@ -52,11 +57,19 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                 "native_video_player/view",
                 NativeVideoViewFactory(binding.binaryMessenger),
             )
-        // Canal d'INFOS APPAREIL : permet à Dart d'adapter l'app aux PETITES
-        // box (Fire TV Stick & co) — 'deviceInfo' renvoie la RAM totale et le
-        // drapeau isLowRamDevice d'Android. Utilisé par le garde-mémoire TV.
+        // Canal d'INFOS APPAREIL + SERVICE du double chemin de rendu :
+        //  - 'deviceInfo' : RAM totale + isLowRamDevice (garde-mémoire TV) ;
+        //  - 'createTexturePlayer'/'disposeTexturePlayer' : lecteurs en mode
+        //    TEXTURE (la vidéo passe par le pipeline de l'UI Flutter — le
+        //    correctif « l'image ne vient pas » des box dont le compositeur
+        //    rate les SurfaceView) ;
+        //  - 'getRenderMode'/'setRenderMode' : chemin de rendu MÉMORISÉ pour
+        //    CETTE box (SharedPreferences natives, survit aux mises à jour).
         infoChannel = MethodChannel(binding.binaryMessenger, "native_video_player/info")
         val appContext = binding.applicationContext
+        val messenger = binding.binaryMessenger
+        val textureRegistry = binding.textureRegistry
+        val prefs = appContext.getSharedPreferences("native_video_player", Context.MODE_PRIVATE)
         infoChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "deviceInfo" -> {
@@ -71,6 +84,40 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                         ),
                     )
                 }
+                "createTexturePlayer" -> {
+                    val preview = call.argument<Boolean>("preview") == true
+                    val entry = textureRegistry.createSurfaceTexture()
+                    val id = entry.id()
+                    // Canal « t<id> » : espace d'ids distinct des PlatformViews
+                    // (les deux compteurs partent de 0 → collision sinon).
+                    texturePlayers[id] = NativeVideoView(
+                        appContext,
+                        messenger,
+                        "native_video_player/t$id",
+                        preview,
+                        entry,
+                    )
+                    result.success(mapOf("textureId" to id))
+                }
+                "disposeTexturePlayer" -> {
+                    val id = (call.argument<Number>("textureId"))?.toLong()
+                    if (id != null) texturePlayers.remove(id)?.dispose()
+                    result.success(null)
+                }
+                "getRenderMode" -> {
+                    // Défaut « texture » : la vidéo suit le pipeline de l'UI —
+                    // partout où l'app s'affiche, l'image vient. Les box où la
+                    // texture échouerait basculent (watchdog Dart) sur
+                    // « surface » et la préférence est mémorisée ici.
+                    result.success(prefs.getString("render_mode", "texture"))
+                }
+                "setRenderMode" -> {
+                    val mode = call.argument<String>("mode")
+                    if (mode == "texture" || mode == "surface") {
+                        prefs.edit().putString("render_mode", mode).apply()
+                    }
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -79,8 +126,11 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         infoChannel?.setMethodCallHandler(null)
         infoChannel = null
-        // Chaque NativeVideoView gère son propre cycle de vie par ailleurs
-        // (dispose() appelé par Flutter quand la PlatformView est retirée).
+        // Les lecteurs TEXTURE n'ont pas de PlatformView pour les libérer :
+        // on les coupe ici (idempotent). Les PlatformViews, elles, sont
+        // disposées par Flutter.
+        for (v in texturePlayers.values) v.dispose()
+        texturePlayers.clear()
     }
 
     // ---- ActivityAware : suivi de l'activité hôte ---------------------------
