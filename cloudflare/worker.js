@@ -103,40 +103,28 @@ import { PWA_MANIFEST, PWA_SW, PWA_ICON_192, PWA_ICON_512, PWA_APPLE_ICON, OG_IM
 const APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/7motion.apk';
 
-// APK de DeFew TV (version télévision) — release `tv-latest`. Servi via la
-// route propre `/tv` (Downloader sur box Android TV / Fire TV).
-// MAISON MÈRE TV : release protégée « tv-prod » (publiée uniquement par la
-// branche claude/maison-mere-phone) → le lien client TV (/tv, /777…) ne peut
-// plus être écrasé par une autre branche.
-const TV_APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-prod/defew-tv.apk';
-
-// APK de TEST (prérelease « cinema-test », signé clé maîtresse). Servi via la
-// route propre `/test` → lien à donner SANS exposer GitHub. Non « latest »,
-// aucun version.json → invisible pour l'updater in-app (ne se diffuse pas
-// tout seul). À utiliser pour valider un build TV sur box avant diffusion.
-const CINEMA_TEST_APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/cinema-test/defew-tv-cinema-test.apk';
-
-// APK « 7 MOTION TV » (Seven Motion TV, com.sevenmotion.tv.seven_tv) — la
-// 2e app TV, ressuscitée avec le blindage compat box (build-seventv.yml,
-// release `seventv-latest`). Servie via /7tv et /seventv : les box qui
-// l'ont installée en juin gardent leur lien Downloader historique.
+// APK « 7 MOTION TV » (Seven Motion TV, com.sevenmotion.tv.seven_tv) —
+// L'UNIQUE app TV depuis le grand nettoyage du 2026-08-08 (les releases
+// DeFew tv-prod/tv-latest/cinema-test ont été SUPPRIMÉES sur ordre du
+// propriétaire). Release `seventv-latest` : APK universel ARM 32+64 bits,
+// blindage compat box (build-seventv.yml), signé clé maîtresse. Servie par
+// TOUS les alias TV : /tv, /7tv, /seventv, /777…
 const SEVENTV_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/seventv-latest/seven-tv.apk';
 
-// APK de TEST TÉLÉPHONE (prérelease « phone-test », signé clé maîtresse).
-// Équivalent mobile de CINEMA_TEST_APK_URL. Servi via `/fone` (et /phone-test,
-// /tel) → lien à donner SANS exposer GitHub. Non « latest », aucun
-// version.json → invisible pour l'updater in-app (ne se diffuse pas tout seul).
-const PHONE_TEST_APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/phone-test/7motion-test.apk';
+// Installateur WINDOWS (release `windows-latest`) — app The Few PC,
+// servie via /win, /windows, /pc.
+const WINDOWS_EXE_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/windows-latest/7MOTION-Setup.exe';
 
-// App Bundles (.aab) signés pour la Google Play Console. Servis via un lien
-// PUBLIC propre (app.7themotion.com/tv-aab et /phone-aab) → utile pour
+// Paquet SAMSUNG TV (Tizen, release `tizen-latest`) — signé certificat
+// auteur Samsung, servi via /samsung, /tizen (sideload Mode Développeur).
+const TIZEN_TPK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tizen-latest/thefew-tizen.tpk';
+
+// App Bundle (.aab) téléphone signé pour la Google Play Console. Servi via
+// un lien PUBLIC propre (app.7themotion.com/phone-aab) → utile pour
 // uploader le dernier build dans la Play Console sans passer par GitHub.
-const TV_AAB_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-prod/defew-tv.aab';
 const PHONE_AAB_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/7motion.aab';
 
@@ -158,8 +146,10 @@ const STORE_SHOT_APROPOS_URL =
   'https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/claude/maison-mere-phone/cloudflare/store/screen_apropos.jpg';
 
 // NB : les wrappers WebView / NOVA+ et Red Room ont été RETIRÉS du
-// projet. Deux apps sont distribuées : 7 MOTION mobile (`APK_URL`) et
-// DeFew TV (`TV_APK_URL`), chacune via son lien court (/app et /tv).
+// projet. Quatre livrables sont distribués ici : 7 MOTION mobile
+// (`APK_URL`, /app), 7 MOTION TV (`SEVENTV_APK_URL`, /tv /7tv),
+// Windows (`WINDOWS_EXE_URL`, /win) et Samsung (`TIZEN_TPK_URL`,
+// /samsung). L'iPhone passe par l'App Store.
 
 // ===========================================================
 //  Proxy APK avec cache edge Cloudflare (perf Downloader)
@@ -6726,26 +6716,30 @@ async function handleRequest(request, env, ctx) {
       return new Response('bad ext', { status: 400 });
     }
 
-    // /dl — proxy l'APK GitHub release a travers le cache edge
-    // Cloudflare pour des telechargements rapides depuis Downloader.
-    // Variante /dl/release pour aliasing futur (release vs beta).
-
-    // /install, /vip, /thefew, /few, /app — alias de téléchargement
-    // DIRECT (proxy de l'APK). « lien VIP » propre à donner tel quel :
-    // collé dans Downloader, il télécharge l'app immédiatement, SANS
-    // passer par aftv.news ni aucun email/compte. Nom de fichier
-    // « TheFew.apk » côté client.
+    // /dl, /install, /vip, /thefew, /few, /app, /fone, /tel — téléchargement
+    // DIRECT de l'app TÉLÉPHONE officielle (release `prod`, signée clé
+    // maîtresse — c'est le bouton « Télécharger » du site). Lien propre à
+    // donner tel quel : il télécharge immédiatement, SANS compte GitHub.
+    // Fichier « 7motion.apk » côté client.
+    if (
+      segments.length === 1 &&
+      ['dl', 'install', 'vip', 'thefew', 'few', 'app', 'fone', 'tel']
+        .includes(segments[0].toLowerCase())
+    ) {
+      return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
+    }
 
     // /tv, /defewtv, /tvbox, /defew + CODES COURTS MÉMORABLES (/777, /7777,
-    // /tv7) — alias de téléchargement DIRECT de l'APK DeFew TV (version TV).
-    // TV_APK_URL pointe sur le tag `tv-latest` → TOUJOURS la dernière version.
-    // Lien propre à coller dans Downloader. Fichier « DeFewTV.apk ».
-    if (segments.length === 1 && segments[0].toLowerCase() === 'tv') {
-      // LIEN UNIQUE TV BOX — sert TOUJOURS le dernier build publié
-      // (tag cinema-test écrasé à chaque publication). Proxy direct :
-      // le client ne voit ni GitHub ni numéro de build, juste
-      // app.7themotion.com/tv → DeFewTV.apk.
-      return proxyApk(CINEMA_TEST_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
+    // /tv7) — téléchargement DIRECT de l'app TV officielle 7 MOTION TV
+    // (release `seventv-latest`, APK universel ARM 32+64 bits). Depuis le
+    // nettoyage du 2026-08-08 il n'y a plus qu'UNE app TV : tous les alias
+    // TV servent le même fichier « SevenMotionTV.apk ».
+    if (
+      segments.length === 1 &&
+      ['tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7']
+        .includes(segments[0].toLowerCase())
+    ) {
+      return proxyApk(SEVENTV_APK_URL, 'SevenMotionTV.apk', url.searchParams.get('v'));
     }
 
     // /7tv, /seventv, /sevenmotion — téléchargement DIRECT de l'APK
@@ -6758,30 +6752,24 @@ async function handleRequest(request, env, ctx) {
       return proxyApk(SEVENTV_APK_URL, 'SevenMotionTV.apk', url.searchParams.get('v'));
     }
 
-    // /test, /demo, /beta — APK de TEST TV (prérelease « cinema-test »,
-    // signé clé maîtresse). Lien propre à donner/coller dans Downloader
-    // SANS exposer GitHub. Fichier « DeFewTV-test.apk ». Sert TOUJOURS le
-    // dernier build de test publié (tag cinema-test écrasé à chaque publish).
-
-    // /fone, /phone-test, /tel — APK de TEST TÉLÉPHONE (prérelease
-    // « phone-test », signé clé maîtresse). Lien propre à donner SANS exposer
-    // GitHub. Fichier « 7motion-test.apk ». Sert TOUJOURS le dernier build de
-    // test téléphone publié (tag phone-test écrasé à chaque publish).
-    if (segments.length === 1 && segments[0].toLowerCase() === 'fone') {
-      // LIEN UNIQUE TÉLÉPHONE — sert TOUJOURS le dernier build publié
-      // (tag phone-test écrasé à chaque publication). Nom de fichier
-      // PROPRE (« 7motion.apk », sans « test » ni numéro de build) :
-      // le client ne voit que app.7themotion.com/fone.
-      return proxyApk(PHONE_TEST_APK_URL, '7motion.apk', url.searchParams.get('v'));
-    }
-
-    // /tv-aab et /phone-aab — App Bundles (.aab) SIGNÉS pour la Google Play
-    // Console. Lien public propre (octet-stream) : à télécharger puis
-    // uploader dans la Play Console. Toujours le dernier build maison mère.
+    // /win, /windows, /pc — installateur WINDOWS officiel (The Few PC,
+    // release `windows-latest`). Un visiteur Windows clique → le Setup.exe
+    // se télécharge directement, sans compte GitHub.
     if (segments.length === 1 &&
-        ['tv-aab', 'tvaab', 'aab-tv'].includes(segments[0].toLowerCase())) {
-      return proxyRelease(TV_AAB_URL, 'defew-tv.aab');
+        ['win', 'windows', 'pc'].includes(segments[0].toLowerCase())) {
+      return proxyRelease(WINDOWS_EXE_URL, '7MOTION-Setup.exe');
     }
+
+    // /samsung, /tizen — paquet SAMSUNG TV (.tpk, release `tizen-latest`,
+    // signé certificat auteur Samsung). Sideload en Mode Développeur.
+    if (segments.length === 1 &&
+        ['samsung', 'tizen'].includes(segments[0].toLowerCase())) {
+      return proxyRelease(TIZEN_TPK_URL, 'TheFew-Samsung.tpk');
+    }
+
+    // /phone-aab — App Bundle (.aab) SIGNÉ pour la Google Play Console.
+    // Lien public propre (octet-stream) : à télécharger puis uploader dans
+    // la Play Console. Toujours le dernier build maison mère.
     if (segments.length === 1 &&
         ['phone-aab', 'phoneaab', 'aab-phone', 'aab'].includes(segments[0].toLowerCase())) {
       return proxyRelease(PHONE_AAB_URL, '7motion.aab');
@@ -6988,6 +6976,8 @@ async function handleRequest(request, env, ctx) {
       'admin', 'config', 'dl', 'install', 'api', 'panel',
       'redroom', 'tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7',
       '7tv', 'seventv', 'sevenmotion',
+      'vip', 'thefew', 'few', 'app', 'fone', 'tel',
+      'win', 'windows', 'pc', 'samsung', 'tizen',
       'cast-receiver', 'cast-skin.css', 'vendor',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
