@@ -11,6 +11,7 @@ import android.view.Surface
 import android.view.SurfaceView
 import android.view.View
 import android.widget.FrameLayout
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -178,6 +179,17 @@ class NativeVideoView(
     // hoquette, c'est plusieurs secondes d'écran figé économisées à chaque
     // micro-coupure. Permission requise : ACCESS_NETWORK_STATE (normale,
     // déclarée dans le manifest du plugin).
+    // AUDIO FOCUS système — attributs « contenu vidéo » partagés par les deux
+    // appels setAudioAttributes (création du lecteur + setVolume multivue).
+    // Règle : seul un lecteur AUDIBLE demande le focus (une autre app audio se
+    // met en pause, et nous rendons la main si on nous le prend). Un aperçu
+    // muet ne le demande JAMAIS : sinon chaque vignette volerait le focus de
+    // la lecture principale et la mettrait en pause.
+    private val mediaAudioAttributes = AudioAttributes.Builder()
+        .setUsage(C.USAGE_MEDIA)
+        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+        .build()
+
     private val connectivityManager =
         appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
     private var networkCallbackRegistered = false
@@ -422,6 +434,9 @@ class NativeVideoView(
                 player.setVideoSurfaceView(surfaceView)
             }
             player.addListener(this)
+            // Focus audio demandé UNIQUEMENT par un lecteur non-aperçu (voir
+            // mediaAudioAttributes) ; setVolume le ré-aligne ensuite en multivue.
+            player.setAudioAttributes(mediaAudioAttributes, !preview)
             player.playWhenReady = true
             // ZAP FLUIDE : garde les décodeurs MediaCodec « chauds » entre deux
             // préparations (setUrl au zap, retry silencieux). Sans ça, ExoPlayer
@@ -496,7 +511,13 @@ class NativeVideoView(
                 // Multi-vue : on coupe le son des tuiles inactives (volume 0) et
                 // on ne laisse le son QUE sur la tuile active (volume 1).
                 val v = (call.argument<Double>("volume") ?: 1.0).toFloat()
-                playerHandler.post { player.volume = v.coerceIn(0f, 1f) }
+                playerHandler.post {
+                    player.volume = v.coerceIn(0f, 1f)
+                    // Le focus audio suit l'audibilité : la tuile coupée le
+                    // REND (une autre app audio peut reprendre), la tuile
+                    // active le (re)prend. Jamais pour un aperçu.
+                    player.setAudioAttributes(mediaAudioAttributes, !preview && v > 0f)
+                }
                 result.success(null)
             }
             "pause" -> {
