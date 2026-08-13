@@ -7,6 +7,56 @@
 
 ---
 
+## Session (2026-08-08) — Lecteur TV « forteresse » : cascade de sources, garde d'états, télémétrie, pression mémoire
+
+Branche : `claude/7motion-android-tv-compat-e0rtyp`. Durcissement du plugin
+`native_video_player` (Kotlin + contrôleur Dart), 4 chantiers, AUCUN écran
+modifié. Journée aussi : audio focus système (le lecteur audible le demande,
+jamais les aperçus — sinon une vignette met la lecture principale en pause),
+grand nettoyage des releases (5 apps officielles seulement, cf.
+docs/APPLICATIONS-OFFICIELLES.md sur la branche d'inventaire), site
+app.7themotion.com réparé (routes /install /tv /win /samsung + 4 QR).
+
+### 1. Cascade de sources native (failover silencieux)
+- `setUrl` accepte `fallbackUrls` (Dart : `setUrl(url, fallbackUrls: […])`).
+- Budget de reconnexion épuisé sur la source courante → bascule IMMÉDIATE
+  et silencieuse sur la suivante (l'utilisateur ne voit que « buffering ») ;
+  l'erreur ne remonte à Dart qu'après épuisement de TOUTES les sources
+  (payload enrichi : `sourcesTried`). Rétro-compatible : sans fallbacks,
+  comportement historique inchangé. L'ORCHESTRATION reste côté Dart.
+- Back-off avec JITTER (±25 %) : évite le « thundering herd » (toutes les
+  box qui perdent le même serveur re-frappaient à la même milliseconde).
+
+### 2. Garde d'états (FSM défensive native)
+- Enum `Fsm` (IDLE→LOADING→BUFFERING/READY/ENDED/FAILED, RELEASED terminal),
+  confinée au thread PLAYER comme le reste de l'état.
+- Commandes zombies (play/seek sans média ou après release, setUrl après
+  release) : IGNORÉES + journalisées (`fsm_violation`), jamais un crash.
+
+### 3. Télémétrie silencieuse (ring buffer local)
+- `AnalyticsListener` : frames perdues (compteur total + événement si
+  paquet ≥ 30) et underruns audio — les signaux AVANT-COUREURS d'une box
+  qui souffre. Ring buffer borné à 100 événements (retry, failover, fatal,
+  trim, violations) : impossible à faire déborder.
+- Drain par `getStats` (canal) / `controller.getStats()` (Dart) : AUCUN
+  envoi réseau côté natif — la Boîte noire draine quand la connexion est
+  stable, pour ne jamais voler de bande passante à la vidéo.
+
+### 4. Pression mémoire (onTrimMemory, plugin)
+- `ComponentCallbacks2` sur le contexte application : RUNNING_LOW → les
+  APERÇUS sont stoppés (décodeur + tampons rendus) ; RUNNING_CRITICAL →
+  les lecteurs principaux rendent leurs codecs « chauds »
+  (`setForegroundMode(false)`, lecture en cours intacte) ; `setMedia`
+  réarme automatiquement au zap suivant. Mieux vaut un zap 500 ms plus
+  lent qu'une app tuée par l'OS.
+
+### Contrats préservés
+Threading (état lecteur = thread PLAYER, canal = main), double chemin de
+rendu + watchdog Dart, LoadControl par RAM, reprise réseau instantanée,
+`silent`/recover, comptage retries sur URL identique : tous inchangés.
+
+---
+
 ## Session (2026-08-06) — Box TV : fin des écrans noirs/blancs au démarrage (compat toutes box)
 
 Branche : `claude/7motion-android-tv-compat-e0rtyp` (base

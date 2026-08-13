@@ -27,6 +27,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -117,6 +118,35 @@ class NativeVideoView(
         fun pauseAll() {
             for (v in instances) v.playerHandler.post { v.player.pause() }
         }
+
+        /**
+         * PRESSION MÉMOIRE (onTrimMemory du plugin). Android TV a peu de RAM :
+         * quand l'OS prévient qu'il va commencer à tuer des process, on
+         * dégrade en douceur AVANT l'OOM :
+         *  • les APERÇUS (vignettes muettes) sont stoppés — leur décodeur et
+         *    leurs tampons sont rendus immédiatement, personne ne les regarde
+         *    de près ;
+         *  • en niveau CRITIQUE, les lecteurs principaux rendent leurs codecs
+         *    « chauds » (setForegroundMode(false)) — la lecture EN COURS
+         *    continue, seul le confort de zap est sacrifié, et setMedia le
+         *    réarme automatiquement à la prochaine chaîne.
+         * Mieux vaut un zap 500 ms plus lent qu'une app tuée par l'OS.
+         */
+        fun onMemoryPressure(critical: Boolean) {
+            for (v in instances) {
+                v.playerHandler.post {
+                    if (v.fsm == Fsm.RELEASED) return@post
+                    if (v.preview) {
+                        v.player.stop()
+                        v.recordEvent("trim_preview_stopped")
+                    } else if (critical) {
+                        v.player.setForegroundMode(false)
+                        v.foregroundReleased = true
+                        v.recordEvent("trim_codecs_released")
+                    }
+                }
+            }
+        }
     }
 
     private val surfaceView = SurfaceView(appContext)
@@ -171,6 +201,62 @@ class NativeVideoView(
     private var retryCount = 0
     private var pendingRetry: Runnable? = null
     private val maxSilentRetries = 3
+
+    // ==================================================================
+    //  FAILOVER MULTI-SOURCES (natif). Dart peut fournir, avec setUrl, une
+    //  liste d'URLs de REPLI du même contenu (autre variante, autre
+    //  serveur du panel). Quand le budget de reconnexion silencieuse de la
+    //  source courante est épuisé, on bascule SANS BRUIT sur la suivante
+    //  (l'utilisateur ne voit que « buffering ») ; l'erreur ne remonte à
+    //  Dart qu'après épuisement de TOUTES les sources. L'orchestration
+    //  reste côté Dart (c'est lui qui choisit et ordonne les sources) —
+    //  le natif ne fait qu'exécuter la cascade sans crasher.
+    // ==================================================================
+    private var sourceUrls: List<String> = emptyList()
+    private var sourceIndex = 0
+
+    // ==================================================================
+    //  MACHINE À ÉTATS (garde DÉFENSIVE native). L'orchestration vit côté
+    //  Dart ; ici on empêche seulement les commandes INCOHÉRENTES de
+    //  toucher le lecteur (play sans média, commande après release…).
+    //  Une violation n'est JAMAIS un crash : la commande est ignorée et
+    //  l'événement journalisé dans la télémétrie (ring buffer ci-dessous).
+    //  État confiné au thread PLAYER, comme tout l'état lecteur.
+    // ==================================================================
+    private enum class Fsm { IDLE, LOADING, BUFFERING, READY, ENDED, FAILED, RELEASED }
+    private var fsm = Fsm.IDLE
+
+    // ==================================================================
+    //  TÉLÉMÉTRIE SILENCIEUSE : compteurs + ring buffer local (borné, donc
+    //  impossible à faire déborder). AUCUN envoi réseau ici — la Boîte
+    //  noire Dart draine via « getStats » quand ELLE le décide (connexion
+    //  stable), pour ne jamais voler de la bande passante à la vidéo.
+    // ==================================================================
+    private val telemetryEvents = ArrayDeque<Map<String, Any>>()
+    private val telemetryMax = 100
+    private var totalDroppedFrames = 0L
+    private var totalAudioUnderruns = 0L
+    private var totalSilentRetries = 0L
+    private var totalFailovers = 0L
+    private var totalFsmViolations = 0L
+
+    /** Journalise un événement (thread PLAYER uniquement — comme le reste). */
+    private fun recordEvent(name: String, detail: String? = null) {
+        if (telemetryEvents.size >= telemetryMax) telemetryEvents.removeFirst()
+        telemetryEvents.addLast(
+            buildMap<String, Any> {
+                put("t", android.os.SystemClock.elapsedRealtime())
+                put("e", name)
+                if (detail != null) put("d", detail)
+            },
+        )
+    }
+
+    /** Commande refusée par la garde d'états : on journalise, on ne crashe pas. */
+    private fun fsmViolation(command: String) {
+        totalFsmViolations++
+        recordEvent("fsm_violation", "$command@${fsm.name}")
+    }
 
     // REPRISE RÉSEAU INSTANTANÉE (façon Netflix) : pendant qu'un retry
     // attend son back-off (jusqu'à 8 s), si Android annonce que le réseau
@@ -434,6 +520,36 @@ class NativeVideoView(
                 player.setVideoSurfaceView(surfaceView)
             }
             player.addListener(this)
+            // TÉLÉMÉTRIE SILENCIEUSE : frames perdues et underruns audio sont
+            // les DEUX signaux avancés d'une box qui souffre (GPU saturé,
+            // réseau limite) — on les compte AVANT que le client ne voie quoi
+            // que ce soit. Callbacks sur le looper du lecteur = même
+            // confinement que le reste de l'état (aucun verrou nécessaire).
+            player.addAnalyticsListener(object : AnalyticsListener {
+                override fun onDroppedVideoFrames(
+                    eventTime: AnalyticsListener.EventTime,
+                    droppedFrames: Int,
+                    elapsedMs: Long,
+                ) {
+                    totalDroppedFrames += droppedFrames
+                    // Seuls les paquets notables entrent au journal (le
+                    // compteur, lui, additionne tout) : le ring buffer reste
+                    // réservé aux événements exploitables.
+                    if (droppedFrames >= 30) {
+                        recordEvent("dropped_frames", droppedFrames.toString())
+                    }
+                }
+
+                override fun onAudioUnderrun(
+                    eventTime: AnalyticsListener.EventTime,
+                    bufferSize: Int,
+                    bufferSizeMs: Long,
+                    elapsedSinceLastFeedMs: Long,
+                ) {
+                    totalAudioUnderruns++
+                    recordEvent("audio_underrun", "${bufferSizeMs}ms")
+                }
+            })
             // Focus audio demandé UNIQUEMENT par un lecteur non-aperçu (voir
             // mediaAudioAttributes) ; setVolume le ré-aligne ensuite en multivue.
             player.setAudioAttributes(mediaAudioAttributes, !preview)
@@ -489,7 +605,13 @@ class NativeVideoView(
                 // Signature de lecteur CUSTOM (diagnostic multi-UA côté Dart,
                 // cf. currentUserAgent) — absente/vide = User-Agent par défaut.
                 val ua = call.argument<String>("userAgent")?.takeIf { it.isNotBlank() }
+                // Sources de REPLI optionnelles (failover natif silencieux).
+                // Absentes → comportement historique inchangé.
+                val fallbacks = call.argument<List<String>>("fallbackUrls")
+                    ?.filter { it.isNotBlank() && it != url }
+                    ?: emptyList()
                 playerHandler.post {
+                    if (fsm == Fsm.RELEASED) { fsmViolation("setUrl"); return@post }
                     cancelRetry()
                     // On ne remet le budget de reconnexion silencieuse à zéro QUE
                     // pour une VRAIE nouvelle chaîne (URL différente). Si Dart
@@ -497,15 +619,46 @@ class NativeVideoView(
                     // compteur → après maxSilentRetries on remonte enfin l'erreur à
                     // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
                     if (url != currentUrl) retryCount = 0
+                    sourceUrls = listOf(url) + fallbacks
+                    sourceIndex = 0
                     currentUrl = url
                     currentUserAgent = ua
+                    fsm = Fsm.LOADING
                     setMedia(url, ua)
                 }
                 result.success(null)
             }
             "play" -> {
-                playerHandler.post { player.play() }
+                playerHandler.post {
+                    // GARDE FSM : play() sans média chargé ou après release est
+                    // une commande zombie (écran quitté, course d'événements) —
+                    // on l'ignore proprement au lieu de réveiller un lecteur vide.
+                    if (fsm == Fsm.RELEASED || currentUrl == null) {
+                        fsmViolation("play")
+                    } else {
+                        player.play()
+                    }
+                }
                 result.success(null)
+            }
+            "getStats" -> {
+                // TÉLÉMÉTRIE : instantané des compteurs + drain du ring buffer
+                // (les événements lus sont consommés). Appelé par la Boîte
+                // noire Dart quand la connexion est stable — jamais en continu.
+                playerHandler.post {
+                    val snapshot = mapOf(
+                        "state" to fsm.name,
+                        "droppedFrames" to totalDroppedFrames,
+                        "audioUnderruns" to totalAudioUnderruns,
+                        "silentRetries" to totalSilentRetries,
+                        "failovers" to totalFailovers,
+                        "fsmViolations" to totalFsmViolations,
+                        "sourceIndex" to sourceIndex,
+                        "events" to telemetryEvents.toList(),
+                    )
+                    telemetryEvents.clear()
+                    handler.post { result.success(snapshot) }
+                }
             }
             "setVolume" -> {
                 // Multi-vue : on coupe le son des tuiles inactives (volume 0) et
@@ -530,7 +683,13 @@ class NativeVideoView(
                 // effet utile sur un direct non-seekable (ExoPlayer l'ignore).
                 val ms = (call.argument<Int>("ms") ?: 0).toLong()
                 val safe = ms.coerceAtLeast(0L)
-                playerHandler.post { player.seekTo(safe) }
+                playerHandler.post {
+                    if (fsm == Fsm.RELEASED || currentUrl == null) {
+                        fsmViolation("seekTo")
+                    } else {
+                        player.seekTo(safe)
+                    }
+                }
                 result.success(null)
             }
             "setAudioTrack" -> {
@@ -603,14 +762,19 @@ class NativeVideoView(
     // chaque envoi vers Dart repasse par le main (contrat MethodChannel).
     override fun onPlaybackStateChanged(playbackState: Int) {
         when (playbackState) {
-            Player.STATE_BUFFERING ->
+            Player.STATE_BUFFERING -> {
+                if (fsm != Fsm.RELEASED) fsm = Fsm.BUFFERING
                 handler.post { channel.invokeMethod("buffering", true) }
+            }
             Player.STATE_READY -> {
                 retryCount = 0 // lecture OK → on oublie les erreurs passées
+                if (fsm != Fsm.RELEASED) fsm = Fsm.READY
                 handler.post { channel.invokeMethod("buffering", false) }
             }
-            Player.STATE_ENDED ->
+            Player.STATE_ENDED -> {
+                if (fsm != Fsm.RELEASED) fsm = Fsm.ENDED
                 handler.post { channel.invokeMethod("ended", null) }
+            }
             Player.STATE_IDLE -> { /* après erreur : géré par onPlayerError */ }
         }
     }
@@ -704,14 +868,33 @@ class NativeVideoView(
             return
         }
         // RECONNEXION SILENCIEUSE : on ne montre PAS d'erreur au client tant
-        // qu'on n'a pas épuisé les essais. Back-off court (0,5 → 1 → 2 s) :
-        // un flux flaky repart vite, un flux mort passe vite la main à Dart
-        // (qui bascule sur la variante d'URL du même flux).
+        // qu'on n'a pas épuisé les essais. Back-off court (0,5 → 1 → 2 s)
+        // AVEC JITTER (±25 %) : sans lui, toutes les box qui perdent le même
+        // serveur au même instant re-frappent à la même milliseconde — le
+        // panel encaisse un pic synchronisé et retombe (thundering herd). Le
+        // jitter étale la reprise, le serveur respire, tout le monde repart.
         if (retryCount < maxSilentRetries) {
             retryCount++
+            totalSilentRetries++
+            recordEvent("retry", "${error.errorCodeName}#$retryCount")
             handler.post { channel.invokeMethod("buffering", true) }
-            val delay = (500L * (1 shl (retryCount - 1))).coerceAtMost(3_000L)
-            scheduleRetry(delay)
+            val base = (500L * (1 shl (retryCount - 1))).coerceAtMost(3_000L)
+            val jittered =
+                (base * (0.75 + kotlin.random.Random.nextDouble() * 0.5)).toLong()
+            scheduleRetry(jittered)
+        } else if (sourceIndex < sourceUrls.size - 1) {
+            // CASCADE DE SOURCES : le budget de la source courante est épuisé
+            // mais Dart nous a confié des replis → bascule IMMÉDIATE et
+            // silencieuse sur la suivante (l'utilisateur ne voit que
+            // « buffering »). Budget de retries remis à zéro pour la nouvelle
+            // source : chacune a droit à sa chance complète.
+            sourceIndex++
+            retryCount = 0
+            totalFailovers++
+            currentUrl = sourceUrls[sourceIndex]
+            recordEvent("failover", "source#$sourceIndex")
+            handler.post { channel.invokeMethod("buffering", true) }
+            scheduleRetry(0L)
         } else {
             // Trop d'échecs d'affilée → on laisse Dart faire un reset complet.
             // Diagnostic terrain : avant, seul `error.message` (souvent vague,
@@ -721,6 +904,8 @@ class NativeVideoView(
             // "ERROR_CODE_IO_BAD_HTTP_STATUS") + le message de la CAUSE racine
             // (souvent plus parlant que le message de façade) donnent au
             // sender de quoi journaliser un diagnostic exploitable à distance.
+            fsm = Fsm.FAILED
+            recordEvent("fatal", error.errorCodeName)
             handler.post {
                 channel.invokeMethod(
                     "error",
@@ -729,6 +914,10 @@ class NativeVideoView(
                         "errorCode" to error.errorCode,
                         "errorCodeName" to error.errorCodeName,
                         "causeMessage" to error.cause?.message,
+                        // Nombre de sources réellement essayées (cascade
+                        // native comprise) : Dart sait qu'il ne sert à rien
+                        // de re-proposer les mêmes.
+                        "sourcesTried" to (sourceIndex + 1),
                     ),
                 )
             }
@@ -777,8 +966,17 @@ class NativeVideoView(
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
     }
 
+    // Positionné par la pression mémoire (cf. companion onMemoryPressure) :
+    // les codecs « chauds » ont été rendus à l'OS ; le prochain setMedia les
+    // reprend (le confort de zap revient dès que la pression est retombée).
+    private var foregroundReleased = false
+
     /** Charge [url] avec la signature [userAgent] (`null` = défaut de l'init). */
     private fun setMedia(url: String, userAgent: String?) {
+        if (foregroundReleased) {
+            player.setForegroundMode(true)
+            foregroundReleased = false
+        }
         if (userAgent != null) {
             player.setMediaSource(
                 mediaSourceFactoryFor(userAgent).createMediaSource(buildMediaItem(url)),
@@ -845,6 +1043,7 @@ class NativeVideoView(
         // garantit en prime que le codec est rendu AVANT que le lecteur
         // suivant (aperçu d'accueil, zap) ne le réclame.
         playerHandler.post {
+            fsm = Fsm.RELEASED // toute commande ultérieure = violation ignorée
             cancelRetry()
             playerHandler.removeCallbacks(positionPump)
             player.removeListener(this)

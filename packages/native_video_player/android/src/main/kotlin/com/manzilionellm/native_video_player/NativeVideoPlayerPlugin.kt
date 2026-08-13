@@ -3,7 +3,9 @@ package com.manzilionellm.native_video_player
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Bundle
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -43,6 +45,29 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
         override fun onActivityDestroyed(a: Activity) {}
     }
 
+    // PRESSION MÉMOIRE : Android TV a peu de RAM et l'OS prévient AVANT de
+    // tuer (onTrimMemory). On relaie aux lecteurs pour une dégradation en
+    // douceur (aperçus stoppés ; codecs rendus en niveau critique) — voir
+    // NativeVideoView.onMemoryPressure. Enregistré sur le CONTEXTE
+    // APPLICATION (vivant tant que le process vit), détaché avec le moteur.
+    private val memoryCallbacks = object : ComponentCallbacks2 {
+        override fun onTrimMemory(level: Int) {
+            if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
+                NativeVideoView.onMemoryPressure(critical = true)
+            } else if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+                NativeVideoView.onMemoryPressure(critical = false)
+            }
+        }
+
+        @Deprecated("Callback système hérité — relayé vers onTrimMemory")
+        override fun onLowMemory() {
+            NativeVideoView.onMemoryPressure(critical = true)
+        }
+
+        override fun onConfigurationChanged(newConfig: Configuration) {}
+    }
+    private var memoryCallbacksContext: Context? = null
+
     private var infoChannel: MethodChannel? = null
 
     // Lecteurs en MODE TEXTURE vivants (créés par « createTexturePlayer »,
@@ -67,6 +92,8 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
         //    CETTE box (SharedPreferences natives, survit aux mises à jour).
         infoChannel = MethodChannel(binding.binaryMessenger, "native_video_player/info")
         val appContext = binding.applicationContext
+        appContext.registerComponentCallbacks(memoryCallbacks)
+        memoryCallbacksContext = appContext
         val messenger = binding.binaryMessenger
         val textureRegistry = binding.textureRegistry
         val prefs = appContext.getSharedPreferences("native_video_player", Context.MODE_PRIVATE)
@@ -124,6 +151,8 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        memoryCallbacksContext?.unregisterComponentCallbacks(memoryCallbacks)
+        memoryCallbacksContext = null
         infoChannel?.setMethodCallHandler(null)
         infoChannel = null
         // Les lecteurs TEXTURE n'ont pas de PlatformView pour les libérer :

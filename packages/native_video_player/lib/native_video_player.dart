@@ -125,11 +125,13 @@ class NativeVideoController extends ChangeNotifier {
   MethodChannel? _channel;
   String? _pendingUrl;
   String? _pendingUserAgent;
+  List<String>? _pendingFallbackUrls;
   // Dernière URL/signature demandées — REJOUÉES quand la vue se re-rattache
   // après une bascule de chemin de rendu (texture ⇄ surface) : la lecture
   // reprend seule sur le nouveau chemin, l'écran n'a rien à faire.
   String? _lastUrl;
   String? _lastUserAgent;
+  List<String>? _lastFallbackUrls;
   double _volume = 1.0; // multi-vue : 0 = muet (tuile inactive), 1 = son actif
   bool _attached = false;
   bool _disposed = false;
@@ -213,6 +215,8 @@ class NativeVideoController extends ChangeNotifier {
     ch.setMethodCallHandler(_onNativeCall);
     final String? url = _pendingUrl ?? _lastUrl ?? initialUrl;
     final String? ua = _pendingUrl != null ? _pendingUserAgent : _lastUserAgent;
+    final List<String>? fallbacks =
+        _pendingUrl != null ? _pendingFallbackUrls : _lastFallbackUrls;
     if (url != null) {
       // La signature (User-Agent) demandée AVANT le rattachement est rejouée
       // ici — sinon un setUrl(url, userAgent:…) émis pendant la création de la
@@ -221,6 +225,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setUrl', <String, dynamic>{
         'url': url,
         if (ua != null) 'userAgent': ua,
+        if (fallbacks != null && fallbacks.isNotEmpty) 'fallbackUrls': fallbacks,
       });
     }
     // Réapplique le volume voulu dès le rattachement (utile en multi-vue où une
@@ -326,7 +331,12 @@ class NativeVideoController extends ChangeNotifier {
   /// affichée (la SurfaceView native la conserve) au lieu de repasser par
   /// l'écran de marque plein écran. À utiliser pour les reconnexions et les
   /// bascules de variante d'URL sur la MÊME chaîne — jamais pour un zap.
-  void setUrl(String url, {String? userAgent, bool silent = false}) {
+  /// [fallbackUrls] : URLs de REPLI du même contenu (autre variante, autre
+  /// serveur). Le natif les essaie EN CASCADE, silencieusement, quand la
+  /// source courante a épuisé son budget de reconnexions — l'erreur ne
+  /// remonte ici qu'après épuisement de TOUTES les sources.
+  void setUrl(String url,
+      {String? userAgent, bool silent = false, List<String>? fallbackUrls}) {
     hasError = false;
     isEnded = false;
     isBuffering = true;
@@ -346,22 +356,39 @@ class NativeVideoController extends ChangeNotifier {
     // Mémorisées pour le re-rattachement après une bascule de chemin de rendu.
     _lastUrl = url;
     _lastUserAgent = userAgent;
+    _lastFallbackUrls = fallbackUrls;
     if (!_disposed) notifyListeners();
     if (_channel != null) {
       _channel!.invokeMethod<void>('setUrl', <String, dynamic>{
         'url': url,
         if (userAgent != null) 'userAgent': userAgent,
+        if (fallbackUrls != null && fallbackUrls.isNotEmpty)
+          'fallbackUrls': fallbackUrls,
       });
     } else {
       // Pas encore rattaché : on jouera ça (URL + signature) à l'attach.
       _pendingUrl = url;
       _pendingUserAgent = userAgent;
+      _pendingFallbackUrls = fallbackUrls;
     }
   }
 
   void play() => _channel?.invokeMethod<void>('play');
 
   void pause() => _channel?.invokeMethod<void>('pause');
+
+  /// TÉLÉMÉTRIE SILENCIEUSE : instantané des compteurs natifs (frames
+  /// perdues, underruns audio, reconnexions, bascules de source, violations
+  /// de la garde d'états) + drain du journal d'événements (les événements
+  /// lus sont consommés côté natif). À appeler par la Boîte noire quand la
+  /// connexion est stable — jamais en continu pendant la lecture.
+  Future<Map<String, dynamic>> getStats() async {
+    final MethodChannel? ch = _channel;
+    if (ch == null) return <String, dynamic>{};
+    final Object? raw = await ch.invokeMethod<Object?>('getStats');
+    if (raw is! Map) return <String, dynamic>{};
+    return raw.map((Object? k, Object? v) => MapEntry(k.toString(), v));
+  }
 
   /// Va à une position absolue (film / VOD / catch-up). Sans effet sur un
   /// direct non-seekable. On borne à [0, duration] pour ne jamais demander
