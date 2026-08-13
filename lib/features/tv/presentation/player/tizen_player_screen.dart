@@ -17,6 +17,7 @@
 //    Retour = quitter.
 // =========================================================
 import 'dart:async';
+import 'dart:math' show Random;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -63,6 +64,25 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
   Timer? _numTimer;
   Timer? _presenceTimer;
 
+  // =====================================================================
+  //  RECONNEXION AUTOMATIQUE (parité avec la « forteresse » Android TV).
+  //  Avant : la MOINDRE erreur AVPlay affichait l'écran « Réessayer » et
+  //  attendait que le CLIENT appuie sur OK. Désormais : jusqu'à 3 relances
+  //  SILENCIEUSES avec back-off + jitter (0,5 → 1 → 2 s ±25 %) — le client
+  //  ne voit que « chargement ». L'écran fatal (OK = réessayer) ne reste
+  //  que comme FILET après épuisement du budget. Le jitter évite que
+  //  toutes les TV Samsung qui perdent le même serveur re-frappent au
+  //  même instant (thundering herd).
+  //  + CHIEN DE GARDE : AVPlay peut rester « buffering » sans fin sans
+  //  jamais lever d'erreur (flux gelé) → 15 s de chargement continu sur
+  //  une ouverture = traité comme une erreur (relance silencieuse).
+  // =====================================================================
+  static const int _maxSilentRetries = 3;
+  int _silentRetries = 0;
+  Timer? _retryTimer;
+  Timer? _stuckTimer;
+  final Random _rng = Random();
+
   StreamSubscription<Set<String>>? _favSub;
   Set<String> _favIds = FavoritesRepository.instance.current;
   bool get _isFavorite => _favIds.contains(_current.id);
@@ -95,6 +115,9 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
   }
 
   Future<void> _open() async {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _stuckTimer?.cancel();
     if (mounted) {
       setState(() {
         _buffering = true;
@@ -115,9 +138,16 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
       if (!mounted) return;
       await c.play();
       setState(() => _buffering = false);
+      _silentRetries = 0; // lecture partie → budget de relance rechargé
     } catch (_) {
-      if (mounted) setState(() => _fatal = true);
+      _onPlaybackError();
+      return;
     }
+    // Chien de garde : toujours en chargement 15 s après l'ouverture
+    // (AVPlay gelé sans erreur) → relance silencieuse.
+    _stuckTimer = Timer(const Duration(seconds: 15), () {
+      if (mounted && _buffering && !_fatal) _onPlaybackError();
+    });
 
     RecentlyWatchedRepository.instance.record(_current.id);
     NowPlaying.instance.set(_current.cleanName);
@@ -131,17 +161,50 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
     final VideoPlayerValue v = c.value;
     final bool buffering = v.isBuffering || !v.isInitialized;
     if (buffering != _buffering) setState(() => _buffering = buffering);
-    if (v.hasError && !_fatal) setState(() => _fatal = true);
+    if (!buffering && !v.hasError) {
+      // Image à l'écran : le chien de garde n'a plus lieu d'être et le
+      // budget de relance se recharge (les erreurs passées sont pardonnées).
+      _stuckTimer?.cancel();
+      _silentRetries = 0;
+    }
+    // Une relance à la fois : si un back-off est déjà programmé
+    // (_retryTimer non nul), les hasError répétés du même incident
+    // n'empilent pas de relances.
+    if (v.hasError && !_fatal && _retryTimer == null) _onPlaybackError();
+  }
+
+  /// Erreur ou gel du lecteur : relance SILENCIEUSE avec back-off + jitter
+  /// tant qu'il reste du budget, sinon écran fatal (OK = réessayer).
+  void _onPlaybackError() {
+    if (!mounted || _fatal) return;
+    if (_silentRetries < _maxSilentRetries) {
+      _silentRetries++;
+      final int base = 500 * (1 << (_silentRetries - 1));
+      final int jittered = (base * (0.75 + _rng.nextDouble() * 0.5)).round();
+      setState(() {
+        _buffering = true;
+        _fatal = false;
+      });
+      _retryTimer?.cancel();
+      _retryTimer = Timer(Duration(milliseconds: jittered), () {
+        _retryTimer = null;
+        if (mounted) _open();
+      });
+    } else {
+      setState(() => _fatal = true);
+    }
   }
 
   void _zap(int delta) {
     final int n = widget.channels.length;
     if (n <= 1) return;
+    _silentRetries = 0; // nouvelle chaîne = budget de relance neuf
     setState(() => _index = (_index + delta) % n);
     _open();
   }
 
   void _retry() {
+    _silentRetries = 0; // relance MANUELLE : le client a droit à un cycle complet
     setState(() {
       _fatal = false;
       _buffering = true;
@@ -168,6 +231,7 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
       setState(() {});
       return;
     }
+    _silentRetries = 0; // nouvelle chaîne = budget de relance neuf
     setState(() => _index = (n - 1).clamp(0, widget.channels.length - 1));
     _open();
   }
@@ -247,6 +311,8 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
     _hideTimer?.cancel();
     _numTimer?.cancel();
     _presenceTimer?.cancel();
+    _retryTimer?.cancel();
+    _stuckTimer?.cancel();
     _favSub?.cancel();
     _controller?.removeListener(_onPlayer);
     _controller?.dispose();

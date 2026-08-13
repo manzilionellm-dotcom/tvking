@@ -50,6 +50,15 @@ app.7themotion.com réparé (routes /install /tv /win /samsung + 4 QR).
   réarme automatiquement au zap suivant. Mieux vaut un zap 500 ms plus
   lent qu'une app tuée par l'OS.
 
+### 5. Samsung TV (Tizen) : reconnexion automatique (parité forteresse)
+`tizen_player_screen.dart` : avant, la moindre erreur AVPlay affichait
+« Réessayer » et attendait le client. Désormais : 3 relances SILENCIEUSES
+avec back-off + jitter (0,5→1→2 s ±25 %), chien de garde 15 s contre les
+gels sans erreur (AVPlay bufférant à l'infini), budget rechargé au zap /
+à la lecture saine / au retry manuel. L'écran fatal reste le filet final.
+NB : fichier exclu de l'analyze CI (paquet video_player_avplay injecté
+par le workflow Tizen uniquement) → c'est le build Tizen qui compile-vérifie.
+
 ### Contrats préservés
 Threading (état lecteur = thread PLAYER, canal = main), double chemin de
 rendu + watchdog Dart, LoadControl par RAM, reprise réseau instantanée,
