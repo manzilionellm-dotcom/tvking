@@ -22,8 +22,11 @@ Toutes partagent le **même code Flutter, le même backend et le même panel**
 | Magasin | App | Statut |
 |---|---|---|
 | **Google Play** | Lecteur IPTV – 7 MOTION (téléphone) | Prod 1349 en ligne ; **ENVOI n°10 EN EXAMEN depuis le 14 août** (release 1402 + fiche complète + identifiants GPLAYREVIEW) — délai annoncé ≤ 7 j. ⚠️ Publication gérée ACTIVE : après approbation, il reste UN clic « Publier » manuel |
-| **Amazon Appstore** | 7 MOTION TV (Fire TV) | **SOUMISE le 14 août** (APK forteresse vc 1786621340, DRM Amazon refusé, 95 appareils Fire TV) — verdict estimé ~19 août |
-| **Samsung TV** | The Few (Tizen) | Sideload opérationnel ; soumission Seller Office préparée (prompt prêt) |
+| **Amazon Appstore** | 7 MOTION TV (Fire TV) | Refus du 14/08 (Firebase) CORRIGÉ → **RE-SOUMISE** avec APK propre vc 1786722199 |
+| **Microsoft Store** | 7 MOTION (Windows) | **SOUMISE le 14 août** — « In review », SLA 3 j ouvrés (compte Individual gratuit, éditeur « 7 MOTION ») |
+| **Google Play TV** | 7 MOTION TV (Android TV/Google TV) | Nouvelle fiche en cours — release TEST FERMÉ (règle 12 testeurs) avec AAB vc 1786723319 (sans updater, PLAY_BUILD) |
+| **LG Content Store** | The Few (webOS) | .ipk publié (webos-latest, com.sevenmotion.thefew) — soumission Seller Lounge : prompt prêt |
+| **Samsung TV** | The Few (Tizen) | **SOUMISE le 14 août** — Pre-Test Pass (label « The Few », ID com.sevenmotion.thefew), 44/44 groupes de modèles, « Submitted — 100% Rollout (scheduled) ». Vérification Samsung en cours (~1-2 sem.) |
 | **Apple App Store** | 7 MOTION (iPhone) | Playbook prêt, CI signé dormant — attend le compte Developer (99 $/an) |
 
 Notes Amazon : catégorie « Movies & TV » (taxonomie sans « Video Players ») ;
