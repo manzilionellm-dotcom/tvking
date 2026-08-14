@@ -21,7 +21,7 @@ Toutes partagent le **même code Flutter, le même backend et le même panel**
 
 | Magasin | App | Statut |
 |---|---|---|
-| **Google Play** | Lecteur IPTV – 7 MOTION (téléphone) | Prod 1349 en ligne ; **resoumission en cours** (AAB 1402 : accès examinateur GPLAYREVIEW, build sans prix) — cause du refus du 5 août corrigée |
+| **Google Play** | Lecteur IPTV – 7 MOTION (téléphone) | Prod 1349 en ligne ; **ENVOI n°10 EN EXAMEN depuis le 14 août** (release 1402 + fiche complète + identifiants GPLAYREVIEW) — délai annoncé ≤ 7 j. ⚠️ Publication gérée ACTIVE : après approbation, il reste UN clic « Publier » manuel |
 | **Amazon Appstore** | 7 MOTION TV (Fire TV) | **SOUMISE le 14 août** (APK forteresse vc 1786621340, DRM Amazon refusé, 95 appareils Fire TV) — verdict estimé ~19 août |
 | **Samsung TV** | The Few (Tizen) | Sideload opérationnel ; soumission Seller Office préparée (prompt prêt) |
 | **Apple App Store** | 7 MOTION (iPhone) | Playbook prêt, CI signé dormant — attend le compte Developer (99 $/an) |
