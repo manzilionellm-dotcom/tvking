@@ -119,6 +119,57 @@ class _SourceRow extends StatelessWidget {
     );
   }
 
+  /// RE-IMPORT du contenu de la source (photo client : il n'existait AUCUN
+  /// bouton TV qui re-télécharge vraiment le contenu — les « rafraîchir »
+  /// existants ne relisaient que la base locale). Ici : le MÊME
+  /// `refreshPlaylist()` que le veilleur automatique (remplace les chaînes
+  /// en base, l'UI se met à jour via le stream). Voile modal pendant le
+  /// travail (pas de double lancement), dialogue en cas d'échec.
+  Future<void> _refreshContent(BuildContext context) async {
+    if (playlist.id == null) return;
+    final NavigatorState nav = Navigator.of(context, rootNavigator: true);
+    // ignore: discarded_futures
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 46,
+          height: 46,
+          child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.gold),
+        ),
+      ),
+    );
+    String? error;
+    try {
+      await PlaylistRepository.instance.refreshPlaylist(playlist);
+    } catch (e) {
+      error = e.toString();
+    }
+    if (!context.mounted) return;
+    nav.pop(); // ferme le voile de progression
+    if (error != null) {
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext ctx) => AlertDialog(
+          backgroundColor: TvTokens.card,
+          title: Text(ctx.l10n.tvSourcesTitle,
+              style: TextStyle(color: TvTokens.text)),
+          content: Text(ctx.l10n.errorWithMessage(error!),
+              style: TextStyle(color: TvTokens.muted)),
+          actions: <Widget>[
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(ctx.l10n.buttonOk,
+                    style: TextStyle(color: TvTokens.gold))),
+          ],
+        ),
+      );
+    }
+    // Succès : rien à afficher — le compteur de chaînes de la rangée se met
+    // à jour tout seul via playlistsStream (preuve visible du re-import).
+  }
+
   Future<void> _delete(BuildContext context) async {
     final bool? ok = await showDialog<bool>(
       context: context,
@@ -216,6 +267,13 @@ class _SourceRow extends StatelessWidget {
                 label: context.l10n.tvSourceActivate,
                 onSelect: () =>
                     PlaylistRepository.instance.setActivePlaylist(playlist.id!)),
+            const SizedBox(width: 10),
+          ],
+          if (playlist.id != null) ...<Widget>[
+            _Pill(
+                icon: Icons.refresh_rounded,
+                label: context.l10n.navRefresh,
+                onSelect: () => _refreshContent(context)),
             const SizedBox(width: 10),
           ],
           _IconBtn(

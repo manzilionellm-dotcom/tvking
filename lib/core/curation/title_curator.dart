@@ -140,6 +140,11 @@ abstract final class TitleCurator {
     unicode: true,
   );
 
+  /// Balayage anti-tofu exposé aux AUTRES nettoyeurs (photo client : le
+  /// template d'accueil passe par `ChannelClassifier.prettifyCategory`,
+  /// pas par `curate()` — il doit purger les MÊMES plages).
+  static RegExp get unrenderable => _unrenderable;
+
   // -----------------------------------------------------------------
   //  Bandes de separateurs IPTV : ##, ##########, ____,
   //  ========, --------, ~~~~~~~ et derivees. Tres frequents

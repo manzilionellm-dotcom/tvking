@@ -21,6 +21,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/curation/title_curator.dart';
+
 /// Genre canonique d'une chaîne.
 enum ChannelGenre {
   sports('Sports', Icons.sports_soccer_rounded),
@@ -145,6 +147,11 @@ abstract final class ChannelClassifier {
   static String prettifyCategory(String raw) {
     String s = raw;
     s = s.replaceAll(_decorations, ' ');
+    // ANTI-TOFU (photo client) : mêmes plages Unicode larges que le
+    // curateur partagé — les pictogrammes du panel que la police des box
+    // ne sait pas dessiner (carrés rayés) sautent AUSSI sur les écrans
+    // qui passent par CE nettoyeur (template d'accueil, Channels…).
+    s = s.replaceAll(TitleCurator.unrenderable, ' ');
     s = s.replaceAll(_spaces, ' ');
     s = s.trim();
     if (s.isEmpty) return 'Autres';
