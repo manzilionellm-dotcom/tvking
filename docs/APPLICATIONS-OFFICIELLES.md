@@ -25,7 +25,7 @@ Toutes partagent le **même code Flutter, le même backend et le même panel**
 | **Amazon Appstore** | 7 MOTION TV (Fire TV) | Refus du 14/08 (Firebase) CORRIGÉ → **RE-SOUMISE** avec APK propre vc 1786722199 |
 | **Microsoft Store** | 7 MOTION (Windows) | **SOUMISE le 14 août** — « In review », SLA 3 j ouvrés (compte Individual gratuit, éditeur « 7 MOTION ») |
 | **Google Play TV** | 7 MOTION TV (Android TV/Google TV) | Nouvelle fiche en cours — release TEST FERMÉ (règle 12 testeurs) avec AAB vc 1786723319 (sans updater, PLAY_BUILD) |
-| **LG Content Store** | The Few (webOS) | .ipk publié (webos-latest, com.sevenmotion.thefew) — soumission Seller Lounge : prompt prêt |
+| **LG Content Store** | The Few (webOS) | Compte Seller configuré (7 Few, LLC), app créée (App ID com.sevenmotion.thefew validé, ID LG 1318975), visuels prêts aux dimensions officielles. Upload .ipk bloqué le 14/08 par une PANNE du scan antivirus LG (prouvée : fichier témoin 8 octets rejeté pareil) — retry automatique toutes les 30 min |
 | **Samsung TV** | The Few (Tizen) | **SOUMISE le 14 août** — Pre-Test Pass (label « The Few », ID com.sevenmotion.thefew), 44/44 groupes de modèles, « Submitted — 100% Rollout (scheduled) ». Vérification Samsung en cours (~1-2 sem.) |
 | **Apple App Store** | 7 MOTION (iPhone) | Playbook prêt, CI signé dormant — attend le compte Developer (99 $/an) |
 
