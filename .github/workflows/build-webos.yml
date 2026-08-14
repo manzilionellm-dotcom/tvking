@@ -1,0 +1,95 @@
+# ============================================================================
+#  build-webos.yml — Empaquette « The Few » pour LG TV (webOS) en .ipk
+#
+#  App WEB (tv-tizen-webos/shared — HTML/JS, lecteur <video> HTML5 natif LG),
+#  sœur de la version Samsung Tizen : même backend app.7themotion.com, même
+#  panel (activation MAC). Le .ipk n'est PAS signé par nous : LG signe à la
+#  soumission (LG Seller Lounge) — ares-package suffit.
+#
+#  Publication (opt-in publish=true, comme build-seventv) : release
+#  `webos-latest`, asset `thefew-webos.ipk` → lien public stable pour le
+#  Seller Lounge :
+#    https://github.com/<repo>/releases/download/webos-latest/thefew-webos.ipk
+# ============================================================================
+name: Build The Few (LG webOS)
+
+on:
+  push:
+    branches: ['main', 'claude/**', 'feature/**']
+    paths:
+      - 'tv-tizen-webos/**'
+      - '.github/workflows/build-webos.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publier la release webos-latest (lien Seller Lounge)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+permissions:
+  contents: write
+
+jobs:
+  build-webos:
+    name: Build The Few (.ipk)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install webOS CLI (ares-package)
+        run: npm install -g @webos-tools/cli
+
+      - name: Assemble build/webos (code partagé + manifeste + icônes)
+        run: bash tv-tizen-webos/build.sh
+
+      - name: Package .ipk
+        run: |
+          set -e
+          ares-package tv-tizen-webos/build/webos -o out
+          ls -la out/
+          IPK=$(ls out/*.ipk | head -1)
+          cp "$IPK" thefew-webos.ipk
+          echo "✓ $(du -h thefew-webos.ipk | cut -f1) — $(basename "$IPK")"
+
+      - name: Upload .ipk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: thefew-webos-ipk-${{ github.sha }}
+          path: thefew-webos.ipk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish "webos-latest" release (si demandé)
+        if: github.event.inputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          REPO="${{ github.repository }}"
+          TAG="webos-latest"
+          NOTES="The Few — LG TV (webOS), paquet .ipk pour le LG Seller Lounge.
+
+          App web (lecteur HTML5 natif LG), même backend et même panel que
+          les autres apps. LG signe le paquet à la soumission.
+
+          Commit : ${{ github.sha }} · Branche : ${{ github.ref_name }}"
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$REPO" --title "The Few — LG TV (dernier build)" --notes "$NOTES" --prerelease
+            gh release upload "$TAG" --repo "$REPO" --clobber thefew-webos.ipk
+          else
+            gh release create "$TAG" --repo "$REPO" \
+              --title "The Few — LG TV (dernier build)" \
+              --notes "$NOTES" --prerelease thefew-webos.ipk
+          fi
+          echo "✓ https://github.com/$REPO/releases/download/$TAG/thefew-webos.ipk"

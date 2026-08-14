@@ -1,10 +1,10 @@
 {
-  "id": "com.7themotion.defewtv",
+  "id": "com.sevenmotion.thefew",
   "version": "1.0.0",
-  "vendor": "7 MOTION",
+  "vendor": "7 Few, LLC",
   "type": "web",
   "main": "index.html",
-  "title": "DeFew TV",
+  "title": "The Few",
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
   "iconColor": "#CCB089",
