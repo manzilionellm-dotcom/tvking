@@ -22,6 +22,7 @@
 | Microsoft | Individual (gratuit), vérif identité en cours | selfie → soumission EXE (app.7themotion.com/win, /VERYSILENT /NORESTART) |
 | Samsung | Brouillon complet, ID 3202608047609 | Service Info (adresse LLC) → Request New Release. USA uniquement sans partenariat |
 | Apple | D-U-N-S en demande | Organization « 7 Few, LLC », 99 $/an, appel de vérif. Apple sur le +1 680… |
+| LG Content Store | .ipk publié (webos-latest, com.sevenmotion.thefew) | Seller Lounge : compte + soumission (prompt prêt) |
 
 ## Clés du royaume
 - Examinateur Google : GPLAYREVIEW / GPLAYREVIEW (démo embarquée)
