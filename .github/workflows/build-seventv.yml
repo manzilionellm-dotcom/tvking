@@ -207,6 +207,37 @@ jobs:
           sed -i -E 's/^([[:space:]]*screen_brightness_android:).*/\1 2.1.1/' pubspec.yaml
           grep -n "screen_brightness_android" pubspec.yaml
 
+      # EXCLURE FIREBASE DU BUILD TV. POURQUOI : Amazon a REFUSÉ l'app le
+      # 14/08/2026 (« content policy violation : ad network libraries …
+      # collect personally identifiable information ») — l'autopsie de l'APK
+      # montre que le coupable est Firebase Crashlytics (+ measurement
+      # connector + installations), qui collecte des identifiants d'appareil.
+      # La TV n'en a AUCUN besoin : Boîte noire maison + télémétrie native du
+      # lecteur (getStats) couvrent le diagnostic, SANS identifiants Google.
+      # Même recette que build-windows.yml : checkout CI uniquement (non
+      # commité → le téléphone garde Firebase intact).
+      - name: Exclure Firebase (motif du refus Amazon — inutile sur TV)
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          import re
+          f = "pubspec.yaml"
+          out = []
+          for line in open(f, encoding="utf-8").read().splitlines(keepends=True):
+              if re.match(r'\s*(firebase_core|firebase_crashlytics)\s*:', line):
+                  print("retiré:", line.strip())
+                  continue
+              out.append(line)
+          open(f, "w", encoding="utf-8").write("".join(out))
+          PYEOF
+          cat > lib/core/crash/crash_reporting_firebase.dart <<'DARTEOF'
+          // STUB CI TV — Firebase est exclu du build TV (cf. build-seventv.yml :
+          // motif du refus Amazon du 14/08/2026). Même signature que la version
+          // Android téléphone : ne fait RIEN (fail-open).
+          Future<bool> attachCrashlytics() async => false;
+          DARTEOF
+          echo "✓ Firebase retiré du build TV (pubspec + stub)."
+
       - name: Flutter pub get
         run: flutter pub get
 
