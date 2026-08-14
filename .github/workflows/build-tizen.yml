@@ -173,6 +173,15 @@ jobs:
           M=tizen/tizen-manifest.xml
           if [ -f "$M" ]; then
             sed -i 's/api-version="[0-9.]*"/api-version="6.0"/' "$M" || true
+            # IDENTITÉ DU STORE (Pre-Test Samsung du 14/08/2026, erreur
+            # Critical « App Title ») : le <label> du modèle flutter-tizen
+            # ne correspondait pas au titre « The Few » de la fiche Seller
+            # Office → soumission verrouillée. On force le label EXACT.
+            sed -i 's#<label>[^<]*</label>#<label>The Few</label>#g' "$M" || true
+            # ID DÉFINITIF : com.example.* serait FIGÉ À VIE à la première
+            # publication (et motif de rejet). On grave l'identité réelle,
+            # alignée sur la famille Android (com.sevenmotion.*).
+            sed -i 's#com\.example\.tv_king#com.sevenmotion.thefew#g' "$M" || true
             if ! grep -q 'tizen.org/privilege/internet' "$M"; then
               sed -i 's#</manifest>#  <privileges>\n    <privilege>http://tizen.org/privilege/internet</privilege>\n  </privileges>\n</manifest>#' "$M" || true
             fi
