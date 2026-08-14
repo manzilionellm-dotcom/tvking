@@ -1795,5 +1795,13 @@
   "tvTemplateModelA": "Layout A",
   "tvTemplateModelB": "Layout B",
   "tvTemplateModelC": "Layout C",
-  "tvTemplateModelD": "Layout D"
+  "tvTemplateModelD": "Layout D",
+  "tvNavSoundsLabel": "Navigation sounds",
+  "@tvNavSoundsLabel": {
+    "description": "Texte UI : tvNavSoundsLabel"
+  },
+  "tvNavSoundsHint": "A soft click for every remote-control move",
+  "@tvNavSoundsHint": {
+    "description": "Texte UI : tvNavSoundsHint"
+  }
 }

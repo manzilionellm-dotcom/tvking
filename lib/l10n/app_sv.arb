@@ -1789,5 +1789,13 @@
   "tvTemplateModelA": "Mall A",
   "tvTemplateModelB": "Mall B",
   "tvTemplateModelC": "Mall C",
-  "tvTemplateModelD": "Mall D"
+  "tvTemplateModelD": "Mall D",
+  "tvNavSoundsLabel": "Navigeringsljud",
+  "@tvNavSoundsLabel": {
+    "description": "Texte UI : tvNavSoundsLabel"
+  },
+  "tvNavSoundsHint": "Ett mjukt klick vid varje tryck på fjärrkontrollen",
+  "@tvNavSoundsHint": {
+    "description": "Texte UI : tvNavSoundsHint"
+  }
 }

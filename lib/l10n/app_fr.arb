@@ -4527,5 +4527,13 @@
   "tvTemplateModelD": "Modèle D",
   "@tvTemplateModelD": {
     "description": "Nom NEUTRE du template « Panneau chaînes » dans le sélecteur."
+  },
+  "tvNavSoundsLabel": "Sons de navigation",
+  "@tvNavSoundsLabel": {
+    "description": "Texte UI : tvNavSoundsLabel"
+  },
+  "tvNavSoundsHint": "Petit clic discret à chaque déplacement de la télécommande",
+  "@tvNavSoundsHint": {
+    "description": "Texte UI : tvNavSoundsHint"
   }
 }

@@ -1789,5 +1789,13 @@
   "tvTemplateModelA": "النموذج A",
   "tvTemplateModelB": "النموذج B",
   "tvTemplateModelC": "النموذج C",
-  "tvTemplateModelD": "النموذج D"
+  "tvTemplateModelD": "النموذج D",
+  "tvNavSoundsLabel": "أصوات التنقل",
+  "@tvNavSoundsLabel": {
+    "description": "Texte UI : tvNavSoundsLabel"
+  },
+  "tvNavSoundsHint": "نقرة خفيفة عند كل تنقل بجهاز التحكم",
+  "@tvNavSoundsHint": {
+    "description": "Texte UI : tvNavSoundsHint"
+  }
 }

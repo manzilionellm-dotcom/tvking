@@ -20,6 +20,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../data/display_settings.dart';
 import 'tv_dimens.dart';
 import 'tv_tokens.dart';
 
@@ -232,6 +233,12 @@ class _TvFocusableState extends State<TvFocusable> {
         canRequestFocus: widget.enabled,
         onKeyEvent: _onKey,
         onFocusChange: (bool f) {
+          // ANCRAGE SENSORIEL (spec « Pavlovian ») : clic système discret à
+          // chaque PRISE de focus — le son natif Android (déjà mixé bas par
+          // l'OS), zéro asset, zéro latence. Désactivable dans Affichage.
+          if (f && DisplaySettings.instance.navSounds) {
+            SystemSound.play(SystemSoundType.click);
+          }
           setState(() {
             _focused = f;
             if (!f) _pressed = false;

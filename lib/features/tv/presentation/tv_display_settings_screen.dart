@@ -90,6 +90,28 @@ class TvDisplaySettingsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 30),
 
+                // ----- Sons de navigation (clic D-pad) -----
+                _label(context.l10n.tvNavSoundsLabel),
+                const SizedBox(height: 4),
+                _hint(context.l10n.tvNavSoundsHint),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    _choice(
+                      label: context.l10n.tvEnabled,
+                      selected: d.navSounds,
+                      onSelect: () => d.setNavSounds(true),
+                    ),
+                    const SizedBox(width: 12),
+                    _choice(
+                      label: context.l10n.tvDisabled,
+                      selected: !d.navSounds,
+                      onSelect: () => d.setNavSounds(false),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 30),
+
                 // ----- Nuit Royale (confort nocturne) -----
                 _label(context.l10n.tvNightComfortTitle),
                 const SizedBox(height: 4),

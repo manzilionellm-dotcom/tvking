@@ -1789,5 +1789,13 @@
   "tvTemplateModelA": "Modelo A",
   "tvTemplateModelB": "Modelo B",
   "tvTemplateModelC": "Modelo C",
-  "tvTemplateModelD": "Modelo D"
+  "tvTemplateModelD": "Modelo D",
+  "tvNavSoundsLabel": "Sonidos de navegación",
+  "@tvNavSoundsLabel": {
+    "description": "Texte UI : tvNavSoundsLabel"
+  },
+  "tvNavSoundsHint": "Un clic suave en cada movimiento del mando",
+  "@tvNavSoundsHint": {
+    "description": "Texte UI : tvNavSoundsHint"
+  }
 }

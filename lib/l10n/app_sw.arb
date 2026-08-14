@@ -1789,5 +1789,13 @@
   "tvTemplateModelA": "Muundo A",
   "tvTemplateModelB": "Muundo B",
   "tvTemplateModelC": "Muundo C",
-  "tvTemplateModelD": "Muundo D"
+  "tvTemplateModelD": "Muundo D",
+  "tvNavSoundsLabel": "Sauti za urambazaji",
+  "@tvNavSoundsLabel": {
+    "description": "Texte UI : tvNavSoundsLabel"
+  },
+  "tvNavSoundsHint": "Mlio mdogo kwa kila hatua ya rimoti",
+  "@tvNavSoundsHint": {
+    "description": "Texte UI : tvNavSoundsHint"
+  }
 }

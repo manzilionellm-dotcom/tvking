@@ -39,14 +39,20 @@ class DisplaySettings extends ChangeNotifier {
   static const String _kOverscan = 'tv_overscan_pct';
   static const String _kBigText = 'tv_big_text';
   static const String _kNight = 'tv_night_comfort';
+  static const String _kNavSounds = 'tv_nav_sounds';
   static const int maxOverscan = 8;
 
   int _overscanPct = 0; // 0..8
   bool _bigText = false;
+  bool _navSounds = true; // clic discret à chaque cran de D-pad (défaut ON)
   NightComfortMode _night = NightComfortMode.auto;
 
   int get overscanPct => _overscanPct;
   bool get bigText => _bigText;
+
+  /// Sons de navigation (ancrage sensoriel) : petit clic système à chaque
+  /// déplacement du focus D-pad, comme Apple TV / TiviMate. Désactivable.
+  bool get navSounds => _navSounds;
 
   /// « NUIT ROYALE » — filtre de confort nocturne (voir NightComfortMode).
   NightComfortMode get nightComfort => _night;
@@ -61,6 +67,7 @@ class DisplaySettings extends ChangeNotifier {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     _overscanPct = (prefs.getInt(_kOverscan) ?? 0).clamp(0, maxOverscan);
     _bigText = prefs.getBool(_kBigText) ?? false;
+    _navSounds = prefs.getBool(_kNavSounds) ?? true;
     final int n = prefs.getInt(_kNight) ?? NightComfortMode.auto.index;
     _night = NightComfortMode
         .values[n.clamp(0, NightComfortMode.values.length - 1)];
@@ -79,6 +86,13 @@ class DisplaySettings extends ChangeNotifier {
     notifyListeners();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kOverscan, _overscanPct);
+  }
+
+  Future<void> setNavSounds(bool value) async {
+    _navSounds = value;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kNavSounds, value);
   }
 
   Future<void> setBigText(bool value) async {
