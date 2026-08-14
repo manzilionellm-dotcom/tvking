@@ -1803,5 +1803,18 @@
   "tvNavSoundsHint": "A soft click for every remote-control move",
   "@tvNavSoundsHint": {
     "description": "Texte UI : tvNavSoundsHint"
+  },
+  "tvExpiringSoon": "Leaving soon",
+  "@tvExpiringSoon": {
+    "description": "Texte UI : tvExpiringSoon"
+  },
+  "tvExpiresInH": "{hours}h left",
+  "@tvExpiresInH": {
+    "description": "Texte UI : tvExpiresInH",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
   }
 }

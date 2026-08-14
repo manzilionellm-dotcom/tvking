@@ -821,9 +821,29 @@ class XtreamClient {
   /// `get_series_info` peut peser 100 Ko-2 Mo (séries à centaines
   /// d'épisodes) — 10-100 ms de jsonDecode sur le main à l'ouverture
   /// d'une fiche.
+  /// EPG SERVEUR d'une chaîne (catch-up réel) : `get_simple_data_table`
+  /// renvoie les programmes PASSÉS encore présents dans l'archive du panel
+  /// (`has_archive == 1`) — la seule source de vérité pour « expire dans
+  /// X h », l'EPG LOCAL purgeant le passé après 1 h (anti-OOM). Réponse
+  /// bornée à UNE chaîne → petite, sans risque mémoire.
+  Future<List<Map<String, dynamic>>> fetchArchiveTable(String streamId) async {
+    if (streamId.isEmpty) return const <Map<String, dynamic>>[];
+    final Map<String, dynamic> raw = await _callApi(
+      action: 'get_simple_data_table',
+      streamId: streamId,
+    );
+    final dynamic listings = raw['epg_listings'];
+    if (listings is! List) return const <Map<String, dynamic>>[];
+    return listings.whereType<Map<String, dynamic>>().toList();
+  }
+
   Future<Map<String, dynamic>> _callApi(
-      {required String? action, String? seriesId, String? vodId}) async {
-    final Uri uri = _buildUri(action: action, seriesId: seriesId, vodId: vodId);
+      {required String? action,
+      String? seriesId,
+      String? vodId,
+      String? streamId}) async {
+    final Uri uri = _buildUri(
+        action: action, seriesId: seriesId, vodId: vodId, streamId: streamId);
     final Uint8List bodyBytes = await _getBodyBytes(uri);
     try {
       final dynamic decoded = await compute(

@@ -4535,5 +4535,18 @@
   "tvNavSoundsHint": "Petit clic discret à chaque déplacement de la télécommande",
   "@tvNavSoundsHint": {
     "description": "Texte UI : tvNavSoundsHint"
+  },
+  "tvExpiringSoon": "Bientôt expiré",
+  "@tvExpiringSoon": {
+    "description": "Texte UI : tvExpiringSoon"
+  },
+  "tvExpiresInH": "{hours} h restantes",
+  "@tvExpiresInH": {
+    "description": "Texte UI : tvExpiresInH",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
   }
 }

@@ -1797,5 +1797,18 @@
   "tvNavSoundsHint": "Et mykt klikk for hvert trykk på fjernkontrollen",
   "@tvNavSoundsHint": {
     "description": "Texte UI : tvNavSoundsHint"
+  },
+  "tvExpiringSoon": "Utløper snart",
+  "@tvExpiringSoon": {
+    "description": "Texte UI : tvExpiringSoon"
+  },
+  "tvExpiresInH": "{hours} t igjen",
+  "@tvExpiresInH": {
+    "description": "Texte UI : tvExpiresInH",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
   }
 }

@@ -1797,5 +1797,18 @@
   "tvNavSoundsHint": "Mlio mdogo kwa kila hatua ya rimoti",
   "@tvNavSoundsHint": {
     "description": "Texte UI : tvNavSoundsHint"
+  },
+  "tvExpiringSoon": "Inaisha hivi karibuni",
+  "@tvExpiringSoon": {
+    "description": "Texte UI : tvExpiringSoon"
+  },
+  "tvExpiresInH": "Zimebaki saa {hours}",
+  "@tvExpiresInH": {
+    "description": "Texte UI : tvExpiresInH",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
   }
 }

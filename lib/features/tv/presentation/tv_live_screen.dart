@@ -25,6 +25,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
+import '../../epg/data/expiring_catchup_service.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../security/data/parental_controls.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -35,6 +36,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import 'tv_add_source_screen.dart';
+import 'tv_channel_programs_screen.dart';
 import 'tv_components.dart';
 import 'tv_search_screen.dart';
 import 'tv_player_screen.dart';
@@ -122,6 +124,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // « Pour vous » : reco BORNÉE (top catégories préférées -> 1re page SQL de
   // chacune, hors déjà-vues). Jamais de scan complet -> anti-OOM.
   List<Channel> _forYouCh = const <Channel>[];
+  // « Bientôt expiré » (Vague 2) : programmes catch-up qui SORTENT VRAIMENT
+  // de l'archive du panel sous 48 h — urgence réelle, jamais fabriquée.
+  List<ExpiringCatchupItem> _expiring = const <ExpiringCatchupItem>[];
 
   /// Pseudo-catégories (sentinelles internes, pas de vraies catégories de la
   /// source). Résolues par ID (listes BORNÉES) → aucun scan complet de la base.
@@ -275,6 +280,18 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     await _resolveDerivedRails();
     await _computeForYou();
     await _loadCatalog();
+    // « Bientôt expiré » : en ARRIÈRE-PLAN (réseau, 4 requêtes max, cache
+    // 30 min dans le service) — ne retarde jamais l'affichage du catalogue.
+    unawaited(_loadExpiring());
+  }
+
+  Future<void> _loadExpiring() async {
+    final List<ExpiringCatchupItem> items = await ExpiringCatchupService
+        .instance
+        .load(<Channel>[..._recentCh, ..._favCh]);
+    if (!mounted) return;
+    if (items.length == _expiring.length && items.isEmpty) return;
+    setState(() => _expiring = items);
   }
 
   /// Calcule « Pour vous » de façon BORNÉE (anti-OOM) : on déduit les catégories
@@ -1027,6 +1044,20 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                     restoreFocusId:
                         _restoreFromRail ? _restoreFocusId : null,
                     onRestored: () => _restoreFocusId = null,
+                  ),
+                  // « BIENTÔT EXPIRÉ » (Vague 2) : urgence RÉELLE — ces
+                  // programmes sortent de l'archive catch-up du panel sous
+                  // 48 h. Repli total quand il n'y a rien (aucun trou).
+                  _ExpiringRail(
+                    items: _expiring,
+                    onOpen: (ExpiringCatchupItem it) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              TvChannelProgramsScreen(channel: it.channel),
+                        ),
+                      );
+                    },
                   ),
                   Expanded(child: grid),
                 ],
@@ -2381,6 +2412,118 @@ class _ExpiryBanner extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Rangée « Bientôt expiré » (Vague 2) : programmes catch-up dont l'archive
+/// du panel expire RÉELLEMENT sous 48 h. Même gabarit compact « ligne » que
+/// Reprendre / Pour vous (hiérarchie : les grandes tuiles restent à la
+/// section principale). Repli total quand il n'y a rien. OK → guide de la
+/// chaîne (l'écran catch-up existant), pas de nouvelle plomberie de lecture.
+class _ExpiringRail extends StatelessWidget {
+  const _ExpiringRail({required this.items, required this.onOpen});
+
+  final List<ExpiringCatchupItem> items;
+  final void Function(ExpiringCatchupItem) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+          child: Text(context.l10n.tvExpiringSoon.toUpperCase(),
+              style: TvTokens.ui(13,
+                  weight: FontWeight.w800,
+                  color: TvTokens.mutedDim,
+                  spacing: 2)),
+        ),
+        SizedBox(
+          height: 74,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.zero,
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 14),
+            itemBuilder: (BuildContext context, int i) => _ExpiringCard(
+              item: items[i],
+              onSelect: () => onOpen(items[i]),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
+    );
+  }
+}
+
+class _ExpiringCard extends StatelessWidget {
+  const _ExpiringCard({required this.item, required this.onSelect});
+
+  final ExpiringCatchupItem item;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    // Compte à rebours RÉEL, plancher à 1 h pour l'affichage.
+    final int hours = item.remaining.inHours < 1 ? 1 : item.remaining.inHours;
+    return SizedBox(
+      width: 260,
+      child: TvFocusable(
+        scale: TvFocusScale.small,
+        baseColor: TvTokens.card,
+        onSelect: onSelect,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            children: <Widget>[
+              _LogoChip(channel: item.channel, size: 34),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 14,
+                          height: 1.15,
+                          fontWeight: FontWeight.w600,
+                          color: TvTokens.text),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: <Widget>[
+                        Icon(Icons.hourglass_bottom_rounded,
+                            size: 12, color: TvTokens.goldBright),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            context.l10n.tvExpiresInH(hours),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: TvTokens.goldBright),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
