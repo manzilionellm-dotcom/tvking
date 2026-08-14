@@ -524,6 +524,37 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      # AAB GOOGLE PLAY TV (Android TV / Google TV) — distribution STORE de
+      # la même app. Deux différences OBLIGATOIRES vs l'APK sideload :
+      #  1) permission REQUEST_INSTALL_PACKAGES RETIRÉE (interdite sur Play —
+      #     elle ne sert qu'à l'updater sideload) ;
+      #  2) --dart-define=PLAY_BUILD=true → kIsPlayBuild : l'updater in-app
+      #     est neutralisé (« les MAJ viennent du Store »).
+      # Même identité (com.sevenmotion.tv.seven_tv), même versionCode epoch.
+      - name: Build AAB Google Play TV (sans updater sideload)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i '/REQUEST_INSTALL_PACKAGES/d' "$MANIFEST"
+          grep -c 'REQUEST_INSTALL_PACKAGES' "$MANIFEST" && exit 1 || echo "✓ permission retirée"
+          flutter build appbundle --release --no-tree-shake-icons \
+            --target-platform android-arm,android-arm64 \
+            --build-number="$SEVENTV_BUILD_NUMBER" \
+            --obfuscate --split-debug-info=build/symbols-aab \
+            --dart-define=GIT_SHA=${{ github.sha }} \
+            --dart-define=PLAY_BUILD=true \
+            --target=lib/main_tv.dart
+          cp build/app/outputs/bundle/release/app-release.aab seven-tv-play.aab
+          ls -lah seven-tv-play.aab
+
+      - name: Upload AAB artifact (Google Play TV)
+        uses: actions/upload-artifact@v4
+        with:
+          name: seven-tv-play-aab-${{ github.sha }}
+          path: seven-tv-play.aab
+          retention-days: 30
+          if-no-files-found: error
+
       # PUBLICATION (OPT-IN uniquement, dispatch avec publish=true) :
       # release `seventv-latest` + version.json → lien /7tv du Worker et
       # updater in-app des builds NEUFS. Garde anti-retour-arrière incluse.
@@ -572,4 +603,7 @@ jobs:
           }
           JSON
           gh release upload "$TAG" --repo "$REPO" --clobber version.json
+          # AAB Google Play TV : lien public propre pour l'upload Play Console
+          # (invisible pour l'updater in-app, qui ne lit que version.json).
+          gh release upload "$TAG" --repo "$REPO" --clobber seven-tv-play.aab
           gh release view "$TAG" --repo "$REPO"
