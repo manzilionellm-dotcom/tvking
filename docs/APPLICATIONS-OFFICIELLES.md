@@ -17,6 +17,19 @@
 Toutes partagent le **même code Flutter, le même backend et le même panel**
 (branche de référence : `claude/7motion-android-tv-compat-e0rtyp`).
 
+## État des magasins (mis à jour 2026-08-14)
+
+| Magasin | App | Statut |
+|---|---|---|
+| **Google Play** | Lecteur IPTV – 7 MOTION (téléphone) | Prod 1349 en ligne ; **resoumission en cours** (AAB 1402 : accès examinateur GPLAYREVIEW, build sans prix) — cause du refus du 5 août corrigée |
+| **Amazon Appstore** | 7 MOTION TV (Fire TV) | **SOUMISE le 14 août** (APK forteresse vc 1786621340, DRM Amazon refusé, 95 appareils Fire TV) — verdict estimé ~19 août |
+| **Samsung TV** | The Few (Tizen) | Sideload opérationnel ; soumission Seller Office préparée (prompt prêt) |
+| **Apple App Store** | 7 MOTION (iPhone) | Playbook prêt, CI signé dormant — attend le compte Developer (99 $/an) |
+
+Notes Amazon : catégorie « Movies & TV » (taxonomie sans « Video Players ») ;
+Amazon re-signe les APK à la livraison (comportement standard) ; assets
+provisoires à rebrander un jour : icône Fire TV 1280×720 + fond 1920×1080.
+
 ## Signatures
 
 - **Android (téléphone + TV)** : clé maîtresse release (« The Few », RSA 2048,
