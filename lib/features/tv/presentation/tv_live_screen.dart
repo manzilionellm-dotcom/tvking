@@ -1566,7 +1566,9 @@ class _ResumeRail extends StatelessWidget {
                   spacing: 2)),
         ),
         SizedBox(
-          height: 150,
+          // COMPACT (demande du propriétaire) : rangées fines « lignes » —
+          // les grandes tuiles restent réservées à la section principale.
+          height: 74,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: EdgeInsets.zero,
@@ -1624,7 +1626,9 @@ class _ForYouRail extends StatelessWidget {
                   spacing: 2)),
         ),
         SizedBox(
-          height: 150,
+          // COMPACT (demande du propriétaire) : rangées fines « lignes » —
+          // les grandes tuiles restent réservées à la section principale.
+          height: 74,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: EdgeInsets.zero,
@@ -1635,6 +1639,8 @@ class _ForYouRail extends StatelessWidget {
               onPlay: () => onPlay(i),
               restoreFocusId: restoreFocusId,
               onRestored: onRestored,
+              // « PÉPITE » (Vague 2) : la 1re carte = plus haute affinité.
+              highlight: i == 0,
             ),
           ),
         ),
@@ -1653,11 +1659,16 @@ class _ResumeCard extends StatefulWidget {
     required this.onPlay,
     this.restoreFocusId,
     this.onRestored,
+    this.highlight = false,
   });
   final Channel channel;
   final VoidCallback onPlay;
   final String? restoreFocusId;
   final VoidCallback? onRestored;
+
+  /// « Pépite » (Vague 2) : halo doré + étincelle sur LA carte de plus haute
+  /// affinité réelle (jamais aléatoire) — 1re carte de « Pour vous ».
+  final bool highlight;
 
   @override
   State<_ResumeCard> createState() => _ResumeCardState();
@@ -1690,30 +1701,33 @@ class _ResumeCardState extends State<_ResumeCard> {
         }
       });
     }
-    return SizedBox(
-      width: 230,
+    // COMPACT « ligne » (demande du propriétaire) : les rangées Reprendre /
+    // Pour vous doivent rester DISCRÈTES — les grandes tuiles sont réservées
+    // à la section principale (hiérarchie visuelle professionnelle).
+    final Widget card = SizedBox(
+      width: 190,
       child: TvFocusable(
         focusNode: _node,
         scale: TvFocusScale.small,
         baseColor: TvTokens.card,
         onSelect: widget.onPlay,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Row(
                 children: <Widget>[
-                  _LogoChip(channel: c, size: 56),
-                  const SizedBox(width: 12),
+                  _LogoChip(channel: c, size: 34),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       _tvPretty(c.cleanName),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 14,
                           height: 1.15,
                           fontWeight: FontWeight.w600,
                           color: TvTokens.text),
@@ -1721,7 +1735,7 @@ class _ResumeCardState extends State<_ResumeCard> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
               // Barre de progression OR de l'émission en cours (§5.4). Si pas
               // d'EPG → barre absente (pas de barre grise plate).
               FutureBuilder<EpgProgram?>(
@@ -1753,6 +1767,34 @@ class _ResumeCardState extends State<_ResumeCard> {
           ),
         ),
       ),
+    );
+    if (!widget.highlight) return card;
+    // « PÉPITE » : halo doré discret + étincelle Material (icône de police
+    // embarquée → jamais de tofu). Mise en avant RÉELLE : cette carte est la
+    // plus haute affinité de l'historique, pas un tirage au sort.
+    return Stack(
+      clipBehavior: Clip.none,
+      children: <Widget>[
+        DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: TvTokens.gold.withValues(alpha: 0.30),
+                blurRadius: 22,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: card,
+        ),
+        Positioned(
+          top: 5,
+          right: 5,
+          child: Icon(Icons.auto_awesome_rounded,
+              size: 13, color: TvTokens.goldBright),
+        ),
+      ],
     );
   }
 }
