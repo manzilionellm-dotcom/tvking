@@ -57,6 +57,36 @@ Branche : `claude/7motion-android-tv-compat-e0rtyp`.
 - REFUSÉ (décision ferme, motifs magasins) : piège de sortie, faux
   compteurs, fausse progression qui expire.
 
+### 1-ter. Anti-tofu v2 (LISTE BLANCHE) puis v3 (translittération)
+- v2 : la liste noire de plages était un jeu perdu (photo client : des
+  carrés survivaient) → inversion en LISTE BLANCHE (`_unrenderable` ne
+  garde que \p{L}\p{M}\p{N}, espaces, ponctuation usuelle) + purge des
+  marques invisibles (FE00-FE0F…). Partagé aux DEUX nettoyeurs via
+  `TitleCurator.stripUnrenderable()`.
+- v3 : les alphabets mathématiques (𝐇𝐃, 𝐋𝐢𝐠𝐮𝐞𝟏) et formes pleine chasse
+  (ＴＦ１) sont des LETTRES Unicode → passaient la liste blanche mais tofu
+  sur box. `_foldExotic` les TRANSLITTÈRE en ASCII (𝐇𝐃 → HD) avant le
+  balayage. Arithmétique validée sur moteur ECMAScript.
+
+### 1-quater. Vague 2 (rétention honnête) + design
+- Rangées Reprendre / Pour vous COMPACTES (190×74, « lignes ») — demande
+  du propriétaire : les grandes tuiles restent à la section principale.
+- « Pépite » : halo doré + Icons.auto_awesome sur la 1re carte Pour vous
+  (plus haute affinité réelle, jamais aléatoire).
+- « Bientôt expiré » : `ExpiringCatchupService` (get_simple_data_table
+  serveur — l'EPG local purge le passé après 1 h), expiry réel =
+  start + catchupDays, fenêtre 48 h, 4 chaînes max/12 items/cache 30 min,
+  OK → guide catch-up de la chaîne. `XtreamClient.fetchArchiveTable()`.
+- Sons de navigation D-pad (SystemSound.click) — réglage Affichage,
+  défaut ON, 8 langues.
+- TMDb : route Worker `/api/tmdb/movie` (clé en SECRET Worker
+  `TMDB_API_KEY`, cache 24 h) + `TmdbMetaService` Dart en COMPLÉMENT de
+  get_vod_info (ne comble que les trous). Fiche films branchée. INERTE
+  tant que la clé n'est pas posée (le propriétaire doit créer la clé
+  gratuite sur themoviedb.org).
+- REFUSÉ définitivement (comptes magasins en jeu) : piège de sortie,
+  faux compteurs, fausse progression qui expire.
+
 ### 2. Auto-resync du contenu panel (≈ 1 min, zéro action client)
 - Cause : « j'ai retiré tous les pays au panel, la Belgique est toujours
   là ». `RemoteSourceRepository.sync()` (5 min) n'AJOUTE que les sources
