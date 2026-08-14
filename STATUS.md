@@ -37,6 +37,26 @@ Branche : `claude/7motion-android-tv-compat-e0rtyp`.
 - Règles gravées MAINTENUES malgré la spec : bg #08080A (jamais #000,
   anti-banding OLED), focus 150 ms / scale ≤1.06-1.08 (au-delà : mou/cheap).
 
+### 1-ter. Vague 2 « engagement honnête » (même soirée)
+- Anti-tofu v2 : LISTE BLANCHE (\p{L}\p{M}\p{N} + ponctuation usuelle) —
+  la liste noire de plages était un jeu perdu (panel imprévisible). Partagé
+  via `TitleCurator.stripUnrenderable()` + purge des marques invisibles.
+- Sons de navigation D-pad (SystemSound.click, réglage Affichage, défaut ON).
+- Hiérarchie visuelle : rangées Reprendre/Pour vous COMPACTES (190×74,
+  « lignes ») — grandes tuiles réservées à la section principale (demande
+  du propriétaire). « Pépite » : halo or + Icons.auto_awesome sur la 1re
+  carte Pour vous (plus haute affinité réelle).
+- « Bientôt expiré » : rangée catch-up à URGENCE RÉELLE (expire < 48 h),
+  via `XtreamClient.fetchArchiveTable` (get_simple_data_table serveur —
+  l'EPG local purge le passé après 1 h). Bornée 4 chaînes/12 items/cache
+  30 min, appels player_api seulement. `ExpiringCatchupService`.
+- TMDb (fiche film) : route Worker `GET /api/tmdb/movie` (clé en SECRET
+  Worker `TMDB_API_KEY` — wrangler secret put — PAS posée par défaut),
+  `TmdbMetaService` Dart, enrichissement en COMPLÉMENT seulement (ne
+  remplace jamais une donnée du panel ; sans clé → aucun changement).
+- REFUSÉ (décision ferme, motifs magasins) : piège de sortie, faux
+  compteurs, fausse progression qui expire.
+
 ### 2. Auto-resync du contenu panel (≈ 1 min, zéro action client)
 - Cause : « j'ai retiré tous les pays au panel, la Belgique est toujours
   là ». `RemoteSourceRepository.sync()` (5 min) n'AJOUTE que les sources

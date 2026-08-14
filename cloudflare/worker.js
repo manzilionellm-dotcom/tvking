@@ -723,6 +723,70 @@ async function handleSportsTeam(id) {
   return json(data);
 }
 
+// =========================================================
+//  TMDb (métadonnées films — Vague 2.3) — proxy + cache 24 h.
+//  La clé API vit dans le SECRET Worker `TMDB_API_KEY`
+//  (`wrangler secret put TMDB_API_KEY`) — JAMAIS dans l'app.
+//  Sans clé : { found:false } → l'app n'affiche simplement rien.
+// =========================================================
+const _tmdbCache = {}; // clé → { at, data } (mémoire d'isolate, best-effort)
+
+// GET /api/tmdb/movie?q=<titre>&year=&lang=fr-FR
+async function handleTmdbMovie(env, url) {
+  const q = (url.searchParams.get('q') || '').trim();
+  const year = (url.searchParams.get('year') || '').trim();
+  const lang = (url.searchParams.get('lang') || 'fr-FR').trim();
+  if (!env.TMDB_API_KEY || q.length < 2) return json({ found: false });
+  const key = `${lang}|${year}|${q.toLowerCase()}`;
+  const now = Date.now();
+  const c = _tmdbCache[key];
+  if (c && now - c.at < 86400000) return json(c.data);
+  try {
+    const su = new URL('https://api.themoviedb.org/3/search/movie');
+    su.searchParams.set('api_key', env.TMDB_API_KEY);
+    su.searchParams.set('query', q);
+    su.searchParams.set('language', lang);
+    if (year) su.searchParams.set('year', year);
+    const sr = await fetch(su.toString());
+    const sj = await sr.json().catch(() => ({}));
+    const hit = ((sj && sj.results) || [])[0];
+    if (!hit) {
+      const data = { found: false };
+      _tmdbCache[key] = { at: now, data };
+      return json(data);
+    }
+    const du = new URL(`https://api.themoviedb.org/3/movie/${hit.id}`);
+    du.searchParams.set('api_key', env.TMDB_API_KEY);
+    du.searchParams.set('language', lang);
+    du.searchParams.set('append_to_response', 'credits');
+    const dr = await fetch(du.toString());
+    const dj = await dr.json().catch(() => ({}));
+    const cast = (((dj && dj.credits) || {}).cast || [])
+      .slice(0, 5)
+      .map((p) => p.name);
+    const data = {
+      found: true,
+      title: dj.title || hit.title || q,
+      year: (dj.release_date || hit.release_date || '').slice(0, 4),
+      rating: typeof dj.vote_average === 'number'
+        ? Math.round(dj.vote_average * 10) / 10 : null,
+      votes: dj.vote_count || 0,
+      runtimeMin: dj.runtime || null,
+      overview: dj.overview || hit.overview || '',
+      posterUrl: dj.poster_path
+        ? `https://image.tmdb.org/t/p/w342${dj.poster_path}` : '',
+      backdropUrl: dj.backdrop_path
+        ? `https://image.tmdb.org/t/p/w780${dj.backdrop_path}` : '',
+      genres: (dj.genres || []).map((g) => g.name).slice(0, 3),
+      cast,
+    };
+    _tmdbCache[key] = { at: now, data };
+    return json(data);
+  } catch (_) {
+    return json({ found: false });
+  }
+}
+
 // Enregistre AUTOMATIQUEMENT une MAC dans la base au 1er heartbeat :
 // cree un client "auto" + le device (l'essai 7 j demarre a first_seen_at).
 // Ainsi TOUTE app installee apparait dans ton panel, sans rien faire.
@@ -6332,6 +6396,13 @@ async function handleRequest(request, env, ctx) {
         segments[2] === 'team' && segments.length === 4) {
       if (request.method !== 'GET') return badRequest('only GET');
       return await handleSportsTeam(segments[3]);
+    }
+
+    // /api/tmdb/movie?q=&year=&lang= — public (proxy TMDb, clé en secret Worker)
+    if (segments[0] === 'api' && segments[1] === 'tmdb' &&
+        segments[2] === 'movie' && segments.length === 3) {
+      if (request.method !== 'GET') return badRequest('only GET');
+      return await handleTmdbMovie(env, url);
     }
 
     // /api/m3u/:token — public. Lien M3U distribuable d'une FAMILLE : on

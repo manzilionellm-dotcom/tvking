@@ -31,6 +31,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/i18n/l10n_now.dart';
+import '../../vod/data/tmdb_meta_service.dart';
 import '../../channels/domain/channel.dart';
 import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/recent_vod_repository.dart';
@@ -94,10 +96,44 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
         _info = info;
         _loadingInfo = false;
       });
+      // Vague 2.3 — enrichissement TMDb en COMPLÉMENT : uniquement si le
+      // panel a laissé des trous (synopsis/casting/note absents). Ne
+      // remplace JAMAIS une donnée du panel. Sans clé TMDb sur le Worker,
+      // le service répond null → rien ne change.
+      _maybeEnrichFromTmdb(info);
     });
     // Rail « Similaires » : films de la même catégorie, depuis le CACHE du
     // catalogue (fetchMovies répond de mémoire — l'accueil vient d'y passer).
     _loadSimilar();
+  }
+
+  Future<void> _maybeEnrichFromTmdb(VodInfo? info) async {
+    final bool needsPlot = (info?.plot ?? '').trim().isEmpty;
+    final bool needsCast = (info?.cast ?? '').trim().isEmpty;
+    final bool needsRating = (info?.rating ?? '').trim().isEmpty ||
+        (info?.rating ?? '').trim() == '0';
+    if (!needsPlot && !needsCast && !needsRating) return;
+    final String title = VodTitles.clean(widget.movie.name);
+    final TmdbMeta? meta = await TmdbMetaService.instance
+        .fetchMovie(title, year: info?.year, lang: l10nNow.localeName);
+    if (!mounted || meta == null) return;
+    setState(() {
+      _info = VodInfo(
+        plot: needsPlot ? meta.overview : info?.plot,
+        cast: needsCast ? meta.cast : info?.cast,
+        director: info?.director,
+        genre: (info?.genre ?? '').trim().isEmpty ? meta.genres : info?.genre,
+        releaseDate: info?.releaseDate ?? meta.year,
+        durationSecs: info?.durationSecs ??
+            (meta.runtimeMin != null ? meta.runtimeMin! * 60 : null),
+        backdropUrl: (info?.backdropUrl ?? '').trim().isEmpty
+            ? meta.backdropUrl
+            : info?.backdropUrl,
+        tmdbId: info?.tmdbId,
+        youtubeTrailer: info?.youtubeTrailer,
+        rating: needsRating ? meta.rating : info?.rating,
+      );
+    });
   }
 
   Future<void> _loadSimilar() async {
