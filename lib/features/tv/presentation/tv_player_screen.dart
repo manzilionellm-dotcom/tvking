@@ -2100,26 +2100,13 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                   // côté Flutter suffit — zéro rebuild du player, pas
                   // d'écran noir au changement de mode.
                   _buildVideoSurface(),
-                  // Écran de marque pendant l'ouverture / le zap / une reconnexion.
-                  if (_buffering && !_fatal)
-                    const ColoredBox(
-                      color: TvTokens.bg,
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            TvLogo(width: 200),
-                            SizedBox(height: 28),
-                            SizedBox(
-                              width: 40,
-                              height: 40,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 3, color: TvTokens.gold),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                  // VOILE DE DISSIMULATION pendant l'ouverture / le zap / une
+                  // reconnexion (spec « zéro frustration ») : JAMAIS de
+                  // spinner. La dernière image reste figée sous un voile noir
+                  // quasi opaque et le logo de la chaîne VISÉE « respire »
+                  // lentement — l'habillage change tout de suite, le réseau
+                  // suit (cf. _kZapSettle).
+                  if (_buffering && !_fatal) _BufferVeil(channel: _current),
                   // « TU REGARDES ENCORE ? » : lecture en pause après une longue
                   // inactivité — n'importe quelle touche reprend. Économise la
                   // bande passante quand la TV reste allumée sans personne.
@@ -3453,4 +3440,105 @@ class _DisplayRow {
   const _DisplayRow.entry(this.entry) : section = null;
   final _SheetKind? section;
   final _TrackSheetEntry? entry;
+}
+
+// ============================================================================
+//  _BufferVeil — dissimulation « hypnotique » du buffering.
+//
+//  Règle : JAMAIS de spinner dans le lecteur. Pendant un zap ou une
+//  (re)connexion, la dernière image du flux reste FIGÉE sous un voile noir
+//  profond (~90-97 %, vignette radiale) et le logo de la chaîne visée
+//  « respire » lentement (opacité 0.45→1 + micro-scale 0.97→1.03, cycle
+//  2,4 s). L'œil comprend « ça arrive » sans jamais voir d'attente.
+//
+//  Le flou gaussien plein écran de la spec est REMPLACÉ par ce voile, à
+//  dessein : un BackdropFilter 60 fps par-dessus la SurfaceView est hors
+//  budget GPU des box d'entrée de gamme (règle « hardware-bound » de la
+//  même spec) — et en composition hybride il ne capturerait même pas la
+//  vidéo. Le voile donne le même effet perçu pour un coût GPU nul.
+//
+//  Perf : RepaintBoundary → seule cette couche se repeint pendant la
+//  pulsation ; l'animation ne vit que tant que le voile est monté.
+// ============================================================================
+class _BufferVeil extends StatefulWidget {
+  const _BufferVeil({required this.channel});
+
+  final Channel channel;
+
+  @override
+  State<_BufferVeil> createState() => _BufferVeilState();
+}
+
+class _BufferVeilState extends State<_BufferVeil>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _breath = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  )..repeat(reverse: true);
+
+  late final Animation<double> _ease =
+      CurvedAnimation(parent: _breath, curve: Curves.easeInOut);
+
+  @override
+  void dispose() {
+    _breath.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String? logo = widget.channel.logoUrl;
+    return RepaintBoundary(
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            radius: 1.1,
+            colors: <Color>[Color(0xE6000000), Color(0xF7000000)],
+          ),
+        ),
+        child: Center(
+          child: FadeTransition(
+            opacity: Tween<double>(begin: 0.45, end: 1).animate(_ease),
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.97, end: 1.03).animate(_ease),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  SizedBox(
+                    width: 132,
+                    height: 132,
+                    child: (logo != null && logo.isNotEmpty)
+                        ? CachedNetworkImage(
+                            imageUrl: logo,
+                            fit: BoxFit.contain,
+                            memCacheWidth: 264,
+                            fadeInDuration:
+                                const Duration(milliseconds: 120),
+                            placeholder: (_, __) =>
+                                const Center(child: TvLogo(width: 120)),
+                            errorWidget: (_, __, ___) =>
+                                const Center(child: TvLogo(width: 120)),
+                          )
+                        : const Center(child: TvLogo(width: 120)),
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    widget.channel.cleanName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: TvDimens.title,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                      color: TvTokens.text,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

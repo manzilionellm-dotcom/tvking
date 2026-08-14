@@ -24,6 +24,19 @@ Branche : `claude/7motion-android-tv-compat-e0rtyp`.
   cyrillique, CJK) hors plages → intactes. La CLÉ brute de filtrage SQL
   reste inchangée (seul l'AFFICHAGE est nettoyé).
 
+### 1-bis. Voile de dissimulation du buffering (Vague 1 « OMEGA V2 »)
+- Le lecteur TV n'affiche PLUS JAMAIS de spinner : l'écran de marque opaque
+  (logo + spinner doré) est remplacé par `_BufferVeil` (tv_player_screen.dart)
+  — dernière image figée sous voile noir ~90-97 % (vignette radiale), logo de
+  la chaîne visée qui « respire » (opacité + micro-scale, 2,4 s),
+  RepaintBoundary. Le flou gaussien de la spec est volontairement remplacé
+  par le voile (BackdropFilter sur SurfaceView : hors budget GPU des box
+  d'entrée de gamme + ne capture pas la vidéo en composition hybride).
+- L'anneau « épisode suivant » (déterminé) est conservé — ce n'est pas un
+  spinner d'attente.
+- Règles gravées MAINTENUES malgré la spec : bg #08080A (jamais #000,
+  anti-banding OLED), focus 150 ms / scale ≤1.06-1.08 (au-delà : mou/cheap).
+
 ### 2. Auto-resync du contenu panel (≈ 1 min, zéro action client)
 - Cause : « j'ai retiré tous les pays au panel, la Belgique est toujours
   là ». `RemoteSourceRepository.sync()` (5 min) n'AJOUTE que les sources
