@@ -133,17 +133,37 @@ abstract final class TitleCurator {
   //    20D0-20FF    diacritiques de symboles
   //    FFFD         caractère de remplacement (encodage cassé)
   // -----------------------------------------------------------------
+  // v2 (photo client, les carrés SURVIVAIENT aux plages) : LISTE BLANCHE.
+  // La liste noire de plages est un jeu perdu d'avance — chaque panel invente
+  // un nouveau pictogramme. Ici on inverse : on ne GARDE que ce que toutes
+  // les polices TV savent dessiner — lettres/diacritiques/chiffres de TOUTES
+  // les écritures (\p{L}\p{M}\p{N} : latin, arabe, cyrillique, CJK…),
+  // espaces, et la ponctuation usuelle des noms de chaînes/catégories.
+  // TOUT le reste est balayé, connu ou inconnu.
   static final RegExp _unrenderable = RegExp(
-    r'[\u{1F000}-\u{1FBFF}\u{2190}-\u{2BFF}\u{FE00}-\u{FE0F}'
-    r'\u{E000}-\u{F8FF}\u{200B}-\u{200F}\u{2060}-\u{2064}'
-    r'\u{20D0}-\u{20FF}\u{FFFD}]+',
+    '[^\\p{L}\\p{M}\\p{N}\\s'
+    r".,:;!?'’\-–—&+/()\[\]{}|#%@°«»" '"'
+    ']+',
     unicode: true,
   );
 
-  /// Balayage anti-tofu exposé aux AUTRES nettoyeurs (photo client : le
-  /// template d'accueil passe par `ChannelClassifier.prettifyCategory`,
-  /// pas par `curate()` — il doit purger les MÊMES plages).
-  static RegExp get unrenderable => _unrenderable;
+  // Marques INVISIBLES à purger malgré la liste blanche : les sélecteurs de
+  // variante (FE0F…) et diacritiques de symboles sont classés \p{M} (gardé
+  // pour l'arabe/l'indien) mais ne servent qu'à décorer des emojis déjà
+  // supprimés — seuls, ils redeviennent des tofu.
+  static final RegExp _invisibleMarks = RegExp(
+    r'[\u{FE00}-\u{FE0F}\u{180B}-\u{180D}\u{20D0}-\u{20FF}]+',
+    unicode: true,
+  );
+
+  /// Balayage anti-tofu PARTAGÉ (photo client : le template d'accueil passe
+  /// par `ChannelClassifier.prettifyCategory`, pas par `curate()` — il doit
+  /// purger exactement pareil). Liste blanche + purge des marques invisibles.
+  static String stripUnrenderable(String s) {
+    return s
+        .replaceAll(_unrenderable, ' ')
+        .replaceAll(_invisibleMarks, '');
+  }
 
   // -----------------------------------------------------------------
   //  Bandes de separateurs IPTV : ##, ##########, ____,
@@ -310,6 +330,10 @@ abstract final class TitleCurator {
 
     // 1b) Retire les décorations Unicode (★ etc.)
     s = s.replaceAll(_decorations, ' ');
+
+    // 1c) ANTI-TOFU liste blanche : tout caractère hors lettres/chiffres/
+    // ponctuation usuelle saute — connu ou inconnu (v. _unrenderable).
+    s = stripUnrenderable(s);
 
     // 2) Retire les crochets [VIP], [HD], (BACKUP), {RAW}, etc.
     s = s.replaceAllMapped(

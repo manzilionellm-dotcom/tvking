@@ -147,11 +147,11 @@ abstract final class ChannelClassifier {
   static String prettifyCategory(String raw) {
     String s = raw;
     s = s.replaceAll(_decorations, ' ');
-    // ANTI-TOFU (photo client) : mêmes plages Unicode larges que le
-    // curateur partagé — les pictogrammes du panel que la police des box
-    // ne sait pas dessiner (carrés rayés) sautent AUSSI sur les écrans
-    // qui passent par CE nettoyeur (template d'accueil, Channels…).
-    s = s.replaceAll(TitleCurator.unrenderable, ' ');
+    // ANTI-TOFU (photo client) : même balayage LISTE BLANCHE que le
+    // curateur partagé — tout caractère hors lettres/chiffres/ponctuation
+    // usuelle saute AUSSI sur les écrans qui passent par CE nettoyeur
+    // (template d'accueil, Channels…), connu ou inconnu.
+    s = TitleCurator.stripUnrenderable(s);
     s = s.replaceAll(_spaces, ' ');
     s = s.trim();
     if (s.isEmpty) return 'Autres';
