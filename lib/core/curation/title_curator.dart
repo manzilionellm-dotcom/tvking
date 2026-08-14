@@ -118,6 +118,29 @@ abstract final class TitleCurator {
   );
 
   // -----------------------------------------------------------------
+  //  ANTI-TOFU (photo client, box réelle) : les panels décorent leurs
+  //  catégories avec des pictogrammes que la police des box N'A PAS →
+  //  affichés en carrés rayés (tofu). `_decorations` ci-dessus est une
+  //  liste FERMÉE, impossible à tenir à jour. Ici : balayage LARGE par
+  //  PLAGES Unicode — tout ce qui est emoji/symbole/pictogramme/zone
+  //  privée/sélecteur invisible saute. Les plages restent en dehors des
+  //  écritures réelles (latin, arabe, cyrillique, CJK… intactes).
+  //    1F000-1FBFF  emoji + symboles étendus + legacy computing
+  //    2190-2BFF    flèches, symboles divers, dingbats, formes
+  //    FE00-FE0F    sélecteurs de variante (emoji invisibles)
+  //    E000-F8FF    zone privée (tofu garanti)
+  //    200B-200F / 2060-2064  invisibles zéro-chasse
+  //    20D0-20FF    diacritiques de symboles
+  //    FFFD         caractère de remplacement (encodage cassé)
+  // -----------------------------------------------------------------
+  static final RegExp _unrenderable = RegExp(
+    r'[\u{1F000}-\u{1FBFF}\u{2190}-\u{2BFF}\u{FE00}-\u{FE0F}'
+    r'\u{E000}-\u{F8FF}\u{200B}-\u{200F}\u{2060}-\u{2064}'
+    r'\u{20D0}-\u{20FF}\u{FFFD}]+',
+    unicode: true,
+  );
+
+  // -----------------------------------------------------------------
   //  Bandes de separateurs IPTV : ##, ##########, ____,
   //  ========, --------, ~~~~~~~ et derivees. Tres frequents
   //  dans les flux Xtream pour signaler une nouvelle categorie

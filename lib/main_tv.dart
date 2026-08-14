@@ -34,6 +34,7 @@ import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/playlists/data/source_content_watch.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/sports/data/sports_repository.dart';
@@ -164,6 +165,15 @@ Future<void> _bootstrap() async {
   Timer.periodic(const Duration(minutes: 5), (_) {
     if (!BootGuard.instance.safeMode) RemoteSourceRepository.sync();
   });
+
+  // 2b-bis) CONTENU du panel (bug terrain « la Belgique est toujours là ») :
+  //     le sync ci-dessus n'AJOUTE que les sources manquantes — il ne voit
+  //     JAMAIS qu'un bouquet a été retiré/ajouté DANS une source existante.
+  //     SourceContentWatch sonde les catégories du panel toutes les 60 s
+  //     (une requête JSON minuscule) et, si elles ont changé, rejoue le
+  //     MÊME refresh que le bouton manuel → la box se met à jour toute
+  //     seule, sans aucune action du client.
+  if (!BootGuard.instance.safeMode) SourceContentWatch.instance.start();
 
   // 2c) GUIDE TV (EPG) : re-synchro PÉRIODIQUE (12 h) + une passe différée au
   //     boot (10 min, le temps que l'import de chaînes soit passé). AVANT ce

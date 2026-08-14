@@ -7,6 +7,41 @@
 
 ---
 
+## Session (2026-08-14) — Deux bugs TERRAIN (photos box réelle) : tofu dans les catégories + contenu panel qui ne se met pas à jour
+
+Branche : `claude/7motion-android-tv-compat-e0rtyp`.
+
+### 1. Anti-tofu (carrés rayés dans les noms de catégories)
+- Cause : `TitleCurator._decorations` était une liste FERMÉE d'emojis ; le
+  panel décore ses catégories avec d'autres pictogrammes que la police des
+  box n'a pas → tofu. Le libellé passait déjà par `curateCategory` (via
+  `_catLabel` de `tv_live_screen.dart`), le trou était dans le curateur.
+- Fix : nouveau `_unrenderable` (title_curator.dart) — balayage LARGE par
+  plages Unicode (émojis 1F000-1FBFF, symboles/flèches 2190-2BFF, zone
+  privée E000-F8FF, sélecteurs FE00-FE0F, invisibles 200B-200F/2060-2064,
+  diacritiques de symboles 20D0-20FF, U+FFFD), appliqué juste après
+  `_decorations` dans `curate()`. Écritures réelles (latin, arabe,
+  cyrillique, CJK) hors plages → intactes. La CLÉ brute de filtrage SQL
+  reste inchangée (seul l'AFFICHAGE est nettoyé).
+
+### 2. Auto-resync du contenu panel (≈ 1 min, zéro action client)
+- Cause : « j'ai retiré tous les pays au panel, la Belgique est toujours
+  là ». `RemoteSourceRepository.sync()` (5 min) n'AJOUTE que les sources
+  manquantes ; il ne re-importe jamais le contenu d'une source existante —
+  seul le bouton « rafraîchir » manuel le faisait.
+- Fix : `lib/features/playlists/data/source_content_watch.dart`
+  (`SourceContentWatch`), démarré dans `main_tv.dart` (hors safe mode).
+  Toutes les 60 s : `get_live_categories` par source Xtream (une requête
+  JSON minuscule), empreinte FNV-1a triée stockée en SharedPreferences
+  (`src_watch_fp_<id>`) ; changement détecté → `refreshPlaylist()` (le
+  même chemin que le bouton manuel : remplace les chaînes + ré-émet le
+  stream → l'UI se met à jour toute seule). Garde-fous : 1re observation
+  = stockage seul (pas de re-import au boot), `_busy` anti-chevauchement,
+  erreurs avalées (retry au tick suivant), M3U ignoré en v1 (pas
+  d'endpoint léger).
+
+---
+
 ## Session (2026-08-08) — Lecteur TV « forteresse » : cascade de sources, garde d'états, télémétrie, pression mémoire
 
 Branche : `claude/7motion-android-tv-compat-e0rtyp`. Durcissement du plugin
