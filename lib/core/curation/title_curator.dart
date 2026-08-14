@@ -160,9 +160,45 @@ abstract final class TitleCurator {
   /// par `ChannelClassifier.prettifyCategory`, pas par `curate()` — il doit
   /// purger exactement pareil). Liste blanche + purge des marques invisibles.
   static String stripUnrenderable(String s) {
-    return s
+    return _foldExotic(s)
         .replaceAll(_unrenderable, ' ')
         .replaceAll(_invisibleMarks, '');
+  }
+
+  /// Translittère les lettres/chiffres « STYLÉS » Unicode vers l'ASCII
+  /// lisible (𝐋𝐢𝐠𝐮𝐞𝟏 → Ligue1, ＨＤ → HD). Piège vicieux : Unicode les
+  /// catégorise LETTRES (\p{L}) → ils passent la liste blanche — mais les
+  /// polices des box ne les dessinent pas (carrés rayés, photo client).
+  /// On les CONVERTIT au lieu de les supprimer : le mot reste lisible.
+  static String _foldExotic(String s) {
+    // Chemin rapide : aucun caractère au-delà de U+FF00 → rien à faire
+    // (les deux plages visées commencent à FF01 et 1D400).
+    bool exotic = false;
+    for (final int r in s.runes) {
+      if (r >= 0xFF01) {
+        exotic = true;
+        break;
+      }
+    }
+    if (!exotic) return s;
+    final StringBuffer b = StringBuffer();
+    for (final int r in s.runes) {
+      if (r >= 0x1D400 && r <= 0x1D7CB) {
+        // Alphabets mathématiques (gras/italique/script…) : blocs de 52
+        // (A-Z puis a-z) répétés — retour à la lettre de base.
+        final int off = (r - 0x1D400) % 52;
+        b.writeCharCode(off < 26 ? 0x41 + off : 0x61 + (off - 26));
+      } else if (r >= 0x1D7CE && r <= 0x1D7FF) {
+        // Chiffres mathématiques : blocs de 10 → 0-9.
+        b.writeCharCode(0x30 + ((r - 0x1D7CE) % 10));
+      } else if (r >= 0xFF01 && r <= 0xFF5E) {
+        // Formes pleine chasse （ＨＤ） → ASCII.
+        b.writeCharCode(r - 0xFEE0);
+      } else {
+        b.writeCharCode(r);
+      }
+    }
+    return b.toString();
   }
 
   // -----------------------------------------------------------------
