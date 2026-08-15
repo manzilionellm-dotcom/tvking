@@ -1810,5 +1810,49 @@
         "type": "int"
       }
     }
+  },
+  "tvTemplateScreenTitle": "Byt modell",
+  "@tvTemplateScreenTitle": {
+    "description": "Texte UI : tvTemplateScreenTitle"
+  },
+  "tvTemplateScreenHint": "Välj startsidans layout — den används direkt.",
+  "@tvTemplateScreenHint": {
+    "description": "Texte UI : tvTemplateScreenHint"
+  },
+  "tvTemplateDescLauncher": "Stora rutor för snabb åtkomst — enkelt och direkt.",
+  "@tvTemplateDescLauncher": {
+    "description": "Texte UI : tvTemplateDescLauncher"
+  },
+  "tvTemplateDescClassic": "Kompakt meny högst upp och kanallista i stor stil.",
+  "@tvTemplateDescClassic": {
+    "description": "Texte UI : tvTemplateDescClassic"
+  },
+  "tvTemplateDescRails": "Förhandsvisning + ikonrad + favoritrad med direktsändning.",
+  "@tvTemplateDescRails": {
+    "description": "Texte UI : tvTemplateDescRails"
+  },
+  "tvTemplateDescTivimate": "Kanalpanel till vänster + förhandsvisning och tablå till höger.",
+  "@tvTemplateDescTivimate": {
+    "description": "Texte UI : tvTemplateDescTivimate"
+  },
+  "tvLauncherWatchNow": "Se nu",
+  "@tvLauncherWatchNow": {
+    "description": "Texte UI : tvLauncherWatchNow"
+  },
+  "tvLauncherMyEvening": "MIN KVÄLL",
+  "@tvLauncherMyEvening": {
+    "description": "Texte UI : tvLauncherMyEvening"
+  },
+  "tvLauncherFavChannels": "Favoritkanaler",
+  "@tvLauncherFavChannels": {
+    "description": "Texte UI : tvLauncherFavChannels"
+  },
+  "tvLauncherFavEmpty": "Lägg till favoriter med ★\nfrån ”Direkt”",
+  "@tvLauncherFavEmpty": {
+    "description": "Texte UI : tvLauncherFavEmpty"
+  },
+  "tvLauncherLatestMovies": "SENAST TILLAGDA FILMER",
+  "@tvLauncherLatestMovies": {
+    "description": "Texte UI : tvLauncherLatestMovies"
   }
 }

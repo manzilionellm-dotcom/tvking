@@ -1429,11 +1429,22 @@
   "playerStreamInterrupted": "Stream interrupted. Check your connection and try again.",
   "playerBlockedExpired": "Your subscription expired on {date}. Renew your line with your provider.",
   "@playerBlockedExpired": {
-    "placeholders": { "date": { "type": "String" } }
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
   },
   "playerBlockedMaxConnections": "Connection limit reached ({active}/{max}). Another screen is already watching with this account — close it, then try again.",
   "@playerBlockedMaxConnections": {
-    "placeholders": { "active": { "type": "String" }, "max": { "type": "String" } }
+    "placeholders": {
+      "active": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
+    }
   },
   "playerBlockedBanned": "This account is suspended. Contact your provider.",
   "playerWeakConnection": "Playback keeps buffering. Your internet connection is likely too weak for this channel (or your provider's server is slow). Check your WiFi / bandwidth, or try a lower-quality channel. This is not an app problem.",
@@ -1816,5 +1827,49 @@
         "type": "int"
       }
     }
+  },
+  "tvTemplateScreenTitle": "Change layout",
+  "@tvTemplateScreenTitle": {
+    "description": "Texte UI : tvTemplateScreenTitle"
+  },
+  "tvTemplateScreenHint": "Pick your home layout — applied right away.",
+  "@tvTemplateScreenHint": {
+    "description": "Texte UI : tvTemplateScreenHint"
+  },
+  "tvTemplateDescLauncher": "Large quick-access tiles — simple and direct.",
+  "@tvTemplateDescLauncher": {
+    "description": "Texte UI : tvTemplateDescLauncher"
+  },
+  "tvTemplateDescClassic": "Compact top menu, channel list in large type.",
+  "@tvTemplateDescClassic": {
+    "description": "Texte UI : tvTemplateDescClassic"
+  },
+  "tvTemplateDescRails": "Preview + icon row + live favourites rail.",
+  "@tvTemplateDescRails": {
+    "description": "Texte UI : tvTemplateDescRails"
+  },
+  "tvTemplateDescTivimate": "Channel panel on the left + preview and guide on the right.",
+  "@tvTemplateDescTivimate": {
+    "description": "Texte UI : tvTemplateDescTivimate"
+  },
+  "tvLauncherWatchNow": "Watch now",
+  "@tvLauncherWatchNow": {
+    "description": "Texte UI : tvLauncherWatchNow"
+  },
+  "tvLauncherMyEvening": "MY EVENING",
+  "@tvLauncherMyEvening": {
+    "description": "Texte UI : tvLauncherMyEvening"
+  },
+  "tvLauncherFavChannels": "Favourite channels",
+  "@tvLauncherFavChannels": {
+    "description": "Texte UI : tvLauncherFavChannels"
+  },
+  "tvLauncherFavEmpty": "Add favourites with ★\nfrom “Live”",
+  "@tvLauncherFavEmpty": {
+    "description": "Texte UI : tvLauncherFavEmpty"
+  },
+  "tvLauncherLatestMovies": "LATEST MOVIES ADDED",
+  "@tvLauncherLatestMovies": {
+    "description": "Texte UI : tvLauncherLatestMovies"
   }
 }

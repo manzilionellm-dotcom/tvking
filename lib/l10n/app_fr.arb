@@ -2669,11 +2669,22 @@
   "playerStreamInterrupted": "Flux interrompu. Vérifie ta connexion puis réessaie.",
   "playerBlockedExpired": "Ton abonnement a expiré le {date}. Renouvelle ta ligne auprès de ton fournisseur.",
   "@playerBlockedExpired": {
-    "placeholders": { "date": { "type": "String" } }
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
   },
   "playerBlockedMaxConnections": "Limite de connexions atteinte ({active}/{max}). Un autre écran regarde déjà avec ce compte — ferme-le, puis réessaie.",
   "@playerBlockedMaxConnections": {
-    "placeholders": { "active": { "type": "String" }, "max": { "type": "String" } }
+    "placeholders": {
+      "active": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
+    }
   },
   "playerBlockedBanned": "Ce compte est suspendu. Contacte ton fournisseur.",
   "playerWeakConnection": "La lecture n'arrête pas de charger. Ta connexion Internet est probablement trop faible pour cette chaîne (ou le serveur de ton fournisseur est lent). Vérifie ton WiFi / ton débit, ou essaie une chaîne de moindre qualité. Ce n'est pas un problème de l'application.",
@@ -4548,5 +4559,49 @@
         "type": "int"
       }
     }
+  },
+  "tvTemplateScreenTitle": "Changer de modèle",
+  "@tvTemplateScreenTitle": {
+    "description": "Texte UI : tvTemplateScreenTitle"
+  },
+  "tvTemplateScreenHint": "Choisis la disposition de ton accueil — appliquée tout de suite.",
+  "@tvTemplateScreenHint": {
+    "description": "Texte UI : tvTemplateScreenHint"
+  },
+  "tvTemplateDescLauncher": "Grandes tuiles d'accès rapide — simple et direct.",
+  "@tvTemplateDescLauncher": {
+    "description": "Texte UI : tvTemplateDescLauncher"
+  },
+  "tvTemplateDescClassic": "Menu compact en haut, liste des chaînes en grand.",
+  "@tvTemplateDescClassic": {
+    "description": "Texte UI : tvTemplateDescClassic"
+  },
+  "tvTemplateDescRails": "Aperçu + rangée d'icônes + rail de favoris en direct.",
+  "@tvTemplateDescRails": {
+    "description": "Texte UI : tvTemplateDescRails"
+  },
+  "tvTemplateDescTivimate": "Chaînes en panneau à gauche + aperçu et programme à droite.",
+  "@tvTemplateDescTivimate": {
+    "description": "Texte UI : tvTemplateDescTivimate"
+  },
+  "tvLauncherWatchNow": "Regarder maintenant",
+  "@tvLauncherWatchNow": {
+    "description": "Texte UI : tvLauncherWatchNow"
+  },
+  "tvLauncherMyEvening": "MA SOIRÉE",
+  "@tvLauncherMyEvening": {
+    "description": "Texte UI : tvLauncherMyEvening"
+  },
+  "tvLauncherFavChannels": "Chaînes favorites",
+  "@tvLauncherFavChannels": {
+    "description": "Texte UI : tvLauncherFavChannels"
+  },
+  "tvLauncherFavEmpty": "Ajoutez des favoris avec ★\ndepuis « Direct »",
+  "@tvLauncherFavEmpty": {
+    "description": "Texte UI : tvLauncherFavEmpty"
+  },
+  "tvLauncherLatestMovies": "DERNIERS FILMS AJOUTÉS",
+  "@tvLauncherLatestMovies": {
+    "description": "Texte UI : tvLauncherLatestMovies"
   }
 }

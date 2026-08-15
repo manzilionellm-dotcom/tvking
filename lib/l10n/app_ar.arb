@@ -1810,5 +1810,49 @@
         "type": "int"
       }
     }
+  },
+  "tvTemplateScreenTitle": "تغيير النموذج",
+  "@tvTemplateScreenTitle": {
+    "description": "Texte UI : tvTemplateScreenTitle"
+  },
+  "tvTemplateScreenHint": "اختر تخطيط الشاشة الرئيسية — يُطبَّق فوراً.",
+  "@tvTemplateScreenHint": {
+    "description": "Texte UI : tvTemplateScreenHint"
+  },
+  "tvTemplateDescLauncher": "مربّعات كبيرة للوصول السريع — بسيط ومباشر.",
+  "@tvTemplateDescLauncher": {
+    "description": "Texte UI : tvTemplateDescLauncher"
+  },
+  "tvTemplateDescClassic": "قائمة مضغوطة في الأعلى وقائمة قنوات بخط كبير.",
+  "@tvTemplateDescClassic": {
+    "description": "Texte UI : tvTemplateDescClassic"
+  },
+  "tvTemplateDescRails": "معاينة + صف أيقونات + شريط المفضّلة المباشر.",
+  "@tvTemplateDescRails": {
+    "description": "Texte UI : tvTemplateDescRails"
+  },
+  "tvTemplateDescTivimate": "القنوات في لوحة على اليسار + المعاينة والدليل على اليمين.",
+  "@tvTemplateDescTivimate": {
+    "description": "Texte UI : tvTemplateDescTivimate"
+  },
+  "tvLauncherWatchNow": "المشاهدة الآن",
+  "@tvLauncherWatchNow": {
+    "description": "Texte UI : tvLauncherWatchNow"
+  },
+  "tvLauncherMyEvening": "سهرتي",
+  "@tvLauncherMyEvening": {
+    "description": "Texte UI : tvLauncherMyEvening"
+  },
+  "tvLauncherFavChannels": "القنوات المفضّلة",
+  "@tvLauncherFavChannels": {
+    "description": "Texte UI : tvLauncherFavChannels"
+  },
+  "tvLauncherFavEmpty": "أضِف المفضّلة بالنجمة ★\nمن «مباشر»",
+  "@tvLauncherFavEmpty": {
+    "description": "Texte UI : tvLauncherFavEmpty"
+  },
+  "tvLauncherLatestMovies": "أحدث الأفلام المضافة",
+  "@tvLauncherLatestMovies": {
+    "description": "Texte UI : tvLauncherLatestMovies"
   }
 }

@@ -39,6 +39,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_memory_guard.dart';
 import '../core/tv_tokens.dart';
+import 'tv_app.dart' show RestartWidget, showExitDialog;
 import 'tv_channels_screen.dart';
 import 'tv_components.dart';
 import 'tv_films_screen.dart';
@@ -262,30 +263,21 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
     _play(all, idx < 0 ? 0 : idx, restoreFocus: false);
   }
 
+  /// Sortie de l'app — DIALOGUE PARTAGÉ (`showExitDialog`). Avant, cet
+  /// accueil avait sa PROPRE boîte : titre « Quitter SEVEN ? » (marque
+  /// morte : l'app s'appelle 7 MOTION TV / The Few) et textes FRANÇAIS EN
+  /// DUR, donc du français affiché aux clients anglophones, arabophones…
+  /// alors que cet accueil devient le Modèle A par défaut. On réutilise
+  /// la boîte de l'app : localisée en 8 langues, avec l'option
+  /// « Redémarrer » (dépannage n°1 à distance) et le focus déjà géré.
   Future<void> _confirmExit() async {
-    final bool? quit = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext d) => AlertDialog(
-        backgroundColor: TvTokens.card,
-        title: Text('Quitter SEVEN ?',
-            style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700)),
-        actions: <Widget>[
-          TextButton(
-            // AUTOFOCUS (parité template A) : sans lui, la boîte s'ouvrait
-            // sans focus → télécommande muette jusqu'à un appui hasardeux.
-            autofocus: true,
-            onPressed: () => Navigator.pop(d, false),
-            child: Text('Annuler', style: TvTokens.ui(TvDimens.body)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(d, true),
-            child: Text('Quitter',
-                style: TvTokens.ui(TvDimens.body, color: TvTokens.goldBright)),
-          ),
-        ],
-      ),
-    );
-    if (quit == true) await SystemNavigator.pop();
+    final String? action = await showExitDialog(context);
+    if (!mounted) return;
+    if (action == 'restart') {
+      RestartWidget.restart(context);
+    } else if (action == 'quit') {
+      await SystemNavigator.pop();
+    }
   }
 
   @override
@@ -458,7 +450,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                               color: TvTokens.gold,
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Text('MA SOIRÉE',
+                            child: Text(context.l10n.tvLauncherMyEvening,
                                 style: TvTokens.ui(11,
                                     weight: FontWeight.w800,
                                     color: TvTokens.onGold,
@@ -503,7 +495,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
                                   Icon(Icons.play_arrow_rounded,
                                       color: fg, size: 22),
                                   const SizedBox(width: 6),
-                                  Text('Regarder maintenant',
+                                  Text(context.l10n.tvLauncherWatchNow,
                                       style: TvTokens.ui(TvDimens.body,
                                           weight: FontWeight.w800, color: fg)),
                                 ],
@@ -523,7 +515,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
   // ---- Coin « Chaînes Favorites » : grille 3 colonnes ----
   Widget _favoritesPane() {
     return _Panel(
-      title: 'Chaînes Favorites',
+      title: context.l10n.tvLauncherFavChannels,
       icon: Icons.star_rounded,
       child: _FavoritesGrid(
           onPlay: _play,
@@ -539,7 +531,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
         Expanded(
             child: _NavTile(
                 icon: Icons.live_tv_rounded,
-                label: 'En direct',
+                label: context.l10n.tvNavLive,
                 // FOCUS GARANTI : si le héro n'existe pas encore (aucune
                 // source / playlist en cours d'ingestion), l'autofocus du
                 // bouton « Regarder maintenant » n'existe pas non plus — la
@@ -555,7 +547,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
         Expanded(
             child: _NavTile(
                 icon: Icons.movie_rounded,
-                label: 'Films',
+                label: context.l10n.tvNavFilms,
                 restoreId: 'films',
                 restoreFocusId: _restoreFocusId,
                 onRestored: _clearRestore,
@@ -565,7 +557,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
         Expanded(
             child: _NavTile(
                 icon: Icons.video_library_rounded,
-                label: 'Séries',
+                label: context.l10n.tvNavSeries,
                 restoreId: 'series',
                 restoreFocusId: _restoreFocusId,
                 onRestored: _clearRestore,
@@ -575,7 +567,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
         Expanded(
             child: _NavTile(
                 icon: Icons.replay_circle_filled_rounded,
-                label: 'Replay',
+                label: context.l10n.tvReplay,
                 restoreId: 'replay',
                 restoreFocusId: _restoreFocusId,
                 onRestored: _clearRestore,
@@ -585,7 +577,7 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
         Expanded(
             child: _NavTile(
                 icon: Icons.search_rounded,
-                label: 'Rechercher',
+                label: context.l10n.navSearch,
                 restoreId: 'search',
                 restoreFocusId: _restoreFocusId,
                 onRestored: _clearRestore,
@@ -712,7 +704,7 @@ class _FavoritesGridState extends State<_FavoritesGrid> {
   Widget build(BuildContext context) {
     if (_favs.isEmpty) {
       return Center(
-        child: Text('Ajoutez des favoris avec ★\ndepuis « En direct »',
+        child: Text(context.l10n.tvLauncherFavEmpty,
             textAlign: TextAlign.center,
             style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted)),
       );
@@ -1053,7 +1045,7 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('DERNIERS FILMS AJOUTÉS',
+        Text(context.l10n.tvLauncherLatestMovies,
             style: TvTokens.ui(12,
                 weight: FontWeight.w700,
                 color: TvTokens.mutedDim,

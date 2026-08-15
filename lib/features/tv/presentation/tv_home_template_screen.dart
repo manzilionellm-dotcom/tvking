@@ -15,18 +15,36 @@ import '../core/tv_tokens.dart';
 import 'tv_shell.dart';
 
 /// Libellé LOCALISÉ du template (les clés tvTemplateModelA…D existent dans
-/// les 8 langues). Le getter `label` de l'enum reste le repli technique
-/// (contexte indisponible) — ici on a toujours un BuildContext.
+/// les 8 langues). La lettre vient de [kTemplateOrder] — PAS d'un switch en
+/// dur : réordonner les modèles ne se fait qu'à un seul endroit, impossible
+/// d'avoir « Modèle A » ici et « Modèle B » ailleurs pour la même vignette.
 String _templateLabel(BuildContext context, TvHomeTemplate t) {
-  switch (t) {
-    case TvHomeTemplate.classic:
+  switch (kTemplateOrder.indexOf(t)) {
+    case 0:
       return context.l10n.tvTemplateModelA;
-    case TvHomeTemplate.launcher:
+    case 1:
       return context.l10n.tvTemplateModelB;
-    case TvHomeTemplate.rails:
+    case 2:
       return context.l10n.tvTemplateModelC;
-    case TvHomeTemplate.tivimate:
+    case 3:
       return context.l10n.tvTemplateModelD;
+    default:
+      return t.label;
+  }
+}
+
+/// Sous-titre LOCALISÉ de la vignette. Il décrit la DISPOSITION : il suit
+/// donc le template lui-même (pas sa lettre), contrairement au libellé.
+String _templateDescription(BuildContext context, TvHomeTemplate t) {
+  switch (t) {
+    case TvHomeTemplate.launcher:
+      return context.l10n.tvTemplateDescLauncher;
+    case TvHomeTemplate.classic:
+      return context.l10n.tvTemplateDescClassic;
+    case TvHomeTemplate.rails:
+      return context.l10n.tvTemplateDescRails;
+    case TvHomeTemplate.tivimate:
+      return context.l10n.tvTemplateDescTivimate;
   }
 }
 
@@ -41,15 +59,17 @@ class TvHomeTemplateScreen extends StatelessWidget {
         builder: (BuildContext context, Widget? _) {
           final TvHomeTemplate current =
               TvHomeTemplateRepository.instance.template;
-          final List<TvHomeTemplate> all = TvHomeTemplate.values;
+          // Ordre de PRÉSENTATION (A, B, C, D) — le Modèle A (vitrine) en
+          // premier, à gauche. L'ordre de l'enum reste figé (persistance).
+          const List<TvHomeTemplate> all = kTemplateOrder;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text('Changer les templates',
+              Text(context.l10n.tvTemplateScreenTitle,
                   style: TvTokens.ui(TvDimens.displayS, weight: FontWeight.w700)),
               const SizedBox(height: 6),
               Text(
-                'Choisis la disposition de ton accueil — appliquée tout de suite.',
+                context.l10n.tvTemplateScreenHint,
                 style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
               ),
               const SizedBox(height: 24),
@@ -137,7 +157,7 @@ class _TemplateCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              Text(template.description,
+              Text(_templateDescription(context, template),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted)),

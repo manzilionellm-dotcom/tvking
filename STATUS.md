@@ -7,6 +7,49 @@
 
 ---
 
+## Session (2026-08-15) — Bascule des modèles d'accueil A↔B + durcissement du Modèle A
+
+Décision du propriétaire : le modèle « grandes tuiles » (ex-Modèle B) est le
+plus présentable → il devient le **Modèle A**, vitrine de l'app et accueil
+par défaut des installations NEUVES. L'accueil historique devient le
+Modèle B. Fichiers : `tv_home_template.dart`, `tv_home_template_screen.dart`,
+`tv_launcher_home_screen.dart`, les 8 `.arb`, + test de migration.
+
+### 1. Bascule A↔B — SANS déplacer un seul client existant
+- `kTemplateOrder` (launcher, classic, rails, tivimate) devient la SOURCE
+  UNIQUE de l'ordre ET des lettres : `letter` et les libellés localisés en
+  dérivent (fini les switch A/B désynchronisés entre écrans).
+- L'ordre de l'ENUM et les `id` persistés sont INCHANGÉS (compat des box).
+- MIGRATION prudente dans `initialize()` : prefs vierges (vraie 1re
+  ouverture) → Modèle A ; prefs déjà peuplées (box en service) → on reste
+  sur l'historique et on le GRAVE. Motif : chaque univers a SES favoris
+  (`favoritesScopeForTemplate`) — basculer d'office aurait donné « mes
+  favoris ont disparu » à des clients qui paient. Le doute penche toujours
+  du côté sûr. Verrouillé par `test/features/tv/home_template_migration_test.dart`.
+
+### 2. Bugs corrigés sur le Modèle A (il devient la vitrine)
+- **Boîte « Quitter »** : titre « Quitter SEVEN ? » (marque morte) + textes
+  FRANÇAIS EN DUR → remplacée par le dialogue PARTAGÉ `showExitDialog`
+  (localisé 8 langues, option « Redémarrer », focus géré).
+- **12 textes en dur** (MA SOIRÉE, Regarder maintenant, Chaînes favorites,
+  les 5 tuiles, état vide des favoris, Derniers films ajoutés) → localisés.
+  11 clés neuves × 8 langues (1613 clés par fichier, alignées).
+  Sans ça, l'accueil par défaut aurait affiché du français aux clients
+  anglophones/arabophones/scandinaves.
+- **Robustesse boot** : `initialize()` est AWAITÉ avant le 1er rendu et
+  appelait `FavoritesRepository.setScope()` (SQLite) SANS protection — une
+  base indisponible pouvait bloquer le démarrage. Isolé en try/catch. Idem
+  dans `setTemplate` : une erreur base faisait perdre le changement de
+  modèle (ni notify, ni écriture) → le client voyait son choix « ne rien
+  faire » puis revenir en arrière au redémarrage.
+
+### 3. Sélecteur de modèles
+- Titre, sous-titre et les 4 descriptions étaient en français en dur →
+  localisés (les descriptions suivent le TEMPLATE, pas la lettre).
+- Le Modèle A s'affiche désormais en premier, à gauche.
+
+---
+
 ## Session (2026-08-14) — Deux bugs TERRAIN (photos box réelle) : tofu dans les catégories + contenu panel qui ne se met pas à jour
 
 Branche : `claude/7motion-android-tv-compat-e0rtyp`.

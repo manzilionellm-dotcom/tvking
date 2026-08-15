@@ -30,6 +30,26 @@ enum TvHomeTemplate {
   tivimate, // panneau chaînes (rail + groupes + liste + aperçu EPG) façon TiviMate
 }
 
+/// ORDRE DE PRÉSENTATION (≠ ordre de déclaration de l'enum, qui est figé par
+/// la persistance historique). Décision du propriétaire (15/08/2026) : le
+/// modèle « grandes tuiles » est le plus présentable → il devient le
+/// **Modèle A**, vitrine de l'app, et l'accueil des NOUVELLES installations ;
+/// l'accueil historique devient le Modèle B. Cette liste pilote à la fois
+/// l'ordre du sélecteur et les libellés A/B/C/D.
+const List<TvHomeTemplate> kTemplateOrder = <TvHomeTemplate>[
+  TvHomeTemplate.launcher, // A — vitrine
+  TvHomeTemplate.classic, // B — historique
+  TvHomeTemplate.rails, // C
+  TvHomeTemplate.tivimate, // D
+];
+
+/// Accueil par défaut des installations NEUVES. Les installations
+/// EXISTANTES ne sont jamais déplacées (cf. `initialize`).
+const TvHomeTemplate kDefaultTemplate = TvHomeTemplate.launcher;
+
+/// Accueil par défaut HISTORIQUE — conservé pour les box déjà en service.
+const TvHomeTemplate kLegacyDefaultTemplate = TvHomeTemplate.classic;
+
 extension TvHomeTemplateInfo on TvHomeTemplate {
   String get id {
     switch (this) {
@@ -44,20 +64,18 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
     }
   }
 
+  /// Lettre du modèle — DÉRIVÉE de [kTemplateOrder] : renommer/réordonner
+  /// les modèles ne se fait donc qu'à UN seul endroit (plus de switch à
+  /// tenir synchronisé, source classique de A/B incohérents entre écrans).
+  String get letter {
+    final int i = kTemplateOrder.indexOf(this);
+    return i < 0 ? '?' : String.fromCharCode(0x41 + i); // A, B, C, D
+  }
+
   /// Nom court affiché dans le sélecteur. Noms NEUTRES (lettres) — aucune
   /// marque concurrente (ni « IBO » ni « TiviMate ») : ce sont NOS modèles.
-  String get label {
-    switch (this) {
-      case TvHomeTemplate.classic:
-        return 'Modèle A';
-      case TvHomeTemplate.launcher:
-        return 'Modèle B';
-      case TvHomeTemplate.rails:
-        return 'Modèle C';
-      case TvHomeTemplate.tivimate:
-        return 'Modèle D';
-    }
-  }
+  /// Repli technique : l'écran localisé utilise les clés tvTemplateModelA…D.
+  String get label => 'Modèle $letter';
 
   /// Sous-titre explicatif dans le sélecteur — décrit la DISPOSITION, sans
   /// jamais citer une app tierce.
@@ -75,11 +93,12 @@ extension TvHomeTemplateInfo on TvHomeTemplate {
   }
 }
 
-TvHomeTemplate _templateFromId(String? id) {
+TvHomeTemplate? _templateFromId(String? id) {
+  if (id == null || id.isEmpty) return null;
   for (final TvHomeTemplate t in TvHomeTemplate.values) {
     if (t.id == id) return t;
   }
-  return TvHomeTemplate.classic; // repli sûr
+  return null; // id inconnu (downgrade) → l'appelant décide du repli
 }
 
 class TvHomeTemplateRepository extends ChangeNotifier {
@@ -88,20 +107,46 @@ class TvHomeTemplateRepository extends ChangeNotifier {
 
   static const String _kKey = 'tv.home.template.v1';
 
-  TvHomeTemplate _template = TvHomeTemplate.classic;
+  TvHomeTemplate _template = kLegacyDefaultTemplate;
   TvHomeTemplate get template => _template;
 
   /// À appeler UNE fois au boot (avant le 1er rendu de la home).
+  ///
+  /// MIGRATION A↔B (15/08/2026) : le défaut des installations NEUVES passe
+  /// au « grandes tuiles » (Modèle A). Une box DÉJÀ EN SERVICE ne doit
+  /// JAMAIS changer d'accueil toute seule — d'autant que chaque univers a
+  /// SES favoris (`favoritesScopeForTemplate`) : basculer d'office donnerait
+  /// « mes favoris ont disparu » à des clients qui paient. On ne bascule
+  /// donc que si les préférences sont VIERGES (vraie première ouverture) ;
+  /// sinon on grave l'ancien défaut, ce qui rend le choix stable pour la
+  /// suite. En cas de doute, le code penche du côté SÛR (on garde
+  /// l'historique) : le pire cas est un nouvel arrivant sur le Modèle B,
+  /// jamais un client existant dépossédé de ses favoris.
   Future<void> initialize() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      _template = _templateFromId(prefs.getString(_kKey));
+      final TvHomeTemplate? stored = _templateFromId(prefs.getString(_kKey));
+      if (stored != null) {
+        _template = stored; // choix explicite (ou déjà migré) : intouchable
+      } else {
+        final bool freshInstall = prefs.getKeys().isEmpty;
+        _template = freshInstall ? kDefaultTemplate : kLegacyDefaultTemplate;
+        await prefs.setString(_kKey, _template.id); // fige la décision
+      }
     } catch (_) {
-      _template = TvHomeTemplate.classic;
+      _template = kLegacyDefaultTemplate;
     }
-    // Chaque univers a ses favoris → on aligne la portée sur le template actif.
-    await FavoritesRepository.instance
-        .setScope(favoritesScopeForTemplate(_template));
+    // Chaque univers a ses favoris → on aligne la portée sur le template
+    // actif. ISOLÉ dans son propre try : cet initialize est AWAITÉ au boot
+    // (main_tv, avant le 1er rendu) et setScope ouvre la base SQLite. Une
+    // base momentanément indisponible ou corrompue ne doit PAS empêcher
+    // l'app de démarrer — au pire les favoris se rechargeront plus tard.
+    try {
+      await FavoritesRepository.instance
+          .setScope(favoritesScopeForTemplate(_template));
+    } catch (_) {
+      // Boot prioritaire : on continue avec la disposition résolue.
+    }
     notifyListeners();
   }
 
@@ -110,7 +155,15 @@ class TvHomeTemplateRepository extends ChangeNotifier {
     if (t == _template) return;
     _template = t;
     // Bascule d'univers → bascule des favoris (chaque univers a les siens).
-    await FavoritesRepository.instance.setScope(favoritesScopeForTemplate(t));
+    // Protégé : si la base bronche, le CHANGEMENT DE DISPOSITION doit quand
+    // même s'appliquer et se mémoriser (avant, une exception ici sautait le
+    // notifyListeners ET l'écriture → le client voyait son choix « ne rien
+    // faire », puis revenir à l'ancien modèle au redémarrage).
+    try {
+      await FavoritesRepository.instance.setScope(favoritesScopeForTemplate(t));
+    } catch (_) {
+      // Favoris rechargés au prochain accès ; la disposition, elle, passe.
+    }
     notifyListeners();
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
