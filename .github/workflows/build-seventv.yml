@@ -117,7 +117,17 @@ jobs:
           if ! grep -q 'android:largeHeap' "$MANIFEST"; then
             sed -i 's|<application|<application\n        android:largeHeap="true"|' "$MANIFEST"
           fi
-          grep -nE 'INTERNET|usesCleartextTraffic|REQUEST_INSTALL_PACKAGES|largeHeap' "$MANIFEST" || true
+          # PROPRETÉ STORES (autopsie refus Amazon n°2) : un plugin injecte
+          # android.permission.DUMP (débogage système) à la fusion des
+          # manifestes — inutile pour nous et il effraie les scanners
+          # (« security concerns »). tools:node=remove l'élimine du binaire.
+          if ! grep -q 'xmlns:tools' "$MANIFEST"; then
+            sed -i 's|<manifest xmlns:android="http://schemas.android.com/apk/res/android"|<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools"|' "$MANIFEST"
+          fi
+          if ! grep -q 'android.permission.DUMP' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.DUMP" tools:node="remove"/>' "$MANIFEST"
+          fi
+          grep -nE 'INTERNET|usesCleartextTraffic|REQUEST_INSTALL_PACKAGES|largeHeap|DUMP' "$MANIFEST" || true
 
       - name: Patch manifest — Android TV (leanback)
         run: |
@@ -555,6 +565,36 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      # APK AMAZON APPSTORE — même app, CONFORMITÉ Amazon (refus n°2) :
+      #  1) REQUEST_INSTALL_PACKAGES déjà retirée du manifeste (étape AAB) —
+      #     Amazon interdit l'auto-mise à jour hors magasin ;
+      #  2) --dart-define=PLAY_BUILD=true → updater in-app neutralisé
+      #     (les MAJ viennent d'Amazon) ;
+      #  3) déjà SANS Firebase (étape « Exclure Firebase ») ni DUMP.
+      # Même identité, même versionCode epoch (croissant pour les replace).
+      - name: Build APK Amazon Appstore (sans updater sideload)
+        run: |
+          set -e
+          grep -q 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml \
+            && { echo "⛔ permission encore là"; exit 1; } || echo "✓ sans REQUEST_INSTALL_PACKAGES"
+          flutter build apk --release --no-tree-shake-icons \
+            --target-platform android-arm,android-arm64 \
+            --build-number="$SEVENTV_BUILD_NUMBER" \
+            --obfuscate --split-debug-info=build/symbols-amazon \
+            --dart-define=GIT_SHA=${{ github.sha }} \
+            --dart-define=PLAY_BUILD=true \
+            --target=lib/main_tv.dart
+          cp build/app/outputs/flutter-apk/app-release.apk seven-tv-amazon.apk
+          ls -lah seven-tv-amazon.apk
+
+      - name: Upload APK artifact (Amazon Appstore)
+        uses: actions/upload-artifact@v4
+        with:
+          name: seven-tv-amazon-apk-${{ github.sha }}
+          path: seven-tv-amazon.apk
+          retention-days: 30
+          if-no-files-found: error
+
       # PUBLICATION (OPT-IN uniquement, dispatch avec publish=true) :
       # release `seventv-latest` + version.json → lien /7tv du Worker et
       # updater in-app des builds NEUFS. Garde anti-retour-arrière incluse.
@@ -586,11 +626,11 @@ jobs:
           Commit : ${{ github.sha }} · Branche : ${{ github.ref_name }}"
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             gh release edit "$TAG" --repo "$REPO" --title "7 MOTION TV — dernier build" --notes "$NOTES" --prerelease
-            gh release upload "$TAG" --repo "$REPO" --clobber "$APK"
+            gh release upload "$TAG" --repo "$REPO" --clobber "$APK" seven-tv-amazon.apk
           else
             gh release create "$TAG" --repo "$REPO" \
               --title "7 MOTION TV — dernier build" \
-              --notes "$NOTES" --prerelease "$APK"
+              --notes "$NOTES" --prerelease "$APK" seven-tv-amazon.apk
           fi
           VN=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
           [ -z "$VN" ] && VN="0.3.3"
