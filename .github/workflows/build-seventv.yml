@@ -547,6 +547,15 @@ jobs:
           MANIFEST=android/app/src/main/AndroidManifest.xml
           sed -i '/REQUEST_INSTALL_PACKAGES/d' "$MANIFEST"
           grep -c 'REQUEST_INSTALL_PACKAGES' "$MANIFEST" && exit 1 || echo "✓ permission retirée"
+          # EXIGENCE PLAY (e-mail 15/08, échéance 31/08/2026 « cible une
+          # ancienne version d'Android ») : API 36 pour le canal STORE
+          # SEULEMENT — le sideload client reste targetSdk 35 (comportements
+          # validés sur box réelle), l'étape Amazon plus bas re-descend à 35.
+          GRADLE=android/app/build.gradle.kts
+          sed -i 's/targetSdk = 35/targetSdk = 36/' "$GRADLE"
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' "$GRADLE"
+          echo "android.suppressUnsupportedCompileSdk=36" >> android/gradle.properties
+          grep -nE 'compileSdk|targetSdk' "$GRADLE" | head -4
           flutter build appbundle --release --no-tree-shake-icons \
             --target-platform android-arm,android-arm64 \
             --build-number="$SEVENTV_BUILD_NUMBER" \
@@ -577,6 +586,11 @@ jobs:
           set -e
           grep -q 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml \
             && { echo "⛔ permission encore là"; exit 1; } || echo "✓ sans REQUEST_INSTALL_PACKAGES"
+          # Amazon/Fire TV : on REVIENT à targetSdk 35 (profil testé box —
+          # l'API 36 n'est exigée que par Google Play). compileSdk 36 reste
+          # (sans effet à l'exécution).
+          sed -i 's/targetSdk = 36/targetSdk = 35/' android/app/build.gradle.kts
+          grep -nE 'targetSdk' android/app/build.gradle.kts | head -2
           flutter build apk --release --no-tree-shake-icons \
             --target-platform android-arm,android-arm64 \
             --build-number="$SEVENTV_BUILD_NUMBER" \
