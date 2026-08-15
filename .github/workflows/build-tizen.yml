@@ -173,6 +173,10 @@ jobs:
           M=tizen/tizen-manifest.xml
           if [ -f "$M" ]; then
             sed -i 's/api-version="[0-9.]*"/api-version="6.0"/' "$M" || true
+            # RESOUMISSION SAMSUNG (15/08) : nouvelle version de paquet
+            # 1.0.1 — le Seller Portal exige une version STRICTEMENT
+            # supérieure à celle de la soumission précédente (1.0.0).
+            sed -i 's/\bversion="1\.0\.0"/version="1.0.1"/' "$M" || true
             # IDENTITÉ DU STORE (Pre-Test Samsung du 14/08/2026, erreur
             # Critical « App Title ») : le <label> du modèle flutter-tizen
             # ne correspondait pas au titre « The Few » de la fiche Seller

@@ -6379,6 +6379,43 @@ async function handleRequest(request, env, ctx) {
     // /api/trending — public, top des chaînes les plus regardées EN CE MOMENT
     // (preuve sociale temps réel parmi tous les appareils en ligne). Lecture
     // seule, jamais d'écriture → aucun risque pour l'activation.
+    // /thefew-demo.m3u — PLAYLIST DE DÉMO pour les REVUES DE MAGASINS
+    // (Samsung/Amazon/Google/LG). Contenu 100 % libre de droits : NASA TV
+    // (domaine public), courts-métrages Blender (CC-BY), clips d'exemple
+    // publics. Fichier statique, sessions illimitées — les réviseurs de
+    // tous les groupes de modèles peuvent tester en parallèle. AUCUN accès
+    // au contenu des abonnés ici.
+    if (segments.length === 1 && segments[0] === 'thefew-demo.m3u') {
+      const demo = [
+        '#EXTM3U',
+        '# The Few — Store review demo playlist (royalty-free content only)',
+        '#EXTINF:-1 group-title="Live TV",NASA TV (Public Domain)',
+        'https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8',
+        '#EXTINF:-1 group-title="Live TV",Demo Live Channel (HLS)',
+        'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+        '#EXTINF:-1 group-title="Movies",Big Buck Bunny (2008, CC-BY Blender)',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        '#EXTINF:-1 group-title="Movies",Sintel (2010, CC-BY Blender)',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+        '#EXTINF:-1 group-title="Movies",Tears of Steel (2012, CC-BY Blender)',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+        '#EXTINF:-1 group-title="Series",Demo Series S01E01 (sample clip)',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        '#EXTINF:-1 group-title="Series",Demo Series S01E02 (sample clip)',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+        '#EXTINF:-1 group-title="Series",Demo Series S01E03 (sample clip)',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+        '',
+      ].join('\n');
+      return new Response(demo, {
+        headers: {
+          'content-type': 'audio/x-mpegurl; charset=utf-8',
+          'cache-control': 'public, max-age=300',
+          'access-control-allow-origin': '*',
+        },
+      });
+    }
+
     if (segments[0] === 'api' && segments[1] === 'trending' && segments.length === 2) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/trending');
