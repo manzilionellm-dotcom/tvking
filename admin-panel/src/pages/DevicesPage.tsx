@@ -548,7 +548,13 @@ function DeviceDetailModal({
           </div>
         )}
         {!loading && !err && sources.map((s, i) => (
-          <SourceCard key={i} index={i} source={s} />
+          <SourceCard
+            key={i}
+            index={i}
+            source={s}
+            mac={device.mac}
+            onDone={() => { void refreshOverview(); }}
+          />
         ))}
 
         {/* ----- Inventaire RÉEL sur la TV (remonté par l'app) ----- */}
@@ -781,8 +787,55 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 /// Carte d'une source du M-Trio (avec identifiants Xtream ou URL M3U).
-function SourceCard({ index, source }: { index: number; source: DeviceSource }) {
+function SourceCard({
+  index,
+  source,
+  mac,
+  onDone,
+}: {
+  index: number;
+  source: DeviceSource;
+  mac: string;
+  onDone: () => void;
+}) {
   const isXtream = source.type === 'xtream';
+  // Ces sources-ci sont EN BASE (poussées par le panel) : on agit
+  // directement dessus, sans passer par la file d'ordres.
+  const [busy, setBusy] = useState<'' | 'act' | 'del'>('');
+  const ident = source.server_url || source.m3u_url || '';
+  const nom = source.label || (isXtream ? 'XTREAM' : 'M3U');
+
+  async function activate() {
+    if (!window.confirm(
+      `Rendre « ${nom} » active chez le client ?\n\nC'est celle qu'il regardera. ` +
+      'Les autres restent installées.',
+    )) return;
+    setBusy('act');
+    try {
+      const r = await sourcesApi.setActive(mac, index);
+      void rtActionFeedback(r.rt);
+      toast('Source active mise à jour.', 'success');
+      onDone();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec.', 'error');
+    } finally { setBusy(''); }
+  }
+
+  async function removeOne() {
+    if (!window.confirm(
+      `Retirer UNIQUEMENT cette source ?\n\n${nom}\n${ident}\n\n` +
+      'Les autres listes de ce client sont conservées.',
+    )) return;
+    setBusy('del');
+    try {
+      const r = await sourcesApi.removeAt(mac, index, ident);
+      void rtActionFeedback(r.rt);
+      toast(`Source retirée (${r.remaining} restante(s)).`, 'success');
+      onDone();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec du retrait.', 'error');
+    } finally { setBusy(''); }
+  }
   return (
     <div className="mb-2 rounded-lg border border-white/5 bg-obsidian px-3 py-3">
       <div className="mb-2 flex items-center gap-2">
@@ -812,6 +865,26 @@ function SourceCard({ index, source }: { index: number; source: DeviceSource }) 
             {source.epg_url && <CredRow label="EPG" value={source.epg_url} />}
           </>
         )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          disabled={busy !== ''}
+          onClick={activate}
+          className="rounded-md border border-emerald-500/30 px-2 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40"
+          title="C'est CETTE liste que le client regardera"
+        >
+          {busy === 'act' ? 'Activation…' : '● Rendre active'}
+        </button>
+        <button
+          type="button"
+          disabled={busy !== ''}
+          onClick={removeOne}
+          className="rounded-md border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+          title="Retirer UNIQUEMENT cette source"
+        >
+          {busy === 'del' ? 'Retrait…' : '✕ Retirer celle-ci'}
+        </button>
       </div>
     </div>
   );
