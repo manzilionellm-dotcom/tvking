@@ -147,6 +147,24 @@ abstract final class TitleCurator {
     unicode: true,
   );
 
+  // ÉTIQUETTES DE SOURCE des catalogues VOD (« 4k-nf - Titre », « NF | Titre »).
+  // Deux formes, volontairement STRICTES pour ne jamais amputer un vrai titre :
+  //  a) qualité + plateforme COLLÉES  → « 4k-nf », « uhd_amzn », « fhd-dsnp » :
+  //     aucun film ne commence comme ça, on peut retirer sans séparateur ;
+  //  b) plateforme SEULE → exige un séparateur suivi d'une espace (« NF - »),
+  //     ce qui protège les titres légitimes (« Max Payne » n'a pas de tiret
+  //     après « Max », donc il n'est PAS touché).
+  static const String _srcTags =
+      'nf|netflix|amzn|amazon|dsnp|disney|hbo|hmax|atvp|appletv|hulu|pmtp|'
+      'paramount|stan|peacock|crav|crunchyroll';
+  static final RegExp _sourceTagPrefix = RegExp(
+    r'^\s*(?:'
+    r'(?:4k|uhd|fhd|hd|sd|2160p?|1080p?|720p?)\s*[-_.]\s*(?:' + _srcTags + r')'
+    r'|(?:' + _srcTags + r')'
+    r')\s*[-–—:|>»]\s+',
+    caseSensitive: false,
+  );
+
   // Marques INVISIBLES à purger malgré la liste blanche : les sélecteurs de
   // variante (FE0F…) et diacritiques de symboles sont classés \p{M} (gardé
   // pour l'arabe/l'indien) mais ne servent qu'à décorer des emojis déjà
@@ -370,6 +388,11 @@ abstract final class TitleCurator {
     // 1c) ANTI-TOFU liste blanche : tout caractère hors lettres/chiffres/
     // ponctuation usuelle saute — connu ou inconnu (v. _unrenderable).
     s = stripUnrenderable(s);
+
+    // 1d) ÉTIQUETTES DE SOURCE en tête de titre VOD (photo client : tous les
+    // films s'appelaient « 4k-nf - To the Max »). Les fournisseurs préfixent
+    // avec la qualité et/ou la plateforme d'origine. On les retire.
+    s = s.replaceFirst(_sourceTagPrefix, '');
 
     // 2) Retire les crochets [VIP], [HD], (BACKUP), {RAW}, etc.
     s = s.replaceAllMapped(

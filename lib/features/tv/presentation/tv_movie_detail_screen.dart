@@ -30,6 +30,7 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../vod/data/tmdb_meta_service.dart';
@@ -246,8 +247,11 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
       if (info?.durationSecs != null)
         VodInfo.formatDurationShort(info!.durationSecs!),
       if (info?.genre != null) info!.genre!,
-      if (m.category.trim().isNotEmpty && info?.genre == null)
-        m.category.trim(),
+      // Catégorie CURÉE (même défaut que l'accueil Cinéma : la catégorie
+      // brute du fournisseur arrivait à l'écran avec ses carrés rayés).
+      if (info?.genre == null &&
+          TitleCurator.curateCategory(m.category.trim()).trim().isNotEmpty)
+        TitleCurator.curateCategory(m.category.trim()).trim(),
       if (rating != null && rating.isNotEmpty) '★ $rating',
     ].join('   ·   ');
 

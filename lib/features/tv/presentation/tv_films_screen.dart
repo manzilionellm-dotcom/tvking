@@ -31,6 +31,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../vod/data/playback_position_repository.dart';
@@ -691,8 +692,14 @@ class _HeroBanner extends StatelessWidget {
         if (movie.year != null && movie.year!.isNotEmpty) movie.year!,
         if (movie.rating != null && movie.rating!.isNotEmpty)
           '★ ${movie.rating}',
-        if (movie.category.trim().isNotEmpty) movie.category.trim(),
+        // CATÉGORIE CURÉE (photo client : « NETFLIX MOVIES ⁴▯ 3840▯▯▯▯ »
+        // — la catégorie BRUTE du fournisseur s'affichait telle quelle,
+        // carrés rayés compris, alors que le reste de l'app la nettoie.
+        if (_prettyCategory.isNotEmpty) _prettyCategory,
       ].join('   ·   ');
+
+  String get _prettyCategory =>
+      TitleCurator.curateCategory(movie.category.trim()).trim();
 
   /// Rangée de boutons (Regarder / Ma Liste / Télécharger) — partagée par les
   /// deux rendus pour garder un comportement de focus identique.
