@@ -17,7 +17,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, devicesApi, sourcesApi } from '@/lib/api';
-import type { DeviceOverview, DeviceMessage } from '@/lib/api';
+import type { DeviceOverview, DeviceMessage, DeviceSource } from '@/lib/api';
 import { sendCmd, waitForAck, useLiveDevices } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { cn, formatDateTime } from '@/lib/utils';
@@ -103,6 +103,39 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
   // ne marche pas »). L'endpoint DELETE existe ; la synchro temps réel fait
   // que l'app du client le voit tout de suite. On repousse ensuite une source
   // propre via « Activer un appareil ».
+  // RETRAIT D'UNE SEULE SOURCE (demande du propriétaire : « je choisis ce
+  // que je veux enlever »). Avant, le panel ne savait que tout effacer — et
+  // les listes ajoutées par le client lui-même étaient intouchables.
+  const [removingIdx, setRemovingIdx] = useState<number | null>(null);
+  async function handleRemoveOne(index: number, s: DeviceSource) {
+    const ident = s.server_url || s.m3u_url || '';
+    const nom = s.label || (s.type || 'source').toUpperCase();
+    if (
+      !window.confirm(
+        `Retirer UNIQUEMENT cette source ?\n\n${nom}\n${ident}\n\n` +
+          'Les autres listes de ce client sont conservées. ' +
+          'L’app le voit tout de suite.',
+      )
+    ) {
+      return;
+    }
+    setRemovingIdx(index);
+    try {
+      const r = await sourcesApi.removeAt(mac, index, ident);
+      void rtActionFeedback(r.rt);
+      toast(`Source retirée (${r.remaining} restante(s)).`, 'success');
+      const fresh = await devicesApi.overview(mac);
+      setOv(fresh);
+    } catch (e) {
+      toast(
+        e instanceof ApiError ? e.message : 'Échec du retrait.',
+        'error',
+      );
+    } finally {
+      setRemovingIdx(null);
+    }
+  }
+
   const [clearing, setClearing] = useState(false);
   async function handleClearSource() {
     if (
@@ -313,6 +346,17 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
                         {s.m3u_url}
                       </div>
                     )}
+                    {/* RETRAIT CIBLÉ : on enlève CETTE source-là, pas toutes.
+                        Fonctionne aussi sur une liste ajoutée par le client. */}
+                    <button
+                      type="button"
+                      disabled={removingIdx === i}
+                      onClick={() => handleRemoveOne(i, s)}
+                      className="mt-1.5 rounded-md border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                      title="Retirer UNIQUEMENT cette source"
+                    >
+                      {removingIdx === i ? 'Retrait…' : '✕ Retirer celle-ci'}
+                    </button>
                   </div>
                 ))
               )}

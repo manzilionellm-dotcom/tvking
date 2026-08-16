@@ -775,6 +775,16 @@ export const sourcesApi = {
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'DELETE' },
     ),
+  // RETRAIT CIBLÉ : enlève UNE seule source (la N-ième), y compris une liste
+  // que le client a ajoutée lui-même. `match` = serveur/URL attendu à cet
+  // index : si la liste a bougé depuis l'affichage, le serveur REFUSE (409)
+  // au lieu de supprimer la mauvaise ligne.
+  removeAt: (mac: string, index: number, match?: string) =>
+    request<{ ok: boolean; mac: string; removed: number; remaining: number; rt?: RtInfo }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}?index=${index}` +
+        (match ? `&match=${encodeURIComponent(match)}` : ''),
+      { method: 'DELETE' },
+    ),
 };
 
 // =========================================================

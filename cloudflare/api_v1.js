@@ -3556,13 +3556,69 @@ async function handleSourcePut(request, env, mac, actor) {
   return jsonResp({ ok: true, mac: m, count: sources.length });
 }
 
+// DELETE /api/v1/sources/:mac            → retire TOUT (comportement d'origine)
+// DELETE /api/v1/sources/:mac?index=N    → retire UNE SEULE source, la N-ième
+//
+// Retrait CIBLÉ (demande du propriétaire) : avant, le panel ne savait que
+// « tout effacer ». Il fallait pouvoir enlever UNE liste précise — y compris
+// une liste que le CLIENT a ajoutée lui-même (origin='self'), que
+// `upsertDeviceSource` préserve volontairement et que rien ne pouvait donc
+// supprimer sans tout raser.
+//
+// Sécurité anti-erreur : le paramètre `match` (facultatif mais envoyé par le
+// panel) doit correspondre au serveur/URL de la N-ième source. Si la liste a
+// changé entre l'affichage et le clic, l'index ne pointe plus la même chose →
+// on REFUSE plutôt que de supprimer la mauvaise ligne.
 async function handleSourceDelete(request, env, mac, actor) {
   await ensureSourcesTable(env);
   const m = decodeMac(mac).trim().toUpperCase();
-  await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
-  await logAudit(env, request, actor, 'source.clear',
-    { type: 'device_source', id: m }, null, null);
-  return jsonResp({ ok: true, mac: m });
+  const url = new URL(request.url);
+  const rawIndex = url.searchParams.get('index');
+
+  if (rawIndex === null || rawIndex === '') {
+    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
+    await logAudit(env, request, actor, 'source.clear',
+      { type: 'device_source', id: m }, null, null);
+    return jsonResp({ ok: true, mac: m });
+  }
+
+  const idx = Number.parseInt(rawIndex, 10);
+  if (!Number.isInteger(idx) || idx < 0) {
+    return jsonResp({ error: 'invalid index' }, 400);
+  }
+  const row = await env.DB
+    .prepare('SELECT sources_json FROM device_sources WHERE mac = ?')
+    .bind(m).first();
+  let arr = [];
+  try { arr = JSON.parse((row && row.sources_json) || '[]') || []; } catch (_) { arr = []; }
+  if (!Array.isArray(arr) || idx >= arr.length) {
+    return jsonResp({ error: 'index out of range' }, 404);
+  }
+  const victim = arr[idx] || {};
+  const match = (url.searchParams.get('match') || '').trim();
+  if (match) {
+    const ident = String(victim.server || victim.url || victim.m3u_url || '');
+    if (!ident.includes(match) && !match.includes(ident)) {
+      return jsonResp(
+        { error: 'stale index — la liste a changé, recharge la fiche' },
+        409,
+      );
+    }
+  }
+  const next = arr.filter((_, i) => i !== idx);
+  if (next.length === 0) {
+    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
+  } else {
+    await env.DB
+      .prepare('UPDATE device_sources SET sources_json = ? WHERE mac = ?')
+      .bind(JSON.stringify(next), m)
+      .run();
+  }
+  await logAudit(env, request, actor, 'source.remove_one',
+    { type: 'device_source', id: m },
+    { index: idx, origin: victim.origin || '', server: victim.server || '' },
+    null);
+  return jsonResp({ ok: true, mac: m, removed: idx, remaining: next.length });
 }
 
 // =========================================================
