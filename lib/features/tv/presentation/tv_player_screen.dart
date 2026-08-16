@@ -301,6 +301,13 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // Dernier état "buffering" observé (détection des transitions).
   bool _wasBuffering = true;
 
+  /// Un DIRECT a-t-il été RELÂCHÉ parce que l'app est passée en arrière-plan ?
+  /// Si oui, le retour au premier plan doit RÉOUVRIR le flux (et non appeler
+  /// `play()` sur un lecteur qui n'a plus de source). Cf.
+  /// didChangeAppLifecycleState : on relâche pour ne pas garder une
+  /// connexion ouverte chez les abonnements à 1 connexion.
+  bool _backgroundedLive = false;
+
   // Chaîne « échec → sonde → cascade de formats » : LE MÊME contrôleur que
   // sur téléphone (StreamBlockedFallback), branché sur les échecs définitifs
   // du relais. Terrain 2026-07-09 : ce panel sert l'URL NUE
@@ -420,9 +427,28 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         // L'OS peut TUER l'app une fois en arrière-plan (Home, multitâche) :
         // on fige la position VOD MAINTENANT pour ne pas perdre la reprise.
         _savePlaybackPosition();
-        _controller.pause();
+        if (_isVod) {
+          // FILM : pause — la position doit survivre pour la reprise.
+          _controller.pause();
+        } else {
+          // DIRECT : ARRÊT COMPLET, pas une pause. Un lecteur en pause garde
+          // la session HTTP ouverte vers le panel ; sur un abonnement à
+          // 1 CONNEXION, le client qui appuie sur Home puis essaie de
+          // regarder sur un autre appareil se prend « connexion déjà
+          // utilisée » alors qu'il ne regarde plus rien. On ne perd rien :
+          // un direct se rattrape toujours au bord du live (cf. resumed).
+          _controller.stop();
+          _backgroundedLive = true;
+        }
       case AppLifecycleState.resumed:
-        _controller.play();
+        if (_backgroundedLive) {
+          // Le direct a été relâché : on le RÉOUVRE (le chemin d'ouverture
+          // habituel gère cascade de sources, EPG, watchdog…).
+          _backgroundedLive = false;
+          _open();
+        } else {
+          _controller.play();
+        }
       case AppLifecycleState.inactive:
         break; // transitions brèves (dialogue…) → on ne coupe pas
     }

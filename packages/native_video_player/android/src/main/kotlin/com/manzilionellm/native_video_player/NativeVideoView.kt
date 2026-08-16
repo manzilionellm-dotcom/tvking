@@ -677,6 +677,25 @@ class NativeVideoView(
                 playerHandler.post { player.pause() }
                 result.success(null)
             }
+            "stop" -> {
+                // LIBÉRATION DE LA CONNEXION sans détruire la vue (Dart peut
+                // relancer un setUrl ensuite). Motif terrain : sur un DIRECT,
+                // `pause()` garde la session HTTP ouverte vers le panel — un
+                // client qui appuie sur Home puis tente de regarder ailleurs
+                // se prend « connexion déjà utilisée » sur les abonnements
+                // à 1 connexion, alors qu'il ne regarde plus rien.
+                // clearMediaItems() ferme réellement la source ; on repasse
+                // en IDLE pour que la FSM accepte un nouveau setUrl.
+                playerHandler.post {
+                    cancelRetry()
+                    player.stop()
+                    player.clearMediaItems()
+                    currentUrl = null
+                    fsm = Fsm.IDLE
+                    recordEvent("stop")
+                }
+                result.success(null)
+            }
             "seekTo" -> {
                 // Film / VOD / catch-up : va à une position absolue (ms). Borné
                 // à [0, duration] côté Dart ; ici on re-borne par prudence. Sans

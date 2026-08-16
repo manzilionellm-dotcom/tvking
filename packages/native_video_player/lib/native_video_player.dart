@@ -377,6 +377,15 @@ class NativeVideoController extends ChangeNotifier {
 
   void pause() => _channel?.invokeMethod<void>('pause');
 
+  /// ARRÊT COMPLET : libère la source et FERME la connexion au serveur, sans
+  /// détruire la vue — un [setUrl] ultérieur relance proprement.
+  ///
+  /// À préférer à [pause] sur un DIRECT quand l'app part en arrière-plan :
+  /// un lecteur en pause GARDE la session ouverte vers le panel, ce qui
+  /// bloque les abonnements à 1 connexion alors que plus personne ne
+  /// regarde. Sur un FILM, garder [pause] (la position doit survivre).
+  void stop() => _channel?.invokeMethod<void>('stop');
+
   /// TÉLÉMÉTRIE SILENCIEUSE : instantané des compteurs natifs (frames
   /// perdues, underruns audio, reconnexions, bascules de source, violations
   /// de la garde d'états) + drain du journal d'événements (les événements
