@@ -565,7 +565,12 @@ function DeviceDetailModal({
               par le panel <em>et</em> ajoutées par le client). Sans mot de passe.
             </p>
             {ov!.localSources!.map((s, i) => (
-              <LocalSourceCard key={i} source={s} />
+              <LocalSourceCard
+                key={i}
+                source={s}
+                mac={device.mac}
+                onDone={() => { void refreshOverview(); }}
+              />
             ))}
           </div>
         )}
@@ -814,8 +819,47 @@ function SourceCard({ index, source }: { index: number; source: DeviceSource }) 
 
 /// Carte d'une source réellement présente sur la TV (inventaire heartbeat).
 /// Compacte, sans mot de passe ; badge « active » sur celle en cours d'usage.
-function LocalSourceCard({ source }: { source: DeviceLocalSource }) {
+function LocalSourceCard({
+  source,
+  mac,
+  onDone,
+}: {
+  source: DeviceLocalSource;
+  mac: string;
+  onDone: () => void;
+}) {
   const isXtream = source.type === 'xtream';
+  // ORDRE DURABLE : ces listes ont été ajoutées par le CLIENT sur sa TV,
+  // elles n'existent pas côté serveur — seul l'appareil peut les toucher.
+  // On dépose donc un ordre appliqué à sa prochaine synchro (donc même
+  // appareil éteint au moment du clic).
+  const [busy, setBusy] = useState<'' | 'act' | 'del'>('');
+  async function order(kind: 'source_activate' | 'source_remove') {
+    const nom = source.name || (isXtream ? 'XTREAM' : 'M3U');
+    const question =
+      kind === 'source_remove'
+        ? `Retirer « ${nom} » de la TV du client ?\n\nCette liste disparaîtra de son appareil.`
+        : `Rendre « ${nom} » active chez le client ?\n\nC'est celle qu'il regardera.`;
+    if (!window.confirm(`${question}\n\nSi son appareil est hors ligne, ce sera appliqué à sa prochaine connexion.`)) {
+      return;
+    }
+    setBusy(kind === 'source_remove' ? 'del' : 'act');
+    try {
+      const r = await sourcesApi.order(mac, kind, {
+        type: source.type,
+        name: source.name,
+        server: source.server,
+        username: source.username,
+      });
+      void rtActionFeedback(r.rt);
+      toast('Ordre envoyé au client.', 'success');
+      onDone();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec.', 'error');
+    } finally {
+      setBusy('');
+    }
+  }
   return (
     <div className="mb-2 rounded-lg border border-white/5 bg-obsidian px-3 py-2.5">
       <div className="mb-1 flex items-center gap-2">
@@ -837,6 +881,28 @@ function LocalSourceCard({ source }: { source: DeviceLocalSource }) {
         <CredRow label="Serveur" value={source.server || '—'} />
         {isXtream && <CredRow label="Identifiant" value={source.username || '—'} />}
         <CredRow label="Chaînes" value={source.channels ? String(source.channels) : '—'} />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {!source.active && (
+          <button
+            type="button"
+            disabled={busy !== ''}
+            onClick={() => order('source_activate')}
+            className="rounded-md border border-emerald-500/30 px-2 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40"
+            title="C'est CETTE liste que le client regardera"
+          >
+            {busy === 'act' ? 'Activation…' : '● Rendre active'}
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={busy !== ''}
+          onClick={() => order('source_remove')}
+          className="rounded-md border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+          title="Retirer cette liste de la TV du client"
+        >
+          {busy === 'del' ? 'Retrait…' : '✕ Retirer de sa TV'}
+        </button>
       </div>
     </div>
   );

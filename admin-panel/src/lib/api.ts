@@ -788,6 +788,18 @@ export const sourcesApi = {
       `/api/v1/sources/${encodeURIComponent(mac)}/active`,
       { method: 'POST', body: { index } },
     ),
+  // ORDRE sur une liste LOCALE du client (ajoutée par lui sur sa TV, donc
+  // absente de la base : seul l'appareil peut agir). File durable —
+  // appliqué à sa prochaine synchro, même appareil éteint au clic.
+  order: (
+    mac: string,
+    kind: 'source_activate' | 'source_remove',
+    target: { type?: string; name?: string; server?: string; username?: string; m3u_url?: string },
+  ) =>
+    request<{ ok: boolean; mac: string; kind: string; rt?: RtInfo }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}/order`,
+      { method: 'POST', body: { kind, ...target } },
+    ),
   removeAt: (mac: string, index: number, match?: string) =>
     request<{ ok: boolean; mac: string; removed: number; remaining: number; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}?index=${index}` +

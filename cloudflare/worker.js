@@ -996,6 +996,83 @@ function send(ev){ev.preventDefault();
 </script></body></html>`;
 }
 
+// =========================================================
+//  ORDRES SUR LES LISTES LOCALES DU CLIENT (file durable)
+// =========================================================
+//  Les listes que le CLIENT a ajoutées lui-même sur sa TV ne sont PAS en
+//  base : le panel les voit (inventaire remonté par heartbeat) mais ne
+//  pouvait rien en faire. Ici : une file d'ORDRES que l'app consomme à sa
+//  prochaine synchro — donc ça marche même appareil ÉTEINT.
+//
+//  Ordres : 'source_remove' (retirer cette liste) et 'source_activate'
+//  (c'est celle-ci qu'il regarde). La cible est décrite par serveur +
+//  identifiant (pas par index : l'ordre des listes peut changer côté app).
+async function ensureDeviceOrdersTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS device_orders (' +
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, mac TEXT NOT NULL, ' +
+      'kind TEXT NOT NULL, target_json TEXT, created_at INTEGER, ' +
+      'applied_at INTEGER)',
+  ).run();
+  try {
+    await env.DB.prepare(
+      'CREATE INDEX IF NOT EXISTS idx_device_orders_mac ' +
+        'ON device_orders (mac, applied_at)',
+    ).run();
+  } catch (_) { /* index = confort, pas obligatoire */ }
+}
+
+async function pendingDeviceOrders(env, mac) {
+  if (!env.DB) return [];
+  try {
+    await ensureDeviceOrdersTable(env);
+    const rs = await env.DB
+      .prepare(
+        'SELECT id, kind, target_json FROM device_orders ' +
+          'WHERE mac = ? AND applied_at IS NULL ORDER BY id ASC LIMIT 20',
+      )
+      .bind(String(mac).toUpperCase())
+      .all();
+    return (rs.results || []).map((r) => {
+      let target = {};
+      try { target = JSON.parse(r.target_json || '{}') || {}; } catch (_) { target = {}; }
+      return { id: r.id, kind: r.kind, target };
+    });
+  } catch (_) {
+    return [];
+  }
+}
+
+// POST /api/device-orders/ack  { mac, ids: [1,2] } — l'app confirme.
+async function handleDeviceOrdersAck(request, env) {
+  if (!env.DB) return json({ ok: false });
+  let body = {};
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON'); }
+  const mac = String((body && body.mac) || '').trim().toUpperCase();
+  const ids = Array.isArray(body && body.ids) ? body.ids : [];
+  if (!mac || ids.length === 0) return json({ ok: true, acked: 0 });
+  try {
+    await ensureDeviceOrdersTable(env);
+    const now = Date.now();
+    let n = 0;
+    for (const raw of ids.slice(0, 50)) {
+      const id = Number.parseInt(raw, 10);
+      if (!Number.isInteger(id)) continue;
+      await env.DB
+        .prepare(
+          'UPDATE device_orders SET applied_at = ? ' +
+            'WHERE id = ? AND mac = ? AND applied_at IS NULL',
+        )
+        .bind(now, id, mac)
+        .run();
+      n++;
+    }
+    return json({ ok: true, acked: n });
+  } catch (_) {
+    return json({ ok: false });
+  }
+}
+
 // Enregistre AUTOMATIQUEMENT une MAC dans la base au 1er heartbeat :
 // cree un client "auto" + le device (l'essai 7 j demarre a first_seen_at).
 // Ainsi TOUTE app installee apparait dans ton panel, sans rien faire.
@@ -5626,7 +5703,16 @@ async function handlePublicDeviceSource(env, mac) {
         // LABO : les sources de test du maître s'AJOUTENT à la fin (jamais
         // à la place) — pour un non-maître, labSources est toujours [].
         if (labSources.length) sources = sources.concat(labSources);
-        return jsonPrivate({ mac: MAC, source: sources[0] || null, sources });
+        return jsonPrivate({
+          mac: MAC,
+          source: sources[0] || null,
+          sources,
+          // ORDRES EN ATTENTE sur les listes LOCALES du client (celles
+          // qu'il a ajoutées lui-même : elles ne sont pas en base, donc
+          // seul l'appareil peut les toucher). File durable → un appareil
+          // hors ligne les applique à sa prochaine synchro.
+          orders: await pendingDeviceOrders(env, MAC),
+        });
       }
     } catch (_) {
       // Table absente / D1 indisponible → on tente le repli KV ci-dessous.
@@ -6783,6 +6869,13 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') return badRequest('only GET');
       return await handlePairPoll(env, url);
     }
+    // POST /api/device-orders/ack — l'app confirme les ordres appliqués
+    if (segments[0] === 'api' && segments[1] === 'device-orders' &&
+        segments[2] === 'ack' && segments.length === 3) {
+      if (request.method !== 'POST') return badRequest('only POST');
+      return await handleDeviceOrdersAck(request, env);
+    }
+
     // POST /api/pair/:code — le TÉLÉPHONE dépose les identifiants
     if (segments[0] === 'api' && segments[1] === 'pair' &&
         segments.length === 3 && /^[0-9]{6}$/.test(segments[2])) {

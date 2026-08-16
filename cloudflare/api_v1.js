@@ -1163,6 +1163,20 @@ async function apiV1Inner(request, env) {
       (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
   }
 
+  // /sources/:mac/order — ordre sur une liste LOCALE du client (ajoutée
+  // par lui sur sa TV : invisible en base, seul l'appareil peut agir).
+  if (parts[0] === 'sources' && parts.length === 3 && parts[2] === 'order') {
+    const mac = parts[1];
+    if (request.method !== 'POST') {
+      return errResp('method_not_allowed', 'POST attendu.', 405);
+    }
+    if (!resellerCan(a.user, 'sources')) {
+      return errResp('forbidden', 'Ton niveau ne permet pas cette action.', 403);
+    }
+    return withRt(env, await handleSourceOrder(request, env, mac, actor),
+      (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
+  }
+
   // /customers
   if (parts[0] === 'customers') {
     if (parts.length === 1) {
@@ -3568,6 +3582,59 @@ async function handleSourcePut(request, env, mac, actor) {
     { type: 'device_source', id: m }, null,
     { count: sources.length, types: sources.map((s) => s.type) });
   return jsonResp({ ok: true, mac: m, count: sources.length });
+}
+
+// POST /api/v1/sources/:mac/order  { kind, server, username, m3u_url }
+//  Agit sur une liste que le CLIENT a ajoutée lui-même sur sa TV. Ces
+//  listes ne sont PAS en base (le panel les voit via l'inventaire remonté
+//  par heartbeat) : seul l'appareil peut les toucher. On dépose donc un
+//  ORDRE durable, que l'app applique à sa prochaine synchro — même si la
+//  box est éteinte au moment du clic.
+//  kind : 'source_remove' | 'source_activate'
+async function handleSourceOrder(request, env, mac, actor) {
+  const m = decodeMac(mac).trim().toUpperCase();
+  let body = {};
+  try { body = await request.json(); } catch (_) { return jsonResp({ error: 'invalid JSON' }, 400); }
+  const kind = String((body && body.kind) || '');
+  if (kind !== 'source_remove' && kind !== 'source_activate') {
+    return jsonResp({ error: 'unknown kind' }, 400);
+  }
+  const target = {
+    type: String((body && body.type) || ''),
+    server: String((body && body.server) || '').trim(),
+    username: String((body && body.username) || '').trim(),
+    m3u_url: String((body && body.m3u_url) || '').trim(),
+    name: String((body && body.name) || '').trim(),
+  };
+  if (!target.server && !target.m3u_url) {
+    return jsonResp({ error: 'target incomplet' }, 400);
+  }
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS device_orders (' +
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, mac TEXT NOT NULL, ' +
+      'kind TEXT NOT NULL, target_json TEXT, created_at INTEGER, ' +
+      'applied_at INTEGER)',
+  ).run();
+  // Un seul ordre EN ATTENTE par (mac, kind, cible) : cliquer deux fois
+  // ne doit pas empiler deux suppressions identiques.
+  await env.DB
+    .prepare(
+      'DELETE FROM device_orders WHERE mac = ? AND kind = ? ' +
+        'AND target_json = ? AND applied_at IS NULL',
+    )
+    .bind(m, kind, JSON.stringify(target))
+    .run();
+  await env.DB
+    .prepare(
+      'INSERT INTO device_orders (mac, kind, target_json, created_at) ' +
+        'VALUES (?, ?, ?, ?)',
+    )
+    .bind(m, kind, JSON.stringify(target), Date.now())
+    .run();
+  await logAudit(env, request, actor, kind,
+    { type: 'device_order', id: m },
+    { server: target.server, name: target.name }, null);
+  return jsonResp({ ok: true, mac: m, kind });
 }
 
 // POST /api/v1/sources/:mac/active  { index }

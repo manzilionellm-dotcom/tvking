@@ -87,6 +87,13 @@ abstract final class RemoteSourceRepository {
       // tableau `sources`, on les charge TOUTES. Le client peut ensuite
       // basculer de l'une à l'autre depuis l'accueil. Repli sur la source
       // unique historique si le tableau est absent.
+      //
+      // ORDRES DU PANEL sur les listes LOCALES du client (celles qu'il a
+      // ajoutées lui-même : absentes de la base serveur, donc seul
+      // l'appareil peut les toucher). File durable → un ordre déposé
+      // pendant que la box était éteinte s'applique ici, à son réveil.
+      await _applyOrders(mac, body['orders']);
+
       final Object? list = body['sources'];
       if (list is List && list.isNotEmpty) {
         // Même boucle que applySources (règle du labo comprise) : une seule
@@ -103,6 +110,76 @@ abstract final class RemoteSourceRepository {
       if (kDebugMode) debugPrint('[RemoteSource] sync error: $e');
       return RemoteSyncResult.networkError;
     }
+  }
+
+  /// Applique les ORDRES déposés par le panel sur les listes locales du
+  /// client : retirer une liste, ou en faire l'active. La cible est
+  /// décrite par serveur+identifiant (et non par index : l'ordre des
+  /// listes n'est pas le même d'un appareil à l'autre).
+  ///
+  /// Best-effort de bout en bout : un ordre dont la cible n'existe plus est
+  /// quand même ACQUITTÉ — sinon il resterait en file pour l'éternité et se
+  /// rejouerait à chaque synchro.
+  static Future<void> _applyOrders(String mac, Object? raw) async {
+    if (raw is! List || raw.isEmpty) return;
+    final List<int> done = <int>[];
+    for (final Object? o in raw) {
+      if (o is! Map<String, dynamic>) continue;
+      final Object? rawId = o['id'];
+      final int? id = rawId is int ? rawId : null;
+      final String kind = (o['kind'] as String?) ?? '';
+      final Map<String, dynamic> t =
+          (o['target'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+      if (id == null) continue;
+      try {
+        final Playlist? target = _matchLocal(t);
+        if (target != null && target.id != null) {
+          if (kind == 'source_remove') {
+            await PlaylistRepository.instance.deletePlaylist(target.id!);
+            if (kDebugMode) debugPrint('[Orders] retiree: ' + target.name);
+          } else if (kind == 'source_activate' && !target.isActive) {
+            await PlaylistRepository.instance.setActivePlaylist(target.id!);
+            if (kDebugMode) debugPrint('[Orders] active: ' + target.name);
+          }
+        }
+        done.add(id); // cible absente = ordre sans objet -> acquitte quand meme
+      } catch (e) {
+        if (kDebugMode) debugPrint('[Orders] echec ordre: $e');
+      }
+    }
+    if (done.isEmpty) return;
+    try {
+      await http
+          .post(
+            Uri.parse('$kSubscriptionBaseUrl/api/device-orders/ack'),
+            headers: const <String, String>{'Content-Type': 'application/json'},
+            body: jsonEncode(<String, Object>{'mac': mac, 'ids': done}),
+          )
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Pas d'accuse -> l'ordre reviendra a la prochaine synchro. Les deux
+      // actions sont IDEMPOTENTES (supprimer une liste absente, activer une
+      // liste deja active) : le rejouer est sans danger.
+    }
+  }
+
+  /// Retrouve la playlist locale visee par un ordre.
+  static Playlist? _matchLocal(Map<String, dynamic> t) {
+    final String server = (t['server'] as String?)?.trim() ?? '';
+    final String user = (t['username'] as String?)?.trim() ?? '';
+    final String m3u = (t['m3u_url'] as String?)?.trim() ?? '';
+    for (final Playlist p in PlaylistRepository.instance.currentPlaylists) {
+      if (m3u.isNotEmpty && p.type == PlaylistType.m3u && p.m3uUrl == m3u) {
+        return p;
+      }
+      if (server.isNotEmpty &&
+          p.type == PlaylistType.xtream &&
+          p.xtreamServer == server &&
+          (user.isEmpty || p.xtreamUsername == user)) {
+        return p;
+      }
+    }
+    return null;
   }
 
   /// Restaure l'historique de visionnage depuis le serveur (synchro multi-box).
