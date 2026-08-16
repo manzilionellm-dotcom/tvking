@@ -1854,5 +1854,49 @@
   "tvLauncherLatestMovies": "FILAMU MPYA ZILIZOONGEZWA",
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
+  },
+  "tvPairTitle": "Usanidi bila kuandika",
+  "@tvPairTitle": {
+    "description": "Texte UI : tvPairTitle"
+  },
+  "tvPairSubtitle": "Changanua msimbo huu kwa simu yako: weka taarifa zako hapo na TV itaunganishwa yenyewe.",
+  "@tvPairSubtitle": {
+    "description": "Texte UI : tvPairSubtitle"
+  },
+  "tvPairOrGoTo": "Au fungua anwani hii kwenye simu yako:",
+  "@tvPairOrGoTo": {
+    "description": "Texte UI : tvPairOrGoTo"
+  },
+  "tvPairCodeIs": "Msimbo",
+  "@tvPairCodeIs": {
+    "description": "Texte UI : tvPairCodeIs"
+  },
+  "tvPairWaiting": "Inasubiri simu yako…",
+  "@tvPairWaiting": {
+    "description": "Texte UI : tvPairWaiting"
+  },
+  "tvPairConnecting": "Inaunganisha…",
+  "@tvPairConnecting": {
+    "description": "Texte UI : tvPairConnecting"
+  },
+  "tvPairExpired": "Msimbo umeisha muda — omba mpya.",
+  "@tvPairExpired": {
+    "description": "Texte UI : tvPairExpired"
+  },
+  "tvPairNewCode": "Msimbo mpya",
+  "@tvPairNewCode": {
+    "description": "Texte UI : tvPairNewCode"
+  },
+  "tvPairUnavailable": "Huduma haipatikani kwa muda. Tumia uwekaji wa mkono.",
+  "@tvPairUnavailable": {
+    "description": "Texte UI : tvPairUnavailable"
+  },
+  "tvPairEntry": "Unganisha kwa simu yangu",
+  "@tvPairEntry": {
+    "description": "Texte UI : tvPairEntry"
+  },
+  "tvPairEntrySub": "Bila kuandika chochote kwa rimoti — inapendekezwa",
+  "@tvPairEntrySub": {
+    "description": "Texte UI : tvPairEntrySub"
   }
 }

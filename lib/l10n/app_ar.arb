@@ -1854,5 +1854,49 @@
   "tvLauncherLatestMovies": "أحدث الأفلام المضافة",
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
+  },
+  "tvPairTitle": "الإعداد بدون كتابة",
+  "@tvPairTitle": {
+    "description": "Texte UI : tvPairTitle"
+  },
+  "tvPairSubtitle": "امسح هذا الرمز بهاتفك: أدخل بياناتك هناك وسيتصل التلفزيون تلقائياً.",
+  "@tvPairSubtitle": {
+    "description": "Texte UI : tvPairSubtitle"
+  },
+  "tvPairOrGoTo": "أو افتح هذا العنوان على هاتفك:",
+  "@tvPairOrGoTo": {
+    "description": "Texte UI : tvPairOrGoTo"
+  },
+  "tvPairCodeIs": "الرمز",
+  "@tvPairCodeIs": {
+    "description": "Texte UI : tvPairCodeIs"
+  },
+  "tvPairWaiting": "في انتظار هاتفك…",
+  "@tvPairWaiting": {
+    "description": "Texte UI : tvPairWaiting"
+  },
+  "tvPairConnecting": "جارٍ الاتصال…",
+  "@tvPairConnecting": {
+    "description": "Texte UI : tvPairConnecting"
+  },
+  "tvPairExpired": "انتهت صلاحية الرمز — اطلب رمزاً جديداً.",
+  "@tvPairExpired": {
+    "description": "Texte UI : tvPairExpired"
+  },
+  "tvPairNewCode": "رمز جديد",
+  "@tvPairNewCode": {
+    "description": "Texte UI : tvPairNewCode"
+  },
+  "tvPairUnavailable": "الخدمة غير متاحة مؤقتاً. استخدم الإدخال اليدوي.",
+  "@tvPairUnavailable": {
+    "description": "Texte UI : tvPairUnavailable"
+  },
+  "tvPairEntry": "الاتصال عبر هاتفي",
+  "@tvPairEntry": {
+    "description": "Texte UI : tvPairEntry"
+  },
+  "tvPairEntrySub": "بدون كتابة أي شيء بجهاز التحكم — مُستحسن",
+  "@tvPairEntrySub": {
+    "description": "Texte UI : tvPairEntrySub"
   }
 }

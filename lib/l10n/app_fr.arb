@@ -4603,5 +4603,49 @@
   "tvLauncherLatestMovies": "DERNIERS FILMS AJOUTÉS",
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
+  },
+  "tvPairTitle": "Connexion sans clavier",
+  "@tvPairTitle": {
+    "description": "Texte UI : tvPairTitle"
+  },
+  "tvPairSubtitle": "Scanne ce code avec ton téléphone : tu saisis tes informations là-bas, la TV se connecte toute seule.",
+  "@tvPairSubtitle": {
+    "description": "Texte UI : tvPairSubtitle"
+  },
+  "tvPairOrGoTo": "Ou ouvre cette adresse sur ton téléphone :",
+  "@tvPairOrGoTo": {
+    "description": "Texte UI : tvPairOrGoTo"
+  },
+  "tvPairCodeIs": "Code",
+  "@tvPairCodeIs": {
+    "description": "Texte UI : tvPairCodeIs"
+  },
+  "tvPairWaiting": "En attente de ton téléphone…",
+  "@tvPairWaiting": {
+    "description": "Texte UI : tvPairWaiting"
+  },
+  "tvPairConnecting": "Connexion en cours…",
+  "@tvPairConnecting": {
+    "description": "Texte UI : tvPairConnecting"
+  },
+  "tvPairExpired": "Code expiré — demande un nouveau code.",
+  "@tvPairExpired": {
+    "description": "Texte UI : tvPairExpired"
+  },
+  "tvPairNewCode": "Nouveau code",
+  "@tvPairNewCode": {
+    "description": "Texte UI : tvPairNewCode"
+  },
+  "tvPairUnavailable": "Service momentanément indisponible. Utilise la saisie manuelle.",
+  "@tvPairUnavailable": {
+    "description": "Texte UI : tvPairUnavailable"
+  },
+  "tvPairEntry": "Connecter avec mon téléphone",
+  "@tvPairEntry": {
+    "description": "Texte UI : tvPairEntry"
+  },
+  "tvPairEntrySub": "Sans rien taper à la télécommande — recommandé",
+  "@tvPairEntrySub": {
+    "description": "Texte UI : tvPairEntrySub"
   }
 }

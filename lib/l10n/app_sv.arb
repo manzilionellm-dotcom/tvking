@@ -1854,5 +1854,49 @@
   "tvLauncherLatestMovies": "SENAST TILLAGDA FILMER",
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
+  },
+  "tvPairTitle": "Inställning utan tangentbord",
+  "@tvPairTitle": {
+    "description": "Texte UI : tvPairTitle"
+  },
+  "tvPairSubtitle": "Skanna koden med din telefon: ange dina uppgifter där, så ansluter tv:n själv.",
+  "@tvPairSubtitle": {
+    "description": "Texte UI : tvPairSubtitle"
+  },
+  "tvPairOrGoTo": "Eller öppna den här adressen på din telefon:",
+  "@tvPairOrGoTo": {
+    "description": "Texte UI : tvPairOrGoTo"
+  },
+  "tvPairCodeIs": "Kod",
+  "@tvPairCodeIs": {
+    "description": "Texte UI : tvPairCodeIs"
+  },
+  "tvPairWaiting": "Väntar på din telefon…",
+  "@tvPairWaiting": {
+    "description": "Texte UI : tvPairWaiting"
+  },
+  "tvPairConnecting": "Ansluter…",
+  "@tvPairConnecting": {
+    "description": "Texte UI : tvPairConnecting"
+  },
+  "tvPairExpired": "Koden har gått ut — begär en ny.",
+  "@tvPairExpired": {
+    "description": "Texte UI : tvPairExpired"
+  },
+  "tvPairNewCode": "Ny kod",
+  "@tvPairNewCode": {
+    "description": "Texte UI : tvPairNewCode"
+  },
+  "tvPairUnavailable": "Tjänsten är tillfälligt otillgänglig. Använd manuell inmatning.",
+  "@tvPairUnavailable": {
+    "description": "Texte UI : tvPairUnavailable"
+  },
+  "tvPairEntry": "Anslut med min telefon",
+  "@tvPairEntry": {
+    "description": "Texte UI : tvPairEntry"
+  },
+  "tvPairEntrySub": "Inget att skriva på fjärrkontrollen — rekommenderas",
+  "@tvPairEntrySub": {
+    "description": "Texte UI : tvPairEntrySub"
   }
 }

@@ -25,6 +25,7 @@ import '../core/tv_tokens.dart';
 import 'tv_add_m3u_screen.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
+import 'tv_pair_screen.dart';
 import 'tv_shell.dart';
 import 'tv_url_keyboard.dart';
 
@@ -114,11 +115,29 @@ class _TvSmartAddScreenState extends State<TvSmartAddScreen> {
                     style: TvTokens.ui(16, color: TvTokens.mutedDim)),
                 const SizedBox(height: 18),
 
+                // VOIE ROYALE, EN PREMIER (et pré-focalisée) : appairage par
+                // QR. Taper un serveur Xtream à la télécommande est le pire
+                // moment de la vie d'un client ; on lui propose d'abord de
+                // le faire sur son téléphone. La saisie manuelle reste juste
+                // en dessous pour ceux qui préfèrent.
+                _ChoiceCard(
+                  icon: Icons.qr_code_2_rounded,
+                  title: context.l10n.tvPairEntry,
+                  subtitle: context.l10n.tvPairEntrySub,
+                  autofocus: true,
+                  onSelect: () => _push(const TvPairScreen()),
+                ),
+                const SizedBox(height: 18),
+
                 TvKeyboardField(
                   controller: _linkC,
                   label: context.l10n.tvSmartAddFieldLabel,
                   hint: 'http://serveur.com:8080/get.php?username=…',
-                  autofocus: true,
+                  // PAS d'autofocus ici : la carte d'appairage ci-dessus le
+                  // prend (voie recommandée). Deux autofocus dans la même
+                  // route = focus indéterminé au premier rendu — bug typique
+                  // « la télécommande ne répond pas » sur box.
+                  autofocus: false,
                   active: true,
                   onActivate: () {},
                 ),

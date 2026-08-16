@@ -787,6 +787,215 @@ async function handleTmdbMovie(env, url) {
   }
 }
 
+// =========================================================
+//  APPAIRAGE « ZÉRO FRAPPE » (QR) — la TV n'a plus rien à taper.
+// =========================================================
+//  Saisir un serveur Xtream + identifiants à la télécommande est LE point
+//  noir des apps IPTV (20 minutes, des fautes de frappe, des appels au
+//  support). Ici : la TV affiche un QR + un code à 6 chiffres, le client
+//  scanne avec son téléphone, remplit le formulaire sur un VRAI clavier,
+//  et la TV se connecte toute seule en quelques secondes.
+//
+//  SÉCURITÉ — deux jetons DISTINCTS, c'est le cœur du dispositif :
+//    • `code` (6 chiffres, PUBLIC, affiché à l'écran) : sert UNIQUEMENT à
+//      ÉCRIRE (le téléphone dépose les identifiants) ;
+//    • `token` (32 hex, SECRET, jamais affiché) : sert UNIQUEMENT à LIRE
+//      (la TV relève le dépôt).
+//  Conséquence : même en devinant le code à 6 chiffres, on ne peut RIEN
+//  lire des identifiants d'autrui — la lecture exige le token secret que
+//  seule la TV détient. Session à usage unique, purgée à la lecture, et
+//  expirée au bout de 10 minutes.
+const _PAIR_TTL_MS = 10 * 60 * 1000;
+
+async function ensurePairTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS pair_sessions (' +
+      'code TEXT PRIMARY KEY, token TEXT NOT NULL, created_at INTEGER NOT NULL, ' +
+      'payload TEXT)',
+  ).run();
+}
+
+function _pairRandomHex(bytes) {
+  const a = new Uint8Array(bytes);
+  crypto.getRandomValues(a);
+  return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// POST /api/pair/new  → { code, token, url, expiresInSec }
+async function handlePairNew(env, url) {
+  if (!env.DB) return json({ error: 'storage unavailable' }, 503);
+  await ensurePairTable(env);
+  const now = Date.now();
+  // Purge opportuniste des sessions périmées (pas de cron nécessaire).
+  try {
+    await env.DB.prepare('DELETE FROM pair_sessions WHERE created_at < ?')
+      .bind(now - _PAIR_TTL_MS)
+      .run();
+  } catch (_) { /* best-effort */ }
+  const token = _pairRandomHex(16);
+  // Code à 6 chiffres, tiré au sort ; on retente si collision avec une
+  // session VIVANTE (l'espace est large devant le nombre de sessions).
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    const c = String(Math.floor(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000)).padStart(6, '0');
+    const existing = await env.DB.prepare(
+      'SELECT code FROM pair_sessions WHERE code = ?',
+    ).bind(c).first();
+    if (!existing) { code = c; break; }
+  }
+  if (!code) return json({ error: 'try again' }, 503);
+  await env.DB.prepare(
+    'INSERT INTO pair_sessions (code, token, created_at, payload) VALUES (?, ?, ?, NULL)',
+  ).bind(code, token, now).run();
+  return json({
+    code,
+    token,
+    url: `${url.origin}/p/${code}`,
+    expiresInSec: Math.floor(_PAIR_TTL_MS / 1000),
+  });
+}
+
+// GET /api/pair/poll?token=…  → { status: 'pending' | 'ready' | 'expired', source? }
+//  Lecture À USAGE UNIQUE : dès que la TV a récupéré les identifiants, la
+//  session est SUPPRIMÉE (ils ne traînent pas dans la base).
+async function handlePairPoll(env, url) {
+  if (!env.DB) return json({ status: 'expired' });
+  await ensurePairTable(env);
+  const token = (url.searchParams.get('token') || '').trim();
+  if (token.length < 8) return json({ status: 'expired' });
+  const row = await env.DB.prepare(
+    'SELECT code, created_at, payload FROM pair_sessions WHERE token = ?',
+  ).bind(token).first();
+  if (!row) return json({ status: 'expired' });
+  if (Date.now() - Number(row.created_at) > _PAIR_TTL_MS) {
+    try {
+      await env.DB.prepare('DELETE FROM pair_sessions WHERE token = ?').bind(token).run();
+    } catch (_) { /* best-effort */ }
+    return json({ status: 'expired' });
+  }
+  if (!row.payload) return json({ status: 'pending' });
+  let source = null;
+  try { source = JSON.parse(row.payload); } catch (_) { source = null; }
+  try {
+    await env.DB.prepare('DELETE FROM pair_sessions WHERE token = ?').bind(token).run();
+  } catch (_) { /* best-effort */ }
+  return source ? json({ status: 'ready', source }) : json({ status: 'expired' });
+}
+
+// POST /api/pair/:code  (depuis le TÉLÉPHONE) — dépose les identifiants.
+async function handlePairSubmit(env, code, request) {
+  if (!env.DB) return json({ error: 'storage unavailable' }, 503);
+  await ensurePairTable(env);
+  const row = await env.DB.prepare(
+    'SELECT code, created_at, payload FROM pair_sessions WHERE code = ?',
+  ).bind(code).first();
+  if (!row) return json({ error: 'unknown or expired code' }, 404);
+  if (Date.now() - Number(row.created_at) > _PAIR_TTL_MS) {
+    return json({ error: 'expired' }, 410);
+  }
+  if (row.payload) return json({ error: 'already used' }, 409);
+  let body = {};
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON'); }
+  const kind = (body.kind || '').toString();
+  const name = (body.name || '').toString().trim().slice(0, 60);
+  let payload = null;
+  if (kind === 'xtream') {
+    const server = (body.server || '').toString().trim().slice(0, 300);
+    const username = (body.username || '').toString().trim().slice(0, 120);
+    const password = (body.password || '').toString().trim().slice(0, 120);
+    if (!server || !username || !password) return badRequest('missing fields');
+    payload = { kind, name: name || 'Ma source', server, username, password };
+  } else if (kind === 'm3u') {
+    const m3uUrl = (body.url || '').toString().trim().slice(0, 1000);
+    if (!m3uUrl) return badRequest('missing url');
+    payload = { kind, name: name || 'Ma source', url: m3uUrl };
+  } else {
+    return badRequest('unknown kind');
+  }
+  await env.DB.prepare('UPDATE pair_sessions SET payload = ? WHERE code = ?')
+    .bind(JSON.stringify(payload), code)
+    .run();
+  return json({ ok: true });
+}
+
+// GET /p/:code — page TÉLÉPHONE (formulaire, vrai clavier).
+function pairPageHtml(code) {
+  const c = String(code).replace(/[^0-9]/g, '').slice(0, 6);
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connecter ma TV — The Few</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#08080A;color:#ECE6DA;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:22px}
+.wrap{max-width:440px;margin:0 auto}
+h1{font-size:22px;margin:0 0 4px}
+p.sub{color:#8A8A90;margin:0 0 22px;font-size:14px}
+.code{font:700 15px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:3px;color:#CCB089;background:#141418;border:1px solid #2A2620;border-radius:10px;padding:10px 14px;display:inline-block;margin-bottom:22px}
+.tabs{display:flex;gap:8px;margin-bottom:16px}
+.tab{flex:1;padding:11px;text-align:center;border:1px solid #2A2620;border-radius:10px;background:#141418;color:#8A8A90;font-weight:600;cursor:pointer}
+.tab[aria-selected=true]{background:#1E1B16;border-color:#CCB089;color:#CCB089}
+label{display:block;font-size:13px;color:#8A8A90;margin:14px 0 6px}
+input{width:100%;padding:13px;background:#141418;border:1px solid #2A2620;border-radius:10px;color:#ECE6DA;font-size:16px}
+input:focus{outline:none;border-color:#CCB089}
+button.go{width:100%;margin-top:24px;padding:15px;background:#CCB089;color:#1A1206;border:0;border-radius:12px;font-size:17px;font-weight:800;cursor:pointer}
+button.go:disabled{opacity:.5}
+.msg{margin-top:18px;padding:13px;border-radius:10px;font-size:14px;display:none}
+.ok{background:#14301C;border:1px solid #2E7D4F;color:#9BE8B6}
+.err{background:#331616;border:1px solid #7D2E2E;color:#F0A8A8}
+.hide{display:none}
+</style></head><body><div class="wrap">
+<h1>Connecter ma TV</h1>
+<p class="sub">Saisis tes informations ici : ta télévision se connectera toute seule.</p>
+<div class="code">CODE ${c}</div>
+<div class="tabs">
+  <div class="tab" id="tx" aria-selected="true" onclick="pick('x')">Identifiants</div>
+  <div class="tab" id="tm" aria-selected="false" onclick="pick('m')">Lien M3U</div>
+</div>
+<form id="f" onsubmit="return send(event)">
+  <label>Nom (facultatif)</label>
+  <input id="name" placeholder="Ma source" autocomplete="off">
+  <div id="bx">
+    <label>Serveur</label>
+    <input id="server" placeholder="http://exemple.com:8080" autocomplete="off" autocapitalize="none" spellcheck="false" inputmode="url">
+    <label>Identifiant</label>
+    <input id="user" autocomplete="off" autocapitalize="none" spellcheck="false">
+    <label>Mot de passe</label>
+    <input id="pass" autocomplete="off" autocapitalize="none" spellcheck="false">
+  </div>
+  <div id="bm" class="hide">
+    <label>Lien M3U</label>
+    <input id="m3u" placeholder="http://exemple.com/get.php?..." autocomplete="off" autocapitalize="none" spellcheck="false" inputmode="url">
+  </div>
+  <button class="go" id="btn" type="submit">Envoyer à ma TV</button>
+</form>
+<div class="msg ok" id="ok">✓ Envoyé. Regarde ta télévision : elle se connecte.</div>
+<div class="msg err" id="err"></div>
+</div><script>
+var mode='x';
+function pick(m){mode=m;
+ document.getElementById('tx').setAttribute('aria-selected',m==='x');
+ document.getElementById('tm').setAttribute('aria-selected',m==='m');
+ document.getElementById('bx').className=m==='x'?'':'hide';
+ document.getElementById('bm').className=m==='m'?'':'hide';}
+function show(id,t){var e=document.getElementById(id);if(t)e.textContent=t;e.style.display='block';}
+function send(ev){ev.preventDefault();
+ var b=document.getElementById('btn');b.disabled=true;
+ document.getElementById('err').style.display='none';
+ var body=mode==='x'
+  ?{kind:'xtream',name:document.getElementById('name').value,server:document.getElementById('server').value,username:document.getElementById('user').value,password:document.getElementById('pass').value}
+  :{kind:'m3u',name:document.getElementById('name').value,url:document.getElementById('m3u').value};
+ fetch('/api/pair/${c}',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
+  .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})})
+  .then(function(res){
+    if(res.ok){document.getElementById('f').style.display='none';show('ok');}
+    else{b.disabled=false;show('err','Échec : '+((res.j&&res.j.error)||'code expiré ou déjà utilisé')+'. Relance l\\'appairage sur la TV.');}
+  })
+  .catch(function(){b.disabled=false;show('err','Réseau indisponible. Réessaie.');});
+ return false;}
+</script></body></html>`;
+}
+
 // Enregistre AUTOMATIQUEMENT une MAC dans la base au 1er heartbeat :
 // cree un client "auto" + le device (l'essai 7 j demarre a first_seen_at).
 // Ainsi TOUTE app installee apparait dans ton panel, sans rien faire.
@@ -6435,6 +6644,36 @@ async function handleRequest(request, env, ctx) {
       return await handleSportsTeam(segments[3]);
     }
 
+    // ----- APPAIRAGE « ZÉRO FRAPPE » (QR) -----
+    // /p/:code — page TÉLÉPHONE (formulaire à vrai clavier), cible du QR.
+    if (segments.length === 2 && segments[0] === 'p' &&
+        /^[0-9]{6}$/.test(segments[1])) {
+      return new Response(pairPageHtml(segments[1]), {
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-store',
+        },
+      });
+    }
+    // POST /api/pair/new — la TV ouvre une session (code public + token secret)
+    if (segments[0] === 'api' && segments[1] === 'pair' &&
+        segments[2] === 'new' && segments.length === 3) {
+      if (request.method !== 'POST') return badRequest('only POST');
+      return await handlePairNew(env, url);
+    }
+    // GET /api/pair/poll?token=… — la TV relève le dépôt (usage unique)
+    if (segments[0] === 'api' && segments[1] === 'pair' &&
+        segments[2] === 'poll' && segments.length === 3) {
+      if (request.method !== 'GET') return badRequest('only GET');
+      return await handlePairPoll(env, url);
+    }
+    // POST /api/pair/:code — le TÉLÉPHONE dépose les identifiants
+    if (segments[0] === 'api' && segments[1] === 'pair' &&
+        segments.length === 3 && /^[0-9]{6}$/.test(segments[2])) {
+      if (request.method !== 'POST') return badRequest('only POST');
+      return await handlePairSubmit(env, segments[2], request);
+    }
+
     // /api/tmdb/movie?q=&year=&lang= — public (proxy TMDb, clé en secret Worker)
     if (segments[0] === 'api' && segments[1] === 'tmdb' &&
         segments[2] === 'movie' && segments.length === 3) {
@@ -7081,7 +7320,7 @@ async function handleRequest(request, env, ctx) {
     // PAS de redirect APK trompeur — il tombera proprement sur le
     // 404 final.
     const RESERVED = new Set([
-      'admin', 'config', 'dl', 'install', 'api', 'panel',
+      'admin', 'config', 'dl', 'install', 'api', 'panel', 'p',
       'redroom', 'tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7',
       '7tv', 'seventv', 'sevenmotion',
       'vip', 'thefew', 'few', 'app', 'fone', 'tel',
