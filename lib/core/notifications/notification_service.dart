@@ -298,8 +298,13 @@ class NotificationService {
   Future<void> checkAnnouncement() async {
     try {
       if (!await isEnabled(prefAnnouncements)) return;
+      // Même traduction serveur que la bannière in-app : sans le paramètre
+      // de langue, la NOTIFICATION système arrivait dans la langue du
+      // revendeur, pas dans celle du client.
+      final String lang = l10nNow.localeName.split('_').first;
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/announcement'))
+          .get(Uri.parse(
+              '$kSubscriptionBaseUrl/api/announcement?lang=$lang'))
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return;
       final Object? decoded = jsonDecode(resp.body);

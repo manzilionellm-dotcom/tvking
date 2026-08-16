@@ -2619,18 +2619,134 @@ async function handleGetAnnouncement(env, request) {
       .bind(reqCountry, nowMs)
       .first();
     if (!row) return json({});
+    // TRADUCTION AUTOMATIQUE dans la langue de l'app (?lang=xx). Une
+    // annonce est écrite UNE fois par le revendeur, dans SA langue : sans
+    // ça, un client arabophone reçoit un texte français. Traduit une seule
+    // fois par (annonce, langue), puis servi depuis le cache.
+    const url = new URL(request.url);
+    const lang = normalizeLang(url.searchParams.get('lang'));
+    const t = await translatedBroadcast(env, row, lang);
     return json({
       id: row.id,
-      title: row.title || '',
-      body: row.body || '',
+      title: t.title,
+      body: t.body,
       url: row.url || '',
       kind: row.kind || '',
-      cta: row.cta || '',
+      cta: t.cta,
       country: row.country || '',
       created_at: row.created_at || 0,
+      lang,
     });
   } catch (_) {
     return json({});
+  }
+}
+
+// =========================================================
+//  TRADUCTION AUTOMATIQUE des textes écrits par le revendeur
+// =========================================================
+//  L'app est traduite en 8 langues, mais les ANNONCES sont saisies à la
+//  main dans le panel, dans UNE seule langue : elles arrivaient telles
+//  quelles chez tous les clients. Ici : traduction à la volée via Mistral
+//  (clé déjà en secret Worker), MISE EN CACHE DÉFINITIVEMENT en base —
+//  une annonce n'est donc traduite qu'UNE fois par langue, jamais deux.
+//
+//  Dégradation propre à chaque étage : pas de clé, appel raté, réponse
+//  inattendue → on renvoie le texte ORIGINAL. Jamais d'annonce vide.
+const _LANGS = {
+  fr: 'French', en: 'English', es: 'Spanish', ar: 'Arabic',
+  da: 'Danish', nb: 'Norwegian Bokmål', sv: 'Swedish', sw: 'Swahili',
+};
+
+function normalizeLang(raw) {
+  const l = (raw || '').toString().trim().toLowerCase().slice(0, 5);
+  const base = l.split(/[-_]/)[0];
+  return _LANGS[base] ? base : '';
+}
+
+async function ensureBroadcastI18nTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS broadcast_i18n (' +
+      'broadcast_id INTEGER NOT NULL, lang TEXT NOT NULL, ' +
+      'title TEXT, body TEXT, cta TEXT, created_at INTEGER, ' +
+      'PRIMARY KEY (broadcast_id, lang))',
+  ).run();
+}
+
+async function translatedBroadcast(env, row, lang) {
+  const orig = {
+    title: row.title || '',
+    body: row.body || '',
+    cta: row.cta || '',
+  };
+  if (!lang || !env.MISTRAL_API_KEY) return orig;
+  if (!orig.title && !orig.body && !orig.cta) return orig;
+  try {
+    await ensureBroadcastI18nTable(env);
+    const hit = await env.DB
+      .prepare(
+        'SELECT title, body, cta FROM broadcast_i18n ' +
+          'WHERE broadcast_id = ? AND lang = ?',
+      )
+      .bind(row.id, lang)
+      .first();
+    if (hit) {
+      return {
+        title: hit.title || orig.title,
+        body: hit.body || orig.body,
+        cta: hit.cta || orig.cta,
+      };
+    }
+    const target = _LANGS[lang];
+    const prompt =
+      'Translate the JSON values into ' + target + '. Keep the SAME JSON ' +
+      'keys and shape. Do not translate brand names, channel names or ' +
+      'URLs. Keep it short and natural for a TV app notification. ' +
+      'Answer with JSON only, no commentary.\n' +
+      JSON.stringify(orig);
+    const r = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer ' + env.MISTRAL_API_KEY,
+      },
+      body: JSON.stringify({
+        model: env.AI_MODEL || 'mistral-small-latest',
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!r.ok) return orig;
+    const j = await r.json().catch(() => null);
+    const raw = j && j.choices && j.choices[0] && j.choices[0].message
+      ? j.choices[0].message.content : '';
+    let out = null;
+    try { out = JSON.parse(raw); } catch (_) { return orig; }
+    if (!out || typeof out !== 'object') return orig;
+    const res = {
+      title: typeof out.title === 'string' && out.title.trim()
+        ? out.title.trim() : orig.title,
+      body: typeof out.body === 'string' && out.body.trim()
+        ? out.body.trim() : orig.body,
+      cta: typeof out.cta === 'string' && out.cta.trim()
+        ? out.cta.trim() : orig.cta,
+    };
+    // Cache DÉFINITIF : une annonce ne change pas (une modification crée
+    // un nouvel id), donc cette traduction ne sera plus jamais recalculée.
+    try {
+      await env.DB
+        .prepare(
+          'INSERT OR REPLACE INTO broadcast_i18n ' +
+            '(broadcast_id, lang, title, body, cta, created_at) ' +
+            'VALUES (?, ?, ?, ?, ?, ?)',
+        )
+        .bind(row.id, lang, res.title, res.body, res.cta, Date.now())
+        .run();
+    } catch (_) { /* le cache est un bonus, pas une obligation */ }
+    return res;
+  } catch (_) {
+    return orig;
   }
 }
 

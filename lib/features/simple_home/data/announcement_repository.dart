@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/i18n/l10n_now.dart';
 import '../../subscription/data/subscription_backend.dart';
 
 /// Une annonce telle que renvoyée par le Worker. Immuable.
@@ -101,8 +102,13 @@ abstract final class AnnouncementRepository {
   /// bonus, jamais bloquant.
   static Future<Announcement?> fetchLatest() async {
     try {
+      // LANGUE DU CLIENT : le revendeur écrit son annonce dans UNE langue ;
+      // le backend la traduit (et la met en cache) dans celle de l'app.
+      // Sans ce paramètre, un client arabophone recevait le texte français.
+      final String lang = l10nNow.localeName.split('_').first;
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/announcement'))
+          .get(Uri.parse(
+              '$kSubscriptionBaseUrl/api/announcement?lang=$lang'))
           .timeout(const Duration(seconds: 6));
       if (resp.statusCode != 200) return null;
       final Object? decoded = jsonDecode(resp.body);
