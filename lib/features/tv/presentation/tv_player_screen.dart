@@ -27,6 +27,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
+import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../core/tv_tokens.dart';
