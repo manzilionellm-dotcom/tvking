@@ -355,6 +355,23 @@ abstract final class RemoteSourceRepository {
         }
       }
       if (existingXtream != null) {
+        // MOT DE PASSE CHANGÉ côté panel (même serveur, même login) : la
+        // liste est « déjà là », mais avec des identifiants morts. On écrit
+        // les nouveaux et on recharge le catalogue — sinon le client voit
+        // ses chaînes tomber et ne peut rien y faire depuis sa TV.
+        if (existingXtream.id != null && existingXtream.xtreamPassword != pass) {
+          try {
+            await PlaylistRepository.instance
+                .updateXtreamPassword(existingXtream.id!, pass);
+            final Playlist updated = existingXtream.copyWith(xtreamPassword: pass);
+            await PlaylistRepository.instance.refreshPlaylist(updated);
+            if (kDebugMode) {
+              debugPrint('[RemoteSource] identifiants mis a jour ($server)');
+            }
+          } catch (e) {
+            if (kDebugMode) debugPrint('[RemoteSource] maj identifiants KO: $e');
+          }
+        }
         await _activateIfAsked(existingXtream, makeActive);
         return RemoteSyncResult.loaded;
       }

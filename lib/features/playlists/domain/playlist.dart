@@ -122,6 +122,8 @@ class Playlist {
     int? lastSyncedAt,
     int? channelCount,
     bool? isActive,
+    // Identifiants corrigés depuis le panel (mot de passe renouvelé).
+    String? xtreamPassword,
   }) {
     return Playlist(
       id: id ?? this.id,
@@ -131,7 +133,7 @@ class Playlist {
       m3uUrl: m3uUrl,
       xtreamServer: xtreamServer,
       xtreamUsername: xtreamUsername,
-      xtreamPassword: xtreamPassword,
+      xtreamPassword: xtreamPassword ?? this.xtreamPassword,
       epgUrl: epgUrl,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
       channelCount: channelCount ?? this.channelCount,

@@ -504,6 +504,28 @@ class PlaylistRepository {
     await _emitCurrentState();
   }
 
+  /// Remplace le MOT DE PASSE Xtream d'une playlist déjà importée.
+  ///
+  /// Cas réel : le revendeur corrige les identifiants depuis le panel
+  /// (serveur + login inchangés, mot de passe renouvelé). Sans ça, l'app
+  /// reconnaissait la liste comme « déjà là » et gardait des identifiants
+  /// morts — le client voyait ses chaînes tomber sans rien pouvoir faire.
+  ///
+  /// Même chiffrement au repos que `_insertPlaylist` (fail-open si la clé
+  /// n'est pas prête). Ne touche ni aux chaînes, ni aux favoris : l'appelant
+  /// enchaîne sur `refreshPlaylist` pour recharger le catalogue.
+  Future<void> updateXtreamPassword(int playlistId, String password) async {
+    if (password.isEmpty) return;
+    final Database db = await PlaylistDatabase.instance.database;
+    await SecretCipher.instance.ensureReady();
+    await db.update(
+      'playlists',
+      <String, Object?>{'xtream_password': SecretCipher.instance.encrypt(password)},
+      where: 'id = ?',
+      whereArgs: <Object>[playlistId],
+    );
+  }
+
   // ============================================================
   //  AJOUT PLAYLIST — M3U
   // ============================================================

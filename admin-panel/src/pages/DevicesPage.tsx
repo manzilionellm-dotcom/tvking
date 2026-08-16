@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
   devicesApi, activateApi, sourcesApi, flagEmoji, PLAN_LABELS,
-  type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
-  type DeviceLicense, type DevicePresence, ApiError,
+  type Device, type DeviceSource, type DeviceSourceInput, type DeviceOverview,
+  type DeviceLocalSource, type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
 import { useLiveDevices, useRtEvent, sendCmd, waitForAck, type ChangedEvent } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
@@ -136,7 +136,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   }
   function bulkClearSource() {
     return runBulk('Retrait des sources', (d) => sourcesApi.clear(d.mac),
-      { confirm: 'Retirer la source de {n} appareil(s) ?\nL’app le voit tout de suite.' });
+      { confirm: 'Retirer TOUTES les sources de {n} appareil(s) ?\nListe entière effacée, l’app le voit tout de suite.' });
   }
   function bulkRemove() {
     return runBulk('Suppression', (d) => devicesApi.remove(d.id),
@@ -181,7 +181,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           <BulkBtn busy={bulkBusy} onClick={() => bulkBlock('frozen', 'Gel', 'Geler {n} appareil(s) ?')} title="Geler tous (rappel de paiement)">Geler</BulkBtn>
           <BulkBtn busy={bulkBusy} onClick={() => bulkBlock('active', 'Réactivation')} title="Réactiver tous">Réactiver</BulkBtn>
           <BulkBtn busy={bulkBusy} onClick={() => bulkBlock('banned', 'Bannissement', 'BANNIR {n} appareil(s) ? Action forte.')} title="Bannir tous (abus)">Bannir</BulkBtn>
-          <BulkBtn busy={bulkBusy} onClick={bulkClearSource} title="Retirer la source de tous">Retirer source</BulkBtn>
+          <BulkBtn busy={bulkBusy} onClick={bulkClearSource} title="Efface TOUTES les sources des appareils sélectionnés">Retirer toutes les sources</BulkBtn>
           <BulkBtn busy={bulkBusy} danger onClick={bulkRemove} title="Supprimer toutes les MAC sélectionnées">Supprimer</BulkBtn>
           <button
             type="button"
@@ -467,12 +467,15 @@ function DeviceDetailModal({
   // une source propre via « Pousser une source ». = « je l'enlève, je la
   // remets » demandé par l'exploitant.
   const [clearing, setClearing] = useState(false);
+  // Formulaire « + Ajouter un abonnement » ouvert ou non (sous la liste).
+  const [adding, setAdding] = useState(false);
   async function handleClearSource() {
     if (
       !window.confirm(
-        'Retirer la source de ce client ?\n\n' +
-          'Ses chaînes seront retirées côté serveur (l’app le voit tout de suite). ' +
-          'Tu pourras ensuite en repousser une propre via « Pousser une source ».',
+        'Retirer TOUTES les sources de ce client ?\n\n' +
+          'Ce bouton efface la liste ENTIÈRE (l’app le voit tout de suite).\n' +
+          'Pour n’en enlever qu’une seule, utilise « ✕ Retirer celle-ci » sur la ' +
+          'carte de la source concernée, juste au-dessus.',
       )
     ) {
       return;
@@ -557,6 +560,37 @@ function DeviceDetailModal({
           />
         ))}
 
+        {/* AJOUTER un abonnement SANS toucher aux autres. « Pousser une
+            source » (plus bas) remplace le trio entier : ici on empile. */}
+        {!loading && !err && (
+          adding ? (
+            <SourceForm
+              submitLabel="Ajouter cet abonnement"
+              onCancel={() => setAdding(false)}
+              onSubmit={async (s) => {
+                try {
+                  const r = await sourcesApi.add(device.mac, s);
+                  void rtActionFeedback(r.rt);
+                  toast('Abonnement ajouté.', 'success');
+                  setAdding(false);
+                  await refreshOverview();
+                } catch (e) {
+                  toast(e instanceof ApiError ? e.message : 'Échec de l’ajout.', 'error');
+                }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="w-full rounded-lg border border-dashed border-white/15 px-3 py-2 text-[11px] font-semibold text-ink-tertiary hover:bg-white/5"
+              title="Ajouter une source de plus, sans effacer les existantes"
+            >
+              + Ajouter un abonnement
+            </button>
+          )
+        )}
+
         {/* ----- Inventaire RÉEL sur la TV (remonté par l'app) ----- */}
         {!loading && !err && (ov?.localSources?.length ?? 0) > 0 && (
           <div className="mt-4">
@@ -591,7 +625,7 @@ function DeviceDetailModal({
             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/activate?mac=${macUrl}`)} title="Pousser ou modifier le M-Trio de sources">Pousser une source</ActionBtn>
             {sources.length > 0 && (
-              <ActionBtn busy={busy || clearing} onClick={handleClearSource} title="Retirer la source poussée (dépannage : « ma source ne marche pas » → retirer puis repousser)">Retirer la source</ActionBtn>
+              <ActionBtn busy={busy || clearing} onClick={handleClearSource} title="Efface TOUTES les sources d’un coup. Pour n’en enlever qu’une : « ✕ Retirer celle-ci » sur sa carte.">Tout retirer</ActionBtn>
             )}
             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
             {st !== 'frozen' && (
@@ -802,8 +836,21 @@ function SourceCard({
   // Ces sources-ci sont EN BASE (poussées par le panel) : on agit
   // directement dessus, sans passer par la file d'ordres.
   const [busy, setBusy] = useState<'' | 'act' | 'del'>('');
+  const [editing, setEditing] = useState(false);
   const ident = source.server_url || source.m3u_url || '';
   const nom = source.label || (isXtream ? 'XTREAM' : 'M3U');
+
+  async function saveEdit(next: DeviceSourceInput) {
+    try {
+      const r = await sourcesApi.updateAt(mac, index, next, ident);
+      void rtActionFeedback(r.rt);
+      toast('Source modifiée. Le client la recharge tout de suite.', 'success');
+      setEditing(false);
+      onDone();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec de la modification.', 'error');
+    }
+  }
 
   async function activate() {
     if (!window.confirm(
@@ -850,6 +897,9 @@ function SourceCard({
           {isXtream ? 'XTREAM' : 'M3U'}
         </span>
         {source.label && <span className="truncate text-xs text-ink-secondary">{source.label}</span>}
+        {source.active && (
+          <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">active</span>
+        )}
       </div>
       <div className="grid grid-cols-1 gap-y-1.5 text-xs">
         {isXtream ? (
@@ -867,14 +917,25 @@ function SourceCard({
         )}
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
+        {!source.active && (
+          <button
+            type="button"
+            disabled={busy !== ''}
+            onClick={activate}
+            className="rounded-md border border-emerald-500/30 px-2 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40"
+            title="C'est CETTE liste que le client regardera"
+          >
+            {busy === 'act' ? 'Activation…' : '● Rendre active'}
+          </button>
+        )}
         <button
           type="button"
           disabled={busy !== ''}
-          onClick={activate}
-          className="rounded-md border border-emerald-500/30 px-2 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40"
-          title="C'est CETTE liste que le client regardera"
+          onClick={() => setEditing((v) => !v)}
+          className="rounded-md border border-white/15 px-2 py-1 text-[11px] font-semibold text-ink-secondary hover:bg-white/5 disabled:opacity-40"
+          title="Corriger le serveur, l'identifiant, le mot de passe ou l'EPG de CETTE source"
         >
-          {busy === 'act' ? 'Activation…' : '● Rendre active'}
+          {editing ? 'Fermer' : '✎ Modifier'}
         </button>
         <button
           type="button"
@@ -886,7 +947,134 @@ function SourceCard({
           {busy === 'del' ? 'Retrait…' : '✕ Retirer celle-ci'}
         </button>
       </div>
+      {editing && (
+        <SourceForm
+          initial={source}
+          submitLabel="Enregistrer"
+          onCancel={() => setEditing(false)}
+          onSubmit={saveEdit}
+        />
+      )}
     </div>
+  );
+}
+
+/// Formulaire d'une source, réutilisé pour MODIFIER une ligne existante et
+/// pour AJOUTER un abonnement. Volontairement inline (pas de nouvel écran) :
+/// l'exploitant reste sur la fiche du client, voit les autres listes, et
+/// n'a jamais à re-saisir le trio entier pour corriger un mot de passe.
+function SourceForm({
+  initial,
+  submitLabel,
+  onCancel,
+  onSubmit,
+}: {
+  initial?: Partial<DeviceSourceInput>;
+  submitLabel: string;
+  onCancel: () => void;
+  onSubmit: (s: DeviceSourceInput) => Promise<void>;
+}) {
+  const [type, setType] = useState<'xtream' | 'm3u'>(initial?.type === 'm3u' ? 'm3u' : 'xtream');
+  const [label, setLabel] = useState(initial?.label || '');
+  const [server, setServer] = useState(initial?.server_url || '');
+  const [user, setUser] = useState(initial?.username || '');
+  const [pass, setPass] = useState(initial?.password || '');
+  const [m3u, setM3u] = useState(initial?.m3u_url || '');
+  const [epg, setEpg] = useState(initial?.epg_url || '');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (type === 'xtream' && (!server.trim() || !user.trim() || !pass.trim())) {
+      toast('Serveur, identifiant et mot de passe sont obligatoires.', 'error');
+      return;
+    }
+    if (type === 'm3u' && !m3u.trim()) {
+      toast('L’URL M3U est obligatoire.', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSubmit({
+        type,
+        label: label.trim() || null,
+        server_url: type === 'xtream' ? server.trim() : null,
+        username: type === 'xtream' ? user.trim() : null,
+        password: type === 'xtream' ? pass.trim() : null,
+        m3u_url: type === 'm3u' ? m3u.trim() : null,
+        epg_url: epg.trim() || null,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border border-white/10 bg-midnight px-3 py-3">
+      <div className="mb-2 flex gap-1.5">
+        {(['xtream', 'm3u'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setType(t)}
+            className={
+              'rounded-md px-2 py-1 text-[11px] font-semibold ' +
+              (type === t
+                ? 'bg-white/10 text-ink-primary'
+                : 'border border-white/10 text-ink-tertiary hover:bg-white/5')
+            }
+          >
+            {t === 'xtream' ? 'XTREAM' : 'M3U'}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 gap-1.5">
+        <FormField label="Nom (facultatif)" value={label} onChange={setLabel} placeholder="Ex. Abonnement principal" />
+        {type === 'xtream' ? (
+          <>
+            <FormField label="Serveur" value={server} onChange={setServer} placeholder="http://exemple.tv:8080" />
+            <FormField label="Identifiant" value={user} onChange={setUser} />
+            <FormField label="Mot de passe" value={pass} onChange={setPass} />
+          </>
+        ) : (
+          <FormField label="URL M3U" value={m3u} onChange={setM3u} placeholder="http://…/get.php?…" />
+        )}
+        <FormField label="EPG (facultatif)" value={epg} onChange={setEpg} />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => { void submit(); }}
+          className="rounded-md border border-emerald-500/30 px-2 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40"
+        >
+          {busy ? 'Enregistrement…' : submitLabel}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onCancel}
+          className="rounded-md border border-white/10 px-2 py-1 text-[11px] font-semibold text-ink-tertiary hover:bg-white/5 disabled:opacity-40"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FormField({
+  label, value, onChange, placeholder,
+}: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="w-24 shrink-0 text-[10px] uppercase tracking-widest text-ink-tertiary">{label}</span>
+      <input
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-w-0 flex-1 rounded-md border border-white/10 bg-obsidian px-2 py-1 text-xs text-ink-primary outline-none focus:border-white/30"
+      />
+    </label>
   );
 }
 

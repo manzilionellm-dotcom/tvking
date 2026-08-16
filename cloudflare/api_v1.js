@@ -1163,6 +1163,25 @@ async function apiV1Inner(request, env) {
       (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
   }
 
+  // /sources/:mac/update — corrige UNE source (mot de passe, serveur, EPG…)
+  // sans re-pousser le trio entier ni perdre la source active.
+  // /sources/:mac/add — ajoute un abonnement AUX autres (PUT les remplace).
+  if (parts[0] === 'sources' && parts.length === 3
+      && (parts[2] === 'update' || parts[2] === 'add')) {
+    const mac = parts[1];
+    if (request.method !== 'POST') {
+      return errResp('method_not_allowed', 'POST attendu.', 405);
+    }
+    if (!resellerCan(a.user, 'sources')) {
+      return errResp('forbidden', 'Ton niveau ne permet pas de modifier les sources.', 403);
+    }
+    const resp = parts[2] === 'update'
+      ? await handleSourceUpdate(request, env, mac, actor)
+      : await handleSourceAdd(request, env, mac, actor);
+    return withRt(env, resp,
+      (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
+  }
+
   // /sources/:mac/order — ordre sur une liste LOCALE du client (ajoutée
   // par lui sur sa TV : invisible en base, seul l'appareil peut agir).
   if (parts[0] === 'sources' && parts.length === 3 && parts[2] === 'order') {
@@ -3671,6 +3690,112 @@ async function handleSourceSetActive(request, env, mac, actor) {
     { type: 'device_source', id: m },
     { index: idx, server: (arr[idx] || {}).server || '' }, null);
   return jsonResp({ ok: true, mac: m, active: idx, count: next.length });
+}
+
+/// Réécrit le tableau complet des sources d'une MAC, en gardant les colonnes
+/// plates (compat vieilles apps qui ne lisent qu'UNE source) alignées sur la
+/// 1re entrée. Utilisé par la modification et l'ajout à l'unité — contrairement
+/// à `upsertDeviceSource`, qui remplace tout et re-marque origin='panel'.
+async function writeSourcesArray(env, mac, arr) {
+  const first = arr[0] || {};
+  await env.DB
+    .prepare(
+      `INSERT INTO device_sources
+         (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'panel', ?)
+       ON CONFLICT(mac) DO UPDATE SET
+         type=excluded.type, label=excluded.label, server_url=excluded.server_url,
+         username=excluded.username, password=excluded.password,
+         m3u_url=excluded.m3u_url, epg_url=excluded.epg_url,
+         sources_json=excluded.sources_json, updated_at=excluded.updated_at`,
+    )
+    .bind(mac, first.type || null, first.label || null, first.server_url || null,
+          first.username || null, first.password || null, first.m3u_url || null,
+          first.epg_url || null, JSON.stringify(arr), Date.now())
+    .run();
+}
+
+/// Relit le tableau des sources d'une MAC (jamais null, jamais throw).
+async function readSourcesArray(env, mac) {
+  const row = await env.DB
+    .prepare('SELECT sources_json FROM device_sources WHERE mac = ?')
+    .bind(mac).first();
+  let arr = [];
+  try { arr = JSON.parse((row && row.sources_json) || '[]') || []; } catch (_) { arr = []; }
+  return Array.isArray(arr) ? arr : [];
+}
+
+// POST /api/v1/sources/:mac/update  { index, match?, source }
+//  MODIFIER une seule source sans toucher aux autres. Avant, corriger un mot
+//  de passe obligeait à re-pousser le trio entier (donc à ré-saisir les deux
+//  autres lignes, et à casser le drapeau `active`). On remplace ici l'entrée
+//  N par la version normalisée, en PRÉSERVANT `origin` et `active`.
+//  `match` (serveur/URL affiché au moment du clic) protège d'un index périmé.
+async function handleSourceUpdate(request, env, mac, actor) {
+  await ensureSourcesTable(env);
+  const m = decodeMac(mac).trim().toUpperCase();
+  let body = {};
+  try { body = await request.json(); } catch (_) { return jsonResp({ error: 'invalid JSON' }, 400); }
+  const idx = Number.parseInt(body && body.index, 10);
+  if (!Number.isInteger(idx) || idx < 0) {
+    return jsonResp({ error: 'invalid index' }, 400);
+  }
+  const norm = normalizeSource((body && body.source) || {});
+  if (norm.error) return jsonResp({ error: norm.error }, 400);
+
+  const arr = await readSourcesArray(env, m);
+  if (idx >= arr.length) return jsonResp({ error: 'index out of range' }, 404);
+  const victim = arr[idx] || {};
+  const match = String((body && body.match) || '').trim();
+  if (match) {
+    const ident = String(victim.server_url || victim.server || victim.url || victim.m3u_url || '');
+    if (!ident.includes(match) && !match.includes(ident)) {
+      return jsonResp({ error: 'stale index — la liste a changé, recharge la fiche' }, 409);
+    }
+  }
+  const next = arr.slice();
+  next[idx] = {
+    ...norm.source,
+    origin: victim.origin || 'panel',
+    ...(victim.active ? { active: true } : {}),
+  };
+  await writeSourcesArray(env, m, next);
+  await logAudit(env, request, actor, 'source.update_one',
+    { type: 'device_source', id: m },
+    { index: idx, server: norm.source.server_url || norm.source.m3u_url || '' },
+    { server: victim.server_url || victim.m3u_url || '' });
+  return jsonResp({ ok: true, mac: m, updated: idx, count: next.length });
+}
+
+// POST /api/v1/sources/:mac/add  { source, active? }
+//  AJOUTER un abonnement à ceux déjà en place, sans écraser l'existant
+//  (PUT /sources/:mac remplace tout le trio). Plafond volontaire à 6 entrées :
+//  au-delà, l'app passe son temps à charger des listes que personne ne regarde.
+async function handleSourceAdd(request, env, mac, actor) {
+  await ensureSourcesTable(env);
+  const m = decodeMac(mac).trim().toUpperCase();
+  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+    return jsonResp({ error: 'mac must be MK:XX:XX:XX:XX:XX' }, 400);
+  }
+  let body = {};
+  try { body = await request.json(); } catch (_) { return jsonResp({ error: 'invalid JSON' }, 400); }
+  const norm = normalizeSource((body && body.source) || {});
+  if (norm.error) return jsonResp({ error: norm.error }, 400);
+
+  const arr = await readSourcesArray(env, m);
+  if (arr.length >= 6) {
+    return jsonResp({ error: '6 sources maximum — retires-en une avant d’ajouter.' }, 409);
+  }
+  const wantActive = body && body.active === true;
+  const added = { ...norm.source, origin: 'panel', ...(wantActive ? { active: true } : {}) };
+  const next = wantActive
+    ? [...arr.map((s) => ({ ...(s || {}), active: false })), added]
+    : [...arr, added];
+  await writeSourcesArray(env, m, next);
+  await logAudit(env, request, actor, 'source.add_one',
+    { type: 'device_source', id: m },
+    { server: norm.source.server_url || norm.source.m3u_url || '', active: wantActive }, null);
+  return jsonResp({ ok: true, mac: m, count: next.length, index: next.length - 1 });
 }
 
 // DELETE /api/v1/sources/:mac            → retire TOUT (comportement d'origine)

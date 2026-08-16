@@ -729,6 +729,10 @@ export interface DeviceSourceInput {
 export interface DeviceSource extends DeviceSourceInput {
   mac?: string;
   updated_at?: number;
+  // `active` = c'est CETTE liste que le client regarde ; `origin` = 'panel'
+  // (poussée par nous, verrouillée) ou 'self' (ajoutée par le client).
+  active?: boolean;
+  origin?: string;
 }
 
 export const activateApi = {
@@ -799,6 +803,19 @@ export const sourcesApi = {
     request<{ ok: boolean; mac: string; kind: string; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}/order`,
       { method: 'POST', body: { kind, ...target } },
+    ),
+  // MODIFIER une seule source (mot de passe changé, serveur qui bouge, EPG…)
+  // sans re-saisir les autres et sans perdre la source active.
+  updateAt: (mac: string, index: number, source: DeviceSourceInput, match?: string) =>
+    request<{ ok: boolean; mac: string; updated: number; count: number; rt?: RtInfo }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}/update`,
+      { method: 'POST', body: { index, source, match } },
+    ),
+  // AJOUTER un abonnement AUX autres (setMany les remplacerait tous).
+  add: (mac: string, source: DeviceSourceInput, active?: boolean) =>
+    request<{ ok: boolean; mac: string; count: number; index: number; rt?: RtInfo }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}/add`,
+      { method: 'POST', body: { source, active: active === true } },
     ),
   removeAt: (mac: string, index: number, match?: string) =>
     request<{ ok: boolean; mac: string; removed: number; remaining: number; rt?: RtInfo }>(
