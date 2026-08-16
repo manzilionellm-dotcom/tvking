@@ -48,8 +48,13 @@ class SourceContentWatch {
 
   /// Démarre la surveillance (idempotent — un seul timer, appels
   /// multiples sans effet).
-  void start() {
-    _timer ??= Timer.periodic(_interval, (_) => _tick());
+  ///
+  /// [every] permet d'adapter la cadence au support : 1 min sur BOX (branchée
+  /// au secteur, allumée en continu, le client veut du « instantané »),
+  /// 5 min sur TÉLÉPHONE — une requête par minute sur batterie ne se
+  /// justifie pas pour un appareil qu'on n'utilise que par sessions.
+  void start({Duration? every}) {
+    _timer ??= Timer.periodic(every ?? _interval, (_) => _tick());
   }
 
   void stop() {

@@ -14,8 +14,12 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import 'dart:async';
+
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/i18n/l10n_now.dart';
 import '../../../core/theme/app_colors.dart';
+import '../data/tmdb_meta_service.dart';
 import '../../channels/domain/channel.dart';
 import '../../player/presentation/play_channel.dart';
 import '../data/playback_position_repository.dart';
@@ -38,6 +42,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   VodInfo? _info;
   List<VodMovie> _similar = const <VodMovie>[];
 
+  /// TMDb a-t-il réellement complété cette fiche ? Pilote l'affichage de la
+  /// mention d'attribution obligatoire (cf. kTmdbAttribution).
+  bool _usedTmdb = false;
+
   @override
   void initState() {
     super.initState();
@@ -45,8 +53,46 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     // s'affiche IMMÉDIATEMENT avec ce que le catalogue sait déjà.
     VodRepository.instance.fetchInfo(widget.movie.id).then((VodInfo? info) {
       if (mounted && info != null) setState(() => _info = info);
+      // Puis TMDb COMPLÈTE les trous (parité avec la fiche TV). Sur mobile
+      // le catalogue se parcourt de PRÈS, affiches en grand : une fiche
+      // pauvre s'y voit bien plus que sur un écran à 3 mètres.
+      unawaited(_maybeEnrichFromTmdb(info));
     });
     _loadSimilar();
+  }
+
+  /// Complète la fiche avec TMDb — UNIQUEMENT les champs que le fournisseur
+  /// n'a pas remplis. Le panel reste prioritaire, et l'absence de clé TMDb
+  /// (ou une panne réseau) laisse simplement la fiche telle quelle.
+  Future<void> _maybeEnrichFromTmdb(VodInfo? info) async {
+    final bool needsPlot = (info?.plot ?? '').trim().isEmpty;
+    final bool needsCast = (info?.cast ?? '').trim().isEmpty;
+    final String rating = (info?.rating ?? '').trim();
+    final bool needsRating = rating.isEmpty || rating == '0';
+    final bool needsBackdrop = (info?.backdropUrl ?? '').trim().isEmpty;
+    if (!needsPlot && !needsCast && !needsRating && !needsBackdrop) return;
+    final TmdbMeta? meta = await TmdbMetaService.instance.fetchMovie(
+      VodTitles.clean(widget.movie.name),
+      year: info?.year ?? widget.movie.year,
+      lang: l10nNow.localeName,
+    );
+    if (!mounted || meta == null) return;
+    setState(() {
+      _usedTmdb = true;
+      _info = VodInfo(
+        plot: needsPlot ? meta.overview : info?.plot,
+        cast: needsCast ? meta.cast : info?.cast,
+        director: info?.director,
+        genre: (info?.genre ?? '').trim().isEmpty ? meta.genres : info?.genre,
+        releaseDate: info?.releaseDate ?? meta.year,
+        durationSecs: info?.durationSecs ??
+            (meta.runtimeMin != null ? meta.runtimeMin! * 60 : null),
+        backdropUrl: needsBackdrop ? meta.backdropUrl : info?.backdropUrl,
+        tmdbId: info?.tmdbId,
+        youtubeTrailer: info?.youtubeTrailer,
+        rating: needsRating ? meta.rating : info?.rating,
+      );
+    });
   }
 
   Future<void> _loadSimilar() async {
@@ -224,6 +270,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 12, color: AppColors.textTertiary)),
+                ],
+                // MENTION TMDb — exigée par leurs conditions dès qu'on
+                // affiche leurs données (usage COMMERCIAL). Texte officiel,
+                // NON traduit : c'est une mention légale. Affichée seulement
+                // si TMDb a réellement complété la fiche.
+                if (_usedTmdb) ...<Widget>[
+                  const SizedBox(height: 10),
+                  const Text(kTmdbAttribution,
+                      style: TextStyle(
+                          fontSize: 10, color: AppColors.textTertiary)),
                 ],
                 // ----- Dans le même genre -----
                 if (_similar.isNotEmpty) ...<Widget>[

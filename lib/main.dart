@@ -65,6 +65,7 @@ import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/cloud_backup_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/playlists/data/source_content_watch.dart';
 import 'features/pricing/data/pricing_repository.dart';
 import 'core/flavor/flavor.dart';
 import 'features/security/data/age_gate_settings.dart';
@@ -308,6 +309,17 @@ Future<void> bootApp() async {
   Timer.periodic(const Duration(minutes: 5), (_) {
     if (!BootGuard.instance.safeMode) RemoteSourceRepository.sync();
   });
+
+  // CONTENU du panel (parité TV) : le sync ci-dessus n'AJOUTE que les
+  // sources manquantes — il ne voit jamais qu'un bouquet a été retiré ou
+  // ajouté DANS une source existante. Sans ça, le seul filet côté mobile
+  // était le ré-import 24 h plus bas : un client pouvait garder une
+  // journée entière des chaînes que le revendeur avait retirées.
+  // Cadence 5 min (et non 1 min comme la box) : sur batterie, une requête
+  // par minute ne se justifie pas.
+  if (!BootGuard.instance.safeMode) {
+    SourceContentWatch.instance.start(every: const Duration(minutes: 5));
+  }
 
   // AUTO-ACTUALISATION toutes les 24 h tant que l'app tourne : recharge
   // les playlists pour récupérer le contenu que le fournisseur a ajouté.
