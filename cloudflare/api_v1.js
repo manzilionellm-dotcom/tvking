@@ -1149,6 +1149,20 @@ async function apiV1Inner(request, env) {
     }
   }
 
+  // /sources/:mac/active — désigne la liste que le client doit regarder.
+  // Même capacité requise que pousser/retirer une source.
+  if (parts[0] === 'sources' && parts.length === 3 && parts[2] === 'active') {
+    const mac = parts[1];
+    if (request.method !== 'POST') {
+      return errResp('method_not_allowed', 'POST attendu.', 405);
+    }
+    if (!resellerCan(a.user, 'sources')) {
+      return errResp('forbidden', 'Ton niveau ne permet pas de changer la source active.', 403);
+    }
+    return withRt(env, await handleSourceSetActive(request, env, mac, actor),
+      (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
+  }
+
   // /customers
   if (parts[0] === 'customers') {
     if (parts.length === 1) {
@@ -3554,6 +3568,42 @@ async function handleSourcePut(request, env, mac, actor) {
     { type: 'device_source', id: m }, null,
     { count: sources.length, types: sources.map((s) => s.type) });
   return jsonResp({ ok: true, mac: m, count: sources.length });
+}
+
+// POST /api/v1/sources/:mac/active  { index }
+//  Désigne QUELLE source le client doit regarder. Le drapeau `active` est
+//  écrit DANS les données de la source : il survit donc à un appareil hors
+//  ligne et s'applique à sa prochaine synchro (l'app honore ce drapeau, y
+//  compris si la liste est DÉJÀ importée). Le client n'a rien à faire, et
+//  le revendeur n'a plus besoin de tout effacer pour changer de liste.
+async function handleSourceSetActive(request, env, mac, actor) {
+  await ensureSourcesTable(env);
+  const m = decodeMac(mac).trim().toUpperCase();
+  let body = {};
+  try { body = await request.json(); } catch (_) { return jsonResp({ error: 'invalid JSON' }, 400); }
+  const idx = Number.parseInt(body && body.index, 10);
+  if (!Number.isInteger(idx) || idx < 0) {
+    return jsonResp({ error: 'invalid index' }, 400);
+  }
+  const row = await env.DB
+    .prepare('SELECT sources_json FROM device_sources WHERE mac = ?')
+    .bind(m).first();
+  let arr = [];
+  try { arr = JSON.parse((row && row.sources_json) || '[]') || []; } catch (_) { arr = []; }
+  if (!Array.isArray(arr) || idx >= arr.length) {
+    return jsonResp({ error: 'index out of range' }, 404);
+  }
+  // Une seule active à la fois : on pose le drapeau sur la cible et on le
+  // retire partout ailleurs (sinon l'app en choisirait une au hasard).
+  const next = arr.map((s, i) => ({ ...(s || {}), active: i === idx }));
+  await env.DB
+    .prepare('UPDATE device_sources SET sources_json = ? WHERE mac = ?')
+    .bind(JSON.stringify(next), m)
+    .run();
+  await logAudit(env, request, actor, 'source.set_active',
+    { type: 'device_source', id: m },
+    { index: idx, server: (arr[idx] || {}).server || '' }, null);
+  return jsonResp({ ok: true, mac: m, active: idx, count: next.length });
 }
 
 // DELETE /api/v1/sources/:mac            → retire TOUT (comportement d'origine)

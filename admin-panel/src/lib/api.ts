@@ -779,6 +779,15 @@ export const sourcesApi = {
   // que le client a ajoutée lui-même. `match` = serveur/URL attendu à cet
   // index : si la liste a bougé depuis l'affichage, le serveur REFUSE (409)
   // au lieu de supprimer la mauvaise ligne.
+  // ACTIVER une source précise : c'est celle que le client regardera. Le
+  // drapeau est écrit dans les données → il s'applique même si l'appareil
+  // est hors ligne (à sa prochaine synchro), et même si la liste est déjà
+  // importée chez lui.
+  setActive: (mac: string, index: number) =>
+    request<{ ok: boolean; mac: string; active: number; count: number; rt?: RtInfo }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}/active`,
+      { method: 'POST', body: { index } },
+    ),
   removeAt: (mac: string, index: number, match?: string) =>
     request<{ ok: boolean; mac: string; removed: number; remaining: number; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}?index=${index}` +

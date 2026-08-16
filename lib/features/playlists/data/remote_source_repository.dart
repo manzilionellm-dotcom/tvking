@@ -208,11 +208,28 @@ abstract final class RemoteSourceRepository {
     Map<String, dynamic> source,
     List<Map<String, dynamic>> all,
   ) {
+    // CHOIX EXPLICITE DU PANEL (`active: true`) : il PRIME sur tout le
+    // reste. Sans ça, le revendeur n'avait aucun moyen de dire QUELLE
+    // liste le client doit regarder — et le client, lui, ne sait pas la
+    // changer dans l'app. Dès qu'UNE source porte le drapeau, elle seule
+    // est activée ; les autres sont importées sans prendre la main.
+    final bool anyExplicit = all.any((Map<String, dynamic> s) => s['active'] == true);
+    if (anyExplicit) return source['active'] == true;
+
     final bool isLab = (source['origin'] as String?) == 'lab';
     if (!isLab) return true;
     final bool hasRealSource = all.any(
         (Map<String, dynamic> s) => (s['origin'] as String?) != 'lab');
     return !hasRealSource;
+  }
+
+  /// Bascule sur [p] si le panel l'a désignée active et qu'elle ne l'est
+  /// pas déjà. Utilisé quand la source est DÉJÀ importée : on ne
+  /// re-télécharge rien, on change seulement la liste active.
+  static Future<void> _activateIfAsked(Playlist p, bool makeActive) async {
+    if (!makeActive || p.isActive || p.id == null) return;
+    await PlaylistRepository.instance.setActivePlaylist(p.id!);
+    if (kDebugMode) debugPrint('[RemoteSource] active -> ' + p.name);
   }
 
   /// Charge la source en base locale si elle n'y est pas déjà.
@@ -246,11 +263,24 @@ abstract final class RemoteSourceRepository {
         return RemoteSyncResult.sourceFailed;
       }
 
-      final bool already = existing.any((Playlist p) =>
-          p.type == PlaylistType.xtream &&
-          p.xtreamServer == server &&
-          p.xtreamUsername == user);
-      if (already) return RemoteSyncResult.loaded;
+      // DÉJÀ IMPORTÉE : on ne re-télécharge pas… mais si le panel a désigné
+      // CETTE source comme active, il faut quand même basculer dessus.
+      // Avant, on sortait sèchement : le revendeur cliquait « rendre
+      // active » et il ne se passait RIEN chez un client qui avait déjà la
+      // liste — le cas le plus fréquent.
+      Playlist? existingXtream;
+      for (final Playlist p in existing) {
+        if (p.type == PlaylistType.xtream &&
+            p.xtreamServer == server &&
+            p.xtreamUsername == user) {
+          existingXtream = p;
+          break;
+        }
+      }
+      if (existingXtream != null) {
+        await _activateIfAsked(existingXtream, makeActive);
+        return RemoteSyncResult.loaded;
+      }
 
       try {
         await PlaylistRepository.instance.addXtreamPlaylist(
@@ -272,9 +302,17 @@ abstract final class RemoteSourceRepository {
       final String m3u = (src['m3u_url'] as String?)?.trim() ?? '';
       if (m3u.isEmpty) return RemoteSyncResult.sourceFailed;
 
-      final bool already = existing.any((Playlist p) =>
-          p.type == PlaylistType.m3u && p.m3uUrl == m3u);
-      if (already) return RemoteSyncResult.loaded;
+      Playlist? existingM3u;
+      for (final Playlist p in existing) {
+        if (p.type == PlaylistType.m3u && p.m3uUrl == m3u) {
+          existingM3u = p;
+          break;
+        }
+      }
+      if (existingM3u != null) {
+        await _activateIfAsked(existingM3u, makeActive);
+        return RemoteSyncResult.loaded;
+      }
 
       try {
         await PlaylistRepository.instance.addM3uPlaylist(

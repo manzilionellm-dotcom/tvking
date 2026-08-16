@@ -99,13 +99,40 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
     };
   }, [mac]);
 
-  // RETIRER la source du client depuis n'importe où (dépannage « ma source
-  // ne marche pas »). L'endpoint DELETE existe ; la synchro temps réel fait
-  // que l'app du client le voit tout de suite. On repousse ensuite une source
-  // propre via « Activer un appareil ».
-  // RETRAIT D'UNE SEULE SOURCE (demande du propriétaire : « je choisis ce
-  // que je veux enlever »). Avant, le panel ne savait que tout effacer — et
-  // les listes ajoutées par le client lui-même étaient intouchables.
+  // RENDRE ACTIVE une source précise. Le client ne sait pas changer de
+  // liste dans l'app, et le revendeur n'avait aucun moyen de le faire pour
+  // lui : il fallait tout effacer et re-pousser. Fonctionne même appareil
+  // HORS LIGNE (le drapeau est appliqué à la prochaine synchro).
+  const [activatingIdx, setActivatingIdx] = useState<number | null>(null);
+  async function handleSetActive(index: number, s: DeviceSource) {
+    const nom = s.label || (s.type || 'source').toUpperCase();
+    if (
+      !window.confirm(
+        `Rendre CETTE source active chez le client ?\n\n${nom}\n\n` +
+          'C’est celle qu’il regardera. Les autres restent installées. ' +
+          'Si son appareil est hors ligne, ce sera appliqué à sa prochaine ' +
+          'connexion.',
+      )
+    ) {
+      return;
+    }
+    setActivatingIdx(index);
+    try {
+      const r = await sourcesApi.setActive(mac, index);
+      void rtActionFeedback(r.rt);
+      toast('Source active mise à jour.', 'success');
+      const fresh = await devicesApi.overview(mac);
+      setOv(fresh);
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec.', 'error');
+    } finally {
+      setActivatingIdx(null);
+    }
+  }
+
+  // RETRAIT D'UNE SEULE SOURCE (« je choisis ce que je veux enlever ») :
+  // avant, le panel ne savait que TOUT effacer, et les listes ajoutées par
+  // le client lui-même étaient intouchables.
   const [removingIdx, setRemovingIdx] = useState<number | null>(null);
   async function handleRemoveOne(index: number, s: DeviceSource) {
     const ident = s.server_url || s.m3u_url || '';
@@ -136,6 +163,7 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
     }
   }
 
+  // RETRAIT TOTAL (dépannage « rien ne marche, on repart de zéro »).
   const [clearing, setClearing] = useState(false);
   async function handleClearSource() {
     if (
@@ -348,15 +376,26 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
                     )}
                     {/* RETRAIT CIBLÉ : on enlève CETTE source-là, pas toutes.
                         Fonctionne aussi sur une liste ajoutée par le client. */}
-                    <button
-                      type="button"
-                      disabled={removingIdx === i}
-                      onClick={() => handleRemoveOne(i, s)}
-                      className="mt-1.5 rounded-md border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
-                      title="Retirer UNIQUEMENT cette source"
-                    >
-                      {removingIdx === i ? 'Retrait…' : '✕ Retirer celle-ci'}
-                    </button>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        disabled={activatingIdx === i}
+                        onClick={() => handleSetActive(i, s)}
+                        className="rounded-md border border-emerald-500/30 px-2 py-1 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40"
+                        title="C'est CETTE liste que le client regardera"
+                      >
+                        {activatingIdx === i ? 'Activation…' : '● Rendre active'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={removingIdx === i}
+                        onClick={() => handleRemoveOne(i, s)}
+                        className="rounded-md border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                        title="Retirer UNIQUEMENT cette source"
+                      >
+                        {removingIdx === i ? 'Retrait…' : '✕ Retirer celle-ci'}
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
