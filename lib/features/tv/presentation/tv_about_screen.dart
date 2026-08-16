@@ -20,6 +20,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/app/device_memory.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../vod/data/tmdb_meta_service.dart' show kTmdbAttribution;
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -195,6 +196,14 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
                 ),
               ),
             ],
+            // MENTIONS DE SOURCES TIERCES — exigées par les conditions
+            // d'utilisation de TMDb (usage commercial). Texte officiel,
+            // NON traduit : c'est une mention légale.
+            const SizedBox(height: 24),
+            const Text(
+              kTmdbAttribution,
+              style: TextStyle(fontSize: 13, color: TvTokens.mutedDim),
+            ),
           ],
         ),
       ),

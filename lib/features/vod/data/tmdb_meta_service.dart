@@ -19,6 +19,14 @@ import 'package:http/http.dart' as http;
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 
+/// MENTION D'ATTRIBUTION exigée par les conditions d'utilisation de TMDb
+/// dès qu'on affiche leurs données — a fortiori en usage COMMERCIAL
+/// (7 Few, LLC vend des abonnements). Texte OFFICIEL, à ne PAS traduire et
+/// à ne pas reformuler : c'est une mention légale. Affichée sur la fiche
+/// film enrichie et dans l'écran « À propos ».
+const String kTmdbAttribution =
+    'This product uses the TMDB API but is not endorsed or certified by TMDB.';
+
 class TmdbMeta {
   const TmdbMeta({
     this.rating,

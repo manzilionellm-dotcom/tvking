@@ -66,6 +66,10 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
   /// place du synopsis (la structure de la fiche, elle, est déjà là).
   bool _loadingInfo = true;
 
+  /// TMDb a-t-il réellement complété cette fiche ? Pilote l'affichage de la
+  /// mention d'attribution obligatoire (cf. kTmdbAttribution).
+  bool _usedTmdb = false;
+
   /// Garde anti-ré-entrée : une double-activation rapide de « Regarder »
   /// empilait deux lecteurs (deux décodeurs). On ignore la 2e tant que la
   /// 1re route n'est pas revenue.
@@ -118,6 +122,10 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
         .fetchMovie(title, year: info?.year, lang: l10nNow.localeName);
     if (!mounted || meta == null) return;
     setState(() {
+      // ATTRIBUTION TMDb (conditions d'utilisation, usage COMMERCIAL) : on
+      // mémorise que TMDb a réellement complété la fiche — la mention n'est
+      // affichée que dans ce cas, jamais sur une fiche 100 % fournisseur.
+      _usedTmdb = true;
       _info = VodInfo(
         plot: needsPlot ? meta.overview : info?.plot,
         cast: needsCast ? meta.cast : info?.cast,
@@ -330,6 +338,17 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TvTokens.ui(14, color: TvTokens.muted)),
+                ],
+                // MENTION TMDb — EXIGÉE par leurs conditions dès qu'on
+                // affiche leurs données (et nous sommes en usage
+                // COMMERCIAL). Texte officiel, NON traduit (c'est une
+                // mention légale) et discret : il ne concurrence pas la
+                // fiche. Affiché seulement si TMDb a réellement contribué.
+                if (_usedTmdb) ...<Widget>[
+                  const SizedBox(height: 10),
+                  Text(kTmdbAttribution,
+                      maxLines: 2,
+                      style: TvTokens.ui(11, color: TvTokens.mutedDim)),
                 ],
                 const SizedBox(height: 22),
                 // ----- ACTIONS (D-pad) — focus initial sur ▶ Lecture -----
