@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player_avplay/video_player.dart';
 
+import '../../../../core/curation/title_curator.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/domain/channel.dart';
@@ -515,7 +516,7 @@ class _TizenControls extends StatelessWidget {
                 Text(
                   channel.category.trim().isEmpty
                       ? context.l10n.tvOthers
-                      : channel.category.trim(),
+                      : TitleCurator.curateCategory(channel.category.trim()),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 14, color: TvTokens.muted),

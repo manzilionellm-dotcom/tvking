@@ -2624,7 +2624,7 @@ class _ControlsBar extends StatelessWidget {
                 child: Text(
                   channel.category.trim().isEmpty
                       ? context.l10n.tvOthers
-                      : channel.category.trim(),
+                      : TitleCurator.curateCategory(channel.category.trim()),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

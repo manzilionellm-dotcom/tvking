@@ -544,7 +544,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
         ),
       for (final String cat in _cats)
         (
-          title: cat,
+          title: TitleCurator.curateCategory(cat),
           movies: _byCat[cat] ?? const <VodMovie>[],
           resume: false,
           dl: false

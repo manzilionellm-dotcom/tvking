@@ -21,6 +21,7 @@ import 'dart:async' show unawaited;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../channels/domain/channel.dart';
@@ -536,7 +537,7 @@ class _SeriesTab extends StatelessWidget {
             children: <Widget>[
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
-                child: Text(c.toUpperCase(),
+                child: Text(TitleCurator.curateCategory(c).toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(

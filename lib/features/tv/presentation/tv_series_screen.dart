@@ -13,6 +13,7 @@ import 'dart:async' show unawaited;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../vod/data/followed_series_repository.dart';
@@ -287,7 +288,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
           return _buildRail(
             context,
             keyStr: 'series-rail-$cat',
-            title: cat,
+            title: TitleCurator.curateCategory(cat),
             list: list,
             affinity: affinity,
             maxAffinity: maxAffinity,

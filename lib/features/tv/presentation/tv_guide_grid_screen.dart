@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
@@ -353,7 +354,7 @@ class _GuideRowState extends State<_GuideRow> {
                   if (now == null && next == null) {
                     // Pas d'EPG pour cette chaîne → on reste discret.
                     return Text(
-                      c.category.trim().isEmpty ? '' : c.category.trim(),
+                      TitleCurator.curateCategory(c.category.trim()),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

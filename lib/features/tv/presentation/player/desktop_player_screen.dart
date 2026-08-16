@@ -23,6 +23,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../../../core/curation/title_curator.dart';
 import '../../../../core/i18n/l10n_extension.dart';
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/domain/channel.dart';
@@ -496,7 +497,7 @@ class _DesktopControls extends StatelessWidget {
                 Text(
                   channel.category.trim().isEmpty
                       ? context.l10n.tvOthers
-                      : channel.category.trim(),
+                      : TitleCurator.curateCategory(channel.category.trim()),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 14, color: TvTokens.muted),
