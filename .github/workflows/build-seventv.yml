@@ -629,6 +629,20 @@ jobs:
             exit 0
           fi
           APK="build/app/outputs/flutter-apk/seven-tv.apk"
+          # L'API d'assets GitHub renvoie parfois un 502 en pleine mise en
+          # ligne (16/08 : build entier perdu pour ça, alors que les trois
+          # binaires étaient bons). On réessaie au lieu d'échouer : 5 essais,
+          # attente croissante. `set -e` est neutralisé le temps des essais.
+          up() {
+            local i
+            for i in 1 2 3 4 5; do
+              if gh release upload "$TAG" --repo "$REPO" --clobber "$@"; then return 0; fi
+              echo "⚠️ upload échoué (essai $i/5) → nouvelle tentative dans $((i*10))s"
+              sleep $((i*10))
+            done
+            echo "⛔ upload impossible après 5 essais : $*"
+            return 1
+          }
           NOTES="7 MOTION TV (Seven Motion TV) — build compatible TOUTES box.
 
           APK universel ARM 32+64 bits, moteur Skia (Impeller OFF), minSdk 21,
@@ -640,7 +654,7 @@ jobs:
           Commit : ${{ github.sha }} · Branche : ${{ github.ref_name }}"
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             gh release edit "$TAG" --repo "$REPO" --title "7 MOTION TV — dernier build" --notes "$NOTES" --prerelease
-            gh release upload "$TAG" --repo "$REPO" --clobber "$APK" seven-tv-amazon.apk
+            up "$APK" seven-tv-amazon.apk
           else
             gh release create "$TAG" --repo "$REPO" \
               --title "7 MOTION TV — dernier build" \
@@ -656,8 +670,8 @@ jobs:
             "mandatory": false
           }
           JSON
-          gh release upload "$TAG" --repo "$REPO" --clobber version.json
+          up version.json
           # AAB Google Play TV : lien public propre pour l'upload Play Console
           # (invisible pour l'updater in-app, qui ne lit que version.json).
-          gh release upload "$TAG" --repo "$REPO" --clobber seven-tv-play.aab
+          up seven-tv-play.aab
           gh release view "$TAG" --repo "$REPO"
