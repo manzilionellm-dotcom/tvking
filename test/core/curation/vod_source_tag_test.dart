@@ -52,7 +52,10 @@ void main() {
 
   test('une catégorie décorée reste lisible après curation', () {
     final String out = TitleCurator.curateCategory('NETFLIX MOVIES 〓〓 4K');
-    expect(out, contains('NETFLIX'));
+    // Le curateur met le libellé en casse de titre (« Netflix Movies ») :
+    // on vérifie le MOT, pas sa casse — c'est le tofu qui doit disparaître.
+    expect(out.toLowerCase(), contains('netflix'));
     expect(out, isNot(contains('〓')));
+    expect(out.trim(), isNotEmpty);
   });
 }
