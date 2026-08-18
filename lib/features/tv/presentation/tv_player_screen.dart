@@ -27,6 +27,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
+import '../../../core/playback/stream_slot.dart';
+
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/observability/structured_logger.dart';
@@ -360,6 +362,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // contente de piloter l'URL et d'écouter l'état.
     _controller = NativeVideoController(initialUrl: _current.streamUrl);
     _controller.addListener(_onPlayer);
+    // VERROU DE CONNEXION : ce lecteur est le detenteur prioritaire. Tout
+    // autre consommateur (apercu d'accueil, file de telechargements) sera
+    // demonte quand on reclamera le creneau, et attendu.
+    StreamSlot.instance.register(
+      this,
+      label: 'lecteur plein ecran',
+      teardown: () => _controller.stop(),
+    );
     // Cascade « échec → sonde → formats » (parité téléphone) : branchée sur
     // les échecs définitifs du relais. Elle possède l'anti-boucle par chaîne.
     _fallback = StreamBlockedFallback(
@@ -499,6 +509,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     unawaited(Future<void>.delayed(const Duration(milliseconds: 1500),
         () => SubscriptionState.instance.syncWithBackend()));
     _startupWatchdog?.cancel();
+    StreamSlot.instance.unregister(this);
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -738,7 +749,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // d'effet sur l'URL : même à la 1re ouverture on bascule sur le
     // relais (le lecteur a été créé sur l'URL directe le temps d'un
     // battement).
-    unawaited(_loadCurrentUrl());
+    // ON RECLAME LE CRENEAU AVANT D'OUVRIR (bug terrain : « je quitte le
+    // cinema, je lance France 2 → un autre flux est deja en cours »). Le
+    // creneau attend que les autres consommateurs aient VRAIMENT ferme leur
+    // socket ; sans cette attente, la nouvelle connexion partait en meme
+    // temps que l'ancienne se fermait, et le panel refusait la seconde.
+    unawaited(StreamSlot.instance.claim(this).then((_) {
+      if (mounted) unawaited(_loadCurrentUrl());
+    }));
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
     NowPlaying.instance.set(_current.cleanName);

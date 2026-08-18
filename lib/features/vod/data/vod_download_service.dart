@@ -49,6 +49,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/playback/stream_slot.dart';
 import '../domain/vod_movie.dart';
 
 enum VodDownloadStatus { queued, downloading, paused, done, error, noSpace }
@@ -157,7 +158,18 @@ class VodNextEpisode {
 }
 
 class VodDownloadService extends ChangeNotifier {
-  VodDownloadService._();
+  VodDownloadService._() {
+    // La file est un CONSOMMATEUR DE CONNEXION comme un autre : toute lecture
+    // qui reclame le creneau la fait taire d'abord (cf. StreamSlot). Sans ca,
+    // le telechargeur pouvait detenir la seule connexion du compte au moment
+    // ou le client lance une chaine.
+    StreamSlot.instance.register(
+      this,
+      group: StreamSlot.groupDownloads,
+      label: 'telechargements',
+      teardown: () async => setPlaybackHold(true),
+    );
+  }
   static final VodDownloadService instance = VodDownloadService._();
 
   static const String _kKey = 'vod_downloads.v1';
@@ -288,6 +300,8 @@ class VodDownloadService extends ChangeNotifier {
   void setPlaybackHold(bool hold) {
     if (_playbackHold == hold) return;
     _playbackHold = hold;
+    _releaseGrace?.cancel();
+    _releaseGrace = null;
     if (hold) {
       final String? id = _activeId;
       if (id != null) {
@@ -298,10 +312,31 @@ class VodDownloadService extends ChangeNotifier {
           notifyListeners();
         }
       }
-    } else {
-      _pump();
+      return;
     }
+    // RÉPIT AVANT REPRISE (bug terrain : « je quitte le cinéma, je lance
+    // France 2 → un autre flux est déjà en cours »).
+    //
+    // Le lecteur lève le verrou dans son `dispose`, donc AU MOMENT EXACT où
+    // l'utilisateur quitte le film — et c'est presque toujours pour lancer
+    // autre chose. La file repartait dans la milliseconde et reprenait le
+    // créneau du compte AVANT que la chaîne suivante n'ait eu le temps de
+    // s'ouvrir : le panel refusait la chaîne, et le client accusait le
+    // lecteur alors que le voleur était le téléchargeur.
+    //
+    // On laisse donc passer la vague : si une lecture redémarre pendant ce
+    // répit, `setPlaybackHold(true)` annule le timer et rien n'a bougé.
+    _releaseGrace = Timer(_kResumeGrace, () {
+      _releaseGrace = null;
+      if (!_playbackHold) _pump();
+    });
   }
+
+  /// Délai d'attente avant de relancer la file après une lecture réseau.
+  /// Assez long pour couvrir « je quitte le film et je zappe aussitôt »,
+  /// assez court pour que les téléchargements ne s'endorment pas.
+  static const Duration _kResumeGrace = Duration(seconds: 12);
+  Timer? _releaseGrace;
 
   Future<Directory> _dir() async {
     // Stockage PRIVÉ de l'app (Android/data/<pkg>/files) : invisible dans

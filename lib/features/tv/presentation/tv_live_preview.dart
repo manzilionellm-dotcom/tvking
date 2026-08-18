@@ -27,6 +27,8 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:native_video_player/native_video_player.dart';
 
+import '../../../core/playback/stream_slot.dart';
+
 import '../../channels/domain/channel.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/data/stream_blocked_fallback.dart';
@@ -267,6 +269,7 @@ class _TvLivePreviewState extends State<TvLivePreview>
 
   @override
   void dispose() {
+    StreamSlot.instance.unregister(this);
     WidgetsBinding.instance.removeObserver(this);
     TvLivePreview.routeObserver.unsubscribe(this);
     _reset(disposePlayer: true);
@@ -286,6 +289,9 @@ class _TvLivePreviewState extends State<TvLivePreview>
     _loggedFirstFrame = false;
     _loggedError = false;
     if (disposePlayer) {
+      // Le lecteur part : on se retire du verrou de connexion (un prochain
+      // aperçu se ré-inscrira avec son nouveau lecteur).
+      StreamSlot.instance.unregister(this);
       _ctrl?.removeListener(_onPlayer);
       _ctrl?.dispose();
       _ctrl = null;
@@ -382,10 +388,24 @@ class _TvLivePreviewState extends State<TvLivePreview>
     if (_covered) return; // recouvert pendant la résolution → on n'ouvre pas
     NativeVideoController? c = _ctrl;
     if (c == null) {
-      c = NativeVideoController(preview: true);
-      c.setVolume(0); // muet d'office — le son n'arrive qu'en plein écran
-      c.addListener(_onPlayer);
+      final NativeVideoController created = NativeVideoController(preview: true);
+      created.setVolume(0); // muet — le son n'arrive qu'en plein écran
+      created.addListener(_onPlayer);
+      StreamSlot.instance.register(
+        this,
+        label: 'apercu accueil',
+        // Référence STABLE (et non `_ctrl`, qui peut être remis à null par un
+        // reset entre-temps) : le démontage doit rester valable même si
+        // l'aperçu a changé d'état depuis l'inscription.
+        teardown: () => created.stop(),
+      );
+      c = created;
     }
+    // L'aperçu réclame le créneau comme tout le monde : il fait taire la file
+    // de téléchargements avant d'ouvrir, et il sera lui-même démonté dès que
+    // le plein écran réclamera. Une connexion à la fois, sans exception.
+    await StreamSlot.instance.claim(this);
+    if (!mounted || session != _session || _covered) return;
     c.setUrl(src.url, userAgent: src.userAgent);
     _presentGuard?.cancel(); // nouvelle chaîne : on ré-arme sur SA 1re trame
     _presentGuard = null;

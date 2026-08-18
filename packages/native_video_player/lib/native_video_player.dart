@@ -385,11 +385,22 @@ class NativeVideoController extends ChangeNotifier {
   /// un lecteur en pause GARDE la session ouverte vers le panel, ce qui
   /// bloque les abonnements à 1 connexion alors que plus personne ne
   /// regarde. Sur un FILM, garder [pause] (la position doit survivre).
-  void stop() {
+  /// ATTENDABLE : la Future ne se resout qu'une fois la socket REELLEMENT
+  /// fermee cote natif (le natif ne repond qu'apres execution sur son thread
+  /// lecteur). C'est ce qui permet a l'appelant de n'ouvrir le flux suivant
+  /// qu'ensuite -- sans quoi les deux connexions se croisent et un compte
+  /// 1-connexion refuse la seconde.
+  Future<void> stop() async {
     isStopped = true;
     isBuffering = false;
     firstFrame = false;
-    _channel?.invokeMethod<void>('stop');
+    try {
+      await _channel?.invokeMethod<void>('stop');
+    } catch (_) {
+      // Canal deja mort (vue detruite) : la connexion est fermee de toute
+      // facon. Ne JAMAIS propager -- un arret rate ne doit pas bloquer
+      // l'ouverture suivante.
+    }
   }
 
   /// La source a-t-elle été LIBÉRÉE par [stop] ? Un lecteur arrêté n'a plus

@@ -706,15 +706,29 @@ class NativeVideoView(
                 // à 1 connexion, alors qu'il ne regarde plus rien.
                 // clearMediaItems() ferme réellement la source ; on repasse
                 // en IDLE pour que la FSM accepte un nouveau setUrl.
+                //
+                // ON REPOND APRES COUP (et non tout de suite) : Dart peut donc
+                // `await stop()` et n'ouvrir le flux suivant qu'une fois la
+                // socket REELLEMENT fermee. C'est ce chainon qui manquait au
+                // scenario « je quitte le film, je lance France 2 » : la
+                // reponse immediate laissait les deux connexions se croiser.
                 playerHandler.post {
-                    cancelRetry()
-                    player.stop()
-                    player.clearMediaItems()
-                    currentUrl = null
-                    fsm = Fsm.IDLE
-                    recordEvent("stop")
+                    try {
+                        cancelRetry()
+                        player.stop()
+                        player.clearMediaItems()
+                        currentUrl = null
+                        fsm = Fsm.IDLE
+                        recordEvent("stop")
+                    } catch (t: Throwable) {
+                        // Lecteur deja detruit / course a la sortie d'ecran :
+                        // un arret rate ne doit jamais remonter en crash.
+                        recordEvent("stop_error")
+                    }
+                    // Le resultat d'un MethodChannel se rend sur le thread
+                    // plateforme, pas sur le thread player.
+                    handler.post { result.success(null) }
                 }
-                result.success(null)
             }
             "seekTo" -> {
                 // Film / VOD / catch-up : va à une position absolue (ms). Borné
