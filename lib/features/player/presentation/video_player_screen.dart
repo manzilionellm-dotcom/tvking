@@ -23,6 +23,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
+
+import '../../../core/playback/stream_slot.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -366,6 +368,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     super.initState();
 
     _currentChannel = widget.channel;
+
+    // Détenteur prioritaire du créneau de connexion : tout autre
+    // consommateur (file de téléchargements Cinéma) sera démonté — et
+    // attendu — quand ce lecteur réclamera. `stop` et non `pause` : une
+    // lecture en pause GARDE sa session ouverte chez le fournisseur.
+    StreamSlot.instance.register(
+      this,
+      label: 'lecteur telephone',
+      teardown: () => _player.stop(),
+    );
 
     // Rapporte tout de suite la chaîne en cours, puis rafraîchit toutes les
     // 3 min tant que le lecteur est ouvert (présence + chaîne à jour).
@@ -1153,7 +1165,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // watchdog) ferait `.then` sur une future rejetée, donc plus JAMAIS
     // exécutée. Le `catchError` garantit que la file reste toujours saine :
     // l'échec est journalisé et affiché (jamais un écran noir muet).
-    _openChain = _openChain.then((_) => _openMediaInner(realUrl, gen)).catchError(
+    // VERROU DE CONNEXION (parité TV) : on réclame le créneau AVANT d'ouvrir,
+    // et la réclamation ATTEND que les autres consommateurs (file de
+    // téléchargements Cinéma en tête) aient vraiment fermé leur socket. Sans
+    // ça, la nouvelle lecture partait pendant que l'ancienne se fermait — et
+    // un compte 1-connexion refusait la seconde (« un autre flux est déjà en
+    // cours » en passant du cinéma à une chaîne).
+    _openChain = _openChain
+        .then((_) => StreamSlot.instance.claim(this))
+        .then((_) => _openMediaInner(realUrl, gen))
+        .catchError(
       (Object e, StackTrace st) {
         StreamDiagnostics.instance.recordEvent(
           'player',
@@ -2025,6 +2046,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       RecordingRepository.instance.finishRecording(rec);
     }
     _zapPageController?.dispose();
+    StreamSlot.instance.unregister(this);
     _player.dispose();
     WakelockPlus.disable();
     // À la sortie du lecteur, on dit au natif "plus de playback"
