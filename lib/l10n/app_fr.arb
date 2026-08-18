@@ -2675,6 +2675,7 @@
       }
     }
   },
+  "playerBlockedProvider": "Ce flux ne répond pas chez ton fournisseur. Ton abonnement n’est pas en cause : réessaie, ou choisis une autre chaîne.",
   "playerBlockedMaxConnections": "Limite de connexions atteinte ({active}/{max}). Un autre écran regarde déjà avec ce compte — ferme-le, puis réessaie.",
   "@playerBlockedMaxConnections": {
     "placeholders": {

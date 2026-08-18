@@ -1127,11 +1127,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     switch (d.blockReason) {
       case StreamBlockReason.expired:
         final DateTime? x = d.xtreamExpDate;
-        final String date = x == null
-            ? '—'
-            : '${x.day.toString().padLeft(2, '0')}/'
-                '${x.month.toString().padLeft(2, '0')}/${x.year}';
+        // GARDE-FOU (photo client du 18/08) : ne JAMAIS annoncer « expiré le
+        // ... » avec une date qui n'est pas passée. Si le fournisseur dit
+        // « expired » mais que la date lue est future (ou inconnue), les deux
+        // informations se contredisent — on reste factuel plutôt que
+        // d'accuser à tort la ligne d'un client qui a payé.
+        if (x == null || !x.isBefore(DateTime.now())) {
+          return context.l10n.playerBlockedProvider;
+        }
+        final String date = '${x.day.toString().padLeft(2, '0')}/'
+            '${x.month.toString().padLeft(2, '0')}/${x.year}';
         return context.l10n.playerBlockedExpired(date);
+      case StreamBlockReason.providerBlocked:
+        return context.l10n.playerBlockedProvider;
       case StreamBlockReason.maxConnections:
         return context.l10n.playerBlockedMaxConnections(
           '${d.xtreamActiveCons ?? '?'}',

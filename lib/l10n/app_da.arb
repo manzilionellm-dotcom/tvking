@@ -1658,6 +1658,7 @@
   "categoryOrderSave": "Gem rækkefølge",
   "categoryOrderReset": "Nulstil",
   "playerBlockedExpired": "Dit abonnement udløb den {date}. Forny din linje hos din udbyder.",
+  "playerBlockedProvider": "Denne stream svarer ikke hos din udbyder. Dit abonnement er ikke problemet: prøv igen, eller vælg en anden kanal.",
   "playerBlockedMaxConnections": "Forbindelsesgrænse nået ({active}/{max}). En anden skærm ser allerede med denne konto — luk den, og prøv igen.",
   "playerBlockedBanned": "Denne konto er suspenderet. Kontakt din udbyder.",
   "playerWeakConnection": "Afspilningen bliver ved med at buffere. Din internetforbindelse er sandsynligvis for svag til denne kanal (eller din udbyders server er langsom). Tjek dit WiFi / din båndbredde, eller prøv en kanal i lavere kvalitet. Det er ikke et problem med appen.",

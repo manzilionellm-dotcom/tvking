@@ -1658,6 +1658,7 @@
   "categoryOrderSave": "Guardar orden",
   "categoryOrderReset": "Restablecer",
   "playerBlockedExpired": "Tu suscripción caducó el {date}. Renueva tu línea con tu proveedor.",
+  "playerBlockedProvider": "Este canal no responde en tu proveedor. Tu suscripción no está en causa: vuelve a intentarlo o elige otro canal.",
   "playerBlockedMaxConnections": "Límite de conexiones alcanzado ({active}/{max}). Otra pantalla ya está viendo con esta cuenta: ciérrala y vuelve a intentarlo.",
   "playerBlockedBanned": "Esta cuenta está suspendida. Contacta con tu proveedor.",
   "playerWeakConnection": "La reproducción no deja de cargar. Tu conexión a Internet probablemente sea demasiado débil para este canal (o el servidor de tu proveedor va lento). Comprueba tu WiFi / tu ancho de banda, o prueba un canal de menor calidad. No es un problema de la aplicación.",

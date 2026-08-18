@@ -39,6 +39,17 @@ enum StreamBlockReason {
   /// Limite de connexions atteinte : un autre écran regarde déjà (le panel
   /// renvoie HTTP 458, ou active_cons ≥ max_connections).
   maxConnections,
+
+  /// Le fournisseur ne sert PAS le flux (écran noir « black.ts » & co.) alors
+  /// qu'aucun signal de compte n'accuse le client. Cause côté fournisseur :
+  /// chaîne morte, source en panne, bouquet non inclus.
+  ///
+  /// Distinct d'[expired] à dessein (photo client du 18/08) : l'app affichait
+  /// « ton abonnement a expiré le 18/09/2026 » un mois AVANT cette date. Le
+  /// repli plaçait ce cas dans `expired`, et l'écran formatait la date
+  /// d'expiration -- future -- comme si elle était passée. Accuser à tort la
+  /// ligne d'un client qui a payé, c'est un appel au support garanti.
+  providerBlocked,
 }
 
 /// Une ligne du journal de diagnostic.
@@ -163,11 +174,11 @@ class StreamDiagnostics extends ChangeNotifier {
         xtreamMaxConnections! > 0 &&
         xtreamActiveCons! >= xtreamMaxConnections!;
     if (maxByHttp || maxByCount) return StreamBlockReason.maxConnections;
-    // Filet FINAL : le fournisseur sert un écran noir (black.ts) sans qu'aucun
-    // signal de compte n'ait pu être lu → cause la PLUS probable = ligne
-    // expirée/bloquée. On affiche le message « expiré » (appel à l'action :
-    // renouveler auprès du fournisseur) plutôt qu'un écran noir muet.
-    if (placeholderStream) return StreamBlockReason.expired;
+    // Filet FINAL : le fournisseur sert un écran noir (black.ts) sans qu'AUCUN
+    // signal de compte n'ait accusé le client. On le dit tel quel — sans
+    // prétendre que son abonnement a expiré (il peut être parfaitement
+    // valide, cf. providerBlocked).
+    if (placeholderStream) return StreamBlockReason.providerBlocked;
     return StreamBlockReason.none;
   }
 

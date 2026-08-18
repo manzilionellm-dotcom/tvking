@@ -1658,6 +1658,7 @@
   "categoryOrderSave": "Spara ordning",
   "categoryOrderReset": "Återställ",
   "playerBlockedExpired": "Ditt abonnemang gick ut den {date}. Förnya din linje hos din leverantör.",
+  "playerBlockedProvider": "Den här strömmen svarar inte hos din leverantör. Ditt abonnemang är inte problemet: försök igen eller välj en annan kanal.",
   "playerBlockedMaxConnections": "Anslutningsgränsen nådd ({active}/{max}). En annan skärm tittar redan med det här kontot — stäng den och försök igen.",
   "playerBlockedBanned": "Det här kontot är avstängt. Kontakta din leverantör.",
   "playerWeakConnection": "Uppspelningen buffrar hela tiden. Din internetanslutning är förmodligen för svag för den här kanalen (eller så är din leverantörs server långsam). Kontrollera ditt WiFi / din bandbredd, eller prova en kanal med lägre kvalitet. Det är inte ett problem med appen.",

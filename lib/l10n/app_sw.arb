@@ -1658,6 +1658,7 @@
   "categoryOrderSave": "Hifadhi mpangilio",
   "categoryOrderReset": "Weka upya",
   "playerBlockedExpired": "Usajili wako uliisha tarehe {date}. Fanya upya laini yako kwa mtoa huduma wako.",
+  "playerBlockedProvider": "Mtiririko huu haujibu kwa mtoa huduma wako. Usajili wako si tatizo: jaribu tena, au chagua chaneli nyingine.",
   "playerBlockedMaxConnections": "Kikomo cha muunganisho kimefikiwa ({active}/{max}). Skrini nyingine tayari inatazama kwa akaunti hii — ifunge, kisha ujaribu tena.",
   "playerBlockedBanned": "Akaunti hii imesimamishwa. Wasiliana na mtoa huduma wako.",
   "playerWeakConnection": "Uchezaji unaendelea kusitasita (buffering). Muunganisho wako wa intaneti huenda ni dhaifu mno kwa chaneli hii (au seva ya mtoa huduma wako ni ya polepole). Angalia WiFi / kasi yako ya intaneti, au jaribu chaneli ya ubora wa chini. Hili si tatizo la programu.",

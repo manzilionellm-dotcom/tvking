@@ -799,14 +799,23 @@ class LocalStreamRelay {
   /// continue de réessayer.
   bool _abortIfLineDead(_RelaySession session) {
     final StreamBlockReason r = StreamDiagnostics.instance.blockReason;
-    if (r != StreamBlockReason.expired && r != StreamBlockReason.banned) {
+    // `providerBlocked` compte AUSSI comme mort : c'est l'ancien cas « écran
+    // noir », qui rentrait ici sous l'étiquette `expired` avant qu'on ne les
+    // sépare. Le séparer sans le rajouter ici aurait relancé les
+    // reconnexions à l'infini sur une chaîne qui ne rendra jamais d'image.
+    if (r != StreamBlockReason.expired &&
+        r != StreamBlockReason.banned &&
+        r != StreamBlockReason.providerBlocked) {
       return false;
     }
     StreamDiagnostics.instance.recordEvent(
       'relay',
-      'Abonnement expiré/bloqué (compte) — reconnexions ARRÊTÉES : inutile de '
-          'marteler une ligne morte (le fournisseur ne sert qu\'un écran noir). '
-          'Renouvelle la ligne auprès du fournisseur.',
+      r == StreamBlockReason.providerBlocked
+          ? 'Le fournisseur ne sert qu\'un écran noir sur cette chaîne — '
+              'reconnexions ARRÊTÉES. Le compte, lui, n\'est pas en cause.'
+          : 'Abonnement expiré/bloqué (compte) — reconnexions ARRÊTÉES : '
+              'inutile de marteler une ligne morte. Renouvelle la ligne '
+              'auprès du fournisseur.',
       level: 'error',
     );
     final String failedUrl = session.realUrl;

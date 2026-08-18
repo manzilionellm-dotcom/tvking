@@ -1435,6 +1435,7 @@
       }
     }
   },
+  "playerBlockedProvider": "This stream is not responding at your provider. Your subscription is not the problem: try again, or pick another channel.",
   "playerBlockedMaxConnections": "Connection limit reached ({active}/{max}). Another screen is already watching with this account — close it, then try again.",
   "@playerBlockedMaxConnections": {
     "placeholders": {
