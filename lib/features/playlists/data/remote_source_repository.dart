@@ -140,6 +140,8 @@ abstract final class RemoteSourceRepository {
           } else if (kind == 'source_activate' && !target.isActive) {
             await PlaylistRepository.instance.setActivePlaylist(target.id!);
             if (kDebugMode) debugPrint('[Orders] active: ' + target.name);
+          } else if (kind == 'source_update') {
+            await _updateLocal(target, t['next']);
           }
         }
         done.add(id); // cible absente = ordre sans objet -> acquitte quand meme
@@ -161,6 +163,79 @@ abstract final class RemoteSourceRepository {
       // actions sont IDEMPOTENTES (supprimer une liste absente, activer une
       // liste deja active) : le rejouer est sans danger.
     }
+  }
+
+  /// Applique un ordre `source_update` : le revendeur a CORRIGE, depuis le
+  /// panel, une liste que le CLIENT avait ajoutee lui-meme (mot de passe
+  /// renouvele, serveur qui a bouge). Ces listes n'existent pas cote serveur,
+  /// donc seul l'appareil peut les reecrire.
+  ///
+  /// Deux cas :
+  ///  - memes serveur + identifiant, mot de passe different -> on ecrit le
+  ///    nouveau mot de passe et on recharge (favoris/reglages conserves) ;
+  ///  - serveur ou identifiant differents -> ce n'est plus la meme source :
+  ///    on importe la nouvelle, on reprend le statut « active » de l'ancienne,
+  ///    puis on retire l'ancienne. Jamais l'inverse : si l'import echoue, le
+  ///    client garde ce qu'il avait.
+  static Future<void> _updateLocal(Playlist target, Object? rawNext) async {
+    if (rawNext is! Map<String, dynamic>) return;
+    final String type = (rawNext['type'] as String?)?.trim().toLowerCase() ?? '';
+    final String server = (rawNext['server_url'] as String?)?.trim() ?? '';
+    final String user = (rawNext['username'] as String?)?.trim() ?? '';
+    final String pass = (rawNext['password'] as String?)?.trim() ?? '';
+    final String m3u = (rawNext['m3u_url'] as String?)?.trim() ?? '';
+    final String? epg = (rawNext['epg_url'] as String?)?.trim();
+    final String label = (rawNext['label'] as String?)?.trim().isNotEmpty == true
+        ? (rawNext['label'] as String).trim()
+        : target.name;
+
+    final bool sameXtream = type == 'xtream' &&
+        target.type == PlaylistType.xtream &&
+        target.xtreamServer == server &&
+        target.xtreamUsername == user;
+    if (sameXtream) {
+      if (pass.isEmpty || pass == target.xtreamPassword) return;
+      await PlaylistRepository.instance.updateXtreamPassword(target.id!, pass);
+      await PlaylistRepository.instance
+          .refreshPlaylist(target.copyWith(xtreamPassword: pass));
+      if (kDebugMode) debugPrint('[Orders] identifiants corriges: ' + target.name);
+      return;
+    }
+
+    final bool wasActive = target.isActive;
+    // Liste regardee AVANT le remplacement : si la source corrigee n'etait pas
+    // l'active, l'import ne doit pas voler l'ecran au client.
+    final Playlist? previouslyActive =
+        wasActive ? null : await PlaylistRepository.instance.getActivePlaylist();
+    if (type == 'xtream') {
+      if (server.isEmpty || user.isEmpty || pass.isEmpty) return;
+      await PlaylistRepository.instance.addXtreamPlaylist(
+        name: label,
+        serverUrl: server,
+        username: user,
+        password: pass,
+        makeActive: wasActive,
+      );
+    } else if (type == 'm3u') {
+      if (m3u.isEmpty) return;
+      // `addM3uPlaylistSmart` (repli Xtream auto) n'expose pas `makeActive` :
+      // on remet donc l'active d'avant si on n'aurait pas du en changer.
+      await PlaylistRepository.instance.addM3uPlaylistSmart(
+        name: label,
+        url: m3u,
+        epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
+      );
+      if (previouslyActive?.id != null &&
+          previouslyActive!.id != target.id) {
+        await PlaylistRepository.instance
+            .setActivePlaylist(previouslyActive.id!);
+      }
+    } else {
+      return;
+    }
+    // L'import a reussi (sinon on aurait leve) -> l'ancienne peut partir.
+    await PlaylistRepository.instance.deletePlaylist(target.id!);
+    if (kDebugMode) debugPrint('[Orders] remplacee: ' + target.name);
   }
 
   /// Retrouve la playlist locale visee par un ordre.

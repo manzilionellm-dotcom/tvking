@@ -797,12 +797,15 @@ export const sourcesApi = {
   // appliqué à sa prochaine synchro, même appareil éteint au clic.
   order: (
     mac: string,
-    kind: 'source_activate' | 'source_remove',
+    kind: 'source_activate' | 'source_remove' | 'source_update',
     target: { type?: string; name?: string; server?: string; username?: string; m3u_url?: string },
+    // `source_update` uniquement : les NOUVELLES valeurs. L'appareil retrouve
+    // la liste via `target`, puis la réécrit avec ceci.
+    source?: DeviceSourceInput,
   ) =>
     request<{ ok: boolean; mac: string; kind: string; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}/order`,
-      { method: 'POST', body: { kind, ...target } },
+      { method: 'POST', body: { kind, ...target, source } },
     ),
   // MODIFIER une seule source (mot de passe changé, serveur qui bouge, EPG…)
   // sans re-saisir les autres et sans perdre la source active.

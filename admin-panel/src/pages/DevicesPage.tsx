@@ -1095,6 +1095,33 @@ function LocalSourceCard({
   // On dépose donc un ordre appliqué à sa prochaine synchro (donc même
   // appareil éteint au moment du clic).
   const [busy, setBusy] = useState<'' | 'act' | 'del'>('');
+  const [editing, setEditing] = useState(false);
+
+  // MODIFIER une liste du client : même chemin (ordre durable), avec les
+  // nouvelles valeurs jointes. Le mot de passe n'est jamais remonté par
+  // l'inventaire — il faut donc le ressaisir, c'est normal et voulu.
+  async function saveEdit(next: DeviceSourceInput) {
+    try {
+      const r = await sourcesApi.order(
+        mac,
+        'source_update',
+        {
+          type: source.type,
+          name: source.name,
+          server: source.server,
+          username: source.username,
+        },
+        next,
+      );
+      void rtActionFeedback(r.rt);
+      toast('Modification envoyée au client.', 'success');
+      setEditing(false);
+      onDone();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec.', 'error');
+    }
+  }
+
   async function order(kind: 'source_activate' | 'source_remove') {
     const nom = source.name || (isXtream ? 'XTREAM' : 'M3U');
     const question =
@@ -1158,6 +1185,15 @@ function LocalSourceCard({
         <button
           type="button"
           disabled={busy !== ''}
+          onClick={() => setEditing((v) => !v)}
+          className="rounded-md border border-white/15 px-2 py-1 text-[11px] font-semibold text-ink-secondary hover:bg-white/5 disabled:opacity-40"
+          title="Corriger cette liste (mot de passe renouvelé, serveur qui a changé…)"
+        >
+          {editing ? 'Fermer' : '✎ Modifier'}
+        </button>
+        <button
+          type="button"
+          disabled={busy !== ''}
           onClick={() => order('source_remove')}
           className="rounded-md border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
           title="Retirer cette liste de la TV du client"
@@ -1165,6 +1201,26 @@ function LocalSourceCard({
           {busy === 'del' ? 'Retrait…' : '✕ Retirer de sa TV'}
         </button>
       </div>
+      {editing && (
+        <>
+          <p className="mt-2 text-[11px] text-ink-tertiary">
+            Cette liste vit sur la TV du client : la correction part en ordre et
+            s'applique à sa prochaine connexion. Le mot de passe n'étant jamais
+            remonté, il faut le ressaisir.
+          </p>
+          <SourceForm
+            initial={{
+              type: source.type === 'm3u' ? 'm3u' : 'xtream',
+              label: source.name,
+              server_url: source.server,
+              username: source.username,
+            }}
+            submitLabel="Envoyer la correction"
+            onCancel={() => setEditing(false)}
+            onSubmit={saveEdit}
+          />
+        </>
+      )}
     </div>
   );
 }

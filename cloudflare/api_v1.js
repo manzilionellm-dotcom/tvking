@@ -3615,7 +3615,8 @@ async function handleSourceOrder(request, env, mac, actor) {
   let body = {};
   try { body = await request.json(); } catch (_) { return jsonResp({ error: 'invalid JSON' }, 400); }
   const kind = String((body && body.kind) || '');
-  if (kind !== 'source_remove' && kind !== 'source_activate') {
+  if (kind !== 'source_remove' && kind !== 'source_activate'
+      && kind !== 'source_update') {
     return jsonResp({ error: 'unknown kind' }, 400);
   }
   const target = {
@@ -3627,6 +3628,15 @@ async function handleSourceOrder(request, env, mac, actor) {
   };
   if (!target.server && !target.m3u_url) {
     return jsonResp({ error: 'target incomplet' }, 400);
+  }
+  // MODIFIER une liste que le CLIENT a ajoutee lui-meme : elle n'existe pas
+  // en base, seul l'appareil peut la reecrire. On joint donc les nouvelles
+  // valeurs a l'ordre ; l'app retrouve la liste par `target` puis applique
+  // `next`. Les champs vides sont ignores cote app (« ne change pas ca »).
+  if (kind === 'source_update') {
+    const norm = normalizeSource((body && body.source) || {});
+    if (norm.error) return jsonResp({ error: norm.error }, 400);
+    target.next = norm.source;
   }
   await env.DB.prepare(
     'CREATE TABLE IF NOT EXISTS device_orders (' +
