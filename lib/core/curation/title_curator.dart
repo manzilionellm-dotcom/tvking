@@ -174,14 +174,63 @@ abstract final class TitleCurator {
     unicode: true,
   );
 
+  // ÉCRITURES QUE LES BOX NE DESSINENT PAS (photo client du 17/08 : « Prime »,
+  // « FR| PRIME », « Prime: 13eme RUE » suivis de 3 carrés).
+  //
+  // La liste blanche v2 garde \p{L} — donc TOUTES les écritures. C'était le
+  // trou : une box Android bon marché n'embarque que les polices latines (+
+  // souvent arabe/cyrillique). Un idéogramme CJK, un caractère thaï ou une
+  // lettre indienne est un \p{L} parfaitement valide… et un carré à l'écran.
+  //
+  // On GARDE ce que les box dessinent vraiment : latin, grec, cyrillique,
+  // arménien, hébreu, arabe (y compris ses formes de présentation). On retire
+  // le reste. Filet de sécurité dans [stripUnrenderable] : si le nom ENTIER
+  // était dans une écriture retirée, on préfère les carrés à une ligne vide.
+  static final RegExp _unsupportedScripts = RegExp(
+    r'[\u{0700}-\u{074F}\u{0780}-\u{08FF}\u{0900}-\u{0DFF}'
+    r'\u{0E00}-\u{109F}\u{1100}-\u{11FF}\u{1200}-\u{137F}'
+    r'\u{1400}-\u{167F}\u{1780}-\u{17FF}\u{2E80}-\u{A4CF}'
+    r'\u{A500}-\u{A63F}\u{AC00}-\u{D7FF}\u{F900}-\u{FAFF}]+',
+    unicode: true,
+  );
+
   /// Balayage anti-tofu PARTAGÉ (photo client : le template d'accueil passe
   /// par `ChannelClassifier.prettifyCategory`, pas par `curate()` — il doit
-  /// purger exactement pareil). Liste blanche + purge des marques invisibles.
+  /// purger exactement pareil). Liste blanche + purge des marques invisibles
+  /// + retrait des écritures que la police de la box ne dessine pas.
   static String stripUnrenderable(String s) {
-    return _foldExotic(s)
+    final String out = _foldExotic(s)
         .replaceAll(_unrenderable, ' ')
         .replaceAll(_invisibleMarks, '');
+    final String pruned = out.replaceAll(_unsupportedScripts, ' ');
+    // Nom ENTIÈREMENT dans une écriture non dessinable (chaîne chinoise sur
+    // un bouquet asiatique) : mieux vaut des carrés qu'une ligne vide, qui
+    // rendrait la chaîne impossible à identifier ET à chercher.
+    if (pruned.trim().isEmpty) return out;
+    return pruned;
   }
+
+  // EXPOSANTS / INDICES → ASCII. Les fournisseurs IPTV en raffolent pour la
+  // qualité (« ᴴᴰ », « ⁴ᴷ », « ᵁᴴᴰ ») : on les CONVERTIT (le suffixe reste
+  // lisible, et « HD » sera ensuite traité comme la balise qualité qu'il est)
+  // plutôt que de les jeter en silence.
+  static const Map<int, String> _superscripts = <int, String>{
+    0x00B2: '2', 0x00B3: '3', 0x00B9: '1',
+    0x2070: '0', 0x2071: 'i', 0x2074: '4', 0x2075: '5', 0x2076: '6',
+    0x2077: '7', 0x2078: '8', 0x2079: '9', 0x207F: 'n',
+    0x2080: '0', 0x2081: '1', 0x2082: '2', 0x2083: '3', 0x2084: '4',
+    0x2085: '5', 0x2086: '6', 0x2087: '7', 0x2088: '8', 0x2089: '9',
+    0x02B0: 'h', 0x02B2: 'j', 0x02B3: 'r', 0x02B7: 'w', 0x02B8: 'y',
+    0x02E1: 'l', 0x02E2: 's', 0x02E3: 'x', 0x02BC: "'",
+    0x1D2C: 'A', 0x1D2E: 'B', 0x1D30: 'D', 0x1D31: 'E', 0x1D33: 'G',
+    0x1D34: 'H', 0x1D35: 'I', 0x1D36: 'J', 0x1D37: 'K', 0x1D38: 'L',
+    0x1D39: 'M', 0x1D3A: 'N', 0x1D3C: 'O', 0x1D3E: 'P', 0x1D3F: 'R',
+    0x1D40: 'T', 0x1D41: 'U', 0x1D42: 'W',
+    0x1D43: 'a', 0x1D47: 'b', 0x1D48: 'd', 0x1D49: 'e', 0x1D4D: 'g',
+    0x1D4F: 'k', 0x1D50: 'm', 0x1D52: 'o', 0x1D56: 'p', 0x1D57: 't',
+    0x1D58: 'u', 0x1D5B: 'v', 0x1D9C: 'c', 0x1DA0: 'f', 0x1DBB: 'z',
+    0x2C7C: 'j',
+  };
 
   /// Translittère les lettres/chiffres « STYLÉS » Unicode vers l'ASCII
   /// lisible (𝐋𝐢𝐠𝐮𝐞𝟏 → Ligue1, ＨＤ → HD). Piège vicieux : Unicode les
@@ -189,11 +238,16 @@ abstract final class TitleCurator {
   /// polices des box ne les dessinent pas (carrés rayés, photo client).
   /// On les CONVERTIT au lieu de les supprimer : le mot reste lisible.
   static String _foldExotic(String s) {
-    // Chemin rapide : aucun caractère au-delà de U+FF00 → rien à faire
-    // (les deux plages visées commencent à FF01 et 1D400).
+    // Chemin rapide : aucun caractère au-delà de U+00B2 → rien à faire.
+    //
+    // Le seuil était à U+FF01 : il SAUTAIT la cause n°1 des carrés en photo —
+    // les EXPOSANTS (« Prime ᴴᴰ », « Canal ⁴ᴷ », « Sport ᶠᴴᴰ »). Unicode les
+    // classe lettres modificatives (\p{L}) ou chiffres (\p{N}) : ils passaient
+    // la liste blanche sans jamais être translittérés, et les polices des box
+    // ne les dessinent pas.
     bool exotic = false;
     for (final int r in s.runes) {
-      if (r >= 0xFF01) {
+      if (r >= 0x00B2) {
         exotic = true;
         break;
       }
@@ -201,7 +255,27 @@ abstract final class TitleCurator {
     if (!exotic) return s;
     final StringBuffer b = StringBuffer();
     for (final int r in s.runes) {
-      if (r >= 0x1D400 && r <= 0x1D7CB) {
+      final String? sup = _superscripts[r];
+      if (sup != null) {
+        b.write(sup);
+      } else if ((r >= 0x1D2C && r <= 0x1DBF) ||
+          (r >= 0x02B0 && r <= 0x02FF)) {
+        // Reste des « lettres modificatives » (voyelles culbutées, schwa,
+        // grec en exposant, symboles phonétiques) : décoratif ET non
+        // dessinable par les polices des box → on jette.
+      } else if (r >= 0x24B6 && r <= 0x24CF) {
+        b.writeCharCode(0x41 + (r - 0x24B6)); // Ⓐ-Ⓩ
+      } else if (r >= 0x24D0 && r <= 0x24E9) {
+        b.writeCharCode(0x61 + (r - 0x24D0)); // ⓐ-ⓩ
+      } else if (r >= 0x2460 && r <= 0x2468) {
+        b.writeCharCode(0x31 + (r - 0x2460)); // ①-⑨
+      } else if (r >= 0x1F130 && r <= 0x1F149) {
+        b.writeCharCode(0x41 + (r - 0x1F130)); // 🄰-🅉 (encadrées)
+      } else if (r >= 0x1F150 && r <= 0x1F169) {
+        b.writeCharCode(0x41 + (r - 0x1F150)); // 🅐-🅩 (cerclées pleines)
+      } else if (r >= 0x1F170 && r <= 0x1F189) {
+        b.writeCharCode(0x41 + (r - 0x1F170)); // 🅰-🆉 (carrées pleines)
+      } else if (r >= 0x1D400 && r <= 0x1D7CB) {
         // Alphabets mathématiques (gras/italique/script…) : blocs de 52
         // (A-Z puis a-z) répétés — retour à la lettre de base.
         final int off = (r - 0x1D400) % 52;

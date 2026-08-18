@@ -618,7 +618,27 @@ class NativeVideoView(
                     // ré-ouvre la MÊME URL (recover sur flux gelé), on CONSERVE le
                     // compteur → après maxSilentRetries on remonte enfin l'erreur à
                     // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
-                    if (url != currentUrl) retryCount = 0
+                    if (url != currentUrl) {
+                        retryCount = 0
+                        // ZAP vers une AUTRE chaîne : on FERME d'abord la
+                        // session en cours (photo client 17/08, « Limite de
+                        // connexions atteinte — un autre écran regarde déjà
+                        // avec ce compte »).
+                        //
+                        // `setMediaItem` seul laisse un recouvrement : la
+                        // nouvelle source s'ouvre pendant que l'ancienne se
+                        // démonte, et la socket HTTP retourne au pool de
+                        // keep-alive au lieu de se fermer. Pour le panel, ça
+                        // fait DEUX sessions actives — et un abonnement
+                        // 1-connexion refuse la seconde. `stop()` +
+                        // `clearMediaItems()` libèrent la socket AVANT
+                        // d'ouvrir la suivante : une session à la fois, comme
+                        // les grandes apps.
+                        if (currentUrl != null) {
+                            player.stop()
+                            player.clearMediaItems()
+                        }
+                    }
                     sourceUrls = listOf(url) + fallbacks
                     sourceIndex = 0
                     currentUrl = url

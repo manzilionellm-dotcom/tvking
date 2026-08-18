@@ -337,6 +337,7 @@ class NativeVideoController extends ChangeNotifier {
   /// remonte ici qu'après épuisement de TOUTES les sources.
   void setUrl(String url,
       {String? userAgent, bool silent = false, List<String>? fallbackUrls}) {
+    isStopped = false; // nouvelle source → le lecteur n'est plus « arrêté »
     hasError = false;
     isEnded = false;
     isBuffering = true;
@@ -384,7 +385,18 @@ class NativeVideoController extends ChangeNotifier {
   /// un lecteur en pause GARDE la session ouverte vers le panel, ce qui
   /// bloque les abonnements à 1 connexion alors que plus personne ne
   /// regarde. Sur un FILM, garder [pause] (la position doit survivre).
-  void stop() => _channel?.invokeMethod<void>('stop');
+  void stop() {
+    isStopped = true;
+    isBuffering = false;
+    firstFrame = false;
+    _channel?.invokeMethod<void>('stop');
+  }
+
+  /// La source a-t-elle été LIBÉRÉE par [stop] ? Un lecteur arrêté n'a plus
+  /// de média chargé : [play] n'y ferait rien, il faut repasser par [setUrl].
+  /// Les écrans qui gardent un lecteur en réserve (aperçu d'accueil) doivent
+  /// consulter ce drapeau avant de tenter une simple reprise.
+  bool isStopped = false;
 
   /// TÉLÉMÉTRIE SILENCIEUSE : instantané des compteurs natifs (frames
   /// perdues, underruns audio, reconnexions, bascules de source, violations

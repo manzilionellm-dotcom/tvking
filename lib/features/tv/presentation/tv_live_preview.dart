@@ -239,10 +239,18 @@ class _TvLivePreviewState extends State<TvLivePreview>
       // détruire une PlatformView + un ExoPlayer à chaque cran de défilement
       // saccadait toute l'UI). On garde le lecteur, on annule juste
       // l'anti-rebond en cours ; au prochain déclenchement, un simple setUrl
-      // zappe — exactement comme le plein écran. On met la lecture en PAUSE
-      // pendant la navigation : décoder une vidéo cachée sous le logo
-      // gaspillerait le CPU de la box au moment où l'UI en a besoin.
-      _ctrl?.pause();
+      // zappe — exactement comme le plein écran. On ARRÊTE la lecture pendant
+      // la navigation : décoder une vidéo cachée sous le logo gaspillerait le
+      // CPU de la box au moment où l'UI en a besoin.
+      //
+      // STOP et NON PAUSE (photo client 17/08, « Limite de connexions
+      // atteinte — un autre écran regarde déjà avec ce compte ») : un lecteur
+      // en PAUSE garde sa connexion HTTP ouverte vers le panel. En parcourant
+      // la liste, chaque chaîne survolée laissait donc une session vivante, et
+      // le plein écran suivant se voyait refuser par un abonnement 1-connexion.
+      // `stop` libère la source et FERME la socket ; le prochain `setUrl`
+      // rouvre proprement, sans détruire la vue native (donc sans saccade).
+      _ctrl?.stop();
       _reset(disposePlayer: false);
       if (widget.enabled) _schedule();
     } else if (widget.enabled &&
@@ -338,7 +346,11 @@ class _TvLivePreviewState extends State<TvLivePreview>
     final NativeVideoController? already = _ctrl;
     if (already != null &&
         _playingChannelId == widget.channel.id &&
-        !already.hasError) {
+        !already.hasError &&
+        // Arrêté (connexion rendue au panel pendant la navigation) : `play`
+        // ne ferait rien, il n'y a plus de média chargé → on repasse par la
+        // résolution + `setUrl` ci-dessous.
+        !already.isStopped) {
       already.play();
       return;
     }
