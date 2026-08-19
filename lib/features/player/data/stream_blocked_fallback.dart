@@ -519,16 +519,33 @@ class StreamBlockedFallback {
     final pl.Playlist? src = xtreamPlaylistFor(channel);
     final XtreamContentType contentType = contentTypeOf(channel);
 
-    // ----- 1. Sonde multi-signatures de l'URL D'ORIGINE -----
-    _log('Contenu jamais lu → sonde multi-signatures de l\'URL d\'origine '
+    // LIGNE À 1 CONNEXION (journal terrain du 19/08 23:38 : la salve
+    // multi-signatures s'est déclenchée sur une ligne 1-connexion — seule
+    // une panne DNS l'a empêchée d'ouvrir ses connexions) : chaque sonde
+    // est une connexion ouverte/fermée sur LE créneau unique, pile pendant
+    // qu'on attend qu'il se libère. On réduit donc la salve à la SEULE
+    // signature courante (1 connexion), et la cascade de formats — qui
+    // reste indispensable pour trouver le bon conteneur — n'essaie elle
+    // aussi qu'avec cette signature (≤ 4 connexions séquentielles au lieu
+    // de variantes × 9 signatures). Comptes multi-connexions : inchangé.
+    final bool singleConn = StreamDiagnostics.instance.singleConnectionLine;
+    final List<String> uaCandidates = singleConn
+        ? <String>[currentUa]
+        : <String>[currentUa, ...PlayerSettings.userAgentPresets.values];
+    if (singleConn) {
+      _log('[1-connexion] compte à connexion unique → sonde limitée à la '
+          'signature courante et cascade mono-signature (pas de salve '
+          'multi-signatures sur le créneau qu\'on attend)');
+    }
+
+    // ----- 1. Sonde de l'URL D'ORIGINE (multi-signatures si le compte
+    // l'autorise, signature courante seule sur une ligne 1-connexion) -----
+    _log('Contenu jamais lu → sonde de l\'URL d\'origine '
         '(${StreamDiagnostics.maskCredentials(channel.streamUrl)})…');
     final UserAgentProbeResult probe = await StreamProbe.instance
         .probeUserAgents(
       channel.streamUrl,
-      candidates: <String>[
-        currentUa,
-        ...PlayerSettings.userAgentPresets.values,
-      ],
+      candidates: uaCandidates,
       timeout: uaProbeTimeout,
     );
     _recordProbeAttempts(probe);
@@ -592,10 +609,9 @@ class StreamBlockedFallback {
       final CascadeWin? win = await XtreamCascadeProber.findWorkingVariant(
         channel.streamUrl, // URL BRUTE (identifiants réels)
         contentType,
-        uaCandidates: <String>[
-          currentUa,
-          ...PlayerSettings.userAgentPresets.values,
-        ],
+        // Même liste que la sonde : réduite à la signature courante sur une
+        // ligne 1-connexion (cf. garde [1-connexion] ci-dessus).
+        uaCandidates: uaCandidates,
         isCancelled: () => !stillCurrent(),
       );
       if (!stillCurrent()) {
