@@ -342,10 +342,30 @@ class _TvLivePreviewState extends State<TvLivePreview>
     StreamDiagnostics.instance.recordEvent('aperçu', message, level: level);
   }
 
+  /// Une seule ligne de journal par session d'app pour la désactivation
+  /// « ligne 1 connexion » (sinon chaque survol de chaîne écrirait la même).
+  static bool _singleConnLogged = false;
+
   Future<void> _start() async {
     // Tests widget : aucun démarrage (la branche startImmediately de
     // didUpdateWidget appelle _start directement — d'où ce second garde).
     if (TvLivePreview.debugDisableAutoStart) return;
+    // LIGNE À 1 CONNEXION (demande exploitant 19/08 : « aucun flux ne doit
+    // rester en dehors de la vraie lecture ») : l'aperçu n'ouvre JAMAIS de
+    // flux — ce confort consommerait LE créneau unique du compte, et chaque
+    // survol serait une connexion ouverte/fermée chez le fournisseur (dont
+    // le panel peut garder la session quelques secondes → « limite
+    // atteinte » au moment de la vraie lecture). Logo + infos restent
+    // affichés ; seul le lecteur plein écran ouvre un flux.
+    if (StreamDiagnostics.instance.singleConnectionLine) {
+      if (!_singleConnLogged) {
+        _singleConnLogged = true;
+        _diag('Compte à 1 connexion → aperçu vidéo désactivé (aucun flux '
+            'de confort : seule la vraie lecture ouvre une connexion)');
+      }
+      if (mounted && _resolving) setState(() => _resolving = false);
+      return;
+    }
     // Retour de focus sur la chaîne DÉJÀ chargée (sans erreur) : rien à
     // recharger — on relance juste la lecture (mise en pause pendant la
     // navigation) et la vidéo réapparaît instantanément.

@@ -95,6 +95,37 @@ profiter de la ligne (elle est re-suspendue à la reprise). Politique testée :
 | 458 pendant « Téléchargement du guide (xmltv) démarré » | Le panel compte xmltv comme une connexion (hyp. B) : il faudra suspendre la synchro EPG pendant les lectures. |
 | « Créneau obtenu après ~1200 ms — BUDGET ATTEINT » récurrent | Un démontage ne finit jamais dans le budget : chercher l'événement de fermeture manquant juste avant. |
 
+## Suite terrain du 19/08 au soir (après la version 1787166305)
+
+Le refus « 1/1 » est **revenu** (Game One, 3 échecs à 23:02,
+`CONTAINER_UNSUPPORTED` = le panel répond autre chose qu'une vidéo). Donc :
+pas corrigé, on continue de mesurer. Deux suspects concrets ajoutés et
+traités dans la version suivante :
+
+1. **Le téléphone tient la ligne en pause.** Le lecteur mobile (libmpv)
+   garde sa socket ouverte pendant toute une pause — un téléphone laissé en
+   pause dans une poche occupe le 1/1 pendant que la box demande la chaîne.
+   Correctif : « pause longue = connexion rendue » porté au mobile, sortie
+   du lecteur ATTENDUE (handOff), fermeture de la session relais en
+   quittant (le correctif TV 533d6f0 n'avait jamais été porté au mobile).
+2. **L'aperçu vidéo de la liste des chaînes.** Chaque survol ouvrait un
+   vrai flux (ouverture/fermeture chez le fournisseur à chaque focus).
+   Correctif : sur une ligne `max_connections=1`, l'aperçu n'ouvre PLUS
+   JAMAIS de flux (logo + infos seulement) — le seul flux existant est la
+   lecture réelle.
+
+**Ce qu'il faut encore à l'enquête** (1 min, version ≥ 1787166305) :
+- l'onglet **Journal de vol** de la Boîte noire photographié juste après un
+  refus (les événements `creneau`/`epg`/`sync` horodatés à la ms disent qui
+  tenait la ligne) ;
+- le résultat du test **§5-A** ci-dessus (0/1 ou 1/1 au repos) ;
+- confirmer si un **téléphone** utilisait la même ligne au moment du refus.
+
+**Demande exploitant notée et refusée** : « que le serveur IPTV ne voie pas
+les flux utilisés ». Impossible et hors de question : les connexions sont
+comptées CHEZ le fournisseur ; on ne peut pas les lui cacher, on peut
+seulement garantir ≤ 1 à la fois et une libération immédiate.
+
 ## À ne pas faire (rappels)
 
 - Ne pas publier `build-android.yml` avec `make_release=true` (116 clients).

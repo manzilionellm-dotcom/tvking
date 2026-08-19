@@ -150,6 +150,15 @@ class StreamDiagnostics extends ChangeNotifier {
   /// Quand ce contrôle a été fait (l'info se périme vite).
   DateTime? xtreamCheckedAt;
 
+  /// `true` quand le compte contrôlé n'autorise qu'UNE connexion simultanée
+  /// (`max_connections=1`). Les conforts qui ouvrent un flux « en plus »
+  /// (aperçu vidéo de l'accueil…) doivent alors s'abstenir : sur une telle
+  /// ligne, chaque flux de confort consomme LE créneau du client — et un
+  /// panel qui garde la session quelques secondes refuse ensuite la vraie
+  /// lecture (« limite de connexions atteinte »). `false` si inconnu :
+  /// comportement historique conservé tant que le compte n'a pas été lu.
+  bool get singleConnectionLine => xtreamMaxConnections == 1;
+
   /// `true` quand le FOURNISSEUR sert un flux « placeholder » (écran noir type
   /// `black.ts`) au lieu de la vraie chaîne : signe quasi certain d'une ligne
   /// expirée/bloquée CÔTÉ FOURNISSEUR (le serveur répond 200 + vidéo, mais ce
