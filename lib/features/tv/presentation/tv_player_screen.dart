@@ -509,6 +509,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     unawaited(Future<void>.delayed(const Duration(milliseconds: 1500),
         () => SubscriptionState.instance.syncWithBackend()));
     _startupWatchdog?.cancel();
+    // ON REND LA CONNEXION EN QUITTANT. `_controller.dispose()` libère le
+    // lecteur, mais le RELAIS est un autre objet : sa session amont vers le
+    // panel survivait à la fermeture de l'écran (jusqu'à son idleTimeout de
+    // 10 minutes). C'est ce qui gardait la connexion du film après en être
+    // sorti — le cas décrit par l'exploitant le 19/08.
+    LocalStreamRelay.instance.closeOtherPlaybacks('');
     StreamSlot.instance.unregister(this);
     _controller.dispose();
     _focus.dispose();
@@ -861,10 +867,24 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // En direct, ExoPlayer gère nativement Range + reconnexion progressive.
     if (isHls || _isVod) {
       _relayPlayUrl = null;
+      // FERMER LE RELAIS AVANT D'OUVRIR EN DIRECT (bug terrain du 19/08 :
+      // « j'ouvre le cinéma, je pars sur une chaîne → un autre flux est déjà
+      // en cours », journal `HTTP 458 · text/html`, compte `Active 1/1`).
+      // Ce chemin (HLS et VOD) lit SANS relais — mais une session relais
+      // laissée par la lecture précédente, elle, garde sa connexion amont
+      // ouverte vers le panel. Sur un compte 1-connexion, la nouvelle
+      // lecture se voyait refuser par la précédente.
+      await LocalStreamRelay.instance.closeOtherPlaybacks('');
+      if (!mounted || channel.id != _current.id) return;
       _controller.setUrl(realUrl, userAgent: userAgent);
       return;
     }
     try {
+      // Parité mobile (video_player_screen le faisait déjà, pas la TV) : on
+      // ferme TOUTE session relais qui n'est pas celle qu'on va jouer, et on
+      // ATTEND sa fermeture, avant d'ouvrir la nouvelle.
+      await LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+      if (!mounted || channel.id != _current.id) return;
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);
       if (!mounted || channel.id != _current.id) return;
