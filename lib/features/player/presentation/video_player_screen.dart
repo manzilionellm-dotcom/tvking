@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../../../core/playback/stream_slot.dart';
+import '../../../core/playback/vod_pause_release_policy.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -240,6 +241,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// format adoptée par le diagnostic > URL live de la chaîne.
   String get _effectiveUrl =>
       widget.overrideUrl ?? _adoptedAltUrl ?? _currentChannel.streamUrl;
+
+  // ---- « Pause longue = connexion rendue » (VOD, parité TV 19/08) ----
+  // Un film en pause > ~20 s rend sa connexion au panel : libmpv garde la
+  // socket ouverte en pause (même point clé que le handoff cast) → on
+  // STOPPE en mémorisant la position, et la reprise ré-ouvre + seek.
+  // Jamais le direct, jamais un fichier local, jamais pendant un cast.
+  final VodPauseReleasePolicy _pauseRelease = VodPauseReleasePolicy();
+
+  /// `true` tant que la connexion a été rendue et que la lecture n'a pas
+  /// été ré-ouverte. Drapeau d'écran VOLONTAIREMENT séparé de la politique :
+  /// il pilote le chemin de reprise (`play()` ne suffit plus, média fermé)
+  /// même si les états mpv post-stop divergent d'une plateforme à l'autre.
+  bool _pauseConnectionReleased = false;
+  Duration? _pauseReleasedPosition;
+
+  /// Position à ré-appliquer à la 1re frame décodée après la ré-ouverture
+  /// (et l'id du contenu concerné — un zap entre-temps l'invalide).
+  Duration? _pauseResumeTarget;
+  String? _pauseResumeChannelId;
   static const Duration _kWatchdogInterval = Duration(seconds: 5);
   static const int _kWatchdogStaleTicksBeforeRecover = 3; // ~15 s figé
   static const int _kWatchdogGoodTicksToReset = 6; // ~30 s sains
@@ -1167,6 +1187,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final bool isLocal = realUrl.startsWith('file:') ||
         realUrl.startsWith('/');
     VodDownloadService.instance.setPlaybackHold(!isLocal);
+    // Toute NOUVELLE ouverture (zap, retry, reprise) supersède l'état
+    // « connexion rendue par la pause » : sans ça, un zap pendant une pause
+    // longue laissait le drapeau levé et le play suivant « reprenait » à la
+    // position d'un AUTRE contenu.
+    _pauseConnectionReleased = false;
+    _pauseRelease.reset();
     // BLINDAGE DE LA FILE (cause racine « lecteur figé définitivement ») : si
     // _openMediaInner lève une exception NON rattrapée (bind du relais qui
     // échoue, _player.open synchrone, propriété mpv…), la future de la file
@@ -1312,8 +1338,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             'aux flux TS continus)',
       );
       // Plus aucune lecture ne passera par le relais : on ferme les
-      // sessions TS restantes (zap TS → HLS).
-      LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+      // sessions TS restantes (zap TS → HLS) — et on ATTEND leur fermeture
+      // (l'annulation de l'abonnement amont) avant d'ouvrir la nouvelle
+      // connexion : sur un compte 1-connexion, un chevauchement de quelques
+      // centaines de ms suffit au refus (parité TV 19/08).
+      await LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+      if (!mounted || gen != _openGeneration) return;
       // Redirection (panel → CDN tokenisé) RÉSOLUE AVANT mpv : certains
       // empilements ffmpeg résolvent mal les URIs RELATIVES des
       // segments après une redirection de playlist (base URL = l'URL
@@ -1369,7 +1399,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final bool isLocalFile =
         realUrl.startsWith('file:') || realUrl.startsWith('/');
     if (isLocalFile || !_currentChannel.isLive) {
-      LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+      // ATTENDU (parité TV 19/08) : la session relais de la lecture
+      // précédente doit être fermée AVANT que mpv ouvre la VOD en direct —
+      // sinon les deux connexions se chevauchent sur un compte 1-connexion.
+      await LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
       if (!mounted || gen != _openGeneration) return;
       StreamDiagnostics.instance.recordEvent(
         'player',
@@ -1999,7 +2032,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // le contenu FINI uniquement (jamais le live — position sans sens). Le
     // repo applique les règles Netflix (< 60 s ignoré, > 95 % = terminé).
     // Fire-and-forget : `_player` est encore vivant ici (dispose plus bas).
-    if (!_currentChannel.isLive) {
+    // Après une pause longue (connexion déjà rendue), la position mpv est
+    // celle d'un lecteur ARRÊTÉ (perdue) : on reprend celle mémorisée au
+    // moment du stop — déjà gravée dans le repo par le tick de pause.
+    if (!_currentChannel.isLive && !_pauseConnectionReleased) {
       final Duration pos = _player.state.position;
       final Duration dur = _player.state.duration;
       unawaited(PlaybackPositionRepository.instance.record(
@@ -2055,8 +2091,51 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       RecordingRepository.instance.finishRecording(rec);
     }
     _zapPageController?.dispose();
-    StreamSlot.instance.unregister(this);
-    _player.dispose();
+    // ON REND LA CONNEXION EN QUITTANT — et le suivant DOIT l'attendre
+    // (parité TV 19/08). dispose() est synchrone : la fermeture réseau
+    // (stop mpv + session relais) part en asynchrone. Avant : simple
+    // unregister + dispose non attendu → le prochain claim() ne trouvait
+    // plus personne à démonter et ouvrait sa connexion PENDANT que
+    // celle-ci se fermait encore ; et la session du RELAIS (live TS)
+    // survivait à la fermeture de l'écran jusqu'à son idleTimeout de
+    // 10 min — le correctif TV 533d6f0 n'avait jamais été porté ici.
+    // handOff : la fermeture complète devient un détenteur de TRANSITION
+    // que le prochain claim() attend (plafonné, fail-open), chaque étape
+    // horodatée dans la Boîte noire.
+    final Player player = _player;
+    final DateTime exitAt = DateTime.now();
+    StreamDiagnostics.instance.recordEvent(
+      'creneau',
+      'Sortie du lecteur (${_currentChannel.isLive ? 'direct' : 'film'}) → '
+          'fermeture réseau lancée (stop mpv puis session relais)',
+    );
+    final Future<void> shutdown = () async {
+      try {
+        // stop() ferme démuxeur + socket mpv (même chemin que le handoff
+        // cast) ; borné comme dans _recyclePlayer.
+        await player.stop().timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // stop qui expire/échoue : dispose ci-dessous fermera la socket.
+      }
+      try {
+        await LocalStreamRelay.instance.closeOtherPlaybacks('');
+      } catch (_) {
+        // best-effort : le relais journalise déjà ses propres échecs.
+      }
+      try {
+        await player.dispose().timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // instance mpv qui traîne : déjà tracé par le patron _recyclePlayer.
+      }
+      StreamDiagnostics.instance.recordEvent(
+        'creneau',
+        'Fermeture réseau du lecteur terminée en '
+            '${DateTime.now().difference(exitAt).inMilliseconds} ms '
+            '(stop mpv + session relais + dispose)',
+      );
+    }();
+    StreamSlot.instance
+        .handOff(this, shutdown, label: 'fermeture lecteur quitté');
     WakelockPlus.disable();
     // À la sortie du lecteur, on dit au natif "plus de playback"
     // pour qu'un futur appui HOME ne déclenche pas le PiP par erreur
@@ -2109,12 +2188,91 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _scheduleHideOverlay();
       return;
     }
+    // PAUSE LONGUE : la connexion a été rendue pendant la pause (média
+    // fermé) → un simple play() ne relancerait rien. On ré-ouvre le flux
+    // et on reviendra à la position mémorisée à la 1re frame décodée.
+    if (_pauseConnectionReleased) {
+      _resumeAfterPauseRelease();
+      _scheduleHideOverlay();
+      return;
+    }
     if (_player.state.playing) {
       _player.pause();
     } else {
       _player.play();
     }
     _scheduleHideOverlay();
+  }
+
+  // ---- « PAUSE LONGUE = CONNEXION RENDUE » (VOD, parité TV) ----
+
+  /// Tick périodique (même Timer que le watchdog anti-gel). Décide, via la
+  /// politique testée [VodPauseReleasePolicy], du moment où une pause VOD a
+  /// assez duré pour rendre la connexion au panel.
+  void _vodPauseReleaseTick() {
+    if (_pauseConnectionReleased) return; // déjà rendue : on attend la reprise
+    final bool isVod =
+        widget.overrideUrl != null || !_currentChannel.isLive;
+    final String url = _effectiveUrl;
+    final bool isLocalFile = url.startsWith('file:') || url.startsWith('/');
+    // Pause VOLONTAIRE d'un flux réseau : pas un buffering, pas une erreur,
+    // pas un cast (le handoff cast a déjà stoppé la lecture locale), et le
+    // contenu a réellement joué (sinon c'est un démarrage, pas une pause).
+    final bool pausedOnNetwork = !_isPlaying &&
+        !_isBuffering &&
+        !_hasError &&
+        !_wasCasting &&
+        !_castEndedIdle &&
+        !isLocalFile &&
+        _playedChannelId == _currentChannel.id;
+    final bool releaseNow = _pauseRelease.onTick(
+      now: DateTime.now(),
+      isVod: isVod,
+      pausedOnNetwork: pausedOnNetwork,
+    );
+    if (!releaseNow) return;
+    _pauseConnectionReleased = true;
+    // Position AVANT le stop (après, elle n'est plus fiable) — et on la
+    // grave aussi dans « Continuer à regarder » : si l'utilisateur quitte
+    // l'app pendant la pause, la reprise reste possible.
+    final Duration pos = _player.state.position;
+    final Duration dur = _player.state.duration;
+    _pauseReleasedPosition = pos;
+    if (dur > Duration.zero) {
+      unawaited(PlaybackPositionRepository.instance.record(
+        key: _currentChannel.id,
+        position: pos,
+        duration: dur,
+        name: _currentChannel.name,
+        streamUrl: _currentChannel.streamUrl,
+        posterUrl: _currentChannel.logoUrl,
+      ));
+    }
+    StreamDiagnostics.instance.recordEvent(
+      'creneau',
+      'Pause film > ${_pauseRelease.threshold.inSeconds} s → connexion '
+          'RENDUE au panel (stop mpv — une pause garde la socket ouverte ; '
+          'position mémorisée). La reprise ré-ouvrira au même endroit.',
+    );
+    unawaited(_player.stop());
+    // La ligne est libre : la file de téléchargements Cinéma peut en
+    // profiter (re-suspendue par le _openMedia de la reprise).
+    VodDownloadService.instance.setPlaybackHold(false);
+  }
+
+  void _resumeAfterPauseRelease() {
+    _pauseConnectionReleased = false;
+    _pauseRelease.reset();
+    final Duration target = _pauseReleasedPosition ?? Duration.zero;
+    _pauseReleasedPosition = null;
+    _pauseResumeTarget = target;
+    _pauseResumeChannelId = _currentChannel.id;
+    StreamDiagnostics.instance.recordEvent(
+      'creneau',
+      'Reprise après pause longue → ré-ouverture du film et retour à '
+          '${target.inSeconds} s',
+    );
+    unawaited(_openMedia(_effectiveUrl));
   }
 
   /// Marque la chaîne courante comme AYANT RÉELLEMENT JOUÉ — appelé
@@ -2126,6 +2284,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _markPlaybackStarted() {
     _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
     _vodRelayFallbackTimer?.cancel(); // 1re image OK → pas de repli relais
+    // REPRISE APRÈS PAUSE LONGUE : le flux vient d'être ré-ouvert après que
+    // la pause a rendu la connexion → retour à la position exacte.
+    // Prioritaire sur « Continuer à regarder » ci-dessous, qui ne rejoue de
+    // toute façon qu'au premier lancement du contenu sur cet écran.
+    final Duration? pauseTarget = _pauseResumeTarget;
+    if (pauseTarget != null) {
+      _pauseResumeTarget = null;
+      if (_pauseResumeChannelId == _currentChannel.id &&
+          pauseTarget > Duration.zero) {
+        unawaited(_player.seek(pauseTarget));
+      }
+    }
     // S3 : fige le TTFF de la session (seule la 1re frame compte).
     _sessionStats?.onFirstFrame();
     if (_playedChannelId != _currentChannel.id) {
@@ -2279,6 +2449,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   void _watchdogTick() {
     if (!mounted) return;
+    // « Pause longue = connexion rendue » : décision prise sur le même
+    // tick (aucun réveil de plus). Avant les sorties anticipées : elle
+    // concerne justement les contenus seekables que le watchdog ignore.
+    _vodPauseReleaseTick();
     // Live uniquement (relais TS OU HLS direct) : la VOD/catch-up est
     // seekable, sa position s'arrête légitimement (pause, fin) → ce ne
     // serait pas un gel.
