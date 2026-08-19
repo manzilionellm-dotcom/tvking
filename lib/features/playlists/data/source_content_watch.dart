@@ -31,6 +31,7 @@ import 'dart:async';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../player/data/stream_diagnostics.dart';
 import '../domain/playlist.dart';
 import 'playlist_repository.dart';
 import 'xtream_client.dart';
@@ -115,6 +116,13 @@ class SourceContentWatch {
       if (previous == fp) return; // rien n'a bougé
       // Le panel a changé → même chemin que le bouton « rafraîchir »
       // manuel : remplace les chaînes + ré-émet le stream → UI à jour.
+      // Boîte noire : cette passe AUTOMATIQUE déclenche catalogue + EPG —
+      // à corréler avec un éventuel « limite de connexions » au même moment.
+      StreamDiagnostics.instance.recordEvent(
+        'sync',
+        'Veilleur 60 s : catégories du panel modifiées → re-import '
+            'automatique de « ${p.name} » (catalogue puis guide)',
+      );
       final bool ok = await PlaylistRepository.instance.refreshPlaylist(p);
       if (ok) await prefs.setString(key, fp);
     } catch (_) {

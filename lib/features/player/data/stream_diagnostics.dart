@@ -76,7 +76,12 @@ class StreamDiagEvent {
     final String h = time.hour.toString().padLeft(2, '0');
     final String m = time.minute.toString().padLeft(2, '0');
     final String s = time.second.toString().padLeft(2, '0');
-    return '$h:$m:$s [$tag] $message';
+    // MILLISECONDES : indispensables pour l'enquête « connexion fantôme »
+    // (19/08) — l'ordre réel fermeture relais / release ExoPlayer /
+    // ouverture suivante se joue en dizaines de ms ; à la seconde près,
+    // deux événements distincts semblaient simultanés.
+    final String ms = time.millisecond.toString().padLeft(3, '0');
+    return '$h:$m:$s.$ms [$tag] $message';
   }
 }
 

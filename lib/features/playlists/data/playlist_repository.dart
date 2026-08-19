@@ -38,6 +38,7 @@ import '../../../core/security/secret_cipher.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
+import '../../player/data/stream_diagnostics.dart';
 import '../../vod/domain/m3u_vod_classifier.dart';
 import '../domain/playlist.dart';
 import 'import_progress.dart';
@@ -759,12 +760,37 @@ class PlaylistRepository {
   /// complète des Channel en mémoire ; il collecte juste leurs ids (légers)
   /// pour filtrer l'EPG.
   Future<void> _syncEpgForIds(Set<String> ids, String epgUrl) async {
+    // BOÎTE NOIRE (enquête « connexion fantôme » 19/08) : le téléchargement
+    // XMLTV utilise les MÊMES identifiants que les flux, et certains panels
+    // non standard le comptent comme une connexion. On journalise début,
+    // fin et durée pour pouvoir CORRÉLER un « limite de connexions (1/1) »
+    // avec une synchro de guide en cours — sans supposer, en mesurant.
+    final DateTime epgStart = DateTime.now();
+    final String epgHost = Uri.tryParse(epgUrl)?.host ?? '?';
+    StreamDiagnostics.instance.recordEvent(
+      'epg',
+      'Téléchargement du guide (xmltv) démarré — $epgHost. Si le panel '
+          'compte ce téléchargement comme une connexion, la ligne est '
+          'occupée pendant toute sa durée.',
+    );
     try {
       await EpgRepository.instance.downloadAndImport(
         url: epgUrl,
         knownChannelIds: ids,
       );
+      StreamDiagnostics.instance.recordEvent(
+        'epg',
+        'Guide importé en '
+            '${DateTime.now().difference(epgStart).inSeconds} s ($epgHost)',
+      );
     } catch (e) {
+      StreamDiagnostics.instance.recordEvent(
+        'epg',
+        'Échec import du guide après '
+            '${DateTime.now().difference(epgStart).inSeconds} s '
+            '($epgHost) : $e',
+        level: 'warn',
+      );
       // Pas de crash (l'EPG est optionnel) MAIS plus de silence : un
       // échec de sync était invisible en release et « Programme non
       // disponible » restait un mystère. La boîte noire tranche
@@ -1182,6 +1208,15 @@ class PlaylistRepository {
   /// Retourne `true` si la sync a réussi, lance une Exception sinon.
   Future<bool> refreshPlaylist(Playlist playlist) async {
     if (playlist.id == null) return false;
+    // BOÎTE NOIRE : un refresh re-télécharge le catalogue (player_api pour
+    // Xtream, get.php/M3U sinon) puis relance une synchro EPG. Journalisé
+    // pour corréler d'éventuels « limite de connexions » avec ces passes
+    // automatiques (veilleur 60 s, synchro panel) — cf. enquête du 19/08.
+    StreamDiagnostics.instance.recordEvent(
+      'sync',
+      'Rafraîchissement du catalogue « ${playlist.name} » démarré '
+          '(${playlist.type == PlaylistType.xtream ? 'player_api' : 'M3U'})',
+    );
     final Database db = await PlaylistDatabase.instance.database;
 
     if (playlist.type == PlaylistType.m3u && playlist.m3uUrl != null) {
