@@ -36,6 +36,7 @@ import '../../cast/data/stream_probe.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/source_link_utils.dart';
+import '../../playlists/data/xtream_client.dart';
 import '../../playlists/data/xtream_url_format_store.dart';
 // Préfixé par cohérence avec le widget (media_kit y exporte aussi un
 // type `Playlist`).
@@ -135,14 +136,30 @@ class StreamBlockedFallback {
   /// 3 s sur le terrain ; injectable court dans les tests.
   final Duration retryBackoff;
 
-  /// BACKOFF 458 (limite de connexions) : plus COURT que [retryBackoff], car
-  /// le slot se libère dès que la lecture précédente ferme sa socket (~1 s).
-  /// Zapping rapide = on veut repartir vite, pas attendre 3 s.
+  /// Premier délai d'attente sur un 458 — conservé pour compatibilité des
+  /// appelants/tests ; le calendrier complet vit dans [_k458Schedule].
   final Duration conn458Backoff;
 
-  /// Nombre de retries rapides autorisés sur un 458 pour UNE chaîne avant
-  /// d'afficher le message « limite de connexions ».
-  static const int _kMax458Retries = 3;
+  /// CALENDRIER DE RECONNEXION SUR 458 (photo client du 19/08 : « limite de
+  /// connexions atteinte » sur TF1, juste après avoir quitté une autre
+  /// lecture). Trois essais à 1,1 s couvraient à peine 3 secondes — or un
+  /// panel Xtream ne libère PAS le créneau à la milliseconde où la socket se
+  /// ferme : il attend l'expiration de SA propre session, souvent 15 à 60 s.
+  /// L'app abandonnait donc juste avant que le slot ne se libère.
+  ///
+  /// On étale maintenant les essais sur ~45 s, en espaçant progressivement
+  /// (on ne martèle pas le fournisseur). Pendant tout ce temps l'écran reste
+  /// en « reconnexion » : pour le client, la chaîne finit par s'ouvrir toute
+  /// seule au lieu de lui jeter une erreur à la figure.
+  static const List<Duration> _k458Schedule = <Duration>[
+    Duration(milliseconds: 1100),
+    Duration(seconds: 2),
+    Duration(seconds: 3),
+    Duration(seconds: 5),
+    Duration(seconds: 8),
+    Duration(seconds: 12),
+    Duration(seconds: 14),
+  ];
 
   /// Idem pour un 5xx (serveur fournisseur en panne) : on retente un peu (le
   /// serveur peut revenir), plus espacé que le 458, puis message clair.
@@ -217,7 +234,8 @@ class StreamBlockedFallback {
     if (failure.status == 458) {
       if (_try458Retry()) return;
       _log('[458] limite de connexions confirmée après '
-          '$_kMax458Retries retries → message clair (pas de sonde/cascade)');
+          '${_k458Schedule.length} essais étalés sur ~45 s '
+          '→ message clair (pas de sonde/cascade)');
       showBlocked(kMaxConnectionsMessage);
       return;
     }
@@ -291,21 +309,54 @@ class StreamBlockedFallback {
     run();
   }
 
-  /// Retry RAPIDE sur un 458 (limite de connexions). Renvoie `false` quand les
-  /// [_kMax458Retries] retries de la chaîne sont épuisés (→ message clair). Le
-  /// compteur se réinitialise dès qu'on change de chaîne (zap).
+  /// Nouvel essai sur un 458 (limite de connexions). Renvoie `false` quand le
+  /// calendrier [_k458Schedule] est épuisé (→ message clair). Le compteur se
+  /// réinitialise dès qu'on change de chaîne (zap).
+  /// « CONTENEUR NON RECONNU » (ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+  /// code 3003) sur une chaîne qui n'a JAMAIS affiché d'image.
+  ///
+  /// Journal de vol du client, 19/08 : « None of the available extractors
+  /// (TsExtractor, FlvExtractor…) » sur TF1, 44 chaînes en échec en 24 h,
+  /// ligne à UNE connexion. Aucun extracteur ne reconnaît ces octets — donc
+  /// ce ne sont PAS des octets vidéo. Un panel Xtream dont le créneau est
+  /// déjà pris ne renvoie pas toujours un 458 propre : beaucoup servent une
+  /// page HTML d'erreur, ou un corps vide, avec un HTTP 200. ExoPlayer reçoit
+  /// du texte, cherche un conteneur, n'en trouve pas, et l'app concluait
+  /// « format non géré » — puis lançait la CASCADE de sondes multi-signatures.
+  /// Sur une ligne 1-connexion, ces sondes consomment le créneau qu'on
+  /// attend : le diagnostic empirait la panne qu'il devait expliquer.
+  ///
+  /// On traite donc ce cas comme un créneau occupé : mêmes essais espacés que
+  /// le 458, aucune sonde. Renvoie `true` si un essai est programmé (l'écran
+  /// reste en reconnexion), `false` s'il faut passer au diagnostic normal —
+  /// une image DÉJÀ affichée, elle, signe un vrai souci de format.
+  bool onContainerUnsupported() {
+    if (hasDecodedFrames()) return false;
+    if (_try458Retry()) return true;
+    _log('[conteneur] toujours rien de lisible après '
+        '${_k458Schedule.length} essais → message clair (pas de sonde)');
+    showBlocked(kMaxConnectionsMessage);
+    return true;
+  }
+
   bool _try458Retry() {
     final Channel channel = getChannel();
     if (_conn458ChannelId != channel.id) {
       _conn458ChannelId = channel.id;
       _conn458Count = 0;
     }
-    if (_conn458Count >= _kMax458Retries) return false;
+    if (_conn458Count >= _k458Schedule.length) return false;
+    // Premier 458 de cette chaîne : on va lire les compteurs RÉELS du compte
+    // (max_connections / active_cons) pour que le message final dise la
+    // vérité au lieu de « (?/?) » — photo client du 19/08.
+    if (_conn458Count == 0) unawaited(_probeAccountLimits());
+    final Duration wait = _k458Schedule[_conn458Count];
     _conn458Count++;
-    _log('[458] limite de connexions — retry rapide '
-        '$_conn458Count/$_kMax458Retries dans ${conn458Backoff.inMilliseconds} '
-        'ms (le slot se libère quand l\'autre lecture ferme sa socket)');
-    Future<void>.delayed(conn458Backoff).then((_) {
+    _log('[458] limite de connexions — nouvel essai '
+        '$_conn458Count/${_k458Schedule.length} dans ${wait.inMilliseconds} ms '
+        '(le panel libère le créneau à l\'expiration de SA session, '
+        'pas à la fermeture de la socket)');
+    Future<void>.delayed(wait).then((_) {
       if (!isAlive() || channel.id != getChannel().id) {
         _log('[458] retry abandonné (zap ou écran fermé pendant l\'attente)');
         return;
@@ -316,6 +367,39 @@ class StreamBlockedFallback {
       reopen(getEffectiveUrl());
     });
     return true;
+  }
+
+  /// Lit les compteurs RÉELS du compte Xtream (max_connections /
+  /// active_cons) pour que le message de limite dise « 1/1 » au lieu de
+  /// « (?/?) » — photo client du 19/08, où le message n'apprenait rien.
+  ///
+  /// Best-effort ABSOLU : c'est du confort de diagnostic. Un échec (pas une
+  /// source Xtream, réseau coupé, panel qui ne renvoie pas ces champs) ne
+  /// doit rien changer au déroulement des essais.
+  ///
+  /// `player_api.php` est une requête d'API, pas un flux : elle ne consomme
+  /// pas le créneau de lecture qu'on est justement en train d'attendre.
+  Future<void> _probeAccountLimits() async {
+    try {
+      final pl.Playlist? src = xtreamPlaylistFor(getChannel());
+      if (src == null ||
+          src.xtreamServer == null ||
+          src.xtreamUsername == null ||
+          src.xtreamPassword == null) {
+        return;
+      }
+      final XtreamClient client = XtreamClient(
+        serverUrl: src.xtreamServer!,
+        username: src.xtreamUsername!,
+        password: src.xtreamPassword!,
+        timeout: const Duration(seconds: 8),
+      );
+      // `fetchAccountInfo` alimente lui-même StreamDiagnostics : le message
+      // affiché à la fin des essais reprendra ces chiffres.
+      await client.fetchAccountInfo();
+    } catch (e) {
+      _log('[458] compteurs du compte illisibles ($e) — sans conséquence');
+    }
   }
 
   /// Retry sur un 5xx (serveur fournisseur en panne). Renvoie `false` quand les

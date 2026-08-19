@@ -1181,7 +1181,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// relance automatiquement, sans même montrer d'erreur au client. Une
   /// seule tentative de diagnostic par chaîne (`_uaFixAttemptedForChannelId`)
   /// pour ne jamais boucler si le vrai problème n'est pas la signature.
-  Future<void> _declareChannelBlocked() => _fallback.run();
+  Future<void> _declareChannelBlocked() async {
+    // « Conteneur non reconnu » sans qu'aucune image n'ait été affichée : ce
+    // ne sont pas des octets vidéo, c'est le panel qui répond autre chose
+    // (créneau occupé, page d'erreur). On attend et on retente au lieu de
+    // lancer une cascade de sondes qui consommerait justement le créneau —
+    // journal de vol du 19/08, ligne à 1 connexion, 44 chaînes en échec.
+    if (_controller.lastErrorCodeName ==
+            'ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED' &&
+        _fallback.onContainerUnsupported()) {
+      return;
+    }
+    return _fallback.run();
+  }
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {

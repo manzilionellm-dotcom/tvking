@@ -596,6 +596,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }));
     _subs.add(_player.stream.error.listen((String e) {
       if (!mounted) return;
+      _lastPlayerError = e; // sert au tri « format » vs « créneau occupé »
       // Boîte noire : TOUTES les erreurs libmpv, exactes, y compris
       // celles que l'UI filtre. `fatal` est ajusté plus bas si on
       // découvre que c'est un simple warning.
@@ -2224,7 +2225,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// variantes). Toute la logique vit dans [StreamBlockedFallback],
   /// testable de bout en bout avec le vrai relais et la vraie sonde —
   /// le widget ne fait que déléguer.
-  Future<void> _declareChannelBlocked() => _fallback.run();
+  /// Dernier message d'erreur brut de libmpv (parité TV, où ExoPlayer donne
+  /// un code : ici on n'a qu'un texte).
+  String? _lastPlayerError;
+
+  Future<void> _declareChannelBlocked() async {
+    // Parité TV (journal de vol du 19/08) : « format non reconnu » sans
+    // qu'aucune image n'ait été affichée, ce ne sont pas des octets vidéo —
+    // c'est le panel qui répond autre chose (créneau occupé, page d'erreur).
+    // On attend et on retente au lieu de sonder, car les sondes prendraient
+    // justement le créneau qu'on attend sur une ligne 1-connexion.
+    final String err = (_lastPlayerError ?? '').toLowerCase();
+    const List<String> formatMarkers = <String>[
+      'unrecognized file format',
+      'failed to recognize file format',
+      'no extractor',
+      'could not determine',
+    ];
+    if (formatMarkers.any(err.contains) &&
+        _fallback.onContainerUnsupported()) {
+      return;
+    }
+    return _fallback.run();
+  }
 
   /// Borne l'ATTENTE DE DÉMARRAGE d'une ouverture : si `playing` n'est
   /// jamais atteint dans les [_kStartupTimeout], on montre l'erreur claire
