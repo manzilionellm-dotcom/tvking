@@ -69,6 +69,10 @@ class StreamSlot {
   /// démontage bloqué ne doit pas condamner l'écran.
   static const Duration _kTeardownBudget = Duration(milliseconds: 1200);
 
+  /// Durée de vie MAXIMALE d'un détenteur de transition ([handOff]) dont la
+  /// fermeture ne répond pas : au-delà, il se retire tout seul.
+  static const Duration _kHandOffLinger = Duration(seconds: 10);
+
   final Map<Object, _Holder> _holders = <Object, _Holder>{};
 
   /// Sérialise les réclamations : deux écrans qui réclament en même temps
@@ -91,6 +95,38 @@ class StreamSlot {
   /// Retire un consommateur (dispose de l'écran). Ne démonte rien : l'écran
   /// qui part a déjà fait son ménage.
   void unregister(Object owner) => _holders.remove(owner);
+
+  /// SORTIE D'ÉCRAN (dispose) : remplace [owner] par un détenteur de
+  /// TRANSITION lié à [shutdown], sa fermeture réseau réellement en cours.
+  ///
+  /// POURQUOI : `dispose()` est synchrone — l'écran ne peut pas y attendre
+  /// la fermeture de ses sockets (stop natif posté sur le thread lecteur,
+  /// session relais annulée en asynchrone). Avec un simple [unregister], le
+  /// PROCHAIN [claim] ne trouvait plus personne à démonter et ouvrait sa
+  /// connexion PENDANT que celle de l'écran quitté se fermait encore — sur
+  /// une ligne à 1 connexion, le panel refuse la seconde (458). Ici, le
+  /// prochain [claim] attend [shutdown] (toujours plafonné par
+  /// [_kTeardownBudget], fail-open), et le détenteur de transition se
+  /// retire tout seul dès la fermeture terminée.
+  void handOff(Object owner, Future<void> shutdown, {String label = ''}) {
+    _holders.remove(owner);
+    // Les erreurs de fermeture sont avalées : un stop raté ne doit jamais
+    // casser la chaîne des réclamations (même règle que _claimNow). Et une
+    // fermeture qui ne répond JAMAIS (thread lecteur natif bloqué) ne doit
+    // pas laisser un détenteur de transition éternel — qui pénaliserait du
+    // budget [_kTeardownBudget] CHAQUE ouverture suivante : au-delà de
+    // [_kHandOffLinger], il se retire de lui-même.
+    final Future<void> safe =
+        shutdown.timeout(_kHandOffLinger).catchError((Object _) {});
+    final Object token = Object();
+    _holders[token] = _Holder(
+      token,
+      groupSolo,
+      () => safe,
+      label.isEmpty ? 'fermeture en cours' : label,
+    );
+    unawaited(safe.whenComplete(() => _holders.remove(token)));
+  }
 
   /// RÉCLAME le créneau pour [owner] : démonte tous les détenteurs d'un
   /// AUTRE groupe et attend qu'ils aient fini. À appeler juste AVANT

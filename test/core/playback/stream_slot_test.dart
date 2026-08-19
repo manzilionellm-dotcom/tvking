@@ -105,6 +105,82 @@ void main() {
     expect(coupe, isTrue);
   });
 
+  // ---- handOff : la fermeture d'un écran quitté est ATTENDUE ----
+  //  Scénario terrain (19/08) : « je quitte un film, je lance une chaîne →
+  //  limite de connexions 1/1 ». dispose() est synchrone : sans détenteur de
+  //  transition, le claim() suivant ne trouvait plus personne à attendre et
+  //  ouvrait sa connexion pendant que celle du film se fermait encore.
+
+  test('après handOff, la réclamation suivante attend la fermeture', () async {
+    final Object filmQuitte = Object();
+    final Object chaine = Object();
+    slot.register(filmQuitte, label: 'film', teardown: () async {});
+    slot.register(chaine, label: 'chaine', teardown: () async {});
+
+    bool fermetureFinie = false;
+    final Completer<void> fermeture = Completer<void>();
+    slot.handOff(
+      filmQuitte,
+      fermeture.future.then((_) => fermetureFinie = true),
+      label: 'fermeture film',
+    );
+
+    final Future<void> reclamation = slot.claim(chaine);
+    // La fermeture n'a pas fini : la réclamation ne doit pas avoir abouti.
+    bool reclamationFinie = false;
+    unawaited(reclamation.then((_) => reclamationFinie = true));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(reclamationFinie, isFalse,
+        reason: 'claim() doit attendre la fermeture du film quitté');
+
+    fermeture.complete();
+    await reclamation;
+    expect(fermetureFinie, isTrue);
+  });
+
+  test('le détenteur de transition se retire tout seul à la fin', () async {
+    final Object ecran = Object();
+    slot.register(ecran, label: 'ecran', teardown: () async {});
+    final Completer<void> fermeture = Completer<void>();
+    slot.handOff(ecran, fermeture.future, label: 'fermeture ecran');
+    expect(slot.holdersForTest, hasLength(1));
+
+    fermeture.complete();
+    // Laisse le whenComplete s'exécuter.
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(slot.holdersForTest, isEmpty);
+  });
+
+  test('une fermeture qui échoue ne bloque ni la réclamation ni le créneau',
+      () async {
+    final Object ecran = Object();
+    final Object suivant = Object();
+    slot.register(ecran, label: 'ecran', teardown: () async {});
+    slot.register(suivant, label: 'suivant', teardown: () async {});
+    slot.handOff(
+      ecran,
+      Future<void>.error(StateError('stop natif KO')),
+      label: 'fermeture cassee',
+    );
+
+    await expectLater(slot.claim(suivant), completes);
+    await Future<void>.delayed(Duration.zero);
+    // Le détenteur de transition ne doit pas rester coincé après l'erreur.
+    expect(slot.holdersForTest.toList(), <String>['solo:suivant']);
+  });
+
+  test('une fermeture qui ne rend jamais la main est plafonnée', () async {
+    final Object ecran = Object();
+    final Object suivant = Object();
+    slot.register(ecran, label: 'ecran', teardown: () async {});
+    slot.register(suivant, label: 'suivant', teardown: () async {});
+    slot.handOff(ecran, Completer<void>().future, label: 'fermeture bloquee');
+
+    // Fail-open : mieux vaut un refus serveur qu'un écran noir définitif.
+    await expectLater(slot.claim(suivant), completes);
+  });
+
   test('deux réclamations simultanées se sérialisent', () async {
     final List<String> ordre = <String>[];
     final Object un = Object();
