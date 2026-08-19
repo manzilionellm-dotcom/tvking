@@ -32,6 +32,7 @@ import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../player/data/stream_diagnostics.dart';
+import '../../vod/data/vod_download_service.dart';
 import '../domain/playlist.dart';
 import 'playlist_repository.dart';
 import 'xtream_client.dart';
@@ -65,6 +66,13 @@ class SourceContentWatch {
 
   Future<void> _tick() async {
     if (_busy) return;
+    // QUELQU'UN REGARDE (audit 19/08) : un re-import déclenché par ce
+    // veilleur (catalogue + guide xmltv) peut occuper la ligne du panel —
+    // sur un compte 1-connexion, ça coupait le client EN PLEINE ÉMISSION
+    // quand le revendeur touchait à ses bouquets. On saute le tick : la
+    // mise à jour partira au premier tick où plus rien ne joue (60 s plus
+    // tard au pire, une fois la lecture finie).
+    if (VodDownloadService.instance.playbackHold) return;
     _busy = true;
     try {
       final List<Playlist> playlists =

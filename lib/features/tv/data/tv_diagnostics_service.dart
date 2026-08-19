@@ -18,9 +18,11 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:native_video_player/native_video_player.dart';
 
+import '../../../core/playback/stream_slot.dart';
 import '../../cast/data/stream_probe.dart';
 import '../../device/data/device_identity.dart';
 import '../../player/data/player_settings.dart';
+import '../../player/data/stream_diagnostics.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 
@@ -41,6 +43,13 @@ class TvCheckResult {
 class TvDiagnosticsService {
   TvDiagnosticsService._();
   static final TvDiagnosticsService instance = TvDiagnosticsService._();
+
+  /// Jeton de réclamation du créneau réseau pour les sondes de diagnostic :
+  /// réclamer démonte (et attend) les consommateurs en cours — l'outil ne
+  /// doit jamais se battre contre l'app qu'il diagnostique (audit 19/08).
+  /// Pas de register : les sondes sont courtes et attendues, rien à démonter
+  /// chez nous.
+  final Object _slotToken = Object();
 
   /// Time-out commun à chaque vérification (~8 s : assez pour un serveur
   /// lent, assez court pour que le client voie l'écran avancer).
@@ -217,14 +226,25 @@ class TvDiagnosticsService {
           TvCheckStatus.unknown, 'aucune chaîne chargée → URL INCONNUE');
     }
     try {
+      // CRÉNEAU (audit 19/08) : ces sondes sont de vraies connexions au
+      // flux — on démonte (et on ATTEND) les consommateurs en cours
+      // (aperçu, téléchargements) au lieu de sonder par-dessus eux : sur
+      // une ligne 1-connexion, l'outil concluait « le fournisseur refuse »
+      // alors qu'il se battait contre l'app elle-même.
+      await StreamSlot.instance.claim(_slotToken);
       final String current = PlayerSettings.instance.userAgent;
+      // Ligne 1-connexion : une seule signature (chaque sonde de plus est
+      // une connexion de plus sur le créneau unique) — même règle que le
+      // diagnostic du lecteur (stream_blocked_fallback).
       final UserAgentProbeResult probe =
           await StreamProbe.instance.probeUserAgents(
         streamUrl,
-        candidates: <String>[
-          current,
-          ...PlayerSettings.userAgentPresets.values,
-        ],
+        candidates: StreamDiagnostics.instance.singleConnectionLine
+            ? <String>[current]
+            : <String>[
+                current,
+                ...PlayerSettings.userAgentPresets.values,
+              ],
       );
       final String? working = probe.workingUserAgent;
       if (working != null) {
@@ -269,6 +289,9 @@ class TvDiagnosticsService {
       return const TvCheckResult(
           TvCheckStatus.unknown, 'aucune chaîne chargée → URL INCONNUE');
     }
+    // CRÉNEAU (audit 19/08) : la sonde lecteur est une vraie connexion au
+    // flux — on démonte et on attend les consommateurs en cours d'abord.
+    await StreamSlot.instance.claim(_slotToken);
     final Completer<TvCheckStatus> c = Completer<TvCheckStatus>();
     final NativeVideoController ctrl =
         NativeVideoController(initialUrl: streamUrl);

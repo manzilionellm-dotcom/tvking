@@ -88,6 +88,7 @@ class StreamBlockedFallback {
     required this.resetWatchdogBudget,
     required this.reopen,
     required this.showBlocked,
+    this.releaseForDiagnosis,
     this.uaProbeTimeout = const Duration(milliseconds: 2500),
     this.retryBackoff = const Duration(seconds: 3),
     this.conn458Backoff = const Duration(milliseconds: 1100),
@@ -125,6 +126,13 @@ class StreamBlockedFallback {
 
   /// Affiche l'erreur bloquante à l'utilisateur.
   final void Function(String message) showBlocked;
+
+  /// Ferme (et ATTEND) la connexion de lecture de l'écran avant la première
+  /// sonde du diagnostic (stop lecteur + session relais). Optionnel : sans
+  /// lui, comportement historique — mais sur une ligne 1-connexion les
+  /// sondes se battaient contre la socket encore ouverte de la lecture
+  /// qu'elles diagnostiquaient (audit 19/08).
+  final Future<void> Function()? releaseForDiagnosis;
 
   /// Timeout PAR signature de la sonde (court : 9 signatures ne doivent
   /// pas laisser l'écran muet une minute).
@@ -502,10 +510,29 @@ class StreamBlockedFallback {
   Future<void> _runInner(Channel channel) async {
     bool stillCurrent() => isAlive() && channel.id == getChannel().id;
 
+    // AUDIT 19/08 : « la lecture est déjà morte ici » était une HYPOTHÈSE,
+    // pas une garantie — sur le chemin du watchdog de démarrage, le lecteur
+    // et la session relais peuvent encore tenir leur socket pendant que les
+    // sondes ouvrent les leurs. L'écran nous fournit [releaseForDiagnosis]
+    // pour fermer (et ATTENDRE) sa connexion avant la première sonde.
+    final Future<void> Function()? release = releaseForDiagnosis;
+    if (release != null) {
+      try {
+        await release();
+      } catch (_) {
+        // best-effort : une fermeture ratée ne doit pas empêcher le
+        // diagnostic (fail-open, même règle que partout ailleurs).
+      }
+      if (!stillCurrent()) {
+        _log('Diagnostic abandonné pendant la fermeture préalable (zap)');
+        return;
+      }
+    }
+
     // Diagnostic HLS SUR ÉCHEC uniquement (séquentiel — la sonde ne
     // tourne plus EN MÊME TEMPS que la lecture : sur un abonnement
     // 1-connexion elle comptait comme une connexion de plus, journal
-    // terrain « 4/1 »). La lecture est déjà morte ici : on peut sonder.
+    // terrain « 4/1 »).
     final String effective = getEffectiveUrl();
     if (HlsPreflight.isHlsUrl(effective)) {
       await HlsPreflight.run(effective);

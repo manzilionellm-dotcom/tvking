@@ -736,6 +736,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       getAdoptedAltUrl: () => _adoptedAltUrl,
       setAdoptedAltUrl: (String? url) => _adoptedAltUrl = url,
       resetWatchdogBudget: () => _watchdogRecoveries = 0,
+      // Avant la 1re sonde du diagnostic : fermer (et attendre) NOTRE
+      // connexion — mpv peut encore tenir sa socket sur le chemin du
+      // watchdog de démarrage (audit 19/08). `_player` est capturé au
+      // moment de l'appel (l'instance est recyclée à chaque ouverture).
+      releaseForDiagnosis: () async {
+        try {
+          await _player.stop().timeout(const Duration(seconds: 5));
+        } catch (_) {
+          // stop qui expire/échoue : le recyclage de la réouverture fermera.
+        }
+        try {
+          await LocalStreamRelay.instance.closeOtherPlaybacks('');
+        } catch (_) {
+          // best-effort : le relais journalise ses propres échecs.
+        }
+      },
       reopen: _openMedia,
       showBlocked: (String message) {
         if (!mounted) return;
@@ -2012,7 +2028,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
     // drapeau natif (sinon le son continuerait après la fermeture du
     // lecteur). Idempotent / fail-open.
-    PipService.instance.stopBackgroundAudio();
+    // AUDIT 19/08 : SAUF quand un CAST via relais est en cours — le
+    // keep-alive du cast utilise le MÊME service de premier plan ; le
+    // couper ici gelait le relais (socket panel à moitié ouverte) dès que
+    // l'écran s'éteignait, et le cast « coupait » sans trace.
+    if (!CastManager.instance.isCasting) {
+      PipService.instance.stopBackgroundAudio();
+    }
     PipService.instance.setAudioOnlyMode(false);
     // On ne regarde plus rien → on le signale au panel (heartbeat avec
     // channel vide). Fire-and-forget.
@@ -2211,7 +2233,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// assez duré pour rendre la connexion au panel.
   void _vodPauseReleaseTick() {
     if (_pauseConnectionReleased) return; // déjà rendue : on attend la reprise
-    final bool isVod =
+    // Seekable = film/épisode/catch-up (position à retenir). Le DIRECT est
+    // éligible AUSSI (audit 19/08 : un téléphone en pause sur un direct
+    // tenait le 1/1 indéfiniment) — il n'a juste rien à reprendre : la
+    // reprise rouvre au bord du live.
+    final bool seekable =
         widget.overrideUrl != null || !_currentChannel.isLive;
     final String url = _effectiveUrl;
     final bool isLocalFile = url.startsWith('file:') || url.startsWith('/');
@@ -2227,18 +2253,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         _playedChannelId == _currentChannel.id;
     final bool releaseNow = _pauseRelease.onTick(
       now: DateTime.now(),
-      isVod: isVod,
+      eligible: true,
       pausedOnNetwork: pausedOnNetwork,
     );
     if (!releaseNow) return;
     _pauseConnectionReleased = true;
     // Position AVANT le stop (après, elle n'est plus fiable) — et on la
     // grave aussi dans « Continuer à regarder » : si l'utilisateur quitte
-    // l'app pendant la pause, la reprise reste possible.
+    // l'app pendant la pause, la reprise reste possible. Contenu seekable
+    // uniquement (un direct n'a pas de position à retenir).
     final Duration pos = _player.state.position;
     final Duration dur = _player.state.duration;
-    _pauseReleasedPosition = pos;
-    if (dur > Duration.zero) {
+    _pauseReleasedPosition = seekable ? pos : null;
+    if (seekable && dur > Duration.zero) {
       unawaited(PlaybackPositionRepository.instance.record(
         key: _currentChannel.id,
         position: pos,
@@ -2250,9 +2277,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
     StreamDiagnostics.instance.recordEvent(
       'creneau',
-      'Pause film > ${_pauseRelease.threshold.inSeconds} s → connexion '
-          'RENDUE au panel (stop mpv — une pause garde la socket ouverte ; '
-          'position mémorisée). La reprise ré-ouvrira au même endroit.',
+      'Pause ${seekable ? 'film' : 'direct'} > '
+          '${_pauseRelease.threshold.inSeconds} s → connexion RENDUE au '
+          'panel (stop mpv — une pause garde la socket ouverte'
+          '${seekable ? ' ; position mémorisée' : ''}). La reprise '
+          'ré-ouvrira le flux.',
     );
     unawaited(_player.stop());
     // La ligne est libre : la file de téléchargements Cinéma peut en
@@ -2263,14 +2292,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _resumeAfterPauseRelease() {
     _pauseConnectionReleased = false;
     _pauseRelease.reset();
+    // null = direct : reprise au bord du live, aucun seek à rejouer.
     final Duration target = _pauseReleasedPosition ?? Duration.zero;
     _pauseReleasedPosition = null;
     _pauseResumeTarget = target;
     _pauseResumeChannelId = _currentChannel.id;
     StreamDiagnostics.instance.recordEvent(
       'creneau',
-      'Reprise après pause longue → ré-ouverture du film et retour à '
-          '${target.inSeconds} s',
+      'Reprise après pause longue → ré-ouverture du flux'
+          '${target > Duration.zero ? ' et retour à ${target.inSeconds} s' : ' (bord du live)'}',
     );
     unawaited(_openMedia(_effectiveUrl));
   }

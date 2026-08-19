@@ -9,9 +9,11 @@
 //  reprise, il ré-ouvre et seek — invisible pour le client, ligne libérée
 //  pour le fournisseur.
 //
-//  JAMAIS pour le direct : rien à reprendre (et la pause d'un direct est
-//  déjà traitée à part par le lecteur). Jamais pour un fichier local : il
-//  ne consomme aucune connexion.
+//  Le DIRECT est concerné AUSSI (audit 19/08) : une pause y tient la socket
+//  exactement pareil — il n'y a juste RIEN à reprendre : l'écran rouvre au
+//  bord du live, sans seek. Jamais pour un fichier local : il ne consomme
+//  aucune connexion. C'est l'ÉCRAN qui décide de l'éligibilité (réseau,
+//  pause volontaire, pas un cast…) via [onTick.eligible].
 //
 //  Cette classe ne décide QUE du « quand » (machine à états pure, pilotée
 //  par le tick périodique du lecteur) — le « comment » (stop, mémoriser,
@@ -39,16 +41,18 @@ class VodPauseReleasePolicy {
 
   /// À appeler à chaque tick du lecteur.
   ///
-  /// [pausedOnNetwork] : la lecture est un flux RÉSEAU volontairement en
-  /// pause (pas un fichier local, pas un buffering, pas une erreur).
-  /// Renvoie `true` UNE seule fois par pause : l'instant où il faut rendre
-  /// la connexion (stop + mémoriser la position).
+  /// [eligible] : le contenu peut rendre sa connexion (flux RÉSEAU — direct
+  /// ou VOD ; l'écran exclut lui-même les fichiers locaux, le cast, etc.).
+  /// [pausedOnNetwork] : la lecture est volontairement en pause (pas un
+  /// buffering, pas une erreur). Renvoie `true` UNE seule fois par pause :
+  /// l'instant où il faut rendre la connexion (stop + mémoriser la position
+  /// pour un contenu seekable — le direct, lui, reprendra au bord du live).
   bool onTick({
     required DateTime now,
-    required bool isVod,
+    required bool eligible,
     required bool pausedOnNetwork,
   }) {
-    if (!isVod || !pausedOnNetwork) {
+    if (!eligible || !pausedOnNetwork) {
       // Lecture en cours (ou contenu non concerné) : tout se ré-arme.
       _pausedSince = null;
       _released = false;

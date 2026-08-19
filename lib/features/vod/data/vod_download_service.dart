@@ -50,6 +50,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/playback/stream_slot.dart';
+import '../../player/data/stream_diagnostics.dart';
 import '../domain/vod_movie.dart';
 
 enum VodDownloadStatus { queued, downloading, paused, done, error, noSpace }
@@ -247,6 +248,12 @@ class VodDownloadService extends ChangeNotifier {
   }) async {
     await load();
     if (!_watchAndSave) return;
+    // LIGNE À 1 CONNEXION (audit 19/08) : « télécharger pendant que je
+    // regarde » = une 2e connexion ASSUMÉE en parallèle du flux — c'est
+    // précisément ce que ce compte interdit, et le démontage demandé par le
+    // créneau était annulé dans la foulée par _pump (_playAlong échappe au
+    // hold). On s'abstient : le film se téléchargera après la lecture.
+    if (StreamDiagnostics.instance.singleConnectionLine) return;
     if (streamUrl.isEmpty || streamUrl.startsWith('file:')) return;
     if (_items[id]?.isComplete ?? false) return;
     _playAlong.add(id);
@@ -297,6 +304,13 @@ class VodDownloadService extends ChangeNotifier {
   /// (on suspend la file, statut `queued`, Range → reprise sans perte) ;
   /// false = réseau libre (fin de lecture, ou lecture d'un fichier LOCAL)
   /// → la file repart toute seule.
+  /// `true` tant qu'une lecture RÉSEAU est en cours quelque part dans l'app
+  /// (posé par les lecteurs TV et mobile). C'est LE signal « quelqu'un
+  /// regarde » : les tâches de fond qui touchent au réseau du panel (synchro
+  /// EPG, veilleur de catégories) s'en servent pour patienter au lieu de
+  /// voler le créneau 1-connexion pendant un visionnage (audit 19/08).
+  bool get playbackHold => _playbackHold;
+
   void setPlaybackHold(bool hold) {
     if (_playbackHold == hold) return;
     _playbackHold = hold;

@@ -2326,6 +2326,7 @@
     }
   },
   "tvMultiViewUnavailable": "Multi-vue indisponible : appareil trop limité (2 flux simultanés non garantis).",
+  "tvMultiViewSingleConn": "Multi-vue indisponible : cet abonnement n'autorise qu'une connexion à la fois.",
   "tvChannelUnavailable": "Chaîne indisponible pour le moment.",
   "tvChannelBlockedBySource": "Chaîne vide ou bloquée par ta source. Vérifie qu'elle n'est pas déjà ouverte sur un autre appareil.",
   "tvChannelNetworkHint": "Ça ressemble à un blocage réseau (FAI ou DNS) — un VPN peut aider si cette chaîne fonctionne ailleurs.",

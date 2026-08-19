@@ -289,11 +289,28 @@ class _TvLivePreviewState extends State<TvLivePreview>
     _loggedFirstFrame = false;
     _loggedError = false;
     if (disposePlayer) {
-      // Le lecteur part : on se retire du verrou de connexion (un prochain
-      // aperçu se ré-inscrira avec son nouveau lecteur).
-      StreamSlot.instance.unregister(this);
-      _ctrl?.removeListener(_onPlayer);
-      _ctrl?.dispose();
+      // Le lecteur part. AUDIT 19/08 : `unregister` sec + dispose non
+      // attendu = exactement le motif corrigé par handOff sur les lecteurs
+      // plein écran — le claim() suivant ne trouvait plus personne à
+      // attendre pendant que la socket de l'aperçu se fermait encore. La
+      // fermeture (stop natif attendu, puis dispose) devient un détenteur
+      // de transition que le prochain claim() attend.
+      final NativeVideoController? leaving = _ctrl;
+      if (leaving != null) {
+        leaving.removeListener(_onPlayer);
+        final Future<void> shutdown = () async {
+          try {
+            await leaving.stop();
+          } catch (_) {
+            // canal natif déjà mort : la socket est fermée de toute façon.
+          }
+          leaving.dispose();
+        }();
+        StreamSlot.instance
+            .handOff(this, shutdown, label: 'fermeture aperçu');
+      } else {
+        StreamSlot.instance.unregister(this);
+      }
       _ctrl = null;
       _playingChannelId = null;
       _uiFirstFrame = false;
@@ -384,6 +401,17 @@ class _TvLivePreviewState extends State<TvLivePreview>
     final String name = widget.channel.cleanName;
     _diag('[$name] anti-rebond écoulé → résolution de l\'URL d\'aperçu');
     setState(() => _resolving = true);
+    // CRÉNEAU D'ABORD (audit 19/08) : la résolution appelle playUrlFor →
+    // closeOtherPlaybacks, qui agit sur l'état PARTAGÉ du relais
+    // (_currentPlaybackUrl, fermeture des sessions des autres détenteurs).
+    // L'ancien ordre (résoudre PUIS réclamer) court-circuitait la
+    // sérialisation du créneau. On réclame donc AVANT tout effet de bord.
+    await StreamSlot.instance.claim(this);
+    if (!mounted || session != _session || _covered) {
+      _diag('[$name] aperçu abandonné pendant la réclamation du créneau');
+      if (mounted) setState(() => _resolving = false);
+      return;
+    }
     TvPreviewSource? src;
     try {
       src = await (widget.resolver ?? TvLivePreview.resolveSource)(

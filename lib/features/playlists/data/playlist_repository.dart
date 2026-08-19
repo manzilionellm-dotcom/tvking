@@ -39,6 +39,7 @@ import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../player/data/stream_diagnostics.dart';
+import '../../vod/data/vod_download_service.dart';
 import '../../vod/domain/m3u_vod_classifier.dart';
 import '../domain/playlist.dart';
 import 'import_progress.dart';
@@ -765,6 +766,24 @@ class PlaylistRepository {
     // non standard le comptent comme une connexion. On journalise début,
     // fin et durée pour pouvoir CORRÉLER un « limite de connexions (1/1) »
     // avec une synchro de guide en cours — sans supposer, en mesurant.
+    // QUELQU'UN REGARDE (audit 19/08) : le téléchargement xmltv utilise les
+    // mêmes identifiants que les flux et certains panels le comptent comme
+    // une connexion — lancé au boot+10 min ou toutes les 12 h, il tombait
+    // souvent EN PLEIN visionnage sur les lignes 1-connexion. On patiente
+    // (vérification chaque minute, plafond 1 h puis on y va quand même :
+    // le guide ne doit pas mourir sur une box qui joue en continu).
+    for (int waited = 0;
+        VodDownloadService.instance.playbackHold && waited < 60;
+        waited++) {
+      if (waited == 0) {
+        StreamDiagnostics.instance.recordEvent(
+          'epg',
+          'Lecture en cours → synchro du guide (xmltv) différée jusqu\'à '
+              'la fin du visionnage (ligne 1-connexion protégée)',
+        );
+      }
+      await Future<void>.delayed(const Duration(minutes: 1));
+    }
     final DateTime epgStart = DateTime.now();
     final String epgHost = Uri.tryParse(epgUrl)?.host ?? '?';
     StreamDiagnostics.instance.recordEvent(

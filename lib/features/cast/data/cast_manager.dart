@@ -284,6 +284,17 @@ class CastManager extends ChangeNotifier {
         if (_state == CastState.casting || _state == CastState.paused) {
           _state = CastState.idle;
           _setProgress(CastProgress.idle);
+          // AUDIT 19/08 : contrairement au chemin 'ended', ce chemin
+          // (stop depuis la telecommande TV) ne liberait RIEN — la
+          // session relais continuait de tirer le panel (1/1 occupe)
+          // et le foreground service (wakelock+wifilock) tournait,
+          // alors que l'UI se croyait a l'arret. Relancer une lecture
+          // passe de toute facon par un nouveau castTo/playStream.
+          _stopRelayKeepAlive();
+          if (_currentRelayUrl != null) {
+            LocalCastServer.instance.clearRelay(_currentRelayUrl!);
+            _currentRelayUrl = null;
+          }
         }
         break;
       case CastNativePlayerState.loading:
@@ -807,6 +818,11 @@ class CastManager extends ChangeNotifier {
     // Phase 1+/B5 (2026-06-01) — Capture ma seq des le start. Si une
     // autre castTo bumpe _sessionSeq pendant que je tourne, j'arrete.
     final int mySeq = ++_sessionSeq;
+    // Transport créé par CETTE session (posé plus bas) : seul objet que le
+    // nettoyage du catch a le droit de toucher — jamais le champ global
+    // `_transport`, qui appartient peut-être déjà à une session plus
+    // récente (audit 19/08).
+    CastTransport? myTransport;
     _state = CastState.connecting;
     _device = device;
     _errorMessage = null;
@@ -967,6 +983,13 @@ class CastManager extends ChangeNotifier {
       //     conservé pour ne pas régresser Roku / Web / Chromecast-stub.
       _checkCancelled(mySeq);
       _transport = CastTransport.forDevice(device);
+      // Référence LOCALE du transport de CETTE session (audit 19/08) : le
+      // champ `_transport` est GLOBAL et réécrit par la session suivante —
+      // une session orpheline qui échouait tardivement lisait alors le
+      // transport de la session en cours et effaçait SON relais (cast qui
+      // meurt en 404), pendant que son propre relais fuyait jusqu'à l'idle
+      // timeout. Le nettoyage du catch n'utilise QUE cette référence.
+      myTransport = _transport;
       if (device.kind == CastDeviceKind.dlna) {
         await _castDlnaWithFailover(
           transport: _transport! as UpnpAvTransport,
@@ -1076,10 +1099,14 @@ class CastManager extends ChangeNotifier {
       // est peut-etre en train d'alimenter la TV. On libere seulement
       // le relais que CE playStream aurait enregistre (fuite sinon,
       // MINEUR 7) et on sort.
+      // AUDIT 19/08 : on ne touche QUE le transport de CETTE session
+      // (myTransport). L'ancien code lisait le champ GLOBAL `_transport`
+      // — déjà réécrit par la session suivante quand une orpheline
+      // échouait tardivement : il effaçait le relais de la session EN
+      // COURS (cast qui meurt en 404) et laissait fuir le sien.
+      final CastTransport? leakedTransport = myTransport;
       final GoogleCastTransport? gctLeak =
-          _transport is GoogleCastTransport
-              ? _transport as GoogleCastTransport
-              : null;
+          leakedTransport is GoogleCastTransport ? leakedTransport : null;
       final String? leakedRelay = gctLeak?.lastRelayUrl;
       if (leakedRelay != null && leakedRelay != _currentRelayUrl) {
         LocalCastServer.instance.clearRelay(leakedRelay);

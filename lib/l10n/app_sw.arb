@@ -885,6 +885,7 @@
     }
   },
   "tvMultiViewUnavailable": "Mwonekano-nyingi haupatikani: kifaa kina kikomo (mitiririko 2 kwa wakati mmoja haihakikishwi).",
+  "tvMultiViewSingleConn": "Mwonekano-nyingi haupatikani: usajili huu unaruhusu muunganisho mmoja tu kwa wakati.",
   "tvChannelUnavailable": "Chaneli haipatikani kwa sasa.",
   "tvChannelBlockedBySource": "Kituo ni tupu au kimezuiwa na chanzo chako. Angalia kama hakijafunguliwa tayari kwenye kifaa kingine.",
   "tvChannelNetworkHint": "Hii inaonekana kama kizuizi cha mtandao (mtoa huduma wa intaneti au DNS) — VPN inaweza kusaidia kama kituo hiki kinafanya kazi mahali pengine.",

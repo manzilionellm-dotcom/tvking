@@ -232,6 +232,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// pause longue ni le créneau réseau ne le concernent.
   bool _playingLocalFile = false;
 
+  /// `true` pendant que la MULTI-VUE est poussée par-dessus cet écran : le
+  /// lecteur est volontairement ARRÊTÉ (pas en pause) — la « pause longue »
+  /// ne doit ni se déclencher ni relâcher la file de téléchargements sous
+  /// les tuiles de la multi-vue.
+  bool _underMultiview = false;
+
   // ----- Seek Netflix : double-appui = 30 s + bulle de temps -----
   // Deux appuis Gauche/Droite RAPPROCHÉS (même sens, < 500 ms) passent le
   // pas de 10 s à 30 s — pour traverser un générique sans marteler. La
@@ -407,6 +413,21 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       getAdoptedAltUrl: () => _adoptedAltUrl,
       setAdoptedAltUrl: (String? url) => _adoptedAltUrl = url,
       resetWatchdogBudget: () => _freeze.openChannel(DateTime.now()),
+      // Avant la 1re sonde du diagnostic : fermer (et attendre) NOTRE
+      // connexion — sinon les sondes se battent contre la socket encore
+      // ouverte de la lecture qu'elles diagnostiquent (audit 19/08).
+      releaseForDiagnosis: () async {
+        try {
+          await _controller.stop();
+        } catch (_) {
+          // canal natif déjà mort : la socket est fermée de toute façon.
+        }
+        try {
+          await LocalStreamRelay.instance.closeOtherPlaybacks('');
+        } catch (_) {
+          // best-effort : le relais journalise ses propres échecs.
+        }
+      },
       reopen: (String _) => unawaited(_loadCurrentUrl()),
       showBlocked: (String _) {
         // Échec DÉFINITIF (toute la cascade signatures + formats a échoué) →
@@ -1122,15 +1143,25 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         if (!_isVod && _relayPlayUrl != null) {
           LocalStreamRelay.instance.forceReconnect(_effectiveUrl);
         }
-        // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre,
-        // sinon l'URL directe. = reconnexion au direct sans casser l'enreg.
-        // RÉCUPÉRATION INVISIBLE (façon Netflix) : `silent:true` NE remet PAS
-        // le lecteur en état « chargement » → la DERNIÈRE IMAGE reste affichée
-        // pendant la reconnexion au lieu de faire réapparaître le spinner à
-        // chaque hoquet. C'est ce qui supprime le « ça tourne » en boucle sur
-        // un lien instable (si aucune image n'a encore été rendue, silent est
-        // sans effet : le spinner reste, comportement inchangé au 1er chargement).
-        _controller.setUrl(_relayPlayUrl ?? _current.streamUrl, silent: true);
+        // Ré-ouvre la MÊME source. RÉCUPÉRATION INVISIBLE (façon Netflix) :
+        // `silent:true` NE remet PAS le lecteur en état « chargement » → la
+        // DERNIÈRE IMAGE reste affichée pendant la reconnexion.
+        //
+        // AUDIT 19/08 — deux cas que l'ancien `_relayPlayUrl ??
+        // _current.streamUrl` traitait MAL :
+        //  • fichier LOCAL (film téléchargé) qui gèle : on rouvrait l'URL
+        //    PANEL DISTANTE — une connexion consommée pour un contenu 100 %
+        //    hors-ligne. → on repasse par _loadCurrentUrl (rejoue le fichier).
+        //  • lecture réseau SANS relais (_relayPlayUrl null : VOD directe ou
+        //    repli) : URL panel directe, hors relais/DoH, en ignorant la
+        //    variante adoptée. → chemin officiel aussi.
+        // Le cas nominal (live via relais) garde la réouverture silencieuse :
+        // l'URL locale du relais n'ouvre AUCUNE connexion panel de plus.
+        if (_relayPlayUrl != null) {
+          _controller.setUrl(_relayPlayUrl!, silent: true);
+        } else {
+          unawaited(_loadCurrentUrl());
+        }
       case FreezeAction.fatal:
         // Jamais joué → source vide/bloquée (diagnostic multi-UA avant
         // d'abandonner, cf. _declareChannelBlocked) ; sinon → vraie coupure
@@ -1338,7 +1369,16 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _fatal = false;
       _buffering = true;
     });
-    _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+    // CHEMIN OFFICIEL (audit 19/08) : l'ancien `setUrl(_relayPlayUrl ??
+    // _current.streamUrl)` rouvrait l'URL PANEL DIRECTE quand le relais
+    // n'avait pas démarré (hors relais, hors DoH), ignorait la variante
+    // adoptée par la cascade, et ne réclamait pas le créneau — or l'écran
+    // d'erreur a pu rester affiché longtemps, le temps que la file de
+    // téléchargements reprenne la ligne. claim() + _loadCurrentUrl règlent
+    // les trois d'un coup.
+    unawaited(StreamSlot.instance.claim(this).then((_) {
+      if (mounted) unawaited(_loadCurrentUrl());
+    }));
     _showOverlayTemporarily();
   }
 
@@ -1364,6 +1404,18 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       //    connexion DIRECTE et le relais ouvre L'UNIQUE connexion vers le
       //    serveur. On évite ainsi d'avoir 2 connexions en même temps
       //    (incompatible avec les fournisseurs max_connections=1).
+      //    AUDIT 19/08 : si la lecture courante était DIRECTE (repli sans
+      //    relais), ExoPlayer tenait encore sa socket panel pendant que le
+      //    relais ouvrait la sienne → chevauchement. On ARRÊTE (attendu) le
+      //    lecteur direct avant d'ouvrir le relais ; déjà sur le relais, on
+      //    ne coupe rien (le tee se branche sur la session existante).
+      if (_relayPlayUrl == null) {
+        try {
+          await _controller.stop();
+        } catch (_) {
+          // canal natif déjà mort : la socket est fermée de toute façon.
+        }
+      }
       final String localUrl =
           await LocalStreamRelay.instance.playUrlFor(realUrl);
       _relayPlayUrl = localUrl;
@@ -1417,7 +1469,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       await RecordingRepository.instance.finishRecording(rec);
     } catch (_) {}
     if (resumeDirect && mounted) {
-      _controller.setUrl(_current.streamUrl);
+      // CHEMIN OFFICIEL (audit 19/08) : l'ancien `setUrl(_current.streamUrl)`
+      // ouvrait l'URL panel DIRECTE alors que la session relais (encore
+      // branchée au lecteur) restait ouverte → chevauchement, puis lecture
+      // durablement HORS relais. _loadCurrentUrl ferme (attendu) et rouvre
+      // via le relais.
+      unawaited(_loadCurrentUrl());
     }
     if (mounted) {
       _flash(bytes > 0
@@ -1678,30 +1735,67 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _showOverlayTemporarily();
       return;
     }
-    // FUITE DE CONNEXIONS (terrain 2026-07-30) : ce lecteur reste MONTÉ sous
-    // la route de la multivue et continuait de décoder son flux — pendant que
-    // la multivue en ouvre 2 autres → 3 flux amont simultanés, dépassement de
-    // la limite « max connexions » du fournisseur. On met le lecteur du dessous
-    // en PAUSE avant de pousser (stoppe le décodage) et on REPREND au retour
-    // (le lecteur est toujours là, un simple play() relance sans re-résoudre).
-    // NB : `pause()` stoppe le décodage ; la connexion amont, elle, est refermée
-    // par la détection de silence du relais 1-connexion. Reprise au pop.
-    _controller.pause();
-    Navigator.of(context)
-        .push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvMultiViewScreen(
-          channels: widget.channels,
-          startIndex: _index,
+    // LIGNE À 1 CONNEXION : la multi-vue ouvre PAR NATURE deux flux amont —
+    // c'est exactement ce que ce compte interdit. On refuse à l'entrée avec
+    // un message honnête, au lieu de laisser le fournisseur refuser en
+    // silence (2 tuiles noires) et de compter des connexions pour rien.
+    if (StreamDiagnostics.instance.singleConnectionLine) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(context.l10n.tvMultiViewSingleConn),
+          duration: const Duration(seconds: 3),
         ),
-      ),
-    )
-        .then((_) {
-      // Retour de la multi-vue : reprise via le chemin commun (si la pause
-      // a duré assez pour rendre la connexion, play() seul ne suffirait pas).
-      if (mounted) _resumePlayback();
-    });
+      );
+      _showOverlayTemporarily();
+      return;
+    }
+    // FUITE DE CONNEXIONS (terrain 2026-07-30, corrigé 19/08) : ce lecteur
+    // reste MONTÉ sous la route de la multivue. L'ancienne parade — pause()
+    // — ne fermait RIEN : une pause garde la socket, et le « stall watch »
+    // du relais ROUVRE l'amont au lieu de le fermer (audit 19/08). On ARRÊTE
+    // donc vraiment (stop natif attendu + session relais fermée) AVANT de
+    // pousser ; le retour repasse par le chemin officiel (créneau →
+    // relais), car un lecteur arrêté n'a plus de média à « play() ».
+    final NavigatorState nav = Navigator.of(context);
     _showOverlayTemporarily();
+    _underMultiview = true;
+    unawaited(() async {
+      try {
+        await _controller.stop();
+      } catch (_) {
+        // canal natif déjà mort : la socket est fermée de toute façon.
+      }
+      try {
+        await LocalStreamRelay.instance.closeOtherPlaybacks('');
+      } catch (_) {
+        // best-effort : le relais journalise ses propres échecs.
+      }
+      if (!mounted) {
+        _underMultiview = false;
+        return;
+      }
+      unawaited(nav
+          .push(
+        MaterialPageRoute<void>(
+          builder: (_) => TvMultiViewScreen(
+            channels: widget.channels,
+            startIndex: _index,
+          ),
+        ),
+      )
+          .then((_) {
+        _underMultiview = false;
+        // Retour de la multi-vue : le lecteur du dessous a été ARRÊTÉ →
+        // ré-ouverture par le chemin officiel (créneau, qui attend la
+        // fermeture des tuiles via leur handOff, puis relais/direct).
+        if (!mounted) return;
+        setState(() => _buffering = true);
+        unawaited(StreamSlot.instance.claim(this).then((_) {
+          if (mounted) unawaited(_loadCurrentUrl());
+        }));
+      }));
+    }());
   }
 
   // Ouvre le GUIDE de la chaîne en cours : émission actuelle + « à suivre »,
@@ -1741,24 +1835,28 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
 
   /// Tick périodique (même Timer que le watchdog : zéro réveil de plus).
   void _vodPauseReleaseTick(DateTime now, bool pausedOnPurpose) {
-    if (!mounted) return;
+    if (!mounted || _underMultiview) return;
     final bool pausedOnNetwork =
         pausedOnPurpose && !_playingLocalFile && _everShownFrame;
     final bool releaseNow = _pauseRelease.onTick(
       now: now,
-      isVod: _isVod,
+      // Le DIRECT aussi (audit 19/08) : une pause (« tu regardes
+      // encore ? » restée sans réponse) y tient la socket pareil — il n'y
+      // a juste rien à reprendre : la reprise rouvre au bord du live.
+      eligible: true,
       pausedOnNetwork: pausedOnNetwork,
     );
     if (!releaseNow) return;
-    // Position AVANT le stop (après, elle n'est plus fiable).
-    _pauseReleasedPosition = _controller.position;
+    // Position AVANT le stop (après, elle n'est plus fiable) — pour un
+    // contenu seekable uniquement (un direct n'a pas de position à retenir).
+    _pauseReleasedPosition = _isVod ? _controller.position : null;
     _savePlaybackPosition();
     StreamDiagnostics.instance.recordEvent(
       'creneau',
-      'Pause film > ${_pauseRelease.threshold.inSeconds} s → connexion '
-          'RENDUE au panel (position mémorisée '
-          '${_fmtClock(_pauseReleasedPosition!)}). La reprise ré-ouvrira '
-          'le flux au même endroit.',
+      'Pause ${_isVod ? 'film' : 'direct'} > '
+          '${_pauseRelease.threshold.inSeconds} s → connexion RENDUE au '
+          'panel${_pauseReleasedPosition == null ? '' : ' (position mémorisée ${_fmtClock(_pauseReleasedPosition!)})'}. '
+          'La reprise ré-ouvrira le flux.',
     );
     unawaited(_controller.stop());
     // La ligne est libre : la file de téléchargements peut en profiter
@@ -1771,7 +1869,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// est arrêté, sans média) — on ré-ouvre le flux et on revient à la
   /// position mémorisée.
   void _resumePlayback() {
-    if (_isVod && _pauseRelease.released) {
+    if (_pauseRelease.released) {
       _resumeAfterPauseRelease();
     } else {
       _controller.play();
@@ -1782,15 +1880,18 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Reset IMMÉDIAT : un second appui pendant la ré-ouverture ne doit pas
     // relancer une deuxième ré-ouverture (il redevient un play/pause normal).
     _pauseRelease.reset();
-    final Duration target = _pauseReleasedPosition ?? _controller.position;
+    final Duration? target = _isVod
+        ? (_pauseReleasedPosition ?? _controller.position)
+        : null; // direct : reprise au bord du live, rien à restaurer
     _pauseReleasedPosition = null;
     StreamDiagnostics.instance.recordEvent(
       'creneau',
-      'Reprise après pause longue → ré-ouverture du film et retour à '
-          '${_fmtClock(target)}',
+      'Reprise après pause longue → ré-ouverture du flux'
+          '${target == null ? ' (bord du live)' : ' et retour à ${_fmtClock(target)}'}',
     );
     // Le seek passera par la mécanique de reprise existante : appliqué UNE
-    // fois, quand le média ré-ouvert est prêt (durée connue).
+    // fois, quand le média ré-ouvert est prêt (durée connue). No-op en
+    // direct (_maybeApplyResume est gardé par _isVod).
     _pendingResume = target;
     _resumeApplied = false;
     if (mounted) setState(() => _buffering = true);

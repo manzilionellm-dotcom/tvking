@@ -382,16 +382,28 @@ class SourceCalibrator {
         );
         if (!r.success) continue;
         anySuccess = true;
-        // Valide le format sur le RESTE de l'échantillon (en parallèle)
-        // — un format qui ne marche que sur une chaîne n'est pas « le
-        // format de la source ».
-        final List<StreamProbeResult> others = await Future.wait(
-          samples.skip(1).map((String u) {
+        // Valide le format sur le RESTE de l'échantillon — un format qui ne
+        // marche que sur une chaîne n'est pas « le format de la source ».
+        // LIGNE À 1 CONNEXION (audit 19/08) : le Future.wait historique
+        // ouvrait les sondes EN PARALLÈLE — violation frontale de la règle
+        // « une seule connexion » : la calibration se sabotait elle-même et
+        // persistait un mauvais verdict. Séquentiel sur ces comptes.
+        final List<StreamProbeResult> others = <StreamProbeResult>[];
+        if (StreamDiagnostics.instance.singleConnectionLine) {
+          for (final String u in samples.skip(1)) {
             final String applied =
                 XtreamUrlVariants.applyFormat(u, candidate.formatCode) ?? u;
-            return _runProbe(applied, userAgent: currentUa);
-          }),
-        );
+            others.add(await _runProbe(applied, userAgent: currentUa));
+          }
+        } else {
+          others.addAll(await Future.wait(
+            samples.skip(1).map((String u) {
+              final String applied =
+                  XtreamUrlVariants.applyFormat(u, candidate.formatCode) ?? u;
+              return _runProbe(applied, userAgent: currentUa);
+            }),
+          ));
+        }
         others.forEach(collect);
         final int okCount =
             1 + others.where((StreamProbeResult r) => r.success).length;
@@ -427,12 +439,17 @@ class SourceCalibrator {
         : (XtreamUrlVariants.applyFormat(samples.first, winningFormat) ??
             samples.first);
     try {
+      // Ligne 1-connexion : une seule signature (chaque sonde de plus est
+      // une connexion de plus sur le créneau unique) — même règle que le
+      // diagnostic du lecteur (stream_blocked_fallback).
       final UserAgentProbeResult uaProbe = await _runUaProbe(
         uaProbeUrl,
-        candidates: <String>[
-          currentUa,
-          ...PlayerSettings.userAgentPresets.values,
-        ],
+        candidates: StreamDiagnostics.instance.singleConnectionLine
+            ? <String>[currentUa]
+            : <String>[
+                currentUa,
+                ...PlayerSettings.userAgentPresets.values,
+              ],
       ).timeout(kSignatureBudget);
       uaProbe.attempts.values.forEach(collect);
       for (final MapEntry<String, StreamProbeResult> e

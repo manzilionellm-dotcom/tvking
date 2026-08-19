@@ -885,6 +885,7 @@
     }
   },
   "tvMultiViewUnavailable": "Multivista no disponible: dispositivo demasiado limitado (2 flujos simultáneos no garantizados).",
+  "tvMultiViewSingleConn": "Multivista no disponible: esta suscripción solo permite una conexión a la vez.",
   "tvChannelUnavailable": "Canal no disponible por ahora.",
   "tvChannelBlockedBySource": "Canal vacío o bloqueado por tu fuente. Comprueba que no esté ya abierto en otro dispositivo.",
   "tvChannelNetworkHint": "Esto parece un bloqueo de red (ISP o DNS) — una VPN puede ayudar si este canal funciona en otro lugar.",

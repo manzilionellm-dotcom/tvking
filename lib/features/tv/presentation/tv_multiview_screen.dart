@@ -17,24 +17,27 @@
 //  d'un flux amont : EXACTEMENT DEUX (une par tuile), c'est son but même.
 //  Ces deux flux sont tirés EN DIRECT par le lecteur natif (URL réelle du
 //  fournisseur), ils NE passent PAS par LocalStreamRelay — ils échappent donc
-//  à la garantie « 1 connexion » et à son comptage (activeUpstreamCount).
-//  Deux règles pour ne pas fuir de connexions :
-//    • ENTRÉE : la multi-vue suppose que l'appelant a DÉJÀ coupé la lecture
-//      normale/aperçu (sinon 1 flux relais + 2 flux directs = 3 connexions
-//      simultanées, le fournisseur croit à un multi-view massif). Voir la
-//      note « LIMITE CONNUE » plus bas : à ce jour c'est à l'appelant de le
-//      faire — la multi-vue ne peut pas couper le lecteur normal sans risquer
-//      de le laisser noir au retour.
-//    • SORTIE (dispose / BACK / plein écran) : CHAQUE contrôleur est libéré
-//      (`dispose()` → `player.release()` natif ferme la socket amont). Aucun
-//      flux fantôme ne doit survivre à la fermeture de cet écran.
+//  au comptage du relais (activeUpstreamCount). Depuis l'audit du 19/08 :
+//    • ENTRÉE : les deux tuiles S'INSCRIVENT au StreamSlot (groupe
+//      `multiview` — elles se tolèrent entre elles) et RÉCLAMENT le créneau
+//      avant d'ouvrir : l'aperçu, la file de téléchargements et le lecteur
+//      du dessous (déjà arrêté par _openMultiview) sont démontés ET attendus.
+//      Sur une ligne 1-connexion, l'entrée est refusée en amont avec un
+//      message clair (tv_player_screen._openMultiview).
+//    • SORTIE (dispose / BACK / plein écran) : l'arrêt réel des deux tuiles
+//      (stop natif attendu puis dispose) est confié au créneau via handOff —
+//      le lecteur qui suit (pushReplacement) ATTEND cette fermeture au lieu
+//      d'ouvrir sa connexion pendant que les tuiles décodent encore.
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/app/device_memory.dart';
+import '../../../core/playback/stream_slot.dart';
 import '../../channels/domain/channel.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
@@ -75,50 +78,77 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen>
     final Channel a = widget.channels[widget.startIndex.clamp(0, n - 1)];
     final Channel b = widget.channels[(widget.startIndex + 1) % n];
     _two = <Channel>[a, b];
+    // SANS initialUrl (audit 19/08, même mécanisme que le lecteur plein
+    // écran) : la vue native joue initialUrl dès son attach — AVANT que le
+    // créneau ait démonté et attendu les autres consommateurs (aperçu,
+    // téléchargements, lecteur du dessous en cours de fermeture). Rien ne
+    // se joue tant que claim() n'a pas rendu la main.
     _ctrl = <NativeVideoController>[
-      NativeVideoController(initialUrl: a.streamUrl),
-      NativeVideoController(initialUrl: b.streamUrl),
+      NativeVideoController(),
+      NativeVideoController(),
     ];
     // La tuile 1 (droite) démarre MUETTE : une seule source audio à la fois.
     _ctrl[1].setVolume(0);
+    // VERROU DE CONNEXION (audit 19/08 : la multi-vue vivait hors créneau —
+    // ni l'aperçu ni les téléchargements n'étaient démontés, et rien ne
+    // pouvait la démonter). Les DEUX tuiles s'inscrivent dans le groupe
+    // `multiview` (elles se tolèrent entre elles) ; UNE réclamation suffit
+    // à démonter — et attendre — tous les détenteurs solo/downloads.
+    StreamSlot.instance.register(
+      _ctrl[0],
+      group: StreamSlot.groupMultiview,
+      label: 'multi-vue tuile A',
+      teardown: () => _ctrl[0].stop(),
+    );
+    StreamSlot.instance.register(
+      _ctrl[1],
+      group: StreamSlot.groupMultiview,
+      label: 'multi-vue tuile B',
+      teardown: () => _ctrl[1].stop(),
+    );
+    unawaited(StreamSlot.instance.claim(_ctrl[0]).then((_) {
+      if (!mounted) return;
+      _openTiles();
+    }));
   }
 
-  // App minimisée (Home / veille / autre app) → on met les deux tuiles en
-  // PAUSE : pas de SON en arrière-plan sur TV. Le natif a en plus son propre
-  // couvre-feu (pauseAll à l'onStop de l'activité) — ceinture et bretelles.
-  // Au retour, les connexions des deux flux LIVE sont probablement mortes :
-  // on RE-OUVRE les deux URLs (retour au direct immédiat, sans gel) et on
-  // RÉ-APPLIQUE le volume par tuile.
-  //
-  // LIMITE CONNUE (hors de notre contrôle ici) : `pause()` arrête la
-  // LECTURE, mais ExoPlayer garde généralement la socket amont OUVERTE (il
-  // ne fait que cesser de tirer des octets). Sur une chaîne à durée finie ça
-  // n'a pas d'incidence, mais sur un LIVE le fournisseur peut continuer de
-  // compter la connexion tant qu'elle n'a pas expiré côté serveur. Couper
-  // VRAIMENT la socket sans détruire le contrôleur exigerait une méthode
-  // native « stop / release-source » que le plugin n'expose pas (il n'a que
-  // `pause` — garde la socket — et `dispose` — la ferme mais interdit toute
-  // reprise sur le même contrôleur). Tant que l'app reste en arrière-plan
-  // ces deux sockets peuvent donc rester ouvertes : c'est une limite du
-  // plugin natif, à corriger côté `native_video_player` (hors de ce fichier).
+  /// (Ré)ouvre les deux tuiles sur leurs chaînes, volume selon la tuile
+  /// active. Appelé après l'obtention du créneau (initState, retour de
+  /// veille) — jamais directement.
+  void _openTiles() {
+    for (int k = 0; k < _ctrl.length; k++) {
+      _ctrl[k].setUrl(_two[k].streamUrl);
+      // RÉ-APPLIQUE le volume : on ne suppose pas qu'il survit à setUrl.
+      _ctrl[k].setVolume(k == _active ? 1.0 : 0.0);
+    }
+  }
+
+  // App minimisée (Home / veille / autre app) → ARRÊT COMPLET des deux
+  // tuiles : pas de son en arrière-plan sur TV, et surtout les DEUX sockets
+  // amont sont rendues au fournisseur (l'ancienne « LIMITE CONNUE » — pause
+  // qui gardait les sockets — est levée depuis que le plugin expose stop(),
+  // attendable, qui ferme démuxeur + connexion sans détruire le contrôleur).
+  // Au retour : ré-arbitrage par le créneau puis réouverture des deux URLs.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
+        // ARRÊT COMPLET, pas une pause (audit 19/08) : le plugin expose
+        // désormais stop() — une pause gardait les DEUX sockets amont
+        // ouvertes pendant toute la mise en veille (la « LIMITE CONNUE »
+        // historique de ce fichier n'a plus lieu d'être).
         for (final NativeVideoController c in _ctrl) {
-          c.pause();
+          unawaited(c.stop());
         }
       case AppLifecycleState.resumed:
-        for (int k = 0; k < _ctrl.length; k++) {
-          _ctrl[k].setUrl(_two[k].streamUrl);
-          // RÉ-APPLIQUE le volume (correctif d'audit) : on ne SUPPOSE plus que
-          // le volume survit à setUrl (comportement natif non garanti). Sans
-          // ça, si native_video_player remet le volume à 1.0 sur setUrl, les
-          // DEUX tuiles émettaient du son au retour de veille.
-          _ctrl[k].setVolume(k == _active ? 1.0 : 0.0);
-        }
+        // Retour de veille : ré-arbitrage par le créneau AVANT de rouvrir
+        // (l'aperçu ou un téléchargement a pu prendre la ligne entre-temps),
+        // puis réouverture séquencée des deux tuiles.
+        unawaited(StreamSlot.instance.claim(_ctrl[0]).then((_) {
+          if (mounted) _openTiles();
+        }));
       case AppLifecycleState.inactive:
         break; // transitions brèves (dialogue…) → on ne coupe pas
     }
@@ -127,19 +157,33 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // TEARDOWN GARANTI « zéro flux fantôme » (BACK, plein écran, ou fermeture) :
-    // on libère CHAQUE contrôleur, donc CHAQUE connexion amont directe. On
-    // enveloppe chaque dispose : si la libération d'UNE tuile levait une
-    // exception, l'AUTRE tuile devait quand même être libérée — sinon sa
-    // socket amont fuyait (le fournisseur continuait de compter la connexion).
-    for (final NativeVideoController c in _ctrl) {
-      try {
-        c.dispose();
-      } catch (_) {
-        // best-effort : le natif a peut-être déjà relâché ce lecteur ; on
-        // continue impérativement avec la ou les tuiles suivantes.
+    // TEARDOWN GARANTI « zéro flux fantôme » (BACK, plein écran, fermeture) —
+    // et ATTENDU par le suivant (audit 19/08) : le pushReplacement vers le
+    // plein écran ne dispose cette route qu'APRÈS la transition ; sans
+    // détenteur de transition, le lecteur plein écran ouvrait sa connexion
+    // pendant que les 2 tuiles décodaient encore (3 flux amont). handOff :
+    // le claim() du lecteur suivant attend l'arrêt réel des deux tuiles.
+    final List<NativeVideoController> leaving = _ctrl;
+    final Future<void> shutdown = () async {
+      for (final NativeVideoController c in leaving) {
+        try {
+          await c.stop();
+        } catch (_) {
+          // canal natif déjà mort : la socket est fermée de toute façon.
+        }
       }
-    }
+      for (final NativeVideoController c in leaving) {
+        try {
+          c.dispose();
+        } catch (_) {
+          // best-effort : le natif a peut-être déjà relâché ce lecteur ; on
+          // continue impérativement avec la ou les tuiles suivantes.
+        }
+      }
+    }();
+    StreamSlot.instance.handOff(leaving[0], shutdown,
+        label: 'fermeture multi-vue');
+    StreamSlot.instance.unregister(leaving[1]);
     _focus.dispose();
     super.dispose();
   }

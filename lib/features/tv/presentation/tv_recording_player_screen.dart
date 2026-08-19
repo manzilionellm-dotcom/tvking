@@ -27,6 +27,7 @@ import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../recordings/domain/recording.dart';
+import '../../vod/data/vod_download_service.dart';
 import '../core/tv_tokens.dart';
 
 class TvRecordingPlayerScreen extends StatefulWidget {
@@ -96,6 +97,10 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
     final String fileUri = Uri.file(widget.recording.filePath).toString();
     final NativeVideoController c =
         NativeVideoController(initialUrl: fileUri)..addListener(_onPlayer);
+    // Lecture 100 % LOCALE : le réseau du panel est libre — la file de
+    // téléchargements Cinéma peut en profiter (audit 19/08 : sans ce
+    // signal, elle restait suspendue pendant toute la lecture).
+    VodDownloadService.instance.setPlaybackHold(false);
     setState(() => _controller = c);
   }
 

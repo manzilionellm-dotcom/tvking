@@ -885,6 +885,7 @@
     }
   },
   "tvMultiViewUnavailable": "Multivisning utilgjengelig: enheten for begrenset (2 samtidige strømmer ikke garantert).",
+  "tvMultiViewSingleConn": "Multivisning utilgjengelig: dette abonnementet tillater bare én tilkobling om gangen.",
   "tvChannelUnavailable": "Kanalen er utilgjengelig akkurat nå.",
   "tvChannelBlockedBySource": "Kanalen er tom eller blokkert av kilden din. Sjekk at den ikke allerede er åpen på en annen enhet.",
   "tvChannelNetworkHint": "Dette ligner en nettverksblokkering (internettleverandør eller DNS) — en VPN kan hjelpe hvis kanalen fungerer andre steder.",

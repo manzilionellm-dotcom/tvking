@@ -31,6 +31,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/friendly_error_view.dart';
 import '../../epg/presentation/epg_format.dart';
+import '../../player/data/local_stream_relay.dart';
 import '../data/gallery_exporter.dart';
 import '../data/http_recording_downloader.dart';
 import '../data/recording_repository.dart';
@@ -142,6 +143,17 @@ class _RecordingTileState extends State<_RecordingTile> {
         await HttpRecordingDownloader.instance
             .stop(filePath: recording.filePath);
       } catch (_) {}
+      // AUDIT 19/08 : un enregistrement LIVE démarré depuis le lecteur passe
+      // par le RELAIS (tee), pas par le téléchargeur HTTP — l'arrêter d'ici
+      // laissait sa session relais enregistrer (recordSink non nul), donc
+      // préservée par closeOtherPlaybacks : la connexion amont survivait
+      // indéfiniment. stopRecording est idempotent (0 si pas de session).
+      final String? recUrl = recording.streamUrl;
+      if (recUrl != null && recUrl.isNotEmpty) {
+        try {
+          await LocalStreamRelay.instance.stopRecording(recUrl);
+        } catch (_) {}
+      }
       // ForegroundService : on l'arrête seulement si plus aucun
       // recording n'est actif (cas multi-recordings parallèles).
       if (HttpRecordingDownloader.instance.activeCount == 0) {

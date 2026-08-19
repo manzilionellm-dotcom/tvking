@@ -885,6 +885,7 @@
     }
   },
   "tvMultiViewUnavailable": "Flervy ej tillgänglig: enheten för begränsad (2 samtidiga strömmar garanteras inte).",
+  "tvMultiViewSingleConn": "Multivy otillgänglig: detta abonnemang tillåter bara en anslutning åt gången.",
   "tvChannelUnavailable": "Kanalen är inte tillgänglig just nu.",
   "tvChannelBlockedBySource": "Kanalen är tom eller blockerad av din källa. Kontrollera att den inte redan är öppen på en annan enhet.",
   "tvChannelNetworkHint": "Det här liknar en nätverksblockering (internetleverantör eller DNS) — en VPN kan hjälpa om kanalen fungerar någon annanstans.",

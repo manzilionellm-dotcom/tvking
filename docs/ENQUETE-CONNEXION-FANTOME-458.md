@@ -126,6 +126,64 @@ les flux utilisés ». Impossible et hors de question : les connexions sont
 comptées CHEZ le fournisseur ; on ne peut pas les lui cacher, on peut
 seulement garantir ≤ 1 à la fois et une libération immédiate.
 
+## Passe « analyse tout » (19/08, nuit) — 3 audits croisés des 2 apps
+
+**Verdict de la Boîte noire (23:39)** : plus aucune connexion fantôme côté
+app (fermetures en 11-30 ms, 0/1 au repos). La panne du soir = **ligne
+EXPIRÉE le 01/08 chez le fournisseur** (player_api « Expired » + black.ts
+servi). À renouveler chez lui.
+
+**Corrigé dans cette passe** (chaque point vient d'un constat d'audit) :
+- Multi-vue : refusée sur ligne 1-connexion (message clair) ; tuiles
+  inscrites au créneau (groupe multiview), lecteur du dessous ARRÊTÉ (plus
+  seulement mis en pause) avant l'entrée, sortie attendue via handOff,
+  veille = stop (plus de sockets gardées en arrière-plan).
+- Lecteur TV : « Réessayer », reconnexion anti-gel, début/fin
+  d'enregistrement — quatre `setUrl` directs qui contournaient relais,
+  variante adoptée et créneau → tous repassent par le chemin officiel ;
+  un film TÉLÉCHARGÉ qui gèle ne rouvre plus l'URL panel distante.
+- Diagnostic (Boîte noire/écran caché) : réclame le créneau avant de
+  sonder (il se battait contre l'app qu'il diagnostiquait) ; une seule
+  signature sur ligne 1-connexion. Idem calibrateur « Optimiser » (plus
+  de sondes en PARALLÈLE sur 1-conn) et diagnostic du lecteur
+  (releaseForDiagnosis : la lecture est fermée AVANT la première sonde).
+- Pause longue étendue au DIRECT (les 2 apps) : un direct en pause tient
+  la socket pareil — reprise au bord du live. Un téléphone en pause ne
+  peut plus tenir le 1/1, ni sur un film ni sur un direct.
+- Tâches de fond : synchro EPG (xmltv) DIFFÉRÉE tant qu'une lecture
+  réseau est en cours (plafond 1 h) ; veilleur 60 s idem ; « télécharger
+  pendant que je regarde » désactivé sur ligne 1-connexion.
+- Aperçu TV : créneau réclamé AVANT la résolution d'URL ; fermeture via
+  handOff (plus d'unregister sec).
+- Cast (mobile) : stop TV depuis la télécommande libère désormais relais
+  + service premier plan ; une session orpheline ne peut plus effacer le
+  relais de la session EN COURS ; quitter le lecteur pendant un cast ne
+  tue plus le keep-alive du relais.
+- Enregistrements : l'arrêt depuis l'écran Enregistrements clôt aussi la
+  session relais (sinon elle survivait indéfiniment).
+
+**Backlog (constats d'audit VOLONTAIREMENT non corrigés cette nuit —
+chacun demande une décision produit ou un test terrain dédié)** :
+1. Enregistrement HTTP hors relais (catch-up/VOD/HLS live) = 2e connexion
+   assumée qui survit à l'app (RecordingForegroundService) — à refuser ou
+   router par le relais sur ligne 1-connexion.
+2. Cast : bouton « Arrêter » de la notification ne stoppe pas libmpv
+   (ACTION_STOP sans canal vers Dart) ; pause de cast qui laisse le relais
+   tirer (idle 120 s) ; `clearRelay` n'interrompt pas un proxy DLNA en
+   vol ; reconnexion HLS infinie tant que la TV redemande ; sondes de
+   démarrage de cast à sérialiser sur 1-conn ; état `suspended` (reprise
+   auto possible) laissé tel quel.
+3. Lecteur mobile : pas d'observateur de cycle de vie (un flux à l'écran
+   verrouillé peut durer des heures — c'est en partie voulu, mode
+   « Écouteurs » : à borner proprement).
+4. Catch-up/replay TV lu en direct (hors relais/DoH) — router selon le
+   conteneur, et l'exclure de watchAlong.
+5. Écrans Tizen/Desktop entièrement hors StreamSlot/relais.
+6. Code mort dangereux : `ChannelHealthRepository.probeTop` (80 sondes,
+   4 en parallèle, aucun appelant) — à supprimer ou passer sous créneau.
+7. Poster Hue (jusqu'à 3 Mo, souvent hébergé sur le panel) téléchargé au
+   démarrage d'un film.
+
 ## À ne pas faire (rappels)
 
 - Ne pas publier `build-android.yml` avec `make_release=true` (116 clients).
