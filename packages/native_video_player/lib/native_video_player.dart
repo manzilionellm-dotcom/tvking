@@ -206,6 +206,16 @@ class NativeVideoController extends ChangeNotifier {
   /// Appelé par [NativeVideoView] quand la PlatformView native est créée.
   void _attach(int viewId) => _attachChannel('native_video_player/$viewId');
 
+  /// TESTS UNIQUEMENT : simule le rattachement de la vue native (ce que fait
+  /// la PlatformView à sa création). Verrouille par test le contrat « ce qui
+  /// se joue à l'attach » : `_pendingUrl ?? _lastUrl ?? initialUrl`. C'est ce
+  /// contrat qui a mordu sur les lignes 1-connexion (19/08) : un controller
+  /// créé avec [initialUrl] = l'URL panel DIRECTE la jouait dès l'attach,
+  /// AVANT que l'écran ait obtenu le créneau réseau et choisi l'URL du
+  /// relais — deux connexions amont se chevauchaient.
+  @visibleForTesting
+  void debugAttachChannel(String name) => _attachChannel(name);
+
   /// Rattache ce controller au canal [name] (PlatformView OU lecteur texture).
   void _attachChannel(String name) {
     if (_attached || _disposed) return;

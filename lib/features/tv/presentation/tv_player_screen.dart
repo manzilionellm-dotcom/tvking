@@ -28,6 +28,7 @@ import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/playback/stream_slot.dart';
+import '../../../core/playback/vod_pause_release_policy.dart';
 
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
@@ -218,6 +219,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   Duration? _pendingResume;
   bool _resumeApplied = false;
 
+  // ---- « Pause longue = connexion rendue » (VOD, demande exploitant) ----
+  // Un film en pause > ~20 s rend sa connexion au panel (stop, position
+  // mémorisée) ; la reprise ré-ouvre et seek. Jamais en direct, jamais sur
+  // un fichier local. La décision vit dans la politique (testée) ; l'écran
+  // n'exécute que le stop / la ré-ouverture.
+  final VodPauseReleasePolicy _pauseRelease = VodPauseReleasePolicy();
+  Duration? _pauseReleasedPosition;
+
+  /// `true` quand le contenu joué est un FICHIER LOCAL (téléchargement
+  /// Cinéma) : il ne consomme aucune connexion chez le fournisseur — ni la
+  /// pause longue ni le créneau réseau ne le concernent.
+  bool _playingLocalFile = false;
+
   // ----- Seek Netflix : double-appui = 30 s + bulle de temps -----
   // Deux appuis Gauche/Droite RAPPROCHÉS (même sens, < 500 ms) passent le
   // pas de 10 s à 30 s — pour traverser un générique sans marteler. La
@@ -360,7 +374,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Le décodage (MediaCodec matériel + repli logiciel), le tampon réseau et
     // le User-Agent sont gérés côté natif (NativeVideoView.kt). Ici on se
     // contente de piloter l'URL et d'écouter l'état.
-    _controller = NativeVideoController(initialUrl: _current.streamUrl);
+    //
+    // SANS initialUrl — c'est un correctif, pas un détail (enquête 19/08,
+    // ligne 1-connexion) : la vue native joue à l'attach `_pendingUrl ??
+    // _lastUrl ?? initialUrl`, et l'attach (~100-300 ms après le build) peut
+    // arriver AVANT que _loadCurrentUrl ait posé l'URL du relais — surtout
+    // quand claim() doit d'abord démonter l'aperçu d'accueil (jusqu'à
+    // 1,2 s). Avec initialUrl = URL panel DIRECTE, ExoPlayer ouvrait alors
+    // sa propre connexion amont, HORS relais et HORS créneau, qui se
+    // chevauchait avec celle du relais → « limite de connexions (1/1) »
+    // sur un compte qui ne regardait qu'un seul flux. Ici : le lecteur ne
+    // joue RIEN tant que le chemin officiel (créneau → relais/direct) n'a
+    // pas décidé de l'URL.
+    _controller = NativeVideoController();
     _controller.addListener(_onPlayer);
     // VERROU DE CONNEXION : ce lecteur est le detenteur prioritaire. Tout
     // autre consommateur (apercu d'accueil, file de telechargements) sera
@@ -408,9 +434,28 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // zéro réveil supplémentaire, zéro coût quand on est en DIRECT (no-op).
     _stability.openChannel(DateTime.now());
     _watchdog = Timer.periodic(_watchEvery, (_) {
-      _onFreezeAction(_freeze.onTick(DateTime.now()));
+      final DateTime now = DateTime.now();
+      // Une PAUSE VOLONTAIRE (film en pause, « tu regardes encore ? »,
+      // pause longue déjà rendue) n'est PAS un gel : la position ne bouge
+      // plus, mais rien n'est cassé. Sans cette garde, l'anti-gel
+      // « réparait » la pause par des setUrl silencieux — le film
+      // repartait tout seul (du début !) et ROUVRAIT une connexion panel
+      // pendant une pause censée n'en consommer aucune. On ré-arme
+      // l'horloge pendant la pause pour que la reprise reparte d'un
+      // budget neuf, sans reconnexion immédiate.
+      final bool pausedOnPurpose = !_fatal &&
+          !_controller.isPlaying &&
+          !_controller.isBuffering &&
+          !_controller.hasError &&
+          !_controller.isEnded;
+      if (pausedOnPurpose) {
+        _freeze.onProgress(now);
+      } else {
+        _onFreezeAction(_freeze.onTick(now));
+      }
       _savePlaybackPosition();
       _stabilityTick();
+      _vodPauseReleaseTick(now, pausedOnPurpose);
     });
     // Garde l'app « en ligne » + chaîne à jour pendant le visionnage.
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
@@ -458,7 +503,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           _backgroundedLive = false;
           _open();
         } else {
-          _controller.play();
+          // Film : la pause d'arrière-plan a pu durer assez pour que la
+          // connexion ait été rendue → la reprise ré-ouvre au bon endroit.
+          _resumePlayback();
         }
       case AppLifecycleState.inactive:
         break; // transitions brèves (dialogue…) → on ne coupe pas
@@ -509,14 +556,50 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     unawaited(Future<void>.delayed(const Duration(milliseconds: 1500),
         () => SubscriptionState.instance.syncWithBackend()));
     _startupWatchdog?.cancel();
-    // ON REND LA CONNEXION EN QUITTANT. `_controller.dispose()` libère le
-    // lecteur, mais le RELAIS est un autre objet : sa session amont vers le
-    // panel survivait à la fermeture de l'écran (jusqu'à son idleTimeout de
-    // 10 minutes). C'est ce qui gardait la connexion du film après en être
-    // sorti — le cas décrit par l'exploitant le 19/08.
-    LocalStreamRelay.instance.closeOtherPlaybacks('');
-    StreamSlot.instance.unregister(this);
-    _controller.dispose();
+    // ON REND LA CONNEXION EN QUITTANT — et le suivant DOIT l'attendre.
+    // `dispose()` est synchrone : impossible d'attendre ici la fermeture
+    // réseau (le stop natif est posté sur le thread lecteur, la session
+    // relais s'annule en asynchrone). Avant, on lançait tout sans attendre
+    // et on se désinscrivait du créneau dans la foulée : le PROCHAIN écran
+    // qui réclamait ne trouvait plus personne à démonter et ouvrait sa
+    // connexion PENDANT que celle-ci se fermait encore — « limite de
+    // connexions (1/1) » à l'ouverture d'une chaîne après un film (19/08).
+    // Désormais la fermeture complète (stop natif ATTENDU, puis session
+    // relais) est confiée au créneau comme détenteur de TRANSITION : le
+    // prochain claim() l'attend (plafonné, fail-open), et chaque étape est
+    // horodatée dans la Boîte noire pour mesurer l'ordre réel sur la box.
+    final NativeVideoController controller = _controller;
+    final bool wasVod = _isVod;
+    final DateTime exitAt = DateTime.now();
+    StreamDiagnostics.instance.recordEvent(
+      'creneau',
+      'Sortie du lecteur (${wasVod ? 'film' : 'direct'}) → fermeture '
+          'réseau lancée (stop natif puis session relais)',
+    );
+    final Future<void> shutdown = () async {
+      try {
+        // Le natif ne répond qu'une fois le stop exécuté sur son thread
+        // lecteur : au retour, la socket d'ExoPlayer est réellement fermée.
+        await controller.stop();
+      } catch (_) {
+        // Canal déjà mort : la connexion est fermée de toute façon.
+      }
+      final int stopMs = DateTime.now().difference(exitAt).inMilliseconds;
+      try {
+        await LocalStreamRelay.instance.closeOtherPlaybacks('');
+      } catch (_) {
+        // best-effort : le relais journalise déjà ses propres échecs.
+      }
+      controller.dispose();
+      StreamDiagnostics.instance.recordEvent(
+        'creneau',
+        'Fermeture réseau du lecteur terminée '
+            '(stop natif : $stopMs ms · total : '
+            '${DateTime.now().difference(exitAt).inMilliseconds} ms)',
+      );
+    }();
+    StreamSlot.instance
+        .handOff(this, shutdown, label: 'fermeture lecteur quitté');
     _focus.dispose();
     super.dispose();
   }
@@ -575,7 +658,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
-    final bool buffering = _controller.isBuffering || !_controller.firstFrame;
+    // EXCEPTION pause longue : le stop() qui rend la connexion remet
+    // firstFrame à false — sans cette garde, le logo de chargement tournait
+    // pendant toute la pause (ça a l'air cassé alors que tout va bien). On
+    // garde l'écran de pause ; le spinner ne revient qu'à la reprise
+    // (_resumeAfterPauseRelease pose _buffering=true).
+    final bool buffering =
+        (_controller.isBuffering || !_controller.firstFrame) &&
+            !(_isVod && _pauseRelease.released);
     // Capteur ABR : un REBUFFER réel (l'image tournait, elle s'interrompt)
     // = incident pour le moniteur de stabilité. Le buffering INITIAL d'une
     // ouverture/zap n'en est pas un (gardé par _everShownFrame).
@@ -732,6 +822,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // que quand le flux sera prêt (durée connue, cf. _maybeApplyResume).
     _resumeApplied = false;
     _pendingResume = null;
+    // Pause longue : état neuf pour CE contenu (une connexion rendue sur
+    // l'ancien film ne doit pas déclencher une « reprise » sur le nouveau).
+    _pauseRelease.reset();
+    _pauseReleasedPosition = null;
     if (_isVod) {
       // BUDGET « Regarder → première frame » : si l'écran amont (fiche,
       // rangée Reprendre) a déjà lancé le chrono à l'appui, on le garde
@@ -753,14 +847,31 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // (installDohResolution) — le lecteur natif ExoPlayer, lui, fait sa
     // propre résolution et échouerait sur ces domaines. `reuse` n'a plus
     // d'effet sur l'URL : même à la 1re ouverture on bascule sur le
-    // relais (le lecteur a été créé sur l'URL directe le temps d'un
-    // battement).
+    // relais (le lecteur est créé SANS initialUrl : il ne joue rien tant
+    // que ce chemin n'a pas décidé de l'URL — cf. initState).
     // ON RECLAME LE CRENEAU AVANT D'OUVRIR (bug terrain : « je quitte le
     // cinema, je lance France 2 → un autre flux est deja en cours »). Le
     // creneau attend que les autres consommateurs aient VRAIMENT ferme leur
     // socket ; sans cette attente, la nouvelle connexion partait en meme
     // temps que l'ancienne se fermait, et le panel refusait la seconde.
+    final DateTime claimStart = DateTime.now();
     unawaited(StreamSlot.instance.claim(this).then((_) {
+      // MESURE (enquête « connexion fantôme » 19/08, hypothèse D) : combien
+      // de temps le démontage des consommateurs précédents (aperçu, écran
+      // quitté en cours de fermeture, téléchargements) a réellement pris.
+      // Une attente qui plafonne à ~1200 ms = un démontage qui n'a PAS fini
+      // dans le budget → la connexion suivante part quand même (fail-open).
+      final int waitedMs =
+          DateTime.now().difference(claimStart).inMilliseconds;
+      if (waitedMs > 50) {
+        StreamDiagnostics.instance.recordEvent(
+          'creneau',
+          'Créneau réseau obtenu après $waitedMs ms de démontage des '
+              'consommateurs précédents'
+              '${waitedMs >= 1150 ? ' — BUDGET ATTEINT : un démontage n\'a pas fini, la connexion part quand même' : ''}',
+          level: waitedMs >= 1150 ? 'warn' : 'info',
+        );
+      }
       if (mounted) unawaited(_loadCurrentUrl());
     }));
     // Historique (reprise « Continuer à regarder », favoris, reco).
@@ -810,6 +921,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       if (local != null && await File(local).exists()) {
         if (!mounted || channel.id != _current.id) return;
         _relayPlayUrl = null;
+        _playingLocalFile = true; // zéro connexion : pause longue sans objet
         VodDownloadService.instance.setPlaybackHold(false);
         _controller.setUrl(Uri.file(local).toString());
         return;
@@ -817,6 +929,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     // Lecture RÉSEAU (live ou VOD distante) → la file de téléchargements
     // patiente pour ne pas voler le créneau 1-connexion du panel.
+    _playingLocalFile = false;
     VodDownloadService.instance.setPlaybackHold(true);
     // FORMAT MÉMORISÉ (parité téléphone — corrige la tempête de connexions
     // terrain du 2026-07-09 02:20 : la TV re-cascadait à CHAQUE chaîne
@@ -1584,7 +1697,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       ),
     )
         .then((_) {
-      if (mounted) _controller.play();
+      // Retour de la multi-vue : reprise via le chemin commun (si la pause
+      // a duré assez pour rendre la connexion, play() seul ne suffirait pas).
+      if (mounted) _resumePlayback();
     });
     _showOverlayTemporarily();
   }
@@ -1609,11 +1724,82 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       // (no-op silencieux si pas de pont / option OFF / scène inactive).
       if (_isVod) unawaited(HueService.instance.cinemaPause());
     } else {
-      _controller.play();
+      _resumePlayback();
       if (_isVod) unawaited(HueService.instance.cinemaResume());
     }
     _showOverlayTemporarily();
     setState(() {});
+  }
+
+  // ---- « PAUSE LONGUE = CONNEXION RENDUE » (VOD, demande exploitant) ----
+  //  Un film est seekable : après [VodPauseReleasePolicy.defaultThreshold]
+  //  de pause continue, on STOPPE le flux (socket panel fermée, position
+  //  mémorisée). À la reprise : ré-ouverture + seek — invisible pour le
+  //  client, ligne libérée pour le fournisseur pendant toute la pause.
+  //  Le DIRECT n'est jamais concerné (rien à reprendre), un fichier local
+  //  non plus (aucune connexion consommée).
+
+  /// Tick périodique (même Timer que le watchdog : zéro réveil de plus).
+  void _vodPauseReleaseTick(DateTime now, bool pausedOnPurpose) {
+    if (!mounted) return;
+    final bool pausedOnNetwork =
+        pausedOnPurpose && !_playingLocalFile && _everShownFrame;
+    final bool releaseNow = _pauseRelease.onTick(
+      now: now,
+      isVod: _isVod,
+      pausedOnNetwork: pausedOnNetwork,
+    );
+    if (!releaseNow) return;
+    // Position AVANT le stop (après, elle n'est plus fiable).
+    _pauseReleasedPosition = _controller.position;
+    _savePlaybackPosition();
+    StreamDiagnostics.instance.recordEvent(
+      'creneau',
+      'Pause film > ${_pauseRelease.threshold.inSeconds} s → connexion '
+          'RENDUE au panel (position mémorisée '
+          '${_fmtClock(_pauseReleasedPosition!)}). La reprise ré-ouvrira '
+          'le flux au même endroit.',
+    );
+    unawaited(_controller.stop());
+    // La ligne est libre : la file de téléchargements peut en profiter
+    // (elle sera re-suspendue et démontée par claim() à la reprise).
+    VodDownloadService.instance.setPlaybackHold(false);
+  }
+
+  /// Reprend la lecture en tenant compte de la pause longue : si la
+  /// connexion a été rendue, un simple play() ne suffit plus (le lecteur
+  /// est arrêté, sans média) — on ré-ouvre le flux et on revient à la
+  /// position mémorisée.
+  void _resumePlayback() {
+    if (_isVod && _pauseRelease.released) {
+      _resumeAfterPauseRelease();
+    } else {
+      _controller.play();
+    }
+  }
+
+  void _resumeAfterPauseRelease() {
+    // Reset IMMÉDIAT : un second appui pendant la ré-ouverture ne doit pas
+    // relancer une deuxième ré-ouverture (il redevient un play/pause normal).
+    _pauseRelease.reset();
+    final Duration target = _pauseReleasedPosition ?? _controller.position;
+    _pauseReleasedPosition = null;
+    StreamDiagnostics.instance.recordEvent(
+      'creneau',
+      'Reprise après pause longue → ré-ouverture du film et retour à '
+          '${_fmtClock(target)}',
+    );
+    // Le seek passera par la mécanique de reprise existante : appliqué UNE
+    // fois, quand le média ré-ouvert est prêt (durée connue).
+    _pendingResume = target;
+    _resumeApplied = false;
+    if (mounted) setState(() => _buffering = true);
+    // Même chemin d'ouverture que _open : créneau d'abord (les
+    // téléchargements repartis pendant la pause sont démontés et attendus),
+    // puis URL via le chemin officiel (fichier local / direct VOD).
+    unawaited(StreamSlot.instance.claim(this).then((_) {
+      if (mounted) unawaited(_loadCurrentUrl());
+    }));
   }
 
   /// Lance l'ambiance Hue TEINTÉE par l'affiche du film. Best-effort de
@@ -1676,6 +1862,14 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// bulle de TEMPS CIBLE au-dessus de la barre. Sans effet en direct.
   void _seekRelative(Duration delta) {
     if (!_isVod) return;
+    // Connexion rendue par la pause longue : le lecteur est arrêté, un seek
+    // n'aurait aucun média à cibler → le premier appui REPREND (ré-ouverture
+    // + retour à la position mémorisée), les suivants seekeront normalement.
+    if (_pauseRelease.released) {
+      _resumeAfterPauseRelease();
+      _showOverlayTemporarily();
+      return;
+    }
     final DateTime now = DateTime.now();
     final int dir = delta.isNegative ? -1 : 1;
     // Double-appui : même direction, moins de 500 ms après le précédent →
@@ -1704,6 +1898,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   void _seekToFraction(double f) {
     final Duration total = _controller.duration;
     if (!_isVod || total <= Duration.zero) return;
+    if (_pauseRelease.released) {
+      // Même règle que _seekRelative : d'abord reprendre, ensuite seeker.
+      _resumeAfterPauseRelease();
+      _showOverlayTemporarily();
+      return;
+    }
     final Duration target =
         Duration(milliseconds: (total.inMilliseconds * f).round());
     _controller.seekTo(target);
@@ -1955,7 +2155,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _autoplay.onUserInteraction();
     if (_askStillWatching) {
       setState(() => _askStillWatching = false);
-      _controller.play();
+      // La pause « tu regardes encore ? » a pu durer : si la connexion a
+      // été rendue entre-temps, la reprise ré-ouvre le flux (pas juste play).
+      _resumePlayback();
       return KeyEventResult.handled;
     }
 
@@ -2160,7 +2362,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
               _autoplay.onUserInteraction(); // tactile = présence aussi
               if (_askStillWatching) {
                 setState(() => _askStillWatching = false);
-                _controller.play();
+                _resumePlayback();
                 return;
               }
               _toggleOverlay();
