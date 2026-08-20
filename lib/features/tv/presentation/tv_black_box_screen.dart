@@ -46,6 +46,7 @@ import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../player/data/line_occupancy_probe.dart';
 import '../../player/data/local_stream_relay.dart';
+import '../../player/data/stream_diagnostics.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/xtream_client.dart';
 import '../../playlists/domain/playlist.dart' as pl;
