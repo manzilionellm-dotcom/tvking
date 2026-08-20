@@ -26,6 +26,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/i18n/l10n_now.dart';
+import '../../../core/update/build_flags.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
@@ -52,6 +53,23 @@ enum RemoteSyncResult {
 }
 
 abstract final class RemoteSourceRepository {
+  /// CONFORMITÉ MAGASINS (refus Amazon du 19/08/2026, « pirated content ») :
+  /// dans les builds DISTRIBUÉS PAR UN STORE (Google Play TV, Amazon
+  /// Appstore — `PLAY_BUILD=true`), l'app est un LECTEUR « apporte ton
+  /// abonnement » : AUCUNE source n'est poussée par le panel. Le testeur du
+  /// store — comme n'importe quel utilisateur venu du store — ne voit que
+  /// les écrans « Ajouter une source » et charge lui-même sa propre liste.
+  /// C'est la posture sous laquelle les lecteurs IPTV génériques sont
+  /// publiés, et la seule compatible avec la règle n°2 du projet (« aucune
+  /// playlist pré-remplie ») du point de vue d'un réviseur de contenu.
+  /// Les builds SIDELOAD (distribution directe de l'exploitant) sont
+  /// inchangés : le modèle « tout géré par le revendeur » reste entier.
+  ///
+  /// Champ (et non const) UNIQUEMENT pour rester testable : `kIsPlayBuild`
+  /// est figé à la compilation, les tests ne peuvent pas le basculer.
+  @visibleForTesting
+  static bool storeBuild = kIsPlayBuild;
+
   /// Signal « le revendeur vient d'ASSIGNER / METTRE À JOUR une source pour
   /// CET appareil » (poussé en TEMPS RÉEL par le panel via le WebSocket).
   /// L'accueil l'écoute pour charger la source IMMÉDIATEMENT — avec l'écran
@@ -68,6 +86,9 @@ abstract final class RemoteSourceRepository {
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
   static Future<RemoteSyncResult> sync() async {
+    // Build store : pas de source poussée, pas d'ordres du panel (cf.
+    // [storeBuild]). L'utilisateur ajoute ses sources lui-même.
+    if (storeBuild) return RemoteSyncResult.noSource;
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
@@ -291,6 +312,8 @@ abstract final class RemoteSourceRepository {
   /// afficher l'écran de progression VIVANT (chaînes qui s'ajoutent) au lieu
   /// d'un simple message. `[]` = rien d'assigné / réseau KO (best-effort).
   static Future<List<Map<String, dynamic>>> fetchAssignedSources() async {
+    // Build store : rien d'assigné, jamais (cf. [storeBuild]).
+    if (storeBuild) return <Map<String, dynamic>>[];
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return <Map<String, dynamic>>[];
@@ -323,6 +346,9 @@ abstract final class RemoteSourceRepository {
     List<Map<String, dynamic>> sources, {
     ImportProgressCallback? onProgress,
   }) async {
+    // Build store : même les événements temps réel du panel (pushedTick →
+    // fetch + apply) ne chargent rien (cf. [storeBuild]).
+    if (storeBuild) return RemoteSyncResult.noSource;
     RemoteSyncResult agg = RemoteSyncResult.noSource;
     for (final Map<String, dynamic> item in sources) {
       final RemoteSyncResult r = await _applySource(
