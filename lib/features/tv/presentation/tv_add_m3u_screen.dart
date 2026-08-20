@@ -20,6 +20,7 @@ import '../../playlists/data/source_input_normalizer.dart';
 import '../../playlists/data/source_link_utils.dart';
 import '../../playlists/data/source_preflight.dart';
 import '../../playlists/domain/playlist.dart';
+import '../../playlists/presentation/source_preflight_l10n.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
@@ -152,7 +153,9 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
         _busy = false;
         _error = _cancelled
             ? context.l10n.tvSourceAddCancelled
-            : SourcePreflight.humanize(e);
+            // Raison typée traduite dans la langue de l'utilisateur (le
+            // français en dur de humanize ne sert plus qu'aux journaux).
+            : sourcePreflightErrorText(context, e);
       });
     } finally {
       _client = null;
