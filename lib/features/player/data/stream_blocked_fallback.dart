@@ -202,10 +202,15 @@ class StreamBlockedFallback {
   /// ferme : il attend l'expiration de SA propre session, souvent 15 à 60 s.
   /// L'app abandonnait donc juste avant que le slot ne se libère.
   ///
-  /// On étale maintenant les essais sur ~45 s, en espaçant progressivement
+  /// On étale maintenant les essais sur ~90 s, en espaçant progressivement
   /// (on ne martèle pas le fournisseur). Pendant tout ce temps l'écran reste
   /// en « reconnexion » : pour le client, la chaîne finit par s'ouvrir toute
   /// seule au lieu de lui jeter une erreur à la figure.
+  ///
+  /// ~45 s NE SUFFISAIENT PAS (terrain 20/08, « je quitte le cinéma, j'ouvre
+  /// une chaîne → limite 1/1 » sur une ligne NEUVE) : beaucoup de panels
+  /// gardent la session d'une lecture fermée 60 à 90 s. L'app abandonnait
+  /// pile avant la libération — deux paliers de plus couvrent cette plage.
   static const List<Duration> _k458Schedule = <Duration>[
     Duration(milliseconds: 1100),
     Duration(seconds: 2),
@@ -214,6 +219,8 @@ class StreamBlockedFallback {
     Duration(seconds: 8),
     Duration(seconds: 12),
     Duration(seconds: 14),
+    Duration(seconds: 20),
+    Duration(seconds: 25),
   ];
 
   /// Idem pour un 5xx (serveur fournisseur en panne) : on retente un peu (le
@@ -289,7 +296,7 @@ class StreamBlockedFallback {
     if (failure.status == 458) {
       if (_try458Retry()) return;
       _log('[458] limite de connexions confirmée après '
-          '${_k458Schedule.length} essais étalés sur ~45 s '
+          '${_k458Schedule.length} essais étalés sur ~90 s '
           '→ message clair (pas de sonde/cascade)');
       showBlocked(const BlockedVerdict(BlockedKind.maxConnections,
           message: kMaxConnectionsMessage));

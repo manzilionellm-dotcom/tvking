@@ -34,6 +34,7 @@ import '../../player/data/local_stream_relay.dart';
 import '../../player/data/stream_blocked_fallback.dart';
 import '../../player/data/stream_diagnostics.dart';
 import '../../player/data/xtream_url_variants.dart';
+import '../../playlists/data/xtream_client.dart';
 import '../../playlists/data/xtream_url_format_store.dart';
 import '../../playlists/domain/playlist.dart' as pl;
 import '../core/tv_dimens.dart';
@@ -363,10 +364,50 @@ class _TvLivePreviewState extends State<TvLivePreview>
   /// « ligne 1 connexion » (sinon chaque survol de chaîne écrirait la même).
   static bool _singleConnLogged = false;
 
+  /// UNE seule lecture du compte par session d'app (cf. _start : ligne
+  /// neuve au nombre de connexions inconnu) — pas de martèlement du panel.
+  static bool _accountProbeAttempted = false;
+
   Future<void> _start() async {
     // Tests widget : aucun démarrage (la branche startImmediately de
     // didUpdateWidget appelle _start directement — d'où ce second garde).
     if (TvLivePreview.debugDisableAutoStart) return;
+    // LIGNE NEUVE (terrain 20/08 : « nouveau lien » → aperçu qui consomme le
+    // créneau → « limite 1/1 » à la vraie lecture) : le garde 1-connexion
+    // ci-dessous est AVEUGLE tant que player_api n'a jamais été lu
+    // (xtreamMaxConnections null sur une source fraîchement ajoutée). Avant
+    // le TOUT PREMIER aperçu, on lit une fois les compteurs réels du compte
+    // — player_api est une requête d'API, pas un flux : elle ne consomme pas
+    // le créneau. Best-effort : un échec laisse le comportement historique.
+    // (En tests widget, aucune playlist Xtream n'est chargée → aucun saut
+    // asynchrone ajouté : le contrat « même frame » des tests est préservé.)
+    if (StreamDiagnostics.instance.xtreamMaxConnections == null &&
+        !_accountProbeAttempted) {
+      final pl.Playlist? src =
+          StreamBlockedFallback.xtreamPlaylistFor(widget.channel);
+      if (src != null &&
+          src.xtreamServer != null &&
+          src.xtreamUsername != null &&
+          src.xtreamPassword != null) {
+        _accountProbeAttempted = true;
+        final int probeSession = _session;
+        _diag('Compte jamais contrôlé → lecture des compteurs réels '
+            '(max_connections) avant le premier aperçu');
+        try {
+          // fetchAccountInfo alimente lui-même StreamDiagnostics.
+          await XtreamClient(
+            serverUrl: src.xtreamServer!,
+            username: src.xtreamUsername!,
+            password: src.xtreamPassword!,
+            timeout: const Duration(seconds: 5),
+          ).fetchAccountInfo();
+        } catch (e) {
+          _diag('Compteurs du compte illisibles ($e) — aperçu inchangé',
+              level: 'warn');
+        }
+        if (!mounted || probeSession != _session || _covered) return;
+      }
+    }
     // LIGNE À 1 CONNEXION (demande exploitant 19/08 : « aucun flux ne doit
     // rester en dehors de la vraie lecture ») : l'aperçu n'ouvre JAMAIS de
     // flux — ce confort consommerait LE créneau unique du compte, et chaque

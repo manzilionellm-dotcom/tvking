@@ -1039,13 +1039,44 @@ class LocalStreamRelay {
     await _connectUpstream(session);
   }
 
-  /// Ferme la session si plus aucun consommateur (ni lecteur ni REC).
+  /// SURSIS DE PASSATION (terrain 20/08, « je quitte le cinéma, j'ouvre une
+  /// chaîne → limite 1/1 » ; modèle IBO : le petit écran et le plein écran
+  /// partagent LE flux). Quand le dernier lecteur se débranche de la chaîne
+  /// COURANTE (aperçu qui se ferme pour laisser place au plein écran, zap de
+  /// vue native), fermer l'amont immédiatement forçait le lecteur suivant à
+  /// ROUVRIR une connexion panel — que le panel refusait (il garde l'ancienne
+  /// session comptée 15-60 s). On garde donc l'amont ouvert [_kHandoverLinger]
+  /// : le lecteur suivant de la MÊME chaîne se rebranche sur la MÊME
+  /// connexion panel — zéro réouverture, la limite 1-connexion est respectée.
+  ///
+  /// Les fermetures VOLONTAIRES ne passent pas ici : closeOtherPlaybacks
+  /// (zap vers une autre chaîne, sortie d'écran → keepRealUrl='') appelle
+  /// _closeSession directement — quitter la lecture rend toujours la
+  /// connexion tout de suite (garantie mesurée « 0/1 au repos » inchangée).
+  static const Duration _kHandoverLinger = Duration(seconds: 5);
+
+  /// Ferme la session si plus aucun consommateur (ni lecteur ni REC) —
+  /// avec le sursis de passation pour la chaîne courante (cf. ci-dessus).
   void _maybeCloseSession(_RelaySession session) {
     if (session.hasConsumers) return;
+    if (session.realUrl == _currentPlaybackUrl && session.upstreamActive) {
+      session.lingerTimer?.cancel();
+      session.lingerTimer = Timer(_kHandoverLinger, () {
+        session.lingerTimer = null;
+        if (!session.hasConsumers) _closeSession(session);
+      });
+      if (kDebugMode) {
+        debugPrint('[Relay] passation : amont gardé '
+            '${_kHandoverLinger.inSeconds} s (${_short(session.realUrl)})');
+      }
+      return;
+    }
     _closeSession(session);
   }
 
   void _closeSession(_RelaySession session) {
+    session.lingerTimer?.cancel();
+    session.lingerTimer = null;
     session.stallTimer?.cancel();
     session.stallTimer = null;
     try {
@@ -1167,6 +1198,11 @@ class _RelaySession {
   /// plusieurs (mpv ouvre parfois une connexion de sonde + une de
   /// lecture). Tous reçoivent les mêmes octets.
   final List<_PlayerConsumer> players = <_PlayerConsumer>[];
+
+  /// Sursis de PASSATION (cf. _maybeCloseSession) : armé quand le dernier
+  /// lecteur se débranche de la chaîne COURANTE — l'amont reste ouvert le
+  /// temps que le lecteur suivant (aperçu → plein écran) se rebranche.
+  Timer? lingerTimer;
 
   /// Destination d'enregistrement (null = pas d'enregistrement en cours).
   IOSink? recordSink;
