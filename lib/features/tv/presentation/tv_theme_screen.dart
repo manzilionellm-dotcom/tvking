@@ -117,7 +117,7 @@ class _ImmersiveTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      'Thème immersif',
+                      context.l10n.themeImmersiveTitle,
                       style: TextStyle(
                         fontSize: TvDimens.title,
                         fontWeight: FontWeight.w800,
@@ -126,7 +126,7 @@ class _ImmersiveTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Une couleur premium qui change chaque heure',
+                      context.l10n.themeImmersiveSubtitle,
                       style: TextStyle(
                         fontSize: 15,
                         color: fg.withValues(alpha: 0.85),

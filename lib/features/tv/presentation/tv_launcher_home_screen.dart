@@ -364,27 +364,27 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
         const Spacer(),
         _TopIcon(
             icon: Icons.people_alt_rounded,
-            tip: 'Compte',
+            tip: context.l10n.profileAccount,
             onSelect: () => _open(const TvProfilesScreen())),
         _TopIcon(
             icon: Icons.swap_horiz_rounded,
-            tip: 'Source',
+            tip: context.l10n.tvTooltipSource,
             onSelect: () => _open(const TvSourcesScreen())),
         _TopIcon(
             icon: Icons.grid_view_rounded,
-            tip: 'Guide TV',
+            tip: context.l10n.guideTitle,
             onSelect: () => _open(const TvGuideGridScreen())),
         _TopIcon(
             icon: Icons.dashboard_customize_rounded,
-            tip: 'Templates',
+            tip: context.l10n.tvNavTemplates,
             onSelect: () => _open(const TvHomeTemplateScreen())),
         _TopIcon(
             icon: Icons.settings_rounded,
-            tip: 'Réglages',
+            tip: context.l10n.tvNavSettings,
             onSelect: () => _open(const TvSettingsScreen())),
         _TopIcon(
             icon: Icons.power_settings_new_rounded,
-            tip: 'Quitter',
+            tip: context.l10n.tvQuit,
             onSelect: _confirmExit),
         const SizedBox(width: 10),
         // Widget FEUILLE (patron _Clock de rails) : l'horloge se met à jour

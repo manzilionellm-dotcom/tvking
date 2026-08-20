@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 
 import '../haptics/haptics.dart';
 import '../theme/app_colors.dart';
+import '../i18n/l10n_extension.dart';
 import '../theme/app_text_styles.dart';
 
 /// Affiche la célébration d'un palier de [days] jours consécutifs.
@@ -83,20 +84,20 @@ class _CelebrationDialogState extends State<_CelebrationDialog>
                 const Text('🔥', style: TextStyle(fontSize: 56)),
                 const SizedBox(height: 12),
                 Text(
-                  '${widget.days} jours d\'affilée',
+                  context.l10n.celebrationStreakTitle(widget.days),
                   style: AppTextStyles.headlineLarge,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Tu fais partie des habitués. Continue !',
+                  context.l10n.celebrationStreakBody,
                   style: AppTextStyles.bodyMedium,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
                 FilledButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Continuer'),
+                  child: Text(context.l10n.buttonContinue),
                 ),
               ],
             ),

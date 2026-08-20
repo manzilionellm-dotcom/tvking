@@ -112,7 +112,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
 
             // ===== DEUX MODES au 1er lancement =====
             if (_mode == 'choose') ...<Widget>[
-              Text('Comment veux-tu commencer ?',
+              Text(context.l10n.tvActivationHow,
                   textAlign: TextAlign.center,
                   style: TvTokens.ui(22, weight: FontWeight.w800,
                       color: TvTokens.text)),
@@ -120,8 +120,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               SizedBox(
                 width: 560,
                 child: Text(
-                  'Un ami t’a invité ? Passe en Mode invité et profite de '
-                  '2 jours gratuits pour regarder le match ou un film ensemble.',
+                  context.l10n.tvActivationInviteHint,
                   textAlign: TextAlign.center,
                   style: TvTokens.ui(15, color: TvTokens.muted),
                 ),
@@ -129,16 +128,16 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               const SizedBox(height: 24),
               _ModeButton(
                 emoji: '🔓',
-                title: 'Mode réel',
-                subtitle: 'Activer mon abonnement',
+                title: context.l10n.tvActivationRealTitle,
+                subtitle: context.l10n.tvActivationRealSubtitle,
                 autofocus: true,
                 onSelect: () => setState(() => _mode = 'real'),
               ),
               const SizedBox(height: 14),
               _ModeButton(
                 emoji: '🎁',
-                title: 'Mode invité',
-                subtitle: 'J’ai un code d’ami — 2 jours gratuits',
+                title: context.l10n.tvActivationGuestTitle,
+                subtitle: context.l10n.tvActivationGuestSubtitle,
                 onSelect: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const TvShell(child: TvInviteScreen()),
@@ -248,7 +247,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                   border: Border.all(color: focused ? TvTokens.gold : TvTokens.line),
                   color: focused ? TvTokens.sel : Colors.transparent,
                 ),
-                child: Text('🎁  J’ai un code de partage (2 jours)',
+                child: Text(context.l10n.tvActivationShareCode,
                     style: TvTokens.ui(19, weight: FontWeight.w600,
                         color: focused ? TvTokens.goldBright : TvTokens.muted)),
               ),

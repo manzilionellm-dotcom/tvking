@@ -20,6 +20,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
@@ -245,7 +246,7 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
       context: c,
       builder: (BuildContext d) => AlertDialog(
         backgroundColor: TvTokens.card,
-        title: Text('Quitter SEVEN ?',
+        title: Text(c.l10n.tvTmQuitTitle,
             style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700)),
         actions: <Widget>[
           TextButton(
@@ -253,11 +254,11 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
             // sans focus → télécommande muette jusqu'à un appui hasardeux.
             autofocus: true,
             onPressed: () => Navigator.pop(d, false),
-            child: Text('Annuler', style: TvTokens.ui(TvDimens.body)),
+            child: Text(c.l10n.buttonCancel, style: TvTokens.ui(TvDimens.body)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(d, true),
-            child: Text('Quitter',
+            child: Text(c.l10n.tvQuit,
                 style: TvTokens.ui(TvDimens.body, color: TvTokens.goldBright)),
           ),
         ],
@@ -357,14 +358,14 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
-                              Text('Accès rapide',
+                              Text(context.l10n.tvQuickAccess,
                                   style: TvTokens.ui(TvDimens.label,
                                       weight: FontWeight.w600, color: _rTitle)),
                               const SizedBox(height: 8),
                               Expanded(
                                 child: _NavTile(
                                   icon: Icons.star_rounded,
-                                  label: 'Favoris',
+                                  label: context.l10n.navFavorites,
                                   restoreId: 'favoris',
                                   restoreFocusId: _restoreFocusId,
                                   onRestored: _clearRestore,
@@ -376,7 +377,7 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                               Expanded(
                                 child: _NavTile(
                                   icon: Icons.grid_view_rounded,
-                                  label: 'Guide',
+                                  label: context.l10n.tvNavGuide,
                                   restoreId: 'guide',
                                   restoreFocusId: _restoreFocusId,
                                   onRestored: _clearRestore,
@@ -400,7 +401,7 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                         Expanded(
                           child: _NavTile(
                             icon: Icons.live_tv_rounded,
-                            label: 'Direct',
+                            label: context.l10n.tvNavLive,
                             restoreId: 'direct',
                             restoreFocusId: _restoreFocusId,
                             onRestored: _clearRestore,
@@ -412,7 +413,7 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                         Expanded(
                           child: _NavTile(
                             icon: Icons.movie_rounded,
-                            label: 'Films',
+                            label: context.l10n.tvNavFilms,
                             restoreId: 'films',
                             restoreFocusId: _restoreFocusId,
                             onRestored: _clearRestore,
@@ -424,7 +425,7 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                         Expanded(
                           child: _NavTile(
                             icon: Icons.video_library_rounded,
-                            label: 'Séries',
+                            label: context.l10n.tvNavSeries,
                             restoreId: 'series',
                             restoreFocusId: _restoreFocusId,
                             onRestored: _clearRestore,
@@ -436,7 +437,7 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                         Expanded(
                           child: _NavTile(
                             icon: Icons.replay_rounded,
-                            label: 'Catch-up',
+                            label: context.l10n.detailCatchup,
                             restoreId: 'catchup',
                             restoreFocusId: _restoreFocusId,
                             onRestored: _clearRestore,
@@ -448,7 +449,7 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                         Expanded(
                           child: _NavTile(
                             icon: Icons.search_rounded,
-                            label: 'Recherche',
+                            label: context.l10n.tvNavSearch,
                             restoreId: 'recherche',
                             restoreFocusId: _restoreFocusId,
                             onRestored: _clearRestore,
@@ -460,7 +461,7 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                         Expanded(
                           child: _NavTile(
                             icon: Icons.dashboard_customize_rounded,
-                            label: 'Templates',
+                            label: context.l10n.tvNavTemplates,
                             restoreId: 'templates',
                             restoreFocusId: _restoreFocusId,
                             onRestored: _clearRestore,
@@ -716,7 +717,7 @@ class _HeroState extends State<_Hero> {
                               const Icon(Icons.play_arrow_rounded,
                                   size: 22, color: _rText),
                               const SizedBox(width: 6),
-                              Text('Direct',
+                              Text(context.l10n.tvNavLive,
                                   style: TvTokens.ui(TvDimens.body,
                                       weight: FontWeight.w700, color: _rText)),
                             ],
@@ -1036,7 +1037,7 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text('Favoris en direct',
+        Text(context.l10n.tvFavoritesLive,
             style: TvTokens.ui(TvDimens.title,
                 weight: FontWeight.w600, color: _rTitle)),
         const SizedBox(height: 8),
@@ -1207,7 +1208,7 @@ class _FavCardState extends State<_FavCard> {
               const SizedBox(height: 10),
               Expanded(
                 child: Text(
-                  prog?.title ?? 'En direct',
+                  prog?.title ?? context.l10n.homeLiveNow,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TvTokens.ui(TvDimens.body,

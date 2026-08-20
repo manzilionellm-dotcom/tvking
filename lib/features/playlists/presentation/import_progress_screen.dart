@@ -23,6 +23,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/import_progress.dart';
@@ -302,7 +303,7 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
               ),
             ),
             TextSpan(
-              text: '  chaînes trouvées',
+              text: '  ${context.l10n.importChannelsFound}',
               style: AppTextStyles.bodyMedium.copyWith(
                 fontSize: 14 * _s,
                 color: AppColors.textSecondary,
@@ -317,7 +318,7 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
       final String got = _fmtBytes(p.bytesReceived);
       final int? total = p.totalBytes;
       return Text(
-        total != null ? '$got / ${_fmtBytes(total)}' : '$got reçus',
+        total != null ? '$got / ${_fmtBytes(total)}' : context.l10n.importBytesReceived(got),
         textAlign: TextAlign.center,
         style: AppTextStyles.bodyLarge.copyWith(
           fontFamily: 'monospace',
@@ -352,17 +353,17 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
   String _phaseTitle(ImportPhase phase) {
     switch (phase) {
       case ImportPhase.connecting:
-        return 'Connexion au serveur…';
+        return context.l10n.importPhaseConnecting;
       case ImportPhase.downloading:
-        return 'Téléchargement de ta liste…';
+        return context.l10n.importPhaseDownloading;
       case ImportPhase.analyzing:
-        return 'Analyse des chaînes…';
+        return context.l10n.importPhaseAnalyzing;
       case ImportPhase.saving:
-        return 'Presque prêt…';
+        return context.l10n.importPhaseSaving;
       case ImportPhase.done:
-        return 'C\'est prêt';
+        return context.l10n.importPhaseDone;
       case ImportPhase.failed:
-        return 'Échec de l\'import';
+        return context.l10n.importPhaseFailed;
     }
   }
 
@@ -387,13 +388,13 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
   /// que ça vit même quand une étape dure.
   String _reassurance(ImportProgress p) {
     if (p.phase == ImportPhase.done) {
-      return 'Tes chaînes sont chargées. Bon visionnage !';
+      return context.l10n.importDoneReassure;
     }
-    const List<String> lines = <String>[
-      'On récupère tout ton bouquet, garde l\'app ouverte…',
-      'Les grosses listes prennent quelques secondes de plus.',
-      'On range tes chaînes pour un zapping instantané.',
-      'Presque fini — on optimise le démarrage.',
+    final List<String> lines = <String>[
+      context.l10n.importReassure1,
+      context.l10n.importReassure2,
+      context.l10n.importReassure3,
+      context.l10n.importReassure4,
     ];
     final int i = (_elapsed.inSeconds ~/ 4) % lines.length;
     return lines[i];

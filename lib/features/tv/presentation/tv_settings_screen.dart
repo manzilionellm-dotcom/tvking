@@ -608,7 +608,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.card_giftcard_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Pass Partage — inviter un ami',
+                    Text(context.l10n.tvSettingsInvite,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,

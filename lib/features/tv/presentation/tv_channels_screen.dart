@@ -517,7 +517,7 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
   // ---- Colonne 3 : aperçu ----
   Widget _previewPane() {
     return _panel(
-      title: 'Aperçu',
+      title: context.l10n.tvPreviewPanelTitle,
       // Seul ce builder se reconstruit quand la chaîne focalisée change
       // (défilement) — les deux autres colonnes restent intactes.
       child: ValueListenableBuilder<Channel?>(
@@ -560,7 +560,7 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                 // au-dessus de l'EPG « En ce moment » (barre de progression)
                 // + « À suivre » — même appariement que la grille TiviMate,
                 // replis en cascade : EPG courte du panel, puis catégorie.
-                Text('NOS ÉVÉNEMENTS',
+                Text(context.l10n.tvEventsHeader,
                     style: TvTokens.ui(12,
                         weight: FontWeight.w700,
                         color: TvTokens.mutedDim,
@@ -616,11 +616,11 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                 ),
                 if (ch.id == _selectedId) ...<Widget>[
                   const SizedBox(height: 8),
-                  const SizedBox(
+                  SizedBox(
                     width: double.infinity,
-                    child: Text('Appuyez encore sur OK pour le plein écran',
+                    child: Text(context.l10n.tvOkFullscreenHint,
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                             fontSize: TvDimens.caption, color: TvTokens.muted)),
                   ),
                 ],
