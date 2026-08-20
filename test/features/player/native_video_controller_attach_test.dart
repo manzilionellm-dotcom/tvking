@@ -89,4 +89,35 @@ void main() {
     expect((calls.single.arguments as Map<Object?, Object?>)['url'],
         'http://127.0.0.1:1234/s?u=abc');
   });
+
+  // ---- Crash terrain 20/08 : « dispose on channel native_video_player/t1 »
+  //  MissingPluginException NON RATTRAPÉE au dispose d'une vue déjà détruite.
+  test('dispose sur un canal MORT (MissingPluginException) ne remonte JAMAIS',
+      () async {
+    const String channelName = 'native_video_player/test-dead';
+    // Handler qui simule un canal natif disparu : toute commande lève
+    // MissingPluginException (exactement ce que renvoie la plateforme quand
+    // la PlatformView est déjà détruite).
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel(channelName),
+            (MethodCall call) async {
+      throw MissingPluginException(
+          'No implementation found for method ${call.method}');
+    });
+    final NativeVideoController controller = NativeVideoController();
+    controller.debugAttachChannel(channelName);
+
+    // Aucun de ces appels « tire-et-oublie » ne doit faire remonter une
+    // exception non rattrapée (avant le correctif, dispose crashait la zone).
+    controller.play();
+    controller.pause();
+    controller.setVolume(0);
+    controller.seekTo(const Duration(seconds: 5));
+    controller.dispose();
+
+    // Laisse les Futures des invokeMethod se résoudre (et leurs catchError
+    // avaler l'exception) : si un seul ne rattrapait pas, le test échouerait
+    // sur une erreur asynchrone non gérée.
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  });
 }

@@ -370,7 +370,7 @@ class NativeVideoController extends ChangeNotifier {
     _lastFallbackUrls = fallbackUrls;
     if (!_disposed) notifyListeners();
     if (_channel != null) {
-      _channel!.invokeMethod<void>('setUrl', <String, dynamic>{
+      _fire('setUrl', <String, dynamic>{
         'url': url,
         if (userAgent != null) 'userAgent': userAgent,
         if (fallbackUrls != null && fallbackUrls.isNotEmpty)
@@ -384,9 +384,20 @@ class NativeVideoController extends ChangeNotifier {
     }
   }
 
-  void play() => _channel?.invokeMethod<void>('play');
+  /// Appel « tire-et-oublie » vers le canal natif, ERREUR AVALÉE. Sur une
+  /// vue déjà détruite, le canal `native_video_player/tN` n'a plus de
+  /// handler → `invokeMethod` lève une `MissingPluginException`. Sans ce
+  /// filet, cette exception remontait NON RATTRAPÉE jusqu'à la zone globale
+  /// (crash.error de la Boîte noire, terrain 20/08 : « dispose on channel
+  /// native_video_player/t1 »). Un appel de commande raté sur un lecteur
+  /// mort est sans conséquence : la vue est partie, il n'y a rien à piloter.
+  void _fire(String method, [Map<String, dynamic>? args]) {
+    _channel?.invokeMethod<void>(method, args).catchError((Object _) {});
+  }
 
-  void pause() => _channel?.invokeMethod<void>('pause');
+  void play() => _fire('play');
+
+  void pause() => _fire('pause');
 
   /// ARRÊT COMPLET : libère la source et FERME la connexion au serveur, sans
   /// détruire la vue — un [setUrl] ultérieur relance proprement.
@@ -443,31 +454,34 @@ class NativeVideoController extends ChangeNotifier {
     if (duration > Duration.zero && t > duration) t = duration;
     position = t;
     if (!_disposed) notifyListeners();
-    _channel!.invokeMethod<void>('seekTo', <String, dynamic>{'ms': t.inMilliseconds});
+    _fire('seekTo', <String, dynamic>{'ms': t.inMilliseconds});
   }
 
   /// Avance/recule de [delta] (Netflix : ±10 s) depuis la position courante.
   void seekBy(Duration delta) => seekTo(position + delta);
 
   /// Sélectionne la [index]-ième piste audio (ordre de [audioTracks]).
-  void setAudioTrack(int index) => _channel?.invokeMethod<void>(
-      'setAudioTrack', <String, dynamic>{'index': index});
+  void setAudioTrack(int index) =>
+      _fire('setAudioTrack', <String, dynamic>{'index': index});
 
   /// Sélectionne la [index]-ième piste de sous-titres, ou -1 = désactivés.
-  void setSubtitleTrack(int index) => _channel?.invokeMethod<void>(
-      'setSubtitleTrack', <String, dynamic>{'index': index});
+  void setSubtitleTrack(int index) =>
+      _fire('setSubtitleTrack', <String, dynamic>{'index': index});
 
   /// Règle le volume (0.0 = muet, 1.0 = plein). Sert à la MULTI-VUE : seule la
   /// tuile active garde le son. Conservé pour ré-application au rattachement.
   void setVolume(double volume) {
     _volume = volume.clamp(0.0, 1.0);
-    _channel?.invokeMethod<void>('setVolume', <String, dynamic>{'volume': _volume});
+    _fire('setVolume', <String, dynamic>{'volume': _volume});
   }
 
   @override
   void dispose() {
     _disposed = true;
-    _channel?.invokeMethod<void>('dispose');
+    // ERREUR AVALÉE (cf. _fire) : sur une vue déjà détruite, `dispose`
+    // levait une MissingPluginException NON RATTRAPÉE — c'était le crash
+    // « dispose on channel native_video_player/t1 » du 20/08.
+    _fire('dispose');
     _channel?.setMethodCallHandler(null);
     super.dispose();
   }
