@@ -110,6 +110,12 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
   String _lineTestStatus = '';
   String _lineTestVerdict = '';
 
+  // ----- « Libérer la connexion maintenant » (bouton demandé le 20/08 :
+  // couper TOUT d'un coup — lecteur, aperçus, relais — pour rendre le
+  // créneau tout de suite) -----
+  bool _releasing = false;
+  String _releaseResult = '';
+
   @override
   void initState() {
     super.initState();
@@ -724,6 +730,52 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
             ),
           ),
         ],
+        const SizedBox(height: 14),
+        // ----- « Libérer la connexion maintenant » -----
+        TvFocusBuilder(
+          scale: TvFocusScale.large,
+          onSelect: _releasing ? null : () => _releaseNow(),
+          builder: (BuildContext context, bool focused) {
+            final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+            final Color fg =
+                focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+            return Container(
+              decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              child: Row(
+                children: <Widget>[
+                  Icon(Icons.link_off_rounded, color: fg, size: 26),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _releasing
+                          ? 'Fermeture de toutes les connexions…'
+                          : 'Libérer la connexion maintenant '
+                              '(coupe tout d\'un coup)',
+                      style: TextStyle(
+                          fontSize: TvDimens.title,
+                          fontWeight: FontWeight.w700,
+                          color: fg),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        if (_releaseResult.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 10),
+          _focusableCard(
+            child: Text(
+              _releaseResult,
+              style: const TextStyle(
+                  fontSize: TvDimens.body, color: TvTokens.text, height: 1.4),
+            ),
+          ),
+        ],
         const SizedBox(height: 18),
         _sectionTitle(context.l10n.tvBlackBoxSectionFailures(_failures.length)),
         if (_failures.isEmpty)
@@ -836,6 +888,83 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
       _lineTestRunning = false;
       _lineTestStatus = '';
       _lineTestVerdict = verdict;
+    });
+  }
+
+  /// LIBÈRE LA CONNEXION MAINTENANT (bouton demandé le 20/08). Coupe TOUT
+  /// d'un coup : toutes les sessions du relais (lecteur plein écran,
+  /// aperçus, enregistrements en cours passent par lui), puis mesure —
+  /// une fois — les compteurs du compte pour CONFIRMER que la ligne est
+  /// bien retombée à 0 côté fournisseur. Honnête : si le compte reste à
+  /// 1/1 alors que l'app a tout fermé, c'est que la connexion est tenue
+  /// AILLEURS (autre appareil) ou que le panel garde la session — l'app,
+  /// elle, a bien tout rendu.
+  Future<void> _releaseNow() async {
+    setState(() {
+      _releasing = true;
+      _releaseResult = '';
+    });
+    StreamDiagnostics.instance.recordEvent('sonde-ligne',
+        'Libération manuelle : fermeture de toutes les connexions de l\'app');
+    try {
+      await LocalStreamRelay.instance.closeOtherPlaybacks('');
+    } catch (_) {
+      // best-effort : le relais journalise ses propres échecs.
+    }
+    // Laisse les sockets se fermer réellement côté réseau avant de mesurer.
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+
+    // Mesure de confirmation (best-effort) sur la source Xtream active.
+    pl.Playlist? src;
+    try {
+      src = await PlaylistRepository.instance.getActivePlaylist();
+    } catch (_) {
+      src = null;
+    }
+    if (src == null || src.type != pl.PlaylistType.xtream) {
+      for (final pl.Playlist p in PlaylistRepository.instance.currentPlaylists) {
+        if (p.type == pl.PlaylistType.xtream) {
+          src = p;
+          break;
+        }
+      }
+    }
+    String result = 'Toutes les connexions de l\'application ont été '
+        'fermées. Si une chaîne affichait « 1/1 », patiente quelques '
+        'secondes puis réessaie.';
+    if (src != null &&
+        src.type == pl.PlaylistType.xtream &&
+        src.xtreamServer != null &&
+        src.xtreamUsername != null &&
+        src.xtreamPassword != null) {
+      try {
+        final XtreamAccountInfo info = await XtreamClient(
+          serverUrl: src.xtreamServer!,
+          username: src.xtreamUsername!,
+          password: src.xtreamPassword!,
+          timeout: const Duration(seconds: 8),
+        ).fetchAccountInfo();
+        final int? active = info.activeCons;
+        final int? max = info.maxConnections;
+        if (active == 0) {
+          result = '✅ Ligne libérée : le fournisseur compte '
+              '0/${max ?? '?'} connexion. Tu peux ouvrir une chaîne.';
+        } else if (active != null) {
+          result = '⚠️ L\'application a tout fermé, mais le fournisseur '
+              'compte encore $active/${max ?? '?'} connexion(s). Ce n\'est '
+              'donc PAS cette TV : soit un autre appareil regarde avec ce '
+              'compte, soit le fournisseur garde la session quelques '
+              'secondes. Lance « Tester la ligne » pour trancher.';
+        }
+      } catch (_) {
+        // panel muet : on garde le message générique.
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _releasing = false;
+      _releaseResult = result;
     });
   }
 
