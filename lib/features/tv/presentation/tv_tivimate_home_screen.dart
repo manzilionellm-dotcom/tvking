@@ -33,6 +33,7 @@ import '../../channels/domain/channel_genre.dart';
 import '../../epg/presentation/widgets/mini_epg_now_next.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../core/tv_developer_mode.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_memory_guard.dart';
@@ -550,10 +551,13 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
               icon: Icons.grid_view_rounded,
               onSelect: () => _open(const TvTivimateGuideScreen())),
           const Spacer(),
-          _RailIcon(
-              icon: Icons.dashboard_customize_rounded,
-              onSelect: () => _open(const TvHomeTemplateScreen())),
-          const SizedBox(height: 14),
+          // Choix des modèles A/B/C/D : réservé au mode Développeur (21/08).
+          if (TvDeveloperMode.instance.enabled) ...<Widget>[
+            _RailIcon(
+                icon: Icons.dashboard_customize_rounded,
+                onSelect: () => _open(const TvHomeTemplateScreen())),
+            const SizedBox(height: 14),
+          ],
           _RailIcon(
               icon: Icons.settings_outlined,
               onSelect: () => _open(const TvSettingsScreen())),

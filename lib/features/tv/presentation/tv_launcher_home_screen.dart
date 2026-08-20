@@ -34,6 +34,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../security/data/parental_controls.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/domain/vod_movie.dart';
+import '../core/tv_developer_mode.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
@@ -374,10 +375,12 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
             icon: Icons.grid_view_rounded,
             tip: context.l10n.guideTitle,
             onSelect: () => _open(const TvGuideGridScreen())),
-        _TopIcon(
-            icon: Icons.dashboard_customize_rounded,
-            tip: context.l10n.tvNavTemplates,
-            onSelect: () => _open(const TvHomeTemplateScreen())),
+        // Choix des modèles A/B/C/D : réservé au mode Développeur (21/08).
+        if (TvDeveloperMode.instance.enabled)
+          _TopIcon(
+              icon: Icons.dashboard_customize_rounded,
+              tip: context.l10n.tvNavTemplates,
+              onSelect: () => _open(const TvHomeTemplateScreen())),
         _TopIcon(
             icon: Icons.settings_rounded,
             tip: context.l10n.tvNavSettings,

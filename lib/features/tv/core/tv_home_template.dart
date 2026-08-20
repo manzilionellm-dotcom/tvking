@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../playlists/data/favorites_repository.dart';
+import 'tv_developer_mode.dart';
 
 /// Univers de favoris associé à un template : « The Few » (Classique) garde ses
 /// favoris historiques (portée `default`) ; « Seven » (IBO/TiviMate) a les
@@ -45,7 +46,12 @@ const List<TvHomeTemplate> kTemplateOrder = <TvHomeTemplate>[
 
 /// Accueil par défaut des installations NEUVES. Les installations
 /// EXISTANTES ne sont jamais déplacées (cf. `initialize`).
-const TvHomeTemplate kDefaultTemplate = TvHomeTemplate.launcher;
+///
+/// DÉCISION PROPRIÉTAIRE (21/08/2026) : le Modèle D (panneau façon
+/// TiviMate) devient l'UNIQUE accueil présenté — hors mode Développeur,
+/// [TvHomeTemplateRepository.template] le force quel que soit le choix
+/// mémorisé (cf. tv_developer_mode.dart).
+const TvHomeTemplate kDefaultTemplate = TvHomeTemplate.tivimate;
 
 /// Accueil par défaut HISTORIQUE — conservé pour les box déjà en service.
 const TvHomeTemplate kLegacyDefaultTemplate = TvHomeTemplate.classic;
@@ -108,9 +114,23 @@ class TvHomeTemplateRepository extends ChangeNotifier {
   static const String _kKey = 'tv.home.template.v1';
 
   TvHomeTemplate _template = kLegacyDefaultTemplate;
-  TvHomeTemplate get template => _template;
+
+  /// Template EFFECTIF : hors mode Développeur, l'app ne présente que le
+  /// Modèle D (décision du 21/08) — le choix mémorisé n'est PAS effacé,
+  /// il revit dès que le mode Développeur est réactivé.
+  TvHomeTemplate get template =>
+      TvDeveloperMode.instance.enabled ? _template : kDefaultTemplate;
+
+  /// Choix MÉMORISÉ (indépendant du forçage D ci-dessus) : ce que la box a
+  /// choisi ou reçu en migration. Sert aux tests de migration et au
+  /// sélecteur du mode Développeur (surligner le choix réel).
+  TvHomeTemplate get chosenTemplate => _template;
 
   /// À appeler UNE fois au boot (avant le 1er rendu de la home).
+  ///
+  /// NB 21/08/2026 : cette migration ne pilote plus que le CHOIX MÉMORISÉ
+  /// ([chosenTemplate]) — l'accueil PRÉSENTÉ est le Modèle D forcé hors
+  /// mode Développeur (cf. [template]).
   ///
   /// MIGRATION A↔B (15/08/2026) : le défaut des installations NEUVES passe
   /// au « grandes tuiles » (Modèle A). Une box DÉJÀ EN SERVICE ne doit
@@ -142,10 +162,25 @@ class TvHomeTemplateRepository extends ChangeNotifier {
     // base momentanément indisponible ou corrompue ne doit PAS empêcher
     // l'app de démarrer — au pire les favoris se rechargeront plus tard.
     try {
+      // Portée alignée sur le template EFFECTIF (D forcé hors mode
+      // Développeur) — pas sur le choix mémorisé.
       await FavoritesRepository.instance
-          .setScope(favoritesScopeForTemplate(_template));
+          .setScope(favoritesScopeForTemplate(template));
     } catch (_) {
       // Boot prioritaire : on continue avec la disposition résolue.
+    }
+    notifyListeners();
+  }
+
+  /// Le mode Développeur vient de basculer → le template EFFECTIF a pu
+  /// changer (D forcé ↔ choix mémorisé) : on réaligne l'univers de favoris
+  /// et on reconstruit la home. Appelé par TvDeveloperMode.setEnabled.
+  Future<void> onDeveloperModeChanged() async {
+    try {
+      await FavoritesRepository.instance
+          .setScope(favoritesScopeForTemplate(template));
+    } catch (_) {
+      // Favoris rechargés au prochain accès ; la disposition, elle, passe.
     }
     notifyListeners();
   }

@@ -27,6 +27,7 @@ import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../core/tv_developer_mode.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
@@ -457,18 +458,23 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                                 restoreId: 'recherche'),
                           ),
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: _NavTile(
-                            icon: Icons.dashboard_customize_rounded,
-                            label: context.l10n.tvNavTemplates,
-                            restoreId: 'templates',
-                            restoreFocusId: _restoreFocusId,
-                            onRestored: _clearRestore,
-                            onSelect: () => _open(const TvHomeTemplateScreen(),
-                                restoreId: 'templates'),
+                        // Choix des modèles A/B/C/D : réservé au mode
+                        // Développeur (décision du 21/08).
+                        if (TvDeveloperMode.instance.enabled) ...<Widget>[
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _NavTile(
+                              icon: Icons.dashboard_customize_rounded,
+                              label: context.l10n.tvNavTemplates,
+                              restoreId: 'templates',
+                              restoreFocusId: _restoreFocusId,
+                              onRestored: _clearRestore,
+                              onSelect: () => _open(
+                                  const TvHomeTemplateScreen(),
+                                  restoreId: 'templates'),
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),

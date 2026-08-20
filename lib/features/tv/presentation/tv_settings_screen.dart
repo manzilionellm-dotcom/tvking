@@ -11,6 +11,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../core/tv_developer_mode.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../../../core/update/update_prompt.dart';
@@ -284,49 +285,58 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             },
           ),
           const SizedBox(height: 14),
-          // ----- Changer les templates d'accueil (Classique / IBO / TiviMate)
-          //  Point d'entrée UNIVERSEL : depuis le Classique (défaut) on n'a
-          //  aucun bouton « templates » sur l'accueil → on le met ici pour que
-          //  tout le monde puisse changer de disposition. TvHomeTemplateScreen
-          //  s'enveloppe déjà dans TvShell → push direct (sans TvShell).
-          TvFocusBuilder(
-            scale: TvFocusScale.large,
-            onSelect: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const TvHomeTemplateScreen(),
-              ),
-            ),
-            builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
-              final Color fg =
-                  focused ? TvTokens.onGold : TvTokens.goldBright;
-              return Container(
-                width: 760,
-                decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-                child: Row(
-                  children: <Widget>[
-                    Icon(Icons.dashboard_customize_rounded, color: fg, size: 26),
-                    const SizedBox(width: 12),
-                    // Clé existante (bouton équivalent de l'accueil Classique) :
-                    // ce texte était resté en dur, donc en français dans
-                    // toutes les langues (chantier traductions 19/08).
-                    Text(context.l10n.tvTemplateChange,
-                        style: TextStyle(
-                            fontSize: TvDimens.title,
-                            fontWeight: FontWeight.w700,
-                            color: fg)),
-                    const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
-                  ],
+          // ----- « Développeur » (CACHÉ) : le choix des modèles d'accueil
+          //  A/B/C/D. Décision propriétaire du 21/08 : l'app ne présente
+          //  qu'UN modèle (D, panneau façon TiviMate) — cette entrée
+          //  n'apparaît qu'en mode Développeur (appui LONG sur « À propos »
+          //  pour basculer), pour les gens qui exigent tout.
+          if (TvDeveloperMode.instance.enabled) ...<Widget>[
+            TvFocusBuilder(
+              scale: TvFocusScale.large,
+              onSelect: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TvHomeTemplateScreen(),
                 ),
-              );
-            },
-          ),
-          const SizedBox(height: 14),
+              ),
+              builder: (BuildContext context, bool focused) {
+                final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+                final Color fg =
+                    focused ? TvTokens.onGold : TvTokens.goldBright;
+                return Container(
+                  width: 760,
+                  decoration: BoxDecoration(
+                      color: bg,
+                      borderRadius:
+                          BorderRadius.circular(TvDimens.cardRadius)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(Icons.code_rounded, color: fg, size: 26),
+                      const SizedBox(width: 12),
+                      Text(context.l10n.tvSettingsDeveloper,
+                          style: TextStyle(
+                              fontSize: TvDimens.title,
+                              fontWeight: FontWeight.w700,
+                              color: fg)),
+                      const SizedBox(width: 12),
+                      // Le sous-texte réutilise la clé existante du sélecteur :
+                      // il dit exactement ce qu'on trouve derrière.
+                      Expanded(
+                        child: Text(context.l10n.tvTemplateChange,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: TvDimens.body,
+                                color: fg.withValues(alpha: 0.7))),
+                      ),
+                      Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+          ],
           // ----- Mes téléchargements (films hors-ligne) -----
           TvFocusBuilder(
             scale: TvFocusScale.large,
@@ -872,6 +882,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           ),
           const SizedBox(height: 14),
           // ----- À propos (version, appareil, mémoire, vider le cache) -----
+          //  APPUI LONG (geste volontairement caché, décision du 21/08) :
+          //  bascule le mode Développeur — fait apparaître/disparaître
+          //  l'entrée « Développeur » (choix des modèles d'accueil A/B/C/D)
+          //  et, hors de ce mode, l'app force le Modèle D.
           TvFocusBuilder(
             scale: TvFocusScale.large,
             onSelect: () => Navigator.of(context).push(
@@ -879,6 +893,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                 builder: (_) => const TvShell(child: TvAboutScreen()),
               ),
             ),
+            onLongPress: () async {
+              final bool next = !TvDeveloperMode.instance.enabled;
+              await TvDeveloperMode.instance.setEnabled(next);
+              if (mounted) setState(() {});
+            },
             builder: (BuildContext context, bool focused) {
               final Color bg = focused ? TvTokens.gold : TvTokens.sel;
               final Color fg =

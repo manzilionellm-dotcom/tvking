@@ -931,6 +931,7 @@
   "tvSettingsSleep": "مؤقّت السكون (إيقاف بعد X دقيقة)",
   "tvSettingsDisplay": "العرض (هامش الشاشة + حجم النص)",
   "tvSettingsAbout": "حول (الإصدار، الجهاز، مسح الذاكرة المؤقتة)",
+  "tvSettingsDeveloper": "المطوّر",
   "tvSettingsBlackBox": "الصندوق الأسود (التشخيص والتقرير الكامل)",
   "tvMyTeams": "فرقي",
   "tvChooseTeams": "اختر فرقك المفضّلة",

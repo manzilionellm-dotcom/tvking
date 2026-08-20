@@ -22,6 +22,7 @@ import 'core/app/safe_mode_app.dart';
 import 'core/crash/crash_reporting.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
+import 'features/tv/core/tv_developer_mode.dart';
 import 'features/tv/core/tv_home_template.dart';
 import 'features/tv/core/tv_memory_guard.dart';
 import 'core/notifications/notification_service.dart';
@@ -122,6 +123,10 @@ Future<void> _bootstrap() async {
   // jour ») : BLOQUANT et rapide, pour que le 1er rendu TV soit déjà à la
   // bonne couleur (pas de flash). Partagé avec le mobile via AccentController.
   await AccentController.instance.initialize();
+
+  // Mode Développeur (caché) AVANT le template : hors de ce mode, l'app
+  // force le Modèle D — le drapeau doit donc être connu au 1er rendu.
+  await TvDeveloperMode.instance.initialize();
 
   // Template d'accueil choisi (Classique / Grandes tuiles) : BLOQUANT et
   // rapide, pour que le 1er rendu affiche la bonne disposition sans flash.

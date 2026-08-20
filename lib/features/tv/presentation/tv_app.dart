@@ -24,6 +24,7 @@ import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../core/tv_developer_mode.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_program_reminders.dart';
 import '../core/tv_tokens.dart';
@@ -759,14 +760,18 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                   // « Direct ». Ouvre le sélecteur (Classique/IBO/TiviMate).
                   // « The Few » reste « The Few » ; changer de template bascule
                   // vers l'univers SEVEN (le picker s'occupe du reste).
-                  _TemplateButton(
-                    onOpen: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const TvHomeTemplateScreen(),
+                  // Réservé au mode Développeur (décision du 21/08 : un seul
+                  // modèle présenté, le D).
+                  if (TvDeveloperMode.instance.enabled) ...<Widget>[
+                    _TemplateButton(
+                      onOpen: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const TvHomeTemplateScreen(),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
+                    const SizedBox(width: 12),
+                  ],
                   _CompactNavBar(
                     selected: _selected,
                     selectedFocusNode: _railFocus,

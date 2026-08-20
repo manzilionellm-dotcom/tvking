@@ -931,6 +931,7 @@
   "tvSettingsSleep": "Temporizador (apagar tras X min)",
   "tvSettingsDisplay": "Pantalla (margen + tamaño de texto)",
   "tvSettingsAbout": "Acerca de (versión, dispositivo, caché)",
+  "tvSettingsDeveloper": "Desarrollador",
   "tvSettingsBlackBox": "Caja negra (diagnóstico e informe completo)",
   "tvMyTeams": "Mis equipos",
   "tvChooseTeams": "Elige tus equipos favoritos",
