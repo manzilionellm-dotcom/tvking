@@ -352,7 +352,7 @@ jobs:
             echo "::warning::Aucun .tpk produit (compilation Tizen à finaliser)."
             exit 0
           fi
-          cp "$TPK" build/tizen/tpk/thefew-tizen.tpk
+          cp "$TPK" build/tizen/tpk/thefew_tizen.tpk
           if [ "${SIGNED_WITH_AUTHOR:-0}" = "1" ]; then
             SIGN_LINE="✅ Signé avec TON certificat auteur Samsung (+ distributeur Tizen par défaut) — prêt pour le sideload et la soumission au store."
           else
@@ -368,11 +368,11 @@ jobs:
           Commit : ${{ github.sha }}"
           if gh release view tizen-latest --repo "$REPO" >/dev/null 2>&1; then
             gh release edit tizen-latest --repo "$REPO" --notes "$NOTES"
-            gh release upload tizen-latest --repo "$REPO" --clobber build/tizen/tpk/thefew-tizen.tpk
+            gh release upload tizen-latest --repo "$REPO" --clobber build/tizen/tpk/thefew_tizen.tpk
           else
             gh release create tizen-latest --repo "$REPO" \
               --title "The Few — Samsung TV (dernier build)" \
-              --notes "$NOTES" --prerelease build/tizen/tpk/thefew-tizen.tpk
+              --notes "$NOTES" --prerelease build/tizen/tpk/thefew_tizen.tpk
           fi
 
       # FINI les runs « verts » sans .tpk : si rien n'est sorti, le run est
