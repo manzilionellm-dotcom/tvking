@@ -200,7 +200,10 @@ class TvCtaButton extends StatelessWidget {
             border: focused ? Border.all(color: TvTokens.text, width: 2) : null,
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: const Color(0xFFCCB089).withValues(alpha: focused ? 0.55 : 0.35),
+                // Lueur du CTA : TOUJOURS la couleur d'accent du design system
+                // (l'ancien or 0xFFCCB089 était codé en dur ici — il aurait
+                // survécu, orphelin, au passage au thème « Verre Noir »).
+                color: TvTokens.gold.withValues(alpha: focused ? 0.55 : 0.35),
                 blurRadius: focused ? 36 : 24,
                 spreadRadius: -10,
                 offset: const Offset(0, 8),

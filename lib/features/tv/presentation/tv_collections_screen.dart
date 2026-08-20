@@ -112,7 +112,7 @@ class _TvCollectionsScreenState extends State<TvCollectionsScreen> {
                         final Color bg =
                             focused ? TvTokens.gold : TvTokens.sel;
                         final Color fg = focused
-                            ? const Color(0xFF1A1206)
+                            ? TvTokens.onGold
                             : TvTokens.goldBright;
                         return Container(
                           width: 760,
@@ -171,7 +171,7 @@ class _TvCollectionsScreenState extends State<TvCollectionsScreen> {
                             final Color bg =
                                 focused ? TvTokens.gold : TvTokens.card;
                             final Color fg = focused
-                                ? const Color(0xFF1A1206)
+                                ? TvTokens.onGold
                                 : TvTokens.text;
                             return Container(
                               padding: const EdgeInsets.symmetric(
@@ -524,7 +524,7 @@ class _ChannelTile extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.check_rounded,
-                    size: 16, color: Color(0xFF1A1206)),
+                    size: 16, color: TvTokens.onGold),
               ),
             ),
         ],
