@@ -150,7 +150,7 @@ class _ZapHarness {
       setAdoptedAltUrl: (_) {},
       resetWatchdogBudget: () {},
       reopen: (String url) => unawaited(open(url)),
-      showBlocked: blockedMessages.add,
+      showBlocked: (BlockedVerdict v) => blockedMessages.add(v.message),
       retryBackoff: retryBackoff,
     )..attach(); // le VRAI abonnement de production au relais
   }

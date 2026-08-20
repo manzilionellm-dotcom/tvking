@@ -1696,6 +1696,8 @@
   "playerBlockedExpired": "Usajili wako uliisha tarehe {date}. Fanya upya laini yako kwa mtoa huduma wako.",
   "playerBlockedProvider": "Mtiririko huu haujibu kwa mtoa huduma wako. Usajili wako si tatizo: jaribu tena, au chagua chaneli nyingine.",
   "playerBlockedMaxConnections": "Kikomo cha muunganisho kimefikiwa ({active}/{max}). Skrini nyingine tayari inatazama kwa akaunti hii — ifunge, kisha ujaribu tena.",
+  "playerMaxConnectionsGeneric": "Kikomo cha miunganisho kimefikiwa: usajili wako unaruhusu idadi ndogo tu ya vipindi kwa wakati mmoja, na skrini nyingine (au kituo kilichotangulia) bado inashikilia nafasi. Funga kipindi kingine, subiri sekunde chache, kisha ujaribu tena.",
+  "playerServerError": "Seva ya mtoa huduma wako imeanguka (hitilafu {code}). Si tatizo la programu wala kifaa chako — jaribu tena baadaye kidogo, au wasiliana na mtoa huduma wako likiendelea.",
   "playerBlockedBanned": "Akaunti hii imesimamishwa. Wasiliana na mtoa huduma wako.",
   "playerWeakConnection": "Uchezaji unaendelea kusitasita (buffering). Muunganisho wako wa intaneti huenda ni dhaifu mno kwa chaneli hii (au seva ya mtoa huduma wako ni ya polepole). Angalia WiFi / kasi yako ya intaneti, au jaribu chaneli ya ubora wa chini. Hili si tatizo la programu.",
   "loginM3uIntro": "Bandika kiungo cha M3U ulichopewa na muuzaji wako.\nChaneli zako zitapakia baada ya sekunde chache.",

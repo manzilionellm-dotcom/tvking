@@ -104,7 +104,7 @@ void main() {
       reopen: (String url) {
         if (!reopened.isCompleted) reopened.complete(url);
       },
-      showBlocked: blockedMessages.add,
+      showBlocked: (BlockedVerdict v) => blockedMessages.add(v.message),
     )..attach(); // le VRAI abonnement de production au relais
 
     // ----- 1) « _openMedia » : le lecteur ouvre la forme .ts ----------
@@ -198,7 +198,7 @@ void main() {
       setAdoptedAltUrl: (_) {},
       resetWatchdogBudget: () {},
       reopen: (_) {},
-      showBlocked: blockedMessages.add,
+      showBlocked: (BlockedVerdict v) => blockedMessages.add(v.message),
     );
 
     await fallback.run(); // 1er diagnostic complet (échec total)
@@ -230,6 +230,9 @@ void main() {
       isLive: true,
     );
     final List<String> blockedMessages = <String>[];
+    // Verrou i18n (20/08) : l'écran reçoit une RAISON TYPÉE à traduire,
+    // plus seulement un texte français en dur.
+    final List<BlockedKind> blockedKinds = <BlockedKind>[];
     bool cascadeReopened = false;
     final StreamBlockedFallback fallback = StreamBlockedFallback(
       getChannel: () => channel,
@@ -241,7 +244,10 @@ void main() {
       setAdoptedAltUrl: (_) {},
       resetWatchdogBudget: () {},
       reopen: (_) => cascadeReopened = true,
-      showBlocked: blockedMessages.add,
+      showBlocked: (BlockedVerdict v) {
+        blockedMessages.add(v.message);
+        blockedKinds.add(v.kind);
+      },
     )..attach();
 
     // « _openMedia » sur la .ts → 404 définitif → événement relais.
@@ -256,6 +262,8 @@ void main() {
     expect(blockedMessages, isNotEmpty,
         reason: 'coupure sur une chaîne qui décodait → erreur directe');
     expect(blockedMessages.first, contains('Flux interrompu'));
+    expect(blockedKinds.first, BlockedKind.interrupted,
+        reason: 'la raison typée permet à l\'écran de traduire le message');
     expect(cascadeReopened, isFalse,
         reason: 'pas de cascade quand la lecture avait réellement démarré');
     expect(_journal(),

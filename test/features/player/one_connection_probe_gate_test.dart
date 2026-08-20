@@ -82,7 +82,7 @@ void main() {
       setAdoptedAltUrl: (_) {},
       resetWatchdogBudget: () {},
       reopen: (_) {},
-      showBlocked: blockedMessages.add,
+      showBlocked: (BlockedVerdict v) => blockedMessages.add(v.message),
     );
 
     final int uaBefore = _probedUaCount();
@@ -138,7 +138,7 @@ void main() {
       setAdoptedAltUrl: (_) {},
       resetWatchdogBudget: () {},
       reopen: (_) {},
-      showBlocked: blockedMessages.add,
+      showBlocked: (BlockedVerdict v) => blockedMessages.add(v.message),
     );
 
     final int uaBefore = _probedUaCount();

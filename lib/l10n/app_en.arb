@@ -1483,6 +1483,8 @@
       }
     }
   },
+  "playerMaxConnectionsGeneric": "Connection limit reached: your subscription only allows a limited number of simultaneous streams, and another screen (or the previous channel) is still using the slot. Close the other stream, wait a few seconds, then try again.",
+  "playerServerError": "Your provider's server is down (error {code}). It's not the app or your box — try again in a moment, or contact your provider if it persists.",
   "playerBlockedBanned": "This account is suspended. Contact your provider.",
   "playerWeakConnection": "Playback keeps buffering. Your internet connection is likely too weak for this channel (or your provider's server is slow). Check your WiFi / bandwidth, or try a lower-quality channel. This is not an app problem.",
   "playerCastConnectingTo": "Connecting to {device}…",

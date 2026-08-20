@@ -1696,6 +1696,8 @@
   "playerBlockedExpired": "Dit abonnement udløb den {date}. Forny din linje hos din udbyder.",
   "playerBlockedProvider": "Denne stream svarer ikke hos din udbyder. Dit abonnement er ikke problemet: prøv igen, eller vælg en anden kanal.",
   "playerBlockedMaxConnections": "Forbindelsesgrænse nået ({active}/{max}). En anden skærm ser allerede med denne konto — luk den, og prøv igen.",
+  "playerMaxConnectionsGeneric": "Forbindelsesgrænsen er nået: dit abonnement tillader kun et begrænset antal samtidige afspilninger, og en anden skærm (eller den forrige kanal) optager stadig pladsen. Luk den anden afspilning, vent et par sekunder, og prøv igen.",
+  "playerServerError": "Din udbyders server er nede (fejl {code}). Det er hverken appen eller din boks — prøv igen om lidt, eller kontakt din udbyder, hvis det fortsætter.",
   "playerBlockedBanned": "Denne konto er suspenderet. Kontakt din udbyder.",
   "playerWeakConnection": "Afspilningen bliver ved med at buffere. Din internetforbindelse er sandsynligvis for svag til denne kanal (eller din udbyders server er langsom). Tjek dit WiFi / din båndbredde, eller prøv en kanal i lavere kvalitet. Det er ikke et problem med appen.",
   "loginM3uIntro": "Indsæt det M3U-link, din forhandler gav dig.\nDine kanaler indlæses om få sekunder.",

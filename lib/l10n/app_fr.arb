@@ -2725,6 +2725,15 @@
       }
     }
   },
+  "playerMaxConnectionsGeneric": "Limite de connexions atteinte : ton abonnement n'autorise qu'un nombre limité de lectures en même temps, et un autre écran (ou la chaîne précédente) occupe encore le créneau. Ferme l'autre lecture, patiente quelques secondes, puis réessaie.",
+  "playerServerError": "Le serveur de ton fournisseur est en panne (erreur {code}). Ce n'est pas l'application ni ta box — réessaie dans un moment, ou contacte ton fournisseur si ça dure.",
+  "@playerServerError": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
   "playerBlockedBanned": "Ce compte est suspendu. Contacte ton fournisseur.",
   "playerWeakConnection": "La lecture n'arrête pas de charger. Ta connexion Internet est probablement trop faible pour cette chaîne (ou le serveur de ton fournisseur est lent). Vérifie ton WiFi / ton débit, ou essaie une chaîne de moindre qualité. Ce n'est pas un problème de l'application.",
   "playerCastConnectingTo": "Connexion à {device}…",

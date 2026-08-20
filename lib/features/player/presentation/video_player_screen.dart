@@ -753,11 +753,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         }
       },
       reopen: _openMedia,
-      showBlocked: (String message) {
+      showBlocked: (BlockedVerdict verdict) {
         if (!mounted) return;
         setState(() {
           _hasError = true;
-          _errorMessage = _blockMessage(message);
+          // Le verdict typé est TRADUIT ici (l10n) : le contrôleur, qui ne
+          // connaît pas Flutter, envoyait du français en dur — il restait
+          // affiché tel quel dans toutes les langues (chantier du 20/08).
+          _errorMessage = _blockMessage(_verdictText(verdict));
         });
       },
     )..attach();
@@ -1151,6 +1154,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       // plusieurs émissions — on retentera à la prochaine.
     } catch (_) {
       // best-effort : on ne casse jamais la lecture pour une variante.
+    }
+  }
+
+  /// Traduit le verdict typé du diagnostic dans la langue de l'utilisateur.
+  /// (Le contrôleur [StreamBlockedFallback] ne connaît pas Flutter : il ne
+  /// peut pas traduire lui-même — cf. [BlockedKind].)
+  String _verdictText(BlockedVerdict v) {
+    switch (v.kind) {
+      case BlockedKind.channelBlocked:
+        return context.l10n.playerChannelBlocked;
+      case BlockedKind.networkBlocked:
+        return '${context.l10n.playerChannelBlocked}\n\n'
+            '${context.l10n.playerNetworkBlockHint}';
+      case BlockedKind.maxConnections:
+        return context.l10n.playerMaxConnectionsGeneric;
+      case BlockedKind.serverError:
+        return context.l10n.playerServerError('${v.httpCode ?? '?'}');
+      case BlockedKind.interrupted:
+        return context.l10n.playerStreamInterrupted;
     }
   }
 

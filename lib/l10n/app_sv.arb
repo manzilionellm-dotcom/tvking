@@ -1696,6 +1696,8 @@
   "playerBlockedExpired": "Ditt abonnemang gick ut den {date}. Förnya din linje hos din leverantör.",
   "playerBlockedProvider": "Den här strömmen svarar inte hos din leverantör. Ditt abonnemang är inte problemet: försök igen eller välj en annan kanal.",
   "playerBlockedMaxConnections": "Anslutningsgränsen nådd ({active}/{max}). En annan skärm tittar redan med det här kontot — stäng den och försök igen.",
+  "playerMaxConnectionsGeneric": "Anslutningsgränsen har nåtts: ditt abonnemang tillåter bara ett begränsat antal samtidiga uppspelningar, och en annan skärm (eller den förra kanalen) upptar fortfarande platsen. Stäng den andra uppspelningen, vänta några sekunder och försök igen.",
+  "playerServerError": "Din leverantörs server är nere (fel {code}). Det är inte appen eller din box — försök igen om en stund, eller kontakta din leverantör om det fortsätter.",
   "playerBlockedBanned": "Det här kontot är avstängt. Kontakta din leverantör.",
   "playerWeakConnection": "Uppspelningen buffrar hela tiden. Din internetanslutning är förmodligen för svag för den här kanalen (eller så är din leverantörs server långsam). Kontrollera ditt WiFi / din bandbredd, eller prova en kanal med lägre kvalitet. Det är inte ett problem med appen.",
   "loginM3uIntro": "Klistra in M3U-länken som din återförsäljare gav dig.\nDina kanaler laddas in om några sekunder.",

@@ -429,10 +429,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         }
       },
       reopen: (String _) => unawaited(_loadCurrentUrl()),
-      showBlocked: (String _) {
+      showBlocked: (BlockedVerdict _) {
         // Échec DÉFINITIF (toute la cascade signatures + formats a échoué) →
         // gravé dans le journal de la Boîte noire des Réglages. La cascade
         // possède le contexte fin ; ici on capture les codes ExoPlayer réels.
+        // Le verdict est volontairement ignoré : l'écran d'erreur TV compose
+        // son message via _tvBlockMessage (blockReason + l10n).
         _recordPlaybackFailure();
         if (!mounted) return;
         setState(() {

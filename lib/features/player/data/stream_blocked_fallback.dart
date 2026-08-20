@@ -73,6 +73,51 @@ String kServerErrorMessage(int code) =>
     'l\'application ni ta box — réessaie dans un moment, ou contacte ton '
     'fournisseur si ça dure.';
 
+/// Nature d'un échec DÉFINITIF déclaré par [StreamBlockedFallback].
+///
+/// POURQUOI un type et pas une chaîne : ce contrôleur ne connaît pas Flutter
+/// (donc pas de `context.l10n`), et il passait des messages FRANÇAIS EN DUR
+/// à l'écran — sur le téléphone, ils s'affichaient tels quels même en
+/// anglais/arabe/suédois (chantier traductions du 20/08, « certains mots
+/// restent en français »). L'écran reçoit maintenant la RAISON typée et la
+/// traduit lui-même dans la langue de l'utilisateur.
+enum BlockedKind {
+  /// Chaîne vide ou bloquée par la source (aucune vidéo reçue, toutes les
+  /// signatures et variantes de format ont échoué).
+  channelBlocked,
+
+  /// Comme [channelBlocked], mais les échecs sont de niveau RÉSEAU
+  /// (DNS/timeout) : blocage FAI probable → suggérer un VPN.
+  networkBlocked,
+
+  /// Limite de connexions atteinte (HTTP 458 ou créneau jamais libéré).
+  maxConnections,
+
+  /// Serveur du fournisseur en panne (HTTP 5xx, code dans
+  /// [BlockedVerdict.httpCode]).
+  serverError,
+
+  /// Coupure d'un flux qui décodait déjà (problème réseau, pas de format).
+  interrupted,
+}
+
+/// Verdict d'un échec définitif : la raison typée (à traduire par l'écran)
+/// + le message français de référence, conservé pour le journal de la Boîte
+/// noire et les tests (assertions historiques sur le texte).
+@immutable
+class BlockedVerdict {
+  const BlockedVerdict(this.kind, {required this.message, this.httpCode});
+
+  final BlockedKind kind;
+
+  /// Code HTTP de l'erreur serveur ([BlockedKind.serverError] uniquement).
+  final int? httpCode;
+
+  /// Texte français de référence (journal / tests) — l'UI, elle, doit
+  /// traduire [kind] via l10n au lieu d'afficher cette chaîne.
+  final String message;
+}
+
 /// Contrôleur du diagnostic « contenu bloqué » d'UN écran de lecture.
 /// Toutes les liaisons vers le widget sont des callbacks : le
 /// contrôleur ne connaît pas Flutter et se teste avec le vrai réseau.
@@ -124,8 +169,10 @@ class StreamBlockedFallback {
   /// Rouvre le lecteur sur cette URL (`_openMedia`).
   final void Function(String url) reopen;
 
-  /// Affiche l'erreur bloquante à l'utilisateur.
-  final void Function(String message) showBlocked;
+  /// Affiche l'erreur bloquante à l'utilisateur. L'écran traduit
+  /// [BlockedVerdict.kind] dans la langue de l'utilisateur (l10n) — le
+  /// message français embarqué ne sert qu'au journal et aux tests.
+  final void Function(BlockedVerdict verdict) showBlocked;
 
   /// Ferme (et ATTEND) la connexion de lecture de l'écran avant la première
   /// sonde du diagnostic (stop lecteur + session relais). Optionnel : sans
@@ -244,7 +291,8 @@ class StreamBlockedFallback {
       _log('[458] limite de connexions confirmée après '
           '${_k458Schedule.length} essais étalés sur ~45 s '
           '→ message clair (pas de sonde/cascade)');
-      showBlocked(kMaxConnectionsMessage);
+      showBlocked(const BlockedVerdict(BlockedKind.maxConnections,
+          message: kMaxConnectionsMessage));
       return;
     }
     // HTTP 5xx = ERREUR SERVEUR du fournisseur (500-599 ; 520-524 = le serveur
@@ -256,7 +304,8 @@ class StreamBlockedFallback {
       if (_try5xxRetry()) return;
       _log('[5xx] serveur fournisseur en panne (HTTP $st0) après '
           '$_kMax5xxRetries retries → message clair (pas de sonde/cascade)');
-      showBlocked(kServerErrorMessage(st0));
+      showBlocked(BlockedVerdict(BlockedKind.serverError,
+          message: kServerErrorMessage(st0), httpCode: st0));
       return;
     }
     // RÈGLE DE DÉCISION (mission 2026-07-08 14:43) : la branche
@@ -268,7 +317,8 @@ class StreamBlockedFallback {
     _log('frames décodées: ${frames ? '≥1' : '0'} → décision: '
         '${frames ? 'erreur directe (coupure réseau)' : 'diagnostic'}');
     if (frames) {
-      showBlocked('Flux interrompu. Vérifie ta connexion puis réessaie.');
+      showBlocked(const BlockedVerdict(BlockedKind.interrupted,
+          message: 'Flux interrompu. Vérifie ta connexion puis réessaie.'));
       return;
     }
     // BACKOFF 1-CONNEXION (mission 2026-07-08 17:07) : un 403 dès la
@@ -343,7 +393,8 @@ class StreamBlockedFallback {
     if (_try458Retry()) return true;
     _log('[conteneur] toujours rien de lisible après '
         '${_k458Schedule.length} essais → message clair (pas de sonde)');
-    showBlocked(kMaxConnectionsMessage);
+    showBlocked(const BlockedVerdict(BlockedKind.maxConnections,
+        message: kMaxConnectionsMessage));
     return true;
   }
 
@@ -487,7 +538,8 @@ class StreamBlockedFallback {
             'nouvelle sonde (anti-boucle), erreur affichée',
         level: 'warn',
       );
-      showBlocked(kChannelBlockedMessage);
+      showBlocked(const BlockedVerdict(BlockedKind.channelBlocked,
+          message: kChannelBlockedMessage));
       return;
     }
     _attemptedForChannelId = channel.id;
@@ -500,7 +552,8 @@ class StreamBlockedFallback {
       _log('EXCEPTION pendant le diagnostic : $e', level: 'error');
       if (kDebugMode) debugPrint('[Fallback] $e\n$st');
       if (isAlive() && channel.id == getChannel().id) {
-        showBlocked(kChannelBlockedMessage);
+        showBlocked(const BlockedVerdict(BlockedKind.channelBlocked,
+            message: kChannelBlockedMessage));
       }
     } finally {
       _inFlight = false;
@@ -698,10 +751,14 @@ class StreamBlockedFallback {
     if (!stillCurrent()) return;
     showBlocked(
       probe.isLikelyNetworkBlocked
-          ? '$kChannelBlockedMessage\n\nÇa ressemble à un blocage réseau '
-              '(FAI ou DNS) plutôt qu\'à un problème de l\'app — un VPN '
-              'peut aider si cette chaîne fonctionne ailleurs.'
-          : kChannelBlockedMessage,
+          ? const BlockedVerdict(
+              BlockedKind.networkBlocked,
+              message: '$kChannelBlockedMessage\n\nÇa ressemble à un blocage '
+                  'réseau (FAI ou DNS) plutôt qu\'à un problème de l\'app — '
+                  'un VPN peut aider si cette chaîne fonctionne ailleurs.',
+            )
+          : const BlockedVerdict(BlockedKind.channelBlocked,
+              message: kChannelBlockedMessage),
     );
   }
 
