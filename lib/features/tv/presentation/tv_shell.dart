@@ -3,6 +3,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/color/oklab_color_tween.dart';
 import '../core/tv_ambience.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
@@ -35,19 +36,22 @@ class TvShell extends StatelessWidget {
           : child,
     );
     // AMBIANCES INTELLIGENTES : la « lumière » du fond glisse en ~1,6 s vers
-    // la teinte de l'univers regardé (or à l'accueil, ambre au cinéma, indigo
-    // en séries, vert stade au sport). Un seul ColorTween ; l'arrêt du milieu
-    // est DÉRIVÉ de la lumière (lerp vers le noir) → cohérence garantie.
+    // la teinte de l'univers regardé — et vers la couleur RÉELLE du contenu
+    // ouvert (Caméléon : affiche extraite + tempérage circadien, cf.
+    // TvAmbience). L'interpolation se fait en OKLab (OklabColorTween) : le
+    // chemin entre deux teintes éloignées passe par le neutre, jamais par
+    // le gris boueux du lerp sRGB ni par des teintes étrangères. L'arrêt du
+    // milieu est DÉRIVÉ de la lumière (lerp OKLab vers le noir) → cohérence.
     return ListenableBuilder(
       listenable: TvAmbience.instance,
       builder: (BuildContext context, _) {
         return TweenAnimationBuilder<Color?>(
-          tween: ColorTween(end: TvAmbience.instance.glow),
+          tween: OklabColorTween(end: TvAmbience.instance.glow),
           duration: const Duration(milliseconds: 1600),
           curve: Curves.easeInOut,
           builder: (BuildContext context, Color? glow, Widget? inner) {
             final Color g = glow ?? TvAmbience.instance.glow;
-            final Color mid = Color.lerp(g, TvTokens.bg, 0.72)!;
+            final Color mid = oklabLerpColor(g, TvTokens.bg, 0.72)!;
             return Container(
               // Fond FULL-BLEED : radial « cathédrale » teinté par l'ambiance,
               // + VIGNETTAGE cinéma par-dessus le contenu (bords légèrement

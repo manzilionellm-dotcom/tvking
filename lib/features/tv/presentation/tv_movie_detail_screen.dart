@@ -24,6 +24,7 @@
 //  toute petite (le flou masque la basse définition — literalement gratuit
 //  en RAM), sinon le dégradé TvTokens. Aucun cache disque ajouté.
 // =========================================================
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -42,6 +43,8 @@ import '../../vod/data/vod_repository.dart';
 import '../../vod/data/vod_watchlist_repository.dart';
 import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_movie.dart';
+import '../core/tv_ambience.dart';
+import '../core/tv_content_ambience.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_cine_route.dart';
@@ -110,6 +113,14 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
     // Rail « Similaires » : films de la même catégorie, depuis le CACHE du
     // catalogue (fetchMovies répond de mémoire — l'accueil vient d'y passer).
     _loadSimilar();
+    // CAMÉLÉON : la lumière du fond prend la couleur DOMINANTE de l'affiche
+    // (extraction K-means OKLab en isolate, bornée par le Gouverneur, puis
+    // tempérée par l'heure — cf. tv_content_ambience). Best-effort : sans
+    // affiche ou en cas d'échec, l'ambiance Cinéma reste telle quelle.
+    final String? poster = widget.movie.posterUrl;
+    if (poster != null && poster.isNotEmpty) {
+      unawaited(feedAmbienceFromImage(CachedNetworkImageProvider(poster)));
+    }
   }
 
   Future<void> _maybeEnrichFromTmdb(VodInfo? info) async {
@@ -163,6 +174,9 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
     CinePerf.cancel(CinePerf.detailOpen);
     PlaybackPositionRepository.instance.removeListener(_onExternalChange);
     VodWatchlistRepository.instance.removeListener(_onExternalChange);
+    // Caméléon : la fiche part → la lumière du fond rend la couleur de
+    // l'affiche et revient à l'ambiance de l'univers (fondu TvShell).
+    TvAmbience.instance.feedContentAccent(null);
     super.dispose();
   }
 
