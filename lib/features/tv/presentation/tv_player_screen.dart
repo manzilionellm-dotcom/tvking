@@ -601,8 +601,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     );
     final Future<void> shutdown = () async {
       try {
-        // Le natif ne répond qu'une fois le stop exécuté sur son thread
-        // lecteur : au retour, la socket d'ExoPlayer est réellement fermée.
+        // Le natif répond une fois le stop exécuté sur son thread lecteur :
+        // la COMMANDE est passée. La fermeture RÉELLE de la socket, elle,
+        // arrive APRÈS (stop() Media3 est asynchrone en interne) — elle est
+        // attendue plus bas, mesurée par awaitNetworkIdle.
         await controller.stop();
       } catch (_) {
         // Canal déjà mort : la connexion est fermée de toute façon.
@@ -613,12 +615,27 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       } catch (_) {
         // best-effort : le relais journalise déjà ses propres échecs.
       }
+      // MESURE (hypothèse H1, enquête « limite 1/1 » du 20/08) : on n'affirme
+      // « connexion rendue » qu'à la fermeture RÉELLE de la dernière socket
+      // réseau du lecteur (TransferListener natif, émis au close() effectif).
+      // Borné : au-delà, on écrit noir sur blanc que la fermeture n'est PAS
+      // confirmée — le prochain claim() ouvre quand même (fail-open du
+      // créneau), mais le journal dit alors QUI tenait encore la ligne.
+      final bool netIdle = await controller.awaitNetworkIdle();
+      final int idleMs = DateTime.now().difference(exitAt).inMilliseconds;
       controller.dispose();
       StreamDiagnostics.instance.recordEvent(
         'creneau',
-        'Fermeture réseau du lecteur terminée '
-            '(stop natif : $stopMs ms · total : '
-            '${DateTime.now().difference(exitAt).inMilliseconds} ms)',
+        netIdle
+            ? 'Fermeture réseau du lecteur terminée '
+                '(stop natif : $stopMs ms · sockets réellement fermées : '
+                '$idleMs ms · total : '
+                '${DateTime.now().difference(exitAt).inMilliseconds} ms)'
+            : 'Fermeture réseau NON confirmée : une socket du lecteur était '
+                'encore ouverte $idleMs ms après la sortie (stop natif : '
+                '$stopMs ms) — si le panel refuse la lecture suivante, le '
+                'chevauchement vient d\'ici',
+        level: netIdle ? 'info' : 'warn',
       );
     }();
     StreamSlot.instance

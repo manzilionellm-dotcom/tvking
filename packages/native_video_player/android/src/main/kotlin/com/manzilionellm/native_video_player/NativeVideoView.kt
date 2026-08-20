@@ -22,8 +22,11 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.SubtitleView
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -258,6 +261,61 @@ class NativeVideoView(
         recordEvent("fsm_violation", "$command@${fsm.name}")
     }
 
+    // ==================================================================
+    //  COMPTEUR DE SOCKETS RÉSEAU RÉELLES (enquête « limite 1/1 » du 20/08).
+    //  La réponse du canal « stop » prouve que la COMMANDE a été exécutée sur
+    //  le thread d'application du lecteur — PAS que la socket est fermée :
+    //  dans Media3, stop() est asynchrone en interne (le thread de lecture
+    //  interne libère ensuite les chargeurs, et la fermeture réelle —
+    //  DataSource.close() — arrive sur le thread de chargement). Ce
+    //  TransferListener observe les VRAIES ouvertures/fermetures de sources
+    //  réseau : onTransferEnd n'est émis qu'au close() effectif. Quand le
+    //  compte de transferts réseau actifs touche zéro, on le signale à Dart
+    //  (« netActive » false) — c'est LA preuve mesurable que ce lecteur ne
+    //  tient plus aucune connexion, celle que le scénario « je quitte le
+    //  film, je lance une chaîne » doit attendre avant d'ouvrir la suivante.
+    // ==================================================================
+    private val activeNetTransfers = java.util.concurrent.atomic.AtomicInteger(0)
+
+    private val netTransferListener = object : TransferListener {
+        override fun onTransferInitializing(
+            source: DataSource, dataSpec: DataSpec, isNetwork: Boolean,
+        ) = Unit
+
+        override fun onTransferStart(
+            source: DataSource, dataSpec: DataSpec, isNetwork: Boolean,
+        ) {
+            if (!isNetwork) return // fichier local : aucune connexion consommée
+            if (activeNetTransfers.incrementAndGet() == 1) notifyNetActive(true)
+        }
+
+        override fun onBytesTransferred(
+            source: DataSource, dataSpec: DataSpec, isNetwork: Boolean, bytesTransferred: Int,
+        ) = Unit
+
+        override fun onTransferEnd(
+            source: DataSource, dataSpec: DataSpec, isNetwork: Boolean,
+        ) {
+            if (!isNetwork) return
+            if (activeNetTransfers.decrementAndGet() == 0) notifyNetActive(false)
+        }
+    }
+
+    /**
+     * Publie la transition « au moins une socket ↔ plus aucune socket ».
+     * Appelé depuis les threads de CHARGEMENT (contrat TransferListener) :
+     * le journal natif se remplit sur le thread PLAYER (comme tout l'état
+     * lecteur) et le canal s'invoque depuis le main (contrat MethodChannel).
+     * En cas de transitions quasi simultanées (segments HLS), Dart reçoit la
+     * VALEUR booléenne, pas un delta : le dernier message reflète l'état réel.
+     */
+    private fun notifyNetActive(active: Boolean) {
+        playerHandler.post { recordEvent(if (active) "net_active" else "net_idle") }
+        handler.post {
+            if (!isDisposed) channel.invokeMethod("netActive", active)
+        }
+    }
+
     // REPRISE RÉSEAU INSTANTANÉE (façon Netflix) : pendant qu'un retry
     // attend son back-off (jusqu'à 8 s), si Android annonce que le réseau
     // par défaut est REVENU (Wi-Fi raccroché, 4G rétablie), on relance
@@ -447,6 +505,9 @@ class NativeVideoView(
         // → FATAL EXCEPTION (gallery3d) qui tuait l'app. Le direct reste 100 %
         // inchangé (http passe toujours par le même httpFactory).
         val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
+            // Compteur de sockets réelles (cf. netTransferListener) : chaque
+            // source créée signale ses ouvertures/fermetures effectives.
+            .setTransferListener(netTransferListener)
 
         // Politique de ré-essai réseau : 3 tentatives par chargement (délais
         // croissants ≈ 0/1/2 s). Assez pour absorber un hoquet bref, assez
@@ -1015,6 +1076,9 @@ class NativeVideoView(
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(15_000)
         val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
+            // Même compteur de sockets que la fabrique de l'init : une lecture
+            // sous signature CUSTOM doit compter ses connexions à l'identique.
+            .setTransferListener(netTransferListener)
         return DefaultMediaSourceFactory(dataSourceFactory)
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
     }

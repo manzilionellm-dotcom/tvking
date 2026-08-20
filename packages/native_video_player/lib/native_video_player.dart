@@ -303,6 +303,21 @@ class NativeVideoController extends ChangeNotifier {
         // (la SubtitleView Android n'existe pas sur ce chemin) — le widget
         // les dessine en overlay Flutter.
         subtitleText = (call.arguments as String?) ?? '';
+      case 'netActive':
+        // Enquête « limite 1/1 » (20/08) : le natif signale les VRAIES
+        // ouvertures/fermetures de sockets réseau (TransferListener Media3,
+        // émis au close() effectif de la source). C'est la seule preuve
+        // fiable que ce lecteur ne tient plus AUCUNE connexion — la réponse
+        // du canal `stop` ne prouve que l'exécution de la commande, pas la
+        // fermeture (stop() Media3 est asynchrone en interne).
+        netActive = call.arguments as bool;
+        if (!netActive) {
+          lastNetIdleAt = DateTime.now();
+          for (final Completer<bool> w in _netIdleWaiters) {
+            if (!w.isCompleted) w.complete(true);
+          }
+          _netIdleWaiters.clear();
+        }
     }
     if (!_disposed) notifyListeners();
     return null;
@@ -430,6 +445,41 @@ class NativeVideoController extends ChangeNotifier {
   /// consulter ce drapeau avant de tenter une simple reprise.
   bool isStopped = false;
 
+  /// Vrai tant qu'AU MOINS une socket réseau du lecteur natif est OUVERTE
+  /// (transferts Media3 comptés au niveau DataSource : ouverture réelle →
+  /// fermeture réelle). C'est l'état que le panel « voit » : un compte
+  /// 1-connexion n'est libéré qu'une fois ce drapeau retombé à false.
+  bool netActive = false;
+
+  /// Dernier instant où le natif a confirmé « plus aucune socket réseau »
+  /// (à la milliseconde — l'enquête « connexion fantôme » se joue là).
+  DateTime? lastNetIdleAt;
+
+  /// Attentes en cours sur la fermeture réelle des sockets (cf.
+  /// [awaitNetworkIdle]) — complétées par l'événement natif `netActive:false`,
+  /// ou à false par le timeout de l'appelant / le [dispose].
+  final List<Completer<bool>> _netIdleWaiters = <Completer<bool>>[];
+
+  /// Attend que le lecteur natif ne tienne PLUS AUCUNE socket réseau.
+  ///
+  /// Renvoie `true` dès la fermeture réelle (immédiatement si aucune socket
+  /// n'est ouverte), `false` si [timeout] expire — auquel cas l'appelant DOIT
+  /// le dire (journal) au lieu de prétendre que la connexion est rendue.
+  /// C'est le chaînon mesurable qui manquait au scénario « je quitte le
+  /// film, je lance une chaîne » : la réponse de [stop] prouve l'exécution
+  /// de la commande sur le thread lecteur, PAS la fermeture de la socket
+  /// (Media3 stop() est asynchrone en interne — la fermeture survient après,
+  /// sur le thread de chargement).
+  Future<bool> awaitNetworkIdle(
+      {Duration timeout = const Duration(seconds: 3)}) {
+    if (!netActive || _disposed || _channel == null) {
+      return Future<bool>.value(true);
+    }
+    final Completer<bool> waiter = Completer<bool>();
+    _netIdleWaiters.add(waiter);
+    return waiter.future.timeout(timeout, onTimeout: () => false);
+  }
+
   /// TÉLÉMÉTRIE SILENCIEUSE : instantané des compteurs natifs (frames
   /// perdues, underruns audio, reconnexions, bascules de source, violations
   /// de la garde d'états) + drain du journal d'événements (les événements
@@ -478,6 +528,14 @@ class NativeVideoController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    // Attentes de fermeture réseau encore en vol : le canal va mourir, le
+    // signal `netActive:false` n'arrivera jamais → on répond `false` (état
+    // inconnu) TOUT DE SUITE plutôt que de laisser l'appelant attendre son
+    // timeout complet (le release natif ferme les sockets de toute façon).
+    for (final Completer<bool> w in _netIdleWaiters) {
+      if (!w.isCompleted) w.complete(false);
+    }
+    _netIdleWaiters.clear();
     // ERREUR AVALÉE (cf. _fire) : sur une vue déjà détruite, `dispose`
     // levait une MissingPluginException NON RATTRAPÉE — c'était le crash
     // « dispose on channel native_video_player/t1 » du 20/08.
