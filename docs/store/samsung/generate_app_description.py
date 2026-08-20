@@ -54,6 +54,26 @@ GOLD = colors.HexColor("#CCB089")
 DARK = colors.HexColor("#070707")
 
 
+def elements_table(rows):
+    """Tableau « n° | élément | fonction » sous chaque capture (exigence
+    Samsung : chaque écran illustré + chaque élément décrit — première
+    cause de rejet des Doc Reviews). Les n° correspondent aux badges
+    numérotés incrustés sur l'image."""
+    t = Table([["#", "UI element", "Function"]] + rows,
+              colWidths=[0.4 * inch, 1.9 * inch, 4.2 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), DARK),
+        ("TEXTCOLOR", (0, 0), (-1, 0), GOLD),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#999999")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+         [colors.white, colors.HexColor("#F4F0E8")]),
+    ]))
+    return [t, Spacer(1, 16)]
+
+
 def screenshot(name, caption):
     """Image réelle si présente dans screenshots/, sinon cadre placeholder
     clairement marqué (à remplacer AVANT soumission)."""
@@ -128,11 +148,12 @@ story += [
 story += [Paragraph("1. Revision history", H1)]
 rev = Table([
     ["Version", "Date", "Changes", "Author"],
-    ["1.0", "2026-08-14", "Initial submission.", VENDOR],
-    ["1.1", DATE,
-     "Added app preview images and the remote-control key policy, per "
-     "Samsung Doc Review feedback. Application package updated to 1.0.1.",
-     VENDOR],
+    ["1.0", "2026-08-14", "Initial submission.", "Lionel Manzi"],
+    ["2.0", DATE,
+     "Added annotated app preview images and the remote-control key "
+     "policy, per Samsung Doc Review feedback. Application package "
+     "updated to 1.0.1.",
+     "Lionel Manzi"],
 ], colWidths=[0.8 * inch, 1.0 * inch, 3.7 * inch, 1.0 * inch])
 rev.setStyle(TableStyle([
     ("BACKGROUND", (0, 0), (-1, 0), DARK),
@@ -167,13 +188,14 @@ story += [
 # ---------- 4. Cas d'usage ----------
 story += [
     Paragraph("3. Main use cases", H1),
-    Paragraph("<b>UC-1 — First-run activation.</b> The user installs and "
-              "opens the app. The activation screen displays the device "
-              "identifier. The service operator (content provider) "
-              "activates the device on the backend; the app detects the "
-              "activation automatically and continues to Home. Reviewers: "
-              "see the test account details provided in Verification Info "
-              "— the review device is pre-activated with a demo source.",
+    Paragraph("<b>UC-1 — First launch.</b> The activation screen offers "
+              "three paths: (a) operator activation by the displayed "
+              "device code — the app detects it automatically and "
+              "continues to Home; (b) <b>“Add my own playlist”</b> — the "
+              "user loads their own M3U/Xtream subscription, no account "
+              "or login required (this is the reviewer path, see "
+              "Verification Info); (c) a 6-digit family code. No password "
+              "is ever typed on the TV. In-app purchase: none. Ads: none.",
               BODY),
     Paragraph("<b>UC-2 — Watching live TV.</b> From Home or the channel "
               "list, pressing OK on a channel opens the full-screen "
@@ -193,29 +215,59 @@ story += [
     PageBreak(),
 ]
 
-# ---------- 5. Menus & fonctions (images d'aperçu) ----------
+# ---------- 5. Menus & fonctions (images d'aperçu annotées) ----------
 story += [Paragraph("4. Menus and functions — app preview images", H1)]
 story += screenshot("01-activation",
-                    "Screen 1 — Activation: the TV shows its device code; "
-                    "activation happens server-side (no typing on TV).")
+                    "Screen 1 — Activation (first launch only).")
+story += elements_table([
+    ["1", "Device code / MAC", "Identifier the operator uses to activate "
+     "the device server-side."],
+    ["2", "“Check my subscription”", "Re-checks the activation status "
+     "(OK key)."],
+    ["3", "“Add my own playlist”", "Opens the Add source screen — the "
+     "no-account path used for review."],
+])
+story.append(PageBreak())
 story += screenshot("02-home",
-                    "Screen 2 — Home: content rails (live channels, "
-                    "favorites, movies, quick access), D-pad navigation.")
+                    "Screen 2 — Home: content rails, D-pad navigation.")
+story += elements_table([
+    ["1", "Navigation tiles", "Live TV, Movies, Favorites, Settings — "
+     "arrows move focus, OK opens."],
+    ["2", "Content rails", "Recently watched and quick access to "
+     "channels; OK starts playback."],
+])
 story.append(PageBreak())
 story += screenshot("03-channels",
-                    "Screen 3 — Channel list with categories and live "
-                    "preview panel; OK opens full-screen playback.")
+                    "Screen 3 — Live channel list with preview panel.")
+story += elements_table([
+    ["1", "Category column", "Channel groups from the user's playlist."],
+    ["2", "Channel list", "Arrows browse; OK opens full-screen playback."],
+    ["3", "Preview panel", "Shows the focused channel's logo/preview and "
+     "current program (EPG)."],
+])
+story.append(PageBreak())
 story += screenshot("04-player",
-                    "Screen 4 — Full-screen live player with channel "
-                    "overlay (OK); Channel Up/Down zaps; digits jump to a "
-                    "channel number.")
+                    "Screen 4 — Full-screen player with channel overlay.")
+story += elements_table([
+    ["1", "Channel overlay (OK)", "Channel name, current program, "
+     "progress bar."],
+    ["2", "Playback area", "Channel Up/Down or Arrow Up/Down zaps; "
+     "digits 0–9 jump to a channel number; Play/Pause toggles; "
+     "RETURN leaves the player."],
+])
 story.append(PageBreak())
 story += screenshot("05-movies",
-                    "Screen 5 — Movies (VOD) shelf with posters; OK plays; "
-                    "resume is offered on reopening.")
+                    "Screen 5 — Movies (VOD) shelf.")
+story += elements_table([
+    ["1", "Poster grid", "Arrows browse the catalog from the user's "
+     "playlist; OK starts playback (resume offered on reopening)."],
+])
 story += screenshot("06-settings",
-                    "Screen 6 — Settings: language (9 options), themes, "
-                    "sources, diagnostics.")
+                    "Screen 6 — Settings.")
+story += elements_table([
+    ["1", "Settings tiles", "Sources (add/manage playlists), Language "
+     "(9 options, instant switch), Themes, Diagnostics."],
+])
 story.append(PageBreak())
 
 # ---------- 6. Key policy (tirée du code réel) ----------
