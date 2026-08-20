@@ -150,6 +150,22 @@ class StreamDiagnostics extends ChangeNotifier {
   /// Quand ce contrôle a été fait (l'info se périme vite).
   DateTime? xtreamCheckedAt;
 
+  /// IDENTITÉ du compte contrôlé (hôte du panel + utilisateur).
+  ///
+  /// Terrain 20/08 (journal de la box, 20:32:32.403 → .755) : DEUX comptes
+  /// Xtream cohabitaient sur la même box — l'un ACTIF (expire 18/09),
+  /// l'autre EXPIRÉ (01/08). Cette boîte noire est un singleton : le
+  /// DERNIER compte lu écrasait l'état global, et [blockReason] pouvait
+  /// alors déclarer « expiré » un flux qui appartenait au compte ACTIF —
+  /// avec, en cascade, le relais qui coupait ses reconnexions pour
+  /// « ligne morte » (cf. _abortIfLineDead). On mémorise donc À QUI
+  /// appartient l'état enregistré, pour que les verdicts de niveau compte
+  /// ne s'appliquent qu'aux flux de CE compte ([blockReasonForUrl]).
+  /// `null` = identité inconnue (ancien appelant) : comportement
+  /// historique conservé.
+  String? xtreamAccountHost;
+  String? xtreamAccountUser;
+
   /// `true` quand le compte contrôlé n'autorise qu'UNE connexion simultanée
   /// (`max_connections=1`). Les conforts qui ouvrent un flux « en plus »
   /// (aperçu vidéo de l'accueil…) doivent alors s'abstenir : sur une telle
@@ -171,23 +187,57 @@ class StreamDiagnostics extends ChangeNotifier {
   /// lecteur garde alors son message générique). Le 458 (limite) est
   /// TOUJOURS fiable (posé par le relais dans la session courante) ; le
   /// statut « expiré » dépend d'un contrôle de compte récent.
-  StreamBlockReason get blockReason {
-    final String s = (xtreamStatus ?? '').toLowerCase();
-    if (s.contains('banned') ||
-        s.contains('disabled') ||
-        s.contains('suspend')) {
-      return StreamBlockReason.banned;
+  StreamBlockReason get blockReason => _blockReason(accountApplies: true);
+
+  /// Comme [blockReason], mais les signaux de NIVEAU COMPTE (banni, expiré,
+  /// compteur active/max) ne s'appliquent que si le compte enregistré est
+  /// bien celui du flux [url] (même hôte, même utilisateur — cf.
+  /// [_accountMatchesUrl]). Les signaux de SESSION (458 vu par le relais,
+  /// écran noir placeholder) s'appliquent toujours : ils viennent du flux
+  /// lui-même, pas d'un contrôle de compte. C'est LE correctif de la
+  /// contamination inter-comptes du 20/08 (deux playlists sur la box : le
+  /// compte EXPIRÉ de l'une faisait couper les reconnexions de l'AUTRE).
+  StreamBlockReason blockReasonForUrl(String? url) =>
+      _blockReason(accountApplies: url == null || _accountMatchesUrl(url));
+
+  /// Le compte enregistré ([recordXtreamAccount]) est-il celui du flux [url] ?
+  /// Identité inconnue (ancien appelant) → `true` : comportement historique.
+  bool _accountMatchesUrl(String url) {
+    final String? host = xtreamAccountHost;
+    if (host == null || host.isEmpty) return true;
+    final Uri? u = Uri.tryParse(url);
+    if (u == null || u.host.isEmpty) return true;
+    if (u.host.toLowerCase() != host.toLowerCase()) return false;
+    // Même hôte : on distingue encore par utilisateur (deux lignes du même
+    // panel). L'URL Xtream porte l'utilisateur dans son chemin
+    // (/live/USER/PASS/id.ts, /USER/PASS/id.ts) ou en query (?username=).
+    final String? user = xtreamAccountUser;
+    if (user == null || user.isEmpty) return true;
+    return u.pathSegments.contains(user) ||
+        u.queryParameters['username'] == user;
+  }
+
+  StreamBlockReason _blockReason({required bool accountApplies}) {
+    if (accountApplies) {
+      final String s = (xtreamStatus ?? '').toLowerCase();
+      if (s.contains('banned') ||
+          s.contains('disabled') ||
+          s.contains('suspend')) {
+        return StreamBlockReason.banned;
+      }
+      final bool expiredByStatus = s.contains('expired');
+      final bool expiredByDate =
+          xtreamExpDate != null && xtreamExpDate!.isBefore(DateTime.now());
+      if (expiredByStatus || expiredByDate) return StreamBlockReason.expired;
+      final bool maxByCount = xtreamMaxConnections != null &&
+          xtreamActiveCons != null &&
+          xtreamMaxConnections! > 0 &&
+          xtreamActiveCons! >= xtreamMaxConnections!;
+      if (maxByCount) return StreamBlockReason.maxConnections;
     }
-    final bool expiredByStatus = s.contains('expired');
-    final bool expiredByDate =
-        xtreamExpDate != null && xtreamExpDate!.isBefore(DateTime.now());
-    if (expiredByStatus || expiredByDate) return StreamBlockReason.expired;
-    final bool maxByHttp = httpStatus == 458;
-    final bool maxByCount = xtreamMaxConnections != null &&
-        xtreamActiveCons != null &&
-        xtreamMaxConnections! > 0 &&
-        xtreamActiveCons! >= xtreamMaxConnections!;
-    if (maxByHttp || maxByCount) return StreamBlockReason.maxConnections;
+    // Signaux de SESSION : observés sur la connexion du flux courant, donc
+    // valables quel que soit le compte contrôlé en dernier.
+    if (httpStatus == 458) return StreamBlockReason.maxConnections;
     // Filet FINAL : le fournisseur sert un écran noir (black.ts) sans qu'AUCUN
     // signal de compte n'ait accusé le client. On le dit tel quel — sans
     // prétendre que son abonnement a expiré (il peut être parfaitement
@@ -313,18 +363,31 @@ class StreamDiagnostics extends ChangeNotifier {
 
   /// État du compte Xtream constaté via player_api.php (user_info).
   /// Appelé au chargement/sync du compte et depuis l'écran debug.
+  /// [serverHost] + [username] : IDENTITÉ du compte contrôlé (cf.
+  /// [xtreamAccountHost]) — indispensable dès que la box porte plusieurs
+  /// lignes, pour que « expiré » ne s'applique qu'aux flux de CE compte.
   void recordXtreamAccount({
     String? status,
     DateTime? expDate,
     int? maxConnections,
     int? activeCons,
+    String? serverHost,
+    String? username,
   }) {
     xtreamStatus = status;
     xtreamExpDate = expDate;
     xtreamMaxConnections = maxConnections;
     xtreamActiveCons = activeCons;
+    xtreamAccountHost = serverHost;
+    xtreamAccountUser = username;
     xtreamCheckedAt = DateTime.now();
-    final StringBuffer b = StringBuffer('Compte: ${status ?? 'inconnu'}');
+    // L'hôte dans le journal : c'est lui qui aurait permis de distinguer,
+    // sur la photo du 20/08, les trois lignes « Compte: … » entremêlées de
+    // deux comptes différents. Jamais l'utilisateur (un screenshot du debug
+    // ne doit pas fuiter la ligne).
+    final StringBuffer b = StringBuffer(
+        'Compte${serverHost == null ? '' : ' ($serverHost)'}: '
+        '${status ?? 'inconnu'}');
     if (expDate != null) {
       b.write(' · expire ${expDate.toString().split('.').first}');
     }

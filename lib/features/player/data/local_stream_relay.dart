@@ -798,7 +798,13 @@ class LocalStreamRelay {
   /// de connexions » (458) N'est PAS mort : l'autre écran peut se libérer → on
   /// continue de réessayer.
   bool _abortIfLineDead(_RelaySession session) {
-    final StreamBlockReason r = StreamDiagnostics.instance.blockReason;
+    // Verdict SCOPÉ AU COMPTE DU FLUX (terrain 20/08) : la box portait deux
+    // lignes — une active, une expirée — et le dernier contrôle de compte
+    // écrasait l'état global : le « Expired » de l'autre ligne faisait couper
+    // ICI les reconnexions d'un flux parfaitement valide. blockReasonForUrl
+    // n'applique banni/expiré que si le compte contrôlé est celui de CE flux.
+    final StreamBlockReason r =
+        StreamDiagnostics.instance.blockReasonForUrl(session.realUrl);
     // `providerBlocked` compte AUSSI comme mort : c'est l'ancien cas « écran
     // noir », qui rentrait ici sous l'étiquette `expired` avant qu'on ne les
     // sépare. Le séparer sans le rajouter ici aurait relancé les

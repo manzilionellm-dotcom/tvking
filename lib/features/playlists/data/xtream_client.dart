@@ -235,6 +235,13 @@ class XtreamClient {
       expDate: info.expDate,
       maxConnections: info.maxConnections,
       activeCons: info.activeCons,
+      // IDENTITÉ du compte (correctif contamination inter-comptes du 20/08 :
+      // deux lignes sur la même box, le dernier contrôle écrasait l'état
+      // global et « expiré » s'appliquait aux flux de l'AUTRE ligne). Le
+      // verdict de niveau compte ne s'appliquera qu'aux flux de cet hôte +
+      // utilisateur (cf. StreamDiagnostics.blockReasonForUrl).
+      serverHost: Uri.tryParse(_baseUrl)?.host,
+      username: username,
     );
   }
 
