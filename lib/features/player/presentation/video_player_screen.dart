@@ -1244,8 +1244,28 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // ça, la nouvelle lecture partait pendant que l'ancienne se fermait — et
     // un compte 1-connexion refusait la seconde (« un autre flux est déjà en
     // cours » en passant du cinéma à une chaîne).
+    // MESURE (parité TV, enquête « beaucoup de flux ouverts » sur téléphone,
+    // 20/08) : combien de temps le démontage des consommateurs précédents
+    // (écran quitté en cours de fermeture, téléchargements) a réellement
+    // pris. Une attente qui plafonne à ~1200 ms = un démontage qui n'a PAS
+    // fini dans le budget → la connexion suivante part quand même
+    // (fail-open) et peut se chevaucher : le journal le dira noir sur blanc.
+    final DateTime claimStart = DateTime.now();
     _openChain = _openChain
         .then((_) => StreamSlot.instance.claim(this))
+        .then((_) {
+          final int waitedMs =
+              DateTime.now().difference(claimStart).inMilliseconds;
+          if (waitedMs > 50) {
+            StreamDiagnostics.instance.recordEvent(
+              'creneau',
+              'Créneau réseau obtenu après $waitedMs ms de démontage des '
+                  'consommateurs précédents'
+                  '${waitedMs >= 1150 ? ' — BUDGET ATTEINT : un démontage n\'a pas fini, la connexion part quand même' : ''}',
+              level: waitedMs >= 1150 ? 'warn' : 'info',
+            );
+          }
+        })
         .then((_) => _openMediaInner(realUrl, gen))
         .catchError(
       (Object e, StackTrace st) {
