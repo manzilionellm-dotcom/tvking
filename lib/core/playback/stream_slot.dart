@@ -128,16 +128,43 @@ class StreamSlot {
     unawaited(safe.whenComplete(() => _holders.remove(token)));
   }
 
+  /// Réclamations actuellement en vol : tant que ce compteur n'est pas à
+  /// zéro, la chaîne [_chain] n'est pas au repos et un nouvel arrivant doit
+  /// se sérialiser derrière elle.
+  int _pendingClaims = 0;
+
   /// RÉCLAME le créneau pour [owner] : démonte tous les détenteurs d'un
   /// AUTRE groupe et attend qu'ils aient fini. À appeler juste AVANT
   /// d'ouvrir une URL.
   ///
   /// N'échoue jamais : les démontages sont indépendants et plafonnés.
   Future<void> claim(Object owner) {
+    _pendingClaims++;
     final Future<void> next = _chain.then((_) => _claimNow(owner));
     // La chaîne ne doit pas mourir sur une erreur d'un maillon.
     _chain = next.catchError((Object _) {});
-    return next;
+    return next.whenComplete(() => _pendingClaims--);
+  }
+
+  /// Variante SANS COÛT quand il n'y a rien à faire : renvoie `null` si
+  /// AUCUN autre détenteur n'est à démonter et qu'aucune réclamation n'est
+  /// en vol — réclamer serait alors un pur no-op ASYNCHRONE, et ces sauts
+  /// de microtâches ont un coût réel : ils ont cassé le contrat « l'aperçu
+  /// démarre dans la même frame » (tests widget rouges du 19/08). Sinon,
+  /// une vraie réclamation, à attendre.
+  Future<void>? claimIfNeeded(Object owner) {
+    if (_pendingClaims == 0 && !_hasOthers(owner)) return null;
+    return claim(owner);
+  }
+
+  /// Y a-t-il un détenteur d'un AUTRE groupe que [owner] à démonter ?
+  bool _hasOthers(Object owner) {
+    final _Holder? me = _holders[owner];
+    final String myGroup = me?.group ?? groupSolo;
+    return _holders.values.any((_Holder h) =>
+        h.owner != owner &&
+        // Même groupe non-solo = cohabitation voulue (multi-vue).
+        !(h.group == myGroup && myGroup != groupSolo));
   }
 
   Future<void> _claimNow(Object owner) async {
@@ -174,5 +201,6 @@ class StreamSlot {
   void resetForTest() {
     _holders.clear();
     _chain = Future<void>.value();
+    _pendingClaims = 0;
   }
 }

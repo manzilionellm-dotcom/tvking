@@ -181,6 +181,53 @@ void main() {
     await expectLater(slot.claim(suivant), completes);
   });
 
+  // ---- claimIfNeeded : zéro coût quand il n'y a rien à faire ----
+  //  Régression CI du 19/08 : un claim() systématique dans l'aperçu
+  //  introduisait des sauts de microtâches même sans aucun détenteur à
+  //  démonter — l'aperçu ne démarrait plus dans la même frame que son tick.
+
+  test('claimIfNeeded → null quand rien à démonter (aucun saut asynchrone)',
+      () {
+    final Object seul = Object();
+    slot.register(seul, label: 'seul', teardown: () async {});
+    expect(slot.claimIfNeeded(seul), isNull);
+  });
+
+  test('claimIfNeeded → vraie réclamation quand un autre détenteur existe',
+      () async {
+    bool demonte = false;
+    final Object ancien = Object();
+    final Object nouveau = Object();
+    slot.register(ancien,
+        label: 'ancien', teardown: () async => demonte = true);
+    slot.register(nouveau, label: 'nouveau', teardown: () async {});
+
+    final Future<void>? wait = slot.claimIfNeeded(nouveau);
+    expect(wait, isNotNull);
+    await wait;
+    expect(demonte, isTrue);
+  });
+
+  test('claimIfNeeded → non-null tant qu\'une réclamation est en vol '
+      '(la sérialisation est préservée)', () async {
+    final Object lent = Object();
+    final Object a = Object();
+    final Object b = Object();
+    final Completer<void> fermeture = Completer<void>();
+    slot.register(lent, label: 'lent', teardown: () => fermeture.future);
+    slot.register(a, label: 'a', teardown: () async {});
+    slot.register(b, label: 'b', teardown: () async {});
+
+    final Future<void> first = slot.claim(a); // démonte `lent` (en cours)
+    slot.unregister(lent); // même parti, la réclamation en vol reste en vol
+    final Future<void>? second = slot.claimIfNeeded(b);
+    expect(second, isNotNull,
+        reason: 'une réclamation en vol impose la sérialisation');
+    fermeture.complete();
+    await first;
+    await second;
+  });
+
   test('deux réclamations simultanées se sérialisent', () async {
     final List<String> ordre = <String>[];
     final Object un = Object();

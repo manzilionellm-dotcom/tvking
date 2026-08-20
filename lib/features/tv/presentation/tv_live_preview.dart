@@ -405,12 +405,18 @@ class _TvLivePreviewState extends State<TvLivePreview>
     // closeOtherPlaybacks, qui agit sur l'état PARTAGÉ du relais
     // (_currentPlaybackUrl, fermeture des sessions des autres détenteurs).
     // L'ancien ordre (résoudre PUIS réclamer) court-circuitait la
-    // sérialisation du créneau. On réclame donc AVANT tout effet de bord.
-    await StreamSlot.instance.claim(this);
-    if (!mounted || session != _session || _covered) {
-      _diag('[$name] aperçu abandonné pendant la réclamation du créneau');
-      if (mounted) setState(() => _resolving = false);
-      return;
+    // sérialisation du créneau. On réclame donc AVANT tout effet de bord —
+    // via claimIfNeeded : quand il n'y a RIEN à démonter (cas de loin le
+    // plus courant), aucun saut asynchrone n'est introduit (contrat des
+    // tests widget : l'aperçu démarre dans la même frame que son tick).
+    final Future<void>? mustWait = StreamSlot.instance.claimIfNeeded(this);
+    if (mustWait != null) {
+      await mustWait;
+      if (!mounted || session != _session || _covered) {
+        _diag('[$name] aperçu abandonné pendant la réclamation du créneau');
+        if (mounted) setState(() => _resolving = false);
+        return;
+      }
     }
     TvPreviewSource? src;
     try {
