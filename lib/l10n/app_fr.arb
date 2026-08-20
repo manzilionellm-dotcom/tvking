@@ -2734,6 +2734,142 @@
       }
     }
   },
+  "tvInviteTitle": "Partage",
+  "tvInviteSubtitle": "Fais profiter un ami, ou passe d'un de tes appareils à l'autre.",
+  "tvInviteFriendTitle": "Inviter un ami",
+  "tvInviteFriendSub": "Il regarde le match avec toi — 24 h ou 48 h offertes, puis il s'abonne.",
+  "tvInviteLendTitle": "Prêter mon abonnement",
+  "tvInviteLendSub": "Donne ton abonnement à un ami 24 h ou 48 h. Tu es en pause le temps du prêt — ça te revient tout seul à la fin.",
+  "tvInviteTransferTitle": "Entre mes appareils",
+  "tvInviteTransferSub": "Déplace ton abonnement vers ta TV, ton laptop, ton téléphone (un seul à la fois).",
+  "tvInviteRedeemTitle": "J'ai un code",
+  "tvInviteRedeemSub": "Un ami t'a donné un code ? Entre-le ici.",
+  "tvInviteConnError": "Connexion impossible. Réessaie.",
+  "tvInviteEnterFriendMac": "Entre la MAC de ton ami.",
+  "tvInviteActivated": "Activé ! Ton ami a {hours} h pour regarder avec toi. 🎉",
+  "@tvInviteActivated": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "tvInviteErrNotPaid": "Le partage est réservé aux abonnés. Active ton abonnement d'abord.",
+  "tvInviteErrQuota": "Tu as utilisé tes 5 invitations de la semaine. Ça se renouvelle bientôt.",
+  "tvInviteErrAlreadyActive": "Cet appareil a déjà un accès actif.",
+  "tvInviteErrUsedOnce": "Cet appareil a déjà profité d'un pass gratuit.",
+  "tvInviteErrOwnAddress": "C'est ta propre adresse 🙂",
+  "tvInviteErrGeneric": "Action impossible pour le moment.",
+  "tvInviteReservedNote": "Réservé aux abonnés. Une fois abonné, tu auras {quota} invitations CHAQUE SEMAINE à partager.",
+  "@tvInviteReservedNote": {
+    "placeholders": {
+      "quota": {
+        "type": "String"
+      }
+    }
+  },
+  "tvInviteStepDuration": "1 · Durée offerte",
+  "tvInviteHoursChip": "{n} heures",
+  "@tvInviteHoursChip": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "tvInviteStepChannel": "2 · Chaîne à regarder ensemble",
+  "tvInviteChooseChannel": "Choisir une chaîne",
+  "tvInviteStepConnect": "3 · Connecter ton ami",
+  "tvInviteWeeklyLine": "Cette semaine : {used} / {quota} · code valable 48 h",
+  "@tvInviteWeeklyLine": {
+    "placeholders": {
+      "used": {
+        "type": "String"
+      },
+      "quota": {
+        "type": "String"
+      }
+    }
+  },
+  "tvInviteWait": "Patiente…",
+  "tvInviteGenerate": "Générer un code",
+  "tvInviteNewCode": "Nouveau code",
+  "tvInviteOrByMac": "— ou active-le directement par sa MAC —",
+  "tvInviteFriendMacHint": "MAC de l'ami (ex. MK:1A:2B:3C:4D:5E)",
+  "tvInviteActivateByMac": "Activer par MAC",
+  "tvInviteEnterTargetMac": "Entre la MAC de l'appareil cible.",
+  "tvInviteTransferDone": "C'est fait ! Ton abonnement est passé sur l'autre appareil. CET appareil est en pause jusqu'au prochain transfert.",
+  "tvInviteErrPaidOnly": "Réservé aux appareils payés (abonnement à l'année).",
+  "tvInviteErrSameDevice": "C'est déjà cet appareil 🙂",
+  "tvInviteErrTransfer": "Transfert impossible pour le moment.",
+  "tvInviteTransferIntro": "Déplace ton abonnement vers un autre de tes appareils. Un seul appareil regarde à la fois — tu peux le ramener quand tu veux.",
+  "tvInviteTargetMacLabel": "MAC de l'appareil cible",
+  "tvInviteTargetMacHint": "MAC (visible dans Réglages de l'autre appareil)",
+  "tvInviteTransferBusy": "Transfert…",
+  "tvInviteTransferButton": "Transférer ici → là-bas",
+  "tvInviteLendDone": "Prêté ! Ton ami a {hours} h. Toi, tu es en pause — ça te revient tout seul à la fin.",
+  "@tvInviteLendDone": {
+    "placeholders": {
+      "hours": {
+        "type": "String"
+      }
+    }
+  },
+  "tvInviteErrLendNotPaid": "Réservé aux abonnés payés (abonnement actif).",
+  "tvInviteErrFriendActive": "Cet ami a déjà un accès actif.",
+  "tvInviteErrLoanActive": "Tu as déjà un prêt en cours. Reprends-le d'abord.",
+  "tvInviteErrOwnDevice": "C'est ton propre appareil 🙂",
+  "tvInviteErrLend": "Prêt impossible pour le moment.",
+  "tvInviteReclaimed": "Abonnement repris — c'est de nouveau à toi. 👍",
+  "tvInviteErrReclaim": "Reprise impossible pour le moment.",
+  "tvInviteLoanBanner": "Tu as prêté ton abonnement",
+  "tvInviteLoanLine": "Prêté à {guest}.",
+  "@tvInviteLoanLine": {
+    "placeholders": {
+      "guest": {
+        "type": "String"
+      }
+    }
+  },
+  "tvInviteReclaimBusy": "Reprise…",
+  "tvInviteReclaimButton": "Reprendre mon abonnement",
+  "tvInviteLendIntro": "Donne ton abonnement complet à un ami pour 24 h ou 48 h. Pendant le prêt, CET appareil est en pause. À l'échéance, l'abonnement revient tout seul sur ta MAC.",
+  "tvInviteLendStepDuration": "1 · Durée du prêt (max)",
+  "tvInviteLendStepMac": "2 · MAC de ton ami",
+  "tvInviteMacHintShort": "MAC (ex. MK:1A:2B:3C:4D:5E)",
+  "tvInviteReturnImminent": "Retour imminent.",
+  "tvInviteReturnInH": "Retour auto dans {h}h {m}.",
+  "@tvInviteReturnInH": {
+    "placeholders": {
+      "h": {
+        "type": "String"
+      },
+      "m": {
+        "type": "String"
+      }
+    }
+  },
+  "tvInviteReturnInMin": "Retour auto dans {m} min.",
+  "@tvInviteReturnInMin": {
+    "placeholders": {
+      "m": {
+        "type": "String"
+      }
+    }
+  },
+  "tvInviteRedeemOk": "C'est bon ! Profite du match. À la fin, tu pourras t'abonner pour continuer. 🎉",
+  "tvInviteErrCodeInvalid": "Code inconnu. Vérifie les 6 chiffres.",
+  "tvInviteErrCodeUsed": "Ce code a déjà été utilisé.",
+  "tvInviteErrCodeExpired": "Ce code a expiré. Demande-en un nouveau.",
+  "tvInviteErrOwnCode": "C'est ton propre code 🙂",
+  "tvInviteErrIssuerNotPaid": "L'abonnement de ton ami n'est plus actif.",
+  "tvInviteErrIssuerQuota": "Ton ami a atteint ses 5 invitations de la semaine.",
+  "tvInviteErrDeviceActive": "Ton appareil a déjà un accès actif.",
+  "tvInviteErrUsedOnceSubscribe": "Tu as déjà profité d'un pass gratuit. Pour continuer, abonne-toi.",
+  "tvInviteErrRedeem": "Impossible d'activer ce code.",
+  "tvInviteRedeemPrompt": "Tape le code que ton ami t'a donné.",
+  "tvInvitePickChannel": "Choisir la chaîne à partager",
+  "tvInviteNoChannels": "Aucune chaîne chargée.",
   "playerBlockedBanned": "Ce compte est suspendu. Contacte ton fournisseur.",
   "playerWeakConnection": "La lecture n'arrête pas de charger. Ta connexion Internet est probablement trop faible pour cette chaîne (ou le serveur de ton fournisseur est lent). Vérifie ton WiFi / ton débit, ou essaie une chaîne de moindre qualité. Ce n'est pas un problème de l'application.",
   "playerCastConnectingTo": "Connexion à {device}…",

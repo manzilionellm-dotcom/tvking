@@ -13,6 +13,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -65,43 +66,39 @@ class _TvInviteScreenState extends State<TvInviteScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Text('Partage',
-            style: TextStyle(
+        Text(context.l10n.tvInviteTitle,
+            style: const TextStyle(
                 fontSize: 32, fontWeight: FontWeight.w800, color: TvTokens.text)),
         const SizedBox(height: 6),
-        const Text('Fais profiter un ami, ou passe d’un de tes appareils à l’autre.',
-            style: TextStyle(fontSize: 15, color: TvTokens.muted)),
+        Text(context.l10n.tvInviteSubtitle,
+            style: const TextStyle(fontSize: 15, color: TvTokens.muted)),
         const SizedBox(height: 26),
         _HubOption(
           emoji: '🎁',
-          title: 'Inviter un ami',
-          subtitle:
-              'Il regarde le match avec toi — 24 h ou 48 h offertes, puis il s’abonne.',
+          title: context.l10n.tvInviteFriendTitle,
+          subtitle: context.l10n.tvInviteFriendSub,
           autofocus: true,
           onSelect: () => _go('invite'),
         ),
         const SizedBox(height: 14),
         _HubOption(
           emoji: '🤝',
-          title: 'Prêter mon abonnement',
-          subtitle:
-              'Donne ton abonnement à un ami 24 h ou 48 h. Tu es en pause le '
-              'temps du prêt — ça te revient tout seul à la fin.',
+          title: context.l10n.tvInviteLendTitle,
+          subtitle: context.l10n.tvInviteLendSub,
           onSelect: () => _go('lend'),
         ),
         const SizedBox(height: 14),
         _HubOption(
           emoji: '🔁',
-          title: 'Entre mes appareils',
-          subtitle:
-              'Déplace ton abonnement vers ta TV, ton laptop, ton téléphone (un seul à la fois).',
+          title: context.l10n.tvInviteTransferTitle,
+          subtitle: context.l10n.tvInviteTransferSub,
           onSelect: () => _go('transfer'),
         ),
         const SizedBox(height: 14),
         _HubOption(
           emoji: '📥',
-          title: 'J’ai un code',
-          subtitle: 'Un ami t’a donné un code ? Entre-le ici.',
+          title: context.l10n.tvInviteRedeemTitle,
+          subtitle: context.l10n.tvInviteRedeemSub,
           onSelect: () => _go('redeem'),
         ),
       ],
@@ -171,7 +168,7 @@ class _InviteFlowState extends State<_InviteFlow> {
     setState(() {
       _busy = false;
       if (r == null) {
-        _message = 'Connexion impossible. Réessaie.';
+        _message = context.l10n.tvInviteConnError;
       } else if (r['ok'] == true) {
         _code = (r['code'] ?? '').toString();
         _weeklyUsed = (r['weekly_used'] as num?)?.toInt() ?? _weeklyUsed;
@@ -184,7 +181,10 @@ class _InviteFlowState extends State<_InviteFlow> {
 
   Future<void> _grantByMac() async {
     final String g = _normalizeMac(_friendMac.text);
-    if (g.isEmpty) { setState(() => _message = 'Entre la MAC de ton ami.'); return; }
+    if (g.isEmpty) {
+      setState(() => _message = context.l10n.tvInviteEnterFriendMac);
+      return;
+    }
     setState(() { _busy = true; _message = null; });
     final Map<String, dynamic>? r = await InviteBackend.grant(
       widget.mac, g, hours: _hours, channel: _channelPayload,
@@ -193,9 +193,9 @@ class _InviteFlowState extends State<_InviteFlow> {
     setState(() {
       _busy = false;
       if (r == null) {
-        _message = 'Connexion impossible. Réessaie.';
+        _message = context.l10n.tvInviteConnError;
       } else if (r['ok'] == true) {
-        _message = 'Activé ! Ton ami a $_hours h pour regarder avec toi. 🎉';
+        _message = context.l10n.tvInviteActivated('$_hours');
       } else {
         _message = _errText((r['error'] ?? '').toString());
       }
@@ -203,71 +203,79 @@ class _InviteFlowState extends State<_InviteFlow> {
   }
 
   String _errText(String e) => switch (e) {
-        'not_paid' =>
-          'Le partage est réservé aux abonnés. Active ton abonnement d’abord.',
-        'issuer_quota' =>
-          'Tu as utilisé tes 5 invitations de la semaine. Ça se renouvelle bientôt.',
-        'already_active' => 'Cet appareil a déjà un accès actif.',
-        'already_used_once' =>
-          'Cet appareil a déjà profité d’un pass gratuit.',
-        'own_code' => 'C’est ta propre adresse 🙂',
-        _ => 'Action impossible pour le moment.',
+        'not_paid' => context.l10n.tvInviteErrNotPaid,
+        'issuer_quota' => context.l10n.tvInviteErrQuota,
+        'already_active' => context.l10n.tvInviteErrAlreadyActive,
+        'already_used_once' => context.l10n.tvInviteErrUsedOnce,
+        'own_code' => context.l10n.tvInviteErrOwnAddress,
+        _ => context.l10n.tvInviteErrGeneric,
       };
 
   @override
   Widget build(BuildContext context) {
     return _FlowScaffold(
-      title: 'Inviter un ami',
+      title: context.l10n.tvInviteFriendTitle,
       onBack: widget.onBack,
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             if (!_canInvite)
-              _note('Réservé aux abonnés. Une fois abonné, tu auras '
-                  '$_weeklyQuota invitations CHAQUE SEMAINE à partager.'),
+              _note(context.l10n.tvInviteReservedNote('$_weeklyQuota')),
             // 1) Durée
-            const _StepLabel('1 · Durée offerte'),
+            _StepLabel(context.l10n.tvInviteStepDuration),
             Row(children: <Widget>[
-              _Chip(label: '5 heures', on: _hours == 5, onSelect: () => setState(() => _hours = 5)),
+              _Chip(label: context.l10n.tvInviteHoursChip('5'), on: _hours == 5, onSelect: () => setState(() => _hours = 5)),
               const SizedBox(width: 12),
-              _Chip(label: '24 heures', on: _hours == 24, onSelect: () => setState(() => _hours = 24)),
+              _Chip(label: context.l10n.tvInviteHoursChip('24'), on: _hours == 24, onSelect: () => setState(() => _hours = 24)),
               const SizedBox(width: 12),
-              _Chip(label: '48 heures', on: _hours == 48, onSelect: () => setState(() => _hours = 48)),
+              _Chip(label: context.l10n.tvInviteHoursChip('48'), on: _hours == 48, onSelect: () => setState(() => _hours = 48)),
             ]),
             const SizedBox(height: 20),
             // 2) Chaîne
-            const _StepLabel('2 · Chaîne à regarder ensemble'),
+            _StepLabel(context.l10n.tvInviteStepChannel),
             _BigButton(
               icon: Icons.live_tv_rounded,
-              label: _channel == null ? 'Choisir une chaîne' : _channel!.cleanName,
+              label: _channel == null
+                  ? context.l10n.tvInviteChooseChannel
+                  : _channel!.cleanName,
               onSelect: _pickChannel,
             ),
             const SizedBox(height: 20),
             // 3) Connexion
-            const _StepLabel('3 · Connecter ton ami'),
+            _StepLabel(context.l10n.tvInviteStepConnect),
             if (_code != null) ...<Widget>[
               _codeBox(_code!),
               const SizedBox(height: 8),
-              Text('Cette semaine : $_weeklyUsed / $_weeklyQuota · code valable 48 h',
+              Text(
+                  context.l10n
+                      .tvInviteWeeklyLine('$_weeklyUsed', '$_weeklyQuota'),
                   style: const TextStyle(fontSize: 13, color: TvTokens.mutedDim)),
               const SizedBox(height: 14),
             ],
             _BigButton(
               icon: Icons.qr_code_2_rounded,
-              label: _busy ? 'Patiente…' : (_code == null ? 'Générer un code' : 'Nouveau code'),
+              label: _busy
+                  ? context.l10n.tvInviteWait
+                  : (_code == null
+                      ? context.l10n.tvInviteGenerate
+                      : context.l10n.tvInviteNewCode),
               autofocus: true,
               onSelect: _busy ? null : _generate,
             ),
             const SizedBox(height: 16),
-            const Text('— ou active-le directement par sa MAC —',
-                style: TextStyle(fontSize: 13, color: TvTokens.mutedDim)),
+            Text(context.l10n.tvInviteOrByMac,
+                style: const TextStyle(fontSize: 13, color: TvTokens.mutedDim)),
             const SizedBox(height: 10),
-            _MacField(controller: _friendMac, hint: 'MAC de l’ami (ex. MK:1A:2B:3C:4D:5E)'),
+            _MacField(
+                controller: _friendMac,
+                hint: context.l10n.tvInviteFriendMacHint),
             const SizedBox(height: 10),
             _BigButton(
               icon: Icons.bolt_rounded,
-              label: _busy ? 'Patiente…' : 'Activer par MAC',
+              label: _busy
+                  ? context.l10n.tvInviteWait
+                  : context.l10n.tvInviteActivateByMac,
               onSelect: _busy ? null : _grantByMac,
             ),
             if (_message != null) ...<Widget>[
@@ -329,22 +337,24 @@ class _TransferFlowState extends State<_TransferFlow> {
 
   Future<void> _transfer() async {
     final String t = _normalizeMac(_target.text);
-    if (t.isEmpty) { setState(() => _message = 'Entre la MAC de l’appareil cible.'); return; }
+    if (t.isEmpty) {
+      setState(() => _message = context.l10n.tvInviteEnterTargetMac);
+      return;
+    }
     setState(() { _busy = true; _message = null; });
     final Map<String, dynamic>? r = await InviteBackend.transfer(widget.mac, t);
     if (!mounted) return;
     setState(() {
       _busy = false;
       if (r == null) {
-        _message = 'Connexion impossible. Réessaie.';
+        _message = context.l10n.tvInviteConnError;
       } else if (r['ok'] == true) {
-        _message = 'C’est fait ! Ton abonnement est passé sur l’autre appareil. '
-            'CET appareil est en pause jusqu’au prochain transfert.';
+        _message = context.l10n.tvInviteTransferDone;
       } else {
         _message = switch ((r['error'] ?? '').toString()) {
-          'not_paid' => 'Réservé aux appareils payés (abonnement à l’année).',
-          'same_device' => 'C’est déjà cet appareil 🙂',
-          _ => 'Transfert impossible pour le moment.',
+          'not_paid' => context.l10n.tvInviteErrPaidOnly,
+          'same_device' => context.l10n.tvInviteErrSameDevice,
+          _ => context.l10n.tvInviteErrTransfer,
         };
       }
     });
@@ -353,23 +363,25 @@ class _TransferFlowState extends State<_TransferFlow> {
   @override
   Widget build(BuildContext context) {
     return _FlowScaffold(
-      title: 'Entre mes appareils',
+      title: context.l10n.tvInviteTransferTitle,
       onBack: widget.onBack,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
-            'Déplace ton abonnement vers un autre de tes appareils. Un seul '
-            'appareil regarde à la fois — tu peux le ramener quand tu veux.',
-            style: TextStyle(fontSize: 15, color: TvTokens.muted),
+          Text(
+            context.l10n.tvInviteTransferIntro,
+            style: const TextStyle(fontSize: 15, color: TvTokens.muted),
           ),
           const SizedBox(height: 20),
-          const _StepLabel('MAC de l’appareil cible'),
-          _MacField(controller: _target, hint: 'MAC (visible dans Réglages de l’autre appareil)'),
+          _StepLabel(context.l10n.tvInviteTargetMacLabel),
+          _MacField(
+              controller: _target, hint: context.l10n.tvInviteTargetMacHint),
           const SizedBox(height: 14),
           _BigButton(
             icon: Icons.swap_horiz_rounded,
-            label: _busy ? 'Transfert…' : 'Transférer ici → là-bas',
+            label: _busy
+                ? context.l10n.tvInviteTransferBusy
+                : context.l10n.tvInviteTransferButton,
             autofocus: true,
             onSelect: _busy ? null : _transfer,
           ),
@@ -425,7 +437,7 @@ class _LendFlowState extends State<_LendFlow> {
   Future<void> _lend() async {
     final String g = _normalizeMac(_friendMac.text);
     if (g.isEmpty) {
-      setState(() => _message = 'Entre la MAC de ton ami.');
+      setState(() => _message = context.l10n.tvInviteEnterFriendMac);
       return;
     }
     setState(() {
@@ -438,18 +450,16 @@ class _LendFlowState extends State<_LendFlow> {
     setState(() {
       _busy = false;
       if (r == null) {
-        _message = 'Connexion impossible. Réessaie.';
+        _message = context.l10n.tvInviteConnError;
       } else if (r['ok'] == true) {
-        _message = 'Prêté ! Ton ami a $_hours h. Toi, tu es en pause — ça te '
-            'revient tout seul à la fin.';
+        _message = context.l10n.tvInviteLendDone('$_hours');
       } else {
         _message = switch ((r['error'] ?? '').toString()) {
-          'not_paid' => 'Réservé aux abonnés payés (abonnement actif).',
-          'already_active' => 'Cet ami a déjà un accès actif.',
-          'loan_active' =>
-            'Tu as déjà un prêt en cours. Reprends-le d’abord.',
-          'same_device' => 'C’est ton propre appareil 🙂',
-          _ => 'Prêt impossible pour le moment.',
+          'not_paid' => context.l10n.tvInviteErrLendNotPaid,
+          'already_active' => context.l10n.tvInviteErrFriendActive,
+          'loan_active' => context.l10n.tvInviteErrLoanActive,
+          'same_device' => context.l10n.tvInviteErrOwnDevice,
+          _ => context.l10n.tvInviteErrLend,
         };
       }
     });
@@ -467,9 +477,9 @@ class _LendFlowState extends State<_LendFlow> {
       _busy = false;
       if (r != null && r['ok'] == true) {
         _loan = null;
-        _message = 'Abonnement repris — c’est de nouveau à toi. 👍';
+        _message = context.l10n.tvInviteReclaimed;
       } else {
-        _message = 'Reprise impossible pour le moment.';
+        _message = context.l10n.tvInviteErrReclaim;
       }
     });
     if (r != null && r['ok'] == true) {
@@ -481,7 +491,7 @@ class _LendFlowState extends State<_LendFlow> {
   Widget build(BuildContext context) {
     final bool hasLoan = _loan != null;
     return _FlowScaffold(
-      title: 'Prêter mon abonnement',
+      title: context.l10n.tvInviteLendTitle,
       onBack: widget.onBack,
       child: SingleChildScrollView(
         child: Column(
@@ -499,14 +509,15 @@ class _LendFlowState extends State<_LendFlow> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('Tu as prêté ton abonnement',
+                    Text(context.l10n.tvInviteLoanBanner,
                         style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
                             color: TvTokens.goldBright)),
                     const SizedBox(height: 6),
                     Text(
-                      'Prêté à ${_loan!['guest'] ?? ''}. ${_remaining()}',
+                      '${context.l10n.tvInviteLoanLine('${_loan!['guest'] ?? ''}')} '
+                      '${_remaining()}',
                       style: const TextStyle(fontSize: 14, color: TvTokens.muted),
                     ),
                   ],
@@ -515,31 +526,35 @@ class _LendFlowState extends State<_LendFlow> {
               const SizedBox(height: 14),
               _BigButton(
                 icon: Icons.undo_rounded,
-                label: _busy ? 'Reprise…' : 'Reprendre mon abonnement',
+                label: _busy
+                    ? context.l10n.tvInviteReclaimBusy
+                    : context.l10n.tvInviteReclaimButton,
                 autofocus: true,
                 onSelect: _busy ? null : _reclaim,
               ),
             ] else ...<Widget>[
-              const Text(
-                'Donne ton abonnement complet à un ami pour 24 h ou 48 h. '
-                'Pendant le prêt, CET appareil est en pause. À l’échéance, '
-                'l’abonnement revient tout seul sur ta MAC.',
-                style: TextStyle(fontSize: 15, color: TvTokens.muted),
+              Text(
+                context.l10n.tvInviteLendIntro,
+                style: const TextStyle(fontSize: 15, color: TvTokens.muted),
               ),
               const SizedBox(height: 20),
-              const _StepLabel('1 · Durée du prêt (max)'),
+              _StepLabel(context.l10n.tvInviteLendStepDuration),
               Row(children: <Widget>[
-                _Chip(label: '24 heures', on: _hours == 24, onSelect: () => setState(() => _hours = 24)),
+                _Chip(label: context.l10n.tvInviteHoursChip('24'), on: _hours == 24, onSelect: () => setState(() => _hours = 24)),
                 const SizedBox(width: 12),
-                _Chip(label: '48 heures', on: _hours == 48, onSelect: () => setState(() => _hours = 48)),
+                _Chip(label: context.l10n.tvInviteHoursChip('48'), on: _hours == 48, onSelect: () => setState(() => _hours = 48)),
               ]),
               const SizedBox(height: 20),
-              const _StepLabel('2 · MAC de ton ami'),
-              _MacField(controller: _friendMac, hint: 'MAC (ex. MK:1A:2B:3C:4D:5E)'),
+              _StepLabel(context.l10n.tvInviteLendStepMac),
+              _MacField(
+                  controller: _friendMac,
+                  hint: context.l10n.tvInviteMacHintShort),
               const SizedBox(height: 14),
               _BigButton(
                 icon: Icons.volunteer_activism_rounded,
-                label: _busy ? 'Patiente…' : 'Prêter mon abonnement',
+                label: _busy
+                    ? context.l10n.tvInviteWait
+                    : context.l10n.tvInviteLendTitle,
                 autofocus: true,
                 onSelect: _busy ? null : _lend,
               ),
@@ -557,12 +572,15 @@ class _LendFlowState extends State<_LendFlow> {
 
   String _remaining() {
     final int ms = (_loan?['ms_left'] as num?)?.toInt() ?? 0;
-    if (ms <= 0) return 'Retour imminent.';
+    if (ms <= 0) return context.l10n.tvInviteReturnImminent;
     final int totalMin = (ms / 60000).floor();
     final int h = totalMin ~/ 60;
     final int m = totalMin % 60;
-    if (h > 0) return 'Retour auto dans ${h}h ${m.toString().padLeft(2, '0')}.';
-    return 'Retour auto dans $m min.';
+    if (h > 0) {
+      return context.l10n
+          .tvInviteReturnInH('$h', m.toString().padLeft(2, '0'));
+    }
+    return context.l10n.tvInviteReturnInMin('$m');
   }
 }
 
@@ -603,7 +621,7 @@ class _RedeemFlowState extends State<_RedeemFlow> {
     if (r != null && r['ok'] == true) {
       setState(() {
         _busy = false; _ok = true;
-        _message = 'C’est bon ! Profite du match. À la fin, tu pourras t’abonner pour continuer. 🎉';
+        _message = context.l10n.tvInviteRedeemOk;
       });
       await SubscriptionState.instance.syncWithBackend();
       return;
@@ -611,16 +629,15 @@ class _RedeemFlowState extends State<_RedeemFlow> {
     setState(() {
       _busy = false; _entry = '';
       _message = switch ((r?['error'] ?? '').toString()) {
-        'code_invalid' => 'Code inconnu. Vérifie les 6 chiffres.',
-        'code_used' => 'Ce code a déjà été utilisé.',
-        'code_expired' => 'Ce code a expiré. Demande-en un nouveau.',
-        'own_code' => 'C’est ton propre code 🙂',
-        'issuer_not_paid' => 'L’abonnement de ton ami n’est plus actif.',
-        'issuer_quota' => 'Ton ami a atteint ses 5 invitations de la semaine.',
-        'already_active' => 'Ton appareil a déjà un accès actif.',
-        'already_used_once' =>
-          'Tu as déjà profité d’un pass gratuit. Pour continuer, abonne-toi.',
-        _ => 'Impossible d’activer ce code.',
+        'code_invalid' => context.l10n.tvInviteErrCodeInvalid,
+        'code_used' => context.l10n.tvInviteErrCodeUsed,
+        'code_expired' => context.l10n.tvInviteErrCodeExpired,
+        'own_code' => context.l10n.tvInviteErrOwnCode,
+        'issuer_not_paid' => context.l10n.tvInviteErrIssuerNotPaid,
+        'issuer_quota' => context.l10n.tvInviteErrIssuerQuota,
+        'already_active' => context.l10n.tvInviteErrDeviceActive,
+        'already_used_once' => context.l10n.tvInviteErrUsedOnceSubscribe,
+        _ => context.l10n.tvInviteErrRedeem,
       };
     });
   }
@@ -630,13 +647,13 @@ class _RedeemFlowState extends State<_RedeemFlow> {
     final String shown = List<String>.generate(
         6, (int i) => i < _entry.length ? _entry[i] : '·').join(' ');
     return _FlowScaffold(
-      title: 'J’ai un code',
+      title: context.l10n.tvInviteRedeemTitle,
       onBack: widget.onBack,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text('Tape le code que ton ami t’a donné.',
-              style: TextStyle(fontSize: 15, color: TvTokens.muted)),
+          Text(context.l10n.tvInviteRedeemPrompt,
+              style: const TextStyle(fontSize: 15, color: TvTokens.muted)),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
@@ -923,15 +940,16 @@ class _ChannelPicker extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text('Choisir la chaîne à partager',
-              style: TextStyle(
+          Text(context.l10n.tvInvitePickChannel,
+              style: const TextStyle(
                   fontSize: 22, fontWeight: FontWeight.w800, color: TvTokens.text)),
           const SizedBox(height: 14),
           Expanded(
             child: all.isEmpty
-                ? const Center(
-                    child: Text('Aucune chaîne chargée.',
-                        style: TextStyle(color: TvTokens.muted, fontSize: 16)))
+                ? Center(
+                    child: Text(context.l10n.tvInviteNoChannels,
+                        style: const TextStyle(
+                            color: TvTokens.muted, fontSize: 16)))
                 : ListView.builder(
                     itemCount: all.length,
                     itemBuilder: (BuildContext c, int i) {
