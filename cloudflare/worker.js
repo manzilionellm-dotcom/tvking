@@ -112,6 +112,11 @@ const APK_URL =
 const SEVENTV_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/seventv-latest/seven-tv.apk';
 
+// APK de TEST Android TV (dernier build validé par la CI) — canal de
+// DIAGNOSTIC : jamais donné aux clients. Servi via /test uniquement.
+const TEST_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/test/defew-tv-test.apk';
+
 // Installateur WINDOWS (release `windows-latest`) — app The Few PC,
 // servie via /win, /windows, /pc.
 const WINDOWS_EXE_URL =
@@ -7306,6 +7311,13 @@ async function handleRequest(request, env, ctx) {
       ['7tv', 'seventv', 'sevenmotion'].includes(segments[0].toLowerCase())
     ) {
       return proxyApk(SEVENTV_APK_URL, 'SevenMotionTV.apk', url.searchParams.get('v'));
+    }
+
+    // /test — dernier build de TEST Android TV (diagnostic, pas les clients)
+    if (segments.length === 1 &&
+        ['test', 'tvtest', 'beta'].includes(segments[0].toLowerCase())) {
+      return proxyApk(TEST_APK_URL, 'defew-tv-test.apk',
+        url.searchParams.get('v'));
     }
 
     // /win, /windows, /pc — installateur WINDOWS officiel (The Few PC,

@@ -1,0 +1,87 @@
+# ============================================================================
+#  publish-tv-test.yml — Publie l'APK TV d'un run build-tv comme release
+#  « test » à LIEN DIRECT (téléchargeable sans compte GitHub, ex. via
+#  l'app Downloader sur la box).
+#
+#  CANAL DE DIAGNOSTIC : jamais donné aux clients. Le lien est servi par le
+#  Worker via app.7themotion.com/test uniquement. URL stable :
+#    https://github.com/<repo>/releases/download/test/defew-tv-test.apk
+#
+#  GARDE-FOUS (mêmes que publish-cinema-test.yml) :
+#    - PRÉRELEASE → ne devient JAMAIS la release « latest » (le Worker /dl
+#      et les codes vanity continuent de pointer sur l'APK mobile officiel) ;
+#    - AUCUN version.json uploadé → l'updater in-app des box ne voit pas
+#      cette release ;
+#    - ne touche QUE le tag « test » — jamais les tags de production
+#      (seventv-latest, prod, windows-latest, tizen-latest, phone-test,
+#      cinema-test) ;
+#    - tag écrasé à chaque publication → une seule release de test à la
+#      fois, les liens ne changent jamais.
+#
+#  ACTUALISATION : Actions → « Publish TV test APK » → Run workflow, avec
+#  l'ID d'un run build-tv VERT (vérifier Quality + Tests verts sur le même
+#  commit). Le push initial de ce fichier publie le run indiqué dans
+#  DEFAULT_RUN_ID (bootstrap).
+# ============================================================================
+name: Publish TV test APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID du run build-tv dont on publie l''APK (Actions → run → URL)'
+        required: true
+        type: string
+  # Bootstrap : le push de ce fichier publie DEFAULT_RUN_ID (voir env).
+  push:
+    branches:
+      - 'claude/7motion-android-tv-compat-e0rtyp'
+    paths:
+      - '.github/workflows/publish-tv-test.yml'
+
+permissions:
+  contents: write   # créer/écraser la release test
+  actions: read     # télécharger l'artefact du run build-tv
+
+env:
+  # Run build-tv publié quand le workflow part d'un push (bootstrap) :
+  # commit 2de88c7ebfd3c230a7ef0bee704f9577ba2ed9ef, CI verte (Build DeFew
+  # TV + Quality + Tests).
+  DEFAULT_RUN_ID: '32414591712'
+
+jobs:
+  publish:
+    name: Release test (lien direct)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Télécharger l'APK du run build-tv
+        uses: actions/download-artifact@v4
+        with:
+          pattern: defew-tv-apk-*
+          run-id: ${{ inputs.run_id || '32414591712' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+
+      - name: Publier la release test (écrase la précédente)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.run_id || '32414591712' }}
+        run: |
+          set -e
+          ls -la
+          mv app-release.apk defew-tv-test.apk
+          echo "SHA-256 de l'APK publié :"
+          sha256sum defew-tv-test.apk
+          # Commit du build : le tag « test » pointera dessus (traçabilité).
+          BUILD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .head_sha)
+          echo "Commit du build : $BUILD_SHA"
+          # Tag recréé à chaque publication : UNE seule release de test.
+          gh release delete test -R "$GITHUB_REPOSITORY" -y --cleanup-tag || true
+          gh release create test -R "$GITHUB_REPOSITORY" \
+            --prerelease \
+            --target "$BUILD_SHA" \
+            --title "Build de test TV" \
+            --notes "APK Android TV de TEST (diagnostic, ne pas diffuser aux clients). Dernier build validé par la CI : run $RUN_ID, commit $BUILD_SHA. Lien direct : https://github.com/$GITHUB_REPOSITORY/releases/download/test/defew-tv-test.apk — servi aussi via https://app.7themotion.com/test" \
+            defew-tv-test.apk
+          echo "✓ https://github.com/$GITHUB_REPOSITORY/releases/download/test/defew-tv-test.apk"
