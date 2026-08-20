@@ -1135,10 +1135,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case StreamBlockReason.providerBlocked:
         return context.l10n.playerBlockedProvider;
       case StreamBlockReason.maxConnections:
-        return context.l10n.playerBlockedMaxConnections(
-          '${d.xtreamActiveCons ?? '?'}',
-          '${d.xtreamMaxConnections ?? '?'}',
-        );
+        // DÉCISION PROPRIÉTAIRE (21/08, photos TF1 puis « Prime: 13eme
+        // RUE ») : « je veux plus voir ce message ». L'accusation « un autre
+        // écran regarde déjà » était fausse dans le scénario dominant (la
+        // session fantôme du film qu'on vient de fermer) et n'est plus
+        // affichée. Le créneau occupé ne terminalise plus (patrouille 458 du
+        // fallback) ; si un chemin résiduel arrive quand même ici, on montre
+        // le message générique — la Boîte noire garde les vrais compteurs
+        // pour le revendeur.
+        return fallback;
       case StreamBlockReason.banned:
         return context.l10n.playerBlockedBanned;
       case StreamBlockReason.none:

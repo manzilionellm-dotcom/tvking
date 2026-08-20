@@ -137,6 +137,7 @@ class StreamBlockedFallback {
     this.uaProbeTimeout = const Duration(milliseconds: 2500),
     this.retryBackoff = const Duration(seconds: 3),
     this.conn458Backoff = const Duration(milliseconds: 1100),
+    this.probeSlotBusy,
   });
 
   /// Chaîne affichée à l'écran (change au zap).
@@ -195,6 +196,12 @@ class StreamBlockedFallback {
   /// appelants/tests ; le calendrier complet vit dans [_k458Schedule].
   final Duration conn458Backoff;
 
+  /// SURCHARGE DE TEST du sondage de créneau : `true` = occupé, `false` =
+  /// libéré, `null` = illisible (pas une source Xtream, réseau…). En
+  /// production (null), [_isSlotStillBusy] lit les compteurs réels du compte
+  /// via player_api.
+  final Future<bool?> Function()? probeSlotBusy;
+
   /// CALENDRIER DE RECONNEXION SUR 458 (photo client du 19/08 : « limite de
   /// connexions atteinte » sur TF1, juste après avoir quitté une autre
   /// lecture). Trois essais à 1,1 s couvraient à peine 3 secondes — or un
@@ -211,6 +218,17 @@ class StreamBlockedFallback {
   /// une chaîne → limite 1/1 » sur une ligne NEUVE) : beaucoup de panels
   /// gardent la session d'une lecture fermée 60 à 90 s. L'app abandonnait
   /// pile avant la libération — deux paliers de plus couvrent cette plage.
+  ///
+  /// ~90 s NON PLUS (terrain 20/08 22:08, même scénario, verdict « 1/1 »
+  /// après le calendrier complet) : l'horloge du panel démarre à la
+  /// fermeture RÉELLE de la socket du film — laquelle peut suivre la sortie
+  /// de l'écran de 8 à 15 s (read() bloqué, cf. mesure H1). 90 s de
+  /// calendrier couvraient donc parfois... 75 s de linger. Deux paliers de
+  /// 30 s portent la couverture à ~150 s ; et surtout, chaque palier est
+  /// désormais MESURÉ (cf. [_try458Retry] : on lit les compteurs du compte
+  /// avant de rouvrir) — on ne brûle plus une connexion refusée à l'aveugle
+  /// à chaque échéance, et on rouvre à la SECONDE où le créneau se libère
+  /// au lieu d'abandonner sur un chiffre rond.
   static const List<Duration> _k458Schedule = <Duration>[
     Duration(milliseconds: 1100),
     Duration(seconds: 2),
@@ -221,6 +239,8 @@ class StreamBlockedFallback {
     Duration(seconds: 14),
     Duration(seconds: 20),
     Duration(seconds: 25),
+    Duration(seconds: 30),
+    Duration(seconds: 30),
   ];
 
   /// Idem pour un 5xx (serveur fournisseur en panne) : on retente un peu (le
@@ -294,12 +314,12 @@ class StreamBlockedFallback {
     // RETRIES RAPIDES (le slot se libère quand la lecture précédente ferme sa
     // socket), puis un message CLAIR. On zappe vite → on repart vite.
     if (failure.status == 458) {
-      if (_try458Retry()) return;
-      _log('[458] limite de connexions confirmée après '
-          '${_k458Schedule.length} essais étalés sur ~90 s '
-          '→ message clair (pas de sonde/cascade)');
-      showBlocked(const BlockedVerdict(BlockedKind.maxConnections,
-          message: kMaxConnectionsMessage));
+      // JAMAIS TERMINAL (propriétaire, 21/08, photo « Prime: 13eme RUE » :
+      // « je veux plus voir ce message ») : le créneau occupé n'affiche
+      // plus d'écran d'erreur — patrouille silencieuse sans fin, le flux
+      // redémarre tout seul à la libération. Quitter l'écran ou zapper
+      // arrête la patrouille.
+      _try458Retry();
       return;
     }
     // HTTP 5xx = ERREUR SERVEUR du fournisseur (500-599 ; 520-524 = le serveur
@@ -374,8 +394,17 @@ class StreamBlockedFallback {
     run();
   }
 
-  /// Nouvel essai sur un 458 (limite de connexions). Renvoie `false` quand le
-  /// calendrier [_k458Schedule] est épuisé (→ message clair). Le compteur se
+  /// CADENCE DE GARDE une fois le calendrier progressif épuisé : la
+  /// patrouille continue À L'INFINI toutes les 30 s (compteurs lus avant
+  /// chaque réouverture) tant que l'écran vit et que la chaîne n'a pas
+  /// changé. Décision propriétaire du 21/08 : l'écran « Limite de
+  /// connexions atteinte » ne doit PLUS JAMAIS s'afficher — le flux
+  /// redémarre tout seul, en silence, dès que le créneau se libère.
+  static const Duration _kSlotPatrol = Duration(seconds: 30);
+
+  /// Nouvel essai sur un 458 (limite de connexions). Ne s'épuise JAMAIS
+  /// (renvoie toujours `true`) : après les paliers progressifs, la
+  /// patrouille [_kSlotPatrol] prend le relais. Le compteur se
   /// réinitialise dès qu'on change de chaîne (zap).
   /// « CONTENEUR NON RECONNU » (ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
   /// code 3003) sur une chaîne qui n'a JAMAIS affiché d'image.
@@ -397,11 +426,9 @@ class StreamBlockedFallback {
   /// une image DÉJÀ affichée, elle, signe un vrai souci de format.
   bool onContainerUnsupported() {
     if (hasDecodedFrames()) return false;
-    if (_try458Retry()) return true;
-    _log('[conteneur] toujours rien de lisible après '
-        '${_k458Schedule.length} essais → message clair (pas de sonde)');
-    showBlocked(const BlockedVerdict(BlockedKind.maxConnections,
-        message: kMaxConnectionsMessage));
+    // Jamais terminal non plus (même décision du 21/08 que pour le 458) :
+    // la patrouille tient l'écran en « reconnexion » jusqu'à la libération.
+    _try458Retry();
     return true;
   }
 
@@ -411,21 +438,47 @@ class StreamBlockedFallback {
       _conn458ChannelId = channel.id;
       _conn458Count = 0;
     }
-    if (_conn458Count >= _k458Schedule.length) return false;
     // Premier 458 de cette chaîne : on va lire les compteurs RÉELS du compte
-    // (max_connections / active_cons) pour que le message final dise la
-    // vérité au lieu de « (?/?) » — photo client du 19/08.
+    // (max_connections / active_cons) pour que le journal dise la vérité au
+    // lieu de « (?/?) » — photo client du 19/08.
     if (_conn458Count == 0) unawaited(_probeAccountLimits());
-    final Duration wait = _k458Schedule[_conn458Count];
+    final Duration wait = _conn458Count < _k458Schedule.length
+        ? _k458Schedule[_conn458Count]
+        : _kSlotPatrol; // calendrier épuisé → cadence de garde, sans fin
     _conn458Count++;
     _log('[458] limite de connexions — nouvel essai '
-        '$_conn458Count/${_k458Schedule.length} dans ${wait.inMilliseconds} ms '
+        '$_conn458Count dans ${wait.inMilliseconds} ms '
         '(le panel libère le créneau à l\'expiration de SA session, '
         'pas à la fermeture de la socket)');
-    Future<void>.delayed(wait).then((_) {
+    Future<void>.delayed(wait).then((_) async {
       if (!isAlive() || channel.id != getChannel().id) {
         _log('[458] retry abandonné (zap ou écran fermé pendant l\'attente)');
         return;
+      }
+      // CRÉNEAU MESURÉ (terrain 20/08 22:08) : avant de brûler une connexion
+      // refusée de plus, on lit les compteurs réels du compte (player_api =
+      // une requête d'API, PAS un flux : elle ne consomme pas le créneau
+      // qu'on attend). Occupé → pas de réouverture, on laisse courir le
+      // palier suivant ; libéré → réouverture immédiate ; illisible (source
+      // non-Xtream, réseau) → comportement historique, réouverture à
+      // l'aveugle.
+      final bool? busy = await _isSlotStillBusy();
+      if (!isAlive() || channel.id != getChannel().id) {
+        _log('[458] retry abandonné (zap ou écran fermé pendant le sondage '
+            'du créneau)');
+        return;
+      }
+      if (busy == true) {
+        final StreamDiagnostics d = StreamDiagnostics.instance;
+        _log('[458] créneau toujours occupé '
+            '(${d.xtreamActiveCons ?? '?'}/${d.xtreamMaxConnections ?? '?'}) '
+            '→ réouverture sautée, prochain sondage programmé');
+        _try458Retry(); // jamais terminal : patrouille jusqu'à libération
+        return;
+      }
+      if (busy == false) {
+        _log('[458] créneau LIBÉRÉ (compteurs du compte) → réouverture '
+            'immédiate');
       }
       resetWatchdogBudget();
       _log('[458] retry silencieux → réouverture de '
@@ -433,6 +486,67 @@ class StreamBlockedFallback {
       reopen(getEffectiveUrl());
     });
     return true;
+  }
+
+  /// Le compte est-il au MAXIMUM de connexions d'après la boîte noire
+  /// (compteurs player_api déjà lus pendant l'incident) ? Si oui, on
+  /// n'affiche PAS d'écran d'erreur : la patrouille 458 prend la main et
+  /// redémarre le flux dès la libération. Renvoie `true` si la patrouille
+  /// est engagée.
+  bool _patrolIfSlotBusy(String origin) {
+    final bool busy = StreamDiagnostics.instance
+            .blockReasonForUrl(getEffectiveUrl()) ==
+        StreamBlockReason.maxConnections;
+    if (!busy) return false;
+    _log('[$origin] compte au maximum de connexions → pas d\'écran '
+        'd\'erreur : patrouille silencieuse du créneau (redémarrage du '
+        'flux dès libération)');
+    _try458Retry();
+    return true;
+  }
+
+  /// Le créneau de lecture du compte est-il encore occupé ? `true` = occupé
+  /// (active_cons ≥ max_connections), `false` = libéré, `null` = illisible
+  /// (pas une source Xtream, compteurs absents, réseau) → l'appelant revient
+  /// au comportement historique. Best-effort ABSOLU : aucune exception ne
+  /// sort d'ici.
+  ///
+  /// `player_api.php` est une requête d'API, pas un flux : elle ne consomme
+  /// pas le créneau. `fetchAccountInfo` verse aussi les compteurs dans la
+  /// boîte noire → le verdict final affiche les VRAIS chiffres.
+  Future<bool?> _isSlotStillBusy() async {
+    final Future<bool?> Function()? override = probeSlotBusy;
+    if (override != null) {
+      try {
+        return await override();
+      } catch (_) {
+        return null;
+      }
+    }
+    try {
+      final pl.Playlist? src = xtreamPlaylistFor(getChannel());
+      if (src == null ||
+          src.xtreamServer == null ||
+          src.xtreamUsername == null ||
+          src.xtreamPassword == null) {
+        return null;
+      }
+      final XtreamClient client = XtreamClient(
+        serverUrl: src.xtreamServer!,
+        username: src.xtreamUsername!,
+        password: src.xtreamPassword!,
+        timeout: const Duration(seconds: 6),
+      );
+      final XtreamAccountInfo info = await client.fetchAccountInfo();
+      final int? max = info.maxConnections;
+      final int? active = info.activeCons;
+      if (max == null || active == null || max <= 0) return null;
+      return active >= max;
+    } catch (e) {
+      _log('[458] compteurs du compte illisibles pendant l\'attente ($e) — '
+          'réouverture à l\'aveugle (comportement historique)');
+      return null;
+    }
   }
 
   /// Lit les compteurs RÉELS du compte Xtream (max_connections /
@@ -540,6 +654,7 @@ class StreamBlockedFallback {
       return;
     }
     if (_attemptedForChannelId == channel.id) {
+      if (_patrolIfSlotBusy('anti-boucle')) return;
       _log(
         'Diagnostic déjà TENTÉ pour « ${channel.cleanName} » — pas de '
             'nouvelle sonde (anti-boucle), erreur affichée',
@@ -756,6 +871,11 @@ class StreamBlockedFallback {
       level: 'error',
     );
     if (!stillCurrent()) return;
+    // Compte au MAXIMUM de connexions pendant que la cascade échouait : les
+    // sondes n'avaient aucune chance (le panel refuse tout tant que le
+    // créneau est pris). Pas d'écran d'erreur (décision du 21/08) —
+    // patrouille silencieuse, le flux redémarrera à la libération.
+    if (_patrolIfSlotBusy('cascade')) return;
     showBlocked(
       probe.isLikelyNetworkBlocked
           ? const BlockedVerdict(
