@@ -44,7 +44,11 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
+import '../../player/data/line_occupancy_probe.dart';
+import '../../player/data/local_stream_relay.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/xtream_client.dart';
+import '../../playlists/domain/playlist.dart' as pl;
 import '../../recordings/data/recording_repository.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../vod/data/download_repository.dart';
@@ -98,6 +102,13 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
   // Sonde de décodage (étape 6) : mini-vue native montée UNIQUEMENT pendant
   // la sonde — même schéma que l'écran caché (aucune fuite de lecteur).
   NativeVideoController? _probe;
+
+  // ----- Test d'occupation de la LIGNE (terrain 20/08 : « 1/1 » persistant
+  // alors que l'app ferme tout en ms — QUI tient la ligne ?) -----
+  bool _lineTestRunning = false;
+  bool _lineTestCancelled = false;
+  String _lineTestStatus = '';
+  String _lineTestVerdict = '';
 
   @override
   void initState() {
@@ -667,6 +678,52 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
           const SizedBox(height: 14),
           _diagnosisPanel(),
         ],
+        const SizedBox(height: 14),
+        // ----- Test d'occupation de la LIGNE (qui tient le créneau ?) -----
+        TvFocusBuilder(
+          scale: TvFocusScale.large,
+          onSelect: _lineTestRunning ? null : () => _runLineTest(),
+          builder: (BuildContext context, bool focused) {
+            final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+            final Color fg =
+                focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+            return Container(
+              decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              child: Row(
+                children: <Widget>[
+                  Icon(Icons.speed_rounded, color: fg, size: 26),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _lineTestRunning
+                          ? 'Test de la ligne en cours… $_lineTestStatus'
+                          : 'Tester la ligne (3 min) — qui occupe la '
+                              'connexion ?',
+                      style: TextStyle(
+                          fontSize: TvDimens.title,
+                          fontWeight: FontWeight.w700,
+                          color: fg),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        if (_lineTestVerdict.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 10),
+          _focusableCard(
+            child: Text(
+              _lineTestVerdict,
+              style: const TextStyle(
+                  fontSize: TvDimens.body, color: TvTokens.text, height: 1.4),
+            ),
+          ),
+        ],
         const SizedBox(height: 18),
         _sectionTitle(context.l10n.tvBlackBoxSectionFailures(_failures.length)),
         if (_failures.isEmpty)
@@ -682,6 +739,104 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
         const SizedBox(height: 24),
       ],
     );
+  }
+
+  /// TEST D'OCCUPATION DE LA LIGNE (terrain 20/08). L'app ferme TOUTES ses
+  /// connexions, puis lit les compteurs réels du compte (player_api — une
+  /// requête d'API, pas un flux) toutes les 5 s pendant 3 min. Le verdict
+  /// dit QUI tient la ligne : le panel (linger, mesuré en secondes) ou un
+  /// AUTRE appareil (occupée en continu sans cette TV). Chaque relevé est
+  /// journalisé dans le Journal de vol — vérifiable ligne à ligne.
+  Future<void> _runLineTest() async {
+    // Source Xtream active (repli : première source Xtream trouvée).
+    pl.Playlist? src;
+    try {
+      src = await PlaylistRepository.instance.getActivePlaylist();
+    } catch (_) {
+      src = null;
+    }
+    if (src == null || src.type != pl.PlaylistType.xtream) {
+      for (final pl.Playlist p in PlaylistRepository.instance.currentPlaylists) {
+        if (p.type == pl.PlaylistType.xtream) {
+          src = p;
+          break;
+        }
+      }
+    }
+    if (src == null ||
+        src.type != pl.PlaylistType.xtream ||
+        src.xtreamServer == null ||
+        src.xtreamUsername == null ||
+        src.xtreamPassword == null) {
+      setState(() => _lineTestVerdict =
+          'Ce test ne fonctionne qu\'avec une source Xtream (les compteurs '
+          'de connexions viennent du panel du fournisseur).');
+      return;
+    }
+    setState(() {
+      _lineTestRunning = true;
+      _lineTestCancelled = false;
+      _lineTestStatus = 'fermeture de nos connexions…';
+      _lineTestVerdict = '';
+    });
+    // 1) CETTE TV ne doit compter pour rien : on ferme tout, et on laisse
+    //    2 s aux sockets pour se fermer réellement côté réseau.
+    try {
+      await LocalStreamRelay.instance.closeOtherPlaybacks('');
+    } catch (_) {
+      // best-effort : le relais journalise ses propres échecs.
+    }
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    // 2) La sonde mesure — chaque relevé part au Journal de vol.
+    final LineProbeReport report = await LineOccupancyProbe.run(
+      client: XtreamClient(
+        serverUrl: src.xtreamServer!,
+        username: src.xtreamUsername!,
+        password: src.xtreamPassword!,
+        timeout: const Duration(seconds: 8),
+      ),
+      isCancelled: () => !mounted || _lineTestCancelled,
+      onSample: (Duration elapsed, int? active, int? max) {
+        if (!mounted) return;
+        setState(() => _lineTestStatus =
+            't+${elapsed.inSeconds}s · connexions ${active ?? '?'}'
+            '/${max ?? '?'}');
+      },
+    );
+    if (!mounted) return;
+    final String verdict = switch (report.outcome) {
+      LineProbeOutcome.freed when (report.freedAfter?.inSeconds ?? 0) <= 90 =>
+        '✅ Ligne LIBÉRÉE après ${report.freedAfter!.inSeconds} s sans '
+            'aucune connexion de cette TV. C\'est le temps que ton '
+            'fournisseur garde une session fermée. L\'app patiente '
+            'jusqu\'à ~90 s en « reconnexion » : la chaîne doit finir par '
+            's\'ouvrir toute seule. Si tu revois « 1/1 », relance ce test '
+            'JUSTE après l\'échec.',
+      LineProbeOutcome.freed =>
+        '⚠️ Ligne libérée après ${report.freedAfter!.inSeconds} s — c\'est '
+            'PLUS LONG que les ~90 s d\'attente de l\'app. Donne ce chiffre '
+            'au support : il faut allonger l\'attente au-delà de '
+            '${report.freedAfter!.inSeconds} s.',
+      LineProbeOutcome.neverFreed =>
+        '⛔ Pendant 3 minutes, cette TV n\'avait AUCUNE connexion et ta '
+            'ligne est restée occupée en continu (dernier relevé : '
+            '${report.lastActive ?? '?'}/${report.maxConnections ?? '?'}). '
+            'Ce n\'est PAS cette application : un AUTRE appareil tient ta '
+            'ligne — un téléphone avec l\'app en arrière-plan, une autre '
+            'box, ou quelqu\'un d\'autre qui a les identifiants de cette '
+            'ligne. Éteins/force l\'arrêt de ces appareils et relance ce '
+            'test ; si la ligne reste occupée, elle est utilisée ailleurs — '
+            'vois avec ton fournisseur.',
+      LineProbeOutcome.apiUnavailable =>
+        'Mesure impossible : le panel n\'a pas fourni les compteurs '
+            '(réseau coupé, panel muet, ou test annulé). Réessaie.',
+    };
+    setState(() {
+      _lineTestRunning = false;
+      _lineTestStatus = '';
+      _lineTestVerdict = verdict;
+    });
   }
 
   Widget _failureCard(PlaybackFailureEntry e) {
