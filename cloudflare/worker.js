@@ -127,6 +127,12 @@ const WINDOWS_EXE_URL =
 const TIZEN_TPK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/tizen-latest/thefew-tizen.tpk';
 
+// Paquet LG TV (webOS, release `webos-latest`) — servi via /lg, /webos.
+// Le canal -latest est écrasé à chaque publication : ce lien pointe donc
+// TOUJOURS sur le dernier build LG, sans jamais changer d'adresse.
+const WEBOS_IPK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/webos-latest/thefew-webos.ipk';
+
 // App Bundle (.aab) téléphone signé pour la Google Play Console. Servi via
 // un lien PUBLIC propre (app.7themotion.com/phone-aab) → utile pour
 // uploader le dernier build dans la Play Console sans passer par GitHub.
@@ -7373,7 +7379,10 @@ async function handleRequest(request, env, ctx) {
     // Fichier « 7motion.apk » côté client.
     if (
       segments.length === 1 &&
-      ['dl', 'install', 'vip', 'thefew', 'few', 'app', 'fone', 'tel']
+      // « android » et « phone » : alias PRO lisibles (famille de liens
+      // « un par plateforme », 21/08) — même fichier que /app et /fone.
+      ['dl', 'install', 'vip', 'thefew', 'few', 'app', 'fone', 'tel',
+        'android', 'phone']
         .includes(segments[0].toLowerCase())
     ) {
       return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
@@ -7422,6 +7431,14 @@ async function handleRequest(request, env, ctx) {
     if (segments.length === 1 &&
         ['samsung', 'tizen'].includes(segments[0].toLowerCase())) {
       return proxyRelease(TIZEN_TPK_URL, 'TheFew-Samsung.tpk');
+    }
+
+    // /lg, /webos — paquet LG TV (.ipk, release `webos-latest`). Complète
+    // la famille de liens PRO « un par plateforme, toujours le dernier
+    // build » (21/08) : LG était la seule app sans lien domaine.
+    if (segments.length === 1 &&
+        ['lg', 'webos'].includes(segments[0].toLowerCase())) {
+      return proxyRelease(WEBOS_IPK_URL, 'TheFew-LG.ipk');
     }
 
     // /phone-aab — App Bundle (.aab) SIGNÉ pour la Google Play Console.
@@ -7633,8 +7650,9 @@ async function handleRequest(request, env, ctx) {
       'admin', 'config', 'dl', 'install', 'api', 'panel', 'p',
       'redroom', 'tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7',
       '7tv', 'seventv', 'sevenmotion',
-      'vip', 'thefew', 'few', 'app', 'fone', 'tel',
-      'win', 'windows', 'pc', 'samsung', 'tizen',
+      'vip', 'thefew', 'few', 'app', 'fone', 'tel', 'android', 'phone',
+      'win', 'windows', 'pc', 'samsung', 'tizen', 'lg', 'webos',
+      'test', 'tvtest', 'beta',
       'cast-receiver', 'cast-skin.css', 'vendor',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);
