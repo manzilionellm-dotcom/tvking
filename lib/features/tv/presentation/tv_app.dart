@@ -290,16 +290,40 @@ class _ExitDialog extends StatelessWidget {
         width: 560,
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: TvTokens.card,
-          borderRadius: BorderRadius.circular(TvTokens.rCard),
+          // Langage « bijou » (demande client) : carte obsidienne en léger
+          // dégradé, filet doré, halo chaud discret autour de la carte.
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[TvTokens.card, Color(0xFF0B0B0D)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          // SOBRE, PAS BRILLANT (précision client) : filet discret, halo
+          // à peine perceptible — le luxe se murmure.
           border: Border.all(color: TvTokens.line),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: TvTokens.gold.withValues(alpha: 0.08),
+              blurRadius: 36,
+              spreadRadius: 1,
+            ),
+          ],
         ),
-        child: Column(
+        // Material transparent OBLIGATOIRE (photo client du 21/08 : ouvert
+        // depuis le template D, ce dialogue n'avait AUCUN ancêtre Material →
+        // chaque texte sortait avec le double soulignement jaune de debug).
+        child: Material(
+          type: MaterialType.transparency,
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            // La SIGNATURE de la maison couronne la carte (esprit
+            // « écriture signature » demandé) — puis un titre serif calme.
+            const TvLogo(width: 128),
+            const SizedBox(height: 16),
             Text(context.l10n.tvQuitTitle,
                 textAlign: TextAlign.center,
-                style: TvTokens.display(28, color: TvTokens.text)),
+                style: TvTokens.display(26, color: TvTokens.text)),
             const SizedBox(height: 10),
             Text(context.l10n.tvQuitMessage,
                 textAlign: TextAlign.center,
@@ -325,6 +349,7 @@ class _ExitDialog extends StatelessWidget {
               onSelect: () => Navigator.of(context).pop('quit'),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -362,9 +387,19 @@ class _DialogBtn extends StatelessWidget {
             color: focused
                 ? TvTokens.gold
                 : (primary ? TvTokens.sel : Colors.transparent),
-            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            // PILL (langage bijou, sobre) + halo chaud DISCRET au focus.
+            borderRadius: BorderRadius.circular(999),
             border: Border.all(
                 color: focused ? TvTokens.gold : TvTokens.line),
+            boxShadow: focused
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: TvTokens.gold.withValues(alpha: 0.28),
+                      blurRadius: 22,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,

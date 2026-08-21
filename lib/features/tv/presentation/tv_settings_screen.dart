@@ -15,7 +15,6 @@ import '../../subscription/data/subscription_state.dart';
 import '../core/tv_developer_mode.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
-import '../../../core/update/update_prompt.dart';
 import 'tv_about_screen.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_city_screen.dart';
@@ -37,6 +36,7 @@ import 'tv_help_screen.dart';
 import 'tv_sources_screen.dart';
 import 'tv_stats_screen.dart';
 import 'tv_theme_screen.dart';
+import 'tv_update_dialog.dart';
 
 class TvSettingsScreen extends StatefulWidget {
   const TvSettingsScreen({super.key});
@@ -904,7 +904,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           //       directe, ou confirme « déjà la dernière version ». -----
           TvFocusBuilder(
             scale: TvFocusScale.large,
-            onSelect: () => checkForUpdatesInteractive(context),
+            // Dialogue de MAJ VIVANT (retour client : l'ancien flux parlait
+            // en SnackBar — invisible sans Scaffold sur TV, le bouton
+            // paraissait mort). Recherche → résultat → téléchargement %.
+            onSelect: () => showTvUpdateDialog(context),
             builder: (BuildContext context, bool focused) {
               final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
