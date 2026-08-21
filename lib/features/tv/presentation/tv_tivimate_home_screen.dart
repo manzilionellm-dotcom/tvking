@@ -34,6 +34,7 @@ import '../../epg/presentation/widgets/mini_epg_now_next.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_developer_mode.dart';
+import '../core/tv_ambience.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_memory_guard.dart';
@@ -47,6 +48,7 @@ import 'tv_player_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_screensaver.dart';
 import 'tv_search_screen.dart';
+import 'tv_shell.dart';
 import 'tv_series_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_tivimate_guide_screen.dart';
@@ -446,16 +448,27 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     _scrollToId(target);
   }
 
-  Future<void> _open(Widget screen) async {
+  Future<void> _open(Widget screen, {TvAmbienceKind? ambience}) async {
     // Material (transparent) OBLIGATOIRE : sans ancêtre Material, Flutter dessine
     // des DOUBLES SOULIGNEMENTS JAUNES sous chaque texte. Les écrans « bucket »
     // (Réglages, Recherche, Séries, Films…) ne s'enveloppent pas eux-mêmes → on
     // le fait ici (comme le Lanceur) → typographie NETTE, pas de lignes jaunes.
+    //
+    // CAMÉLÉON PAR ÉCRAN (demande client : « personnaliser ligne par
+    // ligne ») : chaque destination glisse vers SON atmosphère — Cinéma →
+    // braise/affiche, Séries → nuit indigo, Réglages → améthyste (géré par
+    // l'écran lui-même)… — et le retour rend TENDREMENT l'ambiance
+    // précédente (fondu 1,6 s de TvShell). L'écran poussé est enveloppé
+    // dans TvShell : la lumière vivante le suit partout.
     await _suspendPreview();
     if (!mounted) return;
+    final TvAmbienceKind prev = TvAmbience.instance.kind;
+    if (ambience != null) TvAmbience.instance.set(ambience);
     await Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) =>
-            Material(type: MaterialType.transparency, child: screen)));
+        builder: (_) => TvShell(
+            child:
+                Material(type: MaterialType.transparency, child: screen))));
+    if (ambience != null) TvAmbience.instance.set(prev);
     if (mounted) setState(() => _previewLive = true);
   }
 
@@ -494,9 +507,14 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
       // Lanceur et Rails) : une box laissée sur cet accueil affichait le
       // rail et la grille en continu → marquage OLED. Le watcher ne s'arme
       // que quand l'accueil est la route visible (garde-fou interne).
+      // CAMÉLÉON ENFIN VISIBLE ICI (retour client : « les thèmes ne changent
+      // pas ») : ce template peignait un fond NOIR OPAQUE (_tmBg) et n'était
+      // même pas enveloppé dans TvShell — la lumière circadienne/météo ne
+      // pouvait JAMAIS traverser. Désormais TvShell peint l'atmosphère
+      // vivante ; seuls les panneaux (rail, colonnes) restent opaques.
       child: TvScreensaverWatcher(
-        child: Container(
-        color: _tmBg,
+        child: TvShell(
+        applySafeArea: false,
         child: Material(
           type: MaterialType.transparency,
           child: SafeArea(
@@ -531,11 +549,11 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
           const SizedBox(height: 14),
           _RailIcon(
               icon: Icons.movie_rounded,
-              onSelect: () => _open(const TvFilmsScreen())),
+              onSelect: () => _open(const TvFilmsScreen(), ambience: TvAmbienceKind.cinema)),
           const SizedBox(height: 14),
           _RailIcon(
               icon: Icons.video_library_rounded,
-              onSelect: () => _open(const TvSeriesScreen())),
+              onSelect: () => _open(const TvSeriesScreen(), ambience: TvAmbienceKind.serie)),
           const SizedBox(height: 14),
           _RailIcon(
               icon: Icons.replay_rounded,

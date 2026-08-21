@@ -65,8 +65,10 @@ void main() {
       final List<BlockedVerdict> verdicts = <BlockedVerdict>[];
       int probes = 0;
       final StreamBlockedFallback fallback = build(
-        // Occupé aux 3 premiers sondages (1,1 s / 2 s / 3 s), libéré ensuite.
-        probe: () async => ++probes <= 3,
+        // Occupé au 1er sondage (1,1 s), libéré ensuite. (Au-delà de 2
+        // sondages occupés d'affilée, la RÉOUVERTURE DE GARANTIE entre en
+        // jeu — testée séparément ci-dessous.)
+        probe: () async => ++probes <= 1,
         reopens: reopens,
         verdicts: verdicts,
       );
@@ -74,13 +76,13 @@ void main() {
       expect(fallback.onContainerUnsupported(), isTrue,
           reason: 'sans frame décodée, le 3003 doit partir en attente 458');
 
-      // Paliers 1-3 (1,1 + 2 + 3 s) : occupé → pas de réouverture.
-      fake.elapse(const Duration(milliseconds: 6200));
+      // Palier 1 (1,1 s) : occupé → pas de réouverture (attente mesurée).
+      fake.elapse(const Duration(milliseconds: 1200));
       expect(reopens, isEmpty,
           reason: 'créneau occupé = ne pas brûler de connexion refusée');
 
-      // Palier 4 (5 s) : le sondage dit LIBÉRÉ → réouverture immédiate.
-      fake.elapse(const Duration(seconds: 5));
+      // Palier 2 (2 s) : le sondage dit LIBÉRÉ → réouverture immédiate.
+      fake.elapse(const Duration(seconds: 2));
       expect(reopens, <String>[channel.streamUrl]);
       expect(verdicts, isEmpty,
           reason: 'aucune erreur montrée quand le créneau se libère');
@@ -100,18 +102,30 @@ void main() {
       );
 
       expect(fallback.onContainerUnsupported(), isTrue);
-      // Tout le calendrier progressif (~150 s) + une partie de la patrouille.
-      fake.elapse(const Duration(seconds: 200));
-      expect(reopens, isEmpty,
-          reason: 'occupé du début à la fin = aucune réouverture brûlée');
+      // Paliers 1-2 (1,1 + 2 s) : occupé → sautés. 3e sondage occupé
+      // (t ≈ 6,1 s) : RÉOUVERTURE DE GARANTIE (terrain 21/08 — des panels
+      // figent/faussent active_cons ; sans elle, « logo qui tourne » sans
+      // fin). Aucun écran d'erreur, toujours.
+      fake.elapse(const Duration(seconds: 7));
+      expect(reopens, hasLength(1),
+          reason: '3 sondages occupés d\'affilée = une réouverture de '
+              'garantie (le compteur du panel peut mentir)');
       expect(verdicts, isEmpty,
           reason: 'décision du 21/08 : plus JAMAIS l\'écran « limite de '
               'connexions » — la patrouille continue en silence');
 
-      // Libération tardive → la cadence de garde (30 s) rouvre toute seule.
+      // La garantie a échoué (toujours occupé) → nouveau cycle : paliers
+      // 4-5 (5 + 8 s) sautés, 6e sondage occupé (12 s) → garantie n° 2.
+      expect(fallback.onContainerUnsupported(), isTrue);
+      fake.elapse(const Duration(seconds: 26));
+      expect(reopens, hasLength(2));
+      expect(verdicts, isEmpty);
+
+      // Libération tardive → le palier suivant (14 s) rouvre en mesuré.
       freed = true;
-      fake.elapse(const Duration(seconds: 31));
-      expect(reopens, <String>[channel.streamUrl]);
+      expect(fallback.onContainerUnsupported(), isTrue);
+      fake.elapse(const Duration(seconds: 15));
+      expect(reopens, hasLength(3));
       expect(verdicts, isEmpty);
     });
   });

@@ -491,8 +491,21 @@ class NativeVideoView(
 
         // User-Agent type lecteur connu + redirections cross-protocole : des
         // panels Xtream ne servent le vrai flux qu'aux signatures connues.
+        //
+        // « Connection: close » (recherche du 21/08, cause RACINE du
+        // « limite de connexions » après la sortie d'un film) : les panels
+        // Xtream/XUI ne libèrent le créneau QU'À LA FERMETURE DU SOCKET TCP
+        // (aucun signal applicatif de stop — documenté chez Dispatcharr
+        // #451/#1033). Or les sockets keep-alive retournent au pool JVM
+        // ENCORE OUVERTS après release() → le panel voyait le film « en
+        // cours » de longues secondes et refusait le live (458). En
+        // désactivant le keep-alive, la fin de lecture ferme le socket →
+        // le panel libère le créneau tout de suite. Coût : une poignée de
+        // mains TCP par segment HLS (les panels sont en HTTP nu → minime) ;
+        // le direct .ts (UNE longue requête) ne paie rien.
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("VLC/3.0.20 LibVLC/3.0.20")
+            .setDefaultRequestProperties(mapOf("Connection" to "close"))
             .setAllowCrossProtocolRedirects(true)
             .setKeepPostFor302Redirects(true)
             .setConnectTimeoutMs(15_000)

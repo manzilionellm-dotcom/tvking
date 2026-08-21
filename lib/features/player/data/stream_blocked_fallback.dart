@@ -253,6 +253,12 @@ class StreamBlockedFallback {
   // Compteur de retries 458 pour la CHAÎNE COURANTE (réinitialisé au zap).
   String? _conn458ChannelId;
   int _conn458Count = 0;
+
+  /// Sondages consécutifs où le panel annonce « occupé » SANS libération.
+  /// Sert la RÉOUVERTURE DE GARANTIE (1 sondage occupé sur 3 → on réouvre
+  /// quand même) : des panels figent/faussent active_cons — sans cette
+  /// garantie, l'écran restait en « logo qui tourne » pour toujours.
+  int _conn458BusySkips = 0;
   // Compteur de retries 5xx pour la CHAÎNE COURANTE (réinitialisé au zap).
   String? _conn5xxChannelId;
   int _conn5xxCount = 0;
@@ -437,6 +443,7 @@ class StreamBlockedFallback {
     if (_conn458ChannelId != channel.id) {
       _conn458ChannelId = channel.id;
       _conn458Count = 0;
+      _conn458BusySkips = 0;
     }
     // Premier 458 de cette chaîne : on va lire les compteurs RÉELS du compte
     // (max_connections / active_cons) pour que le journal dise la vérité au
@@ -469,14 +476,28 @@ class StreamBlockedFallback {
         return;
       }
       if (busy == true) {
-        final StreamDiagnostics d = StreamDiagnostics.instance;
-        _log('[458] créneau toujours occupé '
-            '(${d.xtreamActiveCons ?? '?'}/${d.xtreamMaxConnections ?? '?'}) '
-            '→ réouverture sautée, prochain sondage programmé');
-        _try458Retry(); // jamais terminal : patrouille jusqu'à libération
-        return;
+        // RÉOUVERTURE DE GARANTIE (terrain 21/08, « logo qui bouge sans
+        // fin ») : certains panels FIGENT ou FAUSSENT active_cons (ils
+        // comptent leur propre session, ou le compteur ne redescend
+        // jamais). Se fier au sondage seul = ne JAMAIS réouvrir. Règle :
+        // un sondage « occupé » sur trois, on réouvre QUAND MÊME — au
+        // pire une connexion refusée de plus (le 458 nous ramène ici),
+        // au mieux le flux repart alors que le compteur mentait.
+        _conn458BusySkips++;
+        if (_conn458BusySkips % 3 != 0) {
+          final StreamDiagnostics d = StreamDiagnostics.instance;
+          _log('[458] créneau toujours occupé '
+              '(${d.xtreamActiveCons ?? '?'}/${d.xtreamMaxConnections ?? '?'}) '
+              '→ réouverture sautée, prochain sondage programmé');
+          _try458Retry(); // jamais terminal : patrouille jusqu'à libération
+          return;
+        }
+        _log('[458] créneau annoncé occupé depuis $_conn458BusySkips '
+            'sondages → RÉOUVERTURE DE GARANTIE (des panels figent ou '
+            'faussent leurs compteurs)');
       }
       if (busy == false) {
+        _conn458BusySkips = 0;
         _log('[458] créneau LIBÉRÉ (compteurs du compte) → réouverture '
             'immédiate');
       }
