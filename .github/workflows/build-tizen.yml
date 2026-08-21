@@ -42,6 +42,13 @@ on:
       - 'lib/l10n/**'
       - '.github/workflows/build-tizen.yml'
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publier la release tizen-latest (défaut : artifact seul)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 permissions:
   contents: write
@@ -341,7 +348,11 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+      # Publication OPT-IN uniquement (ordre du propriétaire, 21/08 :
+      # « efface tous les builds TV » — un push ne doit plus JAMAIS
+      # recréer tizen-latest tout seul ; même motif que build-webos).
       - name: Publish "tizen-latest" release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
