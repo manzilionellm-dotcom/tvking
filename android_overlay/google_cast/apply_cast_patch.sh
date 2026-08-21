@@ -110,6 +110,15 @@ done
 
 ls -la "$ANDROID_PKG_PATH/"
 
+# --- 1 bis. Ressources Android de l'overlay (icônes des actions PiP :
+#     🎧 mode Écouteurs / ⏯ pause, parité « The Few Master » 21/08).
+#     Copiées telles quelles dans res/ — MainActivity les résout par NOM
+#     (getIdentifier), donc aucune dépendance au package réécrit.
+if [ -d "$OVERLAY/res" ]; then
+  mkdir -p android/app/src/main/res
+  cp -rv "$OVERLAY/res/." android/app/src/main/res/
+fi
+
 # --- 2. Patch build.gradle (dependencies) -----------
 if grep -q "play-services-cast-framework" "$BUILD_GRADLE"; then
   echo "Cast deps déjà présentes dans $BUILD_GRADLE — skip"

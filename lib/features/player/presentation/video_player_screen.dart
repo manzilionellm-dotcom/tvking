@@ -414,6 +414,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // en mini-fenêtre, on cache d'autorité l'overlay des contrôles —
     // ses boutons seraient illisibles à 300×170 et masqueraient la vidéo.
     PipService.instance.addListener(_onPipChanged);
+    // Actions de la MINI-FENÊTRE PiP (🎧 mode Écouteurs / ⏯ pause) —
+    // parité « The Few Master » (21/08). Le natif relaie l'appui, la
+    // logique reste ici (mêmes bascules que les boutons de l'overlay).
+    PipService.instance.onPipControl = (String action) {
+      if (!mounted) return;
+      if (action == 'headphones') _toggleAudioOnly();
+      if (action == 'playpause') _togglePlayPause();
+    };
     // Aspect ratio par défaut — la plupart des flux IPTV sont 16:9.
     PipService.instance.setAspectRatio(numerator: 16, denominator: 9);
 
@@ -2081,6 +2089,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
+    // Les actions PiP ne doivent plus viser cet écran mort.
+    PipService.instance.onPipControl = null;
     // S3 : la session de métriques est résumée en UNE ligne boîte noire
     // (TTFF, stalls, rebuffering, erreurs par famille, reconnexions).
     _flushStatsSession();

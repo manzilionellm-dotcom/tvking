@@ -49,6 +49,13 @@ class PipService extends ChangeNotifier {
   bool _isSupported = false;
   bool _supportChecked = false;
 
+  /// Appui sur une ACTION de la mini-fenêtre PiP (les icônes du centre,
+  /// posées par le natif — parité « The Few Master », demande du 21/08) :
+  /// 'headphones' = mode Écouteurs, 'playpause' = pause/reprise. Posé par
+  /// VideoPlayerScreen à l'ouverture, remis à null à sa fermeture. La
+  /// LOGIQUE reste côté Flutter : le natif ne fait que relayer l'appui.
+  void Function(String action)? onPipControl;
+
   /// True quand la fenêtre est actuellement en PiP. Lu par le
   /// VideoPlayerScreen pour cacher les overlays et fitter la vidéo.
   bool get isInPipMode => _isInPipMode;
@@ -202,6 +209,12 @@ class PipService extends ChangeNotifier {
           _isInPipMode = inPip;
           notifyListeners();
         }
+        return null;
+      case 'pipControl':
+        final dynamic a = call.arguments;
+        final String action =
+            a is Map ? (a['action'] ?? '').toString() : '';
+        if (action.isNotEmpty) onPipControl?.call(action);
         return null;
       default:
         return null;

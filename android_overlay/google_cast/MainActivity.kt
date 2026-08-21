@@ -44,6 +44,11 @@ class MainActivity : FlutterFragmentActivity() {
         /// Sert à dériver une MAC virtuelle qui SURVIT aux
         /// réinstallations (sinon le client perdrait son abonnement).
         private const val DEVICE_CHANNEL = "com.manzilionellm.tvking/device"
+
+        /// Extra du broadcast des ACTIONS de la mini-fenêtre PiP
+        /// ('headphones' | 'playpause'). L'action de l'Intent est dérivée
+        /// du packageName au runtime (le package est réécrit au build).
+        private const val EXTRA_PIP_CONTROL = "control"
     }
 
     private var castApi: GoogleCastApi? = null
@@ -69,6 +74,10 @@ class MainActivity : FlutterFragmentActivity() {
     /// déclenche PAS le PiP vidéo au passage en arrière-plan : c'est le
     /// PlaybackForegroundService qui garde le SON en vie (écran éteint).
     private var audioOnlyMode: Boolean = false
+
+    /// Récepteur des appuis sur les actions de la mini-fenêtre PiP
+    /// (🎧 / ⏯ — parité « The Few Master », demande du 21/08).
+    private var pipControlReceiver: android.content.BroadcastReceiver? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -243,6 +252,99 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (e: Throwable) {
             Log.e(TAG, "  ✗ PiP channel failed: $e", e)
         }
+
+        // Les appuis sur les actions de la mini-fenêtre PiP arrivent en
+        // broadcast → relayés à Dart via le channel PiP (pipControl).
+        registerPipControlReceiver()
+    }
+
+    // ========================================================
+    //  ACTIONS de la mini-fenêtre PiP (🎧 Écouteurs / ⏯ Pause)
+    // ========================================================
+    //  Parité avec « The Few Master » (demande du 21/08) : le système
+    //  dessine ces icônes AU CENTRE de la mini-fenêtre ; un appui envoie
+    //  un broadcast que l'on retransmet à Dart — la LOGIQUE (bascule du
+    //  mode Écouteurs, pause) reste côté Flutter, mêmes chemins que les
+    //  boutons de l'overlay. Tout est fail-open : icône introuvable ou
+    //  API absente → PiP sans actions, comme avant.
+
+    /// Action d'Intent UNIQUE à ce package (réécrit au build par
+    /// apply_cast_patch.sh) : aucun risque de collision inter-apps.
+    private fun pipControlIntentAction(): String = "$packageName.PIP_CONTROL"
+
+    private fun registerPipControlReceiver() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (pipControlReceiver != null) return
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, i: Intent?) {
+                val control = i?.getStringExtra(EXTRA_PIP_CONTROL) ?: return
+                try {
+                    pipChannel?.invokeMethod(
+                        "pipControl", mapOf("action" to control))
+                } catch (e: Throwable) {
+                    Log.w(TAG, "pipControl relay failed: $e")
+                }
+            }
+        }
+        try {
+            val filter = android.content.IntentFilter(pipControlIntentAction())
+            if (Build.VERSION.SDK_INT >= 33) {
+                // Android 13+ exige d'expliciter la portée du récepteur.
+                registerReceiver(
+                    receiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(receiver, filter)
+            }
+            pipControlReceiver = receiver
+            Log.i(TAG, "  ✓ PiP control receiver registered")
+        } catch (e: Throwable) {
+            Log.w(TAG, "pip receiver register failed: $e")
+        }
+    }
+
+    /// Les deux actions affichées dans la mini-fenêtre. Icônes = vecteurs
+    /// de l'app (res/drawable, copiés par apply_cast_patch.sh) résolus par
+    /// NOM — le package étant réécrit au build, R.drawable n'est pas
+    /// utilisable directement ici.
+    private fun buildPipActions(): List<android.app.RemoteAction> {
+        val out = ArrayList<android.app.RemoteAction>(2)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return out
+        fun make(icon: String, control: String, label: String, code: Int):
+            android.app.RemoteAction? {
+            return try {
+                val resId = resources.getIdentifier(icon, "drawable", packageName)
+                if (resId == 0) return null // icône absente → action omise
+                val intent = Intent(pipControlIntentAction())
+                    .setPackage(packageName)
+                    .putExtra(EXTRA_PIP_CONTROL, control)
+                val pi = android.app.PendingIntent.getBroadcast(
+                    this, code, intent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                        android.app.PendingIntent.FLAG_IMMUTABLE,
+                )
+                android.app.RemoteAction(
+                    android.graphics.drawable.Icon.createWithResource(this, resId),
+                    label, label, pi,
+                )
+            } catch (e: Throwable) {
+                Log.w(TAG, "pip action '$control' failed: $e")
+                null
+            }
+        }
+        make("ic_pip_headset", "headphones", "Audio", 41)?.let { out.add(it) }
+        make("ic_pip_pause", "playpause", "Pause", 42)?.let { out.add(it) }
+        return out
+    }
+
+    override fun onDestroy() {
+        try {
+            pipControlReceiver?.let { unregisterReceiver(it) }
+        } catch (_: Throwable) {
+            // déjà retiré / jamais enregistré : sans conséquence
+        }
+        pipControlReceiver = null
+        super.onDestroy()
     }
 
     /// PiP est dispo depuis Android 8.0 (API 26) ET le device doit
@@ -275,6 +377,9 @@ class MainActivity : FlutterFragmentActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val params = PictureInPictureParams.Builder()
                     .setAspectRatio(Rational(pipAspectNumer, pipAspectDenom))
+                    // 🎧 / ⏯ au centre de la mini-fenêtre (liste vide si les
+                    // icônes manquent → comportement historique).
+                    .setActions(buildPipActions())
                     .build()
                 enterPictureInPictureMode(params)
             } else {
