@@ -274,6 +274,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // est appelé à chaque tick — on n'écrit qu'une fois). Remis à false
   // dans _open.
   bool _errorLoggedThisOpen = false;
+
+  /// Pré-attente fournisseur (fluidité cinéma ↔ chaîne) : une seule fois
+  /// par écran, à la première ouverture — jamais sur les zaps suivants.
+  bool _providerPrewaitDone = false;
   // `true` si le diagnostic a conclu à un blocage RÉSEAU (DNS/timeout)
   // plutôt qu'à un souci de signature — affiche un indice VPN/FAI en plus
   // du message existant. Remis à false à chaque ouverture (_open).
@@ -895,7 +899,25 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // socket ; sans cette attente, la nouvelle connexion partait en meme
     // temps que l'ancienne se fermait, et le panel refusait la seconde.
     final DateTime claimStart = DateTime.now();
-    unawaited(StreamSlot.instance.claim(this).then((_) {
+    unawaited(StreamSlot.instance.claim(this).then((_) async {
+      // PRÉ-ATTENTE FOURNISSEUR (fluidité cinéma ↔ chaîne, 21/08) : à la
+      // PREMIÈRE ouverture de cet écran, si on vient de quitter une autre
+      // lecture (handOff récent), le panel peut encore compter sa session
+      // fantôme — on attend la libération MESURÉE (compteurs player_api)
+      // au lieu de brûler une connexion refusée puis d'attendre la
+      // patrouille. Zéro coût hors transition, hors Xtream, et sur les
+      // comptes multi-connexions ; les zaps suivants ne passent jamais ici.
+      if (!_providerPrewaitDone) {
+        _providerPrewaitDone = true;
+        final DateTime? left = StreamSlot.instance.lastHandOffAt;
+        if (left != null &&
+            DateTime.now().difference(left) < const Duration(minutes: 2)) {
+          await StreamBlockedFallback.awaitProviderSlot(
+            _current,
+            isCancelled: () => !mounted,
+          );
+        }
+      }
       // MESURE (enquête « connexion fantôme » 19/08, hypothèse D) : combien
       // de temps le démontage des consommateurs précédents (aperçu, écran
       // quitté en cours de fermeture, téléchargements) a réellement pris.

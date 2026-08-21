@@ -108,7 +108,16 @@ class StreamSlot {
   /// prochain [claim] attend [shutdown] (toujours plafonné par
   /// [_kTeardownBudget], fail-open), et le détenteur de transition se
   /// retire tout seul dès la fermeture terminée.
+  /// Dernière SORTIE d'écran de lecture ([handOff]) : borne la fenêtre où
+  /// le panel du fournisseur peut encore compter la session FANTÔME de la
+  /// lecture quittée (il la libère à l'expiration de SA session, souvent
+  /// 15-90 s après la fermeture réelle de la socket). Sert à la pré-attente
+  /// mesurée du lecteur (transition cinéma ↔ chaîne « trop fluide », 21/08).
+  DateTime? _lastHandOffAt;
+  DateTime? get lastHandOffAt => _lastHandOffAt;
+
   void handOff(Object owner, Future<void> shutdown, {String label = ''}) {
+    _lastHandOffAt = DateTime.now();
     _holders.remove(owner);
     // Les erreurs de fermeture sont avalées : un stop raté ne doit jamais
     // casser la chaîne des réclamations (même règle que _claimNow). Et une
@@ -202,5 +211,6 @@ class StreamSlot {
     _holders.clear();
     _chain = Future<void>.value();
     _pendingClaims = 0;
+    _lastHandOffAt = null;
   }
 }

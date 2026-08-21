@@ -637,6 +637,97 @@ class StreamBlockedFallback {
     return true;
   }
 
+  /// PRÉ-ATTENTE MESURÉE du créneau FOURNISSEUR (transition cinéma ↔ chaîne
+  /// « trop fluide », demande du 21/08). Avant la PREMIÈRE ouverture d'un
+  /// écran de lecture qui suit une sortie de lecture, le panel peut encore
+  /// compter la session FANTÔME de la lecture quittée : ouvrir tout de
+  /// suite brûle une connexion refusée + un aller-retour d'erreur avant que
+  /// la patrouille 458 ne prenne la main. Ici on lit les compteurs du
+  /// compte (player_api — une requête d'API, pas un flux) et on n'ouvre que
+  /// quand la ligne est libre, borné à [budget] (fail-open : au-delà on
+  /// ouvre quand même, la patrouille couvre la suite).
+  ///
+  /// ZÉRO COÛT pour les comptes multi-connexions (retour immédiat dès que
+  /// max_connections > 1 est connu) et pour les sources non-Xtream.
+  static Future<void> awaitProviderSlot(
+    Channel channel, {
+    Duration budget = const Duration(seconds: 10),
+    Duration pollEvery = const Duration(milliseconds: 1600),
+    bool Function()? isCancelled,
+    Future<XtreamAccountInfo> Function()? probeOverride,
+  }) async {
+    void log(String m, {String level = 'info'}) =>
+        StreamDiagnostics.instance.recordEvent('preflight', m, level: level);
+    try {
+      Future<XtreamAccountInfo> Function()? probe = probeOverride;
+      if (probe == null) {
+        final pl.Playlist? src = xtreamPlaylistFor(channel);
+        if (src == null ||
+            src.xtreamServer == null ||
+            src.xtreamUsername == null ||
+            src.xtreamPassword == null) {
+          return; // pas une source Xtream : rien à mesurer
+        }
+        // Ligne multi-connexions DÉJÀ connue → jamais de pré-attente : ces
+        // comptes ne se battent pas pour un créneau, on ne leur ajoute pas
+        // une milliseconde de latence.
+        if ((StreamDiagnostics.instance.xtreamMaxConnections ?? 0) > 1) {
+          return;
+        }
+        final XtreamClient client = XtreamClient(
+          serverUrl: src.xtreamServer!,
+          username: src.xtreamUsername!,
+          password: src.xtreamPassword!,
+          timeout: const Duration(seconds: 4),
+        );
+        probe = client.fetchAccountInfo;
+      }
+      final DateTime start = DateTime.now();
+      // Borne par NOMBRE de sondages (pas par horloge murale : les tests
+      // fakeAsync ne simulent pas DateTime.now(), et un panel lent ajoute
+      // déjà sa propre latence au budget réel).
+      final int maxPolls =
+          budget.inMilliseconds ~/ pollEvery.inMilliseconds; // ~6 par défaut
+      int polls = 0;
+      bool announced = false;
+      while (true) {
+        final XtreamAccountInfo info = await probe();
+        final int? max = info.maxConnections;
+        final int? active = info.activeCons;
+        if (max == null || active == null || max <= 0 || active < max) {
+          if (announced) {
+            log('créneau LIBÉRÉ après '
+                '${DateTime.now().difference(start).inMilliseconds} ms de '
+                'pré-attente → ouverture immédiate');
+          }
+          return;
+        }
+        if (polls >= maxPolls) {
+          log(
+            'créneau toujours occupé ($active/$max) après '
+                '${DateTime.now().difference(start).inMilliseconds} ms de '
+                'pré-attente → on ouvre quand même (la patrouille 458 '
+                'prendra le relais)',
+            level: 'warn',
+          );
+          return;
+        }
+        polls++;
+        if (!announced) {
+          announced = true;
+          log('transition : créneau fournisseur encore occupé ($active/$max) '
+              '→ pré-attente mesurée avant d\'ouvrir (aucune connexion '
+              'brûlée)');
+        }
+        await Future<void>.delayed(pollEvery);
+        if (isCancelled?.call() ?? false) return;
+      }
+    } catch (_) {
+      // Best-effort ABSOLU : la pré-attente ne doit jamais empêcher ni
+      // retarder durablement une ouverture (panel muet → on ouvre).
+    }
+  }
+
   // ---------------------------------------------------------------
   //  Diagnostic complet
   // ---------------------------------------------------------------

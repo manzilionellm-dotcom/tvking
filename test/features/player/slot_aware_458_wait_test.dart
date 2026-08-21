@@ -26,6 +26,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/player/data/stream_blocked_fallback.dart';
+import 'package:tv_king/features/playlists/data/xtream_client.dart';
 
 void main() {
   const Channel channel = Channel(
@@ -136,6 +137,63 @@ void main() {
       fake.elapse(const Duration(seconds: 2));
       expect(reopens, hasLength(2));
       expect(verdicts, isEmpty);
+    });
+  });
+
+  // ---------------------------------------------------------------
+  //  Pré-attente AVANT la première ouverture (fluidité cinéma↔chaîne)
+  // ---------------------------------------------------------------
+
+  group('awaitProviderSlot (pré-attente mesurée avant ouverture)', () {
+    XtreamAccountInfo counters({int? max, int? active}) =>
+        XtreamAccountInfo(maxConnections: max, activeCons: active);
+
+    test('créneau occupé puis libéré → rend la main dès la libération, '
+        'sans jamais ouvrir de connexion refusée', () {
+      fakeAsync((FakeAsync fake) {
+        int probes = 0;
+        bool done = false;
+        StreamBlockedFallback.awaitProviderSlot(
+          channel,
+          probeOverride: () async {
+            probes++;
+            // Occupé aux 2 premiers sondages, libéré au 3e.
+            return counters(max: 1, active: probes <= 2 ? 1 : 0);
+          },
+        ).then((_) => done = true);
+        fake.elapse(const Duration(milliseconds: 100));
+        expect(done, isFalse, reason: 'occupé → on attend');
+        fake.elapse(const Duration(seconds: 4)); // 2 sondages à 1,6 s
+        expect(done, isTrue);
+        expect(probes, 3);
+      });
+    });
+
+    test('jamais libéré → fail-open au budget (~10 s), l\'ouverture part '
+        'quand même', () {
+      fakeAsync((FakeAsync fake) {
+        bool done = false;
+        StreamBlockedFallback.awaitProviderSlot(
+          channel,
+          probeOverride: () async => counters(max: 1, active: 1),
+        ).then((_) => done = true);
+        fake.elapse(const Duration(seconds: 11));
+        expect(done, isTrue,
+            reason: 'la pré-attente ne bloque jamais une ouverture');
+      });
+    });
+
+    test('compteurs illisibles → retour immédiat (comportement historique)',
+        () {
+      fakeAsync((FakeAsync fake) {
+        bool done = false;
+        StreamBlockedFallback.awaitProviderSlot(
+          channel,
+          probeOverride: () async => counters(max: null, active: null),
+        ).then((_) => done = true);
+        fake.flushMicrotasks();
+        expect(done, isTrue);
+      });
     });
   });
 }

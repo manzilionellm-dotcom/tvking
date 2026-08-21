@@ -695,6 +695,14 @@ jobs:
             TV_UPDATE_TAG="cast-fix-tv-latest"
           elif [ "${{ github.ref_name }}" = "claude/m3u-stream-playback-fix-cfdr2f" ]; then
             TV_UPDATE_TAG="tv-fix-latest"
+          elif [ "${{ github.ref_name }}" = "claude/7motion-android-tv-compat-e0rtyp" ]; then
+            # Canal de TEST (release « test », publiée par publish-tv-test) :
+            # le bouton « Vérifier les mises à jour » des box de test lit
+            # test/version.json → toujours le dernier build publié sur ce
+            # canal. Avant (défaut tv-latest, release supprimée au nettoyage
+            # du 08/08), le bouton tombait sur un 404 « vérification
+            # impossible ».
+            TV_UPDATE_TAG="test"
           else
             TV_UPDATE_TAG="tv-latest"
           fi
