@@ -125,7 +125,10 @@ const WINDOWS_EXE_URL =
 // Paquet SAMSUNG TV (Tizen, release `tizen-latest`) — signé certificat
 // auteur Samsung, servi via /samsung, /tizen (sideload Mode Développeur).
 const TIZEN_TPK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tizen-latest/thefew-tizen.tpk';
+  // NOM EXACT DE L'ASSET : `thefew_tizen.tpk` (underscore — le nom que
+  // build-tizen.yml uploade réellement). Le tiret d'avant → 404 GitHub
+  // → /samsung répondait 502 alors que la release existait.
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tizen-latest/thefew_tizen.tpk';
 
 // Paquet LG TV (webOS, release `webos-latest`) — servi via /lg, /webos.
 // Le canal -latest est écrasé à chaque publication : ce lien pointe donc
