@@ -27,6 +27,13 @@ analyzer:
   # analysé avec le pubspec Android — on l'exclut ici, la CI Tizen le compile.
   exclude:
     - lib/features/tv/presentation/player/tizen_player_screen.dart
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
   # Considérer les warnings comme des erreurs en CI (plus strict).
   errors:
     invalid_annotation_target: ignore
