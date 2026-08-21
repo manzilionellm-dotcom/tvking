@@ -176,7 +176,11 @@ class SubscriptionCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  context.l10n.subDaysRemaining(_fmtDays(days)),
+                  // Durée HUMAINE (retour client : « 36 500 jours, c'est pas
+                  // sexy ») : au-delà de 2 ans → années (« ≈ 100 ans »).
+                  days >= 730
+                      ? context.l10n.tvYearsRemaining((days / 365).round())
+                      : context.l10n.subDaysRemaining(_fmtDays(days)),
                   style: AppTextStyles.headlineMedium.copyWith(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,

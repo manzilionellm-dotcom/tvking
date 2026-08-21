@@ -26,10 +26,11 @@ import 'package:flutter/widgets.dart';
 import '../../../core/color/chameleon_extractor.dart';
 import '../../../core/color/circadian_rhythm.dart';
 import '../../../core/color/oklab.dart';
+import '../data/greeting_repository.dart';
 
 /// Les univers d'ambiance. Volontairement PEU nombreux : une ambiance
 /// se ressent, elle ne se remarque pas.
-enum TvAmbienceKind { maison, cinema, serie, sport }
+enum TvAmbienceKind { maison, cinema, serie, sport, reglage }
 
 class TvAmbience extends ChangeNotifier {
   TvAmbience._();
@@ -88,7 +89,39 @@ class TvAmbience extends ChangeNotifier {
         return const Oklch(0.19, 0.035, 290); // nuit indigo
       case TvAmbienceKind.sport:
         return const Oklch(0.19, 0.030, 155); // pelouse nocturne
+      case TvAmbienceKind.reglage:
+        // Réglages : améthyste discrète — entrer dans les réglages CHANGE
+        // l'atmosphère (demande client : « il voit les couleurs changer »),
+        // dans un violet-graphite calme, différent de tous les univers.
+        return const Oklch(0.19, 0.032, 315);
     }
+  }
+
+  /// CLIMAT (Caméléon adaptatif, demande client du 21/08) : la MÉTÉO déjà
+  /// en cache (salutation de l'accueil — zéro réseau ici) infléchit
+  /// l'ambiance : temps gris/pluie → l'aura se fait plus sobre ; froid →
+  /// glisse vers l'acier ; chaleur → glisse vers l'ambre. Toujours en
+  /// cartésien OKLab (jamais de balayage de teintes étrangères).
+  Oklch _temperByWeather(Oklch g) {
+    final Greeting? w = GreetingRepository.instance.current;
+    if (w == null) return g;
+    Oklch out = g;
+    final int code = w.weatherCode ?? -1;
+    // WMO : 45+ = brouillard, 51+ = bruine/pluie, 71+ = neige, 95+ = orage.
+    if (code >= 45) {
+      out = Oklch(out.l, out.c * 0.85, out.h);
+    }
+    final double? t = w.tempC;
+    if (t != null && (t <= 5 || t >= 28)) {
+      final double target = t <= 5 ? 250 : 60; // froid → acier, chaud → ambre
+      final Oklab mixed = Oklab.lerp(
+        out.toOklab(),
+        Oklch(out.l, 0.06, target).toOklab(),
+        0.20,
+      );
+      out = mixed.toOklch();
+    }
+    return out;
   }
 
   /// Couleur de la « lumière » du fond (arrêt 0 du dégradé radial TvShell).
@@ -112,15 +145,26 @@ class TvAmbience extends ChangeNotifier {
       // 21/08 : « la nuit, le jour, c'est le même thème » — le tempérage à
       // 25 % était imperceptible). L'accueil suit franchement la journée :
       // bleu d'acier à l'aube, neutre l'après-midi, doré le soir, ambre la
-      // nuit. Toujours un noir teinté : le Gouverneur borne juste après.
-      g = Oklch(0.20, circadian.chroma, circadian.hueDeg);
+      // nuit. AMPLIFIÉ ICI (×1.8, borné) et pas dans circadian_rhythm :
+      // le vecteur pur garde ses contrats (continuité, zéro vert saturé),
+      // seul l'affichage pousse la couleur assez pour se VOIR (2e retour
+      // client : « le changement de couleur, je ne le vois pas »).
+      g = Oklch(
+        0.24,
+        (circadian.chroma * 1.8).clamp(0.0, 0.10).toDouble(),
+        circadian.hueDeg,
+      );
     } else {
-      // Univers thématiques (Cinéma, Séries, Sport) : leur identité prime,
-      // l'heure infléchit (25 %).
+      // Univers thématiques (Cinéma, Séries, Sport, Réglages) : leur
+      // identité prime, l'heure infléchit (25 %).
       g = temperByCircadian(_baseGlow, circadian);
     }
+    // Le CLIMAT infléchit en dernier — sauf quand un contenu commande
+    // (l'affiche d'un film garde le dernier mot sur son atmosphère).
+    if (accent == null) g = _temperByWeather(g);
     // Le soir, l'aura s'intensifie (glow 0.06 → 0.18 sur la journée).
-    final double l = (g.l + circadian.glow * 0.22).clamp(0.12, 0.26).toDouble();
+    // Plafond relevé à 0.30 (retour client) : l'aura doit se voir.
+    final double l = (g.l + circadian.glow * 0.25).clamp(0.14, 0.30).toDouble();
     return Color(oklabToSrgb(clampChroma(Oklch(l, g.c, g.h)).toOklab()).argb);
   }
 }

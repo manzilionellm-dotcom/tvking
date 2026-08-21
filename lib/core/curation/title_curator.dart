@@ -186,19 +186,21 @@ abstract final class TitleCurator {
   // saute, écriture connue ou pas. Filet de sécurité dans
   // [stripUnrenderable] : si le nom ENTIER était dans une écriture retirée,
   // on préfère les carrés à une ligne vide.
-  //   0000-052F  ASCII, latin étendu, IPA, grec, cyrillique (+ suppléments)
-  //   0530-058F  arménien · 0590-05FF hébreu · 0600-077F arabe (+ suppl.)
-  //   08A0-08FF  arabe étendu-A · 1E00-1FFF latin additionnel + grec étendu
-  //   2C60-2C7F  latin étendu-C · A720-A7FF latin étendu-D
-  //   FB1D-FDFF  présentation hébreu/arabe · FE70-FEFF formes arabes B
+  //   0000-04FF  ASCII, latin étendu, IPA, diacritiques, grec, cyrillique
+  //   0590-05FF  hébreu · 0600-077F arabe (+ supplément)
+  //   08A0-08FF  arabe étendu-A · 1E00-1EFF latin additionnel
+  //   2000-206F  ponctuation générale
+  //   FB50-FDFF  présentation arabe A · FE70-FEFF formes arabes B
+  // v3.1 (photo client, « France ▊ip ») : resserré encore — l'arménien, le
+  // grec étendu, les latins C/D et le supplément cyrillique servaient de
+  // trous (les panels déguisent « VIP » avec des lettres SOSIES, ex. « Վ »
+  // arménien pour « V », que les polices des box ne dessinent pas).
   // (Les autres catégories — ponctuation, symboles — sont déjà filtrées par
   //  la liste blanche [_unrenderable] et les exposants par [_foldExotic].)
   static final RegExp _unsupportedScripts = RegExp(
-    r'[^\u{0000}-\u{058F}\u{0590}-\u{05FF}\u{0600}-\u{077F}'
-    r'\u{08A0}-\u{08FF}\u{1E00}-\u{1FFF}\u{2000}-\u{206F}'
-    r'\u{2C60}-\u{2C7F}\u{A720}-\u{A7FF}'
-    // FB00-FB17 : ligatures latines (ﬁ) / arméniennes — dessinables aussi.
-    r'\u{FB00}-\u{FDFF}\u{FE70}-\u{FEFF}]+',
+    r'[^\u{0000}-\u{04FF}\u{0590}-\u{05FF}\u{0600}-\u{077F}'
+    r'\u{08A0}-\u{08FF}\u{1E00}-\u{1EFF}\u{2000}-\u{206F}'
+    r'\u{FB50}-\u{FDFF}\u{FE70}-\u{FEFF}]+',
     unicode: true,
   );
 
@@ -230,6 +232,12 @@ abstract final class TitleCurator {
     0x2085: '5', 0x2086: '6', 0x2087: '7', 0x2088: '8', 0x2089: '9',
     0x02B0: 'h', 0x02B2: 'j', 0x02B3: 'r', 0x02B7: 'w', 0x02B8: 'y',
     0x02E1: 'l', 0x02E2: 's', 0x02E3: 'x', 0x02BC: "'",
+    // SOSIES d'autres écritures utilisés pour déguiser des mots latins
+    // (photo client : « ՎIP » avec le Վ arménien en guise de V). On les
+    // CONVERTIT vers la lettre imitée — le mot redevient « VIP » et tombe
+    // ensuite sous les balises à retirer.
+    0x054E: 'V', // Վ arménien VEW
+    0x0555: 'O', // Օ arménien OH
     0x1D2C: 'A', 0x1D2E: 'B', 0x1D30: 'D', 0x1D31: 'E', 0x1D33: 'G',
     0x1D34: 'H', 0x1D35: 'I', 0x1D36: 'J', 0x1D37: 'K', 0x1D38: 'L',
     0x1D39: 'M', 0x1D3A: 'N', 0x1D3C: 'O', 0x1D3E: 'P', 0x1D3F: 'R',

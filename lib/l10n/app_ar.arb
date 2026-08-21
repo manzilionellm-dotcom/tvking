@@ -555,6 +555,8 @@
   "tvDeviceAddress": "عنوان هذا الجهاز (MAC)",
   "tvDeviceAddressHelp": "أعطِ هذا العنوان لبائعك لتفعيل The Few TV.",
   "tvStatus": "الحالة",
+  "tvYearsRemaining": "≈ {years} سنة متبقية",
+  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
   "tvStatusPaid": "الاشتراك نشط",
   "tvStatusTrial": "تجربة — {days} يوم متبقٍ",
   "tvStatusTrialExpired": "انتهت التجربة — فعّل",

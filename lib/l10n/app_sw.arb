@@ -555,6 +555,8 @@
   "tvDeviceAddress": "Anwani ya kifaa hiki (MAC)",
   "tvDeviceAddressHelp": "Mpe muuzaji wako anwani hii ili kuwasha The Few TV.",
   "tvStatus": "Hali",
+  "tvYearsRemaining": "≈ miaka {years} imebaki",
+  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
   "tvStatusPaid": "Usajili upo hai",
   "tvStatusTrial": "Jaribio — siku {days} zilizobaki",
   "tvStatusTrialExpired": "Jaribio limeisha — washa",

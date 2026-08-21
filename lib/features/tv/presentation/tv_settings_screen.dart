@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../core/tv_ambience.dart';
 import '../core/tv_tokens.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -48,14 +49,28 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   String _mac = '…';
   bool _busy = false;
 
+  /// Univers d'ambiance à restaurer en sortant (Caméléon adaptatif : entrer
+  /// dans les Réglages teinte l'atmosphère en améthyste discrète, en
+  /// ressortir la rend TENDREMENT à l'univers quitté — le fondu 1,6 s de
+  /// TvShell fait la transition).
+  TvAmbienceKind _prevAmbience = TvAmbienceKind.maison;
+
   @override
   void initState() {
     super.initState();
+    _prevAmbience = TvAmbience.instance.kind;
+    TvAmbience.instance.set(TvAmbienceKind.reglage);
     // Code NU (sans « MK: ») : évite le doublon quand le revendeur le colle
     // dans un panel qui préfixe déjà « MK ».
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
     });
+  }
+
+  @override
+  void dispose() {
+    TvAmbience.instance.set(_prevAmbience);
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -78,11 +93,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   ({String label, Color color}) _statusOf(BuildContext context) {
     switch (SubscriptionState.instance.status) {
       case SubscriptionStatus.paid:
-        // Montre les JOURS restants (à vie → ~100 ans) — concret et rassurant.
+        // Durée HUMAINE (retour client : « 36 500 jours, c'est pas sexy ») :
+        // au-delà de 2 ans on parle en ANNÉES (« ≈ 100 ans restants » pour
+        // un à-vie) ; en dessous, les jours restent le repère concret.
         final int? left = SubscriptionState.instance.subscriptionDaysLeft;
-        final String paidLabel = left != null
-            ? context.l10n.subDaysRemaining(_fmtDaysGrouped(left))
-            : context.l10n.tvStatusPaid;
+        final String paidLabel = left == null
+            ? context.l10n.tvStatusPaid
+            : left >= 730
+                ? context.l10n.tvYearsRemaining((left / 365).round())
+                : context.l10n.subDaysRemaining(_fmtDaysGrouped(left));
         return (label: paidLabel, color: const Color(0xFF3FBE7C));
       case SubscriptionStatus.trialActive:
         final int d = SubscriptionState.instance.trialDaysRemaining;
@@ -114,15 +133,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         children: <Widget>[
           Text(context.l10n.tvNavSettings,
               style: TextStyle(
-                  fontSize: TvDimens.displayM,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
                   color: TvTokens.text)),
           const SizedBox(height: 24),
 
           // ----- Carte MAC -----
           Container(
-            width: 760,
-            padding: const EdgeInsets.all(24),
+            width: 640,
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: TvTokens.card,
               borderRadius: BorderRadius.circular(TvDimens.panelRadius),
@@ -133,14 +152,14 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               children: <Widget>[
                 Text(context.l10n.tvDeviceAddress,
                     style: TextStyle(
-                        fontSize: TvDimens.label,
+                        fontSize: 12,
                         color: TvTokens.mutedDim)),
                 const SizedBox(height: 10),
                 SelectableText(
                   _mac,
                   style: TextStyle(
-                    fontSize: TvDimens.displayS,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
                     fontFamily: 'monospace',
                     color: TvTokens.text,
                     letterSpacing: 2,
@@ -150,7 +169,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                 Text(
                   context.l10n.tvDeviceAddressHelp,
                   style: TextStyle(
-                      fontSize: TvDimens.body, color: TvTokens.muted),
+                      fontSize: 14, color: TvTokens.muted),
                 ),
                 const SizedBox(height: 22),
 
@@ -159,7 +178,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Text('${context.l10n.tvStatus} : ',
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             color: TvTokens.muted)),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -169,7 +188,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                           borderRadius: BorderRadius.circular(999)),
                       child: Text(st.label,
                           style: TextStyle(
-                              fontSize: TvDimens.titleS,
+                              fontSize: 14,
                               fontWeight: FontWeight.w700,
                               color: st.color)),
                     ),
@@ -183,7 +202,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   scale: TvFocusScale.large,
                   onSelect: _busy ? null : _refresh,
                   builder: (BuildContext context, bool focused) {
-                    final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+                    final Color bg = focused ? TvTokens.gold : Colors.transparent;
                     final Color fg = focused ? TvTokens.onGold : TvTokens.goldBright;
                     return Container(
                       decoration: BoxDecoration(
@@ -195,11 +214,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
-                          Icon(Icons.refresh_rounded, color: fg, size: 24),
+                          Icon(Icons.refresh_rounded, color: fg, size: 18),
                           const SizedBox(width: 10),
                           Text(_busy ? context.l10n.tvChecking : context.l10n.tvRefreshStatus,
                               style: TextStyle(
-                                  fontSize: TvDimens.title,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                   color: fg)),
                         ],
@@ -220,27 +239,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.playlist_play_rounded, color: fg, size: 26),
+                    Icon(Icons.playlist_play_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsSources,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -259,27 +280,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.language_rounded, color: fg, size: 26),
+                    Icon(Icons.language_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsLanguage,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -300,24 +323,24 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                 ),
               ),
               builder: (BuildContext context, bool focused) {
-                final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+                final Color bg = focused ? TvTokens.gold : Colors.transparent;
                 final Color fg =
                     focused ? TvTokens.onGold : TvTokens.goldBright;
                 return Container(
-                  width: 760,
+                  width: 640,
                   decoration: BoxDecoration(
                       color: bg,
                       borderRadius:
                           BorderRadius.circular(TvDimens.cardRadius)),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                   child: Row(
                     children: <Widget>[
-                      Icon(Icons.code_rounded, color: fg, size: 26),
+                      Icon(Icons.code_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
                       Text(context.l10n.tvSettingsDeveloper,
                           style: TextStyle(
-                              fontSize: TvDimens.title,
+                              fontSize: 16,
                               fontWeight: FontWeight.w700,
                               color: fg)),
                       const SizedBox(width: 12),
@@ -327,10 +350,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                         child: Text(context.l10n.tvTemplateChange,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                fontSize: TvDimens.body,
+                                fontSize: 14,
                                 color: fg.withValues(alpha: 0.7))),
                       ),
-                      Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                      Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
                   ),
                 );
@@ -347,27 +370,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.download_for_offline_rounded, color: fg, size: 26),
+                    Icon(Icons.download_for_offline_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsDownloads,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -383,27 +408,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.query_stats_rounded, color: fg, size: 26),
+                    Icon(Icons.query_stats_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsStats,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -425,23 +452,25 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               final Color fg =
                   focused ? TvTokens.onEmber : TvTokens.emberBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.lightbulb_rounded, color: fg, size: 26),
+                    Icon(Icons.lightbulb_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvHueTitle,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -460,27 +489,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.shield_rounded, color: fg, size: 26),
+                    Icon(Icons.shield_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsBlackBox,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -496,27 +527,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.child_care_rounded, color: fg, size: 26),
+                    Icon(Icons.child_care_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsParental,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -532,27 +565,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.gavel_rounded, color: fg, size: 26),
+                    Icon(Icons.gavel_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsLegal,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -568,27 +603,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.family_restroom_rounded, color: fg, size: 26),
+                    Icon(Icons.family_restroom_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsFamily,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -605,27 +642,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.card_giftcard_rounded, color: fg, size: 26),
+                    Icon(Icons.card_giftcard_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsInvite,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -641,27 +680,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.people_alt_rounded, color: fg, size: 26),
+                    Icon(Icons.people_alt_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsProfiles,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -677,28 +718,30 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
                     Icon(Icons.collections_bookmark_rounded,
-                        color: fg, size: 26),
+                        color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsCollections,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -714,27 +757,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.bedtime_rounded, color: fg, size: 26),
+                    Icon(Icons.bedtime_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsSleep,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -750,27 +795,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.tv_rounded, color: fg, size: 26),
+                    Icon(Icons.tv_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsDisplay,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -786,27 +833,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.palette_rounded, color: fg, size: 26),
+                    Icon(Icons.palette_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.themeChooseTitle,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -822,27 +871,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.place_rounded, color: fg, size: 26),
+                    Icon(Icons.place_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsWeather,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -855,27 +906,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             scale: TvFocusScale.large,
             onSelect: () => checkForUpdatesInteractive(context),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.system_update_rounded, color: fg, size: 26),
+                    Icon(Icons.system_update_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.aboutCheckUpdates,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -893,27 +946,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.support_agent_rounded, color: fg, size: 26),
+                    Icon(Icons.support_agent_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsHelp,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -938,27 +993,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               if (mounted) setState(() {});
             },
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.info_outline_rounded, color: fg, size: 26),
+                    Icon(Icons.info_outline_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsAbout,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -975,27 +1032,29 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
               final Color fg =
                   focused ? TvTokens.onGold : TvTokens.goldBright;
               return Container(
-                width: 760,
+                width: 640,
                 decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.bug_report_rounded, color: fg, size: 26),
+                    Icon(Icons.bug_report_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsDiagnostics,
                         style: TextStyle(
-                            fontSize: TvDimens.title,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: fg)),
                     const Spacer(),
-                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                   ],
                 ),
               );
@@ -1004,7 +1063,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
           // ----- Avertissement « lecteur » toujours visible (bas de page) -----
           const SizedBox(height: 22),
           Container(
-            width: 760,
+            width: 640,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: TvTokens.card,

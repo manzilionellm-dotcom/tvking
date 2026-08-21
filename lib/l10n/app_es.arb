@@ -555,6 +555,8 @@
   "tvDeviceAddress": "Dirección de este dispositivo (MAC)",
   "tvDeviceAddressHelp": "Dale esta dirección a tu vendedor para activar The Few TV.",
   "tvStatus": "Estado",
+  "tvYearsRemaining": "≈ {years} años restantes",
+  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
   "tvStatusPaid": "Suscripción activa",
   "tvStatusTrial": "Prueba — {days} día(s) restantes",
   "tvStatusTrialExpired": "Prueba finalizada — activa",

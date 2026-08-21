@@ -42,6 +42,7 @@ import 'widgets/tv_category_reorder.dart';
 import 'tv_films_screen.dart';
 import 'tv_home_template_screen.dart';
 import 'tv_live_preview.dart';
+import 'tv_app.dart' show RestartWidget, showExitDialog;
 import 'tv_player_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_screensaver.dart';
@@ -469,32 +470,16 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     final bool moved =
         FocusScope.of(context).focusInDirection(TraversalDirection.left);
     if (moved) return; // il restait un cran à gauche → on a juste reculé
-    // Déjà tout à gauche : on demande confirmation avant de quitter l'app.
-    final bool? quit = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext d) => AlertDialog(
-        backgroundColor: _tmPanel,
-        title: Text(d.l10n.tvTmQuitTitle,
-            style: const TextStyle(
-                color: _tmText, fontSize: 22, fontWeight: FontWeight.w700)),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(d, false),
-            child: Text(d.l10n.buttonCancel,
-                style: const TextStyle(color: _tmText2, fontSize: 18)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(d, true),
-            child: Text(d.l10n.tvQuit,
-                style: const TextStyle(
-                    color: _tmAccent,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-    if (quit == true) await SystemNavigator.pop();
+    // Déjà tout à gauche : dialogue de sortie PREMIUM partagé (retour client
+    // du 21/08 : l'AlertDialog Android nu « faisait téléphone chinois ») —
+    // même carte Continuer / Redémarrer / Quitter que le template classique.
+    final String? action = await showExitDialog(context);
+    if (!mounted) return;
+    if (action == 'restart') {
+      RestartWidget.restart(context);
+    } else if (action == 'quit') {
+      await SystemNavigator.pop();
+    }
   }
 
   @override

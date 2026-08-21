@@ -47,6 +47,11 @@ void main() {
       expect(TitleCurator.curate('CANAL ⵣ PLUS'), 'Canal');
     });
 
+    test('« ՎIP » déguisé (V arménien, photo client) redevient VIP et saute',
+        () {
+      expect(ChannelClassifier.prettifyCategory('FRANCE ՎIP RAW'), 'France');
+    });
+
     test('deux décorations différentes FUSIONNENT en un seul groupe', () {
       final String a =
           ChannelClassifier.prettifyCategory('## SPORT FHD ##');

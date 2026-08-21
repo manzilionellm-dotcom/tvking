@@ -2034,6 +2034,8 @@
   "tvDeviceAddress": "Adresse de cet appareil (MAC)",
   "tvDeviceAddressHelp": "Donne cette adresse à ton revendeur pour activer The Few TV.",
   "tvStatus": "Statut",
+  "tvYearsRemaining": "≈ {years} ans restants",
+  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
   "tvStatusPaid": "Abonnement actif",
   "tvStatusTrial": "Essai — {days} jour(s) restants",
   "@tvStatusTrial": {

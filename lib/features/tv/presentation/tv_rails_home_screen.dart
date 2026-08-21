@@ -35,7 +35,7 @@ import '../core/tv_memory_guard.dart';
 import '../core/tv_tokens.dart';
 // RestartWidget : le vrai « rechargement logiciel » de l'app (source +
 // abonnement re-synchronisés, accueil reconstruit) — pour le bouton ⟳.
-import 'tv_app.dart' show RestartWidget;
+import 'tv_app.dart' show RestartWidget, showExitDialog;
 import 'tv_components.dart';
 import 'tv_films_screen.dart';
 import 'tv_guide_grid_screen.dart';
@@ -243,29 +243,15 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
   }
 
   Future<void> _confirmExit(BuildContext c) async {
-    final bool? quit = await showDialog<bool>(
-      context: c,
-      builder: (BuildContext d) => AlertDialog(
-        backgroundColor: TvTokens.card,
-        title: Text(c.l10n.tvTmQuitTitle,
-            style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700)),
-        actions: <Widget>[
-          TextButton(
-            // AUTOFOCUS (parité template A) : sans lui, la boîte s'ouvrait
-            // sans focus → télécommande muette jusqu'à un appui hasardeux.
-            autofocus: true,
-            onPressed: () => Navigator.pop(d, false),
-            child: Text(c.l10n.buttonCancel, style: TvTokens.ui(TvDimens.body)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(d, true),
-            child: Text(c.l10n.tvQuit,
-                style: TvTokens.ui(TvDimens.body, color: TvTokens.goldBright)),
-          ),
-        ],
-      ),
-    );
-    if (quit == true) await SystemNavigator.pop();
+    // Dialogue de sortie PREMIUM partagé (le même que le template classique
+    // — l'AlertDialog nu faisait « téléphone », pas « salon »).
+    final String? action = await showExitDialog(c);
+    if (!c.mounted) return;
+    if (action == 'restart') {
+      RestartWidget.restart(c);
+    } else if (action == 'quit') {
+      await SystemNavigator.pop();
+    }
   }
 
   @override

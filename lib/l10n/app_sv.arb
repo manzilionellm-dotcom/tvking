@@ -555,6 +555,8 @@
   "tvDeviceAddress": "Den här enhetens adress (MAC)",
   "tvDeviceAddressHelp": "Ge den här adressen till din återförsäljare för att aktivera The Few TV.",
   "tvStatus": "Status",
+  "tvYearsRemaining": "≈ {years} år kvar",
+  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
   "tvStatusPaid": "Abonnemang aktivt",
   "tvStatusTrial": "Provperiod — {days} dag(ar) kvar",
   "tvStatusTrialExpired": "Provperiod slut — aktivera",

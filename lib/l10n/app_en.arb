@@ -561,6 +561,8 @@
   "tvDeviceAddress": "This device's address (MAC)",
   "tvDeviceAddressHelp": "Give this address to your reseller to activate The Few TV.",
   "tvStatus": "Status",
+  "tvYearsRemaining": "≈ {years} years left",
+  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
   "tvStatusPaid": "Subscription active",
   "tvStatusTrial": "Trial — {days} day(s) left",
   "tvStatusTrialExpired": "Trial ended — activate",
