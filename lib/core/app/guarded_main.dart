@@ -94,7 +94,13 @@ Future<void> _tuneImageCacheForRam() async {
     final bool lowRam = DeviceMemory.lowRam;
     int imgs;
     int bytes;
-    if (lowRam || (totalMb > 0 && totalMb <= 1024)) {
+    if (totalMb > 0 && totalMb <= 768) {
+      // ≤ 768 Mo (terrain 21/08 : « même un téléphone à 512 Mo ») : le
+      // système ne laisse que ~150-250 Mo au process — chaque bitmap
+      // compte. 32 affiches × ~150 Ko ≈ 5 Mo réels, plafond dur 12 Mo.
+      imgs = 32;
+      bytes = 12 << 20;
+    } else if (lowRam || totalMb <= 1024) {
       imgs = 60; // ≤ 1 Go : empreinte minimale
       bytes = 24 << 20;
     } else if (totalMb <= 2048) {

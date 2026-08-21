@@ -92,6 +92,18 @@ abstract final class DeviceMemory {
     return 800000;
   }
 
+  /// Largeur de DÉCODAGE d'une affiche (memCacheWidth) pour une largeur
+  /// LOGIQUE d'affichage donnée. Un bitmap décodé coûte largeur×hauteur×4
+  /// octets : décoder à ×2 (netteté sur écrans denses) QUADRUPLE la RAM
+  /// par rapport à ×1. Terrain 21/08 (« l'app doit marcher même sur un
+  /// téléphone à 512 Mo ») : sur les petits appareils — dont l'écran est
+  /// d'ailleurs rarement dense — on décode à ×1,25 : le Cinéma affiche
+  /// des dizaines d'affiches sans pousser l'app vers le kill mémoire.
+  static int posterCacheWidth(double logicalWidth) {
+    final bool small = _lowRam || (_loaded && _totalMb > 0 && _totalMb <= 1024);
+    return (logicalWidth * (small ? 1.25 : 2.0)).round();
+  }
+
   /// Plafond d'OCTETS téléchargés à l'import (M3U), par palier de RAM. Le
   /// fetcher STREAME (il ne matérialise pas le corps entier) et coupe au-delà,
   /// donc ce plafond borne surtout la taille de source ACCEPTÉE — relevé pour

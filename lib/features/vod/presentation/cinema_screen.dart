@@ -21,6 +21,7 @@ import 'dart:async' show unawaited;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/app/device_memory.dart';
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
@@ -379,7 +380,7 @@ class _PosterCard extends StatelessWidget {
                   children: <Widget>[
                     _poster(movie.posterUrl,
                         title: movie.name,
-                        memCacheWidth: posterW.round() * 2),
+                        memCacheWidth: DeviceMemory.posterCacheWidth(posterW)),
                     // Filet de progression (repère « entamé », comme la TV).
                     if (progress != null)
                       Align(
@@ -576,7 +577,7 @@ class _SeriesTab extends StatelessWidget {
                                   children: <Widget>[
                                     _poster(s.posterUrl,
                                         title: s.name,
-                                        memCacheWidth: posterW.round() * 2),
+                                        memCacheWidth: DeviceMemory.posterCacheWidth(posterW)),
                                     if (newIds.contains(s.id))
                                       Positioned(
                                         top: 5,
