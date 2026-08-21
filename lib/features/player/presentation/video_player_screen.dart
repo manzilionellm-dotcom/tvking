@@ -148,6 +148,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Future<void> _openChain = Future<void>.value();
   int _openGeneration = 0;
 
+  /// Pré-attente fournisseur (parité TV, fluidité cinéma ↔ chaîne) : une
+  /// seule fois par écran, à la première ouverture — jamais sur les zaps.
+  bool _providerPrewaitDone = false;
+
 
   bool _overlayVisible = true;
   Timer? _hideOverlayTimer;
@@ -1200,10 +1204,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       case StreamBlockReason.providerBlocked:
         return context.l10n.playerBlockedProvider;
       case StreamBlockReason.maxConnections:
-        return context.l10n.playerBlockedMaxConnections(
-          '${d.xtreamActiveCons ?? '?'}',
-          '${d.xtreamMaxConnections ?? '?'}',
-        );
+        // DÉCISION PROPRIÉTAIRE (21/08, parité TV) : « je veux plus voir ce
+        // message ». L'accusation « un autre écran regarde déjà » était
+        // fausse dans le scénario dominant (session fantôme de la lecture
+        // qu'on vient de fermer) — le créneau occupé ne terminalise plus
+        // (patrouille 458 du fallback) ; si un chemin résiduel arrive ici,
+        // message générique. La Boîte noire garde les vrais compteurs.
+        return fallback;
       case StreamBlockReason.banned:
         return context.l10n.playerBlockedBanned;
       case StreamBlockReason.none:
@@ -1263,6 +1270,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   'consommateurs précédents'
                   '${waitedMs >= 1150 ? ' — BUDGET ATTEINT : un démontage n\'a pas fini, la connexion part quand même' : ''}',
               level: waitedMs >= 1150 ? 'warn' : 'info',
+            );
+          }
+        })
+        // PRÉ-ATTENTE FOURNISSEUR (parité TV, fluidité cinéma ↔ chaîne du
+        // 21/08) : à la PREMIÈRE ouverture de cet écran, si on vient de
+        // quitter une autre lecture (handOff récent), le panel peut encore
+        // compter sa session fantôme — on attend la libération MESURÉE
+        // (compteurs player_api) au lieu de brûler une connexion refusée.
+        // Jamais pour un fichier local, ni sur les zaps suivants ; zéro
+        // coût hors Xtream et sur les comptes multi-connexions.
+        .then((_) async {
+          if (_providerPrewaitDone || isLocal) return;
+          _providerPrewaitDone = true;
+          final DateTime? left = StreamSlot.instance.lastHandOffAt;
+          if (left != null &&
+              DateTime.now().difference(left) < const Duration(minutes: 2)) {
+            await StreamBlockedFallback.awaitProviderSlot(
+              _currentChannel,
+              isCancelled: () => !mounted || gen != _openGeneration,
             );
           }
         })
