@@ -543,7 +543,7 @@ class _GuideRowState extends State<_GuideRow> {
                     const SizedBox(width: 6),
                     TvChannelLogo(
                         logoUrl: widget.channel.logoUrl,
-                        label: widget.channel.name,
+                        label: widget.channel.cleanName,
                         size: 40,
                         radius: 8),
                     const SizedBox(width: 10),

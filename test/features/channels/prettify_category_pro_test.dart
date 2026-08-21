@@ -9,6 +9,7 @@
 // =========================================================
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/core/curation/title_curator.dart';
 import 'package:tv_king/features/channels/domain/channel_genre.dart';
 
 void main() {
@@ -34,6 +35,16 @@ void main() {
 
     test('vidé par le nettoyage → « Autres » (jamais une ligne vide)', () {
       expect(ChannelClassifier.prettifyCategory('#### ▓▓▓ ####'), 'Autres');
+    });
+
+    test('pictogramme ▦ (photo client 21/08) et écriture exotique sautent',
+        () {
+      // Le glyphe 3×3 qui suivait chaque nom (« PRIME: ACTION MAX ▦ ») et
+      // une lettre tifinagh (\p{L} hors écritures des box) : tous deux
+      // doivent disparaître du nom curé.
+      // (« MAX » reste en capitales : règle des sigles ≤ 3 lettres.)
+      expect(TitleCurator.curate('PRIME: ACTION MAX ▦'), 'Prime: Action MAX');
+      expect(TitleCurator.curate('CANAL ⵣ PLUS'), 'Canal');
     });
 
     test('deux décorations différentes FUSIONNENT en un seul groupe', () {

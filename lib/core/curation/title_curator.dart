@@ -177,20 +177,28 @@ abstract final class TitleCurator {
   // ÉCRITURES QUE LES BOX NE DESSINENT PAS (photo client du 17/08 : « Prime »,
   // « FR| PRIME », « Prime: 13eme RUE » suivis de 3 carrés).
   //
-  // La liste blanche v2 garde \p{L} — donc TOUTES les écritures. C'était le
-  // trou : une box Android bon marché n'embarque que les polices latines (+
-  // souvent arabe/cyrillique). Un idéogramme CJK, un caractère thaï ou une
-  // lettre indienne est un \p{L} parfaitement valide… et un carré à l'écran.
-  //
-  // On GARDE ce que les box dessinent vraiment : latin, grec, cyrillique,
-  // arménien, hébreu, arabe (y compris ses formes de présentation). On retire
-  // le reste. Filet de sécurité dans [stripUnrenderable] : si le nom ENTIER
-  // était dans une écriture retirée, on préfère les carrés à une ligne vide.
+  // v3 (photo client du 21/08 : DES CARRÉS SURVIVAIENT ENCORE — Tifinagh,
+  // Cherokee, mongol… hors des plages listées) : la LISTE NOIRE de plages
+  // était le même jeu perdu d'avance que pour les pictogrammes. On INVERSE :
+  // on liste ce que les box dessinent VRAIMENT — latin (+ étendus), grec,
+  // cyrillique, arménien, hébreu, arabe (+ suppléments et formes de
+  // présentation) — et TOUTE lettre/marque/chiffre au-delà de ces plages
+  // saute, écriture connue ou pas. Filet de sécurité dans
+  // [stripUnrenderable] : si le nom ENTIER était dans une écriture retirée,
+  // on préfère les carrés à une ligne vide.
+  //   0000-052F  ASCII, latin étendu, IPA, grec, cyrillique (+ suppléments)
+  //   0530-058F  arménien · 0590-05FF hébreu · 0600-077F arabe (+ suppl.)
+  //   08A0-08FF  arabe étendu-A · 1E00-1FFF latin additionnel + grec étendu
+  //   2C60-2C7F  latin étendu-C · A720-A7FF latin étendu-D
+  //   FB1D-FDFF  présentation hébreu/arabe · FE70-FEFF formes arabes B
+  // (Les autres catégories — ponctuation, symboles — sont déjà filtrées par
+  //  la liste blanche [_unrenderable] et les exposants par [_foldExotic].)
   static final RegExp _unsupportedScripts = RegExp(
-    r'[\u{0700}-\u{074F}\u{0780}-\u{08FF}\u{0900}-\u{0DFF}'
-    r'\u{0E00}-\u{109F}\u{1100}-\u{11FF}\u{1200}-\u{137F}'
-    r'\u{1400}-\u{167F}\u{1780}-\u{17FF}\u{2E80}-\u{A4CF}'
-    r'\u{A500}-\u{A63F}\u{AC00}-\u{D7FF}\u{F900}-\u{FAFF}]+',
+    r'[^\u{0000}-\u{058F}\u{0590}-\u{05FF}\u{0600}-\u{077F}'
+    r'\u{08A0}-\u{08FF}\u{1E00}-\u{1FFF}\u{2000}-\u{206F}'
+    r'\u{2C60}-\u{2C7F}\u{A720}-\u{A7FF}'
+    // FB00-FB17 : ligatures latines (ﬁ) / arméniennes — dessinables aussi.
+    r'\u{FB00}-\u{FDFF}\u{FE70}-\u{FEFF}]+',
     unicode: true,
   );
 

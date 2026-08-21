@@ -865,14 +865,17 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
           Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          TvChannelLogo(logoUrl: c.logoUrl, label: c.name, size: 84, radius: 10),
+          TvChannelLogo(
+              logoUrl: c.logoUrl, label: c.cleanName, size: 84, radius: 10),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  c.name,
+                  // Nom curé — l'aperçu est la vitrine du template, pas un
+                  // terminal de debug (« FR: FRANCE 2 HEVC » → « France 2 »).
+                  c.cleanName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -1310,13 +1313,16 @@ class _ChannelRowState extends State<_ChannelRow> {
               const SizedBox(width: 8),
               TvChannelLogo(
                   logoUrl: widget.channel.logoUrl,
-                  label: widget.channel.name,
+                  label: widget.channel.cleanName,
                   size: 44,
                   radius: 8),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
-                  widget.channel.name,
+                  // NOM CURÉ (photo client « #### PRIME ▓▓ 60fps #### » affiché
+                  // TEL QUEL dans la liste) : même règle que le lecteur et le
+                  // Cinéma — l'utilisateur ne voit JAMAIS le bruit du panel.
+                  widget.channel.cleanName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

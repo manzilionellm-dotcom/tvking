@@ -1,6 +1,8 @@
 // =========================================================
 //  tv_shell.dart — Conteneur racine 10-foot (safe area + fond Maison Noir)
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/color/oklab_color_tween.dart';
@@ -8,7 +10,7 @@ import '../core/tv_ambience.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 
-class TvShell extends StatelessWidget {
+class TvShell extends StatefulWidget {
   const TvShell({
     super.key,
     required this.child,
@@ -17,6 +19,37 @@ class TvShell extends StatelessWidget {
 
   final Widget child;
   final bool applySafeArea;
+
+  @override
+  State<TvShell> createState() => _TvShellState();
+}
+
+class _TvShellState extends State<TvShell> {
+  // HORLOGE CIRCADIENNE (retour client du 21/08 : « la nuit, le jour, c'est
+  // le même thème ») : `TvAmbience.glow` est évalué paresseusement — sur une
+  // box qui reste allumée SANS navigation, rien ne re-déclenchait de rebuild
+  // → le fond restait figé à l'heure de la dernière interaction. Ce tic lent
+  // (10 min, imperceptible unité par unité) re-lit la couleur du moment ; le
+  // TweenAnimationBuilder fond ensuite la transition. Timer d'ÉTAT (annulé
+  // au dispose) — jamais de timer singleton (échec des tests widget).
+  Timer? _circadianTick;
+
+  @override
+  void initState() {
+    super.initState();
+    _circadianTick = Timer.periodic(const Duration(minutes: 10), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _circadianTick?.cancel();
+    super.dispose();
+  }
+
+  Widget get child => widget.child;
+  bool get applySafeArea => widget.applySafeArea;
 
   @override
   Widget build(BuildContext context) {

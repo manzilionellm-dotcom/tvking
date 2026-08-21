@@ -974,7 +974,7 @@ class _ChannelTileState extends State<_ChannelTile> {
                 const SizedBox(width: 6),
                 TvChannelLogo(
                     logoUrl: widget.channel.logoUrl,
-                    label: widget.channel.name,
+                    label: widget.channel.cleanName,
                     size: 42,
                     radius: 8),
                 const SizedBox(width: 12),

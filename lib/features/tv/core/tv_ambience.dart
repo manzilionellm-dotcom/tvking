@@ -99,13 +99,26 @@ class TvAmbience extends ChangeNotifier {
     final CircadianState circadian =
         circadianStateAt(now.hour + now.minute / 60);
     final Oklch? accent = _contentAccent;
-    // Le contenu commande : sa teinte, ramenée à un NOIR teinté (le fond
-    // n'est jamais une couleur vive — règle d'or). Sinon, l'univers.
-    Oklch g = accent == null
-        ? _baseGlow
-        : Oklch(0.19, (accent.c * 0.45).clamp(0.0, 0.05).toDouble(), accent.h);
-    // L'heure infléchit (25 %), le contenu garde la main (75 %).
-    g = temperByCircadian(g, circadian);
+    Oklch g;
+    if (accent != null) {
+      // Le CONTENU commande : sa teinte, ramenée à un NOIR teinté (le fond
+      // n'est jamais une couleur vive — règle d'or) ; l'heure infléchit 25 %.
+      g = temperByCircadian(
+        Oklch(0.19, (accent.c * 0.45).clamp(0.0, 0.05).toDouble(), accent.h),
+        circadian,
+      );
+    } else if (_kind == TvAmbienceKind.maison) {
+      // MAISON sans contenu : c'est L'HEURE qui commande (retour client du
+      // 21/08 : « la nuit, le jour, c'est le même thème » — le tempérage à
+      // 25 % était imperceptible). L'accueil suit franchement la journée :
+      // bleu d'acier à l'aube, neutre l'après-midi, doré le soir, ambre la
+      // nuit. Toujours un noir teinté : le Gouverneur borne juste après.
+      g = Oklch(0.20, circadian.chroma, circadian.hueDeg);
+    } else {
+      // Univers thématiques (Cinéma, Séries, Sport) : leur identité prime,
+      // l'heure infléchit (25 %).
+      g = temperByCircadian(_baseGlow, circadian);
+    }
     // Le soir, l'aura s'intensifie (glow 0.06 → 0.18 sur la journée).
     final double l = (g.l + circadian.glow * 0.22).clamp(0.12, 0.26).toDouble();
     return Color(oklabToSrgb(clampChroma(Oklch(l, g.c, g.h)).toOklab()).argb);
