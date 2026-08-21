@@ -500,7 +500,18 @@ class _TvGateState extends State<TvGate> {
     // client légitime sur une coupure réseau ; le verrou serveur reprend la
     // main dès que la connexion revient (et device-source ne livre plus la
     // source une fois l'essai expiré).
-    final bool showHome = active || (hasOwnList && !mustBlock);
+    //
+    // ZÉRO CHAÎNE = ACCUEIL CHALEUREUX, même sur une box ACTIVÉE (photo
+    // client du 21/08 : source supprimée → panneau vide « Aucune chaîne
+    // dans ce groupe » au lieu du bel écran). L'appareil payé sans chaîne
+    // retombe sur TvWelcomeScreen (QR + saisie) — qui masque de lui-même
+    // essai/prix pour un client déjà actif. Sans flash au boot :
+    // PlaylistRepository.initialize() est attendu AVANT runApp.
+    // (`active` implique !mustBlock — l'expression se réduit proprement.)
+    final bool showHome = hasOwnList && !mustBlock;
+    // `active` reste lu plus bas (statut visible) — le garder explicite ici
+    // documente que le PAIEMENT n'ouvre pas un accueil sans chaînes.
+    assert(!(active && mustBlock), 'états serveur mutuellement exclusifs');
     // « Qui regarde ? » : si l'accès est ouvert, que la famille a PLUSIEURS
     // profils et qu'on n'a pas encore choisi cette session → on présente la
     // grille d'avatars AVANT l'accueil (exactement comme Netflix au démarrage).

@@ -34,6 +34,7 @@ import '../../../core/update/build_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/pairing_service.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../subscription/data/subscription_state.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_activation_screen.dart';
@@ -151,6 +152,14 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
     }
   }
 
+  /// Appareil DÉJÀ actif (payé ou essai en cours) : il repasse par ici
+  /// uniquement parce qu'il n'a plus AUCUNE chaîne (source supprimée) —
+  /// on l'accueille sans lui re-vendre essai/prix/activation.
+  bool get _alreadyActive {
+    final SubscriptionStatus s = SubscriptionState.instance.status;
+    return s == SubscriptionStatus.paid || s == SubscriptionStatus.trialActive;
+  }
+
   void _openScreen(Widget screen) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => TvShell(child: screen)),
@@ -199,7 +208,10 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
         // ===== ESSAI 3 SEMAINES + PRIX — builds DIRECTS uniquement =====
         // (build store : lecteur pur, aucune offre commerciale — dossier
         //  Amazon 21688197501 + règles de facturation des stores.)
-        if (!kIsPlayBuild) ...<Widget>[
+        // Et JAMAIS pour un appareil DÉJÀ ACTIF (payé/essai en cours) qui
+        // repasse ici après avoir supprimé sa source : on ne vend pas un
+        // essai à un client déjà chez nous — QR + saisie suffisent.
+        if (!kIsPlayBuild && !_alreadyActive) ...<Widget>[
           const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -248,7 +260,7 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
           label: '⌨  ${context.l10n.tvWelcomeManualBtn}',
           onSelect: () => _openScreen(const TvSmartAddScreen()),
         ),
-        if (!kIsPlayBuild) ...<Widget>[
+        if (!kIsPlayBuild && !_alreadyActive) ...<Widget>[
           const SizedBox(height: 12),
           TvFocusBuilder(
             scale: TvFocusScale.large,
