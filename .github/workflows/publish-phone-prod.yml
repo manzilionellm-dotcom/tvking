@@ -30,6 +30,15 @@ on:
         description: 'ID du run build-android dont on publie APK+AAB (Actions → run → URL)'
         required: true
         type: string
+  # BOOTSTRAP (même mécanique que publish-tv-test le 20/08) : le dispatch
+  # par nom échoue tant que GitHub n'a pas indexé un workflow neuf — le
+  # push de CE fichier publie le run indiqué en repli ci-dessous. À
+  # retirer après le premier passage.
+  push:
+    branches:
+      - 'claude/7motion-android-tv-compat-e0rtyp'
+    paths:
+      - '.github/workflows/publish-phone-prod.yml'
 
 permissions:
   contents: write   # éditer la release prod
@@ -45,14 +54,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: tvking-release-apk-*
-          run-id: ${{ inputs.run_id }}
+          run-id: ${{ inputs.run_id || '32445324958' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           merge-multiple: true
 
       - name: Mettre à jour la release prod (tag préservé)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ inputs.run_id }}
+          RUN_ID: ${{ inputs.run_id || '32445324958' }}
         run: |
           set -e
           ls -la
