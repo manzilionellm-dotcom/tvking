@@ -86,25 +86,13 @@ class _RecordingRow extends StatelessWidget {
   }
 
   Future<void> _delete(BuildContext context) async {
-    final bool? ok = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        backgroundColor: TvTokens.card,
-        title: Text(ctx.l10n.tvRecDeleteTitle,
-            style: TextStyle(color: TvTokens.text)),
-        content: Text(ctx.l10n.tvRecDeleteConfirm(rec.channelName),
-            style: TextStyle(color: TvTokens.muted)),
-        actions: <Widget>[
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(ctx.l10n.buttonCancel,
-                  style: TextStyle(color: TvTokens.muted))),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(ctx.l10n.buttonDelete,
-                  style: TextStyle(color: TvTokens.live))),
-        ],
-      ),
+    // Confirmation premium partagée (plus d'AlertDialog Android nu).
+    final bool? ok = await showTvConfirm(
+      context,
+      title: context.l10n.tvRecDeleteTitle,
+      message: context.l10n.tvRecDeleteConfirm(rec.channelName),
+      confirmLabel: context.l10n.buttonDelete,
+      danger: true,
     );
     if (ok != true) return;
     try {

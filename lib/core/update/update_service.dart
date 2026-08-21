@@ -96,6 +96,17 @@ class UpdateService {
       ? 'https://github.com/manzilionellm-dotcom/tvking/releases/download/$_tvUpdateTag/version.json'
       : 'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/version.json';
 
+  /// MIROIR via NOTRE domaine (retour client du 21/08 : « le bouton Mise à
+  /// jour ne marche pas ») : certaines box n'atteignent pas github.com
+  /// (DNS FAI, IPv6 bancale, lenteur au-delà du timeout). Le worker expose
+  /// /r/<tag>/<asset> qui sert les MÊMES fichiers de release, en cache
+  /// edge — même stabilité que les liens /tv et /test.
+  static const String _ghBase =
+      'https://github.com/manzilionellm-dotcom/tvking/releases/download/';
+  static String _mirror(String url) => url.startsWith(_ghBase)
+      ? url.replaceFirst(_ghBase, 'https://app.7themotion.com/r/')
+      : url;
+
   /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
   /// sinon `null`. Fail-open : toute erreur → `null`. Utilisé par
   /// l'auto-MAJ (silencieuse).
@@ -116,9 +127,22 @@ class UpdateService {
       final PackageInfo info = await PackageInfo.fromPlatform();
       final int current = int.tryParse(info.buildNumber) ?? 0;
 
-      final http.Response r = await http
-          .get(Uri.parse(manifestUrl))
-          .timeout(const Duration(seconds: 8));
+      // GitHub d'abord, MIROIR domaine en secours (box qui ne joint pas
+      // github.com). Timeout 12 s par tentative — 8 s tombait sur les
+      // box au DNS lent avant même la première réponse.
+      http.Response? r;
+      try {
+        r = await http
+            .get(Uri.parse(manifestUrl))
+            .timeout(const Duration(seconds: 12));
+      } catch (_) {
+        r = null;
+      }
+      if (r == null || r.statusCode != 200) {
+        r = await http
+            .get(Uri.parse(_mirror(manifestUrl)))
+            .timeout(const Duration(seconds: 12));
+      }
       if (r.statusCode != 200) {
         return const UpdateCheckResult(UpdateAvailability.unavailable);
       }
@@ -227,9 +251,26 @@ class UpdateService {
       }
 
       client = http.Client();
-      final http.StreamedResponse resp =
-          await client.send(http.Request('GET', Uri.parse(update.url)));
-      if (resp.statusCode != 200) return false;
+      // APK : GitHub d'abord, MIROIR domaine en secours (même logique que
+      // le manifeste — le téléchargement ne doit jamais dépendre du seul
+      // accès direct à github.com depuis la box).
+      http.StreamedResponse resp;
+      try {
+        resp = await client
+            .send(http.Request('GET', Uri.parse(update.url)))
+            .timeout(const Duration(seconds: 20));
+      } catch (_) {
+        resp = await client
+            .send(http.Request('GET', Uri.parse(_mirror(update.url))))
+            .timeout(const Duration(seconds: 20));
+      }
+      if (resp.statusCode != 200) {
+        final http.StreamedResponse retry = await client
+            .send(http.Request('GET', Uri.parse(_mirror(update.url))))
+            .timeout(const Duration(seconds: 20));
+        if (retry.statusCode != 200) return false;
+        resp = retry;
+      }
 
       final int total = resp.contentLength ?? 0;
       int received = 0;

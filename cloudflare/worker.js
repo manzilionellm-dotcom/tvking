@@ -7421,6 +7421,25 @@ async function handleRequest(request, env, ctx) {
         url.searchParams.get('v'));
     }
 
+    // /r/<tag>/<asset> — MIROIR GÉNÉRIQUE des releases GitHub du repo.
+    // L'updater in-app (bouton « Vérifier les mises à jour ») l'utilise en
+    // SECOURS quand la box n'atteint pas github.com (DNS FAI, IPv6
+    // bancale) : mêmes fichiers, servis par le domaine + cache edge.
+    // Noms strictement filtrés — ce miroir ne sert QUE ce repo.
+    if (segments.length === 3 && segments[0] === 'r') {
+      const tag = segments[1];
+      const asset = segments[2];
+      const SAFE_REF = /^[A-Za-z0-9._-]{1,100}$/;
+      if (!SAFE_REF.test(tag) || !SAFE_REF.test(asset)) {
+        return badRequest('invalid release ref');
+      }
+      return proxyRelease(
+        'https://github.com/manzilionellm-dotcom/tvking/releases/download/' +
+          tag + '/' + asset,
+        asset,
+      );
+    }
+
     // /win, /windows, /pc — installateur WINDOWS officiel (The Few PC,
     // release `windows-latest`). Un visiteur Windows clique → le Setup.exe
     // se télécharge directement, sans compte GitHub.
@@ -7655,7 +7674,7 @@ async function handleRequest(request, env, ctx) {
       '7tv', 'seventv', 'sevenmotion',
       'vip', 'thefew', 'few', 'app', 'fone', 'tel', 'android', 'phone',
       'win', 'windows', 'pc', 'samsung', 'tizen', 'lg', 'webos',
-      'test', 'tvtest', 'beta',
+      'test', 'tvtest', 'beta', 'r',
       'cast-receiver', 'cast-skin.css', 'vendor',
       'favicon.ico', 'robots.txt', 'sitemap.xml',
     ]);

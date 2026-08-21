@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/playlist_repository.dart';
+import 'tv_components.dart';
+import '../../playlists/data/source_opt_outs.dart';
 import '../../playlists/domain/playlist.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -149,50 +151,32 @@ class _SourceRow extends StatelessWidget {
     if (!context.mounted) return;
     nav.pop(); // ferme le voile de progression
     if (error != null) {
-      await showDialog<void>(
-        context: context,
-        builder: (BuildContext ctx) => AlertDialog(
-          backgroundColor: TvTokens.card,
-          title: Text(ctx.l10n.tvSourcesTitle,
-              style: TextStyle(color: TvTokens.text)),
-          content: Text(ctx.l10n.errorWithMessage(error!),
-              style: TextStyle(color: TvTokens.muted)),
-          actions: <Widget>[
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(ctx.l10n.buttonOk,
-                    style: TextStyle(color: TvTokens.gold))),
-          ],
-        ),
-      );
+      // Carte premium partagée (plus d'AlertDialog Android nu).
+      await showTvInfo(context,
+          title: context.l10n.tvSourcesTitle,
+          message: context.l10n.errorWithMessage(error));
     }
     // Succès : rien à afficher — le compteur de chaînes de la rangée se met
     // à jour tout seul via playlistsStream (preuve visible du re-import).
   }
 
   Future<void> _delete(BuildContext context) async {
-    final bool? ok = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        backgroundColor: TvTokens.card,
-        title: Text(ctx.l10n.tvSourceDeleteConfirmTitle,
-            style: TextStyle(color: TvTokens.text)),
-        content: Text(ctx.l10n.tvSourceDeleteConfirmBody(playlist.name),
-            style: TextStyle(color: TvTokens.muted)),
-        actions: <Widget>[
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(ctx.l10n.buttonCancel,
-                  style: TextStyle(color: TvTokens.muted))),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(ctx.l10n.buttonDelete,
-                  style: TextStyle(color: TvTokens.live))),
-        ],
-      ),
+    // Confirmation premium partagée — action DESTRUCTRICE → bouton rouge,
+    // focus d'entrée sur Annuler (un OK réflexe ne supprime jamais rien).
+    final bool? ok = await showTvConfirm(
+      context,
+      title: context.l10n.tvSourceDeleteConfirmTitle,
+      message: context.l10n.tvSourceDeleteConfirmBody(playlist.name),
+      confirmLabel: context.l10n.buttonDelete,
+      danger: true,
     );
     if (ok != true || playlist.id == null) return;
     try {
+      // SUPPRESSION DÉFINITIVE (retour client : « au redémarrage,
+      // l'abonnement est toujours là ») : on pose l'empreinte AVANT le
+      // delete — la provision automatique par MAC ne la re-importera plus.
+      // Récupération : le revendeur re-pousse depuis le panel.
+      await SourceOptOuts.markDeleted(playlist);
       await PlaylistRepository.instance.deletePlaylist(playlist.id!);
     } catch (_) {}
   }

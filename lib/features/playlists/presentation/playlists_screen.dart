@@ -20,6 +20,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/playlist_repository.dart';
+import '../data/source_opt_outs.dart';
 import '../domain/playlist.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import 'source_calibration_sheet.dart';
@@ -388,6 +389,10 @@ class _PlaylistTile extends StatelessWidget {
     );
 
     if (confirm == true && playlist.id != null) {
+      // SUPPRESSION DÉFINITIVE : empreinte posée AVANT le delete — la
+      // provision automatique par MAC ne re-importe plus cette source au
+      // redémarrage (récupération : le revendeur re-pousse du panel).
+      await SourceOptOuts.markDeleted(playlist);
       await PlaylistRepository.instance.deletePlaylist(playlist.id!);
     }
   }

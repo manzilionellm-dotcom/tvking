@@ -354,3 +354,180 @@ class _TvSkeletonRailsState extends State<TvSkeletonRails>
     );
   }
 }
+
+// =========================================================
+//  Dialogues PREMIUM partagés (jamais d'AlertDialog Android nu)
+// =========================================================
+//  Retour client du 21/08 (« on dirait un téléphone chinois ») : tout
+//  dialogue TV passe par ces cartes — fond sombre profond, filet doré,
+//  boutons pill focusables à la télécommande. Même langage visuel que le
+//  dialogue de sortie du template classique (tv_app._ExitDialog).
+
+/// Confirmation à DEUX choix. Renvoie true (confirmer), false/null (annuler).
+/// [danger] : action destructrice → le bouton de confirmation vire au rouge.
+/// [content] : remplace [message] par un contenu riche (résumé de source…).
+Future<bool?> showTvConfirm(
+  BuildContext context, {
+  required String title,
+  required String confirmLabel,
+  String? message,
+  Widget? content,
+  String? cancelLabel,
+  bool danger = false,
+}) {
+  return showDialog<bool>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.86),
+    builder: (BuildContext ctx) => Center(
+      child: Container(
+        width: 560,
+        padding: const EdgeInsets.all(28),
+        decoration: BoxDecoration(
+          color: TvTokens.card,
+          borderRadius: BorderRadius.circular(TvTokens.rCard),
+          border: Border.all(color: TvTokens.line),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(title,
+                  textAlign: TextAlign.center,
+                  style: TvTokens.display(24, color: TvTokens.text)),
+              if (message != null) ...<Widget>[
+                const SizedBox(height: 10),
+                Text(message,
+                    textAlign: TextAlign.center,
+                    style: TvTokens.ui(15, color: TvTokens.mutedDim)),
+              ],
+              if (content != null) ...<Widget>[
+                const SizedBox(height: 14),
+                content,
+              ],
+              const SizedBox(height: 24),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: _TvDialogButton(
+                      label: cancelLabel ?? ctx.l10n.buttonCancel,
+                      // L'ANNULATION prend le focus d'entrée : un OK
+                      // réflexe ne détruit jamais rien.
+                      autofocus: true,
+                      onSelect: () => Navigator.of(ctx).pop(false),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _TvDialogButton(
+                      label: confirmLabel,
+                      danger: danger,
+                      primary: !danger,
+                      onSelect: () => Navigator.of(ctx).pop(true),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Message d'information à UN bouton (erreurs, confirmations simples).
+Future<void> showTvInfo(
+  BuildContext context, {
+  required String title,
+  required String message,
+}) async {
+  await showDialog<void>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.86),
+    builder: (BuildContext ctx) => Center(
+      child: Container(
+        width: 560,
+        padding: const EdgeInsets.all(28),
+        decoration: BoxDecoration(
+          color: TvTokens.card,
+          borderRadius: BorderRadius.circular(TvTokens.rCard),
+          border: Border.all(color: TvTokens.line),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(title,
+                  textAlign: TextAlign.center,
+                  style: TvTokens.display(24, color: TvTokens.text)),
+              const SizedBox(height: 10),
+              Text(message,
+                  textAlign: TextAlign.center,
+                  style: TvTokens.ui(15, color: TvTokens.mutedDim)),
+              const SizedBox(height: 24),
+              _TvDialogButton(
+                label: ctx.l10n.buttonOk,
+                autofocus: true,
+                primary: true,
+                onSelect: () => Navigator.of(ctx).pop(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Bouton pill des dialogues premium : repos discret (filet), focus plein —
+/// or pour les actions normales, ROUGE pour les destructrices.
+class _TvDialogButton extends StatelessWidget {
+  const _TvDialogButton({
+    required this.label,
+    required this.onSelect,
+    this.autofocus = false,
+    this.primary = false,
+    this.danger = false,
+  });
+  final String label;
+  final VoidCallback onSelect;
+  final bool autofocus;
+  final bool primary;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    const Color red = Color(0xFFD0453A);
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color accent = danger ? red : TvTokens.gold;
+        final Color bg = focused ? accent : Colors.transparent;
+        final Color fg = focused
+            ? (danger ? Colors.white : TvTokens.onGold)
+            : (danger
+                ? red
+                : (primary ? TvTokens.goldBright : TvTokens.muted));
+        return Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            border: Border.all(color: focused ? accent : TvTokens.line),
+          ),
+          child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.ui(16, weight: FontWeight.w700, color: fg)),
+        );
+      },
+    );
+  }
+}

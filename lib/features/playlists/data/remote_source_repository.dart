@@ -32,6 +32,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../domain/playlist.dart';
+import 'source_opt_outs.dart';
 import 'import_progress.dart';
 import 'playlist_repository.dart';
 
@@ -80,7 +81,16 @@ abstract final class RemoteSourceRepository {
 
   /// Réveille les écouteurs (l'accueil) : « une source vient d'être poussée,
   /// charge-la tout de suite ». Best-effort, jamais bloquant.
-  static void signalPushed() => pushedTick.value++;
+  ///
+  /// Un push est un geste DÉLIBÉRÉ du revendeur : il lève aussi les
+  /// empreintes de suppression volontaire (SourceOptOuts) — c'est le
+  /// parcours de RÉCUPÉRATION d'une source supprimée par accident
+  /// (« contacte ton revendeur, il te la remet »).
+  static void signalPushed() {
+    // ignore: discarded_futures
+    SourceOptOuts.clearAll();
+    pushedTick.value++;
+  }
 
   /// Récupère la source assignée à cet appareil et la charge si besoin.
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
@@ -441,6 +451,14 @@ abstract final class RemoteSourceRepository {
         return RemoteSyncResult.sourceFailed;
       }
 
+      // SUPPRIMÉE VOLONTAIREMENT par le client (SourceOptOuts) : la
+      // provision automatique ne la ressuscite PAS au boot. Un push
+      // temps réel du panel lève les empreintes (signalPushed).
+      if (await SourceOptOuts.isXtreamOptedOut(server, user)) {
+        if (kDebugMode) debugPrint('[RemoteSource] opt-out, sautée ($server)');
+        return RemoteSyncResult.noSource;
+      }
+
       // DÉJÀ IMPORTÉE : on ne re-télécharge pas… mais si le panel a désigné
       // CETTE source comme active, il faut quand même basculer dessus.
       // Avant, on sortait sèchement : le revendeur cliquait « rendre
@@ -496,6 +514,12 @@ abstract final class RemoteSourceRepository {
     } else if (type == 'm3u') {
       final String m3u = (src['m3u_url'] as String?)?.trim() ?? '';
       if (m3u.isEmpty) return RemoteSyncResult.sourceFailed;
+
+      // Même règle que le chemin Xtream : suppression volontaire respectée.
+      if (await SourceOptOuts.isM3uOptedOut(m3u)) {
+        if (kDebugMode) debugPrint('[RemoteSource] opt-out, sautée (m3u)');
+        return RemoteSyncResult.noSource;
+      }
 
       Playlist? existingM3u;
       for (final Playlist p in existing) {

@@ -269,44 +269,21 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
   /// Résumé « ce qui va être ajouté » — mot de passe masqué par défaut.
   Future<bool> _confirmSummary(
       String server, String user, String pass) async {
-    final bool? ok = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext ctx) => AlertDialog(
-        backgroundColor: TvTokens.card,
-        title: Row(
-          children: <Widget>[
-            const Icon(Icons.check_circle_rounded,
-                color: TvTokens.success, size: 26),
-            const SizedBox(width: 10),
-            Text(ctx.l10n.tvSourceListOk,
-                style: TvTokens.ui(20,
-                    weight: FontWeight.w700, color: TvTokens.text)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            _SummaryRow(label: context.l10n.tvFieldServer, value: server),
-            _SummaryRow(label: context.l10n.tvFieldUser, value: user),
-            _SummaryRow(
-                label: context.l10n.tvFieldPass, value: '•' * pass.length),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(ctx.l10n.tvSourceEditBtn,
-                style: TvTokens.ui(15, color: TvTokens.muted)),
-          ),
-          TextButton(
-            autofocus: true,
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(ctx.l10n.tvSourceLoadMyList,
-                style: TvTokens.ui(15,
-                    weight: FontWeight.w700, color: TvTokens.goldBright)),
-          ),
+    // Carte premium partagée (plus d'AlertDialog Android nu) — le résumé
+    // passe en contenu riche, « Charger ma liste » reste l'action dorée.
+    final bool? ok = await showTvConfirm(
+      context,
+      title: '✓  ${context.l10n.tvSourceListOk}',
+      confirmLabel: context.l10n.tvSourceLoadMyList,
+      cancelLabel: context.l10n.tvSourceEditBtn,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _SummaryRow(label: context.l10n.tvFieldServer, value: server),
+          _SummaryRow(label: context.l10n.tvFieldUser, value: user),
+          _SummaryRow(
+              label: context.l10n.tvFieldPass, value: '•' * pass.length),
         ],
       ),
     );
