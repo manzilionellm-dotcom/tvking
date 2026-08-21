@@ -15,6 +15,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
+import '../../../core/update/build_flags.dart';
 import '../../../core/theme/accent_controller.dart';
 import '../../../core/update/update_prompt.dart';
 import '../../../core/profiles/profiles_repository.dart';
@@ -31,6 +32,7 @@ import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import '../data/display_settings.dart';
 import 'tv_activation_screen.dart';
+import 'tv_add_source_screen.dart';
 import 'tv_screensaver.dart';
 import 'tv_components.dart';
 import 'tv_diagnostic_screen.dart';
@@ -480,8 +482,17 @@ class _TvGateState extends State<TvGate> {
     // « Qui regarde ? » en pleine session — perçu comme un bug. Netflix ne
     // montre cet écran QU'AU LANCEMENT ; ensuite on en change via la pastille.
     if (showHome && !needProfilePick) _profileChosen = true;
+    // BUILD STORE (Amazon/Play, kIsPlayBuild) : AUCUN parcours d'activation
+    // revendeur — dossier Amazon 21688197501 du 21/08 (« facilitates file
+    // sharing… ») : l'app store est un lecteur PUR « apporte ta playlist ».
+    // Sans chaîne, elle ouvre directement l'écran d'ajout de playlist
+    // (M3U/Xtream saisis par l'utilisateur) au lieu de l'écran QR/WhatsApp.
+    // Les builds SIDELOAD (clients revendeur) sont strictement inchangés.
     final Widget home = !showHome
-        ? const TvShell(child: TvActivationScreen())
+        ? TvShell(
+            child: kIsPlayBuild
+                ? const TvAddSourceScreen()
+                : const TvActivationScreen())
         : needProfilePick
             ? TvShell(
                 child: TvWhoWatchingScreen(

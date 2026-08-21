@@ -27,6 +27,7 @@ import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/data/expiring_catchup_service.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../../core/update/build_flags.dart';
 import '../../security/data/parental_controls.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../playlists/data/favorites_repository.dart';
@@ -917,9 +918,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                 ],
               ),
             ),
-            const SizedBox(width: 44),
             // ===== Droite : QR WhatsApp pour contacter le revendeur =====
-            TvWhatsAppQr(mac: _mac, size: 190),
+            // JAMAIS dans les builds STORE (Amazon/Play, kIsPlayBuild) :
+            // dossier Amazon 21688197501 — l'app store est un lecteur pur
+            // « apporte ta playlist », sans parcours revendeur visible.
+            if (!kIsPlayBuild) ...<Widget>[
+              const SizedBox(width: 44),
+              TvWhatsAppQr(mac: _mac, size: 190),
+            ],
           ],
         ),
       );
