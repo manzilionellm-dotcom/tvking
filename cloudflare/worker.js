@@ -2832,6 +2832,79 @@ async function translatedBroadcast(env, row, lang) {
   }
 }
 
+// GET /api/translate?lang=xx&text=… (public) — traduction générique d'un
+// petit texte écrit par le revendeur (bandeaux temps réel). Texte borné à
+// 500 caractères : ce sont des bandeaux, pas des romans. Cache DÉFINITIF
+// par (empreinte SHA-256 du texte, langue) → un même message n'est
+// traduit qu'une fois par langue, quel que soit le nombre de boxes.
+// Dégradation propre : toute erreur → texte ORIGINAL (jamais vide).
+async function handleTranslateText(env, request) {
+  const url = new URL(request.url);
+  const text = (url.searchParams.get('text') || '')
+    .toString().slice(0, 500).trim();
+  const lang = normalizeLang(url.searchParams.get('lang'));
+  if (!text) return json({ text: '' });
+  if (!lang || !env.MISTRAL_API_KEY || !env.DB) {
+    return json({ text, lang: '' });
+  }
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS text_i18n (' +
+        'hash TEXT NOT NULL, lang TEXT NOT NULL, body TEXT, ' +
+        'created_at INTEGER, PRIMARY KEY (hash, lang))',
+    ).run();
+    const digest = await crypto.subtle.digest(
+      'SHA-256', new TextEncoder().encode(text));
+    const hash = [...new Uint8Array(digest)]
+      .map((b) => b.toString(16).padStart(2, '0')).join('');
+    const hit = await env.DB
+      .prepare('SELECT body FROM text_i18n WHERE hash = ? AND lang = ?')
+      .bind(hash, lang)
+      .first();
+    if (hit && hit.body) return json({ text: hit.body, lang });
+    const target = _LANGS[lang];
+    const prompt =
+      'Translate the JSON value of "text" into ' + target + '. Keep the ' +
+      'SAME JSON shape. Do not translate brand names, channel names or ' +
+      'URLs. Keep it short and natural for a TV app banner. If the text ' +
+      'is already in ' + target + ', return it unchanged. Answer with ' +
+      'JSON only, no commentary.\n' + JSON.stringify({ text });
+    const r = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer ' + env.MISTRAL_API_KEY,
+      },
+      body: JSON.stringify({
+        model: env.AI_MODEL || 'mistral-small-latest',
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!r.ok) return json({ text, lang: '' });
+    const j = await r.json().catch(() => null);
+    const raw = j && j.choices && j.choices[0] && j.choices[0].message
+      ? j.choices[0].message.content : '';
+    let out = null;
+    try { out = JSON.parse(raw); } catch (_) { return json({ text, lang: '' }); }
+    const res = out && typeof out.text === 'string' && out.text.trim()
+      ? out.text.trim() : text;
+    try {
+      await env.DB
+        .prepare(
+          'INSERT OR REPLACE INTO text_i18n ' +
+            '(hash, lang, body, created_at) VALUES (?, ?, ?, ?)',
+        )
+        .bind(hash, lang, res, Date.now())
+        .run();
+    } catch (_) { /* le cache est un bonus, pas une obligation */ }
+    return json({ text: res, lang });
+  } catch (_) {
+    return json({ text, lang: '' });
+  }
+}
+
 // GET /api/home-layout (public) — disposition de l'accueil pilotée par
 // l'admin (Module 1/8). Renvoie {items, version}. Items vide → l'app
 // garde son ordre par défaut (dégradation gracieuse).
@@ -6606,6 +6679,9 @@ async function handleRequest(request, env, ctx) {
       let rl = null;
       if (seg0 === 'api') {
         if (seg1 === 'ai') rl = ['ai', 30];                        // 30 / min (LLM payant)
+        // /api/translate appelle Mistral (payant) au premier passage d'un
+        // texte : même enveloppe que /api/ai (le cache absorbe le reste).
+        else if (seg1 === 'translate') rl = ['ai', 30];
         else if (seg1 === 'device-source' || seg1 === 'backup'
           || seg1 === 'status' || seg1 === 'history'
           || seg1 === 'family' || seg1 === 'invite'
@@ -6934,6 +7010,19 @@ async function handleRequest(request, env, ctx) {
         return await handleClearAnnouncements(env);
       }
       return badRequest('only GET/POST/DELETE supported on /api/announcement');
+    }
+
+    // /api/translate — traduction GÉNÉRIQUE d'un PETIT texte revendeur
+    // (messages temps réel du panel : la bannière les affichait dans la
+    // langue du revendeur, pas celle de l'appareil — demande du 21/08).
+    // Même moteur et mêmes garde-fous que les annonces ; cache par
+    // EMPREINTE du texte (les messages éphémères n'ont pas d'id stable).
+    if (segments[0] === 'api' && segments[1] === 'translate' &&
+        segments.length === 2) {
+      if (request.method === 'GET') {
+        return await handleTranslateText(env, request);
+      }
+      return badRequest('only GET supported on /api/translate');
     }
 
     // /api/home-layout — accueil dynamique (Centre de controle, Module 1/8).

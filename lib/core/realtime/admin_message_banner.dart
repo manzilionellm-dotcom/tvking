@@ -22,6 +22,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../i18n/remote_text_translator.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import 'realtime_sync_service.dart';
@@ -61,6 +62,14 @@ class _AdminMessageBannerState extends State<AdminMessageBanner> {
   AdminMessage? _visible;
   Timer? _autoDismiss;
 
+  /// TRADUCTION AUTOMATIQUE (demande du 21/08 : « même les petites
+  /// annonces, ça se traduit ») : le message du panel est écrit dans la
+  /// langue du REVENDEUR. On affiche l'original tout de suite, puis on le
+  /// remplace dès que la traduction dans la langue de l'appareil répond
+  /// (Worker /api/translate, cache mutualisé). `null` = original affiché.
+  String? _trTitle;
+  String? _trBody;
+
   @override
   void initState() {
     super.initState();
@@ -93,10 +102,35 @@ class _AdminMessageBannerState extends State<AdminMessageBanner> {
         _visible!.body == msg.body) {
       return;
     }
-    setState(() => _visible = msg);
+    setState(() {
+      _visible = msg;
+      _trTitle = null; // nouveau message → traductions de l'ancien caduques
+      _trBody = null;
+    });
+    _requestTranslations(msg);
     // Auto-dismiss après la durée demandée par le panel (défaut 15 s).
     _autoDismiss?.cancel();
     _autoDismiss = Timer(Duration(seconds: msg.durationSec), _dismiss);
+  }
+
+  /// Demande les traductions en arrière-plan — best-effort : sans réponse,
+  /// l'original reste affiché. Garde anti-course : on n'applique que si le
+  /// MÊME message est encore à l'écran.
+  void _requestTranslations(AdminMessage msg) {
+    if (msg.title.trim().isNotEmpty) {
+      unawaited(RemoteTextTranslator.translate(msg.title).then((String? t) {
+        if (t != null && mounted && _visible?.id == msg.id) {
+          setState(() => _trTitle = t);
+        }
+      }));
+    }
+    if (msg.body.trim().isNotEmpty) {
+      unawaited(RemoteTextTranslator.translate(msg.body).then((String? t) {
+        if (t != null && mounted && _visible?.id == msg.id) {
+          setState(() => _trBody = t);
+        }
+      }));
+    }
   }
 
   void _dismiss() {
@@ -157,7 +191,9 @@ class _AdminMessageBannerState extends State<AdminMessageBanner> {
                     children: <Widget>[
                       if (msg.title.isNotEmpty)
                         Text(
-                          msg.title,
+                          // Traduction dans la langue de l'appareil dès
+                          // qu'elle est disponible, original en attendant.
+                          _trTitle ?? msg.title,
                           // Taille prise dans l'échelle AppTextStyles
                           // (règle AGENTS.md n°5 : pas de fontSize magique).
                           style: AppTextStyles.bodyMedium.copyWith(
@@ -169,7 +205,7 @@ class _AdminMessageBannerState extends State<AdminMessageBanner> {
                         const SizedBox(height: 2),
                       if (msg.body.isNotEmpty)
                         Text(
-                          msg.body,
+                          _trBody ?? msg.body,
                           style: AppTextStyles.bodyMedium.copyWith(
                             color: AppColors.textSecondary,
                           ),
