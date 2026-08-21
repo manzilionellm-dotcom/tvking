@@ -1992,6 +1992,14 @@
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
   },
+  "tvWelcomeTitle": "Välkommen hem",
+  "tvWelcomeSub": "Storbio och dina favoritkanaler, klara på två minuter. Luta dig tillbaka — vi fixar resten.",
+  "tvWelcomeTrialTitle": "3 veckors gratis provperiod",
+  "tvWelcomeTrialSub": "Full tillgång i 21 dagar, helt utan förbindelser — gott om tid att bli förälskad.",
+  "tvWelcomeScanTitle": "Skanna med din telefon",
+  "tvWelcomeScanSub": "Lägg till din M3U-länk eller dina Xtream-koder från telefonen: TV:n ansluter sig själv.",
+  "tvWelcomeManualBtn": "Skriv med fjärrkontrollen",
+  "tvWelcomeActivateBtn": "Aktivera min prenumeration",
   "tvPairTitle": "Inställning utan tangentbord",
   "@tvPairTitle": {
     "description": "Texte UI : tvPairTitle"

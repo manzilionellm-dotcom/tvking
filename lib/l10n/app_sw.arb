@@ -1992,6 +1992,14 @@
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
   },
+  "tvWelcomeTitle": "Karibu nyumbani",
+  "tvWelcomeSub": "Sinema kubwa na vituo unavyovipenda, tayari ndani ya dakika mbili. Pumzika — tutashughulikia kila kitu.",
+  "tvWelcomeTrialTitle": "Wiki 3 za majaribio bila malipo",
+  "tvWelcomeTrialSub": "Ufikiaji kamili kwa siku 21, bila masharti — muda wa kutosha kupenda.",
+  "tvWelcomeScanTitle": "Changanua kwa simu yako",
+  "tvWelcomeScanSub": "Ongeza kiungo chako cha M3U au misimbo ya Xtream kutoka simuni: TV inajiunganisha yenyewe.",
+  "tvWelcomeManualBtn": "Andika kwa rimoti",
+  "tvWelcomeActivateBtn": "Washa usajili wangu",
   "tvPairTitle": "Usanidi bila kuandika",
   "@tvPairTitle": {
     "description": "Texte UI : tvPairTitle"

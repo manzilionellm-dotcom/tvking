@@ -2009,6 +2009,14 @@
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
   },
+  "tvWelcomeTitle": "Welcome home",
+  "tvWelcomeSub": "Big-screen cinema and your favorite channels, ready in two minutes. Sit back — we'll handle everything.",
+  "tvWelcomeTrialTitle": "3-week free trial",
+  "tvWelcomeTrialSub": "Full access for 21 days, no strings attached — plenty of time to fall in love.",
+  "tvWelcomeScanTitle": "Scan with your phone",
+  "tvWelcomeScanSub": "Add your M3U link or Xtream codes from your phone: the TV connects by itself.",
+  "tvWelcomeManualBtn": "Type with the remote",
+  "tvWelcomeActivateBtn": "Activate my subscription",
   "tvPairTitle": "Set up without typing",
   "@tvPairTitle": {
     "description": "Texte UI : tvPairTitle"

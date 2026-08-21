@@ -1992,6 +1992,14 @@
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
   },
+  "tvWelcomeTitle": "Velkommen hjem",
+  "tvWelcomeSub": "Stor biograf og dine yndlingskanaler, klar på to minutter. Læn dig tilbage — vi klarer resten.",
+  "tvWelcomeTrialTitle": "3 ugers gratis prøve",
+  "tvWelcomeTrialSub": "Fuld adgang i 21 dage, helt uforpligtende — god tid til at blive forelsket.",
+  "tvWelcomeScanTitle": "Scan med din telefon",
+  "tvWelcomeScanSub": "Tilføj dit M3U-link eller dine Xtream-koder fra telefonen: TV'et forbinder sig selv.",
+  "tvWelcomeManualBtn": "Indtast med fjernbetjeningen",
+  "tvWelcomeActivateBtn": "Aktivér mit abonnement",
   "tvPairTitle": "Opsætning uden tastatur",
   "@tvPairTitle": {
     "description": "Texte UI : tvPairTitle"

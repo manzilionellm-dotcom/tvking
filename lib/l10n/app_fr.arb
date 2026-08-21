@@ -4827,6 +4827,14 @@
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
   },
+  "tvWelcomeTitle": "Bienvenue chez vous",
+  "tvWelcomeSub": "Le grand cinéma et vos chaînes préférées, prêts en deux minutes. Installez-vous, on s'occupe de tout.",
+  "tvWelcomeTrialTitle": "3 semaines d'essai offertes",
+  "tvWelcomeTrialSub": "Accès complet pendant 21 jours, sans engagement — le temps de tomber amoureux.",
+  "tvWelcomeScanTitle": "Scannez avec votre téléphone",
+  "tvWelcomeScanSub": "Ajoutez votre lien M3U ou vos codes Xtream depuis votre téléphone : la TV se connecte toute seule.",
+  "tvWelcomeManualBtn": "Saisir à la télécommande",
+  "tvWelcomeActivateBtn": "Activer mon abonnement",
   "tvPairTitle": "Connexion sans clavier",
   "@tvPairTitle": {
     "description": "Texte UI : tvPairTitle"

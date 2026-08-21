@@ -1992,6 +1992,14 @@
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
   },
+  "tvWelcomeTitle": "Bienvenido a casa",
+  "tvWelcomeSub": "Cine en grande y tus canales favoritos, listos en dos minutos. Relájate: nos ocupamos de todo.",
+  "tvWelcomeTrialTitle": "3 semanas de prueba gratis",
+  "tvWelcomeTrialSub": "Acceso completo durante 21 días, sin compromiso: tiempo de sobra para enamorarte.",
+  "tvWelcomeScanTitle": "Escanea con tu teléfono",
+  "tvWelcomeScanSub": "Añade tu enlace M3U o tus códigos Xtream desde el teléfono: la TV se conecta sola.",
+  "tvWelcomeManualBtn": "Escribir con el mando",
+  "tvWelcomeActivateBtn": "Activar mi suscripción",
   "tvPairTitle": "Configurar sin teclear",
   "@tvPairTitle": {
     "description": "Texte UI : tvPairTitle"

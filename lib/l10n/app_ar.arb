@@ -1992,6 +1992,14 @@
   "@tvLauncherLatestMovies": {
     "description": "Texte UI : tvLauncherLatestMovies"
   },
+  "tvWelcomeTitle": "أهلاً بك في بيتك",
+  "tvWelcomeSub": "سينما كبيرة وقنواتك المفضلة، جاهزة خلال دقيقتين. استرخِ — نحن نتكفل بكل شيء.",
+  "tvWelcomeTrialTitle": "3 أسابيع تجربة مجانية",
+  "tvWelcomeTrialSub": "وصول كامل لمدة 21 يوماً، بدون التزام — وقت كافٍ لتقع في الحب.",
+  "tvWelcomeScanTitle": "امسح الرمز بهاتفك",
+  "tvWelcomeScanSub": "أضف رابط M3U أو رموز Xtream من هاتفك: يتصل التلفاز من تلقاء نفسه.",
+  "tvWelcomeManualBtn": "الإدخال بجهاز التحكم",
+  "tvWelcomeActivateBtn": "تفعيل اشتراكي",
   "tvPairTitle": "الإعداد بدون كتابة",
   "@tvPairTitle": {
     "description": "Texte UI : tvPairTitle"
