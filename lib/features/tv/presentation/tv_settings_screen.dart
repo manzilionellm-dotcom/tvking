@@ -32,6 +32,7 @@ import 'tv_parental_screen.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_shell.dart';
 import 'tv_downloads_screen.dart';
+import 'tv_help_screen.dart';
 import 'tv_sources_screen.dart';
 import 'tv_stats_screen.dart';
 import 'tv_theme_screen.dart';
@@ -881,6 +882,44 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             },
           ),
           const SizedBox(height: 14),
+          // ----- Aide & contact (21/08) : l'aide pointe sur la MESSAGERIE
+          //  du support et sur le site web (QR à scanner au téléphone —
+          //  le site, lui, pointe déjà sur la messagerie).
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(child: TvHelpScreen()),
+              ),
+            ),
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color fg =
+                  focused ? TvTokens.onGold : TvTokens.goldBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.support_agent_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Text(context.l10n.tvSettingsHelp,
+                        style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: fg)),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
           // ----- À propos (version, appareil, mémoire, vider le cache) -----
           //  APPUI LONG (geste volontairement caché, décision du 21/08) :
           //  bascule le mode Développeur — fait apparaître/disparaître

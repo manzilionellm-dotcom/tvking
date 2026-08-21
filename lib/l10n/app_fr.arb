@@ -2374,6 +2374,22 @@
   "tvSettingsSleep": "Minuterie de veille (éteindre après X min)",
   "tvSettingsDisplay": "Affichage (marge écran + taille du texte)",
   "tvSettingsAbout": "À propos (version, appareil, vider le cache)",
+  "tvSettingsHelp": "Aide & contact",
+  "@tvSettingsHelp": {
+    "description": "Réglages TV : entrée « Aide & contact » — QR messagerie support + site web."
+  },
+  "tvHelpTitle": "Besoin d'aide ?",
+  "@tvHelpTitle": {
+    "description": "Écran Aide TV : titre."
+  },
+  "tvHelpScanWrite": "Scanne pour nous écrire",
+  "@tvHelpScanWrite": {
+    "description": "Écran Aide TV : libellé du QR messagerie (le mot WhatsApp n'apparaît jamais côté UI)."
+  },
+  "tvHelpWebsite": "Notre site web",
+  "@tvHelpWebsite": {
+    "description": "Écran Aide TV : libellé du QR vers le site web."
+  },
   "tvSettingsDeveloper": "Développeur",
   "@tvSettingsDeveloper": {
     "description": "Réglages TV : entrée CACHÉE (mode développeur, appui long sur À propos) qui ouvre le choix des modèles d'accueil A/B/C/D. Hors de ce mode, l'app force le Modèle D."
