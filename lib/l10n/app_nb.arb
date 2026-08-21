@@ -643,6 +643,7 @@
   "tvDlSeasonDone": "Sesong lastet ned",
   "tvVodTracksHint": "Ned: lyd, undertekster og format",
   "tvRailNew": "Nyheter",
+  "tvRailLatest": "Nylig lagt til",
   "tvRailBecause": "Fordi du så {title}",
   "@tvRailBecause": {
     "placeholders": {

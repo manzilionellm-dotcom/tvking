@@ -1079,6 +1079,9 @@ List<VodMovie> _parseVodMoviesIsolate(
     if (ext.isEmpty) ext = 'mp4';
     final String? poster = item['stream_icon']?.toString();
     final String? rating = item['rating']?.toString();
+    // Date d'ajout au catalogue (`added`, epoch secondes en String chez la
+    // plupart des panels). Défensif : absente/illisible → null.
+    final int? added = int.tryParse(item['added']?.toString() ?? '');
     movies.add(VodMovie(
       id: 'vod-$streamId',
       name: name,
@@ -1089,6 +1092,7 @@ List<VodMovie> _parseVodMoviesIsolate(
       rating: (rating == null || rating.isEmpty || rating == '0')
           ? null
           : rating,
+      addedEpoch: (added == null || added <= 0) ? null : added,
     ));
   }
   return movies;

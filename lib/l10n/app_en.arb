@@ -649,6 +649,7 @@
   "tvDlSeasonDone": "Season downloaded",
   "tvVodTracksHint": "Down: audio, subtitles & format",
   "tvRailNew": "New releases",
+  "tvRailLatest": "Just added",
   "tvRailBecause": "Because you watched {title}",
   "@tvRailBecause": {
     "placeholders": {

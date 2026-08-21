@@ -643,6 +643,7 @@
   "tvDlSeasonDone": "Msimu umepakuliwa",
   "tvVodTracksHint": "Chini: sauti, manukuu na umbizo",
   "tvRailNew": "Mpya",
+  "tvRailLatest": "Zimeongezwa sasa hivi",
   "tvRailBecause": "Kwa sababu ulitazama {title}",
   "@tvRailBecause": {
     "placeholders": {

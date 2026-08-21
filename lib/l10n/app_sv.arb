@@ -643,6 +643,7 @@
   "tvDlSeasonDone": "Säsong nedladdad",
   "tvVodTracksHint": "Ned: ljud, undertexter & format",
   "tvRailNew": "Nyheter",
+  "tvRailLatest": "Nyss tillagda",
   "tvRailBecause": "Eftersom du såg {title}",
   "@tvRailBecause": {
     "placeholders": {

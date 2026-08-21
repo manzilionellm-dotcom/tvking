@@ -23,6 +23,7 @@ class VodMovie {
     this.posterUrl,
     this.rating,
     this.year,
+    this.addedEpoch,
   });
 
   /// Identifiant stable (ex. `vod-12345`).
@@ -48,6 +49,12 @@ class VodMovie {
   /// Année de sortie si fournie.
   final String? year;
 
+  /// Date d'AJOUT AU CATALOGUE (epoch secondes, champ `added` d'Xtream).
+  /// Sert à la rangée « Derniers ajouts » du Cinéma — c'est la date à
+  /// laquelle le FOURNISSEUR a mis le film en ligne, pas l'année du film.
+  /// `null` si le panel ne la fournit pas (la rangée disparaît alors).
+  final int? addedEpoch;
+
   // ----- Sérialisation (cache disque du catalogue, façon Netflix) -----
   //  Clés courtes : le catalogue peut compter 10 000+ films — chaque
   //  caractère économisé compte sur le fichier de cache.
@@ -61,6 +68,7 @@ class VodMovie {
         if (posterUrl != null) 'p': posterUrl,
         if (rating != null) 'r': rating,
         if (year != null) 'y': year,
+        if (addedEpoch != null) 'a': addedEpoch,
       };
 
   factory VodMovie.fromJson(Map<String, dynamic> j) => VodMovie(
@@ -72,5 +80,8 @@ class VodMovie {
         posterUrl: j['p'] as String?,
         rating: j['r'] as String?,
         year: j['y'] as String?,
+        // Ancien cache sans 'a' → null : la rangée « Derniers ajouts »
+        // réapparaît au prochain rafraîchissement du catalogue.
+        addedEpoch: (j['a'] as num?)?.toInt(),
       );
 }

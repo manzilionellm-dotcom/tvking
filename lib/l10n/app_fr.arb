@@ -2129,6 +2129,7 @@
   "tvDlSeasonDone": "Saison téléchargée",
   "tvVodTracksHint": "Bas : audio, sous-titres & format",
   "tvRailNew": "Nouveautés",
+  "tvRailLatest": "Derniers ajouts",
   "tvRailBecause": "Parce que vous avez regardé {title}",
   "@tvRailBecause": {
     "placeholders": {

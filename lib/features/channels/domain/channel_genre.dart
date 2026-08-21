@@ -139,12 +139,36 @@ abstract final class ChannelClassifier {
   // Hissées en static final : prettifyCategory est appelée en boucle sur
   // des bouquets entiers (10 000+ chaînes) — recompiler 2 RegExp par appel
   // gaspillait du CPU sur le thread UI.
-  static final RegExp _decorations = RegExp(r'[#*=•‣◆◇■□●○▪▫]+');
+  //
+  // BLOCS PLEINS AJOUTÉS (photo client « #### PRIME ▓▓ 60fps #### ») : les
+  // panels décorent aussi avec des caractères de REMPLISSAGE Unicode
+  // (▓ ▒ ░ █ ▄ ▀ …) que la liste d'origine ne couvrait pas.
+  static final RegExp _decorations =
+      RegExp(r'[#*=•‣◆◇■□●○▪▫▓▒░█▄▀▌▐▬▤▥▦▧▨▩]+');
   static final RegExp _spaces = RegExp(r'\s+');
 
-  /// Enlève les décorations type "## ## ##" / "==" / "•" et trim.
-  /// Retourne un libellé propre prêt à afficher.
+  /// Mémo local : les catégories DISTINCTES se comptent en dizaines, mais
+  /// l'appel se fait par CHAÎNE (20 000+ par rebuild d'ingestion). Sans ce
+  /// cache dédié, la curation complète (dizaines de RegExp) repasserait à
+  /// chaque appel — le cache partagé de TitleCurator (8 000 entrées) thrashe
+  /// dès qu'une grosse playlist y met tous ses NOMS de chaînes.
+  static final Map<String, String> _prettyCategoryCache = <String, String>{};
+
+  /// Nettoie un libellé de catégorie pour l'affichage ET le regroupement.
+  ///
+  /// VERSION « PRO » (demande client : des lignes dignes d'un service VIP,
+  /// pas du « #### PRIME ▓▓ 60fps #### ») : après le dépoussiérage local
+  /// (décorations, anti-tofu), on passe par la curation COMPLÈTE du
+  /// [TitleCurator] — bandes `####`, balises qualité (60fps, HEVC, FHD…),
+  /// mentions VIP/PREMIUM, préfixes pays… tout saute, puis Title Case
+  /// respectueux des acronymes. « #### FRANCE HEVC VIP #### » → « France ».
+  ///
+  /// EFFET DE BORD VOULU : deux catégories brutes qui ne différaient que par
+  /// leurs décorations/balises fusionnent en UN seul groupe propre (moins de
+  /// doublons dans les rails de catégories).
   static String prettifyCategory(String raw) {
+    final String? hit = _prettyCategoryCache[raw];
+    if (hit != null) return hit;
     String s = raw;
     s = s.replaceAll(_decorations, ' ');
     // ANTI-TOFU (photo client) : même balayage LISTE BLANCHE que le
@@ -154,8 +178,20 @@ abstract final class ChannelClassifier {
     s = TitleCurator.stripUnrenderable(s);
     s = s.replaceAll(_spaces, ' ');
     s = s.trim();
-    if (s.isEmpty) return 'Autres';
-    return s;
+    final String out;
+    if (s.isEmpty) {
+      out = 'Autres';
+    } else {
+      // Curation premium partagée (jamais vide : curate() retombe sur son
+      // entrée si le nettoyage dévorait tout — on garde le même filet).
+      final String pro = TitleCurator.curate(s).trim();
+      out = pro.isEmpty ? s : pro;
+    }
+    // Garde-fou mémoire (playlist adversariale à milliers de catégories) :
+    // même stratégie naïve que TitleCurator — on vide si ça déborde.
+    if (_prettyCategoryCache.length >= 4000) _prettyCategoryCache.clear();
+    _prettyCategoryCache[raw] = out;
+    return out;
   }
 
   // ============================================================

@@ -643,6 +643,7 @@
   "tvDlSeasonDone": "Temporada descargada",
   "tvVodTracksHint": "Abajo: audio, subtítulos y formato",
   "tvRailNew": "Novedades",
+  "tvRailLatest": "Recién añadidos",
   "tvRailBecause": "Porque viste {title}",
   "@tvRailBecause": {
     "placeholders": {

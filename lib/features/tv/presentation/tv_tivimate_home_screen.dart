@@ -78,6 +78,7 @@ class TvTivimateHomeScreen extends StatefulWidget {
 
 class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   StreamSubscription<List<Channel>>? _sub;
+  StreamSubscription<List<String>>? _recentSub;
   List<Channel> _all = <Channel>[];
   List<String> _groups = <String>[_kFavGroup, _kAllGroup];
   String _group = _kAllGroup;
@@ -135,6 +136,13 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
         .listen(_onFavoritesChanged);
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
+    // DERNIÈRES CHAÎNES VUES (demande client) : petits logos dans l'aperçu
+    // — reprendre sa chaîne d'hier en UN OK, sans fouiller les groupes.
+    // ignore: discarded_futures
+    RecentlyWatchedRepository.instance.initialize();
+    _recentSub = RecentlyWatchedRepository.instance.stream.listen((_) {
+      if (mounted) setState(() {});
+    });
     // Ordre PERSONNALISÉ des catégories (partagé partout) + écoute live.
     // ignore: discarded_futures
     CategoryOrderStore.instance.ensureLoaded();
@@ -145,6 +153,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   void dispose() {
     _sub?.cancel();
     _favSub?.cancel();
+    _recentSub?.cancel();
     CategoryOrderStore.instance.removeListener(_onCatOrderChanged);
     _preview.dispose();
     _listScroll.dispose();
@@ -748,6 +757,89 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     );
   }
 
+  /// Dernières chaînes VISIONNÉES, résolues contre le bouquet chargé
+  /// (une chaîne disparue de la playlist est simplement sautée). Bornée à
+  /// 8 logos — l'aperçu reste un en-tête, pas une rangée de plus.
+  List<Channel> _recentChannels() {
+    final List<Channel> out = <Channel>[];
+    for (final String id in RecentlyWatchedRepository.instance.current) {
+      final int i = _all.indexWhere((Channel ch) => ch.id == id);
+      if (i >= 0) out.add(_all[i]);
+      if (out.length >= 8) break;
+    }
+    return out;
+  }
+
+  /// OK sur un petit logo « dernières chaînes » : lecture immédiate. Si la
+  /// chaîne est dans la liste visible on passe par [_play] (retour
+  /// intelligent, focus restauré) ; sinon elle vient d'un AUTRE groupe → on
+  /// lance sur le bouquet entier pour garder le zapping haut/bas.
+  Future<void> _playRecent(Channel c) async {
+    final int vi = _visible.indexWhere((Channel x) => x.id == c.id);
+    if (vi >= 0) return _play(vi);
+    final int ai = _all.indexWhere((Channel x) => x.id == c.id);
+    if (ai < 0) return;
+    await _suspendPreview();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvPlayerScreen(channels: _all, startIndex: ai),
+      ),
+    );
+    if (mounted) setState(() => _previewLive = true);
+  }
+
+  /// Rangée « Derniers vus » de l'aperçu : petits logos focusables — un OK
+  /// relance la chaîne. Rebuild léger (≤ 8 logos, images déjà en cache).
+  Widget _recentRow(List<Channel> recents) {
+    return Row(
+      children: <Widget>[
+        Text(
+          context.l10n.tvRailRecent.toUpperCase(),
+          style: const TextStyle(
+              color: _tmText3,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Row(
+            children: <Widget>[
+              for (final Channel r in recents)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: TvFocusBuilder(
+                    scale: TvFocusScale.small,
+                    onSelect: () {
+                      // ignore: discarded_futures
+                      _playRecent(r);
+                    },
+                    builder: (BuildContext context, bool focused) =>
+                        Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(
+                          color:
+                              focused ? _tmAccent : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                      child: TvChannelLogo(
+                          logoUrl: r.logoUrl,
+                          label: r.name,
+                          size: 38,
+                          radius: 7),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // ---- Aperçu (logo + nom + EPG now/next + VIDÉO en direct) ----
   Widget _previewHeader(Channel c) {
     // APERÇU VIDÉO de la chaîne focalisée (parité TiviMate, la référence de
@@ -756,6 +848,9 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     // la mécanique éprouvée de TvLivePreview. PETITE BOX (profil léger) :
     // pas de vidéo permanente — l'en-tête reste logo + EPG.
     final bool video = !TvMemoryGuard.instance.lowSpec;
+    // Petits logos des DERNIÈRES CHAÎNES vues (demande client) : posés sous
+    // le bloc logo + EPG, dans le grand espace de l'aperçu.
+    final List<Channel> recents = _recentChannels();
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 6),
       padding: const EdgeInsets.all(16),
@@ -763,7 +858,11 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
         color: _tmPanel,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           TvChannelLogo(logoUrl: c.logoUrl, label: c.name, size: 84, radius: 10),
@@ -801,6 +900,12 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                 child: TvLivePreview(channel: c, enabled: _previewLive),
               ),
             ),
+          ],
+          ],
+          ),
+          if (recents.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            _recentRow(recents),
           ],
         ],
       ),

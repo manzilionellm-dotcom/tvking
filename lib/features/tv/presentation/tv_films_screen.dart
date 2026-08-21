@@ -81,6 +81,11 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   Map<String, List<VodMovie>> _byCat = const <String, List<VodMovie>>{};
   List<VodMovie> _recent = const <VodMovie>[];
   List<VodMovie> _watchlist = const <VodMovie>[];
+  // « DERNIERS AJOUTS » (demande client : un élément accrocheur côté
+  // cinéma) : les films les plus récemment mis en ligne PAR LE FOURNISSEUR
+  // (champ `added` d'Xtream), triés du plus frais au plus ancien. Vide si le
+  // panel ne fournit pas la date (la rangée disparaît alors, honnête).
+  List<VodMovie> _latest = const <VodMovie>[];
   // Ids des films NOUVEAUX (apparus dans le catalogue depuis la dernière
   // visite) → rangée « Nouveautés » + pastille NOUVEAU sur les affiches.
   Set<String> _newIds = <String>{};
@@ -179,10 +184,18 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
         .then((Set<String> fresh) {
       if (mounted) setState(() => _newIds = fresh);
     }));
+    // « Derniers ajouts » : tri UNE fois par chargement (pas dans build).
+    // On ne matérialise que les films datés, puis top 24 — coût négligeable
+    // même sur 10 000+ films (un filtre + un sort sur la sous-liste).
+    final List<VodMovie> dated = <VodMovie>[
+      for (final VodMovie m in movies)
+        if (m.addedEpoch != null) m,
+    ]..sort((VodMovie a, VodMovie b) => b.addedEpoch!.compareTo(a.addedEpoch!));
     setState(() {
       _all = movies;
       _cats = cats;
       _byCat = byCat;
+      _latest = dated.take(24).toList(growable: false);
       _recent = RecentVodRepository.instance.items;
       _watchlist = VodWatchlistRepository.instance.items;
       _inList = _watchlist.map((VodMovie m) => m.id).toSet();
@@ -507,6 +520,17 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           resume: true,
           dl: false
         ),
+      // « DERNIERS AJOUTS » : la vitrine fraîcheur du fournisseur (champ
+      // `added` Xtream) — placée tout en haut et rendue ACCROCHEUSE (titre
+      // braise + éclair, cf. accent de _Rail). Différent de « Nouveautés » :
+      // ici c'est la date SERVEUR, pas « depuis votre dernière visite ».
+      if (_latest.isNotEmpty)
+        (
+          title: context.l10n.tvRailLatest,
+          movies: _latest,
+          resume: false,
+          dl: false
+        ),
       if (newMovies.isNotEmpty)
         (
           title: context.l10n.tvRailNew,
@@ -596,6 +620,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           return _Rail(
             railKey: PageStorageKey<String>('films-rail-${rail.title}'),
             title: rail.title,
+            // Rangée « Derniers ajouts » mise en lumière (titre braise).
+            accent: rail.title == context.l10n.tvRailLatest,
             movies: rail.movies,
             inList: _inList,
             newIds: _newIds,
@@ -1075,9 +1101,15 @@ class _Rail extends StatelessWidget {
     this.railKey,
     this.autofocusIndex,
     this.onCardFocus,
+    this.accent = false,
   });
 
   final String title;
+
+  /// Rangée MISE EN LUMIÈRE (« Derniers ajouts ») : titre couleur braise +
+  /// petit éclair — l'œil du téléspectateur tombe dessus en premier.
+  final bool accent;
+
   final List<VodMovie> movies;
   final Set<String> inList;
 
@@ -1117,14 +1149,28 @@ class _Rail extends StatelessWidget {
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              title.toUpperCase(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TvTokens.ui(13,
-                  weight: FontWeight.w700,
-                  color: TvTokens.mutedDim,
-                  spacing: 1.6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                // Éclair braise devant le titre de la rangée accentuée.
+                if (accent) ...<Widget>[
+                  const Icon(Icons.bolt_rounded,
+                      size: 15, color: TvTokens.emberBright),
+                  const SizedBox(width: 4),
+                ],
+                Flexible(
+                  child: Text(
+                    title.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(13,
+                        weight: FontWeight.w700,
+                        color:
+                            accent ? TvTokens.emberBright : TvTokens.mutedDim,
+                        spacing: 1.6),
+                  ),
+                ),
+              ],
             ),
           ),
           SizedBox(

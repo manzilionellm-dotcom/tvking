@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
@@ -623,9 +624,42 @@ class NativeVideoView(
 
             // SOUS-TITRES DÉSACTIVÉS par défaut (comportement historique : rien
             // n'était rendu). L'utilisateur les active via le bouton Sous-titres.
+            //
+            // AUDIO « QUALITÉ CINÉMA » (demande client, façon Netflix) : quand un
+            // film/une chaîne propose PLUSIEURS pistes audio, on préfère la
+            // MEILLEURE que l'appareil sait restituer, dans cet ordre :
+            //   1. E-AC-3 JOC  (Dolby Atmos sur base Dolby Digital Plus)
+            //   2. E-AC-3      (Dolby Digital Plus, 5.1/7.1)
+            //   3. AC-3        (Dolby Digital 5.1)
+            //   4. AAC         (stéréo — le repli universel)
+            // POINTS CLÉS :
+            //   • C'est une PRÉFÉRENCE, pas un filtre : DefaultTrackSelector ne
+            //     retient une piste que si l'appareil peut la DÉCODER ou la
+            //     BITSTREAMER (passthrough HDMI). Un téléphone sans décodeur
+            //     Dolby retombe automatiquement sur l'AAC — jamais de silence.
+            //   • Le PASSTHROUGH est déjà automatique : DefaultAudioSink
+            //     interroge les AudioCapabilities (HDMI/eARC) et envoie le
+            //     bitstream AC-3/E-AC-3 TEL QUEL à l'ampli quand il l'annonce —
+            //     aucun décodage/downmix PCM forcé de notre part. Quand le
+            //     matériel ne le supporte pas, Android décode et fait le
+            //     downmix standard (centre préservé, dialogues intacts).
+            //   • TUNNELING volontairement ABSENT : notre vidéo sort sur une
+            //     SurfaceTexture Flutter (mode texture), incompatible avec le
+            //     tunneled playback ; et le tunneling est notoirement bogué sur
+            //     les box low-cost (image noire). L'A/V sync standard suffit.
+            //   • Le FOCUS AUDIO (pause si une autre app parle, ducking) est
+            //     déjà géré plus haut via setAudioAttributes(..., !preview).
+            //   • La sélection MANUELLE (menu pistes audio → setAudioTrack)
+            //     garde le dernier mot : un override écrase la préférence.
             player.trackSelectionParameters = player.trackSelectionParameters
                 .buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .setPreferredAudioMimeTypes(
+                    MimeTypes.AUDIO_E_AC3_JOC,
+                    MimeTypes.AUDIO_E_AC3,
+                    MimeTypes.AUDIO_AC3,
+                    MimeTypes.AUDIO_AAC,
+                )
                 .build()
         }
 

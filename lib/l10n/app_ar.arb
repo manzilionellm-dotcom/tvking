@@ -643,6 +643,7 @@
   "tvDlSeasonDone": "تم تنزيل الموسم",
   "tvVodTracksHint": "لأسفل: الصوت والترجمة والتنسيق",
   "tvRailNew": "أحدث الإضافات",
+  "tvRailLatest": "أُضيف حديثاً",
   "tvRailBecause": "لأنك شاهدت {title}",
   "@tvRailBecause": {
     "placeholders": {
