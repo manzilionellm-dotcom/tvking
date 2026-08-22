@@ -70,6 +70,10 @@ class _CinemaScreenState extends State<CinemaScreen>
   List<VodMovie> _movies = const <VodMovie>[];
   List<VodSeries> _series = const <VodSeries>[];
   bool _loading = true;
+
+  /// Squelette PROPRE à l'onglet Séries : les films s'affichent sans
+  /// l'attendre (cf. [_load]), donc les deux états sont désormais distincts.
+  bool _seriesLoading = true;
   // NOUVEAUTÉS (parité TV) : ids films/séries apparus depuis la dernière
   // visite → rangée « Nouveautés » + pastille NOUVEAU.
   Set<String> _newMovieIds = <String>{};
@@ -103,24 +107,63 @@ class _CinemaScreenState extends State<CinemaScreen>
     if (mounted) setState(() {});
   }
 
+  /// OUVERTURE IMMÉDIATE (photo client du 22/08 : « le cinéma côté mobile
+  /// tarde à venir » — squelette figé plusieurs secondes).
+  ///
+  /// CAUSE : on attendait films PUIS séries PUIS positions, EN CHAÎNE, avant
+  /// le moindre affichage. Les films sont pourtant servis instantanément par
+  /// le cache disque (stale-while-revalidate) — mais l'écran restait bloqué
+  /// derrière le catalogue SÉRIES, qui part au réseau quand son cache est
+  /// froid. On payait la SOMME des attentes pour afficher un onglet Films
+  /// déjà prêt.
+  ///
+  /// CORRECTIF : les trois chargements partent EN PARALLÈLE, et l'écran
+  /// s'affiche dès que les FILMS sont là (c'est l'onglet ouvert). Les séries
+  /// se posent ensuite toutes seules, sans spinner — l'onglet Séries garde
+  /// son propre squelette le temps qu'elles arrivent.
   Future<void> _load({bool silent = false}) async {
-    if (mounted && !silent) setState(() => _loading = true);
+    if (mounted && !silent) {
+      setState(() {
+        _loading = true;
+        _seriesLoading = true;
+      });
+    }
+    // Départs SIMULTANÉS : on ne sérialise plus trois attentes réseau.
+    final Future<List<VodSeries>> seriesFuture =
+        SeriesRepository.instance.fetchSeries();
+    final Future<void> positionsFuture =
+        PlaybackPositionRepository.instance.ensureLoaded();
     final List<VodMovie> movies = await VodRepository.instance.fetchMovies();
-    final List<VodSeries> series =
-        await SeriesRepository.instance.fetchSeries();
-    await PlaybackPositionRepository.instance.ensureLoaded();
     if (!mounted) return;
+    // 1er rendu dès les FILMS : l'onglet ouvert n'attend plus les séries.
     setState(() {
       _movies = movies;
-      _series = series;
       _loading = false;
     });
-    // Nouveautés (films + séries) en arrière-plan — parité TV.
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    // Nouveautés films en arrière-plan — parité TV.
     VodNoveltyService.instance
         .reconcileMovies(movies.map((VodMovie m) => m.id), nowMs: nowMs)
         .then((Set<String> f) {
       if (mounted) setState(() => _newMovieIds = f);
+    });
+    // Séries : elles se posent quand elles arrivent (aucun blocage de l'UI).
+    // Fail-open : un catalogue séries en erreur ne doit pas figer l'écran.
+    List<VodSeries> series = const <VodSeries>[];
+    try {
+      series = await seriesFuture;
+    } catch (_) {
+      // best-effort : l'onglet Séries restera vide, le Cinéma est servi.
+    }
+    try {
+      await positionsFuture;
+    } catch (_) {
+      // idem : les reprises manquantes ne bloquent pas l'affichage.
+    }
+    if (!mounted) return;
+    setState(() {
+      _series = series;
+      _seriesLoading = false;
     });
     VodNoveltyService.instance
         .reconcileSeries(series.map((VodSeries s) => s.id), nowMs: nowMs)
@@ -155,8 +198,10 @@ class _CinemaScreenState extends State<CinemaScreen>
         children: <Widget>[
           _FilmsTab(
               movies: _movies, loading: _loading, newIds: _newMovieIds),
+          // Squelette PROPRE aux séries : le Cinéma s'affiche sans les
+          // attendre, cet onglet garde le sien le temps qu'elles arrivent.
           _SeriesTab(
-              series: _series, loading: _loading, newIds: _newSeriesIds),
+              series: _series, loading: _seriesLoading, newIds: _newSeriesIds),
           const _DownloadsTab(),
         ],
       ),

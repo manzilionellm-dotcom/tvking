@@ -44,6 +44,9 @@ import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../../core/app/device_memory.dart';
+import '../../vod/data/vod_repository.dart';
+import '../../vod/domain/vod_movie.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/presentation/import_progress_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
@@ -114,6 +117,27 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
       Future<void>.delayed(const Duration(seconds: 8), () {
         if (mounted) maybeShowFeedbackSheet(context);
       });
+    });
+    // PRÉCHAUFFAGE DU CINÉMA (photo client du 22/08 : « le cinéma côté
+    // mobile tarde à venir ») : le catalogue n'était chargé qu'à l'OUVERTURE
+    // de l'écran — le client payait alors l'attente complète devant un
+    // squelette. On le tire ici, en tâche de fond, pendant qu'il regarde
+    // l'accueil : à l'ouverture, le Cinéma est servi depuis la mémoire.
+    //
+    // GARDE-FOUS : (a) seulement s'il y a déjà une source (sinon rien à
+    // charger) ; (b) JAMAIS sur un téléphone à faible RAM — c'est le profil
+    // qu'on a passé la journée du 21/08 à protéger de l'OOM ; (c) après un
+    // délai, pour ne pas concurrencer le premier rendu de l'accueil ;
+    // (d) best-effort absolu : une erreur ici ne doit rien changer.
+    Future<void>.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      if (DeviceMemory.lowRam) return;
+      if (PlaylistRepository.instance.currentChannels.isEmpty) return;
+      unawaited(
+        VodRepository.instance.fetchMovies().catchError(
+          (Object _) => const <VodMovie>[],
+        ),
+      );
     });
     // TEMPS RÉEL : dès que le revendeur pousse une source depuis le panel,
     // RealtimeSyncService bumpe `pushedTick` → on charge la source IMMÉDIA-
