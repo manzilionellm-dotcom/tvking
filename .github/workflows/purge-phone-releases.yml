@@ -1,0 +1,107 @@
+# =========================================================
+#  purge-phone-releases.yml — Suppression des canaux TÉLÉPHONE
+# =========================================================
+#  Décision propriétaire du 22/08 : « efface tous les builds téléphone,
+#  on laisse celui qui est activé sur le Play Store, que tout pointe
+#  dessus. »
+#
+#  L'app téléphone n'est donc plus distribuée en APK direct. Ce workflow
+#  supprime les DEUX canaux téléphone (release + tag) :
+#     • prod        → 7motion.apk, 7motion.aab, app-debug.apk, version.json
+#     • phone-test  → 7motion-test.apk, 7motion.aab
+#
+#  ⚠ IRRÉVERSIBLE. Les binaires sont définitivement perdus côté GitHub.
+#     Le binaire de référence vit désormais dans la Play Console.
+#
+#  SÉCURITÉ — la liste des tags est ÉCRITE EN DUR, jamais un motif :
+#  les canaux TV et Windows (seventv-latest, tizen-latest, webos-latest,
+#  test, windows-latest) ne doivent surtout pas être emportés. Un
+#  `for tag in $(gh release list ...)` aurait pu tout balayer sur une
+#  faute de frappe ; ici, ce qui n'est pas listé ne peut pas être touché.
+#
+#  Les liens clients (/install, /app, /fone, /android, /phone…) ont été
+#  repointés vers la fiche Play AVANT cette suppression (worker.js) :
+#  ils continuent de fonctionner, ils mènent au magasin.
+# =========================================================
+name: Purge phone releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Taper EFFACER pour confirmer la suppression définitive'
+        required: true
+        type: string
+  # BOOTSTRAP : le dispatch par nom échoue tant que GitHub n'a pas indexé
+  # un workflow neuf. Le push de CE fichier déclenche donc la purge une
+  # première fois. (Même mécanique que publish-phone-prod.yml.)
+  push:
+    branches:
+      - 'claude/7motion-android-tv-compat-e0rtyp'
+    paths:
+      - '.github/workflows/purge-phone-releases.yml'
+
+permissions:
+  contents: write   # supprimer releases et tags
+
+jobs:
+  purge:
+    name: Supprimer les canaux téléphone
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Garde-fou (dispatch manuel uniquement)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ inputs.confirm }}" != "EFFACER" ]; then
+            echo "⛔ Confirmation absente : taper EFFACER. Rien n'a été supprimé."
+            exit 1
+          fi
+
+      - name: Supprimer prod et phone-test (release + tag)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -u
+          # Liste EN DUR — voir l'en-tête. Ne jamais remplacer par un motif.
+          for TAG in prod phone-test; do
+            echo "=============================================="
+            echo ">>> Canal téléphone : $TAG"
+            if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+              echo "    contenu avant suppression :"
+              gh release view "$TAG" --repo "$REPO" --json assets \
+                --jq '.assets[] | "      - \(.name) (\(.size) octets)"' || true
+              # --cleanup-tag supprime aussi le tag : sinon il resterait un
+              # tag orphelin qui laisse croire que le canal existe encore.
+              gh release delete "$TAG" --repo "$REPO" --yes --cleanup-tag
+              echo "    ✅ release + tag supprimés"
+            else
+              # Idempotent : relancer ce workflow ne doit jamais échouer.
+              echo "    (déjà absent — rien à faire)"
+            fi
+          done
+
+      - name: Vérification finale
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -u
+          echo ">>> Canaux restants (les canaux TV doivent tous être là) :"
+          gh release list --repo "$REPO" --limit 30
+          FAIL=0
+          for TAG in prod phone-test; do
+            if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+              echo "⛔ $TAG existe encore !"; FAIL=1
+            fi
+          done
+          # Contrôle SYMÉTRIQUE : on vérifie aussi que la purge n'a pas
+          # emporté un canal qu'elle ne devait pas toucher.
+          for TAG in seventv-latest tizen-latest webos-latest test windows-latest; do
+            if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+              echo "⛔ CANAL NON-TÉLÉPHONE DISPARU : $TAG"; FAIL=1
+            fi
+          done
+          [ "$FAIL" = "0" ] && echo "✅ Canaux téléphone supprimés, canaux TV intacts."
+          exit $FAIL
