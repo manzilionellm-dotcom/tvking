@@ -137,7 +137,14 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // qu'on a passé la journée du 21/08 à protéger de l'OOM ; (c) après un
     // délai, pour ne pas concurrencer le premier rendu de l'accueil ;
     // (d) best-effort absolu : une erreur ici ne doit rien changer.
-    Future<void>.delayed(const Duration(seconds: 3), () {
+    //
+    // DÉLAI RAMENÉ DE 3 s À 1,2 s : à 3 s, le client qui file droit sur le
+    // Cinéma arrivait AVANT le préchauffage et payait l'attente entière —
+    // le préchauffage ne servait qu'à ceux qui traînaient sur l'accueil.
+    // Ce raccourcissement n'est devenu SÛR qu'avec la fusion des appels
+    // simultanés dans VodRepository : sans elle, ouvrir le Cinéma pendant
+    // le préchauffage lançait un SECOND téléchargement complet.
+    Future<void>.delayed(const Duration(milliseconds: 1200), () {
       if (!mounted) return;
       // Palier PARTAGÉ (et non `lowRam` seul : beaucoup de téléphones bon
       // marché ne déclarent pas ce drapeau alors qu'ils ont ≤ 1 Go).

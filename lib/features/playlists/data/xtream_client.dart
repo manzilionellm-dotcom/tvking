@@ -528,8 +528,23 @@ class XtreamClient {
   /// fichier construite, poster, catégorie). Renvoie une liste vide si
   /// le serveur ne propose pas de VOD.
   Future<List<VodMovie>> fetchVodMovies({Map<String, String>? categories}) async {
-    final Map<String, String> cats =
-        categories ?? await fetchVodCategories();
+    // DEUX REQUÊTES INDÉPENDANTES, DONC SIMULTANÉES (terrain 22/08 : « le
+    // Cinéma tarde à venir »). Les catégories ne servent qu'à NOMMER les
+    // rayons au moment du parsing : rien n'oblige à les attendre avant de
+    // commencer à télécharger le catalogue. En série, on payait un
+    // aller-retour complet de plus — sur un réseau mobile lent, plusieurs
+    // secondes de squelette pour rien.
+    //
+    // L'erreur est NEUTRALISÉE DÈS LA CRÉATION (`catchError`), pas au
+    // moment du `await` : si le téléchargement du catalogue échoue en
+    // premier, cette future partirait sinon en erreur non rattrapée —
+    // c'est-à-dire un plantage, pour une simple liste de rayons.
+    final Future<Map<String, String>> catsFuture = categories != null
+        ? Future<Map<String, String>>.value(categories)
+        : fetchVodCategories().catchError((Object e) {
+            if (kDebugMode) debugPrint('[XtreamClient] catégories VOD KO: $e');
+            return const <String, String>{};
+          });
     // GROSSE SOURCE (10 000+ films) : on télécharge le corps HTTP puis on
     // fait TOUT le travail lourd — décodage JSON ET construction des objets
     // films — DANS UN ISOLATE. Avant, seul le décodage était isolé et la
@@ -541,6 +556,10 @@ class XtreamClient {
     CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
         'xtream.http.get_vod_streams',
         bytes: bodyBytes.length);
+    // Les catégories sont arrivées pendant le téléchargement du catalogue.
+    // FAIL-OPEN : si elles manquent, les films gardent un rayon générique —
+    // c'est infiniment mieux qu'un Cinéma vide.
+    final Map<String, String> cats = await catsFuture;
     final List<VodMovie> movies = await compute(
       _parseVodMoviesIsolate,
       (

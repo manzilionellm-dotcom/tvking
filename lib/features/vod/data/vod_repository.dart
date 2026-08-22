@@ -27,6 +27,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/async/single_flight.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
@@ -132,7 +133,23 @@ class VodRepository extends ChangeNotifier {
   /// qui veulent suivre les mises à jour silencieuses s'abonnent au
   /// [ChangeNotifier] (addListener) et relisent fetchMovies() — qui répond
   /// alors depuis la mémoire, sans re-travail.
-  Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) async {
+  /// FUSION DES APPELS SIMULTANÉS (terrain du 22/08, photo « le Cinéma
+  /// tarde à venir ») : l'accueil PRÉCHAUFFE le catalogue en tâche de fond,
+  /// et le client peut ouvrir le Cinéma pendant ce temps. Sans garde, les
+  /// deux appels partaient chacun télécharger le catalogue ENTIER —
+  /// plusieurs Mo en double, sur le même petit réseau, avec deux isolates
+  /// de parsing : on doublait exactement l'attente qu'on cherchait à
+  /// supprimer. Désormais le second appel S'ACCROCHE au premier.
+  final SingleFlight<List<VodMovie>> _flight = SingleFlight<List<VodMovie>>();
+
+  Future<List<VodMovie>> fetchMovies({bool forceRefresh = false}) {
+    // Un rafraîchissement FORCÉ (tirer pour recharger) doit vraiment
+    // re-taper le serveur : il ne s'accroche pas à un chargement en cours.
+    if (forceRefresh) return _fetchMoviesOnce(forceRefresh: true);
+    return _flight.run(_fetchMoviesOnce);
+  }
+
+  Future<List<VodMovie>> _fetchMoviesOnce({bool forceRefresh = false}) async {
     final List<VodMovie> xtream =
         await _fetchXtreamMovies(forceRefresh: forceRefresh);
     final List<VodMovie> m3u = await _fetchM3uMovies(forceRefresh: forceRefresh);
