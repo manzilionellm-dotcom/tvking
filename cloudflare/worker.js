@@ -514,6 +514,20 @@ const _SPORTSDB = 'https://www.thesportsdb.com/api/v1/json/3';
 let _sportsTeamCache = {};   // idTeam -> { at, data }
 let _sportsSearchCache = {}; // requete(min) -> { at, data }
 
+//  En-têtes pour TOUT appel à TheSportsDB.
+//
+//  `fetch()` dans un Worker n'envoie ni User-Agent ni Accept par défaut.
+//  Beaucoup d'API publiques répondent alors une page de blocage HTML (ou
+//  un 403) au lieu du JSON attendu — et comme notre code faisait
+//  `.json().catch(() => ({}))`, ça se traduisait par une liste VIDE, sans
+//  la moindre trace. On s'annonce donc explicitement.
+function _sportsHeaders() {
+  return {
+    'Accept': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (compatible; 7MOTION/1.0; +https://app.7themotion.com)',
+  };
+}
+
 async function ensureScaleSchema(env) {
   if (_scaleSchemaReady || !env.DB) return;
   for (const col of ['device_model TEXT', 'android_build TEXT',
@@ -683,6 +697,7 @@ async function handleSportsSearch(url) {
   try {
     const r = await fetch(
       `${_SPORTSDB}/searchteams.php?t=${encodeURIComponent(q)}`,
+      { headers: _sportsHeaders() },
     );
     const j = await r.json().catch(() => ({}));
     const teams = ((j && j.teams) || []).slice(0, 20).map((t) => ({
@@ -723,12 +738,14 @@ async function handleSportsTeam(id) {
   let last = [];
   let next = [];
   try {
-    const r = await fetch(`${_SPORTSDB}/eventslast.php?id=${encodeURIComponent(id)}`);
+    const r = await fetch(`${_SPORTSDB}/eventslast.php?id=${encodeURIComponent(id)}`,
+      { headers: _sportsHeaders() });
     const j = await r.json().catch(() => ({}));
     last = ((j && j.results) || []).map(mapEv);
   } catch (_) { /* gratuit : best-effort */ }
   try {
-    const r = await fetch(`${_SPORTSDB}/eventsnext.php?id=${encodeURIComponent(id)}`);
+    const r = await fetch(`${_SPORTSDB}/eventsnext.php?id=${encodeURIComponent(id)}`,
+      { headers: _sportsHeaders() });
     const j = await r.json().catch(() => ({}));
     next = ((j && j.events) || []).map(mapEv);
   } catch (_) { /* eventsnext parfois reserve : on ignore */ }
@@ -875,14 +892,39 @@ async function handleSportsBig() {
   const ids = _bigTeamIds();
   // Séquentiel volontaire : TheSportsDB (offre gratuite) répond mal à 20
   // requêtes simultanées. Le cache 30 min rend ce coût négligeable.
+  let upstreamOk = 0;
+  let upstreamKo = 0;
   for (const id of ids) {
     const expected = _foldTeam(_BIG_TEAMS[id]);
     let seenExpected = false;
     let sawAnyEvent = false;
     for (const path of ['eventsnext', 'eventslast']) {
       try {
-        const r = await fetch(`${_SPORTSDB}/${path}.php?id=${id}`);
-        const j = await r.json().catch(() => ({}));
+        const r = await fetch(`${_SPORTSDB}/${path}.php?id=${id}`, {
+          headers: _sportsHeaders(),
+        });
+        if (!r.ok) {
+          upstreamKo++;
+          if (warnings.length < 4) {
+            warnings.push(`amont ${path}/${id}: HTTP ${r.status}`);
+          }
+          continue;
+        }
+        const txt = await r.text();
+        let j = null;
+        try {
+          j = JSON.parse(txt);
+        } catch (_) {
+          upstreamKo++;
+          if (warnings.length < 4) {
+            // Un HTML de page d'erreur / de blocage arrive ici : on en garde
+            // le tout début, c'est ce qui permet de diagnostiquer.
+            warnings.push(`amont ${path}/${id}: réponse non-JSON « ${
+              txt.slice(0, 60).replace(/\s+/g, ' ')} »`);
+          }
+          continue;
+        }
+        upstreamOk++;
         const arr = (j && (j.events || j.results)) || [];
         for (const raw of arr) {
           const ev = mapEv(raw);
@@ -896,8 +938,13 @@ async function handleSportsBig() {
           if (!isBig(ev)) continue;
           byId.set(ev.id, ev);
         }
-      } catch (_) {
-        // best-effort : une équipe muette ne prive pas des autres.
+      } catch (e) {
+        // best-effort : une équipe muette ne prive pas des autres — mais on
+        // NOTE la panne, sinon elle reste invisible (cf. l'incident du 22/08).
+        upstreamKo++;
+        if (warnings.length < 4) {
+          warnings.push(`amont ${path}/${id}: ${String(e && e.message || e)}`);
+        }
       }
     }
     if (sawAnyEvent && !seenExpected) {
@@ -915,6 +962,8 @@ async function handleSportsBig() {
     matches,
     warnings,
     probed: ids.length,
+    upstream_ok: upstreamOk,
+    upstream_ko: upstreamKo,
     generated_at: new Date(now).toISOString(),
   };
   _bigMatchesCache = { at: now, data };
