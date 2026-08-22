@@ -32,6 +32,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/update/build_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../device/data/device_identity.dart';
 import '../../playlists/data/pairing_service.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -69,6 +70,11 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
     // Le QR s'ouvre TOUT SEUL : zéro clic avant de pouvoir scanner.
     // ignore: discarded_futures
     _startPairing();
+    // Code appareil : affiché dans la carte « Contact » (le revendeur en a
+    // besoin pour activer / pousser la source).
+    DeviceIdentity.instance.mac.then((String m) {
+      if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
+    });
   }
 
   @override
@@ -151,6 +157,10 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
       });
     }
   }
+
+  /// Code de CET appareil (MAC nue, sans le préfixe « MK: » que les panels
+  /// ajoutent déjà) : c'est le code que le client donne à son revendeur.
+  String _mac = '…';
 
   /// Appareil DÉJÀ actif (payé ou essai en cours) : il repasse par ici
   /// uniquement parce qu'il n'a plus AUCUNE chaîne (source supprimée) —
@@ -283,6 +293,14 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
             ),
           ),
         ],
+
+        // ===== CODE DE L'APPAREIL + CONTACT (retour client du 21/08) =====
+        // « Le client ne sait pas comment mettre le Xtream et le code » : la
+        // vraie porte de sortie pour lui, c'est SON REVENDEUR. On lui met
+        // donc sous les yeux (a) le code à donner, (b) un QR qui ouvre la
+        // conversation WhatsApp avec le code DÉJÀ écrit dans le message.
+        const SizedBox(height: 20),
+        _DeviceAndContactCard(mac: _mac),
       ],
     );
   }
@@ -404,5 +422,87 @@ class _TvWelcomeScreenState extends State<TvWelcomeScreen> {
           ),
         ];
     }
+  }
+}
+
+/// Carte « Mon code + Contact » de l'accueil (retour client du 21/08).
+///
+/// À GAUCHE : le CODE de l'appareil, en gros et en mono — c'est ce que le
+/// client dicte à son revendeur pour être activé / recevoir sa liste. Il
+/// n'a alors RIEN à taper lui-même : ni serveur Xtream, ni identifiant.
+/// À DROITE : un petit QR « Aide & contact » qui ouvre la conversation
+/// WhatsApp avec le message DÉJÀ écrit, code inclus (tvWhatsAppUrl).
+class _DeviceAndContactCard extends StatelessWidget {
+  const _DeviceAndContactCard({required this.mac});
+  final String mac;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: TvTokens.card,
+        borderRadius: BorderRadius.circular(TvTokens.rCard),
+        border: Border.all(color: TvTokens.lineSoft),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(context.l10n.tvDeviceAddress,
+                    style: TvTokens.ui(12, color: TvTokens.mutedDim)),
+                const SizedBox(height: 6),
+                SelectableText(
+                  mac,
+                  style: TvTokens.mono(26, color: TvTokens.goldBright)
+                      .copyWith(letterSpacing: 2),
+                ),
+                const SizedBox(height: 8),
+                Text(context.l10n.tvDeviceAddressHelp,
+                    style: TvTokens.ui(13, color: TvTokens.muted)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 18),
+          // QR CONTACT — petit, discret, mais c'est LA porte de secours du
+          // client : il scanne, WhatsApp s'ouvre, le message est déjà écrit
+          // avec son code. Zéro saisie, zéro jargon.
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: TvTokens.line),
+                ),
+                child: QrImageView(
+                  data: tvWhatsAppUrl(mac),
+                  version: QrVersions.auto,
+                  size: 108,
+                  backgroundColor: Colors.white,
+                  eyeStyle: const QrEyeStyle(
+                      eyeShape: QrEyeShape.square, color: Color(0xFF0B0B0B)),
+                  dataModuleStyle: const QrDataModuleStyle(
+                      dataModuleShape: QrDataModuleShape.square,
+                      color: Color(0xFF0B0B0B)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(context.l10n.tvSettingsHelp,
+                  style: TvTokens.ui(13,
+                      weight: FontWeight.w700, color: TvTokens.goldBright)),
+              Text(context.l10n.tvHelpScanWrite,
+                  style: TvTokens.ui(11, color: TvTokens.mutedDim)),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
