@@ -456,18 +456,30 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     //
     // CAMÉLÉON PAR ÉCRAN (demande client : « personnaliser ligne par
     // ligne ») : chaque destination glisse vers SON atmosphère — Cinéma →
-    // braise/affiche, Séries → nuit indigo, Réglages → améthyste (géré par
-    // l'écran lui-même)… — et le retour rend TENDREMENT l'ambiance
-    // précédente (fondu 1,6 s de TvShell). L'écran poussé est enveloppé
-    // dans TvShell : la lumière vivante le suit partout.
+    // braise, Séries → nuit indigo, Réglages → améthyste — et le retour
+    // rend TENDREMENT l'ambiance précédente (fondu 1,6 s de TvShell).
+    //
+    // ⚠️ RÉGRESSION DU 21/08 (« le cinéma ne s'ouvre pas, écran noir ») :
+    // la version précédente enveloppait l'écran POUSSÉ dans un TvShell et
+    // changeait l'ambiance PENDANT la transition de route. Deux erreurs :
+    //   • TvShell imbriqué sur une route poussée n'est éprouvé nulle part
+    //     (Lanceur et Rails poussent avec un simple Material transparent —
+    //     patron restauré ici à l'identique) ;
+    //   • notifier l'ambiance en pleine poussée repeint la coque alors que
+    //     l'aperçu vidéo (SurfaceView hybride) se démonte → trame noire.
+    // L'ambiance bascule donc APRÈS que la route est en place (post-frame),
+    // exactement comme le fait TvSettingsScreen depuis son initState.
     await _suspendPreview();
     if (!mounted) return;
     final TvAmbienceKind prev = TvAmbience.instance.kind;
-    if (ambience != null) TvAmbience.instance.set(ambience);
+    if (ambience != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) TvAmbience.instance.set(ambience);
+      });
+    }
     await Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => TvShell(
-            child:
-                Material(type: MaterialType.transparency, child: screen))));
+        builder: (_) =>
+            Material(type: MaterialType.transparency, child: screen)));
     if (ambience != null) TvAmbience.instance.set(prev);
     if (mounted) setState(() => _previewLive = true);
   }
