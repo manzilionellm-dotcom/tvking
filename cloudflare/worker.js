@@ -752,29 +752,83 @@ async function handleSportsTeam(id) {
 //  liste des clubs majeurs (le derby Real–Barça compte, Real–petit club
 //  ne compte pas). Les ids sont ceux de TheSportsDB, figés ici pour
 //  éviter une recherche par nom à chaque fois (ils ne changent jamais).
-const _BIG_TEAMS = {
-  133602: 'Real Madrid',
+//  ⚠ LEÇON APPRISE (22/08) : la première version de ce tableau contenait
+//  des ids INVENTÉS de mémoire. Résultat : l'endpoint répondait 200 avec
+//  zéro match — une panne SILENCIEUSE (id 133602, annoncé « Real Madrid »,
+//  renvoyait en fait les matchs de Liverpool ; comme l'adversaire n'était
+//  jamais un club majeur, le filtre jetait tout). Chaque ligne ci-dessous
+//  est désormais VÉRIFIÉE contre searchteams.php, et le champ `warnings`
+//  de la réponse re-vérifie en continu (voir plus bas) : si un id dérive,
+//  ça se voit au lieu de se taire.
+export const _BIG_TEAMS = {
+  133738: 'Real Madrid',
   133739: 'Barcelona',
   133610: 'Chelsea',
   133612: 'Manchester United',
   133613: 'Manchester City',
   133604: 'Arsenal',
-  133619: 'Liverpool',
+  133602: 'Liverpool',
   133616: 'Tottenham',
-  133714: 'Bayern Munich',
-  133717: 'Borussia Dortmund',
-  133676: 'Paris SG',
-  133681: 'Marseille',
-  133729: 'Juventus',
-  133670: 'AC Milan',
-  133671: 'Inter',
-  133724: 'Napoli',
-  133728: 'Atletico Madrid',
+  133664: 'Bayern Munich',
+  133650: 'Borussia Dortmund',
+  133714: 'Paris Saint-Germain',
+  133707: 'Marseille',
+  133676: 'Juventus',
+  133667: 'AC Milan',
+  133681: 'Inter Milan',
+  133670: 'Napoli',
+  133729: 'Atletico Madrid',
 };
 
 // Ids interrogés (clés numériques du tableau ci-dessus).
 function _bigTeamIds() {
   return Object.keys(_BIG_TEAMS).filter((k) => /^\d+$/.test(k)).slice(0, 20);
+}
+
+// Comparaison de noms d'équipes : minuscules SANS accents (« Atlético »
+// et « Atletico » doivent se reconnaître).
+function _foldTeam(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+// Écarte les équipes FÉMININES et les équipes de JEUNES : « Napoli Women »
+// contient « napoli », mais ce n'est pas l'affiche que le client attend.
+export function _isReserveOrWomen(name) {
+  return /\b(women|w|femin\w*|u1\d|u2\d|youth|reserves?|ii|b)\b/i.test(
+    String(name || ''),
+  );
+}
+
+//  Deux noms d'équipes désignent-ils le MÊME club ?
+//
+//  ⚠ PIÈGE (constaté le 22/08) : comparer par simple `includes` de chaînes
+//  fait passer « Aris » pour un club majeur — « aris » est un morceau de
+//  « p·aris· saint-germain ». On avait donc « Napoli vs Aris » annoncé
+//  comme une grande affiche.
+//
+//  Règle correcte : on compare des MOTS, et le nom le plus court doit
+//  apparaître en entier et d'un seul tenant dans le plus long.
+//    « Tottenham »   ⊂ « Tottenham Hotspur »  → même club ✓
+//    « Aris »        ⊄ « Paris Saint-Germain » → clubs différents ✓
+//    « Real Madrid » ⊄ « Real Sociedad »       → clubs différents ✓
+export function _sameTeam(a, b) {
+  const wa = _foldTeam(a).split(/[^a-z0-9]+/).filter(Boolean);
+  const wb = _foldTeam(b).split(/[^a-z0-9]+/).filter(Boolean);
+  if (!wa.length || !wb.length) return false;
+  const [short, long] =
+    wa.length <= wb.length ? [wa, wb] : [wb, wa];
+  for (let i = 0; i + short.length <= long.length; i++) {
+    let ok = true;
+    for (let k = 0; k < short.length; k++) {
+      if (long[i + k] !== short[k]) { ok = false; break; }
+    }
+    if (ok) return true;
+  }
+  return false;
 }
 
 let _bigMatchesCache = null; // { at, data }
@@ -788,9 +842,7 @@ async function handleSportsBig() {
     return json(_bigMatchesCache.data);
   }
   const names = new Set(
-    Object.values(_BIG_TEAMS)
-      .filter(Boolean)
-      .map((n) => String(n).toLowerCase()),
+    Object.values(_BIG_TEAMS).filter(Boolean).map(_foldTeam),
   );
   const mapEv = (e) => ({
     id: e.idEvent,
@@ -807,23 +859,26 @@ async function handleSportsBig() {
     status: e.strStatus || '',
     league: e.strLeague || '',
   });
-  // Une affiche est « grande » si les DEUX camps sont des clubs majeurs.
-  const isBig = (ev) => {
-    const h = String(ev.home || '').toLowerCase();
-    const a = String(ev.away || '').toLowerCase();
-    const hit = (n) => {
-      for (const big of names) {
-        if (n.includes(big) || big.includes(n)) return true;
-      }
-      return false;
-    };
-    return hit(h) && hit(a);
+  // Un camp est « majeur » si son nom désigne un club de la liste.
+  const isBigSide = (raw) => {
+    if (!_foldTeam(raw) || _isReserveOrWomen(raw)) return false;
+    for (const big of names) {
+      if (_sameTeam(raw, big)) return true;
+    }
+    return false;
   };
+  // Une affiche est « grande » si les DEUX camps sont des clubs majeurs.
+  const isBig = (ev) => isBigSide(ev.home) && isBigSide(ev.away);
+
   const byId = new Map(); // dédoublonne : chaque match remonte 2 fois
+  const warnings = [];
   const ids = _bigTeamIds();
   // Séquentiel volontaire : TheSportsDB (offre gratuite) répond mal à 20
   // requêtes simultanées. Le cache 30 min rend ce coût négligeable.
   for (const id of ids) {
+    const expected = _foldTeam(_BIG_TEAMS[id]);
+    let seenExpected = false;
+    let sawAnyEvent = false;
     for (const path of ['eventsnext', 'eventslast']) {
       try {
         const r = await fetch(`${_SPORTSDB}/${path}.php?id=${id}`);
@@ -831,18 +886,37 @@ async function handleSportsBig() {
         const arr = (j && (j.events || j.results)) || [];
         for (const raw of arr) {
           const ev = mapEv(raw);
-          if (!ev.id || !isBig(ev)) continue;
+          if (!ev.id) continue;
+          sawAnyEvent = true;
+          // AUTO-CONTRÔLE : les matchs renvoyés par cet id doivent bien
+          // concerner l'équipe annoncée. Sinon l'id a changé de sens.
+          if (_sameTeam(ev.home, expected) || _sameTeam(ev.away, expected)) {
+            seenExpected = true;
+          }
+          if (!isBig(ev)) continue;
           byId.set(ev.id, ev);
         }
       } catch (_) {
         // best-effort : une équipe muette ne prive pas des autres.
       }
     }
+    if (sawAnyEvent && !seenExpected) {
+      warnings.push(`id ${id}: « ${_BIG_TEAMS[id]} » introuvable dans ses matchs`);
+    }
   }
   const matches = Array.from(byId.values()).sort((x, y) =>
     String(x.timestamp || x.date).localeCompare(String(y.timestamp || y.date)),
   );
-  const data = { matches, generated_at: new Date(now).toISOString() };
+  // `warnings` rend une dérive d'identifiant VISIBLE de l'extérieur : une
+  // réponse vide accompagnée d'un tableau vide veut dire « pas d'affiche
+  // cette semaine », une réponse vide avec des warnings veut dire « le
+  // catalogue d'ids est cassé ». L'app ignore ce champ.
+  const data = {
+    matches,
+    warnings,
+    probed: ids.length,
+    generated_at: new Date(now).toISOString(),
+  };
   _bigMatchesCache = { at: now, data };
   return json(data);
 }
