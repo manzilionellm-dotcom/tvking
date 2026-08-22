@@ -50,10 +50,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # L'AAB vit dans SON PROPRE artefact (`7motion-playstore-aab-*`), pas
+      # dans celui de l'APK (`tvking-release-apk-*`). Se tromper d'artefact
+      # donne un dossier sans 7motion.aab — c'est exactement l'erreur qui a
+      # fait échouer la première version de ce workflow.
       - name: Télécharger l'AAB du run build-android
         uses: actions/download-artifact@v4
         with:
-          pattern: tvking-release-apk-*
+          pattern: 7motion-playstore-aab-*
           run-id: ${{ inputs.run_id || '32585741071' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           merge-multiple: true
@@ -69,15 +73,28 @@ jobs:
           # pas l'identifiant de la fiche Play — c'est le seul contrôle qui
           # empêche de déposer la mauvaise app dans la Play Console.
           unzip -o -q 7motion.aab base/manifest/AndroidManifest.xml -d _chk
-          if strings _chk/base/manifest/AndroidManifest.xml \
-              | grep -qx 'com.manzilionellm.tvking'; then
-            echo "✅ applicationId = com.manzilionellm.tvking (fiche Play)"
-          else
-            echo "⛔ applicationId inattendu — publication refusée :"
-            strings _chk/base/manifest/AndroidManifest.xml \
-              | grep -oE 'com\.manzilionellm[a-zA-Z0-9_.]*' | sort -u | head
+          # ATTENTION AU MOTIF : le manifeste d'un AAB est du protobuf, pas
+          # du texte. `strings` recolle des octets binaires à la fin de la
+          # ligne (« com.manzilionellm.tvking"O »), donc une comparaison de
+          # LIGNE ENTIÈRE (grep -x) échoue toujours — la 1re version de ce
+          # garde-fou refusait un AAB parfaitement valide. On extrait donc
+          # les identifiants comme des JETONS, puis on compare.
+          strings _chk/base/manifest/AndroidManifest.xml \
+            | grep -oE 'com\.manzilionellm[a-zA-Z0-9_.]*' | sort -u > _ids.txt
+          echo "--- identifiants trouvés dans l'AAB ---"; cat _ids.txt
+          if ! grep -qx 'com.manzilionellm.tvking' _ids.txt; then
+            echo "⛔ l'identifiant de la fiche Play est ABSENT — refusé."
             exit 1
           fi
+          # Contrôle SYMÉTRIQUE : si l'identifiant du code source est encore
+          # là, c'est que build-android.yml n'a PAS réécrit l'applicationId.
+          # Déposer ça créerait une SECONDE fiche Play au lieu de mettre à
+          # jour la vraie.
+          if grep -qx 'com.manzilionellm.tvking.tv_king' _ids.txt; then
+            echo "⛔ l'AAB porte encore …tvking.tv_king : réécriture ratée — refusé."
+            exit 1
+          fi
+          echo "✅ applicationId = com.manzilionellm.tvking (fiche Play)"
 
       - name: Publier sur le canal play-aab
         env:
