@@ -97,6 +97,21 @@ Branche : `claude/7motion-android-tv-compat-e0rtyp`.
   Worker `TMDB_API_KEY` — wrangler secret put — PAS posée par défaut),
   `TmdbMetaService` Dart, enrichissement en COMPLÉMENT seulement (ne
   remplace jamais une donnée du panel ; sans clé → aucun changement).
+- SPORT / NOTIFICATIONS DE MATCH : routes Worker `/api/sports/search`,
+  `/api/sports/team/:id`, `/api/sports/big` (grandes affiches, 17 clubs
+  majeurs, cache 30 min) + `MatchAlertsService` Dart (alerte 15 min
+  avant le coup d'envoi + score final, une seule fois par match).
+  ⚠ **BLOQUÉ SANS CLÉ** : la clé TheSportsDB « 3 » est la clé de DÉMO
+  publique. Depuis un Worker Cloudflare (adresse de sortie mutualisée
+  entre des milliers de sites) elle répond **HTTP 429 en permanence** —
+  mesuré le 22/08 : 0 appel réussi sur 34. Poser une vraie clé suffit à
+  tout rallumer, sans toucher au code ni republier l'app :
+  `wrangler secret put SPORTSDB_KEY` (ou dashboard Cloudflare →
+  Settings → Variables). Sans clé, les endpoints répondent proprement
+  vide et l'app n'affiche simplement rien. Diagnostic en direct :
+  `GET /api/sports/big` renvoie `upstream_ok` / `upstream_ko` /
+  `warnings` — `upstream_ko` élevé = l'amont nous refuse l'entrée,
+  `upstream_ok` élevé avec 0 match = pas d'affiche cette semaine.
 - REFUSÉ (décision ferme, motifs magasins) : piège de sortie, faux
   compteurs, fausse progression qui expire.
 

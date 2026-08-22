@@ -23,7 +23,7 @@
 //  Exécution (aucun runner, aucun réseau) :
 //    node cloudflare/sports_big.smoke.mjs
 // =========================================================
-import { _sameTeam, _isReserveOrWomen, _BIG_TEAMS } from './worker.js';
+import { _sameTeam, _isReserveOrWomen, _BIG_TEAMS, _sportsBase } from './worker.js';
 
 let pass = 0;
 let fail = 0;
@@ -83,6 +83,20 @@ ok(new Set(Object.values(_BIG_TEAMS)).size === ids.length,
 // mal orthographié dans le catalogue, qui rendrait son id inutile.
 ok(Object.values(_BIG_TEAMS).every((n) => _sameTeam(n, n)),
   'chaque nom du catalogue se reconnaît lui-même');
+
+// ---------------------------------------------------------
+//  4. Choix de la clé TheSportsDB
+// ---------------------------------------------------------
+//  La clé « 3 » est la clé de DÉMO publique : depuis un Worker (adresse
+//  de sortie mutualisée) elle répond 429 en permanence. Une vraie clé se
+//  pose en secret Worker. Ce bloc verrouille le fait qu'une clé vide, ou
+//  faite d'espaces, ne produise JAMAIS une URL cassée du type « /json/ ».
+ok(_sportsBase(undefined).endsWith('/3'), 'sans env → clé de démo');
+ok(_sportsBase({}).endsWith('/3'), 'env sans clé → clé de démo');
+ok(_sportsBase({ SPORTSDB_KEY: '   ' }).endsWith('/3'),
+  'clé faite d\'espaces → clé de démo (pas d\'URL cassée)');
+ok(_sportsBase({ SPORTSDB_KEY: ' 987654 ' }).endsWith('/987654'),
+  'vraie clé utilisée, espaces retirés');
 
 console.log(`\n${pass} PASS, ${fail} FAIL`);
 if (fail > 0) process.exit(1);

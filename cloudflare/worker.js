@@ -510,7 +510,20 @@ let _presenceReady = false;
 let _trendingCache = { at: 0, items: [] };
 // Caches sport (TheSportsDB, gratuit) — par isolate, 10 min. Proxy : la clé/URL
 // reste cote serveur, et on ne tape pas l'API a chaque requete client.
-const _SPORTSDB = 'https://www.thesportsdb.com/api/v1/json/3';
+//  Clé TheSportsDB. La clé « 3 » est la clé de DÉMO publique, partagée
+//  par le monde entier : depuis un Worker Cloudflare (dont l'adresse de
+//  sortie est mutualisée entre des milliers de sites) elle répond
+//  systématiquement HTTP 429 « trop de requêtes ». Constaté le 22/08 :
+//  0 appel réussi sur 34. Une vraie clé se pose en SECRET Worker —
+//  `wrangler secret put SPORTSDB_KEY` — exactement comme TMDB_API_KEY,
+//  et JAMAIS dans l'app. Sans clé, on garde « 3 » : ça marche depuis un
+//  réseau ordinaire, et les endpoints répondent proprement vide sinon.
+const _SPORTSDB_HOST = 'https://www.thesportsdb.com/api/v1/json';
+
+export function _sportsBase(env) {
+  const k = (env && env.SPORTSDB_KEY ? String(env.SPORTSDB_KEY) : '').trim();
+  return `${_SPORTSDB_HOST}/${k || '3'}`;
+}
 let _sportsTeamCache = {};   // idTeam -> { at, data }
 let _sportsSearchCache = {}; // requete(min) -> { at, data }
 
@@ -687,7 +700,7 @@ async function handleTrending(env) {
 //  Proxy + cache 10 min. Le client n'appelle JAMAIS TheSportsDB directement.
 
 // GET /api/sports/search?q=<nom> -> { teams: [{id,name,badge,league,sport}] }
-async function handleSportsSearch(url) {
+async function handleSportsSearch(url, env) {
   const q = (url.searchParams.get('q') || '').trim();
   if (q.length < 2) return json({ teams: [] });
   const key = q.toLowerCase();
@@ -696,9 +709,12 @@ async function handleSportsSearch(url) {
   if (c && now - c.at < 600000) return json(c.data);
   try {
     const r = await fetch(
-      `${_SPORTSDB}/searchteams.php?t=${encodeURIComponent(q)}`,
+      `${_sportsBase(env)}/searchteams.php?t=${encodeURIComponent(q)}`,
       { headers: _sportsHeaders() },
     );
+    // NE PAS mettre un ÉCHEC en cache : sinon un unique 429 condamne la
+    // recherche pendant 10 min pour tout le monde.
+    if (!r.ok) return json({ teams: [] });
     const j = await r.json().catch(() => ({}));
     const teams = ((j && j.teams) || []).slice(0, 20).map((t) => ({
       id: t.idTeam,
@@ -716,7 +732,7 @@ async function handleSportsSearch(url) {
 }
 
 // GET /api/sports/team/:id -> { last: [ev], next: [ev] } (ev = match + score)
-async function handleSportsTeam(id) {
+async function handleSportsTeam(id, env) {
   const now = Date.now();
   const c = _sportsTeamCache[id];
   if (c && now - c.at < 600000) return json(c.data);
@@ -737,20 +753,29 @@ async function handleSportsTeam(id) {
   });
   let last = [];
   let next = [];
+  let okCount = 0; // aucun appel amont réussi => on NE MET PAS en cache
   try {
-    const r = await fetch(`${_SPORTSDB}/eventslast.php?id=${encodeURIComponent(id)}`,
+    const r = await fetch(
+      `${_sportsBase(env)}/eventslast.php?id=${encodeURIComponent(id)}`,
       { headers: _sportsHeaders() });
-    const j = await r.json().catch(() => ({}));
-    last = ((j && j.results) || []).map(mapEv);
+    if (r.ok) {
+      const j = await r.json().catch(() => ({}));
+      last = ((j && j.results) || []).map(mapEv);
+      okCount++;
+    }
   } catch (_) { /* gratuit : best-effort */ }
   try {
-    const r = await fetch(`${_SPORTSDB}/eventsnext.php?id=${encodeURIComponent(id)}`,
+    const r = await fetch(
+      `${_sportsBase(env)}/eventsnext.php?id=${encodeURIComponent(id)}`,
       { headers: _sportsHeaders() });
-    const j = await r.json().catch(() => ({}));
-    next = ((j && j.events) || []).map(mapEv);
+    if (r.ok) {
+      const j = await r.json().catch(() => ({}));
+      next = ((j && j.events) || []).map(mapEv);
+      okCount++;
+    }
   } catch (_) { /* eventsnext parfois reserve : on ignore */ }
   const data = { last, next };
-  _sportsTeamCache[id] = { at: now, data };
+  if (okCount > 0) _sportsTeamCache[id] = { at: now, data };
   return json(data);
 }
 
@@ -853,7 +878,7 @@ let _bigMatchesCache = null; // { at, data }
 // GET /api/sports/big → { matches: [ev…] } (affiches à venir + terminées
 // du jour, triées par coup d'envoi). Même forme d'événement que
 // /api/sports/team/:id — l'app réutilise son parseur tel quel.
-async function handleSportsBig() {
+async function handleSportsBig(env) {
   const now = Date.now();
   if (_bigMatchesCache && now - _bigMatchesCache.at < 1800000) {
     return json(_bigMatchesCache.data);
@@ -900,7 +925,7 @@ async function handleSportsBig() {
     let sawAnyEvent = false;
     for (const path of ['eventsnext', 'eventslast']) {
       try {
-        const r = await fetch(`${_SPORTSDB}/${path}.php?id=${id}`, {
+        const r = await fetch(`${_sportsBase(env)}/${path}.php?id=${id}`, {
           headers: _sportsHeaders(),
         });
         if (!r.ok) {
@@ -966,7 +991,10 @@ async function handleSportsBig() {
     upstream_ko: upstreamKo,
     generated_at: new Date(now).toISOString(),
   };
-  _bigMatchesCache = { at: now, data };
+  // Un lot 100 % en échec ne se met PAS en cache : sinon une salve de 429
+  // gèle « aucune affiche » pendant 30 min alors que l'amont est peut-être
+  // déjà revenu.
+  if (upstreamOk > 0) _bigMatchesCache = { at: now, data };
   return json(data);
 }
 
@@ -7161,19 +7189,19 @@ async function handleRequest(request, env, ctx) {
     if (segments[0] === 'api' && segments[1] === 'sports' &&
         segments[2] === 'search' && segments.length === 3) {
       if (request.method !== 'GET') return badRequest('only GET');
-      return await handleSportsSearch(url);
+      return await handleSportsSearch(url, env);
     }
     if (segments[0] === 'api' && segments[1] === 'sports' &&
         segments[2] === 'team' && segments.length === 4) {
       if (request.method !== 'GET') return badRequest('only GET');
-      return await handleSportsTeam(segments[3]);
+      return await handleSportsTeam(segments[3], env);
     }
     // /api/sports/big — GRANDES AFFICHES (Real–Chelsea & co) : une seule
     // requête pour l'app, travail mutualisé côté serveur, cache 30 min.
     if (segments[0] === 'api' && segments[1] === 'sports' &&
         segments[2] === 'big' && segments.length === 3) {
       if (request.method !== 'GET') return badRequest('only GET');
-      return await handleSportsBig();
+      return await handleSportsBig(env);
     }
 
     // ----- APPAIRAGE « ZÉRO FRAPPE » (QR) -----
