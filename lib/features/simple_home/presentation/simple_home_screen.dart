@@ -44,6 +44,7 @@ import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../sports/data/match_alerts_service.dart';
 import '../../../core/app/device_memory.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/domain/vod_movie.dart';
@@ -111,6 +112,13 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
       // ouverture — le fait d'être là repousse le rappel de dormance, donc
       // un habitué ne le voit jamais. Best-effort / silencieux.
       unawaited(NotificationService.instance.scheduleReEngagement());
+      // ALERTES DES GRANDS MATCHS (demande propriétaire du 22/08 : « une
+      // app d'IPTV ET de notifications de match ») : à chaque arrivée sur
+      // l'accueil, on (re)programme le rappel « coup d'envoi dans 15 min »
+      // des grandes affiches et on annonce les scores fraîchement connus.
+      // Le service s'auto-limite (une passe / 30 min) et se tait si
+      // l'interrupteur des Réglages est éteint.
+      unawaited(MatchAlertsService.instance.refresh());
       // Un palier peut déjà être en attente (atteint pendant la session
       // précédente, juste avant de fermer l'app).
       _maybeCelebrate();
@@ -131,7 +139,9 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // (d) best-effort absolu : une erreur ici ne doit rien changer.
     Future<void>.delayed(const Duration(seconds: 3), () {
       if (!mounted) return;
-      if (DeviceMemory.lowRam) return;
+      // Palier PARTAGÉ (et non `lowRam` seul : beaucoup de téléphones bon
+      // marché ne déclarent pas ce drapeau alors qu'ils ont ≤ 1 Go).
+      if (DeviceMemory.isSmall) return;
       if (PlaylistRepository.instance.currentChannels.isEmpty) return;
       unawaited(
         VodRepository.instance.fetchMovies().catchError(

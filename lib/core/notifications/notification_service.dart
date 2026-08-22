@@ -357,6 +357,30 @@ class NotificationService {
         ),
       );
 
+  /// PROGRAMME une notification à une heure LOCALE donnée (API publique).
+  ///
+  /// Ajoutée pour les ALERTES DE MATCH (« coup d'envoi dans 15 min ») :
+  /// elles doivent partir même quand l'app est fermée — d'où une vraie
+  /// alarme système, et non un timer Dart. Best-effort de bout en bout :
+  /// permission refusée, heure déjà passée, plugin muet → on ne fait rien
+  /// et on ne lève jamais.
+  Future<void> scheduleAt({
+    required int id,
+    required DateTime when,
+    required String title,
+    required String body,
+  }) async {
+    await init();
+    if (!_ready) return;
+    await requestPermission();
+    await _scheduleAt(
+      id,
+      tz.TZDateTime.from(when, tz.local),
+      title,
+      body,
+    );
+  }
+
   Future<void> _scheduleAt(
     int id,
     tz.TZDateTime when,

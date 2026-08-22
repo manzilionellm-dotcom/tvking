@@ -738,6 +738,116 @@ async function handleSportsTeam(id) {
 }
 
 // =========================================================
+//  GRANDES AFFICHES (demande propriétaire du 22/08)
+// =========================================================
+//  « Je veux les notifications des grands matchs automatiquement — si le
+//  Real joue Chelsea — et les résultats instantanés. »
+//
+//  POURQUOI CÔTÉ SERVEUR : la détection demande une vingtaine d'appels à
+//  TheSportsDB (un par grand club). Les faire depuis CHAQUE téléphone
+//  serait lent, coûteux en batterie, et taperait le quota de l'API. Ici :
+//  UNE requête pour l'app, tout le travail mutualisé, cache 30 min.
+//
+//  DÉFINITION d'une « grande affiche » : les deux équipes sont dans la
+//  liste des clubs majeurs (le derby Real–Barça compte, Real–petit club
+//  ne compte pas). Les ids sont ceux de TheSportsDB, figés ici pour
+//  éviter une recherche par nom à chaque fois (ils ne changent jamais).
+const _BIG_TEAMS = {
+  133602: 'Real Madrid',
+  133739: 'Barcelona',
+  133610: 'Chelsea',
+  133612: 'Manchester United',
+  133613: 'Manchester City',
+  133604: 'Arsenal',
+  133619: 'Liverpool',
+  133616: 'Tottenham',
+  133714: 'Bayern Munich',
+  133717: 'Borussia Dortmund',
+  133676: 'Paris SG',
+  133681: 'Marseille',
+  133729: 'Juventus',
+  133670: 'AC Milan',
+  133671: 'Inter',
+  133724: 'Napoli',
+  133728: 'Atletico Madrid',
+};
+
+// Ids interrogés (clés numériques du tableau ci-dessus).
+function _bigTeamIds() {
+  return Object.keys(_BIG_TEAMS).filter((k) => /^\d+$/.test(k)).slice(0, 20);
+}
+
+let _bigMatchesCache = null; // { at, data }
+
+// GET /api/sports/big → { matches: [ev…] } (affiches à venir + terminées
+// du jour, triées par coup d'envoi). Même forme d'événement que
+// /api/sports/team/:id — l'app réutilise son parseur tel quel.
+async function handleSportsBig() {
+  const now = Date.now();
+  if (_bigMatchesCache && now - _bigMatchesCache.at < 1800000) {
+    return json(_bigMatchesCache.data);
+  }
+  const names = new Set(
+    Object.values(_BIG_TEAMS)
+      .filter(Boolean)
+      .map((n) => String(n).toLowerCase()),
+  );
+  const mapEv = (e) => ({
+    id: e.idEvent,
+    name: e.strEvent || '',
+    home: e.strHomeTeam || '',
+    away: e.strAwayTeam || '',
+    homeScore: (e.intHomeScore === null || e.intHomeScore === undefined)
+      ? null : String(e.intHomeScore),
+    awayScore: (e.intAwayScore === null || e.intAwayScore === undefined)
+      ? null : String(e.intAwayScore),
+    date: e.dateEvent || '',
+    time: e.strTime || '',
+    timestamp: e.strTimestamp || '',
+    status: e.strStatus || '',
+    league: e.strLeague || '',
+  });
+  // Une affiche est « grande » si les DEUX camps sont des clubs majeurs.
+  const isBig = (ev) => {
+    const h = String(ev.home || '').toLowerCase();
+    const a = String(ev.away || '').toLowerCase();
+    const hit = (n) => {
+      for (const big of names) {
+        if (n.includes(big) || big.includes(n)) return true;
+      }
+      return false;
+    };
+    return hit(h) && hit(a);
+  };
+  const byId = new Map(); // dédoublonne : chaque match remonte 2 fois
+  const ids = _bigTeamIds();
+  // Séquentiel volontaire : TheSportsDB (offre gratuite) répond mal à 20
+  // requêtes simultanées. Le cache 30 min rend ce coût négligeable.
+  for (const id of ids) {
+    for (const path of ['eventsnext', 'eventslast']) {
+      try {
+        const r = await fetch(`${_SPORTSDB}/${path}.php?id=${id}`);
+        const j = await r.json().catch(() => ({}));
+        const arr = (j && (j.events || j.results)) || [];
+        for (const raw of arr) {
+          const ev = mapEv(raw);
+          if (!ev.id || !isBig(ev)) continue;
+          byId.set(ev.id, ev);
+        }
+      } catch (_) {
+        // best-effort : une équipe muette ne prive pas des autres.
+      }
+    }
+  }
+  const matches = Array.from(byId.values()).sort((x, y) =>
+    String(x.timestamp || x.date).localeCompare(String(y.timestamp || y.date)),
+  );
+  const data = { matches, generated_at: new Date(now).toISOString() };
+  _bigMatchesCache = { at: now, data };
+  return json(data);
+}
+
+// =========================================================
 //  TMDb (métadonnées films — Vague 2.3) — proxy + cache 24 h.
 //  La clé API vit dans le SECRET Worker `TMDB_API_KEY`
 //  (`wrangler secret put TMDB_API_KEY`) — JAMAIS dans l'app.
@@ -6934,6 +7044,13 @@ async function handleRequest(request, env, ctx) {
         segments[2] === 'team' && segments.length === 4) {
       if (request.method !== 'GET') return badRequest('only GET');
       return await handleSportsTeam(segments[3]);
+    }
+    // /api/sports/big — GRANDES AFFICHES (Real–Chelsea & co) : une seule
+    // requête pour l'app, travail mutualisé côté serveur, cache 30 min.
+    if (segments[0] === 'api' && segments[1] === 'sports' &&
+        segments[2] === 'big' && segments.length === 3) {
+      if (request.method !== 'GET') return badRequest('only GET');
+      return await handleSportsBig();
     }
 
     // ----- APPAIRAGE « ZÉRO FRAPPE » (QR) -----

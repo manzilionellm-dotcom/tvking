@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../sports/data/match_alerts_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 
@@ -35,6 +36,8 @@ class _NotificationsSettingsScreenState
   bool? _reminders;
   bool? _announcements;
   bool? _appUpdates;
+  /// Alertes des GRANDS MATCHS (demande propriétaire du 22/08).
+  bool? _matches;
 
   @override
   void initState() {
@@ -47,11 +50,13 @@ class _NotificationsSettingsScreenState
     final bool r = await n.isEnabled(NotificationService.prefReminders);
     final bool a = await n.isEnabled(NotificationService.prefAnnouncements);
     final bool u = await n.isEnabled(NotificationService.prefAppUpdates);
+    final bool m = await n.isEnabled(MatchAlertsService.prefMatches);
     if (!mounted) return;
     setState(() {
       _reminders = r;
       _announcements = a;
       _appUpdates = u;
+      _matches = m;
     });
   }
 
@@ -61,6 +66,7 @@ class _NotificationsSettingsScreenState
       if (key == NotificationService.prefReminders) _reminders = value;
       if (key == NotificationService.prefAnnouncements) _announcements = value;
       if (key == NotificationService.prefAppUpdates) _appUpdates = value;
+      if (key == MatchAlertsService.prefMatches) _matches = value;
     });
     await NotificationService.instance.setEnabled(key, value);
   }
@@ -106,6 +112,14 @@ class _NotificationsSettingsScreenState
             subtitle: context.l10n.notifUpdatesSubtitle,
             value: _appUpdates,
             onChanged: (bool v) => _set(NotificationService.prefAppUpdates, v),
+          ),
+          // GRANDS MATCHS : coup d'envoi (15 min avant) + score final.
+          _NotifSwitch(
+            icon: Icons.sports_soccer_rounded,
+            title: context.l10n.notifMatchesToggle,
+            subtitle: context.l10n.notifMatchSoonTitle,
+            value: _matches,
+            onChanged: (bool v) => _set(MatchAlertsService.prefMatches, v),
           ),
         ],
       ),
