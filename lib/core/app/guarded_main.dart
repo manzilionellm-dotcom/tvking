@@ -94,7 +94,15 @@ Future<void> _tuneImageCacheForRam() async {
     final bool lowRam = DeviceMemory.lowRam;
     int imgs;
     int bytes;
-    if (totalMb > 0 && totalMb <= 768) {
+    if (DeviceMemory.isTiny) {
+      // ≤ 512 Mo (demande client 22/08 : « ça doit marcher même sur un
+      // petit Android à 256 Mo — passe-partout »). Là, l'OS ne laisse
+      // souvent que ~80-120 Mo à TOUT le process (moteur Flutter compris).
+      // 16 affiches × ~100 Ko ≈ 1,6 Mo réels, plafond dur 6 Mo : l'app
+      // reste vivante, quitte à re-décoder une image en défilant.
+      imgs = 16;
+      bytes = 6 << 20;
+    } else if (totalMb > 0 && totalMb <= 768) {
       // ≤ 768 Mo (terrain 21/08 : « même un téléphone à 512 Mo ») : le
       // système ne laisse que ~150-250 Mo au process — chaque bitmap
       // compte. 32 affiches × ~150 Ko ≈ 5 Mo réels, plafond dur 12 Mo.

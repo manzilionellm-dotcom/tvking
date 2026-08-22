@@ -41,6 +41,29 @@ abstract final class DeviceMemory {
   /// `true` une fois la RAM lue (ou la tentative épuisée). Voir note isolats.
   static bool get isLoaded => _loaded;
 
+  // =========================================================
+  //  PALIERS PARTAGÉS (demande client du 22/08 : « ça doit marcher même
+  //  sur un petit Android à 256 Mo — passe-partout »)
+  // =========================================================
+  //  Avant, chaque endroit ré-écrivait sa propre condition (« lowRam ou
+  //  ≤1024 »), avec deux défauts : (a) beaucoup de téléphones bon marché
+  //  ne DÉCLARENT pas `isLowRamDevice` alors qu'ils ont 512 Mo ou moins —
+  //  ils passaient donc dans le profil confortable ; (b) rien ne
+  //  distinguait un 256 Mo d'un 768 Mo. Deux paliers nommés, utilisés
+  //  partout, corrigent les deux.
+
+  /// APPAREIL MINUSCULE (≤ 512 Mo) : chaque mégaoctet compte, l'OS tue
+  /// l'app à la moindre pointe. Profil le plus serré de l'app.
+  /// Tant que la RAM est inconnue on répond `false` : on ne dégrade jamais
+  /// un appareil correct sur une simple incertitude (le palier [isSmall],
+  /// lui, reste prudent par défaut).
+  static bool get isTiny => _loaded && _totalMb > 0 && _totalMb <= 512;
+
+  /// PETIT APPAREIL (≤ 1 Go, ou signalé « low RAM » par Android) : profil
+  /// économe — c'est le seuil historique, désormais nommé une seule fois.
+  static bool get isSmall =>
+      _lowRam || isTiny || (_loaded && _totalMb > 0 && _totalMb <= 1024);
+
   /// Lit la RAM réelle UNE fois et met en cache. Idempotent et best-effort :
   /// si l'info n'est pas dispo (échec plugin), on garde le défaut prudent.
   /// À `await` tôt au démarrage, AVANT le 1er import (pour un plafond exact).
@@ -84,7 +107,12 @@ abstract final class DeviceMemory {
   /// BASE (rien n'est perdu), juste pas tenues en mémoire en même temps.
   static int get channelCap {
     if (!_loaded) return 8000;
-    if (_lowRam || (_totalMb > 0 && _totalMb <= 1024)) return 5000;
+    // 256-512 Mo (demande client « passe-partout ») : une liste de 5 000
+    // chaînes en mémoire, c'est déjà plus que ce que l'OS laisse à l'app
+    // entière. On tient 1 500 chaînes vivantes — le reste attend en base,
+    // rien n'est perdu (recherche et navigation les retrouvent).
+    if (isTiny) return 1500;
+    if (isSmall) return 5000;
     if (_totalMb <= 2048) return 25000;
     if (_totalMb <= 3072) return 80000;
     if (_totalMb <= 4096) return 200000;
@@ -100,8 +128,11 @@ abstract final class DeviceMemory {
   /// d'ailleurs rarement dense — on décode à ×1,25 : le Cinéma affiche
   /// des dizaines d'affiches sans pousser l'app vers le kill mémoire.
   static int posterCacheWidth(double logicalWidth) {
-    final bool small = _lowRam || (_loaded && _totalMb > 0 && _totalMb <= 1024);
-    return (logicalWidth * (small ? 1.25 : 2.0)).round();
+    // ≤512 Mo : décodage à la taille EXACTE d'affichage (×1). L'affiche est
+    // un peu moins nette sur un écran dense — mais sur ces téléphones,
+    // l'écran ne l'est pas, et c'est ce qui évite le kill mémoire.
+    if (isTiny) return logicalWidth.round();
+    return (logicalWidth * (isSmall ? 1.25 : 2.0)).round();
   }
 
   /// Plafond d'OCTETS téléchargés à l'import (M3U), par palier de RAM. Le
