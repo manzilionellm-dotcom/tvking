@@ -150,10 +150,18 @@ const TIZEN_TPK_URL =
 const WEBOS_IPK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/webos-latest/thefew-webos.ipk';
 
-// (SUPPRIMÉ le 22/08) L'App Bundle téléphone était servi ici depuis la
-// release `prod`. Cette release n'existe plus — voir PHONE_STORE_URL.
-// La route /phone-aab renvoie désormais vers la fiche Play : c'est la
-// Play Console qui détient le binaire de référence, pas GitHub.
+// App Bundle (.aab) à DÉPOSER dans la Google Play Console — servi via
+// app.7themotion.com/phone-aab.
+//
+// Ce canal a survécu à la suppression des builds téléphone du 22/08, et
+// c'est volontaire : un .aab ne s'installe pas sur un téléphone (c'est
+// le format d'entrée de la Play Console, pas une app). Il ne peut donc
+// pas recréer l'installation « à côté » de la version du Play Store,
+// qui était tout le problème. Publié par publish-play-aab.yml, qui
+// REFUSE de publier un AAB dont l'applicationId n'est pas celui de la
+// fiche Play.
+const PLAY_AAB_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/play-aab/7motion.aab';
 
 // Visuels de la fiche Play Store (icône 512×512 + image de présentation
 // 1024×500), versionnés dans le repo. Servis en TÉLÉCHARGEMENT direct via
@@ -7746,13 +7754,17 @@ async function handleRequest(request, env, ctx) {
       return proxyRelease(WEBOS_IPK_URL, 'TheFew-LG.ipk');
     }
 
-    // /phone-aab — servait l'App Bundle téléphone depuis GitHub. Le canal
-    // a été supprimé le 22/08 : plus de binaire téléphone hors Play Store.
-    // On redirige plutôt que de renvoyer une erreur, pour que les liens
-    // déjà notés quelque part mènent au bon endroit.
+    // /phone-aab — le fichier .aab à déposer dans la Play Console.
+    //
+    // OUTIL DE PROPRIÉTAIRE, PAS UN LIEN CLIENT : un .aab ne s'installe
+    // pas sur un téléphone, c'est le format d'entrée de la Play Console.
+    // C'est pour ça que ce lien survit à la suppression des canaux APK :
+    // il ne peut pas servir à installer l'app à côté de celle du Play
+    // Store. Canal `play-aab` (publish-play-aab.yml), qui vérifie
+    // l'applicationId avant chaque publication.
     if (segments.length === 1 &&
         ['phone-aab', 'phoneaab', 'aab-phone', 'aab'].includes(segments[0].toLowerCase())) {
-      return Response.redirect(PHONE_STORE_URL, 302);
+      return proxyRelease(PLAY_AAB_URL, '7motion.aab');
     }
 
     // /store-icon et /store-banner — visuels de la fiche Play Store en

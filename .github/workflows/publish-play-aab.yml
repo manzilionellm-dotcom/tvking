@@ -1,0 +1,101 @@
+# =========================================================
+#  publish-play-aab.yml — L'AAB à déposer dans la Play Console
+# =========================================================
+#  CONTEXTE (22/08). Les canaux téléphone `prod` et `phone-test` ont été
+#  supprimés sur décision du propriétaire : l'app téléphone n'est plus
+#  distribuée en APK direct, tous les liens clients mènent à la fiche
+#  Google Play.
+#
+#  Mais mettre à jour cette fiche exige un fichier .aab. Ce canal existe
+#  UNIQUEMENT pour ça.
+#
+#  POURQUOI ÇA NE RECRÉE PAS LE PROBLÈME QU'ON VIENT DE SUPPRIMER :
+#  un .aab ne s'installe PAS sur un téléphone. Ce n'est pas une app,
+#  c'est le format d'entrée de la Play Console. Aucun client ne peut
+#  rien en faire — c'est un outil de propriétaire, pas un canal de
+#  distribution. C'est pourquoi ce workflow publie l'AAB SEUL : jamais
+#  d'APK ici, sinon on retomberait dans l'installation en parallèle.
+#
+#  L'AAB porte l'applicationId `com.manzilionellm.tvking` — EXACTEMENT
+#  celui de la fiche Play — alors que le code source déclare
+#  `…tvking.tv_king` ; la réécriture est faite par build-android.yml.
+#  C'est vérifié ci-dessous : déposer un AAB au mauvais identifiant
+#  serait rejeté par Google, ou pire, créerait une seconde fiche.
+# =========================================================
+name: Publish Play AAB
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID du run build-android dont on publie l''AAB'
+        required: true
+        type: string
+  # BOOTSTRAP : le dispatch par nom échoue tant que GitHub n'a pas indexé
+  # un workflow neuf. Le push de CE fichier publie donc l'AAB du dernier
+  # build validé (run 32585741071 = commit 28de752).
+  push:
+    branches:
+      - 'claude/7motion-android-tv-compat-e0rtyp'
+    paths:
+      - '.github/workflows/publish-play-aab.yml'
+
+permissions:
+  contents: write   # créer/écraser la release play-aab
+  actions: read     # télécharger l'artefact du run build-android
+
+jobs:
+  publish:
+    name: Publier l'AAB Google Play
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Télécharger l'AAB du run build-android
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tvking-release-apk-*
+          run-id: ${{ inputs.run_id || '32585741071' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+
+      - name: Vérifier l'AAB (présence + applicationId)
+        run: |
+          set -eu
+          test -f 7motion.aab || { echo "⛔ 7motion.aab absent de l'artefact"; exit 1; }
+          ls -l 7motion.aab
+          sha256sum 7motion.aab
+          # L'AAB est un ZIP : son manifeste (protobuf) contient le nom de
+          # paquet en clair. On REFUSE de publier un AAB qui ne porterait
+          # pas l'identifiant de la fiche Play — c'est le seul contrôle qui
+          # empêche de déposer la mauvaise app dans la Play Console.
+          unzip -o -q 7motion.aab base/manifest/AndroidManifest.xml -d _chk
+          if strings _chk/base/manifest/AndroidManifest.xml \
+              | grep -qx 'com.manzilionellm.tvking'; then
+            echo "✅ applicationId = com.manzilionellm.tvking (fiche Play)"
+          else
+            echo "⛔ applicationId inattendu — publication refusée :"
+            strings _chk/base/manifest/AndroidManifest.xml \
+              | grep -oE 'com\.manzilionellm[a-zA-Z0-9_.]*' | sort -u | head
+            exit 1
+          fi
+
+      - name: Publier sur le canal play-aab
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          RUN="${{ inputs.run_id || '32585741071' }}"
+          SHA=$(sha256sum 7motion.aab | cut -d' ' -f1)
+          NOTES=$(printf 'Fichier à déposer dans la Google Play Console.\n\n• Run : %s\n• applicationId : com.manzilionellm.tvking (vérifié)\n• SHA-256 : %s\n\n⚠ Un .aab NE S INSTALLE PAS sur un téléphone : il ne sert qu à la Play Console. Les clients passent par la fiche Play.\n\nLien direct : https://app.7themotion.com/phone-aab' "$RUN" "$SHA")
+          if gh release view play-aab --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit play-aab --repo "$REPO" \
+              --title "7 MOTION téléphone — AAB Google Play" \
+              --notes "$NOTES" --prerelease
+            gh release upload play-aab --repo "$REPO" --clobber 7motion.aab
+          else
+            gh release create play-aab --repo "$REPO" \
+              --title "7 MOTION téléphone — AAB Google Play" \
+              --notes "$NOTES" --prerelease 7motion.aab
+          fi
+          gh release view play-aab --repo "$REPO"
