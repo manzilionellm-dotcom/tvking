@@ -100,8 +100,22 @@ import { PWA_MANIFEST, PWA_SW, PWA_ICON_192, PWA_ICON_512, PWA_APPLE_ICON, OG_IM
 // n'écrase (publiée uniquement par la branche claude/maison-mere-phone).
 // Fini le clobber : le lien client /vip pointe toujours sur la vraie
 // dernière app (MK retiré, import animé, traductions, engagement, etc.).
-const APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/7motion.apk';
+//
+// ⚠ DÉCISION PROPRIÉTAIRE DU 22/08 : « efface tous les builds téléphone,
+//   on laisse celui qui est activé sur le Play Store, que tout pointe
+//   dessus ». L'app téléphone n'est donc PLUS distribuée en APK direct :
+//   les canaux `prod` et `phone-test` ont été supprimés, et tous les
+//   liens téléphone envoient vers la FICHE PLAY STORE.
+//
+//   Conséquence assumée et signalée avant exécution : les clients qui
+//   avaient installé l'APK portent le paquet `…tvking.tv_king`, alors
+//   que la fiche Play publie `…tvking`. Android les considère comme deux
+//   applications distinctes : la version Play ne les met donc PAS à
+//   jour, elle s'installe à côté. Leur bouton « Mise à jour » ne trouve
+//   plus rien (best-effort côté app : il n'affiche simplement aucune
+//   mise à jour, il ne plante pas).
+const PHONE_STORE_URL =
+  'https://play.google.com/store/apps/details?id=com.manzilionellm.tvking';
 
 // APK « 7 MOTION TV » (Seven Motion TV, com.sevenmotion.tv.seven_tv) —
 // L'UNIQUE app TV depuis le grand nettoyage du 2026-08-08 (les releases
@@ -136,11 +150,10 @@ const TIZEN_TPK_URL =
 const WEBOS_IPK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/webos-latest/thefew-webos.ipk';
 
-// App Bundle (.aab) téléphone signé pour la Google Play Console. Servi via
-// un lien PUBLIC propre (app.7themotion.com/phone-aab) → utile pour
-// uploader le dernier build dans la Play Console sans passer par GitHub.
-const PHONE_AAB_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/7motion.aab';
+// (SUPPRIMÉ le 22/08) L'App Bundle téléphone était servi ici depuis la
+// release `prod`. Cette release n'existe plus — voir PHONE_STORE_URL.
+// La route /phone-aab renvoie désormais vers la fiche Play : c'est la
+// Play Console qui détient le binaire de référence, pas GitHub.
 
 // Visuels de la fiche Play Store (icône 512×512 + image de présentation
 // 1024×500), versionnés dans le repo. Servis en TÉLÉCHARGEMENT direct via
@@ -161,7 +174,7 @@ const STORE_SHOT_APROPOS_URL =
 
 // NB : les wrappers WebView / NOVA+ et Red Room ont été RETIRÉS du
 // projet. Quatre livrables sont distribués ici : 7 MOTION mobile
-// (`APK_URL`, /app), 7 MOTION TV (`SEVENTV_APK_URL`, /tv /7tv),
+// (fiche Play, /app), 7 MOTION TV (`SEVENTV_APK_URL`, /tv /7tv),
 // Windows (`WINDOWS_EXE_URL`, /win) et Samsung (`TIZEN_TPK_URL`,
 // /samsung). L'iPhone passe par l'App Store.
 
@@ -7643,20 +7656,22 @@ async function handleRequest(request, env, ctx) {
       return new Response('bad ext', { status: 400 });
     }
 
-    // /dl, /install, /vip, /thefew, /few, /app, /fone, /tel — téléchargement
-    // DIRECT de l'app TÉLÉPHONE officielle (release `prod`, signée clé
-    // maîtresse — c'est le bouton « Télécharger » du site). Lien propre à
-    // donner tel quel : il télécharge immédiatement, SANS compte GitHub.
-    // Fichier « 7motion.apk » côté client.
+    // /dl, /install, /vip, /thefew, /few, /app, /fone, /tel, /android,
+    // /phone — app TÉLÉPHONE.
+    //
+    // Depuis la décision du 22/08 (voir PHONE_STORE_URL), ces liens ne
+    // servent PLUS d'APK : ils redirigent vers la fiche Google Play. Les
+    // liens déjà donnés aux clients, imprimés ou collés dans WhatsApp
+    // continuent donc de fonctionner — ils mènent simplement au magasin.
+    // Redirection 302 (temporaire) et non 301 : un 301 se grave dans le
+    // cache du navigateur, on ne pourrait plus revenir en arrière.
     if (
       segments.length === 1 &&
-      // « android » et « phone » : alias PRO lisibles (famille de liens
-      // « un par plateforme », 21/08) — même fichier que /app et /fone.
       ['dl', 'install', 'vip', 'thefew', 'few', 'app', 'fone', 'tel',
         'android', 'phone']
         .includes(segments[0].toLowerCase())
     ) {
-      return proxyApk(APK_URL, '7motion.apk', url.searchParams.get('v'));
+      return Response.redirect(PHONE_STORE_URL, 302);
     }
 
     // /tv, /defewtv, /tvbox, /defew + CODES COURTS MÉMORABLES (/777, /7777,
@@ -7731,12 +7746,13 @@ async function handleRequest(request, env, ctx) {
       return proxyRelease(WEBOS_IPK_URL, 'TheFew-LG.ipk');
     }
 
-    // /phone-aab — App Bundle (.aab) SIGNÉ pour la Google Play Console.
-    // Lien public propre (octet-stream) : à télécharger puis uploader dans
-    // la Play Console. Toujours le dernier build maison mère.
+    // /phone-aab — servait l'App Bundle téléphone depuis GitHub. Le canal
+    // a été supprimé le 22/08 : plus de binaire téléphone hors Play Store.
+    // On redirige plutôt que de renvoyer une erreur, pour que les liens
+    // déjà notés quelque part mènent au bon endroit.
     if (segments.length === 1 &&
         ['phone-aab', 'phoneaab', 'aab-phone', 'aab'].includes(segments[0].toLowerCase())) {
-      return proxyRelease(PHONE_AAB_URL, '7motion.aab');
+      return Response.redirect(PHONE_STORE_URL, 302);
     }
 
     // /store-icon et /store-banner — visuels de la fiche Play Store en
