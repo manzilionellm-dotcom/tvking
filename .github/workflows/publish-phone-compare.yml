@@ -1,0 +1,91 @@
+# =========================================================
+#  publish-phone-compare.yml — APK de COMPARAISON (propriétaire)
+# =========================================================
+#  Demande du 22/08, après la suppression des canaux téléphone :
+#  « donne-moi le lien de l'APK simple, je vais le comparer avec celle
+#  qui est sur Google. »
+#
+#  CE CANAL N'EST PAS UN CANAL CLIENT — et c'est une règle, pas une
+#  intention :
+#    • AUCUNE route du Worker ne pointe dessus. /install, /app, /fone,
+#      /android, /phone, /dl, /vip… redirigent tous vers la fiche Play
+#      et ne doivent JAMAIS être repointés ici. Le seul moyen d'y
+#      accéder est le lien GitHub direct, donné à la main.
+#    • le fichier porte le paquet `com.manzilionellm.tvking.tv_king`,
+#      différent de celui de la fiche Play (`com.manzilionellm.tvking`).
+#      Android les voit comme deux applications : elles s'installent
+#      CÔTE À CÔTE. C'est précisément ce qui permet de comparer les
+#      deux sur le même téléphone — et aussi pourquoi ce fichier ne
+#      doit pas être diffusé : il ne met à jour personne.
+#
+#  Si un jour ce canal n'a plus d'utilité, le supprimer est sans
+#  conséquence (rien ne s'appuie dessus).
+# =========================================================
+name: Publish phone compare APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID du run build-android dont on publie l''APK'
+        required: true
+        type: string
+  # BOOTSTRAP : le dispatch par nom échoue tant que GitHub n'a pas indexé
+  # un workflow neuf. Le push de CE fichier publie donc l'APK du dernier
+  # build validé (run 32585741071 = commit 28de752).
+  push:
+    branches:
+      - 'claude/7motion-android-tv-compat-e0rtyp'
+    paths:
+      - '.github/workflows/publish-phone-compare.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Publier l'APK de comparaison
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # L'APK vit dans `tvking-release-apk-*` (l'AAB, lui, est dans
+      # `7motion-playstore-aab-*` — deux artefacts distincts).
+      - name: Télécharger l'APK du run build-android
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tvking-release-apk-*
+          run-id: ${{ inputs.run_id || '32585741071' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+
+      - name: Vérifier l'APK
+        run: |
+          set -eu
+          ls -l *.apk || true
+          # build-android nomme l'APK `7motion.apk` dans cet artefact.
+          test -f 7motion.apk || { echo "⛔ 7motion.apk absent de l'artefact"; exit 1; }
+          sha256sum 7motion.apk
+          # Un APK est un ZIP : s'il ne s'ouvre pas, inutile d'aller plus loin.
+          unzip -l 7motion.apk | tail -2
+
+      - name: Publier sur le canal phone-compare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          RUN="${{ inputs.run_id || '32585741071' }}"
+          SHA=$(sha256sum 7motion.apk | cut -d' ' -f1)
+          NOTES=$(printf 'APK de COMPARAISON — usage propriétaire, NE PAS DIFFUSER.\n\n• Run : %s\n• SHA-256 : %s\n• Paquet : com.manzilionellm.tvking.tv_king\n\nCe paquet est DIFFÉRENT de celui de la fiche Play (com.manzilionellm.tvking) : les deux applications s installent côte à côte sur le même téléphone, ce qui permet de les comparer. Revers de la médaille : ce fichier ne met à jour AUCUN client.\n\nLes liens clients (/install, /app, /fone, /android, /phone…) mènent à la fiche Google Play et ne pointent PAS ici.' "$RUN" "$SHA")
+          if gh release view phone-compare --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit phone-compare --repo "$REPO" \
+              --title "7 MOTION téléphone — APK de comparaison (ne pas diffuser)" \
+              --notes "$NOTES" --prerelease
+            gh release upload phone-compare --repo "$REPO" --clobber 7motion.apk
+          else
+            gh release create phone-compare --repo "$REPO" \
+              --title "7 MOTION téléphone — APK de comparaison (ne pas diffuser)" \
+              --notes "$NOTES" --prerelease 7motion.apk
+          fi
+          gh release view phone-compare --repo "$REPO"
