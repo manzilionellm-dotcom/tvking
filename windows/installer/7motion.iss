@@ -55,6 +55,17 @@
 ;  prevu (voir SignTool plus bas, commente) et s'activera le jour ou un
 ;  certificat existera — sans toucher au reste.
 ;
+;  ⚠ NE PAS SE FIER AU « ✅ Code sign check » DE MICROSOFT. Son rapport
+;  de certification affiche « Your app has a valid code sign » sur le
+;  fichier servi par /win. C'est FAUX, et c'est verifiable en une
+;  minute : sur ce fichier exact (SHA-256 9162cbb8…5cda), le
+;  repertoire de securite de l'en-tete PE (entree n°4) a une taille de
+;  ZERO — il n'y a aucune signature Authenticode. Mesure refaite le
+;  23/08 sur le binaire telecharge depuis /win, et sur l'installeur
+;  neuf 0.3.3.452 : les deux sont non signes.
+;  Conclusion pratique : ce controle ne mesure pas ce qu'il annonce.
+;  SmartScreen, lui, avertira bel et bien le client.
+;
 ;  La VERSION est injectee par la chaine de build (/DAppVersion=...) :
 ;  elle ne doit JAMAIS etre codee en dur ici, sinon deux builds
 ;  differents porteraient le meme numero.
@@ -129,11 +140,30 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExeName}
-; Le Store lit ces metadonnees pour l'entree « Applications installees ».
 ;  Ces champs sont ceux que Windows affiche dans la boite UAC et dans
 ;  l'ecran SmartScreen — donc ce que le client voit VRAIMENT au moment
 ;  d'installer. Ils sont INDEPENDANTS de ceux de l'application : les
 ;  corriger dans Runner.rc ne les corrige pas ici.
+;
+;  ⚠ CORRECTION (23/08, apres MESURE du binaire reellement en revue).
+;  J'avais ecrit que ces metadonnees etaient une cause des « ❓ » du
+;  rapport de certification. C'EST FAUX. J'ai telecharge le fichier
+;  servi par /win (SHA-256 9162cbb8…5cda, celui que Microsoft a
+;  analyse) et lu son bloc de version : il portait DEJA
+;      CompanyName = ProductName = « 7 MOTION »
+;      FileDescription = « 7 MOTION Setup »
+;  Seuls ProductVersion (fige a 1.0.0) et LegalCopyright (vide)
+;  manquaient — deux champs que le controle ARP ne lit pas.
+;
+;  Ce qui reste vrai, et qui explique seul les deux « ❓ » jumeaux :
+;  l'entree « Applications installees » n'a jamais ete TROUVEE, faute
+;  d'etre dans HKLM (cf. PrivilegesRequired ci-dessus). Elle n'a pas
+;  ete mal nommee : elle etait invisible.
+;
+;  A retenir : l'entree ARP est ecrite par Inno a partir de AppName et
+;  AppPublisher — PAS a partir des metadonnees de tv_king.exe. Corriger
+;  Runner.rc reste utile (proprietes du fichier, SmartScreen) mais
+;  n'a JAMAIS pu agir sur ce controle-la.
 VersionInfoVersion={#AppVersion}
 VersionInfoProductVersion={#AppVersion}
 VersionInfoCompany={#AppPublisher}

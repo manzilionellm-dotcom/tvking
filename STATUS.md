@@ -34,14 +34,21 @@ Microsoft n'a pas rendu un échec, il n'a **pas conclu du tout** :
 has added in the add or remove programs »* (silent install, entrée
 add/remove, bundleware). Deux causes, mesurées et non supposées :
 
-- **Métadonnées.** Lecture de l'en-tête PE du binaire publié :
+- **Métadonnées de l'application.** Lecture de l'en-tête PE de `tv_king.exe` :
   `CompanyName = com.manzilionellm.tvking`, `ProductName = tv_king`. Le
-  modèle Flutter écrit l'identifiant de paquet à la place de l'éditeur. Le
-  robot cherche « 7 MOTION » et trouve « tv_king » : il ne peut pas corréler
-  l'entrée « Applications installées » avec la fiche du Store.
-  → réécriture de `windows/runner/Runner.rc` **après** `flutter create` (le
-  dossier natif est régénéré à chaque build, ce fichier ne peut pas vivre
-  dans le dépôt). Vérifié présent dans le build **0.3.3.449**.
+  modèle Flutter écrit l'identifiant de paquet à la place de l'éditeur.
+  → réécriture de `windows/runner/Runner.rc` **après** `flutter create`.
+  Vérifié sur le **binaire compilé** dès le build 0.3.3.449.
+
+  ⚠️ **CORRECTION du 23/08, après mesure.** J'avais présenté ceci comme une
+  cause des « ❓ ». **C'est faux.** J'ai téléchargé le fichier réellement
+  analysé par Microsoft (`/win`, SHA-256 `9162cbb8…5cda`) et lu son bloc de
+  version : l'installeur portait **déjà** `CompanyName = ProductName =
+  « 7 MOTION »`. Et surtout, l'entrée ARP est écrite par Inno depuis
+  `AppName`/`AppPublisher` — **jamais** depuis les métadonnées de
+  `tv_king.exe`. Ce correctif est de la bonne hygiène (propriétés du
+  fichier, SmartScreen) mais n'a jamais pu agir sur ce contrôle.
+  Il ne reste donc **qu'une** cause pour les deux « ❓ » jumeaux : ↓
 - **Mode d'installation.** `PrivilegesRequired=lowest` installait PAR
   UTILISATEUR et écrivait l'entrée ARP dans **HKCU**. Le bac à sable de
   Microsoft inspecte **HKLM**, sous un autre compte : il n'y trouvait rien.
@@ -75,11 +82,29 @@ serait déclarer du faux sur un point qu'un relecteur peut tester. La liste
 exacte d'Inno est 0–8 ; les scénarios sans code dédié restent **vides** (un
 champ vide ne bloque pas la certification, un champ faux si).
 
-### 4. Signature
-L'installeur sort **non signé** (vérifié : répertoire de sécurité PE de
-taille nulle). SmartScreen affichera « Windows a protégé votre PC ». La
-directive `SignTool` est en place, commentée, prête à s'activer le jour où un
-certificat existera — rien d'autre ne changera.
+### 4. Signature — et un contrôle Microsoft qui ment
+L'installeur sort **non signé** : répertoire de sécurité PE (entrée n°4) de
+taille **zéro**, mesuré le 23/08 sur les deux fichiers — celui de `/win`
+(`9162cbb8…5cda`) et le neuf `0.3.3.452`. SmartScreen avertira le client. La
+directive `SignTool` est en place, commentée, prête à s'activer.
+
+⚠️ **Le rapport de certification affiche pourtant « ✅ Code sign check — Your
+app has a valid code sign » sur ce fichier exact.** C'est démontrablement
+faux. Ne jamais traiter ce ✅ comme la preuve qu'un certificat existe — et
+garder en tête qu'un des cinq contrôles du rapport ne mesure pas ce qu'il
+annonce.
+
+### 4-bis. Ce que le binaire en revue nous a appris (mesure du 23/08)
+Fichier `/win` = **Inno Setup** (marqueurs `JR.Inno.Setup`), donc les mêmes
+règles s'appliquent. `ProductVersion = 1.0.0`, `LegalCopyright` vide.
+Manifeste embarqué : `requestedExecutionLevel level="asInvoker"` —
+**identique sur l'installeur neuf, qui est pourtant en `admin`**. Cela
+**confirme empiriquement** que `PrivilegesRequired` ne laisse aucune trace
+dans le binaire : le garde-fou CI doit lire la source, il ne peut pas faire
+autrement. (`innoextract` 1.9 ne va pas au-delà d'Inno 6.0.5 : le script
+compilé n'est pas lisible, on ne peut donc pas prouver que le fichier du
+7 août était bien en `lowest` — c'est l'hypothèse la mieux étayée, pas un
+fait établi.)
 
 ### 5. Reste à faire (côté propriétaire)
 - Test d'installation silencieuse sur une VM Windows 11 propre
