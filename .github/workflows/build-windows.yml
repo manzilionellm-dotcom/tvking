@@ -132,12 +132,71 @@ jobs:
           Compress-Archive -Path "$rel/*" -DestinationPath "TheFew-Windows.zip" -Force
           Get-Item "TheFew-Windows.zip" | Format-Table Name, Length
 
+      # =========================================================
+      #  INSTALLEUR (Inno Setup) — ajouté le 23/08/2026
+      # =========================================================
+      #  Avant, cette chaîne ne produisait qu'un .zip. Le
+      #  « 7MOTION-Setup.exe » servi par /win avait été fabriqué À LA
+      #  MAIN le 7 août et RIEN ne le régénérait : l'application
+      #  avançait, l'installeur restait figé, et publier une mise à jour
+      #  Windows était devenu impossible sans casser soit la
+      #  distribution directe, soit la soumission au Microsoft Store.
+      #
+      #  Le nom du fichier PORTE la version. C'est ce qui permet des URL
+      #  immuables — exigence explicite du Store : « The binary
+      #  associated with that URL must not change after submission ».
+      #  Un lien versionné se fige pour toujours ; l'alias /win, lui,
+      #  peut continuer d'évoluer sans mentir à personne.
+      - name: Installer (Inno Setup, nom versionné)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Version = celle de pubspec.yaml + le numéro de run. Deux
+          # builds ne peuvent donc JAMAIS porter le même numéro, et le
+          # numéro avance toujours (Windows refuse une mise à jour dont
+          # la version recule).
+          $vn = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)' `
+                 | Select-Object -First 1).Matches[0].Groups[1].Value
+          $ver = "$vn.${{ github.run_number }}"
+          Write-Host ">>> version de l'installeur : $ver"
+          "APP_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          # Inno Setup est préinstallé sur certaines images ; sinon on
+          # l'installe. On ne suppose ni l'un ni l'autre.
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            Write-Host ">>> Inno Setup absent, installation via choco"
+            choco install innosetup --no-progress -y
+          }
+          if (!(Test-Path $iscc)) { throw "ISCC.exe introuvable après installation" }
+
+          & $iscc "/DAppVersion=$ver" "/O." "windows\installer\7motion.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup a échoué ($LASTEXITCODE)" }
+
+          $exe = "7MOTION-Setup-$ver.exe"
+          if (!(Test-Path $exe)) { throw "Installeur introuvable : $exe" }
+          Get-Item $exe | Format-Table Name, Length
+          (Get-FileHash $exe -Algorithm SHA256).Hash
+
+          # CONTRÔLE DE SIGNATURE — informatif, jamais bloquant. Tant
+          # qu'aucun certificat n'existe, l'installeur sort non signé et
+          # Windows affichera « Windows a protégé votre PC ». Le jour où
+          # un certificat sera posé, cette ligne passera à Valid et la
+          # seule chose à changer sera la directive SignTool du .iss.
+          $sig = (Get-AuthenticodeSignature $exe).Status
+          Write-Host ">>> signature Authenticode : $sig"
+          if ($sig -ne 'Valid') {
+            Write-Host "::warning title=Installeur non signé::SmartScreen affichera un avertissement au client. Voir la directive SignTool dans windows/installer/7motion.iss."
+          }
+
       # Artefact CI (téléchargeable depuis l'onglet Actions, même sans release).
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: TheFew-Windows
-          path: TheFew-Windows.zip
+          path: |
+            TheFew-Windows.zip
+            7MOTION-Setup-*.exe
           retention-days: 14
 
       # Publication sur la release "windows-latest" (lien stable de partage).
@@ -160,12 +219,38 @@ jobs:
           est en cours de finalisation (étape 2).
 
           Commit : ${{ github.sha }}"
+          # L'INSTALLEUR est publié SOUS SON NOM VERSIONNÉ, jamais sous un
+          # nom fixe. Une fois en ligne, ce fichier ne bougera plus JAMAIS :
+          # c'est ce qui rend son URL immuable, comme le Store l'exige.
+          # Le fichier « 7MOTION-Setup.exe » sans version, lui, n'est plus
+          # écrasé — il reste tel quel tant qu'une soumission Store le cite.
+          SETUP="$(ls 7MOTION-Setup-*.exe 2>/dev/null | head -1 || true)"
+          if [ -n "$SETUP" ]; then
+            echo ">>> installeur versionné : $SETUP"
+            sha256sum "$SETUP"
+          else
+            echo "::warning::Aucun installeur produit — seul le .zip sera publié."
+          fi
+
           if gh release view windows-latest --repo "$REPO" >/dev/null 2>&1; then
             gh release edit windows-latest --repo "$REPO" --notes "$NOTES"
             gh release upload windows-latest --repo "$REPO" --clobber "$OUT"
+            # `if` explicite, PAS `[ -n ... ] && ...` : avec `set -e`, un
+            # test qui echoue en DERNIERE commande d'un bloc fait echouer
+            # tout le job. Le build entier serait tombe juste parce qu'il
+            # n'y avait pas d'installeur a publier.
+            if [ -n "$SETUP" ]; then
+              gh release upload windows-latest --repo "$REPO" --clobber "$SETUP"
+            fi
           else
-            gh release create windows-latest --repo "$REPO" \
-              --title "The Few — Windows (dernier build)" \
-              --notes "$NOTES" --prerelease "$OUT"
+            if [ -n "$SETUP" ]; then
+              gh release create windows-latest --repo "$REPO" \
+                --title "The Few — Windows (dernier build)" \
+                --notes "$NOTES" --prerelease "$OUT" "$SETUP"
+            else
+              gh release create windows-latest --repo "$REPO" \
+                --title "The Few — Windows (dernier build)" \
+                --notes "$NOTES" --prerelease "$OUT"
+            fi
           fi
           gh release view windows-latest --repo "$REPO"

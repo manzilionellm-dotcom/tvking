@@ -7892,6 +7892,32 @@ async function handleRequest(request, env, ctx) {
       return proxyRelease(WEBOS_IPK_URL, 'TheFew-LG.ipk');
     }
 
+    //  /win/<version>/7MOTION-Setup.exe — URL IMMUABLE de l'installeur.
+    //
+    //  POURQUOI CETTE ROUTE EXISTE (23/08/2026). Le Microsoft Store est
+    //  formel : « The binary associated with that URL must not change
+    //  after submission. » Or /win est aussi le lien de distribution
+    //  directe, qui doit évoluer à chaque version. Les deux exigences
+    //  sont contradictoires sur une seule adresse.
+    //
+    //  On les sépare donc : ici, un chemin qui PORTE la version et ne
+    //  changera jamais de contenu — c'est celui qu'on donne au Store ;
+    //  /win reste l'alias marketing, libre d'avancer.
+    //
+    //  La version est validée par une expression stricte : sans ça, ce
+    //  chemin permettrait de faire pointer notre domaine vers n'importe
+    //  quel fichier de n'importe quelle release.
+    if (segments.length === 3 &&
+        segments[0].toLowerCase() === 'win' &&
+        /^[0-9]+(\.[0-9]+){1,3}$/.test(segments[1]) &&
+        segments[2].toLowerCase() === '7motion-setup.exe') {
+      const v = segments[1];
+      return proxyRelease(
+        `https://github.com/manzilionellm-dotcom/tvking/releases/download/windows-latest/7MOTION-Setup-${v}.exe`,
+        `7MOTION-Setup-${v}.exe`,
+      );
+    }
+
     // /phone-aab — le fichier .aab à déposer dans la Play Console.
     //
     // OUTIL DE PROPRIÉTAIRE, PAS UN LIEN CLIENT : un .aab ne s'installe
