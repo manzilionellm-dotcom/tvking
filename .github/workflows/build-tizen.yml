@@ -231,6 +231,32 @@ jobs:
       #  .NET reçoit une valeur irrécupérable → « PKCS12 key store MAC
       #  invalid » même quand le mot de passe est BON (c'était le bug).
       #  Recette identique au CI officiel de flutter-tizen (test.yml, job e2e).
+      # ═══════════════════════════════════════════════════════════
+      #  ⚠ LE SECRET LE PLUS IRREMPLAÇABLE DU DÉPÔT
+      # ═══════════════════════════════════════════════════════════
+      #  SAMSUNG_AUTHOR_P12_BASE64 n'est pas un secret comme les autres.
+      #  Documentation Samsung (Creating Certificates), mot pour mot :
+      #
+      #      « the update must be signed with the same author
+      #        certificate as the original application »
+      #
+      #  Et si deux versions portent des certificats auteur DIFFÉRENTS,
+      #  Samsung traite la seconde comme une application distincte, pas
+      #  comme une mise à jour.
+      #
+      #  Conséquence : perdre ce .p12 signifie ne PLUS JAMAIS pouvoir
+      #  mettre à jour « The Few » sur les TV Samsung. Pas « c'est
+      #  embêtant » : définitivement. Il faudrait republier sous un
+      #  nouvel identifiant et abandonner tous les installés.
+      #
+      #  Un secret GitHub ne se relit pas. S'il est perdu ici, il est
+      #  perdu tout court. IL DOIT EXISTER UNE COPIE HORS DE GITHUB.
+      #
+      #  Autre inconnue, cherchée le 23/08 et NON TROUVÉE : la
+      #  documentation Samsung ne dit nulle part ce qui se passe quand
+      #  ce certificat EXPIRE. Le nôtre expire le 01/01/2027. La règle
+      #  « même certificat » est documentée, la sortie ne l'est pas.
+      # ═══════════════════════════════════════════════════════════
       - name: Signature (certif auteur via secret + distributeur Tizen par défaut)
         env:
           AUTHOR_P12: ${{ secrets.SAMSUNG_AUTHOR_P12_BASE64 }}

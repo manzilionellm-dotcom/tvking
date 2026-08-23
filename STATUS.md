@@ -97,6 +97,27 @@ Branche : `claude/7motion-android-tv-compat-e0rtyp`.
   Worker `TMDB_API_KEY` — wrangler secret put — PAS posée par défaut),
   `TmdbMetaService` Dart, enrichissement en COMPLÉMENT seulement (ne
   remplace jamais une donnée du panel ; sans clé → aucun changement).
+- SAMSUNG TV (Tizen) — ⚠ **CERTIFICAT AUTEUR IRREMPLAÇABLE**.
+  Le secret `SAMSUNG_AUTHOR_P12_BASE64` signe le `.tpk`. Documentation
+  Samsung (Creating Certificates), mot pour mot : « the update must be
+  signed with the same author certificate as the original
+  application » — et deux versions signées de certificats différents
+  sont traitées comme DEUX applications distinctes, pas comme une mise
+  à jour. **Perdre ce .p12 = ne plus jamais pouvoir mettre à jour
+  l'app sur les TV Samsung.** Un secret GitHub ne se relit pas : il
+  DOIT exister une copie hors de GitHub. Certificat actuel : « the
+  few », valide du 29/06/2026 au **01/01/2027**.
+  ⚠ CHERCHÉ ET NON TROUVÉ (23/08) : la doc Samsung ne dit nulle part
+  ce qui se passe au RENOUVELLEMENT ni à l'EXPIRATION. La règle
+  « même certificat » est documentée, la sortie ne l'est pas. À
+  éclaircir avant décembre 2026, par un ticket dédié.
+  État de publication : v1.0.0 soumise le 14/08, **rejetée** sur 28
+  des 44 groupes de modèles à 17:34:14, 16 encore « Submitted ».
+  Aucun motif communiqué — ni dans le portail, ni par e-mail. Ticket
+  Seller Office **2634065517** ouvert le 23/08 pour le réclamer.
+  v1.0.1 compilée, signée du même certificat, prête à soumettre — on
+  attend le motif pour ne pas corriger à l'aveugle.
+
 - SPORT / NOTIFICATIONS DE MATCH : routes Worker `/api/sports/search`,
   `/api/sports/team/:id`, `/api/sports/big` (grandes affiches, 17 clubs
   majeurs, cache 30 min) + `MatchAlertsService` Dart (alerte 15 min
