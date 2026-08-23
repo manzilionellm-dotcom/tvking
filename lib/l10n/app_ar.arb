@@ -2105,5 +2105,10 @@
   "sportRugby": "الرغبي",
   "sportBaseball": "البيسبول",
   "sportLiveNow": "الآن مباشر",
-  "sportWomen": "سيدات"
+  "sportWomen": "سيدات",
+  "sportGoalTitle": "هدف! ⚽",
+  "notifChannelGoalName": "الأهداف المباشرة",
+  "notifChannelGoalDesc": "هتاف الجماهير عند تسجيل هدف في مباراة تتابعها",
+  "notifGoalSoundTitle": "هتاف الجماهير عند الأهداف",
+  "notifGoalSoundSubtitle": "الملعب ينفجر عند تسجيل هدف في مباراة تتابعها"
 }

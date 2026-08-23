@@ -39,9 +39,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/i18n/l10n_now.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../domain/sport_models.dart';
+import 'followed_matches_service.dart';
 
 class LiveScoresService {
   LiveScoresService._();
@@ -144,6 +147,7 @@ class LiveScoresService {
           if (ev.id.isNotEmpty) parsed.add(ev);
         }
       }
+      _detectGoals(parsed);
       _live = List<SportEvent>.unmodifiable(parsed);
       // `available` n'est PAS déduit de la liste : une liste vide un
       // mardi matin est parfaitement normale. Seul le serveur sait s'il
@@ -161,9 +165,114 @@ class LiveScoresService {
     }
   }
 
+  // =========================================================
+  //  LE « WOUAAAH » DE BUT
+  // =========================================================
+  //  Demande du propriétaire (23/08) : « si le but entre, il faut un
+  //  petit son, comme les gens qui disent wouaouh ».
+  //
+  //  Le principe est simple — le score a augmenté depuis le dernier
+  //  tour, donc quelqu'un a marqué. Ce sont les GARDE-FOUS qui font
+  //  tout le travail, parce qu'une alerte sonore mal placée est la
+  //  raison numéro un d'une désinstallation.
+  //
+  //   1. UNIQUEMENT LES MATCHS SUIVIS. Il y a jusqu'à 60 rencontres en
+  //      direct simultanément. Sonner à chaque but de n'importe lequel,
+  //      c'est un cri toutes les deux minutes un samedi après-midi.
+  //      On ne sonne que pour ce que le client a EXPLICITEMENT choisi
+  //      de suivre.
+  //
+  //   2. JAMAIS AU PREMIER TOUR. Sans état antérieur, TOUS les matchs
+  //      en cours paraissent venir de marquer : on ouvre l'app et on
+  //      reçoit vingt cris d'un coup. Le premier passage ne fait
+  //      qu'APPRENDRE les scores, en silence.
+  //
+  //   3. LE SCORE NE PEUT QUE MONTER. Une correction d'arbitrage, un
+  //      but refusé après vidéo, ou simplement une donnée amont qui
+  //      hoquette peuvent faire BAISSER un score. On mémorise alors la
+  //      nouvelle valeur sans rien annoncer.
+  //
+  //   4. UN CRI À LA FOIS. Deux buts dans la même seconde sur deux
+  //      matchs suivis feraient se chevaucher deux sons. On annonce le
+  //      premier et on note les autres comme vus.
+  final Map<String, int> _lastTotals = <String, int>{};
+  bool _goalBaseline = false;
+
+  int? _total(SportEvent e) {
+    final int? h = int.tryParse(e.homeScore ?? '');
+    final int? a = int.tryParse(e.awayScore ?? '');
+    if (h == null || a == null) return null;
+    return h + a;
+  }
+
+  /// Quels matchs viennent de voir leur score MONTER, et met à jour la
+  /// mémoire au passage.
+  ///
+  /// Séparée du reste EXPRÈS : c'est ici que vit toute la logique
+  /// délicate (premier tour, score qui baisse, score illisible), et
+  /// elle est ainsi testable sans notification, sans réseau et sans
+  /// aucun canal de plateforme. Le déclenchement du son, lui, n'est
+  /// qu'un appel.
+  List<SportEvent> _goalsIn(List<SportEvent> fresh) {
+    final Map<String, int> totals = <String, int>{};
+    final List<SportEvent> buts = <SportEvent>[];
+
+    for (final SportEvent e in fresh) {
+      final int? t = _total(e);
+      if (t == null) continue; // score illisible : on ne devine pas
+      totals[e.id] = t;
+      final int? avant = _lastTotals[e.id];
+      // `avant == null` : match encore jamais vu. On l'enregistre, on
+      // ne crie pas — il a pu commencer pendant qu'on regardait
+      // ailleurs, et son score de départ n'est pas un but.
+      if (avant != null && t > avant) buts.add(e);
+    }
+
+    _lastTotals
+      ..clear()
+      ..addAll(totals);
+
+    if (!_goalBaseline) {
+      _goalBaseline = true; // premier passage : on a juste appris
+      return const <SportEvent>[];
+    }
+    return buts;
+  }
+
+  void _detectGoals(List<SportEvent> fresh) {
+    for (final SportEvent e in _goalsIn(fresh)) {
+      if (!FollowedMatchesService.instance.isFollowed(e.id)) continue;
+      unawaited(NotificationService.instance.notifyGoal(
+        // Emplacement STABLE par match : un deuxième but REMPLACE la
+        // notification du premier au lieu d'en empiler une seconde.
+        // Le client veut le score du moment, pas un historique.
+        id: 970000 + (e.id.hashCode.abs() % 1000),
+        title: l10nNow.sportGoalTitle,
+        body: '${e.home} ${e.homeScore ?? ''}–${e.awayScore ?? ''} ${e.away}',
+      ));
+      return; // un seul cri par tour (garde-fou 4)
+    }
+  }
+
   @visibleForTesting
   void debugSeed(List<SportEvent> events, {bool available = true}) {
     _live = List<SportEvent>.unmodifiable(events);
     _available = available;
   }
+
+  /// Rejoue la détection de but sur une liste donnée, sans réseau ni
+  /// notification. Renvoie les identifiants des matchs où un but vient
+  /// d'être marqué — donc exactement ce qui déclencherait le son.
+  @visibleForTesting
+  List<String> debugGoals(List<SportEvent> events) =>
+      _goalsIn(events).map((SportEvent e) => e.id).toList();
+
+  @visibleForTesting
+  void debugResetGoals() {
+    _lastTotals.clear();
+    _goalBaseline = false;
+  }
+
+  @visibleForTesting
+  bool get debugBaselineDone => _goalBaseline;
 }

@@ -2105,5 +2105,10 @@
   "sportRugby": "Rugby",
   "sportBaseball": "Béisbol",
   "sportLiveNow": "En directo ahora",
-  "sportWomen": "Femenino"
+  "sportWomen": "Femenino",
+  "sportGoalTitle": "¡GOL! ⚽",
+  "notifChannelGoalName": "Goles en directo",
+  "notifChannelGoalDesc": "El rugido del público cuando se marca un gol en un partido que sigues",
+  "notifGoalSoundTitle": "Rugido del público en los goles",
+  "notifGoalSoundSubtitle": "El estadio estalla cuando se marca un gol en un partido que sigues"
 }

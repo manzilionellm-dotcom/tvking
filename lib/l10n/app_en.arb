@@ -2122,5 +2122,10 @@
   "sportRugby": "Rugby",
   "sportBaseball": "Baseball",
   "sportLiveNow": "Live now",
-  "sportWomen": "Women"
+  "sportWomen": "Women",
+  "sportGoalTitle": "GOAL! ⚽",
+  "notifChannelGoalName": "Live goals",
+  "notifChannelGoalDesc": "The crowd roar when a goal is scored in a match you follow",
+  "notifGoalSoundTitle": "Crowd roar on goals",
+  "notifGoalSoundSubtitle": "The stadium erupts when a goal is scored in a match you follow"
 }

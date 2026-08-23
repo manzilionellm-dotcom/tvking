@@ -167,10 +167,113 @@ void main() {
     });
 
     test('un identifiant vide ne rapproche rien', () {
+      // (voir groupe suivant pour la détection de but)
       // Sans ce garde-fou, tous les matchs sans identifiant se
       // seraient reconnus entre eux.
       LiveScoresService.instance.debugSeed(<SportEvent>[ev(id: '')]);
       expect(LiveScoresService.instance.forId(''), isNull);
+    });
+  });
+
+  group('Détection du but (le « wouaaah »)', () {
+    final LiveScoresService s = LiveScoresService.instance;
+
+    setUp(s.debugResetGoals);
+
+    test('LE PIÈGE : le premier tour n\'annonce RIEN', () {
+      // Sans état antérieur, TOUS les matchs en cours semblent venir de
+      // marquer. On ouvrirait l'app et on recevrait vingt cris d'un
+      // coup. Le premier passage doit seulement APPRENDRE.
+      final List<String> r = s.debugGoals(<SportEvent>[
+        ev(id: 'a', homeScore: '2', awayScore: '1'),
+        ev(id: 'b', homeScore: '0', awayScore: '3'),
+      ]);
+      expect(r, isEmpty);
+      expect(s.debugBaselineDone, isTrue);
+    });
+
+    test('un score qui MONTE est un but', () {
+      s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '0', awayScore: '0')]);
+      final List<String> r = s.debugGoals(
+          <SportEvent>[ev(id: 'a', homeScore: '1', awayScore: '0')]);
+      expect(r, <String>['a']);
+    });
+
+    test('un score INCHANGÉ ne déclenche rien', () {
+      s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '1', awayScore: '0')]);
+      expect(
+        s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '1', awayScore: '0')]),
+        isEmpty,
+      );
+    });
+
+    test('un score qui BAISSE ne déclenche rien, et est mémorisé', () {
+      // But refusé après vidéo, correction d'arbitrage, ou simplement
+      // une donnée amont qui hoquette. On se tait — puis on repart de
+      // la NOUVELLE valeur, sinon le prochain retour à 1-0 serait
+      // annoncé comme un but qui n'a jamais eu lieu.
+      s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '1', awayScore: '0')]);
+      expect(
+        s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '0', awayScore: '0')]),
+        isEmpty,
+      );
+      expect(
+        s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '1', awayScore: '0')]),
+        <String>['a'],
+        reason: 'le retour à 1-0 est un vrai but par rapport à 0-0',
+      );
+    });
+
+    test('un match VU POUR LA PREMIÈRE FOIS en cours de route est muet', () {
+      // Un match qui commence pendant qu'on regarde ailleurs arrive
+      // déjà à 1-0. Ce n'est pas un but qu'on vient de voir : c'est un
+      // match qu'on découvre.
+      s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '0', awayScore: '0')]);
+      final List<String> r = s.debugGoals(<SportEvent>[
+        ev(id: 'a', homeScore: '0', awayScore: '0'),
+        ev(id: 'nouveau', homeScore: '1', awayScore: '0'),
+      ]);
+      expect(r, isEmpty);
+    });
+
+    test('un score ILLISIBLE ne déclenche rien et n\'efface pas la mémoire',
+        () {
+      s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '1', awayScore: '0')]);
+      // Score absent : l'amont hoquette. On ne devine pas, on ne crie
+      // pas — et surtout on ne prend pas ce trou pour un 0-0.
+      expect(s.debugGoals(<SportEvent>[ev(id: 'a')]), isEmpty);
+      expect(
+        s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '1', awayScore: '0')]),
+        isEmpty,
+        reason: 'le match réapparaît au score connu : ce n\'est pas un but',
+      );
+    });
+
+    test('deux buts simultanés sont TOUS DEUX détectés', () {
+      // La détection les voit tous les deux ; c'est l'appelant qui ne
+      // joue qu'un seul son, pour que deux « wouaaah » ne se
+      // chevauchent pas. La distinction compte : on ne PERD pas
+      // l'information, on choisit seulement de ne pas la crier deux
+      // fois.
+      s.debugGoals(<SportEvent>[
+        ev(id: 'a', homeScore: '0', awayScore: '0'),
+        ev(id: 'b', homeScore: '0', awayScore: '0'),
+      ]);
+      final List<String> r = s.debugGoals(<SportEvent>[
+        ev(id: 'a', homeScore: '1', awayScore: '0'),
+        ev(id: 'b', homeScore: '0', awayScore: '1'),
+      ]);
+      expect(r, <String>['a', 'b']);
+    });
+
+    test('le but de l\'ÉQUIPE EXTÉRIEURE compte aussi', () {
+      // On compare le TOTAL des deux scores : un but est un but, peu
+      // importe qui l'a marqué.
+      s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '1', awayScore: '0')]);
+      expect(
+        s.debugGoals(<SportEvent>[ev(id: 'a', homeScore: '1', awayScore: '1')]),
+        <String>['a'],
+      );
     });
   });
 }

@@ -2105,5 +2105,10 @@
   "sportRugby": "Raga",
   "sportBaseball": "Besiboli",
   "sportLiveNow": "Moja kwa moja",
-  "sportWomen": "Wanawake"
+  "sportWomen": "Wanawake",
+  "sportGoalTitle": "BAO! ⚽",
+  "notifChannelGoalName": "Mabao moja kwa moja",
+  "notifChannelGoalDesc": "Shangwe za mashabiki bao linapofungwa katika mechi unayofuatilia",
+  "notifGoalSoundTitle": "Shangwe za mashabiki bao linapofungwa",
+  "notifGoalSoundSubtitle": "Uwanja unalipuka bao linapofungwa katika mechi unayofuatilia"
 }

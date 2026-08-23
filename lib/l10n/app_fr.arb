@@ -4958,5 +4958,25 @@
   "sportWomen": "Féminin",
   "@sportWomen": {
     "description": "Etiquette signalant une competition feminine"
+  },
+  "sportGoalTitle": "BUT ! ⚽",
+  "@sportGoalTitle": {
+    "description": "Titre de la notification quand un but est marque"
+  },
+  "notifChannelGoalName": "Buts en direct",
+  "@notifChannelGoalName": {
+    "description": "Nom du canal Android dedie aux buts"
+  },
+  "notifChannelGoalDesc": "Le cri de la foule quand un but est marqué dans un match que vous suivez",
+  "@notifChannelGoalDesc": {
+    "description": "Description du canal Android dedie aux buts"
+  },
+  "notifGoalSoundTitle": "Cri de la foule sur un but",
+  "@notifGoalSoundTitle": {
+    "description": "Titre de l interrupteur du son de but"
+  },
+  "notifGoalSoundSubtitle": "Le stade explose quand un but est marqué dans un match que vous suivez",
+  "@notifGoalSoundSubtitle": {
+    "description": "Sous-titre de l interrupteur du son de but"
   }
 }

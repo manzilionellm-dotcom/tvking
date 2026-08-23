@@ -53,6 +53,33 @@ class NotificationService {
   static String get _channelDesc => l10nNow.notifChannelRemindersDesc;
 
   // Canal "général" : annonces de l'admin + dispo des mises à jour.
+  //  BUT MARQUÉ — canal séparé, avec SON PROPRE SON.
+  //
+  //  Pourquoi un canal à part et pas simplement une notification de
+  //  plus : sous Android, le son est une propriété du CANAL, pas du
+  //  message. Le seul moyen d'avoir le « wouaaah » de foule sur les
+  //  buts, et le son normal partout ailleurs, est d'avoir deux canaux.
+  //
+  //  ⚠ UN CANAL EST IMMUABLE UNE FOIS CRÉÉ. Android ignore toute
+  //  modification ultérieure (son, importance, vibration) tant que
+  //  l'application n'est pas désinstallée. Si un jour on change le
+  //  fichier son, il faudra CHANGER AUSSI L'IDENTIFIANT — d'où le
+  //  suffixe `_v1`. Sans lui, les clients déjà installés garderaient
+  //  l'ancien son pour toujours, et on chercherait longtemps pourquoi.
+  //
+  //  Et c'est le client qui reste maître : ce canal apparaît seul dans
+  //  les réglages Android, il peut le couper sans perdre les autres
+  //  notifications.
+  static const String _goalChannelId = 'goal_roar_v1';
+  static String get _goalChannelName => l10nNow.notifChannelGoalName;
+  static String get _goalChannelDesc => l10nNow.notifChannelGoalDesc;
+
+  /// Nom du fichier son, SANS extension : c'est ainsi qu'Android
+  /// désigne une ressource `res/raw/`. Le fichier est fabriqué par
+  /// `tools/make_goal_sound.py` — il n'est pas téléchargé, donc aucune
+  /// licence tierce n'est engagée dans une application publiée.
+  static const String _goalSound = 'goal_roar';
+
   static const String _generalChannelId = 'general_news';
   static String get _generalChannelName => l10nNow.notifChannelGeneralName;
   static String get _generalChannelDesc => l10nNow.notifChannelGeneralDesc;
@@ -65,6 +92,10 @@ class NotificationService {
   static const String prefReminders = 'notif.reminders.enabled';
   static const String prefAnnouncements = 'notif.announcements.enabled';
   static const String prefAppUpdates = 'notif.appupdates.enabled';
+
+  /// Le « wouaaah » de foule quand un but est marqué dans un match
+  /// SUIVI. Activé par défaut comme les autres, et coupable seul.
+  static const String prefGoalSound = 'notif.goalsound.enabled';
 
   /// Lit un interrupteur (défaut = activé).
   Future<bool> isEnabled(String key, {bool def = true}) async {
@@ -131,6 +162,21 @@ class NotificationService {
           description: _generalChannelDesc,
           importance: Importance.defaultImportance,
           enableVibration: false,
+        ),
+      );
+      //  Canal BUT : importance haute et son personnalisé. C'est le
+      //  seul endroit de l'app où on assume d'être bruyant — un but
+      //  dans un match qu'on a CHOISI de suivre, ça se fête.
+      //  `playSound: true` est explicite (et non implicite) parce que
+      //  c'est toute la raison d'être de ce canal.
+      await android?.createNotificationChannel(
+        AndroidNotificationChannel(
+          _goalChannelId,
+          _goalChannelName,
+          description: _goalChannelDesc,
+          importance: Importance.high,
+          playSound: true,
+          sound: const RawResourceAndroidNotificationSound(_goalSound),
         ),
       );
 
@@ -261,6 +307,50 @@ class NotificationService {
       );
     } catch (e) {
       if (kDebugMode) debugPrint('[Notif] show: $e');
+    }
+  }
+
+  /// BUT MARQUÉ dans un match suivi. Le seul point de l'application qui
+  /// utilise le canal sonore dédié.
+  ///
+  /// Gardé par son propre interrupteur : quelqu'un qui veut les alertes
+  /// de match sans le « wouaaah » doit pouvoir l'avoir.
+  Future<void> notifyGoal({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    if (!await isEnabled(prefGoalSound)) return;
+    await init();
+    if (!_ready) return;
+    await requestPermission();
+    try {
+      await _plugin.show(
+        id,
+        title,
+        body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _goalChannelId,
+            _goalChannelName,
+            channelDescription: _goalChannelDesc,
+            importance: Importance.high,
+            priority: Priority.high,
+            playSound: true,
+            sound: const RawResourceAndroidNotificationSound(_goalSound),
+            // Le son PORTE déjà l'émotion. Y ajouter une vibration
+            // ferait sursauter sans rien apprendre de plus.
+            enableVibration: false,
+            // `timeoutAfter` : la notification s'efface d'elle-même au
+            // bout de 10 min. Un score est périssable — retrouver
+            // « 1-0 » dans son volet trois heures plus tard, alors que
+            // le match est fini 3-2, est pire que ne rien avoir reçu.
+            timeoutAfter: 600000,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Notif] goal: $e');
     }
   }
 

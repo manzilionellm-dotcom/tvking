@@ -38,6 +38,7 @@ class _NotificationsSettingsScreenState
   bool? _appUpdates;
   /// Alertes des GRANDS MATCHS (demande propriétaire du 22/08).
   bool? _matches;
+  bool? _goalSound;
 
   @override
   void initState() {
@@ -51,12 +52,14 @@ class _NotificationsSettingsScreenState
     final bool a = await n.isEnabled(NotificationService.prefAnnouncements);
     final bool u = await n.isEnabled(NotificationService.prefAppUpdates);
     final bool m = await n.isEnabled(MatchAlertsService.prefMatches);
+    final bool g = await n.isEnabled(NotificationService.prefGoalSound);
     if (!mounted) return;
     setState(() {
       _reminders = r;
       _announcements = a;
       _appUpdates = u;
       _matches = m;
+      _goalSound = g;
     });
   }
 
@@ -67,6 +70,7 @@ class _NotificationsSettingsScreenState
       if (key == NotificationService.prefAnnouncements) _announcements = value;
       if (key == NotificationService.prefAppUpdates) _appUpdates = value;
       if (key == MatchAlertsService.prefMatches) _matches = value;
+      if (key == NotificationService.prefGoalSound) _goalSound = value;
     });
     await NotificationService.instance.setEnabled(key, value);
   }
@@ -120,6 +124,19 @@ class _NotificationsSettingsScreenState
             subtitle: context.l10n.notifMatchSoonTitle,
             value: _matches,
             onChanged: (bool v) => _set(MatchAlertsService.prefMatches, v),
+          ),
+          // LE « WOUAAAH » DE BUT. Interrupteur SÉPARÉ, volontairement :
+          // c'est la seule notification de l'app qui fasse du bruit fort.
+          // Quelqu'un peut vouloir suivre ses matchs SANS que son
+          // téléphone crie dans un bureau — et doit pouvoir le couper
+          // sans perdre les alertes de match.
+          _NotifSwitch(
+            icon: Icons.celebration_rounded,
+            title: context.l10n.notifGoalSoundTitle,
+            subtitle: context.l10n.notifGoalSoundSubtitle,
+            value: _goalSound,
+            onChanged: (bool v) =>
+                _set(NotificationService.prefGoalSound, v),
           ),
         ],
       ),

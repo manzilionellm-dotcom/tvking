@@ -2105,5 +2105,10 @@
   "sportRugby": "Rugby",
   "sportBaseball": "Baseball",
   "sportLiveNow": "Lige nu",
-  "sportWomen": "Kvinder"
+  "sportWomen": "Kvinder",
+  "sportGoalTitle": "MÅL! ⚽",
+  "notifChannelGoalName": "Mål live",
+  "notifChannelGoalDesc": "Publikums brøl når der scores i en kamp, du følger",
+  "notifGoalSoundTitle": "Publikums brøl ved mål",
+  "notifGoalSoundSubtitle": "Stadion eksploderer, når der scores i en kamp, du følger"
 }
