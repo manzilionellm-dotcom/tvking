@@ -7,6 +7,89 @@
 
 ---
 
+## Session (2026-08-23) — Windows : installeur régénérable, identité du binaire, installation machine
+
+Branche : `claude/7motion-android-tv-compat-e0rtyp`.
+
+### 0. Le problème de fond : un installeur ORPHELIN
+`7MOTION-Setup.exe`, servi par `/win` et soumis au Microsoft Store, avait été
+fabriqué **à la main le 7 août** ; la chaîne de build, elle, ne produisait
+qu'un `.zip`. **Rien ne le régénérait.** L'app avançait, l'installeur restait
+figé, et publier une mise à jour Windows était devenu impossible sans casser
+soit la distribution directe, soit la soumission en revue.
+
+→ `windows/installer/7motion.iss` (Inno Setup) + une étape dans
+`build-windows.yml`. Le nom du fichier **porte la version**
+(`7MOTION-Setup-<x.y.z.run>.exe`), ce qui permet des URL **immuables** —
+exigence explicite du Store : *« The binary associated with that URL must not
+change after submission »*. L'alias `/win` reste libre d'évoluer ; une route
+Worker `/win/<version>/7motion-setup.exe` sert les liens figés.
+
+⚠️ `/win` reste **gelé** sur le fichier du 7 août (`9162cbb8…5cda`, 348
+téléchargements) tant que la soumission est en revue. Ne pas le bouger.
+
+### 1. Les trois « ❓ » du rapport de certification
+Microsoft n'a pas rendu un échec, il n'a **pas conclu du tout** :
+*« We could not identify the app name and the publisher name that your app
+has added in the add or remove programs »* (silent install, entrée
+add/remove, bundleware). Deux causes, mesurées et non supposées :
+
+- **Métadonnées.** Lecture de l'en-tête PE du binaire publié :
+  `CompanyName = com.manzilionellm.tvking`, `ProductName = tv_king`. Le
+  modèle Flutter écrit l'identifiant de paquet à la place de l'éditeur. Le
+  robot cherche « 7 MOTION » et trouve « tv_king » : il ne peut pas corréler
+  l'entrée « Applications installées » avec la fiche du Store.
+  → réécriture de `windows/runner/Runner.rc` **après** `flutter create` (le
+  dossier natif est régénéré à chaque build, ce fichier ne peut pas vivre
+  dans le dépôt). Vérifié présent dans le build **0.3.3.449**.
+- **Mode d'installation.** `PrivilegesRequired=lowest` installait PAR
+  UTILISATEUR et écrivait l'entrée ARP dans **HKCU**. Le bac à sable de
+  Microsoft inspecte **HKLM**, sous un autre compte : il n'y trouvait rien.
+  Corriger les métadonnées n'aurait pas suffi — le scanner ne trouvait même
+  pas l'entrée à lire. → `PrivilegesRequired=admin`, avec
+  `PrivilegesRequiredOverridesAllowed=commandline` pour garder `/CURRENTUSER`
+  disponible. L'argument « un UAC de moins » ne tenait pas : la doc Microsoft
+  autorise explicitement la boîte UAC pendant une installation silencieuse.
+
+### 2. Trois garde-fous, sur ce qui est RÉELLEMENT mesurable
+Une réécriture qui échoue **en silence** coûte un cycle de certification
+entier avant qu'on s'en aperçoive. Donc :
+1. `Runner.rc` contient bien les chaînes (sinon `throw`) ;
+2. **le binaire compilé les PORTE** — on lit l'en-tête de version *là où
+   Microsoft la lit*, pas le fichier texte source ;
+3. **l'installeur porte les siennes** — `7MOTION-Setup.exe` et `tv_king.exe`
+   ont des métadonnées INDÉPENDANTES : ce sont celles de l'installeur que le
+   client voit dans la boîte UAC et dans SmartScreen. Corriger `Runner.rc`
+   ne les corrigeait pas.
+
+**Limite assumée et documentée** : `PrivilegesRequired` ne laisse aucune
+trace vérifiable dans le binaire (Inno embarque un manifeste `asInvoker` et
+décide de l'élévation à l'exécution — c'est ce qui permet `/CURRENTUSER`).
+On verrouille donc la **source**, pas le binaire, et le commentaire le dit.
+
+### 3. Codes de retour — une erreur corrigée
+J'avais d'abord écrit de déclarer **1641 et 3010** à Microsoft. **C'est
+faux** : ce sont des conventions de Windows Installer ; Inno ne les émet que
+si on lui passe `/RESTARTEXITCODE`, ce que nous ne faisons pas. Les déclarer
+serait déclarer du faux sur un point qu'un relecteur peut tester. La liste
+exacte d'Inno est 0–8 ; les scénarios sans code dédié restent **vides** (un
+champ vide ne bloque pas la certification, un champ faux si).
+
+### 4. Signature
+L'installeur sort **non signé** (vérifié : répertoire de sécurité PE de
+taille nulle). SmartScreen affichera « Windows a protégé votre PC ». La
+directive `SignTool` est en place, commentée, prête à s'activer le jour où un
+certificat existera — rien d'autre ne changera.
+
+### 5. Reste à faire (côté propriétaire)
+- Test d'installation silencieuse sur une VM Windows 11 propre
+  (`Start-Process -PassThru` puis `.ExitCode` — `$LASTEXITCODE` n'est **pas**
+  renseigné par `Start-Process`), puis vérifier l'entrée ARP dans **HKLM**.
+- Verdict Microsoft attendu **mer. 26 – jeu. 27 août**. Ne PAS annuler ni
+  resoumettre la revue en cours.
+
+---
+
 ## Session (2026-08-15) — Bascule des modèles d'accueil A↔B + durcissement du Modèle A
 
 Décision du propriétaire : le modèle « grandes tuiles » (ex-Modèle B) est le
