@@ -174,6 +174,48 @@ jobs:
           CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: flutter build windows --release --target=lib/main_windows.dart
 
+      # =========================================================
+      #  GARDE-FOU 1/2 — le BINAIRE COMPILÉ, pas seulement la source
+      # =========================================================
+      #  L'étape « Identité du binaire » plus haut vérifie que Runner.rc
+      #  CONTIENT les bonnes chaînes. Ce n'est pas la même chose que de
+      #  vérifier que le .exe les PORTE : entre les deux il y a le
+      #  compilateur de ressources, et une réécriture qui passerait le
+      #  test sur le fichier texte pourrait tout de même ne pas atterrir
+      #  dans le binaire (mauvais encodage, bloc de ressources ignoré,
+      #  ressource écrasée par un plugin…).
+      #
+      #  On lit donc les métadonnées LÀ OÙ MICROSOFT LES LIT : dans
+      #  l'en-tête de version du fichier produit. C'est exactement la
+      #  mesure qui avait révélé le problème d'origine
+      #  (CompanyName = com.manzilionellm.tvking, ProductName = tv_king).
+      - name: Vérifier les métadonnées de tv_king.exe (binaire compilé)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = "build/windows/x64/runner/Release/tv_king.exe"
+          if (!(Test-Path $exe)) { throw "Binaire introuvable : $exe" }
+          $vi = (Get-Item $exe).VersionInfo
+          Write-Host "CompanyName     = $($vi.CompanyName)"
+          Write-Host "ProductName     = $($vi.ProductName)"
+          Write-Host "FileDescription = $($vi.FileDescription)"
+          Write-Host "LegalCopyright  = $($vi.LegalCopyright)"
+
+          # Attendus EXACTS. Une comparaison stricte, pas un `-like` :
+          # « 7 MOTION quelque chose » ne doit pas passer pour « 7 MOTION ».
+          $attendus = @{
+            CompanyName     = '7 MOTION'
+            ProductName     = '7 MOTION'
+            FileDescription = '7 MOTION'
+          }
+          foreach ($k in $attendus.Keys) {
+            $lu = $vi.$k
+            if ($lu -ne $attendus[$k]) {
+              throw "tv_king.exe : $k vaut « $lu », attendu « $($attendus[$k]) ». Le robot du Store ne pourra PAS identifier l'editeur."
+            }
+          }
+          Write-Host "OK — le binaire compile porte bien l'identite 7 MOTION."
+
       # Empaquetage : on zippe TOUT le dossier Release (l'.exe a besoin de ses
       # .dll voisines, dont libmpv). Compress-Archive est natif à PowerShell.
       - name: Package Release folder into .zip
@@ -223,6 +265,25 @@ jobs:
           }
           if (!(Test-Path $iscc)) { throw "ISCC.exe introuvable après installation" }
 
+          # GARDE-FOU DE SOURCE — le mode d'installation.
+          #
+          #  `PrivilegesRequired=lowest` installe PAR UTILISATEUR et écrit
+          #  l'entrée « Applications installées » dans HKCU. Le bac à sable
+          #  de Microsoft inspecte HKLM, sous un autre compte : il ne voit
+          #  alors rien et rend « We could not identify the app name and
+          #  the publisher name ». C'est l'explication la plus probable
+          #  des trois indéterminations du rapport de certification.
+          #
+          #  Cette directive ne laisse AUCUNE trace vérifiable dans le
+          #  binaire produit : Inno embarque un manifeste « asInvoker » et
+          #  décide de l'élévation À L'EXÉCUTION (c'est précisément ce qui
+          #  permet à /CURRENTUSER de fonctionner). On ne peut donc pas la
+          #  mesurer sur le .exe — on verrouille la SOURCE, et on le dit.
+          $iss = Get-Content "windows\installer\7motion.iss" -Raw
+          if ($iss -notmatch '(?m)^\s*PrivilegesRequired\s*=\s*admin\s*$') {
+            throw "7motion.iss : PrivilegesRequired doit valoir admin (installation machine, entree ARP dans HKLM)."
+          }
+
           & $iscc "/DAppVersion=$ver" "/O." "windows\installer\7motion.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup a échoué ($LASTEXITCODE)" }
 
@@ -230,6 +291,50 @@ jobs:
           if (!(Test-Path $exe)) { throw "Installeur introuvable : $exe" }
           Get-Item $exe | Format-Table Name, Length
           (Get-FileHash $exe -Algorithm SHA256).Hash
+
+          # =========================================================
+          #  GARDE-FOU 2/2 — les métadonnées de L'INSTALLEUR lui-même
+          # =========================================================
+          #  Le client ne voit PAS d'abord tv_king.exe : il voit
+          #  7MOTION-Setup.exe, dans la boîte UAC et dans l'écran
+          #  SmartScreen. Ces deux binaires ont des métadonnées
+          #  INDÉPENDANTES — corriger Runner.rc ne corrige rien ici, et
+          #  c'est exactement le trou qu'on bouche.
+          #
+          #  Sans ce contrôle, une faute de frappe dans une directive
+          #  VersionInfo* du .iss passerait sans bruit : Inno n'échoue pas
+          #  pour une métadonnée manquante, il produit simplement un
+          #  installeur anonyme — et on repartirait pour un cycle de
+          #  certification complet pour s'en apercevoir.
+          $svi = (Get-Item $exe).VersionInfo
+          Write-Host "--- metadonnees de l'installeur ---"
+          Write-Host "CompanyName     = $($svi.CompanyName)"
+          Write-Host "ProductName     = $($svi.ProductName)"
+          Write-Host "FileDescription = $($svi.FileDescription)"
+          Write-Host "ProductVersion  = $($svi.ProductVersion)"
+          Write-Host "LegalCopyright  = $($svi.LegalCopyright)"
+
+          $attSetup = @{
+            CompanyName     = '7 MOTION'
+            ProductName     = '7 MOTION'
+            FileDescription = '7 MOTION Setup'
+          }
+          foreach ($k in $attSetup.Keys) {
+            $lu = $svi.$k
+            if ($lu -ne $attSetup[$k]) {
+              throw "Installeur : $k vaut « $lu », attendu « $($attSetup[$k]) »."
+            }
+          }
+          # La version affichée doit être CELLE DU BUILD. Un installeur qui
+          # annoncerait 0.0.0 serait le repli du .iss : signe que
+          # /DAppVersion n'est pas arrivé jusqu'au compilateur.
+          if ($svi.ProductVersion -notlike "$ver*") {
+            throw "Installeur : ProductVersion vaut « $($svi.ProductVersion) », attendu « $ver »."
+          }
+          if ($svi.LegalCopyright -notmatch '7 MOTION') {
+            throw "Installeur : LegalCopyright ne mentionne pas l'editeur."
+          }
+          Write-Host "OK — l'installeur porte son identite et sa version."
 
           # CONTRÔLE DE SIGNATURE — informatif, jamais bloquant. Tant
           # qu'aucun certificat n'existe, l'installeur sort non signé et

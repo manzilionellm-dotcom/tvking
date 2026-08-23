@@ -100,18 +100,46 @@ DisableReadyPage=yes
 ; Desinstallation silencieuse declaree : sans QuietUninstallString, le
 ; Store ne peut pas desinstaller proprement l'application.
 Uninstallable=yes
-; INSTALLATION PAR UTILISATEUR, pas pour toute la machine : evite la
-; demande d'elevation UAC. Un avertissement de moins pour le client,
-; et l'installation silencieuse fonctionne sans droits administrateur.
-PrivilegesRequired=lowest
+;  INSTALLATION POUR TOUTE LA MACHINE — choix REVU le 23/08.
+;
+;  J'avais d'abord mis `lowest` pour eviter l'elevation UAC : un
+;  avertissement de moins pour le client. C'etait un mauvais calcul
+;  pour une app soumise au Store, et voici pourquoi.
+;
+;  Avec `lowest`, Inno installe PAR UTILISATEUR et ecrit l'entree
+;  « Applications installees » dans HKCU. Le bac a sable de Microsoft
+;  inspecte HKLM, et sous un autre compte : il ne voit alors RIEN, et
+;  rend « We could not identify the app name and the publisher name »
+;  — exactement les trois indeterminations du rapport de
+;  certification. Le correctif des metadonnees ne suffirait pas :
+;  le scanner ne trouverait toujours pas l'entree.
+;
+;  Et l'argument UAC ne tient pas : la documentation Microsoft
+;  l'autorise explicitement pendant une installation silencieuse —
+;  « Initiating the install must not display an installation user
+;  interface (i.e., silent install is required), however a User
+;  Account Control (UAC) dialog is allowed. »
+;
+;  `PrivilegesRequiredOverridesAllowed=commandline` garde la porte
+;  ouverte : /CURRENTUSER permet toujours une installation sans
+;  droits administrateur a qui en a besoin.
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=commandline
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExeName}
 ; Le Store lit ces metadonnees pour l'entree « Applications installees ».
+;  Ces champs sont ceux que Windows affiche dans la boite UAC et dans
+;  l'ecran SmartScreen — donc ce que le client voit VRAIMENT au moment
+;  d'installer. Ils sont INDEPENDANTS de ceux de l'application : les
+;  corriger dans Runner.rc ne les corrige pas ici.
 VersionInfoVersion={#AppVersion}
+VersionInfoProductVersion={#AppVersion}
 VersionInfoCompany={#AppPublisher}
 VersionInfoProductName={#AppName}
+VersionInfoDescription={#AppName} Setup
+VersionInfoCopyright=Copyright (C) 2026 {#AppPublisher}. All rights reserved.
 
 ; SIGNATURE — a activer le jour ou un certificat existe. Rien d'autre
 ; ne changera dans ce fichier ni dans la chaine de build.
