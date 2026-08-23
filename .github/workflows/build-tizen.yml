@@ -295,6 +295,30 @@ jobs:
             autosign
           fi
           echo "SIGNED_WITH_AUTHOR=$SIGNED_WITH_AUTHOR" >> "$GITHUB_ENV"
+          # ═══════════════════════════════════════════════════════════
+          #  LIGNE ROUGE SAMSUNG (rapport Seller Office du 23/08)
+          # ═══════════════════════════════════════════════════════════
+          #  Règle du portail, Guide > Self Checklist :
+          #    « (Version-Up) Author signature information must be same
+          #      with previous version. »
+          #  Autrement dit : une mise à jour signée d'un AUTRE certificat
+          #  auteur est rejetée AUTOMATIQUEMENT. Or le repli auto-signé
+          #  ci-dessus fabrique justement un certificat jetable — et il ne
+          #  posait qu'un simple `warning`, que personne ne lit dans un
+          #  journal de 300 lignes. On serait donc parti soumettre un
+          #  paquet condamné d'avance, sans le savoir.
+          #
+          #  Désormais : si le secret EXISTE mais a été refusé, le build
+          #  ÉCHOUE. Mieux vaut pas de .tpk du tout qu'un .tpk qui sera
+          #  rejeté par Samsung.
+          #
+          #  Le repli reste toléré dans UN seul cas : aucun secret du tout
+          #  (fork, ou validation de la chaîne de compilation) — là, on ne
+          #  visait de toute façon pas une soumission.
+          if [ -n "$AUTHOR_P12" ] && [ "$SIGNED_WITH_AUTHOR" != "1" ]; then
+            echo "::error title=Certificat auteur refusé::Le secret SAMSUNG_AUTHOR_P12_BASE64 est présent mais n'a PAS pu signer. Un .tpk auto-signé serait REJETÉ automatiquement par Samsung (l'identité de signature doit être identique à celle de la version précédente). Build arrêté volontairement."
+            exit 1
+          fi
           "$TZ" cli-config "profiles.path=$PROFILES" || true
           SCRIPT
           dbus-run-session -- bash "$RUNNER_TEMP/sign-profile.sh"
