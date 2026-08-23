@@ -543,7 +543,12 @@ const _SPORTSDB_HOST = 'https://www.thesportsdb.com/api/v1/json';
 
 export function _sportsBase(env) {
   const k = (env && env.SPORTSDB_KEY ? String(env.SPORTSDB_KEY) : '').trim();
-  return `${_SPORTSDB_HOST}/${k || '3'}`;
+  // Repli : « 123 » est la clé de démo PUBLIQUE documentée aujourd'hui
+  // (« 3 » était l'ancienne). Les deux sont partagées par le monde
+  // entier et limitées PAR ADRESSE IP — donc inutilisables depuis un
+  // Worker, dont l'adresse de sortie est mutualisée. Ce repli n'existe
+  // que pour ne pas fabriquer une URL cassée quand le secret manque.
+  return `${_SPORTSDB_HOST}/${k || '123'}`;
 }
 let _sportsTeamCache = {};   // idTeam -> { at, data }
 let _sportsSearchCache = {}; // requete(min) -> { at, data }
@@ -975,10 +980,34 @@ export function _dayStamp(nowMs, offset) {
 // GET /api/sports/big → { matches: [ev…], sports: […] } — les affiches des
 // 3 prochains jours, TOUS SPORTS, triées par coup d'envoi. Même forme
 // d'événement que /api/sports/team/:id : l'app réutilise son parseur.
+//  Cle du cache d'ARETE. Ce n'est pas une vraie URL publique : l'API Cache
+//  exige une Request, on lui en fabrique une, purement interne.
+const _BIG_CACHE_KEY = 'https://sports-cache.internal/api/sports/big/v2';
+
 async function handleSportsBig(env) {
   const now = Date.now();
+  // NIVEAU 1 — memoire de CET isolat. Gratuit et instantane.
   if (_bigMatchesCache && now - _bigMatchesCache.at < 1800000) {
     return json(_bigMatchesCache.data);
+  }
+  //  NIVEAU 2 — cache d'ARETE, PARTAGE entre isolats.
+  //
+  //  POURQUOI IL A FALLU L'AJOUTER : le cache memoire ci-dessus est une
+  //  variable de module, donc propre a chaque isolat. Cloudflare en fait
+  //  tourner beaucoup, un peu partout — chaque isolat froid refaisait
+  //  donc ses 24 appels en amont. Avec une cle payante limitee a
+  //  100 requetes/minute, quelques isolats froids simultanes suffisaient
+  //  a re-declencher le 429 qu'on venait justement de payer pour eviter.
+  //  Ce niveau ramene le cout reel a ~2 lots d'appels par demi-heure.
+  try {
+    const hit = await caches.default.match(new Request(_BIG_CACHE_KEY));
+    if (hit) {
+      const data = await hit.json();
+      _bigMatchesCache = { at: now, data }; // on rechauffe l'isolat au passage
+      return json(data);
+    }
+  } catch (_) {
+    // Cache indisponible : on continue vers l'amont. Jamais bloquant.
   }
   const names = new Set(
     Object.values(_BIG_TEAMS).filter(Boolean).map(_foldTeam),
@@ -1089,7 +1118,24 @@ async function handleSportsBig(env) {
   // Un lot 100 % en échec ne se met PAS en cache : sinon une salve de 429
   // gèle « aucune affiche » pendant 30 min alors que l'amont est peut-être
   // déjà revenu.
-  if (upstreamOk > 0) _bigMatchesCache = { at: now, data };
+  if (upstreamOk > 0) {
+    _bigMatchesCache = { at: now, data };
+    try {
+      await caches.default.put(
+        new Request(_BIG_CACHE_KEY),
+        new Response(JSON.stringify(data), {
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            // 30 min : meme duree que le cache memoire, pour que les deux
+            // niveaux expirent ensemble et ne se contredisent jamais.
+            'Cache-Control': 'public, max-age=1800',
+          },
+        }),
+      );
+    } catch (_) {
+      // Ecriture de cache impossible : tant pis, on a quand meme la reponse.
+    }
+  }
   return json(data);
 }
 

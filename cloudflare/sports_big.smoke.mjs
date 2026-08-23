@@ -92,9 +92,13 @@ ok(Object.values(_BIG_TEAMS).every((n) => _sameTeam(n, n)),
 //  de sortie mutualisée) elle répond 429 en permanence. Une vraie clé se
 //  pose en secret Worker. Ce bloc verrouille le fait qu'une clé vide, ou
 //  faite d'espaces, ne produise JAMAIS une URL cassée du type « /json/ ».
-ok(_sportsBase(undefined).endsWith('/3'), 'sans env → clé de démo');
-ok(_sportsBase({}).endsWith('/3'), 'env sans clé → clé de démo');
-ok(_sportsBase({ SPORTSDB_KEY: '   ' }).endsWith('/3'),
+//  Le repli est « 123 », la clé de démo publique documentée aujourd'hui —
+//  et non « 3 », qui était l'ancienne. Aucune des deux n'est utilisable
+//  depuis un Worker (limite PAR IP, adresse de sortie mutualisée) : ce
+//  repli sert uniquement à ne pas fabriquer une URL cassée.
+ok(_sportsBase(undefined).endsWith('/123'), 'sans env → clé de démo');
+ok(_sportsBase({}).endsWith('/123'), 'env sans clé → clé de démo');
+ok(_sportsBase({ SPORTSDB_KEY: '   ' }).endsWith('/123'),
   'clé faite d\'espaces → clé de démo (pas d\'URL cassée)');
 ok(_sportsBase({ SPORTSDB_KEY: ' 987654 ' }).endsWith('/987654'),
   'vraie clé utilisée, espaces retirés');
