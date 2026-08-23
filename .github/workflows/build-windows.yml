@@ -80,6 +80,59 @@ jobs:
       #   1) on enlève firebase_core / firebase_crashlytics du pubspec ;
       #   2) on remplace le SEUL fichier qui importe Firebase par un stub no-op
       #      (même API attachCrashlytics()) pour que la compilation passe.
+      # =========================================================
+      #  IDENTITÉ DU BINAIRE (Runner.rc) — ajouté le 23/08/2026
+      # =========================================================
+      #  Le rapport de certification du Microsoft Store a rendu TROIS
+      #  indéterminations :
+      #     « We could not identify the app name and the publisher name
+      #       that your app has added in the add or remove programs »
+      #  (silent install check, entry in add/remove programs, bundleware).
+      #
+      #  CAUSE, mesurée dans le binaire publié : le modèle Flutter écrit
+      #  l'identifiant de paquet et le nom interne du projet à la place
+      #  du vrai éditeur et du vrai produit.
+      #        CompanyName     = com.manzilionellm.tvking
+      #        ProductName     = tv_king
+      #        FileDescription = tv_king
+      #  Le robot Microsoft cherche « 7 MOTION » dans ces champs et
+      #  trouve « tv_king » : il ne peut donc PAS corréler l'entrée
+      #  « Applications installées » avec la fiche du Store. Il ne
+      #  conclut pas à un échec, il ne conclut PAS DU TOUT — et la
+      #  charge retombe sur le relecteur humain.
+      #
+      #  On réécrit donc ces champs APRÈS `flutter create` (le dossier
+      #  natif est régénéré à chaque build, ce fichier ne peut pas
+      #  vivre dans le dépôt).
+      - name: Identité du binaire (CompanyName / ProductName)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rc = 'windows/runner/Runner.rc'
+          if (!(Test-Path $rc)) { throw "Runner.rc introuvable : $rc" }
+          $t = Get-Content $rc -Raw -Encoding UTF8
+
+          # Chaque VALUE est réécrite individuellement : un remplacement
+          # global du mot « tv_king » casserait OriginalFilename, qui doit
+          # rester le VRAI nom du fichier (tv_king.exe).
+          $t = $t -replace '(VALUE\s+"CompanyName",\s*)"[^"]*"',      '$1"7 MOTION"'
+          $t = $t -replace '(VALUE\s+"ProductName",\s*)"[^"]*"',      '$1"7 MOTION"'
+          $t = $t -replace '(VALUE\s+"FileDescription",\s*)"[^"]*"',  '$1"7 MOTION"'
+          $t = $t -replace '(VALUE\s+"LegalCopyright",\s*)"[^"]*"',   '$1"Copyright (C) 2026 7 MOTION. All rights reserved."'
+          Set-Content $rc -Value $t -Encoding UTF8
+
+          Write-Host "--- VALUE apres reecriture ---"
+          Select-String -Path $rc -Pattern 'VALUE\s+"(CompanyName|ProductName|FileDescription|OriginalFilename|LegalCopyright)"'
+
+          # GARDE-FOU : si le modèle Flutter change de forme un jour, le
+          # remplacement échouerait EN SILENCE et on repartirait pour un
+          # cycle de certification avec les mêmes indéterminations.
+          foreach ($k in 'CompanyName','ProductName','FileDescription') {
+            if (-not (Select-String -Path $rc -Pattern "VALUE\s+`"$k`",\s*`"7 MOTION`"" -Quiet)) {
+              throw "$k n'a PAS ete reecrit — le modele Flutter a change de forme."
+            }
+          }
+
       - name: Exclure Firebase (inutile sur PC)
         shell: bash
         run: |

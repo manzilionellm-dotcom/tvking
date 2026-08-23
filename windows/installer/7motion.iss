@@ -21,14 +21,32 @@
 ;       s'affiche et le code de retour vaut 0. C'est l'exigence
 ;       « silent install » du Microsoft Store.
 ;
-;    2. CODES DE RETOUR CONNUS, a declarer dans la Partner Center :
-;         0    succes
-;         1    echec d'initialisation de l'installeur
-;         2    annule par l'utilisateur avant le debut de la copie
-;         3    erreur fatale pendant la preparation
-;         5    annule par l'utilisateur pendant l'installation
-;         1641 succes, un redemarrage a ete declenche
-;         3010 succes, un redemarrage est requis
+;    2. CODES DE RETOUR — liste EXACTE d'Inno Setup :
+;         0  succes
+;         1  echec d'initialisation de Setup
+;         2  annule par l'utilisateur avant le debut de l'installation
+;         3  erreur fatale pendant la preparation de la phase suivante
+;         4  erreur fatale pendant l'installation
+;         5  annule par l'utilisateur pendant l'installation
+;         6  Setup termine de force par le debogueur
+;         7  la phase « Preparing to Install » ne peut pas continuer
+;         8  la phase « Preparing to Install » exige un redemarrage
+;
+;       ⚠ CORRECTION (23/08) : j'avais d'abord ecrit que cet installeur
+;       renvoyait 1641 et 3010. C'EST FAUX. Ce sont des conventions de
+;       Windows Installer ; Inno ne les emet QUE si on lui passe
+;       /RESTARTEXITCODE=3010, ce que nous ne faisons pas. Les declarer
+;       a Microsoft reviendrait a declarer du faux sur un point qu'un
+;       relecteur peut tester. Ne pas les mettre.
+;
+;       Ce qu'on peut remplir honnetement dans la Partner Center :
+;         Installation successful          -> 0
+;         Installation cancelled by user   -> 2 et 5
+;         Reboot required                  -> 8
+;         Miscellaneous install failures   -> 1, 3, 4, 6, 7
+;       Les autres scenarios (disque plein, reseau, deja installe...)
+;       n'ont AUCUN code dedie dans Inno : on les laisse VIDES. Un champ
+;       vide ne bloque pas la certification ; un champ faux, si.
 ;
 ;    3. DESINSTALLATION propre, avec une entree « Applications
 ;       installees » au nom exact de l'editeur.
@@ -72,6 +90,16 @@ OutputBaseFilename=7MOTION-Setup-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; Le rapport de certification n'a pas pu CONSTATER l'installation
+; silencieuse. /VERYSILENT suffit en principe, mais on retire en plus
+; toute page susceptible de s'afficher : moins il reste de surfaces,
+; moins il reste de doute pour le robot comme pour le relecteur.
+DisableWelcomePage=yes
+DisableFinishedPage=yes
+DisableReadyPage=yes
+; Desinstallation silencieuse declaree : sans QuietUninstallString, le
+; Store ne peut pas desinstaller proprement l'application.
+Uninstallable=yes
 ; INSTALLATION PAR UTILISATEUR, pas pour toute la machine : evite la
 ; demande d'elevation UAC. Un avertissement de moins pour le client,
 ; et l'installation silencieuse fonctionne sans droits administrateur.
