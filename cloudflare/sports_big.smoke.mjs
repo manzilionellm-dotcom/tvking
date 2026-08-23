@@ -25,7 +25,8 @@
 // =========================================================
 import { _sameTeam, _isReserveOrWomen, _BIG_TEAMS, _sportsBase,
          _isMajorLeague, _dayStamp, _SPORTS,
-         _MAX_BIG_MATCHES } from './worker.js';
+         _MAX_BIG_MATCHES, _MAX_PER_LEAGUE,
+         _leagueTier, _isWomenLeague } from './worker.js';
 
 let pass = 0;
 let fail = 0;
@@ -122,6 +123,74 @@ ok(_isMajorLeague('UEFA Champions League'), 'Ligue des champions retenue');
 ok(_isMajorLeague('ATP Cincinnati'), 'tournoi ATP retenu');
 ok(_isMajorLeague('Formula 1'), 'F1 retenue');
 ok(_isMajorLeague('NHL'), 'NHL retenue');
+
+// ---------------------------------------------------------
+//  5-bis. CE QUE LES VRAIES DONNÉES ONT APPRIS (23/08/2026)
+// ---------------------------------------------------------
+//  Le jour où la clé payante est arrivée, l'amont est passé de 3 à
+//  1 005 événements sur 3 jours — 252 ligues distinctes. Le filtre s'est
+//  alors trompé DANS LES DEUX SENS, ce que la clé gratuite masquait
+//  complètement. Chaque cas ci-dessous a été CONSTATÉ, pas imaginé.
+
+//  a) Un nom de compétition prestigieux réutilisé par une petite
+//     fédération. La comparaison par mots entiers ne suffit pas : ici
+//     « premier league » EST présent, en entier.
+ok(!_isMajorLeague('Faroe Islands Premier League'),
+  'iles Feroe ecartees (nom de competition reutilise)');
+ok(!_isMajorLeague('Kazakhstan Premier League'), 'Kazakhstan ecarte');
+ok(!_isMajorLeague('English Northern Premier League Premier Division'),
+  'sixieme division anglaise ecartee');
+
+//  b) Les championnats RÉSERVE. Le rejet doit primer sur le nom
+//     prestigieux qui l'accompagne.
+ok(!_isMajorLeague('MLS Next Pro'), 'MLS Next Pro = reserve, ecarte');
+ok(!_isMajorLeague('NASCAR ARCA Series'), 'ARCA = ecole NASCAR, ecarte');
+
+//  c) LE VRAI MLS, qui était jeté parce que TheSportsDB ne l'écrit pas
+//     « MLS ». Un faux negatif est aussi grave qu'un faux positif.
+ok(_isMajorLeague('American Major League Soccer'), 'le VRAI MLS retenu');
+
+//  d) Les DEUXIÈMES divisions, attrapées par le début du nom.
+ok(!_isMajorLeague('Spanish La Liga 2'), 'Liga 2 ecartee');
+ok(_isMajorLeague('Spanish La Liga'), 'La Liga retenue');
+ok(!_isMajorLeague('Brazilian Serie B'), 'Serie B bresilienne ecartee');
+ok(_leagueTier('Brazilian Serie A') === 3, 'Serie A bresilienne = niveau 3');
+
+//  e) Une compétition FÉMININE confondue avec la masculine.
+//     « Italian Serie A Womens Cup » n'est PAS la Serie A.
+ok(!_isMajorLeague('Italian Serie A Womens Cup'),
+  'coupe feminine != championnat masculin');
+ok(_isWomenLeague('UEFA Womens Champions League'), 'competition feminine reconnue');
+ok(!_isWomenLeague('UEFA Champions League'), 'competition masculine non marquee');
+//  On ne CACHE pas le feminin : on le NOMME, et il reste affiche.
+ok(_leagueTier('UEFA Womens Champions League') > 0,
+  'la Ligue des champions feminine reste affichee');
+
+//  f) LE piège le plus coûteux : chaque confédération a sa « Champions
+//     League ». Un tour préliminaire de l'AFC raflait 16 des 60 places
+//     et éjectait la Premier League.
+ok(_leagueTier('UEFA Champions League') === 1, 'UEFA C1 = niveau 1');
+ok(_leagueTier('AFC Champions League') === 3, 'AFC = niveau 3, apres les sommets');
+//  Les versions feminines sont listees une par une : « AFC Womens
+//  Champions League » ne contient pas « afc champions league » d'un seul
+//  tenant. Sans cela elle disparaissait PAR ACCIDENT de comparaison.
+ok(_leagueTier('AFC Womens Champions League') === 3,
+  'AFC feminine = niveau 3 (par decision, pas par accident)');
+ok(_leagueTier('AFC Champions League') > _leagueTier('UEFA Champions League'),
+  'l AFC passe APRES l UEFA');
+
+//  g) Les niveaux doivent vraiment se classer, sinon le tri ne sert a rien.
+ok(_leagueTier('English Premier League') === 2, 'Premier League = niveau 2');
+ok(_leagueTier('Faroe Islands Premier League') === 0, 'niveau 0 = ecartee');
+ok(_leagueTier('') === 0 && _leagueTier(null) === 0,
+  'ligue vide ou absente = 0, sans planter');
+
+//  h) Le quota par competition. Sans lui, la MLB (37 matchs le meme
+//     jour) prenait la moitie de l ecran.
+ok(Number.isInteger(_MAX_PER_LEAGUE) && _MAX_PER_LEAGUE > 0,
+  'le quota par competition est un entier positif');
+ok(_MAX_PER_LEAGUE * 4 <= _MAX_BIG_MATCHES,
+  `le quota force au moins 4 competitions differentes (${_MAX_PER_LEAGUE}/${_MAX_BIG_MATCHES})`);
 // Le tri doit VRAIMENT trier : sans ça on annoncerait des rencontres de
 // quatrième division à trois heures du matin.
 ok(!_isMajorLeague('French National 3 Group F'), 'quatrième division écartée');

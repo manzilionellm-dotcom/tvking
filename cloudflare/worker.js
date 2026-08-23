@@ -944,45 +944,177 @@ const _BIG_DAYS = 3;
 //  source incomplete, et on chercherait un bug la ou il n'y en a pas.
 export const _MAX_BIG_MATCHES = 60;
 
-//  Ce qui fait qu'un match MÉRITE une notification. Sans ce filtre, on
-//  annoncerait des rencontres de quatrième division à 3 h du matin.
-//  Comparaison sur le nom de ligue, en minuscules et sans accents ; un
-//  fragment suffit (« premier league » attrape « English Premier League »).
-const _MAJOR_LEAGUES = [
-  // Football
-  'premier league', 'la liga', 'serie a', 'bundesliga', 'ligue 1',
-  'champions league', 'europa league', 'conference league',
-  'world cup', 'euro', 'copa america', 'africa cup', 'nations league',
-  'copa del rey', 'fa cup', 'coppa italia', 'dfb pokal', 'super cup',
-  'mls', 'liga mx', 'eredivisie', 'primeira liga',
-  // Basket
-  'nba', 'wnba', 'euroleague', 'eurobasket',
-  // Hockey sur glace
-  'nhl',
-  // Football américain
-  'nfl',
-  // Tennis
-  'atp', 'wta', 'grand slam', 'wimbledon', 'roland garros',
-  'us open', 'australian open', 'davis cup',
-  // Sport auto
-  'formula 1', 'formula one', 'motogp', 'nascar', 'indycar',
-  // Rugby
-  'six nations', 'rugby world cup', 'top 14', 'super rugby', 'premiership rugby',
-  // Baseball
-  'mlb',
+//  Nombre maximum d'affiches pour UNE MÊME compétition. 8 = de quoi
+//  couvrir une journée de championnat entière sans jamais monopoliser
+//  l'écran. Sans ce quota, la MLB (37 matchs le 23/08) ou un tour
+//  préliminaire continental prenaient la moitié de la liste.
+export const _MAX_PER_LEAGUE = 8;
+
+// =========================================================
+//  QUELLES AFFICHES MÉRITENT D'ÊTRE MISES EN AVANT
+// =========================================================
+//  Ce bloc a été REFAIT le 23/08, le jour où la clé payante est arrivée
+//  et où on a enfin pu voir les VRAIES données. Le filtre précédent
+//  rendait un simple oui/non ; sur 1 005 événements réels (3 jours ×
+//  8 sports, 252 ligues distinctes) il se trompait dans les deux sens :
+//
+//    ✗ « Faroe Islands Premier League » RETENUE — parce qu'elle contient
+//      les mots « premier league ». Quatre matchs des îles Féroé
+//      présentés comme les affiches du jour.
+//    ✗ « MLS Next Pro » RETENUE — c'est le championnat RÉSERVE du MLS.
+//    ✗ « American Major League Soccer » ÉCARTÉE — le VRAI MLS, jeté,
+//      parce que TheSportsDB ne l'écrit pas « MLS ».
+//
+//  La comparaison par mots entiers ne suffisait pas : « premier league »
+//  EST bien présent, en entier, dans « Faroe Islands Premier League ».
+//  Le problème n'est pas la façon de comparer, c'est qu'un même nom de
+//  compétition est réutilisé par des dizaines de petites fédérations.
+//
+//  Trois changements :
+//    1. une LISTE DE REJET qui prime sur tout (réserves, espoirs) ;
+//    2. les noms AMBIGUS sont désormais exigés AVEC leur pays, tels que
+//       TheSportsDB les écrit vraiment (« english premier league ») ;
+//    3. un NIVEAU au lieu d'un booléen, pour que le plafond garde les
+//       PLUS BELLES affiches et non les 60 PREMIÈRES de la journée.
+//
+//  Le point 3 n'est pas cosmétique : avec la clé payante il arrive
+//  1 005 événements au lieu de 24. Trier par heure seule, c'était
+//  remplir l'écran de troisième division en écartant la Ligue des
+//  champions parce qu'elle joue plus tard.
+
+//  REJET PRIORITAIRE. Ces marqueurs désignent une équipe réserve, un
+//  championnat de jeunes ou une compétition de développement. Ils
+//  l'emportent sur n'importe quel nom prestigieux présent à côté :
+//  « MLS Next Pro » reste du MLS réserve.
+const _MINOR_MARKERS = [
+  'next pro', 'reserve', 'reserves', 'academy', 'youth', 'development',
+  'u16', 'u17', 'u18', 'u19', 'u20', 'u21', 'u23',
+  'juvenil', 'primavera', 'junior', 'juniors',
+  // ARCA est le championnat-école de NASCAR : « NASCAR ARCA Series »
+  // passait au niveau 3 par le mot « nascar ». Même piège que MLS Next
+  // Pro, repéré le 23/08 sur les données réelles.
+  'arca',
 ];
 
-export function _isMajorLeague(league) {
+//  NIVEAU 1 — événements MONDIAUX ou CONTINENTAUX. Ils se suffisent à
+//  eux-mêmes : aucune fédération mineure ne s'appelle « Champions
+//  League ». Recherche par mots entiers, le nom peut être préfixé
+//  (« UEFA Champions League »).
+//
+//  ⚠ « champions league » TOUT SEUL était une erreur, mesurée le 23/08 :
+//  CHAQUE confédération a la sienne. L'AFC Womens Champions League — des
+//  tours préliminaires entre clubs inconnus du grand public — raflait
+//  16 des 60 places et éjectait la Premier League. On nomme donc la
+//  confédération. Les autres continents ne disparaissent pas : ils sont
+//  au niveau 3 (voir plus bas), donc affichés, mais après les sommets.
+const _LEAGUES_T1 = [
+  'uefa champions league', 'uefa europa league', 'uefa conference league',
+  'world cup', 'nations league', 'copa america',
+  'copa libertadores', 'olympic',
+  // « uefa euro » et non « euro » seul : le mot « euro » seul attrapait
+  // « American Football League Europe » (piège constaté le 23/08). Deux
+  // mots collés suffisent à lever l'ambiguïté sans perdre l'Euro.
+  'uefa euro', 'european championship', 'africa cup of nations',
+  'super bowl', 'six nations',
+];
+
+//  DEUX FAÇONS DE RECONNAÎTRE UNE COMPÉTITION — et il en faut deux.
+//
+//  « UEFA Champions League » se reconnaît à ses MOTS : le préfixe de la
+//  confédération varie, le nom de la compétition non, et personne
+//  d'autre ne s'appelle ainsi. Recherche par mots entiers.
+//
+//  « Spanish La Liga » ne peut PAS être reconnue par ses mots, parce
+//  qu'ils sont AUSSI le début de « Spanish La Liga 2 » — la deuxième
+//  division. Et « Italian Serie A » est le début de « Italian Serie A
+//  Womens Cup », une tout autre compétition. Mesuré sur les vraies
+//  données du 23/08 : les deux passaient, à tort.
+//  Pour ces noms-là on exige donc le nom COMPLET, à l'identique.
+//  Le prix à payer est assumé : si TheSportsDB renomme une ligue, on la
+//  perd — un manque se voit, un faux positif se croit.
+const _LEAGUES_T2_WORDS = [
+  'fa cup', 'copa del rey', 'coppa italia', 'dfb-pokal', 'dfb pokal',
+  'efl cup', 'carabao cup',
+  'nba', 'nfl', 'nhl', 'mlb', 'euroleague',
+  'formula 1', 'formula one', 'motogp',
+  'wimbledon', 'roland garros', 'australian open',
+  'rugby world cup',
+];
+const _LEAGUES_T2_EXACT = [
+  // Les cinq grands championnats, tels que TheSportsDB les écrit.
+  'english premier league', 'spanish la liga', 'italian serie a',
+  'german bundesliga', 'french ligue 1',
+];
+
+//  NIVEAU 3 — NOTABLES. De vraies affiches, sans être des sommets : on
+//  les garde, mais elles cèdent la place aux niveaux 1 et 2 quand le
+//  plafond mord.
+const _LEAGUES_T3_WORDS = [
+  'eurobasket', 'atp', 'wta', 'davis cup',
+  'nascar', 'indycar', 'top 14', 'super rugby', 'premiership rugby',
+  // Les champions leagues des AUTRES confédérations, et les compétitions
+  // féminines majeures. Visibles, mais après les sommets — c'est un
+  // choix d'audience, écrit noir sur blanc, pas un tri silencieux.
+  'afc champions league', 'caf champions league',
+  'concacaf champions league', 'concacaf champions cup',
+  'africa cup',
+  // Les versions FÉMININES sont listées UNE PAR UNE, et c'est voulu.
+  // « AFC Womens Champions League » ne contient pas les mots « afc
+  // champions league » d'un seul tenant : sans cette ligne elle
+  // disparaîtrait PAR ACCIDENT de comparaison, pas par décision. Une
+  // compétition ne doit jamais être écartée par hasard.
+  'uefa womens champions league', 'afc womens champions league',
+  'caf womens champions league', 'concacaf womens champions cup',
+];
+const _LEAGUES_T3_EXACT = [
+  'brazilian serie a', 'american major league soccer',
+  'dutch eredivisie', 'portuguese primeira liga',
+  'mexican liga mx', 'saudi-arabian pro league',
+  'argentinian primera division', 'danish superliga',
+  'scottish premiership', 'turkish super lig', 'belgian pro league',
+  'wnba',
+];
+
+//  Une compétition FÉMININE n'est pas une compétition mineure — mais ce
+//  n'est pas non plus la même que la masculine. Sans cette marque,
+//  « Italian Serie A Womens Cup » s'afficherait comme « Serie A » et le
+//  client croirait voir le championnat masculin. On ne la CACHE pas :
+//  on la NOMME, et l'app pose l'étiquette « Féminin ».
+const _WOMEN_MARKERS = ['women', 'womens', 'feminine', 'femenina',
+  'femenino', 'feminil', 'frauen', 'dames', 'damallsvenskan'];
+
+export function _isWomenLeague(league) {
   if (!_foldTeam(league)) return false;
-  // Comparaison par MOTS ENTIERS, pas par morceaux de texte. Avec un
-  // simple `includes`, « euro » attrapait « American Football League
-  // Europe » — un match de ligue mineure annoncé comme un Championnat
-  // d'Europe. Le sens de la recherche compte : c'est le motif qu'on
-  // cherche DANS le nom de ligue, jamais l'inverse.
-  for (const m of _MAJOR_LEAGUES) {
-    if (_containsWords(league, m)) return true;
+  for (const w of _WOMEN_MARKERS) {
+    if (_containsWords(league, w)) return true;
   }
   return false;
+}
+
+//  Renvoie 1, 2 ou 3 — ou 0 si la compétition ne mérite pas d'être mise
+//  en avant. Un seul point d'entrée : impossible qu'un appelant applique
+//  la liste de rejet et qu'un autre l'oublie.
+export function _leagueTier(league) {
+  const folded = _foldTeam(league);
+  if (!folded) return 0;
+  // Le rejet passe AVANT tout le reste, sinon « MLS Next Pro » serait
+  // retenu par le mot « mls » avant même qu'on regarde « next pro ».
+  for (const bad of _MINOR_MARKERS) {
+    if (_containsWords(league, bad)) return 0;
+  }
+  const exact = (list) => list.some((m) => _foldTeam(m) === folded);
+  const words = (list) => list.some((m) => _containsWords(league, m));
+  if (words(_LEAGUES_T1)) return 1;
+  if (exact(_LEAGUES_T2_EXACT) || words(_LEAGUES_T2_WORDS)) return 2;
+  if (exact(_LEAGUES_T3_EXACT) || words(_LEAGUES_T3_WORDS)) return 3;
+  return 0;
+}
+
+//  Conservé : c'est la question « faut-il mettre ce match en avant ? »,
+//  posée par le reste du code et par les tests. Elle a maintenant une
+//  seule source de vérité.
+export function _isMajorLeague(league) {
+  return _leagueTier(league) > 0;
 }
 
 // Jour au format YYYY-MM-DD, décalé de `offset` jours (UTC).
@@ -1040,6 +1172,18 @@ async function handleSportsBig(env) {
     status: e.strStatus || '',
     league: e.strLeague || '',
     sport: e.strSport || '',
+    //  LOGOS. La clé payante les fournit pour presque toutes les équipes.
+    //  Une affiche avec les deux écussons se lit d'un coup d'œil ; sans
+    //  eux, c'est une liste de texte. L'app doit rester correcte quand
+    //  ils manquent — on renvoie une chaîne vide, jamais `null`, pour
+    //  qu'un ancien client ne plante pas sur un type inattendu.
+    homeBadge: e.strHomeTeamBadge || '',
+    awayBadge: e.strAwayTeamBadge || '',
+    //  NIVEAU (1 = mondial, 2 = grand championnat, 3 = notable). Envoyé
+    //  au client pour qu'il puisse mettre en avant sans redécider :
+    //  la règle vit à UN seul endroit, ici.
+    tier: _leagueTier(e.strLeague || ''),
+    women: _isWomenLeague(e.strLeague || ''),
   });
   // Un camp est « majeur » si son nom désigne un club de la liste foot.
   const isBigSide = (raw) => {
@@ -1112,10 +1256,43 @@ async function handleSportsBig(env) {
       }
     }
   }
-  const all = Array.from(byId.values()).sort((x, y) =>
-    String(x.timestamp || x.date).localeCompare(String(y.timestamp || y.date)),
-  );
-  const matches = all.slice(0, _MAX_BIG_MATCHES);
+  //  LE PLAFOND DOIT GARDER LES PLUS BELLES AFFICHES, PAS LES PREMIÈRES.
+  //
+  //  Avant la clé payante, l'amont rendait 3 événements par appel : le
+  //  plafond de 60 ne mordait jamais et trier par heure suffisait.
+  //  Avec la clé, il en arrive 1 005 sur trois jours. Trier par heure
+  //  seule reviendrait à remplir l'écran avec ce qui joue le plus tôt —
+  //  et à écarter la Ligue des champions parce qu'elle joue le soir.
+  //
+  //  On choisit donc par NIVEAU d'abord, puis par heure ; et on remet
+  //  la sélection dans l'ordre CHRONOLOGIQUE pour l'affichage, parce
+  //  qu'une liste de matchs se lit dans l'ordre où ils se jouent.
+  const byKickoff = (x, y) =>
+    String(x.timestamp || x.date).localeCompare(String(y.timestamp || y.date));
+  const all = Array.from(byId.values()).sort(byKickoff);
+  //  QUOTA PAR COMPÉTITION — le garde-fou qui rend le classement robuste.
+  //
+  //  Même avec des niveaux parfaits, une seule compétition qui joue
+  //  30 matchs le même jour raflerait la moitié de l'écran. Mesuré le
+  //  23/08 : la MLB à elle seule fournissait 37 rencontres, et un tour
+  //  préliminaire de l'AFC en occupait 16 sur 60.
+  //
+  //  Une page de sport CRÉDIBLE montre de la VARIÉTÉ : un peu de foot, un
+  //  peu de basket, un peu de baseball. Ce quota vaut mieux qu'un
+  //  classement parfait, parce qu'il protège aussi des erreurs de
+  //  classement à venir — celles qu'on n'a pas encore vues.
+  const perLeague = new Map();
+  const matches = all
+    .slice()
+    .sort((x, y) => (x.tier - y.tier) || byKickoff(x, y))
+    .filter((ev) => {
+      const k = _foldTeam(ev.league) || '?';
+      const n = (perLeague.get(k) || 0) + 1;
+      perLeague.set(k, n);
+      return n <= _MAX_PER_LEAGUE;
+    })
+    .slice(0, _MAX_BIG_MATCHES)
+    .sort(byKickoff);
   //  Les compteurs rendent une panne VISIBLE de l'extérieur : une réponse
   //  vide avec upstream_ok élevé = pas d'affiche ces jours-ci ; une réponse
   //  vide avec upstream_ko élevé = l'amont nous refuse l'entrée. Sans ça,
@@ -1152,6 +1329,163 @@ async function handleSportsBig(env) {
       );
     } catch (_) {
       // Ecriture de cache impossible : tant pis, on a quand meme la reponse.
+    }
+  }
+  return json(data);
+}
+
+// =========================================================
+//  SCORES EN DIRECT — GET /api/sports/live
+// =========================================================
+//  AJOUTÉ LE 23/08, le jour de l'arrivée de la clé payante. C'est la
+//  seule chose que la clé gratuite ne pouvait PAS faire, à aucun prix :
+//  l'API v2 rafraîchit les scores toutes les 2 minutes.
+//
+//  Ce que ça change pour le client : au lieu d'une liste d'horaires, il
+//  voit « Manchester City 0-0 Bournemouth · 21' » qui bouge tout seul.
+//  C'est la différence entre un programme télé et une appli de sport.
+//
+//  DEUX DIFFÉRENCES TECHNIQUES avec le reste des appels sportifs, et il
+//  faut les connaître avant de toucher à ce code :
+//
+//   1. L'API v2 veut la clé dans un EN-TÊTE `X-API-KEY`, pas dans le
+//      chemin. Mesuré le 23/08 : la clé dans l'URL rend un 404 HTML.
+//   2. `livescore/all` renvoie TOUS les sports d'un coup — 138 matchs
+//      au moment de la mesure. Une seule requête amont au lieu de cinq :
+//      c'est ce qui rend un cache très court soutenable.
+//
+//  CACHE DE 45 SECONDES. Volontairement plus court que la fraîcheur de
+//  la source (2 min) : au pire le client voit une donnée de 45 s, ce qui
+//  est invisible à l'œil sur un match. Et ça borne le coût : même avec
+//  10 000 clients, l'amont ne voit que ~80 requêtes par heure, loin des
+//  100 par MINUTE que la clé autorise.
+const _LIVE_CACHE_KEY = 'https://sports-cache.internal/api/sports/live/v1';
+const _LIVE_TTL_MS = 45000;
+let _liveCache = null; // { at, data }
+
+//  L'app n'a pas besoin de tout : on ne renvoie que ce qui s'affiche.
+//  Un téléphone à 256 Mo n'a pas à télécharger 20 champs pour en montrer
+//  6, et une charge utile courte se rafraîchit plus souvent sans coût.
+function _mapLive(e) {
+  const league = e.strLeague || '';
+  return {
+    id: e.idEvent || e.idLiveScore || '',
+    home: e.strHomeTeam || '',
+    away: e.strAwayTeam || '',
+    homeScore: (e.intHomeScore === null || e.intHomeScore === undefined)
+      ? null : String(e.intHomeScore),
+    awayScore: (e.intAwayScore === null || e.intAwayScore === undefined)
+      ? null : String(e.intAwayScore),
+    homeBadge: e.strHomeTeamBadge || '',
+    awayBadge: e.strAwayTeamBadge || '',
+    league,
+    sport: e.strSport || '',
+    //  `strStatus` vaut 1H / HT / 2H / FT…, `strProgress` la minute de
+    //  jeu. Les deux sont des CHAÎNES chez TheSportsDB, y compris la
+    //  minute — on ne les convertit pas, l'app affiche ce qu'elle reçoit.
+    status: e.strStatus || '',
+    progress: e.strProgress === null || e.strProgress === undefined
+      ? '' : String(e.strProgress),
+    timestamp: e.strTimestamp || '',
+    tier: _leagueTier(league),
+    women: _isWomenLeague(league),
+  };
+}
+
+async function handleSportsLive(env) {
+  const now = Date.now();
+  if (_liveCache && now - _liveCache.at < _LIVE_TTL_MS) {
+    return json(_liveCache.data);
+  }
+  try {
+    const hit = await caches.default.match(new Request(_LIVE_CACHE_KEY));
+    if (hit) {
+      const data = await hit.json();
+      _liveCache = { at: now, data };
+      return json(data);
+    }
+  } catch (_) {
+    // Cache indisponible : on va voir l'amont. Jamais bloquant.
+  }
+
+  const key = (env && env.SPORTSDB_KEY ? String(env.SPORTSDB_KEY) : '').trim();
+  //  SANS CLÉ, ON NE TENTE MÊME PAS. L'API v2 est réservée aux comptes
+  //  payants : appeler sans clé rendrait une erreur qu'on ne saurait pas
+  //  distinguer d'une panne. On le DIT au lieu de renvoyer un vide muet
+  //  — c'est exactement la leçon de la panne silencieuse du 22/08.
+  if (!key) {
+    return json({
+      live: [],
+      total_found: 0,
+      available: false,
+      reason: 'no_key',
+      warnings: ['SPORTSDB_KEY absent : les scores en direct exigent une clé payante.'],
+      generated_at: new Date(now).toISOString(),
+    });
+  }
+
+  const warnings = [];
+  let raw = [];
+  let ok = false;
+  try {
+    const r = await fetch('https://www.thesportsdb.com/api/v2/json/livescore/all', {
+      headers: { ..._sportsHeaders(), 'X-API-KEY': key },
+    });
+    if (!r.ok) {
+      warnings.push(`amont livescore: HTTP ${r.status}`);
+    } else {
+      const txt = await r.text();
+      try {
+        const j = JSON.parse(txt);
+        raw = (j && j.livescore) || [];
+        ok = true;
+      } catch (_) {
+        warnings.push(`amont livescore: réponse non-JSON « ${
+          txt.slice(0, 60).replace(/\s+/g, ' ')} »`);
+      }
+    }
+  } catch (e) {
+    warnings.push(`amont livescore: ${String((e && e.message) || e)}`);
+  }
+
+  //  On ne montre EN DIRECT que ce qu'on montrerait en affiche : sans ce
+  //  tri, l'écran se remplirait de quatrième division russe pendant que
+  //  la Premier League joue. Même règle, même fonction — un seul endroit
+  //  où la définition de « grande affiche » existe.
+  const live = raw
+    .map(_mapLive)
+    .filter((e) => e.id && e.tier > 0)
+    .sort((x, y) => (x.tier - y.tier)
+      || String(x.league).localeCompare(String(y.league)));
+
+  const data = {
+    live: live.slice(0, _MAX_BIG_MATCHES),
+    // Combien de matchs EN COURS au total, tous niveaux confondus. Un
+    // `total_all` élevé avec `live` vide veut dire « ça joue, mais rien
+    // qui mérite la une » — pas « la source est morte ».
+    total_found: live.length,
+    total_all: raw.length,
+    available: ok,
+    warnings,
+    generated_at: new Date(now).toISOString(),
+  };
+
+  // Un échec ne se met JAMAIS en cache : sinon un 429 passager gèlerait
+  // « aucun match en direct » alors que la source est déjà revenue.
+  if (ok) {
+    _liveCache = { at: now, data };
+    try {
+      await caches.default.put(
+        new Request(_LIVE_CACHE_KEY),
+        new Response(JSON.stringify(data), {
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'public, max-age=45',
+          },
+        }),
+      );
+    } catch (_) {
+      // Tant pis pour le cache partagé : la réponse est déjà bonne.
     }
   }
   return json(data);
@@ -7361,6 +7695,14 @@ async function handleRequest(request, env, ctx) {
         segments[2] === 'big' && segments.length === 3) {
       if (request.method !== 'GET') return badRequest('only GET');
       return await handleSportsBig(env);
+    }
+    // /api/sports/live — SCORES EN DIRECT (API v2, clé payante requise).
+    // Cache de 45 s : le client peut interroger souvent sans que l'amont
+    // le voie. Sans clé, répond `available:false` au lieu d'un vide muet.
+    if (segments[0] === 'api' && segments[1] === 'sports' &&
+        segments[2] === 'live' && segments.length === 3) {
+      if (request.method !== 'GET') return badRequest('only GET');
+      return await handleSportsLive(env);
     }
 
     // ----- APPAIRAGE « ZÉRO FRAPPE » (QR) -----
