@@ -4950,5 +4950,13 @@
   "sportAmericanFootball": "Football américain",
   "sportMotorsport": "Sport auto",
   "sportRugby": "Rugby",
-  "sportBaseball": "Baseball"
+  "sportBaseball": "Baseball",
+  "sportLiveNow": "En ce moment",
+  "@sportLiveNow": {
+    "description": "Titre du bandeau des matchs actuellement en cours"
+  },
+  "sportWomen": "Féminin",
+  "@sportWomen": {
+    "description": "Etiquette signalant une competition feminine"
+  }
 }

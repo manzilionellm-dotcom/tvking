@@ -92,6 +92,18 @@ abstract final class AppTextStyles {
         height: 1.45,
       );
 
+  /// Texte courant COMPACT — listes denses où l'information prime sur le
+  /// confort de lecture : tableau de scores, cartes du bandeau « en
+  /// direct ». Ajouté le 23/08 plutôt que de saupoudrer des `fontSize:`
+  /// en dur dans l'écran Sport (règle AGENTS.md : aucune taille magique
+  /// dans l'UI).
+  static TextStyle get bodySmall => GoogleFonts.inter(
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+        color: AppColors.textSecondary,
+        height: 1.3,
+      );
+
   /// Petit label uppercase — badges, sections, signatures.
   /// Tracking large = touche premium, lisibilité distinctive.
   static TextStyle get labelSmall => GoogleFonts.inter(
