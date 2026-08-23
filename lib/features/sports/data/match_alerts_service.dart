@@ -16,7 +16,11 @@
 //      deux camps sont des clubs majeurs — Real–Chelsea oui, Real–petit
 //      club non), travail mutualisé côté serveur, cache 30 min ;
 //    • PLUS les matchs des équipes que le client a mises en favori
-//      (SportsRepository) — là, tous ses matchs comptent.
+//      (SportsRepository) — là, tous ses matchs comptent ;
+//    • PLUS les matchs qu'il a choisis UN PAR UN dans le coin Sport
+//      (FollowedMatchesService). C'est le cas le plus fort : il a
+//      explicitement demandé CE match-là, quel que soit le sport et
+//      quelle que soit la ligue.
 //
 //  ANTI-SPAM (règle d'or) : chaque match ne déclenche qu'UNE alerte avant
 //  et UNE alerte de résultat, mémorisées par identifiant de match. Un
@@ -38,6 +42,7 @@ import '../../../core/notifications/notification_service.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../domain/sport_models.dart';
+import 'followed_matches_service.dart';
 import 'sports_repository.dart';
 
 class MatchAlertsService {
@@ -139,6 +144,23 @@ class MatchAlertsService {
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Matchs] favoris KO: $e');
+    }
+    // 3) Matchs choisis UN PAR UN. Ils sont ajoutés EN DERNIER et
+    //    volontairement : ce sont des choix explicites, ils doivent
+    //    survivre même si le serveur ne les classe plus parmi les
+    //    grandes affiches (une finale passe, un favori change de camp…).
+    try {
+      await FollowedMatchesService.instance.ensureLoaded();
+      for (final SportEvent ev in FollowedMatchesService.instance.all) {
+        // On ne veut pas ÉCRASER une version fraîche du serveur (elle
+        // porte le score) par le résumé mémorisé, plus ancien.
+        if (ev.id.isNotEmpty) byId.putIfAbsent(ev.id, () => ev);
+      }
+      // Au passage, on rafraîchit les résumés mémorisés avec ce que le
+      // serveur vient de dire : le score s'affiche alors hors ligne.
+      await FollowedMatchesService.instance.refreshKnown(byId.values);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Matchs] matchs suivis KO: $e');
     }
     return byId.values.toList(growable: false);
   }

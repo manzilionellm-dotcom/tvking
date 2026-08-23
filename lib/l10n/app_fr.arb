@@ -2035,7 +2035,13 @@
   "tvDeviceAddressHelp": "Donne cette adresse à ton revendeur pour activer The Few TV.",
   "tvStatus": "Statut",
   "tvYearsRemaining": "≈ {years} ans restants",
-  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
+  "@tvYearsRemaining": {
+    "placeholders": {
+      "years": {
+        "type": "int"
+      }
+    }
+  },
   "tvStatusPaid": "Abonnement actif",
   "tvStatusTrial": "Essai — {days} jour(s) restants",
   "@tvStatusTrial": {
@@ -2351,7 +2357,13 @@
   "themeImmersiveTitle": "Thème immersif",
   "themeImmersiveSubtitle": "Une couleur premium qui change chaque heure",
   "celebrationStreakTitle": "{days} jours d’affilée",
-  "@celebrationStreakTitle": {"placeholders": {"days": {"type": "int"}}},
+  "@celebrationStreakTitle": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
   "celebrationStreakBody": "Tu fais partie des habitués. Continue !",
   "importPhaseConnecting": "Connexion au serveur…",
   "importPhaseDownloading": "Téléchargement de ta liste…",
@@ -2366,7 +2378,13 @@
   "importReassure4": "Presque fini — on optimise le démarrage.",
   "importChannelsFound": "chaînes trouvées",
   "importBytesReceived": "{got} reçus",
-  "@importBytesReceived": {"placeholders": {"got": {"type": "String"}}},
+  "@importBytesReceived": {
+    "placeholders": {
+      "got": {
+        "type": "String"
+      }
+    }
+  },
   "tvChannelUnavailable": "Chaîne indisponible pour le moment.",
   "tvChannelBlockedBySource": "Chaîne vide ou bloquée par ta source. Vérifie qu'elle n'est pas déjà ouverte sur un autre appareil.",
   "tvChannelNetworkHint": "Ça ressemble à un blocage réseau (FAI ou DNS) — un VPN peut aider si cette chaîne fonctionne ailleurs.",
@@ -3254,7 +3272,16 @@
   "notifChannelRemindersDesc": "Notifications avant le début d'un programme que vous avez choisi.",
   "notifMatchSoonTitle": "⚽ Grande affiche",
   "notifMatchKickoffIn": "{match} — coup d'envoi dans {min} min",
-  "@notifMatchKickoffIn": {"placeholders": {"match": {"type": "String"}, "min": {"type": "int"}}},
+  "@notifMatchKickoffIn": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
   "notifMatchResultTitle": "⚽ Résultat final",
   "notifMatchesToggle": "Alertes des grands matchs",
   "notifChannelGeneralName": "Annonces & mises à jour",
@@ -4885,5 +4912,43 @@
   "tvPairEntrySub": "Sans rien taper à la télécommande — recommandé",
   "@tvPairEntrySub": {
     "description": "Texte UI : tvPairEntrySub"
-  }
+  },
+  "navSport": "Sport",
+  "sportTabHighlights": "À l’affiche",
+  "sportTabFollowed": "Mes matchs",
+  "sportTabTeams": "Mes équipes",
+  "sportAll": "Tous",
+  "sportRefresh": "Actualiser",
+  "sportRetry": "Réessayer",
+  "sportLive": "EN DIRECT",
+  "sportFollow": "Suivre ce match",
+  "sportUnfollow": "Ne plus suivre",
+  "sportFollowedOn": "Match suivi — tu seras prévenu",
+  "sportFollowedOff": "Match retiré de tes suivis",
+  "sportOfflineTitle": "Pas de connexion",
+  "sportOfflineBody": "Impossible de joindre le service. Vérifie ta connexion, puis réessaie.",
+  "sportSourceDownTitle": "Service momentanément indisponible",
+  "sportSourceDownBody": "Le fournisseur de résultats ne répond pas. Tes matchs suivis restent consultables.",
+  "sportNoneTitle": "Aucune grande affiche",
+  "sportNoneBody": "Rien de marquant dans les prochains jours. Reviens plus tard.",
+  "sportNoneInSportTitle": "Rien dans cette discipline",
+  "sportNoneInSportBody": "D’autres sports ont des rencontres prévues.",
+  "sportShowAll": "Voir tous les sports",
+  "sportFollowedEmptyTitle": "Aucun match suivi",
+  "sportFollowedEmptyBody": "Choisis les rencontres qui t’intéressent : tu seras prévenu avant le coup d’envoi, puis au résultat.",
+  "sportTeamsEmptyTitle": "Aucune équipe suivie",
+  "sportTeamsEmptyBody": "Ajoute tes équipes : tous leurs matchs te seront annoncés, quel que soit l’adversaire.",
+  "sportAddTeam": "Ajouter une équipe",
+  "sportRemoveTeam": "Retirer",
+  "sportSearchTeamHint": "Nom d’équipe (tous sports)",
+  "sportSearchTeamPrompt": "Tape au moins deux lettres pour chercher une équipe.",
+  "sportSearchTeamNone": "Aucune équipe trouvée pour cette recherche.",
+  "sportSoccer": "Football",
+  "sportBasketball": "Basket",
+  "sportTennis": "Tennis",
+  "sportIceHockey": "Hockey sur glace",
+  "sportAmericanFootball": "Football américain",
+  "sportMotorsport": "Sport auto",
+  "sportRugby": "Rugby",
+  "sportBaseball": "Baseball"
 }

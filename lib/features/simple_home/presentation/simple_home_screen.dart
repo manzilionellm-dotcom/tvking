@@ -45,6 +45,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../sports/data/match_alerts_service.dart';
+import '../../sports/presentation/sport_screen.dart';
 import '../../../core/app/device_memory.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/domain/vod_movie.dart';
@@ -501,48 +502,74 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
         border: const Border(top: BorderSide(color: AppColors.surface)),
       ),
       padding: const EdgeInsets.only(top: 6, bottom: 4),
+      // `spaceAround` répartissait l'espace RESTANT ; à 5 onglets il n'en
+      // restait plus, d'où un débordement. Chaque onglet prend désormais
+      // une part ÉGALE de la largeur, quelle que soit la taille de l'écran.
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: <Widget>[
           // « Accueil » : la barre n'existe QUE sur l'accueil (les autres
           // onglets sont des routes plein écran qui la recouvrent), donc
           // `active: true` reflète bien la réalité ici — et taper l'onglet
           // courant ne doit rien faire (comportement standard des bottom bars).
-          _BottomNavItem(
-            icon: Icons.home_rounded,
-            label: context.l10n.navHome,
-            active: true,
-            onTap: () {},
+          Expanded(
+            child: _BottomNavItem(
+              icon: Icons.home_rounded,
+              label: context.l10n.navHome,
+              active: true,
+              onTap: () {},
+            ),
           ),
-          _BottomNavItem(
-            icon: Icons.favorite_rounded,
-            label: context.l10n.navFavorites,
-            active: false,
-            onTap: () => _openFromBottomBar(
-              () => Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                    builder: (_) => const FavoritesScreen()),
+          Expanded(
+            child: _BottomNavItem(
+              icon: Icons.favorite_rounded,
+              label: context.l10n.navFavorites,
+              active: false,
+              onTap: () => _openFromBottomBar(
+                () => Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                      builder: (_) => const FavoritesScreen()),
+                ),
+              ),
+            ),
+          ),
+          // SPORT (demande client du 23/08 : « ajoute tout un coin dédié au
+          // sport »). Tous les sports, pas seulement le football — et c'est
+          // de là qu'on choisit les matchs à suivre un par un.
+          Expanded(
+            child: _BottomNavItem(
+              icon: Icons.sports_soccer_rounded,
+              label: context.l10n.navSport,
+              active: false,
+              onTap: () => _openFromBottomBar(
+                () => Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(builder: (_) => const SportScreen()),
+                ),
               ),
             ),
           ),
           // Recherche IA (langage naturel), mise en avant (ember) au centre.
-          _BottomNavItem(
-            icon: Icons.auto_awesome_rounded,
-            label: context.l10n.navAi,
-            active: false,
-            accent: true,
-            onTap: () => _openFromBottomBar(
-              () => Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+          Expanded(
+            child: _BottomNavItem(
+              icon: Icons.auto_awesome_rounded,
+              label: context.l10n.navAi,
+              active: false,
+              accent: true,
+              onTap: () => _openFromBottomBar(
+                () => Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+                ),
               ),
             ),
           ),
           // « Ajouter » = activation par code MAC (pas de M3U/Xtream).
-          _BottomNavItem(
-            icon: Icons.add_circle_outline_rounded,
-            label: context.l10n.buttonAdd,
-            active: false,
-            onTap: () => _openFromBottomBar(() => showActivationSheet(context)),
+          Expanded(
+            child: _BottomNavItem(
+              icon: Icons.add_circle_outline_rounded,
+              label: context.l10n.buttonAdd,
+              active: false,
+              onTap: () =>
+                  _openFromBottomBar(() => showActivationSheet(context)),
+            ),
           ),
         ],
       ),
@@ -690,7 +717,11 @@ class _BottomNavItem extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        // Padding RÉDUIT et libellé ellipsé : depuis l'ajout du 5e onglet
+        // (Sport), un padding de 16 de chaque côté faisait déborder la
+        // barre sur un écran de 320 dp — exactement les petits téléphones
+        // qu'on s'est engagé à supporter.
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
@@ -713,6 +744,9 @@ class _BottomNavItem extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: AppTextStyles.labelSmall.copyWith(
                 color: color,
                 fontSize: 10,

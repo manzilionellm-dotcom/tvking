@@ -556,7 +556,13 @@
   "tvDeviceAddressHelp": "Ge den här adressen till din återförsäljare för att aktivera The Few TV.",
   "tvStatus": "Status",
   "tvYearsRemaining": "≈ {years} år kvar",
-  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
+  "@tvYearsRemaining": {
+    "placeholders": {
+      "years": {
+        "type": "int"
+      }
+    }
+  },
   "tvStatusPaid": "Abonnemang aktivt",
   "tvStatusTrial": "Provperiod — {days} dag(ar) kvar",
   "tvStatusTrialExpired": "Provperiod slut — aktivera",
@@ -1585,7 +1591,16 @@
   "notifChannelRemindersDesc": "Notiser innan ett program du valt börjar.",
   "notifMatchSoonTitle": "⚽ Stormatch",
   "notifMatchKickoffIn": "{match} — avspark om {min} min",
-  "@notifMatchKickoffIn": {"placeholders": {"match": {"type": "String"}, "min": {"type": "int"}}},
+  "@notifMatchKickoffIn": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
   "notifMatchResultTitle": "⚽ Slutresultat",
   "notifMatchesToggle": "Aviseringar om stormatcher",
   "notifChannelGeneralName": "Meddelanden & uppdateringar",
@@ -2050,5 +2065,43 @@
   "tvPairEntrySub": "Inget att skriva på fjärrkontrollen — rekommenderas",
   "@tvPairEntrySub": {
     "description": "Texte UI : tvPairEntrySub"
-  }
+  },
+  "navSport": "Sport",
+  "sportTabHighlights": "På gång",
+  "sportTabFollowed": "Mina matcher",
+  "sportTabTeams": "Mina lag",
+  "sportAll": "Alla",
+  "sportRefresh": "Uppdatera",
+  "sportRetry": "Försök igen",
+  "sportLive": "DIREKT",
+  "sportFollow": "Följ matchen",
+  "sportUnfollow": "Sluta följa",
+  "sportFollowedOn": "Följer – du får en avisering",
+  "sportFollowedOff": "Borttagen från dina matcher",
+  "sportOfflineTitle": "Ingen anslutning",
+  "sportOfflineBody": "Kunde inte nå tjänsten. Kontrollera din anslutning och försök igen.",
+  "sportSourceDownTitle": "Tjänsten är tillfälligt otillgänglig",
+  "sportSourceDownBody": "Resultatleverantören svarar inte. Dina följda matcher finns kvar.",
+  "sportNoneTitle": "Inga stormatcher",
+  "sportNoneBody": "Inget särskilt de närmaste dagarna. Titta in senare.",
+  "sportNoneInSportTitle": "Inget i den här sporten",
+  "sportNoneInSportBody": "Andra sporter har matcher på gång.",
+  "sportShowAll": "Visa alla sporter",
+  "sportFollowedEmptyTitle": "Inga följda matcher",
+  "sportFollowedEmptyBody": "Välj matcherna du bryr dig om: du får en avisering före avspark och vid slutresultatet.",
+  "sportTeamsEmptyTitle": "Inga följda lag",
+  "sportTeamsEmptyBody": "Lägg till dina lag: alla deras matcher aviseras, oavsett motståndare.",
+  "sportAddTeam": "Lägg till ett lag",
+  "sportRemoveTeam": "Ta bort",
+  "sportSearchTeamHint": "Lagnamn (alla sporter)",
+  "sportSearchTeamPrompt": "Skriv minst två bokstäver för att söka lag.",
+  "sportSearchTeamNone": "Inget lag hittades.",
+  "sportSoccer": "Fotboll",
+  "sportBasketball": "Basket",
+  "sportTennis": "Tennis",
+  "sportIceHockey": "Ishockey",
+  "sportAmericanFootball": "Amerikansk fotboll",
+  "sportMotorsport": "Motorsport",
+  "sportRugby": "Rugby",
+  "sportBaseball": "Baseboll"
 }

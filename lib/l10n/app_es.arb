@@ -556,7 +556,13 @@
   "tvDeviceAddressHelp": "Dale esta dirección a tu vendedor para activar The Few TV.",
   "tvStatus": "Estado",
   "tvYearsRemaining": "≈ {years} años restantes",
-  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
+  "@tvYearsRemaining": {
+    "placeholders": {
+      "years": {
+        "type": "int"
+      }
+    }
+  },
   "tvStatusPaid": "Suscripción activa",
   "tvStatusTrial": "Prueba — {days} día(s) restantes",
   "tvStatusTrialExpired": "Prueba finalizada — activa",
@@ -1585,7 +1591,16 @@
   "notifChannelRemindersDesc": "Notificaciones antes del inicio de un programa que hayas elegido.",
   "notifMatchSoonTitle": "⚽ Gran partido",
   "notifMatchKickoffIn": "{match} — comienza en {min} min",
-  "@notifMatchKickoffIn": {"placeholders": {"match": {"type": "String"}, "min": {"type": "int"}}},
+  "@notifMatchKickoffIn": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
   "notifMatchResultTitle": "⚽ Resultado final",
   "notifMatchesToggle": "Alertas de grandes partidos",
   "notifChannelGeneralName": "Anuncios y actualizaciones",
@@ -2050,5 +2065,43 @@
   "tvPairEntrySub": "Sin teclear nada en el mando: recomendado",
   "@tvPairEntrySub": {
     "description": "Texte UI : tvPairEntrySub"
-  }
+  },
+  "navSport": "Deporte",
+  "sportTabHighlights": "En cartel",
+  "sportTabFollowed": "Mis partidos",
+  "sportTabTeams": "Mis equipos",
+  "sportAll": "Todos",
+  "sportRefresh": "Actualizar",
+  "sportRetry": "Reintentar",
+  "sportLive": "EN VIVO",
+  "sportFollow": "Seguir este partido",
+  "sportUnfollow": "Dejar de seguir",
+  "sportFollowedOn": "Siguiendo: te avisaremos",
+  "sportFollowedOff": "Quitado de tus partidos",
+  "sportOfflineTitle": "Sin conexión",
+  "sportOfflineBody": "No se pudo contactar el servicio. Comprueba tu conexión e inténtalo de nuevo.",
+  "sportSourceDownTitle": "Servicio no disponible por ahora",
+  "sportSourceDownBody": "El proveedor de resultados no responde. Tus partidos seguidos siguen disponibles.",
+  "sportNoneTitle": "Sin grandes partidos",
+  "sportNoneBody": "Nada destacado en los próximos días. Vuelve más tarde.",
+  "sportNoneInSportTitle": "Nada en este deporte",
+  "sportNoneInSportBody": "Otros deportes tienen partidos próximos.",
+  "sportShowAll": "Ver todos los deportes",
+  "sportFollowedEmptyTitle": "Ningún partido seguido",
+  "sportFollowedEmptyBody": "Elige los partidos que te interesan: te avisaremos antes del inicio y con el resultado.",
+  "sportTeamsEmptyTitle": "Ningún equipo seguido",
+  "sportTeamsEmptyBody": "Añade tus equipos: te anunciaremos todos sus partidos, sea cual sea el rival.",
+  "sportAddTeam": "Añadir un equipo",
+  "sportRemoveTeam": "Quitar",
+  "sportSearchTeamHint": "Nombre del equipo (cualquier deporte)",
+  "sportSearchTeamPrompt": "Escribe al menos dos letras para buscar un equipo.",
+  "sportSearchTeamNone": "No se encontró ningún equipo.",
+  "sportSoccer": "Fútbol",
+  "sportBasketball": "Baloncesto",
+  "sportTennis": "Tenis",
+  "sportIceHockey": "Hockey sobre hielo",
+  "sportAmericanFootball": "Fútbol americano",
+  "sportMotorsport": "Automovilismo",
+  "sportRugby": "Rugby",
+  "sportBaseball": "Béisbol"
 }

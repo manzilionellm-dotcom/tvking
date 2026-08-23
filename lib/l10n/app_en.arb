@@ -562,7 +562,13 @@
   "tvDeviceAddressHelp": "Give this address to your reseller to activate The Few TV.",
   "tvStatus": "Status",
   "tvYearsRemaining": "≈ {years} years left",
-  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
+  "@tvYearsRemaining": {
+    "placeholders": {
+      "years": {
+        "type": "int"
+      }
+    }
+  },
   "tvStatusPaid": "Subscription active",
   "tvStatusTrial": "Trial — {days} day(s) left",
   "tvStatusTrialExpired": "Trial ended — activate",
@@ -1732,7 +1738,16 @@
   "notifChannelRemindersDesc": "Notifications before a program you picked starts.",
   "notifMatchSoonTitle": "⚽ Big match",
   "notifMatchKickoffIn": "{match} — kick-off in {min} min",
-  "@notifMatchKickoffIn": {"placeholders": {"match": {"type": "String"}, "min": {"type": "int"}}},
+  "@notifMatchKickoffIn": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
   "notifMatchResultTitle": "⚽ Final score",
   "notifMatchesToggle": "Big match alerts",
   "notifChannelGeneralName": "Announcements & updates",
@@ -2067,5 +2082,43 @@
   "tvPairEntrySub": "Nothing to type on the remote — recommended",
   "@tvPairEntrySub": {
     "description": "Texte UI : tvPairEntrySub"
-  }
+  },
+  "navSport": "Sport",
+  "sportTabHighlights": "Highlights",
+  "sportTabFollowed": "My matches",
+  "sportTabTeams": "My teams",
+  "sportAll": "All",
+  "sportRefresh": "Refresh",
+  "sportRetry": "Try again",
+  "sportLive": "LIVE",
+  "sportFollow": "Follow this match",
+  "sportUnfollow": "Stop following",
+  "sportFollowedOn": "Following — you’ll be notified",
+  "sportFollowedOff": "Removed from your matches",
+  "sportOfflineTitle": "No connection",
+  "sportOfflineBody": "Couldn’t reach the service. Check your connection and try again.",
+  "sportSourceDownTitle": "Service temporarily unavailable",
+  "sportSourceDownBody": "The results provider isn’t responding. Your followed matches are still available.",
+  "sportNoneTitle": "No big matches",
+  "sportNoneBody": "Nothing notable in the next few days. Check back later.",
+  "sportNoneInSportTitle": "Nothing in this sport",
+  "sportNoneInSportBody": "Other sports have matches coming up.",
+  "sportShowAll": "Show all sports",
+  "sportFollowedEmptyTitle": "No matches followed",
+  "sportFollowedEmptyBody": "Pick the matches you care about: you’ll be alerted before kick-off, then at the final score.",
+  "sportTeamsEmptyTitle": "No teams followed",
+  "sportTeamsEmptyBody": "Add your teams: every one of their matches will be announced, whoever they play.",
+  "sportAddTeam": "Add a team",
+  "sportRemoveTeam": "Remove",
+  "sportSearchTeamHint": "Team name (any sport)",
+  "sportSearchTeamPrompt": "Type at least two letters to search for a team.",
+  "sportSearchTeamNone": "No team found for this search.",
+  "sportSoccer": "Football",
+  "sportBasketball": "Basketball",
+  "sportTennis": "Tennis",
+  "sportIceHockey": "Ice hockey",
+  "sportAmericanFootball": "American football",
+  "sportMotorsport": "Motorsport",
+  "sportRugby": "Rugby",
+  "sportBaseball": "Baseball"
 }

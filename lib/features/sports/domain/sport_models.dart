@@ -50,6 +50,7 @@ class SportEvent {
     this.timestamp = '',
     this.status = '',
     this.league = '',
+    this.sport = '',
   });
 
   final String id;
@@ -63,6 +64,11 @@ class SportEvent {
   final String timestamp; // ISO UTC (TheSportsDB strTimestamp)
   final String status;
   final String league;
+
+  /// Discipline (« Soccer », « Basketball », « Tennis »…) telle que la
+  /// renvoie le panel. Sert à ranger les affiches par sport dans le coin
+  /// Sport ; vide sur les sources anciennes, jamais bloquant.
+  final String sport;
 
   bool get hasScore =>
       homeScore != null &&
@@ -96,7 +102,26 @@ class SportEvent {
         timestamp: '${j['timestamp'] ?? ''}',
         status: '${j['status'] ?? ''}',
         league: '${j['league'] ?? ''}',
+        sport: '${j['sport'] ?? ''}',
       );
+
+  /// Sérialisation — nécessaire pour MÉMORISER les matchs que le client
+  /// choisit de suivre (FollowedMatchesService). Les clés sont les mêmes
+  /// que celles de [fromJson] : ce qu'on écrit se relit tel quel.
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'name': name,
+        'home': home,
+        'away': away,
+        'homeScore': homeScore,
+        'awayScore': awayScore,
+        'date': date,
+        'time': time,
+        'timestamp': timestamp,
+        'status': status,
+        'league': league,
+        'sport': sport,
+      };
 
   /// « 14/06 21:00 » (date + heure courtes) si dispo.
   String get whenLabel {

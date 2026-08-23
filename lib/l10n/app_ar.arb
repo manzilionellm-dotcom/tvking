@@ -556,7 +556,13 @@
   "tvDeviceAddressHelp": "أعطِ هذا العنوان لبائعك لتفعيل The Few TV.",
   "tvStatus": "الحالة",
   "tvYearsRemaining": "≈ {years} سنة متبقية",
-  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
+  "@tvYearsRemaining": {
+    "placeholders": {
+      "years": {
+        "type": "int"
+      }
+    }
+  },
   "tvStatusPaid": "الاشتراك نشط",
   "tvStatusTrial": "تجربة — {days} يوم متبقٍ",
   "tvStatusTrialExpired": "انتهت التجربة — فعّل",
@@ -1585,7 +1591,16 @@
   "notifChannelRemindersDesc": "إشعارات قبل بدء برنامج اخترته.",
   "notifMatchSoonTitle": "⚽ مباراة كبرى",
   "notifMatchKickoffIn": "{match} — البداية بعد {min} دقيقة",
-  "@notifMatchKickoffIn": {"placeholders": {"match": {"type": "String"}, "min": {"type": "int"}}},
+  "@notifMatchKickoffIn": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
   "notifMatchResultTitle": "⚽ النتيجة النهائية",
   "notifMatchesToggle": "تنبيهات المباريات الكبرى",
   "notifChannelGeneralName": "الإعلانات والتحديثات",
@@ -2050,5 +2065,43 @@
   "tvPairEntrySub": "بدون كتابة أي شيء بجهاز التحكم — مُستحسن",
   "@tvPairEntrySub": {
     "description": "Texte UI : tvPairEntrySub"
-  }
+  },
+  "navSport": "رياضة",
+  "sportTabHighlights": "أبرز المباريات",
+  "sportTabFollowed": "مبارياتي",
+  "sportTabTeams": "فرقي",
+  "sportAll": "الكل",
+  "sportRefresh": "تحديث",
+  "sportRetry": "إعادة المحاولة",
+  "sportLive": "مباشر",
+  "sportFollow": "تابع هذه المباراة",
+  "sportUnfollow": "إلغاء المتابعة",
+  "sportFollowedOn": "ستصلك إشعارات هذه المباراة",
+  "sportFollowedOff": "أُزيلت من مبارياتك",
+  "sportOfflineTitle": "لا يوجد اتصال",
+  "sportOfflineBody": "تعذّر الوصول إلى الخدمة. تحقّق من اتصالك ثم أعد المحاولة.",
+  "sportSourceDownTitle": "الخدمة غير متاحة مؤقتاً",
+  "sportSourceDownBody": "مزوّد النتائج لا يستجيب. مبارياتك المتابَعة لا تزال متاحة.",
+  "sportNoneTitle": "لا مباريات كبرى",
+  "sportNoneBody": "لا شيء بارز في الأيام القادمة. عد لاحقاً.",
+  "sportNoneInSportTitle": "لا شيء في هذه الرياضة",
+  "sportNoneInSportBody": "رياضات أخرى لديها مباريات قادمة.",
+  "sportShowAll": "عرض كل الرياضات",
+  "sportFollowedEmptyTitle": "لا مباريات متابَعة",
+  "sportFollowedEmptyBody": "اختر المباريات التي تهمّك: سننبّهك قبل انطلاقها ثم بالنتيجة.",
+  "sportTeamsEmptyTitle": "لا فرق متابَعة",
+  "sportTeamsEmptyBody": "أضف فرقك: ستُعلَن كل مبارياتها مهما كان الخصم.",
+  "sportAddTeam": "إضافة فريق",
+  "sportRemoveTeam": "إزالة",
+  "sportSearchTeamHint": "اسم الفريق (كل الرياضات)",
+  "sportSearchTeamPrompt": "اكتب حرفين على الأقل للبحث عن فريق.",
+  "sportSearchTeamNone": "لم يُعثر على أي فريق.",
+  "sportSoccer": "كرة القدم",
+  "sportBasketball": "كرة السلة",
+  "sportTennis": "التنس",
+  "sportIceHockey": "هوكي الجليد",
+  "sportAmericanFootball": "كرة القدم الأمريكية",
+  "sportMotorsport": "رياضة السيارات",
+  "sportRugby": "الرغبي",
+  "sportBaseball": "البيسبول"
 }

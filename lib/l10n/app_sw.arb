@@ -556,7 +556,13 @@
   "tvDeviceAddressHelp": "Mpe muuzaji wako anwani hii ili kuwasha The Few TV.",
   "tvStatus": "Hali",
   "tvYearsRemaining": "≈ miaka {years} imebaki",
-  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
+  "@tvYearsRemaining": {
+    "placeholders": {
+      "years": {
+        "type": "int"
+      }
+    }
+  },
   "tvStatusPaid": "Usajili upo hai",
   "tvStatusTrial": "Jaribio — siku {days} zilizobaki",
   "tvStatusTrialExpired": "Jaribio limeisha — washa",
@@ -1585,7 +1591,16 @@
   "notifChannelRemindersDesc": "Arifa kabla ya kuanza kwa kipindi ulichochagua.",
   "notifMatchSoonTitle": "⚽ Mechi kubwa",
   "notifMatchKickoffIn": "{match} — huanza baada ya dakika {min}",
-  "@notifMatchKickoffIn": {"placeholders": {"match": {"type": "String"}, "min": {"type": "int"}}},
+  "@notifMatchKickoffIn": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
   "notifMatchResultTitle": "⚽ Matokeo ya mwisho",
   "notifMatchesToggle": "Arifa za mechi kubwa",
   "notifChannelGeneralName": "Matangazo na masasisho",
@@ -2050,5 +2065,43 @@
   "tvPairEntrySub": "Bila kuandika chochote kwa rimoti — inapendekezwa",
   "@tvPairEntrySub": {
     "description": "Texte UI : tvPairEntrySub"
-  }
+  },
+  "navSport": "Michezo",
+  "sportTabHighlights": "Zinazokuja",
+  "sportTabFollowed": "Mechi zangu",
+  "sportTabTeams": "Timu zangu",
+  "sportAll": "Zote",
+  "sportRefresh": "Onyesha upya",
+  "sportRetry": "Jaribu tena",
+  "sportLive": "MOJA KWA MOJA",
+  "sportFollow": "Fuatilia mechi hii",
+  "sportUnfollow": "Acha kufuatilia",
+  "sportFollowedOn": "Unafuatilia — utaarifiwa",
+  "sportFollowedOff": "Imeondolewa kwenye mechi zako",
+  "sportOfflineTitle": "Hakuna muunganisho",
+  "sportOfflineBody": "Imeshindwa kufikia huduma. Angalia muunganisho wako kisha ujaribu tena.",
+  "sportSourceDownTitle": "Huduma haipatikani kwa sasa",
+  "sportSourceDownBody": "Mtoa matokeo hajibu. Mechi unazofuatilia bado zinapatikana.",
+  "sportNoneTitle": "Hakuna mechi kubwa",
+  "sportNoneBody": "Hakuna la maana siku zijazo. Rudi baadaye.",
+  "sportNoneInSportTitle": "Hakuna katika mchezo huu",
+  "sportNoneInSportBody": "Michezo mingine ina mechi zijazo.",
+  "sportShowAll": "Onyesha michezo yote",
+  "sportFollowedEmptyTitle": "Hakuna mechi unazofuatilia",
+  "sportFollowedEmptyBody": "Chagua mechi unazopenda: utaarifiwa kabla ya kuanza, kisha matokeo.",
+  "sportTeamsEmptyTitle": "Hakuna timu unazofuatilia",
+  "sportTeamsEmptyBody": "Ongeza timu zako: mechi zake zote zitatangazwa, awe mpinzani yeyote.",
+  "sportAddTeam": "Ongeza timu",
+  "sportRemoveTeam": "Ondoa",
+  "sportSearchTeamHint": "Jina la timu (michezo yote)",
+  "sportSearchTeamPrompt": "Andika angalau herufi mbili kutafuta timu.",
+  "sportSearchTeamNone": "Hakuna timu iliyopatikana.",
+  "sportSoccer": "Soka",
+  "sportBasketball": "Mpira wa kikapu",
+  "sportTennis": "Tenisi",
+  "sportIceHockey": "Hoki ya barafuni",
+  "sportAmericanFootball": "Soka la Kimarekani",
+  "sportMotorsport": "Mbio za magari",
+  "sportRugby": "Raga",
+  "sportBaseball": "Besiboli"
 }

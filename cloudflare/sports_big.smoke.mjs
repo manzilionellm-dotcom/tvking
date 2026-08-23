@@ -23,7 +23,8 @@
 //  Exécution (aucun runner, aucun réseau) :
 //    node cloudflare/sports_big.smoke.mjs
 // =========================================================
-import { _sameTeam, _isReserveOrWomen, _BIG_TEAMS, _sportsBase } from './worker.js';
+import { _sameTeam, _isReserveOrWomen, _BIG_TEAMS, _sportsBase,
+         _isMajorLeague, _dayStamp, _SPORTS } from './worker.js';
 
 let pass = 0;
 let fail = 0;
@@ -97,6 +98,47 @@ ok(_sportsBase({ SPORTSDB_KEY: '   ' }).endsWith('/3'),
   'clé faite d\'espaces → clé de démo (pas d\'URL cassée)');
 ok(_sportsBase({ SPORTSDB_KEY: ' 987654 ' }).endsWith('/987654'),
   'vraie clé utilisée, espaces retirés');
+
+// ---------------------------------------------------------
+//  5. Tous les sports, pas seulement le football
+// ---------------------------------------------------------
+//  Demande du 23/08 : « la catégorie, tous les sports, même le basket,
+//  même le tennis, tout ». Hors football, la notion d'« équipe vedette »
+//  n'existe pas — au tennis il n'y a même pas d'équipes. C'est donc la
+//  LIGUE qui décide, et ce bloc verrouille ce tri.
+ok(_SPORTS.includes('Soccer'), 'football couvert');
+ok(_SPORTS.includes('Basketball'), 'basket couvert');
+ok(_SPORTS.includes('Tennis'), 'tennis couvert');
+ok(_SPORTS.length >= 6, `plusieurs sports couverts (${_SPORTS.length})`);
+
+ok(_isMajorLeague('NBA'), 'NBA retenue');
+ok(_isMajorLeague('English Premier League'), 'Premier League retenue');
+ok(_isMajorLeague('UEFA Champions League'), 'Ligue des champions retenue');
+ok(_isMajorLeague('ATP Cincinnati'), 'tournoi ATP retenu');
+ok(_isMajorLeague('Formula 1'), 'F1 retenue');
+ok(_isMajorLeague('NHL'), 'NHL retenue');
+// Le tri doit VRAIMENT trier : sans ça on annoncerait des rencontres de
+// quatrième division à trois heures du matin.
+ok(!_isMajorLeague('French National 3 Group F'), 'quatrième division écartée');
+ok(!_isMajorLeague('American USL Championship'), 'division mineure écartée');
+// LE faux positif constaté le 23/08 contre la vraie API : « euro » est un
+// morceau de « europe ». Un match de ligue mineure remontait comme s'il
+// s'agissait d'un Championnat d'Europe.
+ok(!_isMajorLeague('American Football League Europe'),
+  'European ≠ Euro (le piège euro/europe)');
+ok(_isMajorLeague('Brazilian Serie A'), 'Serie A brésilienne retenue');
+ok(_isMajorLeague('UEFA Euro 2028'), 'le vrai Championnat d\'Europe reste retenu');
+ok(!_isMajorLeague(''), 'ligue vide écartée');
+ok(!_isMajorLeague(null), 'ligue absente écartée, sans planter');
+
+// La fenêtre de jours doit produire des dates ISO valides et avancer.
+const t0 = Date.UTC(2026, 7, 23, 22, 30); // 23 août 2026, 22 h 30 UTC
+ok(_dayStamp(t0, 0) === '2026-08-23', `jour 0 = ${_dayStamp(t0, 0)}`);
+ok(_dayStamp(t0, 1) === '2026-08-24', `jour +1 = ${_dayStamp(t0, 1)}`);
+// Passage de mois : le 31 août + 1 jour doit donner le 1er septembre,
+// pas « 2026-08-32 ».
+const t1 = Date.UTC(2026, 7, 31, 12, 0);
+ok(_dayStamp(t1, 1) === '2026-09-01', `changement de mois = ${_dayStamp(t1, 1)}`);
 
 console.log(`\n${pass} PASS, ${fail} FAIL`);
 if (fail > 0) process.exit(1);

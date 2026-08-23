@@ -556,7 +556,13 @@
   "tvDeviceAddressHelp": "Giv denne adresse til din forhandler for at aktivere The Few TV.",
   "tvStatus": "Status",
   "tvYearsRemaining": "≈ {years} år tilbage",
-  "@tvYearsRemaining": {"placeholders": {"years": {"type": "int"}}},
+  "@tvYearsRemaining": {
+    "placeholders": {
+      "years": {
+        "type": "int"
+      }
+    }
+  },
   "tvStatusPaid": "Abonnement aktivt",
   "tvStatusTrial": "Prøveperiode — {days} dag(e) tilbage",
   "tvStatusTrialExpired": "Prøveperiode slut — aktivér",
@@ -1585,7 +1591,16 @@
   "notifChannelRemindersDesc": "Notifikationer, før et program, du har valgt, begynder.",
   "notifMatchSoonTitle": "⚽ Storkamp",
   "notifMatchKickoffIn": "{match} — kampstart om {min} min",
-  "@notifMatchKickoffIn": {"placeholders": {"match": {"type": "String"}, "min": {"type": "int"}}},
+  "@notifMatchKickoffIn": {
+    "placeholders": {
+      "match": {
+        "type": "String"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
   "notifMatchResultTitle": "⚽ Slutresultat",
   "notifMatchesToggle": "Advarsler om storkampe",
   "notifChannelGeneralName": "Meddelelser & opdateringer",
@@ -2050,5 +2065,43 @@
   "tvPairEntrySub": "Intet at taste på fjernbetjeningen — anbefales",
   "@tvPairEntrySub": {
     "description": "Texte UI : tvPairEntrySub"
-  }
+  },
+  "navSport": "Sport",
+  "sportTabHighlights": "På plakaten",
+  "sportTabFollowed": "Mine kampe",
+  "sportTabTeams": "Mine hold",
+  "sportAll": "Alle",
+  "sportRefresh": "Opdatér",
+  "sportRetry": "Prøv igen",
+  "sportLive": "LIVE",
+  "sportFollow": "Følg kampen",
+  "sportUnfollow": "Følg ikke længere",
+  "sportFollowedOn": "Følges – du får besked",
+  "sportFollowedOff": "Fjernet fra dine kampe",
+  "sportOfflineTitle": "Ingen forbindelse",
+  "sportOfflineBody": "Kunne ikke nå tjenesten. Tjek din forbindelse, og prøv igen.",
+  "sportSourceDownTitle": "Tjenesten er midlertidigt utilgængelig",
+  "sportSourceDownBody": "Resultatudbyderen svarer ikke. Dine fulgte kampe er der stadig.",
+  "sportNoneTitle": "Ingen storkampe",
+  "sportNoneBody": "Intet særligt de næste dage. Kig forbi senere.",
+  "sportNoneInSportTitle": "Intet i denne sport",
+  "sportNoneInSportBody": "Andre sportsgrene har kampe på vej.",
+  "sportShowAll": "Vis alle sportsgrene",
+  "sportFollowedEmptyTitle": "Ingen fulgte kampe",
+  "sportFollowedEmptyBody": "Vælg de kampe, du går op i: du får besked før kampstart og ved slutresultatet.",
+  "sportTeamsEmptyTitle": "Ingen fulgte hold",
+  "sportTeamsEmptyBody": "Tilføj dine hold: alle deres kampe bliver annonceret, uanset modstander.",
+  "sportAddTeam": "Tilføj et hold",
+  "sportRemoveTeam": "Fjern",
+  "sportSearchTeamHint": "Holdnavn (alle sportsgrene)",
+  "sportSearchTeamPrompt": "Skriv mindst to bogstaver for at søge efter et hold.",
+  "sportSearchTeamNone": "Der blev ikke fundet et hold.",
+  "sportSoccer": "Fodbold",
+  "sportBasketball": "Basketball",
+  "sportTennis": "Tennis",
+  "sportIceHockey": "Ishockey",
+  "sportAmericanFootball": "Amerikansk fodbold",
+  "sportMotorsport": "Motorsport",
+  "sportRugby": "Rugby",
+  "sportBaseball": "Baseball"
 }

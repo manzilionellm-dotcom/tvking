@@ -843,11 +843,6 @@ export const _BIG_TEAMS = {
   133729: 'Atletico Madrid',
 };
 
-// Ids interrogés (clés numériques du tableau ci-dessus).
-function _bigTeamIds() {
-  return Object.keys(_BIG_TEAMS).filter((k) => /^\d+$/.test(k)).slice(0, 20);
-}
-
 // Comparaison de noms d'équipes : minuscules SANS accents (« Atlético »
 // et « Atletico » doivent se reconnaître).
 function _foldTeam(s) {
@@ -878,27 +873,108 @@ export function _isReserveOrWomen(name) {
 //    « Tottenham »   ⊂ « Tottenham Hotspur »  → même club ✓
 //    « Aris »        ⊄ « Paris Saint-Germain » → clubs différents ✓
 //    « Real Madrid » ⊄ « Real Sociedad »       → clubs différents ✓
-export function _sameTeam(a, b) {
-  const wa = _foldTeam(a).split(/[^a-z0-9]+/).filter(Boolean);
-  const wb = _foldTeam(b).split(/[^a-z0-9]+/).filter(Boolean);
-  if (!wa.length || !wb.length) return false;
-  const [short, long] =
-    wa.length <= wb.length ? [wa, wb] : [wb, wa];
-  for (let i = 0; i + short.length <= long.length; i++) {
+//  Les mots de `needle` apparaissent-ils EN ENTIER et D'UN SEUL TENANT
+//  dans `haystack` ? C'est la brique commune du rapprochement des noms
+//  d'équipes ET des noms de ligues : dans les deux cas, comparer des
+//  morceaux de texte crée des faux positifs invisibles.
+//    « euro »  ⊄ « American Football League Europe »  (euro ≠ europe)
+//    « serie a » ⊂ « Brazilian Serie A »              ✓
+export function _containsWords(haystack, needle) {
+  const hay = _foldTeam(haystack).split(/[^a-z0-9]+/).filter(Boolean);
+  const nee = _foldTeam(needle).split(/[^a-z0-9]+/).filter(Boolean);
+  if (!hay.length || !nee.length || nee.length > hay.length) return false;
+  for (let i = 0; i + nee.length <= hay.length; i++) {
     let ok = true;
-    for (let k = 0; k < short.length; k++) {
-      if (long[i + k] !== short[k]) { ok = false; break; }
+    for (let k = 0; k < nee.length; k++) {
+      if (hay[i + k] !== nee[k]) { ok = false; break; }
     }
     if (ok) return true;
   }
   return false;
 }
 
+export function _sameTeam(a, b) {
+  // Deux clubs se reconnaissent dans les DEUX sens : « Tottenham » et
+  // « Tottenham Hotspur » désignent le même club, peu importe lequel des
+  // deux noms le panel nous envoie.
+  return _containsWords(a, b) || _containsWords(b, a);
+}
+
 let _bigMatchesCache = null; // { at, data }
 
-// GET /api/sports/big → { matches: [ev…] } (affiches à venir + terminées
-// du jour, triées par coup d'envoi). Même forme d'événement que
-// /api/sports/team/:id — l'app réutilise son parseur tel quel.
+//  SPORTS COUVERTS (demande propriétaire du 23/08 : « la catégorie, tous
+//  les sports, même le basket, même le tennis, tout »).
+//
+//  On interroge `eventsday.php?d=<jour>&s=<sport>` : UNE requête donne
+//  TOUS les matchs d'un sport pour un jour. C'est bien meilleur que
+//  l'ancienne approche (une requête par club de foot) : ça couvre les
+//  autres sports, où la notion d'« équipe vedette » n'existe pas — au
+//  tennis il n'y a même pas d'équipes du tout.
+export const _SPORTS = [
+  'Soccer',
+  'Basketball',
+  'Tennis',
+  'Ice Hockey',
+  'American Football',
+  'Motorsport',
+  'Rugby',
+  'Baseball',
+];
+
+//  Nombre de JOURS regardés à partir d'aujourd'hui. 3 jours × 8 sports =
+//  24 requêtes amont, sous la limite de sous-requêtes d'un Worker, et
+//  largement couvert par le cache de 30 min.
+const _BIG_DAYS = 3;
+
+//  Ce qui fait qu'un match MÉRITE une notification. Sans ce filtre, on
+//  annoncerait des rencontres de quatrième division à 3 h du matin.
+//  Comparaison sur le nom de ligue, en minuscules et sans accents ; un
+//  fragment suffit (« premier league » attrape « English Premier League »).
+const _MAJOR_LEAGUES = [
+  // Football
+  'premier league', 'la liga', 'serie a', 'bundesliga', 'ligue 1',
+  'champions league', 'europa league', 'conference league',
+  'world cup', 'euro', 'copa america', 'africa cup', 'nations league',
+  'copa del rey', 'fa cup', 'coppa italia', 'dfb pokal', 'super cup',
+  'mls', 'liga mx', 'eredivisie', 'primeira liga',
+  // Basket
+  'nba', 'wnba', 'euroleague', 'eurobasket',
+  // Hockey sur glace
+  'nhl',
+  // Football américain
+  'nfl',
+  // Tennis
+  'atp', 'wta', 'grand slam', 'wimbledon', 'roland garros',
+  'us open', 'australian open', 'davis cup',
+  // Sport auto
+  'formula 1', 'formula one', 'motogp', 'nascar', 'indycar',
+  // Rugby
+  'six nations', 'rugby world cup', 'top 14', 'super rugby', 'premiership rugby',
+  // Baseball
+  'mlb',
+];
+
+export function _isMajorLeague(league) {
+  if (!_foldTeam(league)) return false;
+  // Comparaison par MOTS ENTIERS, pas par morceaux de texte. Avec un
+  // simple `includes`, « euro » attrapait « American Football League
+  // Europe » — un match de ligue mineure annoncé comme un Championnat
+  // d'Europe. Le sens de la recherche compte : c'est le motif qu'on
+  // cherche DANS le nom de ligue, jamais l'inverse.
+  for (const m of _MAJOR_LEAGUES) {
+    if (_containsWords(league, m)) return true;
+  }
+  return false;
+}
+
+// Jour au format YYYY-MM-DD, décalé de `offset` jours (UTC).
+export function _dayStamp(nowMs, offset) {
+  return new Date(nowMs + offset * 86400000).toISOString().slice(0, 10);
+}
+
+// GET /api/sports/big → { matches: [ev…], sports: […] } — les affiches des
+// 3 prochains jours, TOUS SPORTS, triées par coup d'envoi. Même forme
+// d'événement que /api/sports/team/:id : l'app réutilise son parseur.
 async function handleSportsBig(env) {
   const now = Date.now();
   if (_bigMatchesCache && now - _bigMatchesCache.at < 1800000) {
@@ -921,8 +997,9 @@ async function handleSportsBig(env) {
     timestamp: e.strTimestamp || '',
     status: e.strStatus || '',
     league: e.strLeague || '',
+    sport: e.strSport || '',
   });
-  // Un camp est « majeur » si son nom désigne un club de la liste.
+  // Un camp est « majeur » si son nom désigne un club de la liste foot.
   const isBigSide = (raw) => {
     if (!_foldTeam(raw) || _isReserveOrWomen(raw)) return false;
     for (const big of names) {
@@ -930,30 +1007,36 @@ async function handleSportsBig(env) {
     }
     return false;
   };
-  // Une affiche est « grande » si les DEUX camps sont des clubs majeurs.
-  const isBig = (ev) => isBigSide(ev.home) && isBigSide(ev.away);
+  //  DEUX PORTES D'ENTRÉE, et c'est voulu :
+  //    • la LIGUE est majeure (NBA, NHL, Roland-Garros, F1…) — seul
+  //      critère possible hors du football, où « équipe vedette » n'a
+  //      pas de sens ;
+  //    • OU, au football, les DEUX camps sont des clubs majeurs : ça
+  //      rattrape un Real–Barça en amical, hors compétition listée.
+  const isBig = (ev) =>
+    _isMajorLeague(ev.league) || (isBigSide(ev.home) && isBigSide(ev.away));
 
-  const byId = new Map(); // dédoublonne : chaque match remonte 2 fois
+  const byId = new Map();
   const warnings = [];
-  const ids = _bigTeamIds();
-  // Séquentiel volontaire : TheSportsDB (offre gratuite) répond mal à 20
-  // requêtes simultanées. Le cache 30 min rend ce coût négligeable.
+  const seenSports = new Set();
   let upstreamOk = 0;
   let upstreamKo = 0;
-  for (const id of ids) {
-    const expected = _foldTeam(_BIG_TEAMS[id]);
-    let seenExpected = false;
-    let sawAnyEvent = false;
-    for (const path of ['eventsnext', 'eventslast']) {
+  let probed = 0;
+  // Séquentiel volontaire : l'offre gratuite de TheSportsDB supporte mal
+  // les rafales. Le cache de 30 min rend ce coût négligeable.
+  for (let d = 0; d < _BIG_DAYS; d++) {
+    const day = _dayStamp(now, d);
+    for (const sport of _SPORTS) {
+      probed++;
+      const where = `${sport}/${day}`;
       try {
-        const r = await fetch(`${_sportsBase(env)}/${path}.php?id=${id}`, {
-          headers: _sportsHeaders(),
-        });
+        const r = await fetch(
+          `${_sportsBase(env)}/eventsday.php?d=${day}&s=${encodeURIComponent(sport)}`,
+          { headers: _sportsHeaders() },
+        );
         if (!r.ok) {
           upstreamKo++;
-          if (warnings.length < 4) {
-            warnings.push(`amont ${path}/${id}: HTTP ${r.status}`);
-          }
+          if (warnings.length < 4) warnings.push(`amont ${where}: HTTP ${r.status}`);
           continue;
         }
         const txt = await r.text();
@@ -963,51 +1046,42 @@ async function handleSportsBig(env) {
         } catch (_) {
           upstreamKo++;
           if (warnings.length < 4) {
-            // Un HTML de page d'erreur / de blocage arrive ici : on en garde
-            // le tout début, c'est ce qui permet de diagnostiquer.
-            warnings.push(`amont ${path}/${id}: réponse non-JSON « ${
+            // Une page de blocage HTML atterrit ici : on en garde le début,
+            // c'est ce qui permet de diagnostiquer au lieu de deviner.
+            warnings.push(`amont ${where}: réponse non-JSON « ${
               txt.slice(0, 60).replace(/\s+/g, ' ')} »`);
           }
           continue;
         }
         upstreamOk++;
-        const arr = (j && (j.events || j.results)) || [];
-        for (const raw of arr) {
+        for (const raw of (j && j.events) || []) {
           const ev = mapEv(raw);
-          if (!ev.id) continue;
-          sawAnyEvent = true;
-          // AUTO-CONTRÔLE : les matchs renvoyés par cet id doivent bien
-          // concerner l'équipe annoncée. Sinon l'id a changé de sens.
-          if (_sameTeam(ev.home, expected) || _sameTeam(ev.away, expected)) {
-            seenExpected = true;
-          }
-          if (!isBig(ev)) continue;
+          if (!ev.id || !isBig(ev)) continue;
+          if (ev.sport) seenSports.add(ev.sport);
           byId.set(ev.id, ev);
         }
       } catch (e) {
-        // best-effort : une équipe muette ne prive pas des autres — mais on
-        // NOTE la panne, sinon elle reste invisible (cf. l'incident du 22/08).
+        // Best-effort : un sport muet ne prive pas les autres — mais on NOTE
+        // la panne, sinon elle reste invisible (incident du 22/08).
         upstreamKo++;
         if (warnings.length < 4) {
-          warnings.push(`amont ${path}/${id}: ${String(e && e.message || e)}`);
+          warnings.push(`amont ${where}: ${String((e && e.message) || e)}`);
         }
       }
-    }
-    if (sawAnyEvent && !seenExpected) {
-      warnings.push(`id ${id}: « ${_BIG_TEAMS[id]} » introuvable dans ses matchs`);
     }
   }
   const matches = Array.from(byId.values()).sort((x, y) =>
     String(x.timestamp || x.date).localeCompare(String(y.timestamp || y.date)),
   );
-  // `warnings` rend une dérive d'identifiant VISIBLE de l'extérieur : une
-  // réponse vide accompagnée d'un tableau vide veut dire « pas d'affiche
-  // cette semaine », une réponse vide avec des warnings veut dire « le
-  // catalogue d'ids est cassé ». L'app ignore ce champ.
+  //  Les compteurs rendent une panne VISIBLE de l'extérieur : une réponse
+  //  vide avec upstream_ok élevé = pas d'affiche ces jours-ci ; une réponse
+  //  vide avec upstream_ko élevé = l'amont nous refuse l'entrée. Sans ça,
+  //  les deux cas se ressemblaient — c'est ce qui avait masqué la panne.
   const data = {
     matches,
+    sports: Array.from(seenSports).sort(),
     warnings,
-    probed: ids.length,
+    probed,
     upstream_ok: upstreamOk,
     upstream_ko: upstreamKo,
     generated_at: new Date(now).toISOString(),
