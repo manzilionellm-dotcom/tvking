@@ -24,7 +24,8 @@
 //    node cloudflare/sports_big.smoke.mjs
 // =========================================================
 import { _sameTeam, _isReserveOrWomen, _BIG_TEAMS, _sportsBase,
-         _isMajorLeague, _dayStamp, _SPORTS } from './worker.js';
+         _isMajorLeague, _dayStamp, _SPORTS,
+         _MAX_BIG_MATCHES } from './worker.js';
 
 let pass = 0;
 let fail = 0;
@@ -143,6 +144,22 @@ ok(_dayStamp(t0, 1) === '2026-08-24', `jour +1 = ${_dayStamp(t0, 1)}`);
 // pas « 2026-08-32 ».
 const t1 = Date.UTC(2026, 7, 31, 12, 0);
 ok(_dayStamp(t1, 1) === '2026-09-01', `changement de mois = ${_dayStamp(t1, 1)}`);
+
+// ---------------------------------------------------------
+//  6. Plafond de sortie
+// ---------------------------------------------------------
+//  L'offre gratuite tronque chaque appel a 3 evenements ; une cle
+//  premium en rend jusqu'a 1500. Sur 24 appels, la reponse passerait
+//  de quelques kilo-octets a plusieurs mega-octets — a telecharger et
+//  a analyser sur un telephone qui n'a parfois que 256 Mo.
+//  Mesure sur le code reel avec une source simulee a 1500 evenements
+//  par appel : 36 000 evenements bruts, 7 500 retenus, 60 renvoyes,
+//  13,9 Ko. Sans plafond : ~1,7 Mo.
+ok(Number.isInteger(_MAX_BIG_MATCHES), 'le plafond est un entier');
+ok(_MAX_BIG_MATCHES >= 20,
+  `assez d'affiches pour remplir un ecran (${_MAX_BIG_MATCHES})`);
+ok(_MAX_BIG_MATCHES <= 200,
+  'assez bas pour tenir sur un petit telephone');
 
 console.log(`\n${pass} PASS, ${fail} FAIL`);
 if (fail > 0) process.exit(1);

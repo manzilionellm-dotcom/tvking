@@ -931,6 +931,19 @@ export const _SPORTS = [
 //  largement couvert par le cache de 30 min.
 const _BIG_DAYS = 3;
 
+//  PLAFOND DE SORTIE. L'offre gratuite tronque chaque appel a 3 evenements ;
+//  une cle premium en rend jusqu'a 1500. Sur 24 appels, la reponse peut
+//  donc passer de quelques kilo-octets a plusieurs mega-octets — a
+//  telecharger et a analyser sur un telephone qui n'a parfois que 256 Mo.
+//  On garde les affiches les PLUS PROCHES (la liste est triee par coup
+//  d'envoi avant la coupe) : ce sont les seules sur lesquelles une alerte
+//  a encore un sens.
+//
+//  La coupe n'est JAMAIS silencieuse : `total_found` dit combien il y en
+//  avait vraiment. Sans ce champ, une troncature ressemblerait a une
+//  source incomplete, et on chercherait un bug la ou il n'y en a pas.
+export const _MAX_BIG_MATCHES = 60;
+
 //  Ce qui fait qu'un match MÉRITE une notification. Sans ce filtre, on
 //  annoncerait des rencontres de quatrième division à 3 h du matin.
 //  Comparaison sur le nom de ligue, en minuscules et sans accents ; un
@@ -1099,15 +1112,20 @@ async function handleSportsBig(env) {
       }
     }
   }
-  const matches = Array.from(byId.values()).sort((x, y) =>
+  const all = Array.from(byId.values()).sort((x, y) =>
     String(x.timestamp || x.date).localeCompare(String(y.timestamp || y.date)),
   );
+  const matches = all.slice(0, _MAX_BIG_MATCHES);
   //  Les compteurs rendent une panne VISIBLE de l'extérieur : une réponse
   //  vide avec upstream_ok élevé = pas d'affiche ces jours-ci ; une réponse
   //  vide avec upstream_ko élevé = l'amont nous refuse l'entrée. Sans ça,
   //  les deux cas se ressemblaient — c'est ce qui avait masqué la panne.
   const data = {
     matches,
+    // Combien d'affiches ont VRAIMENT ete retenues avant la coupe.
+    // Si total_found > matches.length, la liste est tronquee — et ca se
+    // voit, au lieu de se deviner.
+    total_found: all.length,
     sports: Array.from(seenSports).sort(),
     warnings,
     probed,
