@@ -35,6 +35,11 @@ on:
       - 'pubspec.yaml'
       - 'assets/branding/**'
       - 'lib/l10n/**'
+      # Le script de l'installeur DOIT declencher un build : sans cette
+      # ligne, corriger 7motion.iss ne regenerait rien et on croirait le
+      # correctif livre alors qu'aucun installeur neuf n'existerait. C'est
+      # exactement le piege qui avait laisse l'installeur du 7 aout orphelin.
+      - 'windows/installer/**'
       - '.github/workflows/build-windows.yml'
   workflow_dispatch:
 
