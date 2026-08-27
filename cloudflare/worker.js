@@ -8185,6 +8185,33 @@ async function handleRequest(request, env, ctx) {
       return proxyApk(SEVENTV_APK_URL, 'SevenMotionTV.apk', url.searchParams.get('v'));
     }
 
+    //  /apk et /d — LIEN DIRECT, sans proxy (ajouté le 23/08).
+    //
+    //  POURQUOI IL EXISTE, alors que /tv fonctionne. Une box a refusé
+    //  d'installer et on a demandé « un lien qui pointe direct ». On a
+    //  d'abord MESURÉ : le fichier servi par /tv arrive octet pour
+    //  octet identique à celui de GitHub, avec le bon type MIME et la
+    //  bonne longueur. Le téléchargement n'était donc pas en cause —
+    //  l'échec vient de l'INSTALLATION (voir la note plus bas).
+    //
+    //  Cette route reste utile pour deux raisons :
+    //    • elle RETIRE le Worker du chemin. Quand quelque chose cloche
+    //      sur une box qu'on n'a pas sous la main, pouvoir éliminer un
+    //      maillon d'un seul essai vaut cher ;
+    //    • un cache d'opérateur ou de box qui aurait gardé une réponse
+    //      abîmée pour /tv ne l'a pas pour /apk.
+    //
+    //  ⚠ Ce n'est PAS strictement mieux : GitHub répond par une
+    //  redirection 302 vers un lien signé très long, et certaines
+    //  applis Downloader bas de gamme suivent mal les redirections.
+    //  C'est justement pour éviter ça que /tv passe par le proxy.
+    //  On garde donc les DEUX, et on ne présente pas celle-ci comme le
+    //  remplacement de l'autre.
+    if (segments.length === 1 &&
+        ['apk', 'd', 'direct'].includes(segments[0].toLowerCase())) {
+      return Response.redirect(SEVENTV_APK_URL, 302);
+    }
+
     // /test — dernier build de TEST Android TV (diagnostic, pas les clients)
     if (segments.length === 1 &&
         ['test', 'tvtest', 'beta'].includes(segments[0].toLowerCase())) {
