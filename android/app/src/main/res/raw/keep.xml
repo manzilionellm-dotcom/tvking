@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  keep.xml — empêche le réducteur de ressources de supprimer le son de but
+
+  POURQUOI CE FICHIER EXISTE (28/08/2026).
+
+  Le son « wouaaah » de but vit dans res/raw/goal_roar.wav. Il n'est
+  JAMAIS référencé par du code Java ou Kotlin, ni par un layout XML :
+  Android le retrouve par son NOM, à l'exécution, parce que c'est ainsi
+  qu'on déclare le son d'un canal de notification
+  (RawResourceAndroidNotificationSound('goal_roar')).
+
+  Or les trois chaînes de build (téléphone, TV, Seven TV) activent
+  `isShrinkResources = true`. Le réducteur de ressources supprime tout
+  ce qu'il ne voit pas référencé — et il ne peut pas voir une référence
+  faite par une chaîne de caractères depuis du Dart.
+
+  CONSTATÉ, PAS SUPPOSÉ : l'APK TV publié le 28/08 a été inspecté après
+  coup, goal_roar en était ABSENT. Sans ce fichier, la notification de
+  but serait tombée sur le son par défaut d'Android — sans erreur, sans
+  avertissement de build, sans rien. Le pire genre de panne : celle qui
+  ne se voit qu'à l'oreille, sur l'appareil d'un client.
+
+  `shrinkMode="safe"` : en cas de doute sur une ressource, le réducteur
+  la GARDE. Quelques kilo-octets de plus valent mieux qu'une ressource
+  disparue en silence.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/goal_roar"
+    tools:shrinkMode="safe" />
