@@ -3738,7 +3738,22 @@ class _TracksSheetState extends State<_TracksSheet> {
     switch (e.kind) {
       case _SheetKind.audio:
         final TrackInfo t = widget.audio[e.index];
-        return (_trackLabel(context, t), t.selected);
+        //  ON AFFICHE LE FORMAT RÉEL DE LA PISTE — ajouté le 30/08.
+        //
+        //  Signalement : « le son n'est pas HD, on dirait une vieille
+        //  cassette radio ». Jusqu'ici cette liste ne montrait que le
+        //  nom et la langue : impossible de savoir si c'était la SOURCE
+        //  qui était pauvre ou le lecteur qui choisissait mal. Les deux
+        //  s'entendent pareil, elles ne se réparent pas pareil.
+        //
+        //  « Français · AAC · 48 kHz · Stéréo » répond en un coup d'œil.
+        //  Et quand la piste est objectivement mauvaise (moins de
+        //  44,1 kHz, mono, ou moins de 96 kb/s), on le DIT — sinon le
+        //  client cherche un réglage qui n'existe pas.
+        final String fmt = t.formatLabel;
+        final String base = _trackLabel(context, t);
+        final String suffix = t.isLowQuality ? '$fmt · ⚠' : fmt;
+        return (fmt.isEmpty ? base : '$base · $suffix', t.selected);
       case _SheetKind.textOff:
         final bool noneSelected =
             widget.text.every((TrackInfo t) => !t.selected);

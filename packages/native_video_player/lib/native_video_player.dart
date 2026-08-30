@@ -101,6 +101,10 @@ class TrackInfo {
     required this.label,
     required this.selected,
     this.language = '',
+    this.codec = '',
+    this.sampleRate = -1,
+    this.channels = -1,
+    this.bitrate = -1,
   });
   final String label;
   final bool selected;
@@ -108,6 +112,110 @@ class TrackInfo {
   /// Code langue BRUT remonté par ExoPlayer (fr, eng, spa…) — vide si
   /// le flux ne le déclare pas. L'UI le traduit en libellé localisé.
   final String language;
+
+  //  FORMAT RÉEL DE LA PISTE — ajouté le 30/08/2026.
+  //
+  //  Signalement : « le son n'est pas HD, on dirait une vieille cassette
+  //  radio ». On ne pouvait pas répondre : le lecteur ne remontait que le
+  //  libellé et la langue. Or DEUX causes très différentes s'entendent
+  //  exactement pareil :
+  //     • la SOURCE est pauvre — MP2 96 kb/s en 32 kHz, très courant en
+  //       IPTV live. Rien à corriger dans le code : il faut un autre flux ;
+  //     • le LECTEUR choisit mal — mauvaise piste, downmix inutile. Là,
+  //       on corrige.
+  //  Sans ces chiffres, on change du code au hasard. Avec, on sait en
+  //  trois secondes.
+  //
+  //  `-1` = le flux ne déclare pas l'information (Format.NO_VALUE côté
+  //  Android). L'affichage doit alors SE TAIRE, pas écrire « -1 ».
+
+  /// Type MIME du codec : `audio/mp4a-latm` (AAC), `audio/ac3`,
+  /// `audio/eac3`, `audio/mpeg-L2` (MP2)…
+  final String codec;
+
+  /// Fréquence d'échantillonnage en Hz. 48 000 = norme télévision.
+  /// 32 000 ou moins = le haut du spectre est coupé, la voix devient
+  /// sourde. C'est LE chiffre qui explique l'effet « vieille cassette ».
+  final int sampleRate;
+
+  /// Nombre de canaux. 1 = mono, 2 = stéréo, 6 = 5.1.
+  final int channels;
+
+  /// Débit en bits par seconde. Souvent absent sur un live MPEG-TS.
+  final int bitrate;
+
+  /// Nom court et lisible du codec, pour l'affichage.
+  String get codecLabel {
+    switch (codec) {
+      case 'audio/mp4a-latm':
+        return 'AAC';
+      case 'audio/ac3':
+        return 'Dolby Digital';
+      case 'audio/eac3':
+      case 'audio/eac3-joc':
+        return 'Dolby Digital+';
+      case 'audio/vnd.dts':
+      case 'audio/vnd.dts.hd':
+        return 'DTS';
+      case 'audio/mpeg-L2':
+        return 'MP2';
+      case 'audio/mpeg':
+        return 'MP3';
+      case 'audio/opus':
+        return 'Opus';
+      case 'audio/flac':
+        return 'FLAC';
+      default:
+        // Codec inconnu : on montre le sous-type brut plutôt que rien —
+        // « eac3-atmos » reste plus parlant qu'une case vide.
+        final int i = codec.indexOf('/');
+        return i < 0 ? codec : codec.substring(i + 1);
+    }
+  }
+
+  /// Disposition des canaux, telle qu'un client la comprend.
+  String get channelsLabel {
+    switch (channels) {
+      case 1:
+        return 'Mono';
+      case 2:
+        return 'Stéréo';
+      case 6:
+        return '5.1';
+      case 8:
+        return '7.1';
+      default:
+        return channels > 0 ? '$channels canaux' : '';
+    }
+  }
+
+  /// Résumé technique — « AAC · 48 kHz · Stéréo · 128 kb/s ».
+  /// Chaque morceau INCONNU est simplement omis : mieux vaut une ligne
+  /// courte qu'une ligne remplie de valeurs inventées.
+  String get formatLabel {
+    final List<String> parts = <String>[];
+    if (codec.isNotEmpty) parts.add(codecLabel);
+    if (sampleRate > 0) {
+      final double khz = sampleRate / 1000;
+      parts.add(khz == khz.roundToDouble()
+          ? '${khz.round()} kHz'
+          : '${khz.toStringAsFixed(1)} kHz');
+    }
+    if (channels > 0) parts.add(channelsLabel);
+    if (bitrate > 0) parts.add('${(bitrate / 1000).round()} kb/s');
+    return parts.join(' · ');
+  }
+
+  /// `true` quand la piste est objectivement de basse qualité. Sert à
+  /// signaler au propriétaire que le problème vient de la SOURCE.
+  ///
+  /// Seuils choisis pour ne PAS crier au loup : 44,1 kHz (qualité CD) et
+  /// 96 kb/s en stéréo restent acceptables. En dessous, le haut du
+  /// spectre est réellement absent et la voix s'entend « radio AM ».
+  bool get isLowQuality =>
+      (sampleRate > 0 && sampleRate < 44100) ||
+      (bitrate > 0 && bitrate < 96000 && channels <= 2) ||
+      channels == 1;
 }
 
 /// Pilote un lecteur natif et publie son état. Un controller = une vue.
@@ -338,6 +446,13 @@ class NativeVideoController extends ChangeNotifier {
               label: (t['label'] as String?) ?? '',
               language: (t['language'] as String?) ?? '',
               selected: (t['selected'] as bool?) ?? false,
+              // `num?` et non `int?` : le canal de plateforme peut
+              // remonter un entier en double selon les box. Un cast
+              // strict planterait l'écran entier pour un chiffre.
+              codec: (t['codec'] as String?) ?? '',
+              sampleRate: (t['sampleRate'] as num?)?.toInt() ?? -1,
+              channels: (t['channels'] as num?)?.toInt() ?? -1,
+              bitrate: (t['bitrate'] as num?)?.toInt() ?? -1,
             ))
         .toList();
   }

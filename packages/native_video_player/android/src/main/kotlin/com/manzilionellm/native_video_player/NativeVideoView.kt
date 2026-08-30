@@ -13,6 +13,7 @@ import android.view.View
 import android.widget.FrameLayout
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -1002,6 +1003,34 @@ class NativeVideoView(
                         // « Pistes » du lecteur TV.
                         "language" to (f.language ?: ""),
                         "selected" to group.isSelected,
+                        //  FORMAT RÉEL DE LA PISTE — ajouté le 30/08.
+                        //
+                        //  POURQUOI : signalement « le son n'est pas HD, on
+                        //  dirait une vieille cassette radio ». Impossible de
+                        //  répondre, parce que l'application ne remontait
+                        //  QUE le libellé et la langue. On ne pouvait pas
+                        //  distinguer :
+                        //     • une SOURCE pauvre (MP2 96 kb/s en 32 kHz mono,
+                        //       très courant en IPTV live) — rien à corriger
+                        //       chez nous, il faut changer de flux ;
+                        //     • un DÉFAUT du lecteur (mauvaise piste choisie,
+                        //       downmix inutile) — là, on corrige.
+                        //  Les deux s'entendent pareil. Ils ne se réparent
+                        //  pas pareil du tout.
+                        //
+                        //  Format.NO_VALUE (-1) = le flux ne déclare pas
+                        //  l'information ; on la transmet telle quelle et
+                        //  c'est l'affichage qui décide de se taire.
+                        "codec" to (f.sampleMimeType ?: ""),
+                        "sampleRate" to f.sampleRate,
+                        "channels" to f.channelCount,
+                        // `bitrate` vaut le débit moyen quand il est connu,
+                        // sinon le débit crête. Sur un flux live MPEG-TS il
+                        // est souvent absent : d'où le repli.
+                        "bitrate" to (
+                            if (f.bitrate != Format.NO_VALUE) f.bitrate
+                            else f.averageBitrate
+                            ),
                     ),
                 )
                 C.TRACK_TYPE_TEXT -> text.add(
