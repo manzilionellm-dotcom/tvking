@@ -1221,6 +1221,21 @@ class NativeVideoView(
             .setUserAgent(userAgent)
             .setAllowCrossProtocolRedirects(true)
             .setKeepPostFor302Redirects(true)
+            //  ⚠ MANQUAIT (corrige le 30/08). Cette fabrique oubliait
+            //  « Connection: close », que la fabrique principale pose depuis
+            //  le 21/08. Sans lui, les sockets repartent au pool JVM ENCORE
+            //  OUVERTS apres release() : le panel Xtream, qui ne libere le
+            //  creneau qu'a la fermeture du socket TCP, continue de compter
+            //  la lecture comme « en cours » — et refuse la suivante avec
+            //  « deja ouverte sur un autre appareil ».
+            //
+            //  Le chemin concerne est celui du diagnostic multi-signature,
+            //  donc rare. Mais une lecture de diagnostic qui laisse le
+            //  creneau pris est precisement le genre de detail qui fait
+            //  croire que le probleme est revenu alors qu'on vient de le
+            //  corriger ailleurs. Les deux fabriques doivent se comporter
+            //  a l'identique.
+            .setDefaultRequestProperties(mapOf("Connection" to "close"))
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(15_000)
         val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
