@@ -1687,6 +1687,143 @@ async function handlePairSubmit(env, code, request) {
 }
 
 // GET /p/:code — page TÉLÉPHONE (formulaire, vrai clavier).
+// =========================================================
+//  PAGE D'INSTALLATION — GET /install
+// =========================================================
+//  POURQUOI ELLE EXISTE (30/08/2026).
+//
+//  Jusqu'ici, on envoyait les clients sur la page de release GitHub.
+//  Regardée avec les yeux d'un client, elle dit :
+//
+//    • « Pre-release » — donc « ce n'est pas fini » ;
+//    • un bouton « Sign in » — donc « il me faut un compte » ;
+//    • « moteur Skia (Impeller OFF), minSdk 21 », un numéro de commit —
+//      donc « ce n'est pas pour moi » ;
+//    • un avertissement rédigé pour NOUS, pas pour lui.
+//
+//  Aucun de ces messages n'est faux. Tous sont mal adressés. Un client
+//  qui doute au moment d'installer n'installe pas — et c'est le seul
+//  moment où on ne peut pas le rattraper.
+//
+//  Cette page ne remplace pas la release GitHub : elle la CACHE. GitHub
+//  reste l'hébergeur du fichier, le client ne le voit plus jamais.
+//
+//  Le numéro de version n'est PAS écrit en dur : il est lu dans le
+//  version.json de la release au moment du rendu. Une page qui annonce
+//  une version périmée est pire qu'une page sans version.
+const _INSTALL_SHORT = 'app.7themotion.com/tv';
+let _installVersionCache = null; // { at, name }
+
+async function _installVersion() {
+  const now = Date.now();
+  if (_installVersionCache && now - _installVersionCache.at < 600000) {
+    return _installVersionCache.name;
+  }
+  try {
+    const r = await fetch(
+      'https://github.com/manzilionellm-dotcom/tvking/releases/download/seventv-latest/version.json',
+      { headers: { 'Accept': 'application/json' } },
+    );
+    if (r.ok) {
+      const j = await r.json();
+      const name = String(j.versionName || '').trim();
+      if (name) {
+        _installVersionCache = { at: now, name };
+        return name;
+      }
+    }
+  } catch (_) {
+    // Amont muet : on affiche la page SANS numéro plutôt que rien.
+    // Le numéro est un confort, l'installation est l'essentiel.
+  }
+  return '';
+}
+
+function installPageHtml(version) {
+  const v = version ? `Version ${version}` : '';
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Installer 7 MOTION sur votre TV</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#08080A;color:#ECE6DA;
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:26px 20px 56px}
+.wrap{max-width:460px;margin:0 auto}
+.brand{font:800 13px/1 -apple-system,sans-serif;letter-spacing:4px;
+  color:#CCB089;text-transform:uppercase;margin-bottom:26px}
+h1{font-size:27px;line-height:1.25;margin:0 0 10px;font-weight:800}
+p.sub{color:#8A8A90;margin:0 0 30px;font-size:15px}
+ol{list-style:none;counter-reset:s;padding:0;margin:0}
+li{counter-increment:s;position:relative;padding:0 0 26px 46px}
+li::before{content:counter(s);position:absolute;left:0;top:-1px;
+  width:30px;height:30px;border-radius:50%;background:#1E1B16;
+  border:1px solid #CCB089;color:#CCB089;font-weight:800;font-size:14px;
+  display:flex;align-items:center;justify-content:center}
+li::after{content:"";position:absolute;left:14px;top:34px;bottom:6px;
+  width:1px;background:#2A2620}
+li:last-child::after{display:none}
+li b{display:block;font-size:16px;margin-bottom:3px}
+li span{color:#8A8A90;font-size:14px}
+.url{margin:14px 0 2px;padding:16px;background:#141418;
+  border:1px solid #CCB089;border-radius:12px;text-align:center;
+  font:700 19px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:#CCB089;word-break:break-all}
+.hint{color:#6E6E75;font-size:12px;margin:8px 0 0}
+.warn{margin:30px 0 0;padding:16px 18px;background:#20160C;
+  border:1px solid #6B4E22;border-radius:12px}
+.warn b{color:#E8C48A;display:block;margin-bottom:5px;font-size:15px}
+.warn span{color:#B9A88C;font-size:14px}
+.dl{display:block;margin:30px 0 0;padding:17px;background:#CCB089;
+  color:#1A1206;border-radius:13px;text-align:center;font-size:17px;
+  font-weight:800;text-decoration:none}
+.alt{display:block;margin:14px 0 0;padding:15px;background:transparent;
+  color:#8A8A90;border:1px solid #2A2620;border-radius:13px;
+  text-align:center;font-size:15px;font-weight:600;text-decoration:none}
+.foot{margin:34px 0 0;padding-top:22px;border-top:1px solid #1A1A1E;
+  color:#6E6E75;font-size:13px;text-align:center}
+.foot a{color:#8A8A90}
+</style></head><body><div class="wrap">
+
+<div class="brand">7 Motion</div>
+<h1>Installer sur votre TV</h1>
+<p class="sub">Trois étapes, deux minutes. Gardez votre télécommande en main.</p>
+
+<ol>
+  <li>
+    <b>Ouvrez « Downloader » sur la TV</b>
+    <span>L'application bleue avec une flèche. Si vous ne l'avez pas,
+    installez-la depuis le magasin de votre télévision — elle est gratuite.</span>
+  </li>
+  <li>
+    <b>Tapez cette adresse</b>
+    <span>Dans le champ du haut, puis appuyez sur « Go ».</span>
+    <div class="url">${_INSTALL_SHORT}</div>
+    <p class="hint">Sans « www », sans « https ». Tout en minuscules.</p>
+  </li>
+  <li>
+    <b>Installez, puis ouvrez</b>
+    <span>Le téléchargement démarre seul. Appuyez sur « Installer », puis
+    sur « Ouvrir ». C'est terminé.</span>
+  </li>
+</ol>
+
+<div class="warn">
+  <b>Vous aviez déjà l'application&nbsp;?</b>
+  <span>Désinstallez-la d'abord, puis réinstallez. Une seule fois : les
+  mises à jour suivantes s'appliqueront toutes seules.</span>
+</div>
+
+<a class="dl" href="/tv">Télécharger sur cet appareil</a>
+<a class="alt" href="https://wa.me/18077888909">Besoin d'aide&nbsp;? Écrivez-nous</a>
+
+<p class="foot">${v ? v + ' &middot; ' : ''}7 MOTION<br>
+<a href="https://app.7themotion.com">app.7themotion.com</a></p>
+
+</div></body></html>`;
+}
+
 function pairPageHtml(code) {
   const c = String(code).replace(/[^0-9]/g, '').slice(0, 6);
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
@@ -8183,6 +8320,30 @@ async function handleRequest(request, env, ctx) {
       ['7tv', 'seventv', 'sevenmotion'].includes(segments[0].toLowerCase())
     ) {
       return proxyApk(SEVENTV_APK_URL, 'SevenMotionTV.apk', url.searchParams.get('v'));
+    }
+
+    //  /install — LA page à donner aux clients (ajoutée le 30/08).
+    //
+    //  Jusqu'ici on envoyait le lien de la release GitHub. Vue par un
+    //  client, cette page dit « Pre-release », « Sign in », affiche un
+    //  numéro de commit et du jargon de compilation. Rien de faux, tout
+    //  mal adressé — et quelqu'un qui doute au moment d'installer
+    //  n'installe pas.
+    //
+    //  ⚠ Cette page NE REMPLACE PAS /tv, qui doit rester un
+    //  téléchargement DIRECT : c'est ce que l'application Downloader
+    //  attend. Une page HTML sur /tv casserait l'installation sur les
+    //  box. Deux adresses, deux publics.
+    if (segments.length === 1 &&
+        ['install', 'i', 'installer'].includes(segments[0].toLowerCase())) {
+      return new Response(installPageHtml(await _installVersion()), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          // 10 min : la page suit un nouveau build sans le faire
+          // attendre, et sans interroger GitHub à chaque visite.
+          'Cache-Control': 'public, max-age=600',
+        },
+      });
     }
 
     //  /apk et /d — LIEN DIRECT, sans proxy (ajouté le 23/08).
