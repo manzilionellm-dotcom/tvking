@@ -61,16 +61,24 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ci/distribution.lock
-          # Le message dit QUI a rescelle et QUAND : sans ca, un
-          # rescellement se confondrait avec un commit ordinaire, et on
+          # Le message dit QUI a rescelle et QUAND. Sans ca, un
+          # rescellement se confondrait avec un commit ordinaire et on
           # perdrait la trace de qui a autorise le changement.
-          git commit -m "Verrou de distribution rescelle par @${{ github.actor }}
-
-Lance manuellement via le workflow « Sceller le verrou de
-distribution ». Les valeurs protegees (canal de mise a jour, lien
-public, cle de signature, identite de l'application) sont desormais
-scellees dans leur etat actuel.
-
-Toute modification ulterieure de l'une d'elles fera ECHOUER la
-publication tant qu'elle n'aura pas ete rescellee."
+          #
+          # Ecrit via un fichier plutot qu'en -m multi-lignes : un
+          # message a plusieurs lignes ecrit directement dans le YAML
+          # casse l'indentation du bloc. Constate le 30/08 — le workflow
+          # etait invalide et n'aurait jamais demarre.
+          {
+            echo "Verrou de distribution rescelle par @${{ github.actor }}"
+            echo
+            echo "Lance manuellement via le workflow « Sceller le verrou de"
+            echo "distribution ». Les valeurs protegees (canal de mise a jour,"
+            echo "lien public, cle de signature, identite de l application)"
+            echo "sont desormais scellees dans leur etat actuel."
+            echo
+            echo "Toute modification ulterieure de l une d elles fera ECHOUER"
+            echo "la publication tant qu elle n aura pas ete rescellee."
+          } > /tmp/seal-msg.txt
+          git commit -F /tmp/seal-msg.txt
           git push
