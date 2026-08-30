@@ -54,6 +54,40 @@ jobs:
         with:
           fetch-depth: 1
 
+      # =========================================================
+      #  VERROU DE PUBLICATION — avant tout le reste
+      # =========================================================
+      #  Demande du proprietaire (30/08) : « il faut un code qui protege
+      #  les liens des dernieres builds. C'est moi qui donne le code.
+      #  N'importe qui ne peut pas changer ca — MEME SI C'EST MOI QUI AI
+      #  DONNE LE PROMPT. »
+      #
+      #  Ce dernier morceau est le vrai sujet. Un assistant a qui l'on dit
+      #  « change le lien » le changera. Cette etape fait qu'un tel
+      #  changement NE PEUT PAS ETRE PUBLIE sans la phrase secrete.
+      #
+      #  Placee AVANT le build : inutile de compiler 12 minutes pour
+      #  refuser de publier a la fin.
+      #
+      #  ⚠ Sur une publication (publish=true), la phrase est EXIGEE. Sans
+      #  elle, on peut verifier que les valeurs n'ont pas bouge, mais pas
+      #  prouver que le fichier de verrou lui-meme n'a pas ete reecrit —
+      #  et c'est exactement le trou par lequel passerait quelqu'un qui
+      #  modifie les deux. Rien ne part vers les clients sans cette
+      #  preuve.
+      - name: Verrou de distribution (liens, canal, signature)
+        env:
+          DIST_LOCK_PASSPHRASE: ${{ secrets.DIST_LOCK_PASSPHRASE }}
+        run: |
+          set -e
+          chmod +x ci/distribution_lock.sh
+          if [ "${{ github.event.inputs.publish }}" = "true" ] \
+             && [ -z "${DIST_LOCK_PASSPHRASE:-}" ]; then
+            echo "::error title=Verrou non arme::Publication demandee mais DIST_LOCK_PASSPHRASE est absent. Poser le secret (GitHub > Settings > Secrets > Actions), puis resceller. Sans lui, on ne peut pas prouver que les liens n'ont pas ete changes."
+            exit 1
+          fi
+          ci/distribution_lock.sh verify
+
       - name: Setup Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:

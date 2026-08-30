@@ -1,0 +1,76 @@
+# =========================================================
+#  Sceller le verrou de distribution
+# =========================================================
+#  À LANCER À LA MAIN, par le PROPRIÉTAIRE, dans deux cas :
+#
+#    1. LA PREMIÈRE FOIS, pour armer le verrou (il est livré
+#       « UNSEALED » parce que personne d'autre que lui ne doit
+#       connaître la phrase secrète) ;
+#    2. après un changement VOULU d'une valeur protégée — un nouveau
+#       canal de mise à jour, un nouveau lien, une nouvelle clé de
+#       signature.
+#
+#  ⚠ CE WORKFLOW NE CRÉE AUCUNE SÉCURITÉ À LUI SEUL. Il ne fait
+#  qu'enregistrer l'empreinte. Ce qui protège vraiment, c'est que la
+#  phrase vive UNIQUEMENT dans les secrets GitHub et dans la tête du
+#  propriétaire — jamais dans le dépôt, jamais dans une conversation.
+#
+#  ⚠ ET IL FAUT LE DIRE : quiconque a le droit d'écrire sur ce dépôt
+#  peut lancer ce workflow, donc resceller. Le verrou arrête les
+#  changements FAITS SANS Y PENSER — de loin la cause la plus fréquente
+#  d'un lien cassé — pas quelqu'un qui a déjà les clés. La vraie
+#  barrière contre une personne, ce sont les permissions GitHub et la
+#  protection de branche : des réglages, pas du code.
+name: Sceller le verrou de distribution
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  seal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sceller
+        env:
+          DIST_LOCK_PASSPHRASE: ${{ secrets.DIST_LOCK_PASSPHRASE }}
+        run: |
+          set -e
+          if [ -z "${DIST_LOCK_PASSPHRASE:-}" ]; then
+            echo "::error title=Phrase absente::Poser le secret DIST_LOCK_PASSPHRASE (GitHub > Settings > Secrets and variables > Actions > New repository secret) avant de sceller."
+            exit 1
+          fi
+          chmod +x ci/distribution_lock.sh
+          echo "--- valeurs qui vont etre scellees ---"
+          ci/distribution_lock.sh show
+          ci/distribution_lock.sh seal
+          echo "--- verification immediate ---"
+          ci/distribution_lock.sh verify
+
+      - name: Enregistrer le verrou
+        run: |
+          set -e
+          if git diff --quiet ci/distribution.lock; then
+            echo "Le verrou etait deja a jour : rien a enregistrer."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/distribution.lock
+          # Le message dit QUI a rescelle et QUAND : sans ca, un
+          # rescellement se confondrait avec un commit ordinaire, et on
+          # perdrait la trace de qui a autorise le changement.
+          git commit -m "Verrou de distribution rescelle par @${{ github.actor }}
+
+Lance manuellement via le workflow « Sceller le verrou de
+distribution ». Les valeurs protegees (canal de mise a jour, lien
+public, cle de signature, identite de l'application) sont desormais
+scellees dans leur etat actuel.
+
+Toute modification ulterieure de l'une d'elles fera ECHOUER la
+publication tant qu'elle n'aura pas ete rescellee."
+          git push

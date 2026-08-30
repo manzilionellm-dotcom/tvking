@@ -1,0 +1,29 @@
+# =============================================
+#  distribution.lock — VALEURS PROTÉGÉES
+# =============================================
+#  Ne PAS modifier à la main. Toute modification d'une
+#  de ces valeurs fait ÉCHOUER la publication tant
+#  qu'elle n'a pas été rescellée par le PROPRIÉTAIRE :
+#
+#    DIST_LOCK_PASSPHRASE='…' ci/distribution_lock.sh seal
+#
+#  ⚠ VERROU PAS ENCORE ARMÉ. L'empreinte vaut UNSEALED
+#  parce que je n'ai PAS la phrase secrète du propriétaire
+#  — et ne dois pas l'avoir. Aujourd'hui la CI compare donc
+#  les VALEURS (déjà une vraie protection : un changement de
+#  lien arrête la publication), mais elle ne peut pas encore
+#  prouver que ce fichier lui-même n'a pas été réécrit.
+#
+#  POUR ARMER, une seule fois :
+#    1. choisir une phrase et la garder hors du dépôt ;
+#    2. GitHub → Settings → Secrets → Actions → New :
+#         DIST_LOCK_PASSPHRASE = <la phrase>
+#    3. lancer le workflow « Sceller le verrou ».
+# =============================================
+update_tag_code=seventv-latest
+update_tag_ci=seventv-latest
+apk_url=releases/download/seventv-latest/seven-tv.apk
+public_route=1
+keystore_sha256=4aa844530bfb51dd86fed45edf9b3ec4d688d21a0704f8abc9960b6807f0c919
+app_id_tv=com.sevenmotion.tv.seven_tv
+seal=UNSEALED
