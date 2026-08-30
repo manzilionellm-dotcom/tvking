@@ -126,6 +126,15 @@ const PHONE_STORE_URL =
 const SEVENTV_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/seventv-latest/seven-tv.apk';
 
+//  VERSION AMAZON APPSTORE — un fichier DIFFÉRENT, et ce n'est pas un
+//  détail. Amazon REFUSE une application qui télécharge et installe
+//  elle-même ses mises à jour ; ce build est donc construit sans le
+//  bouton de mise à jour intégré (voir l'étape « Build APK Amazon
+//  Appstore » du workflow). Envoyer le fichier ordinaire à Amazon, c'est
+//  se faire refuser — c'est déjà arrivé.
+const SEVENTV_AMAZON_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/seventv-latest/seven-tv-amazon.apk';
+
 // APK de TEST Android TV (dernier build validé par la CI) — canal de
 // DIAGNOSTIC : jamais donné aux clients. Servi via /test uniquement.
 const TEST_APK_URL =
@@ -8320,6 +8329,19 @@ async function handleRequest(request, env, ctx) {
       ['7tv', 'seventv', 'sevenmotion'].includes(segments[0].toLowerCase())
     ) {
       return proxyApk(SEVENTV_APK_URL, 'SevenMotionTV.apk', url.searchParams.get('v'));
+    }
+
+    //  /amazon — le fichier à DÉPOSER sur l'Amazon Appstore.
+    //
+    //  Version SANS le bouton de mise à jour intégré : Amazon refuse
+    //  une application qui installe elle-même ses mises à jour. Le
+    //  fichier existait déjà (produit à chaque build) mais n'avait
+    //  aucune adresse — il fallait aller le chercher sur GitHub, et
+    //  rien n'empêchait de se tromper de fichier.
+    if (segments.length === 1 &&
+        segments[0].toLowerCase() === 'amazon') {
+      return proxyApk(SEVENTV_AMAZON_APK_URL, 'SevenMotionTV-Amazon.apk',
+        url.searchParams.get('v'));
     }
 
     //  /install — LA page à donner aux clients (ajoutée le 30/08).
