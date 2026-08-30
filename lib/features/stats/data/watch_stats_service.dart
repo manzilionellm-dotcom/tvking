@@ -50,6 +50,10 @@ class WatchStatsService extends ChangeNotifier {
   bool _started = false;
   String _loadedForKey = '';
 
+  /// Échantillonneur d'une minute. Gardé pour pouvoir l'arrêter — voir
+  /// le commentaire dans [start].
+  Timer? _tickTimer;
+
   /// Démarre l'échantillonneur (idempotent). À appeler une fois au boot.
   Future<void> start() async {
     if (_started) return;
@@ -57,9 +61,30 @@ class WatchStatsService extends ChangeNotifier {
     await _load();
     // Changement de profil → on relit les stats DU profil actif.
     ProfilesRepository.instance.addListener(_onProfileMaybeChanged);
-    // Échantillonneur à vie d'app (singleton, démarrage idempotent) :
-    // le Timer n'est volontairement jamais annulé, inutile de le garder.
-    Timer.periodic(const Duration(minutes: 1), (_) => _tick());
+    //  ÉCHANTILLONNEUR — désormais ARRÊTABLE (corrigé le 28/08).
+    //
+    //  Il était créé sans être gardé, avec le commentaire « inutile de le
+    //  garder ». C'était vrai tant qu'on ne voulait jamais l'arrêter ;
+    //  ça ne l'est plus. Un minuteur qui bat toutes les minutes réveille
+    //  l'isolate Dart 1 440 fois par jour — y compris application en
+    //  arrière-plan, box censée être au repos. Sur une box branchée en
+    //  permanence, c'est du travail pour personne.
+    //
+    //  On le garde donc dans un champ, et [stop] existe. La règle qu'on
+    //  se donne : tout minuteur périodique doit pouvoir être arrêté par
+    //  celui qui l'a démarré. Un minuteur qu'on ne peut pas arrêter est
+    //  une fuite, même quand elle est petite et documentée.
+    _tickTimer?.cancel();
+    _tickTimer = Timer.periodic(const Duration(minutes: 1), (_) => _tick());
+  }
+
+  /// Arrête l'échantillonneur et relâche l'écouteur de profil.
+  /// Symétrique de [start] : après, un `start()` redémarre proprement.
+  void stop() {
+    _tickTimer?.cancel();
+    _tickTimer = null;
+    ProfilesRepository.instance.removeListener(_onProfileMaybeChanged);
+    _started = false;
   }
 
   void _onProfileMaybeChanged() {

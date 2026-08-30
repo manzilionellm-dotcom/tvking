@@ -55,6 +55,13 @@ class TvProgramReminders extends ChangeNotifier {
 
   Timer? _scanTimer;
   Timer? _hideTimer;
+
+  /// Le PREMIER balayage, 20 s après l'ouverture. Il était créé sans être
+  /// gardé : impossible de l'annuler, il partait donc même si le balayage
+  /// venait d'être arrêté. Un lecteur SQLite + favoris qui démarre 20 s
+  /// après qu'on a tout éteint, c'est exactement le genre de réveil
+  /// inexplicable qu'on traque.
+  Timer? _firstScanTimer;
   bool _started = false;
 
   /// Démarre le balayage périodique (idempotent — appelé par la bannière).
@@ -65,7 +72,28 @@ class TvProgramReminders extends ChangeNotifier {
       unawaited(_scan());
     });
     // Premier balayage rapide après l'ouverture (le temps que tout charge).
-    Timer(const Duration(seconds: 20), () => unawaited(_scan()));
+    _firstScanTimer =
+        Timer(const Duration(seconds: 20), () => unawaited(_scan()));
+  }
+
+  /// Arrête le balayage. AJOUTÉ le 28/08 — il n'existait pas.
+  ///
+  /// Sans cette méthode, ouvrir la bannière de rappels UNE seule fois
+  /// lançait un balayage EPG (lecture SQLite + parcours des favoris)
+  /// toutes les 5 minutes pour TOUT le reste de la session, sans aucun
+  /// moyen de l'éteindre — y compris application en arrière-plan, box
+  /// censée être au repos. C'est une des « petites fuites bizarres »
+  /// signalées : rien ne plante, mais la box travaille pour rien.
+  ///
+  /// `start()` reste idempotent après un `stop()` : on peut relancer.
+  void stop() {
+    _scanTimer?.cancel();
+    _scanTimer = null;
+    _firstScanTimer?.cancel();
+    _firstScanTimer = null;
+    _hideTimer?.cancel();
+    _hideTimer = null;
+    _started = false;
   }
 
   Future<void> _scan() async {
@@ -136,6 +164,16 @@ class _TvReminderBannerState extends State<TvReminderBanner> {
   @override
   void dispose() {
     TvProgramReminders.instance.removeListener(_onChange);
+    //  ⚠ MANQUAIT (corrigé le 28/08). On retirait bien l'écouteur, mais
+    //  on n'arrêtait PAS le balayage lancé par `start()` juste au-dessus.
+    //  Résultat : ouvrir cette bannière une seule fois déclenchait un
+    //  balayage EPG (lecture SQLite + parcours des favoris) toutes les
+    //  5 minutes pour tout le reste de la session — plus personne pour
+    //  l'écouter, et aucun moyen de l'éteindre.
+    //
+    //  Une paire `start()`/`stop()` doit être aussi symétrique qu'une
+    //  paire `addListener()`/`removeListener()`. Elle ne l'était pas.
+    TvProgramReminders.instance.stop();
     super.dispose();
   }
 

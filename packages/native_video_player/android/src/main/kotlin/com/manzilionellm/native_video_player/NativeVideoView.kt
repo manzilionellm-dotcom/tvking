@@ -411,9 +411,27 @@ class NativeVideoView(
         channel.setMethodCallHandler(this)
 
         // La SurfaceView ne doit PAS être focusable (sinon elle capte le D-pad
-        // qui doit revenir au Focus Flutter) ; on garde l'écran allumé.
+        // qui doit revenir au Focus Flutter).
         surfaceView.isFocusable = false
         surfaceView.isFocusableInTouchMode = false
+
+        //  ⚠ CORRECTION DE COMMENTAIRE (28/08/2026). Cette ligne portait
+        //  « on garde l'écran allumé ». C'ÉTAIT FAUX dans le mode de rendu
+        //  par DÉFAUT, et ça a coûté un bug terrain : « la box part en
+        //  veille après 15 minutes », y compris pendant la lecture.
+        //
+        //  `keepScreenOn` ne fait remonter la demande à la fenêtre que si
+        //  la vue est ATTACHÉE à la hiérarchie. En mode « surface »
+        //  (hybrid composition) elle l'est, et la ligne fonctionne. En
+        //  mode « texture » — le défaut, voir getRenderMode() — la vue
+        //  est créée HORS hiérarchie pour rendre dans une texture : elle
+        //  n'atteint jamais ViewRootImpl, et la demande est ignorée
+        //  silencieusement.
+        //
+        //  On la GARDE (elle sert dans le mode « surface » et ne coûte
+        //  rien), mais elle ne doit plus être considérée comme la
+        //  garantie anti-veille. Cette garantie vit désormais côté Dart,
+        //  au niveau de l'APPLICATION : lib/core/tv/screen_awake.dart.
         surfaceView.keepScreenOn = true
 
         // Tampons anti-coupure MAIS PRUDENTS EN MÉMOIRE (box à RAM limitée).

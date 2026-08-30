@@ -33,6 +33,9 @@ class _TvCityScreenState extends State<TvCityScreen> {
   Timer? _debounce;
   Timer? _msgTimer;
 
+  /// Retour arrière différé après l'enregistrement de la ville.
+  Timer? _popTimer;
+
   // Instance STABLE → non reconstruite à chaque frappe (focus préservé).
   late final Widget _keyboard =
       _CityKeyboard(onType: _type, onBackspace: _backspace, onClear: _clear);
@@ -41,6 +44,7 @@ class _TvCityScreenState extends State<TvCityScreen> {
   void dispose() {
     _debounce?.cancel();
     _msgTimer?.cancel();
+    _popTimer?.cancel();
     super.dispose();
   }
 
@@ -103,7 +107,12 @@ class _TvCityScreenState extends State<TvCityScreen> {
         ? context.l10n.tvWeatherAutoSet
         : context.l10n.tvWeatherSaved(place.name));
     // Petit délai pour laisser voir la confirmation, puis on revient.
-    Timer(const Duration(milliseconds: 700), () {
+    // Gardé dans un champ et annulé dans `dispose()` : la garde `mounted`
+    // suffisait à éviter le plantage, mais un minuteur anonyme qui survit
+    // à son écran reste un minuteur qu'on ne peut plus arrêter. On ne
+    // laisse pas d'exception à la règle, même bénigne.
+    _popTimer?.cancel();
+    _popTimer = Timer(const Duration(milliseconds: 700), () {
       if (mounted) Navigator.of(context).maybePop();
     });
   }
