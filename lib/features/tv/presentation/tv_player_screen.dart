@@ -556,9 +556,23 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Le lecteur se ferme → le réseau est libre : la file de téléchargements
-    // Cinéma peut repartir (elle patientait pendant toute lecture réseau).
-    VodDownloadService.instance.setPlaybackHold(false);
+    //  ⚠ LE VERROU DES TÉLÉCHARGEMENTS NE SE LÈVE PLUS ICI (30/08).
+    //
+    //  Il était levé à cet endroit — c'est-à-dire AVANT même que la
+    //  fermeture réseau ne commence (elle démarre une centaine de lignes
+    //  plus bas). La file de téléchargements Cinéma pouvait donc
+    //  reprendre la ligne PENDANT le démontage de la lecture qu'on est
+    //  en train de quitter.
+    //
+    //  Sur une ligne à UNE connexion, c'est exactement le scénario
+    //  signalé : on quitte le direct, on navigue une minute ou deux dans
+    //  le Cinéma, on lance un épisode — et la source répond « déjà
+    //  ouverte sur un autre appareil ». Le sursis de 12 s de la file ne
+    //  couvre pas une navigation de deux minutes.
+    //
+    //  Le verrou est désormais levé À LA FIN de la fermeture (voir
+    //  `shutdown` plus bas) : la file ne repart qu'une fois la connexion
+    //  réellement rendue.
     // Hue : sortie du film → chaque lampe revient exactement comme avant.
     unawaited(HueService.instance.cinemaEnd());
     _hideTimer?.cancel();
@@ -655,7 +669,24 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                 'chevauchement vient d\'ici',
         level: netIdle ? 'info' : 'warn',
       );
-    }();
+      //  LE VERROU DES TÉLÉCHARGEMENTS SE LÈVE ICI, ET NULLE PART AILLEURS.
+      //
+      //  C'est-à-dire APRÈS que la lecture ait été arrêtée, que le relais
+      //  ait fermé ses sessions amont, et que la fermeture réseau ait été
+      //  attendue. Il était levé tout en haut de `dispose()`, avant que
+      //  rien de tout cela n'ait commencé : la file pouvait reprendre la
+      //  ligne pendant le démontage, et la garder pendant toute la
+      //  navigation vers un épisode.
+      //
+      //  Placé dans le `finally` du bloc : même si l'arrêt échoue, la file
+      //  doit repartir — sinon un échec de fermeture bloquerait les
+      //  téléchargements pour le reste de la session.
+      VodDownloadService.instance.setPlaybackHold(false);
+    }().whenComplete(() {
+      // Filet : si le corps ci-dessus lève avant sa dernière ligne, la file
+      // repart quand même. Idempotent — appeler deux fois est sans effet.
+      VodDownloadService.instance.setPlaybackHold(false);
+    });
     StreamSlot.instance
         .handOff(this, shutdown, label: 'fermeture lecteur quitté');
     _focus.dispose();
@@ -924,8 +955,31 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       if (!_providerPrewaitDone) {
         _providerPrewaitDone = true;
         final DateTime? left = StreamSlot.instance.lastHandOffAt;
-        if (left != null &&
-            DateTime.now().difference(left) < const Duration(minutes: 2)) {
+        final bool sortieRecente = left != null &&
+            DateTime.now().difference(left) < const Duration(minutes: 2);
+        //  ⚠ CONDITION ÉLARGIE LE 30/08, et voici pourquoi.
+        //
+        //  Elle ne gardait que `sortieRecente`. Le raisonnement d'origine
+        //  était bon — inutile de sonder si personne n'a quitté de lecture
+        //  récemment — mais il rate le scénario signalé sur le terrain :
+        //
+        //    on quitte un DIRECT, on navigue dans le Cinéma (catalogue,
+        //    fiche série, saisons), on lance un épisode. Deux minutes ont
+        //    passé. La pré-attente est donc DÉSARMÉE — exactement au
+        //    moment où elle serait le plus utile, parce que pendant cette
+        //    navigation la synchronisation EPG, le veilleur de catalogue
+        //    ou la file de téléchargements ont pu reprendre la ligne.
+        //
+        //  Autrement dit : plus la navigation est longue, moins on
+        //  vérifiait. C'était à l'envers.
+        //
+        //  Sur une ligne à UNE connexion, on sonde donc TOUJOURS avant
+        //  d'ouvrir. Ce que ça coûte : un aller-retour `player_api.php`,
+        //  de l'ordre de 200 ms, et UNIQUEMENT quand le créneau est déjà
+        //  libre — sinon on attend de toute façon moins longtemps que le
+        //  temps qu'aurait pris l'erreur, la lecture d'un message et un
+        //  « Réessayer ». Sur un compte multi-connexions, rien ne change.
+        if (sortieRecente || StreamDiagnostics.instance.singleConnectionLine) {
           await StreamBlockedFallback.awaitProviderSlot(
             _current,
             isCancelled: () => !mounted,
