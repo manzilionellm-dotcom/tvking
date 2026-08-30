@@ -675,3 +675,67 @@ jobs:
           # (invisible pour l'updater in-app, qui ne lit que version.json).
           up seven-tv-play.aab
           gh release view "$TAG" --repo "$REPO"
+
+      # =========================================================
+      #  GARDE-FOU — LE BOUTON « METTRE À JOUR » DOIT MARCHER
+      # =========================================================
+      #  POURQUOI (30/08). Le bouton de mise à jour est ce qui permet de
+      #  corriger un bug chez TOUS les clients sans que personne ne
+      #  retouche à quoi que ce soit. C'est l'organe le plus précieux du
+      #  projet, et il repose sur une chaîne de trois maillons :
+      #
+      #     1. l'APK est compilé avec TV_UPDATE_TAG=<canal>
+      #     2. version.json est publié SUR ce canal
+      #     3. l'APK annoncé par version.json est téléchargeable
+      #
+      #  Si un seul maillon lâche, le bouton ne dit RIEN. Pas d'erreur,
+      #  pas de message : juste « vous êtes à jour », pour toujours. Le
+      #  client ne se plaint pas — il reste simplement sur une vieille
+      #  version, et on ne l'apprend jamais.
+      #
+      #  Constaté le jour même : le canal de repli du code, `tv-prod`,
+      #  répondait 404. Personne ne s'en était aperçu parce qu'il ne
+      #  servait qu'en secours.
+      #
+      #  Cette étape vérifie la chaîne ENTIÈRE, depuis l'extérieur,
+      #  exactement comme le ferait une box. Elle échoue bruyamment.
+      - name: Vérifier que le bouton de mise à jour fonctionne
+        if: ${{ github.event.inputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="seventv-latest"
+          BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
+
+          # Le CDN de GitHub met quelques secondes à servir un asset neuf.
+          # On réessaie plutôt que de déclarer une panne qui n'existe pas.
+          for i in 1 2 3 4 5; do
+            CODE=$(curl -sSL -o version.check.json -w '%{http_code}' "$BASE/version.json" || echo 000)
+            [ "$CODE" = "200" ] && break
+            echo "manifeste pas encore servi (HTTP $CODE), tentative $i/5"
+            sleep 6
+          done
+          [ "$CODE" = "200" ] || { echo "::error title=Mise a jour cassee::version.json injoignable sur $TAG (HTTP $CODE)"; exit 1; }
+          cat version.check.json
+
+          # Le manifeste doit annoncer LE build qu'on vient de produire.
+          # Sinon l'app verrait une version plus ancienne que la sienne et
+          # ne proposerait jamais rien.
+          PUB=$(python3 -c "import json;print(json.load(open('version.check.json'))['versionCode'])")
+          echo "manifeste=$PUB  build=${SEVENTV_BUILD_NUMBER:-0}"
+          [ "$PUB" = "${SEVENTV_BUILD_NUMBER:-0}" ] || { echo "::error title=Mise a jour cassee::le manifeste annonce $PUB au lieu du build ${SEVENTV_BUILD_NUMBER:-0}"; exit 1; }
+
+          # L'APK annoncé doit vraiment se télécharger.
+          URL=$(python3 -c "import json;print(json.load(open('version.check.json'))['url'])")
+          SIZE=$(curl -sSL -o /dev/null -w '%{size_download}' "$URL" || echo 0)
+          echo "APK annonce : $URL  ($SIZE octets)"
+          [ "$SIZE" -gt 5000000 ] || { echo "::error title=Mise a jour cassee::l APK annonce ne se telecharge pas ($SIZE octets)"; exit 1; }
+
+          # Le MIROIR de secours (utilisé quand la box n'atteint pas
+          # github.com : DNS de FAI, IPv6 bancale) doit répondre lui aussi.
+          MCODE=$(curl -sSL -o /dev/null -w '%{http_code}' "https://app.7themotion.com/r/$TAG/version.json" || echo 000)
+          echo "miroir de secours : HTTP $MCODE"
+          [ "$MCODE" = "200" ] || echo "::warning title=Miroir muet::le miroir /r/ ne repond pas (HTTP $MCODE) — GitHub direct fonctionne, mais les box mal servies par leur FAI n auront pas de secours"
+
+          echo "OK — la chaine de mise a jour est verifiee de bout en bout."

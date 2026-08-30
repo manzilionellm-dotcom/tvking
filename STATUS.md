@@ -7,6 +7,48 @@
 
 ---
 
+## ⛔ LES QUATRE CHOSES QU'IL NE FAUT JAMAIS CASSER
+
+> Ajouté le 30/08/2026, après la question : « comment faire pour ne jamais
+> perdre ce qu'on a fait ? » Voici la réponse, en quatre lignes. Tout le
+> reste du projet se reconstruit ; ces quatre-là, non.
+
+### 1. `ci/defew-debug.keystore` — la clé qui signe l'app Android
+Android REFUSE une mise à jour signée d'une autre clé : elle s'affiche
+« Application non installée », et le seul recours est de désinstaller —
+donc de perdre la playlist du client. Ce fichier est **versionné dans le
+dépôt**, donc protégé tant que le dépôt existe.
+**Empreinte du certificat** (à comparer en cas de doute) :
+`5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61`
+sujet : `C=FR, O=The Few, CN=The Few`
+
+### 2. Le canal de mise à jour `seventv-latest`
+C'est le tag de release GitHub que l'app interroge. **Ne jamais le
+renommer ni le supprimer** : toutes les box installées cesseraient de
+voir les mises à jour — en silence, sans erreur, juste « vous êtes à
+jour » pour toujours.
+La CI vérifie désormais la chaîne entière à chaque publication (étape
+« Vérifier que le bouton de mise à jour fonctionne ») : manifeste
+joignable, numéro cohérent avec le build, APK téléchargeable, miroir de
+secours vivant.
+
+### 3. `SAMSUNG_AUTHOR_P12_BASE64` — le certificat auteur Samsung
+⚠️ **TOUJOURS SANS COPIE HORS GITHUB.** Un secret GitHub ne se relit
+pas. Le perdre = ne plus jamais pouvoir mettre à jour l'app sur les TV
+Samsung, jamais. Cinq minutes de sauvegarde contre une perte
+irréversible. Certificat « the few », valide jusqu'au **01/01/2027**.
+
+### 4. La branche `claude/7motion-android-tv-compat-e0rtyp`
+Elle porte **990 commits absents de `main`** — c'est-à-dire presque tout
+le travail. Les builds sont lancés depuis elle, donc tout fonctionne
+aujourd'hui ; mais si elle disparaissait, `main` ne contiendrait pas le
+projet réel. À fusionner dans `main` quand le propriétaire le décidera
+(29 commits de `main` ne sont pas non plus dans la branche : la fusion
+demande une vraie relecture, ce n'est pas un bouton à presser à la
+légère).
+
+---
+
 ## Session (2026-08-23) — Windows : installeur régénérable, identité du binaire, installation machine
 
 Branche : `claude/7motion-android-tv-compat-e0rtyp`.

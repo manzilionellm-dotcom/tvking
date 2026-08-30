@@ -81,11 +81,25 @@ class UpdateService {
   static final UpdateService instance = UpdateService._();
 
   /// Tag de la release TV où le CI publie `version.json` + `defew-tv.apk`.
-  /// Passé au build par --dart-define. La MAISON MÈRE publie sur `tv-prod`
-  /// (canal protégé anti-clobber). Défaut `tv-prod` : un APK TV construit
-  /// sans le define reste sur le bon canal.
+  /// Passé au build par `--dart-define`.
+  ///
+  /// ⚠ DÉFAUT CORRIGÉ LE 30/08 : il valait `tv-prod`, un canal qui
+  /// **n'existe plus**. Vérifié le jour même :
+  ///   tv-prod        -> HTTP 404
+  ///   seventv-latest -> HTTP 200
+  ///
+  /// Aucune conséquence aujourd'hui, parce que les DEUX chaînes de build
+  /// passent le define explicitement. Mais un APK compilé à la main, sans
+  /// le define, serait sorti avec un bouton « Mettre à jour » qui ne
+  /// trouve JAMAIS rien — sans erreur, sans message, juste « vous êtes à
+  /// jour » pour toujours. C'est la panne la plus vicieuse qui soit : le
+  /// client ne se plaint pas, il reste simplement sur une vieille version.
+  ///
+  /// Le défaut désigne désormais le canal RÉELLEMENT publié. Règle qu'on
+  /// se donne : un repli doit pointer vers quelque chose qui existe,
+  /// sinon ce n'est pas un repli, c'est un piège.
   static const String _tvUpdateTag =
-      String.fromEnvironment('TV_UPDATE_TAG', defaultValue: 'tv-prod');
+      String.fromEnvironment('TV_UPDATE_TAG', defaultValue: 'seventv-latest');
 
   /// `version.json` publié par le CI de la MAISON MÈRE : `prod` (téléphone)
   /// et `tv-prod` (DeFew TV). L'APK mobile et l'APK TV sont des builds
