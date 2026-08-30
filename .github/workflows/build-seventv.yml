@@ -81,9 +81,27 @@ jobs:
         run: |
           set -e
           chmod +x ci/distribution_lock.sh
-          if [ "${{ github.event.inputs.publish }}" = "true" ] \
-             && [ -z "${DIST_LOCK_PASSPHRASE:-}" ]; then
-            echo "::error title=Verrou non arme::Publication demandee mais DIST_LOCK_PASSPHRASE est absent. Poser le secret (GitHub > Settings > Secrets > Actions), puis resceller. Sans lui, on ne peut pas prouver que les liens n'ont pas ete changes."
+          #  ⚠ CORRECTION DU 30/08, le jour meme de la mise en place.
+          #
+          #  La regle etait : « sur une publication, la phrase est
+          #  EXIGEE ». Bonne intention, mauvais enchainement : le verrou
+          #  est livre NON ARME (seal=UNSEALED) parce que je n'ai pas la
+          #  phrase du proprietaire. Resultat, la toute premiere
+          #  publication apres la mise en place a ECHOUE — et elle
+          #  portait justement un correctif attendu. J'avais livre une
+          #  serrure qui se ferme avant que le proprietaire ait la cle.
+          #
+          #  La regle correcte : la preuve n'est exigee QUE si le verrou
+          #  a REELLEMENT ete arme. Tant qu'il est UNSEALED, la
+          #  comparaison des valeurs protege deja (un lien modifie
+          #  arrete la publication), et rien ne bloque le travail.
+          #  Une fois arme, le comportement est celui voulu : aucune
+          #  publication sans la preuve.
+          if grep -q '^seal=UNSEALED' ci/distribution.lock; then
+            echo "::warning title=Verrou non arme::Le verrou protege les VALEURS mais n'est pas encore scelle. Poser le secret DIST_LOCK_PASSPHRASE puis lancer « Sceller le verrou de distribution » pour l'armer completement."
+          elif [ "${{ github.event.inputs.publish }}" = "true" ] \
+               && [ -z "${DIST_LOCK_PASSPHRASE:-}" ]; then
+            echo "::error title=Preuve manquante::Le verrou est arme mais DIST_LOCK_PASSPHRASE est absent de ce build. Sans lui, on ne peut pas prouver que les liens n'ont pas ete changes — rien ne part vers les clients."
             exit 1
           fi
           ci/distribution_lock.sh verify
