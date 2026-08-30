@@ -524,6 +524,20 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           _backgroundedLive = true;
         }
       case AppLifecycleState.resumed:
+        //  LE SON D'ABORD. Signalement du 30/08 : après un appel, ou après
+        //  avoir écouté autre chose, le son revenait « comme une vieille
+        //  radio » — et ne redevenait normal QU'AU REDÉMARRAGE de l'app.
+        //
+        //  C'est la piste de sortie Android qui reste sur l'ancienne
+        //  configuration : un appel bascule le système sur le chemin VOIX
+        //  (bande étroite), une autre application peut avoir ouvert la
+        //  sortie à une autre fréquence. Rouvrir le FLUX ne corrige rien —
+        //  la source n'est pas en cause, la SORTIE l'est.
+        //
+        //  On la recrée donc à chaque retour au premier plan, avant même
+        //  de rouvrir la chaîne : quelques dizaines de millisecondes de
+        //  silence, à un instant où le son reprend de toute façon.
+        _controller.refreshAudio();
         if (_backgroundedLive) {
           // Le direct a été relâché : on le RÉOUVRE (le chemin d'ouverture
           // habituel gère cascade de sources, EPG, watchdog…).

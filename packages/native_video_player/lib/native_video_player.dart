@@ -529,6 +529,29 @@ class NativeVideoController extends ChangeNotifier {
 
   void pause() => _fire('pause');
 
+  /// Recrée la piste audio Android sous le lecteur.
+  ///
+  /// À APPELER AU RETOUR AU PREMIER PLAN, et là seulement.
+  ///
+  /// POURQUOI (signalement du 30/08) : « si j'écoutais autre chose et que
+  /// j'ouvre l'app, le son n'est pas normal ; si on m'appelle et que je
+  /// reviens, pareil ; ça redevient normal SEULEMENT si je redémarre
+  /// l'application ». Ce « seulement au redémarrage » désigne un état qui
+  /// survit à tout sauf à la mort du processus.
+  ///
+  /// La piste de sortie Android est ouverte une fois et gardée tant que le
+  /// FORMAT du flux ne change pas. Mais la sortie de l'appareil, elle, a pu
+  /// changer entre-temps : un appel bascule le système sur le chemin VOIX
+  /// (bande étroite — d'où le son de « vieille radio »), une autre
+  /// application a pu ouvrir la sortie à une autre fréquence, un casque a
+  /// pu être branché. Rouvrir le FLUX n'y change rien : c'est la piste de
+  /// SORTIE qui est périmée.
+  ///
+  /// Coût : quelques dizaines de millisecondes de silence. Négligeable au
+  /// moment où l'on revient sur l'application — inacceptable en pleine
+  /// lecture, d'où la consigne d'appel.
+  void refreshAudio() => _fire('refreshAudio');
+
   /// ARRÊT COMPLET : libère la source et FERME la connexion au serveur, sans
   /// détruire la vue — un [setUrl] ultérieur relance proprement.
   ///

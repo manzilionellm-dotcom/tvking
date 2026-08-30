@@ -824,6 +824,60 @@ class NativeVideoView(
                 playerHandler.post { player.pause() }
                 result.success(null)
             }
+            // =========================================================
+            //  refreshAudio — RECRÉER LA PISTE AUDIO ANDROID
+            // =========================================================
+            //  SIGNALEMENT TERRAIN (30/08), et c'est l'indice qui a tout
+            //  expliqué : « si j'écoutais autre chose et que j'ouvre
+            //  l'app, le son n'est pas normal. Si on m'appelle et que je
+            //  reviens, pareil. Ça redevient normal SEULEMENT si je
+            //  redémarre l'application. »
+            //
+            //  Ce « seulement au redémarrage » est la signature d'un état
+            //  qui survit à tout sauf à la mort du processus.
+            //
+            //  CE QUI SE PASSE. ExoPlayer ouvre UNE AudioTrack Android au
+            //  premier son et la garde tant que le FORMAT du flux ne
+            //  change pas. Or entre-temps la sortie audio de l'appareil,
+            //  elle, a pu changer : un appel bascule le système sur le
+            //  chemin VOIX (bande étroite, 8-16 kHz — d'où l'impression
+            //  de « vieille radio »), une autre application a pu ouvrir
+            //  la sortie à une fréquence différente, un casque a pu être
+            //  branché. Notre AudioTrack, elle, reste sur l'ancienne
+            //  configuration. Rouvrir le FLUX n'y change rien : c'est la
+            //  piste de SORTIE qui est périmée, pas la source.
+            //
+            //  Redémarrer l'application recrée le processus, donc une
+            //  AudioTrack neuve. Cette méthode fait la même chose, sans
+            //  le redémarrage.
+            //
+            //  COMMENT. Changer l'identifiant de session audio force
+            //  DefaultAudioSink à jeter son AudioTrack et à en construire
+            //  une nouvelle, alignée sur la configuration de sortie
+            //  ACTUELLE — y compris la redétection du passthrough
+            //  Dolby/DTS de l'ampli.
+            //
+            //  COÛT : une coupure de son de quelques dizaines de
+            //  millisecondes. On l'accepte au retour au premier plan,
+            //  moment où le son est de toute façon en train de reprendre.
+            //  On ne l'appelle JAMAIS en cours de lecture tranquille.
+            "refreshAudio" -> {
+                playerHandler.post {
+                    try {
+                        player.audioSessionId =
+                            C.generateAudioSessionIdV21(appContext)
+                        recordEvent("audio.refresh")
+                    } catch (t: Throwable) {
+                        // Jamais bloquant : sur une box exotique qui refuse,
+                        // on garde le comportement d'avant (son imparfait)
+                        // plutôt que de casser la lecture. Mais on le NOTE :
+                        // la télémétrie locale est ce qui permettra de dire
+                        // « ça a échoué sur ce modèle » au lieu de deviner.
+                        recordEvent("audio.refresh.fail", t.toString())
+                    }
+                }
+                result.success(null)
+            }
             "stop" -> {
                 // LIBÉRATION DE LA CONNEXION sans détruire la vue (Dart peut
                 // relancer un setUrl ensuite). Motif terrain : sur un DIRECT,

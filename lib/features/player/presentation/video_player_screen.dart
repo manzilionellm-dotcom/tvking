@@ -122,7 +122,8 @@ class VideoPlayerScreen extends StatefulWidget {
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
-class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+    with WidgetsBindingObserver {
   // INSTANCE mpv JETABLE (fix connexions 2026-07-08 17:07) : réutiliser
   // la même instance laissait FUIR des connexions à chaque échec
   // (« [lavf] Leaking 1 nested connections (FFmpeg bug) ») — sur un
@@ -390,6 +391,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    //  On ECOUTE le cycle de vie — ce lecteur ne le faisait PAS.
+    //  Signalement du 30/08 : apres un appel telephonique, ou apres avoir
+    //  ecoute autre chose, le son revenait degrade et ne redevenait normal
+    //  QU'AU REDEMARRAGE de l'application. L'ecran ne savait meme pas
+    //  qu'il revenait au premier plan : il ne pouvait donc rien reparer.
+    WidgetsBinding.instance.addObserver(this);
 
     _currentChannel = widget.channel;
 
@@ -2087,8 +2094,41 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() {});
   }
 
+  //  RETOUR AU PREMIER PLAN : on RECREE la sortie audio.
+  //
+  //  Meme bug que sur la TV, moteur different (libmpv ici, ExoPlayer
+  //  la-bas) — ce qui prouve que la cause n'est pas le moteur mais la
+  //  SORTIE audio d'Android.
+  //
+  //  La piste de sortie est ouverte une fois et gardee. Or un appel
+  //  bascule le systeme sur le chemin VOIX (bande etroite, d'ou le son
+  //  de « vieille radio »), une autre application peut avoir ouvert la
+  //  sortie a une autre frequence, un casque peut avoir ete branche.
+  //  Le flux, lui, n'a pas change : rien ne declenche de reouverture.
+  //
+  //  `setAudioDevice(auto)` force libmpv a reinitialiser sa sortie sur
+  //  la configuration ACTUELLE de l'appareil. C'est ce que faisait le
+  //  redemarrage de l'application, sans le redemarrage.
+  //
+  //  Coût : quelques dizaines de millisecondes de silence, a l'instant
+  //  precis ou l'on revient sur l'ecran. Jamais en pleine lecture.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(() async {
+      try {
+        await _player.setAudioDevice(AudioDevice.auto());
+      } catch (e) {
+        // Jamais bloquant : si la plateforme refuse, on garde le
+        // comportement d'avant plutot que de casser la lecture.
+        if (kDebugMode) debugPrint('[Player] reinit audio KO: $e');
+      }
+    }());
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Les actions PiP ne doivent plus viser cet écran mort.
     PipService.instance.onPipControl = null;
     // S3 : la session de métriques est résumée en UNE ligne boîte noire
