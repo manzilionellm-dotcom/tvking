@@ -29,6 +29,7 @@ import 'core/notifications/notification_service.dart';
 import 'core/realtime/realtime_sync_service.dart';
 import 'core/profiles/profiles_repository.dart';
 import 'core/theme/accent_controller.dart';
+import 'core/tv/screen_awake.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/player/data/player_settings.dart';
@@ -113,6 +114,20 @@ Future<void> _bootstrap() async {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
+
+  //  L'ÉCRAN NE DOIT JAMAIS S'ENDORMIR (signalé le 28/08 : veille au bout
+  //  de 15 min). L'app TV ne posait AUCUN verrou d'écran — le seul du
+  //  projet vit dans le lecteur MOBILE, un chemin que la TV n'emprunte
+  //  jamais. La box appliquait donc son délai d'inactivité système, et
+  //  regarder la télévision c'est justement ne pas toucher à la
+  //  télécommande pendant plus de 15 minutes.
+  //
+  //  Posé ICI, avant le premier rendu, et pour TOUTE l'application : le
+  //  client lit aussi le guide et les synopsis, et un écran qui
+  //  s'éteint pendant qu'on lit se vit comme une panne de l'app.
+  //  Le verrou suit le cycle de vie (relâché en arrière-plan) — voir
+  //  core/tv/screen_awake.dart.
+  await ScreenAwake.instance.install();
 
   // Langue de l'app : on charge le choix mémorisé (ou « Système » =>
   // l'app suit la langue de la TV). BLOQUANT et rapide : garantit que le
