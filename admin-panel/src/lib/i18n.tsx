@@ -65,6 +65,9 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.masters': { fr: 'Comptes maîtres', en: 'Master accounts', ar: 'الحسابات الرئيسية' },
   'nav.adminMonitor': { fr: 'Admin Monitoring', en: 'Admin Monitoring', ar: 'مراقبة المشرف' },
   'nav.families': { fr: 'Famille', en: 'Family', ar: 'العائلة' },
+  // « Profils » (les 5 membres d'une box) vs « Famille » (partage
+  // entre appareils) : deux choses differentes, deux entrees.
+  'nav.profiles': { fr: 'Profils', en: 'Profiles', ar: 'الملفات الشخصية' },
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
   // Labo du Maître — visible ADMIN uniquement (jamais dans le menu revendeur).
   'nav.lab': { fr: '🔬 Labo du Maître', en: '🔬 Master Lab', ar: '🔬 مختبر المدير' },

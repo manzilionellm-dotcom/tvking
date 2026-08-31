@@ -869,7 +869,19 @@ Deux apps dans le MÊME repo (flavors Flutter) :
 - `GET/PUT/DELETE /admin/clients/:mac`
 - `POST /admin/clients/:mac/action` (freeze, unfreeze, ban,
   mark_paid, mark_unpaid, renew, note)
-- `GET /admin/panel` → HTML autonome du panel web
+- `GET /admin/panel` → **supprimé (31/08/2026)**, redirige en 301 vers
+  `https://tvking-admin.pages.dev`. L'ancien panel HTML intégré au worker
+  a été retiré : deux panels, c'était deux endroits où coder chaque
+  nouveauté, et la certitude d'en oublier un. Le seul panel est
+  désormais `admin-panel/` (React).
+
+### Endpoints panel React (auth : jeton du revendeur)
+- `GET|PUT /api/v1/profiles/:mac` → profils famille d'une box (cinq
+  profils générés automatiquement ; PIN stocké en empreinte salée,
+  jamais en clair). PUT exige la capacité `sources`.
+- `GET /api/device-profiles/:mac` → ce que l'APP lit (public, sans
+  jeton : la réponse ne contient que des empreintes).
+  Logique commune aux deux : `cloudflare/device_profiles.js`.
 
 ### App Flutter
 - **Player** : media_kit (libmpv)

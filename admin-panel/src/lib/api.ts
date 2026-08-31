@@ -1429,3 +1429,67 @@ export const planCostsApi = {
       body: { costs },
     }),
 };
+
+// =========================================================
+//  PROFILS FAMILLE
+// =========================================================
+//  Une seule source M3U collée dans le panel, et le serveur génère
+//  automatiquement cinq profils indépendants — papa, maman, trois
+//  enfants — chacun avec son PIN, ses règles et son historique, et
+//  activable ou désactivable À DISTANCE.
+//
+//  LE PIN N'EST JAMAIS LISIBLE. Le serveur ne renvoie qu'une EMPREINTE
+//  salée (`pin: {salt, hash}`), jamais le code. Le panel sait donc s'il
+//  y a un code (`pin !== null`) sans pouvoir le lire — et personne ne
+//  peut contourner le contrôle parental en lisant la réponse HTTP.
+export interface FamilyProfilePin { salt: string; hash: string }
+
+export interface FamilyProfile {
+  id: string;
+  name: string;
+  emoji: string;
+  /// Profil utilisable. `false` = coupé à distance : la box le grise.
+  enabled: boolean;
+  /// Mode enfant propre à ce profil (contenu adulte retiré partout).
+  kids: boolean;
+  /// Empreinte du code, ou `null` si le profil est libre d'accès.
+  pin: FamilyProfilePin | null;
+  /// Catégories interdites à ce profil, telles que nommées par la source.
+  blockedCategories: string[];
+}
+
+/// Ce que le PANEL envoie. `pin` y est une CHAÎNE (le code en clair que
+/// l'admin tape), et non l'empreinte — d'où un type distinct de
+/// [FamilyProfile]. Les trois cas comptent :
+///   • '1234' → pose un nouveau code ;
+///   • ''     → efface le code ;
+///   • absent → GARDE le code existant.
+/// Le troisième est celui qu'on oublie : le panel ne peut pas relire un
+/// code. Sans lui, ouvrir la page et cliquer « Enregistrer » effacerait
+/// les cinq codes de la famille, sans le dire à personne.
+export interface FamilyProfileInput {
+  id: string;
+  name: string;
+  emoji: string;
+  enabled: boolean;
+  kids: boolean;
+  blockedCategories: string[];
+  pin?: string;
+}
+
+export const profilesApi = {
+  /// Lit les profils d'une box. Les cinq sont GÉNÉRÉS à la première
+  /// lecture : l'admin n'a rien à créer, il colle sa source et la
+  /// famille est là.
+  get: (mac: string) =>
+    request<{ mac: string; profiles: FamilyProfile[] }>(
+      `/api/v1/profiles/${encodeURIComponent(mac)}`,
+    ),
+  /// Enregistre les cinq d'un bloc. Un seul PUT : deux profils modifiés
+  /// en même temps ne peuvent pas s'écraser l'un l'autre.
+  set: (mac: string, profiles: FamilyProfileInput[]) =>
+    request<{ ok: boolean; mac: string; count: number; rt?: RtInfo }>(
+      `/api/v1/profiles/${encodeURIComponent(mac)}`,
+      { method: 'PUT', body: { profiles } },
+    ),
+};

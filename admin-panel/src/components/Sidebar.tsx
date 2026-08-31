@@ -45,6 +45,7 @@ const OWNER_NAV: NavSection[] = [
       { key: 'nav.resellers',   to: '/resellers' },
       { key: 'nav.credits',     to: '/credits' },
       { key: 'nav.families',    to: '/families' },
+      { key: 'nav.profiles',    to: '/profiles' },
       { key: 'nav.transfer',    to: '/transfer' },
       { key: 'nav.shares',      to: '/shares' },
       { key: 'nav.masters',     to: '/masters' },
@@ -93,6 +94,9 @@ const RESELLER_NAV: NavSection[] = [
     items: [
       { key: 'nav.activate',      to: '/activate',    cap: 'activate' },
       { key: 'nav.families',      to: '/families',    cap: 'activate' },
+      // Regler les profils d'un client, c'est configurer son
+      // appareil : meme droit que pousser une source.
+      { key: 'nav.profiles',      to: '/profiles',    cap: 'sources' },
       { key: 'nav.transfer',      to: '/transfer',    cap: 'transfer' },
       { key: 'nav.credits',       to: '/credits',     cap: 'buy_credits' },
       { key: 'nav.myResellers',   to: '/resellers',   cap: 'resellers' },

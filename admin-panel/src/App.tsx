@@ -37,6 +37,7 @@ import { RadarPage } from '@/pages/RadarPage';
 import { GatewayPage } from '@/pages/GatewayPage';
 import { CreditsPage } from '@/pages/CreditsPage';
 import { LabPage } from '@/pages/LabPage';
+import { ProfilesPage } from '@/pages/ProfilesPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -160,6 +161,10 @@ export default function App() {
       <Route path="/masters" element={<MastersPage onLogout={handleLogout} />} />
       <Route path="/admin-monitor" element={<MonitorPage onLogout={handleLogout} />} />
       <Route path="/families" element={<FamiliesPage onLogout={handleLogout} />} />
+      {/* Profils famille : les cinq profils d'une box (code, mode
+          enfant, categories, activation a distance). Distinct de
+          « Famille » ci-dessus, qui gere le PARTAGE entre appareils. */}
+      <Route path="/profiles" element={<ProfilesPage onLogout={handleLogout} />} />
       <Route path="/radar" element={<RadarPage onLogout={handleLogout} />} />
       <Route path="/gateway" element={<GatewayPage onLogout={handleLogout} />} />
       <Route path="/credits" element={<CreditsPage onLogout={handleLogout} />} />

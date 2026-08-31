@@ -64,6 +64,14 @@
 // le changement (`changed{scope}`). TOUJOURS fail-open : si le Durable
 // Object n'est pas déployé, publishRt renvoie {delivered:0} sans erreur.
 import { publishRt } from './realtime.js';
+//  Profils famille : MÊME code que la route publique interrogée par
+//  l'app. Deux implémentations auraient signifié deux calculs de PIN à
+//  maintenir — le jour où l'un dérive, les codes posés depuis le panel
+//  cessent d'être acceptés par les box, sans erreur nulle part.
+import {
+  readDeviceProfiles, writeDeviceProfiles, normalizeProfile,
+  newProfileSalt, profilePinHash,
+} from './device_profiles.js';
 
 // ---------------------------------------------------------
 //  Helpers reponse
@@ -1122,6 +1130,34 @@ async function apiV1Inner(request, env) {
     if (parts.length === 1 && request.method === 'GET') {
       return handleFeedbackList(env);
     }
+  }
+
+  // /profiles/:mac — PROFILS FAMILLE d'une box.
+  //
+  //  Une seule source M3U collée dans le panel, et le serveur génère
+  //  automatiquement cinq profils indépendants (papa, maman, trois
+  //  enfants), chacun avec son PIN, ses règles et son historique.
+  //
+  //  MÊME CAPACITÉ QUE LES SOURCES ('sources') : décider qui regarde quoi
+  //  chez un client, c'est configurer son appareil. Un revendeur
+  //  « basique », qui n'a pas le droit de pousser une playlist, n'a pas
+  //  non plus celui de lever le contrôle parental d'un enfant.
+  if (parts[0] === 'profiles' && parts.length === 2) {
+    const mac = parts[1];
+    if (request.method === 'GET') return handleProfilesGet(env, mac);
+    if (request.method === 'PUT') {
+      if (!resellerCan(a.user, 'sources')) {
+        return errResp('forbidden',
+          'Ton niveau ne permet pas de modifier les profils.', 403);
+      }
+      // rt : la box applique le changement DANS LA SECONDE. C'est ce qui
+      // rend « désactiver un profil à distance » réel — sinon il faudrait
+      // attendre le sondage de 5 minutes, et le parent croirait que le
+      // bouton n'a rien fait.
+      return withRt(env, await handleProfilesPut(request, env, mac),
+        (b) => ({ macs: [b.mac], what: 'config', scope: 'config', changedMac: b.mac }));
+    }
+    return errResp('method_not_allowed', 'GET ou PUT attendu.', 405);
   }
 
   // /sources/:mac — source IPTV (Xtream/M3U) assignée à un appareil
@@ -3552,6 +3588,80 @@ function decodeMac(mac) {
   } catch (_) {
     return mac;
   }
+}
+
+// =========================================================
+//  PROFILS FAMILLE — GET/PUT /api/v1/profiles/:mac
+// =========================================================
+//  La logique (empreinte du PIN, génération des cinq profils, écriture en
+//  base) vit dans device_profiles.js, partagée avec la route publique que
+//  l'app interroge. Ici : la couche HTTP et rien d'autre.
+async function handleProfilesGet(env, mac) {
+  const m = decodeMac(mac).trim().toUpperCase();
+  if (!_MAC_RX.test(m)) return errResp('bad_mac', 'MAC invalide.', 400);
+  if (!env.DB) return errResp('no_db', 'Base indisponible.', 503);
+  const list = await readDeviceProfiles(env, m);
+  return jsonResp({
+    mac: m,
+    profiles: (list || []).map(({ _order, ...p }) => p),
+  });
+}
+
+//  LE PIN : trois cas, et ils comptent tous les trois.
+//
+//   • `pin` chaîne de 4 à 8 chiffres → on pose un NOUVEAU code (salé,
+//     puis haché — il ne ressort jamais en clair) ;
+//   • `pin: ""`                      → on EFFACE le code ;
+//   • `pin` ABSENT du corps          → on GARDE le code existant.
+//
+//  Le troisième est celui qu'on oublie, et c'est le plus important : le
+//  panel ne peut PAS relire un code (il n'en a que l'empreinte). Sans
+//  cette règle, ouvrir la fiche d'une famille et cliquer « Enregistrer »
+//  effacerait les cinq codes, sans le dire à personne.
+async function handleProfilesPut(request, env, mac) {
+  const m = decodeMac(mac).trim().toUpperCase();
+  if (!_MAC_RX.test(m)) return errResp('bad_mac', 'MAC invalide.', 400);
+  if (!env.DB) return errResp('no_db', 'Base indisponible.', 503);
+
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Corps JSON invalide.', 400);
+  }
+  const incoming = Array.isArray(body && body.profiles) ? body.profiles : null;
+  if (!incoming) return errResp('bad_request', 'profiles[] requis.', 400);
+  if (incoming.length > 12) return errResp('too_many', '12 profils maximum.', 400);
+
+  const existing = (await readDeviceProfiles(env, m, { create: false })) || [];
+  const byId = new Map(existing.map((p) => [p.id, p]));
+
+  const out = [];
+  for (let i = 0; i < incoming.length; i++) {
+    const raw = incoming[i];
+    const norm = normalizeProfile(raw, i);
+    if (!norm) continue;
+    const before = byId.get(norm.id);
+    if (typeof raw.pin === 'string') {
+      const clear = raw.pin.trim();
+      if (!clear) {
+        norm.pin = null;
+      } else if (/^[0-9]{4,8}$/.test(clear)) {
+        const salt = newProfileSalt();
+        norm.pin = { salt, hash: await profilePinHash(clear, salt) };
+      } else {
+        return errResp('bad_pin',
+          'Code invalide pour « ' + norm.name +' » : 4 à 8 chiffres.', 400);
+      }
+    } else {
+      norm.pin = before ? before.pin : null;
+    }
+    delete norm._order;
+    out.push(norm);
+  }
+  if (!out.length) return errResp('bad_request', 'Aucun profil valide.', 400);
+
+  await writeDeviceProfiles(env, m, out);
+  // `mac` dans le corps : withRt s'en sert pour pousser en temps réel.
+  return jsonResp({ ok: true, mac: m, count: out.length });
 }
 
 async function handleSourceGet(env, mac) {
