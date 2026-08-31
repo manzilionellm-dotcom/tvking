@@ -2216,6 +2216,29 @@ const ADMIN_PANEL_HTML = `<!doctype html>
       <span id="ann-status" style="font-size:12px;margin-left:8px"></span>
     </div>
 
+    <!-- ===== PROFILS FAMILLE — accès direct par adresse MAC =====
+         Pourquoi ici, en plus du bouton dans la fiche appareil : quand un
+         client appelle, on a SON adresse (il la lit sur sa télé, ou on la
+         copie depuis le tableau) et on veut ouvrir SES profils tout de
+         suite. Chercher sa ligne dans une liste de plusieurs centaines de
+         clients pour arriver au même endroit, c'est une minute perdue à
+         chaque appel. -->
+    <div class="card">
+      <strong style="display:block;margin-bottom:8px">👨‍👩‍👧‍👦 Profils famille — accès direct</strong>
+      <div style="font-size:12px;color:#9aa;margin-bottom:8px">
+        Colle l'adresse de la box et ouvre ses cinq profils.
+        Le client la trouve sur sa télé : <b>Réglages → À propos</b>.
+        Tu peux la coller avec ou sans le <code>MK:</code> — les deux marchent.
+      </div>
+      <input id="pmac" placeholder="MK:AA:BB:CC:DD:EE   (ou AA:BB:CC:DD:EE)"
+        autocomplete="off" autocapitalize="none" spellcheck="false"
+        onkeydown="if(event.key==='Enter')openProfilesByMac()"
+        style="width:280px;padding:8px;border-radius:8px;border:1px solid #333;background:#111;color:#fff;font-family:ui-monospace,Menlo,monospace">
+      <button onclick="openProfilesByMac()">Ouvrir les profils</button>
+      <span id="pmacMsg" style="font-size:12px;margin-left:8px"></span>
+      <div id="profilesDirect" style="margin-top:12px"></div>
+    </div>
+
     <div class="card">
       <div class="filter-bar">
         <button data-filter="all" class="active" onclick="setFilter('all')">Tous</button>
@@ -2293,23 +2316,70 @@ function showLoginError(msg) {
 }
 
 // ===== PROFILS FAMILLE =====
-//  Chargés a la demande depuis la fiche appareil, puis enregistres d'un
-//  bloc. Un seul PUT pour les cinq : deux profils modifies en meme temps
-//  ne peuvent pas s'ecraser l'un l'autre.
-async function loadProfiles(mac) {
-  const box = document.getElementById('profilesBox');
+//  Chargés a la demande, puis enregistres d'un bloc. Un seul PUT pour les
+//  cinq : deux profils modifies en meme temps ne peuvent pas s'ecraser.
+//
+//  DEUX ENDROITS d'où on les ouvre — la fiche appareil (#profilesBox) et
+//  l'acces direct par MAC (#profilesDirect) — donc chaque fonction porte
+//  l'id de sa boite. Sans ce parametre, ouvrir les profils depuis l'acces
+//  direct aurait ecrit dans la boite de la fiche, restee cachee : rien ne
+//  se serait affiche, et rien n'aurait semble casse non plus.
+
+//  NORMALISATION DE L'ADRESSE MAC — la fonction qui evite l'appel de
+//  support inutile.
+//
+//  Le serveur exige la forme « MK:AA:BB:CC:DD:EE ». Mais l'application
+//  AFFICHE l'adresse SANS le « MK: » (voir DeviceIdentity.stripPrefix
+//  cote Dart) : le client lit « AA:BB:CC:DD:EE » sur sa tele et la dicte
+//  comme ca. Tapee telle quelle, elle serait REFUSEE, et personne ne
+//  comprendrait pourquoi.
+//
+//  On accepte donc tout ce qu'un humain produit vraiment : minuscules,
+//  tirets, espaces, points, avec ou sans « MK: », copie-colle avec des
+//  espaces autour. On extrait les chiffres hexadecimaux, et on rebatit la
+//  forme canonique. Ce qui n'a pas exactement 10 chiffres est refuse — la
+//  precision compte, la ponctuation non.
+function normalizeMac(raw) {
+  var s = String(raw || '').toUpperCase();
+  // Retire un « MK » de tete s'il y en a un, puis tout ce qui n'est pas
+  // un chiffre hexadecimal (deux-points, tirets, espaces, points).
+  s = s.replace(/^\s*MK\b/, '').replace(/[^0-9A-F]/g, '');
+  if (s.length !== 10) return null;
+  return 'MK:' + s.match(/.{2}/g).join(':');
+}
+
+async function openProfilesByMac() {
+  var msg = document.getElementById('pmacMsg');
+  var box = document.getElementById('profilesDirect');
+  var mac = normalizeMac(document.getElementById('pmac').value);
+  if (!mac) {
+    msg.textContent = 'Adresse incomplete : il faut 10 chiffres (ex. AA:BB:CC:DD:EE).';
+    box.innerHTML = '';
+    return;
+  }
+  // On REAFFICHE la forme retenue : le revendeur voit ce que le serveur a
+  // compris, et repere tout de suite s'il a saute un caractere.
+  msg.textContent = mac;
+  document.getElementById('pmac').value = mac;
+  await loadProfiles(mac, 'profilesDirect');
+}
+
+async function loadProfiles(mac, boxId) {
+  boxId = boxId || 'profilesBox';
+  const box = document.getElementById(boxId);
   box.innerHTML = 'Chargement...';
   try {
     const r = await api('/admin/profiles/' + encodeURIComponent(mac));
     const d = await r.json();
-    renderProfiles(mac, d.profiles || []);
+    renderProfiles(mac, d.profiles || [], boxId);
   } catch (e) {
     box.innerHTML = '<span class="warn">Impossible de charger les profils.</span>';
   }
 }
 
-function renderProfiles(mac, list) {
-  const box = document.getElementById('profilesBox');
+function renderProfiles(mac, list, boxId) {
+  boxId = boxId || 'profilesBox';
+  const box = document.getElementById(boxId);
   if (!list.length) { box.innerHTML = 'Aucun profil.'; return; }
   let h = '<table class="profiles"><tr>' +
     '<th>Profil</th><th>Actif</th><th>Enfant</th><th>PIN</th>' +
@@ -2331,13 +2401,21 @@ function renderProfiles(mac, list) {
   h += '</table>' +
     '<p class="hint">PIN : laisser vide = inchange. Ecrire <code>-</code> = effacer le code. ' +
     '4 a 8 chiffres.</p>' +
-    '<button onclick="saveProfiles(\'' + mac + '\')">Enregistrer les profils</button> ' +
-    '<span id="pMsg"></span>';
+    // ⚠ DOUBLE antislash, et pas simple. Toute cette page est un template
+    // literal (backticks) : un « \' » y devient « ' » et FERMERAIT la
+    // chaîne JavaScript ici. La page entière cesserait alors de
+    // fonctionner — connexion comprise, puisqu'une seule erreur de syntaxe
+    // tue tout le bloc <script>. C'est arrivé le 31/08 ; d'où le
+    // vérificateur cloudflare/panel_script.smoke.mjs.
+    '<button onclick="saveProfiles(\\'' + mac + '\\',\\'' + boxId + '\\')">Enregistrer les profils</button> ' +
+    '<span class="pMsg"></span>';
   box.innerHTML = h;
 }
 
-async function saveProfiles(mac) {
-  const rows = document.querySelectorAll('#profilesBox tr[data-id]');
+async function saveProfiles(mac, boxId) {
+  boxId = boxId || 'profilesBox';
+  const box = document.getElementById(boxId);
+  const rows = box.querySelectorAll('tr[data-id]');
   const profiles = [];
   rows.forEach((tr) => {
     const pin = tr.querySelector('.pPin').value.trim();
@@ -2355,7 +2433,7 @@ async function saveProfiles(mac) {
     else if (pin) o.pin = pin;
     profiles.push(o);
   });
-  const msg = document.getElementById('pMsg');
+  const msg = box.querySelector('.pMsg');
   msg.textContent = 'Enregistrement...';
   try {
     const r = await api('/admin/profiles/' + encodeURIComponent(mac), {
@@ -2368,6 +2446,47 @@ async function saveProfiles(mac) {
   } catch (e) {
     msg.textContent = 'Erreur reseau.';
   }
+}
+
+//  COPIER UNE ADRESSE MAC EN UN CLIC.
+//
+//  navigator.clipboard EXIGE une page en HTTPS. Le panel l'est, mais un
+//  essai en local (http://127.0.0.1) ne le serait pas : sans le repli
+//  ci-dessous, le bouton ne ferait RIEN, sans message. Un bouton muet est
+//  pire qu'un bouton absent — on croit avoir copie, on colle du vide.
+function copyMac(mac, el) {
+  function fini() {
+    if (!el) return;
+    const avant = el.textContent;
+    el.textContent = 'copie !';
+    setTimeout(() => { el.textContent = avant; }, 1200);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(mac).then(fini, () => fallback(mac, fini));
+  } else {
+    fallback(mac, fini);
+  }
+}
+
+function fallback(texte, fini) {
+  const ta = document.createElement('textarea');
+  ta.value = texte;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); fini(); } catch (e) { prompt('Copie :', texte); }
+  document.body.removeChild(ta);
+}
+
+//  Envoie la MAC du tableau vers le champ « Profils famille » ET la
+//  copie. Deux gestes en un : c'est le parcours reel quand un client
+//  appelle — on repere sa ligne, on ouvre ses profils.
+function macToProfiles(mac) {
+  document.getElementById('pmac').value = mac;
+  copyMac(mac, null);
+  openProfilesByMac();
+  document.getElementById('pmac').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 async function api(path, opts = {}) {
@@ -2525,7 +2644,16 @@ function render() {
         ? '<span class="badge unpaid">Essai ' + days + 'j</span>'
         : '<span class="badge unpaid">Expiré</span>';
     return '<tr>' +
-      '<td class="mac" onclick="openDetail(\\''+c.mac+'\\')" title="Voir la fiche complète">' + escapeHtml(c.mac) + '</td>' +
+      // La MAC ouvre la fiche (comme avant) ; le 📋 la COPIE sans ouvrir
+      // quoi que ce soit — le geste qu'on fait pour l'envoyer par
+      // WhatsApp. stopPropagation, sinon le clic sur le bouton
+      // declencherait AUSSI l'ouverture de la fiche.
+      '<td class="mac"><span onclick="openDetail(\\''+c.mac+'\\')" title="Voir la fiche complète" style="cursor:pointer">' + escapeHtml(c.mac) + '</span>' +
+        ' <button class="ghost" style="padding:1px 6px;font-size:11px" title="Copier l\\'adresse" ' +
+        'onclick="event.stopPropagation();copyMac(\\''+c.mac+'\\',this)">📋</button>' +
+        ' <button class="ghost" style="padding:1px 6px;font-size:11px" title="Ouvrir ses profils famille" ' +
+        'onclick="event.stopPropagation();macToProfiles(\\''+c.mac+'\\')">👨‍👩‍👧‍👦</button>' +
+      '</td>' +
       '<td>' + escapeHtml(c.name || '—') + '</td>' +
       '<td>' + statusBadge + ' ' + paidBadge + '</td>' +
       '<td>' + (days > 0 ? days + 'j' : '—') + '</td>' +
@@ -2598,7 +2726,12 @@ function kvRaw(k, vHtml) {
 
 async function openDetail(mac) {
   detailMac = mac;
-  document.getElementById('detail-mac').textContent = mac;
+  // innerHTML et non textContent : on y ajoute le bouton « copier ». La
+  // MAC vient de notre propre base et passe par escapeHtml, comme partout
+  // ailleurs dans ce panel.
+  document.getElementById('detail-mac').innerHTML = escapeHtml(mac) +
+    ' <button class="ghost" style="padding:1px 7px;font-size:11px" ' +
+    'onclick="copyMac(\\'' + mac + '\\',this)">📋 copier</button>';
   document.getElementById('detail-body').innerHTML =
     '<div style="padding:20px;text-align:center;color:#7E7872">Chargement…</div>';
   document.getElementById('detail-overlay').classList.add('open');
