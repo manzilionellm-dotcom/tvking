@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/profiles/profiles_repository.dart';
 import '../../../core/update/update_prompt.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../core/support/vip_help_card.dart';
@@ -425,13 +426,24 @@ class _KidsModeTile extends StatelessWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: ParentalControls.instance.kidsMode,
       builder: (BuildContext context, bool kids, _) {
+        // L'INTERRUPTEUR montre le réglage de l'APPAREIL, pas le mode
+        // effectif : sinon, connecter un profil d'enfant le ferait passer
+        // à « activé » tout seul et le parent croirait l'avoir mis.
+        final bool device = ParentalControls.instance.deviceKidsMode;
+        // Mode imposé par le PROFIL et non par l'appareil : on nomme le
+        // profil responsable (« Activé · 🧒 Enfant 1 »). Pas de phrase à
+        // traduire — un emoji et un prénom se lisent dans toutes les
+        // langues, et disent exactement d'où vient le verrou.
+        final TvProfile p = ProfilesRepository.instance.active;
         return _SwitchTile(
           icon: Icons.child_care_rounded,
           title: context.l10n.tvParentalKidsMode,
           subtitle: kids
-              ? context.l10n.tvParentalKidsOn
+              ? (device
+                  ? context.l10n.tvParentalKidsOn
+                  : '${context.l10n.tvParentalKidsOn} · ${p.emoji} ${p.name}')
               : context.l10n.tvParentalKidsOff,
-          value: kids,
+          value: device,
           onChanged: (bool v) => _toggle(context, v),
         );
       },

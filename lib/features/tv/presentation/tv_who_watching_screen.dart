@@ -18,11 +18,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/profiles/profile_switch.dart';
 import '../../../core/profiles/profiles_repository.dart';
-import '../../channels/data/search_history_repository.dart';
-import '../../playlists/data/favorite_collections_repository.dart';
-import '../../vod/data/recent_vod_repository.dart';
-import '../../vod/data/vod_watchlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -57,14 +54,17 @@ class _TvWhoWatchingScreenState extends State<TvWhoWatchingScreen> {
     }
   }
 
-  /// Active [id] puis recharge TOUS les dépôts par profil (récents, recherches,
-  /// collections, Ma Liste) — les écrans relisent ces dépôts à l'ouverture.
+  /// Demande le code s'il y en a un, puis bascule. La liste des dépôts à
+  /// recharger vit dans `activateProfile` — un seul endroit pour les trois
+  /// écrans qui savent changer de profil (cf. profile_switch.dart).
   Future<void> _pick(String id) async {
-    await ProfilesRepository.instance.setActive(id);
-    await RecentVodRepository.instance.load();
-    await SearchHistoryRepository.instance.load();
-    await FavoriteCollectionsRepository.instance.load();
-    await VodWatchlistRepository.instance.load();
+    // Profil coupé depuis le panel : on ne fait rien. La tuile est déjà
+    // grisée, ce chemin ne sert que de garde — un écran affiché avant la
+    // synchro pourrait proposer un profil qui vient d'être désactivé.
+    if (ProfilesRepository.instance.byId(id)?.enabled == false) return;
+    if (!await ensureUnlocked(context, id)) return;
+    if (!mounted) return;
+    await activateProfile(id);
     if (!mounted) return;
     if (widget.onPicked != null) {
       widget.onPicked!.call();
@@ -148,45 +148,74 @@ class _AvatarTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Profil COUPÉ depuis le panel : la tuile reste visible mais éteinte.
+    // Volontairement grisée plutôt que retirée — un enfant dont le profil
+    // disparaît croit à une panne et vient réclamer ; grisé, le message
+    // « c'est fermé » se lit tout seul.
+    final bool off = !profile.enabled;
+    final bool locked = profile.pin != null;
     return TvFocusBuilder(
       scale: TvFocusScale.large,
       autofocus: autofocus,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color ring = focused
-            ? TvTokens.gold
-            : (active ? TvTokens.gold : TvTokens.lineSoft);
-        return SizedBox(
-          width: 150,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Container(
-                width: 132,
-                height: 132,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: focused ? TvTokens.sel : TvTokens.card,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                      color: ring, width: focused || active ? 3 : 1),
+        final Color ring = off
+            ? TvTokens.lineSoft
+            : (focused || active ? TvTokens.gold : TvTokens.lineSoft);
+        return Opacity(
+          opacity: off ? 0.38 : 1,
+          child: SizedBox(
+            width: 150,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Stack(
+                  children: <Widget>[
+                    Container(
+                      width: 132,
+                      height: 132,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: focused && !off ? TvTokens.sel : TvTokens.card,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                            color: ring,
+                            width: (focused || active) && !off ? 3 : 1),
+                      ),
+                      child: Text(profile.emoji,
+                          style: const TextStyle(fontSize: 62)),
+                    ),
+                    // Cadenas : le profil demandera un code. On le montre
+                    // AVANT le clic — découvrir le verrou seulement après
+                    // avoir choisi donne l'impression d'un refus.
+                    if (locked || off)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Icon(
+                          off ? Icons.block_rounded : Icons.lock_rounded,
+                          size: 20,
+                          color: off ? TvTokens.muted : TvTokens.gold,
+                        ),
+                      ),
+                  ],
                 ),
-                child: Text(profile.emoji,
-                    style: const TextStyle(fontSize: 62)),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                // Profil par défaut → nom localisé (« Famille »/« Family »…).
-                tvProfileDisplayName(context, profile),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: focused ? TvTokens.goldBright : TvTokens.muted),
-              ),
-            ],
+                const SizedBox(height: 12),
+                Text(
+                  // Profil par défaut → nom localisé (« Famille »/« Family »…).
+                  tvProfileDisplayName(context, profile),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: focused && !off
+                          ? TvTokens.goldBright
+                          : TvTokens.muted),
+                ),
+              ],
+            ),
           ),
         );
       },

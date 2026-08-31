@@ -52,6 +52,7 @@ import '../../features/theme/data/remote_theme_repository.dart';
 import '../app/boot_guard.dart';
 import '../app/build_info.dart';
 import '../backend/backend_hosts.dart';
+import '../profiles/remote_profiles_repository.dart';
 import '../theme/accent_controller.dart';
 import 'device_message_repository.dart';
 
@@ -697,6 +698,16 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
       ForceUpdateChecker.instance.requestRecheck();
     } catch (e) {
       if (kDebugMode) debugPrint('[Realtime] config maj forcée: $e');
+    }
+    // PROFILS DE LA FAMILLE. C'est la brique qui rend « à distance » VRAI :
+    // le propriétaire coupe le profil d'un enfant depuis le panel, et la box
+    // le grise en moins d'une seconde au lieu d'attendre le sondage de
+    // 5 min. Le sondage reste le filet de sécurité quand le socket ne passe
+    // pas — ici comme pour les sources.
+    try {
+      await RemoteProfilesRepository.instance.syncSelf();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Realtime] config profils: $e');
     }
   }
 

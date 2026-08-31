@@ -12,11 +12,8 @@ import 'package:flutter/material.dart';
 
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/profiles/profile_switch.dart';
 import '../../../core/profiles/profiles_repository.dart';
-import '../../channels/data/search_history_repository.dart';
-import '../../playlists/data/favorite_collections_repository.dart';
-import '../../vod/data/recent_vod_repository.dart';
-import '../../vod/data/vod_watchlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -57,14 +54,13 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
     ProfilesRepository.instance.load();
   }
 
-  /// Active [id] puis recharge les données PAR PROFIL (récents, recherches,
-  /// collections) — les écrans concernés relisent ces dépôts à l'ouverture.
+  /// Demande le code s'il y en a un, puis bascule. La liste des dépôts à
+  /// recharger vit dans `activateProfile` (profile_switch.dart) : un seul
+  /// endroit pour les trois écrans qui savent changer de profil.
   Future<void> _activate(String id) async {
-    await ProfilesRepository.instance.setActive(id);
-    await RecentVodRepository.instance.load();
-    await SearchHistoryRepository.instance.load();
-    await FavoriteCollectionsRepository.instance.load();
-    await VodWatchlistRepository.instance.load();
+    if (ProfilesRepository.instance.byId(id)?.enabled == false) return;
+    if (!await ensureUnlocked(context, id)) return;
+    await activateProfile(id);
   }
 
   @override
@@ -110,18 +106,25 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
                             onSelect: () => _activate(p.id),
                             builder: (BuildContext context, bool focused) {
                               final bool isActive = p.id == repo.active.id;
-                              final Color bg =
-                                  focused ? TvTokens.gold : TvTokens.sel;
-                              final Color fg = focused
+                              // Profil coupé par le panel : ligne éteinte,
+                              // visible mais inutilisable (cf. la règle
+                              // expliquée dans profiles_repository.dart).
+                              final bool off = !p.enabled;
+                              final Color bg = focused && !off
+                                  ? TvTokens.gold
+                                  : TvTokens.sel;
+                              final Color fg = focused && !off
                                   ? const Color(0xFF1A1206)
                                   : TvTokens.goldBright;
-                              return Container(
+                              return Opacity(
+                                opacity: off ? 0.4 : 1,
+                                child: Container(
                                 decoration: BoxDecoration(
                                   color: bg,
                                   borderRadius: BorderRadius.circular(
                                       TvDimens.cardRadius),
                                   border: Border.all(
-                                      color: isActive
+                                      color: isActive && !off
                                           ? TvTokens.gold
                                           : TvTokens.lineSoft),
                                 ),
@@ -138,6 +141,18 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
                                             fontSize: TvDimens.title,
                                             fontWeight: FontWeight.w700,
                                             color: fg)),
+                                    // Cadenas / interdit : dit AVANT le clic
+                                    // qu'un code sera demandé, ou que le
+                                    // profil est fermé.
+                                    if (off || p.pin != null) ...<Widget>[
+                                      const SizedBox(width: 10),
+                                      Icon(
+                                          off
+                                              ? Icons.block_rounded
+                                              : Icons.lock_rounded,
+                                          size: 20,
+                                          color: fg),
+                                    ],
                                     const Spacer(),
                                     if (isActive)
                                       Row(
@@ -163,12 +178,18 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
                                       ),
                                   ],
                                 ),
+                              ),
                               );
                             },
                           ),
                         ),
-                        // Suppression (jamais pour « Famille »), en 2 temps.
-                        if (p.id != ProfilesRepository.familyProfile.id) ...<Widget>[
+                        // Suppression : jamais « Famille », et jamais un
+                        // profil VENU DU PANEL — sinon le contrôle parental
+                        // se contournerait en supprimant le profil qui le
+                        // porte. Le dépôt refuse déjà ; on n'affiche pas non
+                        // plus un bouton qui ne ferait rien.
+                        if (p.id != ProfilesRepository.familyProfile.id &&
+                            !p.managed) ...<Widget>[
                           const SizedBox(width: 10),
                           TvFocusBuilder(
                             scale: TvFocusScale.small,

@@ -16,14 +16,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/profiles/profile_switch.dart';
 import '../../../core/profiles/profiles_repository.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../channels/data/search_history_repository.dart';
-import '../../playlists/data/favorite_collections_repository.dart';
-import '../../vod/data/playback_position_repository.dart';
-import '../../vod/data/recent_vod_repository.dart';
-import '../../vod/data/vod_watchlist_repository.dart';
 
 /// Nom AFFICHÉ d'un profil : « Famille » est montré dans la langue active
 /// alors que le nom STOCKÉ reste 'Famille' (partagé avec la TV — on ne
@@ -60,18 +56,15 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     ProfilesRepository.instance.load();
   }
 
-  /// Active [id] puis recharge les données PAR PROFIL. Même liste que la TV
-  /// (tv_profiles_screen `_activate`) + PlaybackPositionRepository : sa
-  /// rangée « Reprendre » vit sur l'accueil mobile et garderait sinon en
-  /// mémoire les reprises de l'ancien profil (les clés, elles, sont lues
-  /// dynamiquement via keySuffix — seul le cache mémoire est à rafraîchir).
+  /// Demande le code s'il y en a un, puis bascule. La liste des dépôts à
+  /// recharger vit dans `activateProfile` (profile_switch.dart), partagée
+  /// avec les deux écrans TV : c'est CETTE liste qui avait divergé entre
+  /// mobile et TV, et un écran qui n'était pas rechargé affichait encore
+  /// les données du profil précédent.
   Future<void> _activate(String id) async {
-    await ProfilesRepository.instance.setActive(id);
-    await RecentVodRepository.instance.load();
-    await SearchHistoryRepository.instance.load();
-    await FavoriteCollectionsRepository.instance.load();
-    await VodWatchlistRepository.instance.load();
-    await PlaybackPositionRepository.instance.load();
+    if (ProfilesRepository.instance.byId(id)?.enabled == false) return;
+    if (!await ensureUnlocked(context, id)) return;
+    await activateProfile(id);
   }
 
   Future<void> _confirmDelete(TvProfile p) async {
@@ -139,8 +132,13 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
                   profile: p,
                   active: p.id == repo.active.id,
                   onTap: () => _activate(p.id),
-                  // « Famille » est indestructible (règle du dépôt).
-                  onDelete: p.id == ProfilesRepository.familyProfile.id
+                  // « Famille » est indestructible, et un profil VENU DU
+                  // PANEL ne se supprime pas depuis l'appareil : sinon le
+                  // contrôle parental se contournerait en supprimant le
+                  // profil qui le porte. Le dépôt refuse déjà ; on n'affiche
+                  // pas non plus un bouton qui ne ferait rien.
+                  onDelete: p.id == ProfilesRepository.familyProfile.id ||
+                          p.managed
                       ? null
                       : () => _confirmDelete(p),
                 ),
@@ -203,10 +201,16 @@ class _ProfileTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    // Profil COUPÉ depuis le panel : tuile visible mais éteinte, et non
+    // retirée — un membre dont le profil disparaît croit à une panne, un
+    // profil grisé dit clairement « c'est fermé ».
+    final bool off = !profile.enabled;
+    return Opacity(
+      opacity: off ? 0.4 : 1,
+      child: Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: off ? null : onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
           margin: const EdgeInsets.only(bottom: 6),
@@ -215,7 +219,7 @@ class _ProfileTile extends StatelessWidget {
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: active ? AppColors.accent : AppColors.border,
+              color: active && !off ? AppColors.accent : AppColors.border,
             ),
           ),
           child: Row(
@@ -243,6 +247,14 @@ class _ProfileTile extends StatelessWidget {
                   ),
                 ),
               ),
+              // Cadenas / interdit : dit AVANT le tap qu'un code sera
+              // demandé, ou que le profil est fermé. Découvrir le verrou
+              // seulement après avoir choisi donne l'impression d'un refus.
+              if (off || profile.pin != null) ...<Widget>[
+                Icon(off ? Icons.block_rounded : Icons.lock_rounded,
+                    size: 18, color: AppColors.textMuted),
+                const SizedBox(width: 8),
+              ],
               if (active) ...<Widget>[
                 Icon(Icons.check_circle_rounded,
                     color: AppColors.accent, size: 18),
@@ -259,7 +271,7 @@ class _ProfileTile extends StatelessWidget {
               if (onDelete != null)
                 IconButton(
                   onPressed: onDelete,
-                  icon: Icon(
+                  icon: const Icon(
                     Icons.delete_outline_rounded,
                     color: AppColors.textMuted,
                     size: 20,
@@ -268,6 +280,7 @@ class _ProfileTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

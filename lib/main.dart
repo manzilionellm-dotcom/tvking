@@ -19,6 +19,7 @@ import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/backend/backend_hosts.dart';
 import 'core/profiles/profiles_repository.dart';
+import 'core/profiles/remote_profiles_repository.dart';
 import 'core/realtime/admin_message_banner.dart';
 import 'core/realtime/realtime_sync_service.dart';
 import 'core/crash/crash_reporting.dart';
@@ -189,6 +190,14 @@ Future<void> bootApp() async {
   await ProfilesRepository.instance
       .load()
       .timeout(const Duration(seconds: 2), onTimeout: () {});
+  // Profils PILOTÉS PAR LE PANEL (mêmes règles que le boot TV) : le
+  // propriétaire colle UNE source et le serveur génère les cinq profils
+  // de la famille. Non bloquant : le `load()` ci-dessus a déjà servi la
+  // liste en cache, la réponse serveur ne fait que la corriger.
+  unawaited(RemoteProfilesRepository.instance.syncSelf());
+  Timer.periodic(const Duration(minutes: 5), (_) {
+    unawaited(RemoteProfilesRepository.instance.syncSelf());
+  });
   // CONTRÔLE PARENTAL (Mode Enfants) : même appel que le boot TV (étape
   // « 8 » de main_tv.dart). Fire-and-forget, ne throw jamais — l'état est
   // lu par Réglages > Contrôle parental et par les écrans qui masquent

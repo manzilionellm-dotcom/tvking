@@ -28,6 +28,7 @@ import 'features/tv/core/tv_memory_guard.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/realtime/realtime_sync_service.dart';
 import 'core/profiles/profiles_repository.dart';
+import 'core/profiles/remote_profiles_repository.dart';
 import 'core/theme/accent_controller.dart';
 import 'core/tv/screen_awake.dart';
 import 'features/channels/data/recently_watched_repository.dart';
@@ -312,6 +313,26 @@ Future<void> _bootstrap() async {
   await ProfilesRepository.instance
       .load()
       .timeout(const Duration(seconds: 2), onTimeout: () {});
+
+  // Profils PILOTÉS PAR LE PANEL : le propriétaire colle UNE source M3U et
+  // le serveur génère les cinq profils de la famille (papa, maman, trois
+  // enfants), chacun avec son PIN et ses règles. On les récupère ici.
+  //
+  // NON BLOQUANT, volontairement : le `load()` juste au-dessus a déjà mis
+  // en cache les profils de la dernière synchro. Attendre le réseau ferait
+  // patienter la box devant un écran vide pour, dans 99 % des cas, la même
+  // liste. Si le serveur répond après le 1er rendu, `applyRemote` notifie
+  // et l'écran « Qui regarde ? » se met à jour tout seul.
+  unawaited(RemoteProfilesRepository.instance.syncSelf());
+  // Même cadence que la source poussée (5 min) : c'est le FILET quand le
+  // temps réel ne passe pas (box derrière un réseau qui coupe le
+  // WebSocket). Désactiver un profil à distance doit finir par prendre
+  // effet même sans socket.
+  Timer.periodic(const Duration(minutes: 5), (_) {
+    if (!BootGuard.instance.safeMode) {
+      unawaited(RemoteProfilesRepository.instance.syncSelf());
+    }
+  });
 
   // 9) Historique multi-box : on initialise l'historique local PUIS on le
   //    restaure depuis le serveur si la box est neuve (l'historique « suit »

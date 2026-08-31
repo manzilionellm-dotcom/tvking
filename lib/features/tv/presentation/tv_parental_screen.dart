@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/profiles/profiles_repository.dart';
 
 import '../../security/data/app_pin_settings.dart';
 import '../../security/data/parental_controls.dart';
@@ -75,6 +76,12 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
   @override
   Widget build(BuildContext context) {
     final bool kids = ParentalControls.instance.kidsMode.value;
+    // L'INTERRUPTEUR montre le réglage de l'APPAREIL ; `kids` (effectif) y
+    // ajoute le profil actif. Sans cette distinction, connecter un profil
+    // d'enfant afficherait « activé » et le parent croirait avoir mis
+    // l'interrupteur alors qu'il ne l'a pas fait.
+    final bool deviceKids = ParentalControls.instance.deviceKidsMode;
+    final TvProfile activeProfile = ProfilesRepository.instance.active;
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,7 +118,15 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                       const SizedBox(height: 2),
                       Text(
                           kids
-                              ? context.l10n.tvParentalKidsOn
+                              // Mode imposé par le PROFIL et non par
+                              // l'appareil : on nomme le profil responsable
+                              // (« Activé · 🧒 Enfant 1 »). Rien à traduire —
+                              // un emoji et un prénom se lisent partout, et
+                              // disent d'où vient le verrou.
+                              ? (deviceKids
+                                  ? context.l10n.tvParentalKidsOn
+                                  : '${context.l10n.tvParentalKidsOn} · '
+                                      '${activeProfile.emoji} ${activeProfile.name}')
                               : context.l10n.tvParentalKidsOff,
                           style: TextStyle(
                               fontSize: TvDimens.label,
@@ -121,9 +136,9 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                 ),
                 const SizedBox(width: 12),
                 _TogglePill(
-                  on: kids,
+                  on: deviceKids,
                   autofocus: true,
-                  onSelect: () => _toggleKids(!kids),
+                  onSelect: () => _toggleKids(!deviceKids),
                 ),
               ],
             ),
