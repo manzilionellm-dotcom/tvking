@@ -7,7 +7,12 @@ export function landingHtml() {
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>7 MOTION — Lecteur TV premium, fluide et sans coupure | Mobile &amp; Smart TV</title>
-<meta name="description" content="7 MOTION : un lecteur premium, fluide et sans coupure, pour téléphone et TV. Activation en minutes, accompagnement humain, sérénité totale." />
+<!-- Ce texte est ce que Google affiche SOUS le titre, dans les résultats.
+     L'ancien ne vantait que des adjectifs (« fluide », « premium ») ;
+     celui-ci nomme des FONCTIONS, parce que c'est là-dessus qu'un client
+     compare deux lecteurs avant de cliquer. ~155 caractères : au-delà,
+     Google coupe la phrase au milieu. -->
+<meta name="description" content="7 MOTION : lecteur TV premium pour téléphone et Smart TV. Guide TV, cinéma, téléchargement hors-ligne, sport en direct, profils famille et contrôle parental." />
 <!-- PWA : le site s'installe comme une application -->
 <link rel="manifest" href="/manifest.webmanifest" />
 <meta name="theme-color" content="#0c0c0e" />
@@ -145,6 +150,27 @@ export function landingHtml() {
   .grid{display:grid;gap:18px}
   .g3{grid-template-columns:repeat(3,1fr)}
   @media(max-width:820px){.g3{grid-template-columns:1fr}}
+  /* Grille des FONCTIONS : cartes plus petites et plus nombreuses que .g3.
+     On descend a 2 colonnes puis 1 — sur telephone, trois colonnes
+     rendraient chaque titre illisible. */
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:1000px){.g4{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.g4{grid-template-columns:1fr}}
+  .feat{background:var(--panel);border:1px solid var(--line);border-radius:18px;
+    padding:22px;transition:.25s}
+  .feat:hover{border-color:var(--line-gold);transform:translateY(-2px)}
+  .feat .fi{font-size:22px;margin-bottom:10px}
+  .feat h3{font-size:16px;font-weight:700;margin-bottom:6px}
+  .feat p{color:var(--muted);font-size:13.5px;line-height:1.55}
+  /* Encart « ce qu'il vous faut » : dit franchement les limites. Un client
+     qui decouvre une contrainte APRES avoir paye se sent trompe ; le meme
+     client prevenu avant trouve ca normal. */
+  .needs{background:var(--panel-2);border:1px solid var(--line-gold);
+    border-radius:20px;padding:30px;max-width:760px;margin:0 auto}
+  .needs ul{list-style:none;margin-top:16px}
+  .needs li{padding:10px 0 10px 30px;position:relative;color:var(--muted);font-size:14.5px}
+  .needs li::before{content:"→";position:absolute;left:0;color:var(--gold);font-weight:800}
+  .needs li b{color:#fff}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
     padding:30px;transition:.25s;backdrop-filter:blur(6px)}
   .card:hover{border-color:var(--line-gold);transform:translateY(-3px)}
@@ -256,10 +282,10 @@ export function landingHtml() {
   <div class="logo">7&nbsp;<b>MOTION</b></div>
   <nav class="nav-links">
     <a href="#how">Comment ça marche</a>
+    <a href="#features">Fonctions</a>
     <a href="#download">Télécharger</a>
     <a href="#pricing">Tarifs</a>
     <a href="/mon-espace">Mes playlists</a>
-    <a href="#trust">Confiance</a>
   </nav>
   <a class="btn btn-gold btn-nav" href="https://app.7themotion.com/install">Télécharger</a>
 </div></header>
@@ -319,6 +345,99 @@ export function landingHtml() {
   </div>
   <p class="center lead" style="margin:26px auto 0;font-size:14px">Scannez, installez, regardez. Lien direct, sans publicité ni inscription.</p>
   <p class="center hint" style="margin:14px auto 0">Sur Fire TV / box : ouvrez l’app <b>Downloader</b> et tapez le code <b style="color:var(--gold)">1848910</b> (TV) — ou l’adresse <b>app.7themotion.com/tv</b>. Sur téléphone, code <b style="color:var(--gold)">6868843</b>. Version <b>iPhone</b> : bientôt — parlez-en à votre conseiller.</p>
+</div></section>
+
+<!-- CE QUE L'APPLICATION FAIT
+     ---------------------------------------------------------
+     Le site vendait une PROMESSE (« fluide, sans coupure ») sans jamais
+     dire ce que l'app SAIT FAIRE. Un client qui hesite entre deux
+     lecteurs compare des fonctions, pas des adjectifs.
+
+     REGLE D'ECRITURE DE CETTE SECTION : chaque ligne correspond a du
+     code qui existe et qui a ete verifie. Rien n'est ajoute « parce que
+     ca sonne bien ». Une fonction annoncee et absente, c'est un
+     remboursement et un client perdu — beaucoup plus cher qu'une case
+     vide. -->
+<section id="features"><div class="wrap">
+  <div class="center" style="margin-bottom:46px">
+    <span class="eyebrow">Tout est déjà dedans</span>
+    <h2>Ce que l'application <span class="g">sait faire</span></h2>
+    <p class="lead center" style="margin-top:14px">Pas d'options à acheter en plus.
+      Tout ce qui suit est inclus, sur téléphone comme sur TV.</p>
+  </div>
+
+  <div class="grid g4">
+    <div class="feat"><div class="fi">📺</div><h3>Guide TV</h3>
+      <p>Le programme de chaque chaîne, en grille ou en frise. Vous voyez ce qui passe maintenant et ce qui suit.</p></div>
+    <div class="feat"><div class="fi">🎬</div><h3>Cinéma &amp; Séries</h3>
+      <p>Films et séries de votre source, avec affiches et résumés. L'app reprend chaque film là où vous l'aviez laissé.</p></div>
+    <div class="feat"><div class="fi">⬇️</div><h3>Téléchargement</h3>
+      <p>Emportez un film ou un épisode et regardez-le sans connexion — en voyage, en voiture, à l'hôtel.</p></div>
+    <div class="feat"><div class="fi">⏺️</div><h3>Enregistrement</h3>
+      <p>Lancez l'enregistrement d'une émission et retrouvez-la quand vous voulez.</p></div>
+    <div class="feat"><div class="fi">⚽</div><h3>Coin Sport</h3>
+      <p>Les matchs du jour, les scores en direct, et une alerte sur votre téléphone avant le coup d'envoi de vos équipes.</p></div>
+    <div class="feat"><div class="fi">👨‍👩‍👧‍👦</div><h3>Profils famille</h3>
+      <p>Cinq profils séparés — chacun son code, ses films repris, son historique. Personne ne mélange ses affaires avec les autres.</p></div>
+    <div class="feat"><div class="fi">🧒</div><h3>Contrôle parental</h3>
+      <p>Un mode enfant par profil : le contenu adulte disparaît, et il faut votre code pour revenir en arrière.</p></div>
+    <div class="feat"><div class="fi">⧉</div><h3>Multi-vue</h3>
+      <p>Deux chaînes côte à côte sur le même écran, pour ne rien rater de deux matchs. Demande une box récente et deux connexions.</p></div>
+    <div class="feat"><div class="fi">★</div><h3>Favoris</h3>
+      <p>Vos chaînes préférées en tête de liste, et vos propres collections pour ranger ce que vous aimez.</p></div>
+    <div class="feat"><div class="fi">🔎</div><h3>Recherche</h3>
+      <p>Une chaîne, un film, une série — tapez le nom, c'est trouvé. Vos dernières recherches restent à portée.</p></div>
+    <div class="feat"><div class="fi">🌙</div><h3>Minuteur de sommeil</h3>
+      <p>La TV s'éteint toute seule à l'heure que vous dites. Un mode confort adoucit aussi l'image le soir.</p></div>
+    <div class="feat"><div class="fi">📱</div><h3>Envoi vers la TV</h3>
+      <p>Ce que vous regardez sur le téléphone part sur la télé d'un geste, via Chromecast.</p></div>
+    <div class="feat"><div class="fi">🌍</div><h3>Huit langues</h3>
+      <p>Français, anglais, espagnol, arabe, suédois, danois, norvégien, swahili. L'app suit la langue de votre appareil.</p></div>
+    <div class="feat"><div class="fi">↻</div><h3>Mise à jour intégrée</h3>
+      <p>Un bouton dans l'app installe la dernière version. Rien à retélécharger, rien à réinstaller.</p></div>
+    <div class="feat"><div class="fi">💡</div><h3>Lumières Philips Hue</h3>
+      <p>Vos ampoules prennent les couleurs de l'écran. Une salle de cinéma, chez vous.</p></div>
+    <div class="feat"><div class="fi">🛟</div><h3>Ne reste jamais bloquée</h3>
+      <p>Si un démarrage se passe mal, l'app rouvre en mode secours au lieu de rester noire. Vous gardez la main.</p></div>
+  </div>
+</div></section>
+
+<!-- CE QU'IL VOUS FAUT — les limites, dites AVANT.
+     ---------------------------------------------------------
+     Un client qui decouvre une contrainte APRES avoir paye se sent
+     trompe et demande un remboursement. Le meme client, prevenu avant,
+     trouve ca normal et fait confiance au reste. Cette section coute
+     quelques ventes et en sauve davantage. -->
+<section style="background:var(--bg-soft)"><div class="wrap">
+  <div class="center" style="margin-bottom:36px">
+    <span class="eyebrow">Soyons clairs</span>
+    <h2>Ce qu'il vous <span class="g">faut savoir</span></h2>
+  </div>
+  <div class="needs">
+    <ul>
+      <li><b>Vous apportez votre source.</b> 7 MOTION est un lecteur :
+        nous ne vendons et n'hébergeons aucune chaîne. Vous branchez votre
+        propre abonnement (M3U ou Xtream), ou votre conseiller vous aide à
+        le faire.</li>
+      <li><b>Combien de personnes à la fois ?</b> Cela dépend de votre
+        abonnement, pas de l'application. Une ligne à une connexion = un
+        écran à la fois. Pour que deux personnes regardent deux chaînes
+        différentes — ou pour la multi-vue — il faut une ligne à deux
+        connexions ou plus.</li>
+      <li><b>Les profils séparent vos affaires, pas les connexions.</b>
+        Chacun retrouve ses films et son historique, même sur une ligne à
+        une connexion. Mais regarder en même temps reste une question
+        d'abonnement.</li>
+      <li><b>iPhone et iPad :</b> pas encore. Android, Android TV, Google
+        TV, Fire TV, Samsung, LG et Windows sont prêts.</li>
+      <li><b>Sur la TV, préférez le câble Ethernet.</b> Le Wi-Fi
+        fonctionne, mais un câble supprime la quasi-totalité des coupures.
+        C'est le conseil qui change le plus de choses.</li>
+      <li><b>Votre adresse d'appareil</b> s'affiche dans l'app, dans
+        <b>Réglages → À propos</b>. C'est elle qu'on vous demande pour
+        activer, et elle ne change jamais.</li>
+    </ul>
+  </div>
 </div></section>
 
 <!-- POURQUOI CONFIANCE -->
@@ -397,6 +516,14 @@ export function landingHtml() {
   <details><summary>Et si j'ai un souci&nbsp;?</summary><p>Un vrai conseiller vous répond sur WhatsApp et reste avec vous jusqu'à ce que tout fonctionne. Vous n'êtes jamais seul.</p></details>
   <details><summary>Comment se passe le paiement&nbsp;?</summary><p>Simplement, avec un conseiller, sur WhatsApp. Vous choisissez votre formule, on active votre appareil, c'est réglé en quelques minutes — sereinement.</p></details>
   <details><summary>L'image peut-elle couper&nbsp;?</summary><p>L'application est conçue pour la stabilité : démarrage rapide, anti-coupure et reconnexion automatique. Une bonne connexion (ou Ethernet sur la TV) garantit le meilleur confort.</p></details>
+  <details><summary>Plusieurs personnes peuvent-elles regarder en même temps&nbsp;?</summary><p>Cela dépend de votre abonnement, pas de l'application. Une ligne à une connexion permet un écran à la fois. Pour que deux personnes regardent deux chaînes différentes, il faut une ligne à deux connexions ou plus — demandez-la à votre conseiller. Les profils, eux, fonctionnent dans tous les cas : chacun garde ses films et son historique.</p></details>
+  <details><summary>Où trouver l'adresse qu'on me demande&nbsp;?</summary><p>Dans l'application, allez dans <b>Réglages → À propos</b> : l'adresse s'affiche en toutes lettres. Elle est aussi visible sur l'écran d'accueil. Elle ne change jamais, même après une mise à jour.</p></details>
+  <details><summary>Faut-il créer un compte&nbsp;?</summary><p>Non. Aucun compte, aucun mot de passe, aucune adresse e-mail. Votre appareil se reconnaît tout seul grâce à son adresse.</p></details>
+  <details><summary>Puis-je regarder sans internet&nbsp;?</summary><p>Oui, pour les films et les séries : téléchargez-les à la maison et regardez-les ensuite hors connexion. Les chaînes en direct, elles, demandent forcément une connexion.</p></details>
+  <details><summary>Comment protéger mes enfants&nbsp;?</summary><p>Chaque profil peut être passé en mode enfant : le contenu adulte disparaît partout, et il faut votre code pour revenir en arrière. Vous pouvez aussi mettre un code sur votre propre profil, et bloquer des catégories entières.</p></details>
+  <details><summary>Comment mettre à jour l'application&nbsp;?</summary><p>Un bouton dans l'app installe la dernière version. Rien à retélécharger, rien à réinstaller, et vos réglages sont conservés.</p></details>
+  <details><summary>Mes données sont-elles en sécurité&nbsp;?</summary><p>Nous ne demandons ni nom, ni e-mail, ni carte bancaire dans l'application. Vos playlists et votre historique restent sur votre appareil. Le détail est dans notre page Confidentialité, en bas de cette page.</p></details>
+  <details><summary>Et si je change de box ou de téléphone&nbsp;?</summary><p>Donnez la nouvelle adresse à votre conseiller : il transfère votre activation. Votre historique vous suit sur le nouvel appareil.</p></details>
 </div></section>
 
 <!-- CTA FINAL -->
@@ -512,7 +639,7 @@ export function landingHtml() {
   }
 })();
 </script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://app.7themotion.com/#org", "name": "7 MOTION", "url": "https://app.7themotion.com/", "logo": "https://app.7themotion.com/icon-512.png", "description": "Lecteur multimédia premium pour téléphone et TV.", "areaServed": ["Europe", "North America"]}, {"@type": "SoftwareApplication", "name": "7 MOTION", "operatingSystem": "Android, Android TV, Fire OS", "applicationCategory": "MultimediaApplication", "url": "https://app.7themotion.com/", "image": "https://app.7themotion.com/icon-512.png", "description": "Lecteur TV premium, fluide et sans coupure, pour téléphone et Smart TV.", "publisher": {"@id": "https://app.7themotion.com/#org"}, "offers": [{"@type": "Offer", "name": "1 an", "price": "5.90", "priceCurrency": "EUR"}, {"@type": "Offer", "name": "À vie", "price": "9.90", "priceCurrency": "EUR"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Est-ce compliqué à installer ?", "acceptedAnswer": {"@type": "Answer", "text": "Non. Vous installez l'app, vous nous envoyez votre adresse, et tout s'active en quelques minutes."}}, {"@type": "Question", "name": "Sur quels appareils ça fonctionne ?", "acceptedAnswer": {"@type": "Answer", "text": "Téléphones et tablettes Android, Android TV, Google TV, Amazon Fire Stick, NVIDIA SHIELD et la plupart des box Android. La version iPhone arrive."}}, {"@type": "Question", "name": "Et si j'ai un souci ?", "acceptedAnswer": {"@type": "Answer", "text": "Un vrai conseiller vous répond et reste avec vous jusqu'à ce que tout fonctionne."}}, {"@type": "Question", "name": "Comment se passe le paiement ?", "acceptedAnswer": {"@type": "Answer", "text": "Simplement, avec un conseiller, sur WhatsApp. Vous choisissez votre formule, on active votre appareil."}}, {"@type": "Question", "name": "L'image peut-elle couper ?", "acceptedAnswer": {"@type": "Answer", "text": "L'application est conçue pour la stabilité : démarrage rapide, anti-coupure et reconnexion automatique."}}]}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://app.7themotion.com/#org", "name": "7 MOTION", "url": "https://app.7themotion.com/", "logo": "https://app.7themotion.com/icon-512.png", "description": "Lecteur multimédia premium pour téléphone et TV.", "areaServed": ["Europe", "North America"]}, {"@type": "SoftwareApplication", "name": "7 MOTION", "operatingSystem": "Android, Android TV, Fire OS", "applicationCategory": "MultimediaApplication", "url": "https://app.7themotion.com/", "image": "https://app.7themotion.com/icon-512.png", "description": "Lecteur TV premium pour téléphone et Smart TV : guide TV, cinéma et séries, téléchargement hors-ligne, enregistrement, scores de sport en direct, cinq profils famille avec contrôle parental, multi-vue deux chaînes et huit langues.", "publisher": {"@id": "https://app.7themotion.com/#org"}, "offers": [{"@type": "Offer", "name": "1 an", "price": "5.90", "priceCurrency": "EUR"}, {"@type": "Offer", "name": "À vie", "price": "9.90", "priceCurrency": "EUR"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Est-ce compliqué à installer ?", "acceptedAnswer": {"@type": "Answer", "text": "Non. Vous installez l'app, vous nous envoyez votre adresse, et tout s'active en quelques minutes."}}, {"@type": "Question", "name": "Sur quels appareils ça fonctionne ?", "acceptedAnswer": {"@type": "Answer", "text": "Téléphones et tablettes Android, Android TV, Google TV, Amazon Fire Stick, NVIDIA SHIELD et la plupart des box Android. La version iPhone arrive."}}, {"@type": "Question", "name": "Et si j'ai un souci ?", "acceptedAnswer": {"@type": "Answer", "text": "Un vrai conseiller vous répond et reste avec vous jusqu'à ce que tout fonctionne."}}, {"@type": "Question", "name": "Comment se passe le paiement ?", "acceptedAnswer": {"@type": "Answer", "text": "Simplement, avec un conseiller, sur WhatsApp. Vous choisissez votre formule, on active votre appareil."}}, {"@type": "Question", "name": "L'image peut-elle couper ?", "acceptedAnswer": {"@type": "Answer", "text": "L'application est conçue pour la stabilité : démarrage rapide, anti-coupure et reconnexion automatique."}}, {"@type": "Question", "name": "Plusieurs personnes peuvent-elles regarder en même temps ?", "acceptedAnswer": {"@type": "Answer", "text": "Cela dépend de votre abonnement, pas de l'application. Une ligne à une connexion permet un écran à la fois ; pour deux chaînes différentes en même temps il faut une ligne à deux connexions ou plus. Les profils fonctionnent dans tous les cas."}}, {"@type": "Question", "name": "Où trouver l'adresse qu'on me demande ?", "acceptedAnswer": {"@type": "Answer", "text": "Dans l'application, Réglages puis À propos. Elle est aussi visible sur l'écran d'accueil et ne change jamais."}}, {"@type": "Question", "name": "Faut-il créer un compte ?", "acceptedAnswer": {"@type": "Answer", "text": "Non. Aucun compte, aucun mot de passe, aucune adresse e-mail : l'appareil se reconnaît grâce à son adresse."}}, {"@type": "Question", "name": "Puis-je regarder sans internet ?", "acceptedAnswer": {"@type": "Answer", "text": "Oui pour les films et séries : téléchargez-les puis regardez-les hors connexion. Les chaînes en direct demandent une connexion."}}, {"@type": "Question", "name": "Comment protéger mes enfants ?", "acceptedAnswer": {"@type": "Answer", "text": "Chaque profil peut passer en mode enfant : le contenu adulte disparaît et il faut votre code pour revenir en arrière. Des catégories entières peuvent aussi être bloquées."}}, {"@type": "Question", "name": "Comment mettre à jour l'application ?", "acceptedAnswer": {"@type": "Answer", "text": "Un bouton dans l'app installe la dernière version, sans réinstaller et en conservant vos réglages."}}]}]}</script>
 </body>
 </html>
 `;
