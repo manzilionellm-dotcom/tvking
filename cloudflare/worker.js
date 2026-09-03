@@ -4989,9 +4989,31 @@ async function handleFamilyRemove(request, env) {
       .prepare('DELETE FROM app_family_links WHERE member_mac = ? AND owner_mac = ?')
       .bind(memberMac, mac).run();
   } else {
-    await env.DB
-      .prepare('DELETE FROM app_family_links WHERE member_mac = ?')
-      .bind(mac).run();
+    //  ===== AUTO-DÉTACHEMENT — FERMÉ (03/09/2026) =====
+    //
+    //  Sans `member`, cette branche voulait dire « moi, `mac`, je quitte
+    //  ma famille ». Elle ne demandait AUCUNE preuve que l'appelant est
+    //  bien cet appareil — et une adresse MK n'est pas un secret : elle
+    //  s'affiche dans l'app et le client la dicte à qui la lui demande.
+    //
+    //  Le dégât n'est pas symbolique : un membre rattaché HÉRITE du
+    //  statut payé de son propriétaire (familyStatusForMac). Le détacher,
+    //  c'est lui couper l'abonnement qu'il utilise. Une seule requête, et
+    //  un client qui paie se retrouve en « essai expiré » sans rien avoir
+    //  fait.
+    //
+    //  Rouvrir cette branche quand X-Device-Token existera (Vague 3) :
+    //  l'appareil prouvera alors qu'il est bien celui qui part.
+    //  La branche AVEC `member` reste ouverte : c'est le propriétaire qui
+    //  retire quelqu'un de SA famille, le lien doit lui appartenir
+    //  (owner_mac = mac), et l'action se répare par un simple ré-ajout.
+    //  Elle demandera le même jeton en Vague 3.
+    return json({
+      ok: false,
+      error: 'temporarily_disabled',
+      message: 'Le détachement est suspendu le temps de poser la preuve '
+        + "d'appareil. Passe par ton revendeur.",
+    }, 410);
   }
   return json({ ok: true });
 }
@@ -6830,17 +6852,39 @@ async function handleRequest(request, env, ctx) {
         if (request.method !== 'POST') return badRequest('only POST supported');
         return handleInviteGrant(request, env);
       }
-      if (segments[2] === 'transfer' && segments.length === 3) {
-        if (request.method !== 'POST') return badRequest('only POST supported');
-        return handleInviteTransfer(request, env);
-      }
-      if (segments[2] === 'lend' && segments.length === 3) {
-        if (request.method !== 'POST') return badRequest('only POST supported');
-        return handleInviteLend(request, env);
-      }
-      if (segments[2] === 'reclaim' && segments.length === 3) {
-        if (request.method !== 'POST') return badRequest('only POST supported');
-        return handleInviteReclaim(request, env);
+      //  ===== TRANSFER / LEND / RECLAIM — FERMÉES (03/09/2026) =====
+      //
+      //  CE QUI N'ALLAIT PAS. Ces trois routes déplaçaient un abonnement
+      //  PAYÉ d'un appareil à un autre en ne demandant QUE deux adresses
+      //  MK. Or une adresse MK n'est pas un secret : elle s'affiche à
+      //  l'écran de l'app (« Réglages → À propos »), le client la dicte
+      //  au téléphone, l'écrit dans WhatsApp, la colle dans un forum.
+      //
+      //  Concrètement : quiconque voyait l'adresse d'un client pouvait
+      //  s'approprier son abonnement en une requête. Le client perdait
+      //  ce qu'il avait payé, sans rien avoir fait de travers, et sans
+      //  qu'aucune trace ne désigne le coupable.
+      //
+      //  POURQUOI 410 ET PAS UN CORRECTIF TOUT DE SUITE. La bonne
+      //  réponse est un JETON D'APPAREIL prouvant la possession — c'est
+      //  la Vague 3, deux jours de travail. Laisser la porte ouverte
+      //  deux jours de plus n'était pas acceptable. 410 « Gone » plutôt
+      //  que 403 : la route n'existe plus pour l'instant, ce n'est pas
+      //  une question de droits.
+      //
+      //  ⚠ NE PAS ROUVRIR sans exiger X-Device-Token sur les DEUX
+      //  adresses (source et cible). Les fonctions handleInviteTransfer,
+      //  handleInviteLend et handleInviteReclaim restent dans le fichier
+      //  pour être reprises telles quelles à ce moment-là.
+      if (segments.length === 3 &&
+          (segments[2] === 'transfer' || segments[2] === 'lend' ||
+           segments[2] === 'reclaim')) {
+        return json({
+          ok: false,
+          error: 'temporarily_disabled',
+          message: 'Le transfert et le prêt sont suspendus le temps de '
+            + "poser la preuve d'appareil. Passe par ton revendeur.",
+        }, 410);
       }
       if (segments[2] === 'mine' && segments.length === 4) {
         if (request.method !== 'GET') return badRequest('only GET supported');
