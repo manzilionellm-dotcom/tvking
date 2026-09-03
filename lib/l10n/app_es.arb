@@ -2126,5 +2126,21 @@
   "tvShieldVpnOff": "Ninguna VPN detectada",
   "tvShieldVpnUnsupported": "Detección de VPN no disponible en este dispositivo",
   "tvShieldNoVpnBody": "Escudo activo: nada se reproduce sin VPN. Activa tu VPN y la reproducción se reanudará sola.",
-  "tvShieldHonest": "Lo que el proveedor sigue viendo: el canal pedido y la hora. Lo que ya no ve: tu dirección IP y tu país."
+  "tvShieldHonest": "Lo que el proveedor sigue viendo: el canal pedido y la hora. Lo que ya no ve: tu dirección IP y tu país.",
+  "tvFamilyWhoHeader": "QUIÉN ESTÁ VIENDO AHORA",
+  "tvFamilyPlayingNow": "Reproduciendo",
+  "tvFamilyOnline": "En línea",
+  "tvFamilyOffline": "Desconectado",
+  "tvFamilyThisDevice": "Este dispositivo",
+  "tvFamilyOwnerLabel": "Propietario",
+  "tvFamilyResumeSyncNote": "Cada uno con su perfil y su película: la reanudación y el historial siguen a la persona, en la TV y en los teléfonos de la familia.",
+  "tvFamilyBusyBanner": "{name} está viendo ahora. Una sola reproducción a la vez en tu línea.",
+  "settingsFamilyTile": "Plan familia",
+  "settingsFamilySubtitle": "Una línea, toda la familia: vincular un dispositivo, ver quién está viendo, cada uno reanuda su película.",
+  "familyJoinTitle": "Unirme a mi familia",
+  "familyJoinHint": "Escribe el código de 6 cifras que aparece en la TV del salón (Ajustes, Familia).",
+  "familyJoinButton": "Vincular este dispositivo",
+  "familyJoinDone": "Dispositivo vinculado a la familia.",
+  "familyJoinFailed": "Código rechazado o caducado. Genera uno nuevo en la TV.",
+  "tvFamilyUnnamedMember": "Un familiar"
 }

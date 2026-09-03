@@ -15,11 +15,15 @@
 //  STABILITÉ : zéro contact lecteur / écran Direct. Choisir un profil
 //  recharge seulement les petits dépôts locaux par profil.
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/profiles/profile_switch.dart';
 import '../../../core/profiles/profiles_repository.dart';
+import '../../device/data/device_identity.dart';
+import '../../subscription/data/family_backend.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -45,12 +49,45 @@ class TvWhoWatchingScreen extends StatefulWidget {
 }
 
 class _TvWhoWatchingScreenState extends State<TvWhoWatchingScreen> {
+  /// FAMILLE : prénom du proche qui regarde EN CE MOMENT sur un autre
+  /// appareil de la ligne (null = personne). Affiché en bandeau : sur une
+  /// ligne à une connexion, mieux vaut le savoir AVANT de lancer une chaîne
+  /// que de découvrir « connexion déjà utilisée ». Best-effort, un GET.
+  String? _busyName;
+
   @override
   void initState() {
     super.initState();
     // Au cas où l'appli n'aurait pas encore chargé la liste des profils.
     if (!ProfilesRepository.instance.isLoaded) {
       ProfilesRepository.instance.load();
+    }
+    unawaited(_loadFamilyBusy());
+  }
+
+  Future<void> _loadFamilyBusy() async {
+    try {
+      final String mac = await DeviceIdentity.instance.mac;
+      if (mac.isEmpty) return;
+      final Map<String, dynamic>? info = await FamilyBackend.info(mac);
+      if (!mounted || info == null) return;
+      final List<dynamic> who =
+          (info['who'] as List<dynamic>?) ?? const <dynamic>[];
+      String? name;
+      for (final dynamic w in who) {
+        if (w is! Map<String, dynamic>) continue;
+        if (w['me'] == true || w['playing'] != true) continue;
+        final Object? label = w['label'];
+        name = (label is String && label.isNotEmpty)
+            ? label
+            : (w['role'] == 'owner'
+                ? context.l10n.tvFamilyOwnerLabel
+                : context.l10n.tvFamilyUnnamedMember);
+        break;
+      }
+      if (name != _busyName) setState(() => _busyName = name);
+    } catch (_) {
+      // Réseau muet : pas de bandeau, l'écran reste utilisable.
     }
   }
 
@@ -94,6 +131,34 @@ class _TvWhoWatchingScreenState extends State<TvWhoWatchingScreen> {
                       fontWeight: FontWeight.w800,
                       color: TvTokens.text),
                 ),
+                // Bandeau famille : un proche regarde déjà sur la ligne.
+                if (_busyName != null) ...<Widget>[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: TvTokens.badgeBg,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: TvTokens.gold),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(Icons.play_circle_fill_rounded,
+                            size: 20, color: TvTokens.goldBright),
+                        const SizedBox(width: 10),
+                        Text(
+                          context.l10n.tvFamilyBusyBanner(_busyName!),
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: TvTokens.goldBright),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 34),
                 // ----- Grille d'avatars centrée -----
                 Wrap(

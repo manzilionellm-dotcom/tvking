@@ -650,7 +650,7 @@ async function recordAdminPresence(env, mac, ip, country, now, channel) {
   } catch (_) { /* best-effort */ }
 }
 
-async function recordPresence(env, mac, ip, country, now, channel) {
+async function recordPresence(env, mac, ip, country, now, channel, playing = false) {
   if (!env.DB) return;
   // MODE ADMIN MONITORING : si cette MAC est un compte maître/admin, sa
   // présence part dans `admin_presence` (jamais dans les stats clients).
@@ -672,6 +672,11 @@ async function recordPresence(env, mac, ip, country, now, channel) {
           'mac TEXT PRIMARY KEY, ip TEXT, country TEXT, last_seen INTEGER, channel TEXT)'
       ).run();
       try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN channel TEXT').run(); } catch (_) {}
+      // `playing` (0/1) : « en lecture » SANS le nom de la chaîne. C'est ce
+      // que la famille voit (« Papa regarde en ce moment ») — et ce que
+      // l'app continue d'envoyer même en Mode Bouclier, où `channel` est
+      // vide : un booléen n'est pas ce que le client regarde.
+      try { await env.DB.prepare('ALTER TABLE presence ADD COLUMN playing INTEGER').run(); } catch (_) {}
       try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_presence_lastseen ON presence(last_seen)').run(); } catch (_) {}
       _presenceReady = true;
     }
@@ -680,11 +685,12 @@ async function recordPresence(env, mac, ip, country, now, channel) {
     const chan = (channel === undefined || channel === null) ? null : String(channel).slice(0, 120);
     await env.DB
       .prepare(
-        'INSERT INTO presence (mac, ip, country, last_seen, channel) VALUES (?, ?, ?, ?, ?) ' +
+        'INSERT INTO presence (mac, ip, country, last_seen, channel, playing) VALUES (?, ?, ?, ?, ?, ?) ' +
           'ON CONFLICT(mac) DO UPDATE SET ip = excluded.ip, ' +
-          'country = excluded.country, last_seen = excluded.last_seen, channel = excluded.channel'
+          'country = excluded.country, last_seen = excluded.last_seen, ' +
+          'channel = excluded.channel, playing = excluded.playing'
       )
-      .bind(mac, ip, country, now, chan)
+      .bind(mac, ip, country, now, chan, playing ? 1 : 0)
       .run();
   } catch (_) {
     // best-effort : la présence ne doit jamais faire échouer un heartbeat.
@@ -3567,6 +3573,9 @@ async function handleHeartbeat(request, env, ctx) {
   // `channel` = nom de la chaîne en cours de visionnage (envoyé par l'app),
   // ou '' si elle ne regarde rien. Affiché dans le panel « En ligne ».
   const channel = typeof body.channel === 'string' ? body.channel : '';
+  // `playing` = l'app est en lecture (booléen, sans le nom de la chaîne).
+  // Envoyé par les builds récents ; les anciens n'envoient que `channel`.
+  const playing = body.playing === true || channel !== '';
   // `defer` = exécute une écriture best-effort EN ARRIÈRE-PLAN (waitUntil) :
   // la réponse part tout de suite, l'écriture continue après. À 5M, ça
   // raccourcit le chemin critique et réduit la contention D1. Repli `await`
@@ -3577,7 +3586,7 @@ async function handleHeartbeat(request, env, ctx) {
   };
 
   // Présence (panel « En ligne ») = purement best-effort → en fond.
-  defer(recordPresence(env, mac, ip, country, now, channel));
+  defer(recordPresence(env, mac, ip, country, now, channel, playing));
 
   // --- Chemin D1 (par defaut des que la base est branchee) ---
   // On enregistre AUTOMATIQUEMENT la MAC (essai 7 j), puis on renvoie son
@@ -4906,6 +4915,195 @@ async function resolveFamilyMember(env, ownerMac, memberOrRef) {
   return null;
 }
 
+// =========================================================
+//  FAMILLE — « qui regarde en ce moment » et reprise par personne
+// =========================================================
+//  Une ligne à UNE connexion, utilisée en famille comme Netflix : chacun
+//  son profil, son « Reprendre », et la certitude de ne pas se marcher
+//  dessus. Deux briques serveur :
+//
+//    • `who` dans /api/family/info : pour chaque appareil de la famille,
+//      en ligne / en lecture (booléen tiré de `presence.playing`), JAMAIS le
+//      nom de la chaîne — la famille n'a pas à savoir ce que papa regarde,
+//      seulement que la ligne est prise ;
+//    • /api/family/positions : les positions de reprise PAR PROFIL,
+//      partagées entre la TV et les téléphones de la famille. Sans URL de
+//      flux (elle contient les identifiants) : l'app retrouve le contenu
+//      par sa clé (`vod-…`, `ep-…`) dans son propre catalogue.
+//
+//  Clé de famille = MAC du propriétaire (un appareil seul = sa propre MAC :
+//  il se synchronise avec lui-même, ce qui ne coûte rien).
+
+/// Fraîcheur d'une présence pour dire « en ligne » / « en lecture ». L'app
+/// pingue toutes les 3 min pendant une lecture : 6 min = deux battements.
+const FAMILY_PRESENCE_FRESH_MS = 6 * 60 * 1000;
+
+/// Pour chaque appareil {mac, label, me, role}, l'état de présence sans
+/// rien révéler de ce qui est regardé.
+async function familyWhoWatching(env, entries, now = Date.now()) {
+  const macs = entries.map((e) => String(e.mac).toUpperCase());
+  const byMac = new Map();
+  if (env.DB && macs.length) {
+    try {
+      const ph = macs.map(() => '?').join(',');
+      const rows = await env.DB
+        .prepare('SELECT mac, last_seen, playing FROM presence WHERE mac IN (' + ph + ')')
+        .bind(...macs).all();
+      for (const r of ((rows && rows.results) || [])) {
+        byMac.set(String(r.mac).toUpperCase(), r);
+      }
+    } catch (_) { /* présence absente → tout le monde « hors ligne » */ }
+  }
+  const out = [];
+  for (const e of entries) {
+    const p = byMac.get(String(e.mac).toUpperCase());
+    const fresh = !!p && (now - Number(p.last_seen || 0)) < FAMILY_PRESENCE_FRESH_MS;
+    out.push({
+      ref: e.me ? null : await familyMemberRef(e.mac),
+      me: !!e.me,
+      role: e.role,
+      label: e.label || null,
+      online: fresh,
+      playing: fresh && Number(p.playing) === 1,
+    });
+  }
+  return out;
+}
+
+async function familyMembersOf(env, ownerMac) {
+  const rows = await env.DB
+    .prepare('SELECT member_mac, label, created_at FROM app_family_links WHERE owner_mac = ? ORDER BY created_at ASC')
+    .bind(ownerMac).all();
+  return (rows && rows.results) || [];
+}
+
+let _familyPositionsReady = false;
+async function ensureFamilyPositionsTable(env) {
+  if (_familyPositionsReady || !env.DB) return;
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS app_family_positions (' +
+      'family_mac TEXT NOT NULL, profile_id TEXT NOT NULL, content_key TEXT NOT NULL, ' +
+      'position_ms INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, ' +
+      'finished INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL, ' +
+      'name TEXT, poster_url TEXT, is_episode INTEGER NOT NULL DEFAULT 0, ' +
+      'PRIMARY KEY (family_mac, profile_id, content_key))',
+    ).run();
+    _familyPositionsReady = true;
+  } catch (_) { /* best-effort : les handlers répondent « indisponible » */ }
+}
+
+const FAMILY_PROFILE_RX = /^[a-z0-9_]{1,24}$/;
+const FAMILY_CONTENT_KEY_RX = /^[A-Za-z0-9_.:-]{1,80}$/;
+const FAMILY_POSITIONS_MAX = 100;
+
+async function familyKeyFor(env, mac) {
+  return (await familyOwnerOf(env, mac)) || mac;
+}
+
+/// GET /api/family/positions/:mac?profile=<id> — les positions de reprise
+/// du profil, pour toute la famille (100 plus récentes, terminés compris :
+/// l'app retire alors l'entrée locale si elle est plus ancienne).
+async function handleFamilyPositionsGet(env, rawMac, url) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const profile = String(url.searchParams.get('profile') || 'default').toLowerCase();
+  if (!FAMILY_PROFILE_RX.test(profile)) return badRequest('invalid profile');
+  if (!env.DB) return familyUnavailable();
+  await ensureFamilyPositionsTable(env);
+  const familyMac = await familyKeyFor(env, mac);
+  let rows;
+  try {
+    rows = await env.DB
+      .prepare(
+        'SELECT content_key, position_ms, duration_ms, finished, updated_at, name, poster_url, is_episode ' +
+        'FROM app_family_positions WHERE family_mac = ? AND profile_id = ? ' +
+        'ORDER BY updated_at DESC LIMIT ?',
+      )
+      .bind(familyMac, profile, FAMILY_POSITIONS_MAX).all();
+  } catch (_) {
+    return familyUnavailable();
+  }
+  const items = ((rows && rows.results) || []).map((r) => ({
+    key: r.content_key,
+    position_ms: Number(r.position_ms) || 0,
+    duration_ms: Number(r.duration_ms) || 0,
+    finished: Number(r.finished) === 1,
+    updated_at: Number(r.updated_at) || 0,
+    name: r.name || '',
+    poster_url: r.poster_url || null,
+    is_episode: Number(r.is_episode) === 1,
+  }));
+  return json({
+    ok: true,
+    profile,
+    family: familyMac === mac ? null : maskMac(familyMac),
+    items,
+  });
+}
+
+/// PUT /api/family/positions/:mac  { profile, items:[{key, position_ms,
+/// duration_ms, finished, updated_at, name, poster_url, is_episode}] }
+/// Fusion « le plus récent gagne » par contenu ; au plus 100 par profil.
+async function handleFamilyPositionsPut(request, env, rawMac) {
+  const mac = String(rawMac || '').toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid JSON body'); }
+  const profile = String(body?.profile || 'default').toLowerCase();
+  if (!FAMILY_PROFILE_RX.test(profile)) return badRequest('invalid profile');
+  const items = Array.isArray(body?.items) ? body.items.slice(0, FAMILY_POSITIONS_MAX) : [];
+  if (!env.DB) return familyUnavailable();
+  await ensureFamilyPositionsTable(env);
+  const familyMac = await familyKeyFor(env, mac);
+  const now = Date.now();
+  let accepted = 0;
+  for (const raw of items) {
+    if (!raw || typeof raw !== 'object') continue;
+    const key = String(raw.key || '');
+    if (!FAMILY_CONTENT_KEY_RX.test(key)) continue;
+    const updatedAt = Number(raw.updated_at) || 0;
+    // Horodatage borné : ni dans un futur lointain (horloge folle), ni nul.
+    if (updatedAt <= 0 || updatedAt > now + 24 * 3600 * 1000) continue;
+    const finished = raw.finished === true ? 1 : 0;
+    const positionMs = Math.max(0, Number(raw.position_ms) || 0);
+    const durationMs = Math.max(0, Number(raw.duration_ms) || 0);
+    if (!finished && (durationMs <= 0 || positionMs > durationMs)) continue;
+    try {
+      await env.DB
+        .prepare(
+          'INSERT INTO app_family_positions (family_mac, profile_id, content_key, position_ms, ' +
+          'duration_ms, finished, updated_at, name, poster_url, is_episode) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' +
+          'ON CONFLICT(family_mac, profile_id, content_key) DO UPDATE SET ' +
+          'position_ms = excluded.position_ms, duration_ms = excluded.duration_ms, ' +
+          'finished = excluded.finished, updated_at = excluded.updated_at, ' +
+          'name = excluded.name, poster_url = excluded.poster_url, is_episode = excluded.is_episode ' +
+          'WHERE excluded.updated_at > app_family_positions.updated_at',
+        )
+        .bind(
+          familyMac, profile, key, positionMs, durationMs, finished, updatedAt,
+          String(raw.name || '').slice(0, 200),
+          raw.poster_url ? String(raw.poster_url).slice(0, 500) : null,
+          raw.is_episode === true ? 1 : 0,
+        )
+        .run();
+      accepted++;
+    } catch (_) { /* une ligne illisible n'empêche pas les autres */ }
+  }
+  // Plafond par profil : on garde les 100 plus récentes.
+  try {
+    await env.DB
+      .prepare(
+        'DELETE FROM app_family_positions WHERE family_mac = ? AND profile_id = ? AND content_key NOT IN (' +
+        'SELECT content_key FROM app_family_positions WHERE family_mac = ? AND profile_id = ? ' +
+        'ORDER BY updated_at DESC LIMIT ?)',
+      )
+      .bind(familyMac, profile, familyMac, profile, FAMILY_POSITIONS_MAX).run();
+  } catch (_) { /* best-effort */ }
+  return json({ ok: true, profile, accepted });
+}
+
 async function handleFamilyInfo(env, rawMac) {
   const mac = String(rawMac || '').toUpperCase();
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
@@ -4914,7 +5112,19 @@ async function handleFamilyInfo(env, rawMac) {
   }
   const ownerMac = await familyOwnerOf(env, mac);
   if (ownerMac) {
-    return json({ ok: true, role: 'member', owner: maskMac(ownerMac) });
+    // Vue MEMBRE : le propriétaire + tous les proches, avec « qui regarde ».
+    let who = [];
+    try {
+      const rows = await familyMembersOf(env, ownerMac);
+      who = await familyWhoWatching(env, [
+        { mac: ownerMac, label: null, me: false, role: 'owner' },
+        ...rows.map((r) => ({
+          mac: r.member_mac, label: r.label || null,
+          me: String(r.member_mac).toUpperCase() === mac, role: 'member',
+        })),
+      ]);
+    } catch (_) { who = []; }
+    return json({ ok: true, role: 'member', owner: maskMac(ownerMac), who });
   }
   const plan = await familyPlanFor(env, mac);
   const rows = await env.DB
@@ -4936,6 +5146,16 @@ async function handleFamilyInfo(env, rawMac) {
   const codeRow = await env.DB
     .prepare('SELECT code, expires_at FROM app_family_codes WHERE owner_mac = ? AND expires_at > ?')
     .bind(mac, Date.now()).first();
+  // « Qui regarde en ce moment » : cet appareil + chaque proche.
+  let who = [];
+  try {
+    who = await familyWhoWatching(env, [
+      { mac, label: null, me: true, role: 'owner' },
+      ...((rows && rows.results) || []).map((r) => ({
+        mac: r.member_mac, label: r.label || null, me: false, role: 'member',
+      })),
+    ]);
+  } catch (_) { who = []; }
   return json({
     ok: true,
     role: 'owner',
@@ -4944,6 +5164,7 @@ async function handleFamilyInfo(env, rawMac) {
     max: plan.max,
     code: codeRow ? codeRow.code : null,
     code_expires_at: codeRow ? codeRow.expires_at : null,
+    who,
   });
 }
 
@@ -5686,7 +5907,13 @@ async function readLabSourcesCached(env) {
 async function handlePublicDeviceProfiles(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
-  const list = await readDeviceProfiles(env, MAC);
+  // FAMILLE : un appareil rattaché à un propriétaire lit les profils DU
+  // PROPRIÉTAIRE — mêmes prénoms, mêmes codes, mêmes règles enfant sur la
+  // TV du salon et sur les téléphones. C'est ce qui permet à chacun de
+  // « reprendre son film » d'un appareil à l'autre (cf. /api/family/positions).
+  let ownerMac = null;
+  try { ownerMac = await familyOwnerOf(env, MAC); } catch (_) { ownerMac = null; }
+  const list = await readDeviceProfiles(env, ownerMac || MAC);
   if (!list) {
     // Sans base, on ne renvoie PAS de profils par défaut : l'app garderait
     // ce qu'elle a en cache, ce qui est le bon comportement. Renvoyer des
@@ -5697,6 +5924,7 @@ async function handlePublicDeviceProfiles(env, mac) {
     mac: MAC,
     profiles: list.map(({ _order, ...p }) => p),
     available: true,
+    family: ownerMac ? maskMac(ownerMac) : null,
   });
 }
 
@@ -6888,6 +7116,14 @@ async function handleRequest(request, env, ctx) {
       if (segments[2] === 'rename' && segments.length === 3) {
         if (request.method !== 'POST') return badRequest('only POST supported');
         return handleFamilyRename(request, env);
+      }
+      // positions/:mac — reprise PAR PROFIL partagée dans la famille
+      // (GET = lire, PUT = fusionner). Même rate-limit que le reste de
+      // /api/family (bucket « dev », cf. plus haut).
+      if (segments[2] === 'positions' && segments.length === 4) {
+        if (request.method === 'GET') return handleFamilyPositionsGet(env, segments[3], url);
+        if (request.method === 'PUT') return handleFamilyPositionsPut(request, env, segments[3]);
+        return badRequest('only GET or PUT supported');
       }
       return badRequest('unknown family endpoint');
     }

@@ -2126,5 +2126,21 @@
   "tvShieldVpnOff": "Ingen VPN hittades",
   "tvShieldVpnUnsupported": "VPN-avkänning är inte tillgänglig på den här enheten",
   "tvShieldNoVpnBody": "Skölden är på: inget spelas upp utan VPN. Slå på din VPN så fortsätter uppspelningen av sig själv.",
-  "tvShieldHonest": "Det leverantören fortfarande ser: kanalen som begärs och tiden. Det den inte längre ser: din IP-adress och ditt land."
+  "tvShieldHonest": "Det leverantören fortfarande ser: kanalen som begärs och tiden. Det den inte längre ser: din IP-adress och ditt land.",
+  "tvFamilyWhoHeader": "VEM TITTAR JUST NU",
+  "tvFamilyPlayingNow": "Spelar upp",
+  "tvFamilyOnline": "Online",
+  "tvFamilyOffline": "Offline",
+  "tvFamilyThisDevice": "Den här enheten",
+  "tvFamilyOwnerLabel": "Ägare",
+  "tvFamilyResumeSyncNote": "Var sin profil, var sin film: återupptagning och historik följer personen, på tv:n och på familjens telefoner.",
+  "tvFamilyBusyBanner": "{name} tittar just nu. Bara en uppspelning i taget på er linje.",
+  "settingsFamilyTile": "Familjepaket",
+  "settingsFamilySubtitle": "En linje, hela familjen: koppla en enhet, se vem som tittar, alla återupptar sin egen film.",
+  "familyJoinTitle": "Gå med i min familj",
+  "familyJoinHint": "Skriv den 6-siffriga koden som visas på vardagsrums-tv:n (Inställningar, Familj).",
+  "familyJoinButton": "Koppla den här enheten",
+  "familyJoinDone": "Enheten är kopplad till familjen.",
+  "familyJoinFailed": "Koden nekades eller har gått ut. Skapa en ny på tv:n.",
+  "tvFamilyUnnamedMember": "En familjemedlem"
 }

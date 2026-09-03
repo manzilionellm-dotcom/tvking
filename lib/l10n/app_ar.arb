@@ -2126,5 +2126,21 @@
   "tvShieldVpnOff": "لم يتم اكتشاف VPN",
   "tvShieldVpnUnsupported": "اكتشاف VPN غير متاح على هذا الجهاز",
   "tvShieldNoVpnBody": "الدرع مفعّل: لا تشغيل بدون VPN. فعّل VPN وسيستأنف التشغيل تلقائيًا.",
-  "tvShieldHonest": "ما يراه المزوّد رغم ذلك: القناة المطلوبة والوقت. ما لم يعد يراه: عنوان IP الخاص بك وبلدك."
+  "tvShieldHonest": "ما يراه المزوّد رغم ذلك: القناة المطلوبة والوقت. ما لم يعد يراه: عنوان IP الخاص بك وبلدك.",
+  "tvFamilyWhoHeader": "من يشاهد الآن",
+  "tvFamilyPlayingNow": "قيد التشغيل",
+  "tvFamilyOnline": "متصل",
+  "tvFamilyOffline": "غير متصل",
+  "tvFamilyThisDevice": "هذا الجهاز",
+  "tvFamilyOwnerLabel": "المالك",
+  "tvFamilyResumeSyncNote": "لكل فرد ملفه وفيلمه: نقطة الاستئناف والسجل يتبعان الشخص، على التلفاز وعلى هواتف العائلة.",
+  "tvFamilyBusyBanner": "{name} يشاهد الآن. تشغيل واحد فقط في كل مرة على خطكم.",
+  "settingsFamilyTile": "باقة العائلة",
+  "settingsFamilySubtitle": "خط واحد، العائلة كلها: ربط جهاز، معرفة من يشاهد، وكل فرد يستأنف فيلمه.",
+  "familyJoinTitle": "الانضمام إلى عائلتي",
+  "familyJoinHint": "اكتب الرمز المكوّن من 6 أرقام الظاهر على تلفاز الصالة (الإعدادات، العائلة).",
+  "familyJoinButton": "ربط هذا الجهاز",
+  "familyJoinDone": "تم ربط الجهاز بالعائلة.",
+  "familyJoinFailed": "الرمز مرفوض أو منتهي الصلاحية. أنشئ رمزًا جديدًا على التلفاز.",
+  "tvFamilyUnnamedMember": "أحد أفراد العائلة"
 }

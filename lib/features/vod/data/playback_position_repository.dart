@@ -22,12 +22,14 @@
 //  ChangeNotifier : les rangées « Continuer à regarder » se rafraîchissent
 //  toutes seules quand une position change. AUCUN lien avec le moteur vidéo.
 // =========================================================
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/profiles/profiles_repository.dart';
+import 'family_position_sync.dart';
 
 /// Une position de lecture mémorisée : où en est l'utilisateur dans CE
 /// contenu, plus les métadonnées minimales pour l'afficher dans une rangée
@@ -109,9 +111,16 @@ class PlaybackPositionRepository extends ChangeNotifier {
   List<PlaybackPosition> _items = <PlaybackPosition>[];
   bool _loaded = false;
 
-  /// Positions mémorisées, de la plus récente à la plus ancienne — l'ordre
-  /// exact d'une rangée « Continuer à regarder ».
-  List<PlaybackPosition> get entries =>
+  /// Positions RELANÇABLES, de la plus récente à la plus ancienne — l'ordre
+  /// exact d'une rangée « Continuer à regarder ». Une position reçue de la
+  /// famille sans URL locale (contenu jamais ouvert sur CET appareil) n'y
+  /// figure pas : rien à relancer d'un clic. Sa reprise et sa barre de
+  /// progression, elles, marchent (cf. [positionFor], [progressFor]).
+  List<PlaybackPosition> get entries => List<PlaybackPosition>.unmodifiable(
+      _items.where((PlaybackPosition e) => e.streamUrl.isNotEmpty));
+
+  /// TOUTES les positions, URL locale ou non (synchro famille, tests).
+  List<PlaybackPosition> get allEntries =>
       List<PlaybackPosition>.unmodifiable(_items);
 
   /// Charge les positions depuis le disque. Branché au démarrage (main_tv) ;
@@ -129,6 +138,51 @@ class PlaybackPositionRepository extends ChangeNotifier {
     }
     _loaded = true;
     notifyListeners();
+    // FAMILLE : les positions du profil actif poussées depuis les autres
+    // appareils. Non bloquant ; sans réseau, on garde le local.
+    unawaited(FamilyPositionSync.instance.pullNow());
+  }
+
+  /// FUSION des positions reçues de la famille : « le plus récent gagne ».
+  /// Une entrée distante plus récente remplace la locale mais GARDE l'URL de
+  /// flux locale (le serveur n'en stocke jamais). [finished] : contenus
+  /// terminés ailleurs → retirés ici s'ils sont plus anciens. Renvoie le
+  /// nombre d'entrées modifiées. Aucun renvoi vers le serveur (pas de boucle).
+  Future<int> mergeRemote(
+    List<PlaybackPosition> remote, {
+    Map<String, DateTime> finished = const <String, DateTime>{},
+  }) async {
+    int changed = 0;
+    for (final PlaybackPosition r in remote) {
+      final PlaybackPosition? local = entryFor(r.key);
+      if (local != null && !r.updatedAt.isAfter(local.updatedAt)) continue;
+      final DateTime? gone = finished[r.key];
+      if (gone != null && gone.isAfter(r.updatedAt)) continue;
+      _items.removeWhere((PlaybackPosition e) => e.key == r.key);
+      _items.add(PlaybackPosition(
+        key: r.key,
+        positionMs: r.positionMs,
+        durationMs: r.durationMs,
+        updatedAt: r.updatedAt,
+        name: r.name.isNotEmpty ? r.name : (local?.name ?? ''),
+        streamUrl: local?.streamUrl ?? r.streamUrl,
+        posterUrl: r.posterUrl ?? local?.posterUrl,
+        isEpisode: r.isEpisode,
+      ));
+      changed++;
+    }
+    for (final MapEntry<String, DateTime> f in finished.entries) {
+      final PlaybackPosition? local = entryFor(f.key);
+      if (local == null || !f.value.isAfter(local.updatedAt)) continue;
+      _items.removeWhere((PlaybackPosition e) => e.key == f.key);
+      changed++;
+    }
+    if (changed == 0) return 0;
+    _items.sort((PlaybackPosition a, PlaybackPosition b) =>
+        b.updatedAt.compareTo(a.updatedAt));
+    if (_items.length > _max) _items = _items.sublist(0, _max);
+    await _save(notifyFamily: false);
+    return changed;
   }
 
   /// Charge UNE seule fois (appels suivants = no-op). Filet de sécurité pour
@@ -212,7 +266,10 @@ class PlaybackPositionRepository extends ChangeNotifier {
     final int before = _items.length;
     _items.removeWhere((PlaybackPosition e) => e.key == key);
     if (_items.length == before) return; // rien à faire → pas d'I/O inutile
-    await _save();
+    // Famille : « terminé » ici doit disparaître aussi sur les autres
+    // appareils (tombstone poussée avec le prochain envoi).
+    FamilyPositionSync.instance.noteFinished(key);
+    await _save(notifyFamily: false);
   }
 
   /// Remise à zéro COMPLÈTE pour les tests (le singleton survit d'un test à
@@ -223,8 +280,11 @@ class PlaybackPositionRepository extends ChangeNotifier {
     _loaded = false;
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool notifyFamily = true}) async {
     notifyListeners();
+    // Famille : envoi DIFFÉRÉ vers les autres appareils (jamais depuis une
+    // fusion reçue, sinon boucle serveur ↔ app).
+    if (notifyFamily) FamilyPositionSync.instance.noteChanged();
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(

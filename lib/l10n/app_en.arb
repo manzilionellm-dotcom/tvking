@@ -2143,5 +2143,21 @@
   "tvShieldVpnOff": "No VPN detected",
   "tvShieldVpnUnsupported": "VPN detection is not available on this device",
   "tvShieldNoVpnBody": "Shield is on: nothing plays without a VPN. Turn your VPN on and playback will resume by itself.",
-  "tvShieldHonest": "What the provider still sees: the channel requested and the time. What it no longer sees: your IP address and your country."
+  "tvShieldHonest": "What the provider still sees: the channel requested and the time. What it no longer sees: your IP address and your country.",
+  "tvFamilyWhoHeader": "WHO IS WATCHING NOW",
+  "tvFamilyPlayingNow": "Playing",
+  "tvFamilyOnline": "Online",
+  "tvFamilyOffline": "Offline",
+  "tvFamilyThisDevice": "This device",
+  "tvFamilyOwnerLabel": "Owner",
+  "tvFamilyResumeSyncNote": "Everyone has their own profile and their own film: resume points and history follow the person, on the TV and on the family's phones.",
+  "tvFamilyBusyBanner": "{name} is watching right now. One playback at a time on your line.",
+  "settingsFamilyTile": "Family plan",
+  "settingsFamilySubtitle": "One line, the whole family: attach a device, see who is watching, everyone resumes their own film.",
+  "familyJoinTitle": "Join my family",
+  "familyJoinHint": "Type the 6-digit code shown on the living-room TV (Settings, Family).",
+  "familyJoinButton": "Attach this device",
+  "familyJoinDone": "Device attached to the family.",
+  "familyJoinFailed": "Code refused or expired. Generate a new one on the TV.",
+  "tvFamilyUnnamedMember": "A family member"
 }

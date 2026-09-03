@@ -2126,5 +2126,21 @@
   "tvShieldVpnOff": "Ingen VPN oppdaget",
   "tvShieldVpnUnsupported": "VPN-oppdagelse er ikke tilgjengelig på denne enheten",
   "tvShieldNoVpnBody": "Skjold er på: ingenting spilles av uten VPN. Slå på VPN, så fortsetter avspillingen av seg selv.",
-  "tvShieldHonest": "Det leverandøren fortsatt ser: kanalen som ble bedt om og tidspunktet. Det den ikke lenger ser: IP-adressen og landet ditt."
+  "tvShieldHonest": "Det leverandøren fortsatt ser: kanalen som ble bedt om og tidspunktet. Det den ikke lenger ser: IP-adressen og landet ditt.",
+  "tvFamilyWhoHeader": "HVEM SER AKKURAT NÅ",
+  "tvFamilyPlayingNow": "Spiller av",
+  "tvFamilyOnline": "Pålogget",
+  "tvFamilyOffline": "Frakoblet",
+  "tvFamilyThisDevice": "Denne enheten",
+  "tvFamilyOwnerLabel": "Eier",
+  "tvFamilyResumeSyncNote": "Hver sin profil, hver sin film: gjenopptak og historikk følger personen, på TV-en og på familiens telefoner.",
+  "tvFamilyBusyBanner": "{name} ser akkurat nå. Bare én avspilling om gangen på linjen deres.",
+  "settingsFamilyTile": "Familiepakke",
+  "settingsFamilySubtitle": "Én linje, hele familien: koble til en enhet, se hvem som ser, alle fortsetter sin egen film.",
+  "familyJoinTitle": "Bli med i familien min",
+  "familyJoinHint": "Skriv inn den 6-sifrede koden som vises på stue-TV-en (Innstillinger, Familie).",
+  "familyJoinButton": "Koble til denne enheten",
+  "familyJoinDone": "Enheten er koblet til familien.",
+  "familyJoinFailed": "Koden ble avvist eller er utløpt. Lag en ny på TV-en.",
+  "tvFamilyUnnamedMember": "Et familiemedlem"
 }

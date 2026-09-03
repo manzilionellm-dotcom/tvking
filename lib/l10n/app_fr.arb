@@ -4994,5 +4994,22 @@
   "tvShieldVpnOff": "Aucun VPN détecté",
   "tvShieldVpnUnsupported": "Détection VPN indisponible sur cet appareil",
   "tvShieldNoVpnBody": "Bouclier actif : aucune lecture sans VPN. Activez votre VPN, la lecture repartira toute seule.",
-  "tvShieldHonest": "Ce que le fournisseur voit quand même : la chaîne demandée et l'heure. Ce qu'il ne voit plus : votre adresse IP et votre pays."
+  "tvShieldHonest": "Ce que le fournisseur voit quand même : la chaîne demandée et l'heure. Ce qu'il ne voit plus : votre adresse IP et votre pays.",
+  "tvFamilyWhoHeader": "QUI REGARDE EN CE MOMENT",
+  "tvFamilyPlayingNow": "En lecture",
+  "tvFamilyOnline": "En ligne",
+  "tvFamilyOffline": "Hors ligne",
+  "tvFamilyThisDevice": "Cet appareil",
+  "tvFamilyOwnerLabel": "Propriétaire",
+  "tvFamilyResumeSyncNote": "Chacun son profil, chacun son film : la reprise et l'historique suivent la personne, sur la TV comme sur le téléphone de la famille.",
+  "tvFamilyBusyBanner": "{name} regarde en ce moment. Une seule lecture à la fois sur votre ligne.",
+  "settingsFamilyTile": "Bouquet famille",
+  "settingsFamilySubtitle": "Une ligne, toute la famille : rattacher un appareil, voir qui regarde, chacun reprend son film.",
+  "familyJoinTitle": "Rejoindre ma famille",
+  "familyJoinHint": "Tapez le code à 6 chiffres affiché sur la TV du salon (Réglages, Famille).",
+  "familyJoinButton": "Rattacher cet appareil",
+  "familyJoinDone": "Appareil rattaché à la famille.",
+  "familyJoinFailed": "Code refusé ou expiré. Générez-en un nouveau sur la TV.",
+  "@tvFamilyBusyBanner": {"placeholders": {"name": {"type": "String"}}},
+  "tvFamilyUnnamedMember": "Un proche"
 }

@@ -2126,5 +2126,21 @@
   "tvShieldVpnOff": "Hakuna VPN iliyogunduliwa",
   "tvShieldVpnUnsupported": "Ugunduzi wa VPN haupatikani kwenye kifaa hiki",
   "tvShieldNoVpnBody": "Ngao imewashwa: hakuna kinachochezwa bila VPN. Washa VPN yako, uchezaji utaendelea wenyewe.",
-  "tvShieldHonest": "Mtoa huduma bado anaona: kituo kilichoombwa na saa. Haoni tena: anwani yako ya IP na nchi yako."
+  "tvShieldHonest": "Mtoa huduma bado anaona: kituo kilichoombwa na saa. Haoni tena: anwani yako ya IP na nchi yako.",
+  "tvFamilyWhoHeader": "NANI ANATAZAMA SASA",
+  "tvFamilyPlayingNow": "Inacheza",
+  "tvFamilyOnline": "Mtandaoni",
+  "tvFamilyOffline": "Nje ya mtandao",
+  "tvFamilyThisDevice": "Kifaa hiki",
+  "tvFamilyOwnerLabel": "Mmiliki",
+  "tvFamilyResumeSyncNote": "Kila mtu wasifu wake, kila mtu filamu yake: kuendelea na historia vinamfuata mtu, kwenye TV na kwenye simu za familia.",
+  "tvFamilyBusyBanner": "{name} anatazama sasa. Uchezaji mmoja tu kwa wakati kwenye laini yenu.",
+  "settingsFamilyTile": "Kifurushi cha familia",
+  "settingsFamilySubtitle": "Laini moja, familia nzima: unganisha kifaa, ona nani anatazama, kila mtu aendelee na filamu yake.",
+  "familyJoinTitle": "Jiunge na familia yangu",
+  "familyJoinHint": "Andika msimbo wa tarakimu 6 unaoonyeshwa kwenye TV ya sebuleni (Mipangilio, Familia).",
+  "familyJoinButton": "Unganisha kifaa hiki",
+  "familyJoinDone": "Kifaa kimeunganishwa na familia.",
+  "familyJoinFailed": "Msimbo umekataliwa au umeisha muda. Tengeneza mpya kwenye TV.",
+  "tvFamilyUnnamedMember": "Mwanafamilia"
 }

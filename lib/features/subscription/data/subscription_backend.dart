@@ -176,6 +176,11 @@ abstract final class SubscriptionBackend {
         // sources et l'historique NE QUITTENT PAS l'appareil. Le panel sait
         // seulement que la box est en ligne (cf. core/privacy/privacy_shield).
         'channel': shielded ? '' : NowPlaying.instance.current,
+        // « En lecture » (booléen, sans le nom de la chaîne) : c'est ce que
+        // la FAMILLE voit (« Papa regarde en ce moment », une seule lecture
+        // à la fois sur la ligne). Envoyé même sous bouclier : un booléen
+        // n'est pas ce que le client regarde.
+        'playing': NowPlaying.instance.current.isNotEmpty,
         // mobile / tv → le panel distingue les deux apps.
         'platform': AppPlatform.id,
         // INVENTAIRE des sources réellement présentes sur l'appareil (celles
