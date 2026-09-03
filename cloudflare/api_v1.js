@@ -1388,6 +1388,22 @@ async function apiV1Inner(request, env) {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleLicensesList(request, env, a.user);
       if (request.method === 'POST') {
+        //  CRÉATION DIRECTE : PROPRIÉTAIRE UNIQUEMENT (03/09/2026).
+        //
+        //  Cette route insérait une licence sans AUCUN débit de crédits
+        //  et sans contrôle de rôle. Un revendeur pouvait donc
+        //  s'accorder des abonnements à volonté, gratuitement, en
+        //  contournant entièrement /activate — la seule route qui
+        //  vérifie le solde, le statut du revendeur et le coût du plan.
+        //
+        //  Le chemin des revendeurs reste /activate. Vérifié : aucune
+        //  page du panneau n'appelle cette création (admin-panel n'y
+        //  utilise que `list` et `renew`), donc la fermer ne casse rien.
+        if (!isOwnerRole(a.user.role)) {
+          return errResp('forbidden',
+            'Passe par « Activer un appareil » : c\'est là que les '
+            + 'crédits sont débités.', 403);
+        }
         // L'id de la licence créée est dans la réponse (201 {id, …}).
         return withRt(env, await handleLicensesCreate(request, env, actor),
           (b) => rtLicense(b.id));
@@ -1396,12 +1412,12 @@ async function apiV1Inner(request, env) {
     if (parts.length === 2) {
       const id = parts[1];
       if (request.method === 'PATCH') {
-        return withRt(env, await handleLicensesUpdate(request, env, id, actor),
+        return withRt(env, await handleLicensesUpdate(request, env, id, actor, a.user),
           () => rtLicense(id));
       }
     }
     if (parts.length === 3 && parts[2] === 'renew') {
-      return withRt(env, await handleLicensesRenew(request, env, parts[1], actor),
+      return withRt(env, await handleLicensesRenew(request, env, parts[1], actor, a.user),
         () => rtLicense(parts[1]));
     }
   }
@@ -5369,16 +5385,46 @@ async function handleDeviceDelete(env, id, actor, user) {
 //    custom_days → +custom_days
 // =========================================================
 
-function planToDays(plan, customDays) {
-  // Essais courts GRATUITS : 'trial_2h', 'trial_24h', 'trial_48h'…
-  // → fraction de jour (les heures fonctionnent dans le calcul
-  // d'expiration : days * 24h * 60min… donc 2/24 jour = 2 heures pile).
-  const hm = /^trial_(\d+)h$/.exec(plan || '');
-  if (hm) return Number(hm[1]) / 24;
-  // Essais GRATUITS en JOURS : 'trial_7d', 'trial_3d'… (ex. l'essai
-  // standard de 7 jours proposé dans le panel d'activation).
-  const dm = /^trial_(\d+)d$/.exec(plan || '');
-  if (dm) return Number(dm[1]);
+//  LISTE FERMÉE DES ESSAIS GRATUITS (03/09/2026).
+//
+//  AVANT : n'importe quel `trial_<N>h` ou `trial_<N>d` était accepté, et
+//  tout plan commençant par « trial » coûtait 0 crédit. Un revendeur —
+//  ou quiconque ayant obtenu un jeton de revendeur — pouvait donc
+//  demander `trial_876000h` et s'offrir CENT ANS d'abonnement gratuit.
+//  Aucune borne, aucun coût, aucune alerte.
+//
+//  Une liste FERMÉE, et non une borne sur une expression régulière :
+//  avec une regex bornée, la prochaine unité ajoutée (« trial_52w »)
+//  rouvrirait le trou en silence. Ici, ce qui n'est pas écrit n'existe
+//  pas.
+const TRIAL_PLANS = Object.freeze({
+  trial: 7,
+  trial_1h: 1 / 24,
+  trial_2h: 2 / 24,
+  trial_24h: 1,
+  trial_48h: 2,
+  trial_7d: 7,
+});
+
+/// Plafond dur, en jours, quoi qu'il arrive. Deuxième filet : si
+/// quelqu'un ajoute demain une entrée trop généreuse dans TRIAL_PLANS,
+/// elle sera quand même coupée ici.
+const TRIAL_MAX_DAYS = 7;
+
+/// `true` si [plan] est un essai GRATUIT reconnu. Tout le reste — y
+/// compris une chaîne qui commence par « trial » sans être dans la
+/// liste — est payant, donc débité.
+export function isTrialPlan(plan) {
+  return typeof plan === 'string' &&
+    Object.prototype.hasOwnProperty.call(TRIAL_PLANS, plan);
+}
+
+export function planToDays(plan, customDays) {
+  //  ESSAIS : uniquement ceux de la liste fermée, et jamais plus de
+  //  TRIAL_MAX_DAYS. Un `trial_*` inconnu ne tombe PAS ici : il continue
+  //  vers le switch, n'y trouve rien, et finit sur le défaut — donc il
+  //  n'est ni gratuit ni illimité.
+  if (isTrialPlan(plan)) return Math.min(TRIAL_PLANS[plan], TRIAL_MAX_DAYS);
   switch (plan) {
     case '1m':
     case 'monthly': return 30;
@@ -5390,7 +5436,7 @@ function planToDays(plan, customDays) {
     case 'yearly': return 365;
     case 'lifetime': return null;
     case 'custom': return customDays && customDays > 0 ? customDays : 30;
-    case 'trial': return 7;
+    // ('trial' est traité plus haut par TRIAL_PLANS — une seule source.)
     default: return 30;
   }
 }
@@ -5419,6 +5465,49 @@ async function handleLicensesList(request, env, user) {
   sql += ' ORDER BY l.created_at DESC LIMIT 200';
   const rs = await env.DB.prepare(sql).bind(...binds).all();
   return jsonResp({ items: rs.results || [] });
+}
+
+//  QUI EST « LE PROPRIÉTAIRE » (03/09/2026).
+//
+//  Trois rôles existent dans la base : 'super_admin', 'admin' et
+//  'reseller'. Les contrôles étaient écrits partout en dur —
+//  `role !== 'super_admin'` — ce qui laisse deux pièges : on oublie
+//  'admin' dans un contrôle et un administrateur perd un droit, ou on
+//  l'oublie dans l'autre sens et un rôle inattendu passe.
+//
+//  Une seule fonction, et la liste des rôles privilégiés vit à un seul
+//  endroit. Tout ce qui n'y est pas est traité comme un revendeur.
+function isOwnerRole(role) {
+  return role === 'super_admin' || role === 'admin';
+}
+
+//  UNE LICENCE APPARTIENT À QUELQU'UN (03/09/2026).
+//
+//  AVANT : handleLicensesUpdate et handleLicensesRenew chargeaient la
+//  licence par son seul identifiant et la modifiaient. Aucun contrôle de
+//  `reseller_id`. Un revendeur qui devinait ou lisait l'id d'une licence
+//  — ils sont séquentiels par préfixe — pouvait donc changer le statut,
+//  le plan et la date d'expiration de la licence d'un CONCURRENT.
+//
+//  Le garde est ici, en un seul endroit, et non recopié dans chaque
+//  handler : trois copies, c'est trois occasions d'en oublier une à la
+//  prochaine route.
+//
+//  Renvoie une réponse d'erreur si l'acteur n'a pas le droit, ou `null`
+//  s'il l'a. Le propriétaire (super_admin) passe toujours.
+function licenseDenied(license, user) {
+  if (!user) return errResp('unauthorized', 'Authentification requise.', 401);
+  if (isOwnerRole(user.role)) return null;
+  if (user.role !== 'reseller') {
+    return errResp('forbidden', 'Rôle non autorisé sur les licences.', 403);
+  }
+  //  404 et non 403 : répondre « interdit » confirmerait à un revendeur
+  //  curieux que cet identifiant EXISTE. On ne renseigne pas l'attaquant
+  //  sur ce qu'il n'a pas le droit de voir.
+  if (!license || license.reseller_id !== user.sub) {
+    return errResp('not_found', 'License not found', 404);
+  }
+  return null;
 }
 
 async function handleLicensesCreate(request, env, actor) {
@@ -5468,14 +5557,21 @@ async function handleLicensesCreate(request, env, actor) {
   return jsonResp({ id, expires_at: expiresAt }, 201);
 }
 
-async function handleLicensesUpdate(request, env, id, actor) {
+async function handleLicensesUpdate(request, env, id, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
   const before = await env.DB.prepare('SELECT * FROM licenses WHERE id = ?').bind(id).first();
   if (!before) return errResp('not_found', 'License not found', 404);
-  const fields = ['status', 'plan', 'expires_at', 'auto_renew', 'notes'];
+  const refus = licenseDenied(before, user);
+  if (refus) return refus;
+  //  Un revendeur ne fixe PAS une date d'expiration à la main : ce serait
+  //  se donner des années gratuites sans passer par le débit de crédits.
+  //  Il renouvelle (route /renew, qui débite) ou il ne fait rien.
+  const fields = isOwnerRole(user && user.role)
+    ? ['status', 'plan', 'expires_at', 'auto_renew', 'notes']
+    : ['status', 'auto_renew', 'notes'];
   const sets = []; const vals = [];
   for (const f of fields) {
     if (body[f] !== undefined) {
@@ -5491,11 +5587,13 @@ async function handleLicensesUpdate(request, env, id, actor) {
   return jsonResp({ updated: 1 });
 }
 
-async function handleLicensesRenew(request, env, id, actor) {
+async function handleLicensesRenew(request, env, id, actor, user) {
   let body = {};
   try { body = await request.json(); } catch (_) {}
   const before = await env.DB.prepare('SELECT * FROM licenses WHERE id = ?').bind(id).first();
   if (!before) return errResp('not_found', 'License not found', 404);
+  const refus = licenseDenied(before, user);
+  if (refus) return refus;
   const days = planToDays(body.plan || before.plan || '1y', body.custom_days);
   const now = Date.now();
   // On etend a partir de la date la plus tardive entre maintenant et l'expiry
@@ -5790,9 +5888,17 @@ async function handlePlanCostsUpdate(request, env, actor) {
 
 /// Cout en credits d'un plan (table plan_costs, avec defauts de secours).
 async function planCreditCost(env, plan) {
-  // Tout essai ('trial', 'trial_2h', 'trial_24h'…) est GRATUIT : 0 crédit.
-  // On peut donc activer un test même avec 0 crédit / sans paiement.
-  if (typeof plan === 'string' && plan.startsWith('trial')) return 0;
+  //  GRATUIT = SEULEMENT les essais de la liste fermée TRIAL_PLANS.
+  //
+  //  AVANT : `plan.startsWith('trial')`. N'importe quelle chaîne
+  //  commençant par ces cinq lettres coûtait 0 crédit — `trial_876000h`
+  //  comme `trialXXL` ou `trial_a_vie`. Le contrôle du COÛT et celui de
+  //  la DURÉE étaient tous les deux ouverts, et chacun suffisait à
+  //  s'offrir un abonnement gratuit.
+  //
+  //  Les deux passent désormais par la MÊME liste : une entrée ajoutée
+  //  d'un côté ne peut plus manquer de l'autre.
+  if (isTrialPlan(plan)) return 0;
   const row = await env.DB
     .prepare('SELECT credits FROM plan_costs WHERE plan = ?')
     .bind(plan)
