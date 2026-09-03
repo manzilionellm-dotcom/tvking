@@ -57,10 +57,22 @@ r = await worker.fetch(
   new Request('https://app.x/api/rt/device?mac=MK%3AAA%3ABB%3ACC%3ADD%3AEE'), {}, ctx);
 ok(r.status === 426, '/api/rt/device sans Upgrade -> 426');
 
-//    admin sans token → 401 forme api_v1 {error, message}.
+//    SANS SECRET DE SIGNATURE → 503 (03/09/2026).
+//    Avant, le Worker retombait sur la chaine publique 'dev-secret' :
+//    n'importe qui pouvait forger un jeton d'administrateur et ecouter
+//    le flux temps reel de TOUT le parc. Desormais, pas de secret, pas
+//    de service — et on le DIT, au lieu de fonctionner faussement.
 r = await worker.fetch(
   new Request('https://app.x/api/v1/rt/ws', { headers: { Upgrade: 'websocket' } }), {}, ctx);
 let body = await r.json();
+ok(r.status === 503 && body.error === 'server_unconfigured',
+  '/api/v1/rt/ws sans JWT_SECRET/ADMIN_SECRET -> 503 (plus de repli dev-secret)');
+
+//    AVEC un secret configure mais SANS token → 401 forme api_v1.
+r = await worker.fetch(
+  new Request('https://app.x/api/v1/rt/ws', { headers: { Upgrade: 'websocket' } }),
+  { ADMIN_SECRET: 'un-vrai-secret' }, ctx);
+body = await r.json();
 ok(r.status === 401 && body.error === 'unauthorized' && !!body.message,
   '/api/v1/rt/ws sans token -> 401 {error:unauthorized, message}');
 

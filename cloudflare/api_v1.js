@@ -281,14 +281,119 @@ function genId(prefix) {
 
 // ---------------------------------------------------------
 //  Auth middleware
+// =========================================================
+//  LE SECRET DE SIGNATURE (03/09/2026)
+// =========================================================
+//  CE QUI N'ALLAIT PAS. Quatre endroits signaient et vérifiaient les
+//  jetons avec `env.ADMIN_SECRET || 'dev-secret'`. Le repli est le
+//  défaut le plus dangereux possible : si le secret n'est pas posé —
+//  nouvel environnement, secret effacé par erreur, déploiement d'un
+//  worker de préproduction — l'API continue de fonctionner NORMALEMENT
+//  en signant avec une chaîne publique écrite dans un dépôt public.
+//
+//  N'importe qui peut alors forger un jeton `{role:'super_admin'}` et
+//  disposer du panneau entier : clients, licences, crédits, sources.
+//  Et rien ne le signale : tout marche, c'est bien le problème.
+//
+//  ÉCHEC FERMÉ. Sans secret, on répond 503 et on dit pourquoi. Une API
+//  qui refuse de démarrer se remarque en cinq minutes ; une API qui
+//  accepte les faux jetons peut passer des mois.
+//
+//  JWT_SECRET SÉPARÉ. La signature des jetons et le mot de passe
+//  d'amorçage ne devraient pas être la même valeur : tourner l'un
+//  obligeait à tourner l'autre. `JWT_SECRET` est utilisé s'il existe,
+//  sinon on retombe sur ADMIN_SECRET (pas de rupture pour les
+//  déploiements existants), mais jamais sur une constante.
+function signingSecret(env) {
+  return (env && (env.JWT_SECRET || env.ADMIN_SECRET)) || null;
+}
+
+/// Réponse à servir quand aucun secret n'est configuré. Elle NOMME le
+/// réglage manquant : sans ça, on cherche pendant une heure.
+function secretMissing() {
+  return errResp(
+    'server_unconfigured',
+    'Le serveur n\'a pas de secret de signature. Poser JWT_SECRET (ou '
+    + 'ADMIN_SECRET) avec `wrangler secret put`.',
+    503,
+  );
+}
+
 // ---------------------------------------------------------
 async function requireAuth(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const m = auth.match(/^Bearer\s+(.+)$/i);
   if (!m) return { error: errResp('no_auth', 'Missing Authorization header', 401) };
-  const claims = await verifyJwt(m[1], env.ADMIN_SECRET || 'dev-secret');
+  const secret = signingSecret(env);
+  if (!secret) return { error: secretMissing() };
+  const claims = await verifyJwt(m[1], secret);
   if (!claims) return { error: errResp('bad_token', 'Invalid or expired token', 401) };
-  return { user: claims };
+  return await refreshFromDb(env, claims);
+}
+
+//  LE JETON DIT QUI ON ÉTAIT, PAS QUI ON EST (03/09/2026).
+//
+//  CE QUI N'ALLAIT PAS. Le rôle, le niveau et les permissions étaient
+//  lus DANS LE JETON, figés à la connexion et valables 7 jours.
+//  Conséquence : suspendre un revendeur, lui retirer un droit ou
+//  supprimer son compte ne changeait RIEN tant que son jeton vivait.
+//  Il gardait une semaine d'accès complet à ses clients, à ses crédits
+//  et aux sources — exactement la semaine où l'on avait décidé de le
+//  couper.
+//
+//  On relit donc l'identité en base à chaque requête authentifiée.
+//
+//  LE COÛT, ASSUMÉ : une lecture D1 de plus par requête. C'est une API
+//  d'administration — quelques dizaines de requêtes par minute, pas des
+//  millions. Payer une lecture pour que « révoquer » veuille dire
+//  « révoqué maintenant » est le bon échange. Ce raisonnement ne
+//  vaudrait PAS sur une route publique appelée par toutes les box.
+//
+//  ⚠ FAIL-OPEN VOLONTAIRE SUR L'ABSENCE DE BASE : si env.DB manque, on
+//  garde les claims. Sans ça, une panne D1 déconnecterait le
+//  propriétaire de son propre panneau au moment précis où il en a le
+//  plus besoin. En revanche, si la base RÉPOND et ne connaît pas le
+//  compte, c'est un refus : le compte a été supprimé.
+async function refreshFromDb(env, claims) {
+  if (!env || !env.DB) return { user: claims };
+  try {
+    if (claims.role === 'reseller') {
+      const row = await env.DB
+        .prepare('SELECT id, status, level, permissions FROM resellers WHERE id = ?')
+        .bind(claims.sub).first();
+      if (!row) {
+        return { error: errResp('account_gone', 'Compte introuvable.', 401) };
+      }
+      if (row.status !== 'active') {
+        return { error: errResp('suspended',
+          'Compte suspendu. Contacte l\'administrateur.', 403) };
+      }
+      return {
+        user: {
+          ...claims,
+          level: row.level || 'basique',
+          // Les permissions de la BASE remplacent celles du jeton.
+          permissions: resellerPerms(row.permissions, row.level || 'basique'),
+        },
+      };
+    }
+    const row = await env.DB
+      .prepare('SELECT id, role, is_active FROM admin_users WHERE id = ?')
+      .bind(claims.sub).first();
+    if (!row) {
+      return { error: errResp('account_gone', 'Compte introuvable.', 401) };
+    }
+    if (row.is_active === 0) {
+      return { error: errResp('suspended', 'Compte désactivé.', 403) };
+    }
+    // Le RÔLE vient de la base : un compte rétrogradé perd ses droits
+    // immédiatement, même si son jeton dit encore « super_admin ».
+    return { user: { ...claims, role: row.role || claims.role } };
+  } catch (_) {
+    // Base injoignable en pleine requête : même raisonnement que
+    // l'absence de DB — on ne verrouille pas le propriétaire dehors.
+    return { user: claims };
+  }
 }
 
 // ---------------------------------------------------------
@@ -471,7 +576,13 @@ async function bootstrapSuperAdminIfNeeded(env) {
   if (count && count.n > 0) return false;
   const id = genId('adm');
   const now = Date.now();
-  const pwd = await hashPassword(env.ADMIN_SECRET || 'change-me');
+  //  PLUS DE MOT DE PASSE PAR DÉFAUT. `'change-me'` était écrit dans un
+  //  dépôt public : le premier compte administrateur créé sur un
+  //  environnement sans ADMIN_SECRET s'ouvrait avec un mot de passe que
+  //  tout le monde pouvait lire. On ne crée pas de compte du tout dans
+  //  ce cas — mieux vaut ne pas pouvoir se connecter que laisser entrer.
+  if (!env.ADMIN_SECRET) return false;
+  const pwd = await hashPassword(env.ADMIN_SECRET);
   await env.DB
     .prepare(
       `INSERT INTO admin_users
@@ -1490,9 +1601,11 @@ async function handleLogin(request, env) {
     .bind(Date.now(), row.id)
     .run();
 
+  const secret = signingSecret(env);
+  if (!secret) return secretMissing();
   const token = await signJwt(
     { sub: row.id, email: row.email, role: row.role, name: row.name },
-    env.ADMIN_SECRET || 'dev-secret',
+    secret,
   );
   return jsonResp({
     token,
@@ -5795,9 +5908,11 @@ async function handleResellerLogin(request, env) {
   await rateLimitReset(env, request, 'rlogin'); // succès → on libère l'IP
   const level = row.level || 'basique';
   const permissions = resellerPerms(row.permissions, level);
+  const secret = signingSecret(env);
+  if (!secret) return secretMissing();
   const token = await signJwt(
     { sub: row.id, email: row.email, role: 'reseller', name: row.name, level, permissions },
-    env.ADMIN_SECRET || 'dev-secret',
+    secret,
   );
   return jsonResp({
     token,

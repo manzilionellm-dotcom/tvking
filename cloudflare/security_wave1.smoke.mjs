@@ -149,5 +149,70 @@ if (typeof isTrialPlan === 'function') {
   ok(false, 'isTrialPlan non exporté');
 }
 
+// =========================================================
+console.log("\n1.3 — Le secret admin qui n'existait pas");
+// =========================================================
+//  L'ATTAQUE : le code signait avec `env.ADMIN_SECRET || 'dev-secret'`.
+//  Sur tout environnement où le secret n'est pas posé — nouveau worker,
+//  secret efface par erreur, preproduction — l'API fonctionnait
+//  NORMALEMENT en signant avec une chaine ecrite dans un depot PUBLIC.
+//  N'importe qui pouvait donc forger `{role:'super_admin'}`.
+const { apiV1 } = await import('./api_v1.js');
+const faux = await makeJwt({ sub: 'adm_x', role: 'super_admin' }, 'dev-secret');
+
+let rr = await apiV1(
+  new Request('https://app.x/api/v1/customers',
+    { headers: { Authorization: 'Bearer ' + faux } }),
+  { DB: db },   // <- pas de ADMIN_SECRET : l'ancien code acceptait
+);
+ok(rr.status === 503,
+  'jeton force avec « dev-secret », serveur sans secret → ' + rr.status
+  + ' (503 attendu : pas de secret, pas de service)');
+const j = await rr.json();
+ok(j.error === 'server_unconfigured' && /JWT_SECRET/.test(j.message || ''),
+  "la reponse NOMME le reglage manquant (on ne cherche pas une heure)");
+
+//  Avec un vrai secret, le jeton force ne vaut plus rien.
+rr = await apiV1(
+  new Request('https://app.x/api/v1/customers',
+    { headers: { Authorization: 'Bearer ' + faux } }),
+  { DB: db, ADMIN_SECRET: 'un-vrai-secret-long' },
+);
+ok(rr.status === 401, 'jeton signe avec dev-secret → ' + rr.status + ' (401)');
+
+//  ET LE CAS QUI COMPTE VRAIMENT : un revendeur SUSPENDU garde un jeton
+//  valide 7 jours. Avant, il gardait aussi ses droits. Maintenant,
+//  l'identite est relue en base a chaque requete.
+const dbSuspendu = {
+  prepare(sql) {
+    return {
+      _sql: sql, _args: [],
+      bind(...a) { this._args = a; return this; },
+      async run() { return { success: true }; },
+      async first() {
+        if (/FROM resellers WHERE id/.test(this._sql)) {
+          return { id: this._args[0], status: 'suspended',
+            level: 'standard', permissions: null };
+        }
+        return null;
+      },
+      async all() { return { results: [] }; },
+    };
+  },
+};
+const jetonRevendeur = await makeJwt(
+  { sub: 'rsl_9', role: 'reseller', level: 'standard',
+    permissions: ['activate', 'sources'] },
+  'un-vrai-secret-long',
+);
+rr = await apiV1(
+  new Request('https://app.x/api/v1/customers',
+    { headers: { Authorization: 'Bearer ' + jetonRevendeur } }),
+  { DB: dbSuspendu, ADMIN_SECRET: 'un-vrai-secret-long' },
+);
+ok(rr.status === 403,
+  'revendeur SUSPENDU avec un jeton encore valide → ' + rr.status
+  + ' (403 : la base fait autorite, pas le jeton)');
+
 console.log('\n' + pass + ' PASS, ' + fail + ' FAIL');
 if (fail) process.exit(1);

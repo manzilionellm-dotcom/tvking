@@ -6596,9 +6596,18 @@ async function handleRtAdminWs(request, env, url) {
     return json({ error: 'upgrade_required', message: 'WebSocket upgrade attendu.' }, 426);
   }
   const token = url.searchParams.get('token') || '';
-  const claims = token
-    ? await verifyJwt(token, env.ADMIN_SECRET || 'dev-secret')
-    : null;
+  //  MÊME RÈGLE QUE api_v1 : pas de secret, pas de service. Le repli
+  //  `|| 'dev-secret'` permettait de forger un jeton d'administrateur
+  //  avec une chaîne publique et d'écouter le flux temps réel de TOUS
+  //  les appareils du parc. Voir signingSecret() dans api_v1.js.
+  const secret = env.JWT_SECRET || env.ADMIN_SECRET;
+  if (!secret) {
+    return json({
+      error: 'server_unconfigured',
+      message: 'Secret de signature absent (JWT_SECRET / ADMIN_SECRET).',
+    }, 503);
+  }
+  const claims = token ? await verifyJwt(token, secret) : null;
   if (!claims) {
     // Forme d'erreur api_v1 : { error: code, message: humain }.
     return json({ error: 'unauthorized', message: 'Token invalide ou expiré.' }, 401);

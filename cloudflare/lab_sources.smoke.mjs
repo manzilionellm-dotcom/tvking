@@ -70,6 +70,21 @@ function makeDb(log) {
           return { success: true };
         },
         async first() {
+        // Comptes de l'API : depuis le 03/09, requireAuth relit
+        // l'identite en base a chaque requete (un revendeur revoque doit
+        // perdre l'acces tout de suite, pas dans 7 jours). Une base
+        // simulee qui ne connait aucun compte ferait donc echouer toute
+        // requete authentifiee — ce qui serait le bon comportement en
+        // vrai, et un faux monde ici.
+        if (/FROM admin_users WHERE id/.test(this._sql)) {
+          return { id: this._args[0], role: 'super_admin', is_active: 1 };
+        }
+        if (/FROM resellers WHERE id = \?$/.test(this._sql.trim())
+            || /SELECT id, status, level, permissions FROM resellers/.test(this._sql)) {
+          return { id: this._args[0], status: 'active', level: 'standard',
+            permissions: null };
+        }
+
           const s = this._sql;
           if (/FROM sqlite_master/.test(s)) return { name: 'app_masters' };
           if (/COUNT\(\*\) AS n FROM app_masters/.test(s)) return { n: state.masters.length };
