@@ -164,15 +164,33 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // (match ↔ film en un appui). Un numéro de chaîne ne commence jamais par 0.
   int? _prevIndex;
 
-  // ----- « Tu regardes encore ? » (anti-gaspillage bande passante) -----
-  // Après _kStillAfter SANS toucher la télécommande, on met en PAUSE et on
-  // demande. N'importe quelle touche reprend la lecture. Jamais pendant un
-  // enregistrement. (Netflix fait pareil ; ici ça évite au client de laisser
-  // le flux tourner toute la nuit → économise le serveur et la data.)
-  static const Duration _kStillAfter = Duration(hours: 4);
-  DateTime _lastUserAction = DateTime.now();
-  Timer? _stillTimer;
-  bool _askStillWatching = false;
+  // ----- « TU REGARDES ENCORE ? » — RETIRÉ LE 31/08/2026 -----
+  //
+  //  Ce que ça faisait : après 4 h sans toucher la télécommande, l'app
+  //  METTAIT LA LECTURE EN PAUSE et couvrait l'écran d'un voile noir à
+  //  90 % avec « Tu regardes encore ? ». L'intention était bonne (ne pas
+  //  laisser un flux tourner toute la nuit pour personne).
+  //
+  //  POURQUOI C'EST PARTI QUAND MÊME. Le propriétaire, deux fois :
+  //  « jamais le mode veille », puis, photo de cet écran à l'appui,
+  //  « je ne veux pas ça ». Et il a raison sur le fond : sur une télé de
+  //  salon, l'inactivité de la TÉLÉCOMMANDE ne veut pas dire absence de
+  //  SPECTATEUR. Un film de trois heures, un match, une soirée entre
+  //  amis — personne ne touche la télécommande, et pourtant tout le monde
+  //  regarde. L'app coupait alors l'image au milieu, et il fallait
+  //  chercher la télécommande pour reprendre.
+  //
+  //  Le coût du faux positif (couper une vraie séance) est bien plus
+  //  élevé que le gain du vrai positif (économiser de la bande passante
+  //  sur une télé oubliée allumée). C'est ce déséquilibre qui décide,
+  //  pas la mode Netflix.
+  //
+  //  ⚠ NE PAS LE REMETTRE sans demander au propriétaire.
+  //
+  //  Le champ `_lastUserAction` disparaît avec lui : il n'était lu QUE
+  //  par ce minuteur. Le garde-fou anti-binge de l'autoplay, lui, passe
+  //  par `_autoplay.onUserInteraction()` — un autre mécanisme, intact,
+  //  et qui n'interrompt jamais rien.
 
   // ----- « À suivre » (autoplay épisode suivant — pilier du binge) -----
   // Toute la DÉCISION (épisode avec suivant ? garde-fou 3 enchaînements ?
@@ -487,15 +505,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Garde l'app « en ligne » + chaîne à jour pendant le visionnage.
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
         (_) => SubscriptionState.instance.syncWithBackend());
-    // « Tu regardes encore ? » : vérification 1×/min, déclenchée seulement
-    // après _kStillAfter d'inactivité totale (et jamais en enregistrement).
-    _stillTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (_askStillWatching || _isRecording) return;
-      if (DateTime.now().difference(_lastUserAction) >= _kStillAfter) {
-        _controller.pause();
-        if (mounted) setState(() => _askStillWatching = true);
-      }
-    });
+    // (Le minuteur « Tu regardes encore ? » vivait ici — retiré le 31/08,
+    //  voir l'explication en tête de classe.)
   }
 
   // Couper le son quand on QUITTE / minimise l'app (Home, multitâche) : pas de
@@ -578,7 +589,6 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _hideTimer?.cancel();
     _presenceTimer?.cancel();
     _numTimer?.cancel();
-    _stillTimer?.cancel();
     _watchdog?.cancel();
     _toastTimer?.cancel();
     _zapSettle?.cancel();
@@ -2366,16 +2376,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // télécommande → les enchaînements automatiques restent fluides).
     // Si la question est affichée, N'IMPORTE quelle touche reprend la
     // lecture (la touche est consommée : elle ne zappe pas par accident).
-    _lastUserAction = DateTime.now();
     _autoplay.onUserInteraction();
-    if (_askStillWatching) {
-      setState(() => _askStillWatching = false);
-      // La pause « tu regardes encore ? » a pu durer : si la connexion a
-      // été rendue entre-temps, la reprise ré-ouvre le flux (pas juste play).
-      _resumePlayback();
-      return KeyEventResult.handled;
-    }
-
     // FEUILLE « PISTES & FORMAT » affichée : elle capte tout le D-pad
     // (même modèle que la carte « À suivre »). Haut/Bas déplacent le
     // surlignage, OK applique (piste audio / sous-titres / ratio),
@@ -2573,17 +2574,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () {
-              _lastUserAction = DateTime.now();
               _autoplay.onUserInteraction(); // tactile = présence aussi
-              if (_askStillWatching) {
-                setState(() => _askStillWatching = false);
-                _resumePlayback();
-                return;
-              }
               _toggleOverlay();
             },
             onVerticalDragEnd: (DragEndDetails d) {
-              _lastUserAction = DateTime.now();
               final double v = d.primaryVelocity ?? 0;
               if (v < -250) {
                 _zap(1); // glissé vers le HAUT → chaîne suivante
@@ -2609,33 +2603,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                   // lentement — l'habillage change tout de suite, le réseau
                   // suit (cf. _kZapSettle).
                   if (_buffering && !_fatal) _BufferVeil(channel: _current),
-                  // « TU REGARDES ENCORE ? » : lecture en pause après une longue
-                  // inactivité — n'importe quelle touche reprend. Économise la
-                  // bande passante quand la TV reste allumée sans personne.
-                  if (_askStillWatching)
-                    ColoredBox(
-                      color: const Color(0xE6000000), // scrim noir 90 %
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            const Icon(Icons.nightlight_round,
-                                color: TvTokens.gold, size: 52),
-                            const SizedBox(height: 18),
-                            Text(context.l10n.tvPlayerStillWatching,
-                                style: TextStyle(
-                                    fontSize: TvDimens.title + 6,
-                                    fontWeight: FontWeight.w800,
-                                    color: TvTokens.text)),
-                            const SizedBox(height: 10),
-                            Text(context.l10n.tvPlayerPressAnyKey,
-                                style: TextStyle(
-                                    fontSize: TvDimens.body,
-                                    color: TvTokens.muted)),
-                          ],
-                        ),
-                      ),
-                    ),
+                  // (Le voile « TU REGARDES ENCORE ? » s'affichait ici —
+                  //  retiré le 31/08, voir l'explication en tête de classe.
+                  //  Plus rien ne recouvre l'image tant qu'elle joue.)
                   // Écran d'ERREUR (P1-6) : la reconnexion automatique a été épuisée
                   // (flux durablement injoignable). On ARRÊTE de boucler et on offre
                   // un « Réessayer » manuel (OK) ou « Quitter » (Retour).
