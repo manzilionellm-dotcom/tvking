@@ -2110,5 +2110,21 @@
   "notifChannelGoalName": "Mål direkte",
   "notifChannelGoalDesc": "Publikumsbrølet når det scores i en kamp du følger",
   "notifGoalSoundTitle": "Publikumsbrøl ved mål",
-  "notifGoalSoundSubtitle": "Stadion eksploderer når det scores i en kamp du følger"
+  "notifGoalSoundSubtitle": "Stadion eksploderer når det scores i en kamp du følger",
+  "tvSettingsShield": "Skjoldmodus (personvern)",
+  "tvShieldTitle": "Skjoldmodus",
+  "tvShieldIntro": "Skjuler adressen og landet ditt for kanalleverandøren. Skjuler ikke hva du ser på: det er leverandøren som sender kanalen.",
+  "tvShieldEnable": "Skjold",
+  "tvShieldEnableHint": "Slår på alle beskyttelsene nedenfor.",
+  "tvShieldRequireVpn": "VPN-nødstopp",
+  "tvShieldRequireVpnHint": "Ingenting spilles av uten aktiv VPN. Avspillingen fortsetter av seg selv når den er tilbake.",
+  "tvShieldHttps": "Foretrekk HTTPS",
+  "tvShieldHttpsHint": "Når serveren tillater det, sendes ikke påloggingen din lenger i klartekst.",
+  "tvShieldTelemetry": "Minimal telemetri",
+  "tvShieldTelemetryHint": "Kanalen du ser på, kildene dine og historikken din forlater aldri denne enheten.",
+  "tvShieldVpnOn": "VPN aktiv",
+  "tvShieldVpnOff": "Ingen VPN oppdaget",
+  "tvShieldVpnUnsupported": "VPN-oppdagelse er ikke tilgjengelig på denne enheten",
+  "tvShieldNoVpnBody": "Skjold er på: ingenting spilles av uten VPN. Slå på VPN, så fortsetter avspillingen av seg selv.",
+  "tvShieldHonest": "Det leverandøren fortsatt ser: kanalen som ble bedt om og tidspunktet. Det den ikke lenger ser: IP-adressen og landet ditt."
 }

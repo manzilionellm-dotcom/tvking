@@ -26,6 +26,7 @@ import 'core/app/app_platform.dart';
 import 'core/app/guarded_main.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
+import 'core/privacy/privacy_shield.dart';
 import 'core/realtime/realtime_sync_service.dart';
 import 'features/channels/domain/channel.dart';
 import 'features/device/data/device_identity.dart';
@@ -84,6 +85,9 @@ Future<void> _bootstrap() async {
   // le try/catch est une ceinture supplémentaire — le service ne throw
   // jamais et se contente du polling ci-dessus si le socket est indispo.
   try {
+    // Mode Bouclier : réglages (HTTPS préféré, télémétrie minimale). Sur
+    // Tizen la détection VPN n'existe pas : le coupe-circuit y est sans effet.
+    unawaited(PrivacyShield.instance.load());
     unawaited(RealtimeSyncService.instance.start(platform: 'tv'));
   } catch (e) {
     debugPrint('[main_tizen] realtime start: $e');

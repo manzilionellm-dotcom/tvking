@@ -2127,5 +2127,21 @@
   "notifChannelGoalName": "Live goals",
   "notifChannelGoalDesc": "The crowd roar when a goal is scored in a match you follow",
   "notifGoalSoundTitle": "Crowd roar on goals",
-  "notifGoalSoundSubtitle": "The stadium erupts when a goal is scored in a match you follow"
+  "notifGoalSoundSubtitle": "The stadium erupts when a goal is scored in a match you follow",
+  "tvSettingsShield": "Shield Mode (privacy)",
+  "tvShieldTitle": "Shield Mode",
+  "tvShieldIntro": "Hides your address and your country from the channel provider. It does not hide what you watch: the provider is the one sending the channel.",
+  "tvShieldEnable": "Shield",
+  "tvShieldEnableHint": "Turns on every protection below.",
+  "tvShieldRequireVpn": "VPN kill switch",
+  "tvShieldRequireVpnHint": "Nothing plays without an active VPN. Playback resumes by itself when it comes back.",
+  "tvShieldHttps": "Prefer HTTPS",
+  "tvShieldHttpsHint": "When the server allows it, your credentials no longer travel in plain text.",
+  "tvShieldTelemetry": "Minimal telemetry",
+  "tvShieldTelemetryHint": "The channel you watch, your sources and your history never leave this device.",
+  "tvShieldVpnOn": "VPN active",
+  "tvShieldVpnOff": "No VPN detected",
+  "tvShieldVpnUnsupported": "VPN detection is not available on this device",
+  "tvShieldNoVpnBody": "Shield is on: nothing plays without a VPN. Turn your VPN on and playback will resume by itself.",
+  "tvShieldHonest": "What the provider still sees: the channel requested and the time. What it no longer sees: your IP address and your country."
 }

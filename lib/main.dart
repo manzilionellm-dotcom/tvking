@@ -18,6 +18,7 @@ import 'package:media_kit/media_kit.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/backend/backend_hosts.dart';
+import 'core/privacy/privacy_shield.dart';
 import 'core/profiles/profiles_repository.dart';
 import 'core/profiles/remote_profiles_repository.dart';
 import 'core/realtime/admin_message_banner.dart';
@@ -234,6 +235,10 @@ Future<void> bootApp() async {
         .then((_) {}),
   );
   unawaited(PlayerSettings.instance.load());
+
+  // Mode Bouclier (vie privée) : réglages + état VPN. Non bloquant ; sans
+  // réglage mémorisé, le bouclier est éteint et n'a aucun effet.
+  unawaited(PrivacyShield.instance.load());
 
   // Notifications locales (rappels EPG). Init non bloquant ; la permission
   // n'est demandée que lorsque l'utilisateur pose son 1er rappel.

@@ -2110,5 +2110,21 @@
   "notifChannelGoalName": "Mabao moja kwa moja",
   "notifChannelGoalDesc": "Shangwe za mashabiki bao linapofungwa katika mechi unayofuatilia",
   "notifGoalSoundTitle": "Shangwe za mashabiki bao linapofungwa",
-  "notifGoalSoundSubtitle": "Uwanja unalipuka bao linapofungwa katika mechi unayofuatilia"
+  "notifGoalSoundSubtitle": "Uwanja unalipuka bao linapofungwa katika mechi unayofuatilia",
+  "tvSettingsShield": "Hali ya Ngao (faragha)",
+  "tvShieldTitle": "Hali ya Ngao",
+  "tvShieldIntro": "Inaficha anwani yako na nchi yako kwa mtoa huduma wa vituo. Haifichi unachotazama: yeye ndiye anayetuma kituo.",
+  "tvShieldEnable": "Ngao",
+  "tvShieldEnableHint": "Inawasha kinga zote zilizo hapa chini.",
+  "tvShieldRequireVpn": "Kizima cha VPN",
+  "tvShieldRequireVpnHint": "Hakuna kinachochezwa bila VPN hai. Uchezaji unaendelea wenyewe VPN inaporudi.",
+  "tvShieldHttps": "Pendelea HTTPS",
+  "tvShieldHttpsHint": "Seva inaporuhusu, taarifa zako za kuingia hazisafiri tena wazi.",
+  "tvShieldTelemetry": "Telemetria ndogo",
+  "tvShieldTelemetryHint": "Kituo unachotazama, vyanzo vyako na historia yako haviondoki kwenye kifaa hiki.",
+  "tvShieldVpnOn": "VPN hai",
+  "tvShieldVpnOff": "Hakuna VPN iliyogunduliwa",
+  "tvShieldVpnUnsupported": "Ugunduzi wa VPN haupatikani kwenye kifaa hiki",
+  "tvShieldNoVpnBody": "Ngao imewashwa: hakuna kinachochezwa bila VPN. Washa VPN yako, uchezaji utaendelea wenyewe.",
+  "tvShieldHonest": "Mtoa huduma bado anaona: kituo kilichoombwa na saa. Haoni tena: anwani yako ya IP na nchi yako."
 }

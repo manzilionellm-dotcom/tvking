@@ -24,6 +24,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../player/data/player_settings.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../playlists/presentation/playlists_screen.dart';
+import '../../privacy/presentation/shield_settings_screen.dart';
 import '../../profiles/presentation/profile_picker_screen.dart';
 import '../../recordings/presentation/recordings_screen.dart';
 import '../../security/data/app_pin_settings.dart';
@@ -92,6 +93,21 @@ class SettingsScreen extends StatelessWidget {
             _SectionTitle(context.l10n.tvParentalTitle),
             const _KidsModeTile(),
             const _ParentalPinTile(),
+
+            // ====== MODE BOUCLIER (vie privée) ======
+            //  Parité avec la TV (tv_shield_screen) : coupe-circuit VPN,
+            //  HTTPS préféré, télémétrie minimale. Même PrivacyShield.
+            _SectionTitle(context.l10n.tvShieldTitle),
+            _ActionTile(
+              icon: Icons.shield_rounded,
+              title: context.l10n.tvSettingsShield,
+              subtitle: context.l10n.tvShieldIntro,
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ShieldSettingsScreen(),
+                ),
+              ),
+            ),
 
             // ====== LECTEUR ======
             _SectionTitle(context.l10n.settingsPlayer),

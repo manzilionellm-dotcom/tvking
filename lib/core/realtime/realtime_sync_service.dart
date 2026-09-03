@@ -38,6 +38,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../privacy/privacy_shield.dart';
 import '../../features/about/data/force_update_checker.dart';
 import '../../features/ads/data/startup_ad_repository.dart';
 import '../../features/country_home/data/featured_repository.dart';
@@ -449,9 +450,9 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
         'appVersion': version,
         'appBuild': '$kBuildTs',
         'model': model,
-        'channel': NowPlaying.instance.current,
+        'channel': _channelForPanel(),
       });
-      _lastSentChannel = NowPlaying.instance.current;
+      _lastSentChannel = _channelForPanel();
       _lastWatchingAt = DateTime.now();
       _startTimers();
 
@@ -540,9 +541,16 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
     _watchTimer = null;
   }
 
+  /// Chaîne annoncée au panel : vide quand le Mode Bouclier (télémétrie
+  /// minimale) est actif — ce que le client regarde ne quitte pas la box.
+  String _channelForPanel() =>
+      PrivacyShield.instance.minimalTelemetryActive
+          ? ''
+          : NowPlaying.instance.current;
+
   void _onWatchTick() {
     try {
-      final String now = NowPlaying.instance.current;
+      final String now = _channelForPanel();
       final bool changed = now != _lastSentChannel;
       final bool refresh = now.isNotEmpty &&
           DateTime.now().difference(_lastWatchingAt) >=

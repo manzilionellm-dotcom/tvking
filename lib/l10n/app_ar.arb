@@ -2110,5 +2110,21 @@
   "notifChannelGoalName": "الأهداف المباشرة",
   "notifChannelGoalDesc": "هتاف الجماهير عند تسجيل هدف في مباراة تتابعها",
   "notifGoalSoundTitle": "هتاف الجماهير عند الأهداف",
-  "notifGoalSoundSubtitle": "الملعب ينفجر عند تسجيل هدف في مباراة تتابعها"
+  "notifGoalSoundSubtitle": "الملعب ينفجر عند تسجيل هدف في مباراة تتابعها",
+  "tvSettingsShield": "وضع الدرع (الخصوصية)",
+  "tvShieldTitle": "وضع الدرع",
+  "tvShieldIntro": "يخفي عنوانك وبلدك عن مزوّد القنوات. لا يخفي ما تشاهده: فهو من يرسل القناة.",
+  "tvShieldEnable": "الدرع",
+  "tvShieldEnableHint": "يفعّل كل الحمايات أدناه.",
+  "tvShieldRequireVpn": "قاطع VPN",
+  "tvShieldRequireVpnHint": "لا يبدأ أي تشغيل بدون VPN نشط. يستأنف التشغيل تلقائيًا عند عودته.",
+  "tvShieldHttps": "تفضيل HTTPS",
+  "tvShieldHttpsHint": "عندما يسمح الخادم بذلك، لا تنتقل بيانات دخولك بشكل مكشوف.",
+  "tvShieldTelemetry": "أقل قدر من البيانات",
+  "tvShieldTelemetryHint": "القناة التي تشاهدها ومصادرك وسجلك لا تغادر هذا الجهاز.",
+  "tvShieldVpnOn": "VPN نشط",
+  "tvShieldVpnOff": "لم يتم اكتشاف VPN",
+  "tvShieldVpnUnsupported": "اكتشاف VPN غير متاح على هذا الجهاز",
+  "tvShieldNoVpnBody": "الدرع مفعّل: لا تشغيل بدون VPN. فعّل VPN وسيستأنف التشغيل تلقائيًا.",
+  "tvShieldHonest": "ما يراه المزوّد رغم ذلك: القناة المطلوبة والوقت. ما لم يعد يراه: عنوان IP الخاص بك وبلدك."
 }

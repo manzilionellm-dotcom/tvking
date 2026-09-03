@@ -1,5 +1,9 @@
-<!-- Namespace défini dans build.gradle (AGP 8+). Manifest vide, sans package.
-     Aucune permission requise : ANDROID_ID (Settings.Secure) est lisible sans
-     permission, et les champs Build aussi. -->
+<!-- Namespace défini dans build.gradle (AGP 8+). Manifest sans package.
+     ANDROID_ID (Settings.Secure) et les champs Build se lisent sans permission.
+     ACCESS_NETWORK_STATE (permission « normale », accordée à l'installation,
+     sans dialogue) : nécessaire à la détection VPN du Mode Bouclier
+     (ConnectivityManager.getNetworkCapabilities). Fusionné dans le manifeste
+     de l'app par le merger Gradle, quel que soit le workflow de build. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 </manifest>

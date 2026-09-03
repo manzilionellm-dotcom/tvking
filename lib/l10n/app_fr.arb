@@ -4978,5 +4978,21 @@
   "notifGoalSoundSubtitle": "Le stade explose quand un but est marqué dans un match que vous suivez",
   "@notifGoalSoundSubtitle": {
     "description": "Sous-titre de l interrupteur du son de but"
-  }
+  },
+  "tvSettingsShield": "Mode Bouclier (vie privée)",
+  "tvShieldTitle": "Mode Bouclier",
+  "tvShieldIntro": "Cache votre adresse et votre pays au fournisseur de chaînes. Ne cache pas ce que vous regardez : c'est lui qui envoie la chaîne.",
+  "tvShieldEnable": "Bouclier",
+  "tvShieldEnableHint": "Active toutes les protections ci-dessous.",
+  "tvShieldRequireVpn": "Coupe-circuit VPN",
+  "tvShieldRequireVpnHint": "Aucune lecture ne part sans VPN actif. Elle reprend toute seule quand il revient.",
+  "tvShieldHttps": "HTTPS préféré",
+  "tvShieldHttpsHint": "Quand le serveur le permet, vos identifiants ne voyagent plus en clair.",
+  "tvShieldTelemetry": "Télémétrie minimale",
+  "tvShieldTelemetryHint": "La chaîne regardée, vos sources et votre historique ne quittent plus cet appareil.",
+  "tvShieldVpnOn": "VPN actif",
+  "tvShieldVpnOff": "Aucun VPN détecté",
+  "tvShieldVpnUnsupported": "Détection VPN indisponible sur cet appareil",
+  "tvShieldNoVpnBody": "Bouclier actif : aucune lecture sans VPN. Activez votre VPN, la lecture repartira toute seule.",
+  "tvShieldHonest": "Ce que le fournisseur voit quand même : la chaîne demandée et l'heure. Ce qu'il ne voit plus : votre adresse IP et votre pays."
 }
