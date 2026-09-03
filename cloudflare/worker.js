@@ -3232,22 +3232,29 @@ async function handleGetAppVersion(request, env) {
     const sfx = url.searchParams.get('platform') === 'tv' ? '_tv' : '';
     const latestKey = 'latest_build_ts' + sfx;
     const minKey = 'min_build_ts' + sfx;
-    const build = parseInt(url.searchParams.get('build') || '0', 10);
-    if (Number.isFinite(build) && build > 0) {
-      const row = await env.DB
-        .prepare('SELECT value FROM app_config WHERE key = ?').bind(latestKey)
-        .first();
-      const cur = row ? parseInt(row.value, 10) || 0 : 0;
-      if (build > cur) {
-        await env.DB
-          .prepare(
-            'INSERT INTO app_config (key, value) VALUES (?, ?) ' +
-              'ON CONFLICT(key) DO UPDATE SET value = excluded.value'
-          )
-          .bind(latestKey, String(build))
-          .run();
-      }
-    }
+    //  ===== ÉCRITURE PUBLIQUE SUPPRIMÉE (03/09/2026) =====
+    //
+    //  CE QUE FAISAIT CE BLOC. Un GET public — n'importe qui, sans
+    //  jeton — passait `?build=<n>` et le serveur ÉCRIVAIT cette valeur
+    //  dans `app_config.latest_build_ts` dès qu'elle dépassait la
+    //  valeur courante.
+    //
+    //  POURQUOI C'ÉTAIT GRAVE. Combiné au bouton « Forcer la mise à
+    //  jour » du panneau, `latest_build_ts` décide quelles versions sont
+    //  considérées comme périmées. Une seule requête avec un numéro
+    //  énorme — `?build=999999999` — et TOUT LE PARC se retrouve derrière
+    //  un écran « mise à jour obligatoire » vers une version qui
+    //  n'existe pas. Plus une seule box ne regarde la télévision, et
+    //  rien dans les journaux ne dit d'où ça vient.
+    //
+    //  Ce n'était pas une porte dérobée : c'était une commodité — la box
+    //  annonçait sa version en passant. Mais une valeur qui décide du
+    //  sort du parc ne se laisse pas écrire par un inconnu.
+    //
+    //  Cette valeur est désormais posée UNIQUEMENT par la chaîne de
+    //  publication (APP_BUILD_TS au build) et par le panneau. La lecture
+    //  ci-dessous, elle, reste publique : c'est son rôle.
+
     const minRow = await env.DB
       .prepare('SELECT value FROM app_config WHERE key = ?').bind(minKey)
       .first();
@@ -5210,9 +5217,31 @@ async function handleFamilyRemove(request, env) {
       .prepare('DELETE FROM app_family_links WHERE member_mac = ? AND owner_mac = ?')
       .bind(memberMac, mac).run();
   } else {
-    await env.DB
-      .prepare('DELETE FROM app_family_links WHERE member_mac = ?')
-      .bind(mac).run();
+    //  ===== AUTO-DÉTACHEMENT — FERMÉ (03/09/2026) =====
+    //
+    //  Sans `member`, cette branche voulait dire « moi, `mac`, je quitte
+    //  ma famille ». Elle ne demandait AUCUNE preuve que l'appelant est
+    //  bien cet appareil — et une adresse MK n'est pas un secret : elle
+    //  s'affiche dans l'app et le client la dicte à qui la lui demande.
+    //
+    //  Le dégât n'est pas symbolique : un membre rattaché HÉRITE du
+    //  statut payé de son propriétaire (familyStatusForMac). Le détacher,
+    //  c'est lui couper l'abonnement qu'il utilise. Une seule requête, et
+    //  un client qui paie se retrouve en « essai expiré » sans rien avoir
+    //  fait.
+    //
+    //  Rouvrir cette branche quand X-Device-Token existera (Vague 3) :
+    //  l'appareil prouvera alors qu'il est bien celui qui part.
+    //  La branche AVEC `member` reste ouverte : c'est le propriétaire qui
+    //  retire quelqu'un de SA famille, le lien doit lui appartenir
+    //  (owner_mac = mac), et l'action se répare par un simple ré-ajout.
+    //  Elle demandera le même jeton en Vague 3.
+    return json({
+      ok: false,
+      error: 'temporarily_disabled',
+      message: 'Le détachement est suspendu le temps de poser la preuve '
+        + "d'appareil. Passe par ton revendeur.",
+    }, 410);
   }
   return json({ ok: true });
 }
@@ -6802,9 +6831,18 @@ async function handleRtAdminWs(request, env, url) {
     return json({ error: 'upgrade_required', message: 'WebSocket upgrade attendu.' }, 426);
   }
   const token = url.searchParams.get('token') || '';
-  const claims = token
-    ? await verifyJwt(token, env.ADMIN_SECRET || 'dev-secret')
-    : null;
+  //  MÊME RÈGLE QUE api_v1 : pas de secret, pas de service. Le repli
+  //  `|| 'dev-secret'` permettait de forger un jeton d'administrateur
+  //  avec une chaîne publique et d'écouter le flux temps réel de TOUS
+  //  les appareils du parc. Voir signingSecret() dans api_v1.js.
+  const secret = env.JWT_SECRET || env.ADMIN_SECRET;
+  if (!secret) {
+    return json({
+      error: 'server_unconfigured',
+      message: 'Secret de signature absent (JWT_SECRET / ADMIN_SECRET).',
+    }, 503);
+  }
+  const claims = token ? await verifyJwt(token, secret) : null;
   if (!claims) {
     // Forme d'erreur api_v1 : { error: code, message: humain }.
     return json({ error: 'unauthorized', message: 'Token invalide ou expiré.' }, 401);
@@ -7058,17 +7096,39 @@ async function handleRequest(request, env, ctx) {
         if (request.method !== 'POST') return badRequest('only POST supported');
         return handleInviteGrant(request, env);
       }
-      if (segments[2] === 'transfer' && segments.length === 3) {
-        if (request.method !== 'POST') return badRequest('only POST supported');
-        return handleInviteTransfer(request, env);
-      }
-      if (segments[2] === 'lend' && segments.length === 3) {
-        if (request.method !== 'POST') return badRequest('only POST supported');
-        return handleInviteLend(request, env);
-      }
-      if (segments[2] === 'reclaim' && segments.length === 3) {
-        if (request.method !== 'POST') return badRequest('only POST supported');
-        return handleInviteReclaim(request, env);
+      //  ===== TRANSFER / LEND / RECLAIM — FERMÉES (03/09/2026) =====
+      //
+      //  CE QUI N'ALLAIT PAS. Ces trois routes déplaçaient un abonnement
+      //  PAYÉ d'un appareil à un autre en ne demandant QUE deux adresses
+      //  MK. Or une adresse MK n'est pas un secret : elle s'affiche à
+      //  l'écran de l'app (« Réglages → À propos »), le client la dicte
+      //  au téléphone, l'écrit dans WhatsApp, la colle dans un forum.
+      //
+      //  Concrètement : quiconque voyait l'adresse d'un client pouvait
+      //  s'approprier son abonnement en une requête. Le client perdait
+      //  ce qu'il avait payé, sans rien avoir fait de travers, et sans
+      //  qu'aucune trace ne désigne le coupable.
+      //
+      //  POURQUOI 410 ET PAS UN CORRECTIF TOUT DE SUITE. La bonne
+      //  réponse est un JETON D'APPAREIL prouvant la possession — c'est
+      //  la Vague 3, deux jours de travail. Laisser la porte ouverte
+      //  deux jours de plus n'était pas acceptable. 410 « Gone » plutôt
+      //  que 403 : la route n'existe plus pour l'instant, ce n'est pas
+      //  une question de droits.
+      //
+      //  ⚠ NE PAS ROUVRIR sans exiger X-Device-Token sur les DEUX
+      //  adresses (source et cible). Les fonctions handleInviteTransfer,
+      //  handleInviteLend et handleInviteReclaim restent dans le fichier
+      //  pour être reprises telles quelles à ce moment-là.
+      if (segments.length === 3 &&
+          (segments[2] === 'transfer' || segments[2] === 'lend' ||
+           segments[2] === 'reclaim')) {
+        return json({
+          ok: false,
+          error: 'temporarily_disabled',
+          message: 'Le transfert et le prêt sont suspendus le temps de '
+            + "poser la preuve d'appareil. Passe par ton revendeur.",
+        }, 410);
       }
       if (segments[2] === 'mine' && segments.length === 4) {
         if (request.method !== 'GET') return badRequest('only GET supported');
@@ -7586,6 +7646,39 @@ async function handleRequest(request, env, ctx) {
         upstream = decodeURIComponent(escape(atob(s)));
       } catch (e) {
         return new Response('bad token', { status: 400 });
+      }
+
+      //  ===== ANTI-SSRF (03/09/2026) =====
+      //
+      //  CE QUI MANQUAIT. Cette route décodait une adresse depuis
+      //  l'URL et allait la CHERCHER, sans aucune vérification. Le
+      //  Worker devenait donc un proxy ouvert : n'importe qui pouvait
+      //  lui faire appeler `http://127.0.0.1`, `http://10.0.0.5` ou
+      //  n'importe quelle adresse interne, et lire la réponse — depuis
+      //  l'intérieur de l'infrastructure, avec l'IP et le certificat du
+      //  domaine.
+      //
+      //  `isSafeUpstream` refuse les schémas autres que http/https, la
+      //  boucle locale, les réseaux privés, le lien-local (169.254,
+      //  d'où l'on interroge les métadonnées d'instance chez la plupart
+      //  des hébergeurs), le CGNAT et le multicast. C'est la MÊME
+      //  fonction que /cast-proxy — une seule règle à maintenir.
+      //
+      //  ⚠ CE QUI N'EST PAS ENCORE FAIT, ET QUE J'ASSUME : cette route
+      //  n'est toujours pas SIGNÉE. La signature exige que celui qui
+      //  fabrique le lien détienne un secret ; or il est fabriqué par
+      //  l'APPLICATION (cast_manager.dart:1681), qui n'en a pas. La
+      //  poser demande de passer par le serveur pour obtenir un lien
+      //  signé — donc une modification coordonnée app + Worker, qui
+      //  relève de la Vague 3 (jeton d'appareil), pas d'un correctif
+      //  d'un jour.
+      //
+      //  Ce qui reste possible sans signature : relayer un flux public
+      //  à travers notre domaine (consommation de bande passante). Ce
+      //  qui ne l'est plus : atteindre quoi que ce soit d'interne. Le
+      //  second était le vrai danger.
+      if (!isSafeUpstream(upstream)) {
+        return new Response('forbidden upstream', { status: 403 });
       }
 
       if (ext === 'm3u8') {

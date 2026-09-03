@@ -67,6 +67,28 @@ const db = {
         return { success: true };
       },
       async first() {
+        // Comptes de l'API : depuis le 03/09, requireAuth relit l'identite
+        // en base a chaque requete (un revendeur revoque doit perdre
+        // l'acces tout de suite, pas dans 7 jours). Une base simulee qui
+        // ne connait aucun compte ferait echouer toute requete
+        // authentifiee — bon comportement en vrai, faux monde ici.
+        if (/FROM admin_users WHERE id/.test(this._sql)) {
+          return { id: this._args[0], role: 'super_admin', is_active: 1 };
+        }
+        if (/FROM resellers WHERE id/.test(this._sql)) {
+          // Le NIVEAU vient de la BASE, plus du jeton : c'est justement
+          // ce que le correctif du 03/09 impose. Un revendeur retrograde
+          // perd ses droits tout de suite, sans attendre l'expiration de
+          // son jeton. Le test doit donc regler la base, pas les claims.
+          const basique = this._args[0] === 'rsl_2';
+          return {
+            id: this._args[0], status: 'active',
+            level: basique ? 'basique' : 'standard',
+            permissions: JSON.stringify(
+              basique ? ['activate'] : ['activate', 'sources']),
+          };
+        }
+
         if (/FROM device_profiles WHERE mac/.test(this._sql)) {
           const j = store.get(this._args[0]);
           return j ? { profiles_json: j } : null;
