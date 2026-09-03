@@ -214,5 +214,52 @@ ok(rr.status === 403,
   'revendeur SUSPENDU avec un jeton encore valide → ' + rr.status
   + ' (403 : la base fait autorite, pas le jeton)');
 
+// =========================================================
+console.log("\n1.5 — Les ecritures et les fetch publics");
+// =========================================================
+//  L'ATTAQUE 1 : /api/app-version ecrivait `latest_build_ts` depuis un
+//  GET public. Combine au bouton « Forcer la mise a jour » du panneau,
+//  un seul `?build=999999999` mettait TOUT LE PARC derriere un ecran
+//  « mise a jour obligatoire » vers une version inexistante.
+let ecritures = 0;
+const dbEspion = {
+  prepare(sql) {
+    return {
+      _sql: sql, _args: [],
+      bind(...a) { this._args = a; return this; },
+      async run() {
+        if (/INSERT INTO app_config/.test(this._sql)) ecritures++;
+        return { success: true };
+      },
+      async first() { return null; },
+      async all() { return { results: [] }; },
+    };
+  },
+};
+await worker.fetch(
+  new Request('https://app.x/api/app-version?build=999999999&platform=tv'),
+  { DB: dbEspion }, ctx,
+);
+ok(ecritures === 0,
+  'GET /api/app-version?build=999999999 n\'ecrit RIEN en base ('
+  + ecritures + ' ecriture(s))');
+
+//  L'ATTAQUE 2 : /cs/<base64>.ts allait chercher n'importe quelle
+//  adresse, sans controle. Le Worker devenait un proxy ouvert vers
+//  l'INTERIEUR de l'infrastructure.
+const enB64 = (u) => Buffer.from(u, 'utf8').toString('base64')
+  .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+for (const [cible, quoi] of [
+  ['http://127.0.0.1/admin', 'la boucle locale'],
+  ['http://10.0.0.5/', 'un reseau prive'],
+  ['http://169.254.169.254/latest/meta-data/', "les metadonnees d'instance"],
+  ['file:///etc/passwd', 'un fichier local'],
+]) {
+  const rep = await worker.fetch(
+    new Request('https://app.x/cs/' + enB64(cible) + '.ts'), { DB: db }, ctx);
+  ok(rep.status === 403, '/cs/ vers ' + quoi + ' → ' + rep.status + ' (403)');
+}
+
 console.log('\n' + pass + ' PASS, ' + fail + ' FAIL');
 if (fail) process.exit(1);

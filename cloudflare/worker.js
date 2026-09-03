@@ -3226,22 +3226,29 @@ async function handleGetAppVersion(request, env) {
     const sfx = url.searchParams.get('platform') === 'tv' ? '_tv' : '';
     const latestKey = 'latest_build_ts' + sfx;
     const minKey = 'min_build_ts' + sfx;
-    const build = parseInt(url.searchParams.get('build') || '0', 10);
-    if (Number.isFinite(build) && build > 0) {
-      const row = await env.DB
-        .prepare('SELECT value FROM app_config WHERE key = ?').bind(latestKey)
-        .first();
-      const cur = row ? parseInt(row.value, 10) || 0 : 0;
-      if (build > cur) {
-        await env.DB
-          .prepare(
-            'INSERT INTO app_config (key, value) VALUES (?, ?) ' +
-              'ON CONFLICT(key) DO UPDATE SET value = excluded.value'
-          )
-          .bind(latestKey, String(build))
-          .run();
-      }
-    }
+    //  ===== ÉCRITURE PUBLIQUE SUPPRIMÉE (03/09/2026) =====
+    //
+    //  CE QUE FAISAIT CE BLOC. Un GET public — n'importe qui, sans
+    //  jeton — passait `?build=<n>` et le serveur ÉCRIVAIT cette valeur
+    //  dans `app_config.latest_build_ts` dès qu'elle dépassait la
+    //  valeur courante.
+    //
+    //  POURQUOI C'ÉTAIT GRAVE. Combiné au bouton « Forcer la mise à
+    //  jour » du panneau, `latest_build_ts` décide quelles versions sont
+    //  considérées comme périmées. Une seule requête avec un numéro
+    //  énorme — `?build=999999999` — et TOUT LE PARC se retrouve derrière
+    //  un écran « mise à jour obligatoire » vers une version qui
+    //  n'existe pas. Plus une seule box ne regarde la télévision, et
+    //  rien dans les journaux ne dit d'où ça vient.
+    //
+    //  Ce n'était pas une porte dérobée : c'était une commodité — la box
+    //  annonçait sa version en passant. Mais une valeur qui décide du
+    //  sort du parc ne se laisse pas écrire par un inconnu.
+    //
+    //  Cette valeur est désormais posée UNIQUEMENT par la chaîne de
+    //  publication (APP_BUILD_TS au build) et par le panneau. La lecture
+    //  ci-dessous, elle, reste publique : c'est son rôle.
+
     const minRow = await env.DB
       .prepare('SELECT value FROM app_config WHERE key = ?').bind(minKey)
       .first();
@@ -7403,6 +7410,39 @@ async function handleRequest(request, env, ctx) {
         upstream = decodeURIComponent(escape(atob(s)));
       } catch (e) {
         return new Response('bad token', { status: 400 });
+      }
+
+      //  ===== ANTI-SSRF (03/09/2026) =====
+      //
+      //  CE QUI MANQUAIT. Cette route décodait une adresse depuis
+      //  l'URL et allait la CHERCHER, sans aucune vérification. Le
+      //  Worker devenait donc un proxy ouvert : n'importe qui pouvait
+      //  lui faire appeler `http://127.0.0.1`, `http://10.0.0.5` ou
+      //  n'importe quelle adresse interne, et lire la réponse — depuis
+      //  l'intérieur de l'infrastructure, avec l'IP et le certificat du
+      //  domaine.
+      //
+      //  `isSafeUpstream` refuse les schémas autres que http/https, la
+      //  boucle locale, les réseaux privés, le lien-local (169.254,
+      //  d'où l'on interroge les métadonnées d'instance chez la plupart
+      //  des hébergeurs), le CGNAT et le multicast. C'est la MÊME
+      //  fonction que /cast-proxy — une seule règle à maintenir.
+      //
+      //  ⚠ CE QUI N'EST PAS ENCORE FAIT, ET QUE J'ASSUME : cette route
+      //  n'est toujours pas SIGNÉE. La signature exige que celui qui
+      //  fabrique le lien détienne un secret ; or il est fabriqué par
+      //  l'APPLICATION (cast_manager.dart:1681), qui n'en a pas. La
+      //  poser demande de passer par le serveur pour obtenir un lien
+      //  signé — donc une modification coordonnée app + Worker, qui
+      //  relève de la Vague 3 (jeton d'appareil), pas d'un correctif
+      //  d'un jour.
+      //
+      //  Ce qui reste possible sans signature : relayer un flux public
+      //  à travers notre domaine (consommation de bande passante). Ce
+      //  qui ne l'est plus : atteindre quoi que ce soit d'interne. Le
+      //  second était le vrai danger.
+      if (!isSafeUpstream(upstream)) {
+        return new Response('forbidden upstream', { status: 403 });
       }
 
       if (ext === 'm3u8') {
