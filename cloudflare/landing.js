@@ -240,6 +240,7 @@ export function landingHtml() {
     whatsapp: "18077888909",                    // sans "+" ni espaces
     appUrl:  "https://app.7themotion.com/install",
     tvUrl:   "https://app.7themotion.com/tv",
+    playStoreUrl: "https://play.google.com/store/apps/details?id=com.manzilionellm.tvking",
     privacyUrl: "https://app.7themotion.com/privacy",
     prices: {
       year: { amount: "5,90", per: "/ an" },
@@ -272,6 +273,7 @@ export function landingHtml() {
     <a class="btn btn-gold" id="dlPhone" href="https://app.7themotion.com/install">Télécharger l'application</a>
     <a class="btn btn-ghost" href="/mon-espace">Gérer mes playlists</a>
   </div>
+  <p class="center" style="margin-top:16px;font-size:14px"><a id="playStoreHero" href="https://play.google.com/store/apps/details?id=com.manzilionellm.tvking" style="color:var(--gold)">Aussi sur Google Play</a></p>
   <div class="reassure">
     <span><i class="dot"></i> Activation en quelques minutes</span>
     <span><i class="dot"></i> Accompagnement humain</span>
@@ -309,7 +311,7 @@ export function landingHtml() {
     <h2>Installez en <span class="g">un instant</span></h2>
   </div>
   <div class="qr-row">
-    <div class="qr-box"><div class="qr-tile"><svg width="165" height="165" class="segno"><g transform="scale(5)"><path fill="#fff" d="M0 0h33v33h-33z"/><path class="qrline" stroke="#000" d="M2 2.5h7m2 0h1m1 0h5m2 0h1m1 0h1m1 0h7m-29 1h1m5 0h1m1 0h2m1 0h1m3 0h1m1 0h1m4 0h1m5 0h1m-29 1h1m1 0h3m1 0h1m1 0h3m3 0h1m1 0h1m1 0h3m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m1 0h3m3 0h4m1 0h2m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m5 0h4m2 0h3m1 0h1m1 0h3m1 0h1m-29 1h1m5 0h1m2 0h2m2 0h2m2 0h2m1 0h1m1 0h1m5 0h1m-29 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-21 1h1m1 0h4m5 0h2m-21 1h1m5 0h1m1 0h1m1 0h2m2 0h2m1 0h1m1 0h1m1 0h2m2 0h3m-28 1h3m1 0h2m3 0h1m4 0h1m1 0h4m1 0h1m2 0h1m1 0h2m-28 1h2m1 0h1m1 0h4m2 0h1m3 0h1m1 0h1m2 0h1m-21 1h1m1 0h1m6 0h4m1 0h1m1 0h1m4 0h3m1 0h1m-26 1h2m3 0h4m4 0h2m1 0h1m3 0h1m1 0h2m4 0h1m-28 1h2m1 0h2m1 0h1m4 0h11m1 0h1m2 0h2m-29 1h1m2 0h2m1 0h5m1 0h4m8 0h3m-26 1h3m1 0h1m2 0h1m4 0h2m7 0h1m1 0h1m1 0h1m1 0h1m-29 1h2m3 0h2m1 0h1m2 0h2m1 0h1m2 0h2m1 0h1m2 0h1m1 0h2m-27 1h1m1 0h1m5 0h2m5 0h6m1 0h3m1 0h3m-29 1h2m2 0h3m2 0h1m2 0h4m3 0h1m1 0h1m1 0h3m2 0h1m-29 1h1m1 0h1m1 0h1m3 0h2m4 0h1m4 0h2m3 0h1m-25 1h1m1 0h2m2 0h2m2 0h3m2 0h1m1 0h1m1 0h6m1 0h3m-21 1h1m2 0h1m1 0h1m1 0h1m1 0h2m1 0h1m3 0h2m-26 1h7m2 0h2m1 0h4m2 0h3m1 0h1m1 0h3m-27 1h1m5 0h1m3 0h1m1 0h2m2 0h1m2 0h2m3 0h1m3 0h1m-29 1h1m1 0h3m1 0h1m3 0h1m2 0h1m1 0h1m3 0h7m1 0h2m-29 1h1m1 0h3m1 0h1m3 0h1m2 0h1m1 0h5m1 0h1m1 0h1m1 0h2m1 0h1m-29 1h1m1 0h3m1 0h1m3 0h4m1 0h3m1 0h9m-28 1h1m5 0h1m2 0h1m2 0h1m2 0h2m1 0h1m2 0h6m1 0h1m-29 1h7m1 0h2m1 0h2m2 0h3m1 0h1m4 0h1m1 0h1"/></g></svg></div><h3>Téléphone</h3><a class="lnk" id="lnkPhone" href="https://app.7themotion.com/install">app.7themotion.com/install</a></div>
+    <div class="qr-box"><div class="qr-tile"><svg width="165" height="165" class="segno"><g transform="scale(5)"><path fill="#fff" d="M0 0h33v33h-33z"/><path class="qrline" stroke="#000" d="M2 2.5h7m2 0h1m1 0h5m2 0h1m1 0h1m1 0h7m-29 1h1m5 0h1m1 0h2m1 0h1m3 0h1m1 0h1m4 0h1m5 0h1m-29 1h1m1 0h3m1 0h1m1 0h3m3 0h1m1 0h1m1 0h3m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m1 0h3m3 0h4m1 0h2m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m5 0h4m2 0h3m1 0h1m1 0h3m1 0h1m-29 1h1m5 0h1m2 0h2m2 0h2m2 0h2m1 0h1m1 0h1m5 0h1m-29 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-21 1h1m1 0h4m5 0h2m-21 1h1m5 0h1m1 0h1m1 0h2m2 0h2m1 0h1m1 0h1m1 0h2m2 0h3m-28 1h3m1 0h2m3 0h1m4 0h1m1 0h4m1 0h1m2 0h1m1 0h2m-28 1h2m1 0h1m1 0h4m2 0h1m3 0h1m1 0h1m2 0h1m-21 1h1m1 0h1m6 0h4m1 0h1m1 0h1m4 0h3m1 0h1m-26 1h2m3 0h4m4 0h2m1 0h1m3 0h1m1 0h2m4 0h1m-28 1h2m1 0h2m1 0h1m4 0h11m1 0h1m2 0h2m-29 1h1m2 0h2m1 0h5m1 0h4m8 0h3m-26 1h3m1 0h1m2 0h1m4 0h2m7 0h1m1 0h1m1 0h1m1 0h1m-29 1h2m3 0h2m1 0h1m2 0h2m1 0h1m2 0h2m1 0h1m2 0h1m1 0h2m-27 1h1m1 0h1m5 0h2m5 0h6m1 0h3m1 0h3m-29 1h2m2 0h3m2 0h1m2 0h4m3 0h1m1 0h1m1 0h3m2 0h1m-29 1h1m1 0h1m1 0h1m3 0h2m4 0h1m4 0h2m3 0h1m-25 1h1m1 0h2m2 0h2m2 0h3m2 0h1m1 0h1m1 0h6m1 0h3m-21 1h1m2 0h1m1 0h1m1 0h1m1 0h2m1 0h1m3 0h2m-26 1h7m2 0h2m1 0h4m2 0h3m1 0h1m1 0h3m-27 1h1m5 0h1m3 0h1m1 0h2m2 0h1m2 0h2m3 0h1m3 0h1m-29 1h1m1 0h3m1 0h1m3 0h1m2 0h1m1 0h1m3 0h7m1 0h2m-29 1h1m1 0h3m1 0h1m3 0h1m2 0h1m1 0h5m1 0h1m1 0h1m1 0h2m1 0h1m-29 1h1m1 0h3m1 0h1m3 0h4m1 0h3m1 0h9m-28 1h1m5 0h1m2 0h1m2 0h1m2 0h2m1 0h1m2 0h6m1 0h1m-29 1h7m1 0h2m1 0h2m2 0h3m1 0h1m4 0h1m1 0h1"/></g></svg></div><h3>Téléphone</h3><a class="lnk" id="lnkPhone" href="https://app.7themotion.com/install">app.7themotion.com/install</a><a class="lnk" id="lnkPlayPhone" href="https://play.google.com/store/apps/details?id=com.manzilionellm.tvking">Aussi sur Google Play</a></div>
     <div class="qr-box"><div class="qr-tile"><svg width="165" height="165" class="segno"><g transform="scale(5)"><path fill="#fff" d="M0 0h33v33h-33z"/><path class="qrline" stroke="#000" d="M2 2.5h7m3 0h1m5 0h1m2 0h2m1 0h7m-29 1h1m5 0h1m1 0h5m1 0h1m2 0h1m4 0h1m5 0h1m-29 1h1m1 0h3m1 0h1m1 0h2m1 0h2m1 0h3m3 0h1m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m3 0h3m4 0h4m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m3 0h2m2 0h1m2 0h1m1 0h1m2 0h1m1 0h3m1 0h1m-29 1h1m5 0h1m2 0h1m4 0h1m3 0h2m2 0h1m5 0h1m-29 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-18 1h1m2 0h2m1 0h1m2 0h1m-20 1h3m1 0h2m4 0h3m1 0h5m6 0h2m-28 1h1m4 0h1m2 0h1m3 0h1m1 0h2m1 0h1m1 0h1m1 0h2m1 0h3m1 0h1m-29 1h2m1 0h6m1 0h2m4 0h1m1 0h1m3 0h4m1 0h1m-26 1h1m2 0h1m3 0h1m2 0h3m4 0h2m2 0h2m3 0h1m-29 1h3m2 0h2m2 0h1m1 0h1m5 0h5m1 0h1m1 0h4m-28 1h2m2 0h1m4 0h1m1 0h1m2 0h1m1 0h3m2 0h2m1 0h2m1 0h1m-29 1h1m2 0h1m1 0h3m2 0h1m1 0h1m1 0h8m1 0h3m1 0h2m-24 1h1m1 0h1m3 0h2m1 0h1m3 0h1m2 0h2m1 0h2m-25 1h6m2 0h1m1 0h2m3 0h2m2 0h2m1 0h3m1 0h2m-25 1h1m2 0h1m2 0h1m1 0h2m2 0h1m3 0h1m2 0h1m-24 1h1m1 0h1m3 0h1m1 0h1m1 0h1m2 0h5m2 0h1m1 0h2m-22 1h4m1 0h1m1 0h1m1 0h4m2 0h3m1 0h2m1 0h4m-27 1h2m1 0h1m1 0h1m2 0h2m3 0h1m1 0h3m1 0h8m-20 1h1m3 0h1m3 0h1m3 0h1m3 0h2m1 0h2m-29 1h7m6 0h1m3 0h1m1 0h2m1 0h1m1 0h1m1 0h2m-28 1h1m5 0h1m1 0h3m1 0h1m3 0h1m3 0h1m3 0h1m2 0h2m-29 1h1m1 0h3m1 0h1m3 0h1m1 0h3m3 0h1m1 0h7m-27 1h1m1 0h3m1 0h1m1 0h1m1 0h2m1 0h1m2 0h2m1 0h1m4 0h1m2 0h1m-28 1h1m1 0h3m1 0h1m1 0h1m6 0h2m1 0h1m1 0h1m2 0h1m4 0h1m-29 1h1m5 0h1m1 0h2m3 0h2m1 0h1m1 0h1m1 0h2m2 0h2m1 0h1m-28 1h7m3 0h2m1 0h3m2 0h6m3 0h1"/></g></svg></div><h3>TV &amp; Box</h3><a class="lnk" id="lnkTv" href="https://app.7themotion.com/tv">app.7themotion.com/tv</a></div>
   </div>
   <p class="center lead" style="margin:26px auto 0;font-size:14px">Scannez, installez, regardez. Lien direct, sans publicité ni inscription.</p>
@@ -402,6 +404,7 @@ export function landingHtml() {
     <a class="btn btn-gold" id="dlPhone2" href="https://app.7themotion.com/install">Télécharger</a>
     <a class="btn btn-ghost" id="waBtn2" href="https://wa.me/18077888909">Parler à un conseiller</a>
   </div>
+  <p class="center" style="margin-top:16px;font-size:14px"><a id="playStoreCta" href="https://play.google.com/store/apps/details?id=com.manzilionellm.tvking" style="color:var(--gold)">Aussi sur Google Play</a></p>
 </div></section>
 
 <!-- Support VIP : discret, tout en bas -->
@@ -438,6 +441,9 @@ export function landingHtml() {
   ["dlPhone","dlPhone2"].forEach(function(id){ set(id,"href",C.appUrl); });
   set("lnkPhone","href",C.appUrl); set("lnkPhone","textContent",C.appUrl.replace("https://",""));
   set("lnkTv","href",C.tvUrl);     set("lnkTv","textContent",C.tvUrl.replace("https://",""));
+  if (C.playStoreUrl) {
+    ["playStoreHero","lnkPlayPhone","playStoreCta"].forEach(function(id){ set(id,"href",C.playStoreUrl); });
+  }
   set("footPrivacy","href",C.privacyUrl);
 
   var waGeneral = wa("Bonjour 👋 Je souhaite des renseignements sur 7 MOTION.");
