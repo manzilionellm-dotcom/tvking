@@ -227,40 +227,46 @@ function fakeDb(store) {
   return {
     prepare(sql) {
       const q = String(sql);
+      const exec = {
+        async first() {
+          if (/SELECT \* FROM families/.test(q) || /SELECT id, reseller_id/.test(q)) {
+            return store.family || null;
+          }
+          if (/SELECT token FROM family_links/.test(q)) {
+            return store.token ? { token: store.token } : null;
+          }
+          return null;
+        },
+        async all() {
+          if (/family_members/.test(q)) {
+            return { results: store.members || [] };
+          }
+          return { results: [] };
+        },
+        async run(...args) {
+          // D1 : prepare().bind(a,b).run() OU prepare().run() (ALTER sans params).
+          const a = args.length ? args : (this._binds || []);
+          if (/UPDATE families/.test(q)) {
+            store.family = {
+              ...(store.family || {}),
+              multi_mac_enabled: a[0],
+              multi_macs: a[1],
+            };
+          }
+          if (/INSERT INTO family_links/.test(q)) {
+            store.token = a[2];
+          }
+          return { success: true };
+        },
+      };
       return {
         bind(...args) {
-          return {
-            async first() {
-              if (/SELECT \* FROM families/.test(q) || /SELECT id, reseller_id/.test(q)) {
-                return store.family || null;
-              }
-              if (/SELECT token FROM family_links/.test(q)) {
-                return store.token ? { token: store.token } : null;
-              }
-              return null;
-            },
-            async all() {
-              if (/family_members/.test(q)) {
-                return { results: store.members || [] };
-              }
-              return { results: [] };
-            },
-            async run() {
-              if (/UPDATE families/.test(q)) {
-                store.family = {
-                  ...(store.family || {}),
-                  multi_mac_enabled: args[0],
-                  multi_macs: args[1],
-                };
-              }
-              if (/INSERT INTO family_links/.test(q)) {
-                store.token = args[2];
-              }
-              if (/ALTER TABLE/.test(q)) { /* no-op */ }
-              return { success: true };
-            },
-          };
+          exec._binds = args;
+          return exec;
         },
+        first: () => exec.first(),
+        all: () => exec.all(),
+        run: () => exec.run(),
       };
     },
   };

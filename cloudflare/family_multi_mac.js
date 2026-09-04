@@ -310,8 +310,12 @@ export async function refreshUpstreamIfExpired(
   try {
     const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (_) {} }, 15000) : null;
-    const resp = await fetchFn(url, ctrl ? { signal: ctrl.signal } : {});
-    if (timer) clearTimeout(timer);
+    let resp;
+    try {
+      resp = await fetchFn(url, ctrl ? { signal: ctrl.signal } : {});
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     if (!resp || (typeof resp.ok === 'boolean' && !resp.ok) || (resp.status && resp.status >= 400)) {
       const status = resp && resp.status ? resp.status : 0;
       if (cacheEntry && cacheEntry.m3u) {
