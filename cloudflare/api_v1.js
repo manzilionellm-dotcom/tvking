@@ -1639,23 +1639,35 @@ async function handleInsights(env) {
 //  APPS HANDLERS
 // =========================================================
 
-// Seed automatique de l'app DeFew TV (version télévision). Idempotent :
-// créée une seule fois, puis modifiable normalement dans la page Apps.
-// package_name distinct (.tv) car UNIQUE et différent du mobile.
+// Seed automatique de l'app TV officielle (affichage « 7 MOTION TV »).
+// Idempotent : créée une seule fois, puis modifiable dans la page Apps.
+// package_name distinct (.tv) — FROZEN, jamais renommé.
 async function ensureDefewTvApp(env) {
   try {
-    const exists = await env.DB
-      .prepare("SELECT id FROM apps WHERE id = 'app_thefew_tv'").first();
-    if (exists) return;
     const now = Date.now();
+    const exists = await env.DB
+      .prepare("SELECT id, name FROM apps WHERE id = 'app_thefew_tv'").first();
+    if (!exists) {
+      await env.DB.prepare(
+        `INSERT INTO apps
+          (id, name, package_name, primary_color, default_playlist_type,
+           download_url, is_active, created_at, updated_at)
+         VALUES ('app_thefew_tv', '7 MOTION TV', 'com.manzilionellm.tvking.tv',
+                 '#D63A30', 'xtream', 'https://app.7themotion.com/tv',
+                 1, ?, ?)`,
+      ).bind(now, now).run();
+    } else if (/^defew(\s*tv)?$/i.test(String(exists.name || '').trim())) {
+      // Display name only — package_name frozen.
+      await env.DB.prepare(
+        `UPDATE apps SET name = '7 MOTION TV', updated_at = ?
+         WHERE id = 'app_thefew_tv'`,
+      ).bind(now).run();
+    }
+    // Seed historique « 7 MOTION » → affichage « The Few ».
     await env.DB.prepare(
-      `INSERT INTO apps
-        (id, name, package_name, primary_color, default_playlist_type,
-         download_url, is_active, created_at, updated_at)
-       VALUES ('app_thefew_tv', 'DeFew TV', 'com.manzilionellm.tvking.tv',
-               '#D63A30', 'xtream', 'https://app.7themotion.com/tv',
-               1, ?, ?)`,
-    ).bind(now, now).run();
+      `UPDATE apps SET name = 'The Few', updated_at = ?
+       WHERE id = 'app_7motion' AND name = '7 MOTION'`,
+    ).bind(now).run();
   } catch (_) {
     // table absente / colonnes différentes → on n'empêche pas la liste.
   }

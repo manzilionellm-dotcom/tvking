@@ -54,7 +54,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-  // Plateforme éditée : 📱 mobile (The Few) ou 📺 tv (DeFew TV).
+  // Plateforme éditée : 📱 mobile (The Few) ou 📺 tv (7 MOTION TV).
   const [platform, setPlatform] = useState<'mobile' | 'tv'>('mobile');
 
   function fail(e: any) {
@@ -96,7 +96,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
     setBusy(true); setErr(null); setOk(null);
     try {
       await themeApi.save({ appName: appName.trim(), accent: a, bg }, platform);
-      const who = platform === 'tv' ? 'DeFew TV' : 'The Few (mobile)';
+      const who = platform === 'tv' ? '7 MOTION TV' : 'The Few (mobile)';
       setOk(`✅ Thème ${who} enregistré. L'app s'adapte à sa prochaine ouverture.`);
     } catch (e) { fail(e); } finally { setBusy(false); }
   }

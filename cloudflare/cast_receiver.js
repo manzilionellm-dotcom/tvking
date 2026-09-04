@@ -47,10 +47,10 @@
 // =========================================================
 
 export function castReceiverHtml(flavor) {
-  // Par defaut on prend le branding 7 MOTION ; ?app=redroom bascule
-  // sur le velours / le R rouge.
+  // Par defaut : The Few (grand public). ?app=redroom → Privé (adulte).
+  // Le query param reste (compat Cast Console) ; seul l'affichage change.
   const isRedRoom = flavor === 'redroom';
-  const appName = isRedRoom ? 'Red Room' : '7 MOTION';
+  const appName = isRedRoom ? 'Privé' : 'The Few';
   const accent = '#D63A30'; // ember partage
   const bg = isRedRoom ? '#08060A' : '#0A0A0C';
   const logoUrl = isRedRoom
