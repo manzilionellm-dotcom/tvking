@@ -64,6 +64,14 @@
 // le changement (`changed{scope}`). TOUJOURS fail-open : si le Durable
 // Object n'est pas déployé, publishRt renvoie {delivered:0} sans erreur.
 import { publishRt } from './realtime.js';
+// Ligne M3U unique partagée (multi-MAC) — helpers autonomes, voir
+// cloudflare/family_multi_mac.js + docs/INTEGRATION_FAMILY_MULTI_MAC.md.
+import {
+  ensureFamilyMultiMac,
+  ensureFamilyLinkToken,
+  enableSharedM3uLine,
+  sharedM3uSource,
+} from './family_multi_mac.js';
 
 // ---------------------------------------------------------
 //  Helpers reponse
@@ -803,6 +811,7 @@ async function apiV1Inner(request, env) {
       return errResp('forbidden', 'Ton compte n\'a pas le droit de gérer des familles.', 403);
     }
     await ensureFamiliesTables(env);
+    await ensureFamilyMultiMac(env);
     if (parts.length === 1) {
       if (request.method === 'GET') return handleFamiliesList(env, a.user);
       if (request.method === 'POST') return handleFamiliesCreate(request, env, actor, a.user);
@@ -824,6 +833,11 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 4 && parts[2] === 'links' && request.method === 'DELETE') {
       return handleFamilyDeleteLink(env, parts[1], parts[3], actor);
+    }
+    // Ligne M3U unique (multi-MAC) : toggle + CSV. PUT ou POST.
+    if (parts.length === 3 && parts[2] === 'multi-mac'
+        && (request.method === 'PUT' || request.method === 'POST')) {
+      return handleFamilyEnableMultiMac(request, env, a.user, actor, parts[1]);
     }
   }
 
@@ -3004,6 +3018,9 @@ function _familyRowToJson(row, { hidePassword = true } = {}) {
     reseller_id: row.reseller_id || null,
     created_at: row.created_at || 0,
     updated_at: row.updated_at || 0,
+    // Champs additifs multi-MAC (absents / 0 = comportement actuel).
+    multi_mac_enabled: Number(row.multi_mac_enabled) === 1,
+    multi_macs: row.multi_macs || '',
   };
 }
 
@@ -3164,7 +3181,80 @@ async function handleFamilyAddMember(request, env, user, actor, familyId) {
 
   await logAudit(env, request, actor, 'family.member.add',
     { type: 'family', id: familyId }, null, { mac, label: body.label || null });
+
+  // Branche multi-MAC (additive, fail-open) : si le toggle est ON, on
+  // écrase la source Xtream directe par le lien M3U partagé
+  // /api/m3u/{token} — le fournisseur ne voit plus cette MAC en direct.
+  try {
+    if (Number(fam.multi_mac_enabled) === 1) {
+      let origin = '';
+      try { origin = new URL(request.url).origin; } catch (_) { origin = ''; }
+      const token = await ensureFamilyLinkToken(env, familyId, genId);
+      if (token && origin) {
+        await upsertDeviceSource(env, mac, [sharedM3uSource(origin, token, fam.name)]);
+      }
+    }
+  } catch (_) { /* le membre est déjà ajouté avec la source famille */ }
+
   return jsonResp({ ok: true, family_id: familyId, mac, label: body.label || null }, 201);
+}
+
+/// PUT /api/v1/families/:id/multi-mac
+/// { mac_csv, multi_mac_enabled } — branche mince : auth + ownership,
+/// puis enableSharedM3uLine (module NEW). N'existe pas = 404 famille.
+async function handleFamilyEnableMultiMac(request, env, user, actor, familyId) {
+  let body;
+  try { body = await request.json(); } catch (_) { body = {}; }
+  const fam = await env.DB.prepare('SELECT id, reseller_id FROM families WHERE id = ?')
+    .bind(familyId).first();
+  if (!fam) return errResp('not_found', 'Family not found', 404);
+  if (user.role === 'reseller' && fam.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Not your family', 403);
+  }
+  let origin = '';
+  try { origin = new URL(request.url).origin; } catch (_) { origin = ''; }
+  const enabled = !!(body.multi_mac_enabled || body.enabled);
+  const macCsv = (body.mac_csv != null ? body.mac_csv : (body.multi_macs || '')).toString();
+
+  const result = await enableSharedM3uLine(env, {
+    familyId,
+    macCsv,
+    multiMacEnabled: enabled,
+    origin,
+    deps: {
+      upsertDeviceSource,
+      genId,
+      // Réutilise le chemin existant (licence + membre + source famille),
+      // ensuite enableSharedM3uLine écrase la source par le M3U partagé.
+      activateMember: async (mac) => {
+        const req = new Request(request.url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ mac, label: 'multi-mac' }),
+        });
+        return handleFamilyAddMember(req, env, user, actor, familyId);
+      },
+    },
+  });
+  if (!result.ok && result.error === 'not_found') {
+    return errResp('not_found', result.message || 'Family not found', 404);
+  }
+  if (!result.ok && (result.error === 'bad_mac' || result.error === 'too_many_macs')) {
+    return errResp(result.error, result.message || 'Invalid MAC list', 400);
+  }
+  await logAudit(env, request, actor, enabled ? 'family.multi_mac.on' : 'family.multi_mac.off',
+    { type: 'family', id: familyId }, null,
+    { enabled, macs: result.macs || [], token: result.token || null });
+  return jsonResp({
+    ok: true,
+    family_id: familyId,
+    multi_mac_enabled: !!result.multi_mac_enabled,
+    macs: result.macs || [],
+    token: result.token || null,
+    m3u_url: result.m3u_url || null,
+    activated: result.activated || [],
+    errors: result.errors || [],
+  });
 }
 
 async function handleFamilyRemoveMember(env, familyId, mac, actor) {

@@ -118,6 +118,9 @@ function mapErr(code) {
 // ---- Handlers ----------------------------------------------------------
 
 async function handleLive(streamId, ext, req, res, user) {
+  // Multi-MAC panel : user.panelFamily a maxStreams élevé, mais le hub
+  // (ci-dessous) n'ouvre qu'UNE connexion fournisseur par streamId —
+  // N télés sur la même chaîne = 1 live/user/pass amont (max_connections=1).
   const sess = acquireSession(user);
   if (!sess.ok) {
     metrics.inc('gw_rejected_session_total', 1, { reason: sess.code });
@@ -193,6 +196,12 @@ async function handlePlayerApi(url, res) {
       if (json.user_info) {
         json.user_info.username = user.username;
         json.user_info.password = user.password;
+        // Famille panel multi-MAC : la ligne fournisseur a max_connections=1
+        // mais N clients partagent UN flux via hub.subscribe. On annonce
+        // un plafond client honnête (écrans), pas la limite amont.
+        if (user.panelFamily) {
+          json.user_info.max_connections = String(user.maxStreams || 12);
+        }
       }
       return sendJson(res, 200, json);
     }
@@ -230,6 +239,8 @@ async function handleGetPhp(url, res) {
     'cache-control': 'no-cache',
   });
   const rewrite = makeM3URewriter(user.username, user.password);
+  // panelFamily : username=password=token 32 hex → les URLs deviennent
+  // /live/{token}/{token}/{id}.ts (même contrat que le Worker en mode gateway).
   // Pas de réécriture requise (pas de PUBLIC_BASE) → passthrough direct.
   if (!rewrite) { up.body.pipe(res); return; }
   // Réécriture ligne par ligne EN STREAMING : mémoire bornée (une ligne

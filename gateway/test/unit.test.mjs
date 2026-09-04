@@ -53,3 +53,21 @@ test('rewriteM3U — masque la ligne réelle', () => {
   assert.ok(out.includes('username=papa'));
   assert.ok(out.includes('password=secret'));
 });
+
+const { authenticate, isPanelFamilyToken } = await import('../src/users.js');
+
+test('isPanelFamilyToken — 32 hex, username === password', () => {
+  const tok = 'aabbccddeeff00112233445566778899';
+  assert.equal(isPanelFamilyToken(tok, tok), true);
+  assert.equal(isPanelFamilyToken(tok, 'other'), false);
+  assert.equal(isPanelFamilyToken('papa', 'pw'), false);
+});
+
+test('authenticate — jeton famille panel (virtuel, pas users.json)', () => {
+  const tok = 'aabbccddeeff00112233445566778899';
+  const u = authenticate(tok, tok);
+  assert.ok(u);
+  assert.equal(u.panelFamily, true);
+  assert.equal(u.maxStreams, 100);
+  assert.equal(authenticate(tok, 'nope'), null);
+});
