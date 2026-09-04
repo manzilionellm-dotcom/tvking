@@ -253,12 +253,19 @@ INSERT OR IGNORE INTO apps
    default_iptv_server, default_playlist_type, pricing_json,
    is_active, created_at, updated_at)
 VALUES
-  ('app_7motion', '7 MOTION', 'com.manzilionellm.tvking',
+  ('app_7motion', 'The Few', 'com.manzilionellm.tvking',
    '#D63A30', 'THE FEW · NOT FOR EVERYONE',
    'http://pro.best-iptvinreviews.com', 'xtream',
    '{"monthly":500,"yearly":1300,"lifetime":9900}',
    1, strftime('%s','now') * 1000, strftime('%s','now') * 1000);
   -- (Variante Red Room retirée du projet : plus de seed.)
+
+-- Display names only. Package IDs frozen. No-op if an admin already
+-- customized the name away from the old brand strings.
+UPDATE apps SET name = 'The Few'
+  WHERE id = 'app_7motion' AND name IN ('7 MOTION', 'BLACK7 ROYAL', 'BLACK7');
+UPDATE apps SET name = '7 MOTION TV'
+  WHERE id = 'app_thefew_tv' AND name IN ('DeFew TV', 'DeFew');
 
 -- =========================================================
 -- RESELLER CREDITS — Phase reseller-panel

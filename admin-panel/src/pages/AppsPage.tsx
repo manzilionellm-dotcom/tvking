@@ -24,15 +24,16 @@ export function AppsPage({ onLogout }: { onLogout: () => void }) {
 
   useEffect(reload, [onLogout]);
 
-  // Les ANCIENNES variantes retirées (Red Room, 7 MOTION TV/NOVA) restent
-  // cachées. MAIS la nouvelle app TV officielle « DeFew TV » doit, elle,
-  // apparaître (on l'autorise explicitement par id/nom).
+  // Variantes retirées (Red Room, NOVA) restent cachées.
+  // L'app TV officielle (id app_thefew_tv, affichage « 7 MOTION TV »)
+  // reste visible. Les IDs package ne sont jamais renommés.
   const REMOVED = /redroom|red\s*room|sevenmotion\.tv|seven-?tv|nova/i;
-  const isDefewTv = (a: App) =>
-    a.id === 'app_thefew_tv' || /defew\s*tv/i.test(a.name || '');
+  const isOfficialTv = (a: App) =>
+    a.id === 'app_thefew_tv' ||
+    /defew\s*tv|7\s*motion\s*tv/i.test(a.name || '');
   const visible = items.filter(
     (a) =>
-      isDefewTv(a) ||
+      isOfficialTv(a) ||
       (!REMOVED.test(a.package_name || '') && !REMOVED.test(a.name || '')),
   );
 

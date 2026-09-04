@@ -884,7 +884,7 @@ const ADMIN_PANEL_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>BLACK7 ROYAL — Panel admin</title>
+  <title>The Few — Panel admin</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1092,7 +1092,7 @@ const ADMIN_PANEL_HTML = `<!doctype html>
   </style>
 </head>
 <body>
-  <h1>BLACK7 ROYAL</h1>
+  <h1>The Few</h1>
   <div class="tagline">PANEL ADMIN</div>
 
   <!-- ===== ÉCRAN LOGIN ===== -->
@@ -6662,26 +6662,28 @@ async function handleRequest(request, env, ctx) {
     }
 
     // /tv, /defewtv, /tvbox, /defew + CODES COURTS MÉMORABLES (/777, /7777,
-    // /tv7) — alias de téléchargement DIRECT de l'APK DeFew TV (version TV).
+    // /tv7) — alias de téléchargement DIRECT de l'APK TV (7 MOTION TV).
     // TV_APK_URL pointe sur le tag `tv-latest` → TOUJOURS la dernière version.
-    // Lien propre à coller dans Downloader. Fichier « DeFewTV.apk ».
+    // Lien propre à coller dans Downloader. Fichier « TheFew-TV.apk ».
+    // Les alias /defewtv et /defew restent (compat Downloader) ; le nom
+    // affiché du fichier, lui, suit le canon The Few.
     if (
       segments.length === 1 &&
       ['tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7']
           .includes(segments[0].toLowerCase())
     ) {
-      return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
+      return proxyApk(TV_APK_URL, 'TheFew-TV.apk', url.searchParams.get('v'));
     }
 
     // /test, /demo, /beta — APK de TEST TV (prérelease « cinema-test »,
     // signé clé maîtresse). Lien propre à donner/coller dans Downloader
-    // SANS exposer GitHub. Fichier « DeFewTV-test.apk ». Sert TOUJOURS le
+    // SANS exposer GitHub. Fichier « TheFew-TV-test.apk ». Sert TOUJOURS le
     // dernier build de test publié (tag cinema-test écrasé à chaque publish).
     if (
       segments.length === 1 &&
       ['test', 'demo', 'beta'].includes(segments[0].toLowerCase())
     ) {
-      return proxyApk(CINEMA_TEST_APK_URL, 'DeFewTV-test.apk', url.searchParams.get('v'));
+      return proxyApk(CINEMA_TEST_APK_URL, 'TheFew-TV-test.apk', url.searchParams.get('v'));
     }
 
     // /fone, /phone-test, /tel — APK de TEST TÉLÉPHONE (prérelease
@@ -6795,8 +6797,8 @@ async function handleRequest(request, env, ctx) {
 
     // /cast-receiver — page HTML CAF pour Google Cast Custom Receiver.
     // URL a coller dans la Google Cast SDK Developer Console.
-    // Query string ?app=redroom bascule le branding sur Red Room ;
-    // sans query string, c'est le branding BLACK7 ROYAL par defaut.
+    // Query string ?app=redroom : affichage « Privé » (adulte).
+    // Sans query string : « The Few ».
     if (segments.length === 1 && segments[0] === 'cast-receiver') {
       const flavor = url.searchParams.get('app') || '7motion';
       return new Response(castReceiverHtml(flavor), {
