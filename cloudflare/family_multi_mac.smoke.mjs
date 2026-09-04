@@ -21,6 +21,13 @@ import {
   refreshUpstreamIfExpired,
   buildMultiMacM3u,
   enableSharedM3uLine,
+  rewriteM3uThroughProxy,
+  familyStreamUpstreamUrl,
+  sharedUpstreamFetch,
+  _clearSharedUpstream,
+  _sharedUpstreamOpens,
+  familyMediaShareKey,
+  m3uFromLiveStreams,
   UPSTREAM_TTL_MS,
   _clearUpstreamCache,
   _cacheGet,
@@ -323,5 +330,103 @@ assert.equal(pushed.length, 2);
 assert.equal(pushed[0].sources[0].type, 'm3u');
 assert.ok(pushed[0].sources[0].m3u_url.includes('/api/m3u/'));
 ok('toggle ON → activateMember (chemin existant) + source = /api/m3u/{token}');
+
+// --- Réécriture proxy : plus d'hôte fournisseur dans le M3U ON -------------
+
+const PROVIDER = 'tv.business-cloud-8.ru';
+const rawProv =
+  '#EXTM3U\n' +
+  '#EXTINF:-1,A\n' +
+  `http://${PROVIDER}:80/live/u/p/101.ts\n` +
+  '#EXTINF:-1,B\n' +
+  `http://${PROVIDER}:80/live/u/p/202.m3u8\n`;
+
+const rwWorker = rewriteM3uThroughProxy(rawProv, {
+  proxyBase: 'https://app.example',
+  token: 'tokabc',
+  mode: 'worker',
+});
+assert.ok(!rwWorker.includes(PROVIDER), 'hôte fournisseur absent (mode worker)');
+assert.ok(rwWorker.includes('https://app.example/api/m3u/tokabc/live/101.ts'));
+assert.ok(rwWorker.includes('https://app.example/api/m3u/tokabc/live/202.m3u8'));
+assert.ok(!/\/live\/u\/p\//.test(rwWorker), 'creds fournisseur absents des chemins');
+ok('rewrite worker : URLs sur notre hôte /api/m3u/{token}/live/…');
+
+const rwGw = rewriteM3uThroughProxy(rawProv, {
+  proxyBase: 'https://gw.example',
+  token: 'aabbccddeeff00112233445566778899',
+  mode: 'gateway',
+});
+assert.ok(!rwGw.includes(PROVIDER), 'hôte fournisseur absent (mode gateway)');
+assert.ok(rwGw.includes('https://gw.example/live/aabbccddeeff00112233445566778899/aabbccddeeff00112233445566778899/101.ts'));
+ok('rewrite gateway : /live/{token}/{token}/{id}.ts (parseStreamPath + hub)');
+
+const up = familyStreamUpstreamUrl(
+  { type: 'xtream', server_url: `http://${PROVIDER}`, username: 'u', password: 'p' },
+  'live', '101', 'ts',
+);
+assert.equal(up, `http://${PROVIDER}/live/u/p/101.ts`);
+ok('familyStreamUpstreamUrl reconstruit le live amont (côté proxy seulement)');
+
+const synth = m3uFromLiveStreams(
+  [{ stream_id: 7, name: 'Demo' }],
+  { server_url: `http://${PROVIDER}`, username: 'u', password: 'p' },
+);
+assert.ok(synth.includes('#EXTM3U'));
+assert.ok(synth.includes(`/live/u/p/7.ts`));
+ok('m3uFromLiveStreams : repli player_api → M3U (ensuite réécrit)');
+
+_clearUpstreamCache();
+const famProv = {
+  id: 'fam_proxy',
+  source_json: JSON.stringify({
+    type: 'xtream',
+    server_url: `http://${PROVIDER}`,
+    username: 'u',
+    password: 'p',
+  }),
+};
+const fakeProvM3u = async () => ({
+  ok: true, status: 200, text: async () => rawProv,
+});
+const builtOn = await buildMultiMacM3u(null, famProv, {
+  now: Date.now(),
+  fetchFn: fakeProvM3u,
+  token: 'tokabc',
+  proxyBase: 'https://app.example',
+  proxyMode: 'worker',
+});
+assert.ok(!builtOn.m3u.includes(PROVIDER), 'M3U servi : pas d\'hôte fournisseur');
+assert.ok(builtOn.m3u.includes('https://app.example/api/m3u/tokabc/live/101.ts'));
+assert.ok(builtOn.raw.includes(PROVIDER), 'M3U brut amont conservé en cache interne');
+ok('buildMultiMacM3u ON + proxyBase → playlist sur notre hôte');
+
+// --- Fan-out segments : N clients concurrents = 1 fetch amont --------------
+
+_clearSharedUpstream();
+let segFetches = 0;
+const openSeg = async () => {
+  segFetches += 1;
+  return {
+    status: 200,
+    headers: { 'content-type': 'video/mp2t', 'content-length': '6' },
+    arrayBuffer: async () => new Uint8Array([1, 2, 3, 4, 5, 6]).buffer,
+  };
+};
+const key = familyMediaShareKey('fam_proxy', 'live', '101', 'ts');
+const nClients = 8;
+const results = await Promise.all(
+  Array.from({ length: nClients }, () => sharedUpstreamFetch(key, openSeg)),
+);
+assert.equal(results.length, nClients);
+assert.equal(segFetches, 1, 'N pulls concurrents → 1 openFn');
+assert.equal(_sharedUpstreamOpens(key), 1);
+assert.ok(results.every((r) => r.status === 200 && r.body && r.body.byteLength === 6));
+ok('N requêtes segment concurrentes = 1 fetch amont (fan-out)');
+
+const again = await sharedUpstreamFetch(key, openSeg);
+assert.equal(segFetches, 1, 'dans la fenêtre TTL : toujours 1');
+assert.equal(again.body.byteLength, 6);
+ok('rejeu dans le TTL : toujours 1 fetch amont');
 
 console.log(`\n${n} assertions OK — ligne M3U unique (multi-MAC) validée.`);

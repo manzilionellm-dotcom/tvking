@@ -93,12 +93,39 @@ async function persist(file = config.usersFile) {
   await rename(tmp, file);
 }
 
+/** Jeton family_links du panel (32 hex, UUID sans tirets). Le Worker
+ *  réécrit le M3U en `/live/{token}/{token}/{id}.ts` : la passerelle
+ *  reconnaît ce couple comme un utilisateur virtuel (pas dans users.json).
+ *  Le hub mutualise toujours par streamId → N clients = 1 connexion amont. */
+export function isPanelFamilyToken(username, password) {
+  const u = String(username || '');
+  const p = String(password || '');
+  if (!u || u !== p) return false;
+  return /^[0-9a-f]{32}$/i.test(u);
+}
+
 /** Vérifie un couple identifiant/mot de passe. Renvoie l'utilisateur ou null. */
 export function authenticate(username, password) {
   const u = byUsername.get(String(username || ''));
-  if (!u) return null;
-  if (!safeEqual(u.password, password)) return null;
-  return u;
+  if (u) {
+    if (!safeEqual(u.password, password)) return null;
+    return u;
+  }
+  // Branche multi-MAC panel (additive) : token = username = password.
+  if (isPanelFamilyToken(username, password)) {
+    const BFAM = '__panel_family__';
+    if (!familyIndex.has(BFAM)) {
+      familyIndex.set(BFAM, { id: BFAM, maxStreams: 100 });
+    }
+    return {
+      username: String(username),
+      password: String(password),
+      familyId: BFAM,
+      maxStreams: 100,
+      panelFamily: true,
+    };
+  }
+  return null;
 }
 
 export function getFamily(familyId) {

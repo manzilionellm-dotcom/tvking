@@ -9,17 +9,18 @@
 //  Produit (rappel) :
 //    • Toggle OFF → le Worker continue de 302 vers get.php / URL M3U
 //      (zéro régression, c'est le comportement actuel).
-//    • Toggle ON  → /api/m3u/{token} sert UN M3U généré, alimenté
-//      par UNE seule session amont (credentials source_json de la
-//      famille). N appareils (10–12 MAC) s'authentifient chacun
-//      avec leur MAC mais voient le même flux fournisseur.
-//    • Les device_sources des MAC pointent vers /api/m3u/{token}
-//      (M3U partagé) et NON vers get.php direct.
+//    • Toggle ON  → /api/m3u/{token} sert UN M3U dont les URLs MÉDIA
+//      pointent vers NOTRE proxy (Worker /api/m3u/{token}/live/… ou
+//      Gateway /live/{token}/{token}/…), JAMAIS vers live/user/pass
+//      chez le fournisseur. N clients d'une même chaîne = UNE connexion
+//      amont (hub sharedUpstreamFetch / gateway hub.subscribe).
+//    • Les device_sources des MAC pointent vers /api/m3u/{token}.
 //
 //  Helpers exportés (contrat produit) :
 //    parseBulkMacs, ensureFamilyMultiMac, ensureFamilyLinkToken,
 //    enableSharedM3uLine, buildMultiMacM3u, refreshUpstreamIfExpired,
-//    interceptFamilyProfile, sharedM3uSource.
+//    interceptFamilyProfile, sharedM3uSource, rewriteM3uThroughProxy,
+//    sharedUpstreamFetch, familyStreamUpstreamUrl.
 // =========================================================
 
 /// Plafond produit : l'admin colle 10–12 MAC. Au-delà on refuse.
@@ -28,6 +29,14 @@ export const MULTI_MAC_MAX = 12;
 /// Durée de vie du cache M3U amont (ms). Assez court pour rattraper
 /// un token qui expire, assez long pour ne pas marteler le fournisseur.
 export const UPSTREAM_TTL_MS = 4 * 60 * 1000;
+
+/// Fenêtre pendant laquelle N clients d'un MÊME segment/flux partagent
+/// UN fetch amont (fan-out). Assez long pour un GOP HLS, assez court
+/// pour un zapping.
+export const STREAM_SHARE_TTL_MS = 8 * 1000;
+
+/// UA lecteur : certains panels IPTV refusent un UA « cloud / datacenter ».
+export const UPSTREAM_PLAYER_UA = 'VLC/3.0.18 LibVLC/3.0.18';
 
 /// On rafraîchit UN PEU avant l'échéance d'un token signé (30 s).
 const TOKEN_REFRESH_SKEW_MS = 30 * 1000;
@@ -172,14 +181,15 @@ export function interceptFamilyProfile(request, familyRow) {
   try { path = new URL(request.url).pathname || ''; } catch (_) { path = ''; }
   const isFamilyM3u = /\/api\/m3u\//i.test(path);
   const isPlayerApi = /player_api\.php$/i.test(path);
-  if (!isFamilyM3u && !isPlayerApi) {
+  const isGwLive = /\/(live|movie|series)\//i.test(path);
+  if (!isFamilyM3u && !isPlayerApi && !isGwLive) {
     return { intercept: false, reason: 'not_profile_route', path };
   }
   return {
     intercept: true,
     familyId: familyRow.id || null,
     path,
-    reason: isFamilyM3u ? 'family_m3u' : 'player_api',
+    reason: isFamilyM3u ? 'family_m3u' : (isPlayerApi ? 'player_api' : 'gw_live'),
   };
 }
 
@@ -294,8 +304,8 @@ export async function refreshUpstreamIfExpired(
   fetchFn = fetch,
 ) {
   const src = parseFamilySource(sourceJson);
-  const url = upstreamM3uUrlFromSource(src);
-  if (!url) {
+  const urlHint = playerApiLiveUrlFromSource(src) || upstreamM3uUrlFromSource(src);
+  if (!urlHint) {
     return { error: 'source incomplète', m3u: null, refreshed: false };
   }
   if (isUpstreamCacheFresh(cacheEntry, now)) {
@@ -304,20 +314,12 @@ export async function refreshUpstreamIfExpired(
       fetchedAt: cacheEntry.fetchedAt,
       expiresAt: cacheEntry.expiresAt || null,
       refreshed: false,
-      url,
+      url: urlHint,
     };
   }
   try {
-    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (_) {} }, 15000) : null;
-    let resp;
-    try {
-      resp = await fetchFn(url, ctrl ? { signal: ctrl.signal } : {});
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-    if (!resp || (typeof resp.ok === 'boolean' && !resp.ok) || (resp.status && resp.status >= 400)) {
-      const status = resp && resp.status ? resp.status : 0;
+    const loaded = await loadFamilyUpstreamM3u(src, fetchFn);
+    if (loaded.error || !loaded.m3u) {
       if (cacheEntry && cacheEntry.m3u) {
         return {
           m3u: cacheEntry.m3u,
@@ -325,24 +327,17 @@ export async function refreshUpstreamIfExpired(
           expiresAt: cacheEntry.expiresAt || null,
           refreshed: false,
           stale: true,
-          url,
+          url: urlHint,
         };
       }
-      return { error: `amont HTTP ${status || 'erreur'}`, m3u: null, refreshed: false, url };
+      return { error: loaded.error || 'playlist amont vide', m3u: null, refreshed: false, url: urlHint };
     }
-    const m3u = await resp.text();
-    if (!m3u || !String(m3u).trim()) {
-      if (cacheEntry && cacheEntry.m3u) {
-        return { ...cacheEntry, refreshed: false, stale: true, url };
-      }
-      return { error: 'playlist amont vide', m3u: null, refreshed: false, url };
-    }
+    const m3u = loaded.m3u;
     const tokenExp = earliestTokenExpiryMs(m3u);
     const fetchedAt = now;
-    // expiresAt = min(token, TTL). Si pas de token, le TTL seul compte.
     const ttlExp = fetchedAt + UPSTREAM_TTL_MS;
     const expiresAt = tokenExp ? Math.min(tokenExp, ttlExp) : ttlExp;
-    return { m3u, fetchedAt, expiresAt, refreshed: true, url };
+    return { m3u, fetchedAt, expiresAt, refreshed: true, url: loaded.url || urlHint };
   } catch (e) {
     if (cacheEntry && cacheEntry.m3u) {
       return {
@@ -351,20 +346,249 @@ export async function refreshUpstreamIfExpired(
         expiresAt: cacheEntry.expiresAt || null,
         refreshed: false,
         stale: true,
-        url,
+        url: urlHint,
       };
     }
     return {
       error: 'amont injoignable',
       m3u: null,
       refreshed: false,
-      url,
+      url: urlHint,
     };
   }
 }
 
+/// URL player_api get_live_streams (souvent OK depuis un datacenter
+/// alors que get.php répond 884). Sert à reconstruire le M3U.
+export function playerApiLiveUrlFromSource(src) {
+  if (!src || src.type !== 'xtream' || !src.server_url || !src.username || !src.password) {
+    return null;
+  }
+  const base = String(src.server_url).replace(/\/+$/, '');
+  const u = encodeURIComponent(src.username);
+  const p = encodeURIComponent(src.password);
+  return `${base}/player_api.php?username=${u}&password=${p}&action=get_live_streams`;
+}
+
+/// URL amont d'UN flux (live/movie/series). Le proxy Worker reconstruit
+/// ça à partir de source_json : les clients ne voient JAMAIS user/pass.
+export function familyStreamUpstreamUrl(src, kind, streamId, ext) {
+  if (!src || !streamId) return null;
+  const k = String(kind || 'live').toLowerCase();
+  const id = String(streamId).replace(/[^0-9A-Za-z_-]/g, '');
+  const e = String(ext || 'ts').toLowerCase().replace(/[^a-z0-9]/g, '') || 'ts';
+  if (!id) return null;
+  if (src.type === 'xtream' && src.server_url && src.username && src.password) {
+    const base = String(src.server_url).replace(/\/+$/, '');
+    const u = encodeURIComponent(src.username);
+    const p = encodeURIComponent(src.password);
+    return `${base}/${k}/${u}/${p}/${id}.${e}`;
+  }
+  return null;
+}
+
+function looksLikeM3u(text) {
+  const s = String(text || '').trim();
+  return s.startsWith('#EXTM3U') || /#EXTINF/i.test(s);
+}
+
+/// Synthèse d'un M3U Xtream à partir de get_live_streams (player_api).
+/// Les URLs portent encore les creds fournisseur : rewriteM3uThroughProxy
+/// les remplace ensuite par le proxy.
+export function m3uFromLiveStreams(streams, src) {
+  if (!Array.isArray(streams) || !src) return '';
+  const base = String(src.server_url || '').replace(/\/+$/, '');
+  const u = encodeURIComponent(src.username || '');
+  const p = encodeURIComponent(src.password || '');
+  if (!base || !u) return '';
+  let out = '#EXTM3U\n';
+  for (const s of streams) {
+    const id = s && (s.stream_id ?? s.id);
+    if (id == null || id === '') continue;
+    const name = String((s && s.name) || ('Chaîne ' + id));
+    const group = String((s && (s.category_name || s.category_id)) || '');
+    const logo = String((s && s.stream_icon) || '');
+    const inf = group
+      ? `#EXTINF:-1 tvg-id="${id}" tvg-logo="${logo}" group-title="${group}",${name}`
+      : `#EXTINF:-1 tvg-id="${id}" tvg-logo="${logo}",${name}`;
+    out += inf + '\n';
+    out += `${base}/live/${u}/${p}/${id}.ts\n`;
+  }
+  return out;
+}
+
+function interpretUpstreamBody(text, src) {
+  if (!text) return null;
+  if (looksLikeM3u(text)) return String(text);
+  try {
+    const json = JSON.parse(text);
+    if (Array.isArray(json)) return m3uFromLiveStreams(json, src) || null;
+    if (json && Array.isArray(json.streams)) {
+      return m3uFromLiveStreams(json.streams, src) || null;
+    }
+  } catch (_) { /* pas du JSON */ }
+  return null;
+}
+
+async function fetchText(fetchFn, url) {
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (_) {} }, 15000) : null;
+  try {
+    const resp = await fetchFn(url, ctrl
+      ? { signal: ctrl.signal, headers: { 'user-agent': UPSTREAM_PLAYER_UA, accept: '*/*' } }
+      : { headers: { 'user-agent': UPSTREAM_PLAYER_UA, accept: '*/*' } });
+    if (!resp || (typeof resp.ok === 'boolean' && !resp.ok) || (resp.status && resp.status >= 400)) {
+      return null;
+    }
+    return await resp.text();
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/// Charge le M3U amont : player_api D'ABORD (constat DC : get.php → 884,
+/// player_api OK), puis repli get.php. Une « session » logique = ce couple.
+export async function loadFamilyUpstreamM3u(src, fetchFn = fetch) {
+  const playerUrl = playerApiLiveUrlFromSource(src);
+  const getUrl = upstreamM3uUrlFromSource(src);
+  if (playerUrl) {
+    try {
+      const text = await fetchText(fetchFn, playerUrl);
+      const m3u = interpretUpstreamBody(text, src);
+      if (m3u) return { m3u, url: playerUrl };
+    } catch (_) { /* on tente get.php */ }
+  }
+  if (getUrl) {
+    try {
+      const text = await fetchText(fetchFn, getUrl);
+      const m3u = interpretUpstreamBody(text, src);
+      if (m3u) return { m3u, url: getUrl };
+    } catch (_) { /* ignore */ }
+  }
+  return { error: 'playlist amont illisible', m3u: null };
+}
+
+// ---------------------------------------------------------
+//  Réécriture M3U → NOTRE proxy (plus jamais l'hôte fournisseur)
+// ---------------------------------------------------------
+
+/// /live|movie|series/user/pass/id.ext  (éventuellement avec query token).
+const XTREAM_MEDIA_RE =
+  /^(https?:\/\/[^/\s]+)\/(live|movie|series)\/([^/]+)\/([^/]+)\/([^/?#]+?)\.([a-zA-Z0-9]+)(\?.*)?$/i;
+
+const _opaqueUrls = new Map(); // `${token}:${hash}` → URL d'origine
+
+function shortHash(s) {
+  const str = String(s || '');
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+export function _clearOpaqueUrls() { _opaqueUrls.clear(); }
+export function lookupOpaqueUrl(token, hash) {
+  return _opaqueUrls.get(`${token}:${hash}`) || null;
+}
+
+/// Réécrit chaque ligne média vers le proxy. mode:
+///   'worker'  → {proxy}/api/m3u/{token}/live/{id}.ts
+///   'gateway' → {proxy}/live/{token}/{token}/{id}.ts  (parseStreamPath + hub)
+export function rewriteM3uThroughProxy(m3u, opts = {}) {
+  const proxyBase = String(opts.proxyBase || opts.origin || '').replace(/\/+$/, '');
+  const token = String(opts.token || '').trim();
+  const mode = opts.mode === 'gateway' ? 'gateway' : 'worker';
+  if (!proxyBase || !token) return String(m3u || '');
+  const tok = encodeURIComponent(token);
+  return String(m3u || '').split(/\r?\n/).map((raw) => {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) return raw;
+    const xt = XTREAM_MEDIA_RE.exec(line);
+    if (xt) {
+      const kind = xt[2].toLowerCase();
+      const id = xt[5];
+      const ext = xt[6].toLowerCase();
+      if (mode === 'gateway') {
+        return `${proxyBase}/${kind}/${tok}/${tok}/${id}.${ext}`;
+      }
+      return `${proxyBase}/api/m3u/${tok}/${kind}/${id}.${ext}`;
+    }
+    try {
+      const u = new URL(line);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return raw;
+      const hash = shortHash(line);
+      _opaqueUrls.set(`${token}:${hash}`, line);
+      return `${proxyBase}/api/m3u/${tok}/u/${hash}`;
+    } catch (_) {
+      return raw;
+    }
+  }).join('\n');
+}
+
+export function proxyHostOf(url) {
+  try { return new URL(url).host; } catch (_) { return ''; }
+}
+
+// ---------------------------------------------------------
+//  Hub Worker : N clients / même clé = UN fetch amont
+// ---------------------------------------------------------
+
+const _sharedStreams = new Map(); // key → { promise, opens, at }
+
+export function _clearSharedUpstream() { _sharedStreams.clear(); }
+export function _sharedUpstreamOpens(key) {
+  if (key) {
+    const s = _sharedStreams.get(String(key));
+    return s ? (s.opens || 0) : 0;
+  }
+  let n = 0;
+  for (const s of _sharedStreams.values()) n += (s.opens || 0);
+  return n;
+}
+
+/// Fan-out : les appelants concurrents (et ceux dans la fenêtre TTL)
+/// attendent la MÊME promesse. `openFn` n'est invoqué qu'une fois par clé.
+export async function sharedUpstreamFetch(key, openFn, now = Date.now()) {
+  const k = String(key);
+  const existing = _sharedStreams.get(k);
+  if (existing && existing.promise && (now - (existing.at || 0)) < STREAM_SHARE_TTL_MS) {
+    return existing.promise;
+  }
+  const slot = { opens: 0, at: now, promise: null };
+  slot.promise = (async () => {
+    slot.opens += 1;
+    const resp = await openFn();
+    const status = (resp && (resp.status || resp.statusCode)) || 200;
+    let body = null;
+    if (resp && typeof resp.arrayBuffer === 'function') {
+      body = await resp.arrayBuffer();
+    } else if (resp && typeof resp.text === 'function') {
+      body = await resp.text();
+    } else if (resp && resp.body && typeof resp.body.arrayBuffer === 'function') {
+      body = await resp.body.arrayBuffer();
+    }
+    return { status, headers: (resp && resp.headers) || {}, body };
+  })();
+  _sharedStreams.set(k, slot);
+  try {
+    const out = await slot.promise;
+    slot.at = Date.now();
+    return out;
+  } catch (e) {
+    _sharedStreams.delete(k);
+    throw e;
+  }
+}
+
+export function familyMediaShareKey(familyId, kind, streamId, ext) {
+  return `${familyId}:${kind}:${streamId}.${ext}`;
+}
+
 /// Construit le M3U servi aux N MAC. UNE session amont (cache
 /// partagé par family_id). N'est appelé que si le toggle est ON.
+/// Les URLs média sont réécrites vers le proxy (opts.proxyBase + token).
 export async function buildMultiMacM3u(env, fam, opts = {}) {
   const now = opts.now || Date.now();
   const fetchFn = opts.fetchFn || fetch;
@@ -382,11 +606,22 @@ export async function buildMultiMacM3u(env, fam, opts = {}) {
     fetchedAt: refreshed.fetchedAt,
     expiresAt: refreshed.expiresAt,
   });
+  const proxyBase = String(opts.proxyBase || opts.origin || '').replace(/\/+$/, '');
+  const token = String(opts.token || '').trim();
+  const m3u = (proxyBase && token)
+    ? rewriteM3uThroughProxy(refreshed.m3u, {
+      proxyBase,
+      token,
+      mode: opts.proxyMode || 'worker',
+    })
+    : refreshed.m3u;
   return {
-    m3u: refreshed.m3u,
+    m3u,
+    raw: refreshed.m3u,
     refreshed: !!refreshed.refreshed,
     stale: !!refreshed.stale,
     url: refreshed.url || null,
+    proxyBase: proxyBase || null,
   };
 }
 

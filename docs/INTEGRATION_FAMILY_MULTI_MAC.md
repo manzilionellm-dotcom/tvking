@@ -1,135 +1,157 @@
 # Intégration — ligne M3U unique (multi-MAC)
 
-Option **additive** du panel admin + Worker : N adresses MAC (10–12)
-partagent **une seule** session amont chez le fournisseur. Toggle **OFF**
-(défaut) = comportement actuel, **zéro régression**.
+Option **additive** du panel admin + Worker Cloudflare + **branche mince
+Gateway**. Toggle **OFF** (défaut) = comportement actuel, **zéro régression**.
 
 Aucun fichier sous `lib/` (apps mobile/TV) n’est touché.
+
+## Problème (max_connections = 1)
+
+Si le M3U servi contient encore `http://fournisseur/live/user/pass/id.ts`,
+chaque appareil ouvre sa propre connexion amont. Avec `max_connections=1`,
+un seul écran joue.
+
+**Correctif :** toggle ON → toutes les URLs média sont réécrites vers
+**notre** proxy. Le hub (Worker `sharedUpstreamFetch` **ou** Gateway
+`hub.subscribe`) n’ouvre **qu’une** session fournisseur par chaîne et
+fan-out les octets aux N clients.
+
+Constat terrain (ligne Xtream, max=1) : `player_api` OK depuis un
+datacenter ; `get.php` souvent 884 ; `live/*.ts` OK en résidentiel, 511
+depuis un DC. D’où : construire le M3U via `player_api` en priorité, et
+préférer le **Gateway résidentiel** pour le TS (voir `GATEWAY_PUBLIC_BASE`).
+
+Ce n’est **pas** un contournement de limite : une chaîne = une connexion
+amont (comme `gateway/src/hub.js`). Des chaînes **différentes** saturent
+toujours `PROVIDER_MAX_CONNECTIONS`.
 
 ## Ce que ça fait
 
 - L’admin colle un CSV de MAC + allume le toggle sur la page Famille.
-- Chaque MAC est activée via le chemin **existant**
-  (`handleFamilyAddMember` → licence + `family_members`).
-- La source poussée n’est **plus** le `get.php` Xtream en dur : c’est
-  `https://<worker>/api/m3u/{token}` (M3U partagé).
+- Chaque MAC est activée via `handleFamilyAddMember` ; `device_sources`
+  pointe vers `/api/m3u/{token}` (pas `get.php`).
 - `GET /api/m3u/:token` :
-  - **OFF** → `302` vers le fournisseur (inchangé).
-  - **ON**  → le Worker fetch **une fois** le M3U amont (credentials
-    `families.source_json`), le met en cache, rafraîchit les tokens
-    signés expirés, et le sert aux N appareils.
-
-Le serveur fournisseur ne voit qu’**un** client : le Worker.
+  - **OFF** → `302` fournisseur (inchangé).
+  - **ON**  → M3U généré, URLs sur **notre hôte**, tokens rafraîchis.
+- `GET /api/m3u/:token/live/:id.ts` (mode Worker) : proxy fan-out.
+- Mode Gateway : URLs `/live/{token}/{token}/{id}.ts` → `handleLive` +
+  `hub.subscribe` (déjà là).
 
 ## Fichiers
 
 | Fichier | Rôle |
 |---|---|
-| `cloudflare/migrations/011_family_multi_mac.sql` | `families.multi_mac_enabled` (DEFAULT 0), `families.multi_macs` |
-| `cloudflare/family_multi_mac.js` | helpers (parse, enable, build, refresh, intercept) |
-| `cloudflare/api_v1.js` | `PUT /api/v1/families/:id/multi-mac` + overwrite source si toggle ON |
-| `cloudflare/worker.js` | branche dans `handlePublicFamilyM3u` |
+| `cloudflare/migrations/011_family_multi_mac.sql` | `multi_mac_enabled` DEFAULT 0, `multi_macs` |
+| `cloudflare/family_multi_mac.js` | parse, enable, rewrite proxy, hub `sharedUpstreamFetch` |
+| `cloudflare/api_v1.js` | `PUT /api/v1/families/:id/multi-mac` |
+| `cloudflare/worker.js` | `/api/m3u/:token` + `/live|movie|series/:id` |
+| `gateway/src/users.js` | `authenticate` accepte le jeton panel (32 hex) |
+| `gateway/src/server.js` | `handlePlayerApi` : `max_connections` client ; `handleLive` inchangé (hub) |
 | `admin-panel/src/pages/FamiliesPage.tsx` | textarea CSV + toggle |
 | `admin-panel/src/lib/api.ts` | `familiesApi.enableMultiMac` |
 
-Les tables `families` / `family_members` / `family_links` sont **réutilisées**
-(`ensureFamiliesTables`). Rien n’est réécrit.
+## Où brancher (hooks) — carte exacte
 
-## Où brancher (hooks)
+```
+Apps / MAG
+    │  GET /api/m3u/{token}          (playlist, Worker)
+    │  GET /api/m3u/{token}/live/id.ts   (média, Worker si pas de gateway)
+    │  GET /live/{token}/{token}/id.ts   (média, Gateway)
+    ▼
+Worker handlePublicFamilyM3u          OFF → 302  |  ON → rewriteM3uThroughProxy
+Worker handlePublicFamilyMedia        sharedUpstreamFetch (1 open / clé)
+    │
+    │  env.GATEWAY_PUBLIC_BASE ? URLs mode gateway
+    ▼
+Gateway server.js
+    handlePlayerApi  ← callPlayerApi (creds LIGNE) + rewritePlayerApi
+                       si user.panelFamily → max_connections = 12 (écrans)
+    handleGetPhp     ← openGetPhp + makeM3URewriter(token, token)
+    handleLive       ← hub.subscribe(streamKey, upstreamStreamPath)
+                       1re TV : openStream(live/UPSTREAM_USER/PASS/id.ts)
+                       TV suivantes même id : 0 connexion amont en plus
+```
 
-### 1. Worker — déjà branché
+### 1. Worker — branché
 
-Dans `cloudflare/worker.js`, près du match `GET /api/m3u/:token` :
+`cloudflare/worker.js` :
 
 ```js
-// handleRequest → segments [api, m3u, token]
-return await handlePublicFamilyM3u(env, segments[2], request);
+// playlist
+if (api/m3u && length === 3)
+  return handlePublicFamilyM3u(env, token, request);
+// média
+if (api/m3u && live|movie|series && length === 5)
+  return handlePublicFamilyMedia(env, token, kind, file, request);
 ```
 
-`handlePublicFamilyM3u` appelle `interceptFamilyProfile(request, fam)` :
+`buildMultiMacM3u(..., { token, proxyBase, proxyMode })` :
 
-- `intercept === false` → le `302` historique (Xtream `get.php` ou URL M3U).
-- `intercept === true`  → `buildMultiMacM3u` (1 session amont).
+- `proxyMode: 'worker'` si `GATEWAY_PUBLIC_BASE` vide →
+  `https://<worker>/api/m3u/{token}/live/{id}.ts`
+- `proxyMode: 'gateway'` si `env.GATEWAY_PUBLIC_BASE` est posé →
+  `https://<gw>/live/{token}/{token}/{id}.ts`
 
-Si les colonnes n’existent pas encore, le `SELECT` étendu échoue et on
-retombe sur `SELECT source_json` seul = OFF = 302. Filet anti-régression.
+### 2. Gateway — branche mince (branchée)
 
-### 2. API v1 — déjà branché
-
-Dans `cloudflare/api_v1.js`, bloc `parts[0] === 'families'` :
-
-```
-PUT|POST /api/v1/families/:id/multi-mac
-  body: { mac_csv, multi_mac_enabled }
-  → handleFamilyEnableMultiMac → enableSharedM3uLine
-```
-
-`handleFamilyAddMember` (ajout unitaire) : si `fam.multi_mac_enabled === 1`,
-overwrite `device_sources` vers `sharedM3uSource(origin, token)` **après**
-l’activation existante. Fail-open : un plantage ici ne retire pas le membre.
-
-### 3. Gateway `handlePlayerApi` — **pas branché** (volontaire)
-
-`gateway/src/server.js` → `handlePlayerApi` (vers L.178) et le dispatch :
+`gateway/src/users.js` → `authenticate` **après** l’échec users.json :
 
 ```js
-if (path === '/player_api.php') return handlePlayerApi(url, res);
+if (isPanelFamilyToken(username, password)) {
+  // username === password === token 32 hex (family_links)
+  return { panelFamily: true, maxStreams: 100, familyId: '__panel_family__' };
+}
 ```
 
-C’est le point d’ancrage **si** un jour les box MAG/STB frappent la
-façade Xtream du gateway au lieu de `/api/m3u/:token`.
+Puis les handlers **existants** suffisent :
 
-Hook envisagé (ne pas l’écrire tant que le besoin MAG n’est pas là) :
+| Hook | Fichier | Ligne (approx.) | Rôle |
+|---|---|---|---|
+| `authenticate` | `users.js` | `isPanelFamilyToken` | jeton panel = user virtuel |
+| `handlePlayerApi` | `server.js` | après `callPlayerApi` | `rewritePlayerApi` + `max_connections` si `panelFamily` |
+| `handleGetPhp` | `server.js` | `makeM3URewriter(user.username, user.password)` | URLs → `/live/{token}/{token}/…` |
+| `handleLive` | `server.js` | `hub.subscribe` | fan-out 1 amont → N clients |
+| `openGetPhp` / `callPlayerApi` | `upstream.js` | creds `UPSTREAM_*` | **une** identité fournisseur |
+| `makeM3URewriter` | `xtream.js` | déjà là | masque host + user/pass ligne |
 
-```js
-// Au début de handlePlayerApi, après authenticate() :
-// const decision = interceptFamilyProfile(req, familyRow);
-// if (decision.intercept) { servir le M3U / user_info façade ; return; }
+`PROVIDER_MAX_CONNECTIONS=1` côté gateway : une 2ᵉ **chaîne distincte**
+est refusée (503). N télés sur **la même** chaîne passent.
+
+### 3. Variable Worker
+
+```
+GATEWAY_PUBLIC_BASE=https://tv.mondomaine.com
 ```
 
-`interceptFamilyProfile` reconnaît déjà `…/player_api.php` quand le
-toggle est ON. Le Worker **ne réécrit pas** le gateway (additif panel +
-Worker seulement).
+Sans cette var, le Worker proxifie lui-même le TS (peut être 511 si le
+fournisseur bloque les datacenters — d’où le Gateway résidentiel).
 
 ## Migration D1
-
-Runtime : `ensureFamilyMultiMac` fait les `ALTER TABLE` à la volée
-(idempotent, ignore « duplicate column »).
-
-Manuelle (bases déjà déployées) :
 
 ```bash
 wrangler d1 execute tvking_licensing \
   --file=cloudflare/migrations/011_family_multi_mac.sql --remote
 ```
 
-Un 2ᵉ passage échoue « duplicate column » — sans gravité (SQLite).
-
-## Contrat helpers
-
-```
-parseBulkMacs(macCsv) → { ok, macs[], errors[] }
-enableSharedM3uLine(env, { familyId, macCsv, multiMacEnabled, origin, deps })
-ensureFamilyLinkToken(env, familyId, genId) → token
-handlePublicFamilyM3u(token) avec branche toggle
-refreshUpstreamIfExpired(source_json, cache, now, fetchFn)
-interceptFamilyProfile(request, familyRow)
-```
-
-`deps` injectés par `api_v1.js` : `{ upsertDeviceSource, activateMember, genId }`.
-`activateMember` = wrapper de `handleFamilyAddMember` (chemin existant).
+Runtime : `ensureFamilyMultiMac` (ALTER idempotent).
 
 ## Smoke
 
 ```bash
 node cloudflare/family_multi_mac.smoke.mjs
+# Gateway (réécriture + jeton panel) :
+cd gateway && node --test test/unit.test.mjs
 ```
 
-Couvre : parse CSV, plafond 12, OFF = pas d’intercept, ON = source
-`/api/m3u/{token}` (jamais `get.php`), refresh tokens, 2 lectures = 1 fetch.
+Contrats :
+
+- OFF = pas d’intercept (302 conservé).
+- ON = hôte des URLs média = notre proxy, **pas** l’hôte fournisseur.
+- N `sharedUpstreamFetch` concurrents → `openFn` appelé **1** fois.
 
 ## Succès
 
-- Toggle **OFF** : `GET /api/m3u/:token` reste un 302 fournisseur.
-- Toggle **ON** : N MAC, un seul fetch amont, tokens rafraîchis.
+- Toggle **OFF** : `GET /api/m3u/:token` reste un 302.
+- Toggle **ON**, max_connections=1 : N MAC sur **la même** chaîne jouent
+  (1 session amont). Pas de `live/user/pass` fournisseur dans le M3U.
 - Aucun fichier sous `lib/` modifié.

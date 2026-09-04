@@ -74,6 +74,12 @@ import {
   interceptFamilyProfile,
   buildMultiMacM3u,
   ensureFamilyMultiMac,
+  familyStreamUpstreamUrl,
+  parseFamilySource,
+  sharedUpstreamFetch,
+  familyMediaShareKey,
+  lookupOpaqueUrl,
+  UPSTREAM_PLAYER_UA,
 } from './family_multi_mac.js';
 // Cast receiver HTML (cf. cloudflare/cast_receiver.js) — page CAF
 // hebergee a /cast-receiver, URL a coller dans la Google Cast SDK
@@ -5595,7 +5601,16 @@ async function handlePublicFamilyM3u(env, rawToken, request) {
     // Branche mince : ON → servir le M3U ; OFF / colonnes absentes → 302.
     const decision = interceptFamilyProfile(request, fam);
     if (decision.intercept) {
-      const built = await buildMultiMacM3u(env, fam, { now: Date.now() });
+      let origin = '';
+      try { origin = new URL(request.url).origin; } catch (_) { origin = ''; }
+      const gatewayBase = String((env && env.GATEWAY_PUBLIC_BASE) || '').replace(/\/+$/, '');
+      const proxyBase = gatewayBase || origin;
+      const built = await buildMultiMacM3u(env, fam, {
+        now: Date.now(),
+        token,
+        proxyBase,
+        proxyMode: gatewayBase ? 'gateway' : 'worker',
+      });
       if (built.error && !built.m3u) {
         return new Response(built.error, { status: built.status || 502 });
       }
@@ -5620,6 +5635,98 @@ async function handlePublicFamilyM3u(env, rawToken, request) {
     }
     if (!target) return new Response('source incomplète', { status: 404 });
     return Response.redirect(target, 302);
+  } catch (_) {
+    return new Response('erreur', { status: 500 });
+  }
+}
+
+/// /api/m3u/:token/live|movie|series/:id.ts — proxy média. Toggle ON
+/// uniquement. N clients de la même clé = UN fetch amont (fan-out).
+async function handlePublicFamilyMedia(env, rawToken, kind, file, request) {
+  if (!env.DB) return new Response('not found', { status: 404 });
+  const token = String(rawToken || '').trim();
+  if (!token) return new Response('not found', { status: 404 });
+  const m = String(file || '').match(/^([^/]+)\.([a-zA-Z0-9]+)$/);
+  if (!m) return new Response('not found', { status: 404 });
+  const streamId = m[1];
+  const ext = m[2].toLowerCase();
+  try {
+    const link = await env.DB
+      .prepare('SELECT family_id FROM family_links WHERE token = ?')
+      .bind(token).first();
+    if (!link) return new Response('lien invalide', { status: 404 });
+    try { await ensureFamilyMultiMac(env); } catch (_) { /* ignore */ }
+    let fam = null;
+    try {
+      fam = await env.DB
+        .prepare('SELECT id, source_json, multi_mac_enabled FROM families WHERE id = ?')
+        .bind(link.family_id).first();
+    } catch (_) {
+      fam = await env.DB
+        .prepare('SELECT source_json FROM families WHERE id = ?')
+        .bind(link.family_id).first();
+    }
+    if (!fam) return new Response('source absente', { status: 404 });
+    const decision = interceptFamilyProfile(request, fam);
+    if (!decision.intercept) {
+      // Toggle OFF : ces URLs proxy n'existent pas (le 302 historique
+      // ne passe pas par ici). 404 = pas de changement du 302 /api/m3u/:token.
+      return new Response('not found', { status: 404 });
+    }
+    const src = parseFamilySource(fam.source_json);
+    const upstream = familyStreamUpstreamUrl(src, kind, streamId, ext);
+    if (!upstream) return new Response('source incomplète', { status: 404 });
+    const key = familyMediaShareKey(fam.id || link.family_id, kind, streamId, ext);
+    const shared = await sharedUpstreamFetch(key, () => fetch(upstream, {
+      headers: { 'user-agent': UPSTREAM_PLAYER_UA, accept: '*/*' },
+    }));
+    const ctype = ext === 'm3u8'
+      ? 'application/vnd.apple.mpegurl; charset=utf-8'
+      : (ext === 'mp4' ? 'video/mp4' : 'video/mp2t');
+    return new Response(shared.body, {
+      status: shared.status || 200,
+      headers: {
+        'content-type': ctype,
+        'cache-control': 'no-store',
+        'access-control-allow-origin': '*',
+      },
+    });
+  } catch (_) {
+    return new Response('erreur', { status: 500 });
+  }
+}
+
+/// /api/m3u/:token/u/:hash — URL opaque (CDN tokenisé) réécrite au build.
+async function handlePublicFamilyOpaque(env, rawToken, hash, request) {
+  const token = String(rawToken || '').trim();
+  const original = lookupOpaqueUrl(token, String(hash || ''));
+  if (!original) return new Response('not found', { status: 404 });
+  try {
+    const link = await env.DB
+      .prepare('SELECT family_id FROM family_links WHERE token = ?')
+      .bind(token).first();
+    if (!link) return new Response('lien invalide', { status: 404 });
+    let fam = null;
+    try {
+      fam = await env.DB
+        .prepare('SELECT id, source_json, multi_mac_enabled FROM families WHERE id = ?')
+        .bind(link.family_id).first();
+    } catch (_) { fam = { multi_mac_enabled: 1 }; }
+    if (!interceptFamilyProfile(request, fam).intercept) {
+      return new Response('not found', { status: 404 });
+    }
+    const key = `opaque:${token}:${hash}`;
+    const shared = await sharedUpstreamFetch(key, () => fetch(original, {
+      headers: { 'user-agent': UPSTREAM_PLAYER_UA, accept: '*/*' },
+    }));
+    return new Response(shared.body, {
+      status: shared.status || 200,
+      headers: {
+        'content-type': 'application/octet-stream',
+        'cache-control': 'no-store',
+        'access-control-allow-origin': '*',
+      },
+    });
   } catch (_) {
     return new Response('erreur', { status: 500 });
   }
@@ -6353,8 +6460,20 @@ async function handleRequest(request, env, ctx) {
     // résout le jeton → source de la famille → on renvoie la playlist M3U
     // (redirection vers le get.php Xtream ou l'URL M3U). Plusieurs liens
     // séparés possibles, tous adossés à UNE seule source.
-    if (segments[0] === 'api' && segments[1] === 'm3u' && segments.length === 3) {
-      return await handlePublicFamilyM3u(env, segments[2], request);
+    // /api/m3u/:token — playlist famille.
+    // /api/m3u/:token/live|movie|series/:id.ts — proxy média (toggle ON).
+    // /api/m3u/:token/u/:hash — URL opaque (CDN tokenisé).
+    if (segments[0] === 'api' && segments[1] === 'm3u') {
+      if (segments.length === 3) {
+        return await handlePublicFamilyM3u(env, segments[2], request);
+      }
+      if (segments.length === 5 && segments[3] === 'u') {
+        return await handlePublicFamilyOpaque(env, segments[2], segments[4], request);
+      }
+      if (segments.length === 5
+          && (segments[3] === 'live' || segments[3] === 'movie' || segments[3] === 'series')) {
+        return await handlePublicFamilyMedia(env, segments[2], segments[3], segments[4], request);
+      }
     }
 
     // /api/backup/:mac — public, sauvegarde/restauration cloud par MAC
