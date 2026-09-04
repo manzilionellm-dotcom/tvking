@@ -134,6 +134,31 @@ class MainActivity : FlutterFragmentActivity() {
                             result.success(null)
                         }
                     }
+                    // Mode Bouclier (core/privacy/privacy_shield.dart) : un
+                    // VPN est-il actif ? Cette MainActivity remplace le
+                    // handler du plugin tvking_device sur le MÊME canal
+                    // (dernier enregistré gagne) : la méthode doit donc
+                    // exister ici aussi, sinon le mobile répondrait
+                    // notImplemented et le coupe-circuit serait aveugle.
+                    "isVpnActive" -> {
+                        result.success(
+                            try {
+                                val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                                    as? android.net.ConnectivityManager
+                                if (cm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                                    false
+                                } else {
+                                    val vpn = android.net.NetworkCapabilities.TRANSPORT_VPN
+                                    val active = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+                                    (active?.hasTransport(vpn) == true) || cm.allNetworks.any { n ->
+                                        cm.getNetworkCapabilities(n)?.hasTransport(vpn) == true
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                false
+                            },
+                        )
+                    }
                     else -> result.notImplemented()
                 }
             }

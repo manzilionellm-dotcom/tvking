@@ -28,6 +28,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
 import '../../../core/backend/backend_hosts.dart';
+import '../../../core/privacy/privacy_shield.dart';
 import '../../device/data/device_identity.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -159,6 +160,7 @@ abstract final class SubscriptionBackend {
       // et afficher la version installée.
       final String androidId = await DeviceIdentity.instance.androidId();
       final String appVersion = await _appVersion();
+      final bool shielded = PrivacyShield.instance.minimalTelemetryActive;
       final Map<String, Object?> payload = <String, Object?>{
         'mac': mac,
         'model': info['model'] ?? '',
@@ -170,7 +172,15 @@ abstract final class SubscriptionBackend {
         'appVersion': appVersion,
         'appBuild': kBuildTs,
         // Chaîne en cours de visionnage (vide si rien) → panel « En ligne ».
-        'channel': NowPlaying.instance.current,
+        // MODE BOUCLIER (télémétrie minimale) : la chaîne, l'inventaire des
+        // sources et l'historique NE QUITTENT PAS l'appareil. Le panel sait
+        // seulement que la box est en ligne (cf. core/privacy/privacy_shield).
+        'channel': shielded ? '' : NowPlaying.instance.current,
+        // « En lecture » (booléen, sans le nom de la chaîne) : c'est ce que
+        // la FAMILLE voit (« Papa regarde en ce moment », une seule lecture
+        // à la fois sur la ligne). Envoyé même sous bouclier : un booléen
+        // n'est pas ce que le client regarde.
+        'playing': NowPlaying.instance.current.isNotEmpty,
         // mobile / tv → le panel distingue les deux apps.
         'platform': AppPlatform.id,
         // INVENTAIRE des sources réellement présentes sur l'appareil (celles
@@ -178,10 +188,12 @@ abstract final class SubscriptionBackend {
         // Sert au panel : « tout ce que le client a dans le ventre » pour mieux
         // l'aider. SANS mot de passe (vie privée) — serveur + identifiant
         // suffisent au diagnostic. Best-effort : ne casse jamais le heartbeat.
-        'sources': _sourcesInventory(),
+        'sources': shielded
+            ? const <Map<String, Object?>>[]
+            : _sourcesInventory(),
         // HISTORIQUE de visionnage (ids de chaînes, du + récent au + ancien) :
         // sauvegardé côté serveur → restauré sur une 2e box (cf. /api/history).
-        'recent': _recentInventory(),
+        'recent': shielded ? const <String>[] : _recentInventory(),
       };
       // FAILOVER : domaine maison d'abord (auto-guérison), puis l'adresse
       // Cloudflare de secours. Le premier hôte qui répond 200 devient
@@ -238,7 +250,12 @@ abstract final class SubscriptionBackend {
         return <String, Object?>{
           'type': xtream ? 'xtream' : 'm3u',
           'name': p.name,
-          'server': xtream ? (p.xtreamServer ?? '') : (p.m3uUrl ?? ''),
+          // Une URL M3U porte presque toujours `username=…&password=…` :
+          // on ne remonte que l'ORIGINE (schéma + hôte + port), jamais la
+          // requête. Le commentaire « SANS mot de passe » redevient vrai.
+          'server': xtream
+              ? (p.xtreamServer ?? '')
+              : _originOnly(p.m3uUrl ?? ''),
           'username': xtream ? (p.xtreamUsername ?? '') : '',
           'channels': p.channelCount,
           'active': p.isActive,
@@ -247,6 +264,18 @@ abstract final class SubscriptionBackend {
     } catch (_) {
       return const <Map<String, Object?>>[];
     }
+  }
+
+  /// Origine seule d'une URL (`http://hote:port`), sans chemin ni requête :
+  /// suffisant pour le diagnostic, et jamais un identifiant dedans. Une
+  /// chaîne qui n'est pas une URL est renvoyée vide.
+  @visibleForTesting
+  static String originOnly(String url) => _originOnly(url);
+
+  static String _originOnly(String url) {
+    final Uri? u = Uri.tryParse(url.trim());
+    if (u == null || !u.hasScheme || u.host.isEmpty) return '';
+    return u.hasPort ? '${u.scheme}://${u.host}:${u.port}' : '${u.scheme}://${u.host}';
   }
 
   /// Liste COMPACTE des chaînes récemment regardées (ids, max 50) à

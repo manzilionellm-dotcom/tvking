@@ -3,6 +3,8 @@ package com.manzilionellm.tvking_device
 import android.app.ActivityManager
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
@@ -107,7 +109,42 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 }
                 result.success(key)
             }
+            // Mode Bouclier (core/privacy/privacy_shield.dart) : un VPN
+            // est-il actif sur l'appareil ? Sert au coupe-circuit « aucune
+            // lecture réseau sans VPN ». Best-effort : toute erreur → false
+            // (le Dart ne bloque jamais une lecture sur un doute natif).
+            "isVpnActive" -> result.success(isVpnActive())
             else -> result.notImplemented()
+        }
+    }
+
+    // =====================================================================
+    //  Détection VPN (Mode Bouclier)
+    // =====================================================================
+    //  On regarde TOUS les réseaux connus du système, pas seulement le
+    //  réseau « actif » : un VPN limité à certaines apps (WireGuard en
+    //  mode par-app, futur tunnel intégré) n'est pas forcément le réseau
+    //  par défaut vu par ConnectivityManager. API < 23 : pas de
+    //  NetworkCapabilities fiable → on répond false (le Dart le sait :
+    //  minSdk 21 sur les vieilles box, le coupe-circuit y est sans objet).
+    private fun isVpnActive(): Boolean {
+        return try {
+            val cm = appContext?.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as? ConnectivityManager ?: return false
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
+            val active = cm.activeNetwork
+            if (active != null) {
+                val caps = cm.getNetworkCapabilities(active)
+                if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                    return true
+                }
+            }
+            cm.allNetworks.any { n ->
+                cm.getNetworkCapabilities(n)
+                    ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+            }
+        } catch (e: Exception) {
+            false
         }
     }
 

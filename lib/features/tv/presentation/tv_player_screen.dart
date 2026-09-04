@@ -28,6 +28,7 @@ import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/playback/stream_slot.dart';
+import '../../../core/privacy/privacy_shield.dart';
 import '../../../core/playback/vod_pause_release_policy.dart';
 
 import '../../../core/curation/title_curator.dart';
@@ -283,6 +284,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   final FreezeRecoveryPolicy _freeze =
       FreezeRecoveryPolicy(now: DateTime.now());
   bool _fatal = false;
+
+  /// MODE BOUCLIER : `true` quand la lecture est refusée parce que le
+  /// coupe-circuit VPN est armé et qu'aucun VPN n'est actif. L'écran d'erreur
+  /// affiche alors le message du bouclier, et la lecture repart toute seule
+  /// dès que le VPN revient (cf. _onShieldChanged).
+  bool _shieldBlocked = false;
   // True dès qu'une vraie image a été affichée pour la chaîne courante. Si on
   // échoue SANS jamais avoir eu d'image → source vide / bloquée par le
   // fournisseur (≠ coupure réseau d'un flux qui jouait). Remis à false à chaque
@@ -416,6 +423,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // pas décidé de l'URL.
     _controller = NativeVideoController();
     _controller.addListener(_onPlayer);
+    // Mode Bouclier : VPN qui tombe → coupure immédiate ; VPN qui revient →
+    // reprise automatique (cf. _onShieldChanged).
+    PrivacyShield.instance.addListener(_onShieldChanged);
     // VERROU DE CONNEXION : ce lecteur est le detenteur prioritaire. Tout
     // autre consommateur (apercu d'accueil, file de telechargements) sera
     // demonte quand on reclamera le creneau, et attendu.
@@ -613,6 +623,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // n'est plus lisible). Fire-and-forget : l'écriture prefs survit au pop.
     _savePlaybackPosition();
     _controller.removeListener(_onPlayer);
+    PrivacyShield.instance.removeListener(_onShieldChanged);
     NowPlaying.instance.clear();
     // « On ne regarde plus rien » : DIFFÉRÉ de 1,5 s — lancer une requête
     // HTTP pile pendant la transition de pop réveillait réseau/CPU au
@@ -901,7 +912,77 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
   }
 
+  /// MODE BOUCLIER — réaction aux changements d'état du bouclier / du VPN.
+  ///   • coupe-circuit armé et VPN tombé pendant une lecture réseau : on
+  ///     ARRÊTE tout de suite (stop natif + sessions relais) et on affiche le
+  ///     message du bouclier — pas une seconde de plus avec l'IP réelle ;
+  ///   • VPN revenu alors qu'on était bloqué : on rouvre la chaîne courante
+  ///     par le chemin officiel, sans que le client ait rien à faire.
+  void _onShieldChanged() {
+    if (!mounted) return;
+    final PrivacyShield s = PrivacyShield.instance;
+    final bool networkContent =
+        !_playingLocalFile && !PrivacyShield.isLocalUrl(_current.streamUrl);
+    if (s.blocksNetworkPlayback && !_shieldBlocked && networkContent) {
+      _shieldBlocked = true;
+      _startupWatchdog?.cancel();
+      _zapSettle?.cancel();
+      unawaited(() async {
+        try {
+          await _controller.stop();
+        } catch (_) {
+          // canal natif déjà mort : rien ne joue.
+        }
+        try {
+          await LocalStreamRelay.instance.closeOtherPlaybacks('');
+        } catch (_) {
+          // best-effort : le relais journalise ses propres échecs.
+        }
+      }());
+      StreamDiagnostics.instance.recordEvent(
+        'bouclier',
+        'VPN perdu pendant la lecture → coupe-circuit : lecture arrêtée, '
+            'sessions relais fermées',
+        level: 'warn',
+      );
+      setState(() {
+        _fatal = true;
+        _buffering = false;
+      });
+    } else if (!s.blocksNetworkPlayback && _shieldBlocked) {
+      _shieldBlocked = false;
+      StreamDiagnostics.instance.recordEvent(
+        'bouclier',
+        'VPN de retour → reprise automatique de la lecture',
+      );
+      _open();
+    }
+  }
+
   void _open({bool reuse = false}) {
+    // MODE BOUCLIER (coupe-circuit VPN) : aucune lecture RÉSEAU ne part sans
+    // VPN actif. On affiche le message du bouclier et on re-sonde tout de
+    // suite (un VPN qui vient de se connecter ne doit pas être refusé) : si
+    // la sonde dit oui, on rouvre sans attendre la ronde périodique.
+    if (!PrivacyShield.isLocalUrl(_current.streamUrl) &&
+        PrivacyShield.instance.blocksNetworkPlayback) {
+      _shieldBlocked = true;
+      _startupWatchdog?.cancel();
+      if (mounted) {
+        setState(() {
+          _fatal = true;
+          _buffering = false;
+        });
+      }
+      unawaited(PrivacyShield.instance.refreshVpnStatus().then((bool active) {
+        if (active && mounted && _shieldBlocked) {
+          _shieldBlocked = false;
+          _open(reuse: reuse);
+        }
+      }));
+      return;
+    }
+    _shieldBlocked = false;
     _freeze.openChannel(DateTime.now());
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
@@ -1111,6 +1192,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         }
       }
     }
+    // MODE BOUCLIER (HTTPS préféré) : si le serveur du fournisseur sert du
+    // TLS, on ouvre la variante https — l'identifiant et le mot de passe qui
+    // voyagent dans l'URL ne passent plus en clair. Sondé une fois par
+    // serveur (jamais sur l'URL du flux), mémorisé. No-op bouclier éteint.
+    realUrl = await PrivacyShield.instance.preferredUrl(realUrl);
+    if (!mounted || channel.id != _current.id) return;
     final String lower = realUrl.toLowerCase();
     final bool isHls = lower.contains('.m3u8') || lower.contains('.m3u');
     // VOD (film/épisode = FICHIER fini, seekable) : JAMAIS par le relais.
@@ -1217,6 +1304,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// (un autre écran regarde déjà), compte suspendu. Renvoie [fallback] si
   /// aucune cause « compte » n'est identifiée.
   String _tvBlockMessage(String fallback) {
+    // Mode Bouclier : le refus vient de NOUS (coupe-circuit VPN), pas du
+    // fournisseur — on le dit tel quel, avec la marche à suivre.
+    if (_shieldBlocked) return context.l10n.tvShieldNoVpnBody;
     final StreamDiagnostics d = StreamDiagnostics.instance;
     switch (d.blockReason) {
       case StreamBlockReason.expired:

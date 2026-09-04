@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../../../core/playback/stream_slot.dart';
+import '../../../core/privacy/privacy_shield.dart';
 import '../../../core/playback/vod_pause_release_policy.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -169,6 +170,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   bool _hasError = false;
   String? _errorMessage;
+
+  /// MODE BOUCLIER : lecture refusée par le coupe-circuit VPN (aucun VPN
+  /// actif). Repart toute seule quand le VPN revient (cf. _onShieldChanged).
+  bool _shieldBlocked = false;
   bool _isBuffering = true;
   bool _isPlaying = false;
 
@@ -391,6 +396,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   @override
   void initState() {
     super.initState();
+    // Mode Bouclier : VPN qui tombe → coupure immédiate ; VPN qui revient →
+    // reprise automatique (cf. _onShieldChanged).
+    PrivacyShield.instance.addListener(_onShieldChanged);
     //  On ECOUTE le cycle de vie — ce lecteur ne le faisait PAS.
     //  Signalement du 30/08 : apres un appel telephonique, ou apres avoir
     //  ecoute autre chose, le son revenait degrade et ne redevenait normal
@@ -1246,6 +1254,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     // suivant descend.
     final bool isLocal = realUrl.startsWith('file:') ||
         realUrl.startsWith('/');
+    // MODE BOUCLIER (coupe-circuit VPN, parité TV) : aucune lecture RÉSEAU
+    // sans VPN actif. Message du bouclier + re-sonde immédiate : si le VPN
+    // vient de se connecter, on rouvre sans attendre la ronde périodique.
+    if (!isLocal && PrivacyShield.instance.blocksNetworkPlayback) {
+      _shieldBlocked = true;
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _isBuffering = false;
+          _errorMessage = context.l10n.tvShieldNoVpnBody;
+        });
+      }
+      unawaited(PrivacyShield.instance.refreshVpnStatus().then((bool active) {
+        if (active && mounted && _shieldBlocked) {
+          _shieldBlocked = false;
+          _retry();
+        }
+      }));
+      return _openChain;
+    }
+    _shieldBlocked = false;
     VodDownloadService.instance.setPlaybackHold(!isLocal);
     // Toute NOUVELLE ouverture (zap, retry, reprise) supersède l'état
     // « connexion rendue par la pause » : sans ça, un zap pendant une pause
@@ -1347,6 +1376,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     // Instance mpv neuve = repart en Auto → la qualité de session (si
     // choisie) devra être réappliquée quand le track-list arrivera.
     _sessionVideoTrackApplied = false;
+    // MODE BOUCLIER (HTTPS préféré, parité TV) : variante https quand le
+    // serveur du fournisseur sert du TLS — les identifiants de l'URL ne
+    // voyagent plus en clair. Sondé une fois par serveur, jamais sur l'URL
+    // du flux, mémorisé. No-op bouclier éteint.
+    realUrl = await PrivacyShield.instance.preferredUrl(realUrl);
+    if (!mounted || gen != _openGeneration) return;
     // FORMAT MÉMORISÉ (zapping instantané) : si la cascade a déjà trouvé
     // le format d'URL gagnant pour cette source (et ce type de contenu),
     // on l'applique DIRECTEMENT — pas de re-cascade à chaque zap. On ne
@@ -2129,6 +2164,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    PrivacyShield.instance.removeListener(_onShieldChanged);
     // Les actions PiP ne doivent plus viser cet écran mort.
     PipService.instance.onPipControl = null;
     // S3 : la session de métriques est résumée en UNE ligne boîte noire
@@ -2534,6 +2570,50 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     });
     final String url = _effectiveUrl;
     _openMedia(url);
+  }
+
+  /// MODE BOUCLIER — réaction aux changements d'état du bouclier / du VPN
+  /// (parité TV, cf. tv_player_screen._onShieldChanged) :
+  ///   • VPN tombé pendant une lecture réseau → arrêt immédiat de mpv et des
+  ///     sessions relais, message du bouclier ;
+  ///   • VPN revenu alors qu'on était bloqué → reprise automatique.
+  void _onShieldChanged() {
+    if (!mounted) return;
+    final PrivacyShield s = PrivacyShield.instance;
+    final bool networkContent = !PrivacyShield.isLocalUrl(_effectiveUrl);
+    if (s.blocksNetworkPlayback && !_shieldBlocked && networkContent) {
+      _shieldBlocked = true;
+      unawaited(() async {
+        try {
+          await _player.stop();
+        } catch (_) {
+          // instance mpv déjà libérée : rien ne joue.
+        }
+        try {
+          await LocalStreamRelay.instance.closeOtherPlaybacks('');
+        } catch (_) {
+          // best-effort : le relais journalise ses propres échecs.
+        }
+      }());
+      StreamDiagnostics.instance.recordEvent(
+        'bouclier',
+        'VPN perdu pendant la lecture → coupe-circuit : lecture arrêtée, '
+            'sessions relais fermées',
+        level: 'warn',
+      );
+      setState(() {
+        _hasError = true;
+        _isBuffering = false;
+        _errorMessage = context.l10n.tvShieldNoVpnBody;
+      });
+    } else if (!s.blocksNetworkPlayback && _shieldBlocked) {
+      _shieldBlocked = false;
+      StreamDiagnostics.instance.recordEvent(
+        'bouclier',
+        'VPN de retour → reprise automatique de la lecture',
+      );
+      _retry();
+    }
   }
 
   // ----- Chien de garde anti-gel -----

@@ -22,6 +22,7 @@ import 'tv_diagnostics_screen.dart';
 import 'tv_collections_screen.dart';
 import 'tv_display_settings_screen.dart';
 import 'tv_family_screen.dart';
+import 'tv_shield_screen.dart';
 import 'tv_home_template_screen.dart';
 import 'tv_hue_screen.dart';
 import 'tv_invite_screen.dart';
@@ -812,6 +813,45 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Icon(Icons.tv_rounded, color: fg, size: 20),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsDisplay,
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: fg)),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 20),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Mode Bouclier (vie privée : coupe-circuit VPN, HTTPS,
+          //       télémétrie minimale) — cf. core/privacy/privacy_shield.dart
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(child: TvShieldScreen()),
+              ),
+            ),
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.gold : Colors.transparent;
+              final Color fg =
+                  focused ? TvTokens.onGold : TvTokens.goldBright;
+              return Container(
+                width: 640,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                    border: Border.all(
+                        color: focused ? TvTokens.gold : TvTokens.lineSoft)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.shield_rounded, color: fg, size: 20),
+                    const SizedBox(width: 12),
+                    Text(context.l10n.tvSettingsShield,
                         style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,

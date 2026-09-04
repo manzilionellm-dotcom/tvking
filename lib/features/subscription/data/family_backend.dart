@@ -59,6 +59,54 @@ abstract final class FamilyBackend {
     }
   }
 
+  /// Positions de reprise du [profile] partagées dans la famille de [mac]
+  /// (`items` : key, position_ms, duration_ms, finished, updated_at, name,
+  /// poster_url, is_episode). Null si le réseau se tait.
+  static Future<List<Map<String, dynamic>>?> positions(
+      String mac, String profile) async {
+    try {
+      final Uri url = Uri.parse(
+        '$kSubscriptionBaseUrl/api/family/positions/$mac'
+        '?profile=${Uri.encodeQueryComponent(profile)}',
+      );
+      final http.Response r =
+          await http.get(url, headers: _headers).timeout(_timeout);
+      if (r.statusCode != 200) return null;
+      final Map<String, dynamic> j =
+          jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+      if (j['ok'] != true) return null;
+      final Object? items = j['items'];
+      if (items is! List) return const <Map<String, dynamic>>[];
+      return items.whereType<Map<String, dynamic>>().toList(growable: false);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Pousse des positions (même format que [positions]) pour le [profile].
+  /// Fusion serveur « le plus récent gagne ». `true` si le serveur a accepté.
+  static Future<bool> pushPositions(
+      String mac, String profile, List<Map<String, Object?>> items) async {
+    try {
+      final http.Response r = await http
+          .put(
+            Uri.parse('$kSubscriptionBaseUrl/api/family/positions/$mac'),
+            headers: _headers,
+            body: jsonEncode(<String, Object?>{
+              'profile': profile,
+              'items': items,
+            }),
+          )
+          .timeout(_timeout);
+      if (r.statusCode != 200) return false;
+      final Map<String, dynamic> j =
+          jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+      return j['ok'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Le PROPRIÉTAIRE [mac] nomme un [member] (« Papa », « Maman »…).
   static Future<bool> rename(String mac, String member, String label) async {
     final Map<String, dynamic>? r = await _post(

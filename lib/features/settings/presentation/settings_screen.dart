@@ -24,6 +24,8 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../player/data/player_settings.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../playlists/presentation/playlists_screen.dart';
+import '../../family/presentation/family_screen.dart';
+import '../../privacy/presentation/shield_settings_screen.dart';
 import '../../profiles/presentation/profile_picker_screen.dart';
 import '../../recordings/presentation/recordings_screen.dart';
 import '../../security/data/app_pin_settings.dart';
@@ -84,6 +86,22 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
 
+            // ====== BOUQUET FAMILLE ======
+            //  Rattacher ce téléphone à la ligne de la TV (code à 6
+            //  chiffres), voir qui regarde en ce moment, reprise par
+            //  personne partagée. Même FamilyBackend que la TV.
+            _SectionTitle(context.l10n.settingsFamilyTile),
+            _ActionTile(
+              icon: Icons.family_restroom_rounded,
+              title: context.l10n.settingsFamilyTile,
+              subtitle: context.l10n.settingsFamilySubtitle,
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const FamilyScreen(),
+                ),
+              ),
+            ),
+
             // ====== CONTRÔLE PARENTAL ======
             //  Parité avec la TV (tv_parental_screen) : Mode Enfants qui
             //  masque l'Adulte, gardé par le PIN de l'app (AppPinSettings).
@@ -92,6 +110,21 @@ class SettingsScreen extends StatelessWidget {
             _SectionTitle(context.l10n.tvParentalTitle),
             const _KidsModeTile(),
             const _ParentalPinTile(),
+
+            // ====== MODE BOUCLIER (vie privée) ======
+            //  Parité avec la TV (tv_shield_screen) : coupe-circuit VPN,
+            //  HTTPS préféré, télémétrie minimale. Même PrivacyShield.
+            _SectionTitle(context.l10n.tvShieldTitle),
+            _ActionTile(
+              icon: Icons.shield_rounded,
+              title: context.l10n.tvSettingsShield,
+              subtitle: context.l10n.tvShieldIntro,
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ShieldSettingsScreen(),
+                ),
+              ),
+            ),
 
             // ====== LECTEUR ======
             _SectionTitle(context.l10n.settingsPlayer),

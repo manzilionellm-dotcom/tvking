@@ -8,6 +8,8 @@
 //
 //  Tout passe par FamilyBackend (notre worker) — aucun contact lecteur.
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
@@ -45,10 +47,119 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
         context.l10n.tvFamilyNameBedroom,
       ];
 
+  /// « Qui regarde en ce moment » se rafraîchit tant que l'écran est ouvert
+  /// (un GET léger toutes les 20 s, sans faire clignoter la page).
+  Timer? _whoTimer;
+
   @override
   void initState() {
     super.initState();
     _refresh();
+    _whoTimer = Timer.periodic(
+        const Duration(seconds: 20), (_) => unawaited(_refreshQuiet()));
+  }
+
+  @override
+  void dispose() {
+    _whoTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Rafraîchit la vue famille SANS l'indicateur de chargement (ronde
+  /// « qui regarde »). Un réseau muet ne change rien à l'écran.
+  Future<void> _refreshQuiet() async {
+    if (_busy || _mac.isEmpty) return;
+    final Map<String, dynamic>? info = await FamilyBackend.info(_mac);
+    if (!mounted || info == null) return;
+    setState(() => _info = info);
+  }
+
+  /// Nom affiché d'une entrée `who` : « Cet appareil », le prénom donné
+  /// par le propriétaire, ou un libellé neutre.
+  String _whoName(Map<String, dynamic> w) {
+    if (w['me'] == true) return context.l10n.tvFamilyThisDevice;
+    final Object? label = w['label'];
+    if (label is String && label.isNotEmpty) return label;
+    return w['role'] == 'owner'
+        ? context.l10n.tvFamilyOwnerLabel
+        : context.l10n.tvFamilyUnnamedMember;
+  }
+
+  /// Section « QUI REGARDE EN CE MOMENT » + la promesse « chacun son film ».
+  /// Rien de ce qui est regardé n'est montré : seulement en lecture / en
+  /// ligne / hors ligne, pour ne pas se marcher dessus sur la ligne unique.
+  List<Widget> _whoSection(Map<String, dynamic> info) {
+    final List<dynamic> who = (info['who'] as List<dynamic>?) ?? <dynamic>[];
+    if (who.isEmpty) return const <Widget>[];
+    return <Widget>[
+      Text(
+        context.l10n.tvFamilyWhoHeader,
+        style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: TvTokens.mutedDim,
+            letterSpacing: 1.6),
+      ),
+      const SizedBox(height: 10),
+      _card(Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          for (final dynamic raw in who)
+            if (raw is Map<String, dynamic>)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: <Widget>[
+                    Icon(
+                      raw['playing'] == true
+                          ? Icons.play_circle_fill_rounded
+                          : (raw['online'] == true
+                              ? Icons.circle
+                              : Icons.circle_outlined),
+                      size: raw['playing'] == true ? 22 : 14,
+                      color: raw['playing'] == true
+                          ? TvTokens.goldBright
+                          : (raw['online'] == true
+                              ? TvTokens.gold
+                              : TvTokens.mutedDim),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _whoName(raw),
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: raw['me'] == true
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                            color: TvTokens.text),
+                      ),
+                    ),
+                    Text(
+                      raw['playing'] == true
+                          ? context.l10n.tvFamilyPlayingNow
+                          : (raw['online'] == true
+                              ? context.l10n.tvFamilyOnline
+                              : context.l10n.tvFamilyOffline),
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: raw['playing'] == true
+                              ? TvTokens.goldBright
+                              : TvTokens.mutedDim),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      )),
+      const SizedBox(height: 10),
+      _card(Text(
+        '🎬 ${context.l10n.tvFamilyResumeSyncNote}',
+        style: const TextStyle(fontSize: 13, color: TvTokens.muted),
+      )),
+      const SizedBox(height: 18),
+    ];
   }
 
   Future<void> _refresh() async {
@@ -189,6 +300,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
           ],
         )),
         const SizedBox(height: 16),
+        ..._whoSection(info),
         _goldButton(
           icon: Icons.logout_rounded,
           label:
@@ -466,6 +578,7 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
             ),
           ),
       const SizedBox(height: 18),
+      ..._whoSection(info),
       // Rappel honnête pour le revendeur ET le client.
       _card(Text(
         'ℹ️ ${context.l10n.tvFamilySimultaneousNote}',

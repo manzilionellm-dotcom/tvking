@@ -26,6 +26,7 @@ import 'features/tv/core/tv_developer_mode.dart';
 import 'features/tv/core/tv_home_template.dart';
 import 'features/tv/core/tv_memory_guard.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/privacy/privacy_shield.dart';
 import 'core/realtime/realtime_sync_service.dart';
 import 'core/profiles/profiles_repository.dart';
 import 'core/profiles/remote_profiles_repository.dart';
@@ -292,6 +293,10 @@ Future<void> _bootstrap() async {
   // Réglages d'affichage (overscan / grand texte). Best-effort, non bloquant.
   // Défauts = comportement inchangé, donc aucun risque au 1er rendu.
   unawaited(DisplaySettings.instance.load());
+
+  // Mode Bouclier (vie privée) : réglages + état VPN. Non bloquant ; sans
+  // réglage mémorisé, le bouclier est éteint et n'a aucun effet.
+  unawaited(PrivacyShield.instance.load());
 
   // Signature de lecteur (User-Agent) persistée : si le diagnostic multi-UA
   // (cf. tv_player_screen.dart _declareChannelBlocked) a déjà trouvé la
