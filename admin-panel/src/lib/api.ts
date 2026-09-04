@@ -1237,6 +1237,10 @@ export interface Family {
   source: FamilySource | null;
   member_count?: number;
   created_at: number;
+  /// Toggle ligne M3U unique (multi-MAC). Absent / false = comportement actuel.
+  multi_mac_enabled?: boolean;
+  /// CSV brut des MAC collées (ré-affiché dans le textarea).
+  multi_macs?: string | null;
 }
 export interface FamilyMember {
   mac: string;
@@ -1287,6 +1291,21 @@ export const familiesApi = {
   deleteLink: (id: string, linkId: string) =>
     request<{ ok: boolean }>(`/api/v1/families/${id}/links/${linkId}`, {
       method: 'DELETE',
+    }),
+  /// Ligne M3U unique : toggle + CSV de MAC (10–12). OFF = 302 actuel.
+  enableMultiMac: (id: string, opts: { macCsv: string; enabled: boolean }) =>
+    request<{
+      ok: boolean;
+      family_id: string;
+      multi_mac_enabled: boolean;
+      macs: string[];
+      token: string | null;
+      m3u_url: string | null;
+      activated: string[];
+      errors: { mac: string; error: string }[];
+    }>(`/api/v1/families/${id}/multi-mac`, {
+      method: 'PUT',
+      body: { mac_csv: opts.macCsv, multi_mac_enabled: opts.enabled },
     }),
 };
 

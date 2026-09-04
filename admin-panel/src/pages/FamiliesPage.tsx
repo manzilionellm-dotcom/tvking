@@ -37,6 +37,10 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
   const [mMac, setMMac] = useState('MK:');
   const [mLabel, setMLabel] = useState('');
 
+  // Ligne M3U unique (multi-MAC) : toggle + CSV collé.
+  const [multiOn, setMultiOn] = useState(false);
+  const [macCsv, setMacCsv] = useState('');
+
   function fail(e: unknown) {
     if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur.');
@@ -51,7 +55,13 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
     setSelected(id);
     setErr(null);
     familiesApi.get(id)
-      .then((r) => { setDetail(r.family); setMembers(r.members); setLinks(r.links || []); })
+      .then((r) => {
+        setDetail(r.family);
+        setMembers(r.members);
+        setLinks(r.links || []);
+        setMultiOn(!!r.family.multi_mac_enabled);
+        setMacCsv(r.family.multi_macs || '');
+      })
       .catch(fail);
   }
 
@@ -135,6 +145,22 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
     try {
       await familiesApi.remove(id);
       if (selected === id) { setSelected(null); setDetail(null); setMembers([]); }
+      loadList();
+    } catch (e) { fail(e); } finally { setBusy(false); }
+  }
+
+  async function saveMultiMac() {
+    if (!selected) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await familiesApi.enableMultiMac(selected, {
+        macCsv,
+        enabled: multiOn,
+      });
+      if (r.errors && r.errors.length) {
+        setErr(r.errors.map((e) => `${e.mac}: ${e.error}`).join(' · '));
+      }
+      openFamily(selected);
       loadList();
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
@@ -262,6 +288,35 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
                     </button>
                   </div>
                 ))}
+              </div>
+
+              {/* Ligne M3U unique : N MAC, UNE session fournisseur */}
+              <div className="space-y-2 rounded-lg border border-white/5 bg-slate/40 p-3">
+                <label className="flex items-center gap-2 text-sm text-ink-primary">
+                  <input
+                    type="checkbox"
+                    checked={multiOn}
+                    onChange={(e) => setMultiOn(e.target.checked)}
+                    className="accent-accent"
+                  />
+                  <span>Ligne M3U unique (multi-MAC)</span>
+                </label>
+                <p className="text-[11px] text-ink-tertiary">
+                  OFF = comportement actuel (redirection 302 vers le fournisseur).
+                  ON = une seule session amont ; chaque appareil garde sa propre MAC
+                  (10–12, séparées par des virgules).
+                </p>
+                <textarea
+                  value={macCsv}
+                  onChange={(e) => setMacCsv(e.target.value)}
+                  rows={3}
+                  placeholder="MK:AA:BB:CC:DD:01, MK:AA:BB:CC:DD:02, MK:AA:BB:CC:DD:03"
+                  className={inputCls + ' font-mono resize-none'}
+                />
+                <button type="button" onClick={saveMultiMac} disabled={busy}
+                  className="w-full rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:opacity-50">
+                  {busy ? '…' : (multiOn ? 'Activer la ligne partagée' : 'Enregistrer (mode actuel)')}
+                </button>
               </div>
 
               {/* ===== Liens M3U distribuables (une source → N liens séparés) ===== */}
