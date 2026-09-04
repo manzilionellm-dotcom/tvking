@@ -64,9 +64,12 @@ export function normalizeFamilyMac(raw) {
   // (:, -, espaces). Le préfixe MK optionnel est retiré ensuite.
   if (s.startsWith('MK')) s = s.slice(2);
   const hex = s.replace(/[^0-9A-F]/g, '');
-  if (hex.length !== 12) return null;
+  // Format 7 MOTION = MK + 5 octets (MK:XX:XX:XX:XX:XX), pas une MAC
+  // réseau à 6 octets. 10 hex = canonique ; 12 hex = on refuse (ça
+  // produirait MK:aa:bb:cc:dd:ee:ff, rejeté par _MAC_RX).
+  if (hex.length !== 10) return null;
   const pairs = hex.match(/../g);
-  if (!pairs || pairs.length !== 6) return null;
+  if (!pairs || pairs.length !== 5) return null;
   const mac = 'MK:' + pairs.join(':');
   return MAC_CANON_RX.test(mac) ? mac : null;
 }
