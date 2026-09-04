@@ -69,6 +69,12 @@ export { RealtimeHub };
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
+// Ligne M3U unique partagée (multi-MAC) — branche dans handlePublicFamilyM3u.
+import {
+  interceptFamilyProfile,
+  buildMultiMacM3u,
+  ensureFamilyMultiMac,
+} from './family_multi_mac.js';
 // Cast receiver HTML (cf. cloudflare/cast_receiver.js) — page CAF
 // hebergee a /cast-receiver, URL a coller dans la Google Cast SDK
 // Developer Console pour obtenir un Receiver Application ID.
@@ -5548,12 +5554,14 @@ async function handlePublicHistory(env, mac) {
 }
 
 // /api/m3u/:token — public. Résout un lien M3U de famille vers la vraie
-// playlist. Le jeton (family_links) → source de la famille → on REDIRIGE
-// vers la playlist upstream :
-//   - Xtream : {server}/get.php?username=&password=&type=m3u_plus&output=ts
-//   - M3U    : l'URL M3U telle quelle.
-// Plusieurs jetons séparés peuvent pointer vers la MÊME source.
-async function handlePublicFamilyM3u(env, rawToken) {
+// playlist. Le jeton (family_links) → source de la famille.
+//
+// Toggle multi_mac_enabled OFF (défaut, zéro régression) : on REDIRIGE
+//   302 vers la playlist upstream (Xtream get.php ou URL M3U).
+// Toggle ON : on INTERCEPTE et on sert un M3U généré, alimenté par UNE
+//   seule session amont (credentials source_json). Les tokens signés
+//   sont rafraîchis automatiquement (refreshUpstreamIfExpired).
+async function handlePublicFamilyM3u(env, rawToken, request) {
   if (!env.DB) return new Response('not found', { status: 404 });
   // Tolère un suffixe .m3u / .m3u8 dans l'URL.
   const token = String(rawToken || '').replace(/\.(m3u8?|ts)$/i, '').trim();
@@ -5563,13 +5571,43 @@ async function handlePublicFamilyM3u(env, rawToken) {
       .prepare('SELECT family_id FROM family_links WHERE token = ?')
       .bind(token).first();
     if (!link) return new Response('lien invalide', { status: 404 });
-    const fam = await env.DB
-      .prepare('SELECT source_json FROM families WHERE id = ?')
-      .bind(link.family_id).first();
+
+    // Colonnes additives (no-op si déjà là). Si l'ALTER n'a pas encore
+    // tourné, le SELECT étendu échoue → on retombe sur source_json seul
+    // = toggle OFF = 302 actuel.
+    try { await ensureFamilyMultiMac(env); } catch (_) { /* ignore */ }
+
+    let fam = null;
+    try {
+      fam = await env.DB
+        .prepare('SELECT id, source_json, multi_mac_enabled, multi_macs FROM families WHERE id = ?')
+        .bind(link.family_id).first();
+    } catch (_) {
+      fam = await env.DB
+        .prepare('SELECT source_json FROM families WHERE id = ?')
+        .bind(link.family_id).first();
+    }
     if (!fam || !fam.source_json) return new Response('source absente', { status: 404 });
     let src;
     try { src = JSON.parse(fam.source_json); } catch (_) { src = null; }
     if (!src) return new Response('source invalide', { status: 404 });
+
+    // Branche mince : ON → servir le M3U ; OFF / colonnes absentes → 302.
+    const decision = interceptFamilyProfile(request, fam);
+    if (decision.intercept) {
+      const built = await buildMultiMacM3u(env, fam, { now: Date.now() });
+      if (built.error && !built.m3u) {
+        return new Response(built.error, { status: built.status || 502 });
+      }
+      return new Response(built.m3u, {
+        status: 200,
+        headers: {
+          'content-type': 'application/vnd.apple.mpegurl; charset=utf-8',
+          'cache-control': 'no-store',
+          'access-control-allow-origin': '*',
+        },
+      });
+    }
 
     let target = null;
     if (src.type === 'xtream' && src.server_url && src.username && src.password) {
@@ -6316,7 +6354,7 @@ async function handleRequest(request, env, ctx) {
     // (redirection vers le get.php Xtream ou l'URL M3U). Plusieurs liens
     // séparés possibles, tous adossés à UNE seule source.
     if (segments[0] === 'api' && segments[1] === 'm3u' && segments.length === 3) {
-      return await handlePublicFamilyM3u(env, segments[2]);
+      return await handlePublicFamilyM3u(env, segments[2], request);
     }
 
     // /api/backup/:mac — public, sauvegarde/restauration cloud par MAC
