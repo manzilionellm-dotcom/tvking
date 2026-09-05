@@ -131,6 +131,24 @@ posé sans les avoir lus rouvre le défaut ailleurs.
 PIN, catégories), pas les connexions. Sur une ligne à une connexion,
 deux profils ne peuvent pas regarder deux chaînes différentes.
 
+**Le magnétoscope vit sous la même contrainte** (05/09/2026,
+`docs/recording-architecture.md` §13) :
+
+- `lib/features/recordings/data/recording_scheduler.dart` — les
+  **enregistrements programmés** depuis le guide. Le créneau est capté
+  par le natif du plugin `packages/tvking_device/` (alarme exacte +
+  service au premier plan, sans Flutter, survit à la veille et au
+  redémarrage) ; le Dart réconcilie au boot et toutes les 30 s. Deux
+  créneaux qui se chevauchent sur deux chaînes sont **refusés** : une
+  connexion. Si le client regarde une autre chaîne pendant la capture,
+  l'app prévient, elle ne peut pas empêcher le fournisseur de couper.
+- `LocalStreamRelay.startTimeshift` — le **différé** : la pause du direct
+  tamponne le flux sur disque **sur la même connexion** (tee) ; la
+  reprise rejoue le tampon (`/shift`), « Retour au direct » le jette.
+  Lecteur TV seulement ; plafonds 1,5 Go / 90 min.
+- `RecordingStoragePolicy` — la limite d'espace choisie par le client et
+  la purge des plus anciens (jamais un enregistrement en cours).
+
 ---
 
 ## 4. LA CHAÎNE DE LIVRAISON
@@ -184,7 +202,7 @@ Côté Worker, posés par `wrangler secret put` : **`ADMIN_SECRET`** et
 
 | Commande | Ce que ça couvre |
 |---|---|
-| `flutter test` | 863 tests Dart |
+| `flutter test` | 906 tests Dart |
 | `flutter analyze` | doit être propre |
 | `node cloudflare/<nom>.smoke.mjs` | 18 suites, sur le **vrai** worker avec une base D1 simulée |
 | `cd admin-panel && npm run build` | le panneau compile |
@@ -225,7 +243,8 @@ Un audit externe a produit un plan en sept vagues.
 4. le contrôle parental réellement incontournable — 1 j
 5. la livraison (clé de secours, branches, atomicité) — 1 j
 6. le socle (une seule session de lecture, un seul boot) — 3 sem.
-7. le futur (auto frame-rate, HDR, timeshift, accessibilité)
+7. le futur (auto frame-rate, HDR, accessibilité) — le timeshift et
+   l'enregistrement programmé sont FAITS (05/09/2026, voir §3)
 
 `docs/SECURITE_A_FAIRE_PROPRIETAIRE.md` liste ce qui reste au
 propriétaire : passer le dépôt en privé, tourner les secrets.
