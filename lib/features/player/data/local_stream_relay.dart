@@ -162,6 +162,13 @@ class LocalStreamRelay {
   bool isRecording(String realUrl) =>
       _sessions[realUrl]?.recordSink != null;
 
+  /// `true` si un LECTEUR est branché sur la session de [realUrl] — le
+  /// planificateur s'en sert pour capter une émission programmée en se
+  /// branchant sur la connexion déjà ouverte (tee) au lieu d'en ouvrir
+  /// une seconde (lignes « 1 connexion »).
+  bool isPlaying(String realUrl) =>
+      _sessions[realUrl]?.players.isNotEmpty == true;
+
   /// Débit d'INGESTION mesuré (octets/seconde, fenêtre glissante ~10 s) de
   /// la session de [realUrl]. `null` si pas de session active ou pas assez
   /// de recul pour une moyenne honnête. C'est le capteur du moniteur de
@@ -435,6 +442,164 @@ class LocalStreamRelay {
     return bytes;
   }
 
+  // ---------------------------------------------------------------
+  //  TIMESHIFT — « mettre le direct en pause »
+  // ---------------------------------------------------------------
+  //  Principe : quand le client appuie sur PAUSE en direct, le relais
+  //  continue de tirer le flux (l'unique connexion reste ouverte) et le
+  //  recopie dans un FICHIER TAMPON (cache de l'app). À la reprise, le
+  //  lecteur ne se rebranche pas sur `/s` (le bord du live) mais sur
+  //  `/shift`, qui sert le tampon DEPUIS SON DÉBUT et continue à le
+  //  servir au fur et à mesure qu'il grossit (tail -f). Le client regarde
+  //  donc exactement là où il s'était arrêté, en différé de la durée de
+  //  sa pause. « Retour au direct » ferme le tampon et rouvre `/s`.
+  //
+  //  Un seul tampon par chaîne ; jamais deux connexions amont (le tee est
+  //  sur la session existante, comme REC). Plafonds : [kTimeshiftMaxBytes]
+  //  et [kTimeshiftMaxDuration] — atteints, le tampon cesse de grossir et
+  //  le lecteur retombera sur le direct en atteignant sa fin.
+
+  /// Plafond de taille du tampon (1,5 Go ≈ 90 min de TS à 2,2 Mbit/s).
+  static const int kTimeshiftMaxBytes = 1536 * 1024 * 1024;
+
+  /// Plafond de durée du tampon.
+  static const Duration kTimeshiftMaxDuration = Duration(minutes: 90);
+
+  bool isTimeshifting(String realUrl) => _sessions[realUrl]?.shiftPath != null;
+  int timeshiftBytes(String realUrl) => _sessions[realUrl]?.shiftBytes ?? 0;
+  DateTime? timeshiftStartedAt(String realUrl) =>
+      _sessions[realUrl]?.shiftStartedAt;
+
+  /// URL locale qui rejoue le tampon depuis son début (route `/shift`).
+  String timeshiftPlayUrl(String realUrl) =>
+      'http://127.0.0.1:$_port/shift?u=${Uri.encodeComponent(realUrl)}';
+
+  /// Ouvre le tampon de différé pour la chaîne EN COURS (session déjà
+  /// branchée au lecteur). `false` si le fichier ne peut pas être créé.
+  Future<bool> startTimeshift(String realUrl) async {
+    final _RelaySession session = _ensureSession(realUrl);
+    _ensureUpstream(session);
+    if (session.shiftSink != null) return true; // déjà en différé
+    try {
+      final Directory dir =
+          Directory('${Directory.systemTemp.path}/timeshift');
+      await dir.create(recursive: true);
+      final String path =
+          '${dir.path}/shift-${realUrl.hashCode & 0x7fffffff}-'
+          '${DateTime.now().millisecondsSinceEpoch}.ts';
+      // Même course qu'au démarrage d'un REC : la session a pu être fermée
+      // pendant l'await (dernier lecteur parti) → on la ré-attache.
+      if (_sessions[realUrl] != session) {
+        _sessions[realUrl] = session;
+        _ensureUpstream(session);
+      }
+      final IOSink sink = File(path).openWrite();
+      session.shiftSink = sink;
+      session.shiftPath = path;
+      session.shiftBytes = 0;
+      session.shiftStartedAt = DateTime.now();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Relay] tampon différé KO: $e');
+      return false;
+    }
+    StreamDiagnostics.instance.recordEvent(
+      'timeshift',
+      'Direct mis en pause → tampon différé ouvert '
+          '(${StreamDiagnostics.maskCredentials(realUrl)})',
+    );
+    return true;
+  }
+
+  /// Ferme le tampon (fin d'écriture) et supprime le fichier. Le lecteur
+  /// encore branché sur `/shift` voit la fin du flux.
+  Future<void> stopTimeshift(String realUrl) async {
+    final _RelaySession? session = _sessions[realUrl];
+    if (session == null) return;
+    await _closeShift(session, delete: true);
+    _maybeCloseSession(session);
+  }
+
+  Future<void> _closeShift(_RelaySession session,
+      {required bool delete}) async {
+    final IOSink? sink = session.shiftSink;
+    final String? path = session.shiftPath;
+    session.shiftSink = null;
+    if (sink != null) {
+      try {
+        await sink.flush();
+        await sink.close();
+      } catch (_) {
+        // best-effort : le tampon est jetable.
+      }
+    }
+    if (delete && path != null) {
+      session.shiftPath = null;
+      session.shiftStartedAt = null;
+      try {
+        final File f = File(path);
+        if (await f.exists()) await f.delete();
+      } catch (_) {
+        // best-effort : le cache sera nettoyé par l'OS.
+      }
+      StreamDiagnostics.instance.recordEvent(
+        'timeshift',
+        'Tampon différé fermé et supprimé (${session.shiftBytes} octets)',
+      );
+    }
+  }
+
+  /// Sert le tampon différé (route `/shift?u=…`) : depuis l'octet 0, puis
+  /// au fil de l'eau tant que le tampon grossit. Contre-pression naturelle
+  /// via `flush()` : un lecteur en pause ne fait pas gonfler la mémoire.
+  Future<void> _serveTimeshift(HttpRequest req, _RelaySession session) async {
+    final String? path = session.shiftPath;
+    if (path == null) {
+      req.response.statusCode = HttpStatus.notFound;
+      await req.response.close();
+      return;
+    }
+    final HttpResponse res = req.response;
+    res.statusCode = HttpStatus.ok;
+    res.headers.contentType = ContentType('video', 'mp2t');
+    res.headers.set(HttpHeaders.cacheControlHeader, 'no-cache, no-store');
+    res.bufferOutput = false;
+    bool clientGone = false;
+    res.done.then((_) {
+      clientGone = true;
+    }).catchError((Object _) {
+      clientGone = true;
+    });
+    RandomAccessFile? raf;
+    try {
+      raf = await File(path).open();
+      int offset = 0;
+      while (!clientGone) {
+        final int len = await raf.length();
+        if (offset < len) {
+          final int n = (len - offset).clamp(0, 256 * 1024);
+          await raf.setPosition(offset);
+          final List<int> bytes = await raf.read(n);
+          if (bytes.isEmpty) break;
+          res.add(bytes);
+          await res.flush();
+          offset += bytes.length;
+          continue;
+        }
+        // Rien de neuf : fin si le tampon est clos, sinon on patiente.
+        if (session.shiftSink == null || session.shiftPath != path) break;
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Relay] /shift: $e');
+    } finally {
+      try {
+        await raf?.close();
+      } catch (_) {
+        // best-effort
+      }
+    }
+  }
+
   /// Octets déjà écrits pour la chaîne en cours d'enregistrement (0 si
   /// pas d'enregistrement). Utile pour afficher la taille en temps réel.
   int recordedBytes(String realUrl) => _sessions[realUrl]?.recordBytes ?? 0;
@@ -483,6 +648,17 @@ class LocalStreamRelay {
     final String? realUrl = req.uri.queryParameters['u'];
     if (req.uri.path == '/hls' && realUrl != null && realUrl.isNotEmpty) {
       await _serveNormalizedPlaylist(req, realUrl);
+      return;
+    }
+    // Différé (timeshift) : rejoue le tampon disque de la session.
+    if (req.uri.path == '/shift' && realUrl != null && realUrl.isNotEmpty) {
+      final _RelaySession? shifted = _sessions[realUrl];
+      if (shifted == null) {
+        req.response.statusCode = HttpStatus.notFound;
+        await req.response.close();
+        return;
+      }
+      await _serveTimeshift(req, shifted);
       return;
     }
     if (req.uri.path != '/s' || realUrl == null || realUrl.isEmpty) {
@@ -967,6 +1143,37 @@ class LocalStreamRelay {
         }
       }
     }
+
+    // Différé (timeshift) : mêmes octets dans le tampon disque, bornés.
+    final IOSink? shift = session.shiftSink;
+    if (shift != null) {
+      final DateTime? since = session.shiftStartedAt;
+      final bool tooBig = session.shiftBytes + data.length > kTimeshiftMaxBytes;
+      final bool tooLong = since != null &&
+          DateTime.now().difference(since) > kTimeshiftMaxDuration;
+      if (tooBig || tooLong) {
+        // Plafond atteint : on cesse d'écrire (le fichier reste servi
+        // jusqu'à sa fin → le lecteur reviendra au direct).
+        StreamDiagnostics.instance.recordEvent(
+          'timeshift',
+          'Plafond du tampon différé atteint → fin du tampon',
+          level: 'warn',
+        );
+        unawaited(_closeShift(session, delete: false));
+      } else {
+        try {
+          shift.add(data);
+          session.shiftBytes += data.length;
+        } catch (e) {
+          StructuredLogger.instance.warn(
+            domain: 'rec',
+            event: 'relay.timeshift_write_fail',
+            ctx: <String, Object?>{'error': e.toString()},
+          );
+          unawaited(_closeShift(session, delete: false));
+        }
+      }
+    }
   }
 
   /// Reconnexion upstream avec back-off, tant qu'il reste des
@@ -1120,6 +1327,10 @@ class LocalStreamRelay {
         // (stopRecording) journalise déjà les échecs de close.
       }
     }
+    // Un tampon différé est JETABLE : fermé et supprimé avec la session.
+    if (session.shiftSink != null || session.shiftPath != null) {
+      unawaited(_closeShift(session, delete: true));
+    }
     session.upstreamActive = false;
     _sessions.remove(session.realUrl);
     if (kDebugMode) {
@@ -1215,7 +1426,16 @@ class _RelaySession {
   String? recordPath;
   int recordBytes = 0;
 
-  /// Vrai tant qu'au moins un consommateur (lecteur ou enregistrement)
-  /// a besoin de l'upstream.
-  bool get hasConsumers => players.isNotEmpty || recordSink != null;
+  /// Tampon de DIFFÉRÉ (timeshift) : fichier cache écrit pendant la pause
+  /// du direct et rejoué par la route `/shift`. `shiftSink` null +
+  /// `shiftPath` non null = tampon clos (plafond) encore servi.
+  IOSink? shiftSink;
+  String? shiftPath;
+  int shiftBytes = 0;
+  DateTime? shiftStartedAt;
+
+  /// Vrai tant qu'au moins un consommateur (lecteur, enregistrement ou
+  /// tampon différé) a besoin de l'upstream.
+  bool get hasConsumers =>
+      players.isNotEmpty || recordSink != null || shiftSink != null;
 }

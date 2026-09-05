@@ -24,6 +24,7 @@ import '../../playlists/data/playlist_database.dart';
 import '../domain/recording.dart';
 import 'gallery_exporter.dart';
 import 'http_recording_downloader.dart';
+import 'recording_storage_policy.dart';
 
 /// Hook de conversion `.ts` → `.mp4` posé par l'ENTRÉE MOBILE (main.dart) avec
 /// `FfmpegConverter.tsToMp4`. Il est volontairement injecté de l'extérieur (et
@@ -122,12 +123,18 @@ class RecordingRepository {
 
   /// Crée un chemin de fichier suggéré pour un nouvel
   /// enregistrement.
+  ///
+  /// [at] : horodatage à mettre dans le nom (défaut : maintenant). Un
+  /// enregistrement PROGRAMMÉ passe l'heure de l'émission, pour que le
+  /// fichier s'appelle « TF1-Koh-Lanta-20260906-2110.ts » et non l'heure
+  /// où le client a appuyé sur « Enregistrer ».
   Future<String> createFilePath({
     required String channelName,
     String? programTitle,
+    DateTime? at,
   }) async {
     final Directory dir = await getRecordingsDir();
-    final DateTime now = DateTime.now();
+    final DateTime now = at ?? DateTime.now();
     String safe(String s) => s.replaceAll(RegExp(r'[^\w\d\-_. ]+'), '_');
     final String stamp =
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}'
@@ -147,6 +154,9 @@ class RecordingRepository {
     required String filePath,
     String? channelLogoUrl,
     String? streamUrl,
+    // Enregistrement PROGRAMMÉ capté par le natif pendant que l'app
+    // dormait : la fiche est créée APRÈS coup, avec l'heure réelle du début.
+    int? startedAt,
   }) async {
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
@@ -156,7 +166,7 @@ class RecordingRepository {
       channelName: channelName,
       programTitle: programTitle,
       filePath: filePath,
-      startedAt: DateTime.now().millisecondsSinceEpoch,
+      startedAt: startedAt ?? DateTime.now().millisecondsSinceEpoch,
       channelLogoUrl: channelLogoUrl,
       streamUrl: streamUrl,
     );
@@ -187,6 +197,8 @@ class RecordingRepository {
     );
     await _refresh();
     unawaited(_finalizeToMp4(rec.filePath));
+    // Limite d'espace choisie par le client : purge des plus anciens.
+    unawaited(RecordingStoragePolicy.instance.enforce());
   }
 
   /// Finalise un enregistrement par son CHEMIN de fichier, sans avoir
@@ -225,6 +237,7 @@ class RecordingRepository {
     );
     await _refresh();
     unawaited(_finalizeToMp4(filePath));
+    unawaited(RecordingStoragePolicy.instance.enforce());
   }
 
   /// Convertit le .ts finalisé en VRAI MP4 (remux sans perte côté natif,

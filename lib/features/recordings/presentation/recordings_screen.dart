@@ -30,13 +30,20 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/friendly_error_view.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../epg/presentation/epg_format.dart';
 import '../../player/data/local_stream_relay.dart';
+import '../../vod/data/vod_download_service.dart';
 import '../data/gallery_exporter.dart';
 import '../data/http_recording_downloader.dart';
+import '../data/native_recording_scheduler.dart';
 import '../data/recording_repository.dart';
+import '../data/recording_scheduler.dart';
 import '../data/recording_service.dart';
+import '../data/recording_storage_policy.dart';
+import '../data/scheduled_recording_repository.dart';
 import '../domain/recording.dart';
+import '../domain/scheduled_recording.dart';
 
 class RecordingsScreen extends StatelessWidget {
   const RecordingsScreen({super.key});
@@ -54,19 +61,62 @@ class RecordingsScreen extends StatelessWidget {
         builder:
             (BuildContext context, AsyncSnapshot<List<Recording>> snap) {
           final List<Recording> recs = snap.data ?? <Recording>[];
-          if (recs.isEmpty) return _empty(context);
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-            physics: const BouncingScrollPhysics(),
-            itemCount: recs.length,
-            separatorBuilder: (BuildContext _, int __) =>
-                const SizedBox(height: 8),
-            itemBuilder: (BuildContext context, int index) {
-              return _RecordingTile(recording: recs[index]);
+          // Enregistrements PROGRAMMÉS (depuis le guide) : section « Prévus »
+          // au-dessus des vidéos, + carte stockage (usage / limite).
+          return StreamBuilder<List<ScheduledRecording>>(
+            stream: ScheduledRecordingRepository.instance.stream,
+            initialData: ScheduledRecordingRepository.instance.current,
+            builder: (BuildContext context,
+                AsyncSnapshot<List<ScheduledRecording>> ssnap) {
+              final List<ScheduledRecording> planned =
+                  (ssnap.data ?? const <ScheduledRecording>[])
+                      .where((ScheduledRecording s) =>
+                          s.status != ScheduledRecordingStatus.done)
+                      .toList(growable: false);
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                physics: const BouncingScrollPhysics(),
+                children: <Widget>[
+                  const _StorageCard(),
+                  const SizedBox(height: 16),
+                  _sectionTitle(context, context.l10n.tvRecPlannedHeader),
+                  if (planned.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Text(context.l10n.tvRecPlannedEmpty,
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: AppColors.textMuted)),
+                    )
+                  else
+                    for (final ScheduledRecording s in planned) ...<Widget>[
+                      _ScheduledTile(entry: s),
+                      const SizedBox(height: 8),
+                    ],
+                  const SizedBox(height: 16),
+                  _sectionTitle(
+                      context, context.l10n.recordingsTitle.toUpperCase()),
+                  if (recs.isEmpty)
+                    SizedBox(height: 320, child: _empty(context))
+                  else
+                    for (final Recording r in recs) ...<Widget>[
+                      _RecordingTile(recording: r),
+                      const SizedBox(height: 8),
+                    ],
+                ],
+              );
             },
           );
         },
       ),
+    );
+  }
+
+  Widget _sectionTitle(BuildContext context, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(text,
+          style: AppTextStyles.labelSmall.copyWith(
+              color: AppColors.textSecondary, letterSpacing: 1.4)),
     );
   }
 
@@ -79,6 +129,210 @@ class RecordingsScreen extends StatelessWidget {
       icon: Icons.movie_filter_outlined,
       title: context.l10n.recordingsEmptyTitle,
       message: context.l10n.recordingsEmptySubtitle,
+    );
+  }
+}
+
+/// Carte STOCKAGE (mobile) : usage / libre, limite d'espace (menu), note
+/// de purge automatique. Même politique que la TV (RecordingStoragePolicy).
+class _StorageCard extends StatefulWidget {
+  const _StorageCard();
+
+  @override
+  State<_StorageCard> createState() => _StorageCardState();
+}
+
+class _StorageCardState extends State<_StorageCard> {
+  int? _free;
+
+  @override
+  void initState() {
+    super.initState();
+    RecordingStoragePolicy.instance.addListener(_onChange);
+    RecordingStoragePolicy.instance.freeBytes().then((int? v) {
+      if (mounted) setState(() => _free = v);
+    });
+  }
+
+  @override
+  void dispose() {
+    RecordingStoragePolicy.instance.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final RecordingStoragePolicy p = RecordingStoragePolicy.instance;
+    final String used = VodDownloadService.fmtBytes(p.usedBytes());
+    final String free = _free == null ? '…' : VodDownloadService.fmtBytes(_free!);
+    String label(int gb) => gb == 0
+        ? context.l10n.tvRecStorageUnlimited
+        : context.l10n.tvRecStorageLimitGb(gb);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.storage_rounded, color: AppColors.accent, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(context.l10n.tvRecStorageUsed(used, free),
+                    style: AppTextStyles.bodyLarge
+                        .copyWith(fontWeight: FontWeight.w600)),
+              ),
+              PopupMenuButton<int>(
+                initialValue: p.limitGb,
+                onSelected: (int gb) => p.setLimitGb(gb),
+                itemBuilder: (BuildContext _) => <PopupMenuEntry<int>>[
+                  for (final int gb in RecordingStoragePolicy.limitChoicesGb)
+                    PopupMenuItem<int>(value: gb, child: Text(label(gb))),
+                ],
+                child: Chip(
+                  label: Text(
+                      '${context.l10n.tvRecStorageLimit} : ${label(p.limitGb)}',
+                      style: AppTextStyles.labelSmall),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(context.l10n.tvRecStorageAutoDeleteNote,
+              style: AppTextStyles.bodyMedium
+                  .copyWith(color: AppColors.textMuted, fontSize: 11)),
+          if (NativeRecordingScheduler.instance.isSupported &&
+              !RecordingScheduler.instance.exactAlarmsOk) ...<Widget>[
+            const SizedBox(height: 6),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(context.l10n.tvRecExactAlarmHint,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.textSecondary, fontSize: 11)),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      NativeRecordingScheduler.instance.openExactAlarmSettings(),
+                  child: Text(context.l10n.tvRecExactAlarmOpen),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Tuile d'un enregistrement PROGRAMMÉ (mobile). Appui = annuler.
+class _ScheduledTile extends StatelessWidget {
+  const _ScheduledTile({required this.entry});
+  final ScheduledRecording entry;
+
+  String _status(BuildContext context) => switch (entry.status) {
+        ScheduledRecordingStatus.planned => context.l10n.tvRecStatusPlanned,
+        ScheduledRecordingStatus.recording =>
+          context.l10n.tvRecStatusRecording,
+        ScheduledRecordingStatus.done => context.l10n.tvRecStatusDone,
+        ScheduledRecordingStatus.missed => context.l10n.tvRecStatusMissed,
+        ScheduledRecordingStatus.failed => context.l10n.tvRecStatusFailed,
+        ScheduledRecordingStatus.cancelled => context.l10n.buttonCancel,
+      };
+
+  Future<void> _onTap(BuildContext context) async {
+    if (!entry.isActive) {
+      await ScheduledRecordingRepository.instance.delete(entry.id);
+      return;
+    }
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: Text(ctx.l10n.tvRecScheduleCancel),
+        content: Text(entry.programTitle ?? entry.channelName),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(ctx.l10n.buttonCancel)),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(ctx.l10n.buttonOk)),
+        ],
+      ),
+    );
+    if (ok == true) await RecordingScheduler.instance.cancel(entry.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool rec = entry.status == ScheduledRecordingStatus.recording;
+    final Color c = rec
+        ? AppColors.live
+        : (entry.isActive ? AppColors.accent : AppColors.textMuted);
+    final EpgProgram asProgram = EpgProgram(
+      channelId: entry.channelId,
+      startTime: entry.startMs,
+      stopTime: entry.stopMs,
+      title: entry.programTitle ?? entry.channelName,
+    );
+    final DateTime d = entry.startDateTime;
+    String two(int n) => n.toString().padLeft(2, '0');
+    final String size = entry.bytes > 0
+        ? ' · ${VodDownloadService.fmtBytes(entry.bytes)}'
+        : '';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _onTap(context),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: c.withValues(alpha: 0.6)),
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(rec ? Icons.fiber_manual_record_rounded : Icons.schedule_rounded,
+                  color: c, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text('${entry.channelName} · ${entry.programTitle ?? ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.bodyLarge.copyWith(
+                            fontSize: 14, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${two(d.day)}/${two(d.month)} · '
+                      '${epgTimeRange(context, asProgram)} · '
+                      '${durationText(context.l10n, entry.duration)}$size',
+                      style: AppTextStyles.bodyMedium
+                          .copyWith(fontSize: 11, color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(_status(context),
+                  style: AppTextStyles.labelSmall.copyWith(color: c)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

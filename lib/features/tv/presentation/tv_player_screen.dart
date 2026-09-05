@@ -48,7 +48,10 @@ import '../../playlists/data/xtream_url_format_store.dart';
 import '../../playlists/domain/playlist.dart' as pl;
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
+import '../../recordings/data/recording_scheduler.dart';
+import '../../recordings/data/scheduled_recording_repository.dart';
 import '../../recordings/domain/recording.dart';
+import '../../recordings/domain/scheduled_recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../vod/data/playback_position_repository.dart';
@@ -140,7 +143,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // déplacent le surlignage, OK active.
   // Ordre : 0=Guide 1=REC 2=Favori 3=Multi 4=Pistes.
   int _btnFocus = -1;
-  static const int _btnCount = 5;
+
+  /// 5 boutons en direct ; un 6e « Retour au direct » apparaît en DIFFÉRÉ.
+  int get _btnCount => _timeshift ? 6 : 5;
 
   // ----- Feuille « Pistes & format d'image » (audio/sous-titres/ratio) ---
   // Panneau latéral focus-émulé (même modèle que la carte « À suivre ») :
@@ -220,6 +225,35 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   bool get _isRecording => _activeRecording != null;
   String?
       _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
+
+  /// URL RÉELLE (clé de session du relais) de la lecture en cours quand
+  /// elle passe par le relais — c'est elle qu'on donne au REC et au
+  /// différé (l'URL de chaîne nue peut différer : variante adoptée, HTTPS
+  /// du bouclier).
+  String? _relayRealUrl;
+
+  // ----- DIFFÉRÉ (timeshift) : « mettre le direct en pause » -----
+  //  PAUSE en direct → le relais tamponne le flux sur disque (la connexion
+  //  reste la même) ; reprise → le lecteur rejoue le tampon depuis le point
+  //  de pause (route `/shift`) ; « Retour au direct » rouvre le bord du live.
+  //  Voir LocalStreamRelay.startTimeshift.
+  bool _timeshift = false; // tampon ouvert (pause faite via le relais)
+  bool _timeshiftPlaying = false; // le lecteur lit le tampon (différé)
+  int _timeshiftLastSec = -1; // throttle du badge « différé de … »
+
+  /// Retard sur le direct : durée écoulée depuis l'ouverture du tampon,
+  /// moins ce qui a déjà été rejoué. Null si pas en différé.
+  Duration? get _timeshiftDelay {
+    final String? url = _relayRealUrl;
+    if (!_timeshift || url == null) return null;
+    final DateTime? since = LocalStreamRelay.instance.timeshiftStartedAt(url);
+    if (since == null) return null;
+    final Duration elapsed = DateTime.now().difference(since);
+    final Duration played =
+        _timeshiftPlaying ? _controller.position : Duration.zero;
+    final Duration d = elapsed - played;
+    return d.isNegative ? Duration.zero : d;
+  }
   String? _toastMsg; // petit message éphémère (sauvegardé / vide / échec)
 
   // ----- Favoris -----
@@ -426,6 +460,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Mode Bouclier : VPN qui tombe → coupure immédiate ; VPN qui revient →
     // reprise automatique (cf. _onShieldChanged).
     PrivacyShield.instance.addListener(_onShieldChanged);
+    // Enregistrement PROGRAMMÉ qui démarre pendant qu'on regarde : on le dit
+    // (sur une ligne « 1 connexion », le fournisseur peut couper l'un des deux).
+    RecordingScheduler.instance.addListener(_onSchedulerChanged);
     // VERROU DE CONNEXION : ce lecteur est le detenteur prioritaire. Tout
     // autre consommateur (apercu d'accueil, file de telechargements) sera
     // demonte quand on reclamera le creneau, et attendu.
@@ -541,6 +578,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           // regarder sur un autre appareil se prend « connexion déjà
           // utilisée » alors qu'il ne regarde plus rien. On ne perd rien :
           // un direct se rattrape toujours au bord du live (cf. resumed).
+          // Un différé en cours est jeté avec (pas de tampon en arrière-plan).
+          if (_timeshift) unawaited(_backToLive(reopen: false));
           _controller.stop();
           _backgroundedLive = true;
         }
@@ -617,6 +656,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           .stopRecording(rec.streamUrl ?? _current.streamUrl);
       RecordingRepository.instance.finishRecording(rec);
     }
+    // Différé : le tampon disque est jeté avec le lecteur (closeOtherPlaybacks
+    // ci-dessous ferme la session, qui supprime son fichier — ceinture).
+    if (_timeshift && _relayRealUrl != null) {
+      unawaited(LocalStreamRelay.instance.stopTimeshift(_relayRealUrl!));
+    }
+    RecordingScheduler.instance.removeListener(_onSchedulerChanged);
     // Position VOD au moment de QUITTER le lecteur (Back) : c'est LA
     // sauvegarde qui compte le plus — celle que « Continuer à regarder »
     // affichera. À faire AVANT _controller.dispose() (après, la position
@@ -729,6 +774,18 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       else if (_isVod && _overlay && mounted) {
         setState(() {});
       }
+      // DIFFÉRÉ : le badge « différé de m:ss » se met à jour à la seconde.
+      else if (_timeshiftPlaying &&
+          mounted &&
+          _lastPos.inSeconds != _timeshiftLastSec) {
+        _timeshiftLastSec = _lastPos.inSeconds;
+        setState(() {});
+      }
+    }
+    // Fin du TAMPON différé (plafond atteint puis tout rejoué) → direct.
+    if (_timeshiftPlaying && _controller.isEnded) {
+      unawaited(_backToLive());
+      return;
     }
     // Une vraie image a été dessinée → la source envoie bien de la vidéo.
     if (_controller.firstFrame) {
@@ -918,8 +975,27 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   ///     message du bouclier — pas une seconde de plus avec l'IP réelle ;
   ///   • VPN revenu alors qu'on était bloqué : on rouvre la chaîne courante
   ///     par le chemin officiel, sans que le client ait rien à faire.
+  /// Un enregistrement programmé vient de passer « en cours » → message
+  /// éphémère avec le nom de l'émission (une seule fois par programmation).
+  final Set<String> _announcedSchedules = <String>{};
+  void _onSchedulerChanged() {
+    if (!mounted) return;
+    for (final ScheduledRecording s
+        in ScheduledRecordingRepository.instance.active) {
+      if (s.status == ScheduledRecordingStatus.recording &&
+          _announcedSchedules.add(s.id)) {
+        _flash(context.l10n
+            .tvRecScheduledStartedToast(s.programTitle ?? s.channelName));
+      }
+    }
+  }
+
   void _onShieldChanged() {
     if (!mounted) return;
+    // VPN perdu : le tampon différé n'a plus de source → on le jette aussi.
+    if (PrivacyShield.instance.blocksNetworkPlayback && _timeshift) {
+      unawaited(_backToLive(reopen: false));
+    }
     final PrivacyShield s = PrivacyShield.instance;
     final bool networkContent =
         !_playingLocalFile && !PrivacyShield.isLocalUrl(_current.streamUrl);
@@ -1207,6 +1283,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // En direct, ExoPlayer gère nativement Range + reconnexion progressive.
     if (isHls || _isVod) {
       _relayPlayUrl = null;
+      _relayRealUrl = null;
       // FERMER LE RELAIS AVANT D'OUVRIR EN DIRECT (bug terrain du 19/08 :
       // « j'ouvre le cinéma, je pars sur une chaîne → un autre flux est déjà
       // en cours », journal `HTTP 458 · text/html`, compte `Active 1/1`).
@@ -1229,10 +1306,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           await LocalStreamRelay.instance.playUrlFor(realUrl);
       if (!mounted || channel.id != _current.id) return;
       _relayPlayUrl = localUrl;
+      _relayRealUrl = realUrl;
       _controller.setUrl(localUrl, userAgent: userAgent);
     } catch (_) {
       if (!mounted || channel.id != _current.id) return;
       _relayPlayUrl = null;
+      _relayRealUrl = null;
       _controller.setUrl(realUrl, userAgent: userAgent);
     }
   }
@@ -1246,6 +1325,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
+    // Le différé est propre à la chaîne quittée : tampon jeté.
+    if (_timeshift) unawaited(_backToLive(reopen: false));
     // En Dart, `a % n` est TOUJOURS dans [0, n) pour n > 0 → pas de wrap négatif
     // à corriger (l'ancienne ligne `if (_index < 0)` était du code mort).
     _prevIndex = _index; // mémoire « dernière chaîne » (recall)
@@ -1293,6 +1374,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     }
     _savePlaybackPosition(); // no-op en direct (cf. _zap)
     if (_isRecording) _finalizeRecording(resumeDirect: false);
+    if (_timeshift) unawaited(_backToLive(reopen: false));
     _prevIndex = _index;
     _resetStabilitySession(); // choix utilisateur → session neuve
     setState(() => _index = p);
@@ -1804,6 +1886,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case 4:
         _openTracksSheet();
         break;
+      case 5:
+        unawaited(_backToLive());
+        break;
     }
   }
 
@@ -2027,16 +2112,102 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   // l'icône ▶/⏸ des contrôles tactiles.
   void _togglePlayPause() {
     if (_controller.isPlaying) {
-      _controller.pause();
+      // DIRECT via le relais → PAUSE = DIFFÉRÉ (le flux continue d'arriver
+      // dans un tampon disque ; la reprise repart d'ici, pas du bord du
+      // live). Lecture directe (HLS, repli) → pause simple : rien à
+      // tamponner, la reprise rattrape le live.
+      if (!_isVod && !_timeshift && _relayRealUrl != null) {
+        unawaited(_startTimeshift());
+      } else {
+        _controller.pause();
+      }
       // Hue « salle de cinéma » : pause film → la lumière remonte un peu
       // (no-op silencieux si pas de pont / option OFF / scène inactive).
       if (_isVod) unawaited(HueService.instance.cinemaPause());
+    } else if (_timeshift && !_timeshiftPlaying) {
+      // Reprise DIFFÉRÉE : le lecteur passe sur le tampon (depuis son début).
+      _resumeFromTimeshift();
     } else {
       _resumePlayback();
       if (_isVod) unawaited(HueService.instance.cinemaResume());
     }
     _showOverlayTemporarily();
     setState(() {});
+  }
+
+  // ---- DIFFÉRÉ (timeshift) ----
+
+  Future<void> _startTimeshift() async {
+    final String? url = _relayRealUrl;
+    if (url == null) {
+      _controller.pause();
+      return;
+    }
+    final bool ok = await LocalStreamRelay.instance.startTimeshift(url);
+    if (!mounted) return;
+    if (!ok) {
+      _controller.pause();
+      _flash(context.l10n.tvTimeshiftUnavailable);
+      return;
+    }
+    _timeshift = true;
+    _timeshiftPlaying = false;
+    // ARRÊT (pas pause) du lecteur : un ExoPlayer en pause garde sa
+    // connexion `/s` ouverte et le relais lui pousserait le flux en
+    // mémoire pendant toute la pause (1,5 Go au bout de 90 min = box
+    // tuée). Arrêté, il lâche `/s` ; la session amont, elle, survit parce
+    // que le tampon différé la consomme. La reprise fait setUrl(/shift).
+    try {
+      await _controller.stop();
+    } catch (_) {
+      // canal natif déjà mort : la reprise re-préparera de toute façon.
+    }
+    if (!mounted) return;
+    _flash(context.l10n.tvTimeshiftPaused);
+    setState(() {});
+  }
+
+  void _resumeFromTimeshift() {
+    final String? url = _relayRealUrl;
+    if (url == null || !_timeshift) {
+      _controller.play();
+      return;
+    }
+    _timeshiftPlaying = true;
+    _timeshiftLastSec = -1;
+    _pauseRelease.reset(); // la pause différée n'est pas une pause « longue »
+    _freeze.openChannel(DateTime.now()); // nouveau média : budget anti-gel neuf
+    _lastPos = Duration.zero;
+    _controller.setUrl(LocalStreamRelay.instance.timeshiftPlayUrl(url));
+    StreamDiagnostics.instance.recordEvent(
+      'timeshift',
+      'Reprise en DIFFÉRÉ depuis le point de pause '
+          '(retard ≈ ${_fmtClock(_timeshiftDelay ?? Duration.zero)})',
+    );
+    setState(() {});
+  }
+
+  /// « Retour au direct » : ferme le tampon et rouvre le bord du live par le
+  /// chemin officiel. Appelé par le bouton dédié, à la fin du tampon
+  /// (plafond atteint) et avant tout zap / sortie.
+  Future<void> _backToLive({bool reopen = true}) async {
+    if (!_timeshift) return;
+    final String? url = _relayRealUrl;
+    _timeshift = false;
+    _timeshiftPlaying = false;
+    _timeshiftLastSec = -1;
+    if (url != null) {
+      try {
+        await LocalStreamRelay.instance.stopTimeshift(url);
+      } catch (_) {
+        // best-effort : le relais journalise ses propres échecs.
+      }
+    }
+    if (!mounted || !reopen) return;
+    setState(() => _buffering = true);
+    StreamDiagnostics.instance.recordEvent(
+        'timeshift', 'Retour au direct demandé → réouverture du bord du live');
+    unawaited(_loadCurrentUrl());
   }
 
   // ---- « PAUSE LONGUE = CONNEXION RENDUE » (VOD, demande exploitant) ----
@@ -2057,7 +2228,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       // Le DIRECT aussi (audit 19/08) : une pause (« tu regardes
       // encore ? » restée sans réponse) y tient la socket pareil — il n'y
       // a juste rien à reprendre : la reprise rouvre au bord du live.
-      eligible: true,
+      // SAUF en DIFFÉRÉ : la pause remplit un tampon exprès — la connexion
+      // travaille, elle n'est pas « oisive » (plafond : 90 min / 1,5 Go).
+      eligible: !_timeshift,
       pausedOnNetwork: pausedOnNetwork,
     );
     if (!releaseNow) return;
@@ -2784,6 +2957,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                             onFavorite: _toggleFavorite,
                             onMulti: _openMultiView,
                             onTracks: _openTracksSheet,
+                            timeshift: _timeshift,
+                            onBackToLive: () => unawaited(_backToLive()),
                             // ---- Mode FILM (Netflix) ----
                             isVod: _isVod,
                             position: _controller.position,
@@ -2821,6 +2996,44 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                 fontWeight: FontWeight.w800,
                                 color: Colors.white,
                                 letterSpacing: 4)),
+                      ),
+                    ),
+                  // Badge « DIFFÉRÉ · retard m:ss » pendant le timeshift
+                  // (sous la pastille REC si les deux sont actifs).
+                  if (_timeshift)
+                    Positioned(
+                      top: TvDimens.safeV + 8 + (_isRecording ? 44 : 0),
+                      left: TvDimens.safeH,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(100),
+                          border: Border.all(color: TvTokens.gold),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                                _timeshiftPlaying
+                                    ? Icons.history_rounded
+                                    : Icons.pause_circle_filled_rounded,
+                                color: TvTokens.goldBright,
+                                size: 16),
+                            const SizedBox(width: 8),
+                            Text(
+                                _timeshiftDelay == null
+                                    ? context.l10n.tvTimeshiftBadge
+                                    : context.l10n.tvTimeshiftDelay(
+                                        _fmtClock(_timeshiftDelay!)),
+                                style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.5,
+                                    color: TvTokens.goldBright)),
+                          ],
+                        ),
                       ),
                     ),
                   // Pastille « ● REC » visible en permanence pendant l'enregistrement
@@ -2957,6 +3170,8 @@ class _ControlsBar extends StatelessWidget {
     required this.onFavorite,
     required this.onMulti,
     required this.onTracks,
+    required this.timeshift,
+    required this.onBackToLive,
     required this.isVod,
     required this.position,
     required this.duration,
@@ -2985,6 +3200,10 @@ class _ControlsBar extends StatelessWidget {
   final VoidCallback onFavorite;
   final VoidCallback onMulti;
   final VoidCallback onTracks;
+
+  /// DIFFÉRÉ actif → 6e bouton « Retour au direct » (index 5).
+  final bool timeshift;
+  final VoidCallback onBackToLive;
 
   // ---- Mode FILM (Netflix) ----
   final bool isVod;
@@ -3090,6 +3309,18 @@ class _ControlsBar extends StatelessWidget {
                   onTap: onTracks,
                   focused: focusedIndex == 4,
                 ),
+                // DIFFÉRÉ : « Retour au direct » (rejoindre le bord du live).
+                if (timeshift) ...<Widget>[
+                  const SizedBox(width: 34),
+                  _CtrlButton(
+                    icon: Icons.live_tv_rounded,
+                    label: context.l10n.tvTimeshiftBackToLive,
+                    onTap: onBackToLive,
+                    accent: TvTokens.gold,
+                    active: true,
+                    focused: focusedIndex == 5,
+                  ),
+                ],
               ],
             ),
         ],

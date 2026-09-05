@@ -35,3 +35,12 @@ android {
         minSdk = 21
     }
 }
+
+// ENREGISTREMENT PROGRAMMÉ : le service au premier plan et le receiver
+// d'alarmes utilisent NotificationCompat / ContextCompat (androidx.core).
+// L'embedding Flutter ne garantit pas cette dépendance transitive à tous
+// les projets générés par `flutter create` → on la déclare explicitement.
+// Version volontairement modeste (compatible AGP/Kotlin des builds CI).
+dependencies {
+    implementation("androidx.core:core:1.13.1")
+}

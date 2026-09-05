@@ -77,6 +77,7 @@ import 'features/security/data/lock_settings.dart';
 import 'features/security/presentation/age_gate_screen.dart';
 import 'features/security/presentation/lock_screen.dart';
 import 'features/recordings/data/recording_repository.dart';
+import 'features/recordings/data/recording_scheduler.dart';
 import 'features/recordings/data/ffmpeg_converter.dart';
 import 'core/app/master_console.dart';
 import 'features/subscription/data/subscription_state.dart';
@@ -232,7 +233,11 @@ Future<void> bootApp() async {
     RecordingRepository.instance
         .initialize()
         .then((_) => RecordingRepository.instance.recoverOrphans())
-        .then((_) {}),
+        // Enregistrements PROGRAMMÉS : après la récupération des orphelins
+        // (pour ne pas finaliser à tort une capture natif en cours), le
+        // planificateur réconcilie ce que le natif a capté pendant que
+        // l'app dormait, puis tient son tick de 30 s.
+        .then((_) => RecordingScheduler.instance.start()),
   );
   unawaited(PlayerSettings.instance.load());
 

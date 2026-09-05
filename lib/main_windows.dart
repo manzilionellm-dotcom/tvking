@@ -40,6 +40,8 @@ import 'features/device/data/device_identity.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/recordings/data/recording_repository.dart';
+import 'features/recordings/data/recording_scheduler.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'features/tv/presentation/player/desktop_player_screen.dart';
@@ -99,6 +101,16 @@ Future<void> _bootstrap() async {
 
   // 5) Favoris : préchargés pour que le cœur reflète le bon état dès l'ouverture.
   unawaited(FavoritesRepository.instance.initialize());
+
+  // 6) Enregistrements programmés : sur PC il n'y a pas d'alarme native,
+  //    c'est le tick Dart du planificateur qui capte à l'heure (tant que
+  //    l'app tourne). recoverOrphans avant, comme sur mobile/TV.
+  unawaited(
+    RecordingRepository.instance
+        .initialize()
+        .then((_) => RecordingRepository.instance.recoverOrphans())
+        .then((_) => RecordingScheduler.instance.start()),
+  );
 
   runApp(const TvApp());
 

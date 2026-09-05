@@ -31,6 +31,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
 import 'tv_player_screen.dart';
+import 'tv_program_actions.dart';
 
 // ---- Palette TiviMate (tokens §1 de la fiche) ----
 const Color _tmBg = Color(0xFF000000);
@@ -238,9 +239,15 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
       );
       return;
     }
-    _toast(p.startDateTime.isAfter(now)
-        ? context.l10n.tvProgramUpcoming
-        : context.l10n.tvReplayUnavailable);
+    if (p.startDateTime.isAfter(now)) {
+      // À VENIR → « Enregistrer / Me rappeler » (magnétoscope).
+      showTvUpcomingProgramActions(context, channel: channel, program: p)
+          .then((String? msg) {
+        if (mounted && msg != null) _toast(msg);
+      });
+      return;
+    }
+    _toast(context.l10n.tvReplayUnavailable);
   }
 
   void _toast(String msg) {

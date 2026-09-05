@@ -30,6 +30,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_player_screen.dart';
+import 'tv_program_actions.dart';
 
 class TvTimelineGuideScreen extends StatefulWidget {
   const TvTimelineGuideScreen({super.key});
@@ -237,9 +238,15 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
       );
       return;
     }
-    _toast(p.startDateTime.isAfter(now)
-        ? context.l10n.tvProgramUpcoming
-        : context.l10n.tvReplayUnavailable);
+    if (p.startDateTime.isAfter(now)) {
+      // À VENIR → « Enregistrer / Me rappeler » (magnétoscope).
+      showTvUpcomingProgramActions(context, channel: channel, program: p)
+          .then((String? msg) {
+        if (mounted && msg != null) _toast(msg);
+      });
+      return;
+    }
+    _toast(context.l10n.tvReplayUnavailable);
   }
 
   void _toast(String msg) {
