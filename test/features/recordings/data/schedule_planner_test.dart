@@ -19,8 +19,8 @@ import 'package:tv_king/features/recordings/domain/recording.dart';
 import 'package:tv_king/features/recordings/domain/scheduled_recording.dart';
 
 ScheduledRecording _entry({
-  int start = 1_000_000,
-  int stop = 1_600_000, // 10 min
+  int start = 1000000,
+  int stop = 1600000, // 10 min
   ScheduledRecordingStatus status = ScheduledRecordingStatus.planned,
   String channelId = 'tf1',
 }) {
@@ -31,8 +31,8 @@ ScheduledRecording _entry({
     streamUrl: 'http://panel/live/u/p/1.ts',
     startMs: start,
     stopMs: stop,
-    marginBeforeMs: 60_000,
-    marginAfterMs: 120_000,
+    marginBeforeMs: 60000,
+    marginAfterMs: 120000,
     filePath: '/tmp/x.ts',
     createdAt: 0,
     status: status,
@@ -46,10 +46,10 @@ void main() {
   group('SchedulePlanner.decide', () {
     final ScheduledRecording e = _entry();
     // Créneau EFFECTIF : [940 000 ; 1 720 000].
-    const int before = 900_000;
-    const int inside = 1_100_000;
-    const int justStarted = 950_000; // 10 s après le début effectif
-    const int after = 1_800_000;
+    const int before = 900000;
+    const int inside = 1100000;
+    const int justStarted = 950000; // 10 s après le début effectif
+    const int after = 1800000;
 
     test('avant le créneau : rien', () {
       expect(
@@ -202,17 +202,17 @@ void main() {
 
   group('ScheduledRecording', () {
     test('overlaps : marges comprises, jamais avec soi-même', () {
-      final ScheduledRecording a = _entry(start: 1_000_000, stop: 1_600_000);
+      final ScheduledRecording a = _entry(start: 1000000, stop: 1600000);
       // b commence 1 min après la fin officielle de a : les MARGES (2 min
       // après / 1 min avant) se chevauchent → conflit.
       final ScheduledRecording b =
-          _entry(start: 1_660_000, stop: 2_000_000, channelId: 'm6');
+          _entry(start: 1660000, stop: 2000000, channelId: 'm6');
       expect(a.overlaps(b), isTrue);
       expect(b.overlaps(a), isTrue);
       expect(a.overlaps(a), isFalse);
       // c commence bien après : libre.
       final ScheduledRecording c =
-          _entry(start: 3_000_000, stop: 3_600_000, channelId: 'm6');
+          _entry(start: 3000000, stop: 3600000, channelId: 'm6');
       expect(a.overlaps(c), isFalse);
     });
 
