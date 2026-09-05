@@ -50,6 +50,8 @@ void main() {
     const int inside = 1100000;
     const int justStarted = 950000; // 10 s après le début effectif
     const int after = 1800000;
+    // 940 000 + 3 min de grâce = 1 120 000 → 1 200 000 est bien au-delà.
+    const int afterGrace = 1200000;
 
     test('avant le créneau : rien', () {
       expect(
@@ -92,7 +94,7 @@ void main() {
             native: null,
             nativeSupported: true,
             dartJobRunning: false,
-            nowMs: inside),
+            nowMs: afterGrace),
         ScheduleAction.startDart,
         reason: 'au-delà de la grâce, le Dart prend la main',
       );
