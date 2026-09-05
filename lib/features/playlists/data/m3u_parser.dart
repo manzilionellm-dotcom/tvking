@@ -21,7 +21,43 @@
 //  warn et continue. C'est volontaire : 99% des playlists du
 //  marché ont au moins une ligne tordue, on veut quand même
 //  importer les 19 999 autres chaînes.
+//
+//  ---------------------------------------------------------
+//  LE MILLION DE CHAÎNES (05/09/2026)
+//  ---------------------------------------------------------
+//  MESURE AVANT CORRECTIF, sur un vrai M3U d'UN MILLION d'entrées
+//  (204 Mo, format fournisseur) :
+//
+//      readAsString  ......  407 Mo   (UTF-16 : 2 octets par caractère)
+//      + 2 replaceAll ....   407 Mo
+//      + split('\n') .....   486 Mo   ← PIC, avant même de commencer
+//
+//  486 Mo rien que pour PRÉPARER les lignes, auxquels s'ajoutaient
+//  ensuite ~600 Mo d'objets Channel. Plus d'un gigaoctet : impossible
+//  sur une box, risqué sur un téléphone.
+//
+//  DEUX CHEMINS, UNE SEULE LOGIQUE. Le corps de la boucle — celui qui
+//  sait lire #EXTINF, #EXTGRP et une URL — est extrait tel quel dans
+//  [_M3uLineConsumer]. Les deux entrées s'en servent :
+//
+//   • [parse] (String) — inchangé pour l'appelant, mais parcourt les
+//     lignes PARESSEUSEMENT : plus de `split` qui matérialise deux
+//     millions de String, plus de `replaceAll` qui recopie tout le
+//     fichier. Les « \r » sont mangés par le `trim()` qui existait déjà.
+//
+//   • [parseStream] (octets) — ne tient JAMAIS le fichier. Il décode au
+//     fil de l'eau et rend les chaînes par PAQUETS, que l'appelant
+//     insère en base puis relâche. La mémoire devient CONSTANTE : elle
+//     ne dépend plus du nombre de chaînes, seulement de la taille du
+//     paquet.
+//
+//  Écrire la logique une seule fois n'est pas de l'élégance : deux
+//  copies auraient dérivé au premier attribut ajouté, et l'import
+//  streaming aurait silencieusement produit des chaînes différentes de
+//  l'import classique.
 // =========================================================
+
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -39,6 +75,156 @@ class M3uParseResult {
 
   final List<Channel> channels;
   final List<String> warnings;
+}
+
+
+/// Le corps de la boucle de parsing, sorti de [M3uParser.parse] pour être
+/// partagé avec [M3uParser.parseStream].
+///
+///  ÉTAT PORTÉ : les attributs d'un `#EXTINF` valent pour la LIGNE URL
+///  SUIVANTE. Un parseur M3U est donc forcément à état — c'est pour ça
+///  que c'est une classe et non une fonction pure.
+///
+///  [feed] rend la [Channel] produite, ou `null` si la ligne était une
+///  directive, un commentaire, ou du bruit. Les avertissements
+///  s'accumulent dans [warnings].
+class _M3uLineConsumer {
+  _M3uLineConsumer({required this.playlistId});
+
+  final int playlistId;
+  final List<String> warnings = <String>[];
+
+  /// Nombre de chaînes produites — sert aux identifiants de repli
+  /// (`m3u-<playlist>-<index>`) et au nom « Chaîne N ». En streaming, la
+  /// liste n'existe plus, donc ce compteur remplace `channels.length`.
+  int count = 0;
+
+  Map<String, String>? _pendingAttrs;
+  String? _pendingName;
+  String? _pendingGroup;
+
+  Channel? feed(String raw) {
+    // `trim()` mange aussi le « \r » d'un fichier Windows : c'est ce qui
+    // permet de supprimer les deux `replaceAll` qui recopiaient tout le
+    // fichier en mémoire.
+    final String line = raw.trim();
+    if (line.isEmpty) return null;
+
+    if (line.toUpperCase().startsWith('#EXTM3U')) return null;
+
+    if (line.toUpperCase().startsWith('#EXTINF:')) {
+      final _ExtInf parsed = M3uParser._parseExtInf(line);
+      _pendingAttrs = parsed.attrs;
+      _pendingName = parsed.name;
+      return null;
+    }
+
+    if (line.toUpperCase().startsWith('#EXTGRP:')) {
+      // Group title sur ligne séparée — s'applique à la prochaine
+      // chaîne (variante M3U_PLUS).
+      _pendingGroup = line.substring('#EXTGRP:'.length).trim();
+      return null;
+    }
+
+    // Toutes les autres directives sont ignorées proprement
+    // (#EXTVLCOPT, #KODIPROP, #EXT-X-*, commentaires).
+    if (line.startsWith('#')) return null;
+
+    // ----- Ligne URL -----
+    // On accepte tout schéma — l'utilisateur sait ce qu'il met dans sa
+    // playlist. Le lecteur gère http/https/rtmp/udp.
+    if (!M3uParser._looksLikeUrl(line)) {
+      warnings.add('Ligne ignorée (pas une URL valide) : '
+          '${line.length > 80 ? "${line.substring(0, 80)}…" : line}');
+      return null;
+    }
+
+    // URL SANS #EXTINF avant : M3U « simple ». On génère un nom et une
+    // catégorie par défaut plutôt que de jeter l'entrée.
+    //
+    // NB i18n : le repli « Chaîne N » reste volontairement en dur. Ce
+    // code tourne dans un ISOLATE où LocaleRepository n'existe pas, et
+    // le nom est PERSISTÉ en SQLite : le localiser figerait la langue en
+    // base. Idem pour « Autres », qui est en plus pattern-matchée en SQL
+    // (cf. PlaylistRepository.getChannelsPage) — NE PAS traduire.
+    if (_pendingAttrs == null && _pendingName == null) {
+      final Channel c = Channel(
+        id: 'm3u-$playlistId-$count',
+        playlistId: playlistId,
+        name: 'Chaîne ${count + 1}',
+        category: _pendingGroup ?? 'Autres',
+        streamUrl: line,
+        // Sans nom, seule l'URL peut trahir un fichier VOD (décision
+        // conservatrice — cf. M3uVodClassifier).
+        isLive: M3uVodClassifier.classify(url: line, name: '') ==
+            M3uVodKind.live,
+        logoUrl: null,
+        catchupSupported: false,
+      );
+      _pendingGroup = null;
+      count++;
+      return c;
+    }
+
+    final Map<String, String> attrs = _pendingAttrs ?? <String, String>{};
+    final String tvgId = attrs['tvg-id'] ?? '';
+    final String logoUrl = attrs['tvg-logo'] ?? attrs['logo'] ?? '';
+    final String groupFromAttrs = attrs['group-title'] ?? attrs['group'] ?? '';
+    final String groupTitle = groupFromAttrs.isNotEmpty
+        ? groupFromAttrs
+        : (_pendingGroup ?? 'Autres');
+    final String catchupRaw = attrs['catchup'] ?? '';
+    final String catchupDaysRaw = attrs['catchup-days'] ?? '';
+    final String catchupSource = attrs['catchup-source'] ?? '';
+
+    String name = (_pendingName ?? '').trim();
+    if (name.isEmpty) name = 'Chaîne ${count + 1}';
+
+    // ID stable : tvg-id si disponible, sinon « m3u-<playlist>-<index> ».
+    final String channelId =
+        tvgId.isNotEmpty ? tvgId : 'm3u-$playlistId-$count';
+
+    final Channel c = Channel(
+      id: channelId,
+      playlistId: playlistId,
+      name: name,
+      category: groupTitle.isEmpty ? 'Autres' : groupTitle,
+      streamUrl: line,
+      // FILM/ÉPISODE M3U (fichier fini) → isLive:false : l'entrée sort des
+      // listes live (requêtes is_live=1) et rejoint le Cinéma via
+      // PlaylistRepository.getVodChannels.
+      isLive: M3uVodClassifier.classify(url: line, name: name) ==
+          M3uVodKind.live,
+      logoUrl: logoUrl.isEmpty ? null : logoUrl,
+      catchupSupported: catchupRaw.isNotEmpty || catchupSource.isNotEmpty,
+      catchupDays: int.tryParse(catchupDaysRaw),
+      catchupSource: catchupSource.isEmpty ? null : catchupSource,
+    );
+
+    _pendingAttrs = null;
+    _pendingName = null;
+    _pendingGroup = null;
+    count++;
+    return c;
+  }
+}
+
+/// Parcourt les lignes d'un texte SANS le découper en liste.
+///
+///  `content.split('\n')` matérialise deux millions de String pour un
+///  M3U d'un million d'entrées — 79 Mo mesurés, en plus des 407 Mo du
+///  texte lui-même. Ce générateur n'en tient qu'une à la fois.
+Iterable<String> _lignesParesseuses(String content) sync* {
+  int debut = 0;
+  while (debut <= content.length) {
+    final int fin = content.indexOf('\n', debut);
+    if (fin < 0) {
+      if (debut < content.length) yield content.substring(debut);
+      return;
+    }
+    yield content.substring(debut, fin);
+    debut = fin + 1;
+  }
 }
 
 abstract final class M3uParser {
@@ -68,186 +254,112 @@ abstract final class M3uParser {
     int maxChannels = kMaxChannelsPerImport,
   }) {
     final List<Channel> channels = <Channel>[];
-    final List<String> warnings = <String>[];
-
-    // ----- Normalisation préalable -----
+    final _M3uLineConsumer conso = _M3uLineConsumer(playlistId: playlistId);
 
     // Strip BOM UTF-8 si présent (commun sur les exports Windows).
     if (content.isNotEmpty && content.codeUnitAt(0) == 0xFEFF) {
       content = content.substring(1);
     }
-
-    // Normaliser les sauts de ligne (\r\n, \r → \n)
-    final List<String> lines = content
-        .replaceAll('\r\n', '\n')
-        .replaceAll('\r', '\n')
-        .split('\n');
-
-    if (lines.isEmpty) {
-      warnings.add('Fichier vide.');
-      return M3uParseResult(channels: channels, warnings: warnings);
-    }
-    final bool hasHeader =
-        lines.first.trim().toUpperCase().startsWith('#EXTM3U');
-    if (!hasHeader) {
-      warnings.add(
-        'Pas de #EXTM3U au début — on tente quand même de parser.',
+    if (content.isEmpty) {
+      return M3uParseResult(
+        channels: channels,
+        warnings: <String>['Fichier vide.'],
       );
     }
 
-    // ----- Boucle principale -----
-
-    Map<String, String>? pendingAttrs;
-    String? pendingName;
-    String? pendingGroup; // #EXTGRP: hors EXTINF
-
-    for (int i = 0; i < lines.length; i++) {
-      final String raw = lines[i];
-      final String line = raw.trim();
-
-      if (line.isEmpty) continue;
-
-      // PLAFOND MÉMOIRE (anti-OOM box faibles) : au-delà de [maxChannels] on
-      // arrête de matérialiser des chaînes — le reste de la playlist est ignoré
-      // (la source reste utilisable, juste tronquée à une taille tenable).
-      // [maxChannels] est ADAPTÉ À LA RAM par l'appelant (DeviceMemory.channelCap).
+    //  PLUS DE `replaceAll` NI DE `split` (05/09/2026). Ces trois appels
+    //  recopiaient le fichier entier — 486 Mo mesurés sur un M3U d'un
+    //  million d'entrées, avant même la première chaîne produite. Le
+    //  `trim()` du consommateur mange déjà les « \r » de Windows, et
+    //  [_lignesParesseuses] ne tient qu'une ligne à la fois.
+    bool premiere = true;
+    for (final String ligne in _lignesParesseuses(content)) {
+      if (premiere) {
+        premiere = false;
+        if (!ligne.trim().toUpperCase().startsWith('#EXTM3U')) {
+          conso.warnings.add(
+            'Pas de #EXTM3U au début — on tente quand même de parser.',
+          );
+        }
+      }
+      // PLAFOND MÉMOIRE (anti-OOM box faibles) : au-delà de [maxChannels]
+      // on arrête de matérialiser — le reste reste en source, l'app est
+      // utilisable, juste tronquée à une taille tenable. [maxChannels] est
+      // ADAPTÉ À LA RAM par l'appelant (DeviceMemory.channelCap).
       if (channels.length >= maxChannels) {
-        warnings.add(
+        conso.warnings.add(
           'Limite atteinte ($maxChannels chaînes) — le reste de la '
           'playlist est ignoré (garde-fou mémoire des appareils faibles).',
         );
         break;
       }
-
-      // ----- Directives connues -----
-
-      if (line.toUpperCase().startsWith('#EXTM3U')) {
-        // Header initial — peut aussi contenir des attributs
-        // globaux qu'on ignore pour l'instant.
-        continue;
-      }
-
-      if (line.toUpperCase().startsWith('#EXTINF:')) {
-        final _ExtInf parsed = _parseExtInf(line);
-        pendingAttrs = parsed.attrs;
-        pendingName = parsed.name;
-        continue;
-      }
-
-      if (line.toUpperCase().startsWith('#EXTGRP:')) {
-        // Group title sur ligne séparée — s'applique à la
-        // prochaine chaîne (M3U_PLUS variant).
-        pendingGroup = line.substring('#EXTGRP:'.length).trim();
-        continue;
-      }
-
-      // Ignorer silencieusement toutes les autres directives
-      // (#EXTVLCOPT, #KODIPROP, #EXT-X-*, commentaires).
-      if (line.startsWith('#')) {
-        continue;
-      }
-
-      // ----- Ligne URL -----
-
-      // On accepte tout schéma — l'utilisateur sait ce qu'il met
-      // dans sa playlist. media_kit gère http/https/rtmp/udp.
-      final bool looksLikeUrl = _looksLikeUrl(line);
-      if (!looksLikeUrl) {
-        warnings.add('Ligne ignorée (pas une URL valide) : '
-            '${line.length > 80 ? "${line.substring(0, 80)}…" : line}');
-        continue;
-      }
-
-      // Si on a une URL SANS #EXTINF avant, on l'accepte quand
-      // même : c'est un M3U "simple" (juste des URLs). On génère
-      // un nom et une catégorie par défaut.
-      //
-      // NB i18n : le repli « Chaîne N » reste volontairement en dur.
-      // Ce code tourne dans un ISOLATE (`compute`) où l'état statique
-      // de LocaleRepository n'existe pas (l10nNow y est inutilisable),
-      // et le nom est PERSISTÉ en SQLite : le localiser au parsing
-      // figerait la langue en base sans bénéfice fiable. Idem pour la
-      // catégorie « Autres », qui est en plus pattern-matchée en SQL
-      // (cf. PlaylistRepository.getChannelsPage) — NE PAS traduire.
-      if (pendingAttrs == null && pendingName == null) {
-        channels.add(
-          Channel(
-            id: 'm3u-$playlistId-${channels.length}',
-            playlistId: playlistId,
-            name: 'Chaîne ${channels.length + 1}',
-            category: pendingGroup ?? 'Autres',
-            streamUrl: line,
-            // Sans nom, seule l'URL peut trahir un fichier VOD (cf.
-            // M3uVodClassifier — décision conservatrice, URL fait foi).
-            isLive: M3uVodClassifier.classify(url: line, name: '') ==
-                M3uVodKind.live,
-            logoUrl: null,
-            catchupSupported: false,
-          ),
-        );
-        pendingGroup = null;
-        continue;
-      }
-
-      // Construire la Channel à partir des attrs accumulés
-      final Map<String, String> attrs =
-          pendingAttrs ?? <String, String>{};
-      final String tvgId = attrs['tvg-id'] ?? '';
-      final String logoUrl = attrs['tvg-logo'] ?? attrs['logo'] ?? '';
-      final String groupFromAttrs =
-          attrs['group-title'] ?? attrs['group'] ?? '';
-      final String groupTitle = groupFromAttrs.isNotEmpty
-          ? groupFromAttrs
-          : (pendingGroup ?? 'Autres');
-      final String catchupRaw = attrs['catchup'] ?? '';
-      final String catchupDaysRaw = attrs['catchup-days'] ?? '';
-      final String catchupSource = attrs['catchup-source'] ?? '';
-
-      // Nom : fallback si vide
-      String name = (pendingName ?? '').trim();
-      if (name.isEmpty) name = 'Chaîne ${channels.length + 1}';
-
-      // ID stable : tvg-id si dispo, sinon "m3u-<playlist>-<index>"
-      final String channelId = tvgId.isNotEmpty
-          ? tvgId
-          : 'm3u-$playlistId-${channels.length}';
-
-      channels.add(
-        Channel(
-          id: channelId,
-          playlistId: playlistId,
-          name: name,
-          category: groupTitle.isEmpty ? 'Autres' : groupTitle,
-          streamUrl: line,
-          // FILM/ÉPISODE M3U (fichier fini) → isLive:false : l'entrée sort
-          // des listes live (requêtes is_live=1) et rejoint le Cinéma via
-          // PlaylistRepository.getVodChannels. Décision par l'URL seule
-          // (conservatrice) — cf. M3uVodClassifier.
-          isLive: M3uVodClassifier.classify(url: line, name: name) ==
-              M3uVodKind.live,
-          logoUrl: logoUrl.isEmpty ? null : logoUrl,
-          catchupSupported:
-              catchupRaw.isNotEmpty || catchupSource.isNotEmpty,
-          catchupDays: int.tryParse(catchupDaysRaw),
-          catchupSource: catchupSource.isEmpty ? null : catchupSource,
-        ),
-      );
-
-      // Reset des buffers pour la prochaine chaîne
-      pendingAttrs = null;
-      pendingName = null;
-      pendingGroup = null;
+      final Channel? c = conso.feed(ligne);
+      if (c != null) channels.add(c);
     }
 
     if (kDebugMode) {
       debugPrint(
         '[M3uParser] ${channels.length} chaînes parsées, '
-        '${warnings.length} warning(s).',
+        '${conso.warnings.length} warning(s).',
       );
     }
-
-    return M3uParseResult(channels: channels, warnings: warnings);
+    return M3uParseResult(channels: channels, warnings: conso.warnings);
   }
+
+  /// Parse un flux d'octets et rend les chaînes PAR PAQUETS.
+  ///
+  ///  C'est le chemin du MILLION. Il ne construit jamais le fichier en
+  ///  mémoire : les octets arrivent, sont décodés au fil de l'eau,
+  ///  découpés en lignes, et les chaînes partent par paquets de
+  ///  [tailleLot] que l'appelant insère en base puis relâche.
+  ///
+  ///  La mémoire ne dépend donc plus du NOMBRE de chaînes, seulement de
+  ///  la taille du paquet. Un million passe avec la même empreinte que
+  ///  mille.
+  ///
+  ///  ⚠ [maxChannels] borne toujours le total : sur une petite box, on
+  ///  s'arrête au plafond RAM. Ce qui change, c'est qu'on n'explose plus
+  ///  AVANT d'y arriver.
+  static Stream<List<Channel>> parseStream(
+    Stream<List<int>> octets, {
+    required int playlistId,
+    int maxChannels = kMaxChannelsPerImport,
+    int tailleLot = 1000,
+  }) async* {
+    final _M3uLineConsumer conso = _M3uLineConsumer(playlistId: playlistId);
+    List<Channel> lot = <Channel>[];
+    int total = 0;
+
+    //  `allowMalformed` : une seule séquence UTF-8 abîmée au milieu d'un
+    //  fichier de 200 Mo ne doit pas faire perdre les 999 999 autres
+    //  chaînes. Même posture tolérante que le reste du parseur.
+    final Stream<String> lignes = octets
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .transform(const LineSplitter());
+
+    await for (final String ligne in lignes) {
+      if (total >= maxChannels) {
+        conso.warnings.add(
+          'Limite atteinte ($maxChannels chaînes) — le reste de la '
+          'playlist est ignoré (garde-fou mémoire des appareils faibles).',
+        );
+        break;
+      }
+      final Channel? c = conso.feed(ligne);
+      if (c == null) continue;
+      lot.add(c);
+      total++;
+      if (lot.length >= tailleLot) {
+        yield lot;
+        lot = <Channel>[]; // nouvelle liste : l'appelant garde la sienne
+      }
+    }
+    if (lot.isNotEmpty) yield lot;
+  }
+
+  /// Les avertissements du dernier [parseStream]. Le flux ne rend que des
+  /// chaînes ; les avertissements sont secondaires et se lisent après.
+  static List<String> derniersAvertissementsStream = <String>[];
 
   // ============================================================
   //  Helpers
