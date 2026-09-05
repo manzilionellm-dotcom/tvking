@@ -21,6 +21,7 @@ import '../data/catchup_url_builder.dart';
 import '../data/epg_repository.dart';
 import '../domain/epg_program.dart';
 import 'epg_format.dart';
+import 'program_actions_sheet.dart';
 
 class ChannelProgramsScreen extends StatefulWidget {
   const ChannelProgramsScreen({required this.channel, super.key});
@@ -273,18 +274,8 @@ class _ProgramTile extends StatelessWidget {
           );
         }
       case _ProgramState.future:
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.surfaceHigh,
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              context.l10n.programStartsAt(
-                  program.title, epgStartTime(context, program)),
-              style: AppTextStyles.bodyMedium,
-            ),
-          ),
-        );
+        // À VENIR → Enregistrer (magnétoscope) ou Me rappeler.
+        showProgramActionsSheet(context, channel: channel, program: program);
     }
   }
 }

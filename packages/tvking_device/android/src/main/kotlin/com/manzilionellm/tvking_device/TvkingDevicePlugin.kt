@@ -41,17 +41,28 @@ import javax.crypto.spec.GCMParameterSpec
 class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     private var channel: MethodChannel? = null
+    private var schedulerChannel: MethodChannel? = null
     private var appContext: Context? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         appContext = binding.applicationContext
         channel = MethodChannel(binding.binaryMessenger, "com.manzilionellm.tvking/device")
         channel?.setMethodCallHandler(this)
+        // Canal SÉPARÉ pour l'enregistrement programmé : le canal `/device`
+        // est AUSSI enregistré par la MainActivity de l'overlay mobile (le
+        // dernier inscrit gagne) — un canal dédié évite toute collision.
+        schedulerChannel = MethodChannel(
+            binding.binaryMessenger,
+            "com.manzilionellm.tvking/recording_scheduler",
+        )
+        schedulerChannel?.setMethodCallHandler(ScheduledRecordingBridge(binding.applicationContext))
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel?.setMethodCallHandler(null)
         channel = null
+        schedulerChannel?.setMethodCallHandler(null)
+        schedulerChannel = null
         appContext = null
     }
 

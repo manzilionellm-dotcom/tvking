@@ -20,7 +20,6 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
-import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -32,6 +31,7 @@ import '../data/catchup_url_builder.dart';
 import '../data/epg_repository.dart';
 import '../domain/epg_program.dart';
 import 'epg_format.dart';
+import 'program_actions_sheet.dart';
 
 class TvGuideScreen extends StatefulWidget {
   const TvGuideScreen({super.key});
@@ -438,36 +438,11 @@ class _GuideBody extends StatelessWidget {
                             );
                           }
                         } else {
-                          // Futur → on programme un RAPPEL (~5 min avant le
-                          // début) et on confirme à l'utilisateur.
-                          // Heure de début LOCALISÉE (12h/24h selon la
-                          // locale) via le helper presentation.
-                          final String start = epgStartTime(context, p);
-                          NotificationService.instance
-                              .scheduleProgramReminder(
-                            channelId: p.channelId,
-                            channelName: ch.cleanName,
-                            title: p.title,
-                            startMs: p.startTime,
-                          )
-                              .then((bool ok) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).clearSnackBars();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                backgroundColor: AppColors.surfaceHigh,
-                                behavior: SnackBarBehavior.floating,
-                                content: Text(
-                                  ok
-                                      ? context.l10n
-                                          .guideReminderSet(p.title, start)
-                                      : context.l10n.guideReminderStartsAt(
-                                          p.title, start),
-                                  style: AppTextStyles.bodyMedium,
-                                ),
-                              ),
-                            );
-                          });
+                          // Futur → feuille « Enregistrer / Me rappeler »
+                          // (magnétoscope + rappel local, cf.
+                          // program_actions_sheet.dart).
+                          showProgramActionsSheet(context,
+                              channel: ch, program: p);
                         }
                       },
                     ),

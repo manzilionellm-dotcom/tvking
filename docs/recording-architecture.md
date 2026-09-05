@@ -712,3 +712,61 @@ Aucune métrique automatique. Champs disponibles via le repository :
 
 Pour la classification P0/P1/P2 et les recommandations d'action,
 voir `phase-0-audit-cast-recording.md`.
+
+---
+
+## 13. Ajouts du 2026-09-05 — magnétoscope programmé, différé, stockage
+
+> Cette section décrit ce qui a été **ajouté** par-dessus l'architecture
+> ci-dessus (qui reste valable pour le REC manuel).
+
+### 13.1 Enregistrement programmé (depuis le guide)
+
+| Pièce | Chemin | Rôle |
+|---|---|---|
+| Modèle | `lib/features/recordings/domain/scheduled_recording.dart` | créneau (début/fin + marges 2 min / 5 min), statut `planned → recording → done / missed / failed / cancelled` |
+| Table | `lib/features/recordings/data/scheduled_recording_repository.dart` | `scheduled_recordings` (SQLite, même base) |
+| Cerveau | `lib/features/recordings/data/recording_scheduler.dart` | `schedule()`, `cancel()`, `tick()` 30 s ; décision **pure** `SchedulePlanner.decide` (testée) |
+| Pont natif | `lib/features/recordings/data/native_recording_scheduler.dart` | canal `com.manzilionellm.tvking/recording_scheduler` |
+| Natif | `packages/tvking_device/.../ScheduledRecording{Store,Alarms,Receiver,Service,Bridge}.kt` | alarmes exactes (`setExactAndAllowWhileIdle`), receiver START/STOP/BOOT, service au premier plan qui capte (raw TS + HLS) **sans Flutter** |
+| UI | `tv_program_actions.dart` (TV), `program_actions_sheet.dart` (mobile), sections « Prévus » des écrans Enregistrements | « Enregistrer / Me rappeler » sur une émission à venir |
+
+Pourquoi le natif vit dans le **plugin** et non dans l'overlay Cast :
+le build TV n'applique pas `apply_cast_patch.sh` ; le plugin est
+présent sur tous les builds Android. Les permissions (BOOT_COMPLETED,
+USE_EXACT_ALARM, FOREGROUND_SERVICE…) sont dans le manifeste du plugin.
+
+Réconciliation : au boot et toutes les 30 s, le Dart lit le carnet natif
+(`statusAll`) et crée/finalise les fiches `recordings` correspondantes.
+Sans natif (Windows), le Dart capte lui-même (`HttpRecordingDownloader`,
+ou tee relais si la chaîne est déjà lue). Si le natif reste muet 3 min
+après le début effectif, le Dart prend la main et retire les alarmes.
+
+Limites honnêtes : une ligne « 1 connexion » ne permet pas de capter une
+chaîne pendant qu'on en regarde une autre — le planificateur refuse deux
+créneaux qui se chevauchent sur des chaînes différentes, mais ne peut pas
+empêcher le fournisseur de couper si le client zappe pendant la capture
+(le lecteur affiche un message quand une capture programmée démarre).
+
+### 13.2 Différé (timeshift) — `LocalStreamRelay`
+
+Pause en direct (via le relais) → `startTimeshift(realUrl)` ouvre un
+fichier tampon dans le cache (`shiftSink`, même connexion amont, tee) ;
+le lecteur est **arrêté** (pas mis en pause : un ExoPlayer en pause
+laisserait le relais lui pousser le flux en mémoire). Reprise →
+`setUrl('/shift?u=…')` : la route rejoue le fichier depuis l'octet 0 puis
+le suit (tail) avec contre-pression (`flush()`). « Retour au direct » →
+`stopTimeshift` (fichier supprimé) puis `_loadCurrentUrl`. Plafonds :
+1,5 Go / 90 min ; au-delà le tampon cesse de grossir et le lecteur revient
+au direct en atteignant la fin. Zap, sortie, arrière-plan, VPN perdu :
+tampon jeté. Lecture directe (HLS, repli) : pause simple, pas de différé.
+
+### 13.3 Stockage — `RecordingStoragePolicy`
+
+Limite choisie par le client (5/10/20/50/100 Go, ou sans limite, pref
+`rec_storage_limit_gb`). `selectForPurge` (pure, testée) supprime les
+enregistrements terminés les plus anciens jusqu'à repasser sous la limite,
+jamais un enregistrement en cours. Appliquée à chaque fin d'enregistrement
+et à chaque changement de limite. Espace libre : `StatFs` natif, `df` en
+repli. Une capture programmée ne démarre pas sous 500 Mo libres
+(`failed / noSpace`).

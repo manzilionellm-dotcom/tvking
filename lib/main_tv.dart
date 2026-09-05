@@ -40,6 +40,7 @@ import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
 import 'features/playlists/data/source_content_watch.dart';
 import 'features/recordings/data/recording_repository.dart';
+import 'features/recordings/data/recording_scheduler.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/sports/data/sports_repository.dart';
 import 'features/stats/data/watch_stats_service.dart';
@@ -249,11 +250,15 @@ Future<void> _bootstrap() async {
   // 5) Enregistrements : on initialise la base et on finalise les
   //    enregistrements « fantômes » (l'app a pu être tuée par l'OS en plein
   //    enregistrement). recoverOrphans est idempotent (no-op s'il n'y a rien).
+  //    Puis le PLANIFICATEUR (enregistrements programmés depuis le guide) :
+  //    il relit ce que le natif a capté pendant que la box dormait, crée les
+  //    fiches manquantes et tient son tick de 30 s. Après recoverOrphans,
+  //    sinon une capture natif encore en cours serait finalisée à tort.
   unawaited(
     RecordingRepository.instance
         .initialize()
         .then((_) => RecordingRepository.instance.recoverOrphans())
-        .then((_) {}),
+        .then((_) => RecordingScheduler.instance.start()),
   );
 
   // 6) Favoris : on précharge l'ensemble des chaînes favorites pour que le

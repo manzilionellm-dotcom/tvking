@@ -1,9 +1,56 @@
 <!-- Namespace défini dans build.gradle (AGP 8+). Manifest sans package.
      ANDROID_ID (Settings.Secure) et les champs Build se lisent sans permission.
+
      ACCESS_NETWORK_STATE (permission « normale », accordée à l'installation,
      sans dialogue) : nécessaire à la détection VPN du Mode Bouclier
-     (ConnectivityManager.getNetworkCapabilities). Fusionné dans le manifeste
-     de l'app par le merger Gradle, quel que soit le workflow de build. -->
+     (ConnectivityManager.getNetworkCapabilities).
+
+     ENREGISTREMENT PROGRAMMÉ (ScheduledRecording*) — déclaré ICI, dans le
+     plugin, pour exister sur TOUS les builds Android (TV comprise, qui
+     n'applique pas l'overlay Cast) :
+       - RECEIVE_BOOT_COMPLETED : re-poser les alarmes après un redémarrage
+         (elles ne survivent pas au reboot) ;
+       - SCHEDULE_EXACT_ALARM (Android 12) / USE_EXACT_ALARM (Android 13+) :
+         capter l'émission à l'heure exacte, pas « dans les 10 minutes ».
+         USE_EXACT_ALARM est accordée d'office (app distribuée en APK, hors
+         Play ; sur Play elle est réservée aux réveils/agendas — à retirer
+         si un jour l'app y est publiée, SCHEDULE_EXACT_ALARM suffira avec
+         une demande utilisateur) ;
+       - FOREGROUND_SERVICE(+_MEDIA_PLAYBACK), WAKE_LOCK, POST_NOTIFICATIONS,
+         ACCESS_WIFI_STATE, INTERNET : le service au premier plan qui écrit
+         le fichier pendant que la box dort.
+     Toutes fusionnées dans le manifeste de l'app par le merger Gradle. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!-- Service qui capte le flux à l'heure dite (réveillé par alarme). -->
+        <service
+            android:name="com.manzilionellm.tvking_device.ScheduledRecordingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Alarmes START/STOP + re-armement après redémarrage / mise à jour.
+             BOOT_COMPLETED est une diffusion protégée du système : exported
+             est obligatoire pour la recevoir, seul le système peut l'émettre. -->
+        <receiver
+            android:name="com.manzilionellm.tvking_device.ScheduledRecordingReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
 </manifest>

@@ -17,15 +17,16 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
-import '../../../core/notifications/notification_service.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../recordings/data/recording_scheduler.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_player_screen.dart';
+import 'tv_program_actions.dart';
 
 class TvChannelProgramsScreen extends StatefulWidget {
   const TvChannelProgramsScreen({required this.channel, super.key});
@@ -52,32 +53,27 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
     _future = EpgRepository.instance.todayPrograms(widget.channel.id);
   }
 
-  /// Pose ou retire un rappel (alarme 5 min avant) sur une émission à venir.
-  Future<void> _toggleReminder(EpgProgram p) async {
-    final bool alreadySet = _reminders.contains(p.startTime);
-    if (alreadySet) {
-      await NotificationService.instance
-          .cancelProgramReminder(widget.channel.id, p.startTime);
-      if (!mounted) return;
-      setState(() => _reminders.remove(p.startTime));
-      _toast(context.l10n.tvReminderRemoved);
-      return;
-    }
-    final bool ok = await NotificationService.instance.scheduleProgramReminder(
-      channelId: widget.channel.id,
-      channelName: widget.channel.cleanName,
-      title: p.title,
-      startMs: p.startTime,
+  /// Émission À VENIR : dialogue « Enregistrer / Me rappeler » partagé par
+  /// tous les guides TV (tv_program_actions.dart). Le magnétoscope
+  /// (RecordingScheduler) capte à l'heure dite, même box en veille.
+  Future<void> _upcomingActions(EpgProgram p) async {
+    final String? msg = await showTvUpcomingProgramActions(
+      context,
+      channel: widget.channel,
+      program: p,
     );
     if (!mounted) return;
-    if (ok) {
-      setState(() => _reminders.add(p.startTime));
-      _toast(context.l10n.tvReminderSet);
-    } else {
-      // Échec : créneau trop proche/passé, ou rappels coupés dans les réglages.
-      _toast(context.l10n.tvReminderFailed);
+    if (msg != null) {
+      if (msg == context.l10n.tvReminderSet) _reminders.add(p.startTime);
+      setState(() {});
+      _toast(msg);
     }
   }
+
+  /// Une programmation d'enregistrement ACTIVE existe-t-elle pour [p] ?
+  bool _isScheduled(EpgProgram p) =>
+      RecordingScheduler.instance.activeFor(widget.channel.id, p.startTime) !=
+      null;
 
   /// « REVOIR » (catch-up) : rejoue une émission PASSÉE depuis l'ARCHIVE DU
   /// FOURNISSEUR (jamais un enregistrement local). On fabrique une chaîne
@@ -179,8 +175,9 @@ class _TvChannelProgramsScreenState extends State<TvChannelProgramsScreen> {
                         program: programs[i],
                         autofocus: i == liveIndex,
                         hasReminder: _reminders.contains(programs[i].startTime),
+                        isScheduled: _isScheduled(programs[i]),
                         canReplay: _canReplay(programs[i]),
-                        onToggleReminder: () => _toggleReminder(programs[i]),
+                        onToggleReminder: () => _upcomingActions(programs[i]),
                         onReplay: () => _replay(programs[i]),
                       ),
                     );
@@ -220,6 +217,7 @@ class _ProgramRow extends StatelessWidget {
     required this.program,
     this.autofocus = false,
     this.hasReminder = false,
+    this.isScheduled = false,
     this.canReplay = false,
     this.onToggleReminder,
     this.onReplay,
@@ -228,6 +226,9 @@ class _ProgramRow extends StatelessWidget {
   final EpgProgram program;
   final bool autofocus;
   final bool hasReminder;
+
+  /// Un enregistrement est programmé pour cette émission (pastille REC).
+  final bool isScheduled;
 
   /// L'émission passée dispose-t-elle d'une archive (catch-up) rejouable ?
   final bool canReplay;
@@ -317,9 +318,35 @@ class _ProgramRow extends StatelessWidget {
                   ],
                 ),
               ),
-              // À VENIR : indicateur de RAPPEL. Cloche pleine (or) = rappel posé ;
-              // cloche vide = OK pour poser un rappel.
+              // À VENIR : pastille REC (rouge) si un enregistrement est
+              // programmé, puis l'indicateur de RAPPEL (cloche pleine = posé).
+              // OK ouvre le choix « Enregistrer / Me rappeler ».
               if (isFuture) ...<Widget>[
+                if (isScheduled) ...<Widget>[
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: TvTokens.live.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(TvTokens.rSmall),
+                      border: Border.all(color: TvTokens.live),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(Icons.fiber_manual_record_rounded,
+                            size: 14, color: TvTokens.live),
+                        const SizedBox(width: 6),
+                        Text(context.l10n.playerRec,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: TvTokens.live)),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 12),
                 Icon(
                   hasReminder
