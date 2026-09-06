@@ -170,6 +170,50 @@ void main() {
     expect(slot.holdersForTest.toList(), <String>['solo:suivant']);
   });
 
+  //  2.2 (audit du 05/09) : la fermeture d'un LECTEUR quitté enchaîne stop
+  //  natif + session relais + attente réseau (jusqu'à 3 s). Plafonnée à
+  //  1,2 s comme un démontage ordinaire, elle était court-circuitée à CHAQUE
+  //  sortie de film : le créneau rendait la main avant la fermeture réelle.
+  test('un détenteur de transition dispose d\'un budget plus long '
+      '(≥ 2 s, pas 1,2 s)', () async {
+    final Object ecran = Object();
+    final Object suivant = Object();
+    slot.register(ecran, label: 'ecran', teardown: () async {});
+    slot.register(suivant, label: 'suivant', teardown: () async {});
+    bool fermetureFinie = false;
+    slot.handOff(
+      ecran,
+      Future<void>.delayed(const Duration(milliseconds: 2000))
+          .then((_) => fermetureFinie = true),
+      label: 'fermeture lente',
+    );
+
+    final Stopwatch sw = Stopwatch()..start();
+    await slot.claim(suivant);
+    sw.stop();
+    expect(fermetureFinie, isTrue,
+        reason: 'la réclamation doit attendre la VRAIE fin de la fermeture '
+            '(2 s), pas être coupée au budget ordinaire de 1,2 s');
+    expect(sw.elapsedMilliseconds, greaterThanOrEqualTo(1900));
+  });
+
+  test('un démontage ORDINAIRE garde son budget court (≈ 1,2 s)', () async {
+    // Le contrôle du test précédent : le budget long est réservé à la
+    // transition, un aperçu lent reste plafonné comme avant.
+    final Object apercu = Object();
+    final Object suivant = Object();
+    slot.register(apercu, label: 'apercu', teardown: () async {
+      await Future<void>.delayed(const Duration(milliseconds: 2500));
+    });
+    slot.register(suivant, label: 'suivant', teardown: () async {});
+
+    final Stopwatch sw = Stopwatch()..start();
+    await slot.claim(suivant);
+    sw.stop();
+    expect(sw.elapsedMilliseconds, lessThan(2000),
+        reason: 'un démontage ordinaire est coupé à 1,2 s (fail-open)');
+  });
+
   test('une fermeture qui ne rend jamais la main est plafonnée', () async {
     final Object ecran = Object();
     final Object suivant = Object();

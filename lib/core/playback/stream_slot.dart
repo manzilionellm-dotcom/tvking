@@ -43,7 +43,12 @@ import 'package:flutter/foundation.dart';
 typedef StreamTeardown = Future<void> Function();
 
 class _Holder {
-  _Holder(this.owner, this.group, this.teardown, this.label);
+  _Holder(this.owner, this.group, this.teardown, this.label,
+      {this.isHandOff = false});
+
+  /// Détenteur de TRANSITION (fermeture d'un lecteur quitté) : droit à un
+  /// budget de démontage plus long, cf. _kHandOffBudget.
+  final bool isHandOff;
   final Object owner;
   final String group;
   final StreamTeardown teardown;
@@ -68,6 +73,20 @@ class StreamSlot {
   /// Plafond d'attente d'un démontage. Au-delà, on ouvre quand même : un
   /// démontage bloqué ne doit pas condamner l'écran.
   static const Duration _kTeardownBudget = Duration(milliseconds: 1200);
+
+  /// 2.2 (05/09/2026) — BUDGET D'UN DÉTENTEUR DE TRANSITION ([handOff]).
+  ///
+  ///  Le démontage ordinaire (un aperçu, une file) tient en 1,2 s. Mais la
+  ///  fermeture d'un LECTEUR quitté enchaîne : stop natif (posté sur le
+  ///  thread lecteur), fermeture de la session relais, puis
+  ///  `awaitNetworkIdle` qui attend jusqu'à 3 s la fermeture RÉELLE de la
+  ///  socket. Plafonner cette attente à 1,2 s revenait à la court-
+  ///  circuiter systématiquement : le créneau rendait la main AVANT que
+  ///  la socket soit fermée, et le prochain écran ouvrait sa connexion
+  ///  par-dessus — « limite 1/1 » à chaque film → chaîne un peu lent.
+  ///  4 s couvre l'attente native (3 s) plus la marge des deux `await`
+  ///  qui la précèdent. Toujours fail-open au-delà.
+  static const Duration _kHandOffBudget = Duration(milliseconds: 4000);
 
   /// Durée de vie MAXIMALE d'un détenteur de transition ([handOff]) dont la
   /// fermeture ne répond pas : au-delà, il se retire tout seul.
@@ -133,6 +152,7 @@ class StreamSlot {
       groupSolo,
       () => safe,
       label.isEmpty ? 'fermeture en cours' : label,
+      isHandOff: true,
     );
     unawaited(safe.whenComplete(() => _holders.remove(token)));
   }
@@ -190,7 +210,8 @@ class StreamSlot {
     await Future.wait(
       others.map((_Holder h) async {
         try {
-          await h.teardown().timeout(_kTeardownBudget);
+          await h.teardown().timeout(
+              h.isHandOff ? _kHandOffBudget : _kTeardownBudget);
           if (kDebugMode) debugPrint('[Slot] démonté: ${h.label}');
         } catch (e) {
           // Fail-open ASSUMÉ : on préfère un refus du panel (message clair,
