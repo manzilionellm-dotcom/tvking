@@ -868,6 +868,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         event: 'recycle.dispose_fail',
       );
     }
+    //  2.6 — deux `await` viennent de passer (jusqu'à 10 s) : si l'écran a
+    //  été quitté entre-temps, créer un lecteur NEUF ici en ferait un
+    //  orphelin que personne ne fermera — une instance mpv et, dès son
+    //  prochain open, une connexion fournisseur que rien ne rend.
+    if (!mounted) return;
     _createPlayer();
     // ÉTAT DE LECTURE remis à neuf AVANT que les listeners de la nouvelle
     // instance n'émettent (M1) : sinon le watchdog lisait la position 0 de
@@ -2248,9 +2253,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         ));
       }
     }
-    // COURTOISIE RÉSEAU : le lecteur se ferme → la file de téléchargements
-    // Cinéma peut repartir (elle patientait pendant les lectures réseau).
-    VodDownloadService.instance.setPlaybackHold(false);
+    //  2.6 (05/09/2026) — LE VERROU DES TÉLÉCHARGEMENTS NE SE LÈVE PLUS ICI.
+    //  Il l'était AVANT le début de la fermeture réseau (le stop mpv part
+    //  ~50 lignes plus bas) : la file Cinéma reprenait la ligne PENDANT le
+    //  démontage de la lecture qu'on quitte — sur une ligne à une
+    //  connexion, « déjà ouverte ailleurs » au film suivant. Même correctif
+    //  que la TV (30/08) : levé dans le `whenComplete` du shutdown, plus bas.
     PlayerSettings.instance.removeListener(_onSettingsChanged);
     CastManager.instance.removeListener(_onCastStateChanged);
     // Si un enregistrement relais tourne encore, on le clôt (sinon la
@@ -2285,6 +2293,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       'Sortie du lecteur (${_currentChannel.isLive ? 'direct' : 'film'}) → '
           'fermeture réseau lancée (stop mpv puis session relais)',
     );
+    // 2.3 (05/09/2026) — même garde que la TV : on note le rang de la
+    // dernière session relais AVANT les `await` ; l'écran suivant a pu
+    // ouvrir la sienne pendant qu'on attend le stop, on ne la touche pas.
+    final int relayGen = LocalStreamRelay.instance.sessionGeneration;
     final Future<void> shutdown = () async {
       try {
         // stop() ferme démuxeur + socket mpv (même chemin que le handoff
@@ -2294,7 +2306,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         // stop qui expire/échoue : dispose ci-dessous fermera la socket.
       }
       try {
-        await LocalStreamRelay.instance.closeOtherPlaybacks('');
+        await LocalStreamRelay.instance
+            .closeOtherPlaybacks('', upToGeneration: relayGen);
       } catch (_) {
         // best-effort : le relais journalise déjà ses propres échecs.
       }
@@ -2312,6 +2325,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     }();
     StreamSlot.instance
         .handOff(this, shutdown, label: 'fermeture lecteur quitté');
+    // Le verrou des téléchargements se lève quand la ligne est VRAIMENT
+    // rendue — jamais avant. Filet : même si le shutdown échoue, on lève.
+    unawaited(shutdown.whenComplete(
+        () => VodDownloadService.instance.setPlaybackHold(false)));
     WakelockPlus.disable();
     // À la sortie du lecteur, on dit au natif "plus de playback"
     // pour qu'un futur appui HOME ne déclenche pas le PiP par erreur

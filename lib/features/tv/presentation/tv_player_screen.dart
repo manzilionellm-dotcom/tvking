@@ -161,6 +161,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   Timer? _presenceTimer;
   Timer? _numTimer;
   Timer? _watchdog;
+
+  /// 2.1 (05/09/2026) — L'ÉCRAN EST EN ARRIÈRE-PLAN.
+  ///
+  ///  Le passage en arrière-plan (Home, multitâche) fait `stop()` sur le
+  ///  direct — la connexion est rendue, c'est voulu. Mais la cascade de
+  ///  secours ne testait que `mounted`, qui reste vrai derrière le
+  ///  lanceur : le chien de garde de démarrage, s'il avait été armé juste
+  ///  avant, tirait 20 s plus tard et RELANÇAIT la chaîne pendant que le
+  ///  client, lui, regardait autre chose sur son téléphone — « connexion
+  ///  déjà utilisée » sans avoir rien touché. `isAlive` devient
+  ///  `mounted && !_suspended`, et le chien de garde est annulé en
+  ///  arrière-plan (l'ouverture au retour le réarme).
+  bool _suspended = false;
   Timer? _toastTimer;
   Timer? _zapSettle;
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
@@ -477,7 +490,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       getChannel: () => _current,
       getOverrideUrl: () => null, // TV live (le replay a son propre écran)
       getEffectiveUrl: () => _effectiveUrl,
-      isAlive: () => mounted,
+      isAlive: () => mounted && !_suspended,
       hasDecodedFrames: () => _everShownFrame,
       getAdoptedAltUrl: () => _adoptedAltUrl,
       setAdoptedAltUrl: (String? url) => _adoptedAltUrl = url,
@@ -565,6 +578,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
+        // 2.1 — plus aucune relance automatique tant qu'on est derrière.
+        _suspended = true;
+        _startupWatchdog?.cancel();
         // L'OS peut TUER l'app une fois en arrière-plan (Home, multitâche) :
         // on fige la position VOD MAINTENANT pour ne pas perdre la reprise.
         _savePlaybackPosition();
@@ -584,6 +600,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           _backgroundedLive = true;
         }
       case AppLifecycleState.resumed:
+        _suspended = false; // 2.1 — la cascade reprend ses droits
         //  LE SON D'ABORD. Signalement du 30/08 : après un appel, ou après
         //  avoir écouté autre chose, le son revenait « comme une vieille
         //  radio » — et ne redevenait normal QU'AU REDÉMARRAGE de l'app.
@@ -692,6 +709,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     final NativeVideoController controller = _controller;
     final bool wasVod = _isVod;
     final DateTime exitAt = DateTime.now();
+    // 2.3 — on note MAINTENANT le rang de la dernière session relais : la
+    // fermeture ci-dessous arrive après plusieurs `await`, et l'écran
+    // suivant aura peut-être déjà ouvert la sienne. On ne la touchera pas.
+    final int relayGen = LocalStreamRelay.instance.sessionGeneration;
     StreamDiagnostics.instance.recordEvent(
       'creneau',
       'Sortie du lecteur (${wasVod ? 'film' : 'direct'}) → fermeture '
@@ -709,7 +730,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       }
       final int stopMs = DateTime.now().difference(exitAt).inMilliseconds;
       try {
-        await LocalStreamRelay.instance.closeOtherPlaybacks('');
+        await LocalStreamRelay.instance
+            .closeOtherPlaybacks('', upToGeneration: relayGen);
       } catch (_) {
         // best-effort : le relais journalise déjà ses propres échecs.
       }
