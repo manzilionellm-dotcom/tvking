@@ -74,6 +74,13 @@ const int _kMaxReconnectFailures = 12;
 /// définitif ferme la session immédiatement, sans aucun retry.
 const int _kMaxInitialFailures = 3;
 
+/// Taille MAXIMALE d'un corps HTTP 200 qu'on accepte de qualifier de
+/// « page » (HTML/JSON de blocage) et non de flux — voir `_openUpstream`.
+/// Une page « compte expiré », un portail ou un captcha pèsent quelques
+/// Ko ; 256 Ko laissent de la marge. Un flux, lui, n'annonce pas de
+/// taille (ou une taille énorme pour un fichier VOD) : jamais concerné.
+const int _kMaxPageBytes = 256 * 1024;
+
 /// Un flux TS live est CONTINU : au-delà de ce délai SANS le moindre octet
 /// reçu alors que la session diffusait, l'upstream est « silencieux » — il a
 /// accepté la connexion puis a cessé d'émettre SANS erreur ni EOF (cas
@@ -144,6 +151,28 @@ class LocalStreamRelay {
   /// encore demandée ; `''` = toutes lectures coupées (ex. avant un
   /// enchaînement d'épisode).
   String? _currentPlaybackUrl;
+
+  /// Numéro de la dernière session créée (voir [closeOtherPlaybacks]
+  /// `upToGeneration`). Un écran qui commence sa fermeture le lit, puis ne
+  /// ferme que ce qui existait déjà à cet instant.
+  int _sessionGeneration = 0;
+  int get sessionGeneration => _sessionGeneration;
+
+  /// Ferme la session d'UNE URL réelle précise (celle de l'écran qui part),
+  /// sans toucher aux autres. Préférable à `closeOtherPlaybacks('')` dans
+  /// un `dispose` : on ne peut pas fermer par erreur la session de l'écran
+  /// suivant, puisqu'on nomme la nôtre.
+  Future<void> closeSession(String realUrl) async {
+    final _RelaySession? s = _sessions[realUrl];
+    if (s == null || s.recordSink != null) return;
+    try {
+      await s.sub?.cancel();
+    } catch (_) {
+      // best-effort : abonnement upstream déjà mort.
+    }
+    s.sub = null;
+    _closeSession(s);
+  }
 
   /// Nombre de connexions AMONT actuellement ouvertes par le relais (une au
   /// plus par session vivante). Observabilité HONNÊTE de la garantie
@@ -222,12 +251,24 @@ class LocalStreamRelay {
   /// sienne. `_closeSession` force déjà la fermeture de la socket
   /// (`client.close(force: true)`) de façon synchrone ; l'`await` ci-dessous
   /// verrouille en plus l'ordre côté abonnement.
-  Future<void> closeOtherPlaybacks(String keepRealUrl) async {
-    _currentPlaybackUrl = keepRealUrl;
+  Future<void> closeOtherPlaybacks(String keepRealUrl,
+      {int? upToGeneration}) async {
+    //  2.3 (05/09/2026) — [upToGeneration] : ne fermer que les sessions
+    //  créées AVANT ce numéro. Le `dispose()` d'un écran appelle cette
+    //  méthode APRÈS plusieurs `await` (stop natif, attente réseau). Entre
+    //  temps, l'écran SUIVANT a pu ouvrir SA session — et l'ancien écran,
+    //  en se réveillant, la fermait avec `closeOtherPlaybacks('')` : le
+    //  client venait de lancer une chaîne et elle se coupait sous ses yeux.
+    //  L'écran capture [sessionGeneration] au DÉBUT de sa fermeture et ne
+    //  touche plus à ce qui est né après.
+    if (upToGeneration == null) _currentPlaybackUrl = keepRealUrl;
     for (final _RelaySession s
         in List<_RelaySession>.from(_sessions.values)) {
       if (s.realUrl == keepRealUrl) continue;
       if (s.recordSink != null) continue;
+      if (upToGeneration != null && s.createdGeneration > upToGeneration) {
+        continue; // née après le début de notre fermeture : pas à nous
+      }
       if (kDebugMode) {
         debugPrint('[Relay] zap → fermeture session ${_short(s.realUrl)}');
       }
@@ -756,7 +797,7 @@ class LocalStreamRelay {
 
   _RelaySession _ensureSession(String realUrl) {
     return _sessions.putIfAbsent(
-        realUrl, () => _RelaySession(realUrl: realUrl));
+        realUrl, () => _RelaySession(createdGeneration: ++_sessionGeneration, realUrl: realUrl));
   }
 
   /// Ouvre la connexion upstream de la session si elle n'est pas déjà
@@ -768,8 +809,26 @@ class LocalStreamRelay {
   }
 
   Future<void> _connectUpstream(_RelaySession session) async {
+    //  2.5 — GÉNÉRATION DE CONNEXION. Deux chemins pouvaient ouvrir l'amont
+    //  en même temps : la reconnexion différée (back-off) ET le watchdog de
+    //  silence, dont la ronde n'était pas suspendue pendant le back-off.
+    //  Résultat : deux `_connectUpstream` en vol, deux réponses, et la
+    //  seconde s'attachait par-dessus la première — deux sockets amont
+    //  pour une session. On numérote chaque tentative ; seule la
+    //  connexion de la génération COURANTE a le droit de s'attacher.
+    final int gen = ++session.connectGeneration;
     final HttpClientResponse? resp =
         await _openUpstream(session, session.realUrl);
+    if (gen != session.connectGeneration) {
+      // Une tentative plus récente est partie pendant notre attente : on
+      // s'efface. Sa réponse à elle sera la bonne.
+      try {
+        resp?.detachSocket().then((Socket s) => s.destroy());
+      } catch (_) {
+        // best-effort : la socket périmée est jetée de toute façon.
+      }
+      return;
+    }
     if (resp == null) {
       // ÉCHEC DÉFINITIF vs TRANSITOIRE — le cœur du correctif terrain :
       //   - 4xx (404/403/401/410…) dès la 1re réponse, session jamais
@@ -782,11 +841,12 @@ class LocalStreamRelay {
       // Un 4xx sur une session qui a DÉJÀ joué garde le comportement
       // reconnexion (token/edge recyclé en cours de live).
       final int? st = session.lastUpstreamStatus;
-      final bool definitive = st != null &&
-          st >= 400 &&
-          st < 500 &&
-          st != 408 && // Request Timeout : transitoire
-          st != 429; //  Too Many Requests : transitoire
+      final bool definitive = session.upstreamBodyIsText ||
+          (st != null &&
+              st >= 400 &&
+              st < 500 &&
+              st != 408 && // Request Timeout : transitoire
+              st != 429); //  Too Many Requests : transitoire
       if (definitive && !session.everStreamed) {
         StreamDiagnostics.instance.recordEvent(
           'relay',
@@ -890,6 +950,49 @@ class LocalStreamRelay {
       // tempête de reconnexions (cf. _abortIfLineDead).
       if (_isBlockedPlaceholder(finalUrl)) {
         StreamDiagnostics.instance.recordUpstreamPlaceholder(finalUrl);
+      }
+      //  2.5 (05/09/2026) — UN 200 QUI N'EST PAS UN FLUX N'EST PAS UN FLUX.
+      //  Un serveur IPTV bloqué renvoie souvent 200 + une page HTML
+      //  (« compte expiré », captcha, portail). Avant, ces octets étaient
+      //  acceptés comme de la vidéo : le réaligneur TS n'y trouvait aucun
+      //  paquet, le watchdog de silence relançait toutes les 2 s, et la
+      //  session tournait EN BOUCLE en ouvrant une connexion amont à chaque
+      //  tour — pendant que le client voyait un écran noir.
+      //
+      //  DEUX CONDITIONS, et pas une seule — leçon du 06/09 :
+      //   - le MIME seul ne suffit PAS. Un serveur PHP qui diffuse un
+      //     `.ts` sans poser d'en-tête envoie `text/html` par défaut, et
+      //     `HttpServer` de Dart envoie `text/plain` ; juger sur le MIME
+      //     aurait coupé des flux VALIDES (le test « panne transitoire »
+      //     l'a montré : `detachSocket()` écrit un 200 text/plain avant
+      //     de couper). `text/plain` n'est donc jamais retenu.
+      //   - un flux en direct n'a pas de taille : il arrive en chunked ou
+      //     sans Content-Length. Une PAGE, elle, en a une, et petite. On
+      //     n'affirme « page, pas un flux » que si la taille est connue et
+      //     tient dans [_kMaxPageBytes]. Dans le doute, on laisse passer :
+      //     le comportement d'avant (reconnexion) reprend, jamais pire.
+      final bool mimePage = upstreamMime.startsWith('text/html') ||
+          upstreamMime.startsWith('application/json');
+      final int len = cResp.contentLength;
+      final bool taillePage = len >= 0 && len <= _kMaxPageBytes;
+      if (cResp.statusCode == 200 &&
+          mimePage &&
+          taillePage &&
+          !session.upstreamIsPlaylist) {
+        StreamDiagnostics.instance.recordEvent(
+          'relay',
+          'HTTP 200 mais corps $upstreamMime de $len octets (page, pas un '
+              'flux) → échec définitif, pas de reconnexion',
+          level: 'error',
+        );
+        session.lastUpstreamStatus = 200;
+        session.upstreamBodyIsText = true;
+        try {
+          session.client?.close(force: true);
+        } catch (_) {
+          // best-effort : fermeture du client sur corps texte.
+        }
+        return null;
       }
       if (cResp.statusCode != 200 && cResp.statusCode != 206) {
         if (kDebugMode) {
@@ -1188,6 +1291,12 @@ class LocalStreamRelay {
     // reconnexions et on affiche le message clair, au lieu de marteler en
     // boucle une ligne qui ne reviendra pas (cf. journal : black.ts + Expired).
     if (_abortIfLineDead(session)) return;
+    //  2.5 — pendant le back-off il n'y a PAS d'amont : la ronde de
+    //  silence n'a rien à surveiller et, laissée armée, elle « détectait »
+    //  un silence normal et forçait une seconde reconnexion par-dessus
+    //  celle qu'on prépare ici. Elle est réarmée à l'attache suivante.
+    session.stallTimer?.cancel();
+    session.stallTimer = null;
     try {
       await session.sub?.cancel();
     } catch (_) {
@@ -1332,7 +1441,17 @@ class LocalStreamRelay {
       unawaited(_closeShift(session, delete: true));
     }
     session.upstreamActive = false;
-    _sessions.remove(session.realUrl);
+    //  2.4 (05/09/2026) — NE RETIRER DU REGISTRE QUE SI C'EST BIEN NOUS.
+    //  Avant : `_sessions.remove(session.realUrl)` retirait l'entrée PAR
+    //  URL. Or une session A fermée pendant son back-off a encore une
+    //  reconnexion différée en vol ; si entre-temps une session B a été
+    //  ouverte sur la MÊME chaîne, le réveil tardif d'A décrochait B du
+    //  registre. B continuait à diffuser, mais `forceReconnect(url)` ne la
+    //  trouvait plus (false), `closeOtherPlaybacks` ne la fermait plus, et
+    //  au zap suivant l'amont de B restait ouvert : DEUX connexions.
+    if (identical(_sessions[session.realUrl], session)) {
+      _sessions.remove(session.realUrl);
+    }
     if (kDebugMode) {
       debugPrint('[Relay] session fermée ${_short(session.realUrl)} '
           '(${_sessions.length} restantes)');
@@ -1359,8 +1478,19 @@ class _PlayerConsumer {
 
 /// État d'une chaîne tirée une seule fois et distribuée.
 class _RelaySession {
-  _RelaySession({required this.realUrl});
+  _RelaySession({required this.realUrl, required this.createdGeneration});
   final String realUrl;
+
+  /// Rang de création (voir [LocalStreamRelay.sessionGeneration]).
+  final int createdGeneration;
+
+  /// Numéro de la tentative de connexion amont en cours ; une réponse
+  /// d'une tentative plus ancienne est jetée (voir _connectUpstream).
+  int connectGeneration = 0;
+
+  /// `true` si la dernière réponse amont était une PAGE (HTML/texte/JSON)
+  /// et non un flux : échec définitif, même sans code 4xx.
+  bool upstreamBodyIsText = false;
 
   HttpClient? client;
   StreamSubscription<List<int>>? sub;
