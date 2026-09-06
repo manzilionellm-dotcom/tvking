@@ -33,6 +33,31 @@
 //   4. UNE SEULE REQUÊTE POUR TOUT LE MONDE. Le serveur garde la
 //      réponse 45 s en cache : dix clients qui rafraîchissent en même
 //      temps ne font pas dix appels chez le fournisseur.
+//
+//  LA SENTINELLE (06/09/2026) — demande du propriétaire : « configure
+//  les alertes buts pour que je sois prévenu en direct ».
+//
+//  La garantie n° 1 (« ne tourne que quand on le regarde ») avait un
+//  angle mort : un but ne prévient PERSONNE si le client est sur un
+//  film. Or c'est précisément là qu'une alerte a de la valeur — sur
+//  l'écran Sport, il voit déjà le score.
+//
+//  La sentinelle est un second minuteur, indépendant de l'écran, qui ne
+//  se réveille que lorsqu'un match QUI COMPTE pour ce client (suivi un
+//  par un, ou d'une équipe favorite) est en train de se jouer, ou sur le
+//  point de commencer. Le reste du temps, elle ne fait AUCUNE requête :
+//  elle relit toutes les 5 minutes, en mémoire, la liste des matchs
+//  suivis pour savoir si une fenêtre s'ouvre. Un mardi matin sans match
+//  suivi coûte donc zéro octet réseau — la garantie n° 1 tient toujours,
+//  dans son esprit : on ne réveille le réseau que s'il y a quelque chose
+//  à surveiller.
+//
+//  Ce qu'elle NE peut PAS faire, et il faut le dire honnêtement : un
+//  minuteur Dart ne vit que tant que le processus de l'app vit. Sur
+//  Android, une app en arrière-plan garde ses minuteurs quelques minutes
+//  à quelques dizaines de minutes, puis le système la gèle. Une alerte
+//  « app fermée depuis deux heures » demanderait des notifications
+//  poussées depuis le serveur — ce n'est pas ce fichier.
 import 'dart:async';
 import 'dart:convert';
 
@@ -41,10 +66,13 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/realtime/realtime_sync_service.dart'
+    show AdminMessage, RealtimeSyncService;
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../domain/sport_models.dart';
 import 'followed_matches_service.dart';
+import 'sports_repository.dart';
 
 class LiveScoresService {
   LiveScoresService._();
@@ -123,6 +151,192 @@ class LiveScoresService {
     }
   }
 
+  // =========================================================
+  //  LA SENTINELLE — alertes de but même quand l'écran Sport est fermé
+  // =========================================================
+
+  /// Avant le coup d'envoi : on commence à écouter un peu avant, parce
+  /// que l'horaire annoncé et le vrai coup d'envoi diffèrent souvent de
+  /// quelques minutes.
+  static const Duration kWindowBefore = Duration(minutes: 5);
+
+  /// Après le coup d'envoi : un match de football dure ~2 h avec les
+  /// arrêts de jeu ; une prolongation et des tirs au but, ~2 h 30. Trois
+  /// heures couvrent tout, sans laisser la sentinelle tourner la nuit
+  /// sur un match dont la source aurait oublié de dire « terminé ».
+  static const Duration kWindowAfter = Duration(hours: 3);
+
+  /// Hors fenêtre, on ne relit que la mémoire (aucune requête) à ce
+  /// rythme, pour repérer une fenêtre qui s'ouvre. Cinq minutes : au
+  /// pire, on rate les 5 premières minutes d'un match — et les
+  /// abonnements aux changements (suivre un match, ajouter une équipe)
+  /// réarment immédiatement, sans attendre ce tic.
+  static const Duration kIdleRecheck = Duration(minutes: 5);
+
+  Timer? _sentinelTimer;
+  bool _sentinelOn = false;
+  StreamSubscription<void>? _followSub;
+  StreamSubscription<List<SportTeam>>? _favSub;
+  StreamSubscription<void>? _favEventsSub;
+
+  /// Branchement remplaçable dans les tests : la sentinelle appelle ceci
+  /// au lieu de [refresh] (qui tape le réseau). Nul en production.
+  @visibleForTesting
+  Future<void> Function()? debugRefreshOverride;
+
+  /// Horloge remplaçable dans les tests (fake_async n'avance PAS
+  /// `DateTime.now()`, seulement les minuteurs). Nulle en production.
+  @visibleForTesting
+  DateTime Function()? debugClock;
+
+  DateTime _now() => (debugClock ?? DateTime.now)();
+
+  /// `true` tant que la sentinelle est armée (utile aux réglages pour
+  /// écrire « veille active » plutôt que de laisser deviner).
+  bool get sentinelOn => _sentinelOn;
+
+  /// Démarre la veille app-wide. Idempotent. À appeler une fois au boot
+  /// (téléphone ET TV) ; ne fait aucune requête tant qu'aucun match qui
+  /// compte n'est dans sa fenêtre.
+  void startSentinel() {
+    if (_sentinelOn) return;
+    _sentinelOn = true;
+    // Les matchs suivis vivent dans les préférences : on les charge
+    // d'abord, sinon la première évaluation croirait la liste vide.
+    unawaited(FollowedMatchesService.instance.ensureLoaded().then((_) {
+      if (_sentinelOn) _armSentinel();
+    }));
+    _followSub = FollowedMatchesService.instance.changes.listen((_) {
+      if (_sentinelOn) _armSentinel();
+    });
+    _favSub = SportsRepository.instance.favoritesStream.listen((_) {
+      if (_sentinelOn) _armSentinel();
+    });
+    _favEventsSub = SportsRepository.instance.changesStream.listen((_) {
+      if (_sentinelOn) _armSentinel();
+    });
+  }
+
+  /// Arrête la veille (tests, ou réglage « alertes de but » coupé).
+  void stopSentinel() {
+    _sentinelOn = false;
+    _sentinelTimer?.cancel();
+    _sentinelTimer = null;
+    _followSub?.cancel();
+    _followSub = null;
+    _favSub?.cancel();
+    _favSub = null;
+    _favEventsSub?.cancel();
+    _favEventsSub = null;
+  }
+
+  /// Programme le PROCHAIN tic. Une seule règle : fenêtre ouverte →
+  /// rafraîchir dans [_period] ; fermée → relire la mémoire dans
+  /// [kIdleRecheck]. Chaque tic réévalue, donc une fenêtre qui se ferme
+  /// arrête d'elle-même les requêtes.
+  void _armSentinel() {
+    _sentinelTimer?.cancel();
+    if (!_sentinelOn) return;
+    final bool open = hasAlertWindow(_now());
+    _sentinelTimer = Timer(open ? _period : kIdleRecheck, _sentinelTick);
+    if (open) unawaited(_sentinelRefresh());
+  }
+
+  Future<void> _sentinelRefresh() async {
+    // L'écran Sport rafraîchit déjà : inutile de doubler. `_inFlight`
+    // protège aussi, mais autant ne pas créer la course du tout.
+    if (_timer != null) return;
+    final Future<void> Function()? o = debugRefreshOverride;
+    await (o != null ? o() : refresh());
+  }
+
+  void _sentinelTick() {
+    if (!_sentinelOn) return;
+    _armSentinel();
+  }
+
+  /// Tous les matchs qui COMPTENT pour ce client : suivis un par un, et
+  /// ceux des équipes favorites (derniers + prochains, tels que
+  /// [SportsRepository] les connaît).
+  List<SportEvent> _mattering() {
+    final Map<String, SportEvent> byId = <String, SportEvent>{};
+    for (final SportEvent e in FollowedMatchesService.instance.all) {
+      if (e.id.isNotEmpty) byId[e.id] = e;
+    }
+    for (final SportTeam t in SportsRepository.instance.favorites) {
+      final SportsEvents ev = SportsRepository.instance.eventsFor(t.id);
+      for (final SportEvent e in <SportEvent>[...ev.next, ...ev.last]) {
+        if (e.id.isNotEmpty) byId.putIfAbsent(e.id, () => e);
+      }
+    }
+    return byId.values.toList(growable: false);
+  }
+
+  /// Y a-t-il, à l'instant [now], un match qui compte dans sa fenêtre ?
+  /// Un match déjà vu EN DIRECT au dernier tour compte aussi, même si
+  /// son horaire annoncé est dépassé : la source sait mieux que l'agenda.
+  bool hasAlertWindow(DateTime now) {
+    for (final SportEvent e in _mattering()) {
+      if (inAlertWindow(e, now)) return true;
+      final SportEvent? l = forId(e.id);
+      if (l != null && l.isLive) return true;
+    }
+    return false;
+  }
+
+  /// Fonction PURE : ce match est-il dans [−kWindowBefore ; +kWindowAfter]
+  /// autour de son coup d'envoi ? Sans horaire connu → non : on ne
+  /// réveille pas le réseau pour un match qu'on ne sait pas dater.
+  static bool inAlertWindow(SportEvent e, DateTime now) {
+    final DateTime? k = e.startsAt;
+    if (k == null) return false;
+    return !now.isBefore(k.subtract(kWindowBefore)) &&
+        !now.isAfter(k.add(kWindowAfter));
+  }
+
+  /// Fonction PURE : ce match mérite-t-il une alerte de but ?
+  ///   - suivi un par un (choix explicite) ;
+  ///   - OU l'un de ses deux camps est une équipe favorite, reconnue par
+  ///     l'identifiant du match (si [SportsRepository] le connaît) ou par
+  ///     le NOM de l'équipe — TheSportsDB écrit le même nom dans toutes
+  ///     ses routes, mais on compare quand même sans la casse.
+  static bool alertWorthy(
+    SportEvent e, {
+    required Set<String> followedIds,
+    required Set<String> favoriteEventIds,
+    required Set<String> favoriteNames,
+  }) {
+    if (e.id.isEmpty) return false;
+    if (followedIds.contains(e.id)) return true;
+    if (favoriteEventIds.contains(e.id)) return true;
+    if (favoriteNames.isEmpty) return false;
+    final String h = e.home.trim().toLowerCase();
+    final String a = e.away.trim().toLowerCase();
+    return (h.isNotEmpty && favoriteNames.contains(h)) ||
+        (a.isNotEmpty && favoriteNames.contains(a));
+  }
+
+  bool _isAlertWorthy(SportEvent e) {
+    final Set<String> favIds = <String>{};
+    final Set<String> favNames = <String>{};
+    for (final SportTeam t in SportsRepository.instance.favorites) {
+      final String n = t.name.trim().toLowerCase();
+      if (n.isNotEmpty) favNames.add(n);
+      final SportsEvents ev = SportsRepository.instance.eventsFor(t.id);
+      for (final SportEvent x in <SportEvent>[...ev.next, ...ev.last]) {
+        if (x.id.isNotEmpty) favIds.add(x.id);
+      }
+    }
+    return alertWorthy(
+      e,
+      followedIds: <String>{
+        for (final SportEvent f in FollowedMatchesService.instance.all) f.id,
+      },
+      favoriteEventIds: favIds,
+      favoriteNames: favNames,
+    );
+  }
+
   Future<void> refresh() async {
     // Deux rafraîchissements ne se chevauchent jamais : sur un réseau
     // lent, le minuteur repasserait avant la fin du précédent et on
@@ -176,11 +390,14 @@ class LiveScoresService {
   //  tout le travail, parce qu'une alerte sonore mal placée est la
   //  raison numéro un d'une désinstallation.
   //
-  //   1. UNIQUEMENT LES MATCHS SUIVIS. Il y a jusqu'à 60 rencontres en
-  //      direct simultanément. Sonner à chaque but de n'importe lequel,
-  //      c'est un cri toutes les deux minutes un samedi après-midi.
-  //      On ne sonne que pour ce que le client a EXPLICITEMENT choisi
-  //      de suivre.
+  //   1. UNIQUEMENT LES MATCHS QUI COMPTENT. Il y a jusqu'à 60
+  //      rencontres en direct simultanément. Sonner à chaque but de
+  //      n'importe lequel, c'est un cri toutes les deux minutes un
+  //      samedi après-midi. On ne sonne que pour ce que le client a
+  //      choisi : un match suivi un par un, ou un match de l'une de ses
+  //      équipes favorites (cf. [alertWorthy] — même définition que les
+  //      alertes d'avant-match de MatchAlertsService, pour qu'un client
+  //      n'ait pas deux notions de « mon match »).
   //
   //   2. JAMAIS AU PREMIER TOUR. Sans état antérieur, TOUS les matchs
   //      en cours paraissent venir de marquer : on ouvre l'app et on
@@ -241,18 +458,61 @@ class LiveScoresService {
 
   void _detectGoals(List<SportEvent> fresh) {
     for (final SportEvent e in _goalsIn(fresh)) {
-      if (!FollowedMatchesService.instance.isFollowed(e.id)) continue;
+      if (!_isAlertWorthy(e)) continue;
+      final String body = goalBody(e);
       unawaited(NotificationService.instance.notifyGoal(
         // Emplacement STABLE par match : un deuxième but REMPLACE la
         // notification du premier au lieu d'en empiler une seconde.
         // Le client veut le score du moment, pas un historique.
         id: 970000 + (e.id.hashCode.abs() % 1000),
         title: l10nNow.sportGoalTitle,
-        body: '${e.home} ${e.homeScore ?? ''}–${e.awayScore ?? ''} ${e.away}',
+        body: body,
       ));
+      // BANDEAU DANS L'APP, en plus de la notification système. Deux
+      // raisons : (a) sur Android TV, les notifications système
+      // n'apparaissent PAS à l'écran — elles vont dans un panneau que
+      // personne n'ouvre ; le bandeau, lui, passe au-dessus du lecteur.
+      // (b) sur téléphone, si l'app est au premier plan sur un film, le
+      // bandeau se voit sans quitter le film. On réutilise la bannière
+      // admin (déjà posée dans les deux entrées, au-dessus de tout).
+      unawaited(_showGoalBanner(e, body));
       return; // un seul cri par tour (garde-fou 4)
     }
   }
+
+  /// « Real Madrid 2–1 Chelsea · 67' » — le score du moment et, si la
+  /// source la donne, la minute. Volontairement non traduit : un score
+  /// se lit dans toutes les langues.
+  static String goalBody(SportEvent e) {
+    final String score =
+        '${e.home} ${e.homeScore ?? ''}–${e.awayScore ?? ''} ${e.away}';
+    final String minute = e.liveLabel.trim();
+    return minute.isEmpty ? score : '$score · $minute';
+  }
+
+  Future<void> _showGoalBanner(SportEvent e, String body) async {
+    // Même interrupteur que les alertes de match : quelqu'un qui a coupé
+    // « alertes de match » dans les Réglages ne veut pas non plus d'un
+    // bandeau qui surgit sur son film.
+    if (!await NotificationService.instance.isEnabled(kPrefMatchesBanner)) {
+      return;
+    }
+    RealtimeSyncService.instance.showAdminMessage(AdminMessage(
+      // Identifiant STABLE par match, comme la notification : un second
+      // but remplace le bandeau du premier.
+      id: 'goal:${e.id}',
+      title: l10nNow.sportGoalTitle,
+      body: body,
+      kind: 'success',
+      durationSec: 8,
+      translate: false,
+    ));
+  }
+
+  /// Clé du réglage « alertes de match » (la même que
+  /// `MatchAlertsService.prefMatches` — recopiée ici pour ne pas créer
+  /// d'import croisé entre les deux services).
+  static const String kPrefMatchesBanner = 'notif.matches.enabled';
 
   @visibleForTesting
   void debugSeed(List<SportEvent> events, {bool available = true}) {

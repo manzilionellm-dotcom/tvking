@@ -283,6 +283,20 @@ Branche : `claude/7motion-android-tv-compat-e0rtyp`.
   `GET /api/sports/big` renvoie `upstream_ok` / `upstream_ko` /
   `warnings` — `upstream_ko` élevé = l'amont nous refuse l'entrée,
   `upstream_ok` élevé avec 0 match = pas d'affiche cette semaine.
+  **06/09 — MODE SPORT « PRÉVENU EN DIRECT »** : la sentinelle des buts
+  (`LiveScoresService.startSentinel`) veille dès le boot, téléphone ET
+  TV, et n'interroge `/api/sports/live` que pendant qu'un match SUIVI ou
+  d'une ÉQUIPE FAVORITE est dans sa fenêtre (−5 min / +3 h). Un but =
+  notification sonore (canal `goal_roar_v1`) + BANDEAU dans l'app
+  au-dessus du lecteur (indispensable sur Android TV, où les
+  notifications système n'apparaissent pas). Alertes d'avant-match /
+  résultat re-passées toutes les 30 min sur les deux plateformes.
+  Limite honnête : un minuteur Dart ne survit pas au gel du processus
+  par Android ; une alerte « app fermée depuis deux heures » demanderait
+  des notifications poussées côté serveur (non fait). Reste au
+  propriétaire : `wrangler secret put SPORTSDB_KEY` (voir
+  docs/SECURITE_A_FAIRE_PROPRIETAIRE.md § 3 bis) — vérifié le 06/09 :
+  sans ce secret, la route répond `no_key` et `/api/sports/big` 429.
 - REFUSÉ (décision ferme, motifs magasins) : piège de sortie, faux
   compteurs, fausse progression qui expire.
 

@@ -46,6 +46,35 @@ dit, au lieu de fonctionner avec un secret public. C'est voulu.
 Le compte `admin` a pu être créé avec `change-me`. Connecte-toi au
 panneau et change-le depuis *Compte*.
 
+## 3 bis. Allumer le mode Sport : poser la clé TheSportsDB (06/09/2026)
+
+Tout le code du mode Sport est branché et testé — scores en direct,
+alertes de but, alertes d'avant-match, résultats. Il ne lui manque
+**qu'une chose**, et elle t'appartient : la clé payante TheSportsDB
+n'est pas posée sur le Worker.
+
+Vérifié le 06/09 : `GET https://app.7themotion.com/api/sports/live`
+répond `available:false, reason:"no_key"`, et `/api/sports/big`
+répond HTTP 429 sur ses 24 sondes (clé de démo, refusée depuis
+Cloudflare). La clé payante, elle, a été testée directement chez
+TheSportsDB le même jour : HTTP 200, 132 matchs en direct.
+
+Depuis ta machine, dans `cloudflare/` :
+
+```
+wrangler secret put SPORTSDB_KEY
+```
+
+Colle la clé quand il la demande. Aucun redéploiement du Worker ni
+des apps n'est nécessaire : la route lit le secret à chaque appel.
+
+**Ensuite, régénère la clé** sur ton compte TheSportsDB et repose la
+nouvelle de la même façon : la clé actuelle a circulé en photo dans
+une conversation, elle doit être considérée comme connue.
+
+Contrôle : `GET /api/sports/live` doit répondre `available:true` ; à
+une heure de match, `live` n'est plus vide.
+
 ## 4. Ce qui a été supprimé, et pourquoi
 
 Quatre workflows ont été retirés le 03/09/2026 :

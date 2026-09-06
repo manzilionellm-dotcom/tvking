@@ -42,6 +42,8 @@ import 'features/playlists/data/source_content_watch.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/recordings/data/recording_scheduler.dart';
 import 'features/security/data/parental_controls.dart';
+import 'features/sports/data/live_scores_service.dart';
+import 'features/sports/data/match_alerts_service.dart';
 import 'features/sports/data/sports_repository.dart';
 import 'features/stats/data/watch_stats_service.dart';
 import 'features/tv/data/place_repository.dart';
@@ -294,6 +296,19 @@ Future<void> _bootstrap() async {
   //     bandeau « Grand Match » de l'accueil est chaud dès le 1er rendu.
   //     Léger : aucune requête si aucune équipe favorite.
   unawaited(SportsRepository.instance.initialize());
+
+  // 8c) MODE SPORT « prévenu en direct » (06/09) — parité avec le
+  //     téléphone. La SENTINELLE des buts veille app-wide et n'interroge le
+  //     réseau que pendant qu'un match suivi (ou d'une équipe favorite) se
+  //     joue. Sur TV, l'alerte prend la forme d'un BANDEAU au-dessus du
+  //     lecteur : les notifications système d'Android TV ne s'affichent pas
+  //     à l'écran. Les alertes d'avant-match / résultat, qui n'existaient
+  //     que côté téléphone (accueil), tournent ici aussi, toutes les 30 min.
+  LiveScoresService.instance.startSentinel();
+  unawaited(MatchAlertsService.instance.refresh());
+  Timer.periodic(const Duration(minutes: 30), (_) {
+    unawaited(MatchAlertsService.instance.refresh());
+  });
 
   // Réglages d'affichage (overscan / grand texte). Best-effort, non bloquant.
   // Défauts = comportement inchangé, donc aucun risque au 1er rendu.

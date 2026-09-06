@@ -80,6 +80,9 @@ import 'features/recordings/data/recording_repository.dart';
 import 'features/recordings/data/recording_scheduler.dart';
 import 'features/recordings/data/ffmpeg_converter.dart';
 import 'core/app/master_console.dart';
+import 'features/sports/data/live_scores_service.dart';
+import 'features/sports/data/match_alerts_service.dart';
+import 'features/sports/data/sports_repository.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/subscription/presentation/guest_screen.dart';
 import 'features/subscription/presentation/subscription_gate.dart';
@@ -248,6 +251,22 @@ Future<void> bootApp() async {
   // Notifications locales (rappels EPG). Init non bloquant ; la permission
   // n'est demandée que lorsque l'utilisateur pose son 1er rappel.
   unawaited(NotificationService.instance.init());
+
+  // MODE SPORT (demande du propriétaire, 06/09 : « prévenu en direct »).
+  //  1) Équipes favorites chargées dès le boot — avant, seul l'écran
+  //     Sport les lisait : un client qui n'ouvrait pas l'onglet n'avait
+  //     ni alarme « joue bientôt » ni but de son équipe.
+  //  2) La SENTINELLE des buts : veille app-wide qui ne fait une requête
+  //     que pendant qu'un match qui compte se joue (cf. live_scores_service).
+  //  3) Les alertes d'avant-match et de résultat, re-passées toutes les
+  //     30 min tant que l'app vit (le service s'auto-limite à ce rythme) :
+  //     avant, seule l'arrivée sur l'accueil les déclenchait, donc une app
+  //     laissée ouverte sur un film ne reprogrammait jamais rien.
+  unawaited(SportsRepository.instance.initialize());
+  LiveScoresService.instance.startSentinel();
+  Timer.periodic(const Duration(minutes: 30), (_) {
+    unawaited(MatchAlertsService.instance.refresh());
+  });
 
   // Identité unique de l'appareil (MAC virtuel "MK:XX:XX:XX:XX:XX").
   // Pré-chargée pour qu'elle soit dispo synchrone partout dès le

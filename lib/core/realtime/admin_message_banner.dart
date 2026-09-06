@@ -117,6 +117,9 @@ class _AdminMessageBannerState extends State<AdminMessageBanner> {
   /// l'original reste affiché. Garde anti-course : on n'applique que si le
   /// MÊME message est encore à l'écran.
   void _requestTranslations(AdminMessage msg) {
+    // Texte produit par l'app elle-même (déjà dans la langue de
+    // l'appareil, ou un score) : on ne dérange pas le traducteur.
+    if (!msg.translate) return;
     if (msg.title.trim().isNotEmpty) {
       unawaited(RemoteTextTranslator.translate(msg.title).then((String? t) {
         if (t != null && mounted && _visible?.id == msg.id) {

@@ -67,6 +67,7 @@ class AdminMessage {
     required this.body,
     required this.kind,
     required this.durationSec,
+    this.translate = true,
   });
 
   /// Identifiant de l'événement (sert à l'ack et à la dédup côté UI).
@@ -84,6 +85,13 @@ class AdminMessage {
 
   /// Durée d'affichage de la bannière (secondes). Défaut 15 s.
   final int durationSec;
+
+  /// Faut-il proposer le texte au traducteur automatique ? `true` pour
+  /// un message écrit à la main par le revendeur (sa langue n'est pas
+  /// celle du client). `false` pour un texte produit PAR L'APP — un score
+  /// de match (« Real Madrid 2–1 Chelsea · 67' ») n'a rien à traduire,
+  /// et un traducteur pourrait abîmer les noms d'équipes.
+  final bool translate;
 }
 
 /// Frame ENTRANTE (hub → appareil) déjà décodée et validée.
