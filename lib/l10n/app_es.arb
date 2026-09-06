@@ -2078,6 +2078,35 @@
   "sportUnfollow": "Dejar de seguir",
   "sportFollowedOn": "Siguiendo: te avisaremos",
   "sportFollowedOff": "Quitado de tus partidos",
+  "sportPredictTitle": "Tu pronóstico",
+  "@sportPredictTitle": {
+    "description": "Titre du bloc pronostic (1 / N / 2) sous un match"
+  },
+  "sportPredictClosed": "Pronósticos cerrados",
+  "@sportPredictClosed": {
+    "description": "Le coup d envoi est passe, on ne vote plus"
+  },
+  "sportPredictDraw": "Empate",
+  "@sportPredictDraw": {
+    "description": "Libelle du choix match nul"
+  },
+  "sportPredictFans": "{pct} % de los aficionados",
+  "@sportPredictFans": {
+    "description": "Part des fans qui ont choisi ce camp",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      }
+    }
+  },
+  "sportPredictSaved": "Pronóstico guardado",
+  "@sportPredictSaved": {
+    "description": "Confirmation apres un vote"
+  },
+  "sportPredictMine": "Tu opinión",
+  "@sportPredictMine": {
+    "description": "Etiquette courte a cote de mon vote"
+  },
   "sportOfflineTitle": "Sin conexión",
   "sportOfflineBody": "No se pudo contactar el servicio. Comprueba tu conexión e inténtalo de nuevo.",
   "sportSourceDownTitle": "Servicio no disponible por ahora",

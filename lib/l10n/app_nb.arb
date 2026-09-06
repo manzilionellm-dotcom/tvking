@@ -2078,6 +2078,35 @@
   "sportUnfollow": "Slutt å følge",
   "sportFollowedOn": "Følges – du får varsel",
   "sportFollowedOff": "Fjernet fra kampene dine",
+  "sportPredictTitle": "Ditt tips",
+  "@sportPredictTitle": {
+    "description": "Titre du bloc pronostic (1 / N / 2) sous un match"
+  },
+  "sportPredictClosed": "Tipping stengt",
+  "@sportPredictClosed": {
+    "description": "Le coup d envoi est passe, on ne vote plus"
+  },
+  "sportPredictDraw": "Uavgjort",
+  "@sportPredictDraw": {
+    "description": "Libelle du choix match nul"
+  },
+  "sportPredictFans": "{pct} % av fansen",
+  "@sportPredictFans": {
+    "description": "Part des fans qui ont choisi ce camp",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      }
+    }
+  },
+  "sportPredictSaved": "Tips lagret",
+  "@sportPredictSaved": {
+    "description": "Confirmation apres un vote"
+  },
+  "sportPredictMine": "Din mening",
+  "@sportPredictMine": {
+    "description": "Etiquette courte a cote de mon vote"
+  },
   "sportOfflineTitle": "Ingen tilkobling",
   "sportOfflineBody": "Fikk ikke kontakt med tjenesten. Sjekk tilkoblingen og prøv igjen.",
   "sportSourceDownTitle": "Tjenesten er midlertidig utilgjengelig",

@@ -2095,6 +2095,35 @@
   "sportUnfollow": "Stop following",
   "sportFollowedOn": "Following — you’ll be notified",
   "sportFollowedOff": "Removed from your matches",
+  "sportPredictTitle": "Your prediction",
+  "@sportPredictTitle": {
+    "description": "Titre du bloc pronostic (1 / N / 2) sous un match"
+  },
+  "sportPredictClosed": "Predictions closed",
+  "@sportPredictClosed": {
+    "description": "Le coup d envoi est passe, on ne vote plus"
+  },
+  "sportPredictDraw": "Draw",
+  "@sportPredictDraw": {
+    "description": "Libelle du choix match nul"
+  },
+  "sportPredictFans": "{pct}% of fans",
+  "@sportPredictFans": {
+    "description": "Part des fans qui ont choisi ce camp",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      }
+    }
+  },
+  "sportPredictSaved": "Prediction saved",
+  "@sportPredictSaved": {
+    "description": "Confirmation apres un vote"
+  },
+  "sportPredictMine": "Your call",
+  "@sportPredictMine": {
+    "description": "Etiquette courte a cote de mon vote"
+  },
   "sportOfflineTitle": "No connection",
   "sportOfflineBody": "Couldn’t reach the service. Check your connection and try again.",
   "sportSourceDownTitle": "Service temporarily unavailable",

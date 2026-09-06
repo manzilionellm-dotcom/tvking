@@ -41,6 +41,7 @@ import '../data/followed_matches_service.dart';
 import '../data/live_scores_service.dart';
 import '../data/sports_repository.dart';
 import '../domain/sport_models.dart';
+import 'prediction_bar.dart';
 import 'team_picker_sheet.dart';
 
 /// Résultat d'un chargement des affiches : les matchs ET l'état de la
@@ -831,6 +832,10 @@ class _MatchTileState extends State<_MatchTile> {
                     style: AppTextStyles.labelSmall
                         .copyWith(color: AppColors.textTertiary),
                   ),
+                  // PRONOSTIC DES FANS (06/09) : « 1 · N · 2 » avant le
+                  // coup d'envoi, pourcentages après le vote, figé au
+                  // coup d'envoi. Ne rend rien pour une course.
+                  PredictionBar(event: e),
                 ],
               ),
             ),

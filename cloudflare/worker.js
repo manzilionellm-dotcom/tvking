@@ -68,6 +68,9 @@ import { RealtimeHub, publishRt } from './realtime.js';
 //  Profils famille : MEME code que /api/v1/profiles (le panel). Deux
 //  implementations auraient signifie deux calculs de PIN a maintenir.
 import { readDeviceProfiles } from './device_profiles.js';
+//  Pronostics des fans (coin Sport) : un vote par appareil et par match,
+//  pourcentages partagés. Module séparé, testé par sports_predictions.smoke.mjs.
+import { handlePredictionGet, handlePredictionPost } from './sports_predictions.js';
 // Ré-export OBLIGATOIRE : wrangler.toml déclare
 // [durable_objects] class_name = "RealtimeHub" — le runtime cherche la
 // classe dans le module principal (main = worker.js).
@@ -7260,6 +7263,24 @@ async function handleRequest(request, env, ctx) {
         segments[2] === 'live' && segments.length === 3) {
       if (request.method !== 'GET') return badRequest('only GET');
       return await handleSportsLive(env);
+    }
+    // PRONOSTICS DES FANS (06/09/2026) — « sondages et prédictions ».
+    //   GET  /api/sports/predict/:matchId?mac=…  → comptes + pourcentages + mon vote
+    //   POST /api/sports/predict { mac, match, pick, kickoff? } → vote (remplace)
+    // Un appareil = une voix par match ; fermé au coup d'envoi. Limité en
+    // débit comme les autres écritures publiques (30 votes / min / IP).
+    if (segments[0] === 'api' && segments[1] === 'sports' &&
+        segments[2] === 'predict' && segments.length === 4) {
+      if (request.method !== 'GET') return badRequest('only GET');
+      return await handlePredictionGet(env, segments[3], url, { json, badRequest });
+    }
+    if (segments[0] === 'api' && segments[1] === 'sports' &&
+        segments[2] === 'predict' && segments.length === 3) {
+      if (request.method !== 'POST') return badRequest('only POST');
+      if (!await rateLimitOk(env, request, 'predict', 30, 60 * 1000)) {
+        return tooManyRequests();
+      }
+      return await handlePredictionPost(env, request, { json, badRequest });
     }
 
     // ----- APPAIRAGE « ZÉRO FRAPPE » (QR) -----

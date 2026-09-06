@@ -2078,6 +2078,35 @@
   "sportUnfollow": "إلغاء المتابعة",
   "sportFollowedOn": "ستصلك إشعارات هذه المباراة",
   "sportFollowedOff": "أُزيلت من مبارياتك",
+  "sportPredictTitle": "توقعك",
+  "@sportPredictTitle": {
+    "description": "Titre du bloc pronostic (1 / N / 2) sous un match"
+  },
+  "sportPredictClosed": "أُغلقت التوقعات",
+  "@sportPredictClosed": {
+    "description": "Le coup d envoi est passe, on ne vote plus"
+  },
+  "sportPredictDraw": "تعادل",
+  "@sportPredictDraw": {
+    "description": "Libelle du choix match nul"
+  },
+  "sportPredictFans": "{pct}٪ من المشجعين",
+  "@sportPredictFans": {
+    "description": "Part des fans qui ont choisi ce camp",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      }
+    }
+  },
+  "sportPredictSaved": "تم حفظ توقعك",
+  "@sportPredictSaved": {
+    "description": "Confirmation apres un vote"
+  },
+  "sportPredictMine": "رأيك",
+  "@sportPredictMine": {
+    "description": "Etiquette courte a cote de mon vote"
+  },
   "sportOfflineTitle": "لا يوجد اتصال",
   "sportOfflineBody": "تعذّر الوصول إلى الخدمة. تحقّق من اتصالك ثم أعد المحاولة.",
   "sportSourceDownTitle": "الخدمة غير متاحة مؤقتاً",

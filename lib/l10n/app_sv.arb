@@ -2078,6 +2078,35 @@
   "sportUnfollow": "Sluta följa",
   "sportFollowedOn": "Följer – du får en avisering",
   "sportFollowedOff": "Borttagen från dina matcher",
+  "sportPredictTitle": "Ditt tips",
+  "@sportPredictTitle": {
+    "description": "Titre du bloc pronostic (1 / N / 2) sous un match"
+  },
+  "sportPredictClosed": "Tips stängt",
+  "@sportPredictClosed": {
+    "description": "Le coup d envoi est passe, on ne vote plus"
+  },
+  "sportPredictDraw": "Oavgjort",
+  "@sportPredictDraw": {
+    "description": "Libelle du choix match nul"
+  },
+  "sportPredictFans": "{pct} % av fansen",
+  "@sportPredictFans": {
+    "description": "Part des fans qui ont choisi ce camp",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      }
+    }
+  },
+  "sportPredictSaved": "Tips sparat",
+  "@sportPredictSaved": {
+    "description": "Confirmation apres un vote"
+  },
+  "sportPredictMine": "Din åsikt",
+  "@sportPredictMine": {
+    "description": "Etiquette courte a cote de mon vote"
+  },
   "sportOfflineTitle": "Ingen anslutning",
   "sportOfflineBody": "Kunde inte nå tjänsten. Kontrollera din anslutning och försök igen.",
   "sportSourceDownTitle": "Tjänsten är tillfälligt otillgänglig",

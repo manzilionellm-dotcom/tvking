@@ -2078,6 +2078,35 @@
   "sportUnfollow": "Acha kufuatilia",
   "sportFollowedOn": "Unafuatilia — utaarifiwa",
   "sportFollowedOff": "Imeondolewa kwenye mechi zako",
+  "sportPredictTitle": "Utabiri wako",
+  "@sportPredictTitle": {
+    "description": "Titre du bloc pronostic (1 / N / 2) sous un match"
+  },
+  "sportPredictClosed": "Utabiri umefungwa",
+  "@sportPredictClosed": {
+    "description": "Le coup d envoi est passe, on ne vote plus"
+  },
+  "sportPredictDraw": "Sare",
+  "@sportPredictDraw": {
+    "description": "Libelle du choix match nul"
+  },
+  "sportPredictFans": "{pct}% ya mashabiki",
+  "@sportPredictFans": {
+    "description": "Part des fans qui ont choisi ce camp",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      }
+    }
+  },
+  "sportPredictSaved": "Utabiri umehifadhiwa",
+  "@sportPredictSaved": {
+    "description": "Confirmation apres un vote"
+  },
+  "sportPredictMine": "Maoni yako",
+  "@sportPredictMine": {
+    "description": "Etiquette courte a cote de mon vote"
+  },
   "sportOfflineTitle": "Hakuna muunganisho",
   "sportOfflineBody": "Imeshindwa kufikia huduma. Angalia muunganisho wako kisha ujaribu tena.",
   "sportSourceDownTitle": "Huduma haipatikani kwa sasa",

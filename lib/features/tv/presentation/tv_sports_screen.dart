@@ -14,6 +14,7 @@ import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../../../core/i18n/l10n_extension.dart';
 
+import '../../sports/data/predictions_service.dart';
 import '../../sports/data/sports_repository.dart';
 import '../../sports/domain/sport_models.dart';
 import '../core/tv_dimens.dart';
@@ -402,9 +403,145 @@ class _MatchCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: TvDimens.caption, color: TvTokens.muted),
             ),
+            // PRONOSTIC DES FANS (06/09) — à la télécommande : trois boutons
+            // focusables « 1 / N / 2 ». Ne rend rien pour un match joué
+            // sans vote ni pourcentages.
+            _TvPredictionRow(event: event!),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// « 1 · N · 2 » façon 10-foot : trois boutons D-pad, pourcentages des
+/// fans après le vote, figé au coup d'envoi. Même service que le
+/// téléphone (PredictionsService) : un vote posé sur la box se retrouve
+/// sur le téléphone du même client, et inversement, par le serveur.
+class _TvPredictionRow extends StatefulWidget {
+  const _TvPredictionRow({required this.event});
+  final SportEvent event;
+
+  @override
+  State<_TvPredictionRow> createState() => _TvPredictionRowState();
+}
+
+class _TvPredictionRowState extends State<_TvPredictionRow> {
+  StreamSubscription<void>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = PredictionsService.instance.changes.listen((_) {
+      if (mounted) setState(() {});
+    });
+    if (widget.event.isDuel) {
+      unawaited(PredictionsService.instance.load(widget.event.id));
+    }
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final SportEvent e = widget.event;
+    if (!e.isDuel) return const SizedBox.shrink();
+    final PredictionsService svc = PredictionsService.instance;
+    final bool open = PredictionsService.isOpen(e, DateTime.now());
+    final PredictionTally? tally = svc.tallyFor(e.id);
+    final Pick? mine = tally?.mine ?? svc.myPick(e.id);
+    if (!open && mine == null && (tally == null || tally.total == 0)) {
+      return const SizedBox.shrink();
+    }
+    final bool showPct =
+        tally != null && tally.total > 0 && (mine != null || !open);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Row(
+        children: <Widget>[
+          Text(
+            open
+                ? context.l10n.sportPredictTitle
+                : context.l10n.sportPredictClosed,
+            style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+          ),
+          const SizedBox(width: 12),
+          for (final Pick p in Pick.values) ...<Widget>[
+            _TvPickButton(
+              label: p == Pick.draw
+                  ? context.l10n.sportPredictDraw
+                  : (p == Pick.home ? '1' : '2'),
+              pct: showPct ? tally.pct(p) : null,
+              selected: mine == p,
+              enabled: open,
+              onSelect: () => unawaited(svc.vote(e, p)),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TvPickButton extends StatelessWidget {
+  const _TvPickButton({
+    required this.label,
+    required this.pct,
+    required this.selected,
+    required this.enabled,
+    required this.onSelect,
+  });
+  final String label;
+  final int? pct;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final String text = pct == null ? label : '$label · $pct %';
+    if (!enabled) {
+      // Fermé : lisible, mais hors du parcours D-pad (rien à faire dessus).
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? TvTokens.sel : Colors.transparent,
+          borderRadius: BorderRadius.circular(TvTokens.rButton),
+          border: Border.all(
+              color: selected ? TvTokens.gold : TvTokens.lineSoft),
+        ),
+        child: Text(text,
+            style: TvTokens.ui(TvDimens.caption,
+                weight: FontWeight.w700,
+                color: selected ? TvTokens.goldBright : TvTokens.muted)),
+      );
+    }
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = focused
+            ? const Color(0xFF1A1206)
+            : (selected ? TvTokens.goldBright : TvTokens.text);
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.gold : (selected ? TvTokens.sel : TvTokens.card),
+            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            border: Border.all(
+                color: selected || focused ? TvTokens.gold : TvTokens.lineSoft),
+          ),
+          child: Text(text,
+              style: TvTokens.ui(TvDimens.caption,
+                  weight: FontWeight.w700, color: fg)),
+        );
+      },
     );
   }
 }
