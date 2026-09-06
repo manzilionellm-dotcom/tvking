@@ -14,6 +14,8 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/data/search_history_repository.dart';
+import '../../epg/data/epg_repository.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../vod/data/recent_vod_repository.dart';
 import '../../vod/data/series_repository.dart';
 import '../../vod/data/vod_repository.dart';
@@ -35,6 +37,13 @@ class TvSearchScreen extends StatefulWidget {
 class _TvSearchScreenState extends State<TvSearchScreen> {
   String _q = '';
   List<Channel> _results = const <Channel>[];
+
+  /// ÉMISSIONS À L'ANTENNE dont le titre correspond à la requête, avec la
+  /// chaîne qui les diffuse. C'est la recherche « inverse » : on part de
+  /// l'émission qu'on veut voir et on remonte à la chaîne — pour ceux qui
+  /// savent ce qu'ils veulent regarder sans connaître le nom du canal.
+  List<({Channel channel, EpgProgram program})> _airing =
+      const <({Channel channel, EpgProgram program})>[];
   // Résultats VOD (façon Netflix : la recherche couvre AUSSI films/séries).
   List<VodMovie> _films = const <VodMovie>[];
   List<VodSeries> _series = const <VodSeries>[];
@@ -96,6 +105,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     setState(() {
       _q = '';
       _results = const <Channel>[];
+      _airing = const <({Channel channel, EpgProgram program})>[];
       _films = const <VodMovie>[];
       _series = const <VodSeries>[];
     });
@@ -119,6 +129,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       if (mounted) {
         setState(() {
           _results = const <Channel>[];
+          _airing = const <({Channel channel, EpgProgram program})>[];
           _films = const <VodMovie>[];
           _series = const <VodSeries>[];
         });
@@ -130,6 +141,37 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     // Une frappe plus récente est partie entre-temps → on jette ce résultat.
     if (!mounted || epoch != _epoch) return;
     setState(() => _results = r);
+
+    // ----- EN DIRECT MAINTENANT (recherche par ÉMISSION) -----
+    // On interroge le guide pour les programmes À L'ANTENNE dont le titre
+    // contient la requête, puis on remonte aux chaînes qui les diffusent.
+    // Best-effort : sans guide importé, la section n'apparaît pas et la
+    // recherche par nom de chaîne reste intacte.
+    try {
+      final List<EpgProgram> progs =
+          await EpgRepository.instance.searchAiringNow(t);
+      if (!mounted || epoch != _epoch) return;
+      if (progs.isEmpty) {
+        setState(() => _airing = const <({Channel channel, EpgProgram program})>[]);
+      } else {
+        // Une requête pour toutes les chaînes (IN …), jamais une par
+        // programme : 40 résultats = 1 aller-retour SQLite, pas 40.
+        final List<Channel> chs = await PlaylistRepository.instance
+            .getChannelsByExternalIds(
+                progs.map((EpgProgram p) => p.channelId).toList());
+        if (!mounted || epoch != _epoch) return;
+        final Map<String, Channel> byId = <String, Channel>{
+          for (final Channel c in chs) c.id: c,
+        };
+        setState(() => _airing = <({Channel channel, EpgProgram program})>[
+          // Un programme dont la chaîne n'est plus dans la playlist active
+          // (guide plus large que la liste) est simplement ignoré.
+          for (final EpgProgram p in progs)
+            if (byId[p.channelId] != null)
+              (channel: byId[p.channelId]!, program: p),
+        ]);
+      }
+    } catch (_) {/* pas de guide → section absente */}
 
     // ----- FILMS & SÉRIES (façon Netflix) -----
     // Les catalogues VOD sont en CACHE MÉMOIRE (déjà plafonné RAM). Le tout
@@ -197,13 +239,31 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
               ),
               const SizedBox(height: 14),
               Expanded(
-                child: (res.isEmpty && _films.isEmpty && _series.isEmpty)
+                child: (res.isEmpty && _airing.isEmpty && _films.isEmpty && _series.isEmpty)
                     ? _buildEmptyState(context)
                     // RÉSULTATS EN SECTIONS (façon Netflix) : Chaînes, Films,
                     // Séries — chaque section est une rangée HORIZONTALE
                     // paresseuse (seules les vignettes visibles existent).
                     : ListView(
                         children: <Widget>[
+                          if (_airing.isNotEmpty) ...<Widget>[
+                            _sectionTitle(context.l10n.tvProgramLive),
+                            SizedBox(
+                              height: 132,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                addAutomaticKeepAlives: false,
+                                itemExtent: 330,
+                                itemCount: _airing.length,
+                                itemBuilder: (BuildContext c, int i) =>
+                                    Padding(
+                                  padding: const EdgeInsets.only(right: 10),
+                                  child: _airingTile(i),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                          ],
                           if (res.isNotEmpty) ...<Widget>[
                             _sectionTitle(context.l10n.tvTabChannels),
                             SizedBox(
@@ -280,6 +340,110 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
           ),
         ),
       );
+
+  /// Vignette « EN DIRECT » : la chaîne + l'émission qu'elle diffuse en ce
+  /// moment. Plus large qu'une vignette de chaîne : elle porte deux lignes
+  /// d'information au lieu d'une. OK = lecture, dans la liste des chaînes
+  /// « en direct » (◀ ▶ dans le lecteur zappe alors entre elles).
+  ///
+  /// LE BADGE EST BLEU, pas rouge. Le rouge (`TvTokens.live`) est réservé
+  /// à la pastille du lecteur ; ici on est dans la recherche, et l'accent
+  /// glacier de l'app (`gold`/`badgeBg`) dit « résultat mis en avant »
+  /// sans crier. C'est ce que le propriétaire a demandé (« un bouton
+  /// bleu »), et ça reste dans la palette — aucune couleur en dur.
+  Widget _airingTile(int i) {
+    final ({Channel channel, EpgProgram program}) hit = _airing[i];
+    final Channel ch = hit.channel;
+    final List<Channel> liste = _airing
+        .map((({Channel channel, EpgProgram program}) e) => e.channel)
+        .toList(growable: false);
+    return TvFocusable(
+      scale: TvFocusScale.small,
+      baseColor: TvTokens.card,
+      onSelect: () {
+        SearchHistoryRepository.instance.add(_q);
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => TvPlayerScreen(channels: liste, startIndex: i),
+          ),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          children: <Widget>[
+            // Logo à gauche, taille fixe : les deux lignes de texte à
+            // droite ont ainsi toujours la même largeur, quel que soit le
+            // logo (certains sont très larges).
+            SizedBox(
+              width: 84,
+              child: (ch.logoUrl != null && ch.logoUrl!.isNotEmpty)
+                  ? CachedNetworkImage(
+                      imageUrl: ch.logoUrl!,
+                      fit: BoxFit.contain,
+                      memCacheWidth: 200,
+                      fadeInDuration: const Duration(milliseconds: 150),
+                      placeholder: (_, __) =>
+                          Opacity(opacity: 0.35, child: _ini(ch)),
+                      errorWidget: (_, __, ___) => _ini(ch))
+                  : _ini(ch),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  // Le badge bleu « EN DIRECT ».
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: TvTokens.badgeBg,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: TvTokens.gold),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(Icons.play_arrow_rounded,
+                            size: 14, color: TvTokens.goldBright),
+                        const SizedBox(width: 4),
+                        Text(context.l10n.tvProgramLive,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                                color: TvTokens.goldBright)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // L'ÉMISSION d'abord : c'est elle que l'utilisateur a
+                  // tapée, c'est elle qu'il doit reconnaître au premier
+                  // coup d'œil.
+                  Text(hit.program.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: TvDimens.caption,
+                          fontWeight: FontWeight.w700,
+                          color: TvTokens.text)),
+                  const SizedBox(height: 2),
+                  Text(ch.cleanName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: TvDimens.caption,
+                          color: TvTokens.muted)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// Vignette CHAÎNE (logo + nom). OK = lecture dans la liste des résultats.
   Widget _channelTile(List<Channel> list, int i) {

@@ -346,6 +346,73 @@ class EpgRepository {
     return prog;
   }
 
+  // ============================================================
+  //  RECHERCHE PAR ÉMISSION — « ce qui passe EN CE MOMENT »
+  // ============================================================
+  //  Demande du propriétaire (05/09/2026) : « je ne sais pas le nom de
+  //  la chaîne, mais je sais l'émission qui est en train de passer. Je
+  //  tape "info 24" et les chaînes qui la diffusent en direct viennent
+  //  dans la recherche. »
+  //
+  //  C'est l'inverse de tout ce que le guide savait faire : on part du
+  //  TITRE et on remonte à la chaîne. Netflix cherche des titres ; une
+  //  télé cherche des chaînes ; ici on fait les deux à la fois.
+  //
+  //  POURQUOI C'EST RAPIDE MÊME AVEC 300 000 PROGRAMMES EN BASE. On ne
+  //  cherche pas dans tout le guide : on ne regarde que ce qui est à
+  //  l'antenne MAINTENANT (`start_time <= now < stop_time`). L'index
+  //  `idx_epg_start_time` réduit d'abord la table à la tranche en cours —
+  //  au plus une ligne par chaîne, quelques milliers — et le LIKE sur le
+  //  titre ne balaie que celles-là. Sans ce filtre, le LIKE parcourrait
+  //  toute la table à chaque frappe.
+
+  /// Programmes diffusés EN CE MOMENT dont le titre contient [query].
+  ///
+  /// Une même émission passant sur plusieurs chaînes (une chaîne HD et
+  /// sa jumelle SD, une rediffusion simultanée) rend une ligne PAR
+  /// CHAÎNE : c'est voulu, l'utilisateur choisira laquelle ouvrir.
+  Future<List<EpgProgram>> searchAiringNow(String query, {int limit = 40}) async {
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    return searchAiringNowIn(db, query,
+        now: DateTime.now().millisecondsSinceEpoch, limit: limit);
+  }
+
+  /// Cœur de [searchAiringNow], sur une base fournie — pour être testé sur
+  /// une base en mémoire sans passer par le singleton (même découpage que
+  /// [remapProgramRow] et [mergeKnownWithAliases]).
+  @visibleForTesting
+  static Future<List<EpgProgram>> searchAiringNowIn(
+    DatabaseExecutor db,
+    String query, {
+    required int now,
+    int limit = 40,
+  }) async {
+    final String q = query.trim();
+    if (q.isEmpty) return const <EpgProgram>[];
+    final List<Map<String, Object?>> rows = await db.query(
+      'epg_programs',
+      // L'ordre des conditions compte pour le planificateur SQLite :
+      // start_time d'abord (indexé), le LIKE en dernier.
+      where: 'start_time <= ? AND stop_time > ? AND title LIKE ?',
+      whereArgs: <Object>[now, now, '%$q%'],
+      // Les émissions qui viennent de commencer en premier : ce sont
+      // celles qu'on a le plus de chances de vouloir rattraper.
+      orderBy: 'start_time DESC',
+      limit: limit,
+    );
+    // Une ligne par chaîne : si le guide contient deux entrées qui se
+    // chevauchent pour la même chaîne (données fournisseur imparfaites),
+    // on ne l'affiche qu'une fois.
+    final Set<String> vues = <String>{};
+    final List<EpgProgram> out = <EpgProgram>[];
+    for (final Map<String, Object?> r in rows) {
+      final EpgProgram p = EpgProgram.fromMap(r);
+      if (vues.add(p.channelId)) out.add(p);
+    }
+    return out;
+  }
+
   /// Programme suivant après celui en cours (null si rien programmé).
   Future<EpgProgram?> nextProgram(String channelId) async {
     await initialize();
