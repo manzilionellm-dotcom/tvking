@@ -46,6 +46,11 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
+// Recherche par ÉMISSION : le guide sait ce qui passe MAINTENANT sur
+// chaque chaîne. Le dépôt EPG est le MÊME que celui de la box — on ne
+// réécrit pas la requête, on l'appelle (cf. EpgRepository.searchAiringNow).
+import '../../epg/data/epg_repository.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../player/presentation/play_channel.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -60,6 +65,7 @@ import '../domain/channel.dart';
 import '../domain/channel_genre.dart';
 import 'channel_detail_sheet.dart';
 import 'genre_l10n.dart';
+import 'widgets/channel_logo.dart';
 import 'widgets/search_result_card.dart';
 import 'widgets/search_skeleton.dart';
 
@@ -96,6 +102,32 @@ class _SearchScreenState extends State<SearchScreen> {
   /// ne sont pas là, la recherche classe par pertinence textuelle
   /// seule (dégradation douce, jamais bloquant).
   SearchSignals _signals = SearchSignals.none;
+
+  // ============================================================
+  //  « EN DIRECT MAINTENANT » — chercher une ÉMISSION
+  // ============================================================
+  //  Demande du propriétaire (07/09/2026) : « code aussi pour téléphone
+  //  la recherche émission et toutes les chaînes en direct ». La box
+  //  l'avait depuis le 05/09, le téléphone non.
+  //
+  //  C'est l'inverse d'une recherche de chaîne : on part du TITRE d'un
+  //  programme et on remonte aux chaînes qui le diffusent À CET INSTANT.
+  //  On tape « journal », on voit toutes les chaînes qui passent un
+  //  journal maintenant.
+  //
+  //  Le calcul n'est PAS réécrit ici : c'est le même
+  //  EpgRepository.searchAiringNow que la TV appelle. Deux
+  //  implémentations auraient fini par diverger, et « la box trouve,
+  //  le téléphone non » serait devenu impossible à expliquer.
+  List<({Channel channel, EpgProgram program})> _airing =
+      const <({Channel channel, EpgProgram program})>[];
+
+  //  JETON D'ANNULATION. La recherche de chaînes est SYNCHRONE, celle du
+  //  guide ne l'est pas : deux requêtes SQLite s'enchaînent. Sans ce
+  //  compteur, une frappe lente suivie d'une rapide pourrait faire
+  //  arriver l'ANCIEN résultat APRÈS le nouveau, et l'écran afficherait
+  //  les émissions d'une requête que l'utilisateur a déjà effacée.
+  int _epoch = 0;
 
   @override
   void initState() {
@@ -180,9 +212,11 @@ class _SearchScreenState extends State<SearchScreen> {
     _debounceTimer?.cancel();
     final String clean = value.trim();
     if (clean.isEmpty) {
+      _epoch++; // annule toute recherche d'émission en vol
       setState(() {
         _activeQuery = '';
         _results = const <Channel>[];
+        _airing = const <({Channel channel, EpgProgram program})>[];
         _state = _SearchState.idle;
       });
       return;
@@ -193,6 +227,10 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _runSearch(String query) {
+    // Le guide est interrogé en parallèle de la recherche de chaînes :
+    // il ne la ralentit jamais, et il arrive quand il est prêt.
+    final int epoch = ++_epoch;
+    unawaited(_searchAiringNow(query, epoch));
     final List<Channel> all = _searchPool;
     if (all.isEmpty) {
       setState(() {
@@ -222,6 +260,47 @@ class _SearchScreenState extends State<SearchScreen> {
     // requêtes ratées.
     if (hits.isNotEmpty) {
       RecentSearchesRepository.instance.record(query);
+    }
+  }
+
+  /// Cherche les ÉMISSIONS à l'antenne dont le titre contient [query],
+  /// puis remonte aux chaînes qui les diffusent.
+  ///
+  /// ENTIÈREMENT BEST-EFFORT : sans guide importé, ou si la base n'est
+  /// pas prête, la section n'apparaît simplement pas — la recherche par
+  /// nom de chaîne, elle, reste intacte. Une recherche d'émission qui
+  /// échoue ne doit JAMAIS casser la recherche tout court.
+  Future<void> _searchAiringNow(String query, int epoch) async {
+    try {
+      final List<EpgProgram> progs =
+          await EpgRepository.instance.searchAiringNow(query);
+      // Une frappe plus récente est partie entre-temps → on jette.
+      if (!mounted || epoch != _epoch) return;
+      if (progs.isEmpty) {
+        setState(() =>
+            _airing = const <({Channel channel, EpgProgram program})>[]);
+        return;
+      }
+      // UNE requête pour toutes les chaînes (IN …), jamais une par
+      // programme : 40 résultats = 1 aller-retour SQLite, pas 40.
+      final List<Channel> chs = await PlaylistRepository.instance
+          .getChannelsByExternalIds(
+              progs.map((EpgProgram p) => p.channelId).toList());
+      if (!mounted || epoch != _epoch) return;
+      final Map<String, Channel> byId = <String, Channel>{
+        for (final Channel c in chs) c.id: c,
+      };
+      setState(() => _airing = <({Channel channel, EpgProgram program})>[
+            // Un programme dont la chaîne n'est pas dans la playlist
+            // active (le guide est souvent plus large que la liste) est
+            // simplement ignoré : on ne propose jamais d'ouvrir une
+            // chaîne que le client n'a pas.
+            for (final EpgProgram p in progs)
+              if (byId[p.channelId] != null)
+                (channel: byId[p.channelId]!, program: p),
+          ]);
+    } catch (_) {
+      // Pas de guide → pas de section. Silencieux par conception.
     }
   }
 
@@ -314,9 +393,11 @@ class _SearchScreenState extends State<SearchScreen> {
     HapticFeedback.selectionClick();
     _controller.clear();
     _debounceTimer?.cancel();
+    _epoch++; // annule toute recherche d'émission en vol
     setState(() {
       _activeQuery = '';
       _results = const <Channel>[];
+      _airing = const <({Channel channel, EpgProgram program})>[];
       _state = _SearchState.idle;
     });
     _focus.requestFocus();
@@ -396,6 +477,19 @@ class _SearchScreenState extends State<SearchScreen> {
       case _SearchState.loading:
         return const SearchSkeleton();
       case _SearchState.noResults:
+        // AUCUNE chaîne ne porte ce nom, mais une émission qui passe en
+        // ce moment, si. C'est précisément le cas que la recherche par
+        // émission existe pour couvrir : le client ne connaît pas le nom
+        // de la chaîne. Afficher « aucun résultat » ici serait faux.
+        if (_airing.isNotEmpty) {
+          return _ResultsGrid(
+            results: _results,
+            airing: _airing,
+            query: _activeQuery,
+            onTap: _onChannelTap,
+            onLongPress: _onChannelLongPress,
+          );
+        }
         return _NoResults(
           query: _activeQuery,
           onSuggestion: _setQueryAndSearch,
@@ -406,6 +500,7 @@ class _SearchScreenState extends State<SearchScreen> {
       case _SearchState.results:
         return _ResultsGrid(
           results: _results,
+          airing: _airing,
           query: _activeQuery,
           onTap: _onChannelTap,
           onLongPress: _onChannelLongPress,
@@ -979,12 +1074,18 @@ class _ResultsGrid extends StatelessWidget {
     required this.query,
     required this.onTap,
     required this.onLongPress,
+    this.airing = const <({Channel channel, EpgProgram program})>[],
   });
 
   final List<Channel> results;
   final String query;
   final void Function(Channel) onTap;
   final void Function(Channel) onLongPress;
+
+  /// Émissions à l'antenne MAINTENANT dont le titre correspond, avec la
+  /// chaîne qui les diffuse. Vide = pas de guide, ou rien qui colle :
+  /// la section disparaît alors complètement.
+  final List<({Channel channel, EpgProgram program})> airing;
 
   @override
   Widget build(BuildContext context) {
@@ -995,6 +1096,58 @@ class _ResultsGrid extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
+            // ----- EN DIRECT MAINTENANT (recherche par ÉMISSION) -----
+            //  Placée AVANT les chaînes : quand quelqu'un tape le nom
+            //  d'une émission, c'est elle qu'il cherche, pas une chaîne
+            //  dont le nom ressemble.
+            if (airing.isNotEmpty) ...<Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: AppColors.liveRed,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      context.l10n.tvProgramLive,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.1,
+                        color: AppColors.liveRed,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                height: 84,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  physics: const BouncingScrollPhysics(),
+                  // Les vignettes hors écran ne sont pas construites :
+                  // 40 émissions ne coûtent que celles qu'on voit.
+                  addAutomaticKeepAlives: false,
+                  itemCount: airing.length,
+                  itemBuilder: (BuildContext c, int i) => Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: _AiringTile(
+                      hit: airing[i],
+                      onTap: () => onTap(airing[i].channel),
+                      onLongPress: () => onLongPress(airing[i].channel),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
               child: Text(
@@ -1029,6 +1182,91 @@ class _ResultsGrid extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+// ============================================================
+//  Vignette « émission à l'antenne »
+// ============================================================
+//  Deux informations, dans cet ordre : CE QUI PASSE, puis SUR QUELLE
+//  CHAÎNE. C'est l'ordre de la question posée — « qu'est-ce qui passe
+//  maintenant ? » — et pas celui d'une liste de chaînes.
+//
+//  L'horaire complète le titre : deux chaînes peuvent diffuser la même
+//  émission avec dix minutes d'écart, et savoir laquelle vient de
+//  commencer décide du choix.
+class _AiringTile extends StatelessWidget {
+  const _AiringTile({
+    required this.hit,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  final ({Channel channel, EpgProgram program}) hit;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final Channel ch = hit.channel;
+    final EpgProgram p = hit.program;
+    return SizedBox(
+      width: 262,
+      child: Material(
+        color: AppColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: <Widget>[
+                ChannelLogo(channel: ch, size: ChannelLogoSize.compact),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        p.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        ch.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        p.timeRangeShort,
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          fontSize: 11,
+                          color: AppColors.liveRed,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

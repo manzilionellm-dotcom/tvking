@@ -16,7 +16,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/app/build_info.dart' show kBuildLabel;
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -40,12 +42,30 @@ class DeviceIdCard extends StatefulWidget {
 class _DeviceIdCardState extends State<DeviceIdCard> {
   String? _mac;
 
+  //  LE NUMÉRO DE VERSION, JUSTE SOUS LA MAC (07/09/2026).
+  //
+  //  Même décision que sur la box, et pour la même raison de terrain :
+  //  cette carte-là est DÉJÀ celle qu'on lit au téléphone quand on
+  //  active un appareil ou qu'on dépanne un client. Les deux questions
+  //  du support sont « qui est cet appareil ? » et « quelle version
+  //  fait-il tourner ? » — elles doivent tenir dans le même regard.
+  //
+  //  Repli sur le numéro technique du paquet quand le numéro maison
+  //  n'est pas gravé (compilation locale, ou APK antérieur au 07/09) :
+  //  le support a toujours quelque chose à faire lire au client.
+  String _buildLabel = kBuildLabel;
+
   @override
   void initState() {
     super.initState();
     DeviceIdentity.instance.mac.then((String value) {
       if (mounted) setState(() => _mac = value);
     });
+    if (_buildLabel.isEmpty) {
+      PackageInfo.fromPlatform().then((PackageInfo p) {
+        if (mounted) setState(() => _buildLabel = p.buildNumber);
+      });
+    }
   }
 
   Future<void> _copy() async {
@@ -120,6 +140,31 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
               ),
             ],
           ),
+          // ----- Numéro de version, sous la MAC -----
+          if (_buildLabel.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Row(
+              children: <Widget>[
+                Text(
+                  '${context.l10n.tvAboutVersionBuildLabel} : ',
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    fontSize: 11,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                Text(
+                  _buildLabel,
+                  style: AppTextStyles.bodyLarge.copyWith(
+                    fontFamily: 'monospace',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (widget.showCaption) ...<Widget>[
             const SizedBox(height: 6),
             Text(
