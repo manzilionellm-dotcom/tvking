@@ -2107,6 +2107,76 @@
   "@sportPredictMine": {
     "description": "Etiquette courte a cote de mon vote"
   },
+  "sportDetailSummary": "Sammendrag",
+  "@sportDetailSummary": {
+    "description": "Onglet resume de la fiche match"
+  },
+  "sportDetailStats": "Statistikk",
+  "@sportDetailStats": {
+    "description": "Onglet statistiques"
+  },
+  "sportDetailLineups": "Lagoppstillinger",
+  "@sportDetailLineups": {
+    "description": "Onglet compositions"
+  },
+  "sportDetailCorners": "Hjørnespark",
+  "@sportDetailCorners": {
+    "description": "Onglet corners"
+  },
+  "sportDetailCards": "Kort",
+  "@sportDetailCards": {
+    "description": "Onglet cartons"
+  },
+  "sportDetailXg": "xG",
+  "@sportDetailXg": {
+    "description": "Onglet xG (buts attendus)"
+  },
+  "sportDetailHeatmap": "Varmekart",
+  "@sportDetailHeatmap": {
+    "description": "Onglet carte de chaleur"
+  },
+  "sportDetailNotProvided": "Leveres ikke av datakilden",
+  "@sportDetailNotProvided": {
+    "description": "La source ne fournit pas cette donnee"
+  },
+  "sportDetailNoData": "Ingen data for denne kampen ennå",
+  "@sportDetailNoData": {
+    "description": "Aucune donnee encore pour ce match"
+  },
+  "sportWatchOn": "Se på {channel}",
+  "@sportWatchOn": {
+    "description": "Bouton : regarder la chaine qui diffuse le match",
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "sportNoChannelAiring": "Ingen kanal i listen din sender denne kampen nå",
+  "@sportNoChannelAiring": {
+    "description": "Aucune chaine de la liste ne diffuse le match"
+  },
+  "sportLiveBadge": "DIREKTE",
+  "@sportLiveBadge": {
+    "description": "Badge rouge LIVE sur une carte"
+  },
+  "sportDetailSubstitutes": "Innbyttere",
+  "@sportDetailSubstitutes": {
+    "description": "Titre de la liste des remplacants"
+  },
+  "sportDetailAssist": "Målgivende: {player}",
+  "@sportDetailAssist": {
+    "description": "Passe decisive",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "sportDetailPossession": "Ballbesittelse",
+  "@sportDetailPossession": {
+    "description": "Nom de la statistique possession"
+  },
   "sportOfflineTitle": "Ingen tilkobling",
   "sportOfflineBody": "Fikk ikke kontakt med tjenesten. Sjekk tilkoblingen og prøv igjen.",
   "sportSourceDownTitle": "Tjenesten er midlertidig utilgjengelig",

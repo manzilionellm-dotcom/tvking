@@ -2107,6 +2107,76 @@
   "@sportPredictMine": {
     "description": "Etiquette courte a cote de mon vote"
   },
+  "sportDetailSummary": "Sammanfattning",
+  "@sportDetailSummary": {
+    "description": "Onglet resume de la fiche match"
+  },
+  "sportDetailStats": "Statistik",
+  "@sportDetailStats": {
+    "description": "Onglet statistiques"
+  },
+  "sportDetailLineups": "Laguppställningar",
+  "@sportDetailLineups": {
+    "description": "Onglet compositions"
+  },
+  "sportDetailCorners": "Hörnor",
+  "@sportDetailCorners": {
+    "description": "Onglet corners"
+  },
+  "sportDetailCards": "Kort",
+  "@sportDetailCards": {
+    "description": "Onglet cartons"
+  },
+  "sportDetailXg": "xG",
+  "@sportDetailXg": {
+    "description": "Onglet xG (buts attendus)"
+  },
+  "sportDetailHeatmap": "Värmekarta",
+  "@sportDetailHeatmap": {
+    "description": "Onglet carte de chaleur"
+  },
+  "sportDetailNotProvided": "Tillhandahålls inte av datakällan",
+  "@sportDetailNotProvided": {
+    "description": "La source ne fournit pas cette donnee"
+  },
+  "sportDetailNoData": "Inga data för den här matchen ännu",
+  "@sportDetailNoData": {
+    "description": "Aucune donnee encore pour ce match"
+  },
+  "sportWatchOn": "Se på {channel}",
+  "@sportWatchOn": {
+    "description": "Bouton : regarder la chaine qui diffuse le match",
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "sportNoChannelAiring": "Ingen kanal i din lista sänder den här matchen just nu",
+  "@sportNoChannelAiring": {
+    "description": "Aucune chaine de la liste ne diffuse le match"
+  },
+  "sportLiveBadge": "DIREKT",
+  "@sportLiveBadge": {
+    "description": "Badge rouge LIVE sur une carte"
+  },
+  "sportDetailSubstitutes": "Avbytare",
+  "@sportDetailSubstitutes": {
+    "description": "Titre de la liste des remplacants"
+  },
+  "sportDetailAssist": "Assist: {player}",
+  "@sportDetailAssist": {
+    "description": "Passe decisive",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "sportDetailPossession": "Bollinnehav",
+  "@sportDetailPossession": {
+    "description": "Nom de la statistique possession"
+  },
   "sportOfflineTitle": "Ingen anslutning",
   "sportOfflineBody": "Kunde inte nå tjänsten. Kontrollera din anslutning och försök igen.",
   "sportSourceDownTitle": "Tjänsten är tillfälligt otillgänglig",

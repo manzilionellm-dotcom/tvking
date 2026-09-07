@@ -2124,6 +2124,76 @@
   "@sportPredictMine": {
     "description": "Etiquette courte a cote de mon vote"
   },
+  "sportDetailSummary": "Summary",
+  "@sportDetailSummary": {
+    "description": "Onglet resume de la fiche match"
+  },
+  "sportDetailStats": "Stats",
+  "@sportDetailStats": {
+    "description": "Onglet statistiques"
+  },
+  "sportDetailLineups": "Line-ups",
+  "@sportDetailLineups": {
+    "description": "Onglet compositions"
+  },
+  "sportDetailCorners": "Corners",
+  "@sportDetailCorners": {
+    "description": "Onglet corners"
+  },
+  "sportDetailCards": "Cards",
+  "@sportDetailCards": {
+    "description": "Onglet cartons"
+  },
+  "sportDetailXg": "xG",
+  "@sportDetailXg": {
+    "description": "Onglet xG (buts attendus)"
+  },
+  "sportDetailHeatmap": "Heatmap",
+  "@sportDetailHeatmap": {
+    "description": "Onglet carte de chaleur"
+  },
+  "sportDetailNotProvided": "Not provided by the data source",
+  "@sportDetailNotProvided": {
+    "description": "La source ne fournit pas cette donnee"
+  },
+  "sportDetailNoData": "No data for this match yet",
+  "@sportDetailNoData": {
+    "description": "Aucune donnee encore pour ce match"
+  },
+  "sportWatchOn": "Watch on {channel}",
+  "@sportWatchOn": {
+    "description": "Bouton : regarder la chaine qui diffuse le match",
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "sportNoChannelAiring": "No channel in your list is airing this match right now",
+  "@sportNoChannelAiring": {
+    "description": "Aucune chaine de la liste ne diffuse le match"
+  },
+  "sportLiveBadge": "LIVE",
+  "@sportLiveBadge": {
+    "description": "Badge rouge LIVE sur une carte"
+  },
+  "sportDetailSubstitutes": "Substitutes",
+  "@sportDetailSubstitutes": {
+    "description": "Titre de la liste des remplacants"
+  },
+  "sportDetailAssist": "Assist: {player}",
+  "@sportDetailAssist": {
+    "description": "Passe decisive",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "sportDetailPossession": "Possession",
+  "@sportDetailPossession": {
+    "description": "Nom de la statistique possession"
+  },
   "sportOfflineTitle": "No connection",
   "sportOfflineBody": "Couldn’t reach the service. Check your connection and try again.",
   "sportSourceDownTitle": "Service temporarily unavailable",

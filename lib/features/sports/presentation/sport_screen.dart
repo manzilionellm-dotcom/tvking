@@ -41,6 +41,8 @@ import '../data/followed_matches_service.dart';
 import '../data/live_scores_service.dart';
 import '../data/sports_repository.dart';
 import '../domain/sport_models.dart';
+import '../domain/sport_ordering.dart';
+import 'match_detail_screen.dart';
 import 'prediction_bar.dart';
 import 'team_picker_sheet.dart';
 
@@ -78,6 +80,11 @@ class _SportScreenState extends State<SportScreen>
 
   /// Discipline sélectionnée dans la barre de filtres (`null` = toutes).
   String? _sportFilter;
+
+  /// Le client a-t-il touché la barre de filtres ? Tant que non, le
+  /// football est sélectionné par défaut à chaque chargement (demande du
+  /// 07/09) ; dès qu'il a choisi, on respecte son choix.
+  bool _filterChosen = false;
 
   StreamSubscription<void>? _followSub;
   StreamSubscription<List<SportTeam>>? _favSub;
@@ -121,10 +128,11 @@ class _SportScreenState extends State<SportScreen>
     _BigLoad result = const _BigLoad();
     bool failed = false;
     try {
-      final http.Response r = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/sports/big'),
-              headers: const <String, String>{'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 12));
+      final http.Response r = await http.get(
+          Uri.parse('$kSubscriptionBaseUrl/api/sports/big'),
+          headers: const <String, String>{
+            'Accept': 'application/json'
+          }).timeout(const Duration(seconds: 12));
       if (r.statusCode != 200) {
         failed = true;
       } else {
@@ -166,26 +174,36 @@ class _SportScreenState extends State<SportScreen>
       _load = result;
       _failed = failed;
       _loading = false;
+      // FOOTBALL PAR DÉFAUT (07/09) : tant que le client n'a pas touché
+      // la barre, on présélectionne le football s'il y en a.
+      if (!_filterChosen) {
+        _sportFilter = defaultSport(
+            orderSports(result.matches.map((SportEvent e) => e.sport)));
+      }
     });
   }
 
   /// Disciplines proposées dans la barre de filtres : celles réellement
   /// présentes dans les affiches du moment (pas une liste en dur, qui
-  /// afficherait « Tennis » un jour sans tennis).
-  List<String> get _availableSports {
-    final Set<String> s = <String>{};
-    for (final SportEvent e in _load.matches) {
-      if (e.sport.isNotEmpty) s.add(e.sport);
-    }
-    final List<String> list = s.toList()..sort();
-    return list;
+  /// afficherait « Tennis » un jour sans tennis), dans l'ORDRE voulu par
+  /// le propriétaire : Football, Basket, Tennis, Baseball, puis le reste.
+  List<String> get _availableSports =>
+      orderSports(_load.matches.map((SportEvent e) => e.sport));
+
+  bool _isLive(SportEvent e) {
+    final SportEvent? l = LiveScoresService.instance.forId(e.id);
+    return l != null && l.isLive;
   }
 
+  /// Les affiches du filtre courant, EN DIRECT d'abord puis à venir par
+  /// heure (règle pure : sport_ordering.dart).
   List<SportEvent> get _filtered {
-    if (_sportFilter == null) return _load.matches;
-    return _load.matches
-        .where((SportEvent e) => e.sport == _sportFilter)
-        .toList(growable: false);
+    final List<SportEvent> base = _sportFilter == null
+        ? _load.matches
+        : _load.matches
+            .where((SportEvent e) => e.sport == _sportFilter)
+            .toList(growable: false);
+    return orderMatches(base, isLive: _isLive, now: DateTime.now());
   }
 
   @override
@@ -279,7 +297,10 @@ class _SportScreenState extends State<SportScreen>
                     icon: Icons.filter_alt_off_rounded,
                     title: context.l10n.sportNoneInSportTitle,
                     body: context.l10n.sportNoneInSportBody,
-                    onRetry: () => setState(() => _sportFilter = null),
+                    onRetry: () => setState(() {
+                      _sportFilter = null;
+                      _filterChosen = true;
+                    }),
                     retryLabel: context.l10n.sportShowAll,
                   )
                 : ListView.builder(
@@ -363,6 +384,9 @@ class _SportScreenState extends State<SportScreen>
   Widget _sportFilterBar() {
     final List<String> sports = _availableSports;
     if (sports.length < 2) return const SizedBox.shrink();
+    // Le football est TOUJOURS premier (jamais en dernier) ; « Tous »
+    // ferme la barre au lieu de l'ouvrir, pour ne pas pousser le football
+    // d'un cran.
     return SizedBox(
       height: 44,
       child: ListView.separated(
@@ -371,18 +395,24 @@ class _SportScreenState extends State<SportScreen>
         itemCount: sports.length + 1,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (BuildContext context, int i) {
-          if (i == 0) {
+          if (i == sports.length) {
             return _Chip(
               label: context.l10n.sportAll,
               active: _sportFilter == null,
-              onTap: () => setState(() => _sportFilter = null),
+              onTap: () => setState(() {
+                _sportFilter = null;
+                _filterChosen = true;
+              }),
             );
           }
-          final String s = sports[i - 1];
+          final String s = sports[i];
           return _Chip(
             label: localizedSportName(context, s),
             active: _sportFilter == s,
-            onTap: () => setState(() => _sportFilter = s),
+            onTap: () => setState(() {
+              _sportFilter = s;
+              _filterChosen = true;
+            }),
           );
         },
       ),
@@ -394,7 +424,10 @@ class _SportScreenState extends State<SportScreen>
   // ---------------------------------------------------------------
 
   Widget _followedTab() {
-    final List<SportEvent> items = FollowedMatchesService.instance.all;
+    final List<SportEvent> items = orderMatches(
+        FollowedMatchesService.instance.all,
+        isLive: _isLive,
+        now: DateTime.now());
     if (items.isEmpty) {
       return _empty(
         icon: Icons.notifications_active_outlined,
@@ -431,8 +464,8 @@ class _SportScreenState extends State<SportScreen>
               icon: const Icon(Icons.add_rounded, size: 18),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.accent,
-                side: BorderSide(
-                    color: AppColors.accent.withValues(alpha: 0.5)),
+                side:
+                    BorderSide(color: AppColors.accent.withValues(alpha: 0.5)),
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
               label: Text(context.l10n.sportAddTeam),
@@ -493,7 +526,8 @@ class _SportScreenState extends State<SportScreen>
     String? retryLabel,
   }) {
     return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints c) => SingleChildScrollView(
+      builder: (BuildContext context, BoxConstraints c) =>
+          SingleChildScrollView(
         // Défilable : indispensable pour que « tirer pour rafraîchir »
         // fonctionne aussi quand la liste est vide.
         physics: const AlwaysScrollableScrollPhysics(),
@@ -608,8 +642,8 @@ class _LiveCard extends StatelessWidget {
                   e.league,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.labelSmall.copyWith(
-                      fontSize: 9, color: AppColors.textTertiary),
+                  style: AppTextStyles.labelSmall
+                      .copyWith(fontSize: 9, color: AppColors.textTertiary),
                 ),
               ),
               Text(
@@ -680,8 +714,7 @@ class _TeamBadge extends StatelessWidget {
           errorBuilder: (_, __, ___) => const SizedBox.shrink(),
           // Pas d'indicateur de chargement : sur une liste, vingt petits
           // ronds qui tournent font plus de bruit que de service.
-          loadingBuilder: (BuildContext _, Widget child,
-                  ImageChunkEvent? p) =>
+          loadingBuilder: (BuildContext _, Widget child, ImageChunkEvent? p) =>
               p == null ? child : const SizedBox.shrink(),
         ),
       ),
@@ -741,133 +774,158 @@ class _MatchTileState extends State<_MatchTile> {
     //  un fuseau mal lu, et le badge mentait. Maintenant la source le DIT :
     //  on n'affiche « EN DIRECT » que si le match est vraiment dans la
     //  liste des rencontres en cours.
-    final bool live = LiveScoresService.instance.forId(e.id) != null && e.isLive;
+    final bool live =
+        LiveScoresService.instance.forId(e.id) != null && e.isLive;
 
     return Card(
       color: AppColors.surface,
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-        child: Row(
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      if (e.sport.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: Text(
-                            localizedSportName(context, e.sport).toUpperCase(),
-                            style: AppTextStyles.labelSmall.copyWith(
-                              fontSize: 9,
-                              letterSpacing: 0.8,
-                              color: AppColors.accent,
+      // Liseré rouge discret sur un match en cours : il se repère dans la
+      // liste sans avoir à lire.
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: live
+            ? BorderSide(color: AppColors.live.withValues(alpha: 0.45))
+            : BorderSide.none,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        // TOUTE la carte ouvre la fiche (07/09) — la cloche, elle, garde
+        // son propre bouton à droite.
+        onTap: () => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => MatchDetailScreen(event: widget.event),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        if (e.sport.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Text(
+                              localizedSportName(context, e.sport)
+                                  .toUpperCase(),
+                              style: AppTextStyles.labelSmall.copyWith(
+                                fontSize: 9,
+                                letterSpacing: 0.8,
+                                color: AppColors.accent,
+                              ),
                             ),
                           ),
-                        ),
-                      if (live)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: AppColors.live.withValues(alpha: 0.18),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            // La MINUTE de jeu plutôt que le mot « direct » :
-                            // « 67' » dit à la fois que ça joue ET où on en
-                            // est. C'est ce qui donne envie de rester.
+                        if (live) ...<Widget>[
+                          // Badge rouge LIVE + la minute qui clignote (07/09).
+                          // « 67' » dit à la fois que ça joue ET où on en est.
+                          const LiveBadge(),
+                          const SizedBox(width: 6),
+                          BlinkingText(
                             e.liveLabel.isEmpty
                                 ? context.l10n.sportLive
                                 : e.liveLabel,
                             style: AppTextStyles.labelSmall.copyWith(
-                                fontSize: 9, color: AppColors.live),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.live),
+                          ),
+                        ],
+                        if (e.women) const _WomenChip(),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: <Widget>[
+                        // Les écussons se lisent plus vite qu'un nom. Ils
+                        // disparaissent proprement quand la source ne les a
+                        // pas : aucune place réservée « en attendant ».
+                        if (e.homeBadge.isNotEmpty)
+                          _TeamBadge(url: e.homeBadge),
+                        if (e.awayBadge.isNotEmpty)
+                          _TeamBadge(url: e.awayBadge),
+                        Expanded(
+                          child: Text(
+                            e.isDuel ? '${e.home} – ${e.away}' : e.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.bodyMedium,
                           ),
                         ),
-                      if (e.women) const _WomenChip(),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: <Widget>[
-                      // Les écussons se lisent plus vite qu'un nom. Ils
-                      // disparaissent proprement quand la source ne les a
-                      // pas : aucune place réservée « en attendant ».
-                      if (e.homeBadge.isNotEmpty) _TeamBadge(url: e.homeBadge),
-                      if (e.awayBadge.isNotEmpty) _TeamBadge(url: e.awayBadge),
-                      Expanded(
-                        child: Text(
-                          e.isDuel ? '${e.home} – ${e.away}' : e.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.bodyMedium,
-                        ),
-                      ),
-                      if (e.hasScore)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: Text(
-                            '${e.homeScore}–${e.awayScore}',
-                            style: AppTextStyles.bodyMedium.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: live ? AppColors.live : AppColors.textPrimary,
+                        if (e.hasScore)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Text(
+                              '${e.homeScore}–${e.awayScore}',
+                              // EN GROS pendant le match (07/09) : le score
+                              // est ce qu'on vient lire, pas le nom de la ligue.
+                              style: (live
+                                      ? AppTextStyles.headlineMedium
+                                      : AppTextStyles.bodyMedium)
+                                  .copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: live
+                                    ? AppColors.live
+                                    : AppColors.textPrimary,
+                              ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    <String>[
-                      if (e.hasScore) '${e.homeScore} – ${e.awayScore}',
-                      if (e.whenLabel.isNotEmpty) e.whenLabel,
-                      if (e.league.isNotEmpty) e.league,
-                    ].join('  ·  '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.labelSmall
-                        .copyWith(color: AppColors.textTertiary),
-                  ),
-                  // PRONOSTIC DES FANS (06/09) : « 1 · N · 2 » avant le
-                  // coup d'envoi, pourcentages après le vote, figé au
-                  // coup d'envoi. Ne rend rien pour une course.
-                  PredictionBar(event: e),
-                ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      <String>[
+                        if (e.hasScore) '${e.homeScore} – ${e.awayScore}',
+                        if (e.whenLabel.isNotEmpty) e.whenLabel,
+                        if (e.league.isNotEmpty) e.league,
+                      ].join('  ·  '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.labelSmall
+                          .copyWith(color: AppColors.textTertiary),
+                    ),
+                    // PRONOSTIC DES FANS (06/09) : « 1 · N · 2 » avant le
+                    // coup d'envoi, pourcentages après le vote, figé au
+                    // coup d'envoi. Ne rend rien pour une course.
+                    PredictionBar(event: e),
+                  ],
+                ),
               ),
-            ),
-            IconButton(
-              tooltip: followed
-                  ? context.l10n.sportUnfollow
-                  : context.l10n.sportFollow,
-              onPressed: _busy
-                  ? null
-                  : () async {
-                      setState(() => _busy = true);
-                      final bool now =
-                          await FollowedMatchesService.instance.toggle(e);
-                      if (!mounted) return;
-                      setState(() => _busy = false);
-                      final ScaffoldMessengerState? m =
-                          ScaffoldMessenger.maybeOf(context);
-                      m?.showSnackBar(SnackBar(
-                        duration: const Duration(seconds: 2),
-                        content: Text(now
-                            ? context.l10n.sportFollowedOn
-                            : context.l10n.sportFollowedOff),
-                      ));
-                    },
-              icon: Icon(
-                followed
-                    ? Icons.notifications_active_rounded
-                    : Icons.notifications_none_rounded,
-                color: followed ? AppColors.accent : AppColors.textTertiary,
+              IconButton(
+                tooltip: followed
+                    ? context.l10n.sportUnfollow
+                    : context.l10n.sportFollow,
+                onPressed: _busy
+                    ? null
+                    : () async {
+                        setState(() => _busy = true);
+                        final bool now =
+                            await FollowedMatchesService.instance.toggle(e);
+                        if (!mounted) return;
+                        setState(() => _busy = false);
+                        final ScaffoldMessengerState? m =
+                            ScaffoldMessenger.maybeOf(context);
+                        m?.showSnackBar(SnackBar(
+                          duration: const Duration(seconds: 2),
+                          content: Text(now
+                              ? context.l10n.sportFollowedOn
+                              : context.l10n.sportFollowedOff),
+                        ));
+                      },
+                icon: Icon(
+                  followed
+                      ? Icons.notifications_active_rounded
+                      : Icons.notifications_none_rounded,
+                  color: followed ? AppColors.accent : AppColors.textTertiary,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

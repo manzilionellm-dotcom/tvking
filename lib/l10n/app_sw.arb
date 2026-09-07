@@ -2107,6 +2107,76 @@
   "@sportPredictMine": {
     "description": "Etiquette courte a cote de mon vote"
   },
+  "sportDetailSummary": "Muhtasari",
+  "@sportDetailSummary": {
+    "description": "Onglet resume de la fiche match"
+  },
+  "sportDetailStats": "Takwimu",
+  "@sportDetailStats": {
+    "description": "Onglet statistiques"
+  },
+  "sportDetailLineups": "Vikosi",
+  "@sportDetailLineups": {
+    "description": "Onglet compositions"
+  },
+  "sportDetailCorners": "Kona",
+  "@sportDetailCorners": {
+    "description": "Onglet corners"
+  },
+  "sportDetailCards": "Kadi",
+  "@sportDetailCards": {
+    "description": "Onglet cartons"
+  },
+  "sportDetailXg": "xG",
+  "@sportDetailXg": {
+    "description": "Onglet xG (buts attendus)"
+  },
+  "sportDetailHeatmap": "Ramani ya joto",
+  "@sportDetailHeatmap": {
+    "description": "Onglet carte de chaleur"
+  },
+  "sportDetailNotProvided": "Haitolewi na chanzo cha data",
+  "@sportDetailNotProvided": {
+    "description": "La source ne fournit pas cette donnee"
+  },
+  "sportDetailNoData": "Bado hakuna data ya mechi hii",
+  "@sportDetailNoData": {
+    "description": "Aucune donnee encore pour ce match"
+  },
+  "sportWatchOn": "Tazama kwenye {channel}",
+  "@sportWatchOn": {
+    "description": "Bouton : regarder la chaine qui diffuse le match",
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "sportNoChannelAiring": "Hakuna kituo kwenye orodha yako kinachoonyesha mechi hii sasa",
+  "@sportNoChannelAiring": {
+    "description": "Aucune chaine de la liste ne diffuse le match"
+  },
+  "sportLiveBadge": "MOJA KWA MOJA",
+  "@sportLiveBadge": {
+    "description": "Badge rouge LIVE sur une carte"
+  },
+  "sportDetailSubstitutes": "Wachezaji wa akiba",
+  "@sportDetailSubstitutes": {
+    "description": "Titre de la liste des remplacants"
+  },
+  "sportDetailAssist": "Pasi: {player}",
+  "@sportDetailAssist": {
+    "description": "Passe decisive",
+    "placeholders": {
+      "player": {
+        "type": "String"
+      }
+    }
+  },
+  "sportDetailPossession": "Umiliki wa mpira",
+  "@sportDetailPossession": {
+    "description": "Nom de la statistique possession"
+  },
   "sportOfflineTitle": "Hakuna muunganisho",
   "sportOfflineBody": "Imeshindwa kufikia huduma. Angalia muunganisho wako kisha ujaribu tena.",
   "sportSourceDownTitle": "Huduma haipatikani kwa sasa",

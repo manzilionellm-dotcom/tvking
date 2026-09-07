@@ -71,6 +71,9 @@ import { readDeviceProfiles } from './device_profiles.js';
 //  Pronostics des fans (coin Sport) : un vote par appareil et par match,
 //  pourcentages partagés. Module séparé, testé par sports_predictions.smoke.mjs.
 import { handlePredictionGet, handlePredictionPost } from './sports_predictions.js';
+//  Fiche d'un match (résumé, stats, compositions, chronologie) — module
+//  séparé, testé par sports_event.smoke.mjs.
+import { handleSportsEvent } from './sports_event.js';
 // Ré-export OBLIGATOIRE : wrangler.toml déclare
 // [durable_objects] class_name = "RealtimeHub" — le runtime cherche la
 // classe dans le module principal (main = worker.js).
@@ -7263,6 +7266,15 @@ async function handleRequest(request, env, ctx) {
         segments[2] === 'live' && segments.length === 3) {
       if (request.method !== 'GET') return badRequest('only GET');
       return await handleSportsLive(env);
+    }
+    // FICHE D'UN MATCH (07/09/2026) — résumé, stats, compositions,
+    // chronologie (buts, cartons). Quatre appels amont mutualisés, cache 60 s.
+    if (segments[0] === 'api' && segments[1] === 'sports' &&
+        segments[2] === 'event' && segments.length === 4) {
+      if (request.method !== 'GET') return badRequest('only GET');
+      return await handleSportsEvent(env, segments[3], {
+        json, badRequest, base: _sportsBase, headers: _sportsHeaders,
+      });
     }
     // PRONOSTICS DES FANS (06/09/2026) — « sondages et prédictions ».
     //   GET  /api/sports/predict/:matchId?mac=…  → comptes + pourcentages + mon vote
