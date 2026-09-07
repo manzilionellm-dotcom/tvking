@@ -582,7 +582,11 @@ async function ensureScaleSchema(env) {
   for (const col of ['device_model TEXT', 'android_build TEXT',
       'android_release TEXT', 'app_build INTEGER', 'platform TEXT',
       'android_id TEXT', 'app_version TEXT', 'local_sources_json TEXT',
-      'recent_json TEXT']) {
+      // build_label (07/09/2026) : le numéro LISIBLE de la maison — 19881,
+      // 19882… (cf. AGENTS.md « la règle de la maison »). C'est celui que
+      // le panel montre à côté de la MAC et qu'on dicte au téléphone.
+      // Distinct de app_build, qui est l'horodatage Android.
+      'recent_json TEXT', 'build_label TEXT']) {
     try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run(); } catch (_) {}
   }
   for (const idx of [
@@ -1900,6 +1904,12 @@ async function updateDeviceInfo(env, mac, body) {
     // « entreprise » pour recherche/vérification dans le panel.
     const androidId = (body.androidId ? String(body.androidId) : '').slice(0, 32);
     const appVersion = (body.appVersion ? String(body.appVersion) : '').slice(0, 24);
+    // NUMÉRO LISIBLE de la maison (19881, 19882…) — celui que le panel
+    // affiche à côté de la MAC et qu'on compare au dernier publié pour
+    // dire « dernière version » ou « ancienne version ». Les apps d'avant
+    // le 07/09/2026 ne l'envoient pas : la colonne reste alors vide et le
+    // panel retombe sur app_build (cf. cloudflare/app_versions.js).
+    const buildLabel = (body.buildLabel ? String(body.buildLabel) : '').slice(0, 16);
     // 'tv' (DeFew TV) ou 'mobile' (The Few) — pour distinguer dans le panel.
     const platform = (body.platform === 'tv' || body.platform === 'mobile')
       ? body.platform : '';
@@ -1931,7 +1941,7 @@ async function updateDeviceInfo(env, mac, body) {
       if (ids.length) recentJson = JSON.stringify(ids);
     }
     if (!model && !build && !release && !appBuild && !platform &&
-        !androidId && !appVersion && !srcJson && !recentJson) return;
+        !androidId && !appVersion && !buildLabel && !srcJson && !recentJson) return;
     // UNE SEULE écriture (au lieu de 4) : le CASE n'écrase JAMAIS un champ
     // existant avec une valeur vide → robuste ET économe en écritures D1.
     await env.DB
@@ -1943,6 +1953,7 @@ async function updateDeviceInfo(env, mac, body) {
           "app_build = CASE WHEN ? != 0 THEN ? ELSE app_build END, " +
           "android_id = CASE WHEN ? != '' THEN ? ELSE android_id END, " +
           "app_version = CASE WHEN ? != '' THEN ? ELSE app_version END, " +
+          "build_label = CASE WHEN ? != '' THEN ? ELSE build_label END, " +
           "platform = CASE WHEN ? != '' THEN ? ELSE platform END, " +
           "local_sources_json = CASE WHEN ? != '' THEN ? ELSE local_sources_json END, " +
           "recent_json = CASE WHEN ? != '' THEN ? ELSE recent_json END " +
@@ -1950,7 +1961,8 @@ async function updateDeviceInfo(env, mac, body) {
       )
       .bind(
         model, model, build, build, release, release, appBuild, appBuild,
-        androidId, androidId, appVersion, appVersion, platform, platform,
+        androidId, androidId, appVersion, appVersion,
+        buildLabel, buildLabel, platform, platform,
         srcJson, srcJson, recentJson, recentJson, mac,
       )
       .run();
@@ -3461,6 +3473,9 @@ async function readClientDetailMeta(env, mac) {
         android_build: d.android_build || '',
         platform: d.platform || '',
         app_version: d.app_version || '',
+        // Numéro lisible de la maison (19881…), vide sur les apps d'avant
+        // le 07/09/2026 — cf. cloudflare/app_versions.js.
+        build_label: d.build_label || '',
         app_build: d.app_build || 0,
         android_id: d.android_id || '',
         reseller_id: d.reseller_id || '',

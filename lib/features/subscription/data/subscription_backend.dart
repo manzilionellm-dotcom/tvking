@@ -171,6 +171,12 @@ abstract final class SubscriptionBackend {
         'androidId': androidId,
         'appVersion': appVersion,
         'appBuild': kBuildTs,
+        // NUMÉRO LISIBLE de la maison — 19881, 19882… (cf. AGENTS.md,
+        // « la règle de la maison »). C'est celui que le panel affiche à
+        // côté de la MAC, et qu'il compare au dernier publié pour dire
+        // « dernière version » ou « ancienne version ». Vide sur un build
+        // local sans --dart-define : le serveur n'écrase alors rien.
+        'buildLabel': kBuildLabel,
         // Chaîne en cours de visionnage (vide si rien) → panel « En ligne ».
         // MODE BOUCLIER (télémétrie minimale) : la chaîne, l'inventaire des
         // sources et l'historique NE QUITTENT PAS l'appareil. Le panel sait

@@ -17,7 +17,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, devicesApi, sourcesApi } from '@/lib/api';
-import type { DeviceOverview, DeviceMessage, DeviceSource } from '@/lib/api';
+import type {
+  DeviceOverview, DeviceMessage, DeviceSource, DeviceVersionStatus,
+} from '@/lib/api';
 import { sendCmd, waitForAck, useLiveDevices } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { cn, formatDateTime } from '@/lib/utils';
@@ -241,6 +243,7 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
   }
 
   const d = ov?.device ?? null;
+  const ver = ov?.version ?? null;
   const p = ov?.presence ?? null;
   const lic = ov?.license ?? null;
   const sources = ov?.sources ?? [];
@@ -286,6 +289,14 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
 
         {!loading && !err && (
           <div className="space-y-4">
+            {/* VERSION DE L'APP — tout en haut, juste sous la MAC.
+                Demande du propriétaire (07/09/2026) : en tapant une MAC,
+                voir le numéro de l'app ET savoir tout de suite si le
+                client est en retard, sans connaître le dernier numéro
+                publié par cœur. C'est la première question du support :
+                « il a bien fait sa mise à jour ? ». */}
+            <VersionCard ver={ver} appVersion={d?.app_version ?? null} />
+
             {/* Connexion (live) */}
             <Section title="Connexion">
               <Row label="En ligne">
@@ -338,6 +349,12 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
               </Row>
               <Row label="Version app">
                 {d?.app_version || (d?.app_build != null ? String(d.app_build) : '—')}
+              </Row>
+              {/* Le numéro de la maison, en clair, à côté du reste des
+                  caractéristiques : celui qu'on demande au client de lire
+                  dans Réglages → sous son adresse MAC. */}
+              <Row label="Numéro (maison)" mono>
+                {d?.build_label || '—'}
               </Row>
               <Row label="Première vue">
                 {d?.first_seen_at ? formatDateTime(d.first_seen_at) : '—'}
@@ -480,6 +497,122 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
             Fermer
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================
+//  « DERNIÈRE VERSION » / « ANCIENNE VERSION »
+// =========================================================
+//  Le verdict n'est PAS calculé ici : il vient du serveur
+//  (cloudflare/app_versions.js), qui compare ce que la box a remonté au
+//  `version.json` réellement publié sur SON canal — exactement le
+//  manifeste que le bouton « Vérifier les mises à jour » de l'app lit.
+//  Refaire le calcul dans le panel aurait créé une deuxième vérité : le
+//  jour où l'une dérive, le panel dirait « à jour » pendant que la box
+//  propose une mise à jour, et le support ne saurait plus quoi croire.
+//
+//  Ici on ne fait que HABILLER ce verdict : gros numéro, couleur, phrase.
+const _VERDICTS = {
+  latest: {
+    mot: 'Dernière version',
+    cadre: 'border-emerald-500/30 bg-emerald-500/10',
+    pastille: 'bg-emerald-500/15 text-emerald-300',
+    chiffre: 'text-emerald-300',
+  },
+  outdated: {
+    mot: 'Ancienne version',
+    cadre: 'border-red-500/30 bg-red-500/10',
+    pastille: 'bg-red-500/15 text-red-300',
+    chiffre: 'text-red-300',
+  },
+  ahead: {
+    mot: 'Version de test',
+    cadre: 'border-amber-500/30 bg-amber-500/10',
+    pastille: 'bg-amber-500/15 text-amber-300',
+    chiffre: 'text-amber-300',
+  },
+  unknown: {
+    mot: 'Version inconnue',
+    cadre: 'border-white/10 bg-obsidian/40',
+    pastille: 'bg-white/10 text-ink-tertiary',
+    chiffre: 'text-ink-secondary',
+  },
+} as const;
+
+function VersionCard({
+  ver,
+  appVersion,
+}: {
+  ver: DeviceVersionStatus | null;
+  appVersion: string | null;
+}) {
+  // Pas de fiche `devices` (MAC vue en présence seulement) → on n'invente
+  // rien : on affiche le cadre « inconnu » avec une explication.
+  const etat = ver?.state ?? 'unknown';
+  const th = _VERDICTS[etat];
+  // Ce qu'on montre en GROS : le numéro de la maison quand on l'a. Sur une
+  // app d'avant le 07/09/2026, il n'existe pas — on montre alors le
+  // versionCode Android, en précisant que c'est celui-là (`basis`).
+  const gros = ver?.installed || '—';
+  const parVersionCode = ver?.basis === 'versionCode';
+
+  return (
+    <div className={cn('rounded-xl border p-3', th.cadre)}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-ink-tertiary">
+            Version de l’app
+          </h3>
+          <div className={cn('mt-1 font-mono text-4xl font-black leading-none', th.chiffre)}>
+            {gros}
+          </div>
+          {appVersion && (
+            <div className="mt-1 text-[11px] text-ink-tertiary">v{appVersion}</div>
+          )}
+        </div>
+        <span
+          className={cn(
+            'rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide',
+            th.pastille,
+          )}
+        >
+          {th.mot}
+        </span>
+      </div>
+
+      <div className="mt-2 space-y-0.5 text-[11px] text-ink-tertiary">
+        {ver?.latest ? (
+          <div>
+            Dernier publié : <span className="font-mono text-ink-secondary">{ver.latest}</span>
+            {ver.latestVersion ? ` · v${ver.latestVersion}` : ''}
+            {ver.channel ? ` · canal ${ver.channel}` : ''}
+          </div>
+        ) : (
+          <div>Dernier numéro publié : indisponible pour le moment.</div>
+        )}
+        {parVersionCode && (
+          <div>
+            Cette app est antérieure au numéro maison : comparaison faite sur le
+            numéro Android.
+          </div>
+        )}
+        {etat === 'outdated' && (
+          <div className="font-semibold text-red-300">
+            Le client n’a pas la dernière mise à jour.
+          </div>
+        )}
+        {etat === 'ahead' && (
+          <div>Numéro plus grand que le publié : build de test (box du labo).</div>
+        )}
+        {etat === 'unknown' && (
+          <div>
+            {ver
+              ? 'Numéro non remonté par l’appareil (app trop ancienne), ou manifeste injoignable.'
+              : 'Aucune fiche appareil : cette MAC n’a pas encore démarré l’app.'}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -478,9 +478,43 @@ export interface DeviceMeta {
   android_release: string | null;
   android_build: string | null;
   app_version: string | null;
+  // Numéro LISIBLE de la maison — 19881, 19882… (cf. AGENTS.md).
+  // null sur une app installée avant le 07/09/2026 : elle ne le connaît
+  // pas encore et ne le remonte donc pas.
+  build_label: string | null;
   app_build: number | null;
   platform: string | null;
   android_id: string | null;
+}
+// « Cette box est-elle à jour ? » — calculé par le serveur
+// (cloudflare/app_versions.js) en comparant ce que l'appareil a remonté
+// au `version.json` RÉELLEMENT publié sur le canal de sa plateforme,
+// celui-là même que le bouton « Vérifier les mises à jour » interroge.
+export interface DeviceVersionStatus {
+  // latest   → la box porte le dernier numéro publié ;
+  // outdated → elle est EN RETARD (le cas qu'on cherche au téléphone) ;
+  // ahead    → elle porte un numéro plus grand : box de labo, build pas
+  //            encore publié ;
+  // unknown  → on ne sait pas (vieille app, ou GitHub injoignable).
+  state: 'latest' | 'outdated' | 'ahead' | 'unknown';
+  // Sur quoi le verdict s'appuie : le numéro lisible, ou à défaut le
+  // versionCode Android des apps d'avant le numéro lisible.
+  basis: 'buildLabel' | 'versionCode' | 'none';
+  installed: string;
+  latest: string;
+  platform: string | null;
+  channel: string | null;
+  latestVersion: string;
+  latestVersionCode: number;
+}
+// Dernier numéro publié sur un canal (une plateforme).
+export interface PublishedVersion {
+  platform: string;
+  channel: string;
+  buildLabel: string;
+  versionCode: number;
+  version: string;
+  at: number;
 }
 // Fiche 360° agrégée d'un appareil : abonnement + présence + M-Trio +
 // inventaire réel des sources sur l'appareil + méta appareil.
@@ -491,7 +525,18 @@ export interface DeviceOverview {
   sources: DeviceSource[];
   localSources?: DeviceLocalSource[];
   device?: DeviceMeta | null;
+  // null si l'appareil n'a pas de fiche `devices` (MAC vue en présence
+  // seulement), ou si le manifeste publié n'a pas pu être lu.
+  version?: DeviceVersionStatus | null;
 }
+export const appVersionsApi = {
+  // Dernier numéro publié, par plateforme. Sert de référence affichée
+  // dans la fiche MAC : « le dernier, c'est 19882 ».
+  latest: () =>
+    request<{ tv: PublishedVersion | null; mobile: PublishedVersion | null }>(
+      '/api/v1/app-versions',
+    ),
+};
 export const devicesApi = {
   list: (q?: string) =>
     request<{ items: Device[] }>(

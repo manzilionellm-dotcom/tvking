@@ -61,6 +61,21 @@ on:
       # realtime.js (hub temps réel Durable Object) IMPORTÉ par worker.js →
       # redéployer le worker quand le hub change.
       - 'cloudflare/realtime.js'
+      # LES AUTRES MODULES IMPORTÉS (07/09/2026). Ils manquaient à cette
+      # liste : modifier l'un d'eux SEUL ne redéployait rien, et le code
+      # restait dans Git sans jamais répondre en production — exactement
+      # le « drift silencieux » que ce workflow existe pour empêcher (cf.
+      # l'en-tête). On les ajoute tous, une bonne fois.
+      #   device_profiles.js    : profils famille (PIN partagé app/panel)
+      #   sports_predictions.js : pronostics 1/N/2
+      #   sports_event.js       : fiche d'un match
+      #   app_versions.js       : « cette box est-elle à jour ? »
+      #   migrate_kv_to_d1.js   : migration KV → D1
+      - 'cloudflare/device_profiles.js'
+      - 'cloudflare/sports_predictions.js'
+      - 'cloudflare/sports_event.js'
+      - 'cloudflare/app_versions.js'
+      - 'cloudflare/migrate_kv_to_d1.js'
       - 'cloudflare/wrangler.toml'
       - '.github/workflows/deploy-worker.yml'
 

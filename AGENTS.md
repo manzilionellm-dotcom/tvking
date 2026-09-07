@@ -71,6 +71,26 @@ est lu depuis le dernier `version.json` réellement publié. Une compilation
 qui ne publie rien ne consomme aucun numéro, et le client ne voit jamais
 de trous dans la série.
 
+### Le numéro remonte jusqu'au panel
+
+L'app envoie son `buildLabel` au serveur dans le heartbeat
+(`subscription_backend.dart`) ; le Worker le range dans
+`devices.build_label` ; le panel l'affiche **dans la fiche MAC**, en gros,
+avec le verdict : *dernière version* / *ancienne version*.
+
+Le verdict n'est calculé **qu'à un seul endroit** :
+`cloudflare/app_versions.js`. Il compare le numéro remonté au
+`version.json` **réellement publié** sur le canal de la plateforme — le
+même manifeste que le bouton « Vérifier les mises à jour » de l'app lit
+(`update_service.dart`). Si tu ajoutes une plateforme, ajoute son canal
+dans `VERSION_CHANNELS`, et nulle part ailleurs : le jour où le panel
+viserait un autre canal que l'app, il dirait « à jour » pendant que la box
+propose une mise à jour.
+
+Les apps installées **avant le 07/09/2026** ne connaissent pas le numéro
+maison. Elles ne disparaissent pas du panel pour autant : le verdict
+retombe alors sur le `versionCode`, et le panel dit sur quoi il s'appuie.
+
 ## Workflow git
 
 - Une branche par fonctionnalité (`claude/<sujet>` ou `feature/<sujet>`).

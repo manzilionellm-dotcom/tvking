@@ -32,6 +32,12 @@
 //      GET    /api/v1/devices
 //      GET    /api/v1/customers/:id/devices
 //      POST   /api/v1/devices                { customer_id, mac, label }
+//      GET    /api/v1/devices/:id/overview   fiche 360 (+ verdict version)
+//
+//    Versions publiees
+//      GET    /api/v1/app-versions           dernier numero publie, par
+//                                            plateforme (reference du
+//                                            verdict « a jour ? »)
 //
 //    Licenses (le coeur du systeme)
 //      GET    /api/v1/licenses
@@ -72,6 +78,11 @@ import {
   readDeviceProfiles, writeDeviceProfiles, normalizeProfile,
   newProfileSalt, profilePinHash,
 } from './device_profiles.js';
+//  « Cette box est-elle à jour ? » — MÊME calcul pour la fiche MAC et
+//  pour le bandeau du panel. Deux copies auraient fini par se
+//  contredire : le panel dirait « à jour » pendant que la box propose
+//  une mise à jour. Cf. cloudflare/app_versions.js.
+import { publishedVersions, deviceVersionStatus } from './app_versions.js';
 
 // ---------------------------------------------------------
 //  Helpers reponse
@@ -1436,6 +1447,23 @@ async function apiV1Inner(request, env) {
     }
     if (request.method === 'GET') return handleAdminMonitorGet(env);
     return errResp('method_not_allowed', 'Only GET', 405);
+  }
+
+  // /app-versions — LE DERNIER NUMÉRO PUBLIÉ, par plateforme.
+  //
+  //  Sert le bandeau du panel : « TV 19881 · Mobile 19881 ». C'est la
+  //  référence à laquelle chaque fiche MAC se compare. Lecture seule,
+  //  aucune donnée client → ouvert aux revendeurs aussi : eux aussi
+  //  répondent au téléphone à « j'ai le bon numéro ? ».
+  if (parts[0] === 'app-versions' && parts.length === 1) {
+    if (request.method !== 'GET') {
+      return errResp('method_not_allowed', 'Only GET', 405);
+    }
+    // Fail-open : GitHub injoignable → { tv: null, mobile: null }, le
+    // panel affiche « inconnu » au lieu de tomber en erreur.
+    let pub = { tv: null, mobile: null };
+    try { pub = await publishedVersions(); } catch (_) { /* inconnu */ }
+    return jsonResp(pub);
   }
 
   // /devices
@@ -5272,7 +5300,7 @@ async function handleDeviceOverview(env, id, user) {
         `SELECT d.local_sources_json, d.label, d.customer_id, d.reseller_id,
                 d.block_status, d.first_seen_at, d.last_seen_at,
                 d.device_model, d.android_build, d.android_release,
-                d.app_build, d.app_version, d.platform, d.android_id,
+                d.app_build, d.app_version, d.build_label, d.platform, d.android_id,
                 c.name AS customer_name
            FROM devices d
            LEFT JOIN customers c ON c.id = d.customer_id
@@ -5296,6 +5324,9 @@ async function handleDeviceOverview(env, id, user) {
         android_release: drow.android_release || null,
         android_build: drow.android_build || null,
         app_version: drow.app_version || null,
+        // Numéro LISIBLE (19881, 19882…) : celui qu'on dicte au téléphone
+        // et qu'on compare au dernier publié, juste en dessous.
+        build_label: drow.build_label || null,
         app_build: drow.app_build || null,
         platform: drow.platform || null,
         android_id: drow.android_id || null,
@@ -5303,7 +5334,28 @@ async function handleDeviceOverview(env, id, user) {
     }
   } catch (_) { /* colonnes/table absentes sur base ancienne : on ignore */ }
 
-  return jsonResp({ mac: dev.mac, license, presence, sources, localSources, device });
+  // --- « EST-CE LA DERNIÈRE VERSION ? » (07/09/2026)
+  //     Demande du propriétaire : en tapant une MAC, voir le numéro de
+  //     l'app ET savoir d'un coup d'œil si le client est en retard —
+  //     sans connaître par cœur le dernier numéro publié.
+  //
+  //     On lit le `version.json` du canal de CETTE plateforme (le même
+  //     que le bouton « Vérifier les mises à jour » de l'app interroge)
+  //     et on rend un verdict : latest / outdated / ahead / unknown.
+  //     Lecture mise en cache 10 min côté module — le panel se rafraîchit
+  //     en boucle, on ne martèle pas GitHub.
+  //
+  //     FAIL-OPEN : GitHub injoignable → `version` vaut null, la fiche
+  //     s'affiche quand même. Une panne d'amont ne doit jamais coûter
+  //     l'accès à la fiche d'un client au téléphone.
+  let version = null;
+  try {
+    if (device) version = await deviceVersionStatus(device);
+  } catch (_) { /* jamais bloquant */ }
+
+  return jsonResp({
+    mac: dev.mac, license, presence, sources, localSources, device, version,
+  });
 }
 
 // =========================================================
