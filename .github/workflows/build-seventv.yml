@@ -588,36 +588,11 @@ jobs:
           echo "versionCode = $BUILD_NUMBER"
           echo "SEVENTV_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
 
-          #  ===== LE NUMÉRO LISIBLE, « 1988 + compteur » (07/09/2026) =====
-          #
-          #  Demande du propriétaire : « on fait mon année de naissance
-          #  plus 1 pour le premier build ; quand on fera la mise à jour ce
-          #  sera 19882 ». Donc : 19881, 19882, 19883…
-          #
-          #  POURQUOI DEUX NUMÉROS. `versionCode` (l'horodatage ci-dessus)
-          #  reste le numéro d'ANDROID : il doit être strictement croissant
-          #  à vie, et tout le parc porte déjà 1788127315 — on ne peut plus
-          #  redescendre sans casser la mise à jour de toutes les box. Ce
-          #  numéro-ci est celui des HUMAINS : on le dicte au téléphone.
-          #
-          #  IL MONTE À CHAQUE PUBLICATION, PAS À CHAQUE COMPILATION. On le
-          #  calcule à partir du dernier numéro RÉELLEMENT publié, pas d'un
-          #  compteur de CI : sinon trois pushes sans publication le
-          #  feraient sauter de 19881 à 19884, et le client verrait des
-          #  numéros manquants. Corollaire utile : une compilation qui ne
-          #  publie pas ne consomme aucun numéro — le prochain build
-          #  recalculera exactement le même.
-          PREV_LABEL=$(curl -fsSL \
-            "https://github.com/${{ github.repository }}/releases/download/seventv-latest/version.json" \
-            2>/dev/null | tr -d ' \n' \
-            | grep -oE '"buildLabel":"[0-9]*"' | grep -oE '[0-9]+' || true)
-          # On retire le préfixe 1988 pour retrouver le compteur seul.
-          PREV_N=$(printf '%s' "${PREV_LABEL#1988}")
-          case "$PREV_N" in
-            ''|*[!0-9]*) PREV_N=0 ;;
-          esac
-          BUILD_LABEL="1988$((PREV_N + 1))"
-          echo "numero lisible = $BUILD_LABEL (precedent publie : ${PREV_LABEL:-aucun})"
+          #  LE NUMÉRO LISIBLE (« 19881 »), celui qu'on dicte au client.
+          #  Calcul PARTAGÉ par toutes les apps : ci/build_label.sh. Ne
+          #  recopie pas la formule ici — voir l'en-tête du script.
+          BUILD_LABEL=$(ci/build_label.sh "${{ github.repository }}" seventv-latest)
+          echo "numero lisible = $BUILD_LABEL"
           echo "SEVENTV_BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
           flutter build apk --release --no-tree-shake-icons \
             --target-platform android-arm,android-arm64 \

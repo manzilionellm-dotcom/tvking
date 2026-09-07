@@ -857,10 +857,16 @@ jobs:
           # Sans ce fichier, la box n'a AUCUN moyen de se mettre à jour seule.
           VN=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
           [ -z "$VN" ] && VN="0.3.2"
+          #  LE NUMÉRO LISIBLE (« 19881 ») — même règle et même script que
+          #  les autres apps : ci/build_label.sh. Voir son en-tête pour
+          #  savoir pourquoi il y a DEUX numéros et pas un seul.
+          BUILD_LABEL=$(ci/build_label.sh "$REPO" "$TAG")
+          echo ">>> numero lisible publie : $BUILD_LABEL"
           cat > version.json <<JSON
           {
             "versionCode": ${TV_BUILD_NUMBER:-0},
             "versionName": "$VN",
+            "buildLabel": "$BUILD_LABEL",
             "url": "https://github.com/$REPO/releases/download/$TAG/defew-tv.apk",
             "mandatory": false
           }

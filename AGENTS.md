@@ -32,6 +32,45 @@ lib/
 └── shared/      # ce qui est partagé entre features (peu)
 ```
 
+## Numéro de version : la règle de la maison
+
+Décision du propriétaire (07/09/2026), valable pour **toutes** les apps —
+téléphone, box, et celles qui viendront. Il veut « un suivi comme de père
+en fils, sans que les apps se perdent ».
+
+**Chaque app porte DEUX numéros, et il ne faut jamais les confondre.**
+
+| | Qui le lit | Forme | D'où il vient |
+|---|---|---|---|
+| `versionCode` | Android seul | horodatage (`1788127315`) | `date +%s` ou `run_number` |
+| `buildLabel` | **le client et le support** | `19881`, `19882`… | `ci/build_label.sh` |
+
+`versionCode` doit rester **strictement croissant à vie** : Android refuse
+d'installer un paquet dont le numéro est inférieur à celui déjà installé.
+Le parc porte déjà des horodatages — on ne peut plus redescendre, jamais.
+C'est pour ça qu'on n'a pas pu simplement « repartir à 1 ».
+
+`buildLabel` est le numéro **des humains** : `1988` (l'année du
+propriétaire) suivi d'un compteur. On le lit à voix haute au téléphone, on
+le compare d'un coup d'œil. Il s'affiche en grand dans « À propos ».
+
+### Si tu ajoutes une app, ou un canal de publication
+
+1. Le canal se demande à `ci/release_tag.sh <phone|tv> <branche>`.
+2. Le numéro se demande à `ci/build_label.sh <owner/repo> <canal>`.
+3. Tu l'injectes au build : `--dart-define=APP_BUILD_LABEL=$BUILD_LABEL`.
+4. Tu l'écris dans `version.json`, champ `buildLabel`.
+
+**Ne recopie jamais ces calculs dans un workflow.** Le jour où une copie
+dérive, deux apps donnent deux numéros pour la même version et le support
+ne sait plus quoi croire. Une seule implémentation, autant d'appelants
+qu'on veut — même raison que `cloudflare/device_profiles.js`.
+
+Le compteur monte **à chaque publication, pas à chaque compilation** : il
+est lu depuis le dernier `version.json` réellement publié. Une compilation
+qui ne publie rien ne consomme aucun numéro, et le client ne voit jamais
+de trous dans la série.
+
 ## Workflow git
 
 - Une branche par fonctionnalité (`claude/<sujet>` ou `feature/<sujet>`).

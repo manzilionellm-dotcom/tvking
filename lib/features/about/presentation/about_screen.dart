@@ -21,6 +21,7 @@ import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
+import '../../../core/app/build_info.dart' show kBuildLabel;
 import '../../device/presentation/device_id_card.dart';
 import '../../player/presentation/stream_debug_screen.dart';
 import '../data/update_checker.dart';
@@ -143,8 +144,17 @@ class _AboutScreenState extends State<AboutScreen> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
+                          // MÊME NUMÉRO QUE LA TV (07/09) : le numéro
+                          // court « 19881 », celui qu'on dicte au
+                          // téléphone, plutôt que l'horodatage que
+                          // personne ne sait lire. Repli sur le numéro
+                          // technique quand le label n'est pas gravé
+                          // (build local, ou APK antérieur).
                           context.l10n.aboutVersionBuild(
-                              _pkg!.version, _pkg!.buildNumber),
+                              _pkg!.version,
+                              kBuildLabel.isNotEmpty
+                                  ? kBuildLabel
+                                  : _pkg!.buildNumber),
                           style: AppTextStyles.bodyMedium.copyWith(
                             fontSize: 12,
                             color: AppColors.textSecondary,
@@ -195,8 +205,7 @@ class _AboutScreenState extends State<AboutScreen> {
                         color: AppColors.accentSurface,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: AppColors.accent
-                              .withValues(alpha: 0.5),
+                          color: AppColors.accent.withValues(alpha: 0.5),
                         ),
                       ),
                       child: Column(
@@ -226,16 +235,14 @@ class _AboutScreenState extends State<AboutScreen> {
                           ),
                           const SizedBox(height: 10),
                           OutlinedButton.icon(
-                            onPressed: () =>
-                                _openUrl(_update!.releaseUrl),
-                            icon: const Icon(Icons.open_in_new_rounded,
-                                size: 16),
+                            onPressed: () => _openUrl(_update!.releaseUrl),
+                            icon:
+                                const Icon(Icons.open_in_new_rounded, size: 16),
                             label: Text(context.l10n.aboutSeeReleaseNotes),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppColors.accent,
                               side: BorderSide(
-                                color: AppColors.accent
-                                    .withValues(alpha: 0.5),
+                                color: AppColors.accent.withValues(alpha: 0.5),
                               ),
                             ),
                           ),

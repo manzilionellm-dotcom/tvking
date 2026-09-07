@@ -743,6 +743,20 @@ jobs:
           # pour la "mise à jour forcée" (compare à la dernière release).
           BUILD_TS=$(date +%s)
           echo "APP_BUILD_TS=$BUILD_TS"
+          #  LE NUMÉRO LISIBLE (« 19881 »), gravé DANS l'APK — c'est lui
+          #  que le client lit dans « À propos » et nous dicte au
+          #  téléphone. Il se calcule à partir du dernier numéro publié
+          #  SUR SON CANAL : il faut donc connaître le canal ici, avant
+          #  de compiler. Les deux calculs sont partagés avec la TV
+          #  (ci/release_tag.sh, ci/build_label.sh) — une seule règle
+          #  pour toutes les apps de la maison, pour qu'aucune ne se
+          #  perde. Le canal est réexporté pour que l'étape de
+          #  publication n'ait pas à le recalculer.
+          REL_TAG=$(ci/release_tag.sh phone "${{ github.ref_name }}")
+          BUILD_LABEL=$(ci/build_label.sh "${{ github.repository }}" "$REL_TAG")
+          echo "canal=$REL_TAG  numero lisible=$BUILD_LABEL"
+          echo "REL_TAG=$REL_TAG" >> "$GITHUB_ENV"
+          echo "BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
           # Retry : le download de libmpv (media_kit) renvoie parfois un
           # 504 transitoire côté GitHub → on réessaie jusqu'à 4 fois.
           # BUILD CONSOLE MAÎTRE : si déclenché manuellement avec
@@ -761,6 +775,7 @@ jobs:
               --build-number=${{ github.run_number }} \
               --obfuscate --split-debug-info=build/symbols \
               --dart-define=APP_BUILD_TS=$BUILD_TS \
+              --dart-define=APP_BUILD_LABEL=$BUILD_LABEL \
               --dart-define=GIT_SHA=${{ github.sha }} \
               $MASTER_DEFINE && { ok=1; break; }
             echo "Attempt $attempt failed; retry in 25s"; sleep 25
@@ -878,6 +893,7 @@ jobs:
               --build-number=${{ github.run_number }} \
               --obfuscate --split-debug-info=build/symbols \
               --dart-define=APP_BUILD_TS=$BUILD_TS \
+              --dart-define=APP_BUILD_LABEL=$BUILD_LABEL \
               --dart-define=PLAY_BUILD=true \
               --dart-define=GIT_SHA=${{ github.sha }} && { ok=1; break; }
             echo "Attempt $attempt failed; retry in 25s"; sleep 25
@@ -961,15 +977,13 @@ jobs:
           # « prod » est la SEULE release que le lien client (app.7themotion.
           # com/vip) sert : elle n'est publiée QUE par la maison mère, donc
           # AUCUNE autre branche ne peut l'écraser (fin du clobber terrain).
-          if [ "${{ github.ref_name }}" = "claude/maison-mere-phone" ]; then
-            TAG="prod"
-          elif [ "${{ github.ref_name }}" = "claude/iptv-chromecast-cast-WeAyo" ]; then
-            TAG="cast-fix-latest"
-          elif [ "${{ github.ref_name }}" = "claude/phone-app-language-translation-ornt8n" ]; then
-            TAG="phone-i18n-latest"
-          else
-            TAG="latest"
-          fi
+          #  LE CANAL EST DÉCIDÉ PAR ci/release_tag.sh (07/09/2026), et
+          #  plus par un if/elif recopié ici. L'étape de compilation a
+          #  besoin du MÊME canal, bien plus tôt, pour calculer le numéro
+          #  lisible gravé dans l'APK. Deux copies de la règle auraient
+          #  fini par diverger : l'app aurait affiché un numéro et le
+          #  serveur en aurait publié un autre. Une seule vérité.
+          TAG="${REL_TAG:-$(ci/release_tag.sh phone "${{ github.ref_name }}")}"
           echo ">>> Release cible : $TAG (branche ${{ github.ref_name }})"
           APK="build/app/outputs/flutter-apk/7motion.apk"
           APK_COMPAT="build/app/outputs/flutter-apk/app-debug.apk"
@@ -1058,10 +1072,17 @@ jobs:
           VN=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
           [ -z "$VN" ] && VN="0.3.2"
           echo ">>> versionName publié : $VN (build ${{ github.run_number }})"
+          #  LE NUMÉRO LISIBLE (« 19881 ») — même règle et même script que
+          #  la TV : ci/build_label.sh. Un client au téléphone lit ce
+          #  nombre-là, pas le versionCode. Champ ADDITIONNEL : les apps
+          #  déjà installées, qui l'ignorent, ne cassent pas.
+          BUILD_LABEL=$(ci/build_label.sh "$REPO" "$TAG")
+          echo ">>> numero lisible publie : $BUILD_LABEL"
           cat > version.json <<JSON
           {
             "versionCode": ${{ github.run_number }},
             "versionName": "$VN",
+            "buildLabel": "$BUILD_LABEL",
             "url": "https://github.com/$REPO/releases/download/$TAG/7motion.apk",
             "mandatory": false
           }
