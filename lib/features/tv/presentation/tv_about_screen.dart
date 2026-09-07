@@ -20,6 +20,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/app/device_memory.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/update/update_service.dart';
 import '../../vod/data/tmdb_meta_service.dart' show kTmdbAttribution;
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -37,12 +38,51 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
   PackageInfo? _info;
   String _cacheStatus = '';
 
+  //  ===== LE NUMÉRO QU'ON LIT DU CANAPÉ (07/09/2026) =====
+  //
+  //  Demande du propriétaire : « je veux que ça affiche un gros numéro de
+  //  la version, on saura si c'est la dernière — si par exemple le client
+  //  a mal mis à jour son app ».
+  //
+  //  Le problème réel qu'il décrit : au téléphone avec un client, on lui
+  //  demande sa version. Il lit « 0.3.3 » — et ça ne dit RIEN, parce que
+  //  deux builds différents portent le même nom de version. Le numéro qui
+  //  identifie vraiment un build, c'est le NUMÉRO DE BUILD, et il était
+  //  écrit en petit, entre parenthèses, au milieu d'autres lignes.
+  //
+  //  Ce bandeau affiche donc le numéro de build EN GRAND, et surtout il
+  //  répond à la seule question qui compte pour le support : « est-ce la
+  //  dernière ? ». Il interroge le même manifeste que le bouton de mise à
+  //  jour, et rend un verdict en clair :
+  //     • À JOUR            (vert)   — rien à faire
+  //     • PAS À JOUR        (rouge)  — la mise à jour a échoué, on le voit
+  //     • VÉRIFICATION IMPOSSIBLE (gris) — réseau KO, on ne conclut PAS
+  //
+  //  Ce troisième état est important : sans lui, une box hors ligne
+  //  afficherait « à jour » et on chercherait le problème ailleurs.
+  UpdateCheckResult? _verdict;
+  bool _checking = true;
+
   @override
   void initState() {
     super.initState();
     // Lecture asynchrone de la version (n'empêche jamais l'affichage).
     PackageInfo.fromPlatform().then((PackageInfo i) {
       if (mounted) setState(() => _info = i);
+    });
+    // Verdict « est-ce la dernière ? » — même manifeste que le bouton de
+    // mise à jour, donc jamais deux réponses différentes. Best-effort :
+    // une erreur réseau donne « vérification impossible », pas un faux
+    // « à jour ». Ne bloque jamais l'affichage de l'écran.
+    UpdateService.instance.checkDetailed().then((UpdateCheckResult r) {
+      if (mounted) {
+        setState(() {
+          _verdict = r;
+          _checking = false;
+        });
+      }
+    }).catchError((Object _) {
+      if (mounted) setState(() => _checking = false);
     });
   }
 
@@ -65,18 +105,115 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
       return context.l10n.tvAboutRamUnknown;
     }
     final double gb = DeviceMemory.totalMb / 1024;
-    final String value =
-        context.l10n.tvAboutRamValue(gb.toStringAsFixed(1));
+    final String value = context.l10n.tvAboutRamValue(gb.toStringAsFixed(1));
     return DeviceMemory.lowRam
         ? '$value ${context.l10n.tvAboutRamLowTag}'
         : value;
   }
 
+  /// Le bandeau que le support fait lire au client : son numéro de build,
+  /// en très grand, et le verdict face au serveur.
+  Widget _buildBanner(BuildContext context) {
+    final String build = _info?.buildNumber ?? '…';
+    // Trois états, trois couleurs. Tant qu'on vérifie, on n'affirme rien.
+    final Color color;
+    final IconData icon;
+    final String label;
+    if (_checking) {
+      color = TvTokens.muted;
+      icon = Icons.hourglass_empty_rounded;
+      label = context.l10n.tvAboutVersionChecking;
+    } else {
+      switch (_verdict?.status) {
+        case UpdateAvailability.upToDate:
+          color = TvTokens.success;
+          icon = Icons.verified_rounded;
+          label = context.l10n.tvAboutVersionLatest;
+        case UpdateAvailability.available:
+          color = TvTokens.live;
+          icon = Icons.error_outline_rounded;
+          label = context.l10n.tvAboutVersionOutdated;
+        case UpdateAvailability.unavailable:
+        case null:
+          color = TvTokens.muted;
+          icon = Icons.cloud_off_rounded;
+          label = context.l10n.tvAboutVersionUnknown;
+      }
+    }
+    // Le numéro attendu par le serveur, quand on le connaît : c'est LUI
+    // que le support compare au numéro affiché sur la box du client.
+    final int? expected = _verdict?.info?.versionCode;
+
+    return Container(
+      width: 760,
+      padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
+      decoration: BoxDecoration(
+        color: TvTokens.card,
+        borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+        border: Border.all(color: color.withValues(alpha: 0.55), width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            context.l10n.tvAboutVersionBuildLabel.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+              color: TvTokens.mutedDim,
+            ),
+          ),
+          const SizedBox(height: 2),
+          // LE NUMÉRO, EN TRÈS GRAND. C'est ce que le client lit au
+          // téléphone ; il doit être déchiffrable à trois mètres, d'un
+          // seul coup d'œil, sans lunettes.
+          Text(
+            build,
+            style: const TextStyle(
+              fontSize: 56,
+              fontWeight: FontWeight.w800,
+              height: 1.05,
+              letterSpacing: 1,
+              color: TvTokens.text,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              Icon(icon, color: color, size: 26),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // Quand une version plus récente existe, on affiche LE numéro
+          // attendu : le support n'a plus à le chercher ailleurs, il
+          // compare deux nombres à l'écran.
+          if (expected != null) ...<Widget>[
+            const SizedBox(height: 4),
+            Text(
+              context.l10n.tvAboutVersionExpected('$expected'),
+              style: const TextStyle(fontSize: 16, color: TvTokens.muted),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final String version = _info == null
-        ? '…'
-        : '${_info!.version} (build ${_info!.buildNumber})';
+    final String version =
+        _info == null ? '…' : '${_info!.version} (build ${_info!.buildNumber})';
     final String appName = _info?.appName ?? context.l10n.appName;
 
     return SafeArea(
@@ -103,7 +240,10 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
                 letterSpacing: 1.5,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 18),
+            // ----- LE GROS NUMÉRO + LE VERDICT (07/09) -----
+            _buildBanner(context),
+            const SizedBox(height: 18),
             // ----- Bloc d'informations (lecture seule) -----
             Container(
               width: 760,
@@ -170,7 +310,8 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
                       const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
                   child: Row(
                     children: <Widget>[
-                      Icon(Icons.cleaning_services_rounded, color: fg, size: 26),
+                      Icon(Icons.cleaning_services_rounded,
+                          color: fg, size: 26),
                       const SizedBox(width: 12),
                       Text(
                         context.l10n.tvAboutClearCache,

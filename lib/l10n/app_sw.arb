@@ -1219,6 +1219,35 @@
   "tvAboutRamValue": "GB {gb}",
   "tvAboutRamLowTag": "(ndogo)",
   "tvAboutVersion": "Toleo",
+  "tvAboutVersionBuildLabel": "Nambari ya toleo",
+  "@tvAboutVersionBuildLabel": {
+    "description": "Etiquette au-dessus du gros numero de build"
+  },
+  "tvAboutVersionLatest": "Imesasishwa — hili ndilo toleo jipya zaidi",
+  "@tvAboutVersionLatest": {
+    "description": "Verdict : la box a bien la derniere version"
+  },
+  "tvAboutVersionOutdated": "HAIJASASISHWA — sasisho halikuwekwa",
+  "@tvAboutVersionOutdated": {
+    "description": "Verdict : la mise a jour n a pas ete appliquee"
+  },
+  "tvAboutVersionUnknown": "Haiwezi kuthibitishwa (hakuna mtandao)",
+  "@tvAboutVersionUnknown": {
+    "description": "Verdict : impossible de joindre le serveur"
+  },
+  "tvAboutVersionChecking": "Inathibitisha…",
+  "@tvAboutVersionChecking": {
+    "description": "Verdict en cours de calcul"
+  },
+  "tvAboutVersionExpected": "Toleo jipya lililochapishwa: {code}",
+  "@tvAboutVersionExpected": {
+    "description": "Numero de la derniere version publiee",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
   "tvAboutSystem": "Mfumo",
   "tvAboutRamLabel": "Kumbukumbu (RAM)",
   "tvAboutChannelCap": "Uwezo wa chaneli",

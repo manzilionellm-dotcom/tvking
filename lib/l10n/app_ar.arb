@@ -1219,6 +1219,35 @@
   "tvAboutRamValue": "{gb} جيجابايت",
   "tvAboutRamLowTag": "(منخفضة)",
   "tvAboutVersion": "الإصدار",
+  "tvAboutVersionBuildLabel": "رقم الإصدار",
+  "@tvAboutVersionBuildLabel": {
+    "description": "Etiquette au-dessus du gros numero de build"
+  },
+  "tvAboutVersionLatest": "محدَّث — هذه أحدث نسخة",
+  "@tvAboutVersionLatest": {
+    "description": "Verdict : la box a bien la derniere version"
+  },
+  "tvAboutVersionOutdated": "غير محدَّث — لم يتم تطبيق التحديث",
+  "@tvAboutVersionOutdated": {
+    "description": "Verdict : la mise a jour n a pas ete appliquee"
+  },
+  "tvAboutVersionUnknown": "تعذّر التحقق (لا يوجد اتصال)",
+  "@tvAboutVersionUnknown": {
+    "description": "Verdict : impossible de joindre le serveur"
+  },
+  "tvAboutVersionChecking": "جارٍ التحقق…",
+  "@tvAboutVersionChecking": {
+    "description": "Verdict en cours de calcul"
+  },
+  "tvAboutVersionExpected": "أحدث نسخة منشورة: {code}",
+  "@tvAboutVersionExpected": {
+    "description": "Numero de la derniere version publiee",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
   "tvAboutSystem": "النظام",
   "tvAboutRamLabel": "الذاكرة (RAM)",
   "tvAboutChannelCap": "سعة القنوات",

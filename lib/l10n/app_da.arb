@@ -1219,6 +1219,35 @@
   "tvAboutRamValue": "{gb} GB",
   "tvAboutRamLowTag": "(lav)",
   "tvAboutVersion": "Version",
+  "tvAboutVersionBuildLabel": "Versionsnummer",
+  "@tvAboutVersionBuildLabel": {
+    "description": "Etiquette au-dessus du gros numero de build"
+  },
+  "tvAboutVersionLatest": "Opdateret — dette er den nyeste version",
+  "@tvAboutVersionLatest": {
+    "description": "Verdict : la box a bien la derniere version"
+  },
+  "tvAboutVersionOutdated": "IKKE OPDATERET — opdateringen blev ikke installeret",
+  "@tvAboutVersionOutdated": {
+    "description": "Verdict : la mise a jour n a pas ete appliquee"
+  },
+  "tvAboutVersionUnknown": "Kan ikke kontrolleres (intet netværk)",
+  "@tvAboutVersionUnknown": {
+    "description": "Verdict : impossible de joindre le serveur"
+  },
+  "tvAboutVersionChecking": "Kontrollerer…",
+  "@tvAboutVersionChecking": {
+    "description": "Verdict en cours de calcul"
+  },
+  "tvAboutVersionExpected": "Nyeste udgivne version: {code}",
+  "@tvAboutVersionExpected": {
+    "description": "Numero de la derniere version publiee",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
   "tvAboutSystem": "System",
   "tvAboutRamLabel": "Hukommelse (RAM)",
   "tvAboutChannelCap": "Kanalkapacitet",

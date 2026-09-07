@@ -1250,6 +1250,35 @@
   "tvAboutRamValue": "{gb} GB",
   "tvAboutRamLowTag": "(low)",
   "tvAboutVersion": "Version",
+  "tvAboutVersionBuildLabel": "Version number",
+  "@tvAboutVersionBuildLabel": {
+    "description": "Etiquette au-dessus du gros numero de build"
+  },
+  "tvAboutVersionLatest": "Up to date — this is the latest version",
+  "@tvAboutVersionLatest": {
+    "description": "Verdict : la box a bien la derniere version"
+  },
+  "tvAboutVersionOutdated": "NOT UP TO DATE — the update was not applied",
+  "@tvAboutVersionOutdated": {
+    "description": "Verdict : la mise a jour n a pas ete appliquee"
+  },
+  "tvAboutVersionUnknown": "Cannot verify (no network)",
+  "@tvAboutVersionUnknown": {
+    "description": "Verdict : impossible de joindre le serveur"
+  },
+  "tvAboutVersionChecking": "Checking…",
+  "@tvAboutVersionChecking": {
+    "description": "Verdict en cours de calcul"
+  },
+  "tvAboutVersionExpected": "Latest published version: {code}",
+  "@tvAboutVersionExpected": {
+    "description": "Numero de la derniere version publiee",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
   "tvAboutSystem": "System",
   "tvAboutRamLabel": "Memory (RAM)",
   "tvAboutChannelCap": "Channel capacity",

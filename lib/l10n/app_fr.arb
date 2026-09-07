@@ -4193,6 +4193,35 @@
   },
   "tvAboutRamLowTag": "(faible)",
   "tvAboutVersion": "Version",
+  "tvAboutVersionBuildLabel": "Numéro de version",
+  "@tvAboutVersionBuildLabel": {
+    "description": "Etiquette au-dessus du gros numero de build"
+  },
+  "tvAboutVersionLatest": "À jour — c'est la dernière version",
+  "@tvAboutVersionLatest": {
+    "description": "Verdict : la box a bien la derniere version"
+  },
+  "tvAboutVersionOutdated": "PAS À JOUR — la mise à jour n'a pas été appliquée",
+  "@tvAboutVersionOutdated": {
+    "description": "Verdict : la mise a jour n a pas ete appliquee"
+  },
+  "tvAboutVersionUnknown": "Vérification impossible (pas de réseau)",
+  "@tvAboutVersionUnknown": {
+    "description": "Verdict : impossible de joindre le serveur"
+  },
+  "tvAboutVersionChecking": "Vérification en cours…",
+  "@tvAboutVersionChecking": {
+    "description": "Verdict en cours de calcul"
+  },
+  "tvAboutVersionExpected": "Dernière version publiée : {code}",
+  "@tvAboutVersionExpected": {
+    "description": "Numero de la derniere version publiee",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
   "tvAboutSystem": "Système",
   "tvAboutRamLabel": "Mémoire (RAM)",
   "tvAboutChannelCap": "Capacité chaînes",
