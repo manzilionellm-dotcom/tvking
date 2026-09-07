@@ -437,16 +437,28 @@ jobs:
               #                                  c'est ce que le Store cite,
               #                                  via /win/<version>/…
               #    7MOTION-Setup-latest.exe    → COPIE du dernier, écrasée à
-              #                                  chaque build ; c'est ce que
-              #                                  /win sert désormais.
+              #                                  chaque build. Elle EXISTE,
+              #                                  mais /win ne la sert PAS
+              #                                  encore — lire ci-dessous.
               #    7MOTION-Setup.exe           → l'ancien fichier gelé du
-              #                                  7 août. On n'y touche PAS :
-              #                                  une soumission Store peut
-              #                                  encore le citer.
+              #                                  7 août. On n'y touche PAS.
               #
-              #  Ainsi le lien client avance à chaque build, sans que
-              #  personne ait à modifier quoi que ce soit — et surtout sans
-              #  qu'on ait à s'en souvenir.
+              #  ⛔ NE BASCULE PAS /win SUR « -latest » AUJOURD'HUI.
+              #
+              #  STATUS.md (session du 23/08) est formel : « /win reste GELÉ
+              #  sur le fichier du 7 août (9162cbb8…5cda, 348
+              #  téléchargements) TANT QUE LA SOUMISSION EST EN REVUE. Ne pas
+              #  le bouger. » Le Store a été soumis avec cette adresse ; la
+              #  faire avancer casserait la revue en cours.
+              #
+              #  Cette copie est donc posée D'AVANCE, pour que le jour où la
+              #  revue Microsoft est close, basculer /win dessus soit un
+              #  changement d'une ligne dans worker.js (WINDOWS_EXE_URL) —
+              #  et plus jamais un fichier client figé un mois sans que
+              #  personne s'en aperçoive.
+              #
+              #  CONDITION POUR BASCULER, une seule : le propriétaire
+              #  confirme que la soumission Store n'est plus en revue.
               cp "$SETUP" 7MOTION-Setup-latest.exe
               gh release upload windows-latest --repo "$REPO" --clobber 7MOTION-Setup-latest.exe
             fi
