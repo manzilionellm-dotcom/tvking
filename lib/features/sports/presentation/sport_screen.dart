@@ -36,12 +36,15 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/domain/channel_genre.dart';
 import '../../player/presentation/play_channel.dart';
+import '../../playlists/data/playlist_repository.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../data/followed_matches_service.dart';
 import '../data/live_scores_service.dart';
 import '../data/match_channel_finder.dart';
+import '../data/sport_country_prefs.dart';
 import '../data/sports_repository.dart';
 import '../domain/sport_models.dart';
 import '../domain/sport_ordering.dart';
@@ -395,9 +398,14 @@ class _SportScreenState extends State<SportScreen>
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-        itemCount: sports.length + 1,
+        itemCount: sports.length + 2,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (BuildContext context, int i) {
+          // DERNIÈRE PUCE : le pays de diffusion. Elle ferme la barre,
+          // après « Tous » : c'est un réglage qu'on pose une fois, pas
+          // un filtre qu'on manipule à chaque visite. Le mettre en tête
+          // l'aurait fait confondre avec les sports.
+          if (i == sports.length + 1) return const _CountryChip();
           if (i == sports.length) {
             return _Chip(
               label: context.l10n.sportAll,
@@ -938,6 +946,142 @@ class _MatchTileState extends State<_MatchTile> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ============================================================
+//  Le PAYS de diffusion — « genre les apps haut niveau »
+// ============================================================
+//  Demande du propriétaire (07/09) : « il faut que le client choisisse
+//  son pays, et il va voir si son pays va montrer ses matchs ».
+//
+//  Ce que ça change concrètement : quand trois chaînes diffusent le même
+//  match, on lui donne CELLE DE SON PAYS — donc dans sa langue — au lieu
+//  de la première venue.
+//
+//  Et on ne lui propose QUE les pays réellement présents dans sa
+//  playlist, classés par nombre de chaînes. Pas une liste du monde de
+//  195 entrées où il faut chercher : chez la plupart des clients, la
+//  bonne réponse est la première ligne.
+class _CountryChip extends StatefulWidget {
+  const _CountryChip();
+
+  @override
+  State<_CountryChip> createState() => _CountryChipState();
+}
+
+class _CountryChipState extends State<_CountryChip> {
+  @override
+  void initState() {
+    super.initState();
+    SportCountryPrefs.instance.addListener(_onChange);
+    unawaited(SportCountryPrefs.instance.load());
+  }
+
+  @override
+  void dispose() {
+    SportCountryPrefs.instance.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pick() async {
+    final List<SportCountryOption> options = SportCountryPrefs.optionsFrom(
+        PlaylistRepository.instance.currentChannels);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (BuildContext c) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                child: Text(
+                  c.l10n.detailCountry,
+                  style: AppTextStyles.bodyLarge
+                      .copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.public_rounded),
+                title: Text(c.l10n.sportAll),
+                trailing: SportCountryPrefs.instance.code.isEmpty
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () {
+                  unawaited(SportCountryPrefs.instance.setCode(''));
+                  MatchChannelFinder.instance.invalidate();
+                  Navigator.of(c).pop();
+                },
+              ),
+              // Aucune chaîne reconnue : on le DIT, plutôt que d'ouvrir
+              // une feuille vide qui ressemble à une panne.
+              if (options.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                  child: Text(
+                    c.l10n.sportNoChannelAiring,
+                    style: AppTextStyles.labelSmall
+                        .copyWith(color: AppColors.textTertiary),
+                  ),
+                ),
+              for (final SportCountryOption o in options)
+                ListTile(
+                  leading: Text(o.info.flag,
+                      style: const TextStyle(fontSize: 22)),
+                  title: Text(o.info.name),
+                  subtitle: Text('${o.channelCount}',
+                      style: AppTextStyles.labelSmall
+                          .copyWith(color: AppColors.textTertiary)),
+                  trailing: SportCountryPrefs.instance.code == o.info.code
+                      ? Icon(Icons.check_rounded, color: AppColors.accent)
+                      : null,
+                  onTap: () {
+                    unawaited(SportCountryPrefs.instance.setCode(o.info.code));
+                    // Sans ce vidage, les cartes garderaient la chaîne
+                    // choisie AVEC L'ANCIEN pays : le client changerait
+                    // de réglage et ne verrait rien bouger.
+                    MatchChannelFinder.instance.invalidate();
+                    Navigator.of(c).pop();
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String code = SportCountryPrefs.instance.code;
+    CountryInfo? choisi;
+    if (code.isNotEmpty) {
+      for (final SportCountryOption o in SportCountryPrefs.optionsFrom(
+          PlaylistRepository.instance.currentChannels)) {
+        if (o.info.code == code) {
+          choisi = o.info;
+          break;
+        }
+      }
+    }
+    return _Chip(
+      label: choisi != null
+          ? '${choisi.flag} ${choisi.name}'
+          : '🌍 ${context.l10n.detailCountry}',
+      active: code.isNotEmpty,
+      onTap: () => unawaited(_pick()),
     );
   }
 }

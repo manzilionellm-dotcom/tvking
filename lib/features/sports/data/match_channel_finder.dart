@@ -45,6 +45,7 @@ import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../domain/sport_models.dart';
+import 'sport_country_prefs.dart';
 
 class MatchChannelFinder {
   MatchChannelFinder._();
@@ -90,12 +91,25 @@ class MatchChannelFinder {
           candidats.addAll(await EpgRepository.instance
               .searchAiringAt(n, atMs: instant, limit: 20));
         }
-        final EpgProgram? meilleur = bestMatch(candidats, noms);
-        if (meilleur != null) {
-          final List<Channel> chs = await PlaylistRepository.instance
-              .getChannelsByExternalIds(<String>[meilleur.channelId]);
-          if (chs.isNotEmpty) trouvee = chs.first;
-        }
+        // UNE seule requête pour toutes les chaînes candidates. On les
+        // résout AVANT de choisir, parce que le pays — le critère que
+        // le client vient de régler — est porté par la chaîne, pas par
+        // le programme.
+        final List<String> ids = <String>{
+          for (final EpgProgram p in candidats) p.channelId,
+        }.toList(growable: false);
+        final List<Channel> chs =
+            await PlaylistRepository.instance.getChannelsByExternalIds(ids);
+        final Map<String, Channel> byId = <String, Channel>{
+          for (final Channel c in chs) c.id: c,
+        };
+        final List<({EpgProgram program, Channel channel})> paires =
+            <({EpgProgram program, Channel channel})>[
+          for (final EpgProgram p in candidats)
+            if (byId[p.channelId] != null)
+              (program: p, channel: byId[p.channelId]!),
+        ];
+        trouvee = pickBest(paires, noms, SportCountryPrefs.instance.code);
       }
     } catch (_) {
       trouvee = null;
@@ -103,6 +117,13 @@ class MatchChannelFinder {
     _cache[e.id] = trouvee;
     _enVol.remove(e.id);
     return trouvee;
+  }
+
+  /// Vide le cache — à appeler quand le client CHANGE de pays, sinon il
+  /// continuerait de voir les chaînes choisies avec l'ancien réglage et
+  /// croirait que le réglage ne sert à rien.
+  void invalidate() {
+    _cache.clear();
   }
 
   // ---------------------------------------------------------
@@ -146,27 +167,55 @@ class MatchChannelFinder {
     return out;
   }
 
-  /// Le MEILLEUR programme parmi les candidats.
+  /// La MEILLEURE chaîne parmi les candidates.
   ///
-  /// Priorité absolue à celui qui cite LES DEUX équipes : « Barracas
-  /// Central / Argentinos Juniors » est le match, alors qu'une émission
-  /// qui ne cite que « Barracas » peut être un magazine, un résumé, ou
-  /// le match d'une autre équipe de la ville. À défaut, on accepte une
-  /// seule équipe — mieux vaut une piste qu'un écran muet — mais jamais
-  /// devant une correspondance complète.
+  /// Deux critères, et l'ordre entre eux est la décision importante :
+  ///
+  ///   1. LE TITRE cite-t-il LES DEUX équipes ? « Barracas Central /
+  ///      Argentinos Juniors » est le match ; une émission qui ne cite
+  ///      que « Barracas » peut être un magazine, un résumé, ou le match
+  ///      d'une autre équipe de la ville.
+  ///   2. LA CHAÎNE est-elle du pays choisi par le client ? Trois
+  ///      chaînes diffusent souvent le même match : le client veut la
+  ///      sienne, dans sa langue.
+  ///
+  ///  LE TITRE PASSE AVANT LE PAYS, volontairement. Envoyer quelqu'un
+  ///  sur le bon match commenté dans une autre langue reste utile ;
+  ///  l'envoyer sur un magazine de sa langue pendant que le match joue
+  ///  ailleurs, non. Le pays départage, il ne décide pas seul.
+  ///
+  ///  Fonction PURE (aucune base, aucun réseau) : c'est là que se joue
+  ///  la promesse faite au client, donc c'est testable directement.
   @visibleForTesting
-  static EpgProgram? bestMatch(List<EpgProgram> candidats, List<String> noms) {
+  static Channel? pickBest(
+    List<({EpgProgram program, Channel channel})> candidats,
+    List<String> noms,
+    String preferredCountry,
+  ) {
     if (candidats.isEmpty || noms.isEmpty) return null;
     final List<String> bas =
         noms.map((String n) => n.toLowerCase()).toList(growable: false);
-    EpgProgram? partiel;
-    for (final EpgProgram p in candidats) {
-      final String t = p.title.toLowerCase();
-      if (bas.every((String n) => t.contains(n))) return p;
-      partiel ??= p;
+    final String pays = preferredCountry.trim().toUpperCase();
+
+    Channel? best;
+    int meilleurScore = -1;
+    for (final ({EpgProgram program, Channel channel}) c in candidats) {
+      final String t = c.program.title.toLowerCase();
+      int score = 0;
+      if (bas.every((String n) => t.contains(n))) score += 4;
+      if (pays.isNotEmpty && (c.channel.country?.code.toUpperCase() == pays)) {
+        score += 2;
+      }
+      // `>` et non `>=` : à égalité, le PREMIER gagne — c'est l'ordre du
+      // guide, donc l'émission qui a commencé le plus récemment (cf.
+      // searchAiringNowIn). Un `>=` ferait gagner le dernier arrivé, et
+      // le même match changerait de chaîne d'un rafraîchissement à
+      // l'autre sans raison visible.
+      if (score > meilleurScore) {
+        meilleurScore = score;
+        best = c.channel;
+      }
     }
-    // Une seule équipe connue (course, tournoi) : la correspondance
-    // partielle EST la correspondance complète, pas un pis-aller.
-    return partiel;
+    return best;
   }
 }

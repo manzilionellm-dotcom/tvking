@@ -21,8 +21,10 @@
 //  sont exposées pour être testées telles quelles.
 // =========================================================
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/epg/domain/epg_program.dart';
 import 'package:tv_king/features/sports/data/match_channel_finder.dart';
+import 'package:tv_king/features/sports/data/sport_country_prefs.dart';
 import 'package:tv_king/features/sports/domain/sport_models.dart';
 
 SportEvent _ev({
@@ -50,6 +52,21 @@ EpgProgram _prog(String title, {String channelId = 'c1'}) => EpgProgram(
       startTime: 0,
       stopTime: 1,
       title: title,
+    );
+
+/// Chaîne de test. Le pays n'est PAS un champ : il est déduit du nom et
+/// de la catégorie par le classifieur de l'app — on passe donc la
+/// catégorie qui le déclenche (« FR », « Sweden »), exactement comme le
+/// ferait une vraie playlist M3U.
+///
+/// L'`id` doit être UNIQUE par chaîne : le pays est mis en cache par id
+/// dans Channel, et réutiliser un id rendrait le pays d'une autre.
+Channel _chan(String id, String category) => Channel(
+      id: id,
+      name: id,
+      category: category,
+      streamUrl: 'http://x/$id',
+      isLive: true,
     );
 
 void main() {
@@ -108,53 +125,162 @@ void main() {
     });
   });
 
-  group('Choisir le bon programme', () {
+  group('Choisir la bonne chaîne', () {
     final List<String> noms = <String>['Barracas Central', 'Argentinos Juniors'];
 
+    ({EpgProgram program, Channel channel}) pair(
+      String titre,
+      String chId,
+      String categorie,
+    ) =>
+        (
+          program: _prog(titre, channelId: chId),
+          channel: _chan(chId, categorie),
+        );
+
     test('les DEUX équipes battent une seule, même arrivée en second', () {
-      final EpgProgram? best = MatchChannelFinder.bestMatch(
-        <EpgProgram>[
-          _prog('Magazine Barracas Central', channelId: 'magazine'),
-          _prog('Barracas Central / Argentinos Juniors', channelId: 'match'),
+      final Channel? best = MatchChannelFinder.pickBest(
+        <({EpgProgram program, Channel channel})>[
+          pair('Magazine Barracas Central', 'magazine', 'FR'),
+          pair('Barracas Central / Argentinos Juniors', 'match', 'FR'),
         ],
         noms,
+        '',
       );
-      expect(best?.channelId, 'match');
+      expect(best?.id, 'match');
     });
 
     test('les DEUX équipes gagnent aussi quand elles arrivent en premier', () {
-      final EpgProgram? best = MatchChannelFinder.bestMatch(
-        <EpgProgram>[
-          _prog('Barracas Central - Argentinos Juniors', channelId: 'match'),
-          _prog('Résumé Argentinos Juniors', channelId: 'resume'),
+      final Channel? best = MatchChannelFinder.pickBest(
+        <({EpgProgram program, Channel channel})>[
+          pair('Barracas Central - Argentinos Juniors', 'match', 'FR'),
+          pair('Résumé Argentinos Juniors', 'resume', 'FR'),
         ],
         noms,
+        '',
       );
-      expect(best?.channelId, 'match');
+      expect(best?.id, 'match');
     });
 
     test('la casse ne décide de rien', () {
-      final EpgProgram? best = MatchChannelFinder.bestMatch(
-        <EpgProgram>[_prog('BARRACAS CENTRAL vs ARGENTINOS JUNIORS')],
+      final Channel? best = MatchChannelFinder.pickBest(
+        <({EpgProgram program, Channel channel})>[
+          pair('BARRACAS CENTRAL vs ARGENTINOS JUNIORS', 'c', 'FR'),
+        ],
         noms,
+        '',
       );
       expect(best, isNotNull);
     });
 
     test('à défaut, une seule équipe vaut mieux qu\'un écran muet', () {
-      final EpgProgram? best = MatchChannelFinder.bestMatch(
-        <EpgProgram>[_prog('Foot : Barracas Central', channelId: 'partiel')],
+      final Channel? best = MatchChannelFinder.pickBest(
+        <({EpgProgram program, Channel channel})>[
+          pair('Foot : Barracas Central', 'partiel', 'FR'),
+        ],
         noms,
+        '',
       );
-      expect(best?.channelId, 'partiel');
+      expect(best?.id, 'partiel');
     });
 
     test('aucun candidat : null, on n\'invente pas de chaîne', () {
-      expect(MatchChannelFinder.bestMatch(<EpgProgram>[], noms), isNull);
       expect(
-          MatchChannelFinder.bestMatch(
-              <EpgProgram>[_prog('Journal')], <String>[]),
+          MatchChannelFinder.pickBest(
+              <({EpgProgram program, Channel channel})>[], noms, ''),
           isNull);
+      expect(
+          MatchChannelFinder.pickBest(
+              <({EpgProgram program, Channel channel})>[
+                pair('Journal', 'j', 'FR')
+              ],
+              <String>[],
+              ''),
+          isNull);
+    });
+
+    // ---------------------------------------------------------
+    //  LE PAYS DU CLIENT — « genre les apps haut niveau »
+    // ---------------------------------------------------------
+    test('à match égal, la chaîne DU PAYS choisi gagne', () {
+      final Channel? best = MatchChannelFinder.pickBest(
+        <({EpgProgram program, Channel channel})>[
+          pair('Barracas Central - Argentinos Juniors', 'arabe', 'Sweden'),
+          pair('Barracas Central - Argentinos Juniors', 'francais', 'FR'),
+        ],
+        noms,
+        'FR',
+      );
+      expect(best?.id, 'francais',
+          reason: 'trois chaînes diffusent le même match : on donne la sienne');
+    });
+
+    test('le MATCH passe avant le pays', () {
+      // Le cas qui compte vraiment. Une émission de son pays qui n'est
+      // PAS le match ne doit jamais battre le vrai match diffusé
+      // ailleurs : mieux vaut le bon match en suédois qu'un magazine en
+      // français pendant que le match se joue.
+      final Channel? best = MatchChannelFinder.pickBest(
+        <({EpgProgram program, Channel channel})>[
+          pair('Magazine Barracas Central', 'magazine-fr', 'FR'),
+          pair('Barracas Central - Argentinos Juniors', 'match-se', 'Sweden'),
+        ],
+        noms,
+        'FR',
+      );
+      expect(best?.id, 'match-se');
+    });
+
+    test('sans pays choisi, on ne préfère rien : l\'ordre du guide décide', () {
+      final Channel? best = MatchChannelFinder.pickBest(
+        <({EpgProgram program, Channel channel})>[
+          pair('Barracas Central - Argentinos Juniors', 'premier', 'Sweden'),
+          pair('Barracas Central - Argentinos Juniors', 'second', 'FR'),
+        ],
+        noms,
+        '',
+      );
+      expect(best?.id, 'premier');
+    });
+
+    test('pays choisi absent des candidats : on rend quand même le match', () {
+      final Channel? best = MatchChannelFinder.pickBest(
+        <({EpgProgram program, Channel channel})>[
+          pair('Barracas Central - Argentinos Juniors', 'match', 'Sweden'),
+        ],
+        noms,
+        'FR',
+      );
+      expect(best?.id, 'match',
+          reason: 'un réglage de confort ne doit jamais faire disparaître '
+              'le match');
+    });
+  });
+
+  group('Les pays proposés au client', () {
+    test('déduits de SA playlist, classés par nombre de chaînes', () {
+      final List<Channel> chans = <Channel>[
+        _chan('a', 'FR'),
+        _chan('b', 'FR'),
+        _chan('c', 'FR'),
+        _chan('d', 'Sweden'),
+        _chan('e', 'Sweden'),
+        _chan('f', 'sans-pays-connu'),
+      ];
+      final List<SportCountryOption> opts =
+          SportCountryPrefs.optionsFrom(chans);
+      expect(opts.first.info.code, 'FR');
+      expect(opts.first.channelCount, 3);
+      expect(opts[1].info.code, 'SE');
+      expect(opts[1].channelCount, 2);
+      // Une chaîne dont on ne reconnaît pas le pays n'invente pas
+      // d'entrée « inconnu » dans le menu.
+      expect(opts.length, 2);
+    });
+
+    test('playlist vide : aucune option, et surtout pas une liste du monde',
+        () {
+      expect(SportCountryPrefs.optionsFrom(<Channel>[]), isEmpty);
     });
   });
 }
