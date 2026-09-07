@@ -627,6 +627,25 @@ jobs:
           MANIFEST=android/app/src/main/AndroidManifest.xml
           sed -i '/REQUEST_INSTALL_PACKAGES/d' "$MANIFEST"
           grep -c 'REQUEST_INSTALL_PACKAGES' "$MANIFEST" && exit 1 || echo "✓ permission retirée"
+          #  USE_EXACT_ALARM — MÊME CORRECTIF QUE LE TÉLÉPHONE (07/09/2026).
+          #
+          #  Constaté le soir même sur la fiche Play du téléphone : Google
+          #  refuse d'enregistrer la release tant qu'on n'a pas rempli la
+          #  déclaration « alarmes exactes ». Cette permission est RÉSERVÉE
+          #  aux réveils et aux agendas ; 7 MOTION TV est un lecteur IPTV.
+          #
+          #  Vérifié ensuite DANS l'AAB TV publié : la permission y était
+          #  aussi. Sans cette ligne, on se serait cogné au même mur le jour
+          #  de la publication TV — dans trois jours, avec la fenêtre des
+          #  14 jours de test qui se referme.
+          #
+          #  On garde SCHEDULE_EXACT_ALARM (celle que l'utilisateur accorde
+          #  lui-même, chemin de demande déjà présent côté natif) : le
+          #  magnétoscope continue de fonctionner sur la version Store.
+          #  L'APK sideload, empaqueté plus haut, n'est pas touché.
+          grep -q 'xmlns:tools' "$MANIFEST" || sed -i 's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' "$MANIFEST"
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove"/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="replace"/>' "$MANIFEST"
+          echo "✓ USE_EXACT_ALARM retirée / SCHEDULE_EXACT_ALARM conservée (AAB Play TV)"
           # EXIGENCE PLAY (e-mail 15/08, échéance 31/08/2026 « cible une
           # ancienne version d'Android ») : API 36 pour le canal STORE
           # SEULEMENT — le sideload client reste targetSdk 35 (comportements
@@ -646,6 +665,22 @@ jobs:
             --target=lib/main_tv.dart
           cp build/app/outputs/bundle/release/app-release.aab seven-tv-play.aab
           ls -lah seven-tv-play.aab
+          #  GARDE-FOU DANS LES DEUX SENS, sur le manifeste FUSIONNÉ — le
+          #  seul qui dise la vérité (les permissions viennent des plugins).
+          #  Le contrôle a été ajouté après avoir découvert, en ouvrant le
+          #  fichier publié, que la permission interdite y était toujours.
+          MERGED=$(find android/app/build build/app -path '*merged_manifest*release*AndroidManifest.xml' 2>/dev/null | head -1)
+          if [ -n "$MERGED" ]; then
+            if grep -q 'android.permission.USE_EXACT_ALARM' "$MERGED"; then
+              echo "❌ USE_EXACT_ALARM encore dans l'AAB TV : Play bloquera la release"; exit 1
+            fi
+            if ! grep -q 'android.permission.SCHEDULE_EXACT_ALARM' "$MERGED"; then
+              echo "❌ SCHEDULE_EXACT_ALARM absente : le magnetoscope ne pourrait plus poser d'alarme"; exit 1
+            fi
+            echo "✓ Manifeste AAB TV : sans USE_EXACT_ALARM, avec SCHEDULE_EXACT_ALARM"
+          else
+            echo "⚠️ Manifeste fusionné introuvable — vérif sautée (non bloquant)"
+          fi
 
       - name: Upload AAB artifact (Google Play TV)
         uses: actions/upload-artifact@v4
