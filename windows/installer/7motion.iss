@@ -140,6 +140,17 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExeName}
+;  ICONE DE L'INSTALLEUR (07/09/2026). Sans cette ligne, Inno Setup
+;  livre SA propre icone : le client telecharge un fichier qui ne
+;  ressemble pas a la marque, et c'est la premiere chose qu'il voit —
+;  avant meme l'ecran SmartScreen. Le chemin est relatif a CE fichier
+;  (windows/installer/), comme les Source: de la section [Files].
+;
+;  Le meme .ico sert a l'application elle-meme : le workflow le copie
+;  par-dessus celui du modele Flutter, qui est regenere a chaque build.
+;  Un seul fichier, deux usages — le jour ou le logo change, il n'y a
+;  qu'un endroit a toucher.
+SetupIconFile=..\branding\app_icon.ico
 ;  Ces champs sont ceux que Windows affiche dans la boite UAC et dans
 ;  l'ecran SmartScreen — donc ce que le client voit VRAIMENT au moment
 ;  d'installer. Ils sont INDEPENDANTS de ceux de l'application : les

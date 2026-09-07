@@ -138,6 +138,46 @@ jobs:
             }
           }
 
+      # =========================================================
+      #  ICÔNE DE L'APPLICATION — ajouté le 07/09/2026
+      # =========================================================
+      #  Constaté par le propriétaire, capture à l'appui : dans la barre
+      #  des tâches Windows, son app affichait le LOGO FLUTTER par défaut
+      #  (le chevron bleu). Pas le sien.
+      #
+      #  CAUSE, et c'est la même que pour Runner.rc juste au-dessus : le
+      #  dossier `windows/` n'est pas versionné, il est régénéré par
+      #  `flutter create` à chaque build. Or ce modèle livre sa propre
+      #  icône, `windows/runner/resources/app_icon.ico`. Poser le bon
+      #  fichier dans le dépôt à cet emplacement n'aurait servi à rien :
+      #  il serait écrasé à la compilation suivante. Il faut le réécrire
+      #  APRÈS, comme les champs d'identité du binaire.
+      #
+      #  L'icône vit donc dans `windows/branding/app_icon.ico`, hors du
+      #  chemin que Flutter régénère. Elle est fabriquée à partir du logo
+      #  officiel (assets/branding/logo_black7royal.png) et contient
+      #  SEPT tailles : Windows prend la 32 pour la barre des tâches, la
+      #  48 pour l'explorateur, la 256 pour le menu Démarrer. Avec une
+      #  seule taille, Windows rééchantillonne lui-même — et ça se voit.
+      - name: Icône de l'application (barre des tâches, Démarrer)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = 'windows/branding/app_icon.ico'
+          $dst = 'windows/runner/resources/app_icon.ico'
+          if (!(Test-Path $src)) { throw "Icône maison introuvable : $src" }
+          if (!(Test-Path $dst)) { throw "Cible Flutter introuvable : $dst (le modèle a change de forme ?)" }
+          $avant = (Get-Item $dst).Length
+          Copy-Item $src $dst -Force
+          $apres = (Get-Item $dst).Length
+          Write-Host "icone remplacee : $avant octets -> $apres octets"
+          # GARDE-FOU : si la copie n'a rien changé, c'est que la cible
+          # n'est pas celle que Flutter compile — on préfère échouer ici
+          # plutôt que livrer une app au logo Flutter sans s'en apercevoir.
+          if ($apres -ne (Get-Item $src).Length) {
+            throw "La copie n'a pas abouti — l'icone livree ne serait pas la bonne."
+          }
+
       - name: Exclure Firebase (inutile sur PC)
         shell: bash
         run: |
