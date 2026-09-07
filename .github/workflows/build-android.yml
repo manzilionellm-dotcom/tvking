@@ -863,6 +863,33 @@ jobs:
           grep -q 'xmlns:tools' "$MANIFEST" || sed -i 's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' "$MANIFEST"
           sed -i '/<manifest /a\    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove"/>' "$MANIFEST"
           echo "✓ READ_MEDIA_IMAGES/VIDEO/AUDIO marquées tools:node=remove (AAB Play)"
+          # (b bis) USE_EXACT_ALARM — À RETIRER POUR LE PLAY STORE (07/09/2026)
+          #
+          #  CONSTATÉ EN VRAI, sur l'écran de release : Google bloque
+          #  l'enregistrement avec « Vous devez nous indiquer si votre appli
+          #  utilise des autorisations d'utiliser des alarmes exactes ».
+          #
+          #  Le commentaire de packages/tvking_device/.../AndroidManifest.xml
+          #  l'avait écrit d'avance : USE_EXACT_ALARM est RÉSERVÉE par Google
+          #  aux réveils et aux agendas. 7 MOTION est un lecteur IPTV — même
+          #  avec son magnétoscope, elle n'entre pas dans ces deux cases.
+          #  La déclarer, c'est s'exposer à un refus, voire à une sanction de
+          #  la fiche : la mauvaise réponse à ce formulaire coûte bien plus
+          #  cher qu'un build de plus.
+          #
+          #  CE QU'ON GARDE : SCHEDULE_EXACT_ALARM, sans maxSdkVersion, donc
+          #  valable aussi sur Android 13+. C'est la permission que
+          #  l'UTILISATEUR accorde lui-même, et le chemin de demande existe
+          #  déjà côté natif (ScheduledRecordingBridge : intention
+          #  ACTION_REQUEST_SCHEDULE_EXACT_ALARM). L'enregistrement programmé
+          #  continue donc de fonctionner sur la version Play, après un
+          #  accord explicite du client — ce qui est exactement ce que Google
+          #  demande.
+          #
+          #  L'APK sideload, déjà empaqueté plus haut, N'EST PAS touché : les
+          #  box installées hors magasin gardent l'alarme d'office.
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove"/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="replace"/>' "$MANIFEST"
+          echo "✓ USE_EXACT_ALARM retirée / SCHEDULE_EXACT_ALARM conservée (AAB Play)"
           # (c) applicationId Play Store : com.manzilionellm.tvking (EXACT,
           #     package de la fiche « 7 MOTION »). `flutter create` a produit
           #     com.manzilionellm.tvking.tv_king ; l'APK sideload (déjà
@@ -904,12 +931,18 @@ jobs:
           MERGED=$(find android/app/build build/app -path '*merged_manifest*release*AndroidManifest.xml' 2>/dev/null | head -1)
           if [ -n "$MERGED" ]; then
             echo "Manifeste fusionné : $MERGED"
-            for P in REQUEST_INSTALL_PACKAGES READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_AUDIO; do
+            for P in REQUEST_INSTALL_PACKAGES READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_AUDIO USE_EXACT_ALARM; do
               if grep -q "android.permission.$P" "$MERGED"; then
                 echo "❌ $P encore présent dans le manifeste fusionné de l'AAB"; exit 1
               fi
             done
-            echo "✓ Manifeste AAB sans REQUEST_INSTALL_PACKAGES ni READ_MEDIA_*"
+            # …et l'inverse : SCHEDULE_EXACT_ALARM DOIT rester, sinon
+            # l'enregistrement programmé serait muet sur la version Play
+            # sans que rien ne le signale.
+            if ! grep -q 'android.permission.SCHEDULE_EXACT_ALARM' "$MERGED"; then
+              echo "❌ SCHEDULE_EXACT_ALARM absente : le magnétoscope ne pourrait plus poser d'alarme"; exit 1
+            fi
+            echo "✓ Manifeste AAB : sans USE_EXACT_ALARM ni READ_MEDIA_*, avec SCHEDULE_EXACT_ALARM"
           else
             echo "⚠️ Manifeste fusionné introuvable — vérif sautée (non bloquant)"
           fi
