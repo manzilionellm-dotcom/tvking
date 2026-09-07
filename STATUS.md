@@ -273,9 +273,22 @@ Branche : `claude/7motion-android-tv-compat-e0rtyp`.
   nulle part (App Service, Model Group List, App Package, Notifications
   — la plus récente date du 19/05). Ticket 2634065517 : statut
   « Submitted », commentaires VIDES, aucune réponse Samsung en 15 jours.
-  ⚠ FAIT NOUVEAU ET MESURÉ : la coupure suit exactement le MILLÉSIME.
-  Rejetés = tous les groupes 2024/2025/2026 ; laissés « Submitted » =
-  tous les 2022/2023, et eux seuls. Correspondance Tizen (doc Samsung
+  ⚠ CORRIGÉ LE MÊME JOUR, relecture du portail : la coupure n'est PAS
+  purement le millésime, et l'hypothèse Tizen est MORTE.
+   • DEUX groupes 2023 sont rejetés : 23TV_BASIC1_LIC et
+     23TV_BASIC1_LIC2. Donc « tous les 2023 épargnés » est FAUX.
+   • Le portail affiche la MÊME chaîne « Tizen 9.0 » pour
+     23TV_STANDARD1 (Submitted) et 24TV_STANDARD1 (Rejected). Même
+     version de plateforme, issues opposées → la version Tizen
+     n'explique pas le rejet. Ne plus toucher à `api-version` sur cette
+     base : la piste est écartée par les données du portail lui-même.
+   • PISTE NEUVE, à creuser : tous les groupes dont le nom porte le
+     suffixe `_LIC` sont rejetés, 2023 comme 2024 — un suffixe qui
+     désigne vraisemblablement des modèles sous licence / hôtellerie.
+     C'est un motif que Samsung ne pourra pas balayer.
+  Ancienne lecture, conservée pour mémoire : la coupure suivait
+  approximativement le MILLÉSIME — rejetés = 2024/2025/2026,
+  « Submitted » = l'essentiel des 2022/2023. Correspondance Tizen (doc Samsung
   General Specifications) : 2022→6.5, 2023→7.0, 2024→8.0, 2025→9.0,
   2026→10.0. Donc TOUT ce qui tourne en Tizen ≥ 8.0 a été rejeté.
   Le paquet déclare `api-version="6.0"` (forcé en dur par
