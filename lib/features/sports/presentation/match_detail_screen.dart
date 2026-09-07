@@ -28,11 +28,9 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../channels/domain/channel.dart';
-import '../../epg/data/epg_repository.dart';
-import '../../epg/domain/epg_program.dart';
 import '../../player/presentation/play_channel.dart';
-import '../../playlists/data/playlist_repository.dart';
 import '../data/live_scores_service.dart';
+import '../data/match_channel_finder.dart';
 import '../data/match_detail_service.dart';
 import '../domain/match_detail.dart';
 import '../domain/sport_models.dart';
@@ -97,49 +95,26 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
     });
   }
 
-  /// Cherche dans le guide du client une chaîne qui diffuse le match EN
-  /// CE MOMENT : d'abord une émission qui cite les DEUX équipes, sinon
-  /// l'une des deux. Best-effort, silencieux.
+  /// Cherche dans le guide du client une chaîne qui diffuse ce match.
+  ///
+  //  LE CALCUL A DÉMÉNAGÉ (07/09/2026) dans
+  //  `data/match_channel_finder.dart`, partagé avec les CARTES de la
+  //  liste. Deux implémentations auraient fini par se contredire : le
+  //  client aurait lu une chaîne sur la liste et une autre — ou aucune —
+  //  en ouvrant la fiche.
+  //
+  //  Au passage, le vrai défaut est corrigé : on cherchait « ce qui
+  //  passe MAINTENANT ». Pour un match à 22 h consulté à 21 h 30, la
+  //  réponse était forcément « aucune chaîne » — à cet instant la chaîne
+  //  diffusait encore autre chose. Le module interroge le guide à
+  //  l'heure du coup d'envoi.
   Future<void> _findChannel() async {
-    try {
-      final SportEvent e = widget.event;
-      final List<String> names = <String>[e.home, e.away]
-          .where((String s) => s.trim().length >= 3)
-          .toList();
-      EpgProgram? best;
-      for (final String name in names) {
-        final List<EpgProgram> found =
-            await EpgRepository.instance.searchAiringNow(name, limit: 20);
-        for (final EpgProgram p in found) {
-          final String t = p.title.toLowerCase();
-          final bool both =
-              names.every((String n) => t.contains(n.toLowerCase()));
-          if (both) {
-            best = p;
-            break;
-          }
-          best ??= p;
-        }
-        if (best != null &&
-            names.every((String n) =>
-                best!.title.toLowerCase().contains(n.toLowerCase()))) {
-          break;
-        }
-      }
-      Channel? ch;
-      if (best != null) {
-        final List<Channel> chans = await PlaylistRepository.instance
-            .getChannelsByExternalIds(<String>[best.channelId]);
-        if (chans.isNotEmpty) ch = chans.first;
-      }
-      if (!mounted) return;
-      setState(() {
-        _channel = ch;
-        _channelSearched = true;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _channelSearched = true);
-    }
+    final Channel? ch = await MatchChannelFinder.instance.find(widget.event);
+    if (!mounted) return;
+    setState(() {
+      _channel = ch;
+      _channelSearched = true;
+    });
   }
 
   @override

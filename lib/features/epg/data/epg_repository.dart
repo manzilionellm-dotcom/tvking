@@ -378,6 +378,27 @@ class EpgRepository {
         now: DateTime.now().millisecondsSinceEpoch, limit: limit);
   }
 
+  /// Comme [searchAiringNow], mais à un INSTANT CHOISI.
+  ///
+  //  POURQUOI (07/09/2026). Le propriétaire regarde l'écran Sport à
+  //  21 h 30 ; le match commence à 22 h 00. « Quelle chaîne le montre ? »
+  //  ne peut pas se répondre avec « ce qui passe MAINTENANT » : à cet
+  //  instant, la chaîne diffuse encore autre chose. Il faut interroger le
+  //  guide à l'heure du COUP D'ENVOI.
+  //
+  //  Le cœur ne change pas d'une ligne : `searchAiringNowIn` prenait déjà
+  //  l'instant en paramètre pour être testable. On expose simplement ce
+  //  qui existait — aucune deuxième requête à maintenir.
+  Future<List<EpgProgram>> searchAiringAt(
+    String query, {
+    required int atMs,
+    int limit = 40,
+  }) async {
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    return searchAiringNowIn(db, query, now: atMs, limit: limit);
+  }
+
   /// Cœur de [searchAiringNow], sur une base fournie — pour être testé sur
   /// une base en mémoire sans passer par le singleton (même découpage que
   /// [remapProgramRow] et [mergeKnownWithAliases]).

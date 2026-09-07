@@ -35,10 +35,13 @@ import 'package:http/http.dart' as http;
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../channels/domain/channel.dart';
+import '../../player/presentation/play_channel.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../data/followed_matches_service.dart';
 import '../data/live_scores_service.dart';
+import '../data/match_channel_finder.dart';
 import '../data/sports_repository.dart';
 import '../domain/sport_models.dart';
 import '../domain/sport_ordering.dart';
@@ -889,6 +892,13 @@ class _MatchTileState extends State<_MatchTile> {
                       style: AppTextStyles.labelSmall
                           .copyWith(color: AppColors.textTertiary),
                     ),
+                    // SUR QUELLE CHAÎNE ? (07/09) — la question du
+                    // propriétaire devant la liste. On cherche dans SON
+                    // guide une chaîne qui diffuse ce match à l'heure du
+                    // coup d'envoi. Rien trouvé → rien affiché : une
+                    // ligne vide vaut mieux qu'un « chaîne inconnue »
+                    // répété sur vingt cartes.
+                    _BroadcastLine(event: e),
                     // PRONOSTIC DES FANS (06/09) : « 1 · N · 2 » avant le
                     // coup d'envoi, pourcentages après le vote, figé au
                     // coup d'envoi. Ne rend rien pour une course.
@@ -928,6 +938,71 @@ class _MatchTileState extends State<_MatchTile> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ============================================================
+//  « Sur quelle chaîne » — une ligne, ou rien
+// ============================================================
+//  Le calcul vit dans `data/match_channel_finder.dart`, partagé avec la
+//  FICHE du match : la liste et la fiche doivent nommer la MÊME chaîne,
+//  sinon le client ouvre la carte et trouve autre chose.
+//
+//  Le résultat est mis en cache par match dans le module. La liste
+//  reconstruit ses cartes à chaque défilement : sans ce cache, on
+//  relancerait deux requêtes SQLite par carte, en boucle.
+//
+//  TAP = ON REGARDE. C'est tout l'intérêt d'afficher la chaîne : le
+//  client passe de « ce match m'intéresse » à l'image en un geste, sans
+//  aller la chercher dans sa liste. Le tap est absorbé ici pour ne pas
+//  déclencher aussi l'ouverture de la fiche (toute la carte est
+//  cliquable).
+class _BroadcastLine extends StatelessWidget {
+  const _BroadcastLine({required this.event});
+  final SportEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Channel?>(
+      future: MatchChannelFinder.instance.find(event),
+      builder: (BuildContext context, AsyncSnapshot<Channel?> snap) {
+        final Channel? ch = snap.data;
+        // Pendant la recherche, et quand il n'y a rien : AUCUNE place
+        // réservée. Une ligne fantôme sur vingt cartes ferait respirer
+        // la liste dans le vide.
+        if (ch == null) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => unawaited(playChannel(context, ch)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.live_tv_rounded,
+                      size: 13, color: AppColors.accent),
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      ch.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.labelSmall.copyWith(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
