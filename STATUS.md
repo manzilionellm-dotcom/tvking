@@ -286,6 +286,18 @@ Branche : `claude/7motion-android-tv-compat-e0rtyp`.
      suffixe `_LIC` sont rejetés, 2023 comme 2024 — un suffixe qui
      désigne vraisemblablement des modèles sous licence / hôtellerie.
      C'est un motif que Samsung ne pourra pas balayer.
+   • PREUVE LA PLUS PROPRE, lue dans la vue « OS Version » du portail
+     (elle regroupe par version de Tizen ; 44 groupes → 72 lignes, un
+     groupe pouvant apparaître sous plusieurs versions). Sous l'en-tête
+     **Tizen 7.0**, trois lignes voisines : `23TV_BASIC1` = Submitted,
+     `23TV_BASIC1_LIC` et `23TV_BASIC1_LIC2` = Rejected. Même version de
+     plateforme, même millésime, même famille de modèles — seul le
+     suffixe `_LIC` change, et il décide de l'issue. Samsung peut le
+     reproduire chez lui en trois clics : Distribute → App Service →
+     filtre OS Version → en-tête Tizen 7.0.
+     (Complément : `23TV_STANDARD1` apparaît sous 7.0, 8.0 ET 9.0 en
+     Submitted, tandis que `24TV_STANDARD1` apparaît sous 8.0 et 9.0 en
+     Rejected — la version seule n'explique donc rien.)
   Ancienne lecture, conservée pour mémoire : la coupure suivait
   approximativement le MILLÉSIME — rejetés = 2024/2025/2026,
   « Submitted » = l'essentiel des 2022/2023. Correspondance Tizen (doc Samsung
