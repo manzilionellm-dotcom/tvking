@@ -16,6 +16,34 @@
 /// Epoch (secondes) de compilation de cette app. 0 si build local.
 const int kBuildTs = int.fromEnvironment('APP_BUILD_TS', defaultValue: 0);
 
+//  ===== LE NUMÉRO QU'ON LIT AU TÉLÉPHONE (07/09/2026) =====
+//
+//  Demande du propriétaire : « on peut pas commencer par le chiffre 1 ? »
+//  — parce que dicter « un milliard sept cent quatre-vingt-huit millions
+//  cent vingt-sept mille trois cent quinze » à un client au téléphone est
+//  impraticable, et comparer deux nombres à dix chiffres à l'oreille est
+//  une source d'erreur garantie.
+//
+//  POURQUOI ON NE PEUT PAS SIMPLEMENT REPARTIR À 1. Le numéro technique
+//  (`versionCode` Android) doit être STRICTEMENT CROISSANT à vie : Android
+//  refuse d'installer un paquet dont le numéro est inférieur à celui déjà
+//  installé, et notre vérificateur de mise à jour conclurait « déjà à
+//  jour » pour toujours. Or tout le parc porte déjà 1788127315. Publier
+//  « 65 » condamnerait la mise à jour de TOUTES les box, sans retour
+//  possible — on ne peut pas redescendre un versionCode une fois publié.
+//
+//  LA SOLUTION : DEUX NUMÉROS, chacun pour son public.
+//    • `versionCode` (horodatage) reste le numéro d'ANDROID. Il ne sert
+//      qu'aux machines, personne ne le lit jamais.
+//    • `kBuildLabel` est le numéro DES HUMAINS : le compteur de builds du
+//      CI, qui commence à 1 et monte de 1 en 1. C'est lui qu'on affiche en
+//      grand et qu'on dicte au téléphone.
+//
+//  Vide en build local : l'écran retombe alors sur le numéro technique
+//  plutôt que d'afficher une case vide.
+const String kBuildLabel =
+    String.fromEnvironment('APP_BUILD_LABEL', defaultValue: '');
+
 /// Marge de tolérance avant de FORCER la mise à jour. Une version n'est
 /// considérée "obsolète" que si la dernière publiée est plus récente
 /// que celle-ci de PLUS que cette marge. Évite tout faux positif dû au

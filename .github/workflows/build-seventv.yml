@@ -587,12 +587,45 @@ jobs:
           BUILD_NUMBER=$(date +%s)
           echo "versionCode = $BUILD_NUMBER"
           echo "SEVENTV_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+
+          #  ===== LE NUMÉRO LISIBLE, « 1988 + compteur » (07/09/2026) =====
+          #
+          #  Demande du propriétaire : « on fait mon année de naissance
+          #  plus 1 pour le premier build ; quand on fera la mise à jour ce
+          #  sera 19882 ». Donc : 19881, 19882, 19883…
+          #
+          #  POURQUOI DEUX NUMÉROS. `versionCode` (l'horodatage ci-dessus)
+          #  reste le numéro d'ANDROID : il doit être strictement croissant
+          #  à vie, et tout le parc porte déjà 1788127315 — on ne peut plus
+          #  redescendre sans casser la mise à jour de toutes les box. Ce
+          #  numéro-ci est celui des HUMAINS : on le dicte au téléphone.
+          #
+          #  IL MONTE À CHAQUE PUBLICATION, PAS À CHAQUE COMPILATION. On le
+          #  calcule à partir du dernier numéro RÉELLEMENT publié, pas d'un
+          #  compteur de CI : sinon trois pushes sans publication le
+          #  feraient sauter de 19881 à 19884, et le client verrait des
+          #  numéros manquants. Corollaire utile : une compilation qui ne
+          #  publie pas ne consomme aucun numéro — le prochain build
+          #  recalculera exactement le même.
+          PREV_LABEL=$(curl -fsSL \
+            "https://github.com/${{ github.repository }}/releases/download/seventv-latest/version.json" \
+            2>/dev/null | tr -d ' \n' \
+            | grep -oE '"buildLabel":"[0-9]*"' | grep -oE '[0-9]+' || true)
+          # On retire le préfixe 1988 pour retrouver le compteur seul.
+          PREV_N=$(printf '%s' "${PREV_LABEL#1988}")
+          case "$PREV_N" in
+            ''|*[!0-9]*) PREV_N=0 ;;
+          esac
+          BUILD_LABEL="1988$((PREV_N + 1))"
+          echo "numero lisible = $BUILD_LABEL (precedent publie : ${PREV_LABEL:-aucun})"
+          echo "SEVENTV_BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
           flutter build apk --release --no-tree-shake-icons \
             --target-platform android-arm,android-arm64 \
             --build-number="$BUILD_NUMBER" \
             --obfuscate --split-debug-info=build/symbols \
             --dart-define=GIT_SHA=${{ github.sha }} \
             --dart-define=TV_UPDATE_TAG=seventv-latest \
+            --dart-define=APP_BUILD_LABEL="$BUILD_LABEL" \
             --target=lib/main_tv.dart
           cp build/app/outputs/flutter-apk/app-release.apk \
              build/app/outputs/flutter-apk/seven-tv.apk
@@ -734,10 +767,16 @@ jobs:
           fi
           VN=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
           [ -z "$VN" ] && VN="0.3.3"
+          # `buildLabel` (07/09) : le numéro COURT, celui qu'on dicte au
+          # téléphone. `versionCode` reste l'horodatage, qui ne sert qu'à
+          # Android et que personne ne lit. Champ ADDITIONNEL : les apps
+          # déjà installées, qui ne le connaissent pas, l'ignorent sans
+          # broncher — aucune rupture de compatibilité.
           cat > version.json <<JSON
           {
             "versionCode": ${SEVENTV_BUILD_NUMBER:-0},
             "versionName": "$VN",
+            "buildLabel": "${SEVENTV_BUILD_LABEL:-}",
             "url": "https://github.com/$REPO/releases/download/$TAG/seven-tv.apk",
             "mandatory": false
           }

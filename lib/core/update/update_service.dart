@@ -41,12 +41,18 @@ class UpdateInfo {
     required this.versionName,
     required this.url,
     this.mandatory = false,
+    this.buildLabel = '',
   });
 
   final int versionCode;
   final String versionName;
   final String url;
   final bool mandatory;
+
+  /// Numéro COURT de la version publiée (« 65 »), à dicter au téléphone.
+  /// Vide si le manifeste est ancien et ne le porte pas encore : l'écran
+  /// retombe alors sur [versionCode]. Voir kBuildLabel (build_info.dart).
+  final String buildLabel;
 }
 
 /// Verdict d'une vérification MANUELLE (bouton « Vérifier les mises à
@@ -161,8 +167,7 @@ class UpdateService {
         return const UpdateCheckResult(UpdateAvailability.unavailable);
       }
 
-      final Map<String, dynamic> j =
-          jsonDecode(r.body) as Map<String, dynamic>;
+      final Map<String, dynamic> j = jsonDecode(r.body) as Map<String, dynamic>;
       final int latest = (j['versionCode'] as num?)?.toInt() ?? 0;
       final String versionName = (j['versionName'] ?? '').toString();
       final String url = (j['url'] ?? '').toString();
@@ -180,6 +185,7 @@ class UpdateService {
         versionName: versionName,
         url: url,
         mandatory: j['mandatory'] == true,
+        buildLabel: (j['buildLabel'] ?? '').toString(),
       );
       return UpdateCheckResult(
         UpdateAvailability.available,
@@ -237,8 +243,7 @@ class UpdateService {
     try {
       final SharedPreferences p = await SharedPreferences.getInstance();
       await p.setInt(_kAutoInstallCodeKey, versionCode);
-      await p.setInt(
-          _kAutoInstallAtKey, DateTime.now().millisecondsSinceEpoch);
+      await p.setInt(_kAutoInstallAtKey, DateTime.now().millisecondsSinceEpoch);
     } catch (_) {
       // best-effort : au pire on repropose une fois de trop, jamais un crash.
     }

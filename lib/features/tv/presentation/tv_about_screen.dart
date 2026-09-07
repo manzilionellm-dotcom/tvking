@@ -18,6 +18,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/app/build_info.dart' show kBuildLabel;
 import '../../../core/app/device_memory.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/update/update_service.dart';
@@ -114,7 +115,13 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
   /// Le bandeau que le support fait lire au client : son numéro de build,
   /// en très grand, et le verdict face au serveur.
   Widget _buildBanner(BuildContext context) {
-    final String build = _info?.buildNumber ?? '…';
+    //  LE NUMÉRO COURT D'ABORD (07/09) — « on peut pas commencer par le
+    //  chiffre 1 ? ». `kBuildLabel` est le compteur du CI : 1, 2, 3… On
+    //  l'affiche en grand parce que c'est LUI qu'on dicte au téléphone.
+    //  Sans lui (build local, ou APK antérieur à ce correctif), on
+    //  retombe sur le numéro technique plutôt que sur une case vide.
+    final String build =
+        kBuildLabel.isNotEmpty ? kBuildLabel : (_info?.buildNumber ?? '…');
     // Trois états, trois couleurs. Tant qu'on vérifie, on n'affirme rien.
     final Color color;
     final IconData icon;
@@ -141,8 +148,15 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
       }
     }
     // Le numéro attendu par le serveur, quand on le connaît : c'est LUI
-    // que le support compare au numéro affiché sur la box du client.
-    final int? expected = _verdict?.info?.versionCode;
+    // que le support compare au numéro affiché sur la box du client. On
+    // préfère le numéro COURT s'il est publié, pour comparer deux petits
+    // nombres et non deux nombres à dix chiffres.
+    final UpdateInfo? remote = _verdict?.info;
+    final String? expected = remote == null
+        ? null
+        : (remote.buildLabel.isNotEmpty
+            ? remote.buildLabel
+            : '${remote.versionCode}');
 
     return Container(
       width: 760,
@@ -201,7 +215,7 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
           if (expected != null) ...<Widget>[
             const SizedBox(height: 4),
             Text(
-              context.l10n.tvAboutVersionExpected('$expected'),
+              context.l10n.tvAboutVersionExpected(expected),
               style: const TextStyle(fontSize: 16, color: TvTokens.muted),
             ),
           ],
