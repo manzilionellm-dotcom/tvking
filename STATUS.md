@@ -49,6 +49,48 @@ légère).
 
 ---
 
+## Session (2026-09-07) — Windows Store : la soumission est sur un AUTRE compte
+
+Lecture du Partner Center faite le 07/09 avec le compte
+**`info@7thefew.com` (Lionel Sindayihebura)**. Résultat, mesuré, pas
+supposé :
+
+- page d'accueil du dashboard : **aucun workspace** sous « Workspaces » ;
+- menu latéral réduit à « Home » et « Help + support » — **pas de
+  section « Apps and games »** ;
+- `…/dashboard/apps-and-games/overview` et `…/dashboard/products/summary`
+  → **redirigés** vers `/dashboard/home` ;
+- `Account settings > Programs` → *« You are not authorized for this
+  action »* ;
+- `Account settings > My access` → *« Your organization has access to
+  these workspaces… »* avec **aucun workspace listé**.
+
+**Conclusion : le compte développeur qui porte la soumission d'août
+n'est PAS `info@7thefew.com`.** Statut, URL du binaire, rapport de
+certification, exit codes : rien n'a pu être lu. On ne sait donc
+toujours pas où en est la publication Windows.
+
+### Ce que ça bloque concrètement
+Tant qu'on ne sait pas quelle URL la soumission a enregistrée, **`/win`
+reste gelé** sur l'installeur du 7 août (cf. session du 23/08). Les
+clients Windows continuent donc de recevoir un installeur périmé — le
+lien à leur donner en attendant est la route immuable
+`app.7themotion.com/win/<version>/7MOTION-Setup.exe`.
+
+### Pour retrouver le bon compte
+Le dépôt n'en garde **aucune trace** — vérifié. Deux pistes, à confirmer
+par le propriétaire seul :
+`manzilionel.lm@gmail.com` (adresse de contact publique du projet) ou
+son adresse personnelle. **Le plus sûr** : chercher dans ses boîtes mail
+le message de certification Microsoft d'août — l'adresse qui l'a reçu
+EST le compte développeur.
+
+> ⚠️ **À faire dès que le compte est retrouvé** : noter ici l'adresse du
+> compte développeur Microsoft. Cette session a été perdue faute de
+> l'avoir écrit quelque part.
+
+---
+
 ## Session (2026-08-23) — Windows : installeur régénérable, identité du binaire, installation machine
 
 Branche : `claude/7motion-android-tv-compat-e0rtyp`.
