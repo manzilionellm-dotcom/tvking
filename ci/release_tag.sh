@@ -40,6 +40,14 @@ case "$KIND" in
       claude/maison-mere-phone)                      echo 'prod' ;;
       claude/iptv-chromecast-cast-WeAyo)             echo 'cast-fix-latest' ;;
       claude/phone-app-language-translation-ornt8n)  echo 'phone-i18n-latest' ;;
+      # CANAL DE TÉLÉCHARGEMENT DIRECT (07/09/2026). Le propriétaire veut
+      # un lien téléphone qui TÉLÉCHARGE, au lieu de renvoyer au Play
+      # Store : « le lien va sur Play Store, je veux un qui télécharge ».
+      # Cette branche est celle qui porte le travail réel, donc c'est
+      # elle qui alimente ce canal. Il est SÉPARÉ de « prod » : le lien
+      # client historique continue de mener au magasin, seul le nouveau
+      # /apk sert ce canal-ci.
+      claude/7motion-android-tv-compat-e0rtyp)       echo 'phone-latest' ;;
       *)                                             echo 'latest' ;;
     esac
     ;;

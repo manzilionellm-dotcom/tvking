@@ -141,6 +141,24 @@ const SEVENTV_APK_URL =
 const TEST_APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/test/defew-tv-test.apk';
 
+// APK TÉLÉPHONE en TÉLÉCHARGEMENT DIRECT (release `phone-latest`),
+// servi via /mobile, /telephone, /phone-apk.
+//
+//  POURQUOI IL EXISTE (07/09/2026). Depuis le 22/08, tous les liens
+//  téléphone historiques (/phone, /dl, /vip, /app…) renvoient à la fiche
+//  Google Play — décision du propriétaire, et elle ne bouge pas : les
+//  liens déjà imprimés et collés dans WhatsApp continuent de mener au
+//  magasin. Mais il voulait aussi « un lien qui télécharge ». On ajoute
+//  donc une adresse À CÔTÉ, sans toucher aux anciennes.
+//
+//  ⚠️ CE N'EST PAS LA MÊME APPLICATION AUX YEUX D'ANDROID. Cet APK porte
+//  l'identifiant `…tvking.tv_king`, la version du Play Store porte
+//  `…tvking`. Android les installe CÔTE À CÔTE : celui-ci ne remplace
+//  pas celui du magasin et ne reçoit pas ses mises à jour — il se met à
+//  jour par le bouton interne de l'app (version.json du même canal).
+const PHONE_APK_URL =
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/phone-latest/7motion.apk';
+
 // Installateur WINDOWS (release `windows-latest`) — app The Few PC,
 // servie via /win, /windows, /pc.
 const WINDOWS_EXE_URL =
@@ -7806,6 +7824,17 @@ async function handleRequest(request, env, ctx) {
         .includes(segments[0].toLowerCase())
     ) {
       return Response.redirect(PHONE_STORE_URL, 302);
+    }
+
+    // /mobile, /telephone, /phone-apk — APK TÉLÉPHONE, téléchargement
+    // DIRECT (cf. PHONE_APK_URL). Adresse SÉPARÉE des liens ci-dessus :
+    // ceux-là mènent au Play Store et n'ont pas changé. Celle-ci sert le
+    // fichier, pour qui ne peut pas ou ne veut pas passer par le magasin.
+    if (segments.length === 1 &&
+        ['mobile', 'telephone', 'phone-apk', 'apkphone', 'apk-phone']
+          .includes(segments[0].toLowerCase())) {
+      return proxyApk(PHONE_APK_URL, '7motion.apk',
+        url.searchParams.get('v'));
     }
 
     // =========================================================

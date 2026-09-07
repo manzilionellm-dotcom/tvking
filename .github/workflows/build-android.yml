@@ -1092,6 +1092,79 @@ jobs:
           echo ">>> État final"
           gh release view "$TAG" --repo "$REPO"
 
+      # =========================================================
+      #  CANAL DE TÉLÉCHARGEMENT DIRECT — « phone-latest »
+      # =========================================================
+      #  Demande du propriétaire (07/09/2026), deux fois de suite :
+      #  « le lien va sur Play Store, je veux un qui télécharge ».
+      #
+      #  Depuis le 22/08, TOUS les liens téléphone (/phone, /dl, /vip,
+      #  /app…) redirigent vers la fiche Google Play. C'était sa décision
+      #  et elle ne change pas : les liens déjà imprimés et collés dans
+      #  WhatsApp continuent de mener au magasin. On AJOUTE simplement un
+      #  canal à côté, servi par la nouvelle route /apk du Worker.
+      #
+      #  ⚠️ CE QU'IL FAUT SAVOIR AVANT DE DONNER CE LIEN À UN CLIENT.
+      #  L'APK porte l'identifiant `…tvking.tv_king`, la version du Play
+      #  Store porte `…tvking`. Android les voit comme DEUX applications
+      #  distinctes : celle-ci s'installe À CÔTÉ de celle du magasin, ne
+      #  la remplace pas, et ne recevra jamais ses mises à jour — elle se
+      #  mettra à jour par le bouton interne de l'app, qui lit le
+      #  version.json publié juste en dessous.
+      #
+      #  Publié à CHAQUE push de cette branche, comme le fait déjà le
+      #  build Windows : c'est ce qui garantit que le lien ne se fige pas
+      #  un mois sans que personne s'en aperçoive (cf. l'installeur du
+      #  7 août resté un mois sur /win).
+      - name: Publier l'APK téléphone sur son canal direct
+        if: env.REL_TAG == 'phone-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          TAG="$REL_TAG"
+          APK="build/app/outputs/flutter-apk/7motion.apk"
+          test -f "$APK"
+          ls -lh "$APK"
+
+          VN=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
+          NOTES="7 MOTION — téléphone, téléchargement direct.
+
+          Numéro de version : ${BUILD_LABEL:-?}
+          Commit : ${{ github.sha }}
+
+          ⚠️ Cet APK s'installe À CÔTÉ de la version du Play Store
+          (identifiants de paquet différents), il ne la remplace pas."
+
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$REPO" --notes "$NOTES" --prerelease
+            gh release upload "$TAG" --repo "$REPO" --clobber "$APK"
+          else
+            gh release create "$TAG" --repo "$REPO" \
+              --title "7 MOTION — téléphone (dernier build)" \
+              --notes "$NOTES" --prerelease "$APK"
+          fi
+
+          #  Le manifeste que le bouton « Vérifier les mises à jour » de
+          #  l'app lit. Le numéro lisible vient de ci/build_label.sh, qui
+          #  l'a calculé AVANT la compilation pour le graver dans l'APK :
+          #  on republie EXACTEMENT le même, jamais un recalcul — sinon
+          #  l'app afficherait un numéro et le serveur en publierait un
+          #  autre.
+          cat > version.json <<JSON
+          {
+            "versionCode": ${{ github.run_number }},
+            "versionName": "$VN",
+            "buildLabel": "${BUILD_LABEL:-}",
+            "url": "https://github.com/$REPO/releases/download/$TAG/7motion.apk",
+            "mandatory": false
+          }
+          JSON
+          gh release upload "$TAG" --repo "$REPO" --clobber version.json
+          echo ">>> publié sur $TAG (numéro ${BUILD_LABEL:-?})"
+          gh release view "$TAG" --repo "$REPO"
+
       # PONT DE MIGRATION (maison mère uniquement) : les téléphones installés
       # AVANT la maison mère ont « latest » gravé comme canal de MAJ. On y pose
       # un version.json qui pointe vers l'APK maison mère (prod) → au prochain
