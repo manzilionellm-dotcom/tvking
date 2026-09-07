@@ -506,6 +506,11 @@ export interface DeviceVersionStatus {
   channel: string | null;
   latestVersion: string;
   latestVersionCode: number;
+  // Non vide (« Play Store ») quand l'app n'est distribuée que par un
+  // magasin : il n'y a alors AUCUN manifeste à comparer. C'est le cas du
+  // téléphone depuis le 22/08/2026. On l'affiche tel quel plutôt qu'un
+  // « inconnu » sec, qui laisserait croire à une panne.
+  store: string;
 }
 // Dernier numéro publié sur un canal (une plateforme).
 export interface PublishedVersion {

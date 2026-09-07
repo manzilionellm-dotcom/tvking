@@ -589,6 +589,12 @@ function VersionCard({
             {ver.latestVersion ? ` · v${ver.latestVersion}` : ''}
             {ver.channel ? ` · canal ${ver.channel}` : ''}
           </div>
+        ) : ver?.store ? (
+          // Pas une panne : cette app-là n'est distribuée QUE par un
+          // magasin, il n'existe aucun manifeste à comparer.
+          <div>
+            App distribuée par le {ver.store} : aucun numéro publié à comparer.
+          </div>
         ) : (
           <div>Dernier numéro publié : indisponible pour le moment.</div>
         )}
@@ -606,7 +612,7 @@ function VersionCard({
         {etat === 'ahead' && (
           <div>Numéro plus grand que le publié : build de test (box du labo).</div>
         )}
-        {etat === 'unknown' && (
+        {etat === 'unknown' && !ver?.store && (
           <div>
             {ver
               ? 'Numéro non remonté par l’appareil (app trop ancienne), ou manifeste injoignable.'

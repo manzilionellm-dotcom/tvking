@@ -33,8 +33,8 @@
 //  Exécution : node cloudflare/app_versions.smoke.mjs
 // =========================================================
 import {
-  VERSION_CHANNELS, manifestUrl, compareLabels, versionVerdict,
-  publishedVersion, publishedVersions, deviceVersionStatus,
+  VERSION_CHANNELS, STORE_ONLY_PLATFORMS, manifestUrl, compareLabels,
+  versionVerdict, publishedVersion, publishedVersions, deviceVersionStatus,
   resetPublishedCache, PUBLISHED_TTL_MS,
 } from './app_versions.js';
 
@@ -113,11 +113,18 @@ ok(v.state === 'unknown', 'Manifeste sans numéro exploitable → inconnu');
 //  4. Lecture du manifeste + cache.
 // ---------------------------------------------------------
 console.log('\n4. Lecture du manifeste');
+// FORME RÉELLE du manifeste, relevée le 07/09 sur la release
+// seventv-latest en ligne : le champ s'appelle « versionName », PAS
+// « version ». Le CI l'écrit ainsi (build-seventv.yml, build-android.yml).
+// Ce test existe parce que la première version de ce module lisait
+// `version` : le panel n'aurait jamais affiché « v0.3.3 », sans erreur
+// nulle part.
 const manifeste = {
   versionCode: 1788127315,
-  version: '0.3.3',
+  versionName: '0.3.3',
   buildLabel: '19882',
-  apk: 'seven-tv.apk',
+  url: 'https://github.com/…/seven-tv.apk',
+  mandatory: false,
 };
 let appels = [];
 let mode = 'ok';
@@ -211,6 +218,26 @@ ok(s.state === 'unknown' && s.platform === null, 'Plateforme non remontée → i
 const deux = await publishedVersions();
 ok(deux.tv.buildLabel === '19882' && deux.mobile.buildLabel === '19881',
    'Les deux plateformes d’un coup, chacune sur son canal');
+
+// ---------------------------------------------------------
+//  7. Le téléphone n'a PLUS de manifeste (décision du 22/08).
+// ---------------------------------------------------------
+//  Vérifié le 07/09 : les releases `prod` et `latest` n'existent plus,
+//  l'app téléphone est distribuée par le Play Store. Le panel doit dire
+//  CETTE raison-là, pas un « inconnu » qui ressemble à une panne.
+console.log('\n7. Téléphone sans manifeste (Play Store)');
+ok(STORE_ONLY_PLATFORMS.mobile === 'Play Store', 'Le mobile est marqué « magasin »');
+resetPublishedCache();
+globalThis.fetch = async () => new Response('Not Found', { status: 404 });
+
+s = await deviceVersionStatus({ platform: 'mobile', build_label: '', app_build: 1788127315 });
+ok(s.state === 'unknown', '404 sur le canal téléphone → inconnu (jamais « à jour »)');
+ok(s.store === 'Play Store', 'Le panel apprend POURQUOI : distribution magasin');
+
+resetPublishedCache();
+s = await deviceVersionStatus({ platform: 'tv', build_label: '19882', app_build: 1788127315 });
+ok(s.state === 'unknown' && s.store === '',
+   'La TV, elle, n’est pas « magasin » : un manifeste injoignable reste une panne');
 
 console.log(`\n${pass} PASS, ${fail} FAIL`);
 process.exit(fail === 0 ? 0 : 1);

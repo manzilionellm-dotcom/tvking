@@ -51,6 +51,29 @@ export const VERSION_CHANNELS = {
   mobile: 'prod',
 };
 
+// ---------------------------------------------------------
+//  LES APPS QUE SEUL UN MAGASIN DISTRIBUE
+// ---------------------------------------------------------
+//  DÉCISION DU PROPRIÉTAIRE DU 22/08/2026, déjà consignée en tête de
+//  worker.js : « efface tous les builds téléphone, on laisse celui qui
+//  est activé sur le Play Store, que tout pointe dessus ». Les canaux
+//  `prod` et `phone-test` ont été SUPPRIMÉS — vérifié le 07/09 : aucune
+//  release `prod` ni `latest` n'existe plus dans le dépôt.
+//
+//  Conséquence directe ici : pour un téléphone, il n'y a AUCUN manifeste
+//  à lire, et il ne peut donc y avoir de verdict. Le numéro publié vit
+//  dans la fiche Play Store, que le Worker ne sait pas interroger.
+//
+//  On le dit au panel plutôt que d'afficher un « inconnu » sec qui
+//  ressemble à une panne. On garde quand même `mobile: 'prod'`
+//  ci-dessus : c'est le canal que l'app interroge (update_service.dart),
+//  et la règle de la maison est que le panel vise EXACTEMENT le même. Le
+//  jour où un manifeste téléphone repart, les deux se rallument ensemble,
+//  sans toucher à ce fichier.
+export const STORE_ONLY_PLATFORMS = {
+  mobile: 'Play Store',
+};
+
 /// Base des releases GitHub (même dépôt que le miroir /r/<tag>/<asset>).
 export const RELEASE_BASE =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download';
@@ -213,7 +236,13 @@ export async function publishedVersion(platform, opts) {
           channel: VERSION_CHANNELS[key],
           buildLabel: String(j.buildLabel == null ? '' : j.buildLabel).trim(),
           versionCode: Number.parseInt(String(j.versionCode == null ? '' : j.versionCode), 10) || 0,
-          version: String(j.version == null ? '' : j.version).trim(),
+          // ⚠ Le champ s'appelle `versionName` dans les manifestes que le
+          // CI écrit — VÉRIFIÉ le 07/09 sur le seventv-latest en ligne, pas
+          // supposé. Lire `version` seulement aurait laissé la fiche MAC
+          // sans le « v0.3.3 » sans qu'aucun test ne s'en aperçoive.
+          version: String(
+            j.versionName == null ? (j.version == null ? '' : j.version) : j.versionName,
+          ).trim(),
           at: now,
         };
       }
@@ -252,6 +281,10 @@ export async function deviceVersionStatus(device, opts) {
     ...v,
     platform: platform || null,
     channel: published ? published.channel : (VERSION_CHANNELS[platform] || null),
+    // Non vide (« Play Store ») quand l'app n'est distribuée que par un
+    // magasin ET qu'aucun manifeste n'a pu être lu : le panel écrit alors
+    // la vraie raison au lieu d'un « inconnu » qui ressemble à une panne.
+    store: !published ? (STORE_ONLY_PLATFORMS[platform] || '') : '',
     // Version « marketing » publiée (0.3.3) — utile en support quand le
     // client lit l'écran « À propos » à voix haute.
     latestVersion: published ? published.version : '',
