@@ -416,12 +416,49 @@ jobs:
             # n'y avait pas d'installeur a publier.
             if [ -n "$SETUP" ]; then
               gh release upload windows-latest --repo "$REPO" --clobber "$SETUP"
+              #  LE LIEN CLIENT DOIT AVANCER TOUT SEUL (07/09/2026).
+              #
+              #  Constaté aujourd'hui : /win servait encore l'installeur du
+              #  7 AOÛT, alors que 24 installeurs plus récents dormaient
+              #  juste à côté sur la même release. Un mois de correctifs que
+              #  personne ne recevait — et rien ne l'avait signalé, parce
+              #  qu'il n'y avait aucune erreur : le lien marchait, il servait
+              #  simplement un vieux fichier.
+              #
+              #  LA CAUSE. On a deux exigences contradictoires sur un seul
+              #  nom de fichier : le Microsoft Store veut un binaire QUI NE
+              #  CHANGE JAMAIS, le lien de partage veut TOUJOURS le dernier.
+              #  Pour protéger le Store, on avait gelé « 7MOTION-Setup.exe »
+              #  — et /win pointait dessus. Le lien client s'est donc gelé
+              #  avec lui.
+              #
+              #  LA SÉPARATION, EN TROIS NOMS QUI NE SE MARCHENT PAS DESSUS :
+              #    7MOTION-Setup-<version>.exe → immuable, un par build ;
+              #                                  c'est ce que le Store cite,
+              #                                  via /win/<version>/…
+              #    7MOTION-Setup-latest.exe    → COPIE du dernier, écrasée à
+              #                                  chaque build ; c'est ce que
+              #                                  /win sert désormais.
+              #    7MOTION-Setup.exe           → l'ancien fichier gelé du
+              #                                  7 août. On n'y touche PAS :
+              #                                  une soumission Store peut
+              #                                  encore le citer.
+              #
+              #  Ainsi le lien client avance à chaque build, sans que
+              #  personne ait à modifier quoi que ce soit — et surtout sans
+              #  qu'on ait à s'en souvenir.
+              cp "$SETUP" 7MOTION-Setup-latest.exe
+              gh release upload windows-latest --repo "$REPO" --clobber 7MOTION-Setup-latest.exe
             fi
           else
             if [ -n "$SETUP" ]; then
+              # Même trio de noms que dans la branche « la release existe
+              # déjà » ci-dessus : sans la copie « -latest » ici, une
+              # release recréée de zéro laisserait /win sans fichier.
+              cp "$SETUP" 7MOTION-Setup-latest.exe
               gh release create windows-latest --repo "$REPO" \
                 --title "The Few — Windows (dernier build)" \
-                --notes "$NOTES" --prerelease "$OUT" "$SETUP"
+                --notes "$NOTES" --prerelease "$OUT" "$SETUP" 7MOTION-Setup-latest.exe
             else
               gh release create windows-latest --repo "$REPO" \
                 --title "The Few — Windows (dernier build)" \
