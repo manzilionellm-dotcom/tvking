@@ -267,6 +267,43 @@ Branche : `claude/7motion-android-tv-compat-e0rtyp`.
   Seller Office **2634065517** ouvert le 23/08 pour le réclamer.
   v1.0.1 compilée, signée du même certificat, prête à soumettre — on
   attend le motif pour ne pas corriger à l'aveugle.
+  **RELEVÉ DU 07/09/2026** (portail lu de bout en bout, rien soumis) :
+  état INCHANGÉ depuis le 23/08 — 28 rejetés, 16 « Submitted », 0
+  accepté, tous horodatés 2026-08-14 17:34:14. Toujours AUCUN motif
+  nulle part (App Service, Model Group List, App Package, Notifications
+  — la plus récente date du 19/05). Ticket 2634065517 : statut
+  « Submitted », commentaires VIDES, aucune réponse Samsung en 15 jours.
+  ⚠ FAIT NOUVEAU ET MESURÉ : la coupure suit exactement le MILLÉSIME.
+  Rejetés = tous les groupes 2024/2025/2026 ; laissés « Submitted » =
+  tous les 2022/2023, et eux seuls. Correspondance Tizen (doc Samsung
+  General Specifications) : 2022→6.5, 2023→7.0, 2024→8.0, 2025→9.0,
+  2026→10.0. Donc TOUT ce qui tourne en Tizen ≥ 8.0 a été rejeté.
+  Le paquet déclare `api-version="6.0"` (forcé en dur par
+  build-tizen.yml, étape « Patch tizen-manifest.xml », ligne ~182).
+  ⚠ SUPPOSITION NON VÉRIFIÉE, à ne pas traiter comme une cause : le
+  sens technique de `api-version` est un PLANCHER (une TV Tizen 8.0
+  sait exécuter une app déclarant 6.0). Un rejet des plateformes
+  RÉCENTES pour cause de plancher trop BAS serait donc une règle de
+  BOUTIQUE, pas une incompatibilité. Recherche du 07/09 dans la doc
+  publique Samsung (General Specifications, Launch Checklist) : AUCUNE
+  règle de version minimale documentée. Ne pas remonter api-version à
+  l'aveugle — passer à 8.0 ferait perdre les 16 groupes 2022/2023 qui,
+  eux, n'ont pas été rejetés.
+  CERTAIN et indépendant du manifeste, relevé le 07/09 :
+   • Comptes de test : 196 octets saisis pour 44 groupes, contre la
+     consigne explicite du portail (« au moins autant de comptes que de
+     groupes de modèles ») → bloquera la phase de test.
+   • Classifications d'âge : les 6 systèmes (PEGI, ESRB, GRB,
+     MJ/DEJUS, FSK, SAMSUNG) sont tous sur « Select » = non renseignés.
+   • Bandeau DSA : numéro d'enregistrement d'entreprise à déclarer
+     (Membership → type de compte, puis Service Info).
+  🔴 VRAI GOULOT, non technique : le compte n'appartient à AUCUN groupe
+  → groupe PUBLIC → « can only distribute their applications in the
+  US ». Service Country/Region confirme : sélection = 1, États-Unis
+  seuls. Même certifiée, l'app ne serait pas diffusable en France ni en
+  Europe. Demande « Partner Group France/Europe » (7 Few, LLC) déposée
+  le 28/06, mise à jour le 22/07, TOUJOURS sans réponse. C'est un canal
+  commercial (Samsung Content Manager), pas le portail.
 
 - SPORT / NOTIFICATIONS DE MATCH : routes Worker `/api/sports/search`,
   `/api/sports/team/:id`, `/api/sports/big` (grandes affiches, 17 clubs
