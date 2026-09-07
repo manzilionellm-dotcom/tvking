@@ -42,6 +42,15 @@ on:
 permissions:
   contents: write
 
+#  UNE SEULE PUBLICATION À LA FOIS (07/09/2026) — même raison que
+#  build-seventv.yml : ce workflow écrit sur une release partagée, et
+#  deux exécutions simultanées peuvent y laisser le manifeste d'un
+#  build avec l'APK d'un autre. `cancel-in-progress: false` : on ne
+#  coupe jamais un téléversement en cours, on attend son tour.
+concurrency:
+  group: publish-defew-tv
+  cancel-in-progress: false
+
 jobs:
   build-tv:
     name: Build DeFew TV APK

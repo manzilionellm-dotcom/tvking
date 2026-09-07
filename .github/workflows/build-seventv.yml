@@ -43,6 +43,26 @@ on:
 permissions:
   contents: write
 
+#  UNE SEULE PUBLICATION À LA FOIS SUR CE CANAL (07/09/2026).
+#
+#  Ce workflow ÉCRIT sur une release partagée (seventv-latest) : l'APK,
+#  puis le manifeste qui l'annonce. Deux exécutions simultanées écrivent
+#  sur les mêmes fichiers, et rien ne garantit l'ordre — on peut se
+#  retrouver avec le manifeste d'un build et l'APK d'un autre. Le
+#  30/08, deux exécutions sont bien parties à cinq secondes d'écart.
+#
+#  `cancel-in-progress: false` est VOLONTAIRE, et c'est l'inverse du
+#  réglage habituel : une exécution qui publie ne doit JAMAIS être
+#  interrompue en cours de téléversement — on laisserait la release à
+#  moitié écrite, donc un bouton de mise à jour qui pointe vers un
+#  fichier absent. On fait la queue, on n'annule pas.
+#
+#  Le groupe ne dépend PAS de la branche : le canal publié est unique,
+#  la file d'attente doit l'être aussi.
+concurrency:
+  group: publish-seventv-latest
+  cancel-in-progress: false
+
 jobs:
   build-seventv:
     name: Build 7 MOTION TV APK
@@ -760,13 +780,46 @@ jobs:
           TAG="seventv-latest"
           BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
 
-          # Le CDN de GitHub met quelques secondes à servir un asset neuf.
-          # On réessaie plutôt que de déclarer une panne qui n'existe pas.
-          for i in 1 2 3 4 5; do
-            CODE=$(curl -sSL -o version.check.json -w '%{http_code}' "$BASE/version.json" || echo 000)
-            [ "$CODE" = "200" ] && break
-            echo "manifeste pas encore servi (HTTP $CODE), tentative $i/5"
-            sleep 6
+          #  ⚠ CORRIGÉ LE 07/09/2026 — LA VÉRIFICATION SE TROMPAIT DE PANNE.
+          #
+          #  CE QUI S'EST PASSÉ le 30/08 : la publication a RÉUSSI, et cette
+          #  étape l'a quand même déclarée cassée —
+          #      « le manifeste annonce 1788122176 au lieu du build 1788127315 »
+          #  — puis a fait échouer tout le job. Résultat : personne n'a
+          #  republié pendant une semaine, et les box sont restées sur une
+          #  vieille version alors que le fichier en ligne était le bon.
+          #
+          #  LA CAUSE : l'ancienne boucle ne retentait que sur un code HTTP
+          #  ≠ 200. Or le CDN de GitHub sert encore l'ANCIEN fichier, en
+          #  cache, pendant quelques secondes après un remplacement — avec
+          #  un beau 200. La boucle sortait donc au premier tour, comparait
+          #  un manifeste périmé, et criait à la panne.
+          #
+          #  LA RÈGLE CORRECTE : on retente tant que la VALEUR n'est pas la
+          #  bonne, pas seulement tant que le fichier est injoignable. Et on
+          #  ajoute un paramètre anti-cache pour ne pas relire la copie que
+          #  le CDN nous a déjà servie.
+          #
+          #  Leçon, notée parce qu'elle se représentera : une vérification
+          #  qui échoue à tort coûte plus cher que pas de vérification du
+          #  tout — elle fait perdre confiance dans le garde-fou, et on
+          #  finit par publier sans lui.
+          WANT="${SEVENTV_BUILD_NUMBER:-0}"
+          PUB=""
+          for i in 1 2 3 4 5 6 7 8; do
+            # Paramètre anti-cache : le CDN ne peut pas nous resservir une
+            # réponse mémorisée pour une URL qu'il n'a jamais vue.
+            CODE=$(curl -sSL -o version.check.json -w '%{http_code}' \
+              -H 'Cache-Control: no-cache' \
+              "$BASE/version.json?cb=$(date +%s)-$i" || echo 000)
+            if [ "$CODE" = "200" ]; then
+              PUB=$(python3 -c "import json;print(json.load(open('version.check.json'))['versionCode'])" 2>/dev/null || echo "")
+              [ "$PUB" = "$WANT" ] && break
+              echo "manifeste encore en cache ($PUB, on attend $WANT), tentative $i/8"
+            else
+              echo "manifeste pas encore servi (HTTP $CODE), tentative $i/8"
+            fi
+            sleep 8
           done
           [ "$CODE" = "200" ] || { echo "::error title=Mise a jour cassee::version.json injoignable sur $TAG (HTTP $CODE)"; exit 1; }
           cat version.check.json
@@ -774,9 +827,8 @@ jobs:
           # Le manifeste doit annoncer LE build qu'on vient de produire.
           # Sinon l'app verrait une version plus ancienne que la sienne et
           # ne proposerait jamais rien.
-          PUB=$(python3 -c "import json;print(json.load(open('version.check.json'))['versionCode'])")
-          echo "manifeste=$PUB  build=${SEVENTV_BUILD_NUMBER:-0}"
-          [ "$PUB" = "${SEVENTV_BUILD_NUMBER:-0}" ] || { echo "::error title=Mise a jour cassee::le manifeste annonce $PUB au lieu du build ${SEVENTV_BUILD_NUMBER:-0}"; exit 1; }
+          echo "manifeste=$PUB  build=$WANT"
+          [ "$PUB" = "$WANT" ] || { echo "::error title=Mise a jour cassee::le manifeste annonce $PUB au lieu du build $WANT apres 8 tentatives (ce n est plus un cache : la publication a echoue)"; exit 1; }
 
           # L'APK annoncé doit vraiment se télécharger.
           URL=$(python3 -c "import json;print(json.load(open('version.check.json'))['url'])")
