@@ -119,10 +119,14 @@ Future<void> _bootstrap() async {
   // throw jamais.
   unawaited(RemoteSourceRepository.sync());
 
-  // Re-synchro PÉRIODIQUE (5 min) tant que l'app tourne : une source ajoutée/
+  // Re-synchro PÉRIODIQUE (60 s) tant que l'app tourne : une source ajoutée/
   // poussée par le revendeur APRÈS l'ouverture de l'app reste sinon invisible
   // jusqu'au redémarrage. Léger (un GET JSON), n'ajoute que ce qui manque.
-  Timer.periodic(const Duration(minutes: 5), (_) {
+  //
+  // 60 s et non 5 min depuis le 09/09/2026 : les ORDRES du panel — dont
+  // « retirer cette liste » — voyagent dans cette réponse, donc ce minuteur
+  // EST le délai que voit le client. Même cadence que la box et le mobile.
+  Timer.periodic(const Duration(minutes: 1), (_) {
     RemoteSourceRepository.sync();
   });
 

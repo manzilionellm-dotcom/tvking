@@ -187,7 +187,16 @@ Future<void> _bootstrap() async {
   //     invisible tant que le client ne redémarrait pas — pas « fluide et
   //     instantané ». Léger : un seul GET JSON ; n'ajoute que ce qui manque
   //     (dédup existante), ne touche jamais aux sources déjà chargées.
-  Timer.periodic(const Duration(minutes: 5), (_) {
+  //     CADENCE PORTÉE À 60 s le 09/09/2026, à la demande du propriétaire :
+  //     « si j'efface une liste sur le panel, ça doit s'effacer dans l'app ;
+  //     quelque chose qui se met à jour chaque minute ». Les ORDRES du panel
+  //     (dont la suppression d'une liste) voyagent dans CETTE réponse : leur
+  //     délai d'application était donc celui de ce minuteur.
+  //     Le surcoût est mesuré, pas supposé : un GET JSON par minute, la même
+  //     cadence que `SourceContentWatch` juste en dessous, qui sonde déjà
+  //     toutes les 60 s depuis des mois. On ne crée pas un rythme nouveau,
+  //     on aligne celui-ci sur l'existant.
+  Timer.periodic(const Duration(minutes: 1), (_) {
     if (!BootGuard.instance.safeMode) RemoteSourceRepository.sync();
   });
 

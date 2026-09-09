@@ -3877,6 +3877,62 @@ async function handleSourcePut(request, env, mac, actor) {
 //  ORDRE durable, que l'app applique à sa prochaine synchro — même si la
 //  box est éteinte au moment du clic.
 //  kind : 'source_remove' | 'source_activate'
+//
+// ---------------------------------------------------------
+//  Le dépôt d'ordre, une seule fois
+// ---------------------------------------------------------
+//  Extrait de `handleSourceOrder` le 09/09/2026, parce qu'un DEUXIÈME
+//  appelant en a besoin : la suppression d'une source (voir
+//  `handleSourceDelete`). Recopier ces quinze lignes aurait créé deux
+//  façons de déposer un ordre — et le jour où l'une gagne un garde-fou
+//  que l'autre n'a pas, c'est l'appareil du client qui trinque.
+//  Même règle que `cloudflare/app_versions.js` ou `ci/build_label.sh`.
+async function enqueueDeviceOrder(env, mac, kind, target) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS device_orders (' +
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, mac TEXT NOT NULL, ' +
+      'kind TEXT NOT NULL, target_json TEXT, created_at INTEGER, ' +
+      'applied_at INTEGER)',
+  ).run();
+  const json = JSON.stringify(target);
+  // Un seul ordre EN ATTENTE par (mac, kind, cible) : cliquer deux fois
+  // ne doit pas empiler deux suppressions identiques.
+  await env.DB
+    .prepare(
+      'DELETE FROM device_orders WHERE mac = ? AND kind = ? ' +
+        'AND target_json = ? AND applied_at IS NULL',
+    )
+    .bind(mac, kind, json)
+    .run();
+  await env.DB
+    .prepare(
+      'INSERT INTO device_orders (mac, kind, target_json, created_at) ' +
+        'VALUES (?, ?, ?, ?)',
+    )
+    .bind(mac, kind, json, Date.now())
+    .run();
+}
+
+/// Décrit une source STOCKÉE sous la forme de cible attendue par l'app.
+///
+/// L'appareil retrouve la liste locale par serveur+identifiant, ou par URL
+/// M3U (`_matchLocal` côté Dart) : ce sont donc les seuls champs qui
+/// comptent vraiment. Rend `null` quand la source n'a ni serveur ni URL —
+/// un ordre sans cible ne serait jamais applicable.
+export function sourceAsOrderTarget(s) {
+  const src = s || {};
+  const server = String(src.server || '').trim();
+  const m3u = String(src.m3u_url || src.url || '').trim();
+  if (!server && !m3u) return null;
+  return {
+    type: String(src.type || ''),
+    server,
+    username: String(src.username || '').trim(),
+    m3u_url: server ? '' : m3u,
+    name: String(src.label || src.name || '').trim(),
+  };
+}
+
 async function handleSourceOrder(request, env, mac, actor) {
   const m = decodeMac(mac).trim().toUpperCase();
   let body = {};
@@ -3905,28 +3961,7 @@ async function handleSourceOrder(request, env, mac, actor) {
     if (norm.error) return jsonResp({ error: norm.error }, 400);
     target.next = norm.source;
   }
-  await env.DB.prepare(
-    'CREATE TABLE IF NOT EXISTS device_orders (' +
-      'id INTEGER PRIMARY KEY AUTOINCREMENT, mac TEXT NOT NULL, ' +
-      'kind TEXT NOT NULL, target_json TEXT, created_at INTEGER, ' +
-      'applied_at INTEGER)',
-  ).run();
-  // Un seul ordre EN ATTENTE par (mac, kind, cible) : cliquer deux fois
-  // ne doit pas empiler deux suppressions identiques.
-  await env.DB
-    .prepare(
-      'DELETE FROM device_orders WHERE mac = ? AND kind = ? ' +
-        'AND target_json = ? AND applied_at IS NULL',
-    )
-    .bind(m, kind, JSON.stringify(target))
-    .run();
-  await env.DB
-    .prepare(
-      'INSERT INTO device_orders (mac, kind, target_json, created_at) ' +
-        'VALUES (?, ?, ?, ?)',
-    )
-    .bind(m, kind, JSON.stringify(target), Date.now())
-    .run();
+  await enqueueDeviceOrder(env, m, kind, target);
   await logAudit(env, request, actor, kind,
     { type: 'device_order', id: m },
     { server: target.server, name: target.name }, null);
@@ -4094,11 +4129,51 @@ async function handleSourceDelete(request, env, mac, actor) {
   const url = new URL(request.url);
   const rawIndex = url.searchParams.get('index');
 
+  // =========================================================
+  //  LA SUPPRESSION DOIT REDESCENDRE JUSQU'À L'APPAREIL
+  // =========================================================
+  //  Signalé par le propriétaire (09/09/2026) : « j'efface une liste sur
+  //  le panel, ça ne s'efface pas dans l'app ; j'actualise, elle reste ».
+  //
+  //  IL AVAIT RAISON, ET LE PANEL PROMETTAIT MÊME LE CONTRAIRE À L'ÉCRAN
+  //  (« L'app le voit tout de suite »). On ne retirait la source QUE de la
+  //  base serveur. Or la synchro de l'app ne fait qu'AJOUTER et METTRE À
+  //  JOUR ce que le panel envoie : elle ne supprime jamais une liste
+  //  absente de l'envoi — et elle a raison de ne pas le faire, sinon elle
+  //  effacerait les listes que le CLIENT a ajoutées lui-même, que rien ne
+  //  distingue en base.
+  //
+  //  Le mécanisme qui manquait existait déjà : l'ORDRE `source_remove`,
+  //  qui désigne une liste précise par serveur+identifiant. Il n'était
+  //  simplement jamais déposé lors d'une suppression. On le dépose
+  //  maintenant, ici, CÔTÉ SERVEUR : tous les appelants du panel en
+  //  profitent d'un coup (fiche MAC, page Appareils, actions groupées),
+  //  et un futur appelant ne pourra pas oublier de le faire.
+  //
+  //  Best-effort : si le dépôt d'ordre échoue, la suppression serveur
+  //  reste acquise. Perdre l'ordre est ennuyeux ; refuser la suppression
+  //  que l'opérateur vient de demander le serait davantage.
   if (rawIndex === null || rawIndex === '') {
+    // On LIT avant d'effacer : après le DELETE, on ne saurait plus quelles
+    // listes retirer sur l'appareil.
+    const avant = await env.DB
+      .prepare('SELECT sources_json FROM device_sources WHERE mac = ?')
+      .bind(m).first();
+    let toutes = [];
+    try { toutes = JSON.parse((avant && avant.sources_json) || '[]') || []; } catch (_) { toutes = []; }
     await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
+    let ordres = 0;
+    if (Array.isArray(toutes)) {
+      for (const s of toutes) {
+        const cible = sourceAsOrderTarget(s);
+        if (!cible) continue;
+        try { await enqueueDeviceOrder(env, m, 'source_remove', cible); ordres++; }
+        catch (_) { /* voir « best-effort » ci-dessus */ }
+      }
+    }
     await logAudit(env, request, actor, 'source.clear',
-      { type: 'device_source', id: m }, null, null);
-    return jsonResp({ ok: true, mac: m });
+      { type: 'device_source', id: m }, { orders: ordres }, null);
+    return jsonResp({ ok: true, mac: m, orders: ordres });
   }
 
   const idx = Number.parseInt(rawIndex, 10);
@@ -4133,11 +4208,21 @@ async function handleSourceDelete(request, env, mac, actor) {
       .bind(JSON.stringify(next), m)
       .run();
   }
+  // Même raison qu'au retrait total ci-dessus : sans cet ordre, la liste
+  // disparaît du panel mais reste sur la box du client, indéfiniment.
+  let ordre = false;
+  const cible = sourceAsOrderTarget(victim);
+  if (cible) {
+    try { await enqueueDeviceOrder(env, m, 'source_remove', cible); ordre = true; }
+    catch (_) { /* best-effort : la suppression serveur reste acquise */ }
+  }
   await logAudit(env, request, actor, 'source.remove_one',
     { type: 'device_source', id: m },
-    { index: idx, origin: victim.origin || '', server: victim.server || '' },
+    { index: idx, origin: victim.origin || '', server: victim.server || '',
+      order: ordre },
     null);
-  return jsonResp({ ok: true, mac: m, removed: idx, remaining: next.length });
+  return jsonResp(
+    { ok: true, mac: m, removed: idx, remaining: next.length, order: ordre });
 }
 
 // =========================================================

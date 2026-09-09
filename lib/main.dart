@@ -345,7 +345,10 @@ Future<void> bootApp() async {
   // ré-import lourd) → pas « fluide et instantané ». Léger : un seul GET
   // JSON ; n'ajoute que ce qui manque (dédup existante), ne touche jamais
   // aux sources déjà chargées.
-  Timer.periodic(const Duration(minutes: 5), (_) {
+  // 60 s (et non 5 min) depuis le 09/09/2026 : les ORDRES du panel — dont
+  // « retirer cette liste » — voyagent dans cette réponse, donc ce minuteur
+  // EST le délai que voit le client. Même cadence que la box et le PC.
+  Timer.periodic(const Duration(minutes: 1), (_) {
     if (!BootGuard.instance.safeMode) RemoteSourceRepository.sync();
   });
 

@@ -142,8 +142,9 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
     if (
       !window.confirm(
         `Retirer UNIQUEMENT cette source ?\n\n${nom}\n${ident}\n\n` +
-          'Les autres listes de ce client sont conservées. ' +
-          'L’app le voit tout de suite.',
+          'Les autres listes de ce client sont conservées.\n' +
+          'La liste disparaît de son appareil dans la minute ' +
+          '(tout de suite s’il est en ligne).',
       )
     ) {
       return;
@@ -170,8 +171,9 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
   async function handleClearSource() {
     if (
       !window.confirm(
-        'Retirer la source de ce client ?\n\n' +
-          'Ses chaînes sont retirées côté serveur (l’app le voit tout de suite). ' +
+        'Retirer TOUTES les sources de ce client ?\n\n' +
+          'Elles disparaissent de son appareil dans la minute ' +
+          '(tout de suite s’il est en ligne).\n' +
           'Tu pourras en repousser une propre ensuite.',
       )
     ) {
