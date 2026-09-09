@@ -91,6 +91,51 @@ EST le compte développeur.
 
 ---
 
+## Session (2026-09-09) — Panel : une MAC mal tapée n'active plus dans le vide
+
+Branche : `claude/7motion-android-tv-compat-e0rtyp`.
+
+### Le problème, dit par le propriétaire
+> « Si je me trompe d'un chiffre, ça active quand même. Il faut me
+> corriger : ça doit me dire que l'adresse MAC n'existe pas. »
+
+L'activation faisait **trouve-ou-crée** : une MAC inconnue était créée à
+la volée. Un seul caractère de travers et on posait une licence sur une
+**MAC fantôme** — les crédits du revendeur partaient, l'écran affichait
+« activé », et le vrai client restait bloqué. Personne ne voyait rien
+avant son coup de téléphone.
+
+### Ce qui a été fait
+- **Le serveur refuse** (`cloudflare/api_v1.js`) : MAC jamais vue →
+  `mac_unknown` (404). C'est LUI qui protège, y compris si l'appel ne
+  vient pas du panel.
+- **Il propose la correction** : `macTypoSuggestions()` cherche les MAC
+  connues qui ne diffèrent que d'UN caractère (10 motifs `LIKE` avec le
+  joker `_`, un par position hexadécimale, jamais sur `MK:` ni sur les
+  `:`). Voir « MK:…:5E » sous « MK:…:6E » rend la faute évidente.
+- **On demande, on ne bloque pas.** La **pré-activation** est un vrai
+  usage (vendre avant que le client installe l'app). Le panel affiche
+  l'avertissement ; si l'opérateur confirme, il renvoie `allow_new: true`
+  et l'appareil est créé comme avant.
+- **Cloisonnement** : un revendeur ne se voit proposer que SES MAC —
+  sinon la suggestion devient une fuite du parc des autres.
+- **Les DEUX écrans qui saisissent une MAC à la main** sont couverts :
+  Activation et **Familles** (« ajouter un appareil » posait aussi une
+  licence). Un seul texte d'avertissement, dans
+  `admin-panel/src/lib/mac_guard.ts` — même règle que
+  `cloudflare/device_profiles.js`.
+
+### Preuve
+`cloudflare/mac_typo.smoke.mjs` — 9 assertions. Le faux D1 **lit** le SQL
+généré (il découpe le `WHERE`, consomme les `?` dans l'ordre et exige
+autant de valeurs liées que de `?`) au lieu de deviner sa forme : une
+première version « supposait » et laissait passer la suppression de la
+clause `mac != ?` sans broncher. Trois mutations vérifiées comme
+détectées : self-exclusion retirée, cloisonnement revendeur retiré,
+premier octet non couvert.
+
+---
+
 ## Session (2026-08-23) — Windows : installeur régénérable, identité du binaire, installation machine
 
 Branche : `claude/7motion-android-tv-compat-e0rtyp`.

@@ -64,6 +64,14 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
+    /// Corps JSON COMPLET renvoyé par le serveur.
+    ///
+    //  Ajouté le 09/09/2026 : certaines erreurs portent plus que du
+    //  texte. `mac_unknown` renvoie par exemple la liste des adresses
+    //  MAC qui ne diffèrent que d'un caractère — c'est ce qui permet
+    //  d'écrire « vouliez-vous dire… ? » au lieu d'un simple refus.
+    //  Sans ce champ, tout ce qui n'est pas le message était jeté.
+    public readonly data?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -104,7 +112,7 @@ async function request<T = unknown>(
       // Token expire ou invalide → on flush et on reload login
       setToken(null);
     }
-    throw new ApiError(resp.status, code, msg);
+    throw new ApiError(resp.status, code, msg, json || undefined);
   }
   return json as T;
 }
@@ -799,6 +807,17 @@ export const activateApi = {
     custom_days?: number;
     reseller_id?: string;
     source?: DeviceSourceInput;
+    /// CONFIRMATION D'UNE MAC INCONNUE (09/09/2026).
+    ///
+    //  Sans ce drapeau, le serveur REFUSE d'activer une adresse qu'il
+    //  n'a jamais vue et renvoie `mac_unknown` : c'est le garde-fou
+    //  contre la faute de frappe, qui posait une licence sur un
+    //  appareil fantôme et brûlait les crédits du revendeur.
+    //
+    //  On ne le met à `true` qu'après que l'humain a lu l'avertissement
+    //  et confirmé — typiquement une PRÉ-ACTIVATION, quand on vend
+    //  l'abonnement avant que le client ait installé l'app.
+    allow_new?: boolean;
   }) =>
     request<ActivateResult>('/api/v1/activate', { method: 'POST', body: payload }),
 };
@@ -1320,10 +1339,14 @@ export const familiesApi = {
     ),
   remove: (id: string) =>
     request<{ ok: boolean }>(`/api/v1/families/${id}`, { method: 'DELETE' }),
-  addMember: (id: string, mac: string, label?: string, plan?: string) =>
+  // `allowNew` : autorise la création d'un appareil JAMAIS vu (pré-activation
+  // assumée). Sans lui, le serveur refuse avec `mac_unknown` — le garde-fou
+  // anti-faute-de-frappe. Voir `lib/mac_guard.ts`.
+  addMember: (id: string, mac: string, label?: string, plan?: string,
+              allowNew?: boolean) =>
     request<{ ok: boolean; mac: string }>(`/api/v1/families/${id}/members`, {
       method: 'POST',
-      body: { mac, label, plan },
+      body: { mac, label, plan, allow_new: allowNew },
     }),
   removeMember: (id: string, mac: string) =>
     request<{ ok: boolean }>(

@@ -5,6 +5,9 @@ import {
   familiesApi, m3uLinkUrl, ApiError,
   type Family, type FamilyMember, type FamilySource, type FamilyLink,
 } from '@/lib/api';
+import {
+  isUnknownMac, confirmUnknownMac, unknownMacNotice,
+} from '@/lib/mac_guard';
 import { formatDateTime, formatMacInput } from '@/lib/utils';
 
 /// Page FAMILLE — UNE ligne Xtream (multi-connexions) partagée par plusieurs
@@ -113,7 +116,19 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
     }
     setBusy(true); setErr(null);
     try {
-      await familiesApi.addMember(selected, m, mLabel.trim() || undefined);
+      // GARDE-FOU FAUTE DE FRAPPE. Ajouter un membre pose une licence :
+      // une MAC mal recopiée créait jusqu'ici un appareil fantôme dans la
+      // famille, avec sa licence, sans que personne ne le voie. Le serveur
+      // refuse maintenant (`mac_unknown`) tant qu'on ne confirme pas.
+      try {
+        await familiesApi.addMember(selected, m, mLabel.trim() || undefined);
+      } catch (e) {
+        if (!isUnknownMac(e)) throw e;
+        if (!confirmUnknownMac(m, e)) { setErr(unknownMacNotice(m)); return; }
+        await familiesApi.addMember(
+          selected, m, mLabel.trim() || undefined, undefined, true,
+        );
+      }
       setMMac('MK:'); setMLabel('');
       openFamily(selected);
       loadList();

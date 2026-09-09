@@ -9,6 +9,9 @@ import {
   type App, type PlanCost, type ActivateResult, type DefaultServer,
   type DeviceSourceInput, type RtInfo, ApiError,
 } from '@/lib/api';
+import {
+  isUnknownMac, confirmUnknownMac, unknownMacNotice,
+} from '@/lib/mac_guard';
 import { awaitRtOutcome, type RtOutcome } from '@/lib/realtime';
 import { toast } from '@/components/Toast';
 import { formatDateTime, formatMacInput } from '@/lib/utils';
@@ -169,6 +172,38 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   // Ne touche JAMAIS aux chaînes. Demande confirmation (anti-confusion).
   // FAMILIAL : le principal + les MAC « famille » sont activés ENSEMBLE, avec
   // le même plan (une seule vente, 2-3 appareils).
+  // =========================================================
+  //  UNE activation, avec le garde-fou « faute de frappe »
+  // =========================================================
+  //  Le serveur refuse désormais une MAC jamais vue (`mac_unknown`) —
+  //  c'est LUI qui protège, y compris si l'appel ne vient pas d'ici. Ici
+  //  on transforme ce refus en question claire (voir `lib/mac_guard.ts`,
+  //  partagé avec l'écran Familles qui saisit aussi des MAC à la main).
+  //
+  //  Renvoie `null` quand l'opérateur a préféré corriger : l'appelant
+  //  s'arrête alors sans rien activer.
+  async function activateOne(one: string): Promise<ActivateResult | null> {
+    try {
+      return await activateApi.activate({
+        mac: one, plan, app_id: appId,
+        customer_name: customerName.trim() || undefined,
+      });
+    } catch (e) {
+      if (!isUnknownMac(e)) throw e;
+      if (!confirmUnknownMac(one, e)) {
+        setErr(unknownMacNotice(one));
+        return null;
+      }
+      // L'humain a confirmé en connaissance de cause : on redemande la
+      // même activation, cette fois avec l'autorisation explicite.
+      return activateApi.activate({
+        mac: one, plan, app_id: appId,
+        customer_name: customerName.trim() || undefined,
+        allow_new: true,
+      });
+    }
+  }
+
   async function activateSubscription() {
     setErr(null);
     const macs = collectTargetMacs();
@@ -189,10 +224,11 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       // résultat (le principal) alimente l'affichage + le feedback temps réel.
       let last: ActivateResult | null = null;
       for (const one of macs) {
-        last = await activateApi.activate({
-          mac: one, plan, app_id: appId,
-          customer_name: customerName.trim() || undefined,
-        });
+        last = await activateOne(one);
+        // MAC inconnue non confirmée → on s'arrête là, sans toucher aux
+        // suivantes. Continuer activerait la famille autour d'un
+        // appareil dont on n'est pas sûr.
+        if (last === null) return;
       }
       if (last) {
         setResult(last);

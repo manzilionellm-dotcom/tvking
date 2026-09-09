@@ -4336,6 +4336,13 @@ async function handleFamilyAddMember(request, env, user, actor, familyId) {
       app_id: body.app_id || 'app_7motion',
       customer_name: body.label ? `${fam.name} — ${body.label}` : fam.name,
       label: body.label || null,
+      // On RELAIE le consentement au lieu de le forcer. Ajouter un membre
+      // se fait en tapant une MAC à la main : même risque de faute de
+      // frappe que sur l'écran Activation, donc même garde-fou. Sans ce
+      // relais, mettre `true` en dur ici rouvrirait le trou pour la
+      // famille, et l'erreur `mac_unknown` (propagée juste dessous)
+      // n'arriverait jamais jusqu'à l'écran.
+      allow_new: body.allow_new === true,
     }),
   });
   const actResp = await handleActivate(actReq, env, user, actor);
@@ -6648,6 +6655,53 @@ async function handleDeviceTransfer(request, env, user, actor) {
 //  Trouve-ou-cree le client + le device (cle = MAC), cree OU renouvelle
 //  la licence pour l'app, et DEBITE les credits du revendeur selon le
 //  cout du plan. C'est l'endpoint que le portail revendeur appelle.
+// ---------------------------------------------------------
+//  « Vouliez-vous dire… ? » — MAC à UN caractère près
+// ---------------------------------------------------------
+//  Une MAC saisie à la main qui ne diffère que d'UN caractère d'une MAC
+//  existante est presque toujours une faute de frappe (0/O, 8/B, 5/S…).
+//  On les cherche pour pouvoir proposer la correction.
+//
+//  COMMENT, SANS SCANNER TOUTE LA TABLE. On construit un motif LIKE par
+//  position hexadécimale en remplaçant ce caractère par « _ » (le joker
+//  « un caractère » de SQL). Douze motifs, réunis par OR, tous ancrés sur
+//  le préfixe « MK: » : la base ne compare que des chaînes de longueur
+//  fixe et s'arrête vite. Borné à 5 résultats — au-delà, ce n'est plus
+//  une faute de frappe, c'est autre chose.
+//
+//  CLOISONNEMENT : un revendeur ne doit JAMAIS apprendre l'existence des
+//  MAC d'un autre. Quand l'appelant est un revendeur, on ne propose que
+//  les siennes.
+//  Exportée pour `mac_typo.smoke.mjs` : c'est la génération des motifs
+//  qui doit être prouvée, pas recopiée dans le test.
+export async function macTypoSuggestions(env, mac, resellerId) {
+  try {
+    const motifs = [];
+    for (let i = 0; i < mac.length; i++) {
+      // On ne remplace que les caractères hexadécimaux : toucher aux
+      // « : » ou au préfixe « MK » ne produirait pas une MAC valide.
+      if (mac[i] === ':' || i < 3) continue;
+      motifs.push(mac.slice(0, i) + '_' + mac.slice(i + 1));
+    }
+    if (!motifs.length) return [];
+    const ou = motifs.map(() => 'mac LIKE ?').join(' OR ');
+    const args = [...motifs];
+    let sql = `SELECT mac FROM devices WHERE (${ou}) AND mac != ?`;
+    args.push(mac);
+    if (resellerId) {
+      sql += ' AND reseller_id = ?';
+      args.push(resellerId);
+    }
+    sql += ' LIMIT 5';
+    const rs = await env.DB.prepare(sql).bind(...args).all();
+    return (rs.results || []).map((r) => r.mac).filter(Boolean);
+  } catch (_) {
+    // La suggestion est un CONFORT. Si la requête échoue, on rend une
+    // liste vide : l'avertissement principal, lui, part quand même.
+    return [];
+  }
+}
+
 async function handleActivate(request, env, user, actor) {
   let body;
   try { body = await request.json(); } catch (_) {
@@ -6721,6 +6775,41 @@ async function handleActivate(request, env, user, actor) {
         .bind(chargeResellerId, now, deviceId).run();
     }
   } else {
+    // =========================================================
+    //  GARDE-FOU FAUTE DE FRAPPE — ajouté le 09/09/2026
+    // =========================================================
+    //  Demande du propriétaire, mot pour mot : « si je me trompe d'un
+    //  chiffre, ça active quand même. Il faut me corriger : ça doit me
+    //  dire que l'adresse MAC n'existe pas. »
+    //
+    //  CE QUI SE PASSAIT. L'activation créait l'appareil s'il n'existait
+    //  pas (find-or-create). Un seul caractère de travers, et on posait
+    //  une licence sur une MAC FANTÔME : les crédits du revendeur étaient
+    //  débités, la page affichait « activé », et le vrai client restait
+    //  bloqué. Personne ne voyait l'erreur avant son appel.
+    //
+    //  POURQUOI ON NE BLOQUE PAS SÈCHEMENT. La pré-activation est un vrai
+    //  usage : on vend l'abonnement AVANT que le client ait installé
+    //  l'app, donc avant que sa MAC existe. L'interdire casserait la
+    //  vente. On demande donc une CONFIRMATION explicite (`allow_new`)
+    //  au lieu de refuser : le panel affiche l'avertissement, et celui
+    //  qui pré-active coche en connaissance de cause.
+    //
+    //  ON AIDE AUSSI À CORRIGER. Une MAC inconnue qui ne diffère que d'UN
+    //  caractère d'une MAC existante est presque toujours une faute de
+    //  frappe. On les cherche et on les renvoie : « vouliez-vous dire… ».
+    //  C'est ce qui transforme un refus en aide.
+    if (body.allow_new !== true) {
+      const proches = await macTypoSuggestions(env, mac, isReseller ? user.sub : null);
+      return jsonResp({
+        error: 'mac_unknown',
+        message: proches.length
+          ? "Cette adresse MAC n'existe pas. Vérifiez le numéro — une adresse très proche existe."
+          : "Cette adresse MAC n'existe pas : aucun appareil n'a jamais démarré l'application avec ce numéro.",
+        mac,
+        suggestions: proches,
+      }, 404);
+    }
     customerId = genId('cus');
     deviceId = genId('dev');
     await env.DB.batch([
