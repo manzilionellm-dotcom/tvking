@@ -36,6 +36,7 @@ import 'core/update/update_prompt.dart';
 import 'core/branding/verified_badge.dart';
 import 'core/theme/app_text_styles.dart' show AppTextStyles;
 import 'core/i18n/locale_repository.dart';
+import 'core/i18n/locale_resolver.dart';
 import 'core/i18n/l10n_extension.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
@@ -464,10 +465,22 @@ class TvKingApp extends StatelessWidget {
 
           // Internationalisation — la liste des langues supportées
           // sort de `LocaleRepository`. Quand l'utilisateur choisit
-          // "Système" (locale=null), Flutter retombe sur la langue
-          // de l'OS s'il y a un .arb correspondant, sinon sur fr.
+          // "Système" (locale=null), on suit la langue de l'appareil.
+          //
+          // La RÈGLE est partagée avec la TV/le PC et avec les textes
+          // hors widgets (`core/i18n/locale_resolver.dart`). Avant le
+          // 09/09/2026, ces trois-là repliaient différemment quand la
+          // langue de l'appareil n'était pas traduite : anglais ici,
+          // français là. Désormais une seule réponse possible.
           locale: LocaleRepository.instance.locale,
           supportedLocales: LocaleRepository.supportedLocales,
+          localeListResolutionCallback:
+              (List<Locale>? device, Iterable<Locale> supported) =>
+                  resolveAppLocale(
+            forced: LocaleRepository.instance.locale,
+            preferred: device ?? const <Locale>[],
+            supported: supported.toList(),
+          ),
           localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
             AppLocalizations.delegate,
             GlobalMaterialLocalizations.delegate,

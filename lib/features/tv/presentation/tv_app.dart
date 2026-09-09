@@ -15,6 +15,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
+import '../../../core/i18n/locale_resolver.dart';
 import '../../../core/theme/accent_controller.dart';
 import '../../../core/update/update_prompt.dart';
 import '../../../core/profiles/profiles_repository.dart';
@@ -95,25 +96,28 @@ class TvApp extends StatelessWidget {
         locale: LocaleRepository.instance.locale, // null = langue de la TV
         supportedLocales: AppLocalizations.supportedLocales,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
-        // RÉSOLUTION DE LANGUE — CORRIGÉE. Sans ça, quand la TV est réglée
-        // dans une langue qu'on ne connaît pas, Flutter retombe sur la
-        // PREMIÈRE langue de la liste générée… qui pouvait être l'arabe →
-        // « tout le monde en arabe ». On impose la bonne logique :
-        //   1) choix explicite de l'utilisateur (Réglages) → prioritaire ;
-        //   2) langue de la TV si on la supporte (match par code langue,
-        //      p.ex. en_US → en, ar_MA → ar) ;
-        //   3) repli SÛR = ANGLAIS (jamais l'arabe par défaut).
-        localeResolutionCallback:
-            (Locale? device, Iterable<Locale> supported) {
-          final Locale? forced = LocaleRepository.instance.locale;
-          if (forced != null) return forced;
-          if (device != null) {
-            for (final Locale s in supported) {
-              if (s.languageCode == device.languageCode) return s;
-            }
-          }
-          return const Locale('en');
-        },
+        // RÉSOLUTION DE LANGUE — voir `core/i18n/locale_resolver.dart`,
+        // qui porte la règle et son explication. Elle est partagée avec
+        // l'app téléphone et avec les textes produits hors widgets :
+        // avant, les trois répondaient différemment.
+        //
+        // ON UTILISE LA VERSION « LISTE » DU RAPPEL (`…ListResolution…`),
+        // et c'est le correctif PC du 09/09/2026. L'ancienne version
+        // (`localeResolutionCallback`) ne reçoit QU'UNE SEULE langue : la
+        // première que déclare le système. Une box Android n'en déclare
+        // qu'une, donc le défaut ne se voyait pas. Un PC en déclare
+        // plusieurs — c'est une LISTE de préférences — et on jetait tout
+        // sauf la première. Si la deuxième était la seule qu'on sait
+        // parler, l'app partait en anglais alors qu'elle pouvait faire
+        // mieux. Le téléphone, lui, n'a jamais eu ce défaut : il n'avait
+        // pas de rappel du tout, donc Flutter parcourait la liste entière.
+        localeListResolutionCallback:
+            (List<Locale>? device, Iterable<Locale> supported) =>
+                resolveAppLocale(
+          forced: LocaleRepository.instance.locale,
+          preferred: device ?? const <Locale>[],
+          supported: supported.toList(),
+        ),
         theme: base.copyWith(
           // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
           textTheme: GoogleFonts.interTextTheme(base.textTheme)

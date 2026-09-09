@@ -26,13 +26,24 @@ import 'dart:ui' show Locale, PlatformDispatcher;
 
 import '../../l10n/generated/app_localizations.dart';
 import 'locale_repository.dart';
+import 'locale_resolver.dart';
 
 /// Traductions de la langue active, utilisable hors widget.
+///
+/// CORRIGÉ le 09/09/2026 : ce chemin appliquait SA PROPRE règle — il ne
+/// regardait que la première langue du système et repliait sur le
+/// FRANÇAIS, quand l'écran, lui, repliait sur l'ANGLAIS. Une même app
+/// pouvait donc afficher ses menus en anglais et ses notifications en
+/// français. Il passe maintenant par `resolveAppLocale`, comme l'écran,
+/// et hérite du même coup du correctif Windows.
 AppLocalizations get l10nNow {
-  final Locale wanted =
-      LocaleRepository.instance.locale ?? PlatformDispatcher.instance.locale;
-  final bool supported = AppLocalizations.supportedLocales
-      .any((Locale l) => l.languageCode == wanted.languageCode);
-  return lookupAppLocalizations(
-      supported ? Locale(wanted.languageCode) : const Locale('fr'));
+  final Locale choisie = resolveAppLocale(
+    forced: LocaleRepository.instance.locale,
+    // `locales` (au pluriel) et non `locale` : la liste ENTIÈRE des
+    // préférences, comme ce que MaterialApp reçoit. L'ancienne version
+    // ne lisait que la première — le même défaut que l'écran TV/PC.
+    preferred: PlatformDispatcher.instance.locales,
+    supported: AppLocalizations.supportedLocales,
+  );
+  return lookupAppLocalizations(choisie);
 }
