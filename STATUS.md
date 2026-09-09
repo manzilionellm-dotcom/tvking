@@ -13,14 +13,26 @@
 > perdre ce qu'on a fait ? » Voici la réponse, en quatre lignes. Tout le
 > reste du projet se reconstruit ; ces quatre-là, non.
 
-### 1. `ci/defew-debug.keystore` — la clé qui signe l'app Android
+### 1. `ci/release.jks.enc` + sa phrase secrète — la clé qui signe les apps
 Android REFUSE une mise à jour signée d'une autre clé : elle s'affiche
 « Application non installée », et le seul recours est de désinstaller —
-donc de perdre la playlist du client. Ce fichier est **versionné dans le
-dépôt**, donc protégé tant que le dépôt existe.
+donc de perdre la playlist du client. Le fichier chiffré est **versionné
+dans le dépôt** ; il ne s'ouvre qu'avec `DIST_LOCK_PASSPHRASE`, que seul
+le propriétaire détient. **Perdre la phrase = perdre le parc.**
 **Empreinte du certificat** (à comparer en cas de doute) :
 `5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61`
-sujet : `C=FR, O=The Few, CN=The Few`
+sujet : `CN=The Few, OU=Mobile, O=The Few, L=Paris, ST=IDF, C=FR`
+
+> ⚠️ **Correction du 09/09/2026.** Cette ligne désignait auparavant
+> `ci/defew-debug.keystore`. C'était FAUX, et d'une façon qui pouvait
+> coûter cher : l'empreinte notée ici est bien la bonne, mais elle
+> n'appartient PAS à ce fichier-là. Vérifié à la commande :
+> `ci/defew-debug.keystore` porte `CN=Android Debug, O=Android, C=US`,
+> empreinte `7EFED4CA…5810` — un tout autre certificat. Il ne signe plus
+> que DeFew TV (`build-tv.yml`), qui n'est plus distribué.
+> Les APK réellement servis aujourd'hui par `app.7themotion.com/tv` et
+> `/mobile` sont signés par `5145B8E0…9E61`, donc par `release.jks`.
+> Sauvegarder le mauvais fichier aurait donné l'illusion d'être protégé.
 
 ### 2. Le canal de mise à jour `seventv-latest`
 C'est le tag de release GitHub que l'app interroge. **Ne jamais le
@@ -88,6 +100,50 @@ EST le compte développeur.
 > ⚠️ **À faire dès que le compte est retrouvé** : noter ici l'adresse du
 > compte développeur Microsoft. Cette session a été perdue faute de
 > l'avoir écrit quelque part.
+
+---
+
+## ⏳ ÉCHÉANCE 30 SEPTEMBRE 2026 — enregistrer les apps chez Google
+
+Play impose d'enregistrer **nom de package + clé de signature** pour
+toute app Android distribuée, y compris **hors Play**. Non enregistrée au
+30/09/2026 : retirée de Play, et plus installable depuis les magasins
+partenaires sur les appareils Android certifiés de certains pays.
+
+Ça vise directement nos APK sideloadés (box, Fire TV, lien direct).
+
+### Les valeurs à saisir — RELEVÉES SUR LES APK RÉELLEMENT SERVIS
+
+Non pas lues dans un fichier de config, mais **extraites des APK que les
+liens clients téléchargent aujourd'hui** : c'est ce que Google compare.
+
+| App | Nom de package | Empreinte SHA-256 du certificat |
+|---|---|---|
+| 7 MOTION TV (`/tv`) | `com.sevenmotion.tv.seven_tv` | `5145B8E0…9E61` |
+| 7 MOTION téléphone (`/mobile`) | `com.manzilionellm.tvking.tv_king` | `5145B8E0…9E61` |
+| 7 MOTION Play Store | `com.manzilionellm.tvking` | clé **Google** (Play App Signing) |
+
+Empreinte complète (les deux APK hors Play partagent la même clé) :
+```
+51:45:B8:E0:19:F6:D5:FB:96:A2:07:F2:E7:36:73:FD:95:4F:79:99:66:FD:59:88:89:21:15:56:CB:DF:9E:61
+```
+
+⚠️ **Ne pas coller cette empreinte pour `com.manzilionellm.tvking`.** Les
+APK que Play livre sont resignés par Google : la clé de distribution est
+celle de Play App Signing, à relever dans Play Console → Test et version
+→ **Intégrité de l'application**. Notre `release.jks` n'est là que la clé
+d'*upload*.
+
+### Comment ces valeurs ont été obtenues (pour pouvoir refaire le contrôle)
+`keytool -printcert -jarfile` ne lit que la vieille signature v1. L'APK
+téléphone n'en a plus (v2/v3 seulement) : il a fallu lire le certificat
+dans l'« APK Signing Block ». Le lecteur a d'abord été **vérifié sur
+l'APK TV**, dont `keytool` donnait déjà la réponse — mêmes 32 octets.
+
+### Pas concerné
+Samsung (`tizen-latest`), LG (`webos-latest`), Windows : pas Android.
+DeFew TV (`com.manzilionellm.tvking.defewtv`) et Privé
+(`com.manzilionellm.prive`) : plus de canal de publication vivant.
 
 ---
 
