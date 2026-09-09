@@ -212,7 +212,10 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         // ----- Clavier (instance STABLE → non reconstruite à chaque frappe) -----
-        SizedBox(width: 380, child: _keyboard),
+        // 560 px (et non 380) depuis le passage en QWERTY : une rangée
+        // compte désormais 10 touches (12 en arabe) au lieu de 6. À 380 px
+        // elles seraient tombées sous les 32 px — illisibles à trois mètres.
+        SizedBox(width: 560, child: _keyboard),
         const SizedBox(width: TvDimens.gutter),
         // ----- Requête + résultats -----
         Expanded(
@@ -681,31 +684,62 @@ class _KeyboardState extends State<_Keyboard> {
   // Langue de saisie ACTIVE (par défaut l'alphabet latin, qui couvre FR/EN…).
   _KbLang _lang = _KbLang.latin;
 
-  // Tracés par langue. On garde les CHIFFRES sur chaque tracé (utile partout).
-  static const List<String> _digits = <String>[
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  ];
-  static const List<String> _latin = <String>[
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', //
-    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-  ];
-  // Nordique (suédois/danois/norvégien) : latin + Å Ä Ö Æ Ø.
-  static const List<String> _nordic = <String>[
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', //
-    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-    'Å', 'Ä', 'Ö', 'Æ', 'Ø',
-  ];
-  // Arabe : les 28 lettres + hamza/ta marbouta/alif maqsoura usuels.
-  static const List<String> _arabic = <String>[
-    'ا', 'ب', 'ت', 'ث', 'ج', 'ح', 'خ', 'د', 'ذ', 'ر', 'ز', 'س', 'ش', //
-    'ص', 'ض', 'ط', 'ظ', 'ع', 'غ', 'ف', 'ق', 'ك', 'ل', 'م', 'ن', 'ه',
-    'و', 'ي', 'ء', 'آ', 'ة', 'ى',
+  // =========================================================
+  //  TRACÉS EN RANGÉES — QWERTY (09/09/2026)
+  // =========================================================
+  //  Demandé par le propriétaire : « change ce clavier côté TV ».
+  //
+  //  CE QUI N'ALLAIT PAS. Les lettres étaient rangées dans l'ORDRE DE
+  //  L'ALPHABET (A B C D E F / G H I J K L…). C'est la seule disposition
+  //  que personne n'a dans les mains : ni sur un téléphone, ni sur un PC,
+  //  ni sur les autres apps de la télé. Le client devait donc LIRE la
+  //  grille lettre par lettre au lieu de viser d'instinct — six lignes à
+  //  balayer pour trouver un « S ».
+  //
+  //  Et ce n'était pas un choix : c'était la conséquence d'un `Wrap`, qui
+  //  se contente d'aligner une liste à plat et coupe où ça déborde. D'où
+  //  aussi les rangées irrégulières, qui rendent le D-pad imprévisible —
+  //  « bas » ne tombait pas sur la touche qu'on visait des yeux.
+  //
+  //  MAINTENANT : de vraies RANGÉES, en QWERTY. La mémoire des doigts
+  //  fonctionne enfin, et chaque « bas » tombe droit sous la touche
+  //  précédente parce que les rangées sont alignées.
+  //
+  //  Les CHIFFRES restent présents dans chaque langue (numéros de chaîne,
+  //  années de films), sur leur propre rangée, comme sur un vrai clavier.
+  static const List<String> _digitRow = <String>[
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
   ];
 
-  List<String> get _letters => switch (_lang) {
-        _KbLang.latin => _latin,
-        _KbLang.nordic => _nordic,
-        _KbLang.arabic => _arabic,
+  static const List<List<String>> _latinRows = <List<String>>[
+    <String>['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+    <String>['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+    <String>['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
+  ];
+
+  // Nordique : le QWERTY scandinave place Å après P, puis Ä Ö après L.
+  // Æ et Ø (danois/norvégien) suivent, pour couvrir les trois pays avec
+  // un seul tracé — c'est déjà le choix fait par l'app côté langues.
+  static const List<List<String>> _nordicRows = <List<String>>[
+    <String>['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', 'Å'],
+    <String>['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Ä', 'Ö'],
+    <String>['Z', 'X', 'C', 'V', 'B', 'N', 'M', 'Æ', 'Ø'],
+  ];
+
+  // Arabe : l'ordre du CLAVIER arabe standard, pas l'ordre de l'alphabet.
+  // Un arabophone cherche « ش » en haut à gauche de la 2e rangée, jamais
+  // en 13e position d'un abécédaire. Les 32 caractères d'avant sont tous
+  // conservés — aucune lettre perdue, seul l'ordre change.
+  static const List<List<String>> _arabicRows = <List<String>>[
+    <String>['ض', 'ص', 'ث', 'ق', 'ف', 'غ', 'ع', 'ه', 'خ', 'ح', 'ج', 'د'],
+    <String>['ش', 'س', 'ي', 'ب', 'ل', 'ا', 'ت', 'ن', 'م', 'ك', 'ط', 'ذ'],
+    <String>['ء', 'ر', 'ى', 'ة', 'و', 'ز', 'ظ', 'آ'],
+  ];
+
+  List<List<String>> get _rows => switch (_lang) {
+        _KbLang.latin => _latinRows,
+        _KbLang.nordic => _nordicRows,
+        _KbLang.arabic => _arabicRows,
       };
 
   // Étiquette COURTE de chaque langue (sur le bouton de bascule).
@@ -731,8 +765,15 @@ class _KeyboardState extends State<_Keyboard> {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> letters = _letters;
+    final List<List<String>> rows = _rows;
     final _KbLang next = _KbLang.values[(_lang.index + 1) % _KbLang.values.length];
+    // La rangée la plus longue impose la taille des touches : toutes les
+    // rangées partagent la même largeur de touche, sinon les colonnes ne
+    // s'alignent plus et le D-pad redevient imprévisible.
+    int plusLongue = _digitRow.length;
+    for (final List<String> r in rows) {
+      if (r.length > plusLongue) plusLongue = r.length;
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -750,22 +791,96 @@ class _KeyboardState extends State<_Keyboard> {
           onTap: _cycleLang,
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: <Widget>[
-            for (int i = 0; i < letters.length; i++)
-              _Key(
-                  label: letters[i],
-                  autofocus: i == 0,
-                  onTap: () => widget.onType(letters[i])),
-            for (final String d in _digits)
-              _Key(label: d, onTap: () => widget.onType(d)),
-            _Key(label: '␣', wide: true, onTap: () => widget.onType(' ')),
-            _Key(label: '⌫', onTap: widget.onBackspace),
-            _Key(label: '✕', onTap: widget.onClear),
-          ],
+        // La taille des touches se DÉDUIT de la place disponible au lieu
+        // d'être gravée en dur : le même clavier tient sur une box 720p et
+        // sur une 4K, et l'ajout d'une langue à rangées plus longues ne
+        // déborde pas de la colonne.
+        LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints c) {
+            const double espace = 8;
+            final double dispo = c.maxWidth;
+            final double touche =
+                ((dispo - espace * (plusLongue - 1)) / plusLongue)
+                    .clamp(32.0, 56.0);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                for (int r = 0; r < rows.length; r++) ...<Widget>[
+                  _Row(
+                    keys: rows[r],
+                    size: touche,
+                    gap: espace,
+                    // Le focus arrive sur la 1re touche de la 1re rangée :
+                    // le pouce part toujours du même endroit.
+                    autofocusFirst: r == 0,
+                    onTap: widget.onType,
+                  ),
+                  const SizedBox(height: espace),
+                ],
+                _Row(
+                  keys: _digitRow,
+                  size: touche,
+                  gap: espace,
+                  onTap: widget.onType,
+                ),
+                const SizedBox(height: espace),
+                // Rangée d'action : espace (large, comme sur un vrai
+                // clavier), effacer une lettre, tout effacer.
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    _Key(
+                        label: '␣',
+                        size: touche,
+                        widthFactor: 3,
+                        gap: espace,
+                        onTap: () => widget.onType(' ')),
+                    SizedBox(width: espace),
+                    _Key(label: '⌫', size: touche, onTap: widget.onBackspace),
+                    SizedBox(width: espace),
+                    _Key(label: '✕', size: touche, onTap: widget.onClear),
+                  ],
+                ),
+              ],
+            );
+          },
         ),
+      ],
+    );
+  }
+}
+
+/// UNE rangée de touches. Exister en tant que widget n'est pas cosmétique :
+/// c'est ce qui donne à Flutter des rangées ALIGNÉES, donc un déplacement
+/// D-pad prévisible — « bas » tombe sous la touche qu'on regarde.
+class _Row extends StatelessWidget {
+  const _Row({
+    required this.keys,
+    required this.size,
+    required this.gap,
+    required this.onTap,
+    this.autofocusFirst = false,
+  });
+  final List<String> keys;
+  final double size;
+  final double gap;
+  final ValueChanged<String> onTap;
+  final bool autofocusFirst;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        for (int i = 0; i < keys.length; i++) ...<Widget>[
+          if (i > 0) SizedBox(width: gap),
+          _Key(
+            label: keys[i],
+            size: size,
+            autofocus: autofocusFirst && i == 0,
+            onTap: () => onTap(keys[i]),
+          ),
+        ],
       ],
     );
   }
@@ -826,34 +941,72 @@ class _LangKey extends StatelessWidget {
   }
 }
 
+/// UNE touche.
+///
+/// [size] est la taille de base ; [widthFactor] permet à la barre d'espace
+/// d'occuper plusieurs colonnes SANS casser l'alignement (3 touches + les
+/// 2 espacements qu'elle recouvre).
 class _Key extends StatelessWidget {
-  const _Key({required this.label, required this.onTap, this.wide = false, this.autofocus = false});
+  const _Key({
+    required this.label,
+    required this.onTap,
+    required this.size,
+    this.widthFactor = 1,
+    this.gap = 8,
+    this.autofocus = false,
+  });
   final String label;
   final VoidCallback onTap;
-  final bool wide;
+  final double size;
+  final int widthFactor;
+  final double gap;
   final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: wide ? 116 : 54,
-      height: 54,
+      width: size * widthFactor + gap * (widthFactor - 1),
+      height: size,
       child: TvFocusBuilder(
         autofocus: autofocus,
         scale: TvFocusScale.small,
         onSelect: onTap,
-        builder: (BuildContext context, bool focused) {
-          return Container(
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: focused ? TvTokens.ember : TvTokens.sel,
-              borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+        // `pressedBuilder` (et non `builder`) : il donne en plus l'état
+        // APPUYÉ. Sans lui, la touche ne bronchait pas au moment du clic —
+        // sur une télécommande, où il n'y a ni doigt ni curseur pour
+        // confirmer, c'est le seul signal qui dit « c'est bien parti ».
+        pressedBuilder: (BuildContext context, bool focused, bool pressed) {
+          return AnimatedScale(
+            // Enfoncement franc puis retour, comme une vraie touche.
+            scale: pressed ? 0.94 : 1,
+            duration: TvDimens.focusAnim,
+            curve: TvDimens.focusCurve,
+            child: AnimatedContainer(
+              duration: TvDimens.focusAnim,
+              curve: TvDimens.focusCurve,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: focused ? TvTokens.ember : TvTokens.sel,
+                borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                // HALO au focus. Sur une télé regardée à trois mètres, le
+                // seul changement de couleur se perd ; le halo dit où on
+                // est d'un coup d'œil, même de loin et de biais.
+                boxShadow: focused
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: TvTokens.ember.withValues(alpha: 0.55),
+                          blurRadius: 18,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : const <BoxShadow>[],
+              ),
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: TvDimens.title,
+                      fontWeight: FontWeight.w800,
+                      color: focused ? TvTokens.onEmber : TvTokens.text)),
             ),
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: TvDimens.title,
-                    fontWeight: FontWeight.w700,
-                    color: focused ? const Color(0xFF1A1206) : TvTokens.text)),
           );
         },
       ),
