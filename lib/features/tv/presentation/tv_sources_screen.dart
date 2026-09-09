@@ -7,6 +7,7 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/app/device_memory.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/playlist_repository.dart';
 import 'tv_components.dart';
@@ -96,6 +97,66 @@ class _SourceRow extends StatelessWidget {
 
   /// Identifiant Xtream (username) — vide pour une source M3U.
   String get _diagUser => (playlist.xtreamUsername ?? '').trim();
+
+  /// LE NOMBRE DE CHAÎNES — le VRAI, compté en base à chaque affichage.
+  ///
+  //  CONSTATÉ PAR LE PROPRIÉTAIRE (09/09/2026), capture à l'appui : sa box
+  //  annonçait « 25000 channels » alors que ce n'était pas le compte de son
+  //  abonnement.
+  //
+  //  Il avait raison, et ce n'était pas un problème d'affichage. On lisait
+  //  `playlist.channelCount`, une valeur gravée UNE FOIS à l'import. Or
+  //  l'import s'arrête au plafond mémoire de l'appareil — 25 000 pile sur
+  //  une box de 2 Go (DeviceMemory.channelCap). Le chiffre affiché n'était
+  //  donc pas la taille de l'abonnement mais LA LIMITE DE LA BOX, et il ne
+  //  bougeait plus jamais, même après un ré-import qui en chargeait plus.
+  //
+  //  Deux corrections, et la seconde compte autant que la première :
+  //
+  //   1. ON COMPTE. `countChannelsOf` fait un COUNT sur colonne indexée —
+  //      quelques millisecondes. Le chiffre suit désormais la réalité de la
+  //      base, ré-import compris.
+  //
+  //   2. ON SIGNALE LA TRONCATURE. Quand le compte atteint exactement le
+  //      plafond de l'appareil, c'est que la liste a été COUPÉE : il y a
+  //      « au moins » ce nombre-là, pas « exactement ». On écrit donc un
+  //      « + ». Sans lui, on remplacerait un chiffre faux par un autre
+  //      chiffre faux, simplement mieux calculé.
+  //
+  //  Le « + » n'a besoin d'aucune traduction — il se lit pareil dans les
+  //  huit langues de l'app.
+  Widget _countLine(BuildContext context) {
+    final Color couleur = playlist.isActive ? TvTokens.gold : TvTokens.muted;
+    final TextStyle style =
+        TextStyle(fontSize: TvDimens.label, color: couleur);
+    final String suffixeActif =
+        playlist.isActive ? '  ·  ${context.l10n.tvSourceActiveSuffix}' : '';
+
+    String rendu(int n) {
+      // `>=` et non `==` : un plafond qui changerait (mise à jour de l'app,
+      // box remplacée) laisserait sinon passer le cas tronqué en silence.
+      final bool tronque = n > 0 && n >= DeviceMemory.channelCap;
+      return '${context.l10n.channelCount(n)}${tronque ? ' +' : ''}$suffixeActif';
+    }
+
+    final int? id = playlist.id;
+    // Playlist pas encore enregistrée : rien à compter, on montre ce qu'on a.
+    if (id == null) return Text(rendu(playlist.channelCount), style: style);
+
+    return FutureBuilder<int>(
+      // Le compte est relancé à chaque reconstruction de la rangée. C'est
+      // volontaire et sans coût mesurable : cet écran affiche une poignée
+      // de sources, et un COUNT indexé se paie en millisecondes. En
+      // échange, le chiffre est JUSTE juste après un ré-import, sans qu'on
+      // ait à inventer un mécanisme d'invalidation.
+      future: PlaylistRepository.instance.countChannelsOf(id),
+      // Tant que la base répond, on affiche l'ancien chiffre plutôt qu'un
+      // vide qui ferait clignoter la ligne.
+      initialData: playlist.channelCount,
+      builder: (BuildContext _, AsyncSnapshot<int> snap) =>
+          Text(rendu(snap.data ?? playlist.channelCount), style: style),
+    );
+  }
 
   /// Ligne « icône + valeur » monospace, discrète, lisible à l'écran TV.
   /// Sélectionnable pour pouvoir copier le lien depuis un clavier/souris.
@@ -222,14 +283,7 @@ class _SourceRow extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: TvTokens.text)),
                 const SizedBox(height: 2),
-                Text(
-                    '${context.l10n.channelCount(playlist.channelCount)}'
-                    '${playlist.isActive ? '  ·  ${context.l10n.tvSourceActiveSuffix}' : ''}',
-                    style: TextStyle(
-                        fontSize: TvDimens.label,
-                        color: playlist.isActive
-                            ? TvTokens.gold
-                            : TvTokens.muted)),
+                _countLine(context),
                 // Lien + identifiant EXACTS de la source — indispensables
                 // pour diagnostiquer à distance le problème d'un client
                 // (« quel serveur / quel username tu vois ? »). Le mot de

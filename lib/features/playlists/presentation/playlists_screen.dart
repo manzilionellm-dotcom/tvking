@@ -16,6 +16,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/app/device_memory.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -165,6 +166,38 @@ class _PlaylistTile extends StatelessWidget {
     );
   }
 
+  /// LE NOMBRE DE CHAÎNES — le VRAI, compté en base à chaque affichage.
+  ///
+  //  MÊME CORRECTIF QUE LA BOX (09/09/2026), et pour la même raison : on
+  //  lisait `playlist.channelCount`, gravé UNE FOIS à l'import. Comme
+  //  l'import s'arrête au plafond mémoire de l'appareil, ce chiffre était
+  //  souvent la LIMITE DU TÉLÉPHONE, pas la taille de l'abonnement — et il
+  //  ne bougeait plus jamais, même après un ré-import.
+  //
+  //  On compte donc (COUNT indexé, quelques millisecondes), et on ajoute
+  //  un « + » quand le total touche le plafond : la liste a été coupée, il
+  //  y a « au moins » ce nombre-là. Sans ce signe, on remplacerait un
+  //  chiffre faux par un autre chiffre faux, simplement mieux calculé.
+  Widget _countLine(BuildContext context) {
+    final TextStyle style = AppTextStyles.bodyMedium.copyWith(fontSize: 11);
+
+    String rendu(int n) {
+      final bool tronque = n > 0 && n >= DeviceMemory.channelCap;
+      return '${context.l10n.channelCount(n)}${tronque ? ' +' : ''}'
+          ' · ${_lastSyncLabel(context)}';
+    }
+
+    final int? id = playlist.id;
+    if (id == null) return Text(rendu(playlist.channelCount), style: style);
+
+    return FutureBuilder<int>(
+      future: PlaylistRepository.instance.countChannelsOf(id),
+      initialData: playlist.channelCount,
+      builder: (BuildContext _, AsyncSnapshot<int> snap) =>
+          Text(rendu(snap.data ?? playlist.channelCount), style: style),
+    );
+  }
+
   String _lastSyncLabel(BuildContext context) {
     final int? ts = playlist.lastSyncedAt;
     if (ts == null) return context.l10n.playlistNeverSynced;
@@ -250,12 +283,7 @@ class _PlaylistTile extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  '${context.l10n.channelCount(playlist.channelCount)} · ${_lastSyncLabel(context)}',
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    fontSize: 11,
-                  ),
-                ),
+                _countLine(context),
                 // Lien + identifiant EXACTS (diagnostic à distance).
                 if (_diagLink.isNotEmpty)
                   _diagRow(Icons.link_rounded, _diagLink),

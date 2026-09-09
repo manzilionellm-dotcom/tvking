@@ -301,6 +301,31 @@ class PlaylistRepository {
     return (rows.first['n'] as int?) ?? 0;
   }
 
+  /// Nombre RÉEL de chaînes d'une playlist, compté EN BASE.
+  ///
+  //  POURQUOI CETTE MÉTHODE EXISTE (09/09/2026). Le propriétaire, capture à
+  //  l'appui : « l'app TV montre 25000 alors que ce n'est pas ça ». Il avait
+  //  raison, et la cause n'était pas un mauvais affichage.
+  //
+  //  L'écran des sources lisait `playlist.channel_count`, une valeur ÉCRITE
+  //  UNE FOIS au moment de l'import. Or l'import s'arrête au plafond mémoire
+  //  de l'appareil (DeviceMemory.channelCap : 25 000 sur une box de 2 Go).
+  //  Le chiffre affiché n'était donc pas la taille de l'abonnement, mais la
+  //  limite de la box — et il ne bougeait plus jamais, même après un
+  //  rafraîchissement qui en chargeait davantage.
+  //
+  //  Ici on COMPTE, à chaque affichage. C'est un COUNT sur une colonne
+  //  indexée : quelques millisecondes, même sur 200 000 lignes. On préfère
+  //  cette dépense minuscule à un chiffre qui ment.
+  Future<int> countChannelsOf(int playlistId) async {
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> rows = await db.rawQuery(
+      'SELECT COUNT(*) AS n FROM channels WHERE playlist_id = ?',
+      <Object>[playlistId],
+    );
+    return (rows.first['n'] as int?) ?? 0;
+  }
+
   /// UNE PAGE de chaînes LIVE, en pagination KEYSET sur `local_id` (O(1) par
   /// page grâce à l'index PK, ordre natif préservé). [category] = null →
   /// toutes catégories. [afterLocalId] = dernier local_id reçu (0 = début).
