@@ -2299,5 +2299,10 @@
   "tvTimeshiftBackToLive": "Tilbake til direkte",
   "tvTimeshiftPaused": "Direkte satt på pause · OK for å fortsette herfra",
   "tvTimeshiftUnavailable": "Pause er ikke tilgjengelig på denne strømmen (direkte avspilling)",
-  "tvTimeshiftDelay": "{delay} bak direkte"
+  "tvTimeshiftDelay": "{delay} bak direkte",
+  "tvSettingsCatAccount": "MIN KONTO",
+  "tvSettingsCatChannels": "MINE KANALER",
+  "tvSettingsCatDisplay": "VISNING",
+  "tvSettingsCatProtection": "BESKYTTELSE",
+  "tvSettingsCatSystem": "SYSTEM"
 }

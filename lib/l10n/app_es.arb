@@ -2299,5 +2299,10 @@
   "tvTimeshiftBackToLive": "Volver al directo",
   "tvTimeshiftPaused": "Directo en pausa · OK para reanudar desde aquí",
   "tvTimeshiftUnavailable": "Pausa no disponible en este flujo (reproducción directa)",
-  "tvTimeshiftDelay": "{delay} por detrás del directo"
+  "tvTimeshiftDelay": "{delay} por detrás del directo",
+  "tvSettingsCatAccount": "MI CUENTA",
+  "tvSettingsCatChannels": "MIS CANALES",
+  "tvSettingsCatDisplay": "PANTALLA",
+  "tvSettingsCatProtection": "PROTECCIÓN",
+  "tvSettingsCatSystem": "SISTEMA"
 }

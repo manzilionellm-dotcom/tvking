@@ -2299,5 +2299,10 @@
   "tvTimeshiftBackToLive": "Rudi moja kwa moja",
   "tvTimeshiftPaused": "Moja kwa moja imesimamishwa · OK kuendelea kutoka hapa",
   "tvTimeshiftUnavailable": "Kusimamisha hakupatikani kwenye mtiririko huu (uchezaji wa moja kwa moja)",
-  "tvTimeshiftDelay": "{delay} nyuma ya moja kwa moja"
+  "tvTimeshiftDelay": "{delay} nyuma ya moja kwa moja",
+  "tvSettingsCatAccount": "AKAUNTI YANGU",
+  "tvSettingsCatChannels": "CHANELI ZANGU",
+  "tvSettingsCatDisplay": "MWONEKANO",
+  "tvSettingsCatProtection": "ULINZI",
+  "tvSettingsCatSystem": "MFUMO"
 }

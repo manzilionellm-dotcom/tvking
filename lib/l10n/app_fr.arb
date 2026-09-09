@@ -5138,7 +5138,13 @@
   "familyJoinButton": "Rattacher cet appareil",
   "familyJoinDone": "Appareil rattaché à la famille.",
   "familyJoinFailed": "Code refusé ou expiré. Générez-en un nouveau sur la TV.",
-  "@tvFamilyBusyBanner": {"placeholders": {"name": {"type": "String"}}},
+  "@tvFamilyBusyBanner": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "tvFamilyUnnamedMember": "Un proche",
   "tvRecChoiceTitle": "Cette émission",
   "tvRecChoiceReminder": "Me rappeler 5 min avant",
@@ -5169,8 +5175,40 @@
   "tvTimeshiftPaused": "Direct en pause · OK pour reprendre en différé",
   "tvTimeshiftUnavailable": "Pause impossible sur ce flux (lecture directe)",
   "tvTimeshiftDelay": "Différé de {delay}",
-  "@tvRecStorageUsed": {"placeholders": {"used": {"type": "String"}, "free": {"type": "String"}}},
-  "@tvRecStorageLimitGb": {"placeholders": {"gb": {"type": "int"}}},
-  "@tvRecScheduledStartedToast": {"placeholders": {"name": {"type": "String"}}},
-  "@tvTimeshiftDelay": {"placeholders": {"delay": {"type": "String"}}}
+  "@tvRecStorageUsed": {
+    "placeholders": {
+      "used": {
+        "type": "String"
+      },
+      "free": {
+        "type": "String"
+      }
+    }
+  },
+  "@tvRecStorageLimitGb": {
+    "placeholders": {
+      "gb": {
+        "type": "int"
+      }
+    }
+  },
+  "@tvRecScheduledStartedToast": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@tvTimeshiftDelay": {
+    "placeholders": {
+      "delay": {
+        "type": "String"
+      }
+    }
+  },
+  "tvSettingsCatAccount": "MON COMPTE",
+  "tvSettingsCatChannels": "MES CHAÎNES",
+  "tvSettingsCatDisplay": "AFFICHAGE",
+  "tvSettingsCatProtection": "PROTECTION",
+  "tvSettingsCatSystem": "SYSTÈME"
 }

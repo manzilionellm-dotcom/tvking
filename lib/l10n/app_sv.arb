@@ -2299,5 +2299,10 @@
   "tvTimeshiftBackToLive": "Tillbaka till live",
   "tvTimeshiftPaused": "Live pausad · OK för att fortsätta härifrån",
   "tvTimeshiftUnavailable": "Paus inte tillgänglig på denna ström (direktuppspelning)",
-  "tvTimeshiftDelay": "{delay} efter live"
+  "tvTimeshiftDelay": "{delay} efter live",
+  "tvSettingsCatAccount": "MITT KONTO",
+  "tvSettingsCatChannels": "MINA KANALER",
+  "tvSettingsCatDisplay": "VISNING",
+  "tvSettingsCatProtection": "SKYDD",
+  "tvSettingsCatSystem": "SYSTEM"
 }

@@ -2299,5 +2299,10 @@
   "tvTimeshiftBackToLive": "العودة إلى البث المباشر",
   "tvTimeshiftPaused": "البث المباشر متوقف · اضغط OK للمتابعة من هنا",
   "tvTimeshiftUnavailable": "الإيقاف المؤقت غير متاح على هذا البث (تشغيل مباشر)",
-  "tvTimeshiftDelay": "متأخر {delay} عن البث المباشر"
+  "tvTimeshiftDelay": "متأخر {delay} عن البث المباشر",
+  "tvSettingsCatAccount": "حسابي",
+  "tvSettingsCatChannels": "قنواتي",
+  "tvSettingsCatDisplay": "العرض",
+  "tvSettingsCatProtection": "الحماية",
+  "tvSettingsCatSystem": "النظام"
 }

@@ -2316,5 +2316,10 @@
   "tvTimeshiftBackToLive": "Back to live",
   "tvTimeshiftPaused": "Live paused · OK to resume from here",
   "tvTimeshiftUnavailable": "Pause not available on this stream (direct playback)",
-  "tvTimeshiftDelay": "{delay} behind live"
+  "tvTimeshiftDelay": "{delay} behind live",
+  "tvSettingsCatAccount": "MY ACCOUNT",
+  "tvSettingsCatChannels": "MY CHANNELS",
+  "tvSettingsCatDisplay": "DISPLAY",
+  "tvSettingsCatProtection": "PROTECTION",
+  "tvSettingsCatSystem": "SYSTEM"
 }
