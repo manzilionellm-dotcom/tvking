@@ -182,6 +182,63 @@ class _SourceRow extends StatelessWidget {
     );
   }
 
+  /// BASCULER SUR CETTE SOURCE (« Activer »).
+  ///
+  /// SIGNALÉ PAR LE PROPRIÉTAIRE (09/09/2026), capture à l'appui : sur la
+  /// box, ce bouton semblait ne rien faire quand on venait d'ajouter une
+  /// liste.
+  ///
+  /// IL AVAIT RAISON, ET LE BOUTON N'ÉTAIT PAS « MANQUANT » : il était
+  /// dessiné, mais câblé en TIRE-ET-OUBLIE — `onSelect` lançait
+  /// `setActivePlaylist(...)` sans jamais attendre le résultat. Deux
+  /// conséquences, invisibles au développeur, évidentes chez le client :
+  ///
+  ///  1. AUCUN RETOUR PENDANT LE TRAVAIL. Basculer de source recharge en
+  ///     mémoire TOUTES les chaînes de la nouvelle liste (8 658 sur la box
+  ///     du propriétaire). Sur un boîtier, ça dure plusieurs secondes
+  ///     pendant lesquelles l'écran ne bougeait pas d'un pixel. À la
+  ///     télécommande, on appuie une fois, rien ; on ré-appuie, toujours
+  ///     rien — on conclut que le bouton est mort.
+  ///  2. LES ÉCHECS ÉTAIENT AVALÉS. Sans `await`, une erreur de base
+  ///     partait dans le vide : pas de message, pas de trace. Le bouton
+  ///     « ne faisait rien », vraiment et définitivement, sans rien dire.
+  ///
+  /// On applique donc EXACTEMENT le traitement de « Actualiser » juste en
+  /// dessous — voile de progression, attente, erreur affichée. Les deux
+  /// boutons de la même rangée se comportent enfin pareil.
+  ///
+  /// Le succès n'affiche rien : la coche « active » qui saute sur cette
+  /// rangée est la preuve, et elle arrive toute seule par le stream.
+  Future<void> _activate(BuildContext context) async {
+    if (playlist.id == null) return;
+    final NavigatorState nav = Navigator.of(context, rootNavigator: true);
+    // ignore: discarded_futures
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 46,
+          height: 46,
+          child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.gold),
+        ),
+      ),
+    );
+    String? error;
+    try {
+      await PlaylistRepository.instance.setActivePlaylist(playlist.id!);
+    } catch (e) {
+      error = e.toString();
+    }
+    if (!context.mounted) return;
+    nav.pop(); // ferme le voile de progression
+    if (error != null) {
+      await showTvInfo(context,
+          title: context.l10n.tvSourcesTitle,
+          message: context.l10n.errorWithMessage(error));
+    }
+  }
+
   /// RE-IMPORT du contenu de la source (photo client : il n'existait AUCUN
   /// bouton TV qui re-télécharge vraiment le contenu — les « rafraîchir »
   /// existants ne relisaient que la base locale). Ici : le MÊME
@@ -303,8 +360,7 @@ class _SourceRow extends StatelessWidget {
             _Pill(
                 icon: Icons.play_arrow_rounded,
                 label: context.l10n.tvSourceActivate,
-                onSelect: () =>
-                    PlaylistRepository.instance.setActivePlaylist(playlist.id!)),
+                onSelect: () => _activate(context)),
             const SizedBox(width: 10),
           ],
           if (playlist.id != null) ...<Widget>[
