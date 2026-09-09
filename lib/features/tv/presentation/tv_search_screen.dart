@@ -58,12 +58,70 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   // donc on ne matérialise jamais des centaines de chaînes en RAM.
   static const int _maxResults = 60;
 
+  // =========================================================
+  //  COMPLÈTEMENT DE SAISIE — « je veux un clavier haut de gamme »
+  // =========================================================
+  //  Ce qui sépare un clavier de télé ordinaire d'un bon n'est ni son
+  //  animation ni ses couleurs : c'est LE NOMBRE D'APPUIS SUR LA
+  //  TÉLÉCOMMANDE. Sur ce parc, une chaîne s'appelle « SE - C More Stars
+  //  [multi-sub] ». À la télécommande, chaque lettre coûte 3 à 5 appuis
+  //  de direction plus un OK. Taper ce nom en entier, c'est une minute.
+  //
+  //  On propose donc les noms complets dès la 2e lettre : trois lettres,
+  //  un « haut », un OK, et la requête est écrite. C'est ce que font
+  //  YouTube et les grandes apps, et c'est la seule chose qui change
+  //  vraiment la vie de quelqu'un qui cherche avec une télécommande.
+  //
+  //  GRATUIT EN CALCUL : les noms sortent des résultats DÉJÀ trouvés pour
+  //  la requête en cours. Aucune requête de plus, aucun index à tenir.
+  //
+  //  POURQUOI UN ValueNotifier ET PAS UN PARAMÈTRE. Le clavier est
+  //  construit UNE SEULE FOIS (voir juste dessous) : lui passer les
+  //  suggestions en paramètre ne les mettrait jamais à jour. Le
+  //  reconstruire, lui, ferait perdre le focus à chaque frappe — le bug
+  //  « impossible d'écrire d'autres lettres » qu'on a déjà corrigé. Le
+  //  notifier traverse donc sans rien reconstruire d'autre que la rangée
+  //  de suggestions elle-même.
+  final ValueNotifier<List<String>> _suggestions =
+      ValueNotifier<List<String>>(const <String>[]);
+
   // Le clavier est construit UNE SEULE FOIS. En réutilisant la MÊME instance
   // dans build(), Flutter NE reconstruit PAS son sous-arbre à chaque frappe →
   // la touche focus n'est jamais perdue (corrige « impossible d'écrire d'autres
   // lettres »). Les callbacks sont des méthodes stables de ce State.
-  late final Widget _keyboard =
-      _Keyboard(onType: _type, onBackspace: _backspace, onClear: _clear);
+  late final Widget _keyboard = _Keyboard(
+    onType: _type,
+    onBackspace: _backspace,
+    onClear: _clear,
+    suggestions: _suggestions,
+    onSuggest: _searchFrom,
+  );
+
+  /// Construit les propositions à partir des résultats déjà en main.
+  ///
+  /// Trois règles, chacune pour une raison vécue :
+  ///  - on ne propose rien sous 2 lettres : avec une seule, tout
+  ///    correspond et la rangée n'aide pas, elle occupe ;
+  ///  - on écarte le nom déjà tapé en entier — se proposer à soi-même
+  ///    n'apporte rien et coûte une place ;
+  ///  - 5 au maximum : au-delà, choisir devient plus long que taper.
+  void _refreshSuggestions(List<Channel> from) {
+    if (_q.trim().length < 2) {
+      _suggestions.value = const <String>[];
+      return;
+    }
+    final String deja = _q.trim().toLowerCase();
+    final List<String> out = <String>[];
+    final Set<String> vus = <String>{};
+    for (final Channel c in from) {
+      final String nom = c.cleanName.trim();
+      if (nom.isEmpty || nom.toLowerCase() == deja) continue;
+      if (!vus.add(nom.toLowerCase())) continue;
+      out.add(nom);
+      if (out.length == 5) break;
+    }
+    _suggestions.value = out;
+  }
 
   @override
   void initState() {
@@ -78,6 +136,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _suggestions.dispose();
     super.dispose();
   }
 
@@ -109,6 +168,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       _films = const <VodMovie>[];
       _series = const <VodSeries>[];
     });
+    // Les propositions portaient sur une requête qui n'existe plus. Les
+    // laisser afficherait des noms sans rapport avec un champ vide.
+    _suggestions.value = const <String>[];
   }
 
   // Debounce : on ne relance la recherche (et le rendu des logos) qu'après une
@@ -141,6 +203,10 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     // Une frappe plus récente est partie entre-temps → on jette ce résultat.
     if (!mounted || epoch != _epoch) return;
     setState(() => _results = r);
+    // Les propositions se déduisent de ces mêmes résultats : aucune requête
+    // supplémentaire, et elles ne peuvent pas se désynchroniser de ce que
+    // l'écran affiche.
+    _refreshSuggestions(r);
 
     // ----- EN DIRECT MAINTENANT (recherche par ÉMISSION) -----
     // On interroge le guide pour les programmes À L'ANTENNE dont le titre
@@ -670,11 +736,23 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 enum _KbLang { latin, nordic, arabic }
 
 class _Keyboard extends StatefulWidget {
-  const _Keyboard(
-      {required this.onType, required this.onBackspace, required this.onClear});
+  const _Keyboard({
+    required this.onType,
+    required this.onBackspace,
+    required this.onClear,
+    required this.suggestions,
+    required this.onSuggest,
+  });
   final ValueChanged<String> onType;
   final VoidCallback onBackspace;
   final VoidCallback onClear;
+
+  /// Noms complets proposés pour la requête en cours. Un notifier et non
+  /// une liste : le clavier ne doit jamais être reconstruit (cf. l'écran).
+  final ValueListenable<List<String>> suggestions;
+
+  /// L'humain a choisi une proposition : elle devient la requête entière.
+  final ValueChanged<String> onSuggest;
 
   @override
   State<_Keyboard> createState() => _KeyboardState();
@@ -791,6 +869,27 @@ class _KeyboardState extends State<_Keyboard> {
           onTap: _cycleLang,
         ),
         const SizedBox(height: 12),
+        // ----- PROPOSITIONS : trois lettres au lieu de vingt -----
+        // Placées ENTRE le bouton de langue et les touches, donc à un seul
+        // « haut » depuis la première rangée. Une proposition qu'il faut
+        // aller chercher à l'autre bout de l'écran ne sert à personne.
+        ValueListenableBuilder<List<String>>(
+          valueListenable: widget.suggestions,
+          builder: (BuildContext context, List<String> noms, _) {
+            if (noms.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final String n in noms)
+                    _SuggestChip(label: n, onTap: () => widget.onSuggest(n)),
+                ],
+              ),
+            );
+          },
+        ),
         // La taille des touches se DÉDUIT de la place disponible au lieu
         // d'être gravée en dur : le même clavier tient sur une box 720p et
         // sur une 4K, et l'ajout d'une langue à rangées plus longues ne
@@ -836,7 +935,14 @@ class _KeyboardState extends State<_Keyboard> {
                         gap: espace,
                         onTap: () => widget.onType(' ')),
                     SizedBox(width: espace),
-                    _Key(label: '⌫', size: touche, onTap: widget.onBackspace),
+                    // MAINTENIR = TOUT EFFACER. Corriger une requête de
+                    // vingt caractères coûtait vingt appuis. Le geste est
+                    // celui qu'on a déjà dans les mains sur un téléphone.
+                    _Key(
+                        label: '⌫',
+                        size: touche,
+                        onTap: widget.onBackspace,
+                        onHold: widget.onClear),
                     SizedBox(width: espace),
                     _Key(label: '✕', size: touche, onTap: widget.onClear),
                   ],
@@ -954,6 +1060,7 @@ class _Key extends StatelessWidget {
     this.widthFactor = 1,
     this.gap = 8,
     this.autofocus = false,
+    this.onHold,
   });
   final String label;
   final VoidCallback onTap;
@@ -961,6 +1068,10 @@ class _Key extends StatelessWidget {
   final int widthFactor;
   final double gap;
   final bool autofocus;
+
+  /// Action au MAINTIEN d'OK (450 ms). Sert au retour arrière : maintenir
+  /// efface tout, au lieu de vingt appuis.
+  final VoidCallback? onHold;
 
   @override
   Widget build(BuildContext context) {
@@ -971,6 +1082,7 @@ class _Key extends StatelessWidget {
         autofocus: autofocus,
         scale: TvFocusScale.small,
         onSelect: onTap,
+        onLongPress: onHold,
         // `pressedBuilder` (et non `builder`) : il donne en plus l'état
         // APPUYÉ. Sans lui, la touche ne bronchait pas au moment du clic —
         // sur une télécommande, où il n'y a ni doigt ni curseur pour
@@ -1006,6 +1118,63 @@ class _Key extends StatelessWidget {
                       fontSize: TvDimens.title,
                       fontWeight: FontWeight.w800,
                       color: focused ? TvTokens.onEmber : TvTokens.text)),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// PROPOSITION DE NOM COMPLET, au-dessus des touches.
+///
+/// Large et lisible : c'est un nom de chaîne, pas une lettre. On le
+/// tronque plutôt que de laisser une puce s'étirer sur toute la colonne —
+/// « SE - C More Stars [multi-sub] » ne doit pas pousser les touches hors
+/// de l'écran. Le début du nom suffit à décider.
+class _SuggestChip extends StatelessWidget {
+  const _SuggestChip({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 260),
+      child: TvFocusBuilder(
+        scale: TvFocusScale.small,
+        onSelect: onTap,
+        builder: (BuildContext context, bool focused) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            decoration: BoxDecoration(
+              color: focused ? TvTokens.ember : TvTokens.sel,
+              borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+              // Contour discret hors focus : la rangée doit se lire comme
+              // une proposition, pas comme une deuxième rangée de touches.
+              border: Border.all(
+                  color: focused ? TvTokens.ember : TvTokens.lineSoft),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(Icons.north_west_rounded,
+                    size: 16,
+                    color: focused ? TvTokens.onEmber : TvTokens.mutedDim),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: TvDimens.body,
+                      fontWeight: FontWeight.w700,
+                      color: focused ? TvTokens.onEmber : TvTokens.text,
+                    ),
+                  ),
+                ),
+              ],
             ),
           );
         },
