@@ -30,6 +30,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'core/app/app_platform.dart';
+import 'core/app/foreground_sync.dart';
 import 'core/app/guarded_main.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
@@ -129,6 +130,10 @@ Future<void> _bootstrap() async {
   Timer.periodic(const Duration(minutes: 1), (_) {
     RemoteSourceRepository.sync();
   });
+
+  // Et au retour au premier plan : sur PC on réduit la fenêtre pendant des
+  // heures, exactement comme une box s'endort. Même garde-fou anti-rafale.
+  ForegroundSync.instance.start();
 
   // TEMPS RÉEL (WebSocket) : les actions du panel arrivent en < 1 s quand
   // le poste est en ligne — les polls ci-dessus restent le filet de

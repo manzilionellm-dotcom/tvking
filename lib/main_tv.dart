@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/app/app_platform.dart';
+import 'core/app/foreground_sync.dart';
 import 'core/app/boot_guard.dart';
 import 'core/backend/backend_hosts.dart';
 import 'core/app/device_memory.dart';
@@ -199,6 +200,13 @@ Future<void> _bootstrap() async {
   Timer.periodic(const Duration(minutes: 1), (_) {
     if (!BootGuard.instance.safeMode) RemoteSourceRepository.sync();
   });
+
+  //     ET AU RÉVEIL. Le minuteur ci-dessus suppose que l'app tourne ; une
+  //     box, elle, passe la nuit en VEILLE et Android suspend alors ses
+  //     minuteurs. Sans ceci, le client rallume sa télé et regarde, le
+  //     temps que le minuteur reprenne, une liste supprimée la veille.
+  //     Le réveil est justement l'instant où quelqu'un regarde l'écran.
+  if (!BootGuard.instance.safeMode) ForegroundSync.instance.start();
 
   // 2b-bis) CONTENU du panel (bug terrain « la Belgique est toujours là ») :
   //     le sync ci-dessus n'AJOUTE que les sources manquantes — il ne voit

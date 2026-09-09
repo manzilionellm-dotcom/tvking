@@ -37,6 +37,7 @@ import 'core/branding/verified_badge.dart';
 import 'core/theme/app_text_styles.dart' show AppTextStyles;
 import 'core/i18n/locale_repository.dart';
 import 'core/i18n/locale_resolver.dart';
+import 'core/app/foreground_sync.dart';
 import 'core/i18n/l10n_extension.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
@@ -725,6 +726,13 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     // publier une nouvelle version pendant que l'app était en arrière-plan).
     if (state == AppLifecycleState.resumed) {
       _maybeCheckUpdate();
+      // LES SOURCES AUSSI. Cet observateur existait déjà, mais il ne
+      // regardait que les mises à jour de l'app : un ordre du panel
+      // (« retirer cette liste ») déposé pendant que le téléphone était
+      // rangé dans une poche attendait le prochain tour du minuteur.
+      // Même service que la box et le PC (core/app/foreground_sync.dart),
+      // garde-fou anti-rafale compris.
+      ForegroundSync.instance.syncNow();
       // Thème immersif : si le jour a changé pendant l'arrière-plan, bascule
       // sur la couleur du jour (sans effet en mode fixe). O(1).
       AccentController.instance.refreshDailyIfNeeded();
