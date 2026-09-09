@@ -94,4 +94,59 @@ const ok = (m) => { n++; console.log('  ✓', m); };
   ok('serveur et identifiant sont nettoyés (comparaison exacte côté app)');
 }
 
+// =====================================================================
+//  REMPLACEMENT D'UNE LIGNE — « j'active une autre M3U, l'ancienne reste
+//  et elle fonctionne encore »
+// =====================================================================
+//  Quand le panel remplace les sources, `upsertDeviceSource` compare
+//  l'ancien envoi au nouveau et fait oublier ce qui disparaît. La
+//  comparaison se fait sur une CLÉ construite depuis `sourceAsOrderTarget`.
+//
+//  Cette clé est l'endroit dangereux du correctif : trop laxiste, on
+//  efface la ligne NEUVE du client ; trop stricte, l'ancienne survit et
+//  le problème reste entier. D'où ces assertions.
+const cle = (s) => {
+  const t = sourceAsOrderTarget(s);
+  return t ? `${t.server}|${t.username}|${t.m3u_url}` : null;
+};
+
+// 8) Deux lignes DIFFÉRENTES ne se confondent pas → l'ancienne part.
+{
+  const ancienne = { type: 'xtream', server: 'http://a.test:80', username: 'u1' };
+  const nouvelle = { type: 'xtream', server: 'http://b.test:80', username: 'u2' };
+  assert.notEqual(cle(ancienne), cle(nouvelle));
+  ok('serveurs différents → l\'ancienne ligne est bien oubliée');
+}
+
+// 9) MÊME serveur, IDENTIFIANT différent : c'est un autre abonnement, même
+//    fournisseur. Cas très courant (le revendeur repasse le client sur une
+//    autre ligne du même serveur). Sans l'identifiant dans la clé, on
+//    croirait que rien n'a changé et l'ancienne resterait jouable.
+{
+  const a = { type: 'xtream', server: 'http://a.test:80', username: 'client1' };
+  const b = { type: 'xtream', server: 'http://a.test:80', username: 'client2' };
+  assert.notEqual(cle(a), cle(b));
+  ok('même serveur, identifiant différent → considérés distincts');
+}
+
+// 10) LA MÊME ligne repoussée ne s'auto-détruit PAS. Le mot de passe a beau
+//     changer (renouvellement), c'est le même abonnement : le supprimer
+//     couperait un client à jour de ses paiements.
+{
+  const avant = { type: 'xtream', server: 'http://a.test:80', username: 'u', password: 'vieux' };
+  const apres = { type: 'xtream', server: 'http://a.test:80', username: 'u', password: 'neuf' };
+  assert.equal(cle(avant), cle(apres));
+  ok('même ligne, mot de passe renouvelé → JAMAIS supprimée');
+}
+
+// 11) M3U : c'est l'URL qui identifie. Deux fichiers différents → l'ancien
+//     s'en va.
+{
+  const a = { type: 'm3u', m3u_url: 'http://x.test/a.m3u' };
+  const b = { type: 'm3u', m3u_url: 'http://x.test/b.m3u' };
+  assert.notEqual(cle(a), cle(b));
+  assert.equal(cle(a), cle({ type: 'm3u', url: 'http://x.test/a.m3u' }));
+  ok('M3U : URL différente → oubliée ; même URL (champ ancien) → gardée');
+}
+
 console.log(`\n${n} assertions OK — la suppression panel atteint l'appareil.`);

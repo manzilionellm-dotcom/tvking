@@ -3703,6 +3703,7 @@ async function upsertDeviceSource(env, mac, sources) {
   // (ré)assignation panel NE DOIT PAS effacer les listes personnelles du client
   // (modèle multi-listes). On relit l'existant et on ré-empile les 'self' après.
   let selfItems = [];
+  let prevPanel = [];
   try {
     const prev = await env.DB
       .prepare('SELECT sources_json FROM device_sources WHERE mac = ?')
@@ -3711,6 +3712,9 @@ async function upsertDeviceSource(env, mac, sources) {
       let arr = [];
       try { arr = JSON.parse(prev.sources_json) || []; } catch (_) { arr = []; }
       selfItems = arr.filter((s) => s && s.origin === 'self');
+      // On retient AUSSI les anciennes sources panel : ce sont elles qu'il
+      // faudra faire oublier à l'appareil (voir plus bas).
+      prevPanel = arr.filter((s) => s && s.origin !== 'self');
     }
   } catch (_) { /* pas de précédent → rien à préserver */ }
 
@@ -3733,6 +3737,52 @@ async function upsertDeviceSource(env, mac, sources) {
     .bind(mac, first.type, first.label, first.server_url, first.username,
           first.password, first.m3u_url, first.epg_url, json, Date.now())
     .run();
+
+  // =========================================================
+  //  FAIRE OUBLIER L'ANCIENNE LIGNE À L'APPAREIL
+  // =========================================================
+  //  Signalé par le propriétaire (09/09/2026) : « quand je change de M3U
+  //  et que j'en active une autre, le panel dit que ça a changé partout,
+  //  mais les chaînes de l'ancienne restent — et elles fonctionnent
+  //  toujours ».
+  //
+  //  IL A RAISON, ET C'EST LA MÊME RACINE QUE LA SUPPRESSION corrigée le
+  //  matin même. Ci-dessus, on REMPLACE les sources panel dans la base :
+  //  l'ancienne disparaît du serveur. Mais l'appareil, lui, ne reçoit que
+  //  la NOUVELLE liste, et sa synchro n'AJOUTE que ce qui manque — elle
+  //  ne devine pas qu'une liste absente de l'envoi doit être détruite (et
+  //  elle a raison : elle effacerait les listes personnelles du client).
+  //
+  //  CE QUE ÇA COÛTAIT VRAIMENT, et ce n'est pas cosmétique :
+  //   - l'ancienne liste restait dans « Mes sources » AVEC SON BOUTON
+  //     « Activer ». Un client dont on remplace la ligne pouvait revenir
+  //     sur l'ancienne en un clic ;
+  //   - ses chaînes restaient jouables (favoris, « derniers vus »), donc
+  //     un abonnement qu'on croyait coupé continuait d'être regardé.
+  //
+  //  On dépose donc un ordre `source_remove` pour chaque source panel qui
+  //  DISPARAÎT du nouvel envoi. Les sources `self` — celles que le client
+  //  a ajoutées lui-même — ne sont JAMAIS visées : elles sont préservées
+  //  juste au-dessus, ce serait absurde de les détruire ici.
+  //
+  //  Best-effort, comme pour la suppression : si le dépôt d'ordre échoue,
+  //  le remplacement reste acquis. Le prochain remplacement redéposera.
+  try {
+    const cle = (s) => {
+      const t = sourceAsOrderTarget(s);
+      return t ? `${t.server}|${t.username}|${t.m3u_url}` : null;
+    };
+    const gardees = new Set(
+      panelItems.map(cle).filter((k) => k !== null),
+    );
+    for (const ancienne of prevPanel) {
+      const k = cle(ancienne);
+      // Toujours présente dans le nouvel envoi → rien à oublier.
+      if (k === null || gardees.has(k)) continue;
+      const cible = sourceAsOrderTarget(ancienne);
+      if (cible) await enqueueDeviceOrder(env, mac, 'source_remove', cible);
+    }
+  } catch (_) { /* voir « best-effort » ci-dessus */ }
 }
 
 // Décode une MAC reçue dans le PATH : le front encode les « : » en
