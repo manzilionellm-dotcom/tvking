@@ -147,6 +147,59 @@ DeFew TV (`com.manzilionellm.tvking.defewtv`) et Privé
 
 ---
 
+## Session (2026-09-10) — « Vert » ne voulait pas dire « livré »
+
+### Le constat, dit par le propriétaire
+> « Je fais la mise à jour, l'application ne vient pas. Le bouton me dit
+> que c'est la dernière version. »
+
+Il avait raison, et ce n'était ni la signature ni un bug de l'app : **rien
+n'avait été publié**. Le build TV ne partait que sur commande manuelle. Un
+correctif pouvait être compilé, testé, vert — et n'atteindre aucune box,
+sans qu'aucune alerte ne le signale. Le bouton répondait très honnêtement
+« vous êtes à jour », parce que c'était exact.
+
+### Ce qui a été fait
+1. **Publication automatique.** Tout changement de `lib/`, `pubspec.yaml`,
+   `assets/`, `packages/` ou `ci/` publie. La condition « faut-il
+   publier ? » vit dans UNE variable (`env.PUBLIER`) lue par les trois
+   étapes concernées, au lieu de trois copies qui finiraient par diverger.
+2. **La box PROPOSE la mise à jour.** Tout existait sauf le déclencheur :
+   le téléphone appelait `UpdateService` tout seul, la box attendait qu'on
+   aille la chercher dans Réglages. `tv_update_watch.dart`, branché UNE
+   fois au-dessus des QUATRE modèles d'accueil — au démarrage ET au
+   réveil, jamais pendant la lecture, une seule fois par version.
+3. **La règle est ÉCRITE** dans `AGENTS.md` (« Publier : la deuxième règle
+   de la maison »). Ce qui manquait n'était pas du code — les quatre apps
+   Flutter suivaient déjà le même code — mais une règle lisible. Elle
+   vivait dans six workflows que personne ne lit en entier.
+
+### Deux choses vérifiées, pas supposées
+- **L'ordre de téléversement était déjà sûr** : les APK d'abord,
+  `version.json` EN DERNIER. Une coupure en plein envoi donne au pire un
+  APK neuf que l'app ignore encore — jamais une version annoncée dont le
+  fichier manque.
+- **Le garde-fou n'est pas l'interrupteur manuel.** Un build qui ne
+  compile pas ne produit aucun paquet, donc ne publie rien. Vérifié en
+  vrai le 09/09 : compilation cassée, quatre builds tombés, aucun client
+  servi.
+
+### Erreurs de ma part, notées pour ne pas les refaire
+- J'ai poussé deux commits sans attendre le résultat du premier, et cassé
+  la compilation (`ValueListenable` n'est pas réexporté par
+  `material.dart`, contrairement à `ValueNotifier`).
+- J'ai dit « c'est vert » sans préciser que **vert ≠ livré**. Le
+  propriétaire a attendu trente minutes une publication qui n'existait pas.
+  Désormais : toujours distinguer ce qui est COMPILÉ de ce qui est EN
+  LIGNE sur le canal, avec le numéro que la box verra.
+
+### Résultat mesuré
+Canal `seventv-latest` : **19883** (commande manuelle) puis **19884**
+publié AUTOMATIQUEMENT par un push. Le mécanisme s'est prouvé au premier
+essai.
+
+---
+
 ## Session (2026-09-09) — Panel : une MAC mal tapée n'active plus dans le vide
 
 Branche : `claude/7motion-android-tv-compat-e0rtyp`.
