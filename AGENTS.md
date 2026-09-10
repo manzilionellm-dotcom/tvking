@@ -91,6 +91,62 @@ Les apps installées **avant le 07/09/2026** ne connaissent pas le numéro
 maison. Elles ne disparaissent pas du panel pour autant : le verdict
 retombe alors sur le `versionCode`, et le panel dit sur quoi il s'appuie.
 
+## Publier : la deuxième règle de la maison
+
+Décision du propriétaire (10/09/2026), après avoir attendu trente
+minutes une mise à jour qui n'était jamais partie :
+
+> « Toujours, si on corrige quelque chose, ça se publie. »
+
+**« Vert » ne veut pas dire « livré ».** Un correctif peut compiler,
+passer les tests, et ne jamais atteindre une seule box. C'est arrivé :
+le build TV ne partait que sur commande manuelle, et personne ne le
+savait — aucune erreur, aucune alerte, juste un client qui appuie sur
+« Vérifier les mises à jour » et à qui l'app répond, très honnêtement,
+qu'il est déjà à jour.
+
+### La famille, et qui suit quoi
+
+Quatre apps sortent du MÊME code Flutter. Elles doivent donc se
+reconstruire et se publier ensemble, comme des frères :
+
+| App | Suit | Publie sur |
+|---|---|---|
+| Téléphone | `lib/**` | `phone-latest` |
+| Box TV | `lib/**` | `seventv-latest` |
+| Windows | `lib/**` | `windows-latest` |
+| Samsung | `lib/**` | `tizen-latest` |
+| **LG** | `tv-tizen-webos/**` | `webos-latest` |
+
+**LG est à part, et c'est voulu** : ce n'est pas du Flutter mais une app
+HTML/JS autonome. Elle ne doit pas se reconstruire quand `lib/` change —
+ça ne la concerne pas. C'est la seule exception, et elle a une raison.
+
+### Ce que ça t'impose si tu ajoutes une plateforme
+
+1. Son workflow se déclenche sur `paths: lib/**` (plus `pubspec.yaml`,
+   `assets/**`, `packages/**`, `ci/**`) — pas seulement sur son propre
+   fichier, sinon son canal se fige pour toujours.
+2. Il publie **sans qu'on le lui demande**. La condition « faut-il
+   publier ? » vit dans UNE variable (`env.PUBLIER`), lue par toutes les
+   étapes concernées. Ne la recopie pas : le jour où une copie dit oui
+   pendant que l'autre dit non, on publie un APK sans le manifeste qui
+   l'annonce — donc un bouton de mise à jour qui pointe vers le vide.
+3. Son app **propose** la mise à jour au client, elle n'attend pas qu'il
+   la cherche. Voir `lib/features/tv/core/tv_update_watch.dart` : au
+   démarrage ET au réveil, jamais pendant la lecture, une seule fois par
+   version.
+
+### Le garde-fou n'est pas « ne pas publier »
+
+Publier automatiquement fait peur : et si le code est cassé ?
+
+**Il ne peut pas partir cassé.** Un build qui ne compile pas ne produit
+aucun paquet, donc ne publie rien. C'est exactement ce qui a protégé le
+parc le 09/09 : la compilation était cassée, les quatre builds sont
+tombés, et **aucun client n'a rien reçu**. La sécurité est là, pas dans
+un interrupteur manuel qu'on oublie d'actionner.
+
 ## Workflow git
 
 - Une branche par fonctionnalité (`claude/<sujet>` ou `feature/<sujet>`).
