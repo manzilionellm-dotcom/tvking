@@ -267,9 +267,19 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
     setState(() => _overlay = true);
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _overlay = false);
+      if (!mounted) return;
+      // La souris est POSÉE sur le bouton Retour : on ne referme pas.
+      //
+      // Sans cette exception, la cible s'effacerait sous le curseur au
+      // moment où l'on va cliquer dessus. C'est le genre de détail qui
+      // fait dire « ça ne marche pas » d'une chose qui marche.
+      if (_surRetour) return;
+      setState(() => _overlay = false);
     });
   }
+
+  /// Vrai tant que le curseur repose sur le bouton Retour (voir ci-dessus).
+  bool _surRetour = false;
 
   /// Mouvement de souris : on réveille la barre.
   ///
@@ -570,6 +580,40 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
                         size: 64, color: Colors.white),
                   ),
                 ),
+              // ----- RETOUR : le bouton qu'une SOURIS peut atteindre -----
+              //
+              // Sur la box, la télécommande a sa touche Retour et tout le
+              // monde la trouve. Sur un PC il n'y a pas de télécommande :
+              // Échap fonctionne depuis toujours, mais personne ne devine
+              // une touche qui ne s'affiche nulle part. Résultat mesuré :
+              // on lance une chaîne et on est enfermé dedans — il ne reste
+              // que la croix de la fenêtre, donc quitter l'application.
+              //
+              // Même place que chez Netflix : en haut à gauche, avec le
+              // bandeau. Et il reste visible sur l'écran d'erreur MÊME
+              // sans bandeau, parce que c'est précisément le moment où
+              // l'on a vraiment besoin de sortir.
+              Positioned(
+                top: TvDimens.safeV,
+                left: TvDimens.safeV,
+                child: AnimatedOpacity(
+                  opacity: (_overlay || _fatal) ? 1 : 0,
+                  duration: TvDimens.focusAnim,
+                  child: IgnorePointer(
+                    ignoring: !(_overlay || _fatal),
+                    child: _BoutonRetour(
+                      libelle: context.l10n.buttonBack,
+                      onTap: () => Navigator.of(context).maybePop(),
+                      onSurvol: (bool dessus) {
+                        _surRetour = dessus;
+                        // En sortant, on réarme le compte à rebours : le
+                        // minuteur précédent est mort pendant le survol.
+                        if (!dessus) _showOverlayTemporarily();
+                      },
+                    ),
+                  ),
+                ),
+              ),
               // Numéro saisi au clavier (coin haut-droit).
               if (_numBuffer.isNotEmpty)
                 Positioned(
@@ -793,6 +837,93 @@ class _DesktopControls extends StatelessWidget {
             style: const TextStyle(
                 fontSize: 22, fontWeight: FontWeight.w800, color: TvTokens.muted)),
       );
+}
+
+/// Bouton « Retour », en haut à gauche du lecteur PC.
+///
+/// Volontairement une pastille avec un MOT écrit dedans, pas une simple
+/// flèche : une flèche seule se confond avec la décoration, et on ne clique
+/// pas sur quelque chose dont on n'est pas sûr. Le raccourci clavier est
+/// imprimé à côté — c'est ainsi qu'on apprend « Échap » sans lire de mode
+/// d'emploi, exactement comme les infobulles de la barre du bas.
+class _BoutonRetour extends StatefulWidget {
+  const _BoutonRetour({
+    required this.libelle,
+    required this.onTap,
+    required this.onSurvol,
+  });
+
+  final String libelle;
+  final VoidCallback onTap;
+
+  /// Prévient l'écran que le curseur entre (`true`) ou sort (`false`), pour
+  /// qu'il ne referme pas le bandeau sous la souris.
+  final ValueChanged<bool> onSurvol;
+
+  @override
+  State<_BoutonRetour> createState() => _BoutonRetourState();
+}
+
+class _BoutonRetourState extends State<_BoutonRetour> {
+  bool _survol = false;
+
+  void _maj(bool dessus) {
+    setState(() => _survol = dessus);
+    widget.onSurvol(dessus);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      // On force le curseur : le lecteur le cache quand le bandeau dort,
+      // et une cible invisible ne se clique pas.
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => _maj(true),
+      onExit: (_) => _maj(false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: TvDimens.focusAnim,
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: _survol ? 0.85 : 0.55),
+            borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
+            border: Border.all(
+              color: _survol ? TvTokens.gold : Colors.white24,
+              width: 2,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.arrow_back_rounded,
+                  size: 24, color: _survol ? TvTokens.gold : TvTokens.text),
+              const SizedBox(width: 10),
+              Text(
+                widget.libelle,
+                style: TextStyle(
+                  fontSize: TvDimens.body,
+                  fontWeight: FontWeight.w800,
+                  color: _survol ? TvTokens.gold : TvTokens.text,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Échap',
+                style: TextStyle(
+                  fontSize: TvDimens.caption,
+                  fontWeight: FontWeight.w700,
+                  color: TvTokens.mutedDim,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Bouton rond de la barre de commandes.
