@@ -45,6 +45,8 @@ import 'features/recordings/data/recording_repository.dart';
 import 'features/recordings/data/recording_scheduler.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
+import 'features/vod/data/playback_position_repository.dart';
+import 'features/vod/data/vod_download_service.dart';
 import 'features/tv/presentation/player/desktop_player_screen.dart';
 import 'features/tv/presentation/tv_app.dart';
 import 'features/tv/presentation/tv_player_screen.dart';
@@ -102,6 +104,34 @@ Future<void> _bootstrap() async {
 
   // 5) Favoris : préchargés pour que le cœur reflète le bon état dès l'ouverture.
   unawaited(FavoritesRepository.instance.initialize());
+
+  // 5-bis) TÉLÉCHARGEMENTS HORS-LIGNE (Cinéma & Séries).
+  //
+  //  SIGNALÉ PAR LE PROPRIÉTAIRE (10/09/2026) : « côté cinéma et séries,
+  //  l'option téléchargement / regarder hors ligne doit être
+  //  fonctionnelle ».
+  //
+  //  IL AVAIT RAISON, ET CE N'ÉTAIT NI LE SERVICE NI LES ÉCRANS. Les deux
+  //  existent et marchent : le service de téléchargement, la fiche film,
+  //  la fiche série, l'écran « Mes téléchargements ». Ce qui manquait,
+  //  c'est CETTE LIGNE. Le téléphone et la box appellent `load()` au
+  //  démarrage ; le PC ne l'appelait pas.
+  //
+  //  Conséquence : la liste des films déjà téléchargés restait vide au
+  //  lancement, et les reprises de téléchargement interrompus ne
+  //  repartaient jamais. L'écran s'affichait, simplement il ne connaissait
+  //  rien. Un client PC pouvait télécharger un film, fermer l'app, et ne
+  //  plus jamais le retrouver.
+  //
+  //  C'est le même défaut que la langue, la synchro au réveil et la
+  //  proposition de mise à jour : une brique partagée que les entrées
+  //  mobile et TV branchent, et que l'entrée Windows a oubliée.
+  unawaited(VodDownloadService.instance.load());
+
+  // 5-ter) REPRISE DE LECTURE (« Reprendre à 42:15 ») : mêmes positions
+  //  sauvegardées que sur mobile et TV. Sans ça, un film commencé sur le
+  //  PC repart toujours du début, alors que la donnée existe.
+  unawaited(PlaybackPositionRepository.instance.load());
 
   // 6) Enregistrements programmés : sur PC il n'y a pas d'alarme native,
   //    c'est le tick Dart du planificateur qui capte à l'heure (tant que
