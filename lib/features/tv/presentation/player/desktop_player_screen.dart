@@ -15,6 +15,8 @@
 //    Espace / K / touches média = PAUSE  (Espace ne montre PLUS les infos :
 //                                         sur un PC, Espace = pause partout)
 //    Haut/Bas, Page↑/Page↓       = chaîne précédente / suivante
+//    Gauche/Droite               = reculer / avancer de 10 s  (films seuls)
+//    clic ou glisser sur la réglette = se rendre à cet endroit (films seuls)
 //    chiffres                    = numéro de chaîne
 //    H, Entrée, ou un mouvement de souris = barre de contrôle
 //    F = favori ; Échap/Retour = quitter
@@ -268,18 +270,48 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
-      // La souris est POSÉE sur le bouton Retour : on ne referme pas.
+      // Un geste est en cours : on ne referme pas.
       //
       // Sans cette exception, la cible s'effacerait sous le curseur au
-      // moment où l'on va cliquer dessus. C'est le genre de détail qui
-      // fait dire « ça ne marche pas » d'une chose qui marche.
-      if (_surRetour) return;
+      // moment où l'on va cliquer dessus, ou la réglette s'évanouirait au
+      // milieu d'un déplacement. C'est le genre de détail qui fait dire
+      // « ça ne marche pas » d'une chose qui marche.
+      if (_bandeauRetenu) return;
       setState(() => _overlay = false);
     });
   }
 
-  /// Vrai tant que le curseur repose sur le bouton Retour (voir ci-dessus).
+  /// Le curseur repose sur le bouton Retour.
   bool _surRetour = false;
+
+  /// On tient la poignée de la réglette de progression.
+  bool _enDeplacement = false;
+
+  /// Vrai tant qu'un geste en cours doit garder le bandeau ouvert.
+  bool get _bandeauRetenu => _surRetour || _enDeplacement;
+
+  /// Se rendre à un endroit précis du film.
+  ///
+  /// Borné des deux côtés : libmpv accepte une position négative ou
+  /// au-delà de la fin, et se met alors dans un état dont il ne revient
+  /// pas toujours. Le clic sur la toute fin de la réglette est le cas
+  /// qu'on rencontre pour de vrai.
+  Future<void> _allerA(Duration cible) async {
+    if (estDirect(_duree)) return; // Le direct ne se rembobine pas.
+    final Duration borne = positionApresSaut(cible, _duree, 0);
+    _position = borne; // Réponse immédiate à l'écran, avant libmpv.
+    setState(() {});
+    _showOverlayTemporarily();
+    try {
+      await _player.seek(borne);
+    } catch (_) {
+      // Flux non repositionnable : on ne casse pas la lecture pour ça.
+    }
+  }
+
+  /// Avancer / reculer de quelques secondes (flèches ← →, boutons ±10 s).
+  void _sauter(int secondes) =>
+      unawaited(_allerA(positionApresSaut(_position, _duree, secondes)));
 
   /// Mouvement de souris : on réveille la barre.
   ///
@@ -375,6 +407,23 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
     if (di >= 0) {
       _onDigit(di);
       return KeyEventResult.handled;
+    }
+
+    // ← → : reculer / avancer de 10 s, comme partout ailleurs sur un PC.
+    //
+    // AVANT le zapping : sur un film, Haut/Bas ne mènent nulle part (il n'y
+    // a qu'un seul « canal »), tandis que Gauche/Droite est le geste que
+    // tout le monde fait sans y penser. En direct, la fonction n'existe
+    // pas et la touche retombe sur le comportement normal.
+    if (!estDirect(_duree)) {
+      if (k == LogicalKeyboardKey.arrowLeft) {
+        _sauter(-10);
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowRight) {
+        _sauter(10);
+        return KeyEventResult.handled;
+      }
     }
 
     if (_isPrev(k)) {
@@ -555,6 +604,15 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
                         },
                         position: _position,
                         duree: _duree,
+                        onAllerA: (Duration d) => unawaited(_allerA(d)),
+                        onReculer: () => _sauter(-10),
+                        onAvancer: () => _sauter(10),
+                        onDeplacement: (bool encours) {
+                          _enDeplacement = encours;
+                          // En lâchant, on réarme le compte à rebours : le
+                          // minuteur précédent est mort pendant le geste.
+                          if (!encours) _showOverlayTemporarily();
+                        },
                       ),
                     ),
                   ),
@@ -660,6 +718,10 @@ class _DesktopControls extends StatelessWidget {
     required this.onVolume,
     required this.position,
     required this.duree,
+    required this.onAllerA,
+    required this.onReculer,
+    required this.onAvancer,
+    required this.onDeplacement,
   });
 
   final Channel channel;
@@ -675,9 +737,16 @@ class _DesktopControls extends StatelessWidget {
   final ValueChanged<double> onVolume;
   final Duration position;
   final Duration duree;
+  final ValueChanged<Duration> onAllerA;
+  final VoidCallback onReculer;
+  final VoidCallback onAvancer;
+  final ValueChanged<bool> onDeplacement;
 
   @override
   Widget build(BuildContext context) {
+    // Un film se pilote autrement qu'une chaîne : on peut s'y déplacer, et
+    // il n'y a rien « avant » ni « après ». D'où deux jeux de boutons.
+    final bool direct = estDirect(duree);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(40, 44, 40, 28),
@@ -695,7 +764,12 @@ class _DesktopControls extends StatelessWidget {
           // En direct, une progression serait un mensonge : elle laisserait
           // croire qu'on peut revenir en arrière. On affiche donc le temps
           // écoulé et un repère « DIRECT » à la place.
-          _Progression(position: position, duree: duree),
+          _Progression(
+            position: position,
+            duree: duree,
+            onAllerA: onAllerA,
+            onDeplacement: onDeplacement,
+          ),
           const SizedBox(height: 10),
           Row(
         children: <Widget>[
@@ -773,11 +847,25 @@ class _DesktopControls extends StatelessWidget {
           // ainsi qu'on apprend les touches sans lire de mode d'emploi.
           Row(
             children: <Widget>[
-              _BoutonRond(
-                icone: Icons.skip_previous_rounded,
-                onTap: onPrecedent,
-                info: 'Chaîne précédente (↑)',
-              ),
+              // Sur un film : reculer de 10 s. Sur une chaîne : zapper.
+              //
+              // La même case porte les deux, parce que c'est la case que la
+              // main vise en premier. Mettre « chaîne précédente » sur un
+              // film où il n'y a qu'un seul titre, c'est offrir un bouton
+              // qui ne fait rien — et un bouton qui ne fait rien apprend au
+              // client à ne plus toucher à la barre.
+              if (direct)
+                _BoutonRond(
+                  icone: Icons.skip_previous_rounded,
+                  onTap: onPrecedent,
+                  info: 'Chaîne précédente (↑)',
+                )
+              else
+                _BoutonRond(
+                  icone: Icons.replay_10_rounded,
+                  onTap: onReculer,
+                  info: 'Reculer de 10 s (←)',
+                ),
               const SizedBox(width: 10),
               // Le plus gros bouton : c'est celui qu'on vise en premier,
               // et souvent sans regarder.
@@ -788,11 +876,18 @@ class _DesktopControls extends StatelessWidget {
                 grand: true,
               ),
               const SizedBox(width: 10),
-              _BoutonRond(
-                icone: Icons.skip_next_rounded,
-                onTap: onSuivant,
-                info: 'Chaîne suivante (↓)',
-              ),
+              if (direct)
+                _BoutonRond(
+                  icone: Icons.skip_next_rounded,
+                  onTap: onSuivant,
+                  info: 'Chaîne suivante (↓)',
+                )
+              else
+                _BoutonRond(
+                  icone: Icons.forward_10_rounded,
+                  onTap: onAvancer,
+                  info: 'Avancer de 10 s (→)',
+                ),
               const SizedBox(width: 22),
               // ----- VOLUME -----
               Icon(
@@ -972,13 +1067,70 @@ class _BoutonRond extends StatelessWidget {
 /// peut revenir en arrière ou avancer. On montre donc le temps écoulé
 /// depuis qu'on regarde, et un point rouge qui dit ce qu'on est en train
 /// de faire. La règle vit dans `player_progress.dart`, testée à part.
-class _Progression extends StatelessWidget {
-  const _Progression({required this.position, required this.duree});
+/// (10/09/2026) ELLE SE MANIPULE À LA SOURIS.
+///
+/// Jusqu'ici c'était un `LinearProgressIndicator` : un dessin, rien de
+/// plus. On voyait où l'on en était dans un film, et on ne pouvait pas s'y
+/// déplacer — il fallait tout regarder d'affilée. Le propriétaire l'a
+/// résumé en une phrase : « je pense que c'est conçu pour tactile ».
+/// C'était pire que ça : ça n'était conçu pour rien.
+class _Progression extends StatefulWidget {
+  const _Progression({
+    required this.position,
+    required this.duree,
+    required this.onAllerA,
+    required this.onDeplacement,
+  });
+
   final Duration position;
   final Duration duree;
 
+  /// Se rendre à cet endroit du film.
+  final ValueChanged<Duration> onAllerA;
+
+  /// Prévient l'écran qu'un geste commence (`true`) ou finit (`false`),
+  /// pour qu'il ne referme pas le bandeau au milieu du déplacement.
+  final ValueChanged<bool> onDeplacement;
+
+  @override
+  State<_Progression> createState() => _ProgressionState();
+}
+
+class _ProgressionState extends State<_Progression> {
+  /// Position visée pendant qu'on tient la poignée, en 0..1.
+  ///
+  /// Tant qu'on déplace, c'est ELLE qu'on affiche et pas la position
+  /// réelle : sinon la poignée reviendrait en arrière sous le doigt à
+  /// chaque battement du lecteur, une seconde sur deux.
+  double? _vise;
+
+  bool _survol = false;
+
+  Duration get _cible => positionDepuisRatio(_vise!, widget.duree);
+
+  void _debut(double dx, double largeur) {
+    widget.onDeplacement(true);
+    setState(() => _vise = ratioDepuisX(dx, largeur));
+  }
+
+  void _pendant(double dx, double largeur) =>
+      setState(() => _vise = ratioDepuisX(dx, largeur));
+
+  void _fin() {
+    // On ne demande le saut qu'au RELÂCHEMENT, jamais pendant le geste.
+    // Un saut par pixel parcouru, c'est des dizaines de requêtes à libmpv
+    // en une seconde : l'image se fige et le son hachure. C'est aussi ce
+    // que fait Netflix — on choisit d'abord, on y va ensuite.
+    final double? v = _vise;
+    setState(() => _vise = null);
+    widget.onDeplacement(false);
+    if (v != null) widget.onAllerA(positionDepuisRatio(v, widget.duree));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final Duration position = widget.position;
+    final Duration duree = widget.duree;
     if (estDirect(duree)) {
       return Row(
         children: <Widget>[
@@ -1003,25 +1155,121 @@ class _Progression extends StatelessWidget {
         ],
       );
     }
+    // Pendant le déplacement, le chiffre de gauche suit la poignée : c'est
+    // lui qui dit où l'on va atterrir, sans avoir besoin d'une bulle.
+    final bool tient = _vise != null;
+    final double ratio = tient ? _vise! : progression(position, duree);
+    final Duration affichee = tient ? _cible : position;
+    final bool actif = tient || _survol;
+
     return Row(
       children: <Widget>[
-        Text(formatDuree(position),
-            style: const TextStyle(fontSize: 12, color: TvTokens.muted)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: progression(position, duree),
-              minHeight: 4,
-              backgroundColor: Colors.white24,
-              valueColor: const AlwaysStoppedAnimation<Color>(TvTokens.gold),
+        // Largeur figée : sans elle, « 9:59 » puis « 10:00 » décalent toute
+        // la réglette d'un caractère, et la barre tremble à chaque minute.
+        SizedBox(
+          width: 62,
+          child: Text(
+            formatDuree(affichee),
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: tient ? FontWeight.w800 : FontWeight.w400,
+              color: tient ? TvTokens.goldBright : TvTokens.muted,
             ),
           ),
         ),
         const SizedBox(width: 12),
-        Text(formatDuree(duree),
-            style: const TextStyle(fontSize: 12, color: TvTokens.muted)),
+        Expanded(
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (_) => setState(() => _survol = true),
+            onExit: (_) => setState(() => _survol = false),
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints c) {
+                final double largeur = c.maxWidth;
+                return GestureDetector(
+                  // `opaque` : la zone sensible fait 22 px de haut alors
+                  // que le trait n'en fait que 4. Viser un trait de 4 px à
+                  // la souris est un exercice, pas une commande.
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (TapDownDetails d) {
+                    // Un simple clic sur la piste y emmène directement.
+                    widget.onAllerA(positionDepuisRatio(
+                        ratioDepuisX(d.localPosition.dx, largeur), duree));
+                  },
+                  onHorizontalDragStart: (DragStartDetails d) =>
+                      _debut(d.localPosition.dx, largeur),
+                  onHorizontalDragUpdate: (DragUpdateDetails d) =>
+                      _pendant(d.localPosition.dx, largeur),
+                  onHorizontalDragEnd: (DragEndDetails _) => _fin(),
+                  onHorizontalDragCancel: _fin,
+                  child: SizedBox(
+                    height: 22,
+                    width: largeur,
+                    child: Stack(
+                      alignment: Alignment.centerLeft,
+                      children: <Widget>[
+                        // La piste, épaissie au survol : elle se signale
+                        // comme vivante avant même qu'on clique.
+                        //
+                        // Les largeurs sont données EN PIXELS, calculées
+                        // depuis `largeur`. Dans un Stack, un enfant non
+                        // positionné reçoit des contraintes lâches : une
+                        // boîte sans largeur explicite s'y réduit à zéro et
+                        // la barre disparaîtrait purement et simplement.
+                        AnimatedContainer(
+                          duration: TvDimens.focusAnim,
+                          width: largeur,
+                          height: actif ? 6 : 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white24,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                        Container(
+                          width: largeur * ratio,
+                          height: actif ? 6 : 4,
+                          decoration: BoxDecoration(
+                            color: TvTokens.gold,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                        // La poignée. Elle n'apparaît qu'au survol : au
+                        // repos, l'écran reste une image de film et pas un
+                        // tableau de bord.
+                        if (actif)
+                          Positioned(
+                            left: (ratio * largeur - 8)
+                                .clamp(0.0, (largeur - 16).clamp(0.0, largeur)),
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: TvTokens.goldBright,
+                                shape: BoxShape.circle,
+                                boxShadow: <BoxShadow>[
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    blurRadius: 6,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        SizedBox(
+          width: 62,
+          child: Text(formatDuree(duree),
+              style: const TextStyle(fontSize: 12, color: TvTokens.muted)),
+        ),
       ],
     );
   }

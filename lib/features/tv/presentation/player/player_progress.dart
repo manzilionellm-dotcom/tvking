@@ -32,6 +32,47 @@ double progression(Duration position, Duration duree) {
   return p > 1 ? 1 : p;
 }
 
+/// Fraction 0..1 correspondant à une abscisse sur la réglette.
+///
+/// La souris SORT de la piste pendant un glisser : on continue de recevoir
+/// des abscisses négatives, ou plus grandes que la largeur, tant que le
+/// bouton reste enfoncé. Sans bornage, la poignée s'échapperait du cadre et
+/// le saut demandé serait hors du film.
+///
+/// Une largeur nulle arrive pour de vrai : c'est la toute première image,
+/// avant que Flutter ait mesuré la fenêtre. Diviser par elle donnerait NaN,
+/// et un NaN dans une largeur fait une exception de rendu, pas un dessin
+/// approximatif.
+double ratioDepuisX(double dx, double largeur) {
+  if (largeur <= 0 || dx.isNaN) return 0;
+  final double r = dx / largeur;
+  if (r < 0) return 0;
+  return r > 1 ? 1 : r;
+}
+
+/// Endroit du film visé par une fraction de la réglette.
+///
+/// Bornée elle aussi : libmpv accepte qu'on lui demande une position
+/// négative ou au-delà de la fin, et ne revient pas toujours proprement de
+/// l'état où ça le met. Le clic sur l'extrémité droite de la barre est le
+/// cas qu'on rencontre tous les jours.
+Duration positionDepuisRatio(double ratio, Duration duree) {
+  if (estDirect(duree)) return Duration.zero;
+  final double r = ratio.isNaN ? 0 : (ratio < 0 ? 0 : (ratio > 1 ? 1 : ratio));
+  return Duration(milliseconds: (r * duree.inMilliseconds).round());
+}
+
+/// Position obtenue en avançant (ou reculant) de quelques secondes.
+///
+/// Le recul de 10 s dans les dix premières secondes du film doit ramener au
+/// tout début, pas avant : « avant » n'existe pas.
+Duration positionApresSaut(Duration position, Duration duree, int secondes) {
+  if (estDirect(duree)) return position;
+  final Duration cible = position + Duration(seconds: secondes);
+  if (cible < Duration.zero) return Duration.zero;
+  return cible > duree ? duree : cible;
+}
+
 /// « 4:07 » ou « 1:02:07 ».
 ///
 /// On n'affiche l'heure QUE si elle existe : « 0:04:07 » pour quatre
