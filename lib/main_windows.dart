@@ -45,6 +45,16 @@ import 'features/recordings/data/recording_repository.dart';
 import 'features/recordings/data/recording_scheduler.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
+import 'core/profiles/remote_profiles_repository.dart';
+import 'features/channels/data/recently_watched_repository.dart';
+import 'features/player/data/player_settings.dart';
+import 'features/security/data/parental_controls.dart';
+import 'features/sports/data/live_scores_service.dart';
+import 'features/sports/data/sports_repository.dart';
+import 'features/stats/data/watch_stats_service.dart';
+import 'features/tv/core/tv_home_template.dart';
+import 'features/tv/data/display_settings.dart';
+import 'features/tv/data/place_repository.dart';
 import 'features/vod/data/playback_position_repository.dart';
 import 'features/vod/data/vod_download_service.dart';
 import 'features/tv/presentation/player/desktop_player_screen.dart';
@@ -82,6 +92,59 @@ Future<void> _bootstrap() async {
   // Langue de l'app : choix mémorisé (ou « Système »). Bloquant et rapide pour
   // que le 1er rendu soit déjà dans la bonne langue.
   await LocaleRepository.instance.initialize();
+
+  // ====================================================================
+  //  PARITÉ AVEC LA BOX — les briques que le PC oubliait de démarrer
+  // ====================================================================
+  //  AUDIT DU 10/09/2026, après une série de « l'app Windows n'a pas… ».
+  //  À chaque fois, la fonction EXISTAIT : c'est son démarrage qui
+  //  manquait ici. Treize briques que `main_tv.dart` allume et que ce
+  //  fichier ignorait. On les compare désormais explicitement.
+  //
+  //  BLOQUANT ET RAPIDE, comme sur la box : le modèle d'accueil doit être
+  //  connu AVANT le premier rendu, sinon l'écran s'affiche dans une
+  //  disposition puis saute dans une autre.
+  await TvHomeTemplateRepository.instance.initialize();
+
+  //  LE PLUS GRAVE DES TREIZE : le CONTRÔLE PARENTAL.
+  //
+  //  Sans ce `load()`, le mode Enfants reste sur sa valeur par défaut —
+  //  DÉSACTIVÉ — quoi que le parent ait réglé. Il l'active, ferme l'app,
+  //  la rouvre : la protection a disparu. Et l'app ne s'abonnait jamais
+  //  aux profils, donc un profil marqué « enfant » (y compris re-marqué
+  //  depuis le panel) ne filtrait plus rien.
+  //
+  //  Une protection qui s'oublie au redémarrage est pire qu'une
+  //  protection absente : le parent, lui, croit qu'elle est là.
+  unawaited(ParentalControls.instance.load());
+
+  //  Réglages d'AFFICHAGE (marge d'écran + taille du texte) : `TvApp` les
+  //  lit à chaque rendu. Jamais chargés ici, donc le PC ignorait purement
+  //  et simplement ce que le client avait réglé.
+  unawaited(DisplaySettings.instance.load());
+
+  //  Réglages du LECTEUR (tampon, ratio, pistes préférées…).
+  unawaited(PlayerSettings.instance.load());
+
+  //  « Derniers vus » : la rangée d'accueil restait vide sur PC.
+  unawaited(RecentlyWatchedRepository.instance.initialize());
+
+  //  Statistiques de visionnage (temps d'écran, top chaînes — local).
+  unawaited(WatchStatsService.instance.start());
+
+  //  Sport : catalogue et scores en direct, comme sur la box.
+  unawaited(SportsRepository.instance.initialize());
+  LiveScoresService.instance.startSentinel();
+
+  //  Ville (météo de l'accueil) et profils distants poussés par le panel.
+  unawaited(PlaceRepository.instance.initialize());
+  unawaited(RemoteProfilesRepository.instance.syncSelf());
+
+  //  DEUX BRIQUES VOLONTAIREMENT LAISSÉES DE CÔTÉ, et ce n'est pas un
+  //  oubli : `NotificationService` et `MatchAlertsService` reposent sur
+  //  les notifications et les alarmes ANDROID, qui n'existent pas sur PC.
+  //  Les brancher ici ferait au mieux rien, au pire échouer le démarrage.
+  //  Les alertes de match sur PC demandent une autre implémentation.
 
   // --- Briques PARTAGÉES avec mobile/TV (non bloquantes) ---
   // 1) Identité stable (MAC) : sur PC, le canal natif Android est absent →
