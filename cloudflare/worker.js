@@ -7954,6 +7954,37 @@ async function handleRequest(request, env, ctx) {
       );
     }
 
+    //  /win/latest — LE LIEN QUI DONNE TOUJOURS LE DERNIER INSTALLEUR
+    //
+    //  Demandé par le propriétaire (10/09/2026). Il voulait faire pointer
+    //  l'adresse VERSIONNÉE (/win/0.3.3.486/…) vers le dernier build.
+    //  C'est justement ce qu'il ne faut pas faire : cette adresse-là est
+    //  IMMUABLE par construction — c'est celle qu'on donne au Store, qui
+    //  exige que le binaire derrière ne change jamais. Y poser un autre
+    //  fichier donnerait un « 486 » contenant du « 500 », impossible à
+    //  démêler ensuite, et casserait la soumission.
+    //
+    //  On sépare donc les deux besoins, comme on l'a déjà fait pour /tv :
+    //    /win/<version>/7MOTION-Setup.exe → figé, un par build, pour le Store
+    //    /win/latest                      → TOUJOURS le dernier, pour toi
+    //    /win                             → l'alias historique, gelé sur le
+    //                                       fichier du 7 août tant que la
+    //                                       soumission Store n'est pas close
+    //
+    //  Ce troisième nom ne coûte rien et ne prend aucune décision à la
+    //  place du propriétaire : /win ne bouge pas, la soumission n'est pas
+    //  touchée, et il a enfin un lien stable à donner et à re-cliquer.
+    //  Le fichier `7MOTION-Setup-latest.exe` est déjà écrasé à chaque
+    //  build par la chaîne Windows — il ne manquait que cette route.
+    if (segments.length === 2 &&
+        segments[0].toLowerCase() === 'win' &&
+        segments[1].toLowerCase() === 'latest') {
+      return proxyRelease(
+        'https://github.com/manzilionellm-dotcom/tvking/releases/download/windows-latest/7MOTION-Setup-latest.exe',
+        '7MOTION-Setup.exe',
+      );
+    }
+
     // /phone-aab — le fichier .aab à déposer dans la Play Console.
     //
     // OUTIL DE PROPRIÉTAIRE, PAS UN LIEN CLIENT : un .aab ne s'installe
