@@ -493,4 +493,23 @@ class EpgRepository {
         await db.rawQuery('SELECT COUNT(*) as c FROM epg_programs');
     return (rows.first['c'] as int?) ?? 0;
   }
+
+  /// COMBIEN DE CHAÎNES ONT RÉELLEMENT UN GUIDE.
+  ///
+  /// Ajouté le 10/09/2026, après une question de client : « pourquoi une
+  /// seule chaîne affiche le programme ? ». On savait dire combien de
+  /// programmes étaient en base — jamais sur combien de chaînes ils
+  /// étaient répartis. Or c'est ce second nombre qui répond.
+  ///
+  /// 200 000 programmes sur 12 chaînes et 200 000 sur 900 chaînes, c'est
+  /// le même compteur et deux situations opposées : dans un cas le
+  /// fournisseur ne publie de guide que pour une poignée de chaînes, dans
+  /// l'autre tout va bien. Sans ce chiffre, le support devait deviner.
+  Future<int> coveredChannelCount() async {
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> rows = await db
+        .rawQuery('SELECT COUNT(DISTINCT channel_id) as c FROM epg_programs');
+    return (rows.first['c'] as int?) ?? 0;
+  }
 }

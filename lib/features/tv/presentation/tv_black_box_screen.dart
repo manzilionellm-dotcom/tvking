@@ -85,6 +85,11 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
   // ----- Volet (a) : compte rendu -----
   PackageInfo? _pkg;
   int? _epgCount;
+
+  /// Nombre de chaînes qui ont RÉELLEMENT un guide (voir la ligne ajoutée
+  /// plus bas : c'est ce chiffre-là qui répond à « pourquoi une seule
+  /// chaîne affiche le programme ? »).
+  int? _epgChannels;
   int? _channelCount;
   int _sourceCount = 0;
   int _recordingCount = 0;
@@ -139,6 +144,9 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
     } catch (_) {}
     try {
       _epgCount = await EpgRepository.instance.totalCount();
+    } catch (_) {}
+    try {
+      _epgChannels = await EpgRepository.instance.coveredChannelCount();
     } catch (_) {}
     try {
       _recordingCount = RecordingRepository.instance.current.length;
@@ -552,6 +560,23 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
         _infoRow(context.l10n.tvBlackBoxRowSources, count(_sourceCount)),
         _infoRow(context.l10n.tvBlackBoxRowChannels, count(_channelCount)),
         _infoRow(context.l10n.tvBlackBoxRowEpg, count(_epgCount)),
+        // LA LIGNE QUI RÉPOND À « POURQUOI UNE SEULE CHAÎNE ? » (10/09/2026)
+        //
+        // « Programmes EPG » juste au-dessus dit combien de programmes sont
+        // en base, jamais sur combien de chaînes ils sont répartis. Or
+        // 200 000 programmes sur 12 chaînes et 200 000 sur 900 chaînes,
+        // c'est le même compteur et deux situations opposées.
+        //
+        // Écrit « 12 / 900 », les deux nombres côte à côte : le support lit
+        // la réponse d'un coup d'œil au lieu de la deviner. Un écart énorme
+        // veut dire que le fournisseur ne publie de guide que pour une
+        // poignée de chaînes — ce n'est pas une panne de l'application.
+        _infoRow(
+          context.l10n.tvBlackBoxRowEpgChannels,
+          (_epgChannels == null || _channelCount == null)
+              ? count(_epgChannels)
+              : '$_epgChannels / $_channelCount',
+        ),
         _infoRow(context.l10n.settingsRecordings, count(_recordingCount)),
         _infoRow(context.l10n.tvBlackBoxRowDownloads, count(_downloadCount)),
         _infoRow(

@@ -1137,6 +1137,7 @@
   "tvBlackBoxRowSources": "Kilder",
   "tvBlackBoxRowChannels": "Kanaler (live)",
   "tvBlackBoxRowEpg": "EPG-programmer",
+  "tvBlackBoxRowEpgChannels": "Kanaler med guide",
   "tvBlackBoxRowDownloads": "Downloads",
   "tvBlackBoxRowRss": "Brugt hukommelse (proces)",
   "tvBlackBoxRamUnknown": "ukendt",

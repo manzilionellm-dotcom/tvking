@@ -1137,6 +1137,7 @@
   "tvBlackBoxRowSources": "المصادر",
   "tvBlackBoxRowChannels": "القنوات (مباشر)",
   "tvBlackBoxRowEpg": "برامج EPG",
+  "tvBlackBoxRowEpgChannels": "قنوات لها دليل",
   "tvBlackBoxRowDownloads": "التنزيلات",
   "tvBlackBoxRowRss": "الذاكرة المستخدمة (العملية)",
   "tvBlackBoxRamUnknown": "غير معروفة",

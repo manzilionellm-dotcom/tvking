@@ -3992,6 +3992,7 @@
   "tvBlackBoxRowSources": "Sources",
   "tvBlackBoxRowChannels": "Chaînes (live)",
   "tvBlackBoxRowEpg": "Programmes EPG",
+  "tvBlackBoxRowEpgChannels": "Chaînes avec guide",
   "tvBlackBoxRowDownloads": "Téléchargements",
   "tvBlackBoxRowRss": "Mémoire utilisée (process)",
   "tvBlackBoxRamUnknown": "inconnue",

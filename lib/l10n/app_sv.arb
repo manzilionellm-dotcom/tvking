@@ -1137,6 +1137,7 @@
   "tvBlackBoxRowSources": "Källor",
   "tvBlackBoxRowChannels": "Kanaler (live)",
   "tvBlackBoxRowEpg": "EPG-program",
+  "tvBlackBoxRowEpgChannels": "Kanaler med tablå",
   "tvBlackBoxRowDownloads": "Nedladdningar",
   "tvBlackBoxRowRss": "Använt minne (process)",
   "tvBlackBoxRamUnknown": "okänt",
