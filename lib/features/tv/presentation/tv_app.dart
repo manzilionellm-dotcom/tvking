@@ -1313,16 +1313,41 @@ class _AccueilAvecVeilleMaj extends StatefulWidget {
   State<_AccueilAvecVeilleMaj> createState() => _AccueilAvecVeilleMajState();
 }
 
-class _AccueilAvecVeilleMajState extends State<_AccueilAvecVeilleMaj> {
+class _AccueilAvecVeilleMajState extends State<_AccueilAvecVeilleMaj>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    // Après le premier rendu : l'accueil est peint, la proposition ne
-    // peut plus passer pour un écran de chargement bloqué. `TvUpdateWatch`
-    // pose ensuite son propre délai avant d'ouvrir quoi que ce soit.
+    WidgetsBinding.instance.addObserver(this);
+    // AU DÉMARRAGE, après le premier rendu : l'accueil est peint, la
+    // proposition ne peut plus passer pour un écran de chargement bloqué.
+    // `TvUpdateWatch` pose ensuite son propre délai avant d'ouvrir.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(TvUpdateWatch.maybeProposer(context));
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  //  ET AU RÉVEIL — sinon le démarrage ne servirait qu'une fois.
+  //
+  //  Une box ne se ferme jamais, elle s'endort : la même instance de
+  //  l'app peut vivre des semaines. Sans ceci, la verification faite au
+  //  tout premier allumage serait la SEULE de la vie de l'application, et
+  //  toutes les versions publiees ensuite passeraient inaperçues.
+  //
+  //  Pas de délai ici : au réveil, l'écran est déjà peint depuis
+  //  longtemps — attendre douze secondes de plus n'aurait aucun sens.
+  //  `TvUpdateWatch` verifie de son cote que l'accueil est bien devant
+  //  (le lecteur reste au-dessus pendant une émission).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    unawaited(TvUpdateWatch.maybeProposer(context, avecDelai: false));
   }
 
   @override

@@ -61,12 +61,19 @@ abstract final class TvUpdateWatch {
   ///
   /// Ne rend jamais d'erreur et n'attend rien : au pire, il ne se passe
   /// rien et le bouton des Réglages reste disponible comme avant.
-  static Future<void> maybeProposer(BuildContext context) async {
+  static Future<void> maybeProposer(BuildContext context,
+      {bool avecDelai = true}) async {
     if (_enCours) return;
     _enCours = true;
     try {
-      await Future<void>.delayed(_delaiOuverture);
+      if (avecDelai) await Future<void>.delayed(_delaiOuverture);
       if (!context.mounted) return;
+      // L'ACCUEIL EST-IL VRAIMENT DEVANT ? Le lecteur se pose PAR-DESSUS
+      // l'accueil : celui-ci reste donc monté pendant qu'on regarde une
+      // chaîne. Sans ce test, un réveil de la box en pleine émission
+      // ferait surgir la fenêtre de mise à jour sur le match.
+      final ModalRoute<Object?>? route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) return;
 
       final UpdateCheckResult res =
           await UpdateService.instance.checkDetailed();
