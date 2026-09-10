@@ -250,16 +250,23 @@ jobs:
           echo "numero lisible = $BUILD_LABEL"
           echo "WIN_BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
 
+      #  ⛔ CETTE ÉTAPE RESTE EN POWERSHELL. NE LA PASSE PAS EN bash.
+      #
+      #  Essayé le 10/09/2026, pour écrire la commande sur plusieurs
+      #  lignes : le build est tombé en 13 secondes sur
+      #      « CMake Error : No CMAKE_CXX_COMPILER could be found »
+      #  Sous Git Bash, l'environnement de compilation C++ de Visual
+      #  Studio n'est plus celui que CMake attend, et il ne trouve plus
+      #  le compilateur. Rien à voir avec Flutter ni avec les options
+      #  ajoutées ce jour-là — les deux variables étaient parfaitement
+      #  transmises (504 et 19881, lisibles dans le journal du run).
+      #
+      #  D'où la commande sur UNE ligne, avec la syntaxe PowerShell
+      #  `$env:` : c'est laid, et c'est ce qui compile.
       - name: Build The Few (Windows release, target main_windows)
-        shell: bash
         env:
           CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
-        run: |
-          flutter build windows --release \
-            --build-number="$WIN_BUILD_NUMBER" \
-            --dart-define=GIT_SHA=${{ github.sha }} \
-            --dart-define=APP_BUILD_LABEL="$WIN_BUILD_LABEL" \
-            --target=lib/main_windows.dart
+        run: flutter build windows --release --build-number="$env:WIN_BUILD_NUMBER" --dart-define=GIT_SHA=${{ github.sha }} --dart-define=APP_BUILD_LABEL="$env:WIN_BUILD_LABEL" --target=lib/main_windows.dart
 
       # =========================================================
       #  GARDE-FOU 1/2 — le BINAIRE COMPILÉ, pas seulement la source
