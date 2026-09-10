@@ -214,10 +214,52 @@ jobs:
       # ERREUR (STL1011) sauf si cette macro est définie. La variable
       # d'environnement CL est lue par cl.exe et propage le define partout, sans
       # patcher le plugin. Sans effet sur le code de l'app.
+      # =========================================================
+      #  LES DEUX NUMÉROS DU BUILD PC — ajouté le 10/09/2026
+      # =========================================================
+      #  CE QUI MANQUAIT. `flutter build windows` était appelé SANS
+      #  `--build-number`. Le binaire portait donc éternellement le
+      #  numéro figé de `pubspec.yaml` (`0.3.3+12`) — le même en juin et
+      #  en septembre. Conséquences mesurées le 10/09 :
+      #    • l'updater comparait « 12 » à « 12 » et concluait toujours
+      #      « vous êtes à jour », quoi qu'on publie ;
+      #    • le panel voyait tous les PC sur la même version, pour
+      #      toujours.
+      #
+      #  POURQUOI `run_number` ET PAS UN HORODATAGE COMME LA BOX. Le
+      #  numéro atterrit dans le bloc de version Windows, dont chaque
+      #  champ est un entier 16 bits (65535 au maximum). Un horodatage
+      #  (1 788 127 315) déborderait et serait tronqué en silence — donc
+      #  parfois DÉCROISSANT d'un build à l'autre. `run_number` monte
+      #  d'une unité à chaque exécution et tient dans le champ pour des
+      #  décennies. C'est aussi celui que porte déjà l'installeur.
+      #
+      #  CHEMIN VÉRIFIÉ, pas supposé : `--build-number` → FLUTTER_VERSION
+      #  = « 0.3.3+503 » (cmake.dart) → VALUE "ProductVersion" du
+      #  Runner.rc → package_info_plus coupe sur « + » et rend « 503 »
+      #  comme buildNumber. C'est ce nombre que l'updater compare.
+      - name: Numéros du build (versionCode + buildLabel)
+        shell: bash
+        run: |
+          set -e
+          echo "WIN_BUILD_NUMBER=${{ github.run_number }}" >> "$GITHUB_ENV"
+          #  Le numéro LISIBLE (« 19881 »), celui qu'on dicte au client.
+          #  Calcul PARTAGÉ par toutes les apps : ci/build_label.sh. Ne
+          #  recopie pas la formule ici — voir l'en-tête du script.
+          BUILD_LABEL=$(ci/build_label.sh "${{ github.repository }}" windows-latest)
+          echo "numero lisible = $BUILD_LABEL"
+          echo "WIN_BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
+
       - name: Build The Few (Windows release, target main_windows)
+        shell: bash
         env:
           CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
-        run: flutter build windows --release --target=lib/main_windows.dart
+        run: |
+          flutter build windows --release \
+            --build-number="$WIN_BUILD_NUMBER" \
+            --dart-define=GIT_SHA=${{ github.sha }} \
+            --dart-define=APP_BUILD_LABEL="$WIN_BUILD_LABEL" \
+            --target=lib/main_windows.dart
 
       # =========================================================
       #  GARDE-FOU 1/2 — le BINAIRE COMPILÉ, pas seulement la source
@@ -501,6 +543,38 @@ jobs:
               #  confirme que la soumission Store n'est plus en revue.
               cp "$SETUP" 7MOTION-Setup-latest.exe
               gh release upload windows-latest --repo "$REPO" --clobber 7MOTION-Setup-latest.exe
+
+              # =========================================================
+              #  version.json — LE MANIFESTE QUI ANNONCE LA MISE À JOUR
+              # =========================================================
+              #  AJOUTÉ LE 10/09/2026, parce qu'il n'existait pas. Mesuré
+              #  ce jour-là :
+              #     windows-latest/version.json -> HTTP 404
+              #     seventv-latest/version.json -> HTTP 200
+              #  Le PC publiait donc son installeur… sans rien pour
+              #  l'annoncer. Le bouton « Vérifier les mises à jour » ne
+              #  pouvait RIEN trouver — sans erreur, sans message. La
+              #  panne la plus vicieuse qui soit : le client ne se plaint
+              #  pas, il reste simplement sur une vieille version.
+              #
+              #  L'`url` pointe sur « -latest », la copie qui avance à
+              #  chaque build. Surtout PAS sur le nom versionné : le
+              #  manifeste serait alors juste, mais figé sur le seul
+              #  build qui l'a écrit.
+              #
+              #  `printf` ET NON UN HEREDOC. Le marqueur de fin d'un
+              #  heredoc doit se trouver en COLONNE ZÉRO ; ici on est à
+              #  l'intérieur d'un `if`, donc indenté. Le heredoc ne se
+              #  fermerait jamais et avalerait la suite du script — une
+              #  panne qui ne se voit qu'au moment où le job casse.
+              printf '{\n  "versionCode": %s,\n  "versionName": "%s",\n  "buildLabel": "%s",\n  "url": "%s",\n  "mandatory": false\n}\n' \
+                "${WIN_BUILD_NUMBER:-0}" \
+                "${APP_VERSION:-0.0.0}" \
+                "${WIN_BUILD_LABEL:-}" \
+                "https://github.com/$REPO/releases/download/windows-latest/7MOTION-Setup-latest.exe" \
+                > version.json
+              cat version.json
+              gh release upload windows-latest --repo "$REPO" --clobber version.json
             fi
           else
             if [ -n "$SETUP" ]; then
@@ -508,9 +582,19 @@ jobs:
               # déjà » ci-dessus : sans la copie « -latest » ici, une
               # release recréée de zéro laisserait /win sans fichier.
               cp "$SETUP" 7MOTION-Setup-latest.exe
+              # Le manifeste part AUSSI d'ici. Une release recréée de zéro
+              # sans lui laisserait tous les PC sans mise à jour, et
+              # personne ne le verrait — c'est la panne d'origine.
+              printf '{\n  "versionCode": %s,\n  "versionName": "%s",\n  "buildLabel": "%s",\n  "url": "%s",\n  "mandatory": false\n}\n' \
+                "${WIN_BUILD_NUMBER:-0}" \
+                "${APP_VERSION:-0.0.0}" \
+                "${WIN_BUILD_LABEL:-}" \
+                "https://github.com/$REPO/releases/download/windows-latest/7MOTION-Setup-latest.exe" \
+                > version.json
               gh release create windows-latest --repo "$REPO" \
                 --title "The Few — Windows (dernier build)" \
-                --notes "$NOTES" --prerelease "$OUT" "$SETUP" 7MOTION-Setup-latest.exe
+                --notes "$NOTES" --prerelease "$OUT" "$SETUP" \
+                7MOTION-Setup-latest.exe version.json
             else
               gh release create windows-latest --repo "$REPO" \
                 --title "The Few — Windows (dernier build)" \
@@ -518,3 +602,49 @@ jobs:
             fi
           fi
           gh release view windows-latest --repo "$REPO"
+
+      # =========================================================
+      #  GARDE-FOU — « publié » doit vouloir dire « le client le voit »
+      # =========================================================
+      #  Même contrôle que la chaîne TV, et pour la même raison : un
+      #  build vert qui n'atteint aucune machine reste un build inutile.
+      #  On vérifie donc les trois maillons, dans l'ordre où l'app les
+      #  parcourt — si l'un cède, le job échoue ICI, pas dans un mois par
+      #  la bouche d'un client.
+      #
+      #  Le cache d'edge de GitHub met quelques secondes à voir un asset
+      #  fraîchement écrasé : on réessaie, on ne conclut pas au premier
+      #  coup.
+      - name: Vérifier que la mise à jour est ANNONCÉE (windows-latest)
+        shell: bash
+        run: |
+          set -e
+          BASE="https://github.com/${{ github.repository }}/releases/download/windows-latest"
+          CODE=000
+          for i in 1 2 3 4 5 6; do
+            CODE=$(curl -sSL -o manifeste.json -w '%{http_code}' \
+              "$BASE/version.json?cb=$(date +%s)-$i" || echo 000)
+            [ "$CODE" = "200" ] && break
+            echo "tentative $i : HTTP $CODE, on patiente"
+            sleep 10
+          done
+          [ "$CODE" = "200" ] || { echo "::error title=Mise a jour cassee::version.json injoignable sur windows-latest (HTTP $CODE)"; exit 1; }
+          cat manifeste.json
+
+          # 2/3 — l'installeur ANNONCÉ par le manifeste doit exister.
+          #  On lit l'URL DANS le manifeste au lieu de la réécrire ici :
+          #  c'est le seul moyen de détecter qu'il annonce un fichier
+          #  absent, qui est exactement ce qu'un bouton de mise à jour
+          #  pointant vers le vide donnerait au client.
+          URL=$(tr -d ' \n' < manifeste.json | grep -oE '"url":"[^"]+"' | cut -d'"' -f4)
+          [ -n "$URL" ] || { echo "::error::le manifeste ne porte pas d'url"; exit 1; }
+          ECODE=$(curl -sSL -o /dev/null -w '%{http_code}' "$URL" || echo 000)
+          [ "$ECODE" = "200" ] || { echo "::error title=Mise a jour cassee::l'installeur annonce est injoignable (HTTP $ECODE) : $URL"; exit 1; }
+
+          # 3/3 — le numéro doit AVANCER. Un manifeste qui republie le
+          #  même versionCode laisse l'app conclure « déjà à jour » : le
+          #  fichier est là, le bouton ne propose rien. C'est précisément
+          #  la panne du 10/09, où le PC portait « 12 » à vie.
+          VC=$(tr -d ' \n' < manifeste.json | grep -oE '"versionCode":[0-9]+' | grep -oE '[0-9]+')
+          [ -n "$VC" ] && [ "$VC" -gt 0 ] || { echo "::error title=Mise a jour cassee::versionCode absent ou nul ($VC)"; exit 1; }
+          echo "OK — manifeste servi, installeur joignable, versionCode = $VC"

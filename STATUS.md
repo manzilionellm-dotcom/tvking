@@ -147,6 +147,52 @@ DeFew TV (`com.manzilionellm.tvking.defewtv`) et Privé
 
 ---
 
+## Session (2026-09-10, soir) — Le PC ne pouvait PAS se mettre à jour
+
+### La question du propriétaire
+> « Windows, il peut mettre à jour ? »
+
+**Non.** Quatre pannes empilées, chacune suffisante à elle seule. Toutes
+mesurées avant d'écrire une ligne :
+
+| # | Ce qui manquait | Mesure |
+|---|---|---|
+| 1 | Aucun manifeste sur le canal PC | `windows-latest/version.json` → **404** (`seventv-latest` → 200) |
+| 2 | L'app n'y regardait même pas | `isTv` est faux sur PC → elle interrogeait `prod`, un canal **qui n'existe pas** |
+| 3 | Le numéro de build ne bougeait jamais | `flutter build windows` sans `--build-number` → `0.3.3+12` en juin comme en septembre |
+| 4 | L'installateur était celui d'Android | `OpenFilex.open(type: 'application/vnd.android.package-archive')` sur un `.apk` — inexistant sur Windows |
+
+Le bouton « Vérifier les mises à jour » ne pouvait donc **rien** trouver,
+sans erreur ni message. Le client ne se plaint pas : il reste simplement
+sur une vieille version pour toujours.
+
+### Ce qui a été fait
+- `update_service.dart` : aiguillage à **trois** canaux (Windows testé en
+  premier, comme dans `AppPlatform.id` — sur PC `isTv` reste faux) ;
+  téléchargement d'un `.exe` et lancement en `ProcessStartMode.detached`
+  (sans `detached`, l'installeur se tuerait lui-même en demandant la
+  fermeture de l'app).
+- `build-windows.yml` : `--build-number=${{ github.run_number }}`,
+  `--dart-define=APP_BUILD_LABEL` via `ci/build_label.sh … windows-latest`,
+  publication de `version.json`, et un **garde-fou en trois maillons**
+  (manifeste servi → installeur annoncé joignable → versionCode > 0).
+- `cloudflare/app_versions.js` : `windows: 'windows-latest'` ajouté, pour
+  que le panel vise le même canal que l'app.
+
+### Deux pièges évités, à retenir
+1. **`prod` est mort EXPRÈS.** Tentation de le « réparer » en le pointant
+   sur `phone-latest` : ce serait rallumer le sideload téléphone que le
+   propriétaire a éteint le 22/08 (« que tout pointe sur le Play Store »).
+   Commenté dans les deux fichiers.
+2. **`run_number` et pas un horodatage.** Le numéro atterrit dans le bloc
+   de version Windows, dont chaque champ est un entier **16 bits**. Un
+   horodatage déborderait et serait tronqué en silence — donc parfois
+   décroissant d'un build à l'autre. Chemin vérifié dans le SDK :
+   `--build-number` → `FLUTTER_VERSION` (`cmake.dart`) → `VALUE
+   "ProductVersion"` (`Runner.rc`) → `package_info_plus` coupe sur « + ».
+
+---
+
 ## Session (2026-09-10) — « Vert » ne voulait pas dire « livré »
 
 ### Le constat, dit par le propriétaire

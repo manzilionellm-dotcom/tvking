@@ -55,7 +55,19 @@ ok(
     'https://github.com/manzilionellm-dotcom/tvking/releases/download/seventv-latest/version.json',
   'URL du manifeste TV',
 );
-ok(manifestUrl('windows') === null, 'Plateforme inconnue → pas d’URL');
+//  Windows a REJOINT la table le 10/09/2026, le jour où le PC a enfin eu
+//  un manifeste. Ce test servait justement d'exemple de « plateforme
+//  inconnue » — il a échoué à la seconde où le PC est devenu connu, ce
+//  qui est exactement son travail.
+ok(
+  manifestUrl('windows') ===
+    'https://github.com/manzilionellm-dotcom/tvking/releases/download/windows-latest/version.json',
+  'URL du manifeste Windows',
+);
+//  Une plateforme qui n'existe VRAIMENT pas. À ne jamais remplacer par
+//  une plateforme réelle « pas encore branchée » : le jour où on la
+//  branche, ce test se met à mentir au lieu de tomber.
+ok(manifestUrl('grille-pain') === null, 'Plateforme inconnue → pas d’URL');
 ok(manifestUrl('') === null, 'Plateforme vide → pas d’URL');
 
 // ---------------------------------------------------------
@@ -162,7 +174,7 @@ ok(appels.length === 1, 'Cache expiré → une nouvelle lecture');
 
 // Plateforme inconnue : aucun appel réseau du tout.
 appels = [];
-ok((await publishedVersion('windows')) === null, 'Plateforme inconnue → null');
+ok((await publishedVersion('grille-pain')) === null, 'Plateforme inconnue → null');
 ok(appels.length === 0, 'Plateforme inconnue → aucun appel réseau');
 
 // ---------------------------------------------------------

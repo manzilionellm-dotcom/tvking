@@ -40,14 +40,22 @@
 //  lib/core/update/update_service.dart, qui est ce que le bouton
 //  « Vérifier les mises à jour » interroge sur la box :
 //
-//    TV     → TV_UPDATE_TAG, défaut 'seventv-latest'
-//    Mobile → 'prod' (la maison mère ; les autres canaux sont des essais)
+//    TV      → TV_UPDATE_TAG,  défaut 'seventv-latest'
+//    Windows → WIN_UPDATE_TAG, défaut 'windows-latest'
+//    Mobile  → 'prod' (la maison mère ; les autres canaux sont des essais)
 //
 //  Le verdict du panel doit dire LA MÊME CHOSE que le bouton de l'app.
 //  Si on visait un autre canal, le panel afficherait « ancienne version »
 //  sur une box que l'app déclare à jour — et personne ne s'y retrouverait.
+//
+//  `windows` AJOUTÉ LE 10/09/2026, le jour où le PC a enfin eu un
+//  manifeste. Avant, la plateforme n'était pas dans cette table : la
+//  fiche MAC d'un PC ne pouvait porter aucun verdict, et l'app ne
+//  pouvait de toute façon rien proposer. Les deux se rallument ensemble,
+//  comme le veut la règle — le panel et l'app visent `windows-latest`.
 export const VERSION_CHANNELS = {
   tv: 'seventv-latest',
+  windows: 'windows-latest',
   mobile: 'prod',
 };
 

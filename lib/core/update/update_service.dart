@@ -6,8 +6,11 @@
 //  APK, sans que le client desinstalle (la signature stable garantit
 //  l'installation par-dessus, favoris/reglages conserves).
 //
-//  Source de verite : `version.json`, publie par le CI sur la release
-//  `latest` a chaque build :
+//  Sur WINDOWS c'est le meme mecanisme, avec un installeur .exe a la
+//  place de l'APK et le canal `windows-latest` a la place du canal TV.
+//
+//  Source de verite : `version.json`, publie par le CI sur le canal de
+//  la plateforme (voir `_tagCourant`) a chaque build :
 //    { "versionCode": 599, "versionName": "0.3.0",
 //      "url": "https://.../releases/download/latest/7motion.apk",
 //      "mandatory": false }
@@ -107,14 +110,47 @@ class UpdateService {
   static const String _tvUpdateTag =
       String.fromEnvironment('TV_UPDATE_TAG', defaultValue: 'seventv-latest');
 
-  /// `version.json` publié par le CI de la MAISON MÈRE : `prod` (téléphone)
-  /// et `tv-prod` (DeFew TV). L'APK mobile et l'APK TV sont des builds
-  /// différents (targets, versionCode) → aiguillage par plateforme, posé au
-  /// boot. Ces canaux sont PROTÉGÉS (publiés uniquement par la maison mère),
+  /// Canal du TÉLÉPHONE — VOLONTAIREMENT SANS MANIFESTE.
+  ///
+  /// Vérifié le 10/09/2026 : aucune release `prod` n'existe dans le
+  /// dépôt, ce canal répond 404, et c'est VOULU. Décision du
+  /// propriétaire du 22/08 : « efface tous les builds téléphone, on
+  /// laisse celui qui est activé sur le Play Store, que tout pointe
+  /// dessus ». Un téléphone reçoit donc ses mises à jour du Store, pas
+  /// d'ici — le sideload a été retiré exprès.
+  ///
+  /// NE LE FAIS PAS POINTER SUR `phone-latest` en croyant réparer une
+  /// panne : tu rallumerais le sideload que le propriétaire a éteint, et
+  /// tu désaccorderais l'app du panel (`cloudflare/app_versions.js`
+  /// garde `mobile: 'prod'` pour viser EXACTEMENT le même canal). Le
+  /// jour où un manifeste téléphone repart, les deux se rallument
+  /// ensemble, en changeant les deux fichiers.
+  static const String _phoneUpdateTag = 'prod';
+
+  /// Canal du PC.
+  ///
+  /// ⚠ AJOUTÉ LE 10/09/2026. Avant, Windows tombait dans la branche
+  /// « téléphone » (`AppPlatform.isTv` reste faux sur PC) : il cherchait
+  /// donc un APK Android, sur un canal inexistant, pour l'installer avec
+  /// l'installateur de paquets d'Android. Trois impossibilités
+  /// superposées — le bouton ne pouvait pas marcher.
+  static const String _windowsUpdateTag =
+      String.fromEnvironment('WIN_UPDATE_TAG', defaultValue: 'windows-latest');
+
+  /// Le canal que CETTE app doit interroger.
+  ///
+  /// WINDOWS EST TESTÉ EN PREMIER, comme dans `AppPlatform.id`, et pour la
+  /// même raison : sur PC l'app affiche l'interface TV mais `isTv` reste
+  /// faux. Sans ce premier test, le PC irait chercher l'APK du téléphone.
+  static String get _tagCourant => AppPlatform.isWindows
+      ? _windowsUpdateTag
+      : (AppPlatform.isTv ? _tvUpdateTag : _phoneUpdateTag);
+
+  /// `version.json` publié par le CI sur le canal de la plateforme.
+  ///
+  /// Ces canaux sont PROTÉGÉS (publiés uniquement par la maison mère),
   /// donc jamais écrasés : l'updater trouve toujours la vraie dernière app.
-  static String get manifestUrl => AppPlatform.isTv
-      ? 'https://github.com/manzilionellm-dotcom/tvking/releases/download/$_tvUpdateTag/version.json'
-      : 'https://github.com/manzilionellm-dotcom/tvking/releases/download/prod/version.json';
+  static String get manifestUrl => '$_ghBase$_tagCourant/version.json';
 
   /// MIROIR via NOTRE domaine (retour client du 21/08 : « le bouton Mise à
   /// jour ne marche pas ») : certaines box n'atteignent pas github.com
@@ -259,8 +295,14 @@ class UpdateService {
     http.Client? client;
     IOSink? sink;
     try {
+      // SUR PC C'EST UN INSTALLEUR .exe, PAS UN APK. Le nom compte : c'est
+      // lui que Windows regarde pour décider quoi lancer, et un `.apk`
+      // n'y est associé à rien du tout.
+      final bool surPc = AppPlatform.isWindows;
       final Directory dir = await getTemporaryDirectory();
-      final File file = File('${dir.path}/7motion-${update.versionCode}.apk');
+      final File file = File(surPc
+          ? '${dir.path}/7MOTION-Setup-${update.versionCode}.exe'
+          : '${dir.path}/7motion-${update.versionCode}.apk');
       if (await file.exists()) {
         try {
           await file.delete();
@@ -304,6 +346,26 @@ class UpdateService {
       await sink.flush();
       await sink.close();
       sink = null;
+
+      if (surPc) {
+        // ON LANCE L'INSTALLEUR, ET ON SE DÉTACHE DE LUI.
+        //
+        // `detached` n'est pas une option de confort : sans elle, le
+        // processus fils meurt avec l'application. Or la PREMIÈRE chose
+        // que fait cet installeur est de demander la fermeture de
+        // l'application en cours — il se tuerait donc lui-même à la
+        // seconde où le client accepte.
+        //
+        // Le client verra l'avertissement SmartScreen tant que
+        // l'installeur n'est pas signé. Ce n'est pas un défaut de ce
+        // code : c'est le certificat qui manque.
+        await Process.start(
+          file.path,
+          const <String>[],
+          mode: ProcessStartMode.detached,
+        );
+        return true;
+      }
 
       // Lance l'installateur Android (necessite la permission
       // REQUEST_INSTALL_PACKAGES, ajoutee au manifest par le CI).
