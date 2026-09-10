@@ -11,13 +11,25 @@
 //  registerTvPlayer pour l'injecter). Le build TV ne l'atteint JAMAIS → sa
 //  fermeture de compilation reste sans media_kit (cf. tv_player_screen.dart).
 //
-//  Commandes (clavier, façon télécommande) :
-//    Haut/Bas (ou Préc/Suiv média) = zap ; chiffres = n° de chaîne ;
-//    OK/Entrée/Espace = barre de contrôle ; F = favori ; Échap/Retour = quitter.
+//  Commandes (10/09/2026 — modèle Netflix : tout se cache tout seul) :
+//    Espace / K / touches média = PAUSE  (Espace ne montre PLUS les infos :
+//                                         sur un PC, Espace = pause partout)
+//    Haut/Bas, Page↑/Page↓       = chaîne précédente / suivante
+//    chiffres                    = numéro de chaîne
+//    H, Entrée, ou un mouvement de souris = barre de contrôle
+//    F = favori ; Échap/Retour = quitter
+//
+//  La barre s'efface seule après 3 s d'inactivité, ET LE CURSEUR AVEC :
+//  une flèche blanche immobile au milieu d'un match, c'est ce qui fait
+//  qu'un PC branché sur une télé ressemble à un PC.
 // =========================================================
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+// `PointerHoverEvent` : déclaré explicitement plutôt que supposé réexporté
+// par material.dart. Le 09/09, exactement cette supposition sur
+// `ValueListenable` a cassé la compilation des quatre builds.
+import 'package:flutter/gestures.dart' show PointerHoverEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
@@ -33,6 +45,7 @@ import '../../../subscription/data/subscription_state.dart';
 import '../../core/tv_dimens.dart';
 import '../../core/tv_tokens.dart';
 import '../tv_components.dart';
+import 'player_progress.dart';
 
 /// Lecteur Windows. Même contrat que TvPlayerScreen (liste + index de départ),
 /// injecté via registerTvPlayer dans main_windows.dart.
@@ -58,6 +71,17 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
   late int _index = widget.startIndex;
   bool _overlay = true;
   bool _buffering = true;
+
+  /// Position dans le flux, pour la réglette de progression. Sur une
+  /// chaîne en direct elle avance sans fin et la durée reste nulle : la
+  /// barre affiche alors « DIRECT » au lieu d'une progression fausse
+  /// (voir `player_progress.dart`).
+  Duration _position = Duration.zero;
+  Duration _duree = Duration.zero;
+
+  /// Volume 0-100 (échelle de media_kit). Lu depuis le lecteur au
+  /// démarrage pour que la réglette parte à la bonne valeur.
+  double _volume = 100;
   bool _fatal = false;
   String _numBuffer = '';
 
@@ -112,6 +136,21 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
       // de pause, y compris si la mise en pause vient d'ailleurs que du
       // clavier (touche multimédia captée par le système, par exemple).
       setState(() {});
+    }));
+    // Position et durée : la réglette de progression s'en nourrit. On ne
+    // redessine QUE si la barre est visible — sinon on repeindrait
+    // l'écran une fois par seconde pour rien, pendant des heures, sur une
+    // machine qui décode déjà de la vidéo.
+    _subs.add(_player.stream.position.listen((Duration p) {
+      if (!mounted) return;
+      _position = p;
+      if (_overlay) setState(() {});
+    }));
+    _subs.add(_player.stream.duration.listen((Duration d) {
+      if (mounted) setState(() => _duree = d);
+    }));
+    _subs.add(_player.stream.volume.listen((double v) {
+      if (mounted) setState(() => _volume = v);
     }));
     _subs.add(_player.stream.error.listen((String e) {
       // libmpv crache beaucoup d'avertissements non fatals sur les flux IPTV.
@@ -218,12 +257,35 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
     _open();
   }
 
+  //  TROIS SECONDES, et pas six (10/09/2026).
+  //
+  //  Le modèle demandé est celui de Netflix : « tout est pensé pour
+  //  disparaître, l'écran reste propre comme une vraie télé ». Six
+  //  secondes, c'est une barre qui traîne — on la voit encore alors qu'on
+  //  a fini de s'en servir, et elle mange le bas de l'image.
   void _showOverlayTemporarily() {
     setState(() => _overlay = true);
     _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 6), () {
+    _hideTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) setState(() => _overlay = false);
     });
+  }
+
+  /// Mouvement de souris : on réveille la barre.
+  ///
+  /// GARDE-FOU CONTRE LE TREMBLEMENT. Une souris posée sur un bureau
+  /// envoie des micro-mouvements en permanence (capteur optique, table
+  /// qui vibre). Sans ce filtre, la barre ne se cacherait JAMAIS sur
+  /// certains postes — exactement l'inverse du but recherché. On ne
+  /// réagit donc qu'à un déplacement franc.
+  static const double _seuilSouris = 3;
+  Offset? _dernierePosSouris;
+
+  void _onSouris(PointerHoverEvent e) {
+    final Offset? avant = _dernierePosSouris;
+    _dernierePosSouris = e.position;
+    if (avant != null && (e.position - avant).distance < _seuilSouris) return;
+    _showOverlayTemporarily();
   }
 
   void _toggleOverlay() {
@@ -319,6 +381,13 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
       unawaited(_togglePause());
       return KeyEventResult.handled;
     }
+    // H : afficher/masquer la barre. C'est la convention des lecteurs de
+    // bureau (VLC, Kodi, mpv) — celui qui la connaît la trouve sans qu'on
+    // la lui explique, et celui qui l'ignore ne perd rien.
+    if (k == LogicalKeyboardKey.keyH) {
+      _toggleOverlay();
+      return KeyEventResult.handled;
+    }
     if (k == LogicalKeyboardKey.keyF) {
       _toggleFavorite();
       return KeyEventResult.handled;
@@ -352,7 +421,19 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
       focusNode: _focus,
       autofocus: true,
       onKeyEvent: _onKey,
-      child: GestureDetector(
+      //  LE GESTE DE NETFLIX : la barre surgit au mouvement de la souris,
+      //  et TOUT disparaît ensuite — la barre ET LE CURSEUR.
+      //
+      //  Cacher le curseur n'est pas un détail de finition : une flèche
+      //  blanche immobile au milieu d'un match, c'est ce qui fait qu'un
+      //  PC branché sur une télé ressemble à un PC. C'est exactement la
+      //  différence entre « une app » et « une fenêtre de navigateur ».
+      child: MouseRegion(
+        cursor: _overlay
+            ? SystemMouseCursors.basic
+            : SystemMouseCursors.none,
+        onHover: _onSouris,
+        child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _toggleOverlay,
         child: ColoredBox(
@@ -450,6 +531,20 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
                         total: widget.channels.length,
                         isFavorite: _isFavorite,
                         onFavorite: _toggleFavorite,
+                        enLecture: _player.state.playing,
+                        onPlayPause: () => unawaited(_togglePause()),
+                        onPrecedent: () => _zap(-1),
+                        onSuivant: () => _zap(1),
+                        volume: _volume,
+                        onVolume: (double v) {
+                          // On garde la barre à l'écran pendant qu'on
+                          // règle le son : elle se refermerait au milieu
+                          // du geste, sinon.
+                          _showOverlayTemporarily();
+                          unawaited(_player.setVolume(v));
+                        },
+                        position: _position,
+                        duree: _duree,
                       ),
                     ),
                   ),
@@ -500,6 +595,7 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
           ),
         ),
       ),
+      ),
     );
   }
 }
@@ -512,6 +608,14 @@ class _DesktopControls extends StatelessWidget {
     required this.total,
     required this.isFavorite,
     required this.onFavorite,
+    required this.enLecture,
+    required this.onPlayPause,
+    required this.onPrecedent,
+    required this.onSuivant,
+    required this.volume,
+    required this.onVolume,
+    required this.position,
+    required this.duree,
   });
 
   final Channel channel;
@@ -519,6 +623,14 @@ class _DesktopControls extends StatelessWidget {
   final int total;
   final bool isFavorite;
   final VoidCallback onFavorite;
+  final bool enLecture;
+  final VoidCallback onPlayPause;
+  final VoidCallback onPrecedent;
+  final VoidCallback onSuivant;
+  final double volume;
+  final ValueChanged<double> onVolume;
+  final Duration position;
+  final Duration duree;
 
   @override
   Widget build(BuildContext context) {
@@ -532,7 +644,16 @@ class _DesktopControls extends StatelessWidget {
           colors: <Color>[Color(0xF2000000), Color(0x00000000)],
         ),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          // ----- RÉGLETTE DE PROGRESSION, tout en haut de la barre -----
+          // En direct, une progression serait un mensonge : elle laisserait
+          // croire qu'on peut revenir en arrière. On affiche donc le temps
+          // écoulé et un repère « DIRECT » à la place.
+          _Progression(position: position, duree: duree),
+          const SizedBox(height: 10),
+          Row(
         children: <Widget>[
           SizedBox(
             width: 56,
@@ -601,6 +722,68 @@ class _DesktopControls extends StatelessWidget {
                     color: TvTokens.text)),
           ),
         ],
+          ),
+          const SizedBox(height: 8),
+          // ----- LES COMMANDES, à la souris comme au clavier -----
+          // Chaque bouton porte son raccourci dans son infobulle : c'est
+          // ainsi qu'on apprend les touches sans lire de mode d'emploi.
+          Row(
+            children: <Widget>[
+              _BoutonRond(
+                icone: Icons.skip_previous_rounded,
+                onTap: onPrecedent,
+                info: 'Chaîne précédente (↑)',
+              ),
+              const SizedBox(width: 10),
+              // Le plus gros bouton : c'est celui qu'on vise en premier,
+              // et souvent sans regarder.
+              _BoutonRond(
+                icone: enLecture ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                onTap: onPlayPause,
+                info: enLecture ? 'Pause (Espace)' : 'Lecture (Espace)',
+                grand: true,
+              ),
+              const SizedBox(width: 10),
+              _BoutonRond(
+                icone: Icons.skip_next_rounded,
+                onTap: onSuivant,
+                info: 'Chaîne suivante (↓)',
+              ),
+              const SizedBox(width: 22),
+              // ----- VOLUME -----
+              Icon(
+                volume <= 0
+                    ? Icons.volume_off_rounded
+                    : (volume < 50
+                        ? Icons.volume_down_rounded
+                        : Icons.volume_up_rounded),
+                color: TvTokens.text,
+                size: 24,
+              ),
+              SizedBox(
+                width: 150,
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 7),
+                    overlayShape:
+                        const RoundSliderOverlayShape(overlayRadius: 14),
+                    activeTrackColor: TvTokens.gold,
+                    inactiveTrackColor: Colors.white24,
+                    thumbColor: TvTokens.gold,
+                  ),
+                  child: Slider(
+                    value: volume.clamp(0, 100),
+                    max: 100,
+                    onChanged: onVolume,
+                  ),
+                ),
+              ),
+              const Spacer(),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -610,4 +793,105 @@ class _DesktopControls extends StatelessWidget {
             style: const TextStyle(
                 fontSize: 22, fontWeight: FontWeight.w800, color: TvTokens.muted)),
       );
+}
+
+/// Bouton rond de la barre de commandes.
+///
+/// Séparé plutôt que recopié cinq fois : sinon le jour où l'on change la
+/// taille de frappe ou la couleur au survol, on la change à quatre
+/// endroits sur cinq — et c'est le cinquième qu'on remarque.
+class _BoutonRond extends StatelessWidget {
+  const _BoutonRond({
+    required this.icone,
+    required this.onTap,
+    required this.info,
+    this.grand = false,
+  });
+  final IconData icone;
+  final VoidCallback onTap;
+  final String info;
+  final bool grand;
+
+  @override
+  Widget build(BuildContext context) {
+    final double taille = grand ? 56 : 44;
+    return Tooltip(
+      message: info,
+      child: Material(
+        color: Colors.white.withValues(alpha: grand ? 0.16 : 0.08),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: taille,
+            height: taille,
+            child: Icon(icone, color: TvTokens.text, size: grand ? 32 : 24),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Réglette de progression — ou repère « DIRECT ».
+///
+/// LA DISTINCTION EST LE POINT IMPORTANT. Une chaîne de télévision n'a pas
+/// de fin : y dessiner une barre qui se remplit laisserait croire qu'on
+/// peut revenir en arrière ou avancer. On montre donc le temps écoulé
+/// depuis qu'on regarde, et un point rouge qui dit ce qu'on est en train
+/// de faire. La règle vit dans `player_progress.dart`, testée à part.
+class _Progression extends StatelessWidget {
+  const _Progression({required this.position, required this.duree});
+  final Duration position;
+  final Duration duree;
+
+  @override
+  Widget build(BuildContext context) {
+    if (estDirect(duree)) {
+      return Row(
+        children: <Widget>[
+          Container(
+            width: 9,
+            height: 9,
+            decoration: const BoxDecoration(
+              color: Color(0xFFE53935),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Text('DIRECT',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.4,
+                  color: TvTokens.text)),
+          const SizedBox(width: 12),
+          Text(formatDuree(position),
+              style: const TextStyle(fontSize: 12, color: TvTokens.muted)),
+        ],
+      );
+    }
+    return Row(
+      children: <Widget>[
+        Text(formatDuree(position),
+            style: const TextStyle(fontSize: 12, color: TvTokens.muted)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: progression(position, duree),
+              minHeight: 4,
+              backgroundColor: Colors.white24,
+              valueColor: const AlwaysStoppedAnimation<Color>(TvTokens.gold),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(formatDuree(duree),
+            style: const TextStyle(fontSize: 12, color: TvTokens.muted)),
+      ],
+    );
+  }
 }
