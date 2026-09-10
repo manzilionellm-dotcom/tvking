@@ -64,6 +64,18 @@ import 'tv_who_watching_screen.dart';
 /// (cf. `MaterialApp.builder`). 1280 = canevas 10-foot standard (720p).
 const double kTvDesignWidth = 1280;
 
+/// Clé du navigateur racine de l'app TV.
+///
+/// Elle existe pour UNE raison : permettre au raccourci « Échap » posé
+/// au-dessus du navigateur de le faire reculer. Sans elle, le contexte du
+/// raccourci est au-DESSUS du navigateur et ne peut pas le remonter.
+final GlobalKey<NavigatorState> tvNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Intention « reculer d'un écran ».
+class _RetourIntent extends Intent {
+  const _RetourIntent();
+}
+
 class TvApp extends StatelessWidget {
   const TvApp({super.key});
 
@@ -92,6 +104,7 @@ class TvApp extends StatelessWidget {
       ]),
       builder: (BuildContext context, _) => MaterialApp(
         title: kAppName,
+        navigatorKey: tvNavigatorKey,
         debugShowCheckedModeBanner: false,
         // --- Internationalisation (8 langues, RTL auto pour l'arabe) ---
         locale: LocaleRepository.instance.locale, // null = langue de la TV
@@ -160,7 +173,54 @@ class TvApp extends StatelessWidget {
           final double ov = DisplaySettings.instance.overscanFraction;
           // TAILLE DU TEXTE : 1.0 (normal) ou 1.08 (grand, confort seniors).
           final double ts = DisplaySettings.instance.textScale;
-          return Stack(
+          // =========================================================
+          //  « ÉCHAP » RECULE — POUR TOUTE L'APP, D'UN SEUL ENDROIT
+          // =========================================================
+          //  Signalé par le propriétaire (10/09/2026) : « l'app Windows
+          //  n'a pas de retour, c'est catastrophique ».
+          //
+          //  IL AVAIT RAISON, ET LA CAUSE EST STRUCTURELLE. Cette
+          //  interface est née pour une TÉLÉCOMMANDE, dont la touche
+          //  Retour est un bouton système qu'Android remonte tout seul.
+          //  Sur un PC, ce bouton n'existe pas : le clavier envoie Échap,
+          //  et seuls HUIT écrans sur des dizaines savaient l'écouter.
+          //  Partout ailleurs, l'utilisateur entrait dans un écran et
+          //  restait enfermé dedans — sans bouton, sans geste, sans issue.
+          //
+          //  POURQUOI ICI ET PAS DANS CHAQUE ÉCRAN. Ajouter Échap aux
+          //  trente écrans, c'est trente occasions d'en oublier un — et
+          //  garantir que le trente-et-unième, écrit dans six mois, sera
+          //  de nouveau une impasse. Un seul raccourci, à la racine,
+          //  couvre tout ce qui existe et tout ce qui viendra.
+          //
+          //  IL NE VOLE RIEN AUX ÉCRANS QUI GÈRENT DÉJÀ. Flutter donne la
+          //  touche d'abord au widget qui a le focus ; ce raccourci n'est
+          //  consulté que si personne ne l'a prise. Les huit écrans
+          //  gardent donc leur comportement propre (fermer un panneau
+          //  avant de quitter, par exemple).
+          //
+          //  `maybePop` et NON `pop` : c'est ce qui respecte les
+          //  `PopScope` de l'accueil — la boîte « Quitter l'application »
+          //  s'affiche toujours au lieu que l'app se ferme d'un coup.
+          return Shortcuts(
+            shortcuts: <ShortcutActivator, Intent>{
+              const SingleActivator(LogicalKeyboardKey.escape):
+                  const _RetourIntent(),
+              // La touche Retour des télécommandes USB / claviers média,
+              // que certains mini-PC branchés sur une télé possèdent.
+              const SingleActivator(LogicalKeyboardKey.browserBack):
+                  const _RetourIntent(),
+            },
+            child: Actions(
+              actions: <Type, Action<Intent>>{
+                _RetourIntent: CallbackAction<_RetourIntent>(
+                  onInvoke: (_) {
+                    tvNavigatorKey.currentState?.maybePop();
+                    return null;
+                  },
+                ),
+              },
+              child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
               Padding(
@@ -203,6 +263,8 @@ class TvApp extends StatelessWidget {
                 child: SafeArea(child: TvReminderBanner()),
               ),
             ],
+          ),
+            ),
           );
         },
         // Observer de navigation : permet aux aperçus vidéo (TvLivePreview)
