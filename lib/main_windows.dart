@@ -57,6 +57,7 @@ import 'features/tv/data/display_settings.dart';
 import 'features/tv/data/place_repository.dart';
 import 'features/vod/data/playback_position_repository.dart';
 import 'features/vod/data/vod_download_service.dart';
+import 'features/tv/presentation/player/desktop_fullscreen.dart';
 import 'features/tv/presentation/player/desktop_player_screen.dart';
 import 'features/tv/presentation/tv_app.dart';
 import 'features/tv/presentation/tv_player_screen.dart';
@@ -88,6 +89,16 @@ Future<void> _bootstrap() async {
   MediaKit.ensureInitialized();
   registerTvPlayer((List<Channel> channels, int startIndex) =>
       DesktopPlayerScreen(channels: channels, startIndex: startIndex));
+
+  // Le canal vers la FENÊTRE native, pour le plein écran du lecteur.
+  //
+  // Sans cet appel, le bouton et la touche F11 tomberaient dans le vide,
+  // sans erreur ni message — la panne dont on conclut « le bouton ne
+  // marche pas » alors que le bouton va très bien. Même famille de défaut
+  // que les onze briques de l'audit ci-dessous : la fonction existe, c'est
+  // son démarrage qui manque. Bloquant mais quasi instantané (un simple
+  // enregistrement de canal, aucune E/S).
+  await DesktopFullscreen.preparer();
 
   // Langue de l'app : choix mémorisé (ou « Système »). Bloquant et rapide pour
   // que le 1er rendu soit déjà dans la bonne langue.

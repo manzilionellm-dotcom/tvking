@@ -19,7 +19,8 @@
 //    clic ou glisser sur la réglette = se rendre à cet endroit (films seuls)
 //    chiffres                    = numéro de chaîne
 //    H, Entrée, ou un mouvement de souris = barre de contrôle
-//    F = favori ; Échap/Retour = quitter
+//    F11 ou double-clic         = plein écran (couvre tout, comme une télé)
+//    F = favori ; Échap/Retour = quitter le plein écran, puis la chaîne
 //
 //  La barre s'efface seule après 3 s d'inactivité, ET LE CURSEUR AVEC :
 //  une flèche blanche immobile au milieu d'un match, c'est ce qui fait
@@ -47,6 +48,7 @@ import '../../../subscription/data/subscription_state.dart';
 import '../../core/tv_dimens.dart';
 import '../../core/tv_tokens.dart';
 import '../tv_components.dart';
+import 'desktop_fullscreen.dart';
 import 'player_progress.dart';
 
 /// Lecteur Windows. Même contrat que TvPlayerScreen (liste + index de départ),
@@ -175,6 +177,13 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
 
     _applyMpvOptions();
     _open();
+
+    // On DEMANDE son état à la fenêtre au lieu de supposer « pas en plein
+    // écran » : si le client était déjà en plein écran sur l'écran d'avant,
+    // le bouton doit s'ouvrir avec la bonne icône, pas avec l'inverse.
+    unawaited(DesktopFullscreen.actif().then((bool a) {
+      if (mounted) setState(() => _pleinEcran = a);
+    }));
 
     // Présence : garde l'app « en ligne » + chaîne à jour pendant le visionnage.
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
@@ -313,6 +322,21 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
   void _sauter(int secondes) =>
       unawaited(_allerA(positionApresSaut(_position, _duree, secondes)));
 
+  // ----- PLEIN ÉCRAN -----
+  //
+  // L'état est gardé ici plutôt que relu à chaque image : interroger la
+  // fenêtre native est un aller-retour asynchrone, et on redessine cette
+  // barre plusieurs fois par seconde. On le resynchronise à chaque
+  // bascule, à partir de ce que la fenêtre a VRAIMENT fait.
+  bool _pleinEcran = false;
+
+  Future<void> _basculerPleinEcran() async {
+    final bool desormais = await DesktopFullscreen.basculer();
+    if (!mounted) return;
+    setState(() => _pleinEcran = desormais);
+    _showOverlayTemporarily();
+  }
+
   /// Mouvement de souris : on réveille la barre.
   ///
   /// GARDE-FOU CONTRE LE TREMBLEMENT. Une souris posée sur un bureau
@@ -394,10 +418,28 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
       _retry();
       return KeyEventResult.handled;
     }
+    // F11 : le plein écran, comme dans tous les navigateurs et tous les
+    // lecteurs du monde PC. Celui qui connaît la touche la trouve sans
+    // qu'on la lui explique.
+    if (k == LogicalKeyboardKey.f11) {
+      unawaited(_basculerPleinEcran());
+      return KeyEventResult.handled;
+    }
+
     if (k == LogicalKeyboardKey.goBack ||
         k == LogicalKeyboardKey.escape ||
         k == LogicalKeyboardKey.browserBack ||
         k == LogicalKeyboardKey.exit) {
+      // ÉCHAP SORT D'ABORD DU PLEIN ÉCRAN, et seulement ensuite de la
+      // chaîne. C'est la convention partout, et surtout c'est ce qui évite
+      // la panique : en plein écran il n'y a plus ni barre de titre ni
+      // croix, et le réflexe universel quand on s'y sent coincé est
+      // d'appuyer sur Échap. Si cette touche quittait le lecteur d'un coup
+      // en laissant la fenêtre étalée sur l'écran, on se croirait bloqué.
+      if (_pleinEcran) {
+        unawaited(_basculerPleinEcran());
+        return KeyEventResult.handled;
+      }
       Navigator.of(context).maybePop();
       return KeyEventResult.handled;
     }
@@ -469,6 +511,10 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
     }
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend();
+    // On rend sa fenêtre au client en quittant la chaîne. Se retrouver dans
+    // un menu qui occupe encore tout l'écran, sans barre de titre ni croix
+    // de fermeture, c'est se sentir enfermé dans son propre ordinateur.
+    unawaited(DesktopFullscreen.quitter());
     _player.dispose();
     _focus.dispose();
     super.dispose();
@@ -495,6 +541,12 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
         child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _toggleOverlay,
+        // DOUBLE-CLIC = PLEIN ÉCRAN. C'est le geste que tout le monde fait
+        // déjà sur YouTube, VLC et Netflix, sans y penser et sans l'avoir
+        // appris. Il coûte un délai de ~300 ms au simple clic (Flutter doit
+        // attendre l'éventuel second) — sans conséquence ici : la barre
+        // apparaît déjà toute seule au moindre mouvement de souris.
+        onDoubleTap: () => unawaited(_basculerPleinEcran()),
         child: ColoredBox(
           color: Colors.black,
           child: Stack(
@@ -604,6 +656,8 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
                         },
                         position: _position,
                         duree: _duree,
+                        pleinEcran: _pleinEcran,
+                        onPleinEcran: () => unawaited(_basculerPleinEcran()),
                         onAllerA: (Duration d) => unawaited(_allerA(d)),
                         onReculer: () => _sauter(-10),
                         onAvancer: () => _sauter(10),
@@ -722,6 +776,8 @@ class _DesktopControls extends StatelessWidget {
     required this.onReculer,
     required this.onAvancer,
     required this.onDeplacement,
+    required this.pleinEcran,
+    required this.onPleinEcran,
   });
 
   final Channel channel;
@@ -741,12 +797,15 @@ class _DesktopControls extends StatelessWidget {
   final VoidCallback onReculer;
   final VoidCallback onAvancer;
   final ValueChanged<bool> onDeplacement;
+  final bool pleinEcran;
+  final VoidCallback onPleinEcran;
 
   @override
   Widget build(BuildContext context) {
-    // Un film se pilote autrement qu'une chaîne : on peut s'y déplacer, et
-    // il n'y a rien « avant » ni « après ». D'où deux jeux de boutons.
-    final bool direct = estDirect(duree);
+    // Deux capacités indépendantes (voir le pavé plus bas) : on zappe s'il
+    // y a plusieurs chaînes, on se déplace si le flux annonce une durée.
+    final bool peutZapper = total > 1;
+    final bool peutSeDeplacer = !estDirect(duree);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(40, 44, 40, 28),
@@ -847,26 +906,36 @@ class _DesktopControls extends StatelessWidget {
           // ainsi qu'on apprend les touches sans lire de mode d'emploi.
           Row(
             children: <Widget>[
-              // Sur un film : reculer de 10 s. Sur une chaîne : zapper.
+              // DEUX QUESTIONS SÉPARÉES, ET C'EST TOUT L'ENJEU (10/09/2026).
               //
-              // La même case porte les deux, parce que c'est la case que la
-              // main vise en premier. Mettre « chaîne précédente » sur un
-              // film où il n'y a qu'un seul titre, c'est offrir un bouton
-              // qui ne fait rien — et un bouton qui ne fait rien apprend au
-              // client à ne plus toucher à la barre.
-              if (direct)
+              // « Peut-on zapper ? » et « peut-on se déplacer ? » n'ont rien
+              // à voir l'une avec l'autre, et une première version les avait
+              // confondues : elle remplaçait le zapping par les ±10 s dès
+              // que le flux annonçait une durée. Photo à l'appui, TNT Sports
+              // 7/19 en direct : le flux annonçait 1:05 de tampon glissant,
+              // donc les boutons de chaîne AVAIENT DISPARU sur une liste de
+              // dix-neuf chaînes.
+              //
+              // On zappe s'il y a plus d'une chaîne. On se déplace si le
+              // flux le permet. Sur un match en direct avec du tampon, les
+              // deux sont vrais — et c'est très bien : on revoit le but,
+              // puis on zappe.
+              if (peutZapper) ...<Widget>[
                 _BoutonRond(
                   icone: Icons.skip_previous_rounded,
                   onTap: onPrecedent,
                   info: 'Chaîne précédente (↑)',
-                )
-              else
+                ),
+                const SizedBox(width: 10),
+              ],
+              if (peutSeDeplacer) ...<Widget>[
                 _BoutonRond(
                   icone: Icons.replay_10_rounded,
                   onTap: onReculer,
                   info: 'Reculer de 10 s (←)',
                 ),
-              const SizedBox(width: 10),
+                const SizedBox(width: 10),
+              ],
               // Le plus gros bouton : c'est celui qu'on vise en premier,
               // et souvent sans regarder.
               _BoutonRond(
@@ -875,19 +944,22 @@ class _DesktopControls extends StatelessWidget {
                 info: enLecture ? 'Pause (Espace)' : 'Lecture (Espace)',
                 grand: true,
               ),
-              const SizedBox(width: 10),
-              if (direct)
-                _BoutonRond(
-                  icone: Icons.skip_next_rounded,
-                  onTap: onSuivant,
-                  info: 'Chaîne suivante (↓)',
-                )
-              else
+              if (peutSeDeplacer) ...<Widget>[
+                const SizedBox(width: 10),
                 _BoutonRond(
                   icone: Icons.forward_10_rounded,
                   onTap: onAvancer,
                   info: 'Avancer de 10 s (→)',
                 ),
+              ],
+              if (peutZapper) ...<Widget>[
+                const SizedBox(width: 10),
+                _BoutonRond(
+                  icone: Icons.skip_next_rounded,
+                  onTap: onSuivant,
+                  info: 'Chaîne suivante (↓)',
+                ),
+              ],
               const SizedBox(width: 22),
               // ----- VOLUME -----
               Icon(
@@ -920,6 +992,20 @@ class _DesktopControls extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              // ----- PLEIN ÉCRAN, tout à droite -----
+              // C'est sa place chez YouTube, chez VLC et chez Netflix. On
+              // ne la choisit pas par imitation : c'est le coin où la main
+              // va le chercher sans réfléchir, parce qu'elle l'y a trouvé
+              // partout ailleurs.
+              _BoutonRond(
+                icone: pleinEcran
+                    ? Icons.fullscreen_exit_rounded
+                    : Icons.fullscreen_rounded,
+                onTap: onPleinEcran,
+                info: pleinEcran
+                    ? 'Quitter le plein écran (F11 ou Échap)'
+                    : 'Plein écran (F11 ou double-clic)',
+              ),
             ],
           ),
         ],

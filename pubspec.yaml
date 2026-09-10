@@ -103,6 +103,28 @@ dependencies:
   # ExoPlayer est Android-uniquement). Activé en lecture côté Windows (étape 2).
   media_kit_libs_windows_video: ^1.0.10
 
+  # window_manager — LE PLEIN ÉCRAN SUR PC.
+  #
+  # QUE FAIT-IL : il pilote la fenêtre NATIVE du bureau (plein écran,
+  # taille, titre, toujours au-dessus). Flutter ne sait pas le faire seul :
+  # `SystemChrome.setEnabledSystemUIMode`, qu'on emploie sur la box, est
+  # Android/iOS uniquement et ne fait RIEN sur Windows.
+  #
+  # POURQUOI CELUI-LÀ : c'est l'implémentation de référence de l'écosystème
+  # desktop Flutter (leanflutter, les mêmes que screen_retriever qu'il
+  # embarque). L'alternative était d'appeler Win32 nous-mêmes en FFI —
+  # récupérer le HWND, réécrire les styles de fenêtre, gérer le retour à la
+  # taille d'avant. Beaucoup de code natif pour refaire, moins bien, ce qui
+  # existe et est éprouvé.
+  #
+  # AUCUN IMPACT SUR ANDROID : ni lui ni ses cinq dépendances
+  # (screen_retriever et ses variantes) ne déclarent la plateforme Android
+  # → rien n'entre dans l'APK. Et son import vit dans
+  # `desktop_fullscreen.dart`, atteint UNIQUEMENT par main_windows.dart,
+  # exactement comme media_kit : la fermeture de compilation du build TV
+  # ne le voit jamais.
+  window_manager: ^0.5.2
+
   # ffmpeg_kit_flutter_new_min — CONVERSION des enregistrements en MP4 lisible
   # par la galerie du téléphone. Pourquoi : le MediaExtractor/MediaMuxer natif
   # d'Android n'arrive PAS à relire nos captures .ts (flux live / segments HLS
