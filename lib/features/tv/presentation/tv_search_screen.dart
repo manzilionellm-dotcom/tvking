@@ -8,6 +8,9 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+// `ValueListenable` n'est PAS réexporté par material.dart (contrairement à
+// `ValueNotifier`, qui l'est) : sans cet import, la classe est introuvable.
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
