@@ -99,12 +99,19 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
       if (mounted) setState(() => _buffering = b);
     }));
     _subs.add(_player.stream.playing.listen((bool p) {
-      if (mounted && p && (_buffering || _fatal)) {
+      if (!mounted) return;
+      if (p && (_buffering || _fatal)) {
         setState(() {
           _buffering = false;
           _fatal = false;
         });
+        return;
       }
+      // Redessiner à CHAQUE bascule lecture/pause, et pas seulement quand
+      // ça repart : c'est ce qui fait apparaître et disparaître le symbole
+      // de pause, y compris si la mise en pause vient d'ailleurs que du
+      // clavier (touche multimédia captée par le système, par exemple).
+      setState(() {});
     }));
     _subs.add(_player.stream.error.listen((String e) {
       // libmpv crache beaucoup d'avertissements non fatals sur les flux IPTV.
@@ -234,11 +241,46 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
       k == LogicalKeyboardKey.channelDown ||
       k == LogicalKeyboardKey.pageDown ||
       k == LogicalKeyboardKey.mediaTrackNext;
+  //  OK = valider / afficher les infos.
+  //
+  //  ESPACE N'EN FAIT PLUS PARTIE (10/09/2026). Signalé par le
+  //  propriétaire : « l'app Windows n'a pas de pause ». Il avait raison,
+  //  et le défaut était pire qu'une absence : la barre d'espace était
+  //  branchée sur l'AFFICHAGE DES INFOS. Sur un PC, Espace veut dire
+  //  pause pour tout le monde — VLC, YouTube, Netflix, le lecteur de
+  //  Windows. On appuyait donc dessus en s'attendant à une pause, et on
+  //  obtenait un bandeau. Entrée reste là pour valider.
   bool _isOk(LogicalKeyboardKey k) =>
       k == LogicalKeyboardKey.select ||
       k == LogicalKeyboardKey.enter ||
-      k == LogicalKeyboardKey.numpadEnter ||
-      k == LogicalKeyboardKey.space;
+      k == LogicalKeyboardKey.numpadEnter;
+
+  /// Touches de PAUSE, dans l'ordre où un utilisateur les essaie.
+  ///
+  ///  - `Espace` : le réflexe universel sur ordinateur ;
+  ///  - `K`      : celui de YouTube, connu de tous les habitués ;
+  ///  - `mediaPlayPause` / `mediaPlay` / `mediaPause` : la touche dédiée
+  ///    des claviers multimédia et des télécommandes USB — beaucoup de
+  ///    mini-PC branchés sur une télé en ont une.
+  bool _isPause(LogicalKeyboardKey k) =>
+      k == LogicalKeyboardKey.space ||
+      k == LogicalKeyboardKey.keyK ||
+      k == LogicalKeyboardKey.mediaPlayPause ||
+      k == LogicalKeyboardKey.mediaPlay ||
+      k == LogicalKeyboardKey.mediaPause;
+
+  /// Met en pause ou reprend, et le MONTRE.
+  ///
+  /// Sur un flux en direct, une pause silencieuse est indiscernable d'un
+  /// écran figé par le réseau : l'image s'arrête, et rien ne dit si c'est
+  /// voulu. On force donc l'affichage du bandeau, qui porte l'icône de
+  /// l'état en cours.
+  Future<void> _togglePause() async {
+    await _player.playOrPause();
+    if (!mounted) return;
+    setState(() {});
+    _showOverlayTemporarily();
+  }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
@@ -269,6 +311,12 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
     }
     if (_isNext(k)) {
       _zap(1);
+      return KeyEventResult.handled;
+    }
+    // AVANT `_isOk` : sans cet ordre, Espace serait de nouveau avalé par
+    // l'affichage des infos et la pause resterait inatteignable.
+    if (_isPause(k)) {
+      unawaited(_togglePause());
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.keyF) {
@@ -407,6 +455,26 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen> {
                   ),
                 ),
               ),
+              // PAUSE : un signe AU CENTRE, impossible à rater.
+              //
+              // Sur un flux en direct, une image arrêtée est ambiguë : le
+              // spectateur ne peut pas savoir si c'est sa pause ou le
+              // réseau qui a lâché. Ce symbole tranche la question sans
+              // qu'il ait à toucher à quoi que ce soit. Il disparaît de
+              // lui-même dès que ça repart.
+              if (!_player.state.playing && !_buffering && !_fatal)
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(26),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.62),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white24, width: 2),
+                    ),
+                    child: const Icon(Icons.pause_rounded,
+                        size: 64, color: Colors.white),
+                  ),
+                ),
               // Numéro saisi au clavier (coin haut-droit).
               if (_numBuffer.isNotEmpty)
                 Positioned(
