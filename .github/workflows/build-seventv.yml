@@ -29,8 +29,29 @@ name: Build 7 MOTION TV (Seven Motion TV)
 on:
   push:
     branches: ['main', 'claude/**', 'feature/**']
+    #  PUBLICATION AUTOMATIQUE — demande du proprietaire (10/09/2026) :
+    #  « toujours, si on corrige quelque chose, ca se publie ».
+    #
+    #  CE QUI SE PASSAIT AVANT. Ce workflow ne partait QUE sur commande
+    #  manuelle. Un correctif pouvait donc etre compile, teste, vert, et
+    #  ne JAMAIS arriver sur les box — sans qu'aucune alerte ne le dise.
+    #  Le proprietaire a appuye sur « Verifier les mises a jour » pendant
+    #  trente minutes en attendant une version qui n'etait jamais partie.
+    #  « Vert » et « livre » n'etaient pas la meme chose, et rien ne le
+    #  signalait.
+    #
+    #  Desormais, tout changement du code de l'app publie. Le garde-fou
+    #  n'est pas retire, il est deplace au bon endroit : un build qui ne
+    #  COMPILE pas ne produit aucun APK, donc ne publie rien. C'est
+    #  exactement ce qui a protege le parc hier, quand la compilation
+    #  etait cassee.
     paths:
       - '.github/workflows/build-seventv.yml'
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - 'assets/**'
+      - 'packages/**'
+      - 'ci/**'
   workflow_dispatch:
     inputs:
       publish:
@@ -42,6 +63,15 @@ on:
 
 permissions:
   contents: write
+
+#  QUI PUBLIE ? Une seule reponse, lue par les trois etapes concernees.
+#  Trois copies de la meme condition auraient fini par diverger — et le
+#  jour ou l'une dit oui pendant que l'autre dit non, on publie un APK
+#  sans le manifeste qui l'annonce (ou l'inverse).
+#    - push        : un changement de code -> on publie.
+#    - dispatch    : on publie si l'humain a coche « publish ».
+env:
+  PUBLIER: ${{ github.event_name == 'push' || github.event.inputs.publish == 'true' }}
 
 #  UNE SEULE PUBLICATION À LA FOIS SUR CE CANAL (07/09/2026).
 #
@@ -119,7 +149,7 @@ jobs:
           #  publication sans la preuve.
           if grep -q '^seal=UNSEALED' ci/distribution.lock; then
             echo "::warning title=Verrou non arme::Le verrou protege les VALEURS mais n'est pas encore scelle. Poser le secret DIST_LOCK_PASSPHRASE puis lancer « Sceller le verrou de distribution » pour l'armer completement."
-          elif [ "${{ github.event.inputs.publish }}" = "true" ] \
+          elif [ "${{ env.PUBLIER }}" = "true" ] \
                && [ -z "${DIST_LOCK_PASSPHRASE:-}" ]; then
             echo "::error title=Preuve manquante::Le verrou est arme mais DIST_LOCK_PASSPHRASE est absent de ce build. Sans lui, on ne peut pas prouver que les liens n'ont pas ete changes — rien ne part vers les clients."
             exit 1
@@ -729,7 +759,7 @@ jobs:
       # release `seventv-latest` + version.json → lien /7tv du Worker et
       # updater in-app des builds NEUFS. Garde anti-retour-arrière incluse.
       - name: Publish "seventv-latest" release (si demandé)
-        if: github.event.inputs.publish == 'true'
+        if: env.PUBLIER == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -822,7 +852,7 @@ jobs:
       #  Cette étape vérifie la chaîne ENTIÈRE, depuis l'extérieur,
       #  exactement comme le ferait une box. Elle échoue bruyamment.
       - name: Vérifier que le bouton de mise à jour fonctionne
-        if: ${{ github.event.inputs.publish == 'true' }}
+        if: ${{ env.PUBLIER == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

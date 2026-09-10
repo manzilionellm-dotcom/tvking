@@ -28,6 +28,7 @@ import '../../subscription/data/subscription_state.dart';
 import '../core/tv_developer_mode.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_program_reminders.dart';
+import '../core/tv_update_watch.dart';
 import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import '../data/display_settings.dart';
@@ -549,20 +550,22 @@ class _TvGateState extends State<TvGate> {
             // TEMPLATE D'ACCUEIL au choix : « Classique » = home historique
             // (repli sûr), « Grandes tuiles » = lanceur façon IBO. Se
             // reconstruit à chaud quand l'utilisateur change de template.
-            : ListenableBuilder(
-                listenable: TvHomeTemplateRepository.instance,
-                builder: (BuildContext context, Widget? _) {
-                  switch (TvHomeTemplateRepository.instance.template) {
-                    case TvHomeTemplate.launcher:
-                      return const TvLauncherHomeScreen();
-                    case TvHomeTemplate.rails:
-                      return const TvRailsHomeScreen();
-                    case TvHomeTemplate.tivimate:
-                      return const TvTivimateHomeScreen();
-                    case TvHomeTemplate.classic:
-                      return const TvHomeScreen();
-                  }
-                },
+            : _AccueilAvecVeilleMaj(
+                child: ListenableBuilder(
+                  listenable: TvHomeTemplateRepository.instance,
+                  builder: (BuildContext context, Widget? _) {
+                    switch (TvHomeTemplateRepository.instance.template) {
+                      case TvHomeTemplate.launcher:
+                        return const TvLauncherHomeScreen();
+                      case TvHomeTemplate.rails:
+                        return const TvRailsHomeScreen();
+                      case TvHomeTemplate.tivimate:
+                        return const TvTivimateHomeScreen();
+                      case TvHomeTemplate.classic:
+                        return const TvHomeScreen();
+                    }
+                  },
+                ),
               );
     // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
@@ -1289,4 +1292,39 @@ class _ContentPanel extends StatelessWidget {
       subtitle: context.l10n.tvComingSoon,
     );
   }
+}
+
+/// Enveloppe l'ACCUEIL et y déclenche la veille de mise à jour.
+///
+/// POURQUOI ICI ET PAS DANS CHAQUE MODÈLE. L'app a quatre accueils
+/// (Classique, Grandes tuiles, Rails, TiviMate). Recopier l'appel dans
+/// les quatre, c'est se garantir qu'un cinquième, un jour, l'oubliera —
+/// et le client de ce modèle-là ne saurait jamais qu'une mise à jour
+/// existe, sans que rien ne le signale.
+///
+/// POURQUOI SUR L'ACCUEIL ET PAS AU DÉMARRAGE. C'est le seul endroit où
+/// l'on est sûr que personne ne regarde un match : le lecteur n'est pas
+/// à l'écran. On ne coupe jamais une émission pour annoncer une version.
+class _AccueilAvecVeilleMaj extends StatefulWidget {
+  const _AccueilAvecVeilleMaj({required this.child});
+  final Widget child;
+
+  @override
+  State<_AccueilAvecVeilleMaj> createState() => _AccueilAvecVeilleMajState();
+}
+
+class _AccueilAvecVeilleMajState extends State<_AccueilAvecVeilleMaj> {
+  @override
+  void initState() {
+    super.initState();
+    // Après le premier rendu : l'accueil est peint, la proposition ne
+    // peut plus passer pour un écran de chargement bloqué. `TvUpdateWatch`
+    // pose ensuite son propre délai avant d'ouvrir quoi que ce soit.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(TvUpdateWatch.maybeProposer(context));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
