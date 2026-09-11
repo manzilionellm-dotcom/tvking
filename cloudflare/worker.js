@@ -2056,8 +2056,21 @@ const PRIVACY_HTML = `<!doctype html>
 </head>
 <body><div class="wrap">
   <h1>Politique de confidentialité</h1>
-  <p class="muted">Applications concernées : <b>7 MOTION</b>
-  (com.manzilionellm.tvking) et <b>The Few TV</b>.<br>
+  <!--
+    LES TROIS PAQUETS SONT NOMMÉS, ET C'EST INDISPENSABLE (11/09/2026).
+    Avant, cette ligne citait « 7 MOTION (com.manzilionellm.tvking) et
+    The Few TV » — sans nom de paquet pour la seconde, et SANS MENTIONNER
+    DU TOUT com.sevenmotion.tv.seven_tv, l'app TV qui part en revue chez
+    Google. Une app dont la politique de confidentialité ne la couvre pas
+    se fait refuser, et le relecteur n'a aucun moyen de deviner qu'elle
+    est concernée : il compare des NOMS DE PAQUET, pas des noms
+    commerciaux.
+  -->
+  <p class="muted">Applications concernées :
+  <b>7 MOTION TV</b> (com.sevenmotion.tv.seven_tv),
+  <b>7 MOTION</b> (com.manzilionellm.tvking)
+  et <b>7 MOTION</b> hors magasin
+  (com.manzilionellm.tvking.tv_king).<br>
   Éditeur : <b>The Kung</b> (États-Unis) · Contact :
   <a href="mailto:contact@7themotion.com">contact@7themotion.com</a><br>
   Dernière mise à jour : 2 août 2026.</p>
