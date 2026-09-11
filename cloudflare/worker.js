@@ -2042,7 +2042,7 @@ const PRIVACY_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>7 MOTION / The Few — Politique de confidentialité</title>
+<title>7 MOTION — Politique de confidentialité</title>
 <style>
   body{background:#0A0A0C;color:#EDEAE3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6;margin:0;padding:32px}
   .wrap{max-width:780px;margin:0 auto}
@@ -2193,15 +2193,15 @@ const PRIVACY_HTML = `<!doctype html>
   <p>Il n'y a pas de compte à supprimer : l'application n'en crée aucun. Pour
   faire effacer les données rattachées à votre appareil, envoyez l'identifiant
   affiché dans l'écran « À propos » (format <code>MK:XX:XX:XX:XX:XX</code>) à
-  <a href="mailto:contact@7themotion.com">contact@7themotion.com</a>. La
+  <a href="mailto:support@7themotion.com">support@7themotion.com</a>. La
   suppression est effectuée sous 30 jours et efface l'activation, l'historique
   et les journaux associés à cet appareil.</p>
 
   <h2>10. Contact</h2>
   <p>Pour toute question relative à cette politique ou à vos données :
-  <a href="mailto:contact@7themotion.com">contact@7themotion.com</a>.</p>
+  <a href="mailto:support@7themotion.com">support@7themotion.com</a>.</p>
 
-  <p class="muted">En utilisant The Few, vous acceptez la présente politique.
+  <p class="muted">En utilisant 7 MOTION, vous acceptez la présente politique.
   Vous devez disposer des droits nécessaires pour le contenu que vous lisez via
   vos propres sources.</p>
 </div></body>
@@ -2486,72 +2486,6 @@ function json(body, status = 200) {
 // Politique de confidentialité (page /privacy) — requise par les stores
 // (Google Play, Huawei AppGallery…). Texte honnête : l'app est un LECTEUR,
 // l'utilisateur apporte sa propre source, aucune donnée vendue.
-function privacyHtml() {
-  const updated = '10 juin 2026';
-  return `<!doctype html><html lang="fr"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>7 MOTION — Politique de confidentialité</title>
-<style>
-  body{margin:0;background:#0A0A0C;color:#E8E8EC;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.6}
-  .wrap{max-width:760px;margin:0 auto;padding:32px 20px 64px}
-  h1{font-size:26px;margin:0 0 4px}h2{font-size:18px;margin:28px 0 8px;color:#fff}
-  .muted{color:#9A9AA2;font-size:13px}a{color:#FF5A4A}
-  code{background:#16121C;padding:1px 6px;border-radius:5px}
-</style></head><body><div class="wrap">
-<h1>Politique de confidentialité — 7 MOTION</h1>
-<p class="muted">Dernière mise à jour : ${updated}</p>
-
-<h2>1. Nature de l'application</h2>
-<p>7 MOTION est un <strong>lecteur multimédia</strong>. L'application ne vend,
-n'héberge et ne fournit AUCUN contenu, flux, chaîne, playlist (M3U) ni
-abonnement. L'utilisateur fournit lui-même sa propre source (lien M3U ou
-identifiants Xtream) et reste seul responsable de son contenu et de sa licéité.</p>
-
-<h2>2. Données que nous traitons</h2>
-<ul>
-<li><strong>Identifiant d'appareil</strong> : un identifiant technique
-(« MAC virtuelle » dérivée de l'appareil) sert à reconnaître l'installation et
-à activer le service. Il ne contient pas votre nom.</li>
-<li><strong>Adresse IP et pays</strong> : fournis automatiquement par le réseau
-lors des connexions, utilisés pour la sécurité, la présence « en ligne » et des
-messages ciblés par pays. L'IP n'est pas revendue.</li>
-<li><strong>Modèle et version d'appareil</strong> : pour le support et les
-statistiques techniques.</li>
-<li><strong>Vos sources IPTV</strong> (URL M3U / identifiants Xtream) : stockées
-<strong>localement sur votre appareil</strong> ; une copie peut être sauvegardée,
-liée à votre identifiant d'appareil, pour vous permettre de la retrouver après
-réinstallation.</li>
-<li><strong>Avis</strong> que vous envoyez volontairement.</li>
-</ul>
-
-<h2>3. Ce que nous NE faisons PAS</h2>
-<p>Pas de vente de données personnelles, pas de pistage publicitaire tiers, pas
-de collecte de contacts, photos ou localisation précise.</p>
-
-<h2>4. Lecture & cast</h2>
-<p>Les flux que vous chargez sont lus localement ou diffusés (cast) vers un
-appareil de votre réseau (TV DLNA, Chromecast). Le contenu transite directement
-entre votre source et votre appareil/TV.</p>
-
-<h2>5. Conservation & suppression</h2>
-<p>Vos sources locales sont effacées si vous désinstallez l'application ou les
-retirez. Pour supprimer les données liées à votre identifiant d'appareil,
-contactez-nous (voir ci-dessous).</p>
-
-<h2>6. Sécurité</h2>
-<p>Les échanges avec nos serveurs se font en HTTPS. Les mots de passe
-administrateurs sont stockés sous forme hachée.</p>
-
-<h2>7. Enfants</h2>
-<p>L'application n'est pas destinée aux enfants de moins de 13 ans.</p>
-
-<h2>8. Contact</h2>
-<p>Pour toute question ou demande de suppression : <a href="mailto:lionel930031@gmail.com">lionel930031@gmail.com</a>.</p>
-
-<p class="muted">En utilisant 7 MOTION, vous acceptez la présente politique.</p>
-</div></body></html>`;
-}
-
 // Conditions d'utilisation (pages /terms, /conditions, /cgu). POSITIONNEMENT
 // JURIDIQUE des lecteurs sérieux (TiviMate, OTT Navigator…) : l'app est un
 // LECTEUR multimédia neutre ; elle ne vend / ne fournit / n'héberge AUCUN
@@ -7729,9 +7663,21 @@ async function handleRequest(request, env, ctx) {
     // Amazon/Google/etc. exigent une URL publique de politique de
     // confidentialité. On la sert ICI, sur le domaine du client, sans dépendre
     // d'un hébergement externe. Le déploiement auto du worker la met en ligne.
+    //  CACHE COURT, ET C'EST VOLONTAIRE (11/09/2026). Les pages HTML de
+    //  ce worker sont servies en `max-age=300`. Acceptable pour une page
+    //  d'accueil ; pas pour un document LÉGAL qu'un relecteur Google
+    //  ouvre à un instant qu'on ne choisit pas. Le jour de l'examen, une
+    //  copie intermédiaire vieille de cinq minutes peut encore porter un
+    //  éditeur corrigé la veille. 60 secondes, et `must-revalidate` pour
+    //  qu'aucun intermédiaire ne serve une copie périmée sans redemander.
     if (segments.length === 1 &&
         (segments[0] === 'confidentialite' || segments[0] === 'privacy')) {
-      return new Response(PRIVACY_HTML, { headers: HTML_HEADERS });
+      return new Response(PRIVACY_HTML, {
+        headers: {
+          ...HTML_HEADERS,
+          'Cache-Control': 'public, max-age=60, must-revalidate',
+        },
+      });
     }
 
     // /cs/<b64url>.m3u8  et  /cs/<b64url>.ts — WRAP HLS pour le CAST.
@@ -8073,14 +8019,6 @@ async function handleRequest(request, env, ctx) {
 
     // /privacy — Politique de confidentialité (exigée par Google Play,
     // Huawei AppGallery, etc.). URL à coller dans la fiche de chaque store.
-    if (segments.length === 1 && segments[0] === 'privacy') {
-      return new Response(privacyHtml(), {
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'public, max-age=3600',
-        },
-      });
-    }
 
     // /terms (+ /conditions, /cgu) — Conditions d'utilisation (positionnement
     // « lecteur uniquement »). À coller dans la fiche des stores et à lier
