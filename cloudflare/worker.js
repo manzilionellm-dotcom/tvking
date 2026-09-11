@@ -2037,6 +2037,63 @@ const REAL_ADMIN_PANEL_URL = 'https://tvking-admin.pages.dev';
 // Page autonome (CSS inline), sobre, lisible mobile + TV. Décrit fidèlement ce
 // que l'app collecte (identifiant d'appareil, modèle, version, IP, historique
 // de visionnage) et pourquoi (activation, fonctionnement, synchro multi-box).
+// =========================================================
+//  POURQUOI CE TEXTE EST ÉCRIT AINSI — NOTES INTERNES
+// =========================================================
+//  ⛔ CES NOTES SONT EN COMMENTAIRES JAVASCRIPT, ET C'EST LA SEULE
+//  FORME ACCEPTABLE. Elles ont d'abord été écrites en commentaires
+//  HTML, À L'INTÉRIEUR de la page — donc servies au visiteur, lisibles
+//  par « Afficher le code source », et par un relecteur Google. Elles
+//  parlaient de « revendeur IPTV » et de « la défense de cette app
+//  devant Google » : exactement l'argument qu'on ne veut pas lui
+//  tendre. Repéré le 11/09/2026 avant la soumission.
+//
+//  RÈGLE : rien qui explique une DÉCISION ne s'écrit dans une chaîne
+//  HTML servie. Le worker, lui, ne quitte jamais le serveur.
+// ---------------------------------------------------------
+//  LES TROIS PAQUETS SONT NOMMÉS, ET C'EST INDISPENSABLE (11/09/2026).
+//  Avant, cette ligne citait « 7 MOTION (com.manzilionellm.tvking) et
+//  The Few TV » — sans nom de paquet pour la seconde, et SANS MENTIONNER
+//  DU TOUT com.sevenmotion.tv.seven_tv, l'app TV qui part en revue chez
+//  Google. Une app dont la politique de confidentialité ne la couvre pas
+//  se fait refuser, et le relecteur n'a aucun moyen de deviner qu'elle
+//  est concernée : il compare des NOMS DE PAQUET, pas des noms
+//  commerciaux.
+//
+//  L'ÉDITEUR, ET POURQUOI CES DEUX NOMS EXACTEMENT (11/09/2026).
+//
+//  Avant, cette ligne disait « Éditeur : The Kung (États-Unis) ». Ni le
+//  nom ni le pays n'étaient ceux du propriétaire : « thekung » est
+//  l'hôte d'un PANNEAU IPTV FOURNISSEUR, qu'on retrouve ailleurs dans
+//  ce dépôt comme serveur de test. Recopié là par accident, et resté.
+//
+//  Le plus grave n'était pas l'erreur administrative. Toute la défense
+//  de cette app devant Google tient en une phrase — « je suis un
+//  lecteur, je ne vends aucune chaîne ». Annoncer comme éditeur le nom
+//  d'un revendeur IPTV, c'est tendre soi-même l'argument inverse au
+//  relecteur.
+//
+//  LES DEUX NOMS SONT VOULUS. La règle Play sur les données
+//  utilisateur exige que « l'entité nommée dans la fiche Play »
+//  apparaisse dans la politique : c'est donc « 7 MOTION », le nom
+//  commercial, qui est OBLIGATOIRE. On ajoute le nom légal du
+//  titulaire du compte parce qu'un relecteur qui compare les deux
+//  pages doit retrouver les deux, sans avoir à déduire quoi que ce
+//  soit.
+//
+//  LE PAYS EST VOLONTAIREMENT ABSENT. Le compte développeur affiche
+//  « Tchéquie » alors que l'adresse déclarée (Tierps, 815 38) est
+//  suédoise. Tant que cette contradiction n'est pas tranchée dans la
+//  Console, écrire l'un ou l'autre ici créerait un TROISIÈME écart. Le
+//  pays n'est pas exigé dans une politique de confidentialité : on
+//  n'en met aucun. À réexaminer le jour où la Console est corrigée —
+//  modifier une adresse légale sur un compte déjà vérifié peut
+//  relancer une vérification d'identité, ce n'est pas anodin.
+//
+//  L'ADRESSE DE CONTACT EST CELLE DU COMPTE. Elle disait
+//  « contact@ » quand le profil développeur déclare « support@ ».
+//  Deux adresses différentes sur deux pages que le relecteur compare,
+//  c'est un écart gratuit de plus.
 const PRIVACY_HTML = `<!doctype html>
 <html lang="fr">
 <head>
@@ -2056,57 +2113,11 @@ const PRIVACY_HTML = `<!doctype html>
 </head>
 <body><div class="wrap">
   <h1>Politique de confidentialité</h1>
-  <!--
-    LES TROIS PAQUETS SONT NOMMÉS, ET C'EST INDISPENSABLE (11/09/2026).
-    Avant, cette ligne citait « 7 MOTION (com.manzilionellm.tvking) et
-    The Few TV » — sans nom de paquet pour la seconde, et SANS MENTIONNER
-    DU TOUT com.sevenmotion.tv.seven_tv, l'app TV qui part en revue chez
-    Google. Une app dont la politique de confidentialité ne la couvre pas
-    se fait refuser, et le relecteur n'a aucun moyen de deviner qu'elle
-    est concernée : il compare des NOMS DE PAQUET, pas des noms
-    commerciaux.
-  -->
   <p class="muted">Applications concernées :
   <b>7 MOTION TV</b> (com.sevenmotion.tv.seven_tv),
   <b>7 MOTION</b> (com.manzilionellm.tvking)
   et <b>7 MOTION</b> hors magasin
   (com.manzilionellm.tvking.tv_king).<br>
-  <!--
-    L'ÉDITEUR, ET POURQUOI CES DEUX NOMS EXACTEMENT (11/09/2026).
-
-    Avant, cette ligne disait « Éditeur : The Kung (États-Unis) ». Ni le
-    nom ni le pays n'étaient ceux du propriétaire : « thekung » est
-    l'hôte d'un PANNEAU IPTV FOURNISSEUR, qu'on retrouve ailleurs dans
-    ce dépôt comme serveur de test. Recopié là par accident, et resté.
-
-    Le plus grave n'était pas l'erreur administrative. Toute la défense
-    de cette app devant Google tient en une phrase — « je suis un
-    lecteur, je ne vends aucune chaîne ». Annoncer comme éditeur le nom
-    d'un revendeur IPTV, c'est tendre soi-même l'argument inverse au
-    relecteur.
-
-    LES DEUX NOMS SONT VOULUS. La règle Play sur les données
-    utilisateur exige que « l'entité nommée dans la fiche Play »
-    apparaisse dans la politique : c'est donc « 7 MOTION », le nom
-    commercial, qui est OBLIGATOIRE. On ajoute le nom légal du
-    titulaire du compte parce qu'un relecteur qui compare les deux
-    pages doit retrouver les deux, sans avoir à déduire quoi que ce
-    soit.
-
-    LE PAYS EST VOLONTAIREMENT ABSENT. Le compte développeur affiche
-    « Tchéquie » alors que l'adresse déclarée (Tierps, 815 38) est
-    suédoise. Tant que cette contradiction n'est pas tranchée dans la
-    Console, écrire l'un ou l'autre ici créerait un TROISIÈME écart. Le
-    pays n'est pas exigé dans une politique de confidentialité : on
-    n'en met aucun. À réexaminer le jour où la Console est corrigée —
-    modifier une adresse légale sur un compte déjà vérifié peut
-    relancer une vérification d'identité, ce n'est pas anodin.
-
-    L'ADRESSE DE CONTACT EST CELLE DU COMPTE. Elle disait
-    « contact@ » quand le profil développeur déclare « support@ ».
-    Deux adresses différentes sur deux pages que le relecteur compare,
-    c'est un écart gratuit de plus.
-  -->
   Éditeur : <b>7 MOTION</b> — LIONEL MANZI SINDAYIHEBURA · Contact :
   <a href="mailto:support@7themotion.com">support@7themotion.com</a><br>
   Dernière mise à jour : 11 septembre 2026.</p>
