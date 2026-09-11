@@ -680,6 +680,41 @@ jobs:
           # ancienne version d'Android ») : API 36 pour le canal STORE
           # SEULEMENT — le sideload client reste targetSdk 35 (comportements
           # validés sur box réelle), l'étape Amazon plus bas re-descend à 35.
+          # =========================================================
+          #  TV UNIQUEMENT — ajouté le 11/09/2026
+          # =========================================================
+          #  CONSTATÉ SUR LA FICHE PLAY du build en test : 24 229 appareils
+          #  compatibles, tailles d'écran de « small » à « xlarge », et le
+          #  canal résumé en « Téléphones, Tablettes, Android TV, Chrome OS,
+          #  Android XR ». Autrement dit : Play PROPOSE l'app TV aux
+          #  téléphones.
+          #
+          #  LA CAUSE EST ICI, pas dans un réglage de la console. Plus haut,
+          #  l'étape « Patch manifest » déclare leanback en `required="false"`
+          #  — c'est VOLONTAIRE pour l'APK sideload, car certaines box bon
+          #  marché ne déclarent pas la fonctionnalité leanback et on ne veut
+          #  filtrer personne. Mais sur le STORE, ce même « false » dit à Play
+          #  « je sais aussi vivre sans télécommande », et il la propose donc
+          #  à des écrans tactiles. Un client sur téléphone atterrirait sur
+          #  une interface pilotée à la flèche, alors qu'il existe une app
+          #  téléphone séparée.
+          #
+          #  On bascule donc à `true` POUR LA SEULE VERSION STORE, et on
+          #  REMET `false` juste après la compilation — l'APK Amazon
+          #  fabriqué ensuite hérite du manifeste et doit garder exactement
+          #  le comportement d'aujourd'hui. Même logique que la permission
+          #  USE_EXACT_ALARM ci-dessus : on ne touche au manifeste que pour
+          #  le canal qui l'exige, jamais pour les autres.
+          #
+          #  `touchscreen required="false"` est déjà posé plus haut : les
+          #  deux ensemble forment la déclaration « app de télévision » que
+          #  Google attend. Aucune perte de portée sur les vraies TV : tout
+          #  appareil Android TV / Google TV certifié déclare leanback.
+          sed -i 's#<uses-feature android:name="android.software.leanback" android:required="false"/>#<uses-feature android:name="android.software.leanback" android:required="true"/>#' "$MANIFEST"
+          grep -q 'android.software.leanback" android:required="true"' "$MANIFEST" \
+            || { echo "❌ leanback n'a PAS ete bascule en required=true — l'AAB serait encore propose aux telephones"; exit 1; }
+          echo "✓ leanback required=true (version Store seulement)"
+
           GRADLE=android/app/build.gradle.kts
           sed -i 's/targetSdk = 35/targetSdk = 36/' "$GRADLE"
           sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' "$GRADLE"
@@ -695,6 +730,13 @@ jobs:
             --target=lib/main_tv.dart
           cp build/app/outputs/bundle/release/app-release.aab seven-tv-play.aab
           ls -lah seven-tv-play.aab
+          #  ON REND LE MANIFESTE À L'ÉTAT D'AVANT. L'APK Amazon se compile
+          #  juste en dessous à partir du même fichier : sans cette ligne, il
+          #  hériterait du `required="true"` et son comportement changerait
+          #  sans qu'on l'ait demandé. La règle de la maison : une
+          #  modification faite pour un canal se défait avant le suivant.
+          sed -i 's#<uses-feature android:name="android.software.leanback" android:required="true"/>#<uses-feature android:name="android.software.leanback" android:required="false"/>#' "$MANIFEST"
+          echo "✓ leanback remis a required=false pour la suite (Amazon)"
           #  GARDE-FOU DANS LES DEUX SENS, sur le manifeste FUSIONNÉ — le
           #  seul qui dise la vérité (les permissions viennent des plugins).
           #  Le contrôle a été ajouté après avoir découvert, en ouvrant le
@@ -707,7 +749,14 @@ jobs:
             if ! grep -q 'android.permission.SCHEDULE_EXACT_ALARM' "$MERGED"; then
               echo "❌ SCHEDULE_EXACT_ALARM absente : le magnetoscope ne pourrait plus poser d'alarme"; exit 1
             fi
-            echo "✓ Manifeste AAB TV : sans USE_EXACT_ALARM, avec SCHEDULE_EXACT_ALARM"
+            #  TV UNIQUEMENT — on le vérifie sur le manifeste FUSIONNÉ, le
+            #  seul qui dise la vérité. Un plugin peut très bien redéclarer
+            #  `leanback` de son côté et écraser notre bascule sans un mot.
+            #  C'est exactement ce qui s'était produit pour USE_EXACT_ALARM.
+            if ! grep -qE 'android.software.leanback[^>]*required="true"' "$MERGED"; then
+              echo "❌ leanback n'est pas required=true dans l'AAB : Play proposerait l'app TV aux telephones"; exit 1
+            fi
+            echo "✓ Manifeste AAB TV : sans USE_EXACT_ALARM, avec SCHEDULE_EXACT_ALARM, leanback obligatoire"
           else
             echo "⚠️ Manifeste fusionné introuvable — vérif sautée (non bloquant)"
           fi
