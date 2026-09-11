@@ -2071,9 +2071,45 @@ const PRIVACY_HTML = `<!doctype html>
   <b>7 MOTION</b> (com.manzilionellm.tvking)
   et <b>7 MOTION</b> hors magasin
   (com.manzilionellm.tvking.tv_king).<br>
-  Éditeur : <b>The Kung</b> (États-Unis) · Contact :
-  <a href="mailto:contact@7themotion.com">contact@7themotion.com</a><br>
-  Dernière mise à jour : 2 août 2026.</p>
+  <!--
+    L'ÉDITEUR, ET POURQUOI CES DEUX NOMS EXACTEMENT (11/09/2026).
+
+    Avant, cette ligne disait « Éditeur : The Kung (États-Unis) ». Ni le
+    nom ni le pays n'étaient ceux du propriétaire : « thekung » est
+    l'hôte d'un PANNEAU IPTV FOURNISSEUR, qu'on retrouve ailleurs dans
+    ce dépôt comme serveur de test. Recopié là par accident, et resté.
+
+    Le plus grave n'était pas l'erreur administrative. Toute la défense
+    de cette app devant Google tient en une phrase — « je suis un
+    lecteur, je ne vends aucune chaîne ». Annoncer comme éditeur le nom
+    d'un revendeur IPTV, c'est tendre soi-même l'argument inverse au
+    relecteur.
+
+    LES DEUX NOMS SONT VOULUS. La règle Play sur les données
+    utilisateur exige que « l'entité nommée dans la fiche Play »
+    apparaisse dans la politique : c'est donc « 7 MOTION », le nom
+    commercial, qui est OBLIGATOIRE. On ajoute le nom légal du
+    titulaire du compte parce qu'un relecteur qui compare les deux
+    pages doit retrouver les deux, sans avoir à déduire quoi que ce
+    soit.
+
+    LE PAYS EST VOLONTAIREMENT ABSENT. Le compte développeur affiche
+    « Tchéquie » alors que l'adresse déclarée (Tierps, 815 38) est
+    suédoise. Tant que cette contradiction n'est pas tranchée dans la
+    Console, écrire l'un ou l'autre ici créerait un TROISIÈME écart. Le
+    pays n'est pas exigé dans une politique de confidentialité : on
+    n'en met aucun. À réexaminer le jour où la Console est corrigée —
+    modifier une adresse légale sur un compte déjà vérifié peut
+    relancer une vérification d'identité, ce n'est pas anodin.
+
+    L'ADRESSE DE CONTACT EST CELLE DU COMPTE. Elle disait
+    « contact@ » quand le profil développeur déclare « support@ ».
+    Deux adresses différentes sur deux pages que le relecteur compare,
+    c'est un écart gratuit de plus.
+  -->
+  Éditeur : <b>7 MOTION</b> — LIONEL MANZI SINDAYIHEBURA · Contact :
+  <a href="mailto:support@7themotion.com">support@7themotion.com</a><br>
+  Dernière mise à jour : 11 septembre 2026.</p>
 
   <p>L'application est un lecteur multimédia pour téléphones,
   téléviseurs et box (Android, Android TV, Fire TV, Google TV). L'application ne fournit, n'héberge ni
