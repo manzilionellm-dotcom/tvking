@@ -753,9 +753,35 @@ jobs:
             #  seul qui dise la vérité. Un plugin peut très bien redéclarer
             #  `leanback` de son côté et écraser notre bascule sans un mot.
             #  C'est exactement ce qui s'était produit pour USE_EXACT_ALARM.
-            if ! grep -qE 'android.software.leanback[^>]*required="true"' "$MERGED"; then
-              echo "❌ leanback n'est pas required=true dans l'AAB : Play proposerait l'app TV aux telephones"; exit 1
-            fi
+            #
+            #  ON APLATIT LE FICHIER AVANT DE CHERCHER. Le run 84 est tombé
+            #  ici sur un AAB pourtant CORRECT — le journal le prouve :
+            #  « ✓ leanback required=true » puis « ✓ Built app-release.aab »
+            #  puis ce contrôle en échec. La raison est bête et instructive :
+            #  le manifeste fusionné écrit UN ATTRIBUT PAR LIGNE,
+            #        <uses-feature
+            #            android:name="android.software.leanback"
+            #            android:required="true" />
+            #  et `grep` travaille ligne par ligne. Chercher le nom ET le
+            #  `required` dans une seule expression ne pouvait JAMAIS
+            #  aboutir. Les deux contrôles voisins passent, eux, parce
+            #  qu'ils cherchent un SEUL mot, qui tient sur une ligne.
+            #
+            #  `tr` recolle le fichier en une ligne : on retrouve alors
+            #  l'élément entier, quelle que soit sa mise en forme et quel
+            #  que soit l'ordre des attributs. Pas de heredoc ici — le
+            #  marqueur de fin devrait être en colonne zéro et on est
+            #  indenté (piège rencontré hier sur la chaîne Windows).
+            LB=$(tr '\n' ' ' < "$MERGED" | tr -s ' ' | grep -o '<uses-feature[^>]*android.software.leanback[^>]*>' || true)
+            echo "leanback lu dans le manifeste fusionne : ${LB:-<absent>}"
+            case "$LB" in
+              *'android:required="true"'*)
+                echo "✓ leanback obligatoire" ;;
+              '')
+                echo "❌ leanback ABSENT du manifeste fusionne"; exit 1 ;;
+              *)
+                echo "❌ leanback present mais PAS required=true : Play proposerait l'app TV aux telephones"; exit 1 ;;
+            esac
             echo "✓ Manifeste AAB TV : sans USE_EXACT_ALARM, avec SCHEDULE_EXACT_ALARM, leanback obligatoire"
           else
             echo "⚠️ Manifeste fusionné introuvable — vérif sautée (non bloquant)"
