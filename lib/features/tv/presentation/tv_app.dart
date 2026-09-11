@@ -202,7 +202,43 @@ class TvApp extends StatelessWidget {
           //  `maybePop` et NON `pop` : c'est ce qui respecte les
           //  `PopScope` de l'accueil — la boîte « Quitter l'application »
           //  s'affiche toujours au lieu que l'app se ferme d'un coup.
-          return Shortcuts(
+          // =========================================================
+          //  LES TRAITS JAUNES SOUS LES TEXTES — RÉGLÉS ICI, POUR TOUT
+          // =========================================================
+          //  Signalé par le propriétaire (11/09/2026), photos à l'appui :
+          //  des doubles soulignements jaunes sous « Back », sous les
+          //  numéros de chaîne, sous les noms — sur PC comme sur la box.
+          //
+          //  CE N'EST PAS UNE COULEUR DU THÈME. C'est le STYLE DE SECOURS
+          //  de Flutter : un texte dessiné sans `Material` au-dessus de
+          //  lui dans l'arbre n'a aucun style à hériter, alors Flutter
+          //  l'écrit en jaune, souligné deux fois, EXPRÈS, pour qu'on le
+          //  remarque. Chercher « FFD700 » dans le code ne trouve rien —
+          //  il n'y en a pas.
+          //
+          //  LE MÊME BUG AVAIT DÉJÀ ÉTÉ RÉGLÉ UNE FOIS, le 17/07/2026,
+          //  mais SEULEMENT dans `tv_player_screen.dart` (son commentaire
+          //  décrit exactement ces « textes jaunes soulignés »). Le
+          //  correctif était posé sur un écran ; tous les autres — le
+          //  lecteur PC, et tout ce qui ne passe pas par un Scaffold —
+          //  sont restés cassés deux mois.
+          //
+          //  POURQUOI ICI ET PAS DANS CHAQUE ÉCRAN : même raison exacte
+          //  que « Échap recule » juste en dessous. Trente écrans, c'est
+          //  trente occasions d'en oublier un, et la garantie que le
+          //  trente-et-unième réapparaîtra en jaune dans six mois. Un
+          //  seul Material à la racine couvre tout ce qui existe et tout
+          //  ce qui viendra.
+          //
+          //  `transparency` ET RIEN D'AUTRE : ce type ne peint AUCUN
+          //  fond, aucune ombre, aucune encre. Il ne fait que fournir le
+          //  contexte qui manquait. Les écrans qui ont déjà leur propre
+          //  Material ou leur Scaffold gardent le leur — Flutter prend
+          //  toujours le plus proche. Zéro changement visuel, sauf les
+          //  traits jaunes qui disparaissent.
+          return Material(
+            type: MaterialType.transparency,
+            child: Shortcuts(
             shortcuts: <ShortcutActivator, Intent>{
               const SingleActivator(LogicalKeyboardKey.escape):
                   const _RetourIntent(),
@@ -265,6 +301,7 @@ class TvApp extends StatelessWidget {
             ],
           ),
             ),
+          ),
           );
         },
         // Observer de navigation : permet aux aperçus vidéo (TvLivePreview)

@@ -503,14 +503,31 @@ class TvKingApp extends StatelessWidget {
           // S'applique partout — phone comme TV — pour cohérence.
           builder: (BuildContext context, Widget? child) {
             final MediaQueryData mq = MediaQuery.of(context);
-            return MediaQuery(
-              data: mq.copyWith(
-                textScaler: mq.textScaler.clamp(
-                  minScaleFactor: 0.9,
-                  maxScaleFactor: 1.25,
+            // LES TRAITS JAUNES SOUS LES TEXTES — même garde que la box.
+            //
+            // Un texte dessiné sans `Material` au-dessus de lui n'a aucun
+            // style à hériter : Flutter l'écrit alors en jaune souligné
+            // deux fois, exprès, pour qu'on le remarque. Le propriétaire
+            // l'a constaté le 11/09/2026 sur PC et sur box, et la même
+            // protection est posée dans `tv_app.dart` — voir le pavé qui
+            // l'explique là-bas.
+            //
+            // Posée ici AUSSI, et non « au cas où » : un écran téléphone
+            // sans Scaffold est tout aussi possible, et le jour où l'un
+            // arrive, personne ne pensera à revenir ici. `transparency`
+            // ne peint rien du tout ; les écrans qui ont déjà leur
+            // Scaffold gardent le leur.
+            return Material(
+              type: MaterialType.transparency,
+              child: MediaQuery(
+                data: mq.copyWith(
+                  textScaler: mq.textScaler.clamp(
+                    minScaleFactor: 0.9,
+                    maxScaleFactor: 1.25,
+                  ),
                 ),
+                child: child ?? const SizedBox.shrink(),
               ),
-              child: child ?? const SizedBox.shrink(),
             );
           },
 
