@@ -1144,6 +1144,19 @@
   "tvBlackBoxRowChannels": "Vituo (moja kwa moja)",
   "tvBlackBoxRowEpg": "Vipindi vya EPG",
   "tvBlackBoxRowEpgChannels": "Chaneli zenye mwongozo",
+  "tvBlackBoxRowEpgAliases": "Lakabu za EPG (daraja)",
+  "tvBlackBoxRowEpgXmltvSeen": "ID za XMLTV zilizoonekana",
+  "tvBlackBoxRowEpgFilter": "EPG zilizohifadhiwa / zilizoachwa",
+  "tvBlackBoxEpgFilterValue": "{retained} zilizohifadhiwa · {unknown} id isiyojulikana · {window} nje ya dirisha",
+  "@tvBlackBoxEpgFilterValue": {
+    "placeholders": {
+      "retained": { "type": "int" },
+      "unknown": { "type": "int" },
+      "window": { "type": "int" }
+    }
+  },
+  "tvBlackBoxRowEpgEmptyIds": "Chaneli bila epg_channel_id",
+  "tvBlackBoxRowEpgWhy": "EPG — KWA NINI",
   "tvBlackBoxRowDownloads": "Vipakuliwa",
   "tvBlackBoxRowRss": "Kumbukumbu iliyotumika (mchakato)",
   "tvBlackBoxRamUnknown": "haijulikani",

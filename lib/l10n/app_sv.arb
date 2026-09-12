@@ -1144,6 +1144,19 @@
   "tvBlackBoxRowChannels": "Kanaler (live)",
   "tvBlackBoxRowEpg": "EPG-program",
   "tvBlackBoxRowEpgChannels": "Kanaler med tablå",
+  "tvBlackBoxRowEpgAliases": "EPG-alias (brygga)",
+  "tvBlackBoxRowEpgXmltvSeen": "XMLTV-id:n sedda",
+  "tvBlackBoxRowEpgFilter": "EPG behållna / hoppade över",
+  "tvBlackBoxEpgFilterValue": "{retained} behållna · {unknown} okänt id · {window} utanför fönster",
+  "@tvBlackBoxEpgFilterValue": {
+    "placeholders": {
+      "retained": { "type": "int" },
+      "unknown": { "type": "int" },
+      "window": { "type": "int" }
+    }
+  },
+  "tvBlackBoxRowEpgEmptyIds": "Kanaler utan epg_channel_id",
+  "tvBlackBoxRowEpgWhy": "EPG — VARFÖR",
   "tvBlackBoxRowDownloads": "Nedladdningar",
   "tvBlackBoxRowRss": "Använt minne (process)",
   "tvBlackBoxRamUnknown": "okänt",

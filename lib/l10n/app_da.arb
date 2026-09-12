@@ -1144,6 +1144,19 @@
   "tvBlackBoxRowChannels": "Kanaler (live)",
   "tvBlackBoxRowEpg": "EPG-programmer",
   "tvBlackBoxRowEpgChannels": "Kanaler med guide",
+  "tvBlackBoxRowEpgAliases": "EPG-aliasser (bro)",
+  "tvBlackBoxRowEpgXmltvSeen": "XMLTV-id'er set",
+  "tvBlackBoxRowEpgFilter": "EPG beholdt / sprunget over",
+  "tvBlackBoxEpgFilterValue": "{retained} beholdt · {unknown} ukendt id · {window} uden for vindue",
+  "@tvBlackBoxEpgFilterValue": {
+    "placeholders": {
+      "retained": { "type": "int" },
+      "unknown": { "type": "int" },
+      "window": { "type": "int" }
+    }
+  },
+  "tvBlackBoxRowEpgEmptyIds": "Kanaler uden epg_channel_id",
+  "tvBlackBoxRowEpgWhy": "EPG — HVORFOR",
   "tvBlackBoxRowDownloads": "Downloads",
   "tvBlackBoxRowRss": "Brugt hukommelse (proces)",
   "tvBlackBoxRamUnknown": "ukendt",

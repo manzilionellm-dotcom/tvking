@@ -190,6 +190,8 @@ class _M3uLineConsumer {
       name: name,
       category: groupTitle.isEmpty ? 'Autres' : groupTitle,
       streamUrl: line,
+      // Vague 4 : tvg-id persisté même quand il sert déjà d'id de
+      // chaîne — le resync reconstruira les alias sans relire le M3U.
       // FILM/ÉPISODE M3U (fichier fini) → isLive:false : l'entrée sort des
       // listes live (requêtes is_live=1) et rejoint le Cinéma via
       // PlaylistRepository.getVodChannels.
@@ -199,6 +201,9 @@ class _M3uLineConsumer {
       catchupSupported: catchupRaw.isNotEmpty || catchupSource.isNotEmpty,
       catchupDays: int.tryParse(catchupDaysRaw),
       catchupSource: catchupSource.isEmpty ? null : catchupSource,
+      // Vague 4 : tvg-id persisté même quand il sert déjà d'id de
+      // chaîne — le resync reconstruira les alias sans relire le M3U.
+      epgChannelId: tvgId.isNotEmpty ? tvgId : null,
     );
 
     _pendingAttrs = null;

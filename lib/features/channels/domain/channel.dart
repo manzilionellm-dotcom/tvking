@@ -38,6 +38,7 @@ class Channel {
     this.catchupSupported = false,
     this.catchupDays,
     this.catchupSource,
+    this.epgChannelId,
   });
 
   /// Identifiant unique de la chaîne (tvg-id côté M3U,
@@ -77,6 +78,14 @@ class Channel {
 
   /// Template d'URL catch-up (spec M3U).
   final String? catchupSource;
+
+  /// Id EPG côté fournisseur (`epg_channel_id` Xtream, `tvg-id` M3U).
+  ///
+  /// Vague 4 : persisté pour reconstruire le pont `epg_aliases` au
+  /// RESYNC sans re-télécharger le bouquet (Firestick 1 Go : pas
+  /// 900 get_live_streams ni 900 get_short_epg au boot). Null / vide
+  /// = le fournisseur n'a pas étiqueté la chaîne → pas d'alias.
+  final String? epgChannelId;
 
   // ============================================================
   //  Helpers de présentation

@@ -31,6 +31,8 @@ import 'package:flutter/foundation.dart';
 import 'package:xml/xml_events.dart';
 
 import '../domain/epg_program.dart';
+import 'epg_alias_index.dart';
+import 'epg_import_stats.dart';
 
 /// Configuration envoyée à l'isolate de parsing (tout est « sendable » :
 /// SendPort, Set de String, entiers).
@@ -72,8 +74,9 @@ class XmltvParser {
   ///     indisponibles dans un isolate secondaire.
   ///
   /// [onBatch] est attendu séquentiellement (jamais deux commits SQLite
-  /// entrelacés). Retourne le nombre total de programmes émis.
-  static Future<int> parseInIsolate(
+  /// entrelacés). Retourne les compteurs (émis + sautés + ids vus) —
+  /// Vague 4 : plus de filtre silencieux.
+  static Future<EpgParseStats> parseInIsolate(
     Stream<List<int>> bytes, {
     required Future<void> Function(List<Map<String, Object?>> batch) onBatch,
     Set<String>? knownChannelIds,
@@ -94,7 +97,7 @@ class XmltvParser {
     // disponible » permanent).
     final ReceivePort onIsolateError = ReceivePort();
     final ReceivePort onIsolateExit = ReceivePort();
-    final Completer<int> done = Completer<int>();
+    final Completer<EpgParseStats> done = Completer<EpgParseStats>();
     final Completer<SendPort> ready = Completer<SendPort>();
     // Les lots s'insèrent DANS L'ORDRE : on chaîne les écritures pour ne
     // jamais entrelacer deux commits, et la fin attend la dernière.
@@ -139,10 +142,27 @@ class XmltvParser {
         final List<Map<String, Object?>> rows =
             msg.cast<Map<String, Object?>>();
         writes = writes.then((_) => onBatch(rows));
-      } else if (msg is int) {
-        // Fin normale : total émis — après la dernière écriture.
+      } else if (msg is Map && msg.containsKey('stats')) {
+        // Fin normale Vague 4 : compteurs (émis + sautés + ids vus).
+        final Object? raw = msg['stats'];
+        final EpgParseStats stats = _statsFromIsolate(raw);
         writes.then((_) {
-          if (!done.isCompleted) done.complete(msg);
+          if (!done.isCompleted) done.complete(stats);
+        }).catchError((Object e, StackTrace st) {
+          if (!done.isCompleted) done.completeError(e, st);
+        });
+      } else if (msg is int) {
+        // Compat : ancien isolate qui n'envoyait que le total émis.
+        writes.then((_) {
+          if (!done.isCompleted) {
+            done.complete(EpgParseStats(
+              emitted: msg,
+              xmltvChannelIdsSeen: 0,
+              skippedUnknownId: 0,
+              skippedOutsideWindow: 0,
+              skippedInvalid: 0,
+            ));
+          }
         }).catchError((Object e, StackTrace st) {
           if (!done.isCompleted) done.completeError(e, st);
         });
@@ -191,13 +211,16 @@ class XmltvParser {
     try {
       final Set<String>? known = cfg.knownChannelIds;
       List<Map<String, Object?>> batch = <Map<String, Object?>>[];
-      final int total = await parse(
+      // Vague 4 : skip = id inconnu APRÈS normalisation (TF1.fr = tf1).
+      // Les compteurs (unknown / fenêtre) sont tenus DANS parse().
+      final EpgParseStats stats = await parse(
         bytes.stream,
         now: DateTime.fromMillisecondsSinceEpoch(cfg.nowMs),
         keepHoursBeforeNow: cfg.keepHoursBeforeNow,
         keepHoursAfterNow: cfg.keepHoursAfterNow,
-        skipPredicate:
-            known == null ? null : (String id) => !known.contains(id),
+        skipPredicate: known == null
+            ? null
+            : (String id) => EpgAliasIndex.isUnknown(id, known),
         onProgram: (EpgProgram p) async {
           batch.add(p.toMap());
           if (batch.length >= cfg.batchSize) {
@@ -207,7 +230,7 @@ class XmltvParser {
         },
       );
       if (batch.isNotEmpty) cfg.sendPort.send(batch);
-      cfg.sendPort.send(total);
+      cfg.sendPort.send(<String, Object?>{'stats': stats.toMap()});
     } on Object catch (e) {
       // Un XML malformé ne doit jamais tuer l'app : l'erreur remonte
       // proprement à l'appelant qui décidera (log + sync ratée).
@@ -226,10 +249,12 @@ class XmltvParser {
   /// - [keepHoursAfterNow] : combien d'heures futures on garde.
   ///   Défaut 48h (2 jours), suffisant pour la plupart des usages.
   /// - [skipPredicate] : si fourni, retourne true pour les programmes
-  ///   à ignorer (par ex. canal absent de la playlist).
+  ///   à ignorer (par ex. canal absent de la playlist). Vague 4 :
+  ///   chaque saut est COMPTÉ (id inconnu vs fenêtre) — plus de
+  ///   filtre silencieux.
   ///
-  /// Retourne le nombre total de programmes émis.
-  static Future<int> parse(
+  /// Retourne les compteurs (émis + sautés + ids XMLTV vus).
+  static Future<EpgParseStats> parse(
     Stream<List<int>> bytes, {
     required Future<void> Function(EpgProgram program) onProgram,
     DateTime? now,
@@ -245,6 +270,14 @@ class XmltvParser {
         ref.add(Duration(hours: keepHoursAfterNow)).millisecondsSinceEpoch;
 
     int emitted = 0;
+    int skippedUnknownId = 0;
+    int skippedOutsideWindow = 0;
+    int skippedInvalid = 0;
+    // IDs XMLTV DISTINCTS vus (retenus + sautés) — le support lit
+    // « le fournisseur a parlé de N chaînes », pas seulement ce qu'on
+    // a gardé. Set borné par le nombre de <programme> uniques, typiquement
+    // quelques milliers — rien à côté d'un XMLTV de 100 Mo.
+    final Set<String> xmltvIdsSeen = <String>{};
 
     // État courant du parser
     bool insideProgramme = false;
@@ -316,18 +349,28 @@ class XmltvParser {
             } else if (name == 'category') {
               curCategory ??= textBuf.toString().trim();
             } else if (name == 'programme') {
-              // Fin d'un programme → on émet si valide
+              // Fin d'un programme → on émet si valide, sinon on COMPTE
+              // POURQUOI on saute (Vague 4 : plus de filtre silencieux).
               insideProgramme = false;
-              if (curChannelId != null &&
-                  curStartMs != null &&
-                  curStopMs != null &&
-                  curTitle != null &&
-                  curTitle.isNotEmpty) {
+              if (curChannelId != null && curChannelId.isNotEmpty) {
+                xmltvIdsSeen.add(curChannelId);
+              }
+              if (curChannelId == null ||
+                  curStartMs == null ||
+                  curStopMs == null ||
+                  curTitle == null ||
+                  curTitle.isEmpty) {
+                skippedInvalid++;
+              } else {
                 final bool skip =
                     skipPredicate != null && skipPredicate(curChannelId);
                 final bool inWindow =
                     curStopMs >= minStop && curStartMs <= maxStart;
-                if (!skip && inWindow) {
+                if (skip) {
+                  skippedUnknownId++;
+                } else if (!inWindow) {
+                  skippedOutsideWindow++;
+                } else {
                   final EpgProgram prog = EpgProgram(
                     channelId: curChannelId,
                     startTime: curStartMs,
@@ -353,9 +396,29 @@ class XmltvParser {
     }
 
     if (kDebugMode) {
-      debugPrint('[XmltvParser] $emitted programmes ingérés');
+      debugPrint('[XmltvParser] $emitted retenus, '
+          '$skippedUnknownId id inconnu, '
+          '$skippedOutsideWindow hors fenêtre, '
+          '$skippedInvalid invalides, '
+          '${xmltvIdsSeen.length} ids XMLTV vus');
     }
-    return emitted;
+    return EpgParseStats(
+      emitted: emitted,
+      xmltvChannelIdsSeen: xmltvIdsSeen.length,
+      skippedUnknownId: skippedUnknownId,
+      skippedOutsideWindow: skippedOutsideWindow,
+      skippedInvalid: skippedInvalid,
+    );
+  }
+
+  /// Map isolate → [EpgParseStats] (types souples, zéro crash).
+  static EpgParseStats _statsFromIsolate(Object? raw) {
+    if (raw is! Map) return EpgParseStats.empty;
+    final Map<String, Object?> map = <String, Object?>{};
+    raw.forEach((Object? k, Object? v) {
+      map[k.toString()] = v;
+    });
+    return EpgParseStats.fromMap(map);
   }
 
   // ----- Date XMLTV → millisecondes epoch UTC -----
