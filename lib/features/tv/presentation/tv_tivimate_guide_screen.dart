@@ -27,21 +27,27 @@ import '../../channels/domain/channel.dart';
 import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../epg/presentation/widgets/mini_epg_now_next.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_logo.dart';
+import '../core/tv_tokens.dart';
 import 'tv_player_screen.dart';
 import 'tv_program_actions.dart';
 
-// ---- Palette TiviMate (tokens §1 de la fiche) ----
-const Color _tmBg = Color(0xFF000000);
-const Color _tmPanel = Color(0xFF12171C);
-const Color _tmCellFuture = Color(0xFF2A2E35); // cellule à venir
-const Color _tmCellPast = Color(0xFF20242B); // cellule passée (assombrie)
-const Color _tmAccent = Color(0xFF0A84FF); // accent bleu marque
-const Color _tmText = Color(0xFFFFFFFF);
-const Color _tmText2 = Color(0xFFB8BDC4);
-const Color _tmText3 = Color(0xFF6B7178);
+// ---- Palette : TvTokens (plus de Color(0xFF) locaux).
+//  POURQUOI DES ALIAS. Le guide D était peint en dur « façon TiviMate ».
+//  On garde les noms _tm* pour ne pas tout réécrire, mais les VALEURS
+//  viennent du design system — une retouche de thème se fait ICI
+//  (tv_tokens) et se voit partout, y compris cette grille.
+const Color _tmBg = TvTokens.bg;
+const Color _tmPanel = TvTokens.panel;
+const Color _tmCellFuture = TvTokens.card;
+const Color _tmCellPast = TvTokens.tile;
+const Color _tmAccent = TvTokens.gold;
+const Color _tmText = TvTokens.text;
+const Color _tmText2 = TvTokens.muted;
+const Color _tmText3 = TvTokens.mutedDim;
 
 class TvTivimateGuideScreen extends StatefulWidget {
   const TvTivimateGuideScreen({super.key});
@@ -90,6 +96,16 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
   // les lignes re-requêtent.
   StreamSubscription<void>? _epgSub;
   int _epgGeneration = 0;
+
+  /// Première ligne seulement : sans ça, chaque rebuild (tic 30 s,
+  /// décalage de fenêtre) reposait autofocus sur i==0 et le focus
+  /// REPARTAIT en haut de grille. Une fois donné, on ne le redonne
+  /// plus — sauf rechargement complet de la liste.
+  bool _gaveInitialFocus = false;
+
+  /// Chaîne où le D-pad SE POSE → un seul bandeau now/next
+  /// (NowPlaying), jamais une requête par ligne visible.
+  Channel? _focusedChannel;
 
   @override
   void initState() {
@@ -143,6 +159,8 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
       _channels.clear();
       _cursor = 0;
       _hasMore = true;
+      _gaveInitialFocus = false;
+      _focusedChannel = null;
     });
     _loadMore();
   }
@@ -341,7 +359,7 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
                                 // Ligne NOW = trait fin blanc translucide (§4).
                                 child: Container(
                                     width: 1,
-                                    color: Colors.white
+                                    color: TvTokens.text
                                         .withValues(alpha: 0.55)),
                               ),
                           ],
@@ -359,6 +377,15 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
                   context.l10n.tvGuideGridHint,
                   style: const TextStyle(color: _tmText3, fontSize: 12),
                 ),
+                // Bandeau now/next de LA chaîne focalisée — un seul
+                // NowPlaying, débouncé. Pas une requête par ligne.
+                if (_focusedChannel != null) ...<Widget>[
+                  MiniEpgNowNext(
+                    channelId: _focusedChannel!.id,
+                    channel: _focusedChannel,
+                    debounce: const Duration(milliseconds: 350),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 // ----- Lignes chaînes -----
                 Expanded(
@@ -386,7 +413,14 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
                               child: _GuideRow(
                                 channel: _channels[i],
                                 number: i + 1,
-                                autofocus: i == 0,
+                                autofocus: i == 0 && !_gaveInitialFocus,
+                                onChannelFocus: (Channel c) {
+                                  if (_focusedChannel?.id == c.id) return;
+                                  setState(() {
+                                    _focusedChannel = c;
+                                    _gaveInitialFocus = true;
+                                  });
+                                },
                                 startMs: startMs,
                                 endMs: endMs,
                                 pxPerMin: _pxPerMin,
@@ -459,6 +493,7 @@ class _GuideRow extends StatefulWidget {
     required this.epgGeneration,
     required this.canReplay,
     required this.onBlock,
+    required this.onChannelFocus,
   });
 
   final Channel channel;
@@ -478,6 +513,7 @@ class _GuideRow extends StatefulWidget {
   final int epgGeneration;
   final bool Function(EpgProgram) canReplay;
   final void Function(EpgProgram) onBlock;
+  final ValueChanged<Channel> onChannelFocus;
 
   @override
   State<_GuideRow> createState() => _GuideRowState();
@@ -523,6 +559,9 @@ class _GuideRowState extends State<_GuideRow> {
             autofocus: widget.autofocus,
             scale: TvFocusScale.small,
             onSelect: widget.onPlay,
+            onFocusChange: (bool f) {
+              if (f) widget.onChannelFocus(widget.channel);
+            },
             builder: (BuildContext context, bool focused) {
               // Focus = pill blanc plein (texte noir) façon TiviMate.
               final Color bg = focused ? _tmText : _tmPanel;
@@ -614,7 +653,7 @@ class _GuideRowState extends State<_GuideRow> {
                         bottom: 0,
                         child: Container(
                             width: 1,
-                            color: Colors.white.withValues(alpha: 0.55)),
+                            color: TvTokens.text.withValues(alpha: 0.55)),
                       ),
                   ],
                 );
@@ -657,7 +696,7 @@ class _GuideRowState extends State<_GuideRow> {
           final Color bg = focused
               ? _tmText
               : onAir
-                  ? const Color(0xFF15304A) // accent très sombre (en cours)
+                  ? TvTokens.sel // en cours : surface focus, pas un hex local
                   : past
                       ? _tmCellPast
                       : _tmCellFuture;

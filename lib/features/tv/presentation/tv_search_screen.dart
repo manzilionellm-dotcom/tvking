@@ -2,8 +2,13 @@
 //  tv_search_screen.dart — Recherche 10-foot (clavier D-pad)
 // =========================================================
 //  Gauche : clavier à l'écran navigable à la télécommande (A-Z, 0-9,
-//  espace, effacer). Droite : résultats en temps réel (chaînes dont le
-//  nom contient la requête). OK sur un résultat → lecteur plein écran.
+//  espace, effacer). Droite : résultats en temps réel.
+//
+//  CHAÎNES LIVE : le matching n'est PLUS un `LIKE` SQL sur le nom.
+//  On passe par [SmartSearch] (le MÊME moteur que le téléphone) :
+//  « bein 1 » trouve « beIN SPORTS 1 », « cine » trouve « Ciné+ »,
+//  une faute légère (« sprot ») trouve « Sport ». VOD / sport /
+//  EPG restent sur leur propre chemin — ce n'est pas leur vague.
 // =========================================================
 import 'dart:async';
 
@@ -20,7 +25,11 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/external_keyboard.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
+import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/search_history_repository.dart';
+import '../../channels/data/smart_search.dart';
+import '../../channels/data/watch_history_repository.dart';
+import '../../playlists/data/favorites_repository.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../epg/data/now_playing.dart';
 import '../../epg/domain/epg_program.dart';
@@ -77,10 +86,15 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   // ignoré (sinon une vieille requête lente écraserait la nouvelle).
   int _epoch = 0;
 
-  // Borne anti-surcharge : 60 résultats max (largement assez pour trouver une
-  // chaîne). C'est AUSSI la LIMIT SQL → la base ne renvoie jamais plus que ça,
-  // donc on ne matérialise jamais des centaines de chaînes en RAM.
+  // Borne anti-surcharge : 60 résultats max (largement assez pour trouver
+  // une chaîne à la télécommande). C'est la [limit] passée à SmartSearch
+  // — plus une LIMIT SQL : le moteur classe le bassin déjà en RAM.
   static const int _maxResults = 60;
+
+  /// Signaux de personnalisation (favoris / récemment / temps regardé).
+  /// Chargés en arrière-plan : tant qu'ils ne sont pas là, SmartSearch
+  /// classe par pertinence textuelle seule (dégradation douce).
+  SearchSignals _signals = SearchSignals.none;
 
   // =========================================================
   //  COMPLÈTEMENT DE SAISIE — « je veux un clavier haut de gamme »
@@ -192,8 +206,36 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     SearchHistoryRepository.instance.load().then((_) {
       if (mounted) setState(() {});
     });
+    // Favoris + historique : sans ça, « bein 1 » trouverait bien
+    // beIN Sports 1, mais la variante que TU regardes ne remonterait
+    // pas. Best-effort — une DB pas prête ne casse pas la recherche.
+    _loadSignals();
     _champIme.addListener(_surTexteIme);
     _focusIme.addListener(_surFocusIme);
+  }
+
+  /// Charge les signaux [SmartSearch] (favoris, récemment, 30 jours).
+  /// Même contrat que l'écran téléphone : jamais bloquant.
+  Future<void> _loadSignals() async {
+    try {
+      await FavoritesRepository.instance.initialize();
+      await RecentlyWatchedRepository.instance.initialize();
+      final Map<String, int> watchMs =
+          await WatchHistoryRepository.instance.watchTimeByChannel(days: 30);
+      if (!mounted) return;
+      setState(() {
+        _signals = SearchSignals(
+          favoriteIds: FavoritesRepository.instance.current,
+          recentIds: RecentlyWatchedRepository.instance.current,
+          watchMsById: watchMs,
+        );
+      });
+      // Si le client a déjà tapé pendant le chargement, on reclasse
+      // avec le boost — sinon le 1er résultat resterait « froid ».
+      if (_q.trim().isNotEmpty) _schedule();
+    } catch (_) {
+      // Pertinence textuelle seule : toujours mieux que le LIKE d'avant.
+    }
   }
 
   @override
@@ -307,10 +349,10 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     _debounce = Timer(const Duration(milliseconds: 250), _runSearch);
   }
 
-  // Recherche EN BASE (SQL LIKE + LIMIT, cf. PlaylistRepository.searchLiveChannels)
-  // : on ne garde JAMAIS toute la liste de chaînes en RAM. La base renvoie au
-  // plus _maxResults lignes correspondantes — c'est le principe anti-OOM
-  // « façon TiviMate » appliqué à la recherche (tient 100 000 chaînes).
+  // CHAÎNES LIVE → [SmartSearch] (via PlaylistRepository.searchLiveChannels).
+  // On ne LIKE plus le nom : « bein 1 » / « cine » / une faute légère
+  // passent par le moteur partagé. Le bassin est le cache déjà en RAM
+  // (plafond anti-OOM), pas un scan SQL à chaque lettre.
   Future<void> _runSearch() async {
     final String t = _q.trim();
     final int epoch = ++_epoch;
@@ -327,7 +369,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       return;
     }
     final List<Channel> r = await PlaylistRepository.instance
-        .searchLiveChannels(t, limit: _maxResults);
+        .searchLiveChannels(t, limit: _maxResults, signals: _signals);
     // Une frappe plus récente est partie entre-temps → on jette ce résultat.
     if (!mounted || epoch != _epoch) return;
     setState(() => _results = r);

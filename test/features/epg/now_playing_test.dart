@@ -102,4 +102,32 @@ void main() {
   test('liste vide → null, aucune exception', () {
     expect(NowPlaying.enCours(const <EpgProgram>[], maintenant), isNull);
   });
+
+  group('suivant — le programme APRÈS l\'en-cours', () {
+    test('prend le plus proche après la fin de l\'en-cours', () {
+      final EpgProgram journal = _p('Journal', DateTime(2026, 9, 12, 20, 0),
+          DateTime(2026, 9, 12, 21, 0));
+      final EpgProgram film = _p('Film', DateTime(2026, 9, 12, 21, 0),
+          DateTime(2026, 9, 12, 23, 0));
+      final EpgProgram nuit = _p('Nuit', DateTime(2026, 9, 12, 23, 0),
+          DateTime(2026, 9, 13, 1, 0));
+      expect(
+        NowPlaying.suivant(
+          <EpgProgram>[nuit, film, journal],
+          maintenant,
+          enCours: journal,
+        )?.title,
+        'Film',
+      );
+    });
+
+    test('sans en-cours, le premier qui n\'a pas encore commencé', () {
+      final EpgProgram film = _p('Film', DateTime(2026, 9, 12, 21, 0),
+          DateTime(2026, 9, 12, 23, 0));
+      expect(
+        NowPlaying.suivant(<EpgProgram>[film], maintenant)?.title,
+        'Film',
+      );
+    });
+  });
 }

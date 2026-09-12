@@ -58,20 +58,44 @@ class NowPlaying {
   /// BEST-EFFORT : ni exception, ni attente visible. Un écran qui liste des
   /// chaînes ne doit pas ralentir parce qu'un guide manque.
   static Future<EpgProgram?> pour(Channel channel, {DateTime? now}) async {
+    final ({EpgProgram? now, EpgProgram? next}) pair =
+        await maintenantEtEnsuite(channel, now: now);
+    return pair.now;
+  }
+
+  /// En-cours ET suivant, même ordre de sources que [pour].
+  ///
+  /// POURQUOI CETTE PAIRE. MiniEpgNowNext et le bandeau du guide D
+  /// ont besoin des DEUX lignes. Deux appels [pour] + nextProgram
+  /// doubleraient le court-circuit panel (et risqueraient deux
+  /// allers-retours). Une seule lecture locale, un seul
+  /// `upcomingFor` (déjà coalescé / TTL 10 min).
+  ///
+  /// PAS 900 get_short_epg au scroll : ShortEpgService cache
+  /// positif+négatif et fusionne les demandes en vol. L'UI doit
+  /// encore débouncer (MiniEpgNowNext.debounce) pour ne demander
+  /// que la chaîne où le focus SE POSE.
+  static Future<({EpgProgram? now, EpgProgram? next})> maintenantEtEnsuite(
+    Channel channel, {
+    DateTime? now,
+  }) async {
     try {
-      // 1. La base locale (gratuite, instantanée, déjà mise en cache).
-      final EpgProgram? local =
+      final DateTime instant = now ?? DateTime.now();
+      // 1. Base locale (gratuite, cache 60 s).
+      final EpgProgram? localNow =
           await EpgRepository.instance.currentProgram(channel.id);
-      if (local != null) return local;
-      // 2. Le panel, chaîne par chaîne. Son propre cache — positif ET
-      //    négatif — fait qu'une chaîne sans guide n'est demandée qu'une
-      //    fois toutes les dix minutes, même si la vignette se reconstruit
-      //    à chaque lettre tapée.
+      if (localNow != null) {
+        final EpgProgram? localNext =
+            await EpgRepository.instance.nextProgram(channel.id);
+        return (now: localNow, next: localNext);
+      }
+      // 2. Panel, UNE chaîne, cache 10 min.
       final List<EpgProgram> courts =
           await ShortEpgService.instance.upcomingFor(channel);
-      return enCours(courts, now ?? DateTime.now());
+      final EpgProgram? en = enCours(courts, instant);
+      return (now: en, next: suivant(courts, instant, enCours: en));
     } catch (_) {
-      return null;
+      return (now: null, next: null);
     }
   }
 
@@ -94,5 +118,22 @@ class NowPlaying {
       if (!debut.isAfter(now) && fin.isAfter(now)) return p;
     }
     return null;
+  }
+
+  /// Premier programme qui COMMENCE à ou après la fin de l'en-cours
+  /// (ou après [now] s'il n'y a pas d'en-cours). PURE.
+  @visibleForTesting
+  static EpgProgram? suivant(
+    List<EpgProgram> programmes,
+    DateTime now, {
+    EpgProgram? enCours,
+  }) {
+    final int after = enCours?.stopTime ?? now.millisecondsSinceEpoch;
+    EpgProgram? best;
+    for (final EpgProgram p in programmes) {
+      if (p.startTime < after) continue;
+      if (best == null || p.startTime < best.startTime) best = p;
+    }
+    return best;
   }
 }
