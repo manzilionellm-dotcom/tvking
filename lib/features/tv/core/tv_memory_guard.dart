@@ -25,6 +25,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter/widgets.dart';
 import 'package:native_video_player/native_video_player.dart';
 
+import '../../../core/app/device_memory.dart';
 import '../../player/data/stream_diagnostics.dart';
 
 class TvMemoryGuard with WidgetsBindingObserver {
@@ -73,13 +74,31 @@ class TvMemoryGuard with WidgetsBindingObserver {
       PaintingBinding.instance.imageCache.maximumSize = 160;
       PaintingBinding.instance.imageCache.maximumSizeBytes = 24 << 20;
     }
+    // FIRESTICK 1 Go : lowSpec reste FAUX (seuil vidéo 800 Mo — voulu :
+    // un Stick 1–2 Go doit garder l'aperçu héro du Lanceur). Mais le
+    // cache d'images à 48 Mo + ExoPlayer ≈ OOM. DeviceMemory.isSmall
+    // (≤ 1 Go) resserre UNIQUEMENT les bitmaps (48 → 24 Mo). Baisse
+    // du plafond, jamais une hausse. Pas d'autoplay, pas de nouveau
+    // flux : on n'a touché ni le lecteur ni le boot.
+    await DeviceMemory.ensureLoaded();
+    if (!lowSpec && DeviceMemory.isSmall) {
+      PaintingBinding.instance.imageCache.maximumSize = 160;
+      PaintingBinding.instance.imageCache.maximumSizeBytes = 24 << 20;
+    }
+    final String cacheNote = (lowSpec || DeviceMemory.isSmall)
+        ? 'cache images ≤ 24 Mo'
+        : 'cache images ≤ 48 Mo';
     StreamDiagnostics.instance.recordEvent(
         'mémoire',
         lowSpec
             ? 'Garde-mémoire TV : PETITE BOX détectée '
                 '(${(info.totalMem / (1 << 30)).toStringAsFixed(1)} Go) → '
-                'profil léger (cache ≤ 24 Mo, aperçus prudents)'
-            : 'Garde-mémoire TV installé (cache images ≤ 48 Mo)');
+                'profil léger ($cacheNote, aperçus prudents)'
+            : DeviceMemory.isSmall
+                ? 'Garde-mémoire TV : box ≤ 1 Go '
+                    '(${DeviceMemory.totalMb} Mo) → $cacheNote '
+                    '(aperçu vidéo conservé, seuil 800 Mo inchangé)'
+                : 'Garde-mémoire TV installé ($cacheNote)');
   }
 
   @override

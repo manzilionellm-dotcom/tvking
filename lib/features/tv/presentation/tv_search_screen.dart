@@ -333,6 +333,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       _q = '';
       _results = const <Channel>[];
       _airing = const <({Channel channel, EpgProgram program})>[];
+      _matchs = const <SportSearchHit>[];
       _films = const <VodMovie>[];
       _series = const <VodSeries>[];
     });

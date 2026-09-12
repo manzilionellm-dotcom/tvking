@@ -65,14 +65,28 @@ class TimeOfDayService extends ChangeNotifier {
   ChannelGenre _suggested = ChannelGenre.entertainment;
   ChannelGenre get suggestedNow => _suggested;
 
+  /// Genre suggéré pour [hour] (0..23). Fonction PURE : aucun I/O,
+  /// aucune allocation lourde — c'est la table [_defaults], point.
+  ///
+  /// POURQUOI L'EXPOSER. Les tests (et un futur câblage) doivent lire
+  /// la MÊME règle que [refresh], sans passer par l'horloge réelle
+  /// (un test à 3 h du matin sinon échoue à 15 h). Une seule table.
+  /// Vague 3 : on N'appelle PAS [refresh] depuis l'accueil D — un scan
+  /// SQL pour un genre qu'on n'affiche pas serait de l'accroche au
+  /// détriment de la stabilité.
+  @visibleForTesting
+  static ChannelGenre suggestedAt(int hour) {
+    final int h = hour % 24;
+    return _defaults[h] ?? ChannelGenre.entertainment;
+  }
+
   /// Recalcule la suggestion. À appeler au démarrage et chaque
   /// fois qu'on entre sur l'accueil (cheap : sub-ms).
   Future<void> refresh() async {
     final int hour = DateTime.now().hour;
 
-    // 1) Default pattern
-    final ChannelGenre base =
-        _defaults[hour] ?? ChannelGenre.entertainment;
+    // 1) Default pattern — même fonction que les tests / l'accueil D.
+    final ChannelGenre base = suggestedAt(hour);
 
     // 2) Apprentissage : on récupère le total de visionnage à cette
     //    heure-ci sur les 30 derniers jours. Pour cette version on

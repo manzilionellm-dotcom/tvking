@@ -135,6 +135,32 @@ abstract final class DeviceMemory {
     return (logicalWidth * (isSmall ? 1.25 : 2.0)).round();
   }
 
+  /// Largeur de DÉCODAGE d'un logo de chaîne (carré, accueil D / listes).
+  ///
+  /// POURQUOI PAS [posterCacheWidth]. Un logo TV s'affiche à 38–84 dp.
+  /// L'ancien défaut de `TvChannelLogo` décodait à ×2,2 : 12 lignes
+  /// visibles + 8 récents ≈ 20 bitmaps × 35–135 Ko ≈ 1–2 Mo rien que
+  /// pour les logos. Sur Firestick 1 Go, ExoPlayer en prend déjà
+  /// 200–400 Mo — chaque Mo de bitmaps en trop rapproche le
+  /// lowmemorykiller.
+  ///
+  /// STABILITÉ : cette fonction ne FAIT QUE RÉDUIRE par rapport à ×2,2.
+  /// Elle n'augmente jamais le pic. ×1 sur petit appareil (netteté
+  /// suffisante à 3 m sur 1080p) ; ×1,5 sinon (un logo n'est pas une
+  /// affiche cinéma).
+  ///
+  /// Mesure Firestick 1 Go, logo 84 dp :
+  ///   • avant ×2,2 → 185×185×4 ≈ 137 Ko
+  ///   • après ×1   →  84×84×4  ≈  28 Ko
+  ///   ×12 lignes visibles : ~1,6 Mo → ~0,34 Mo (gain ~1,3 Mo, sans
+  ///   toucher au lecteur ni au boot).
+  static int logoCacheWidth(double logicalSize) {
+    final int base = logicalSize.round();
+    if (base <= 0) return 24;
+    if (isTiny || isSmall) return base.clamp(24, 160);
+    return (logicalSize * 1.5).round().clamp(32, 240);
+  }
+
   /// Plafond d'OCTETS téléchargés à l'import (M3U), par palier de RAM. Le
   /// fetcher STREAME (il ne matérialise pas le corps entier) et coupe au-delà,
   /// donc ce plafond borne surtout la taille de source ACCEPTÉE — relevé pour
