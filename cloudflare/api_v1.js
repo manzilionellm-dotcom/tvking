@@ -6773,16 +6773,89 @@ async function handleDeviceTransfer(request, env, user, actor) {
       .bind(newMac, now, oldMac).run();
   } catch (_) { /* pas de source à déplacer */ }
 
+  // =========================================================
+  //  TOUT LE RESTE DE CE QUI APPARTIENT AU CLIENT (12/09/2026)
+  // =========================================================
+  //  CE TRANSFERT NE DÉPLAÇAIT QUE TROIS CHOSES : l'appareil, la licence
+  //  et la source. Dix-huit tables de cette base portent pourtant une
+  //  MAC. Un client transféré gardait donc son abonnement… et perdait,
+  //  SANS QUE PERSONNE NE S'EN APERÇOIVE :
+  //    • ses PROFILS, donc le mode Enfants et le contrôle parental —
+  //      une protection qui disparaît est pire qu'une protection
+  //      absente, le parent la croit toujours là ;
+  //    • sa place dans sa FAMILLE ;
+  //    • ses sauvegardes, ses messages du support, et les ordres en
+  //      attente que le panel lui avait envoyés.
+  //  Rien de tout ça ne déclenche d'erreur : ça manque, voilà tout.
+  //
+  //  LA RÈGLE QU'ON SE DONNE, et elle décide de chaque ligne ci-dessous :
+  //  on DÉPLACE ce que le client POSSÈDE et dont la perte se voit ; on
+  //  LAISSE ce qui est un compte-rendu DATÉ de ce qui s'est passé.
+  //  Réécrire un journal, c'est falsifier une trace ; et le grand livre
+  //  des crédits (`credit_ledger.ref_device_mac`) ne se réécrit JAMAIS :
+  //  il dit qui a payé quoi, ce jour-là, depuis cet appareil-là.
+  //
+  //  DELETE PUIS UPDATE, dans cet ordre, et jamais l'inverse : plusieurs
+  //  de ces tables ont une clé unique sur la MAC (`family_members` par
+  //  exemple, sur `family_id, mac`). Si la nouvelle MAC y avait déjà une
+  //  ligne, l'UPDATE échouerait sur un conflit de clé. On vide d'abord
+  //  la place, ensuite on déménage.
+  //
+  //  CHAQUE TABLE DANS SON PROPRE `try` : une base fraîche n'a pas
+  //  encore créé toutes ces tables (elles naissent à leur premier
+  //  usage). Une table absente ne doit pas faire échouer un transfert
+  //  qui, lui, a déjà déplacé l'abonnement.
+  const deplacees = [];
+  const aDeplacer = [
+    // [table, colonne] — tout ce que le client possède.
+    ['device_orders', 'mac'],      // ordres du panel en attente
+    ['device_messages', 'mac'],    // messages du support, même non lus
+    ['device_profiles', 'mac'],    // PROFILS : mode Enfants, contrôle parental
+    ['device_backups', 'mac'],     // sauvegardes de ses réglages
+    ['family_members', 'mac'],     // sa place dans sa famille
+    ['app_family_links', 'member_mac'],
+    ['app_family_links', 'owner_mac'],
+    ['master_test_list', 'mac'],
+    ['app_masters', 'mac'],
+  ];
+  for (const [table, colonne] of aDeplacer) {
+    try {
+      await env.DB.prepare(`DELETE FROM ${table} WHERE ${colonne} = ?`)
+        .bind(newMac).run();
+      const r = await env.DB
+        .prepare(`UPDATE ${table} SET ${colonne} = ? WHERE ${colonne} = ?`)
+        .bind(newMac, oldMac).run();
+      const n = r?.meta?.changes || 0;
+      if (n > 0) deplacees.push(`${table}.${colonne}:${n}`);
+    } catch (_) {
+      // Table pas encore créée sur cette base : rien à déplacer.
+    }
+  }
+
+  //  LA PRÉSENCE NE SE DÉPLACE PAS, ELLE S'EFFACE. Elle dit « cet
+  //  appareil-ci est en ligne en ce moment ». L'ancien ne l'est plus :
+  //  la déplacer ferait apparaître le nouveau comme connecté avant même
+  //  qu'il ait parlé au serveur, et le support lirait un faux.
+  try {
+    await env.DB.prepare('DELETE FROM presence WHERE mac = ?').bind(oldMac).run();
+  } catch (_) { /* pas de présence enregistrée */ }
+
   // L'ancien appareil n'a plus de licence → il redevient inactif tout seul.
   await logAudit(env, request, actor, 'device.transfer',
     { type: 'device', id: oldDev.id },
-    { old_mac: oldMac }, { new_mac: newMac, moved_licenses: licRows.length });
+    { old_mac: oldMac },
+    { new_mac: newMac, moved_licenses: licRows.length, moved: deplacees });
 
   return jsonResp({
     ok: true,
     old_mac: oldMac,
     new_mac: newMac,
     moved_licenses: licRows.length,
+    //  CE QUI A RÉELLEMENT SUIVI, table par table. Le panel l'affiche au
+    //  revendeur : sans ce détail, un transfert réussi et un transfert
+    //  qui a silencieusement laissé les profils derrière lui se
+    //  ressemblent exactement — un « OK » vert dans les deux cas.
+    moved: deplacees,
   });
 }
 

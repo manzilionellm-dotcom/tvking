@@ -60,7 +60,13 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.myActivations': { fr: 'Mes activations', en: 'My activations', ar: 'تفعيلاتي' },
   'nav.history': { fr: 'Historique', en: 'History', ar: 'السجل' },
   'nav.references': { fr: 'Références', en: 'References', ar: 'المراجع' },
-  'nav.transfer': { fr: 'Transférer', en: 'Transfer', ar: 'نقل' },
+  //  « Changer la MAC » et NON « Transférer » (12/09/2026). Le
+  //  propriétaire a demandé qu'on AJOUTE au panel de quoi changer la MAC
+  //  d'un client — alors que la fonction existait depuis longtemps, avec
+  //  sa page, son bouton sur la fiche appareil et son API. Elle
+  //  s'appelait « Transférer », et il cherchait « changer la MAC ». Une
+  //  fonctionnalité qu'on ne trouve pas n'existe pas.
+  'nav.transfer': { fr: 'Changer la MAC', en: 'Change MAC', ar: 'تغيير MAC' },
   'nav.shares': { fr: 'Partages & prêts', en: 'Shares & loans', ar: 'المشاركات والإعارات' },
   'nav.masters': { fr: 'Comptes maîtres', en: 'Master accounts', ar: 'الحسابات الرئيسية' },
   'nav.adminMonitor': { fr: 'Admin Monitoring', en: 'Admin Monitoring', ar: 'مراقبة المشرف' },

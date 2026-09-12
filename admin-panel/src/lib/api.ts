@@ -1130,7 +1130,19 @@ export const referencesApi = {
 // =========================================================
 export const transferApi = {
   transfer: (oldMac: string, newMac: string, label?: string) =>
-    request<{ ok: boolean; old_mac: string; new_mac: string; moved_licenses: number }>(
+    //  `moved` : la liste détaillée de ce qui a suivi, sous la forme
+    //  « table.colonne:nombre » (ex. « device_profiles.mac:1 »). Sans ce
+    //  détail, un changement complet et un changement qui a silencieusement
+    //  laissé les profils derrière lui se ressemblent exactement — un « OK »
+    //  vert dans les deux cas. Le champ peut manquer si le Worker déployé
+    //  est plus ancien que ce panneau : le code appelant doit le tolérer.
+    request<{
+      ok: boolean;
+      old_mac: string;
+      new_mac: string;
+      moved_licenses: number;
+      moved?: string[];
+    }>(
       '/api/v1/transfer',
       { method: 'POST', body: { old_mac: oldMac, new_mac: newMac, label } },
     ),

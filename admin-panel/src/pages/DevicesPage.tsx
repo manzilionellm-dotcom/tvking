@@ -627,7 +627,10 @@ function DeviceDetailModal({
             {sources.length > 0 && (
               <ActionBtn busy={busy || clearing} onClick={handleClearSource} title="Efface TOUTES les sources d’un coup. Pour n’en enlever qu’une : « ✕ Retirer celle-ci » sur sa carte.">Tout retirer</ActionBtn>
             )}
-            <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
+            {/* Le libellé dit « Changer la MAC » et non « Transférer » (12/09/2026) :
+                le propriétaire cherchait comment changer une MAC qui ne marche pas,
+                et ne l'a pas trouvé — le bouton existait pourtant, sous un autre nom. */}
+            <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Remplacer cette adresse MAC par une autre : l'abonnement, les sources et les réglages suivent">Changer la MAC</ActionBtn>
             {st !== 'frozen' && (
               <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
             )}

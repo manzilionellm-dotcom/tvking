@@ -5,12 +5,21 @@ import { transferApi, ApiError } from '@/lib/api';
 import { formatMacInput } from '@/lib/utils';
 
 // =========================================================
-//  TransferPage — déplacer un abonnement vers un nouvel appareil
+//  TransferPage — CHANGER LA MAC d'un client
 // =========================================================
 //  RIGUEUR BUSINESS : un client qui a payé ne perd JAMAIS son temps s'il
 //  change de téléphone (ou si l'ID a changé après une mise à jour). On
 //  déplace sa licence + sa source de l'ancienne MAC vers la nouvelle, en
 //  gardant tout le temps restant. GRATUIT (aucun crédit débité).
+//
+//  POURQUOI CETTE PAGE S'APPELLE « CHANGER LA MAC » (12/09/2026).
+//  Elle s'est longtemps appelée « Transférer un abonnement ». Le
+//  propriétaire a demandé qu'on AJOUTE de quoi « changer le numéro MAC,
+//  car certaines MAC ne marchent pas » — alors que la page existait déjà,
+//  complète, depuis des mois. Il ne l'avait simplement jamais reconnue
+//  sous ce nom. Une fonctionnalité qu'on ne trouve pas n'existe pas : le
+//  vocabulaire de l'écran doit être celui du problème vécu (« cette MAC
+//  ne marche pas »), pas celui de la mécanique interne (« transfert »).
 // =========================================================
 
 const MAC_RX = /^MK(?::[0-9A-Fa-f]{2}){5}$/;
@@ -29,21 +38,30 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
     setErr(null); setOk(null);
     const o = oldMac.trim().toUpperCase();
     const n = newMac.trim().toUpperCase();
-    if (!MAC_RX.test(o)) { setErr('Ancienne MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
+    if (!MAC_RX.test(o)) { setErr('MAC actuelle invalide (format MK:XX:XX:XX:XX:XX).'); return; }
     if (!MAC_RX.test(n)) { setErr('Nouvelle MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
     if (o === n) { setErr('Les deux MAC sont identiques.'); return; }
     setBusy(true);
     try {
       const r = await transferApi.transfer(o, n);
+      //  On affiche le DÉTAIL de ce qui a suivi, pas seulement « OK ».
+      //  Le Worker renvoie `moved` : « device_profiles.mac:1 », etc. Sans
+      //  cette liste, un changement complet et un changement qui a laissé
+      //  les profils enfants derrière lui donnent le même bandeau vert.
+      //  Le champ est optionnel : un Worker plus ancien ne le renvoie pas,
+      //  et dans ce cas on ne ment pas — on n'affiche simplement rien.
+      const detail = (r.moved && r.moved.length > 0)
+        ? ` Ont suivi : ${r.moved.join(', ')}.`
+        : '';
       setOk(
-        `✅ Abonnement transféré de ${r.old_mac} → ${r.new_mac}. `
-        + `${r.moved_licenses} licence(s) déplacée(s), temps restant conservé. `
+        `✅ MAC changée : ${r.old_mac} → ${r.new_mac}. `
+        + `${r.moved_licenses} licence(s) déplacée(s), temps restant conservé.${detail} `
         + `Le nouvel appareil sera actif à sa prochaine ouverture.`,
       );
       setOldMac(''); setNewMac('');
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Transfert impossible.');
+      setErr(e instanceof ApiError ? e.message : 'Changement de MAC impossible.');
     } finally { setBusy(false); }
   }
 
@@ -52,22 +70,25 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
 
   return (
     <AppLayout
-      title="Transférer un abonnement"
-      subtitle="Le client change d'appareil ? On déplace son temps, sans le faire repayer."
+      title="Changer la MAC d'un client"
+      subtitle="Une MAC qui ne marche pas, un appareil remplacé ? On bascule tout sur la nouvelle, sans faire repayer."
       onLogout={onLogout}
     >
       <div className="max-w-xl space-y-5">
         <div className="rounded-lg border border-accent/20 bg-accent/5 px-4 py-3 text-[13px] text-ink-secondary">
-          Sers-toi de ça quand un client a <strong>déjà payé</strong> mais a
-          changé de téléphone, réinstallé l'app, ou que son identifiant a
-          bougé après une mise à jour. Son <strong>temps restant est
-          conservé</strong> et <strong>aucun crédit</strong> n'est débité.
+          Sers-toi de ça quand un client a <strong>déjà payé</strong> mais que
+          sa <strong>MAC ne marche pas</strong>, qu'il a changé d'appareil,
+          réinstallé l'app, ou que son identifiant a bougé après une mise à
+          jour. Tout le suit : licence, sources, profils (mode Enfants,
+          contrôle parental), sauvegardes, famille, commandes et messages.
+          Son <strong>temps restant est conservé</strong> et
+          {' '}<strong>aucun crédit</strong> n'est débité.
         </div>
 
         <form onSubmit={submit} className="space-y-4 rounded-xl border border-white/5 bg-midnight p-6">
           <div>
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Ancienne MAC (l'appareil/abonnement actuel)
+              MAC actuelle (celle du client aujourd'hui, celle qui pose problème)
             </label>
             <input
               value={oldMac}
@@ -81,7 +102,7 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
           <div className="flex justify-center text-ink-tertiary">↓</div>
           <div>
             <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Nouvelle MAC (le nouvel appareil du client)
+              Nouvelle MAC (celle qu'on lui donne à la place)
             </label>
             <input
               value={newMac}
@@ -107,7 +128,7 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
             disabled={busy}
             className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? 'Transfert…' : 'Transférer l\'abonnement'}
+            {busy ? 'Changement en cours…' : 'Changer la MAC'}
           </button>
         </form>
       </div>
