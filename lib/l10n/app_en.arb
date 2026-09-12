@@ -2330,5 +2330,9 @@
   "tvSearchMatchNoChannel": "Channel unknown in your guide",
   "@tvSearchMatchNoChannel": {
     "description": "Le match est connu mais le guide ne dit pas qui le diffuse"
+  },
+  "tvSearchPhoneKeyboardOn": "⌨ Type on your phone. Press Back to return to the on-screen keyboard.",
+  "@tvSearchPhoneKeyboardOn": {
+    "description": "Indication affichee quand la saisie au clavier du telephone est active"
   }
 }

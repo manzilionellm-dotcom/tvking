@@ -12,8 +12,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 // `ValueNotifier`, qui l'est) : sans cet import, la classe est introuvable.
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+// `KeyEvent` / `KeyDownEvent` : l'écoute des claviers physiques. Ils vivent
+// dans `services`, que `material` ne réexporte pas.
+import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../core/external_keyboard.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/data/search_history_repository.dart';
@@ -142,6 +146,43 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     _suggestions.value = out;
   }
 
+  // =========================================================
+  //  TAPER AVEC AUTRE CHOSE QUE LA GRILLE (12/09/2026)
+  // =========================================================
+  //  « J'ai une télécommande sur mon téléphone, mais je ne parviens pas à
+  //   écrire avec le clavier. » C'était impossible : cet écran n'avait
+  //   aucun champ de saisie, donc rien ne pouvait recevoir un caractère
+  //   venu d'ailleurs. Deux entrées manquaient, et elles sont différentes.
+  //
+  //  1. CLAVIER PHYSIQUE (Bluetooth, USB, certaines télécommandes) : il
+  //     envoie des ÉVÉNEMENTS DE TOUCHE. Traité par `_surToucheExterne`,
+  //     posé en ancêtre de tout l'écran : il voit les touches que la
+  //     grille n'a pas consommées. Aucun mode à activer, ça marche tout
+  //     de suite — et la navigation reste intacte, parce que la frontière
+  //     texte/navigation vit dans external_keyboard.dart.
+  //
+  //  2. CLAVIER DU TÉLÉPHONE (application Télécommande de Google TV) : il
+  //     n'envoie PAS de touches, il écrit dans le champ de saisie ACTIF
+  //     du téléviseur. Il faut donc qu'un vrai champ existe et soit au
+  //     premier plan — c'est `_champIme`, invisible, activé en ouvrant la
+  //     barre de recherche.
+  //
+  //  POURQUOI LE MODE TÉLÉPHONE S'ACTIVE À LA DEMANDE, et n'est pas
+  //  permanent : un champ de saisie au premier plan capte les flèches
+  //  pour déplacer son curseur. Le laisser actif en permanence prendrait
+  //  la télécommande en otage — la grille de lettres, elle, ne répondrait
+  //  plus. On préfère un appui volontaire à une navigation cassée.
+  final TextEditingController _champIme = TextEditingController();
+  final FocusNode _focusIme = FocusNode(debugLabel: 'recherche-ime');
+
+  /// Le champ de saisie a le focus : le client tape sur son téléphone.
+  bool _clavierTelephone = false;
+
+  /// Vrai pendant qu'on recopie la requête DANS le champ, pour que
+  /// l'écouteur du champ ne renvoie pas cette écriture comme une frappe
+  /// du client (boucle sans fin sinon).
+  bool _recopieEnCours = false;
+
   @override
   void initState() {
     super.initState();
@@ -150,30 +191,95 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     SearchHistoryRepository.instance.load().then((_) {
       if (mounted) setState(() {});
     });
+    _champIme.addListener(_surTexteIme);
+    _focusIme.addListener(_surFocusIme);
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
     _suggestions.dispose();
+    _champIme.removeListener(_surTexteIme);
+    _focusIme.removeListener(_surFocusIme);
+    _champIme.dispose();
+    _focusIme.dispose();
     super.dispose();
+  }
+
+  /// Le client a tapé (ou effacé) sur le clavier de son téléphone.
+  void _surTexteIme() {
+    if (_recopieEnCours) return;
+    final String t = _champIme.text;
+    if (t == _q) return;
+    setState(() => _q = t);
+    _schedule();
+  }
+
+  void _surFocusIme() {
+    if (!mounted) return;
+    setState(() => _clavierTelephone = _focusIme.hasFocus);
+  }
+
+  /// Ouvre la saisie au clavier du téléphone : le champ passe au premier
+  /// plan, la télécommande de Google TV a enfin où écrire.
+  void _ouvrirClavierTelephone() {
+    _recopierDansChamp();
+    _focusIme.requestFocus();
+  }
+
+  /// Garde le champ invisible en phase avec la requête tapée à la grille.
+  /// Sans ça, le client qui tape « CHE » à l'écran puis bascule sur son
+  /// téléphone repartirait d'un champ vide et perdrait ses trois lettres.
+  void _recopierDansChamp() {
+    if (_champIme.text == _q) return;
+    _recopieEnCours = true;
+    _champIme.value = TextEditingValue(
+      text: _q,
+      selection: TextSelection.collapsed(offset: _q.length),
+    );
+    _recopieEnCours = false;
+  }
+
+  /// Touches venues d'un clavier PHYSIQUE, vues en ancêtre de l'écran.
+  ///
+  /// On ne répond qu'aux touches ENFONCÉES (`KeyDownEvent`) : une touche
+  /// maintenue produit aussi des répétitions, que Flutter livre en
+  /// `KeyRepeatEvent` — les traiter doublerait chaque lettre.
+  KeyEventResult _surToucheExterne(FocusNode _, KeyEvent e) {
+    // En mode téléphone, le champ de saisie fait déjà tout le travail :
+    // traiter la touche ICI l'écrirait une seconde fois.
+    if (_clavierTelephone) return KeyEventResult.ignored;
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    if (estRetourArriere(e.logicalKey)) {
+      _backspace();
+      return KeyEventResult.handled;
+    }
+    final String? c = caractereTapable(e.logicalKey, e.character);
+    if (c == null) return KeyEventResult.ignored;
+    _type(c);
+    return KeyEventResult.handled;
   }
 
   // Relance une recherche depuis une pastille d'historique (sans re-taper).
   void _searchFrom(String query) {
     _debounce?.cancel();
     setState(() => _q = query);
+    _recopierDansChamp();
     _runSearch();
   }
 
   void _type(String ch) {
     setState(() => _q += ch);
+    // Le champ invisible suit la grille : le client peut taper trois
+    // lettres à l'écran puis continuer sur son téléphone sans les perdre.
+    _recopierDansChamp();
     _schedule();
   }
 
   void _backspace() {
     if (_q.isEmpty) return;
     setState(() => _q = _q.substring(0, _q.length - 1));
+    _recopierDansChamp();
     _schedule();
   }
 
@@ -190,6 +296,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     // Les propositions portaient sur une requête qui n'existe plus. Les
     // laisser afficherait des noms sans rapport avec un champ vide.
     _suggestions.value = const <String>[];
+    _recopierDansChamp();
   }
 
   // Debounce : on ne relance la recherche (et le rendu des logos) qu'après une
@@ -311,6 +418,18 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     // est TOUJOURS propre, quel que soit l'appelant (clavier net, « VIP »).
     return Material(
       type: MaterialType.transparency,
+      // ÉCOUTE DES CLAVIERS PHYSIQUES (Bluetooth, USB, télécommandes qui
+      // envoient de vraies touches). Placé en ANCÊTRE : il ne prend jamais
+      // le focus (`canRequestFocus: false`, `skipTraversal: true`, donc la
+      // navigation à la télécommande est rigoureusement inchangée), mais il
+      // voit remonter les touches que la grille n'a pas consommées.
+      // La frontière « texte ou navigation » vit dans external_keyboard.dart
+      // et nulle part ailleurs : une flèche ne doit JAMAIS être écrite
+      // comme un caractère, sinon la télécommande cesse de répondre.
+      child: Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: _surToucheExterne,
       child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -325,24 +444,91 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                decoration: BoxDecoration(
-                  color: TvTokens.card,
-                  borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-                ),
-                child: Text(
-                  _q.isEmpty ? context.l10n.tvSearchHint : _q,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: TvDimens.title,
-                    fontWeight: FontWeight.w700,
-                    color: _q.isEmpty ? TvTokens.mutedDim : TvTokens.text,
+              // LA BARRE DE RECHERCHE EST DÉSORMAIS UN BOUTON.
+              // C'était un simple affichage : on ne pouvait pas s'y poser,
+              // donc rien n'ouvrait la saisie au clavier du téléphone. OK
+              // dessus met le champ invisible au premier plan — et
+              // l'application Télécommande a enfin où écrire.
+              TvFocusable(
+                scale: TvFocusScale.small,
+                baseColor: TvTokens.card,
+                onSelect: _ouvrirClavierTelephone,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          _q.isEmpty ? context.l10n.tvSearchHint : _q,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color:
+                                _q.isEmpty ? TvTokens.mutedDim : TvTokens.text,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(
+                        Icons.keyboard_alt_outlined,
+                        size: 26,
+                        color: _clavierTelephone
+                            ? TvTokens.goldBright
+                            : TvTokens.mutedDim,
+                      ),
+                    ],
                   ),
                 ),
               ),
+              // LE CHAMP INVISIBLE. Il ne se voit pas, mais il doit
+              // EXISTER dans l'arbre et pouvoir prendre le focus : c'est
+              // la seule chose qu'un clavier système (téléphone) sait
+              // viser. Un widget `Offstage` ne conviendrait pas — il n'est
+              // pas focalisable, et le clavier n'aurait toujours nulle
+              // part où écrire.
+              SizedBox(
+                height: 0,
+                child: Offstage(
+                  offstage: false,
+                  child: SizedBox(
+                    width: 1,
+                    height: 1,
+                    child: TextField(
+                      controller: _champIme,
+                      focusNode: _focusIme,
+                      autofocus: false,
+                      style: const TextStyle(
+                          fontSize: 1, color: Colors.transparent),
+                      cursorWidth: 0,
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        isDense: true,
+                      ),
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => _focusIme.unfocus(),
+                    ),
+                  ),
+                ),
+              ),
+              if (_clavierTelephone) ...<Widget>[
+                const SizedBox(height: 8),
+                // On DIT au client ce qui se passe. Un champ invisible qui
+                // capte la télécommande sans rien annoncer se vivrait
+                // comme une panne : les flèches ne bougeraient plus la
+                // grille et personne ne saurait pourquoi.
+                Text(
+                  context.l10n.tvSearchPhoneKeyboardOn,
+                  style: const TextStyle(
+                    fontSize: TvDimens.caption,
+                    color: TvTokens.goldBright,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               Expanded(
                 child: (res.isEmpty &&
@@ -458,6 +644,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
           ),
         ),
       ],
+      ),
       ),
     );
   }

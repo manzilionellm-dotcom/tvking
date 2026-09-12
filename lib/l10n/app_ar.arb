@@ -2313,5 +2313,9 @@
   "tvSearchMatchNoChannel": "القناة غير معروفة في دليلك",
   "@tvSearchMatchNoChannel": {
     "description": "Le match est connu mais le guide ne dit pas qui le diffuse"
+  },
+  "tvSearchPhoneKeyboardOn": "⌨ اكتب على هاتفك. اضغط رجوع للعودة إلى لوحة مفاتيح الشاشة.",
+  "@tvSearchPhoneKeyboardOn": {
+    "description": "Indication affichee quand la saisie au clavier du telephone est active"
   }
 }

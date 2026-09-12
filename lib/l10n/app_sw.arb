@@ -2313,5 +2313,9 @@
   "tvSearchMatchNoChannel": "Kituo hakijulikani kwenye mwongozo wako",
   "@tvSearchMatchNoChannel": {
     "description": "Le match est connu mais le guide ne dit pas qui le diffuse"
+  },
+  "tvSearchPhoneKeyboardOn": "⌨ Andika kwenye simu yako. Bonyeza Rudi ili kurejea kwenye kibodi ya skrini.",
+  "@tvSearchPhoneKeyboardOn": {
+    "description": "Indication affichee quand la saisie au clavier du telephone est active"
   }
 }

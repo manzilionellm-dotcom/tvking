@@ -2313,5 +2313,9 @@
   "tvSearchMatchNoChannel": "Kanal ukjent i guiden din",
   "@tvSearchMatchNoChannel": {
     "description": "Le match est connu mais le guide ne dit pas qui le diffuse"
+  },
+  "tvSearchPhoneKeyboardOn": "⌨ Skriv på telefonen. Trykk Tilbake for å gå tilbake til skjermtastaturet.",
+  "@tvSearchPhoneKeyboardOn": {
+    "description": "Indication affichee quand la saisie au clavier du telephone est active"
   }
 }
