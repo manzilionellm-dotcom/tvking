@@ -6,10 +6,12 @@
 #  « la branche X publie sur quelle release ? »
 #
 #  POURQUOI IL EXISTE (07/09/2026). Le numéro lisible (buildLabel) se
-#  calcule à partir du dernier numéro publié SUR LE CANAL — il faut donc
-#  connaître le canal AVANT de compiler, pour le graver dans l'APK. Or
-#  la correspondance branche → canal vivait au milieu de l'étape de
-#  publication, tout à la fin du workflow.
+#  calcule AVANT de compiler, pour le graver dans l'APK. Il faut donc
+#  connaître le canal (où l'on publie) dès le début. Le précédent, lui,
+#  n'est plus « le numéro de CE canal » : ci/build_label.sh prend le
+#  max de toute la famille (12/09/2026). Or la correspondance
+#  branche → canal vivait au milieu de l'étape de publication, tout à
+#  la fin du workflow.
 #
 #  La recopier au début aurait créé deux vérités : le jour où l'une
 #  change et pas l'autre, l'app afficherait un numéro et le serveur en

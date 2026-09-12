@@ -745,9 +745,9 @@ jobs:
           echo "APP_BUILD_TS=$BUILD_TS"
           #  LE NUMÉRO LISIBLE (« 19881 »), gravé DANS l'APK — c'est lui
           #  que le client lit dans « À propos » et nous dicte au
-          #  téléphone. Il se calcule à partir du dernier numéro publié
-          #  SUR SON CANAL : il faut donc connaître le canal ici, avant
-          #  de compiler. Les deux calculs sont partagés avec la TV
+          #  téléphone. Le TAG dit où l'on publie ; le numéro vient du
+          #  MAX de toute la famille (ci/build_label.sh), pas d'un
+          #  compteur isolé. Les deux calculs sont partagés avec la TV
           #  (ci/release_tag.sh, ci/build_label.sh) — une seule règle
           #  pour toutes les apps de la maison, pour qu'aucune ne se
           #  perde. Le canal est réexporté pour que l'étape de

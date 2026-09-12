@@ -53,6 +53,11 @@
 //  fiche MAC d'un PC ne pouvait porter aucun verdict, et l'app ne
 //  pouvait de toute façon rien proposer. Les deux se rallument ensemble,
 //  comme le veut la règle — le panel et l'app visent `windows-latest`.
+//  Les NUMÉROS gravés suivent UNE série (ci/build_label.sh, max
+//  familial). Le verdict « à jour ? » reste CANAL PAR CANAL : chaque
+//  appareil lit SON manifeste. Un téléphone à 198828 n'est « à jour »
+//  que si `prod` (ou le canal que l'app interroge) annonce 198828 —
+//  pas si seule la TV l'a déjà publié.
 export const VERSION_CHANNELS = {
   tv: 'seventv-latest',
   windows: 'windows-latest',
