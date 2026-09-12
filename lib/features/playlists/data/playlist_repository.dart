@@ -127,7 +127,33 @@ class PlaylistRepository {
   @visibleForTesting
   void debugSeedChannels(List<Channel> channels) {
     _channelsCache = List<Channel>.unmodifiable(channels);
+    _warmInFlight = null;
+    debugColdLoadCalls = 0;
   }
+
+  /// TESTS UNIQUEMENT : chaînes « au-delà du plafond RAM ». Si non-null,
+  /// le filet LIKE lit CE bassin au lieu d'ouvrir SQLite — pour prouver
+  /// qu'une chaîne hors cache reste trouvable, sans base.
+  @visibleForTesting
+  List<Channel>? debugSqlOverflowPool;
+
+  /// TESTS UNIQUEMENT : chargeur du cache froid (évite SQLite). Compte
+  /// les appels : deux frappes d'affilée ne doivent réchauffer QU'UNE fois.
+  @visibleForTesting
+  Future<List<Channel>> Function()? debugColdLoadHook;
+
+  @visibleForTesting
+  int debugColdLoadCalls = 0;
+
+  /// TESTS UNIQUEMENT : n'ouvre pas SQLite pour le filet. Les tests
+  /// purs n'ont pas de binding / de base ; le filet se teste via
+  /// [debugSqlOverflowPool]. En prod, laisser `false`.
+  @visibleForTesting
+  bool debugDisableSqlFallback = false;
+
+  /// Lecture bornée EN VOL : deux frappes pendant le boot partagent
+  /// la même Future — sinon chaque lettre relisait toute la table.
+  Future<void>? _warmInFlight;
 
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
@@ -389,24 +415,28 @@ class PlaylistRepository {
     );
   }
 
-  /// Recherche LIVE intelligente : déléguée à [SmartSearch] (le MÊME
-  /// moteur que le téléphone).
+  /// Recherche LIVE intelligente : [SmartSearch] sur le bassin RAM,
+  /// puis un FILET SQL si le ranking rend peu ou rien.
   ///
-  /// POURQUOI ON A ABANDONNÉ LE `LIKE %q%`. Un `LIKE '%bein 1%'` exige
-  /// que ces six caractères se suivent dans le nom. Or les playlists
-  /// IPTV écrivent « beIN SPORTS 1 », « Ciné+ », « ★ FR| TF1 ᴴᴰ ».
-  /// Le client tape « bein 1 » / « cine » / une faute légère — et la
-  /// box répondait vide. Ce n'était pas un bug d'UI : c'était le
-  /// mauvais outil. [SmartSearch] sait déjà faire le multi-mots, les
-  /// accents, les fautes et le boost d'historique. Une seule
-  /// implémentation, deux appelants (téléphone + TV).
+  /// POURQUOI LE HYBRIDE. Le plafond [kMaxInMemoryChannels] protège
+  /// les box 1 Go (anti-OOM). Sans filet, ~30 000 chaînes sur 40 000
+  /// sortaient de la recherche — un trou. Le LIKE SQL balaye la TABLE
+  /// (pas la RAM) pour combler ce trou. Deux outils, un seul rôle chacun.
   ///
-  /// POURQUOI ON NE RELIT PAS SQLITE À CHAQUE FRAPPE. Le bassin
-  /// [currentChannels] est déjà en RAM (plafond [kMaxInMemoryChannels],
-  /// le même que l'accueil). Relire la base pour un `LIKE` cassé
-  /// n'apportait rien, et ça empêchait le ranking. Si le cache est
-  /// encore froid (boot, test isolé), on charge UN bassin borné puis
-  /// on classe — jamais un scan non plafonné.
+  /// ---------------------------------------------------------
+  ///  CE QUE LE REPLI SQL SAIT FAIRE, ET CE QU'IL NE SAIT PAS
+  /// ---------------------------------------------------------
+  ///  Un LIKE ne trouve qu'une sous-chaîne CONTIGUË.
+  ///  Donc au-delà du plafond mémoire, « bein 1 » ne trouvera
+  ///  toujours pas « beIN SPORTS 1 ».
+  ///  C'est un FILET, pas un second moteur.
+  ///
+  ///  Le filet rattrape « TF1 », « Canal », un nom tapé tel quel —
+  ///  les chaînes hors RAM qui MATCHENT vraiment en sous-chaîne.
+  ///  Il ne corrige ni les accents, ni les fautes, ni les mots
+  ///  séparés. Sans cette phrase, quelqu'un croira l'inverse
+  ///  dans six mois et « améliorera » le LIKE jusqu'à le prendre
+  ///  pour un SmartSearch. Ne pas le faire.
   Future<List<Channel>> searchLiveChannels(
     String query, {
     int limit = 200,
@@ -417,21 +447,150 @@ class PlaylistRepository {
 
     List<Channel> pool = _livePoolFromCache();
     if (pool.isEmpty) {
-      // Cache encore vide : lecture bornée (anti-OOM), puis on
-      // filtre le live. SmartSearch fait le matching — pas SQL.
-      debugPrint('[Playlist] searchLiveChannels : cache vide, '
-          'lecture bornée pour SmartSearch');
-      final List<Channel> all = await getAllChannels();
-      pool = all.where((Channel c) => c.isLive).toList(growable: false);
+      // Cache froid (boot) : on RÉCHAUFFE UNE FOIS et on RANGE le
+      // résultat dans [_channelsCache]. Sans ça, chaque lettre
+      // relisait toute la table. [_emitCurrentState] invalide en
+      // réécrivant le cache quand la playlist change.
+      await _ensureWarmCache();
+      pool = _livePoolFromCache();
     }
-    if (pool.isEmpty) return const <Channel>[];
 
-    return SmartSearch.rank(
-      query: q,
-      pool: pool,
-      signals: signals,
+    final List<Channel> ranked = pool.isEmpty
+        ? const <Channel>[]
+        : await SmartSearch.rankAsync(
+            query: q,
+            pool: pool,
+            signals: signals,
+            limit: limit,
+          );
+
+    // Filet : si la RAM n'a pas rempli la page, on va chercher
+    // DANS LA TABLE les chaînes hors plafond. « Peu ou rien »
+    // = moins que [limit] — on complète, on ne remplace pas.
+    if (ranked.length >= limit) return ranked;
+    final List<Channel> extra = await _sqlLikeFallback(
+      q,
+      limit: limit - ranked.length,
+      alreadyIds: <String>{for (final Channel c in ranked) c.id},
+      ramPoolSize: pool.length,
+    );
+    if (extra.isEmpty) return ranked;
+    return <Channel>[...ranked, ...extra];
+  }
+
+  /// Réchauffe le cache RAM UNE fois, même si deux frappes partent
+  /// ensemble (même Future). Le résultat est RANGÉ : la lettre
+  /// suivante ne relit plus la base.
+  Future<void> _ensureWarmCache() async {
+    if (_channelsCache.isNotEmpty) return;
+    final Future<void>? inflight = _warmInFlight;
+    if (inflight != null) {
+      await inflight;
+      return;
+    }
+    final Future<void> started = _warmCacheOnce();
+    _warmInFlight = started;
+    try {
+      await started;
+    } finally {
+      if (identical(_warmInFlight, started)) _warmInFlight = null;
+    }
+  }
+
+  Future<void> _warmCacheOnce() async {
+    debugColdLoadCalls++;
+    debugPrint('[Playlist] searchLiveChannels : cache froid, '
+        'lecture bornée UNE fois (rangée pour les frappes suivantes)');
+    final List<Channel> all = debugColdLoadHook != null
+        ? await debugColdLoadHook!()
+        : await getAllChannels();
+    // Course : [_emitCurrentState] a pu remplir le cache entre-temps.
+    // On n'écrase pas un snapshot plus frais (playlist qui vient
+    // de changer) par une lecture commencée à froid.
+    if (_channelsCache.isEmpty) {
+      _channelsCache = List<Channel>.unmodifiable(all);
+    }
+  }
+
+  /// Filet LIKE sur la table (ou le bassin de test [debugSqlOverflowPool]).
+  ///
+  /// Un LIKE ne trouve qu'une sous-chaîne CONTIGUË.
+  /// Donc au-delà du plafond mémoire, « bein 1 » ne trouvera
+  /// toujours pas « beIN SPORTS 1 ».
+  /// C'est un FILET, pas un second moteur.
+  Future<List<Channel>> _sqlLikeFallback(
+    String query, {
+    required int limit,
+    required Set<String> alreadyIds,
+    required int ramPoolSize,
+  }) async {
+    if (limit <= 0) return const <Channel>[];
+    if (debugSqlOverflowPool != null) {
+      return likeContiguousFallback(
+        query: query,
+        pool: debugSqlOverflowPool!,
+        alreadyIds: alreadyIds,
+        limit: limit,
+      );
+    }
+    // Tests purs : pas de SQLite. En prod on n'interroge la table
+    // que s'il EXISTE un trou (plafond RAM atteint) — sinon le LIKE
+    // re-scannerait les mêmes chaînes déjà classées.
+    if (debugDisableSqlFallback) return const <Channel>[];
+    if (ramPoolSize < kMaxInMemoryChannels) return const <Channel>[];
+    final Database db = await PlaylistDatabase.instance.database;
+    final int? activeId = await _activePlaylistId(db);
+    final StringBuffer where = StringBuffer('is_live = 1 AND name LIKE ?');
+    final List<Object> args = <Object>['%$query%'];
+    if (activeId != null) {
+      where.write(' AND playlist_id = ?');
+      args.add(activeId);
+    }
+    if (alreadyIds.isNotEmpty) {
+      final String ph =
+          List<String>.filled(alreadyIds.length, '?').join(',');
+      where.write(' AND external_id NOT IN ($ph)');
+      args.addAll(alreadyIds);
+    }
+    final List<Map<String, Object?>> rows = await db.query(
+      'channels',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: 'local_id ASC',
       limit: limit,
     );
+    List<Channel> out =
+        rows.map(_channelFromMap).toList(growable: false);
+    if (FlavorConfig.current.adultOnly) {
+      out = out
+          .where((Channel c) => c.genre == ChannelGenre.adult)
+          .toList(growable: false);
+    }
+    return out;
+  }
+
+  /// Même sémantique que le `LIKE '%q%'` SQLite (ASCII, casse ignorée).
+  /// Publique pour les tests : prouver le filet ET sa limite.
+  @visibleForTesting
+  static List<Channel> likeContiguousFallback({
+    required String query,
+    required List<Channel> pool,
+    required Set<String> alreadyIds,
+    required int limit,
+  }) {
+    final String needle = query.toLowerCase();
+    if (needle.isEmpty || pool.isEmpty || limit <= 0) {
+      return const <Channel>[];
+    }
+    final List<Channel> out = <Channel>[];
+    for (final Channel c in pool) {
+      if (!c.isLive) continue;
+      if (alreadyIds.contains(c.id)) continue;
+      if (!c.name.toLowerCase().contains(needle)) continue;
+      out.add(c);
+      if (out.length >= limit) break;
+    }
+    return out;
   }
 
   /// Chaînes LIVE déjà en cache (filtre flavor inclus). Liste neuve

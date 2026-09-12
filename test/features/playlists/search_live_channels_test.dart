@@ -50,6 +50,9 @@ void main() {
 
   tearDown(() {
     repo.debugSeedChannels(const <Channel>[]);
+    repo.debugSqlOverflowPool = null;
+    repo.debugColdLoadHook = null;
+    repo.debugDisableSqlFallback = false;
     FlavorConfig.resetForTesting();
   });
 
@@ -143,6 +146,89 @@ void main() {
       final List<Channel> r =
           await repo.searchLiveChannels('news', limit: 8);
       expect(r.length, 8);
+    });
+  });
+
+  group('filet SQL — chaînes hors plafond RAM', () {
+    test('une chaîne hors cache reste trouvable (sous-chaîne contiguë)',
+        () async {
+      // RAM : rien qui matche « tf1 ». Overflow : la chaîne qu'une box
+      // 1 Go n'a pas pu tenir en mémoire.
+      repo.debugSeedChannels(<Channel>[_ch('slc-ram-arte', 'Arte')]);
+      repo.debugSqlOverflowPool = <Channel>[
+        _ch('slc-overflow-tf1', '★ FR| TF1 ᴴᴰ'),
+      ];
+
+      final List<Channel> r =
+          await repo.searchLiveChannels('tf1', limit: 20);
+      expect(r.map((Channel c) => c.id), contains('slc-overflow-tf1'));
+    });
+
+    test('FILET, PAS UN MOTEUR : « bein 1 » ne trouve PAS '
+        '« beIN SPORTS 1 » hors RAM', () async {
+      // Preuve de l'intention : le LIKE exige une sous-chaîne CONTIGUË.
+      // Hors plafond, SmartSearch ne voit pas la chaîne → le filet
+      // LIKE '%bein 1%' rentre vide. On documente ça pour que personne
+      // ne « répare » le filet en croyant en faire un second moteur.
+      const String nom = 'beIN SPORTS 1 FR';
+      expect(nom.toLowerCase().contains('bein 1'), isFalse);
+
+      repo.debugSeedChannels(<Channel>[_ch('slc-ram-tf1', 'TF1')]);
+      repo.debugSqlOverflowPool = <Channel>[_ch('slc-overflow-bein', nom)];
+
+      final List<Channel> r =
+          await repo.searchLiveChannels('bein 1', limit: 20);
+      expect(r.map((Channel c) => c.id), isNot(contains('slc-overflow-bein')));
+    });
+
+    test('le filet ne duplique pas une chaîne déjà classée en RAM', () async {
+      repo.debugSeedChannels(<Channel>[_ch('slc-dup-tf1', 'TF1 HD')]);
+      repo.debugSqlOverflowPool = <Channel>[_ch('slc-dup-tf1', 'TF1 HD')];
+
+      final List<Channel> r =
+          await repo.searchLiveChannels('tf1', limit: 20);
+      expect(r.where((Channel c) => c.id == 'slc-dup-tf1').length, 1);
+    });
+  });
+
+  group('cache froid — une lecture, pas une par lettre', () {
+    test('deux recherches d\'affilée ne relisent la base qu\'UNE fois',
+        () async {
+      repo.debugSeedChannels(const <Channel>[]);
+      int loads = 0;
+      repo.debugColdLoadHook = () async {
+        loads++;
+        return <Channel>[_ch('slc-cold-tf1', 'TF1')];
+      };
+
+      final List<Channel> a =
+          await repo.searchLiveChannels('tf1', limit: 10);
+      final List<Channel> b =
+          await repo.searchLiveChannels('tf1', limit: 10);
+
+      expect(loads, 1);
+      expect(repo.debugColdLoadCalls, 1);
+      expect(a.map((Channel c) => c.id), contains('slc-cold-tf1'));
+      expect(b.map((Channel c) => c.id), contains('slc-cold-tf1'));
+    });
+
+    test('deux frappes concurrentes partagent la même lecture', () async {
+      repo.debugSeedChannels(const <Channel>[]);
+      int loads = 0;
+      repo.debugColdLoadHook = () async {
+        loads++;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        return <Channel>[_ch('slc-race-tf1', 'TF1')];
+      };
+
+      final List<List<Channel>> both = await Future.wait(<Future<List<Channel>>>[
+        repo.searchLiveChannels('tf1', limit: 10),
+        repo.searchLiveChannels('tf1', limit: 10),
+      ]);
+
+      expect(loads, 1);
+      expect(both[0].map((Channel c) => c.id), contains('slc-race-tf1'));
+      expect(both[1].map((Channel c) => c.id), contains('slc-race-tf1'));
     });
   });
 }

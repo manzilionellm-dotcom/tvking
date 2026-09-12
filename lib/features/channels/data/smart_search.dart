@@ -44,11 +44,24 @@
 //  Performance : tout est en mémoire, zéro dépendance. Les textes
 //  normalisés sont mémoïsés par id de chaîne (même stratégie que
 //  _ChannelComputedCache dans channel.dart) : la normalisation ne
-//  se paie qu'UNE fois par chaîne et par session. Sur 27 000
-//  chaînes, une requête complète reste sous ~40 ms — compatible
-//  avec le debounce 300 ms de l'écran.
+//  se paie qu'UNE fois par chaîne et par session DANS UN MÊME
+//  isolate.
+//
+//  MESURE 12/09/2026 (micro-bench 10 000 chaînes synthétiques,
+//  2e passe après échauffement, requête « bein 1 ») :
+//    7,731 ms BRUT
+//    machine : Linux cursor 6.12.94+ #1 SMP PREEMPT_DYNAMIC
+//              Sat Sep 12 04:11:43 UTC 2026 x86_64 GNU/Linux
+//    hostname : cursor
+//  HONNÊTETÉ : CI ≠ box Android TV 1 Go. Une CI est 5 à 15× plus
+//  rapide qu'une box à 30 €. Règle propriétaire : facteur 10 →
+//  budget CI ~5 ms. 7,731 ms > 5 ms → le ranking des GROS
+//  bassins sort de l'isolate UI ([rankAsync] / Isolate.run).
+//  Les petits bassins (tests, playlists courtes) restent sync :
+//  spawn + copie coûteraient plus que le calcul.
 // =========================================================
 
+import 'dart:isolate';
 import 'dart:math' as math;
 
 import '../domain/channel.dart';
@@ -115,9 +128,34 @@ abstract final class SmartSearch {
   /// inutilisable de toute façon — mieux vaut inviter à préciser.
   static const int kDefaultLimit = 400;
 
+  /// Au-delà, [rankAsync] envoie le calcul dans un isolate.
+  /// 3 000 ≈ sous le palier « petite box » (5 000) : on ne paie
+  /// l'isolate que quand le bassin ressemble à une charge réelle.
+  static const int kIsolateMinPool = 3000;
+
   // ------------------------------------------------------------
   //  API principale
   // ------------------------------------------------------------
+
+  /// Variante async : gros bassin → isolate UI libéré (voir
+  /// l'en-tête : 7,731 ms CI / 10k > budget 5 ms). Petit bassin
+  /// → [rank] sync, zéro copie.
+  static Future<List<Channel>> rankAsync({
+    required String query,
+    required List<Channel> pool,
+    SearchSignals signals = SearchSignals.none,
+    int limit = kDefaultLimit,
+  }) async {
+    if (pool.length < kIsolateMinPool) {
+      return rank(query: query, pool: pool, signals: signals, limit: limit);
+    }
+    return Isolate.run(() => rank(
+          query: query,
+          pool: pool,
+          signals: signals,
+          limit: limit,
+        ));
+  }
 
   /// Filtre et classe [pool] selon [query]. Retourne les chaînes
   /// par pertinence décroissante (au plus [limit]).
