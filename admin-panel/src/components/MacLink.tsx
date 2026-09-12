@@ -84,10 +84,27 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
       })
       .catch((e) => {
         if (alive) {
+          // NE PAS ACCUSER LE CLIENT SUR LA FOI D'UN 404 (12/09/2026).
+          //
+          // Ce bandeau disait « aucun démarrage de l'app ». C'est une
+          // affirmation sur l'appareil du client — or un 404 ne dit que
+          // « je n'ai pas trouvé », jamais pourquoi. Et pendant des mois
+          // la cause était CHEZ NOUS : le Worker ne décodait pas la MAC
+          // de l'URL, donc il répondait 404 pour des box parfaitement
+          // enregistrées, en train de tourner (voir cleDeviceUrl dans
+          // api_v1.js). Le revendeur envoyait alors son client chercher
+          // un problème qui n'existait pas.
+          //
+          // Un 404 reste possible et légitime — MAC jamais vue, ou fiche
+          // appartenant à un autre revendeur. On dit donc ce qu'on SAIT,
+          // et la marche à suivre, sans conclure à la place du revendeur.
           setErr(
             e instanceof ApiError
               ? e.status === 404
-                ? "Cette MAC n'est pas encore enregistrée (aucun démarrage de l'app)."
+                ? 'Aucune fiche trouvée pour cette MAC. Soit aucun appareil '
+                  + "n'a encore démarré l'app avec ce numéro, soit la fiche "
+                  + "appartient à un autre revendeur. Fais confirmer au client "
+                  + "le numéro affiché dans son app (écran « À propos »)."
                 : e.message
               : 'Échec du chargement.',
           );

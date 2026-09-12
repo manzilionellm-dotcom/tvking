@@ -5339,7 +5339,9 @@ async function handleAdminMonitorGet(env) {
 //  Le panel affiche tout d'un coup pour aider/diagnostiquer un client par sa
 //  MAC. Respecte le cloisonnement revendeur via deviceForActor.
 async function handleDeviceOverview(env, id, user) {
-  const key = String(id || '');
+  // Voir cleDeviceUrl() : sans ce décodage, TOUTE fiche ouverte par sa MAC
+  // répondait 404 — et le panneau en concluait « aucun démarrage de l'app ».
+  const key = cleDeviceUrl(id);
   const isReseller = user && user.role === 'reseller';
   let dev = await env.DB
     .prepare(
@@ -5525,8 +5527,42 @@ async function ensureDeviceMessagesTable(env) {
 /// l'owner peut viser N'IMPORTE QUELLE MAC (même sans fiche device) ; un
 /// revendeur uniquement une MAC qui lui appartient (fiche device requise).
 /// Renvoie { mac } ou { error }.
+// =========================================================
+//  cleDeviceUrl — la clé « id OU MAC » telle qu'elle arrive de l'URL
+// =========================================================
+//  Découverte le 12/09/2026, en cherchant pourquoi la fiche d'une box
+//  affichait « Cette MAC n'est pas encore enregistrée (aucun démarrage
+//  de l'app) » alors que la box tournait, écran allumé, MAC à l'écran.
+//
+//  Le panneau encode l'identifiant (`encodeURIComponent`), donc
+//  « MK:F0:92:8E:D6:58 » part en « MK%3AF0%3A92%3A8E%3AD6%3A58 ». Or le
+//  routeur découpe `url.pathname`, qui n'est PAS décodé. La clé arrivait
+//  ici avec ses « %3A » : le SELECT ne trouvait rien (la colonne contient
+//  des « : »), puis la validation du format échouait → 404.
+//
+//  DEUX MENSONGES EN CASCADE, et c'est ça qui coûtait cher :
+//   1. le Worker répondait « Device not found » pour un appareil qui
+//      EXISTE, parfaitement enregistré ;
+//   2. le panneau traduisait ce 404 en « aucun démarrage de l'app » —
+//      une affirmation sur le CLIENT, tirée d'un défaut chez NOUS. Le
+//      revendeur envoyait alors le client chercher un problème qui
+//      n'existait pas (réinstaller, vérifier sa MAC, la ressaisir).
+//
+//  Le dépôt connaissait déjà le piège : `decodeMac()` existe et est
+//  appelée par NEUF routes (profils, sauvegardes, famille…). Ces deux
+//  fonctions-ci, qui résolvent « id OU MAC », l'avaient oubliée — donc
+//  la fiche 360° ET les messages rapides tombaient tous les deux. Le
+//  message tapé dans « Message rapide » ne partait jamais.
+//
+//  On passe donc par UN point d'entrée commun. Tant que toute route
+//  keyée « id ou MAC » appelle ceci, l'oubli ne peut pas se reproduire
+//  route par route — même raison que device_profiles.js.
+function cleDeviceUrl(id) {
+  return decodeMac(String(id || '')).trim();
+}
+
 async function resolveTargetMac(env, id, user) {
-  const key = String(id || '');
+  const key = cleDeviceUrl(id);
   const isReseller = user && user.role === 'reseller';
   const dev = await env.DB
     .prepare('SELECT mac, reseller_id FROM devices WHERE id = ? OR mac = ?')
