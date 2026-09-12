@@ -202,6 +202,33 @@ void main() {
     });
   });
 
+  group('rankAsync — isolate hors UI', () {
+    test('petit bassin : même résultat que rank (sync)', () async {
+      final List<Channel> pool = <Channel>[
+        ch('iso1', 'beIN SPORTS 1 FR'),
+        ch('iso2', 'TF1'),
+      ];
+      final List<Channel> sync =
+          SmartSearch.rank(query: 'bein 1', pool: pool);
+      final List<Channel> async =
+          await SmartSearch.rankAsync(query: 'bein 1', pool: pool);
+      expect(async.map((Channel c) => c.id).toList(),
+          sync.map((Channel c) => c.id).toList());
+    });
+
+    test('gros bassin : Isolate.run renvoie le même classement', () async {
+      // ≥ kIsolateMinPool → vraiment un isolate. Si Channel n'était
+      // pas sendable, ça casserait ICI, pas sur la box du client.
+      final List<Channel> pool = <Channel>[
+        for (int i = 0; i < SmartSearch.kIsolateMinPool; i++)
+          ch('iso-big-$i', i == 0 ? 'beIN SPORTS 1 FR' : 'News $i'),
+      ];
+      final List<Channel> r =
+          await SmartSearch.rankAsync(query: 'bein 1', pool: pool, limit: 5);
+      expect(r.first.id, 'iso-big-0');
+    });
+  });
+
   group('bornes', () {
     test('le paramètre limit est respecté', () {
       final List<Channel> pool = <Channel>[

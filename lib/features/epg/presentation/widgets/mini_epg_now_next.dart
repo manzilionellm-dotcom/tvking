@@ -22,13 +22,16 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../channels/domain/channel.dart';
 import '../../data/epg_repository.dart';
+import '../../data/now_playing.dart';
 import '../../domain/epg_program.dart';
 import '../epg_format.dart';
 
 class MiniEpgNowNext extends StatefulWidget {
   const MiniEpgNowNext({
     required this.channelId,
+    this.channel,
     this.debounce = Duration.zero,
     super.key,
   });
@@ -36,6 +39,11 @@ class MiniEpgNowNext extends StatefulWidget {
   /// Id de la chaîne en cours de lecture. Quand il change (zapping),
   /// on recharge le now/next pour la nouvelle chaîne.
   final String channelId;
+
+  /// Chaîne complète — si fournie, on passe par [NowPlaying]
+  /// (XMLTV local PUIS EPG courte panel). Sans elle, on reste
+  /// sur la base locale seule (lecteur téléphone qui n'a que l'id).
+  final Channel? channel;
 
   /// Répit avant de recharger l'EPG quand [channelId] CHANGE. À fournir
   /// quand le widget suit le FOCUS D-pad (aperçu TiviMate) : sans répit,
@@ -58,8 +66,11 @@ class _MiniEpgNowNextState extends State<MiniEpgNowNext> {
   void initState() {
     super.initState();
     _load();
-    // Rafraîchit la barre de progression et la bascule now→next.
-    _ticker = Timer.periodic(const Duration(seconds: 30), (_) => _load());
+    // TTL now = 60 s (EpgRepository). Relire toutes les 30 s
+    // forçait un setState à vide → clignotement. On aligne
+    // le tic sur le TTL : la barre avance au plus une fois
+    // par minute, et on ne repeint que si le titre a changé.
+    _ticker = Timer.periodic(const Duration(seconds: 60), (_) => _load());
   }
 
   @override
@@ -78,11 +89,30 @@ class _MiniEpgNowNextState extends State<MiniEpgNowNext> {
   }
 
   Future<void> _load() async {
-    final EpgProgram? now =
-        await EpgRepository.instance.currentProgram(widget.channelId);
-    final EpgProgram? next =
-        await EpgRepository.instance.nextProgram(widget.channelId);
+    final String id = widget.channelId;
+    final EpgProgram? now;
+    final EpgProgram? next;
+    final Channel? ch = widget.channel;
+    if (ch != null) {
+      // Accueil D / guide / aperçu : les deux sources, UNE fois.
+      final ({EpgProgram? now, EpgProgram? next}) pair =
+          await NowPlaying.maintenantEtEnsuite(ch);
+      now = pair.now;
+      next = pair.next;
+    } else {
+      now = await EpgRepository.instance.currentProgram(id);
+      next = await EpgRepository.instance.nextProgram(id);
+    }
     if (!mounted) return;
+    // Anti-clignotement : une réponse identique (même chaîne,
+    // mêmes titres) ne doit pas reconstruire le bandeau. Et une
+    // réponse pour une chaîne DÉJÀ quittée est jetée.
+    if (widget.channelId != id) return;
+    if (_now?.title == now?.title &&
+        _now?.startTime == now?.startTime &&
+        _next?.title == next?.title) {
+      return;
+    }
     setState(() {
       _now = now;
       _next = next;

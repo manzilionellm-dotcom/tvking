@@ -904,6 +904,7 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
                 // _PreviewPrograms, tv_channels_screen).
                 MiniEpgNowNext(
                     channelId: c.id,
+                    channel: c,
                     debounce: const Duration(milliseconds: 350)),
               ],
             ),
