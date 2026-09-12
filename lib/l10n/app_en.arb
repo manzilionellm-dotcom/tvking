@@ -689,8 +689,8 @@
       }
     }
   },
-  "tvHueTitle": "Philips Hue lights",
-  "tvHueSubtitle": "Cinema drives the room lighting — like a real theatre.",
+  "tvHueTitle": "Picture and lights",
+  "tvHueSubtitle": "Your Philips Hue lamps follow the movie’s mood.",
   "tvHueStatusNone": "No Hue bridge found. Run a search (same Wi-Fi as this box).",
   "tvHueStatusFound": "Bridge found ({ip}) — pairing still needed.",
   "@tvHueStatusFound": {
@@ -719,10 +719,16 @@
       }
     }
   },
-  "tvHueEnabledOn": "Cinema mode: ON",
-  "tvHueEnabledOff": "Cinema mode: off",
+  "tvHueEnabledOn": "Picture and lights: ON",
+  "tvHueEnabledOff": "Picture and lights: off",
   "tvHueTest": "Test the ambience (4 seconds)",
-  "tvHueHelp": "Movie starts → the lights dim to a soft ember red. Pause → the light comes up a little. Movie ends → everything returns exactly as it was, including lights that were off. Everything stays on your local Wi-Fi: no account, no internet needed.",
+  "tvHueHelp": "Movie starts → the lamps take the poster colour (or a soft ember red). Pause → the light comes up a little. The movie ends → everything returns exactly as it was. No per-frame sync (that would stall a Firestick): one local Wi-Fi call at start, no account needed.",
+  "tvHueManualIp": "Bridge IP (if search fails)",
+  "tvHueManualIpHint": "192.168.1.34",
+  "tvHueManualApply": "Use this IP",
+  "tvHueManualInvalid": "This address is not a Hue bridge. Check the IP in the Hue app (Bridge settings).",
+  "tvHueSearchFailed": "Bridge not found. Check the box and the bridge share the same Wi-Fi, or type the IP below.",
+  "tvHueForget": "Forget this bridge",
   "tvWatch": "Watch",
   "tvMyList": "My List",
   "tvInMyList": "In My List",

@@ -2169,8 +2169,8 @@
       }
     }
   },
-  "tvHueTitle": "Lumières Philips Hue",
-  "tvHueSubtitle": "Le Cinéma pilote la lumière de la pièce — comme une vraie salle.",
+  "tvHueTitle": "Image et lumière",
+  "tvHueSubtitle": "Tes lampes Philips Hue suivent l’ambiance du film.",
   "tvHueStatusNone": "Aucun pont Hue détecté. Lance une recherche (même Wi-Fi que la box).",
   "tvHueStatusFound": "Pont trouvé ({ip}) — reste à l’associer.",
   "@tvHueStatusFound": {
@@ -2199,10 +2199,16 @@
       }
     }
   },
-  "tvHueEnabledOn": "Mode salle de cinéma : ACTIVÉ",
-  "tvHueEnabledOff": "Mode salle de cinéma : désactivé",
+  "tvHueEnabledOn": "Image et lumière : ACTIVÉ",
+  "tvHueEnabledOff": "Image et lumière : désactivé",
   "tvHueTest": "Tester l’ambiance (4 secondes)",
-  "tvHueHelp": "Film lancé → les lampes plongent dans un rouge braise doux. Pause → la lumière remonte un peu. Fin du film → tout revient exactement comme avant, même les lampes qui étaient éteintes. Tout se passe en local sur ton Wi-Fi : aucun compte, aucun internet requis.",
+  "tvHueHelp": "Film lancé → les lampes prennent la couleur de l’affiche (sinon un rouge braise doux). Pause → la lumière remonte un peu. Fin → tout revient exactement comme avant. Pas de sync image-par-image (ça ferait ramer la Firestick) : un seul réglage au démarrage, tout en local sur ton Wi-Fi.",
+  "tvHueManualIp": "IP du pont (si la recherche échoue)",
+  "tvHueManualIpHint": "192.168.1.34",
+  "tvHueManualApply": "Utiliser cette IP",
+  "tvHueManualInvalid": "Cette adresse n’est pas un pont Hue. Vérifie l’IP dans l’app Hue (Réglages du pont).",
+  "tvHueSearchFailed": "Pont introuvable. Vérifie que la box et le pont sont sur le même Wi-Fi, ou saisis l’IP ci-dessous.",
+  "tvHueForget": "Oublier ce pont",
   "tvWatch": "Regarder",
   "tvMyList": "Ma Liste",
   "tvInMyList": "Dans Ma Liste",

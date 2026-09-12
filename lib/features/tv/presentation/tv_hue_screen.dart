@@ -1,14 +1,14 @@
 // =========================================================
-//  tv_hue_screen.dart — Réglages « Lumières Philips Hue » (10-foot)
+//  tv_hue_screen.dart — Réglages « Image et lumière » (10-foot)
 // =========================================================
-//  Le guichet du mode SALLE DE CINÉMA (cf. hue_service.dart) : trouver le
-//  pont sur le Wi-Fi, l'associer (un appui sur son gros bouton), activer
-//  l'ambiance et la tester. Tout au D-pad, langage visuel des réglages.
+//  Guichet TV du mode Hue (cf. hue_service.dart) : trouver le pont,
+//  l'associer (appui sur son gros bouton), activer la synchro
+//  image↔lumière et la tester. Tout au D-pad.
 //
-//  L'ASSOCIATION guide l'utilisateur : on lance une fenêtre de 30 s
-//  pendant laquelle l'app re-tente chaque seconde — il suffit d'aller
-//  appuyer sur le bouton du pont pendant ce temps. Compte à rebours
-//  affiché, résultat clair (✓ associé / bouton pas pressé).
+//  POURQUOI la saisie IP est visible MÊME avant une recherche ratée :
+//  sur Firestick le multicast SSDP est souvent filtré. Sans ce repli,
+//  l'option restait « aucun pont » pour toujours — c'était le bug
+//  client « ça ne se connecte pas ».
 // =========================================================
 import 'dart:async';
 
@@ -29,6 +29,9 @@ class TvHueScreen extends StatefulWidget {
 
 class _TvHueScreenState extends State<TvHueScreen> {
   bool _searching = false;
+  bool _searchFailed = false;
+  bool _manualBusy = false;
+  String? _manualMsg;
 
   /// Secondes restantes de la fenêtre d'association (0 = pas en cours).
   int _pairCountdown = 0;
@@ -37,10 +40,19 @@ class _TvHueScreenState extends State<TvHueScreen> {
   /// Nombre de lampes joignables (null = inconnu / pas associé).
   int? _lights;
 
+  /// Saisie D-pad de l'IP (chiffres + points). Instance stable = focus OK.
+  String _typedIp = '';
+
   @override
   void initState() {
     super.initState();
-    HueService.instance.load().then((_) => _refreshLights());
+    HueService.instance.load().then((_) {
+      final String? known = HueService.instance.bridgeIp;
+      if (known != null && mounted) {
+        setState(() => _typedIp = known);
+      }
+      return _refreshLights();
+    });
   }
 
   @override
@@ -56,35 +68,79 @@ class _TvHueScreenState extends State<TvHueScreen> {
   }
 
   Future<void> _search() async {
-    setState(() => _searching = true);
-    await HueService.instance.discoverBridge();
-    if (mounted) setState(() => _searching = false);
+    setState(() {
+      _searching = true;
+      _searchFailed = false;
+      _manualMsg = null;
+    });
+    final String? ip = await HueService.instance.discoverBridge();
+    if (!mounted) return;
+    setState(() {
+      _searching = false;
+      _searchFailed = ip == null;
+      if (ip != null) _typedIp = ip;
+    });
   }
 
-  /// Fenêtre d'association 30 s : une tentative par seconde, le temps
-  /// d'aller appuyer sur le bouton physique du pont.
+  /// Fenêtre d'association 30 s : tentative IMMÉDIATE puis une par
+  /// seconde. POURQUOI immédiat : Timer.periodic n'envoie le 1er tick
+  /// qu'à +1 s — on ratait le bouton déjà pressé (fenêtre Hue = 30 s).
   void _startPairing() {
     _pairTimer?.cancel();
     setState(() => _pairCountdown = 30);
-    _pairTimer = Timer.periodic(const Duration(seconds: 1), (Timer t) async {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      final HuePairResult r = await HueService.instance.tryPair();
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      if (r == HuePairResult.success) {
-        t.cancel();
-        setState(() => _pairCountdown = 0);
-        unawaited(_refreshLights());
-        return;
-      }
-      setState(() => _pairCountdown--);
-      if (_pairCountdown <= 0) t.cancel();
+    unawaited(_tryPairTick());
+    _pairTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      unawaited(_tryPairTick());
     });
+  }
+
+  Future<void> _tryPairTick() async {
+    if (!mounted || _pairCountdown <= 0) return;
+    final HuePairResult r = await HueService.instance.tryPair();
+    if (!mounted) return;
+    if (r == HuePairResult.success) {
+      _pairTimer?.cancel();
+      setState(() => _pairCountdown = 0);
+      unawaited(_refreshLights());
+      return;
+    }
+    if (_pairCountdown <= 1) {
+      _pairTimer?.cancel();
+      setState(() => _pairCountdown = 0);
+    } else {
+      setState(() => _pairCountdown--);
+    }
+  }
+
+  Future<void> _applyManualIp() async {
+    if (_manualBusy) return;
+    setState(() {
+      _manualBusy = true;
+      _manualMsg = null;
+    });
+    final bool ok =
+        await HueService.instance.setBridgeIpManually(_typedIp);
+    if (!mounted) return;
+    setState(() {
+      _manualBusy = false;
+      _manualMsg = ok
+          ? null
+          : context.l10n.tvHueManualInvalid;
+      _searchFailed = false;
+    });
+  }
+
+  Future<void> _forget() async {
+    _pairTimer?.cancel();
+    await HueService.instance.forgetBridge();
+    if (mounted) {
+      setState(() {
+        _lights = null;
+        _pairCountdown = 0;
+        _searchFailed = false;
+        _manualMsg = null;
+      });
+    }
   }
 
   @override
@@ -142,7 +198,9 @@ class _TvHueScreenState extends State<TvHueScreen> {
                                 : hue.bridgeIp != null
                                     ? context.l10n
                                         .tvHueStatusFound(hue.bridgeIp!)
-                                    : context.l10n.tvHueStatusNone,
+                                    : _searchFailed
+                                        ? context.l10n.tvHueSearchFailed
+                                        : context.l10n.tvHueStatusNone,
                             style: const TextStyle(
                                 fontSize: 16, color: TvTokens.text),
                           ),
@@ -193,6 +251,81 @@ class _TvHueScreenState extends State<TvHueScreen> {
                       label: context.l10n.tvHueTest,
                       onSelect: () => hue.testScene(),
                     ),
+                    const SizedBox(height: 10),
+                    _HueButton(
+                      icon: Icons.link_off_rounded,
+                      label: context.l10n.tvHueForget,
+                      onSelect: _forget,
+                    ),
+                  ],
+
+                  // ----- Saisie IP (repli Firestick) -----
+                  if (!hue.isPaired) ...<Widget>[
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: 760,
+                      child: Text(context.l10n.tvHueManualIp,
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: TvTokens.text)),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 760,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: TvTokens.card,
+                        borderRadius:
+                            BorderRadius.circular(TvDimens.cardRadius),
+                        border: Border.all(color: TvTokens.lineSoft),
+                      ),
+                      child: Text(
+                        _typedIp.isEmpty
+                            ? context.l10n.tvHueManualIpHint
+                            : _typedIp,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                          color: _typedIp.isEmpty
+                              ? TvTokens.mutedDim
+                              : TvTokens.text,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: 760,
+                      child: _IpKeypad(
+                        onDigit: (String d) =>
+                            setState(() => _typedIp += d),
+                        onBackspace: () {
+                          if (_typedIp.isEmpty) return;
+                          setState(() => _typedIp =
+                              _typedIp.substring(0, _typedIp.length - 1));
+                        },
+                        onClear: () => setState(() => _typedIp = ''),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _HueButton(
+                      icon: Icons.lan_rounded,
+                      label: _manualBusy
+                          ? context.l10n.tvHueSearching
+                          : context.l10n.tvHueManualApply,
+                      onSelect: _manualBusy ? null : _applyManualIp,
+                    ),
+                    if (_manualMsg != null) ...<Widget>[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: 760,
+                        child: Text(_manualMsg!,
+                            style: const TextStyle(
+                                fontSize: 14, color: TvTokens.emberBright)),
+                      ),
+                    ],
                   ],
 
                   const SizedBox(height: 20),
@@ -209,6 +342,76 @@ class _TvHueScreenState extends State<TvHueScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+/// Pavé IPv4 10-foot (chiffres + point). Plus fiable sur Firestick
+/// qu'un IME système qui n'apparaît pas toujours.
+class _IpKeypad extends StatelessWidget {
+  const _IpKeypad({
+    required this.onDigit,
+    required this.onBackspace,
+    required this.onClear,
+  });
+
+  final ValueChanged<String> onDigit;
+  final VoidCallback onBackspace;
+  final VoidCallback onClear;
+
+  static const List<String> _keys = <String>[
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: <Widget>[
+        for (final String k in _keys)
+          _PadKey(label: k, onTap: () => onDigit(k)),
+        _PadKey(label: '⌫', onTap: onBackspace),
+        _PadKey(label: '✕', wide: true, onTap: onClear),
+      ],
+    );
+  }
+}
+
+class _PadKey extends StatelessWidget {
+  const _PadKey({
+    required this.label,
+    required this.onTap,
+    this.wide = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: wide ? 116 : 54,
+      height: 54,
+      child: TvFocusBuilder(
+        scale: TvFocusScale.small,
+        onSelect: onTap,
+        builder: (BuildContext context, bool focused) {
+          return Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: focused ? TvTokens.ember : TvTokens.sel,
+              borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: TvDimens.title,
+                    fontWeight: FontWeight.w700,
+                    color: focused ? TvTokens.onEmber : TvTokens.text)),
+          );
+        },
       ),
     );
   }

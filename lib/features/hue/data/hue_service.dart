@@ -1,25 +1,27 @@
 // =========================================================
-//  hue_service.dart — Philips Hue : mode « salle de cinéma »
+//  hue_service.dart — Philips Hue : « image et lumière »
 // =========================================================
-//  L'idée (demande client, 2026-07-17) : si des ampoules Philips Hue sont
-//  sur le MÊME Wi-Fi que la box, le Cinéma pilote la lumière de la pièce —
-//  film lancé → les lampes plongent dans un ROUGE BRAISE doux (l'ambiance
-//  de la salle qui s'éteint), pause → la lumière remonte un peu, fin du
-//  film → tout revient EXACTEMENT comme avant.
+//  L'idée (demande client, 2026-07-17, correctif connexion 2026-09-12) :
+//  si des ampoules Philips Hue sont sur le MÊME Wi-Fi que la box, le
+//  Cinéma teinte la pièce avec la couleur de l'affiche — film lancé →
+//  les lampes plongent dans cette teinte (repli rouge braise), pause →
+//  la lumière remonte un peu, fin → tout revient EXACTEMENT comme avant.
 //
-//  COMMENT ÇA MARCHE (aucune dépendance, aucun cloud, aucun compte) :
-//   1. DÉCOUVERTE : le pont Hue répond au protocole SSDP — le même
-//      broadcast UDP que notre découverte DLNA (cast). Sa réponse se
-//      reconnaît à l'en-tête `hue-bridgeid`. Repli : saisie IP manuelle.
-//   2. ASSOCIATION : POST /api {"devicetype":…} → le pont exige UN appui
-//      physique sur son gros bouton (sécurité officielle Philips), puis
-//      rend une clé d'app (`username`) qu'on garde en SharedPreferences.
-//   3. PILOTAGE : API locale CLIP v1 en HTTP simple (http://<ip>/api/…),
-//      supportée par TOUS les ponts (v1 et v2). On capture l'état de
-//      chaque lampe AVANT la scène (on/bri/hue/sat/ct) pour pouvoir le
-//      RESTAURER à la sortie — jamais de « lumières cassées » après un
-//      film. La scène elle-même s'applique en UN appel de groupe (groupe
-//      0 = toutes les lampes) avec une transition douce.
+//  CE QUE CE N'EST PAS : pas l'Entertainment API (sync image-par-image
+//  via UDP/DTLS). Ça exigerait un SDK Hue, une « entertainment area »
+//  et un flood réseau pendant la lecture — interdit sur Firestick.
+//  Groupe CLIP v1 « 0 » = toutes les lampes, UN appel au start/pause/fin.
+//
+//  COMMENT ÇA MARCHE (aucune dépendance Hue, aucun compte Philips) :
+//   1. DÉCOUVERTE : SSDP local (signature `hue-bridgeid`) AVEC le
+//      MulticastLock Android — SANS ce lock la puce Wi-Fi Firestick
+//      avale les réponses multicast et la recherche « ne trouve rien ».
+//      Repli : https://discovery.meethue.com (IP locale du pont derrière
+//      la même box internet). Repli ultime : saisie IP manuelle.
+//   2. ASSOCIATION : POST /api {"devicetype":…} → un appui physique
+//      sur le gros bouton du pont, puis une clé d'app persistée.
+//   3. PILOTAGE : CLIP v1 locale HTTP (HTTPS en repli, certif auto-signé
+//      du pont v2 accepté UNIQUEMENT sur IP privée).
 //
 //  BEST-EFFORT ABSOLU : la lumière ne doit JAMAIS gêner la lecture. Tout
 //  est try/catch + timeouts courts ; sans pont, sans clé ou hors ligne,
@@ -31,6 +33,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../cast/data/multicast_lock.dart';
 
 /// État mémorisé d'une lampe avant la scène cinéma — le strict nécessaire
 /// pour la remettre comme elle était (y compris « éteinte »).
@@ -108,6 +112,8 @@ class HueService extends ChangeNotifier {
   static const int kCinemaBri = 36;
   static const int kPauseBri = 90; // pause → on y voit assez pour bouger
 
+  static const String _kCloudDiscoveryUrl = 'https://discovery.meethue.com';
+
   String? _bridgeIp;
   String? _appKey;
   bool _enabled = false;
@@ -142,6 +148,23 @@ class HueService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Oublie pont + clé. POURQUOI : un IP périmé (box changée, DHCP) laisse
+  /// l'UI « associée » alors que plus rien ne répond — le client croit que
+  /// Hue est cassé. On efface pour recommencer la recherche.
+  Future<void> forgetBridge() async {
+    _bridgeIp = null;
+    _appKey = null;
+    _enabled = false;
+    _captured.clear();
+    notifyListeners();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kIpKey);
+      await prefs.remove(_kUserKey);
+      await prefs.setBool(_kEnabledKey, false);
+    } catch (_) {}
+  }
+
   Future<void> _persistBridge() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -150,86 +173,241 @@ class HueService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ---- 1. DÉCOUVERTE (SSDP, comme la découverte cast) ------------------
+  // ---- 0. Parseurs purs (testés sans pont) ------------------------------
+
+  /// IPv4 dotted-quad, rien d'autre (pas de hostname, pas d'IPv6).
+  @visibleForTesting
+  static bool isIpv4(String raw) {
+    final List<String> parts = raw.split('.');
+    if (parts.length != 4) return false;
+    for (final String p in parts) {
+      final int? n = int.tryParse(p);
+      if (n == null || n < 0 || n > 255) return false;
+    }
+    return true;
+  }
+
+  /// RFC1918 + link-local. Le certificat auto-signé du pont n'est accepté
+  /// QUE sur ces plages — jamais vers une IP publique.
+  @visibleForTesting
+  static bool isPrivateIpv4(String raw) {
+    if (!isIpv4(raw)) return false;
+    final List<int> o =
+        raw.split('.').map((String p) => int.parse(p)).toList(growable: false);
+    if (o[0] == 10) return true;
+    if (o[0] == 192 && o[1] == 168) return true;
+    if (o[0] == 169 && o[1] == 254) return true;
+    if (o[0] == 172 && o[1] >= 16 && o[1] <= 31) return true;
+    return false;
+  }
+
+  /// Nettoie une saisie TV (« http://192.168.1.34:80/ ») → host IPv4 ou null.
+  @visibleForTesting
+  static String? normalizeBridgeIp(String raw) {
+    String s = raw.trim();
+    s = s.replaceFirst(RegExp(r'^https?://', caseSensitive: false), '');
+    s = s.split(RegExp(r'[/?#]')).first;
+    final String host = s.split(':').first;
+    return isIpv4(host) ? host : null;
+  }
+
+  /// GET /api/config sans clé : un pont répond au moins `name` ou `bridgeid`.
+  @visibleForTesting
+  static bool parseHueConfigLooksLikeBridge(String body) {
+    try {
+      final Object? parsed = jsonDecode(body);
+      if (parsed is Map<String, dynamic>) {
+        return parsed['bridgeid'] != null || parsed['name'] != null;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  /// Réponse officielle de discovery.meethue.com → 1re IP privée.
+  /// Pur : le réseau n'est pas testé ici (CI sans pont).
+  @visibleForTesting
+  static String? parseCloudDiscovery(String body) {
+    try {
+      final Object? parsed = jsonDecode(body);
+      if (parsed is! List) return null;
+      for (final Object? item in parsed) {
+        if (item is Map<String, dynamic>) {
+          final Object? ip = item['internalipaddress'];
+          if (ip is String && isPrivateIpv4(ip)) return ip;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Signature SSDP Hue (en-tête `hue-bridgeid` ou serveur IpBridge).
+  @visibleForTesting
+  static bool isHueSsdpResponse(String response) {
+    final String lower = response.toLowerCase();
+    return lower.contains('hue-bridgeid') || lower.contains('ipbridge');
+  }
+
+  // ---- 1. DÉCOUVERTE (SSDP + cloud + saisie) ---------------------------
 
   /// Reconnaît la réponse SSDP d'un pont Hue et en extrait l'IP.
-  /// Le pont s'annonce avec l'en-tête `hue-bridgeid` (sa signature) et un
-  /// LOCATION du type `http://192.168.1.34:80/description.xml`. Pur →
-  /// testé unitairement.
+  /// Tolère http/https et la casse (LOCATION / Location / HTTP://).
+  /// Pur → testé unitairement.
   @visibleForTesting
   static String? parseSsdpForBridgeIp(String response) {
-    final String lower = response.toLowerCase();
-    if (!lower.contains('hue-bridgeid') && !lower.contains('ipbridge')) {
-      return null;
-    }
-    final RegExpMatch? m = RegExp(r'location:\s*http://([0-9.]+)',
+    if (!isHueSsdpResponse(response)) return null;
+    final RegExpMatch? m = RegExp(
+            r'location:\s*https?://([0-9]{1,3}(?:\.[0-9]{1,3}){3})',
             caseSensitive: false)
         .firstMatch(response);
     return m?.group(1);
   }
 
-  /// Cherche le pont sur le LAN (~4 s). Mémorise l'IP trouvée (l'ASSOCIATION
-  /// reste à faire si c'est un nouveau pont). null = rien trouvé.
+  /// Cherche le pont sur le LAN (~4 s SSDP, puis ~3 s cloud). Mémorise
+  /// l'IP trouvée (l'ASSOCIATION reste à faire si c'est un nouveau pont).
+  /// null = rien trouvé — l'UI propose alors la saisie manuelle.
   Future<String?> discoverBridge() async {
-    RawDatagramSocket? socket;
+    String? ip;
     try {
-      socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      ip = await _discoverViaSsdp();
+    } catch (e) {
+      debugPrint('[Hue] discover ssdp: $e');
+    }
+    if (ip == null) {
+      try {
+        ip = await _discoverViaCloud();
+      } catch (e) {
+        debugPrint('[Hue] discover cloud: $e');
+      }
+    }
+    if (ip == null) return null;
+    _bridgeIp = ip;
+    await _persistBridge();
+    notifyListeners();
+    return ip;
+  }
+
+  /// SSDP avec MulticastLock + 3 salves. POURQUOI le lock : sur Android /
+  /// Firestick la puce Wi-Fi FILTRE le multicast (batterie). Cast l'a déjà
+  /// appris (ssdp_discovery.dart) ; Hue oubliait le lock → 0 pont trouvé
+  /// alors que le pont répondait bien. On le prend le temps du scan, puis
+  /// on le relâche : le garder pendant la lecture viderait la batterie et
+  /// n'apporte rien (le pilotage est de l'HTTP unicast).
+  Future<String?> _discoverViaSsdp() async {
+    RawDatagramSocket? socket;
+    await MulticastLock.instance.acquire();
+    try {
+      socket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        0,
+        reuseAddress: true,
+      );
       socket.broadcastEnabled = true;
       final InternetAddress ssdp = InternetAddress('239.255.255.250');
-      // Deux cibles : `basic:1` (le type UPnP du pont) + ssdp:all (filet —
-      // certains firmwares ne répondent qu'à lui).
-      for (final String target in <String>[
-        'urn:schemas-upnp-org:device:Basic:1',
-        'ssdp:all',
-      ]) {
-        final String msearch = 'M-SEARCH * HTTP/1.1\r\n'
-            'HOST: 239.255.255.250:1900\r\n'
-            'MAN: "ssdp:discover"\r\n'
-            'MX: 2\r\n'
-            'ST: $target\r\n\r\n';
-        socket.send(utf8.encode(msearch), ssdp, 1900);
+      // basic:1 = type UPnP du pont ; ssdp:all = filet (certains firmwares).
+      void sendSearches() {
+        for (final String target in <String>[
+          'urn:schemas-upnp-org:device:Basic:1',
+          'upnp:rootdevice',
+          'ssdp:all',
+        ]) {
+          final String msearch = 'M-SEARCH * HTTP/1.1\r\n'
+              'HOST: 239.255.255.250:1900\r\n'
+              'MAN: "ssdp:discover"\r\n'
+              'MX: 2\r\n'
+              'ST: $target\r\n\r\n';
+          try {
+            socket?.send(utf8.encode(msearch), ssdp, 1900);
+          } catch (_) {
+            // Envoi multicast refusé (EPERM / socket fermée) : on continue,
+            // le repli cloud / saisie manuelle prendra le relais.
+          }
+        }
       }
+
+      // UDP multicast se PERD facilement (Wi-Fi chargé, Firestick loin
+      // du routeur). Cast émet 3 salves ; on fait pareil, coût négligeable.
+      sendSearches();
+      final List<Timer> resend = <Timer>[
+        Timer(const Duration(seconds: 1), sendSearches),
+        Timer(const Duration(milliseconds: 2500), sendSearches),
+      ];
+
       final Completer<String?> found = Completer<String?>();
       final StreamSubscription<RawSocketEvent> sub =
           socket.listen((RawSocketEvent e) {
         if (e != RawSocketEvent.read) return;
         final Datagram? dg = socket?.receive();
         if (dg == null) return;
-        final String? ip = parseSsdpForBridgeIp(utf8.decode(dg.data,
-            allowMalformed: true));
+        final String text =
+            utf8.decode(dg.data, allowMalformed: true);
+        String? ip = parseSsdpForBridgeIp(text);
+        // LOCATION parfois absente / IPv6 : l'expéditeur unicast EST le pont
+        // si la signature Hue est là et que l'IP est privée.
+        if (ip == null &&
+            isHueSsdpResponse(text) &&
+            isPrivateIpv4(dg.address.address)) {
+          ip = dg.address.address;
+        }
         if (ip != null && !found.isCompleted) found.complete(ip);
       });
       final String? ip = await found.future
           .timeout(const Duration(seconds: 4), onTimeout: () => null);
-      await sub.cancel();
-      if (ip != null) {
-        _bridgeIp = ip;
-        await _persistBridge();
-        notifyListeners();
+      for (final Timer t in resend) {
+        t.cancel();
       }
+      await sub.cancel();
       return ip;
     } catch (e) {
       debugPrint('[Hue] discover: $e');
       return null;
     } finally {
       socket?.close();
+      await MulticastLock.instance.release();
     }
   }
 
-  /// Saisie manuelle de l'IP du pont (repli si le SSDP est bloqué par le
-  /// routeur). Vérifie que ça ressemble à un pont avant de garder.
-  Future<bool> setBridgeIpManually(String ip) async {
+  /// Repli officiel Philips : le pont pousse son IP locale vers
+  /// discovery.meethue.com. Marche quand le SSDP est filtré (AP isolation
+  /// partielle, multicast lock KO) MAIS que box et pont partagent la même
+  /// IP publique. On VÉRIFIE ensuite /api/config — le cloud peut renvoyer
+  /// une IP périmée (DHCP). Timeout 3 s : pas de pont → on n'attend pas.
+  Future<String?> _discoverViaCloud() async {
+    final String body = await _httpSend(
+      'GET',
+      Uri.parse(_kCloudDiscoveryUrl),
+      null,
+      connectTimeout: const Duration(seconds: 2),
+      readTimeout: const Duration(seconds: 3),
+    );
+    final String? ip = parseCloudDiscovery(body);
+    if (ip == null) return null;
+    if (!await probeBridge(ip)) return null;
+    return ip;
+  }
+
+  /// Saisie manuelle de l'IP du pont (repli si SSDP + cloud ratent).
+  /// Vérifie que ça ressemble à un pont avant de garder.
+  Future<bool> setBridgeIpManually(String raw) async {
+    final String? ip = normalizeBridgeIp(raw);
+    if (ip == null) return false;
+    if (!await probeBridge(ip)) return false;
+    _bridgeIp = ip;
+    await _persistBridge();
+    notifyListeners();
+    return true;
+  }
+
+  /// GET /api/config — un pont répond SANS clé. HTTP puis HTTPS local.
+  @visibleForTesting
+  Future<bool> probeBridge(String ip) async {
     try {
-      final String body =
-          await _httpGet(Uri.parse('http://$ip/api/config'));
-      // /api/config répond SANS clé avec au moins name + bridgeid.
-      final Map<String, dynamic> cfg =
-          jsonDecode(body) as Map<String, dynamic>;
-      if (cfg['bridgeid'] == null && cfg['name'] == null) return false;
-      _bridgeIp = ip;
-      await _persistBridge();
-      notifyListeners();
-      return true;
+      final String body = await _hueCall(
+        ip,
+        'GET',
+        '/api/config',
+        null,
+      );
+      return parseHueConfigLooksLikeBridge(body);
     } catch (_) {
       return false;
     }
@@ -274,14 +452,26 @@ class HueService extends ChangeNotifier {
     final String? ip = _bridgeIp;
     if (ip == null) return HuePairResult.error;
     try {
-      final String body = await _httpSend(
-          'POST', Uri.parse('http://$ip/api'),
-          jsonEncode(<String, String>{'devicetype': '7motion#tv'}));
+      final String body = await _hueCall(
+        ip,
+        'POST',
+        '/api',
+        jsonEncode(<String, String>{'devicetype': '7motion#tv'}),
+      );
       final ({HuePairResult result, String? appKey}) parsed =
           parsePairResponse(body);
       if (parsed.result == HuePairResult.success) {
         _appKey = parsed.appKey;
+        // Pairer = le client VEUT la synchro. Sans ça, l'interrupteur
+        // restait OFF par défaut → « ça ne se connecte pas » après un
+        // appariement réussi.
+        _enabled = true;
         await _persistBridge();
+        try {
+          final SharedPreferences prefs =
+              await SharedPreferences.getInstance();
+          await prefs.setBool(_kEnabledKey, true);
+        } catch (_) {}
         notifyListeners();
       }
       return parsed.result;
@@ -431,8 +621,7 @@ class HueService extends ChangeNotifier {
     final String? key = _appKey;
     if (ip == null || key == null) return null;
     try {
-      final String body =
-          await _httpGet(Uri.parse('http://$ip/api/$key/lights'));
+      final String body = await _hueCall(ip, 'GET', '/api/$key/lights', null);
       final Object? parsed = jsonDecode(body);
       if (parsed is! Map<String, dynamic>) return null;
       final Map<String, HueLightState> out = <String, HueLightState>{};
@@ -455,8 +644,9 @@ class HueService extends ChangeNotifier {
     if (ip == null || key == null) return;
     try {
       // Groupe 0 = TOUTES les lampes du pont, en un seul appel.
-      await _httpSend('PUT',
-          Uri.parse('http://$ip/api/$key/groups/0/action'), jsonEncode(body));
+      // PAS d'Entertainment area : un PUT, pas un stream.
+      await _hueCall(
+          ip, 'PUT', '/api/$key/groups/0/action', jsonEncode(body));
     } catch (e) {
       debugPrint('[Hue] group: $e');
     }
@@ -467,18 +657,56 @@ class HueService extends ChangeNotifier {
     final String? key = _appKey;
     if (ip == null || key == null) return;
     try {
-      await _httpSend('PUT',
-          Uri.parse('http://$ip/api/$key/lights/$id/state'), jsonEncode(body));
+      await _hueCall(
+          ip, 'PUT', '/api/$key/lights/$id/state', jsonEncode(body));
     } catch (e) {
       debugPrint('[Hue] light $id: $e');
     }
   }
 
-  Future<String> _httpGet(Uri uri) => _httpSend('GET', uri, null);
+  /// CLIP v1 locale : HTTP d'abord (tous les ponts), HTTPS en repli
+  /// (pont v2 dont le HTTP est fermé). Le certif auto-signé n'est accepté
+  /// que si [ip] est privée — jamais en clair vers le WAN.
+  Future<String> _hueCall(
+    String ip,
+    String method,
+    String path,
+    String? body,
+  ) async {
+    try {
+      return await _httpSend(
+        method,
+        Uri.parse('http://$ip$path'),
+        body,
+      );
+    } catch (e) {
+      debugPrint('[Hue] http $path: $e — repli HTTPS local');
+      return await _httpSend(
+        method,
+        Uri.parse('https://$ip$path'),
+        body,
+        allowPrivateBadCert: isPrivateIpv4(ip),
+      );
+    }
+  }
 
-  Future<String> _httpSend(String method, Uri uri, String? body) async {
+  Future<String> _httpSend(
+    String method,
+    Uri uri,
+    String? body, {
+    Duration connectTimeout = const Duration(seconds: 3),
+    Duration readTimeout = const Duration(seconds: 4),
+    bool allowPrivateBadCert = false,
+  }) async {
     final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 3);
+      ..connectionTimeout = connectTimeout;
+    if (allowPrivateBadCert) {
+      client.badCertificateCallback =
+          (X509Certificate cert, String host, int port) {
+        return isPrivateIpv4(host) ||
+            (uri.host.isNotEmpty && isPrivateIpv4(uri.host));
+      };
+    }
     try {
       final HttpClientRequest req = await client.openUrl(method, uri);
       if (body != null) {
@@ -486,11 +714,11 @@ class HueService extends ChangeNotifier {
         req.write(body);
       }
       final HttpClientResponse resp =
-          await req.close().timeout(const Duration(seconds: 4));
+          await req.close().timeout(readTimeout);
       return await resp
           .transform(utf8.decoder)
           .join()
-          .timeout(const Duration(seconds: 4));
+          .timeout(readTimeout);
     } finally {
       client.close();
     }

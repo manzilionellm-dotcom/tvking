@@ -2,9 +2,19 @@
 //  hue_service_test.dart — Philips Hue : les briques pures
 // =========================================================
 //  Aucune ampoule ni réseau ici : on teste le PARSING (réponse SSDP du
-//  pont, réponse d'association) et la RESTAURATION (le corps JSON qui
-//  remet chaque lampe exactement comme avant la scène) — c'est là que se
-//  jouent les « lumières cassées après un film ».
+//  pont, discovery.meethue.com, saisie IP, réponse d'association) et la
+//  RESTAURATION (le corps JSON qui remet chaque lampe exactement comme
+//  avant la scène) — c'est là que se jouent les « lumières cassées
+//  après un film ».
+//
+//  NON VÉRIFIABLE EN CI (pont Hue réel requis) :
+//   • SSDP + MulticastLock sur Firestick (réponses UDP 239.255.255.250)
+//   • GET https://discovery.meethue.com depuis le LAN du client
+//   • POST /api + bouton physique → username
+//   • CLIP v1 HTTP/HTTPS locale (groupe 0, restauration par lampe)
+//   • cinemaStart teinté par l'affiche pendant une VOD
+//  Procédure box : Réglages → Image et lumière → Rechercher (ou saisir
+//  l'IP du pont dans l'app Hue) → Associer (bouton du pont) → Test 4 s.
 // =========================================================
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/hue/data/hue_service.dart';
@@ -31,14 +41,74 @@ void main() {
       expect(HueService.parseSsdpForBridgeIp(resp), isNull);
     });
 
-    test('casse des en-têtes indifférente', () {
+    test('casse des en-têtes et schéma HTTPS / HTTP://', () {
       const String resp = 'HTTP/1.1 200 OK\r\n'
-          'Location: HTTP://10.0.0.5/description.xml\r\n'
+          'Location: HTTPS://10.0.0.5/description.xml\r\n'
           'HUE-BRIDGEID: AA\r\n\r\n';
-      // Le schéma est insensible à la casse mais notre regex attend http —
-      // vérifie qu'on tolère au moins la casse du NOM d'en-tête.
-      expect(HueService.parseSsdpForBridgeIp(resp.replaceFirst('HTTP://', 'http://')),
-          '10.0.0.5');
+      expect(HueService.parseSsdpForBridgeIp(resp), '10.0.0.5');
+    });
+
+    test('sans signature Hue → null même avec LOCATION', () {
+      const String resp = 'HTTP/1.1 200 OK\r\n'
+          'LOCATION: http://192.168.1.1/description.xml\r\n'
+          'SERVER: router/1.0\r\n\r\n';
+      expect(HueService.parseSsdpForBridgeIp(resp), isNull);
+    });
+  });
+
+  group('parseCloudDiscovery / normalizeBridgeIp / privé', () {
+    test('réponse officielle meethue → 1re IP privée', () {
+      const String body =
+          '[{"id":"001788fffe2c6c32","internalipaddress":"192.168.1.2","port":80}]';
+      expect(HueService.parseCloudDiscovery(body), '192.168.1.2');
+    });
+
+    test('IP publique ignorée (jamais de pont Hue sur le WAN)', () {
+      const String body =
+          '[{"id":"x","internalipaddress":"8.8.8.8","port":80}]';
+      expect(HueService.parseCloudDiscovery(body), isNull);
+    });
+
+    test('JSON cassé / liste vide → null, jamais d\'exception', () {
+      expect(HueService.parseCloudDiscovery('[]'), isNull);
+      expect(HueService.parseCloudDiscovery('{}'), isNull);
+      expect(HueService.parseCloudDiscovery('pas json'), isNull);
+    });
+
+    test('plusieurs ponts → première IP privée', () {
+      const String body =
+          '[{"id":"a","internalipaddress":"1.2.3.4"},'
+          '{"id":"b","internalipaddress":"10.0.0.8"}]';
+      expect(HueService.parseCloudDiscovery(body), '10.0.0.8');
+    });
+
+    test('normalizeBridgeIp accepte URL / port / espaces', () {
+      expect(HueService.normalizeBridgeIp('  http://192.168.1.34:80/  '),
+          '192.168.1.34');
+      expect(HueService.normalizeBridgeIp('192.168.1.34'), '192.168.1.34');
+      expect(HueService.normalizeBridgeIp('pas-une-ip'), isNull);
+      expect(HueService.normalizeBridgeIp('300.1.1.1'), isNull);
+    });
+
+    test('isPrivateIpv4 : RFC1918 + link-local seulement', () {
+      expect(HueService.isPrivateIpv4('192.168.0.1'), isTrue);
+      expect(HueService.isPrivateIpv4('10.1.2.3'), isTrue);
+      expect(HueService.isPrivateIpv4('172.16.0.1'), isTrue);
+      expect(HueService.isPrivateIpv4('172.31.255.255'), isTrue);
+      expect(HueService.isPrivateIpv4('169.254.1.1'), isTrue);
+      expect(HueService.isPrivateIpv4('172.15.0.1'), isFalse);
+      expect(HueService.isPrivateIpv4('8.8.8.8'), isFalse);
+      expect(HueService.isPrivateIpv4('not-ip'), isFalse);
+    });
+
+    test('parseHueConfigLooksLikeBridge', () {
+      expect(
+          HueService.parseHueConfigLooksLikeBridge(
+              '{"name":"Philips hue","bridgeid":"ECB5FAFFFE00AA00"}'),
+          isTrue);
+      expect(HueService.parseHueConfigLooksLikeBridge('{"swversion":"1"}'),
+          isFalse);
+      expect(HueService.parseHueConfigLooksLikeBridge('[]'), isFalse);
     });
   });
 

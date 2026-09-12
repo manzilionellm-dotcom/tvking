@@ -52,6 +52,7 @@ import 'features/vod/data/playback_position_repository.dart';
 import 'features/vod/data/vod_download_service.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
+import 'features/hue/data/hue_service.dart';
 import 'features/tv/data/display_settings.dart';
 import 'features/tv/presentation/tv_app.dart';
 
@@ -341,6 +342,14 @@ Future<void> _bootstrap() async {
   // redémarrage de l'app — sans ce load(), PlayerSettings ne lirait jamais
   // la valeur sauvegardée et reviendrait au défaut VLC à chaque lancement.
   unawaited(PlayerSettings.instance.load());
+
+  // Philips Hue (« image et lumière ») : recharge IP + clé d'app +
+  // interrupteur. POURQUOI ici : le lecteur lit enabled/isPaired au
+  // démarrage d'un film. Sans ce load(), un pont déjà associé restait
+  // « oublié » jusqu'à Réglages → Image et lumière — la synchro
+  // semblait morte après un redémarrage de la box. Lecture prefs,
+  // non bloquant, ne throw jamais.
+  unawaited(HueService.instance.load());
 
   // Ville météo choisie par l'utilisateur (pas de GPS sur TV). Si une ville a
   // été mémorisée, la météo de l'accueil devient EXACTE ; sinon détection auto
