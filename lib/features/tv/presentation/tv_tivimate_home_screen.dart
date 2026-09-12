@@ -27,9 +27,10 @@ import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/data/category_order_store.dart';
+import '../../channels/data/home_hook_picker.dart';
 import '../../channels/data/recently_watched_repository.dart';
+import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
-import '../../channels/domain/channel_genre.dart';
 import '../../epg/presentation/widgets/mini_epg_now_next.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -86,6 +87,14 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   List<String> _groups = <String>[_kFavGroup, _kAllGroup];
   String _group = _kAllGroup;
   List<Channel> _visible = <Channel>[];
+
+  /// Habitude de créneau (WatchHistoryRepository.topChannelForSlot) —
+  /// DÉJÀ utilisée par le Lanceur. Ici on la pose en TÊTE du rail
+  /// « Derniers vus » existant (toujours 8 logos, pas un de plus).
+  /// Mémo 10 min : pas de SQL à chaque ingest / zap.
+  String? _slotId;
+  DateTime? _slotAt;
+  int _slotGen = 0;
 
   /// FAVORIS (parité TiviMate) : IDs de la portée active + écoute live —
   /// un toggle (appui long) ou une bascule d'univers repeint le compteur du
@@ -150,6 +159,33 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     // ignore: discarded_futures
     CategoryOrderStore.instance.ensureLoaded();
     CategoryOrderStore.instance.addListener(_onCatOrderChanged);
+    // Habitude de créneau : 1 lecture SQLite, mémo 10 min (Lanceur).
+    // Pas de TimeOfDay.refresh ici — ça scannerait l'historique pour
+    // un genre qu'on n'affiche pas (Vague 3 : stabilité > accroche).
+    // ignore: discarded_futures
+    _refreshSlot();
+  }
+
+  /// Même requête que le Lanceur (`topChannelForSlot`). Jeton
+  /// anti-course. Si la base n'est pas prête, le rail reste « récents »
+  /// — l'accueil ne change pas.
+  Future<void> _refreshSlot() async {
+    final int gen = ++_slotGen;
+    final DateTime now = DateTime.now();
+    if (_slotAt != null &&
+        now.difference(_slotAt!) <= const Duration(minutes: 10)) {
+      return;
+    }
+    String? slot;
+    try {
+      slot = await WatchHistoryRepository.instance.topChannelForSlot();
+    } catch (_) {
+      slot = null;
+    }
+    if (!mounted || gen != _slotGen) return;
+    _slotAt = now;
+    if (_slotId == slot) return;
+    setState(() => _slotId = slot);
   }
 
   @override
@@ -772,17 +808,17 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
     );
   }
 
-  /// Dernières chaînes VISIONNÉES, résolues contre le bouquet chargé
-  /// (une chaîne disparue de la playlist est simplement sautée). Bornée à
-  /// 8 logos — l'aperçu reste un en-tête, pas une rangée de plus.
+  /// Dernières chaînes VISIONNÉES, plus la chaîne d'habitude de
+  /// créneau en tête si on la connaît. Bornée à [HomeHookPicker.kMaxRail]
+  /// (= 8, le plafond D'AVANT) : pas un logo de plus dans l'aperçu,
+  /// donc pas de hausse du pic mémoire. Voir HomeHookPicker.
   List<Channel> _recentChannels() {
-    final List<Channel> out = <Channel>[];
-    for (final String id in RecentlyWatchedRepository.instance.current) {
-      final int i = _all.indexWhere((Channel ch) => ch.id == id);
-      if (i >= 0) out.add(_all[i]);
-      if (out.length >= 8) break;
-    }
-    return out;
+    return HomeHookPicker.continueWatching(
+      all: _all,
+      recentIds: RecentlyWatchedRepository.instance.current,
+      slotChannelId: _slotId,
+      limit: HomeHookPicker.kMaxRail,
+    );
   }
 
   /// OK sur un petit logo « dernières chaînes » : lecture immédiate. Si la

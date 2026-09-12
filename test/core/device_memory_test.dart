@@ -28,6 +28,9 @@ void main() {
     // Sur une simple incertitude on ne DÉGRADE jamais un appareil correct :
     // `isTiny` reste faux tant que la RAM n'a pas été lue.
     expect(DeviceMemory.isTiny, isFalse);
+    // Logo : RAM inconnue → ×1,5 (126) , JAMAIS plus que l'ancien ×2,2 (185).
+    expect(DeviceMemory.logoCacheWidth(84), 126);
+    expect(DeviceMemory.logoCacheWidth(84), lessThan((84 * 2.2).round()));
   });
 
   test('256 Mo → palier « minuscule » : 1500 chaînes, affiches en ×1', () async {
@@ -57,5 +60,7 @@ void main() {
     // Décodage des affiches à la taille EXACTE d'affichage (×1) : un bitmap
     // coûte largeur×hauteur×4 octets, ×2 le quadruplerait.
     expect(DeviceMemory.posterCacheWidth(120), 120);
+    // Logos à la taille d'affichage (×1) : 84×84×4 ≈ 28 Ko au lieu de 137 Ko.
+    expect(DeviceMemory.logoCacheWidth(84), 84);
   });
 }

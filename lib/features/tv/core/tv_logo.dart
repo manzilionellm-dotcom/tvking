@@ -13,7 +13,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import 'tv_dimens.dart';
+import '../../../core/app/device_memory.dart';
 import 'tv_tokens.dart';
 
 class TvChannelLogo extends StatelessWidget {
@@ -50,8 +50,13 @@ class TvChannelLogo extends StatelessWidget {
                 // transparente/petite, le fond premium reste visible (jamais
                 // de carte vide). Contain = logo normalisé, jamais déformé.
                 fit: BoxFit.contain,
-                memCacheWidth: (size * 2.2).round(),
-                memCacheHeight: (size * 2.2).round(),
+                // STABILITÉ Firestick 1 Go : on décode à la taille
+                // d'affichage (×1 petit appareil, ×1,5 sinon) — plus
+                // jamais ×2,2. Voir DeviceMemory.logoCacheWidth :
+                // baisse le pic, jamais une hausse. Le lecteur n'est
+                // pas touché.
+                memCacheWidth: DeviceMemory.logoCacheWidth(size),
+                memCacheHeight: DeviceMemory.logoCacheWidth(size),
                 fadeInDuration: const Duration(milliseconds: 180),
                 placeholder: (_, __) => mono,
                 errorWidget: (_, __, ___) => mono,
