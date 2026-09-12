@@ -58,6 +58,10 @@ le compare d'un coup d'œil. Il s'affiche en grand dans « À propos ».
 
 1. Le canal se demande à `ci/release_tag.sh <phone|tv> <branche>`.
 2. Le numéro se demande à `ci/build_label.sh <owner/repo> <canal>`.
+   Ajoute aussi le canal dans la liste **famille** de ce script. Le TAG
+   dit *où* on publie ; le précédent vient du **max de toute la famille**,
+   pas de ce canal tout seul. Oublier la liste, c'est rerouvrir un
+   compteur divergent — TV à 198818 et téléphone à 198827, mesuré.
 3. Tu l'injectes au build : `--dart-define=APP_BUILD_LABEL=$BUILD_LABEL`.
 4. Tu l'écris dans `version.json`, champ `buildLabel`.
 
@@ -66,10 +70,12 @@ dérive, deux apps donnent deux numéros pour la même version et le support
 ne sait plus quoi croire. Une seule implémentation, autant d'appelants
 qu'on veut — même raison que `cloudflare/device_profiles.js`.
 
-Le compteur monte **à chaque publication, pas à chaque compilation** : il
-est lu depuis le dernier `version.json` réellement publié. Une compilation
-qui ne publie rien ne consomme aucun numéro, et le client ne voit jamais
-de trous dans la série.
+Le compteur monte **à chaque publication, pas à chaque compilation** : le
+nouveau numéro est `1988` + (max des `buildLabel` déjà publiés sur **tous**
+les canaux famille + 1). Une compilation qui ne publie rien ne consomme
+aucun numéro. Le panel, lui, compare toujours canal par canal (« cette
+box est-elle à jour sur SON manifeste ? ») — ce qui est partagé, c'est
+la série des numéros gravés, pas le verdict.
 
 ### Le numéro remonte jusqu'au panel
 
