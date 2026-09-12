@@ -29,7 +29,9 @@ class PlaylistDatabase {
   // chaîne, imposés par certains panels IPTV — sinon 403 à la lecture).
   // v6 ajoute `url_formats` à la table playlists (format d'URL gagnant
   // mémorisé PAR SOURCE par la cascade Xtream — zapping sans re-sonde).
-  static const int _kDbVersion = 6;
+  // v7 ajoute `epg_channel_id` à channels (Vague 4 : pont EPG 1:N
+  // reconstructible au resync sans re-fetch du bouquet).
+  static const int _kDbVersion = 7;
 
   Database? _db;
 
@@ -107,6 +109,7 @@ class PlaylistDatabase {
         catchup_days INTEGER,
         catchup_source TEXT,
         http_headers TEXT,
+        epg_channel_id TEXT,
         FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
       )
     ''');
@@ -244,6 +247,12 @@ class PlaylistDatabase {
       // appareils dont la base portait déjà la colonne (bug terrain du
       // 2026-07-08 — l'ajout de source était impossible).
       await _addColumnIfMissing(db, 'playlists', 'url_formats', 'TEXT');
+    }
+    if (oldVersion < 7) {
+      // v7 (Vague 4) : id EPG du fournisseur persisté sur la chaîne.
+      // Permet `saveAliases` au resync SANS re-télécharger get_live_streams
+      // (stabilité Firestick 1 Go). IDEMPOTENT comme les autres ADD COLUMN.
+      await _addColumnIfMissing(db, 'channels', 'epg_channel_id', 'TEXT');
     }
   }
 }

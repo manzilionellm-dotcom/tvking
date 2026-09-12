@@ -41,6 +41,12 @@ MockClient _server() {
             'epg_channel_id': 'TF1.fr',
           },
           <String, Object>{
+            'stream_id': 45,
+            'name': 'TF1 HD',
+            'category_id': '7',
+            'epg_channel_id': 'TF1.fr', // même id → 1:N, pas last-write-wins
+          },
+          <String, Object>{
             'stream_id': 43,
             'name': 'Sans EPG',
             'category_id': '7',
@@ -77,41 +83,49 @@ void main() {
         httpClient: _server(),
       );
       final List<Channel> channels = await c.fetchLiveChannels(playlistId: 1);
-      expect(channels, hasLength(3));
-      expect(c.epgChannelAliases, <String, String>{'TF1.fr': 'xtream-42'});
+      expect(channels, hasLength(4));
+      // Vague 4 : les deux variantes TF1 gardent le même id EPG.
+      // Après normalisation, la clef est « tf1 ».
+      expect(c.epgChannelAliases['tf1'],
+          containsAll(<String>['xtream-42', 'xtream-45']));
+      expect(c.epgAliasIndex.emptyEpgIdCount, 2); // sans EPG + blancs
+      expect(channels.where((Channel ch) => ch.epgChannelId == 'TF1.fr'),
+          hasLength(2));
     });
   });
 
   group('EpgRepository.mergeKnownWithAliases', () {
-    test('ajoute les ids EPG des seules chaînes du filtre', () {
+    test('ajoute les ids EPG des seules chaînes du filtre (1:N + norme)', () {
       final Set<String>? merged = EpgRepository.mergeKnownWithAliases(
         <String>{'xtream-42', 'm3u-tvg-id'},
-        <String, String>{
-          'TF1.fr': 'xtream-42', // chaîne connue → alias accepté
-          'M6.fr': 'xtream-99', // chaîne HORS filtre → refusé
+        <String, List<String>>{
+          'TF1.fr': <String>['xtream-42'], // chaîne connue → alias accepté
+          'M6.fr': <String>['xtream-99'], // chaîne HORS filtre → refusé
         },
       );
-      expect(merged, <String>{'xtream-42', 'm3u-tvg-id', 'TF1.fr'});
+      expect(merged, containsAll(<String>{'xtream-42', 'm3u-tvg-id', 'tf1'}));
+      expect(merged, isNot(contains('m6')));
     });
 
-    test('sans filtre (null) → reste null ; sans alias → filtre inchangé', () {
+    test('sans filtre (null) → reste null ; sans alias → formes normalisées',
+        () {
       expect(
         EpgRepository.mergeKnownWithAliases(
-            null, <String, String>{'TF1.fr': 'xtream-42'}),
+            null, <String, List<String>>{'TF1.fr': <String>['xtream-42']}),
         isNull,
       );
-      final Set<String> known = <String>{'a'};
+      final Set<String> known = <String>{'TF1.fr'};
       expect(
-        EpgRepository.mergeKnownWithAliases(known, <String, String>{}),
-        same(known),
+        EpgRepository.mergeKnownWithAliases(known, <String, List<String>>{}),
+        <String>{'TF1.fr', 'tf1'},
       );
     });
   });
 
   group('EpgRepository.remapProgramRow', () {
     test('alias → id de chaîne ; id canonique → inchangé', () {
-      final Map<String, String> aliases = <String, String>{
-        'TF1.fr': 'xtream-42',
+      final Map<String, List<String>> aliases = <String, List<String>>{
+        'TF1.fr': <String>['xtream-42'],
       };
       final Map<String, Object?> aliased = <String, Object?>{
         'channel_id': 'TF1.fr',
@@ -127,6 +141,22 @@ void main() {
       expect(aliased['channel_id'], 'TF1.fr');
       expect(EpgRepository.remapProgramRow(canonical, aliases),
           same(canonical));
+    });
+
+    test('UN programme XMLTV → TOUTES les variantes Channel (1:N)', () {
+      final Map<String, List<String>> aliases = <String, List<String>>{
+        'TF1.fr': <String>['xtream-42', 'xtream-45'],
+      };
+      final List<Map<String, Object?>> rows = EpgRepository.remapProgramRows(
+        <String, Object?>{'channel_id': 'tf1.fr', 'title': 'JT 20h'},
+        aliases,
+      );
+      expect(
+        rows.map((Map<String, Object?> r) => r['channel_id']),
+        <String>['xtream-42', 'xtream-45'],
+      );
+      expect(rows.every((Map<String, Object?> r) => r['title'] == 'JT 20h'),
+          isTrue);
     });
   });
 

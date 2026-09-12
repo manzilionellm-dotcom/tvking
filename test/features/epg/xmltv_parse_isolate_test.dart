@@ -15,6 +15,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/features/epg/data/epg_import_stats.dart';
 import 'package:tv_king/features/epg/data/xmltv_parser.dart';
 
 /// Petit XMLTV synthétique : 3 chaînes, 5 programmes dans la fenêtre.
@@ -51,14 +52,14 @@ void main() {
   test('parseInIsolate émet les mêmes programmes que parse, en ordre',
       () async {
     final List<Map<String, Object?>> rows = <Map<String, Object?>>[];
-    final int total = await XmltvParser.parseInIsolate(
+    final EpgParseStats total = await XmltvParser.parseInIsolate(
       chunked(xmltv(programmes: 12)),
       batchSize: 5, // force plusieurs lots
       onBatch: (List<Map<String, Object?>> batch) async {
         rows.addAll(batch);
       },
     );
-    expect(total, 12);
+    expect(total.emitted, 12);
     expect(rows.length, 12, reason: 'aucune perte, aucun doublon');
     // Ordre du document préservé (lot après lot).
     for (int i = 0; i < rows.length; i++) {
@@ -70,15 +71,51 @@ void main() {
 
   test('parseInIsolate respecte le filtre des chaînes connues', () async {
     final List<Map<String, Object?>> rows = <Map<String, Object?>>[];
-    final int total = await XmltvParser.parseInIsolate(
+    final EpgParseStats total = await XmltvParser.parseInIsolate(
       chunked(xmltv(programmes: 9)),
       knownChannelIds: <String>{'chan-0'}, // chan-1 / chan-2 ignorées
       onBatch: (List<Map<String, Object?>> batch) async {
         rows.addAll(batch);
       },
     );
-    expect(total, 3, reason: '9 programmes répartis sur 3 chaînes → 3');
+    expect(total.emitted, 3, reason: '9 programmes répartis sur 3 chaînes → 3');
     expect(rows.length, 3);
+    expect(total.xmltvChannelIdsSeen, 3);
+    expect(total.skippedUnknownId, 6);
+  });
+
+  test('parse compte retenus / sautés (id inconnu vs fenêtre) — zéro réseau',
+      () async {
+    final DateTime now = DateTime.utc(2026, 9, 12, 18);
+    String fmt(DateTime t) =>
+        '${t.year.toString().padLeft(4, '0')}'
+        '${t.month.toString().padLeft(2, '0')}'
+        '${t.day.toString().padLeft(2, '0')}'
+        '${t.hour.toString().padLeft(2, '0')}'
+        '${t.minute.toString().padLeft(2, '0')}00 +0000';
+    final String xml = '<?xml version="1.0"?><tv>'
+        '<programme start="${fmt(now)}" stop="${fmt(now.add(const Duration(hours: 1)))}" '
+        'channel="TF1.fr"><title>JT</title></programme>'
+        '<programme start="${fmt(now)}" stop="${fmt(now.add(const Duration(hours: 1)))}" '
+        'channel="M6.fr"><title>Météo</title></programme>'
+        '<programme start="${fmt(now.add(const Duration(days: 10)))}" '
+        'stop="${fmt(now.add(const Duration(days: 10, hours: 1)))}" '
+        'channel="TF1.fr"><title>Dans 10 jours</title></programme>'
+        '<programme start="${fmt(now)}" stop="${fmt(now.add(const Duration(hours: 1)))}" '
+        'channel="TF1.fr"><title></title></programme>'
+        '</tv>';
+    final EpgParseStats stats = await XmltvParser.parse(
+      Stream<List<int>>.value(utf8.encode(xml)),
+      now: now,
+      keepHoursAfterNow: 48,
+      skipPredicate: (String id) => id.toLowerCase() != 'tf1.fr',
+      onProgram: (_) async {},
+    );
+    expect(stats.emitted, 1, reason: 'seul le JT TF1 dans la fenêtre');
+    expect(stats.xmltvChannelIdsSeen, 2);
+    expect(stats.skippedUnknownId, 1, reason: 'M6.fr filtré');
+    expect(stats.skippedOutsideWindow, 1, reason: 'J+10 hors 48 h');
+    expect(stats.skippedInvalid, 1, reason: 'titre vide');
   });
 
   test('un XML malformé remonte une erreur propre (pas de blocage)',
