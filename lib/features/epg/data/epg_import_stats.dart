@@ -188,7 +188,7 @@ String explainEpgCoverage({
   if (skippedUnknownId > retained && xmltvChannelIdsSeen > 0) {
     return 'Filtre / pont : $skippedUnknownId programme(s) sautés '
         '(id inconnu) vs $retained retenu(s). '
-        '${aliasCount} alias en table, $xmltvChannelIdsSeen id(s) '
+        '$aliasCount alias en table, $xmltvChannelIdsSeen id(s) '
         'XMLTV vus'
         '${emptyEpgChannelIdCount > 0 ? ', $emptyEpgChannelIdCount chaîne(s) sans epg_channel_id' : ''}. '
         'Soit le pont rate encore des variantes, soit le XMLTV '
