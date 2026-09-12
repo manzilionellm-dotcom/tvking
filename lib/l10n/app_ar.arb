@@ -2305,5 +2305,13 @@
   "tvSettingsCatChannels": "قنواتي",
   "tvSettingsCatDisplay": "العرض",
   "tvSettingsCatProtection": "الحماية",
-  "tvSettingsCatSystem": "النظام"
+  "tvSettingsCatSystem": "النظام",
+  "tvSearchMatches": "المباريات",
+  "@tvSearchMatches": {
+    "description": "Titre de la section MATCHS dans la recherche TV"
+  },
+  "tvSearchMatchNoChannel": "القناة غير معروفة في دليلك",
+  "@tvSearchMatchNoChannel": {
+    "description": "Le match est connu mais le guide ne dit pas qui le diffuse"
+  }
 }

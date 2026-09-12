@@ -150,6 +150,78 @@ class SportsRepository {
     }
   }
 
+  /// Matchs d'une équipe — SUIVIE OU NON.
+  ///
+  /// POURQUOI CETTE MÉTHODE EXISTE (12/09/2026). Le propriétaire a tapé
+  /// « Chelsea » dans la recherche de la box et n'a rien vu : ni le match,
+  /// ni la chaîne qui le diffuse. La cause n'était pas la recherche — les
+  /// matchs n'étaient tout simplement PAS consultables. Le seul chemin qui
+  /// allait les chercher, `_fetchTeam`, commençait par « si cette équipe
+  /// n'est pas dans les favoris, on ne fait rien ». Chercher une équipe
+  /// exigeait donc de l'avoir d'abord mise en favori — c'est-à-dire de
+  /// savoir à l'avance ce qu'on cherche.
+  ///
+  /// Le réseau n'est touché QU'UNE FOIS par équipe : le résultat est
+  /// gardé, et une recherche qui revient sur la même équipe (« CHE »,
+  /// « CHEL », « CHELS »… à chaque touche) ne repart pas.
+  ///
+  /// [force] : rafraîchir malgré le cache (la ronde des 10 minutes).
+  /// Erreur réseau → on rend ce qu'on a déjà, jamais une exception : un
+  /// écran de recherche ne tombe pas parce qu'un serveur de sport tousse.
+  Future<SportsEvents> eventsOf(String teamId, {bool force = false}) async {
+    final String id = teamId.trim();
+    if (id.isEmpty) return const SportsEvents();
+    if (!force) {
+      final SportsEvents? cache = _eventsByTeam[id];
+      if (cache != null) return cache;
+    }
+    try {
+      final http.Response resp = await http
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/sports/team/${Uri.encodeComponent(id)}'),
+              headers: const <String, String>{'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) {
+        return _eventsByTeam[id] ?? const SportsEvents();
+      }
+      final Map<String, dynamic> body = jsonDecode(resp.body) as Map<String, dynamic>;
+      List<SportEvent> parse(String key) =>
+          ((body[key] as List<dynamic>?) ?? const <dynamic>[])
+              .whereType<Map<String, dynamic>>()
+              .map(SportEvent.fromJson)
+              .toList(growable: false);
+      final SportsEvents ev =
+          SportsEvents(last: parse('last'), next: parse('next'));
+      _eventsByTeam[id] = ev;
+      _oublierLesEquipesDeTrop();
+      if (!_changesController.isClosed) _changesController.add(null);
+      return ev;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Sports] events error: $e');
+      return _eventsByTeam[id] ?? const SportsEvents();
+    }
+  }
+
+  /// Plafond mémoire du cache de matchs.
+  ///
+  /// Une recherche peut désormais interroger n'importe quelle équipe du
+  /// monde : sans plafond, une box qui reste allumée des semaines finirait
+  /// par garder des centaines de calendriers. Les ÉQUIPES SUIVIES ne sont
+  /// jamais jetées — ce sont les seules dont le client attend qu'elles
+  /// soient prêtes tout de suite, sans réseau.
+  static const int _kMaxEquipesEnCache = 40;
+
+  void _oublierLesEquipesDeTrop() {
+    if (_eventsByTeam.length <= _kMaxEquipesEnCache) return;
+    final Set<String> gardees =
+        _favorites.map((SportTeam t) => t.id).toSet();
+    // Ordre d'insertion (Map Dart) : on jette les plus anciennes d'abord.
+    for (final String id in _eventsByTeam.keys.toList(growable: false)) {
+      if (_eventsByTeam.length <= _kMaxEquipesEnCache) break;
+      if (gardees.contains(id)) continue;
+      _eventsByTeam.remove(id);
+    }
+  }
+
   Future<void> _fetchTeam(String id) async {
     SportTeam? team;
     for (final SportTeam t in _favorites) {
@@ -159,25 +231,11 @@ class SportsRepository {
       }
     }
     if (team == null) return;
-    try {
-      final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/sports/team/${Uri.encodeComponent(id)}'),
-              headers: const <String, String>{'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 8));
-      if (resp.statusCode != 200) return;
-      final Map<String, dynamic> body = jsonDecode(resp.body) as Map<String, dynamic>;
-      List<SportEvent> parse(String key) =>
-          ((body[key] as List<dynamic>?) ?? const <dynamic>[])
-              .whereType<Map<String, dynamic>>()
-              .map(SportEvent.fromJson)
-              .toList(growable: false);
-      final SportsEvents ev = SportsEvents(last: parse('last'), next: parse('next'));
-      _eventsByTeam[id] = ev;
-      if (!_changesController.isClosed) _changesController.add(null);
-      unawaited(_scheduleReminders(team, ev.next));
-    } catch (e) {
-      if (kDebugMode) debugPrint('[Sports] events error: $e');
-    }
+    // MÊME CHEMIN RÉSEAU que la recherche (eventsOf) : le jour où l'un des
+    // deux lirait le calendrier autrement, le match affiché dans la
+    // recherche et celui de l'écran Sport pourraient différer.
+    final SportsEvents ev = await eventsOf(id, force: true);
+    unawaited(_scheduleReminders(team, ev.next));
   }
 
   // ALARME ~1 h avant chaque match à venir. Idempotent (le service dédoublonne

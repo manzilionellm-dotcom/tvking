@@ -2305,5 +2305,13 @@
   "tvSettingsCatChannels": "MIS CANALES",
   "tvSettingsCatDisplay": "PANTALLA",
   "tvSettingsCatProtection": "PROTECCIÓN",
-  "tvSettingsCatSystem": "SISTEMA"
+  "tvSettingsCatSystem": "SISTEMA",
+  "tvSearchMatches": "PARTIDOS",
+  "@tvSearchMatches": {
+    "description": "Titre de la section MATCHS dans la recherche TV"
+  },
+  "tvSearchMatchNoChannel": "Canal desconocido en tu guía",
+  "@tvSearchMatchNoChannel": {
+    "description": "Le match est connu mais le guide ne dit pas qui le diffuse"
+  }
 }

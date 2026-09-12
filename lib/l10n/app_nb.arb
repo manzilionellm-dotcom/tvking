@@ -2305,5 +2305,13 @@
   "tvSettingsCatChannels": "MINE KANALER",
   "tvSettingsCatDisplay": "VISNING",
   "tvSettingsCatProtection": "BESKYTTELSE",
-  "tvSettingsCatSystem": "SYSTEM"
+  "tvSettingsCatSystem": "SYSTEM",
+  "tvSearchMatches": "KAMPER",
+  "@tvSearchMatches": {
+    "description": "Titre de la section MATCHS dans la recherche TV"
+  },
+  "tvSearchMatchNoChannel": "Kanal ukjent i guiden din",
+  "@tvSearchMatchNoChannel": {
+    "description": "Le match est connu mais le guide ne dit pas qui le diffuse"
+  }
 }

@@ -26,6 +26,8 @@ import '../../vod/domain/vod_movie.dart';
 import '../../vod/domain/vod_series.dart';
 import 'tv_series_screen.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../sports/data/sport_search.dart';
+import '../../sports/domain/sport_models.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import 'tv_player_screen.dart';
@@ -47,6 +49,20 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   /// savent ce qu'ils veulent regarder sans connaître le nom du canal.
   List<({Channel channel, EpgProgram program})> _airing =
       const <({Channel channel, EpgProgram program})>[];
+  /// MATCHS trouvés par NOM D'ÉQUIPE, avec la chaîne qui les diffuse.
+  ///
+  /// LE MANQUE QUE ÇA COMBLE (12/09/2026). Le propriétaire a tapé
+  /// « Chelsea » et n'a vu que des films (« Cheaters », « Cheaper by the
+  /// Dozen »). Normal, et c'est bien le problème : aucune chaîne ne
+  /// s'APPELLE Chelsea, et le guide de son client ne couvre qu'une
+  /// douzaine de chaînes sur neuf cents — chercher un titre d'émission ne
+  /// pouvait donc pas trouver le match.
+  ///
+  /// Un nom d'équipe n'est ni un nom de chaîne, ni un titre d'émission :
+  /// c'est une quatrième question, et elle a sa propre réponse
+  /// (sport_search.dart), qui relie l'équipe au match puis le match à la
+  /// chaîne.
+  List<SportSearchHit> _matchs = const <SportSearchHit>[];
   // Résultats VOD (façon Netflix : la recherche couvre AUSSI films/séries).
   List<VodMovie> _films = const <VodMovie>[];
   List<VodSeries> _series = const <VodSeries>[];
@@ -195,6 +211,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         setState(() {
           _results = const <Channel>[];
           _airing = const <({Channel channel, EpgProgram program})>[];
+          _matchs = const <SportSearchHit>[];
           _films = const <VodMovie>[];
           _series = const <VodSeries>[];
         });
@@ -241,6 +258,23 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         ]);
       }
     } catch (_) {/* pas de guide → section absente */}
+
+    // ----- MATCHS (recherche par NOM D'ÉQUIPE) -----
+    // La quatrième question que peut poser une requête : « Chelsea » n'est
+    // ni une chaîne, ni un film, ni un titre d'émission dans un guide
+    // presque vide — c'est une ÉQUIPE. On remonte équipe → match → chaîne
+    // (sport_search.dart, qui réutilise MatchChannelFinder, celui de
+    // l'écran Sport : une seule règle pour « qui diffuse ce match »).
+    //
+    // Best-effort et jamais bloquant : cette recherche touche le réseau,
+    // donc elle arrive APRÈS les chaînes et le guide, qui sont locaux et
+    // instantanés. L'écran se remplit au fur et à mesure au lieu
+    // d'attendre le maillon le plus lent.
+    try {
+      final List<SportSearchHit> hits = await SportSearch.rechercher(t);
+      if (!mounted || epoch != _epoch) return;
+      setState(() => _matchs = hits);
+    } catch (_) {/* pas de réseau sport → section absente */}
 
     // ----- FILMS & SÉRIES (façon Netflix) -----
     // Les catalogues VOD sont en CACHE MÉMOIRE (déjà plafonné RAM). Le tout
@@ -311,13 +345,41 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
               ),
               const SizedBox(height: 14),
               Expanded(
-                child: (res.isEmpty && _airing.isEmpty && _films.isEmpty && _series.isEmpty)
+                child: (res.isEmpty &&
+                        _airing.isEmpty &&
+                        _matchs.isEmpty &&
+                        _films.isEmpty &&
+                        _series.isEmpty)
                     ? _buildEmptyState(context)
                     // RÉSULTATS EN SECTIONS (façon Netflix) : Chaînes, Films,
                     // Séries — chaque section est une rangée HORIZONTALE
                     // paresseuse (seules les vignettes visibles existent).
                     : ListView(
                         children: <Widget>[
+                          // LES MATCHS EN PREMIER, et ce n'est pas un
+                          // détail de mise en page : quelqu'un qui tape un
+                          // nom d'équipe veut voir le match, pas défiler
+                          // sous trois rangées de films au titre voisin.
+                          // C'est exactement ce qui s'est passé avec
+                          // « Chelsea » et « Cheaters ».
+                          if (_matchs.isNotEmpty) ...<Widget>[
+                            _sectionTitle(context.l10n.tvSearchMatches),
+                            SizedBox(
+                              height: 132,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                addAutomaticKeepAlives: false,
+                                itemExtent: 330,
+                                itemCount: _matchs.length,
+                                itemBuilder: (BuildContext c, int i) =>
+                                    Padding(
+                                  padding: const EdgeInsets.only(right: 10),
+                                  child: _matchTile(_matchs[i]),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                          ],
                           if (_airing.isNotEmpty) ...<Widget>[
                             _sectionTitle(context.l10n.tvProgramLive),
                             SizedBox(
@@ -515,6 +577,165 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         ),
       ),
     );
+  }
+
+  /// Vignette MATCH : l'affiche, l'heure, et OÙ LE REGARDER.
+  ///
+  /// DEUX ÉTATS, ET LA DIFFÉRENCE EST VOULUE :
+  ///
+  ///  • CHAÎNE TROUVÉE → la vignette prend le focus, OK lance la chaîne.
+  ///    C'est la réponse complète à « montre-moi le match ».
+  ///
+  ///  • CHAÎNE INCONNUE → la vignette s'affiche quand même, en retrait, et
+  ///    ne prend PAS le focus. On donne l'information qu'on a (le match,
+  ///    son heure) sans poser un bouton qui ne mène nulle part : sur une
+  ///    télécommande, appuyer sur OK et qu'il ne se passe rien se lit
+  ///    comme une panne.
+  ///
+  /// Pourquoi ne pas simplement cacher ces matchs-là : parce que le guide
+  /// du client couvre une douzaine de chaînes sur neuf cents. Les cacher
+  /// ferait répondre « il n'y a pas de match » alors qu'il y en a un — le
+  /// malentendu exact qu'on répare ici.
+  Widget _matchTile(SportSearchHit hit) {
+    final SportEvent e = hit.event;
+    final Channel? ch = hit.channel;
+    final Widget contenu = Padding(
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 84,
+            child: (ch != null && ch.logoUrl != null && ch.logoUrl!.isNotEmpty)
+                ? CachedNetworkImage(
+                    imageUrl: ch.logoUrl!,
+                    fit: BoxFit.contain,
+                    memCacheWidth: 200,
+                    fadeInDuration: const Duration(milliseconds: 150),
+                    placeholder: (_, __) => const Icon(Icons.sports_soccer,
+                        size: 34, color: TvTokens.mutedDim),
+                    errorWidget: (_, __, ___) => const Icon(
+                        Icons.sports_soccer,
+                        size: 34,
+                        color: TvTokens.mutedDim),
+                  )
+                : const Icon(Icons.sports_soccer,
+                    size: 34, color: TvTokens.mutedDim),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                // EN DIRECT quand ça joue vraiment — c'est la source qui
+                // le déclare (SportEvent.isLive), jamais notre horloge.
+                if (e.isLive)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: TvTokens.badgeBg,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: TvTokens.gold),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(Icons.play_arrow_rounded,
+                            size: 14, color: TvTokens.goldBright),
+                        const SizedBox(width: 4),
+                        Text(context.l10n.tvProgramLive,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                                color: TvTokens.goldBright)),
+                      ],
+                    ),
+                  )
+                else
+                  Text(_quandMatch(e),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                          color: TvTokens.mutedDim)),
+                const SizedBox(height: 6),
+                // L'AFFICHE d'abord : c'est le nom qu'il vient de taper.
+                Text(e.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: TvDimens.caption,
+                        fontWeight: FontWeight.w700,
+                        color: TvTokens.text)),
+                const SizedBox(height: 2),
+                Text(
+                    ch != null
+                        ? context.l10n.sportWatchOn(ch.cleanName)
+                        : context.l10n.tvSearchMatchNoChannel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: TvDimens.caption,
+                        color: ch != null
+                            ? TvTokens.muted
+                            : TvTokens.mutedDim)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (ch == null) {
+      // Informatif : même gabarit, pas de focus, pas d'action.
+      return Opacity(
+        opacity: 0.55,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: TvTokens.card,
+            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+          ),
+          child: contenu,
+        ),
+      );
+    }
+    return TvFocusable(
+      scale: TvFocusScale.small,
+      baseColor: TvTokens.card,
+      onSelect: () {
+        SearchHistoryRepository.instance.add(_q);
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                TvPlayerScreen(channels: <Channel>[ch], startIndex: 0),
+          ),
+        );
+      },
+      child: contenu,
+    );
+  }
+
+  /// « 21:00 » pour ce soir, « 14 sept. · 21:00 » pour un autre jour.
+  ///
+  /// Formaté par MaterialLocalizations : la langue ET le format horaire
+  /// (12 h / 24 h) suivent le réglage de la box, sans qu'on code une seule
+  /// règle de date à la main.
+  String _quandMatch(SportEvent e) {
+    final DateTime? d = e.startsAt;
+    if (d == null) return '';
+    final MaterialLocalizations ml = MaterialLocalizations.of(context);
+    final String heure = ml.formatTimeOfDay(
+      TimeOfDay.fromDateTime(d),
+      alwaysUse24HourFormat: MediaQuery.of(context).alwaysUse24HourFormat,
+    );
+    final DateTime n = DateTime.now();
+    final bool aujourdhui =
+        d.year == n.year && d.month == n.month && d.day == n.day;
+    return aujourdhui ? heure : '${ml.formatMediumDate(d)} · $heure';
   }
 
   /// Vignette CHAÎNE (logo + nom). OK = lecture dans la liste des résultats.

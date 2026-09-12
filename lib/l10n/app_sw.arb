@@ -2305,5 +2305,13 @@
   "tvSettingsCatChannels": "CHANELI ZANGU",
   "tvSettingsCatDisplay": "MWONEKANO",
   "tvSettingsCatProtection": "ULINZI",
-  "tvSettingsCatSystem": "MFUMO"
+  "tvSettingsCatSystem": "MFUMO",
+  "tvSearchMatches": "MECHI",
+  "@tvSearchMatches": {
+    "description": "Titre de la section MATCHS dans la recherche TV"
+  },
+  "tvSearchMatchNoChannel": "Kituo hakijulikani kwenye mwongozo wako",
+  "@tvSearchMatchNoChannel": {
+    "description": "Le match est connu mais le guide ne dit pas qui le diffuse"
+  }
 }

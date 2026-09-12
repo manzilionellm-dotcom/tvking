@@ -2322,5 +2322,13 @@
   "tvSettingsCatChannels": "MY CHANNELS",
   "tvSettingsCatDisplay": "DISPLAY",
   "tvSettingsCatProtection": "PROTECTION",
-  "tvSettingsCatSystem": "SYSTEM"
+  "tvSettingsCatSystem": "SYSTEM",
+  "tvSearchMatches": "MATCHES",
+  "@tvSearchMatches": {
+    "description": "Titre de la section MATCHS dans la recherche TV"
+  },
+  "tvSearchMatchNoChannel": "Channel unknown in your guide",
+  "@tvSearchMatchNoChannel": {
+    "description": "Le match est connu mais le guide ne dit pas qui le diffuse"
+  }
 }
