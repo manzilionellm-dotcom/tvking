@@ -43,6 +43,7 @@ import '../../../core/i18n/l10n_now.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../player/data/line_expiry.dart';
 import '../../player/data/player_settings.dart';
 import '../../player/data/stream_diagnostics.dart';
 import '../../vod/domain/vod_info.dart';
@@ -73,6 +74,7 @@ class XtreamAccountInfo {
     this.expDate,
     this.maxConnections,
     this.activeCons,
+    this.panelClock,
   });
 
   /// `Active`, `Expired`, `Banned`, `Disabled`… tel que renvoyé
@@ -88,6 +90,14 @@ class XtreamAccountInfo {
 
   /// Connexions actives au moment de l'appel (`active_cons`).
   final int? activeCons;
+
+  /// Heure du PANEL (`server_info.timestamp_now`), si communiquée.
+  ///
+  /// C'est elle qui doit servir de référence pour juger [expDate] : la date
+  /// de fin est posée par le panel, dans son fuseau. La juger à l'horloge
+  /// du téléphone revient à laisser une box mal réglée décider qu'un client
+  /// a payé pour rien — c'est ce qui s'est produit (photo du 12/09/2026).
+  final DateTime? panelClock;
 }
 
 class XtreamClient {
@@ -144,7 +154,10 @@ class XtreamClient {
     // Boîte noire : photo du compte (statut / expiration / connexions)
     // prise AU CHARGEMENT du compte — consultable dans l'écran debug
     // caché pour trancher « code mort » vs « mauvais format d'URL ».
-    _recordAccountInfo(parseAccountInfo(userInfo));
+    _recordAccountInfo(parseAccountInfo(
+      userInfo,
+      serverInfo: data['server_info'] as Map<String, dynamic>?,
+    ));
     // Le protocole Xtream n'est pas normalisé : selon le panel, `auth`
     // vaut 1, "1", true ou "true" quand c'est bon — et certains panels
     // (forks XUI.one…) ne renvoient PAS le champ du tout alors que le
@@ -197,7 +210,10 @@ class XtreamClient {
     if (userInfo == null) {
       throw XtreamException('Réponse serveur invalide (pas de user_info).');
     }
-    final XtreamAccountInfo info = parseAccountInfo(userInfo);
+    final XtreamAccountInfo info = parseAccountInfo(
+      userInfo,
+      serverInfo: data['server_info'] as Map<String, dynamic>?,
+    );
     _recordAccountInfo(info);
     return info;
   }
@@ -206,8 +222,16 @@ class XtreamClient {
   /// nombres tantôt int, tantôt String ; `exp_date` epoch secondes,
   /// parfois `null`/vide pour « illimité »). Public + visibleForTesting
   /// pour tester le parsing sans réseau.
+  ///
+  /// [serverInfo] : le bloc frère `server_info`, d'où l'on tire l'HEURE DU
+  /// PANEL (`timestamp_now`). Optionnel — un panel qui ne le donne pas, ou
+  /// un appelant historique qui ne le passe pas, laisse simplement
+  /// `panelClock` à `null` et on retombe sur l'horloge de l'appareil.
   @visibleForTesting
-  static XtreamAccountInfo parseAccountInfo(Map<String, dynamic> userInfo) {
+  static XtreamAccountInfo parseAccountInfo(
+    Map<String, dynamic> userInfo, {
+    Map<String, dynamic>? serverInfo,
+  }) {
     int? asInt(Object? v) {
       if (v == null) return null;
       if (v is int) return v;
@@ -226,6 +250,7 @@ class XtreamClient {
       expDate: expDate,
       maxConnections: asInt(userInfo['max_connections']),
       activeCons: asInt(userInfo['active_cons']),
+      panelClock: horlogePanelDepuisServerInfo(serverInfo),
     );
   }
 
@@ -242,6 +267,7 @@ class XtreamClient {
       // utilisateur (cf. StreamDiagnostics.blockReasonForUrl).
       serverHost: Uri.tryParse(_baseUrl)?.host,
       username: username,
+      panelClock: info.panelClock,
     );
   }
 

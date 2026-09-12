@@ -42,6 +42,7 @@ import '../../player/data/player_settings.dart';
 import '../../player/presentation/aspect_mode_label.dart';
 import '../../player/presentation/track_language_label.dart';
 import '../../player/data/stream_blocked_fallback.dart';
+import '../../player/data/line_expiry.dart';
 import '../../player/data/stream_diagnostics.dart';
 import '../../player/data/xtream_url_variants.dart';
 import '../../playlists/data/xtream_url_format_store.dart';
@@ -1416,16 +1417,18 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case StreamBlockReason.expired:
         final DateTime? x = d.xtreamExpDate;
         // GARDE-FOU (photo client du 18/08) : ne JAMAIS annoncer « expiré le
-        // ... » avec une date qui n'est pas passée. Si le fournisseur dit
-        // « expired » mais que la date lue est future (ou inconnue), les deux
-        // informations se contredisent — on reste factuel plutôt que
-        // d'accuser à tort la ligne d'un client qui a payé.
-        if (x == null || !x.isBefore(DateTime.now())) {
-          return context.l10n.playerBlockedProvider;
-        }
-        final String date = '${x.day.toString().padLeft(2, '0')}/'
-            '${x.month.toString().padLeft(2, '0')}/${x.year}';
-        return context.l10n.playerBlockedExpired(date);
+        // ... » avec une date qui n'est pas passée. Sans date, on reste
+        // factuel plutôt que d'accuser à tort la ligne d'un client qui a payé.
+        // La contradiction « statut expiré / date future » ne remonte plus
+        // jusqu'ici : le juge unique (line_expiry.dart) la classe désormais en
+        // `providerBlocked`, donc dans la branche d'en dessous.
+        if (x == null) return context.l10n.playerBlockedProvider;
+        // LE DERNIER JOUR COUVERT, pas l'instant de fin (photo du 12/09/2026).
+        // Voir video_player_screen.dart : même règle, même juge — c'est tout
+        // l'intérêt d'avoir sorti le calcul dans line_expiry.dart.
+        return context.l10n.playerBlockedExpired(
+          formatJour(dernierJourCouvert(x)),
+        );
       case StreamBlockReason.providerBlocked:
         return context.l10n.playerBlockedProvider;
       case StreamBlockReason.maxConnections:

@@ -34,6 +34,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../cast/data/stream_probe.dart';
 import '../../player/data/player_settings.dart';
+import '../../player/data/line_expiry.dart';
 import '../../player/data/stream_diagnostics.dart';
 import '../../player/data/xtream_url_variants.dart';
 import '../domain/playlist.dart';
@@ -112,14 +113,20 @@ class CalibrationReport {
   bool get accountOk =>
       account == null || !_isBlockedAccount(account!);
 
+  /// MÊME JUGE que le lecteur (line_expiry.dart). Avant, la calibration
+  /// avait sa propre liste de statuts et sa propre comparaison de date : une
+  /// source pouvait donc être déclarée « compte bloqué » à l'import alors que
+  /// le lecteur, lui, l'aurait laissée passer. Le client voyait « ta source
+  /// est morte » sur une ligne parfaitement valide, et n'allait pas plus loin.
   static bool _isBlockedAccount(XtreamAccountInfo a) {
-    const Set<String> blocked = <String>{
-      'banned', 'disabled', 'expired', 'suspended', 'blocked', 'inactive',
-    };
-    final String status = (a.status ?? '').trim().toLowerCase();
-    if (blocked.contains(status)) return true;
-    final DateTime? exp = a.expDate;
-    return exp != null && exp.isBefore(DateTime.now());
+    if (statutSanctionne(a.status)) return true;
+    return jugerLigne(
+          statut: a.status,
+          finDeLigne: a.expDate,
+          horlogeAppareil: DateTime.now(),
+          horlogePanel: a.panelClock,
+        ) ==
+        VerdictLigne.morte;
   }
 }
 

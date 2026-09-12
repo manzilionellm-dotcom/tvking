@@ -23,6 +23,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import 'line_expiry.dart';
+
 /// Raison CLAIRE d'un échec de lecture, à écrire noir sur blanc à l'écran
 /// pour que le client comprenne (et corrige) tout seul — au lieu d'un écran
 /// noir muet. Déduite de l'état du compte Xtream + du dernier statut HTTP.
@@ -141,7 +143,22 @@ class StreamDiagnostics extends ChangeNotifier {
   String? xtreamStatus;
 
   /// Date d'expiration du compte (`exp_date`, epoch → DateTime locale).
+  ///
+  /// ⚠️ C'est l'instant de FIN, pas le dernier jour couvert. Pour l'écrire
+  /// au client, passer par `dernierJourCouvert()` (line_expiry.dart) —
+  /// sinon on annonce « expiré le 13/09 » à quelqu'un dont le dernier jour
+  /// était le 12, donc une date pas encore arrivée. C'était la photo du
+  /// 12/09/2026.
   DateTime? xtreamExpDate;
+
+  /// Heure du PANEL au moment du contrôle (`server_info.timestamp_now`).
+  ///
+  /// C'est l'horloge qui fait autorité sur la vie d'une ligne : la date de
+  /// fin est posée par le panel, dans le fuseau du panel. La comparer à
+  /// l'horloge de l'appareil, c'est laisser une box mal réglée décider
+  /// qu'un client a payé pour rien. `null` = le panel ne l'a pas donnée
+  /// (ou valeur absurde, filtrée) → on retombe sur l'horloge locale.
+  DateTime? xtreamPanelClock;
 
   /// Connexions simultanées autorisées / actives au moment du contrôle.
   int? xtreamMaxConnections;
@@ -219,16 +236,30 @@ class StreamDiagnostics extends ChangeNotifier {
 
   StreamBlockReason _blockReason({required bool accountApplies}) {
     if (accountApplies) {
-      final String s = (xtreamStatus ?? '').toLowerCase();
-      if (s.contains('banned') ||
-          s.contains('disabled') ||
-          s.contains('suspend')) {
-        return StreamBlockReason.banned;
+      if (statutSanctionne(xtreamStatus)) return StreamBlockReason.banned;
+      // UN SEUL JUGE pour « la ligne est-elle morte ? » (line_expiry.dart).
+      // Avant, ce calcul vivait ici en clair — et un garde-fou posé dans
+      // l'écran, lui, disait déjà l'inverse quand la date était future. Deux
+      // avis sur la même question : la boîte noire coupait les reconnexions
+      // pendant que l'écran, prudent, n'accusait pas. Le client perdait sa
+      // chaîne sans même lire pourquoi.
+      switch (jugerLigne(
+        statut: xtreamStatus,
+        finDeLigne: xtreamExpDate,
+        horlogeAppareil: DateTime.now(),
+        horlogePanel: xtreamPanelClock,
+      )) {
+        case VerdictLigne.morte:
+          return StreamBlockReason.expired;
+        case VerdictLigne.contradictoire:
+          // Le panel dit « expired » alors que la date qu'il donne LUI-MÊME
+          // est encore devant. On ne coupe pas et on n'accuse pas
+          // l'abonnement : le flux ne répond pas chez le fournisseur, c'est
+          // tout ce qu'on peut honnêtement affirmer.
+          return StreamBlockReason.providerBlocked;
+        case VerdictLigne.vivante:
+          break;
       }
-      final bool expiredByStatus = s.contains('expired');
-      final bool expiredByDate =
-          xtreamExpDate != null && xtreamExpDate!.isBefore(DateTime.now());
-      if (expiredByStatus || expiredByDate) return StreamBlockReason.expired;
       final bool maxByCount = xtreamMaxConnections != null &&
           xtreamActiveCons != null &&
           xtreamMaxConnections! > 0 &&
@@ -373,6 +404,7 @@ class StreamDiagnostics extends ChangeNotifier {
     int? activeCons,
     String? serverHost,
     String? username,
+    DateTime? panelClock,
   }) {
     xtreamStatus = status;
     xtreamExpDate = expDate;
@@ -380,6 +412,7 @@ class StreamDiagnostics extends ChangeNotifier {
     xtreamActiveCons = activeCons;
     xtreamAccountHost = serverHost;
     xtreamAccountUser = username;
+    xtreamPanelClock = panelClock;
     xtreamCheckedAt = DateTime.now();
     // L'hôte dans le journal : c'est lui qui aurait permis de distinguer,
     // sur la photo du 20/08, les trois lignes « Compte: … » entremêlées de
@@ -390,13 +423,31 @@ class StreamDiagnostics extends ChangeNotifier {
         '${status ?? 'inconnu'}');
     if (expDate != null) {
       b.write(' · expire ${expDate.toString().split('.').first}');
+      b.write(' (dernier jour couvert : '
+          '${formatJour(dernierJourCouvert(expDate))})');
     }
     if (maxConnections != null || activeCons != null) {
       b.write(' · connexions ${activeCons ?? '?'}/${maxConnections ?? '?'}');
     }
-    final bool healthy =
-        (status ?? '').trim().toLowerCase() == 'active' &&
-            (expDate == null || expDate.isAfter(DateTime.now()));
+    // L'ÉCART D'HORLOGE, écrit noir sur blanc. C'est l'information qui
+    // manquait le 12/09 : impossible de dire, en lisant le journal, si la
+    // box avançait ou si le panel avait vraiment coupé. On ne l'écrit que
+    // s'il dépasse cinq minutes — sinon c'est du bruit à chaque contrôle.
+    if (panelClock != null) {
+      final Duration ecart = DateTime.now().difference(panelClock);
+      if (ecart.abs() > const Duration(minutes: 5)) {
+        b.write(' · ⚠ horloge appareil ${ecart.isNegative ? 'en retard' : 'en avance'} '
+            'de ${ecart.abs().inMinutes} min sur le panel');
+      }
+    }
+    final bool healthy = (status ?? '').trim().toLowerCase() == 'active' &&
+        jugerLigne(
+              statut: status,
+              finDeLigne: expDate,
+              horlogeAppareil: DateTime.now(),
+              horlogePanel: panelClock,
+            ) ==
+            VerdictLigne.vivante;
     _add('xtream', b.toString(), level: healthy ? 'info' : 'error');
     notifyListeners();
   }
