@@ -22,6 +22,7 @@ import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/data/search_history_repository.dart';
 import '../../epg/data/epg_repository.dart';
+import '../../epg/data/now_playing.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../vod/data/recent_vod_repository.dart';
 import '../../vod/data/series_repository.dart';
@@ -587,7 +588,11 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                           if (res.isNotEmpty) ...<Widget>[
                             _sectionTitle(context.l10n.tvTabChannels),
                             SizedBox(
-                              height: 132,
+                              // 152 et non 132 : la vignette porte une ligne
+                              // de plus depuis qu'elle annonce l'émission en
+                              // cours. Sans ces vingt pixels, le logo se
+                              // serait écrasé pour faire de la place.
+                              height: 152,
                               child: ListView.builder(
                                 scrollDirection: Axis.horizontal,
                                 addAutomaticKeepAlives: false,
@@ -966,6 +971,11 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                     fontSize: TvDimens.caption,
                     fontWeight: FontWeight.w600,
                     color: TvTokens.text)),
+            // CE QUI PASSE MAINTENANT (12/09/2026). Le propriétaire, photo
+            // à l'appui : les chaînes remontent, « mais les informations ne
+            // viennent pas ». Une vignette qui ne porte qu'un logo et un
+            // nom ne dit pas si la chaîne vaut le déplacement.
+            _ProgrammeEnCours(key: ValueKey<String>(ch.id), channel: ch),
           ],
         ),
       ),
@@ -1139,6 +1149,66 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         child: Text(c.initials,
             style: TextStyle(fontSize: TvDimens.title, fontWeight: FontWeight.w800, color: TvTokens.muted)),
       );
+}
+
+/// Une ligne discrète sous le nom d'une chaîne : l'émission à l'antenne.
+///
+/// POURQUOI UN WIDGET À ÉTAT et pas un `FutureBuilder` posé dans la
+/// vignette : la rangée de résultats se reconstruit à CHAQUE lettre tapée.
+/// Un `FutureBuilder` recréerait sa future à chaque fois, donc repartirait
+/// de « rien » et ferait clignoter la ligne sous les yeux du client. Ici
+/// l'état survit tant que la chaîne reste à sa place (clé = son
+/// identifiant), et la recherche ne clignote pas.
+///
+/// SILENCE QUAND ON NE SAIT PAS. Pas de « Programme non disponible », pas
+/// de place réservée : la vignette reste exactement comme avant. Chez ce
+/// client, le guide ne couvre qu'une douzaine de chaînes sur neuf cents —
+/// annoncer l'absence sous huit cents vignettes transformerait un manque
+/// discret en défaut criant.
+class _ProgrammeEnCours extends StatefulWidget {
+  const _ProgrammeEnCours({super.key, required this.channel});
+  final Channel channel;
+
+  @override
+  State<_ProgrammeEnCours> createState() => _ProgrammeEnCoursState();
+}
+
+class _ProgrammeEnCoursState extends State<_ProgrammeEnCours> {
+  EpgProgram? _prog;
+
+  @override
+  void initState() {
+    super.initState();
+    // Chemin RAPIDE : si la base locale l'a déjà en mémoire (cache de 60 s
+    // de l'EPG), on affiche sans la moindre attente ni le moindre I/O.
+    _prog = EpgRepository.instance.cachedCurrent(widget.channel.id);
+    if (_prog == null) _charger();
+  }
+
+  Future<void> _charger() async {
+    final EpgProgram? p = await NowPlaying.pour(widget.channel);
+    if (!mounted || p == null) return;
+    setState(() => _prog = p);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final EpgProgram? p = _prog;
+    if (p == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+        p.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: TvDimens.caption,
+          color: TvTokens.muted,
+        ),
+      ),
+    );
+  }
 }
 
 /// Langues du clavier à l'écran. Le client peut BASCULER d'une langue à l'autre

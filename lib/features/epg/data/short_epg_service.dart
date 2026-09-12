@@ -31,18 +31,50 @@ class ShortEpgService {
   static const Duration _ttl = Duration(minutes: 10);
   static const int _cacheMax = 300;
 
+  /// Demandes EN VOL, par chaîne.
+  ///
+  /// AJOUTÉ LE 12/09/2026, en branchant ce service sur la RECHERCHE. Il
+  /// était écrit pour un seul appelant : l'aperçu de l'écran Chaînes, une
+  /// chaîne à la fois, derrière un anti-rebond. La recherche, elle,
+  /// affiche une rangée de vignettes qui se reconstruit à chaque lettre
+  /// tapée — sans ce registre, la même chaîne partait plusieurs fois vers
+  /// le panel avant que la première réponse n'ait eu le temps de remplir
+  /// le cache. Un service prévu pour un appelant devient bruyant dès le
+  /// second : on le rend sûr AVANT de le brancher, pas après.
+  final Map<String, Future<List<EpgProgram>>> _enVol =
+      <String, Future<List<EpgProgram>>>{};
+
+  /// Les playlists, relues une fois par minute au plus.
+  ///
+  /// `_playlistOf` interrogeait la base à CHAQUE appel, pour toutes les
+  /// playlists. Acceptable pour une chaîne ; absurde pour une rangée de
+  /// vignettes qui défile.
+  List<Playlist>? _playlists;
+  DateTime? _playlistsAt;
+  static const Duration _playlistsTtl = Duration(minutes: 1);
+
   /// Programmes à venir de [channel] via `get_short_epg`. `[]` si la chaîne
   /// n'est pas Xtream, si sa playlist n'a plus d'identifiants, ou si le
   /// panel ne répond rien d'exploitable.
-  Future<List<EpgProgram>> upcomingFor(Channel channel) async {
+  Future<List<EpgProgram>> upcomingFor(Channel channel) {
     final String? streamId = _xtreamStreamId(channel.id);
-    if (streamId == null) return const <EpgProgram>[];
+    if (streamId == null) return Future<List<EpgProgram>>.value(const <EpgProgram>[]);
 
     final ({DateTime at, List<EpgProgram> programs})? hit = _cache[channel.id];
     if (hit != null && DateTime.now().difference(hit.at) <= _ttl) {
-      return hit.programs;
+      return Future<List<EpgProgram>>.value(hit.programs);
     }
+    // Une demande déjà partie pour cette chaîne : on attend la même, on
+    // n'en lance pas une deuxième.
+    final Future<List<EpgProgram>>? dejaPartie = _enVol[channel.id];
+    if (dejaPartie != null) return dejaPartie;
 
+    final Future<List<EpgProgram>> f = _demander(channel, streamId);
+    _enVol[channel.id] = f;
+    return f;
+  }
+
+  Future<List<EpgProgram>> _demander(Channel channel, String streamId) async {
     List<EpgProgram> programs = const <EpgProgram>[];
     XtreamClient? client;
     try {
@@ -75,6 +107,7 @@ class ShortEpgService {
       _cache.remove(_cache.keys.first); // éviction FIFO simple
     }
     _cache[channel.id] = (at: DateTime.now(), programs: programs);
+    _enVol.remove(channel.id);
     return programs;
   }
 
@@ -87,9 +120,14 @@ class ShortEpgService {
 
   Future<Playlist?> _playlistOf(int? playlistId) async {
     if (playlistId == null) return null;
-    final List<Playlist> all =
-        await PlaylistRepository.instance.getAllPlaylists();
-    for (final Playlist p in all) {
+    final DateTime now = DateTime.now();
+    if (_playlists == null ||
+        _playlistsAt == null ||
+        now.difference(_playlistsAt!) > _playlistsTtl) {
+      _playlists = await PlaylistRepository.instance.getAllPlaylists();
+      _playlistsAt = now;
+    }
+    for (final Playlist p in _playlists!) {
       if (p.id == playlistId) return p;
     }
     return null;
