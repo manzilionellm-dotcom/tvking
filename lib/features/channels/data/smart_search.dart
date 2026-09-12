@@ -2,7 +2,10 @@
 //  smart_search.dart — Moteur de recherche intelligent
 // =========================================================
 //  Remplace le filtre naïf « substring » de l'écran de recherche
-//  par un vrai moteur de pertinence, inspiré de ce que font les
+//  (téléphone ET box TV — une implémentation, deux appelants :
+//  search_screen.dart et PlaylistRepository.searchLiveChannels,
+//  lui-même appelé par tv_search_screen) par un vrai moteur de
+//  pertinence, inspiré de ce que font les
 //  meilleures apps de la niche IPTV (TiviMate, OTT Navigator) et
 //  les plateformes grand public (Netflix, YouTube) :
 //

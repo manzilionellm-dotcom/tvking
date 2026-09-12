@@ -35,6 +35,7 @@ import '../../../core/observability/structured_logger.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/security/secret_cipher.dart';
+import '../../channels/data/smart_search.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
@@ -116,6 +117,16 @@ class PlaylistRepository {
   @visibleForTesting
   void debugSeedPlaylists(List<Playlist> playlists) {
     _playlistsCache = List<Playlist>.unmodifiable(playlists);
+  }
+
+  /// TESTS UNIQUEMENT : injecte le cache mémoire des chaînes. Sert à
+  /// tester [searchLiveChannels] SANS ouvrir SQLite : le moteur
+  /// [SmartSearch] travaille sur ce bassin, exactement comme la box
+  /// après le boot (le cache est déjà en RAM, on ne le recharge pas
+  /// à chaque frappe).
+  @visibleForTesting
+  void debugSeedChannels(List<Channel> channels) {
+    _channelsCache = List<Channel>.unmodifiable(channels);
   }
 
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
@@ -378,27 +389,57 @@ class PlaylistRepository {
     );
   }
 
-  /// Recherche LIVE par nom (insensible à la casse), bornée à [limit]. SQL
-  /// `LIKE` + LIMIT → jamais de scan complet matérialisé en RAM.
-  Future<List<Channel>> searchLiveChannels(String query, {int limit = 200}) async {
+  /// Recherche LIVE intelligente : déléguée à [SmartSearch] (le MÊME
+  /// moteur que le téléphone).
+  ///
+  /// POURQUOI ON A ABANDONNÉ LE `LIKE %q%`. Un `LIKE '%bein 1%'` exige
+  /// que ces six caractères se suivent dans le nom. Or les playlists
+  /// IPTV écrivent « beIN SPORTS 1 », « Ciné+ », « ★ FR| TF1 ᴴᴰ ».
+  /// Le client tape « bein 1 » / « cine » / une faute légère — et la
+  /// box répondait vide. Ce n'était pas un bug d'UI : c'était le
+  /// mauvais outil. [SmartSearch] sait déjà faire le multi-mots, les
+  /// accents, les fautes et le boost d'historique. Une seule
+  /// implémentation, deux appelants (téléphone + TV).
+  ///
+  /// POURQUOI ON NE RELIT PAS SQLITE À CHAQUE FRAPPE. Le bassin
+  /// [currentChannels] est déjà en RAM (plafond [kMaxInMemoryChannels],
+  /// le même que l'accueil). Relire la base pour un `LIKE` cassé
+  /// n'apportait rien, et ça empêchait le ranking. Si le cache est
+  /// encore froid (boot, test isolé), on charge UN bassin borné puis
+  /// on classe — jamais un scan non plafonné.
+  Future<List<Channel>> searchLiveChannels(
+    String query, {
+    int limit = 200,
+    SearchSignals signals = SearchSignals.none,
+  }) async {
     final String q = query.trim();
     if (q.isEmpty) return const <Channel>[];
-    final Database db = await PlaylistDatabase.instance.database;
-    final int? activeId = await _activePlaylistId(db);
-    final StringBuffer where = StringBuffer('is_live = 1 AND name LIKE ?');
-    final List<Object> args = <Object>['%$q%'];
-    if (activeId != null) {
-      where.write(' AND playlist_id = ?');
-      args.add(activeId);
+
+    List<Channel> pool = _livePoolFromCache();
+    if (pool.isEmpty) {
+      // Cache encore vide : lecture bornée (anti-OOM), puis on
+      // filtre le live. SmartSearch fait le matching — pas SQL.
+      debugPrint('[Playlist] searchLiveChannels : cache vide, '
+          'lecture bornée pour SmartSearch');
+      final List<Channel> all = await getAllChannels();
+      pool = all.where((Channel c) => c.isLive).toList(growable: false);
     }
-    final List<Map<String, Object?>> rows = await db.query(
-      'channels',
-      where: where.toString(),
-      whereArgs: args,
-      orderBy: 'local_id ASC',
+    if (pool.isEmpty) return const <Channel>[];
+
+    return SmartSearch.rank(
+      query: q,
+      pool: pool,
+      signals: signals,
       limit: limit,
     );
-    return rows.map(_channelFromMap).toList(growable: false);
+  }
+
+  /// Chaînes LIVE déjà en cache (filtre flavor inclus). Liste neuve
+  /// pour que [SmartSearch] puisse trier sans muter le snapshot.
+  List<Channel> _livePoolFromCache() {
+    final List<Channel> all = currentChannels;
+    if (all.isEmpty) return const <Channel>[];
+    return all.where((Channel c) => c.isLive).toList(growable: false);
   }
 
   /// Récupère des chaînes par leurs `external_id` (point queries) — sert aux
