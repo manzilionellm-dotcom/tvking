@@ -21,7 +21,6 @@
 //     boîte noire (Réglages → Diagnostic, tag « mémoire ») pour qu'on
 //     VOIE à distance si une box vit sous pression.
 // =========================================================
-import 'package:flutter/painting.dart';
 import 'package:flutter/widgets.dart';
 import 'package:native_video_player/native_video_player.dart';
 

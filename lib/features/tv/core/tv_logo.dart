@@ -14,7 +14,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/app/device_memory.dart';
-import 'tv_dimens.dart';
 import 'tv_tokens.dart';
 
 class TvChannelLogo extends StatelessWidget {

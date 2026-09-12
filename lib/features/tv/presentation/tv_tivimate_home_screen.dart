@@ -31,7 +31,6 @@ import '../../channels/data/home_hook_picker.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
 import '../../channels/domain/channel.dart';
-import '../../channels/domain/channel_genre.dart';
 import '../../epg/presentation/widgets/mini_epg_now_next.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
