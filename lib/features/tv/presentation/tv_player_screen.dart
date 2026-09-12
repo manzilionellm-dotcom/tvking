@@ -2321,7 +2321,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   /// la vidéo (couleur calculée sur l'affiche téléchargée en petit).
   Future<void> _startHueImmersive(String? posterUrl) async {
     // Sortie rapide si Hue n'a rien à faire (option OFF / pas de pont) :
-    // on évite un décodage d'image inutile.
+    // on évite un décodage d'image inutile. load() d'abord : sans ça, un
+    // pont déjà associé n'était pas relu au boot et on sortait à tort.
+    await HueService.instance.load();
     if (!HueService.instance.enabled || !HueService.instance.isPaired) return;
     ({int hue, int sat})? tint;
     try {
