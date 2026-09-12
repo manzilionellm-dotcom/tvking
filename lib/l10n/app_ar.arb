@@ -1138,6 +1138,19 @@
   "tvBlackBoxRowChannels": "القنوات (مباشر)",
   "tvBlackBoxRowEpg": "برامج EPG",
   "tvBlackBoxRowEpgChannels": "قنوات لها دليل",
+  "tvBlackBoxRowEpgAliases": "أسماء EPG البديلة (الجسر)",
+  "tvBlackBoxRowEpgXmltvSeen": "معرّفات XMLTV المرئية",
+  "tvBlackBoxRowEpgFilter": "EPG المحتفظ بها / المتجاوزة",
+  "tvBlackBoxEpgFilterValue": "{retained} محتفظ · {unknown} معرّف مجهول · {window} خارج النافذة",
+  "@tvBlackBoxEpgFilterValue": {
+    "placeholders": {
+      "retained": { "type": "int" },
+      "unknown": { "type": "int" },
+      "window": { "type": "int" }
+    }
+  },
+  "tvBlackBoxRowEpgEmptyIds": "قنوات بلا epg_channel_id",
+  "tvBlackBoxRowEpgWhy": "EPG — لماذا",
   "tvBlackBoxRowDownloads": "التنزيلات",
   "tvBlackBoxRowRss": "الذاكرة المستخدمة (العملية)",
   "tvBlackBoxRamUnknown": "غير معروفة",

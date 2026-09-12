@@ -1138,6 +1138,19 @@
   "tvBlackBoxRowChannels": "Canales (en directo)",
   "tvBlackBoxRowEpg": "Programas EPG",
   "tvBlackBoxRowEpgChannels": "Canales con guía",
+  "tvBlackBoxRowEpgAliases": "Alias EPG (puente)",
+  "tvBlackBoxRowEpgXmltvSeen": "IDs XMLTV vistos",
+  "tvBlackBoxRowEpgFilter": "EPG retenidos / omitidos",
+  "tvBlackBoxEpgFilterValue": "{retained} retenidos · {unknown} id desconocido · {window} fuera de ventana",
+  "@tvBlackBoxEpgFilterValue": {
+    "placeholders": {
+      "retained": { "type": "int" },
+      "unknown": { "type": "int" },
+      "window": { "type": "int" }
+    }
+  },
+  "tvBlackBoxRowEpgEmptyIds": "Canales sin epg_channel_id",
+  "tvBlackBoxRowEpgWhy": "EPG — POR QUÉ",
   "tvBlackBoxRowDownloads": "Descargas",
   "tvBlackBoxRowRss": "Memoria usada (proceso)",
   "tvBlackBoxRamUnknown": "desconocida",

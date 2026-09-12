@@ -42,6 +42,7 @@ import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../../channels/domain/channel.dart';
+import '../../epg/data/epg_alias_index.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../player/data/line_expiry.dart';
 import '../../player/data/player_settings.dart';
@@ -311,7 +312,7 @@ class XtreamClient {
     CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
         'xtream.http.get_live_streams',
         bytes: bodyBytes.length);
-    final (List<Channel> channels, Map<String, String> aliases) =
+    final (List<Channel> channels, Map<String, List<String>> aliases) =
         await compute(
       _parseLiveChannelsIsolate,
       (
@@ -332,9 +333,18 @@ class XtreamClient {
 
     // PONT EPG : les alias collectés dans l'isolate rejoignent le sac de
     // l'instance (même plafond anti-OOM que le chemin par catégorie).
-    for (final MapEntry<String, String> e in aliases.entries) {
-      if (_epgAliases.length >= _kEpgAliasCap) break;
-      _epgAliases[e.key] = e.value;
+    // Vague 4 : 1:N — plus de last-write-wins. Les ids vides ne passent
+    // pas dans la Map isolate → on les recompte depuis les Channel.
+    for (final MapEntry<String, List<String>> e in aliases.entries) {
+      for (final String ch in e.value) {
+        if (_epgAliases.pairCount >= _kEpgAliasCap) break;
+        _epgAliases.add(e.key, ch);
+      }
+    }
+    for (final Channel ch in channels) {
+      if (ch.epgChannelId == null || ch.epgChannelId!.trim().isEmpty) {
+        _epgAliases.recordEmpty();
+      }
     }
 
     if (kDebugMode) {
@@ -353,12 +363,15 @@ class XtreamClient {
   /// confirmé par la boîte noire : epg.import_ok avec count=0 et known élevé).
   /// Persisté par PlaylistRepository dans `epg_aliases`, consommé par
   /// EpgRepository au moment d'insérer les programmes. Borné (anti-OOM).
-  final Map<String, String> _epgAliases = <String, String>{};
+  /// Vague 4 : index 1:N (plus de last-write-wins TF1 → 1 seule chaîne).
+  final EpgAliasIndex _epgAliases = EpgAliasIndex();
   static const int _kEpgAliasCap = 60000;
 
-  /// Alias collectés par le DERNIER import/fetch live (epg_channel_id → id).
-  Map<String, String> get epgChannelAliases =>
-      Map<String, String>.unmodifiable(_epgAliases);
+  /// Alias collectés par le DERNIER import/fetch live (id EPG → Channel.id).
+  Map<String, List<String>> get epgChannelAliases => _epgAliases.toMap();
+
+  /// Index 1:N (pour `saveAliasIndex` + compteur de ids vides).
+  EpgAliasIndex get epgAliasIndex => _epgAliases;
 
   /// Mappe UN objet JSON `get_live_streams` en [Channel] (parsing défensif :
   /// Xtream renvoie souvent des nombres en String). Renvoie `null` si l'entrée
@@ -372,8 +385,12 @@ class XtreamClient {
     if (streamId.isEmpty) return null;
     final String epgChannelId =
         item['epg_channel_id']?.toString().trim() ?? '';
-    if (epgChannelId.isNotEmpty && _epgAliases.length < _kEpgAliasCap) {
-      _epgAliases[epgChannelId] = 'xtream-$streamId';
+    if (epgChannelId.isEmpty) {
+      _epgAliases.recordEmpty();
+    } else if (_epgAliases.pairCount < _kEpgAliasCap) {
+      // 1:N : deux chaînes « TF1 HD » / « TF1 FHD » gardent CHAQUE
+      // variante (plus de last-write-wins).
+      _epgAliases.add(epgChannelId, 'xtream-$streamId');
     }
     final String name =
         item['name']?.toString() ?? l10nNow.fallbackNoNameParens;
@@ -398,6 +415,7 @@ class XtreamClient {
       logoUrl: (streamIcon == null || streamIcon.isEmpty) ? null : streamIcon,
       catchupSupported: tvArchive == 1,
       catchupDays: tvArchive == 1 ? tvArchiveDuration : null,
+      epgChannelId: epgChannelId.isEmpty ? null : epgChannelId,
     );
   }
 
@@ -1148,7 +1166,7 @@ List<VodMovie> _parseVodMoviesIsolate(
 /// [_parseVodMoviesIsolate] — le fil d'affichage ne reçoit qu'une liste
 /// prête. `fallbackName` est passé en paramètre (l10nNow n'existe pas dans
 /// un isolate neuf).
-(List<Channel>, Map<String, String>) _parseLiveChannelsIsolate(
+(List<Channel>, Map<String, List<String>>) _parseLiveChannelsIsolate(
   (
     TransferableTypedData,
     Map<String, String>,
@@ -1184,7 +1202,8 @@ List<VodMovie> _parseVodMoviesIsolate(
   // xtream-<id> doit survivre au passage du mapping dans l'isolate — sinon
   // le chemin RAPIDE d'import perd le pont et « Programme non disponible »
   // revient. Collectés ici, fusionnés (bornés) par l'appelant.
-  final Map<String, String> aliases = <String, String>{};
+  // Vague 4 : 1:N (liste par id EPG), plus de last-write-wins.
+  final Map<String, List<String>> aliases = <String, List<String>>{};
   for (final dynamic item in raw) {
     if (channels.length >= cap) break; // plafond mémoire (anti-OOM)
     if (item is! Map<String, dynamic>) continue;
@@ -1193,7 +1212,10 @@ List<VodMovie> _parseVodMoviesIsolate(
     final String epgChannelId =
         item['epg_channel_id']?.toString().trim() ?? '';
     if (epgChannelId.isNotEmpty) {
-      aliases[epgChannelId] = 'xtream-$streamId';
+      final String chId = 'xtream-$streamId';
+      final List<String> list =
+          aliases.putIfAbsent(epgChannelId, () => <String>[]);
+      if (!list.contains(chId)) list.add(chId);
     }
     final String name = item['name']?.toString() ?? fallbackName;
     final String categoryId = item['category_id']?.toString() ?? '';
@@ -1221,6 +1243,7 @@ List<VodMovie> _parseVodMoviesIsolate(
       logoUrl: (streamIcon == null || streamIcon.isEmpty) ? null : streamIcon,
       catchupSupported: tvArchive == 1,
       catchupDays: tvArchive == 1 ? tvArchiveDuration : null,
+      epgChannelId: epgChannelId.isEmpty ? null : epgChannelId,
     ));
   }
   return (channels, aliases);

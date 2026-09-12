@@ -38,6 +38,7 @@ import '../../../core/security/secret_cipher.dart';
 import '../../channels/data/smart_search.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
+import '../../epg/data/epg_alias_index.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../player/data/stream_diagnostics.dart';
 import '../../vod/data/vod_download_service.dart';
@@ -957,6 +958,9 @@ class PlaylistRepository {
       // Si une URL EPG est fournie → on déclenche la sync en
       // arrière-plan (non bloquant : l'utilisateur peut déjà
       // naviguer pendant que l'EPG arrive).
+      // Vague 4 : pont AVANT le XMLTV (M3U tvg-id → Channel.id).
+      // Sans ça, « tf1.fr » ≠ « TF1.fr » et le guide restait à 12/900.
+      await _persistAliasesFromChannels(parsed.channels);
       if (epgUrl != null && epgUrl.isNotEmpty) {
         unawaited(_syncEpgFor(parsed.channels, epgUrl));
       }
@@ -980,6 +984,60 @@ class PlaylistRepository {
     String epgUrl,
   ) async {
     await _syncEpgForIds(channels.map((Channel c) => c.id).toSet(), epgUrl);
+  }
+
+  /// Reconstruit le pont EPG depuis les chaînes déjà en mémoire
+  /// (ajout / refresh) — 1:N, ids vides comptés. Appelé AVANT XMLTV.
+  Future<void> _persistAliasesFromChannels(Iterable<Channel> channels) async {
+    final EpgAliasIndex idx = EpgAliasIndex();
+    for (final Channel ch in channels) {
+      final String? epg = ch.epgChannelId?.trim();
+      if (epg != null && epg.isNotEmpty) {
+        idx.add(epg, ch.id);
+      } else if (_looksLikeEpgId(ch.id)) {
+        // M3U : Channel.id EST le tvg-id (pas encore persisté en colonne
+        // sur une vieille base) — on l'enregistre quand même.
+        idx.add(ch.id, ch.id);
+      } else {
+        idx.recordEmpty();
+      }
+    }
+    await EpgRepository.instance.saveAliasIndex(idx);
+  }
+
+  /// True si [id] ressemble à un tvg-id / epg_channel_id (pas xtream-N
+  /// ni m3u-playlist-index généré).
+  static bool _looksLikeEpgId(String id) {
+    if (id.isEmpty) return false;
+    if (id.startsWith('xtream-')) return false;
+    if (id.startsWith('m3u-')) return false;
+    return true;
+  }
+
+  /// Reconstruit le pont depuis la colonne `epg_channel_id` (léger :
+  /// deux TEXT par chaîne, pas d'objets Channel). Pour le resync
+  /// 12 h / boot — ZÉRO appel réseau.
+  Future<void> _persistAliasesFromDb(Database db, int playlistId) async {
+    final List<Map<String, Object?>> rows = await db.query(
+      'channels',
+      columns: <String>['external_id', 'epg_channel_id'],
+      where: 'playlist_id = ?',
+      whereArgs: <Object>[playlistId],
+    );
+    final EpgAliasIndex idx = EpgAliasIndex();
+    for (final Map<String, Object?> r in rows) {
+      final String id = r['external_id']?.toString() ?? '';
+      if (id.isEmpty) continue;
+      final String epg = (r['epg_channel_id']?.toString() ?? '').trim();
+      if (epg.isNotEmpty) {
+        idx.add(epg, id);
+      } else if (_looksLikeEpgId(id)) {
+        idx.add(id, id);
+      } else {
+        idx.recordEmpty();
+      }
+    }
+    await EpgRepository.instance.saveAliasIndex(idx);
   }
 
   /// Variante par IDs : l'import EN FLUX (Xtream) ne garde PAS la liste
@@ -1068,15 +1126,24 @@ class PlaylistRepository {
       for (final Playlist p in all) {
         final String? epgUrl = p.epgUrl;
         if (p.id == null || epgUrl == null || epgUrl.isEmpty) continue;
+        // Vague 4 : la colonne s'appelle `external_id` (Channel.id),
+        // PAS `id` (ça c'est playlists.id). L'ancien SELECT id faisait
+        // planter TOUT le resync (no such column) → catch silencieux
+        // → guide figé à 12/900 jusqu'à un nouvel ajout de source.
         final List<Map<String, Object?>> rows = await db.query(
           'channels',
-          columns: <String>['id'],
+          columns: <String>['external_id', 'epg_channel_id'],
           where: 'playlist_id = ?',
           whereArgs: <Object>[p.id!],
         );
-        final Set<String> ids =
-            rows.map((Map<String, Object?> r) => r['id'].toString()).toSet();
+        final Set<String> ids = rows
+            .map((Map<String, Object?> r) => r['external_id'].toString())
+            .where((String id) => id.isNotEmpty)
+            .toSet();
         if (ids.isEmpty) continue;
+        // Vague 4 : saveAliases AVANT le XMLTV, depuis la colonne
+        // persistée — pas de get_live_streams ni get_short_epg au boot.
+        await _persistAliasesFromDb(db, p.id!);
         await _syncEpgForIds(ids, epgUrl);
       }
     } catch (e) {
@@ -1274,8 +1341,8 @@ class PlaylistRepository {
       // PONT EPG : persiste les alias epg_channel_id → id collectés pendant
       // l'import AVANT la sync XMLTV (elle s'en sert pour ranger chaque
       // programme sous l'id de sa chaîne — fin du « Programme non
-      // disponible » sur les comptes Xtream).
-      await EpgRepository.instance.saveAliases(xtream.epgChannelAliases);
+      // disponible » sur les comptes Xtream). Vague 4 : index 1:N.
+      await EpgRepository.instance.saveAliasIndex(xtream.epgAliasIndex);
       // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV). On passe les
       // IDS collectés pendant l'import en flux (pas de liste Channel gardée).
       if (newPlaylist.epgUrl != null) {
@@ -1494,6 +1561,8 @@ class PlaylistRepository {
           ),
         );
         await _emitCurrentState();
+        // Vague 4 : pont M3U AVANT le XMLTV (même contrat qu'à l'ajout).
+        await _persistAliasesFromChannels(parsed.channels);
         // EPG : AVANT, la sync EPG n'avait lieu qu'à l'AJOUT de la playlist —
         // le guide (fenêtre ~48 h) se périmait donc en ~2 jours si personne
         // ne re-ajoutait la source. Un refresh des chaînes re-synchronise
@@ -1541,7 +1610,8 @@ class PlaylistRepository {
         await _emitCurrentState();
         // PONT EPG : mêmes alias qu'à l'ajout (le refresh re-télécharge
         // get_live_streams → correspondances à jour avant la sync XMLTV).
-        await EpgRepository.instance.saveAliases(xtream.epgChannelAliases);
+        // Vague 4 : 1:N.
+        await EpgRepository.instance.saveAliasIndex(xtream.epgAliasIndex);
         // EPG : même correctif que le chemin M3U ci-dessus — le refresh
         // des chaînes rafraîchit aussi le guide (sinon il se périme en ~2 j).
         if (playlist.epgUrl != null && playlist.epgUrl!.isNotEmpty) {
@@ -1713,6 +1783,7 @@ class PlaylistRepository {
       'catchup_supported': ch.catchupSupported ? 1 : 0,
       'catchup_days': ch.catchupDays,
       'catchup_source': ch.catchupSource,
+      'epg_channel_id': ch.epgChannelId,
     };
   }
 
@@ -1728,6 +1799,7 @@ class PlaylistRepository {
       catchupSupported: (map['catchup_supported'] as int? ?? 0) == 1,
       catchupDays: map['catchup_days'] as int?,
       catchupSource: map['catchup_source'] as String?,
+      epgChannelId: map['epg_channel_id'] as String?,
     );
   }
 }

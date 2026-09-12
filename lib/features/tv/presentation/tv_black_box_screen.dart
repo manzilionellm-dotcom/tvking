@@ -43,6 +43,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
+import '../../epg/data/epg_import_stats.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../player/data/line_occupancy_probe.dart';
 import '../../player/data/local_stream_relay.dart';
@@ -90,6 +91,15 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
   /// plus bas : c'est ce chiffre-là qui répond à « pourquoi une seule
   /// chaîne affiche le programme ? »).
   int? _epgChannels;
+
+  /// Vague 4 — pont + filtre (pour trancher fournisseur vs app).
+  int? _epgAliases;
+  int? _epgXmltvSeen;
+  int? _epgRetained;
+  int? _epgSkipUnknown;
+  int? _epgSkipWindow;
+  int? _epgEmptyIds;
+  String _epgWhy = '';
   int? _channelCount;
   int _sourceCount = 0;
   int _recordingCount = 0;
@@ -147,6 +157,21 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
     } catch (_) {}
     try {
       _epgChannels = await EpgRepository.instance.coveredChannelCount();
+    } catch (_) {}
+    try {
+      _epgAliases = await EpgRepository.instance.aliasCount();
+    } catch (_) {}
+    try {
+      final EpgImportReport? r =
+          await EpgRepository.instance.loadLastImportReport();
+      if (r != null) {
+        _epgXmltvSeen = r.xmltvChannelIdsSeen;
+        _epgRetained = r.retained;
+        _epgSkipUnknown = r.skippedUnknownId;
+        _epgSkipWindow = r.skippedOutsideWindow;
+        _epgEmptyIds = r.emptyEpgChannelIdCount;
+        _epgWhy = r.whyFr;
+      }
     } catch (_) {}
     try {
       _recordingCount = RecordingRepository.instance.current.length;
@@ -577,6 +602,61 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
               ? count(_epgChannels)
               : '$_epgChannels / $_channelCount',
         ),
+        // Vague 4 — LE POURQUOI derrière « 12 / 900 ». Sans ces lignes
+        // le support devinait : fournisseur trop maigre, pont 1:1, ou
+        // filtre silencieux. Chaque chiffre a une cause.
+        _infoRow(
+          context.l10n.tvBlackBoxRowEpgAliases,
+          count(_epgAliases),
+        ),
+        _infoRow(
+          context.l10n.tvBlackBoxRowEpgXmltvSeen,
+          count(_epgXmltvSeen),
+        ),
+        _infoRow(
+          context.l10n.tvBlackBoxRowEpgFilter,
+          (_epgRetained == null &&
+                  _epgSkipUnknown == null &&
+                  _epgSkipWindow == null)
+              ? '?'
+              : context.l10n.tvBlackBoxEpgFilterValue(
+                  _epgRetained ?? 0,
+                  _epgSkipUnknown ?? 0,
+                  _epgSkipWindow ?? 0,
+                ),
+        ),
+        _infoRow(
+          context.l10n.tvBlackBoxRowEpgEmptyIds,
+          count(_epgEmptyIds),
+        ),
+        if (_epgWhy.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 8),
+          _focusableCard(
+            border: TvTokens.gold,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  context.l10n.tvBlackBoxRowEpgWhy,
+                  style: const TextStyle(
+                    fontSize: TvDimens.label,
+                    fontWeight: FontWeight.w800,
+                    color: TvTokens.gold,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _epgWhy,
+                  style: const TextStyle(
+                    fontSize: TvDimens.body,
+                    height: 1.35,
+                    color: TvTokens.text,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         _infoRow(context.l10n.settingsRecordings, count(_recordingCount)),
         _infoRow(context.l10n.tvBlackBoxRowDownloads, count(_downloadCount)),
         _infoRow(

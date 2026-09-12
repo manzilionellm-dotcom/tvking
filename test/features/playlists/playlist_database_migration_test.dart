@@ -64,7 +64,7 @@ void main() {
     await db.execute('ALTER TABLE playlists ADD COLUMN url_formats TEXT');
 
     // Avant le correctif : DatabaseException « duplicate column name ».
-    await PlaylistDatabase.instance.debugUpgrade(db, 1, 6);
+    await PlaylistDatabase.instance.debugUpgrade(db, 1, 7);
 
     // La base reste pleinement utilisable après la migration.
     await db.insert('playlists', <String, Object?>{
@@ -83,7 +83,7 @@ void main() {
     final Database db = await emptyDb();
     await createV1Schema(db);
 
-    await PlaylistDatabase.instance.debugUpgrade(db, 1, 6);
+    await PlaylistDatabase.instance.debugUpgrade(db, 1, 7);
 
     final List<Map<String, Object?>> playlistCols =
         await db.rawQuery('PRAGMA table_info(playlists)');
@@ -95,7 +95,7 @@ void main() {
         await db.rawQuery('PRAGMA table_info(channels)');
     expect(
       channelCols.map((Map<String, Object?> c) => c['name']),
-      contains('http_headers'),
+      containsAll(<String>['http_headers', 'epg_channel_id']),
     );
     await db.close();
   });
@@ -104,9 +104,9 @@ void main() {
       () async {
     final Database db = await emptyDb();
     await createV1Schema(db);
-    await PlaylistDatabase.instance.debugUpgrade(db, 1, 6);
+    await PlaylistDatabase.instance.debugUpgrade(db, 1, 7);
     // Rejouer (crash entre l'ALTER et l'écriture du numéro de version).
-    await PlaylistDatabase.instance.debugUpgrade(db, 1, 6);
+    await PlaylistDatabase.instance.debugUpgrade(db, 1, 7);
     final List<Map<String, Object?>> cols =
         await db.rawQuery('PRAGMA table_info(playlists)');
     expect(
