@@ -32,8 +32,8 @@ html, body, #root {
    Convention Lionel — nouveau contrôle admin = bleu + danse
    Classe : `.is-new`  (voir src/components/NewBadge.tsx)
    Accent BLEU volontairement distinct du rouge marque (ember).
-   Animation douce (≈1.8 s), pas de flash violent ; coupée si
-   l'utilisateur a demandé less motion.
+   Animation douce (≈1.6 s) : petit bounce + halo bleu — assez
+   visible sur un chip 11px, sans flash. Coupée si reduced-motion.
    ========================================================= */
 :root {
   --is-new-blue: #4C9EFF;
@@ -44,15 +44,19 @@ html, body, #root {
 @keyframes is-new-dance {
   0%, 100% {
     transform: translateY(0) rotate(0deg) scale(1);
+    box-shadow: 0 0 0 0 rgba(76, 158, 255, 0);
   }
-  28% {
-    transform: translateY(-2px) rotate(-1.3deg) scale(1.03);
+  25% {
+    transform: translateY(-4px) rotate(-3deg) scale(1.06);
+    box-shadow: 0 0 14px 2px rgba(76, 158, 255, 0.4);
   }
-  55% {
-    transform: translateY(0.5px) rotate(1.3deg) scale(1.01);
+  50% {
+    transform: translateY(1px) rotate(3deg) scale(1.02);
+    box-shadow: 0 0 8px 0 rgba(76, 158, 255, 0.22);
   }
-  78% {
-    transform: translateY(-1px) rotate(-0.6deg) scale(1.02);
+  75% {
+    transform: translateY(-3px) rotate(-1.6deg) scale(1.04);
+    box-shadow: 0 0 12px 1px rgba(76, 158, 255, 0.32);
   }
 }
 
@@ -63,7 +67,7 @@ html, body, #root {
   color: var(--is-new-blue);
   border-color: var(--is-new-blue-border);
   background-color: var(--is-new-blue-soft);
-  animation: is-new-dance 1.8s ease-in-out infinite;
+  animation: is-new-dance 1.6s ease-in-out infinite;
   transform-origin: center center;
 }
 
