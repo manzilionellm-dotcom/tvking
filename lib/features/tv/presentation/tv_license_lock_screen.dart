@@ -48,18 +48,15 @@ class _TvLicenseLockScreenState extends State<TvLicenseLockScreen> {
 
   @override
   void dispose() {
+    // Les deux listeners : #30 (SubscriptionState / Revérifier) +
+    // #31 (DeviceIdentity / nouveau MAC affiché après régénérer).
+    DeviceIdentity.instance.removeListener(_onIdentity);
     SubscriptionState.instance.removeListener(_onSub);
     super.dispose();
   }
 
   void _onSub() {
     if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    DeviceIdentity.instance.removeListener(_onIdentity);
-    super.dispose();
   }
 
   void _onIdentity() {
