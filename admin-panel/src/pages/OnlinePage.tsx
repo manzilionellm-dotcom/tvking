@@ -10,7 +10,7 @@ import {
 } from '@/lib/api';
 import { useLiveDevices, useRtEvent, sendCmd } from '@/lib/realtime';
 import { toast } from '@/components/Toast';
-import { cn } from '@/lib/utils';
+import { cn, formatMacAsYouType, macTextMatches } from '@/lib/utils';
 import { gatewayApi, hasGatewayConfig, fmtBytes, type GwStatus } from '@/lib/gateway';
 
 /// Page « En ligne » (owner) — CENTRE DE SUPERVISION TEMPS RÉEL.
@@ -569,8 +569,8 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((r) => {
+      if (macTextMatches(r.mac, query)) return true;
       const hay = [
-        r.mac,
         r.ip || '',
         r.country,
         r.channel,
@@ -840,7 +840,7 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => setQuery(formatMacAsYouType(e.target.value))}
               placeholder="Rechercher : MAC, IP, pays, chaîne, appareil, version…"
               className="min-w-[240px] flex-1 rounded-lg border border-white/10 bg-obsidian px-3 py-2 text-sm text-ink-primary outline-none placeholder:text-ink-muted focus:border-accent/50"
             />

@@ -29,7 +29,7 @@ import {
 import { useLiveDevices, useRtEvent, sendCmd, waitForAck, type ChangedEvent } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { applyNew } from '@/components/NewBadge';
-import { formatDateTime, cn } from '@/lib/utils';
+import { formatDateTime, cn, formatMacInput } from '@/lib/utils';
 import {
   QuickRenewBar, AdminNoteField, CopyWhatsAppButton,
   ChangeMacModal, RegenerateMacModal, licenseFromActivate,
@@ -222,7 +222,8 @@ export function DeviceSheet({
       'CLONER la source de ce client VERS quelle MAC ?\n\nColle la MAC cible (MK:XX:…).',
     );
     if (!target) return;
-    const t = target.trim().toUpperCase();
+    // Collage avec/sans `:` / sans `MK:` — même helper que Activer.
+    const t = formatMacInput(target);
     if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(t)) {
       toast('MAC cible invalide.', 'error');
       return;

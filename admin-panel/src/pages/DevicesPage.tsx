@@ -10,7 +10,7 @@ import {
 import { useLiveDevices, useRtEvent, sendCmd, waitForAck, type ChangedEvent } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { applyNew } from '@/components/NewBadge';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, formatMacAsYouType } from '@/lib/utils';
 import {
   DeviceFilterBar, QuickRenewBar, AdminNoteField, CopyWhatsAppButton, AboChip,
   ProblemsChip, ChangeMacModal, RegenerateMacModal, BulkWhatsAppRenewModal,
@@ -227,13 +227,30 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
       subtitle={`${displayItems.length} affiché(s)${counts.all && counts.all !== displayItems.length ? ` · ${counts.all} au total` : ''}`}
       onLogout={onLogout}
     >
-      <input
-        type="search"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Recherche par MAC, label, note, client…"
-        className="mb-3 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
-      />
+      {/* Les `:` du code MAC s'ajoutent tout seuls pendant la frappe
+          (`807860074F` → `80:78:60:07:4F`). Sans ça, LIKE `%8078%`
+          ne retrouve pas `MK:80:78:…`. Un nom de client n'est pas
+          touché (formatMacAsYouType refuse les lettres hors hex). */}
+      <div className="mb-3 flex max-w-md items-center gap-2">
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => setQ(formatMacAsYouType(e.target.value))}
+          placeholder="Recherche par MAC, label, note, client…"
+          aria-describedby="mac-auto-colon-hint"
+          className="min-w-0 flex-1 rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
+        />
+        <span
+          id="mac-auto-colon-hint"
+          {...applyNew(
+            'mac-auto-colon',
+            'shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+          )}
+          title="Les : s’ajoutent tout seuls quand tu tapes un code MAC"
+        >
+          : auto
+        </span>
+      </div>
 
       <DeviceFilterBar value={filter} counts={counts} onChange={setFilter} />
 
