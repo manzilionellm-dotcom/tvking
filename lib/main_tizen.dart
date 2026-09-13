@@ -58,9 +58,8 @@ Future<void> _bootstrap() async {
   await LocaleRepository.instance.initialize();
 
   unawaited(DeviceIdentity.instance.preload());
-  unawaited(SubscriptionState.instance.initialize().then((_) {
-    SubscriptionState.instance.syncWithBackend();
-  }));
+  await SubscriptionState.instance.initialize();
+  unawaited(SubscriptionState.instance.syncWithBackend());
   unawaited(RemoteThemeRepository.fetchAndApply());
 
   await PlaylistRepository.instance

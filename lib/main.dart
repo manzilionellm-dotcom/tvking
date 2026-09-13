@@ -281,17 +281,13 @@ Future<void> bootApp() async {
   // 1er heartbeat réussi). Voir core/backend/backend_hosts.dart.
   await BackendHosts.loadPreferred();
 
-  // Essai gratuit de 7 jours + abonnement 5 €/an. Au tout
-  // premier boot, persiste firstLaunchAt = now pour démarrer le
-  // compte à rebours local. PUIS sync avec le backend Cloudflare
-  // qui est l'autorité finale (l'admin peut geler/débloquer un
-  // client à distance depuis le panel /admin/panel).
-  //
-  // ROBUSTESSE (même recette que la TV) : si le réseau a un creux au
-  // moment du boot, on RETENTE à 2/10/30 min tant que le serveur n'a
-  // pas répondu — sans ça, une app restée ouverte gardait un statut
-  // « inconnu » et laissait s'égrener la tolérance hors-ligne.
-  unawaited(SubscriptionState.instance.initialize().then((_) async {
+  // Licence : cache local d'ABORD (prefs, ms) pour que le 1er frame
+  // connaisse déjà ban/gel/grâce — puis heartbeat Worker (autorité).
+  // Retentes 2/10/30 min si le Wi-Fi a un creux au boot. Périodique
+  // 45 min (pas 6 h) : un ban panel coupe à la prochaine fenêtre,
+  // sans spammer une Firestick 1 Go (debounce 8 min dans syncIfStale).
+  await SubscriptionState.instance.initialize();
+  unawaited((() async {
     await SubscriptionState.instance.syncWithBackend();
     for (final int minutes in <int>[2, 10, 30]) {
       if (SubscriptionState.instance.remote.exists) break;
@@ -299,13 +295,9 @@ Future<void> bootApp() async {
       if (SubscriptionState.instance.remote.exists) break;
       await SubscriptionState.instance.syncWithBackend();
     }
-  }));
-  // Re-synchro PÉRIODIQUE (6 h) tant que l'app tourne : fait glisser la
-  // fenêtre de tolérance hors-ligne (kOfflineGraceDays) et propage les
-  // actions du panel (activation, gel…) sans redémarrage. Heartbeat
-  // léger — rien à voir avec le ré-import lourd des playlists (24 h).
-  Timer.periodic(const Duration(hours: 6), (_) {
-    SubscriptionState.instance.syncWithBackend();
+  })());
+  Timer.periodic(kLicensePeriodicSync, (_) {
+    SubscriptionState.instance.syncIfStale();
   });
 
   // TEMPS RÉEL (WebSocket) : les actions du panel (activation, gel,

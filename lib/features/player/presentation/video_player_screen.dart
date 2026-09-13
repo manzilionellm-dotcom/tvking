@@ -51,6 +51,7 @@ import '../../epg/presentation/widgets/mini_epg_now_next.dart';
 import '../../onboarding/data/device_class_repository.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../subscription/presentation/license_playback_guard.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/xtream_url_format_store.dart';
 // Préfixé : media_kit exporte aussi un type `Playlist` (ambiguïté).
@@ -161,6 +162,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   // Heartbeat périodique pendant le visionnage → garde l'app « en ligne »
   // et la chaîne en cours à jour dans le panel.
   Timer? _presenceTimer;
+  LicensePlaybackGuard? _licenseGuard;
 
   /// Rapporte la chaîne en cours au backend (panel « En ligne → Regarde »).
   void _reportNowPlaying() {
@@ -486,6 +488,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     // parade au leak de connexions FFmpeg, cf. _recyclePlayer).
     _createPlayer();
     _initStateAfterPlayer();
+    // Après le player : ban / gel / expiration en cours de lecture → coupe.
+    _licenseGuard = LicensePlaybackGuard(onRevoked: () {
+      if (!mounted) return;
+      try {
+        unawaited(_player.stop());
+      } catch (_) {}
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    });
   }
 
   /// Crée une instance mpv NEUVE (+ controller, options, abonnements,
@@ -2173,6 +2185,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _licenseGuard?.dispose();
     PrivacyShield.instance.removeListener(_onShieldChanged);
     // Les actions PiP ne doivent plus viser cet écran mort.
     PipService.instance.onPipControl = null;

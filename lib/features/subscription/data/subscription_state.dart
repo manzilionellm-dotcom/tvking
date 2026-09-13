@@ -1,19 +1,15 @@
 // =========================================================
 //  subscription_state.dart — État de l'essai/abonnement
 // =========================================================
-//  Modèle commercial The Few (demande user) :
-//    - 7 jours d'essai gratuit dès le 1er lancement
-//    - Ensuite 5 €/an ou 9,90 € à vie, paiement sur
-//      https://7themotion.com (PAS d'in-app purchase Google Play →
-//      on évite la commission 30%)
+//  Source de vérité = Worker Cloudflare (D1 : licences + block_status).
+//  Le cache local ne sert QUE de grâce HORS-LIGNE courte : quelques
+//  heures, pas des jours. Sinon « mode avion = TV gratuite ».
 //
-//  Cette classe persiste UNIQUEMENT le timestamp du 1er lancement
-//  via SharedPreferences. Tout le calcul (jours restants, etc.)
-//  est dérivé localement — pas de backend pour V1.
-//
-//  Pour la V2 (gestion centralisée), on branchera DeviceIdentity
-//  + un endpoint 7themotion.com qui retourne `{trialDays, paid, expiresAt}`
-//  pour permettre la révocation et la prolongation à distance.
+//  Règle métier (alignée Worker) : on peut streamer SSI
+//    - licence D1 active non expirée, OU essai serveur non expiré,
+//    - ET pas gelé / banni / prêt (loaned).
+//  Un verdict serveur expired/frozen/banned/loaned PRIME immédiatement
+//  sur le cache payant (plus de bouclier « le serveur se trompe »).
 // =========================================================
 
 import 'package:flutter/foundation.dart';
@@ -23,17 +19,27 @@ import '../../../core/observability/structured_logger.dart';
 import '../../device/data/device_identity.dart';
 import 'subscription_backend.dart';
 
-/// Durée de l'essai gratuit en jours.
+/// Durée d'essai affichée (l'autorité reste le Worker / panel Tarifs).
 const int kTrialDurationDays = 7;
 
-/// BOUCLIER HORS-LIGNE — tolérance (jours) accordée à un client PAYANT
-/// quand le serveur est injoignable ou bugué. À chaque heartbeat réussi,
-/// la fenêtre repart de « maintenant + 30 j » (plafonnée à la vraie fin
-/// d'abonnement) : tant que le serveur répond au moins une fois par mois,
-/// une panne — même longue — ne bloque JAMAIS un client qui a payé.
-/// L'admin garde la main : geler/bannir bloque immédiatement (en ligne)
-/// et reste mémorisé hors-ligne (cf. _kBlockKey).
-const int kOfflineGraceDays = 30;
+/// Grâce HORS-LIGNE par défaut (heures). Documentée : assez pour un
+/// creux Wi-Fi Firestick, trop courte pour vivre sans abo.
+const int kOfflineGraceHours = 6;
+
+/// Plafond dur : même si le Worker envoie une fenêtre plus large,
+/// on n'offre JAMAIS plus de 12 h hors-ligne (anti-freeloader).
+const int kOfflineGraceHoursMax = 12;
+
+/// Ancien nom (30 j) — conservé pour les commentaires historiques.
+/// Ne plus l'utiliser comme durée réelle.
+const int kOfflineGraceDays = 0;
+
+/// Intervalle mini entre deux heartbeats (Firestick ~1 Go : pas de spam).
+const Duration kLicenseMinSyncInterval = Duration(minutes: 8);
+
+/// Revalidation périodique tant que l'app tourne (ban/gel = prochaine
+/// fenêtre, pas « dans 7 jours »).
+const Duration kLicensePeriodicSync = Duration(minutes: 45);
 
 /// URL du site marchand (paiement externe, modèle TiViMate).
 const String kPurchaseUrl = 'https://7themotion.com';
@@ -69,21 +75,21 @@ class SubscriptionState extends ChangeNotifier {
   //  _kBlockKey       : dernier verdict de BLOCAGE admin reçu du serveur
   //                     ('banned' / 'frozen' / ''). Mémorisé pour qu'un
   //                     compte banni/gelé NE PUISSE PAS esquiver en passant
-  //                     hors-ligne (mode avion) — sans ce cache, le repli
-  //                     local ignorait le bannissement.
+  //                     hors-ligne (mode avion).
   //  _kTrialUntilKey  : échéance ABSOLUE de l'essai (ms epoch) émise par le
-  //                     serveur. Insensible à une remise à zéro du compteur
-  //                     local, contrairement au simple « écoulé depuis
-  //                     firstLaunch ».
+  //                     serveur. Insensible à une réinstall locale.
   //  _kHwmKey         : « high-water mark » = plus grand timestamp jamais
-  //                     observé. Anti-recul d'horloge : reculer la date du
-  //                     téléphone ne rallonge plus l'essai.
+  //                     observé. Anti-recul d'horloge.
+  //  _kSyncedKey      : on a DÉJÀ parlé au Worker. Sans ça, chaque
+  //                     réinstall retombait sur un essai local de 7 j.
   static const String _kBlockKey = 'subscription.block';
   static const String _kTrialUntilKey = 'subscription.trial_until_ms';
   static const String _kHwmKey = 'subscription.hwm_ms';
+  static const String _kSyncedKey = 'subscription.ever_synced';
 
-  /// Millisecondes dans un jour (évite un magic number répété).
-  static const int _kDayMs = 24 * 60 * 60 * 1000;
+  /// Millisecondes dans une heure / un jour.
+  static const int _kHourMs = 60 * 60 * 1000;
+  static const int _kDayMs = 24 * _kHourMs;
 
   DateTime? _firstLaunchAt;
   DateTime? _paidUntil;
@@ -93,10 +99,11 @@ class SubscriptionState extends ChangeNotifier {
   String _blockCache = '';
   int _trialUntilCache = 0;
   int _hwmMs = 0;
+  bool _everSynced = false;
+  DateTime? _lastSyncAttempt;
 
   /// « Maintenant » anti-recul : on ne fait jamais confiance à une horloge
   /// revenue en arrière par rapport au plus grand instant déjà observé.
-  /// Empêche le contournement « je recule la date du téléphone ».
   int get _effectiveNowMs {
     final int n = DateTime.now().millisecondsSinceEpoch;
     return n > _hwmMs ? n : _hwmMs;
@@ -104,12 +111,25 @@ class SubscriptionState extends ChangeNotifier {
 
   /// Snapshot du serveur (heartbeat + status). Reste `unknown` tant
   /// que la première sync n'a pas eu lieu OU si le serveur est
-  /// inaccessible (mode dégradé : on retombe sur le trial local).
+  /// inaccessible (mode dégradé : grâce courte, pas essai 7 j).
   RemoteSubscriptionStatus _remote = RemoteSubscriptionStatus.unknown;
 
   bool get isLoaded => _loaded;
   DateTime? get firstLaunchAt => _firstLaunchAt;
   RemoteSubscriptionStatus get remote => _remote;
+  bool get everSynced => _everSynced;
+
+  /// Fenêtre de grâce effective (ms), plafonnée.
+  int graceWindowMs([RemoteSubscriptionStatus? snap]) {
+    final RemoteSubscriptionStatus s = snap ?? _remote;
+    int hours = kOfflineGraceHours;
+    if (s.graceHours >= 1) {
+      hours = s.graceHours;
+    }
+    if (hours < 1) hours = kOfflineGraceHours;
+    if (hours > kOfflineGraceHoursMax) hours = kOfflineGraceHoursMax;
+    return hours * _kHourMs;
+  }
 
   /// `true` si l'abonnement est À VIE (priorité au serveur). Permet à
   /// la carte d'afficher « Abonnement à vie » plutôt qu'une date.
@@ -132,14 +152,7 @@ class SubscriptionState extends ChangeNotifier {
   }
 
   /// Status calculé. PRIORITÉ AU SERVEUR si on a reçu une réponse
-  /// fraîche du backend ; sinon on retombe sur le calcul local.
-  ///
-  ///  remote.banned   → status = banned
-  ///  remote.frozen   → status = frozen
-  ///  remote.paid     → status = paid
-  ///  remote.expired  → status = trialExpired
-  ///  remote.exists   → status = trialActive (jours restants côté serveur)
-  ///  (sinon)         → calcul local sur firstLaunchAt
+  /// fraîche ; sinon repli local STRICT (grâce courte + caches).
   SubscriptionStatus get status {
     if (!_loaded) return SubscriptionStatus.unknown;
 
@@ -147,21 +160,12 @@ class SubscriptionState extends ChangeNotifier {
     if (_remote.exists) {
       if (_remote.banned) return SubscriptionStatus.banned;
       if (_remote.frozen) return SubscriptionStatus.frozen;
+      // Prêt d'abo : le proprio a cédé sa ligne — plus de TV ici.
+      if (_remote.loaned) return SubscriptionStatus.trialExpired;
       if (_remote.paid) return SubscriptionStatus.paid;
-      if (_remote.expired) {
-        // BOUCLIER ANTI-BUG SERVEUR : si le serveur prétend « expiré » alors
-        // qu'il nous a CONFIRMÉ un abonnement payant encore valide (cache
-        // local _paidUntil, plafonné à kOfflineGraceDays), on honore sa
-        // propre déclaration antérieure. Protège tous les clients payants
-        // d'un bug serveur (KV effacé, mauvaise réponse) → pas de blocage
-        // massif instantané. Banni/gelé (action ADMIN explicite) bloque
-        // toujours, lui, sans bouclier.
-        if (_paidUntil != null &&
-            _paidUntil!.millisecondsSinceEpoch > _effectiveNowMs) {
-          return SubscriptionStatus.paid;
-        }
-        return SubscriptionStatus.trialExpired;
-      }
+      // STRICT : expired serveur = expired. Plus de bouclier qui
+      // réécrit « payé » à partir du cache (c'était le trou 30 j).
+      if (_remote.expired) return SubscriptionStatus.trialExpired;
       return SubscriptionStatus.trialActive;
     }
 
@@ -173,24 +177,33 @@ class SubscriptionState extends ChangeNotifier {
     if (_blockCache == 'banned') return SubscriptionStatus.banned;
     if (_blockCache == 'frozen') return SubscriptionStatus.frozen;
 
-    // 2) Abonnement payant connu (cache local, tolérance hors-ligne).
+    // 2) Abonnement payant connu (cache local = grâce glissante COURTE).
     if (_paidUntil != null &&
         _paidUntil!.millisecondsSinceEpoch > nowMs) {
       return SubscriptionStatus.paid;
     }
 
+    // 3) Essai serveur déjà vu : on honore SON échéance, pas firstLaunch.
+    if (_trialUntilCache > 0) {
+      return nowMs < _trialUntilCache
+          ? SubscriptionStatus.trialActive
+          : SubscriptionStatus.trialExpired;
+    }
+
     if (_firstLaunchAt == null) return SubscriptionStatus.unknown;
 
-    // 3) Essai : on privilégie l'échéance ABSOLUE émise par le serveur
-    //    (insensible à une remise à zéro du compteur local) ; à défaut,
-    //    repli sur « firstLaunch + durée d'essai ».
-    final int deadline = _trialUntilCache > 0
-        ? _trialUntilCache
-        : _firstLaunchAt!.millisecondsSinceEpoch +
-            kTrialDurationDays * _kDayMs;
-    return nowMs < deadline
-        ? SubscriptionStatus.trialActive
-        : SubscriptionStatus.trialExpired;
+    // 4) Jamais parlé au Worker : grâce courte UNIQUEMENT (le temps
+    //    que le 1er heartbeat aboutisse). Pas 7 jours offline = free TV.
+    if (!_everSynced) {
+      final int bootGrace =
+          _firstLaunchAt!.millisecondsSinceEpoch + graceWindowMs();
+      return nowMs < bootGrace
+          ? SubscriptionStatus.trialActive
+          : SubscriptionStatus.trialExpired;
+    }
+
+    // 5) Déjà synchronisé un jour, plus de cache jouable → bloqué.
+    return SubscriptionStatus.trialExpired;
   }
 
   /// Jours restants d'essai. Priorité serveur, fallback local.
@@ -206,22 +219,16 @@ class SubscriptionState extends ChangeNotifier {
     return remaining > 0 ? remaining : 0;
   }
 
-  /// Jours affichés pour un abonnement « À VIE » : ~100 ans. Le serveur
-  /// stocke « à vie » SANS date (expires_at = null) ; c'est donc un pur
-  /// choix d'AFFICHAGE. Montrer un très grand nombre de jours restants est
-  /// rassurant/valorisant pour le client (« il te reste 36 500 jours »).
+  /// Jours affichés pour un abonnement « À VIE » : ~100 ans.
   static const int kLifetimeDisplayDays = 36500;
 
-  /// Jours restants À AFFICHER (essai OU payant OU à vie). Contrairement à
-  /// [daysUntilExpiry] (alerte, `null` si à vie), celui-ci renvoie TOUJOURS
-  /// un nombre tant que l'abonnement est actif — à vie → ~100 ans — pour
-  /// pouvoir écrire « il te reste X jours » en clair dans les réglages.
+  /// Jours restants À AFFICHER (essai OU payant OU à vie).
   int? get subscriptionDaysLeft {
     if (isLifetime) return kLifetimeDisplayDays;
     final SubscriptionStatus s = status;
     if (s == SubscriptionStatus.paid) {
       final DateTime? until = paidUntil;
-      if (until == null) return kLifetimeDisplayDays; // payant sans date = à vie
+      if (until == null) return kLifetimeDisplayDays;
       final int ms = until.millisecondsSinceEpoch - _effectiveNowMs;
       return ms <= 0 ? 0 : (ms / _kDayMs).ceil();
     }
@@ -234,13 +241,8 @@ class SubscriptionState extends ChangeNotifier {
   bool _activatedAck = false;
   bool _justActivated = false;
 
-  /// `true` UNE FOIS quand le serveur confirme un abonnement payant pour la
-  /// première fois (transition essai/inconnu → payé). L'UI le consomme pour
-  /// féliciter le client, puis appelle [acknowledgeActivation].
   bool get justActivated => _justActivated;
 
-  /// L'UI a montré la félicitation d'activation → on n'y revient plus (tant
-  /// que l'abonnement ne retombe pas puis n'est ré-activé).
   void acknowledgeActivation() {
     if (!_justActivated) return;
     _justActivated = false;
@@ -249,54 +251,56 @@ class SubscriptionState extends ChangeNotifier {
         .catchError((Object _) => false);
   }
 
-  /// Seuil d'alerte d'expiration : on prévient le client quand il reste ≤ ce
-  /// nombre de jours (abonnement payant OU essai).
   static const int kExpiryWarnDays = 5;
 
-  /// Jours restants avant expiration (abo payant OU essai). `null` si à vie /
-  /// inconnu / déjà expiré. LECTURE SEULE — n'altère JAMAIS la logique de
-  /// blocage (alerte purement informative, cf. bandeau d'expiration).
   int? get daysUntilExpiry {
     if (isLifetime) return null;
     final SubscriptionStatus s = status;
     if (s == SubscriptionStatus.paid) {
       final DateTime? until = paidUntil;
-      if (until == null) return null; // payant sans date / à vie
+      if (until == null) return null;
       final int ms = until.millisecondsSinceEpoch - _effectiveNowMs;
       return ms <= 0 ? 0 : (ms / _kDayMs).ceil();
     }
     if (s == SubscriptionStatus.trialActive) {
       return trialDaysRemaining;
     }
-    return null; // expiré/banni/gelé/inconnu → pas une simple « alerte »
+    return null;
   }
 
-  /// True si l'abonnement (payant ou essai) expire dans ≤ [kExpiryWarnDays]
-  /// jours. Sert à afficher le bandeau d'alerte « pense à renouveler ».
   bool get isExpiringSoon {
     final int? d = daysUntilExpiry;
     return d != null && d >= 0 && d <= kExpiryWarnDays;
   }
 
-  /// True si l'app doit afficher un écran bloquant (gelé, banni,
-  /// ou essai expiré non payé). Utilisé par `_AppEntry` au boot.
+  /// True si l'app doit afficher un écran bloquant.
   bool get shouldBlockUser {
+    if (!_loaded) return false;
+    if (_remote.exists && _remote.loaned) return true;
     final SubscriptionStatus s = status;
     return s == SubscriptionStatus.frozen ||
         s == SubscriptionStatus.banned ||
         s == SubscriptionStatus.trialExpired;
   }
 
+  /// True SSI on a le droit de charger des chaînes / lancer le player.
+  bool get canStream {
+    if (!_loaded) return false;
+    if (shouldBlockUser) return false;
+    final SubscriptionStatus s = status;
+    return s == SubscriptionStatus.paid ||
+        s == SubscriptionStatus.trialActive;
+  }
+
   /// Charge l'état depuis SharedPreferences. Si c'est le 1er
-  /// lancement absolu, on écrit `firstLaunchAt = now()` pour
-  /// démarrer le compte à rebours de l'essai (kTrialDurationDays).
+  /// lancement absolu, on écrit `firstLaunchAt = now` (horloge locale
+  /// + grâce courte, PAS un essai 7 j autonome).
   Future<void> initialize() async {
     if (_loaded) return;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final int? firstMs = prefs.getInt(_kFirstLaunchKey);
       if (firstMs == null) {
-        // Tout premier boot → on enregistre maintenant.
         final int nowMs = DateTime.now().millisecondsSinceEpoch;
         await prefs.setInt(_kFirstLaunchKey, nowMs);
         _firstLaunchAt = DateTime.fromMillisecondsSinceEpoch(nowMs);
@@ -307,12 +311,11 @@ class SubscriptionState extends ChangeNotifier {
       if (paidMs != null) {
         _paidUntil = DateTime.fromMillisecondsSinceEpoch(paidMs);
       }
-      // Garde-fous serveur mis en cache au boot précédent.
       _blockCache = prefs.getString(_kBlockKey) ?? '';
       _trialUntilCache = prefs.getInt(_kTrialUntilKey) ?? 0;
       _hwmMs = prefs.getInt(_kHwmKey) ?? 0;
       _activatedAck = prefs.getBool(_kActivatedAckKey) ?? false;
-      // Avance le high-water mark si l'horloge a légitimement progressé.
+      _everSynced = prefs.getBool(_kSyncedKey) ?? false;
       final int nowMs = DateTime.now().millisecondsSinceEpoch;
       if (nowMs > _hwmMs) {
         _hwmMs = nowMs;
@@ -325,9 +328,6 @@ class SubscriptionState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Marque l'abonnement comme payé jusqu'à `until`. Appelé par
-  /// la V2 quand on validera la licence côté serveur 7themotion.com.
-  /// Pour V1, exposé pour les tests dev uniquement.
   Future<void> markPaidUntil(DateTime until) async {
     _paidUntil = until;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -335,110 +335,119 @@ class SubscriptionState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reset pour debug (ne pas appeler en prod).
   @visibleForTesting
   Future<void> resetForTesting() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kFirstLaunchKey);
     await prefs.remove(_kPaidUntilKey);
+    await prefs.remove(_kBlockKey);
+    await prefs.remove(_kTrialUntilKey);
+    await prefs.remove(_kHwmKey);
+    await prefs.remove(_kActivatedAckKey);
+    await prefs.remove(_kSyncedKey);
     _firstLaunchAt = null;
     _paidUntil = null;
     _loaded = false;
+    _remote = RemoteSubscriptionStatus.unknown;
+    _blockCache = '';
+    _trialUntilCache = 0;
+    _hwmMs = 0;
+    _everSynced = false;
+    _lastSyncAttempt = null;
+    _activatedAck = false;
+    _justActivated = false;
     notifyListeners();
   }
 
+  /// Recharge depuis les prefs (tests : poser une horloge puis relire).
+  @visibleForTesting
+  Future<void> reloadForTesting() async {
+    _loaded = false;
+    await initialize();
+  }
+
+  /// Applique un snapshot comme si le Worker avait répondu (tests).
+  @visibleForTesting
+  Future<void> applyRemoteForTesting(RemoteSubscriptionStatus snap) async {
+    await _applyRemoteSnapshot(snap);
+  }
+
+  /// Coupe le cache « en ligne » pour tester le repli hors-ligne.
+  @visibleForTesting
+  void simulateOfflineForTesting() {
+    _remote = RemoteSubscriptionStatus.unknown;
+    notifyListeners();
+  }
+
+  /// Verdict `blocked` de GET /api/device-source — coupe AVANT le
+  /// prochain heartbeat (sondage sources = 60 s sur la box).
+  Future<void> markBlockedFromSource(String reason) async {
+    final String r = reason.trim().toLowerCase();
+    if (r.isEmpty) return;
+    final bool banned = r == 'banned';
+    final bool frozen = r == 'frozen';
+    final bool loaned = r == 'loaned';
+    await _applyRemoteSnapshot(RemoteSubscriptionStatus(
+      exists: true,
+      status: banned
+          ? 'banned'
+          : frozen
+              ? 'frozen'
+              : 'active',
+      paid: false,
+      plan: banned
+          ? 'banned'
+          : frozen
+              ? 'frozen'
+              : loaned
+                  ? 'loaned'
+                  : 'expired',
+      paidUntil: 0,
+      daysLeft: 0,
+      expired: !banned && !frozen,
+      frozen: frozen,
+      banned: banned,
+      trialUntil: _effectiveNowMs,
+      loaned: loaned,
+    ));
+  }
+
+  /// Heartbeat dédoublonné : skip si un sync a déjà tourné récemment.
+  /// Cold start / ban mid-session : passer [force] = true.
+  Future<void> syncIfStale({
+    Duration minInterval = kLicenseMinSyncInterval,
+    bool force = false,
+  }) async {
+    final DateTime now = DateTime.now();
+    if (!force &&
+        _lastSyncAttempt != null &&
+        now.difference(_lastSyncAttempt!) < minInterval) {
+      return;
+    }
+    _lastSyncAttempt = now;
+    await syncWithBackend();
+  }
+
   /// Synchronise avec le backend Cloudflare.
-  ///
-  /// Étapes :
-  ///   1. POST /api/heartbeat — déclare au serveur "je suis là".
-  ///      Si nouveau, le serveur crée la fiche avec trial 10 j.
-  ///      Sinon il met juste à jour last_seen_at.
-  ///   2. Le résultat du heartbeat contient déjà le statut courant,
-  ///      pas besoin d'un GET séparé.
-  ///   3. On stocke en `_remote` et on notifie pour rebuild les UI.
-  ///
-  /// À appeler au boot (depuis `_AppEntry`) après l'init du
-  /// DeviceIdentity. Si le réseau est down, `_remote` reste
-  /// `unknown` et le calcul retombe sur le trial local — l'app
-  /// reste utilisable hors-ligne.
   Future<void> syncWithBackend() async {
+    _lastSyncAttempt = DateTime.now();
     try {
       final String mac = await DeviceIdentity.instance.mac;
       final RemoteSubscriptionStatus snap =
           await SubscriptionBackend.heartbeat(mac);
-      _remote = snap;
-      // Mémorise les garde-fous serveur pour le mode hors-ligne :
-      //  - le verdict de blocage (banni/gelé) → ne pourra plus être esquivé
-      //    en passant en mode avion ;
-      //  - l'échéance absolue de l'essai → insensible à un effacement du
-      //    compteur local ;
-      //  - avance le high-water mark anti-recul d'horloge.
-      if (snap.exists) {
-        final SharedPreferences prefs =
-            await SharedPreferences.getInstance();
-        _blockCache =
-            snap.banned ? 'banned' : (snap.frozen ? 'frozen' : '');
-        await prefs.setString(_kBlockKey, _blockCache);
-        if (snap.trialUntil > 0) {
-          _trialUntilCache = snap.trialUntil;
-          await prefs.setInt(_kTrialUntilKey, snap.trialUntil);
-        }
-        final int nowMs = DateTime.now().millisecondsSinceEpoch;
-        if (nowMs > _hwmMs) {
-          _hwmMs = nowMs;
-          await prefs.setInt(_kHwmKey, nowMs);
-        }
+      if (!snap.exists) {
+        // Réseau KO / Worker muet : on GARDE le cache (grâce courte).
+        StructuredLogger.instance.warn(
+          domain: 'sub',
+          event: 'sync.empty',
+          ctx: const <String, Object?>{'reason': 'remote_unknown'},
+        );
+        notifyListeners();
+        return;
       }
-      // BOUCLIER HORS-LIGNE : le serveur dit 'paid' → on persiste une
-      // fenêtre de tolérance GLISSANTE de kOfflineGraceDays (30 j), rafraîchie
-      // à CHAQUE heartbeat réussi, mais JAMAIS au-delà de la vraie fin
-      // d'abonnement (paid_until serveur, sauf « à vie »). Résultat : une
-      // panne serveur — même de plusieurs semaines — ne bloque pas un client
-      // qui a payé, et un abonnement qui se termine dans 3 j ne gagne pas
-      // 27 j gratuits pour autant.
-      if (snap.paid) {
-        final int nowMs = DateTime.now().millisecondsSinceEpoch;
-        // Le serveur peut IMPOSER sa propre fenêtre via `grace_days`
-        // (1..365 j) — réglable depuis le panel sans republier d'APK.
-        final int graceDays = (snap.graceDays >= 1 && snap.graceDays <= 365)
-            ? snap.graceDays
-            : kOfflineGraceDays;
-        final int graceCapMs = nowMs + graceDays * _kDayMs;
-        final int targetMs =
-            (!snap.isLifetime && snap.paidUntil > 0 && snap.paidUntil < graceCapMs)
-                ? snap.paidUntil
-                : graceCapMs;
-        if (_paidUntil == null ||
-            targetMs > _paidUntil!.millisecondsSinceEpoch) {
-          await markPaidUntil(DateTime.fromMillisecondsSinceEpoch(targetMs));
-        }
-      }
-      // NOTIFICATION D'ACTIVATION (une seule fois) : dès que le serveur
-      // confirme un abonnement PAYANT pour la 1re fois, on lève un drapeau
-      // que l'UI consomme pour féliciter le client. Réarmé si l'abonnement
-      // retombe (ré-activation future → nouvelle félicitation).
-      try {
-        final SharedPreferences prefs =
-            await SharedPreferences.getInstance();
-        if (snap.paid) {
-          if (!_activatedAck) {
-            _activatedAck = true;
-            _justActivated = true;
-            await prefs.setBool(_kActivatedAckKey, true);
-          }
-        } else if (snap.exists && _activatedAck) {
-          _activatedAck = false;
-          await prefs.setBool(_kActivatedAckKey, false);
-        }
-      } catch (_) {
-        // best-effort : drapeau de félicitation purement cosmétique —
-        // au pire l'utilisateur est re-félicité une fois.
-      }
-      notifyListeners();
+      await _applyRemoteSnapshot(snap);
     } catch (e) {
       if (kDebugMode) debugPrint('[Subscription] syncWithBackend error: $e');
-      // La sync abonnement qui échoue en boucle = statut payé/essai
-      // jamais rafraîchi. Invisible en release jusqu'ici → boîte noire.
       StructuredLogger.instance.warn(
         domain: 'sub',
         event: 'sync.fail',
@@ -447,17 +456,74 @@ class SubscriptionState extends ChangeNotifier {
     }
   }
 
-  /// Force un re-fetch du statut serveur sans toucher au heartbeat
-  /// (le `last_seen_at` ne bouge pas). Utilisé par le pull-to-refresh.
+  Future<void> _applyRemoteSnapshot(RemoteSubscriptionStatus snap) async {
+    _remote = snap;
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      _everSynced = true;
+      await prefs.setBool(_kSyncedKey, true);
+
+      if (snap.banned) {
+        _blockCache = 'banned';
+      } else if (snap.frozen) {
+        _blockCache = 'frozen';
+      } else {
+        _blockCache = '';
+      }
+      await prefs.setString(_kBlockKey, _blockCache);
+
+      if (snap.trialUntil > 0) {
+        _trialUntilCache = snap.trialUntil;
+        await prefs.setInt(_kTrialUntilKey, snap.trialUntil);
+      }
+
+      final int nowMs = DateTime.now().millisecondsSinceEpoch;
+      if (nowMs > _hwmMs) {
+        _hwmMs = nowMs;
+        await prefs.setInt(_kHwmKey, nowMs);
+      }
+
+      // Payé → grâce COURTE (heures), jamais au-delà de la vraie fin.
+      if (snap.paid) {
+        final int graceCapMs = nowMs + graceWindowMs(snap);
+        final int targetMs =
+            (!snap.isLifetime && snap.paidUntil > 0 && snap.paidUntil < graceCapMs)
+                ? snap.paidUntil
+                : graceCapMs;
+        _paidUntil = DateTime.fromMillisecondsSinceEpoch(targetMs);
+        await prefs.setInt(_kPaidUntilKey, targetMs);
+      } else if (snap.expired || snap.frozen || snap.banned || snap.loaned) {
+        // STRICT : verdict négatif → on EFFACE le cache payant.
+        _paidUntil = null;
+        await prefs.remove(_kPaidUntilKey);
+      }
+
+      if (snap.paid) {
+        if (!_activatedAck) {
+          _activatedAck = true;
+          _justActivated = true;
+          await prefs.setBool(_kActivatedAckKey, true);
+        }
+      } else if (_activatedAck) {
+        _activatedAck = false;
+        await prefs.setBool(_kActivatedAckKey, false);
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Subscription] applyRemote failed: $e');
+    }
+    notifyListeners();
+  }
+
+  /// Force un re-fetch du statut serveur sans toucher au heartbeat.
   Future<void> refreshRemote() async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
-      _remote = await SubscriptionBackend.getStatus(mac);
-      notifyListeners();
+      final RemoteSubscriptionStatus snap =
+          await SubscriptionBackend.getStatus(mac);
+      if (snap.exists) {
+        await _applyRemoteSnapshot(snap);
+      }
     } catch (e) {
-      // On garde l'ancien statut affiché (pull-to-refresh silencieux),
-      // mais l'échec est tracé — sinon impossible de distinguer « rien
-      // de neuf » d'un backend injoignable.
       StructuredLogger.instance.warn(
         domain: 'sub',
         event: 'status.refresh_fail',

@@ -29,9 +29,12 @@
 //  celle qui synchronise le moins bien qui aurait laissé passer le bug.
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import '../../features/playlists/data/remote_source_repository.dart';
+import '../../features/subscription/data/subscription_state.dart';
 
 class ForegroundSync with WidgetsBindingObserver {
   ForegroundSync._();
@@ -80,6 +83,9 @@ class ForegroundSync with WidgetsBindingObserver {
     // RemoteSyncResult), et le réveil de l'app ne doit rien attendre.
     // Cette synchro porte AUSSI les ordres du panel — c'est le même appel
     // réseau qui rapporte les sources et les suppressions à appliquer.
-    RemoteSourceRepository.sync();
+    unawaited(RemoteSourceRepository.sync());
+    // Licence au réveil : un ban/gel posé pendant la veille doit
+    // couper dès que la box se rallume, pas au prochain tick 45 min.
+    unawaited(SubscriptionState.instance.syncIfStale(force: true));
   }
 }

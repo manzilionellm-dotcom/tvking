@@ -55,6 +55,7 @@ import '../../recordings/domain/recording.dart';
 import '../../recordings/domain/scheduled_recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../subscription/presentation/license_playback_guard.dart';
 import '../../vod/data/playback_position_repository.dart';
 import '../../vod/data/vod_download_service.dart';
 import '../../hue/data/hue_service.dart';
@@ -162,6 +163,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   Timer? _presenceTimer;
   Timer? _numTimer;
   Timer? _watchdog;
+  LicensePlaybackGuard? _licenseGuard;
 
   /// 2.1 (05/09/2026) — L'ÉCRAN EST EN ARRIÈRE-PLAN.
   ///
@@ -471,6 +473,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // pas décidé de l'URL.
     _controller = NativeVideoController();
     _controller.addListener(_onPlayer);
+    // Ban / gel / expiration en cours de lecture : on COUPE, on ne
+    // laisse pas le flux tourner jusqu'au prochain redémarrage.
+    _licenseGuard = LicensePlaybackGuard(onRevoked: () {
+      if (!mounted) return;
+      unawaited(_controller.stop());
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    });
     // Mode Bouclier : VPN qui tombe → coupure immédiate ; VPN qui revient →
     // reprise automatique (cf. _onShieldChanged).
     PrivacyShield.instance.addListener(_onShieldChanged);
@@ -634,6 +645,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _licenseGuard?.dispose();
     //  ⚠ LE VERROU DES TÉLÉCHARGEMENTS NE SE LÈVE PLUS ICI (30/08).
     //
     //  Il était levé à cet endroit — c'est-à-dire AVANT même que la

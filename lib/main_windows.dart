@@ -164,9 +164,11 @@ Future<void> _bootstrap() async {
   unawaited(DeviceIdentity.instance.preload());
   // 2) Licence/abonnement : heartbeat + statut depuis le MÊME worker (HTTP,
   //    100 % multiplateforme).
-  unawaited(SubscriptionState.instance.initialize().then((_) {
-    SubscriptionState.instance.syncWithBackend();
-  }));
+  await SubscriptionState.instance.initialize();
+  unawaited(SubscriptionState.instance.syncWithBackend());
+  Timer.periodic(kLicensePeriodicSync, (_) {
+    SubscriptionState.instance.syncIfStale();
+  });
   // 3) Thème distant piloté par le panel (couleur/nom).
   unawaited(RemoteThemeRepository.fetchAndApply());
 
