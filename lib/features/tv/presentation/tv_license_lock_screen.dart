@@ -9,6 +9,8 @@
 //  D-pad : un bouton « Revérifier » (le revendeur vient d'activer).
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -36,6 +38,21 @@ class _TvLicenseLockScreenState extends State<TvLicenseLockScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
     });
+    // Écoute : un sync RT / filet express met à jour SubscriptionState
+    // → TvGate reconstruit, mais on rebuild aussi ICI pour le spinner
+    // et le texte (gel / ban / expiré) sans attendre le parent.
+    SubscriptionState.instance.addListener(_onSub);
+    unawaited(_recheck());
+  }
+
+  @override
+  void dispose() {
+    SubscriptionState.instance.removeListener(_onSub);
+    super.dispose();
+  }
+
+  void _onSub() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _recheck() async {
@@ -148,7 +165,7 @@ class _TvLicenseLockScreenState extends State<TvLicenseLockScreen> {
                             ),
                           )
                         : Text(
-                            context.l10n.subPullToRefresh,
+                            context.l10n.subRecheckNow,
                             style: TvTokens.ui(18,
                                 color: TvTokens.bg, weight: FontWeight.w800),
                           ),

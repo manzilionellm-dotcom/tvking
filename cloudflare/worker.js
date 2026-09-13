@@ -67,6 +67,7 @@ import {
 // publishRt() (publication fail-open après une mutation). La classe DO
 // DOIT être ré-exportée par le module d'entrée (voir export plus bas).
 import { RealtimeHub, publishRt } from './realtime.js';
+import { bestLicenseOrderSql } from './license_pick.js';
 //  Profils famille : MEME code que /api/v1/profiles (le panel). Deux
 //  implementations auraient signifie deux calculs de PIN a maintenir.
 import { readDeviceProfiles } from './device_profiles.js';
@@ -533,14 +534,17 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     };
   }
 
-  // Meilleure licence pour ce device : lifetime d'abord, sinon expiry max.
+  // Meilleure licence JOUABLE (pas la plus « longue » sur le papier).
+  // Une lifetime inactive ne doit plus masquer l'annuel tout juste
+  // activé — c'était le trou « panel vert / tablette verrouillée ».
+  // Règle unique : cloudflare/license_pick.js (testée en smoke).
   const lic = await env.DB
     .prepare(
       `SELECT status AS lstatus, expires_at FROM licenses
        WHERE device_id = ?
-       ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1`,
+       ORDER BY ${bestLicenseOrderSql()} LIMIT 1`,
     )
-    .bind(dev.id).first();
+    .bind(dev.id, now).first();
 
   // --- Cas 1 : une licence existe (activee par admin/revendeur) ---
   if (lic) {
@@ -5499,7 +5503,9 @@ async function handleAdminAction(request, env, mac) {
   //  donc le panel ne pouvait plus rien activer. On écrit désormais
   //  directement en D1 (licence + block_status), exactement comme
   //  l'endpoint d'activation /api/v1. app_id par défaut 'app_7motion'
-  //  (d1StatusForMac ignore l'app_id, il prend la meilleure licence).
+  //  (d1StatusForMac ignore l'app_id, il prend la meilleure licence
+  //  JOUABLE — license_pick.js : une lifetime inactive ne masque plus
+  //  l'annuel tout juste activé).
   // ===============================================================
   if (env.DB) {
     await ensureD1Device(env, mac, now);

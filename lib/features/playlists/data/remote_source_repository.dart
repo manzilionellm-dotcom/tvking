@@ -124,6 +124,16 @@ abstract final class RemoteSourceRepository {
         return RemoteSyncResult.noSource;
       }
 
+      // Source LIVRÉE (pas de `blocked`) alors que l'écran est encore
+      // verrouillé : le panel vient d'activer. Le sondage sources (60 s)
+      // voyait déjà le bouquet mais ne refetchait PAS la licence →
+      // tablette restée bloquée avec des chaînes « déjà en base ».
+      // Heartbeat = autorité : s'il dit encore expiré, on reste verrouillé
+      // (pas de trou freeloader).
+      if (SubscriptionState.instance.shouldBlockUser) {
+        unawaited(SubscriptionState.instance.syncWithBackend());
+      }
+
       // TRIO (jusqu'à 3 sources sur une MAC) : si le serveur renvoie un
       // tableau `sources`, on les charge TOUTES. Le client peut ensuite
       // basculer de l'une à l'autre depuis l'accueil. Repli sur la source
