@@ -45,6 +45,52 @@ export function isValidMac(raw) {
   return MAC_RX.test(normalizeMac(raw));
 }
 
+/// Vrai si la saisie ressemble à un début de MAC, pas à un nom.
+/// Copie alignée sur `admin-panel/src/lib/utils.ts` — si tu changes
+/// l'un, change l'autre (sinon le panel pose les `:` et le LIKE
+/// Worker ne retrouve plus la ligne).
+export function looksLikeMacTyping(raw) {
+  const t = String(raw || '').trim();
+  if (!t) return false;
+  const mk = /^MK:?/i.test(t);
+  const rest = mk ? t.replace(/^MK:?/i, '') : t;
+  if (/[^0-9A-Fa-f:.\-\s]/.test(rest)) return false;
+  const hex = rest.replace(/[^0-9A-Fa-f]/g, '');
+  if (mk) return true;
+  if (!hex) return false;
+  if (/[0-9]/.test(hex)) return true;
+  if (/[:.\-]/.test(rest)) return true;
+  return false;
+}
+
+/// Pose les `:` tous les 2 hex pendant la frappe / un collage.
+/// Max 6 octets ; préfixe `MK:` conservé s'il est déjà là.
+/// `807860074F` → `80:78:60:07:4F` ; `Jean` → `Jean`.
+export function formatMacAsYouType(raw) {
+  const s = String(raw || '');
+  if (!s) return '';
+  if (!looksLikeMacTyping(s)) return s;
+
+  const mk = /^MK:?/i.test(s.trimStart());
+  const body = mk ? s.replace(/^\s*MK:?/i, '') : s;
+  const hex = body.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 12);
+  const pairs = hex.match(/.{1,2}/g) || [];
+  const joined = pairs.join(':');
+  if (mk) return joined ? `MK:${joined}` : 'MK:';
+  return joined;
+}
+
+/// Champ dédié MAC → toujours `MK:` + 5 octets (contrat MAC_RX).
+/// Même helper que le panel (`formatMacInput`).
+export function formatMacInput(raw) {
+  const s = String(raw || '');
+  const seeded = /^MK/i.test(s.trim()) ? s : `MK:${s}`;
+  const typed = formatMacAsYouType(seeded);
+  const hexOnly = typed.toUpperCase().replace(/^MK:?/, '').replace(/[^0-9A-F]/g, '');
+  const pairs = hexOnly.slice(0, 10).match(/.{1,2}/g) || [];
+  return 'MK:' + pairs.join(':');
+}
+
 /// Génère un MAC virtuel propre (5 octets crypto-aléatoires).
 /// Collision astronomiquement rare ; l'appelant revérifie en base.
 export function generateVirtualMac() {

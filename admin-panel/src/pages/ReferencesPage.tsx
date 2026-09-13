@@ -2,6 +2,7 @@ import { MacLink } from '@/components/MacLink';
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { referencesApi, type ActivationReference, ApiError } from '@/lib/api';
+import { formatMacAsYouType, macTextMatches } from '@/lib/utils';
 
 // =========================================================
 //  ReferencesPage — carnet MAC ↔ username (support)
@@ -113,7 +114,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
     const t = q.trim().toLowerCase();
     if (!t) return items;
     return items.filter((it) =>
-      it.mac.toLowerCase().includes(t)
+      macTextMatches(it.mac, q)
       || (it.customer_name || '').toLowerCase().includes(t)
       || it.usernames.some((u) => u.toLowerCase().includes(t))
       || it.servers.some((s) => s.toLowerCase().includes(t)),
@@ -159,7 +160,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
       <div className="mb-4 flex items-center justify-between gap-3">
         <input
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => setQ(formatMacAsYouType(e.target.value))}
           placeholder="Rechercher une MAC, un username, un serveur ou un client…"
           className="w-full max-w-md rounded-md border border-white/10 bg-slate px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
         />

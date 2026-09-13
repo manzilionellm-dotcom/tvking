@@ -61,6 +61,7 @@ export const NEW_FEATURE_IDS = [
   'call-today-open',
   'call-today-wa',
   'call-today-renew',
+  'mac-auto-colon',
 ] as const;
 
 export type NewFeatureId = (typeof NEW_FEATURE_IDS)[number];

@@ -15,6 +15,7 @@ import {
   normalizeMac, isValidMac, generateVirtualMac,
   classifyProblems, problemPredicates, migrateDeviceMac,
   MAC_OWNED_TABLES,
+  formatMacAsYouType, formatMacInput, looksLikeMacTyping,
 } from './mac_identity.js';
 
 let pass = 0;
@@ -35,6 +36,36 @@ ok(isValidMac('CD:18:EF:A1:A0') && isValidMac('MK:CD:18:EF:A1:A0'),
   '1 les deux formes sont valides');
 ok(!isValidMac('ZZ:PAS:UNE:MAC') && !isValidMac(''),
   '1 refuse le garbage');
+
+// ----- 1b) Auto-`:` pendant la frappe (recherche Devices / collage) -----
+ok(formatMacAsYouType('807860074F') === '80:78:60:07:4F',
+  '1b 807860074F → 80:78:60:07:4F');
+ok(formatMacAsYouType('80:78:60:07:4F') === '80:78:60:07:4F',
+  '1b collage déjà ponctué inchangé');
+ok(formatMacAsYouType('80-78-60-07-4F') === '80:78:60:07:4F',
+  '1b collage avec tirets');
+ok(formatMacAsYouType('MK807860074F') === 'MK:80:78:60:07:4F',
+  '1b préfixe MK sans deux-points');
+ok(formatMacAsYouType('mk:807860074f') === 'MK:80:78:60:07:4F',
+  '1b MK: déjà là + hex nu');
+ok(formatMacAsYouType('80') === '80',
+  '1b premier octet incomplet');
+ok(formatMacAsYouType('807') === '80:7',
+  '1b : dès 3e hex');
+ok(formatMacAsYouType('Jean') === 'Jean',
+  '1b nom de client intact');
+ok(formatMacAsYouType('Ada') === 'Ada',
+  '1b Ada (lettres A–F seules) n’est pas une MAC');
+ok(formatMacAsYouType('cafe') === 'cafe',
+  '1b cafe sans chiffre reste un mot');
+ok(looksLikeMacTyping('80') && !looksLikeMacTyping('Jean'),
+  '1b looksLikeMacTyping distingue hex et nom');
+ok(formatMacInput('CD:18:EF:A1:A0') === 'MK:CD:18:EF:A1:A0',
+  '1b formatMacInput force MK: + 5 octets');
+ok(formatMacInput('cd18efa1a0') === 'MK:CD:18:EF:A1:A0',
+  '1b formatMacInput chiffres seuls');
+ok(formatMacInput('MK:CD:18:EF:A1:A0') === 'MK:CD:18:EF:A1:A0',
+  '1b formatMacInput déjà canonique');
 
 // ----- 2) Génération -----
 const a = generateVirtualMac();

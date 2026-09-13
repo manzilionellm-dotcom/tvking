@@ -75,6 +75,7 @@ import {
   normalizeMac, isValidMac, generateVirtualMac,
   migrateDeviceMac, ensureSupersededColumn,
   problemPredicates, classifyProblems,
+  formatMacAsYouType, looksLikeMacTyping,
 } from './mac_identity.js';
 //  Profils famille : MÊME code que la route publique interrogée par
 //  l'app. Deux implémentations auraient signifié deux calculs de PIN à
@@ -4752,6 +4753,34 @@ function mapDeviceListRow(r, now) {
   return { ...rest, license };
 }
 
+/// LIKE MAC : avec/sans `:`, avec/sans `MK:`.
+/// Pourquoi une fonction : Devices (chemin nominal + fallback) et
+/// Partages cherchent pareil — deux copies, un jour l'une oublie
+/// REPLACE et Lionel retape `8078` sans résultat.
+function macColumnSearch(q, column) {
+  const like = `%${q}%`;
+  const formatted = formatMacAsYouType(q);
+  const sql = [`${column} LIKE ?`];
+  const binds = [like];
+  if (formatted && formatted !== q) {
+    sql.push(`${column} LIKE ?`);
+    binds.push(`%${formatted}%`);
+  }
+  if (looksLikeMacTyping(q)) {
+    const hex = String(q).toUpperCase().replace(/[^0-9A-F]/g, '');
+    if (hex.length >= 2) {
+      sql.push(`REPLACE(UPPER(${column}), ':', '') LIKE ?`);
+      binds.push(`%${hex}%`);
+    }
+  }
+  return { sql: sql.join(' OR '), binds, like };
+}
+
+function devicesMacSearch(q) {
+  const mac = macColumnSearch(q, 'd.mac');
+  return { macSql: mac.sql, macBinds: mac.binds, like: mac.like };
+}
+
 async function handleDevicesList(request, env, user) {
   const url = new URL(request.url);
   const q = (url.searchParams.get('q') || '').trim();
@@ -4783,9 +4812,13 @@ async function handleDevicesList(request, env, user) {
              ${deviceLicJoin(now)}`;
   const where = []; const binds = [];
   if (q) {
-    where.push('(d.mac LIKE ? OR d.label LIKE ? OR IFNULL(d.admin_note,\'\') LIKE ? OR c.name LIKE ? OR IFNULL(c.phone,\'\') LIKE ?)');
-    const like = `%${q}%`;
-    binds.push(like, like, like, like, like);
+    // Lionel tape `8078` ou `80:78` : en base c'est `MK:80:78:…`.
+    // LIKE `%8078%` ne matche pas. On cherche aussi la forme avec `:`
+    // (formatMacAsYouType, même helper que le panel) et l'hex nu
+    // contre REPLACE(mac, ':', ''). Un nom (« Jean ») n'est pas touché.
+    const search = devicesMacSearch(q);
+    where.push(`((${search.macSql}) OR d.label LIKE ? OR IFNULL(d.admin_note,'') LIKE ? OR c.name LIKE ? OR IFNULL(c.phone,'') LIKE ?)`);
+    binds.push(...search.macBinds, search.like, search.like, search.like, search.like);
   }
   // Cloisonnement : un revendeur ne voit QUE ses propres appareils.
   if (user && user.role === 'reseller') {
@@ -4858,8 +4891,9 @@ async function handleDevicesList(request, env, user) {
                     FROM devices d LEFT JOIN customers c ON d.customer_id = c.id`;
     const fw = []; const fb = [];
     if (q) {
-      fw.push('(d.mac LIKE ? OR d.label LIKE ? OR c.name LIKE ?)');
-      fb.push(`%${q}%`, `%${q}%`, `%${q}%`);
+      const search = devicesMacSearch(q);
+      fw.push(`((${search.macSql}) OR d.label LIKE ? OR c.name LIKE ?)`);
+      fb.push(...search.macBinds, search.like, search.like);
     }
     if (user && user.role === 'reseller') {
       fw.push('d.reseller_id = ?');
@@ -4905,8 +4939,10 @@ async function handleInvitesList(request, env, user) {
              LEFT JOIN devices dr ON dr.mac = iv.redeemer_mac`;
   const where = []; const binds = [];
   if (q) {
-    where.push('(iv.code LIKE ? OR iv.issuer_mac LIKE ? OR iv.redeemer_mac LIKE ?)');
-    binds.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    const issuer = macColumnSearch(q, 'iv.issuer_mac');
+    const redeemer = macColumnSearch(q, 'iv.redeemer_mac');
+    where.push(`(iv.code LIKE ? OR (${issuer.sql}) OR (${redeemer.sql}))`);
+    binds.push(`%${q}%`, ...issuer.binds, ...redeemer.binds);
   }
   // Cloisonnement : un revendeur ne voit QUE les invitations issues de SES
   // appareils.

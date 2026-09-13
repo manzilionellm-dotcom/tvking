@@ -11,18 +11,11 @@
 // =========================================================
 import assert from 'node:assert/strict';
 import { pickBestLicense } from './license_pick.js';
+import { formatMacInput, formatMacAsYouType } from './mac_identity.js';
 
 const SHOWN = 'CD:18:EF:A1:A0';
 const INTERNAL = 'MK:CD:18:EF:A1:A0';
 const MAC_RX = /^MK(?::[0-9A-F]{2}){5}$/i;
-
-/// Copie de admin-panel `formatMacInput` — le panel n'est pas importable
-/// ici ; si les deux dérivent, CE test casse le pont photo → Activer.
-function formatMacInput(raw) {
-  const hexOnly = raw.toUpperCase().replace(/^MK:?/, '').replace(/[^0-9A-F]/g, '');
-  const pairs = hexOnly.slice(0, 10).match(/.{1,2}/g) || [];
-  return 'MK:' + pairs.join(':');
-}
 
 let pass = 0;
 let fail = 0;
@@ -34,6 +27,8 @@ const ok = (c, m) => {
 ok(formatMacInput(SHOWN) === INTERNAL, 'coller CD:18:EF:A1:A0 → MK:CD:18:EF:A1:A0');
 ok(formatMacInput(INTERNAL) === INTERNAL, 'coller MK:CD:18:EF:A1:A0 inchangé');
 ok(formatMacInput('cd18efa1a0') === INTERNAL, 'chiffres seuls → même MAC');
+ok(formatMacAsYouType('cd18efa1a0') === SHOWN, 'as-you-type sans MK: → numéro affiché');
+ok(formatMacAsYouType(INTERNAL) === INTERNAL, 'as-you-type garde MK: si déjà là');
 ok(MAC_RX.test(INTERNAL), '/activate + hub RT acceptent MK:CD:18:EF:A1:A0');
 ok(!MAC_RX.test(SHOWN), 'le code NU seul est refusé (le panel DOIT préfixer)');
 

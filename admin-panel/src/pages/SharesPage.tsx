@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { MacLink } from '@/components/MacLink';
 import { invitesApi, ApiError, type InviteRow } from '@/lib/api';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, formatMacAsYouType } from '@/lib/utils';
 
 // =========================================================
 //  SharesPage — « Partages & prêts » : le ledger anti-vol
@@ -129,7 +129,7 @@ export function SharesPage({ onLogout }: { onLogout: () => void }) {
         >
           <input
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => setQ(formatMacAsYouType(e.target.value))}
             placeholder="Code, MAC émetteur ou invité…"
             className="w-56 rounded-md border border-white/5 bg-slate px-3 py-1.5 text-sm font-mono outline-none focus:ring-1 focus:ring-accent"
           />

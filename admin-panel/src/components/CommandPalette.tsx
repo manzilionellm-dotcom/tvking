@@ -14,7 +14,7 @@ import { useDeviceSheet } from '@/components/DeviceSheet';
 import { getVisibleNavPages } from '@/components/Sidebar';
 import { useT } from '@/lib/i18n';
 import { AboChip } from '@/components/DeviceOps';
-import { cn } from '@/lib/utils';
+import { cn, formatMacAsYouType } from '@/lib/utils';
 
 const CmdkCtx = createContext<{ toggle: () => void } | null>(null);
 
@@ -197,7 +197,7 @@ function CommandPalette({
           <input
             ref={inputRef}
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => setQ(formatMacAsYouType(e.target.value))}
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
