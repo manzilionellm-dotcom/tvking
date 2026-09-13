@@ -1,3 +1,4 @@
+// Redeploy après fix smoke lab_sources (#26).
 // =========================================================
 //  BLACK7 ROYAL — Cloudflare Worker (backend admin + clients)
 // =========================================================
