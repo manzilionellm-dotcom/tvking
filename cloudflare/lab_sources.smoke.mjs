@@ -10,7 +10,8 @@
 //    4. ÉTANCHÉITÉ PANEL : GET /api/v1/sources/:mac (liste normale) ne
 //       touche JAMAIS la table lab_sources ;
 //    5. ÉTANCHÉITÉ SYNC (worker.js /api/device-source/:mac) : une MAC
-//       maître reçoit les sources labo EN PLUS, une MAC normale ne les
+//       maître reçoit les sources labo EN PLUS, une MAC normale PAYANTE
+//       (licence D1 active — le verrou sécurité exige un abo) ne les
 //       reçoit JAMAIS ;
 //    6. STATS PROPRES : /insights/overview exclut les MAC maîtres de
 //       chaque compteur (NOT EXISTS … app_masters), en LECTURE SEULE ;
