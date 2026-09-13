@@ -70,6 +70,7 @@
 // le changement (`changed{scope}`). TOUJOURS fail-open : si le Durable
 // Object n'est pas déployé, publishRt renvoie {delivered:0} sans erreur.
 import { publishRt } from './realtime.js';
+import { bestLicenseOrderSql } from './license_pick.js';
 //  Profils famille : MÊME code que la route publique interrogée par
 //  l'app. Deux implémentations auraient signifié deux calculs de PIN à
 //  maintenir — le jour où l'un dérive, les codes posés depuis le panel
@@ -436,16 +437,16 @@ async function handleReferencesList(env, user) {
                 p.country AS pres_country,
                 (SELECT l.status    FROM licenses l JOIN devices dl ON dl.id = l.device_id
                    WHERE dl.mac = ds.mac
-                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_status,
+                   ORDER BY ${bestLicenseOrderSql('l', now)} LIMIT 1) AS lic_status,
                 (SELECT l.expires_at FROM licenses l JOIN devices dl ON dl.id = l.device_id
                    WHERE dl.mac = ds.mac
-                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_expires,
+                   ORDER BY ${bestLicenseOrderSql('l', now)} LIMIT 1) AS lic_expires,
                 (SELECT l.plan      FROM licenses l JOIN devices dl ON dl.id = l.device_id
                    WHERE dl.mac = ds.mac
-                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_plan,
+                   ORDER BY ${bestLicenseOrderSql('l', now)} LIMIT 1) AS lic_plan,
                 (SELECT l.started_at FROM licenses l JOIN devices dl ON dl.id = l.device_id
                    WHERE dl.mac = ds.mac
-                   ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_started
+                   ORDER BY ${bestLicenseOrderSql('l', now)} LIMIT 1) AS lic_started
          FROM device_sources ds
          LEFT JOIN devices d   ON d.mac = ds.mac
          LEFT JOIN customers c ON c.id = d.customer_id
@@ -1300,11 +1301,11 @@ async function apiV1Inner(request, env) {
     // sync 5 min) — le corps de réponse contient la MAC normalisée.
     if (request.method === 'PUT') {
       return withRt(env, await handleSourcePut(request, env, mac, actor),
-        (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
+        (b) => ({ macs: [b.mac], what: 'all', scope: 'sources', changedMac: b.mac }));
     }
     if (request.method === 'DELETE') {
       return withRt(env, await handleSourceDelete(request, env, mac, actor),
-        (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
+        (b) => ({ macs: [b.mac], what: 'all', scope: 'sources', changedMac: b.mac }));
     }
   }
 
@@ -1319,7 +1320,7 @@ async function apiV1Inner(request, env) {
       return errResp('forbidden', 'Ton niveau ne permet pas de changer la source active.', 403);
     }
     return withRt(env, await handleSourceSetActive(request, env, mac, actor),
-      (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
+      (b) => ({ macs: [b.mac], what: 'all', scope: 'sources', changedMac: b.mac }));
   }
 
   // /sources/:mac/update — corrige UNE source (mot de passe, serveur, EPG…)
@@ -1338,7 +1339,7 @@ async function apiV1Inner(request, env) {
       ? await handleSourceUpdate(request, env, mac, actor)
       : await handleSourceAdd(request, env, mac, actor);
     return withRt(env, resp,
-      (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
+      (b) => ({ macs: [b.mac], what: 'all', scope: 'sources', changedMac: b.mac }));
   }
 
   // /sources/:mac/order — ordre sur une liste LOCALE du client (ajoutée
@@ -1352,7 +1353,7 @@ async function apiV1Inner(request, env) {
       return errResp('forbidden', 'Ton niveau ne permet pas cette action.', 403);
     }
     return withRt(env, await handleSourceOrder(request, env, mac, actor),
-      (b) => ({ macs: [b.mac], what: 'sources', scope: 'sources', changedMac: b.mac }));
+      (b) => ({ macs: [b.mac], what: 'all', scope: 'sources', changedMac: b.mac }));
   }
 
   // /customers
@@ -4627,13 +4628,14 @@ async function ensureAdminNoteColumn(env) {
   _adminNoteReady = true;
 }
 
-/// Meilleure licence d'un appareil : à vie d'abord, sinon la plus lointaine.
-/// Corrélée — SQLite tient très bien le parc quotidien (quelques milliers).
-const DEVICE_LIC_JOIN =
-  'LEFT JOIN licenses l ON l.id = (' +
+/// Meilleure licence JOUABLE d'un appareil (même règle que d1StatusForMac).
+/// [now] interpolé (entier Date.now()) — pas de saisie user.
+function deviceLicJoin(now) {
+  return 'LEFT JOIN licenses l ON l.id = (' +
     'SELECT lx.id FROM licenses lx WHERE lx.device_id = d.id ' +
-    'ORDER BY (lx.expires_at IS NULL) DESC, lx.expires_at DESC LIMIT 1' +
+    `ORDER BY ${bestLicenseOrderSql('lx', now)} LIMIT 1` +
   ')';
+}
 
 /// Filtres liste /devices — mêmes règles que les pastilles du panel.
 /// `now` / `week` sont des entiers Date.now() (jamais de saisie user).
@@ -4710,7 +4712,7 @@ async function handleDevicesList(request, env, user) {
              FROM devices d
              LEFT JOIN customers c ON d.customer_id = c.id
              LEFT JOIN presence p ON p.mac = d.mac
-             ${DEVICE_LIC_JOIN}`;
+             ${deviceLicJoin(now)}`;
   const where = []; const binds = [];
   if (q) {
     where.push('(d.mac LIKE ? OR d.label LIKE ? OR IFNULL(d.admin_note,\'\') LIKE ? OR c.name LIKE ?)');
@@ -4742,7 +4744,7 @@ async function handleDevicesList(request, env, user) {
     ` SUM(CASE WHEN ${pred.banned} THEN 1 ELSE 0 END) AS banned_n,` +
     ` SUM(CASE WHEN ${pred.online_unpaid} THEN 1 ELSE 0 END) AS online_unpaid_n` +
     ` FROM devices d LEFT JOIN customers c ON d.customer_id = c.id` +
-    ` LEFT JOIN presence p ON p.mac = d.mac ${DEVICE_LIC_JOIN}` +
+    ` LEFT JOIN presence p ON p.mac = d.mac ${deviceLicJoin(now)}` +
     baseWhere;
 
   try {
@@ -5615,17 +5617,17 @@ async function handleDeviceOverview(env, id, user) {
   }
   const now = Date.now();
 
-  // --- Abonnement : la licence la plus « forte » (à vie d'abord, sinon la
-  //     plus lointaine). Statut recalculé : active / expired / <statut brut>.
+  // --- Abonnement : la meilleure licence JOUABLE (license_pick.js).
+  //     Une lifetime inactive ne doit plus masquer un annuel frais.
   let license = null;
   try {
     const lic = await env.DB
       .prepare(
         `SELECT id, status, plan, started_at, expires_at, auto_renew
            FROM licenses WHERE device_id = ?
-          ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1`,
+          ORDER BY ${bestLicenseOrderSql()} LIMIT 1`,
       )
-      .bind(dev.id)
+      .bind(dev.id, now)
       .first();
     if (lic) {
       const live = lic.status === 'active'
@@ -7281,6 +7283,12 @@ async function handleActivate(request, env, user, actor) {
   }
   const mac = (body.mac || '').trim().toUpperCase();
   const plan = body.plan || 'monthly';
+  // UNE MAC = UN DROIT. On pose la licence sur le produit principal
+  // (app_7motion, ou l'app choisie par le panel). Téléphone / tablette
+  // / TV lisent ensuite la meilleure licence JOUABLE du device, tous
+  // app_id confondus (d1StatusForMac + license_pick.js). On ne crée
+  // PAS une ligne par app de la famille : ça n'ajouterait rien au
+  // verdict et une vieille lifetime inactive pouvait masquer la neuve.
   const appId = body.app_id || 'app_7motion';
   if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(mac)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
@@ -7400,7 +7408,7 @@ async function handleActivate(request, env, user, actor) {
 
   // 2) Licence (device, app) : renouvelle si elle existe, sinon cree.
   const existing = await env.DB
-    .prepare('SELECT id, expires_at FROM licenses WHERE device_id = ? AND app_id = ?')
+    .prepare('SELECT id, expires_at, status FROM licenses WHERE device_id = ? AND app_id = ?')
     .bind(deviceId, appId).first();
   let licenseId; let finalExpiry; let renewed = false;
 

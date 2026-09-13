@@ -17,6 +17,8 @@
 //  pour re-vérifier sans devoir redémarrer l'app.
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -43,6 +45,7 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
   /// c'est LE numéro que le client montre à son conseiller pour être
   /// réactivé : il ne doit JAMAIS disparaître de cet écran.
   String? _ref;
+  bool _recheckBusy = false;
 
   @override
   void initState() {
@@ -50,6 +53,18 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _ref = DeviceIdentity.stripPrefix(m));
     });
+    // Contrôle immédiat : le revendeur a pu activer pendant que
+    // l'écran verrou était déjà affiché (tablette restée ouverte).
+    unawaited(_recheck());
+  }
+
+  /// Relit la licence via heartbeat (pas le GET /status seul) :
+  /// c'est le même chemin que le panel vient d'écrire.
+  Future<void> _recheck() async {
+    if (_recheckBusy) return;
+    setState(() => _recheckBusy = true);
+    await SubscriptionState.instance.syncWithBackend();
+    if (mounted) setState(() => _recheckBusy = false);
   }
 
   @override
@@ -80,7 +95,7 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
             return RefreshIndicator(
               color: AppColors.accent,
               backgroundColor: AppColors.surface,
-              onRefresh: () => SubscriptionState.instance.refreshRemote(),
+              onRefresh: _recheck,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(28, 56, 28, 32),
@@ -153,6 +168,34 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
                   const SizedBox(height: 26),
                   _referenceCard(context),
                   const SizedBox(height: 14),
+                  SizedBox(
+                    height: 54,
+                    child: OutlinedButton.icon(
+                      onPressed: _recheckBusy ? null : _recheck,
+                      icon: _recheckBusy
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: AppColors.accent,
+                              ),
+                            )
+                          : const Icon(Icons.refresh_rounded, size: 22),
+                      label: Text(context.l10n.subRecheckNow),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.accent,
+                        side: BorderSide(
+                          color: AppColors.accent.withValues(alpha: 0.45),
+                        ),
+                        textStyle: AppTextStyles.button.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   SizedBox(
                     height: 54,
                     child: FilledButton.icon(

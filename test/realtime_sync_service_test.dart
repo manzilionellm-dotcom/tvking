@@ -58,6 +58,37 @@ void main() {
     });
   });
 
+  group('activationPollDelay — filet tablette / TV (backoff)', () {
+    test('premiers ticks à 8 s, puis 20 s, puis plafond 45 s', () {
+      expect(RealtimeSyncService.activationPollDelay(0),
+          const Duration(seconds: 8));
+      expect(RealtimeSyncService.activationPollDelay(14),
+          const Duration(seconds: 8));
+      expect(RealtimeSyncService.activationPollDelay(15),
+          const Duration(seconds: 20));
+      expect(RealtimeSyncService.activationPollDelay(20),
+          const Duration(seconds: 20));
+      expect(RealtimeSyncService.activationPollDelay(21),
+          const Duration(seconds: 45));
+      expect(RealtimeSyncService.activationPollDelay(99),
+          const Duration(seconds: 45));
+    });
+
+    test('index négatif retombe sur le 1er palier (pas de délai nul)', () {
+      expect(RealtimeSyncService.activationPollDelay(-3),
+          const Duration(seconds: 8));
+    });
+
+    test('jamais plus fréquent qu\'une fois / 8 s (anti-spam Firestick)', () {
+      for (int i = 0; i < 40; i++) {
+        expect(
+          RealtimeSyncService.activationPollDelay(i).inSeconds,
+          greaterThanOrEqualTo(8),
+        );
+      }
+    });
+  });
+
   group('RtEvent.parse — frames sync', () {
     test('sync complet avec id et what', () {
       final RtEvent? ev = RtEvent.parse(

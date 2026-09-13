@@ -13,7 +13,7 @@ import {
   isUnknownMac, confirmUnknownMac, unknownMacNotice,
 } from '@/lib/mac_guard';
 import { awaitRtOutcome, type RtOutcome } from '@/lib/realtime';
-import { toast } from '@/components/Toast';
+import { toast, rtActionFeedback } from '@/components/Toast';
 import { formatDateTime, formatMacInput } from '@/lib/utils';
 
 /// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
@@ -220,8 +220,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     )) return;
     setBusy(true); setResult(null); setRtOutcome(null); rtSeq.current += 1;
     try {
-      // On active chaque appareil de la famille avec le MÊME plan. Le dernier
-      // résultat (le principal) alimente l'affichage + le feedback temps réel.
+      // On active chaque appareil de la famille avec le MÊME plan. Le
+      // dernier alimente le bandeau ; les autres ont aussi leur push RT
+      // (toast honnête : envoyé / hors ligne → prochain heartbeat).
       let last: ActivateResult | null = null;
       for (const one of macs) {
         last = await activateOne(one);
@@ -229,6 +230,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         // suivantes. Continuer activerait la famille autour d'un
         // appareil dont on n'est pas sûr.
         if (last === null) return;
+        if (one !== macs[macs.length - 1]) {
+          void rtActionFeedback(last.rt);
+        }
       }
       if (last) {
         setResult(last);
@@ -634,8 +638,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         <div className="rounded-xl border border-white/5 bg-obsidian p-6">
           {!result && (
             <p className="text-sm text-ink-tertiary">
-              Le résultat de l'activation s'affichera ici. L'appareil est débloqué et
-              configuré (licence + sources) à distance dès la prochaine vérification de l'app.
+              Le résultat de l'activation s'affichera ici. Tablette, téléphone
+              ou box : si l'app est ouverte, le déverrouillage part tout de suite
+              (quelques secondes). Hors ligne → au prochain réveil de l'app.
             </p>
           )}
           {result && (

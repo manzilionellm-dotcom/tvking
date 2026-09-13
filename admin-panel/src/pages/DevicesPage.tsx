@@ -394,8 +394,9 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         <ActivatePlanModal
           device={activateFor}
           onClose={() => setActivateFor(null)}
-          onDone={() => {
+          onDone={(res) => {
             const d = activateFor;
+            if (res) applyLicenseLocal(d.mac, licenseFromActivate(res));
             setActivateFor(null);
             // Rouvrir la fiche : sinon l'abo tout juste posé n'est
             // visible qu'après un nouvel ouverture manuelle.
@@ -1471,7 +1472,7 @@ function CredRow({ label, value, mono }: { label: string; value: string; mono?: 
 
 function ActivatePlanModal({
   device, onClose, onDone,
-}: { device: Device; onClose: () => void; onDone: () => void }) {
+}: { device: Device; onClose: () => void; onDone: (res?: ActivateResult) => void }) {
   const [plan, setPlan] = useState('yearly');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1492,7 +1493,7 @@ function ActivatePlanModal({
       setDone(true);
       void rtActionFeedback(res.rt);
       toast(res.renewed ? 'Abonnement prolongé.' : 'Abonnement activé.', 'success');
-      setTimeout(onDone, 400);
+      setTimeout(() => onDone(res), 400);
     } catch (e: unknown) {
       const msg = e instanceof ApiError ? e.message : 'Échec.';
       setErr(msg);

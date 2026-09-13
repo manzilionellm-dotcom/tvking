@@ -1064,6 +1064,10 @@
   "@subPullToRefresh": {
     "description": "Texte UI : subPullToRefresh"
   },
+  "subRecheckNow": "Revérifier",
+  "@subRecheckNow": {
+    "description": "Bouton : relire la licence après activation panel"
+  },
   "subBenefitChannels": "Des milliers de chaînes, films & séries du monde entier",
   "@subBenefitChannels": {
     "description": "Texte UI : subBenefitChannels"

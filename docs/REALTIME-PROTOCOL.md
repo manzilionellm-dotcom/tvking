@@ -123,7 +123,7 @@ appliqué à sa prochaine connexion ».
 | Mutation | Publication |
 |---|---|
 | `POST /api/v1/activate` | mac → `sync all` + admins `changed{scope:'licenses',mac}` |
-| `PUT/DELETE /api/v1/sources/:mac` | mac → `sync sources` + admins `changed` |
+| `PUT/DELETE /api/v1/sources/:mac` (et active/update/add/order) | mac → `sync all` (licence + sources) + admins `changed` |
 | `PATCH /api/v1/devices/:id` (block/unblock), `DELETE` | mac → `sync status` + admins `changed` |
 | `POST /api/v1/licenses` / `.../renew` / `PATCH` | mac (lookup) → `sync status` + admins `changed` |
 | `POST /api/v1/transfer` | les 2 macs → `sync all` + admins `changed` |
@@ -174,3 +174,18 @@ par mac) sur `hello`, `watching` et déconnexion — ainsi `/api/v1/online`,
   ordres « va re-fetcher », jamais de credentials de playlist.
 - Validation MAC systématique, rate-limit connexions, taille max frame 8 Ko,
   frames non-JSON ignorées silencieusement.
+
+## 9. Filet d'activation (tablette / téléphone / TV)
+
+Le WebSocket n'est **pas** le seul chemin. Une tablette en Doze coupe
+souvent le socket : si Lionel active après 3 min d'écran verrou, l'ancien
+filet s'était déjà arrêté.
+
+Tant que l'appareil est **verrouillé et au premier plan**,
+`RealtimeSyncService` refetch licence + sources avec backoff
+(8 s → 20 s → 45 s, jamais plus d'1 req / 45 s). Arrêt net dès que
+`paid`. En pause : zéro poll.
+
+Si `GET /api/device-source` livre une source **sans** `blocked` alors
+que l'écran est encore verrouillé, l'app lance un heartbeat immédiat
+(autorité = licence, pas la source — un freeloader reste bloqué).

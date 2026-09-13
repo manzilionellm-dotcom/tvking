@@ -219,19 +219,33 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
   /// « stable » → le prochain incident repart au 1er palier (5 s).
   static const Duration kStableAfter = Duration(seconds: 60);
 
-  /// « Activation express » — filet UNIVERSEL (téléphone + TV) qui rend
-  /// l'activation quasi instantanée MÊME si le WebSocket n'est pas
-  /// disponible (binding pas déployé, réseau capricieux, hub occupé).
+  /// « Activation express » — filet UNIVERSEL (téléphone + tablette + TV)
+  /// qui rend l'activation quasi instantanée MÊME si le WebSocket n'est
+  /// pas disponible (Doze tablette, binding absent, hub occupé).
   ///
-  /// Tant que l'appareil n'est pas encore ACTIVÉ (pas payant), et qu'il
-  /// est au premier plan, on interroge le backend toutes les
-  /// [kActivationInterval] pendant [kActivationFastTicks] cycles
-  /// (≈ 3 min par session). Dès que le revendeur valide le code sur le
-  /// panel, l'app le voit en quelques secondes au lieu d'attendre le
-  /// heartbeat (6 h) ou la synchro sources (5 min). Coût : un petit GET
-  /// JSON par cycle, borné dans le temps, arrêté net dès l'activation.
+  /// Tant que l'appareil est VERROUILLÉ et au premier plan, on interroge
+  /// le backend avec un BACKOFF : 8 s pendant ~2 min, puis 20 s, puis
+  /// 45 s (plafond). Arrêt net dès que l'abo est payé, et en
+  /// arrière-plan. Avant, la fenêtre s'arrêtait au bout de 3 min : si
+  /// Lionel activait plus tard, la tablette restait bloquée jusqu'au
+  /// heartbeat 45 min. Pas de spam Firestick : jamais plus d'1 req / 45 s
+  /// une fois le palier atteint, zéro en pause.
   static const Duration kActivationInterval = Duration(seconds: 8);
-  static const int kActivationFastTicks = 22; // ~3 min à 8 s
+  static const List<int> kActivationBackoffSeconds = <int>[
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, // 15 × 8 s ≈ 2 min
+    20, 20, 20, 20, 20, 20, // 6 × 20 s ≈ 2 min
+  ];
+  static const int kActivationSettledSeconds = 45;
+
+  /// Délai avant le tick n° [tickIndex] (0 = premier intervalle après
+  /// le contrôle immédiat). Fonction PURE — testée sans Timer.
+  static Duration activationPollDelay(int tickIndex) {
+    final int i = tickIndex < 0 ? 0 : tickIndex;
+    if (i < kActivationBackoffSeconds.length) {
+      return Duration(seconds: kActivationBackoffSeconds[i]);
+    }
+    return const Duration(seconds: kActivationSettledSeconds);
+  }
 
   /// Calcule le délai avant la tentative n° [attempt] (0 = première
   /// re-tentative). [jitter] ∈ [-0.2, +0.2] (±20 %) — passé en paramètre
@@ -262,8 +276,8 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _pingTimer; // 'ping' texte toutes les 45 s (keepalive NAT)
   Timer? _watchTimer; // surveille NowPlaying (voir _onWatchTick)
   Timer? _stableTimer; // après 60 s stables → _attempt = 0
-  Timer? _activationTimer; // fenêtre « activation express » (voir plus bas)
-  int _activationTicksLeft = 0;
+  Timer? _activationTimer; // filet « activation express » (backoff)
+  int _activationTick = 0;
   String _lastSentChannel = '';
   DateTime _lastWatchingAt = DateTime.fromMillisecondsSinceEpoch(0);
   final Random _random = Random();
@@ -332,23 +346,35 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
     return r.exists && r.paid;
   }
 
-  /// (Re)démarre la fenêtre d'activation express. Idempotent : annule la
-  /// fenêtre en cours et repart pour [kActivationFastTicks] cycles. No-op
-  /// si l'appareil est déjà activé. Appelé au boot et à chaque `resumed`.
+  /// (Re)démarre le filet d'activation. Idempotent : annule le timer
+  /// en cours et repart du 1er palier. No-op si déjà payé. Appelé au
+  /// boot, à chaque `resumed`, et après un `sync` panel (au cas où
+  /// le premier refetch aurait raté le Wi-Fi).
   void _armActivationFastSync() {
     _activationTimer?.cancel();
     _activationTimer = null;
     if (_activationSettled) return;
-    _activationTicksLeft = kActivationFastTicks;
+    _activationTick = 0;
     unawaited(_pollActivationOnce()); // contrôle immédiat
-    _activationTimer = Timer.periodic(kActivationInterval, (_) {
-      if (_activationSettled || _activationTicksLeft <= 0) {
-        _activationTimer?.cancel();
-        _activationTimer = null;
-        return;
-      }
-      _activationTicksLeft--;
+    _scheduleActivationTick();
+  }
+
+  /// Programme le prochain contrôle selon [activationPollDelay].
+  /// S'arrête tout seul dès que l'abo est payé (pas de poll à vie
+  /// sur une Firestick déjà déverrouillée).
+  void _scheduleActivationTick() {
+    _activationTimer?.cancel();
+    if (_activationSettled) {
+      _activationTimer = null;
+      return;
+    }
+    final Duration delay = activationPollDelay(_activationTick);
+    _activationTimer = Timer(delay, () {
+      _activationTimer = null;
+      if (_activationSettled) return;
+      _activationTick++;
       unawaited(_pollActivationOnce());
+      _scheduleActivationTick();
     });
   }
 
@@ -621,6 +647,10 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
     String? error;
     try {
       await _runSyncActions(event.what ?? 'all');
+      // Un `sync` vient du panel (activer / geler / source). Si on est
+      // encore verrouillé (Wi-Fi raté, heartbeat trop tôt), on relance
+      // le filet express — tablette au premier plan, pas d'attente 45 min.
+      if (!_activationSettled) _armActivationFastSync();
     } catch (e) {
       ok = false;
       error = '$e';
