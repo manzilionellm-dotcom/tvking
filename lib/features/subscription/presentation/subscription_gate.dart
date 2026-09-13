@@ -173,7 +173,7 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
                     child: OutlinedButton.icon(
                       onPressed: _recheckBusy ? null : _recheck,
                       icon: _recheckBusy
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
