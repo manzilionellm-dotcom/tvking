@@ -60,7 +60,10 @@ class MacActivationView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String>(
+    return ListenableBuilder(
+      listenable: DeviceIdentity.instance,
+      builder: (BuildContext context, _) => FutureBuilder<String>(
+      key: ValueKey<String>(DeviceIdentity.instance.macSync),
       future: DeviceIdentity.instance.mac,
       builder: (BuildContext context, AsyncSnapshot<String> snap) {
         final String? mac = snap.data;
@@ -135,6 +138,7 @@ class MacActivationView extends StatelessWidget {
           ],
         );
       },
+    ),
     );
   }
 

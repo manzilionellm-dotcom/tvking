@@ -58,6 +58,7 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
   @override
   void initState() {
     super.initState();
+    DeviceIdentity.instance.addListener(_onIdentity);
     DeviceIdentity.instance.mac.then((String value) {
       if (mounted) setState(() => _mac = value);
     });
@@ -66,6 +67,17 @@ class _DeviceIdCardState extends State<DeviceIdCard> {
         if (mounted) setState(() => _buildLabel = p.buildNumber);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    DeviceIdentity.instance.removeListener(_onIdentity);
+    super.dispose();
+  }
+
+  void _onIdentity() {
+    if (!mounted) return;
+    setState(() => _mac = DeviceIdentity.instance.macSync);
   }
 
   Future<void> _copy() async {

@@ -163,7 +163,10 @@ abstract final class SubscriptionBackend {
   /// pas (trial 10 j auto), ou rafraîchit son `last_seen_at` sinon.
   /// Renvoie le statut courant. Timeout court (8 s) — pas question
   /// que l'app traîne au boot si le réseau est nase.
-  static Future<RemoteSubscriptionStatus> heartbeat(String mac) async {
+  static Future<RemoteSubscriptionStatus> heartbeat(
+    String mac, {
+    int hop = 0,
+  }) async {
     try {
       // Infos appareil → le panel recense chaque Android où l'app tourne
       // (même partagée via WhatsApp), avec son modèle + numéro de build.
@@ -241,6 +244,20 @@ abstract final class SubscriptionBackend {
           await BackendHosts.markGood(base);
           final Map<String, dynamic> json =
               jsonDecode(resp.body) as Map<String, dynamic>;
+          // Filet HTTP (Doze / WS mort) : le Worker dit « cette MAC
+          // n'existe plus, voici le nouveau numéro ». On ADOPTE puis
+          // on re-pingue — sinon l'écran référence reste l'ancien.
+          if (hop < 1) {
+            final String? next = DeviceIdentity.newMacFromReassigned(
+              json['mac_reassigned'],
+            );
+            if (next != null && next != mac) {
+              final bool changed = await DeviceIdentity.instance.adopt(next);
+              if (changed) {
+                return heartbeat(next, hop: hop + 1);
+              }
+            }
+          }
           return RemoteSubscriptionStatus.fromJson(json);
         } catch (e) {
           if (kDebugMode) {
@@ -311,7 +328,10 @@ abstract final class SubscriptionBackend {
   /// Lit l'état courant du serveur sans toucher au `last_seen_at`.
   /// Utilisé par le `SubscriptionCard` pour rafraîchir l'UI sans
   /// déclencher un nouveau heartbeat (eg. après un pull-to-refresh).
-  static Future<RemoteSubscriptionStatus> getStatus(String mac) async {
+  static Future<RemoteSubscriptionStatus> getStatus(
+    String mac, {
+    int hop = 0,
+  }) async {
     // Même failover que le heartbeat : domaine maison puis secours.
     for (final String base in BackendHosts.candidates()) {
       try {
@@ -327,6 +347,17 @@ abstract final class SubscriptionBackend {
         await BackendHosts.markGood(base);
         final Map<String, dynamic> body =
             jsonDecode(resp.body) as Map<String, dynamic>;
+        if (hop < 1) {
+          final String? next = DeviceIdentity.newMacFromReassigned(
+            body['mac_reassigned'],
+          );
+          if (next != null && next != mac) {
+            final bool changed = await DeviceIdentity.instance.adopt(next);
+            if (changed) {
+              return getStatus(next, hop: hop + 1);
+            }
+          }
+        }
         return RemoteSubscriptionStatus.fromJson(body);
       } catch (e) {
         if (kDebugMode) debugPrint('[Subscription] getStatus error ($base): $e');

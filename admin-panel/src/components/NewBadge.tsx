@@ -48,6 +48,9 @@ export const NEW_FEATURE_IDS = [
   'clear-license',
   'badge-online-unpaid',
   'ban-online-unpaid',
+  'filter-problematic',
+  'change-mac',
+  'regenerate-mac',
 ] as const;
 
 export type NewFeatureId = (typeof NEW_FEATURE_IDS)[number];

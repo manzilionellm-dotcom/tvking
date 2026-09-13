@@ -23,10 +23,11 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class DeviceIdentity {
+class DeviceIdentity extends ChangeNotifier {
   DeviceIdentity._();
   static final DeviceIdentity instance = DeviceIdentity._();
 
@@ -179,7 +180,60 @@ class DeviceIdentity {
     final String fresh = _generate();
     await prefs.setString(_kKey, fresh);
     _cached = fresh;
+    notifyListeners();
     return fresh;
+  }
+
+  /// Forme interne MK:XX:XX:XX:XX:XX — accepte aussi le numéro de
+  /// référence affiché (CD:18:EF:A1:A0) que le client dicte.
+  static String normalizeMac(String raw) {
+    final String t = raw.trim().toUpperCase().replaceAll(RegExp(r'\s+'), '');
+    if (_isValidStatic(t)) return t;
+    final String hex = t.replaceFirst(RegExp(r'^MK:?'), '').replaceAll(RegExp(r'[^0-9A-F]'), '');
+    if (hex.length == 10) {
+      final String pairs = hex.replaceAllMapped(
+        RegExp(r'..'),
+        (Match m) => '${m[0]}:',
+      );
+      return 'MK:${pairs.substring(0, pairs.length - 1)}';
+    }
+    return t;
+  }
+
+  static bool _isValidStatic(String value) {
+    return RegExp(
+      r'^MK(?::[0-9A-F]{2}){5}$',
+      caseSensitive: false,
+    ).hasMatch(value);
+  }
+
+  /// Adopte un MAC poussé par le panel (RT `mac_reassigned` ou
+  /// heartbeat). C'est ÇA qui met à jour « YOUR REFERENCE NUMBER ».
+  /// Retourne `true` si l'identité a vraiment changé.
+  Future<bool> adopt(String raw) async {
+    final String next = normalizeMac(raw);
+    if (!_isValidStatic(next)) return false;
+    if (_cached == next) return false;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kKey, next);
+    _cached = next;
+    notifyListeners();
+    return true;
+  }
+
+  /// Lit `{ new_mac }` depuis un payload Worker (heartbeat, source, RT).
+  static String? newMacFromReassigned(Object? raw) {
+    if (raw is! Map) return null;
+    final Object? n = raw['new_mac'] ?? raw['newMac'];
+    if (n is! String || n.trim().isEmpty) return null;
+    final String next = normalizeMac(n);
+    return _isValidStatic(next) ? next : null;
+  }
+
+  /// Tests : vide le cache pour ne pas polluer le singleton.
+  @visibleForTesting
+  void debugResetCache() {
+    _cached = null;
   }
 
   // ============================================================

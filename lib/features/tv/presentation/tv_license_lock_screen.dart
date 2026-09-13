@@ -35,6 +35,7 @@ class _TvLicenseLockScreenState extends State<TvLicenseLockScreen> {
   @override
   void initState() {
     super.initState();
+    DeviceIdentity.instance.addListener(_onIdentity);
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
     });
@@ -53,6 +54,18 @@ class _TvLicenseLockScreenState extends State<TvLicenseLockScreen> {
 
   void _onSub() {
     if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    DeviceIdentity.instance.removeListener(_onIdentity);
+    super.dispose();
+  }
+
+  void _onIdentity() {
+    if (!mounted) return;
+    setState(() =>
+        _mac = DeviceIdentity.stripPrefix(DeviceIdentity.instance.macSync));
   }
 
   Future<void> _recheck() async {

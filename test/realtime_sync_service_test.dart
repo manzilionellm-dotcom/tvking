@@ -148,6 +148,35 @@ void main() {
     });
   });
 
+  group('RtEvent.parse — mac_reassigned (phone + TV)', () {
+    test('frame complète → newMac normalisé', () {
+      final RtEvent? ev = RtEvent.parse(
+        '{"type":"mac_reassigned","id":"evt_1",'
+        '"old_mac":"MK:CD:18:EF:A1:A0","new_mac":"MK:11:22:33:44:55"}',
+      );
+      expect(ev, isNotNull);
+      expect(ev!.type, 'mac_reassigned');
+      expect(ev.newMac, 'MK:11:22:33:44:55');
+      expect(ev.oldMac, 'MK:CD:18:EF:A1:A0');
+      expect(ev.id, 'evt_1');
+    });
+
+    test('accepte le numéro de référence affiché (sans MK:)', () {
+      final RtEvent? ev = RtEvent.parse(
+        '{"type":"mac_reassigned","new_mac":"11:22:33:44:55"}',
+      );
+      expect(ev!.newMac, 'MK:11:22:33:44:55');
+    });
+
+    test('new_mac absent / invalide → ignoré (pas de crash)', () {
+      expect(RtEvent.parse('{"type":"mac_reassigned"}'), isNull);
+      expect(
+        RtEvent.parse('{"type":"mac_reassigned","new_mac":"ZUT"}'),
+        isNull,
+      );
+    });
+  });
+
   group('RtEvent.parse — frames bye + rejets', () {
     test('bye avec raison', () {
       final RtEvent? ev = RtEvent.parse('{"type":"bye","reason":"replaced"}');

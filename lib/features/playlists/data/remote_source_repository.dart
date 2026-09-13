@@ -96,7 +96,7 @@ abstract final class RemoteSourceRepository {
   /// Récupère la source assignée à cet appareil et la charge si besoin.
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
-  static Future<RemoteSyncResult> sync() async {
+  static Future<RemoteSyncResult> sync({int hop = 0}) async {
     // Build store : pas de source poussée, pas d'ordres du panel (cf.
     // [storeBuild]). L'utilisateur ajoute ses sources lui-même.
     if (storeBuild) return RemoteSyncResult.noSource;
@@ -115,11 +115,22 @@ abstract final class RemoteSourceRepository {
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
 
+      // AVANT le verrou : une MAC tombstonée renvoie blocked + le
+      // nouveau numéro. Si on markBlocked d'abord, l'écran reste
+      // verrouillé sur l'ANCIEN code.
+      final String? reassigned = DeviceIdentity.newMacFromReassigned(
+        body['mac_reassigned'],
+      );
+      if (reassigned != null && reassigned != mac && hop < 1) {
+        final bool changed = await DeviceIdentity.instance.adopt(reassigned);
+        if (changed) return sync(hop: hop + 1);
+      }
+
       // VERROU SERVEUR : expired/frozen/banned/loaned → pas de playlist,
       // et on bascule l'état local tout de suite (sondage 60 s, plus
       // rapide que le heartbeat périodique).
       final Object? blocked = body['blocked'];
-      if (blocked is String && blocked.isNotEmpty) {
+      if (blocked is String && blocked.isNotEmpty && blocked != 'mac_reassigned') {
         await SubscriptionState.instance.markBlockedFromSource(blocked);
         return RemoteSyncResult.noSource;
       }
@@ -356,6 +367,12 @@ abstract final class RemoteSourceRepository {
       if (resp.statusCode != 200) return <Map<String, dynamic>>[];
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+      final String? reassigned = DeviceIdentity.newMacFromReassigned(
+        body['mac_reassigned'],
+      );
+      if (reassigned != null && reassigned != mac) {
+        await DeviceIdentity.instance.adopt(reassigned);
+      }
       final Object? list = body['sources'];
       if (list is List && list.isNotEmpty) {
         return list.whereType<Map<String, dynamic>>().toList();

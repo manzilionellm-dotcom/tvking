@@ -13,8 +13,10 @@ import { applyNew } from '@/components/NewBadge';
 import { formatDateTime } from '@/lib/utils';
 import {
   DeviceFilterBar, QuickRenewBar, AdminNoteField, CopyWhatsAppButton, AboChip,
+  ProblemsChip, ChangeMacModal, RegenerateMacModal,
   countDeviceFilters, licenseFromActivate, matchesDeviceFilter, isOnlineUnpaid,
 } from '@/components/DeviceOps';
+import type { MacMigrateResult } from '@/lib/api';
 
 /// Scopes de mutation qui concernent cette page (évènement `changed`).
 const CHANGED_SCOPES = ['devices', 'licenses', 'sources', 'audit'];
@@ -28,6 +30,8 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activateFor, setActivateFor] = useState<Device | null>(null);
+  const [changeMacFor, setChangeMacFor] = useState<Device | null>(null);
+  const [regenFor, setRegenFor] = useState<Device | null>(null);
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
   const [detailFor, setDetailFor] = useState<Device | null>(null);
   // ACTIONS EN MASSE (super-pouvoir) : sélection multiple + barre d'actions.
@@ -62,6 +66,20 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     ? items
     : items.filter((d) => matchesDeviceFilter(d, filter));
   const counts = serverCounts ?? countDeviceFilters(items);
+
+  function applyMigratedDevice(r: MacMigrateResult) {
+    setItems((prev) => prev.map((x) => (
+      x.id === r.device_id || x.mac.toUpperCase() === r.old_mac.toUpperCase()
+        ? { ...x, mac: r.new_mac, problems: [] }
+        : x
+    )));
+    setDetailFor((prev) => (
+      prev && (prev.id === r.device_id || prev.mac.toUpperCase() === r.old_mac.toUpperCase())
+        ? { ...prev, mac: r.new_mac, problems: [] }
+        : prev
+    ));
+    load();
+  }
 
   function applyLicenseLocal(mac: string, lic: Device['license']) {
     setItems((prev) => prev.map((x) => (
@@ -356,6 +374,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                         En ligne sans abo
                       </div>
                     )}
+                    <ProblemsChip problems={d.problems} />
                   </td>
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
                   <td className="px-4 py-3">
@@ -363,6 +382,14 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                       <ActionBtn busy={busy} onClick={() => setDetailFor(d)} title="Fiche complète : M-Trio + infos appareil">Détails</ActionBtn>
                       <CopyWhatsAppButton mac={d.mac} license={d.license} note={d.admin_note} />
                       <ActionBtn busy={busy} primary onClick={() => setActivateFor(d)} title="Activer / prolonger (le client a payé)">Activer</ActionBtn>
+                      <ActionBtn
+                        busy={busy}
+                        newId="regenerate-mac"
+                        onClick={() => setRegenFor(d)}
+                        title="Nouveau MAC propre + l’app mobile l’adopte"
+                      >
+                        Régénérer MAC
+                      </ActionBtn>
                       {st !== 'frozen' && (
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
                       )}
@@ -421,6 +448,29 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
             setItems((prev) => prev.map((x) => (
               x.id === detailFor.id ? { ...x, admin_note: note } : x
             )));
+          }}
+          onChangeMac={() => { setChangeMacFor(detailFor); }}
+          onRegenerateMac={() => { setRegenFor(detailFor); }}
+        />
+      )}
+
+      {changeMacFor && (
+        <ChangeMacModal
+          device={changeMacFor}
+          onClose={() => setChangeMacFor(null)}
+          onDone={(r: MacMigrateResult) => {
+            setChangeMacFor(null);
+            applyMigratedDevice(r);
+          }}
+        />
+      )}
+      {regenFor && (
+        <RegenerateMacModal
+          device={regenFor}
+          onClose={() => setRegenFor(null)}
+          onDone={(r: MacMigrateResult) => {
+            setRegenFor(null);
+            applyMigratedDevice(r);
           }}
         />
       )}
@@ -526,6 +576,7 @@ function BulkActivateModal({
 //  celle-ci reste stockée localement sur sa TV et n'est pas remontée au serveur.
 function DeviceDetailModal({
   device, liveOnline, busy, onClose, onActivate, onBlock, onRemove, onLicense, onNote,
+  onChangeMac, onRegenerateMac,
 }: {
   device: Device;
   liveOnline: boolean;   // connecté au hub temps réel EN CE MOMENT
@@ -536,6 +587,8 @@ function DeviceDetailModal({
   onRemove: () => void;
   onLicense?: (mac: string, lic: DeviceLicense | null) => void;
   onNote?: (note: string) => void;
+  onChangeMac?: () => void;
+  onRegenerateMac?: () => void;
 }) {
   const navigate = useNavigate();
   const [ov, setOv] = useState<DeviceOverview | null>(null);
@@ -826,7 +879,23 @@ function DeviceDetailModal({
             {/* Le libellé dit « Changer la MAC » et non « Transférer » (12/09/2026) :
                 le propriétaire cherchait comment changer une MAC qui ne marche pas,
                 et ne l'a pas trouvé — le bouton existait pourtant, sous un autre nom. */}
-            <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Remplacer cette adresse MAC par une autre : l'abonnement, les sources et les réglages suivent">Changer la MAC</ActionBtn>
+            <ActionBtn
+              busy={busy}
+              newId="change-mac"
+              onClick={() => onChangeMac?.()}
+              title="Éditer l’identité MAC (l’ancienne est invalidée, l’app adopte le nouveau)"
+            >
+              Changer la MAC
+            </ActionBtn>
+            <ActionBtn
+              busy={busy}
+              newId="regenerate-mac"
+              onClick={() => onRegenerateMac?.()}
+              title="Génère un MAC propre, migre tout, pousse l’app mobile"
+            >
+              Régénérer MAC
+            </ActionBtn>
+            <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer vers une MAC déjà affichée dans une autre app (changement d’appareil)">Transférer vers une autre box</ActionBtn>
             {st !== 'frozen' && (
               <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
             )}

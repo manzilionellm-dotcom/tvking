@@ -457,6 +457,7 @@ function isPlayableStatus(st) {
 /// ancien traiterait ça comme une panne réseau, pas un paywall).
 function denyUsefulContent(mac, st) {
   const blocked = !st ? 'no_license'
+    : st.mac_reassigned ? 'mac_reassigned'
     : st.banned ? 'banned'
     : st.frozen ? 'frozen'
     : st.loaned ? 'loaned'
@@ -472,6 +473,9 @@ function denyUsefulContent(mac, st) {
     sources: [],
     playlists: [],
     data: null,
+    // Filet hors-ligne : le sondage sources (60 s) voit aussi le nouveau
+    // numéro, pas seulement le heartbeat / le WebSocket.
+    ...(st && st.mac_reassigned ? { mac_reassigned: st.mac_reassigned } : {}),
   });
 }
 
@@ -484,7 +488,8 @@ async function trialAlreadyConsumed(env, dev) {
     const row = await env.DB
       .prepare(
         'SELECT id FROM devices WHERE android_id = ? AND id != ? ' +
-        'AND first_seen_at IS NOT NULL AND first_seen_at < ? LIMIT 1',
+        'AND first_seen_at IS NOT NULL AND first_seen_at < ? ' +
+        "AND IFNULL(superseded_by,'') = '' LIMIT 1",
       )
       .bind(aid, dev.id, dev.first_seen_at || 0)
       .first();
@@ -499,20 +504,48 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
   let dev;
   try {
     dev = await env.DB
-      .prepare('SELECT id, first_seen_at, block_status, android_id FROM devices WHERE mac = ?')
+      .prepare('SELECT id, first_seen_at, block_status, android_id, superseded_by FROM devices WHERE mac = ?')
       .bind(mac).first();
   } catch (_) {
-    // Colonne android_id absente (base pas encore migrée) → sans elle.
+    // Colonne android_id / superseded_by absente → sans elle.
     try {
       dev = await env.DB
-        .prepare('SELECT id, first_seen_at, block_status FROM devices WHERE mac = ?')
+        .prepare('SELECT id, first_seen_at, block_status, android_id FROM devices WHERE mac = ?')
         .bind(mac).first();
     } catch (__) {
-      // Table/binding absents (D1 pas encore deploye) → fallback KV.
-      return null;
+      try {
+        dev = await env.DB
+          .prepare('SELECT id, first_seen_at, block_status FROM devices WHERE mac = ?')
+          .bind(mac).first();
+      } catch (___) {
+        // Table/binding absents (D1 pas encore deploye) → fallback KV.
+        return null;
+      }
     }
   }
   if (!dev) return null; // pas connu en D1 → le caller (heartbeat) le creera
+
+  // MAC régénérée : CE n'est PAS un ban. L'app doit ADOPTER le nouveau
+  // numéro (écran « YOUR REFERENCE NUMBER ») puis re-heartbeater.
+  if (dev.superseded_by) {
+    const next = String(dev.superseded_by).trim().toUpperCase();
+    if (next) {
+      return {
+        exists: true,
+        status: 'active',
+        paid: false,
+        plan: 'reassigned',
+        paid_until: null,
+        trial_until: now,
+        days_left: 0,
+        expired: true,
+        frozen: false,
+        banned: false,
+        mac_reassigned: { old_mac: String(mac).toUpperCase(), new_mac: next },
+        source: 'd1-mac-reassigned',
+      };
+    }
+  }
 
   // --- Blocage manuel par l'admin/revendeur (prime sur tout) ---
   // 'banned' = abus (app affiche "banni") ; 'frozen' = rappel de paiement
@@ -715,7 +748,10 @@ async function ensureScaleSchema(env) {
       'recent_json TEXT', 'build_label TEXT',
       // Note client du panel (WhatsApp / tél) — créée aussi ici pour que
       // le heartbeat ne tourne pas sur une base sans la colonne.
-      'admin_note TEXT']) {
+      'admin_note TEXT',
+      // MAC remplacée : l'ancienne fiche pointe vers le nouveau numéro
+      // (heartbeat / status renvoient mac_reassigned → l'app ADOPTE).
+      'superseded_by TEXT']) {
     try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run(); } catch (_) {}
   }
   for (const idx of [
@@ -725,6 +761,7 @@ async function ensureScaleSchema(env) {
     'CREATE INDEX IF NOT EXISTS idx_devices_androidid ON devices(android_id)',
     'CREATE INDEX IF NOT EXISTS idx_devices_reseller ON devices(reseller_id)',
     'CREATE INDEX IF NOT EXISTS idx_licenses_device ON licenses(device_id)',
+    'CREATE INDEX IF NOT EXISTS idx_devices_superseded ON devices(superseded_by)',
   ]) {
     try { await env.DB.prepare(idx).run(); } catch (_) {}
   }
@@ -2016,6 +2053,7 @@ async function ensureD1Device(env, mac, now = Date.now(), androidId = '') {
         const sib = await env.DB
           .prepare(
             'SELECT first_seen_at, block_status FROM devices WHERE android_id = ? ' +
+            "AND IFNULL(superseded_by,'') = '' " +
             'ORDER BY first_seen_at ASC LIMIT 1',
           )
           .bind(aid).first();
@@ -2121,7 +2159,7 @@ async function updateDeviceInfo(env, mac, body) {
           "platform = CASE WHEN ? != '' THEN ? ELSE platform END, " +
           "local_sources_json = CASE WHEN ? != '' THEN ? ELSE local_sources_json END, " +
           "recent_json = CASE WHEN ? != '' THEN ? ELSE recent_json END " +
-          "WHERE mac = ?"
+          "WHERE mac = ? AND IFNULL(superseded_by,'') = ''"
       )
       .bind(
         model, model, build, build, release, release, appBuild, appBuild,

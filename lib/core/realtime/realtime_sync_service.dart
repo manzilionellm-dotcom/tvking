@@ -106,9 +106,11 @@ class RtEvent {
     this.what,
     this.reason,
     this.message,
+    this.newMac,
+    this.oldMac,
   });
 
-  /// `'sync'` | `'message'` | `'bye'` (seuls types connus côté appareil).
+  /// `'sync'` | `'message'` | `'bye'` | `'mac_reassigned'`.
   final String type;
 
   /// Identifiant d'événement (à renvoyer dans l'`ack`). `null` = pas d'ack.
@@ -123,6 +125,12 @@ class RtEvent {
 
   /// Pour `message` : le message admin prêt à afficher.
   final AdminMessage? message;
+
+  /// Pour `mac_reassigned` : le numéro que l'app doit ADOPTER.
+  final String? newMac;
+
+  /// Pour `mac_reassigned` : l'ancien (tombstone), informatif.
+  final String? oldMac;
 
   /// Valeurs acceptées pour `sync.what` (contrat §3).
   static const List<String> kSyncWhats = <String>[
@@ -182,6 +190,17 @@ class RtEvent {
           );
         case 'bye':
           return RtEvent._(type: 'bye', reason: str('reason'));
+        case 'mac_reassigned':
+          // Canal phone/tablette autant que TV : sans ça, « Régénérer »
+          // ne met jamais à jour YOUR REFERENCE NUMBER.
+          final String next = DeviceIdentity.newMacFromReassigned(decoded) ?? '';
+          if (next.isEmpty) return null;
+          return RtEvent._(
+            type: 'mac_reassigned',
+            id: str('id').isEmpty ? null : str('id'),
+            newMac: next,
+            oldMac: str('old_mac').isEmpty ? str('oldMac') : str('old_mac'),
+          );
         default:
           return null; // type inconnu → ignoré (compat ascendante)
       }
@@ -635,10 +654,42 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
           // Le serveur ferme juste après → _onClosed programmera la
           // reconnexion avec ce backoff.
           break;
+        case 'mac_reassigned':
+          unawaited(_handleMacReassigned(event));
+          break;
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Realtime] onFrame: $e');
     }
+  }
+
+  /// Adopte le nouveau MAC, reconnecte le socket (hello avec le
+  /// nouveau numéro), puis re-fetch licence + sources. Phone ET TV.
+  Future<void> _handleMacReassigned(RtEvent event) async {
+    bool ok = true;
+    String? error;
+    try {
+      final String? next = event.newMac;
+      if (next == null || next.isEmpty) {
+        ok = false;
+        error = 'new_mac manquant';
+      } else {
+        final bool changed = await DeviceIdentity.instance.adopt(next);
+        if (kDebugMode) {
+          debugPrint('[Realtime] mac_reassigned → $next (changed=$changed)');
+        }
+        // Reconnecte sous la nouvelle identité (le hub tague par MAC).
+        await forceReconnect();
+        await _runSyncActions('all');
+        _armActivationFastSync();
+      }
+    } catch (e) {
+      ok = false;
+      error = '$e';
+      if (kDebugMode) debugPrint('[Realtime] mac_reassigned: $e');
+    }
+    final String? id = event.id;
+    if (id != null) _sendAck(id, ok: ok, error: error);
   }
 
   /// Applique un ordre `sync` puis ack. Ne throw jamais.
