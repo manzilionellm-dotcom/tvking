@@ -42,5 +42,15 @@ void main() {
       expect(DeviceIdentity.stripPrefix('MK'), 'MK');
       expect(DeviceIdentity.stripPrefix(''), '');
     });
+
+    // Photo Lionel (13/09/2026) : tablette verrouillée, écran « Nos offres ».
+    // L'app MOBILE affiche le code NU ; le Worker / RT parlent en MK:…
+    test('tablette Lionel CD:18:EF:A1:A0 ↔ MAC interne MK:…', () {
+      const String shown = 'CD:18:EF:A1:A0';
+      const String internal = 'MK:CD:18:EF:A1:A0';
+      expect(DeviceIdentity.stripPrefix(internal), shown);
+      expect(DeviceIdentity.stripPrefix(shown), shown);
+      expect(RegExp(r'^MK(?::[0-9A-F]{2}){5}$').hasMatch(internal), isTrue);
+    });
   });
 }
