@@ -86,6 +86,15 @@ abstract final class DeviceMemory {
     }
   }
 
+  /// Chiffre MARKETING affiché à l'écran « À propos » (« {n} max »).
+  ///
+  /// Ce n'est PAS une limite technique : [channelCap] reste le plafond
+  /// anti-OOM réel (import / RAM). On n'utilise JAMAIS
+  /// [displayedChannelCap] pour tronquer une playlist ou une liste
+  /// en mémoire — Lionel (13/09/2026) : « 25000 max » était de la
+  /// spéculation capacité, pas un plafond à forcer à l'écran.
+  static const int displayedChannelCap = 1000000;
+
   /// Plafond de chaînes MATÉRIALISÉES EN RAM, par palier de RAM.
   ///
   /// Coût mémoire approximatif d'UN objet `Channel` une fois chargé : l'objet

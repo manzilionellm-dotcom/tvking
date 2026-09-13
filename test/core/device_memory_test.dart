@@ -21,6 +21,13 @@ import 'package:tv_king/core/app/device_memory.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('capacité affichée (marketing) ≠ plafond anti-OOM', () {
+    // L'écran À propos annonce 1 000 000. Le plafond technique, lui,
+    // reste borné par la RAM (8000 tant qu'elle est inconnue).
+    expect(DeviceMemory.displayedChannelCap, 1000000);
+    expect(DeviceMemory.channelCap, isNot(DeviceMemory.displayedChannelCap));
+  });
+
   test('RAM inconnue → plafond prudent (8000)', () {
     // Sans ensureLoaded(), isLoaded vaut false → on protège les petites box.
     expect(DeviceMemory.isLoaded, isFalse);

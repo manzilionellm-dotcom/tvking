@@ -297,10 +297,14 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
                   _InfoRow(
                       label: context.l10n.tvAboutRamLabel,
                       value: _ramLabel(context)),
+                  // Affichage client UNIQUEMENT : on annonce 1 000 000
+                  // (même format que « 25000 max »). Le plafond anti-OOM
+                  // réel reste [DeviceMemory.channelCap] — on ne le
+                  // change pas ici.
                   _InfoRow(
                       label: context.l10n.tvAboutChannelCap,
                       value: context.l10n
-                          .tvAboutChannelCapValue(DeviceMemory.channelCap),
+                          .tvAboutChannelCapValue(DeviceMemory.displayedChannelCap),
                       last: true),
                 ],
               ),
