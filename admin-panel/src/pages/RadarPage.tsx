@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { MacLink } from '@/components/MacLink';
+import { CallTodayQueue } from '@/components/CallTodayQueue';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { licensesApi, devicesApi, type License, ApiError } from '@/lib/api';
 
@@ -220,6 +221,8 @@ export function RadarPage({ onLogout }: { onLogout: () => void }) {
         </div>
       }
     >
+      <CallTodayQueue onLogout={onLogout} />
+
       {/* Bandeau de synthèse */}
       <div className="mb-4 grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-white/5 bg-obsidian-light px-4 py-3">

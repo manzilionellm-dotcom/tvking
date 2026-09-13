@@ -21,7 +21,7 @@ type NavItem = { key: string; to: string; cap?: string };
 // aucune logique d'activation/abonnement n'est touchée ici.
 type NavSection = { titleKey: string; items: NavItem[] };
 
-const OWNER_NAV: NavSection[] = [
+export const OWNER_NAV: NavSection[] = [
   {
     // Vague C22 — le TABLEAU DE BORD (« Ce qui s'est passé ») en PREMIER :
     // c'est la page d'accueil après connexion (demande owner).
@@ -87,7 +87,7 @@ const OWNER_NAV: NavSection[] = [
   },
 ];
 
-const RESELLER_NAV: NavSection[] = [
+export const RESELLER_NAV: NavSection[] = [
   {
     titleKey: 'navsec.activation',
     // Chaque entrée n'apparaît que si l'admin a coché le droit correspondant.
@@ -113,6 +113,16 @@ const RESELLER_NAV: NavSection[] = [
     ],
   },
 ];
+
+/// Pages visibles pour l'utilisateur courant (caps revendeur respectées).
+/// Partagé avec la palette Cmd+K — même vérité que le menu.
+export function getVisibleNavPages(): { key: string; to: string }[] {
+  const user = getCurrentUser();
+  const owner = isOwnerRole(user?.role);
+  return (owner ? OWNER_NAV : RESELLER_NAV)
+    .flatMap((sec) => sec.items.filter((it) => !it.cap || userCan(user, it.cap)))
+    .map((it) => ({ key: it.key, to: it.to }));
+}
 
 export function Sidebar({
   onLogout,

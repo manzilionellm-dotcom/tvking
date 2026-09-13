@@ -467,6 +467,8 @@ export interface Device {
   last_seen_at: number;
   customer_name?: string | null;
   customer_email?: string | null;
+  /// Tél client (JOIN customers) — pour WhatsApp réel si la note n'en a pas.
+  customer_phone?: string | null;
   // Infos appareil remontées par le heartbeat (recensement parc).
   device_model?: string | null;
   android_build?: string | null;
@@ -506,6 +508,7 @@ export interface DeviceMeta {
   label: string | null;
   admin_note?: string | null;
   customer_name: string | null;
+  customer_phone?: string | null;
   reseller_id: string | null;
   block_status: string | null;
   first_seen_at: number;
