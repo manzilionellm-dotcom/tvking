@@ -15,34 +15,36 @@ import {
   type DeviceListCounts, type DeviceListFilter, type DeviceSource,
 } from '@/lib/api';
 import { toast, rtActionFeedback } from '@/components/Toast';
+import { applyNew, NewBadge } from '@/components/NewBadge';
 import { formatDateTime } from '@/lib/utils';
 
 export const DEVICE_FILTERS: {
   id: DeviceListFilter;
   label: string;
   warn?: boolean;
+  newId?: string;
 }[] = [
   { id: 'all', label: 'Tout' },
   { id: 'active', label: 'Actifs' },
-  { id: 'expiring_7d', label: 'Expire ≤7j', warn: true },
-  { id: 'expired', label: 'Expirés', warn: true },
-  { id: 'online_unpaid', label: 'Online sans abo', warn: true },
-  { id: 'no_sub', label: 'Sans abo' },
-  { id: 'frozen', label: 'Gelés' },
-  { id: 'banned', label: 'Bannis' },
+  { id: 'expiring_7d', label: 'Expire ≤7j', warn: true, newId: 'filter-expiring-7d' },
+  { id: 'expired', label: 'Expirés', warn: true, newId: 'filter-expired' },
+  { id: 'online_unpaid', label: 'Online sans abo', warn: true, newId: 'filter-online-unpaid' },
+  { id: 'no_sub', label: 'Sans abo', newId: 'filter-no-sub' },
+  { id: 'frozen', label: 'Gelés', newId: 'filter-frozen' },
+  { id: 'banned', label: 'Bannis', newId: 'filter-banned' },
 ];
 
 export const RENEW_PLANS = [
-  { id: 'monthly', label: '+1 mois' },
-  { id: 'quarterly', label: '+3 mois' },
-  { id: 'biannual', label: '+6 mois' },
-  { id: 'yearly', label: '+1 an' },
+  { id: 'monthly', label: '+1 mois', newId: 'renew-monthly' },
+  { id: 'quarterly', label: '+3 mois', newId: 'renew-quarterly' },
+  { id: 'biannual', label: '+6 mois', newId: 'renew-biannual' },
+  { id: 'yearly', label: '+1 an', newId: 'renew-yearly' },
 ] as const;
 
 export const TRIAL_PLANS = [
-  { id: 'trial_24h', label: '24h' },
-  { id: 'trial_48h', label: '48h' },
-  { id: 'trial_7d', label: '7j' },
+  { id: 'trial_24h', label: '24h', newId: 'trial-24h' },
+  { id: 'trial_48h', label: '48h', newId: 'trial-48h' },
+  { id: 'trial_7d', label: '7j', newId: 'trial-7d' },
 ] as const;
 
 const EMPTY_COUNTS: DeviceListCounts = {
@@ -186,14 +188,15 @@ export function DeviceFilterBar({
             key={f.id}
             type="button"
             onClick={() => onChange(f.id)}
-            className={
+            {...applyNew(
+              f.newId,
               'rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ' +
               (on
                 ? 'border-accent bg-accent/15 text-accent-bright'
                 : f.warn && n > 0
                   ? 'border-warning/30 bg-warning/10 text-warning hover:border-warning/50'
-                  : 'border-white/10 bg-white/5 text-ink-secondary hover:border-white/25')
-            }
+                  : 'border-white/10 bg-white/5 text-ink-secondary hover:border-white/25'),
+            )}
           >
             {f.label}
             <span className={'ml-1 tabular-nums ' + (on ? 'text-accent-bright' : 'text-ink-tertiary')}>
@@ -230,6 +233,7 @@ export function QuickRenewBar({
           ? `Abonnement prolongé (${label}).`
           : `Abonnement activé (${label}).`,
         'success',
+        { isNew: true },
       );
       onDone(res);
     } catch (e) {
@@ -256,7 +260,7 @@ export function QuickRenewBar({
             disabled={!!busy}
             onClick={() => void go(p.id, p.label)}
             title={`Prolonger de ${p.label.replace(/^\+/, '')} (même logique qu'Activer)`}
-            className={btn + 'border-accent/30 bg-accent/10 text-accent-bright hover:bg-accent/20'}
+            {...applyNew(p.newId, btn + 'border-accent/30 bg-accent/10 text-accent-bright hover:bg-accent/20')}
           >
             {busy === p.id ? '…' : p.label}
           </button>
@@ -276,7 +280,7 @@ export function QuickRenewBar({
               disabled={!!busy}
               onClick={() => void go(p.id, PLAN_LABELS[p.id] || p.label)}
               title={`Poser un essai ${p.label} (0 crédit, plans trial_* déjà côté Worker)`}
-              className={btn + 'border-white/10 text-ink-secondary hover:border-white/30'}
+              {...applyNew(p.newId, btn + 'border-white/10 text-ink-secondary hover:border-white/30')}
             >
               {busy === p.id ? '…' : (compact ? p.label : `Essai ${p.label}`)}
             </button>
@@ -312,13 +316,13 @@ export function AdminNoteField({
       // Worker pas encore déployé : le PATCH n'a pas `admin_note` dans
       // la réponse — on ne ment pas avec « enregistrée ».
       if (!('admin_note' in r)) {
-        toast('Note non persistée : déploie le Worker (api_v1) pour activer ce champ.', 'warning');
+        toast('Note non persistée : déploie le Worker (api_v1) pour activer ce champ.', 'warning', { isNew: true });
         return;
       }
       const saved = r.admin_note || '';
       setText(saved);
       onSaved(saved);
-      toast('Note enregistrée.', 'success');
+      toast('Note enregistrée.', 'success', { isNew: true });
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Échec de la note.', 'error');
     } finally {
@@ -327,8 +331,8 @@ export function AdminNoteField({
   }
 
   return (
-    <div>
-      <div className="mb-1 text-[10px] uppercase tracking-widest text-ink-tertiary">
+    <NewBadge id="admin-note">
+      <div className="mb-1 text-[10px] uppercase tracking-widest">
         Note client
       </div>
       <textarea
@@ -341,19 +345,19 @@ export function AdminNoteField({
         className="w-full resize-none rounded-md border border-white/10 bg-obsidian px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
       />
       <div className="mt-1 flex items-center justify-between">
-        <span className="text-[10px] text-ink-tertiary">
+        <span className="text-[10px] opacity-70">
           Enregistré dès que tu quittes le champ
         </span>
         <button
           type="button"
           disabled={busy || text.trim() === (value || '').trim()}
           onClick={() => { void save(); }}
-          className="rounded-md border border-white/10 px-2 py-0.5 text-[11px] font-semibold text-ink-secondary hover:border-white/30 disabled:opacity-40"
+          className="rounded-md border border-white/10 px-2 py-0.5 text-[11px] font-semibold hover:border-white/30 disabled:opacity-40"
         >
           {busy ? '…' : 'Enregistrer'}
         </button>
       </div>
-    </div>
+    </NewBadge>
   );
 }
 
@@ -372,7 +376,7 @@ export function CopyWhatsAppButton({
     const text = buildWhatsAppText({ mac, license, note, sources });
     try {
       await navigator.clipboard.writeText(text);
-      toast('Copié', 'success');
+      toast('Copié', 'success', { isNew: true });
     } catch {
       toast('Impossible de copier.', 'error');
     }
@@ -382,7 +386,10 @@ export function CopyWhatsAppButton({
       type="button"
       onClick={() => { void copy(); }}
       title="Copie un message prêt à coller dans WhatsApp"
-      className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20"
+      {...applyNew(
+        'copy-whatsapp',
+        'rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20',
+      )}
     >
       Copier WhatsApp
     </button>

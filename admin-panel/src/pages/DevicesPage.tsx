@@ -9,6 +9,7 @@ import {
 } from '@/lib/api';
 import { useLiveDevices, useRtEvent, sendCmd, waitForAck, type ChangedEvent } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
+import { applyNew } from '@/components/NewBadge';
 import { formatDateTime } from '@/lib/utils';
 import {
   DeviceFilterBar, QuickRenewBar, AdminNoteField, CopyWhatsAppButton, AboChip,
@@ -351,7 +352,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                   <td className="px-4 py-3">
                     <DeviceStatus status={st} />
                     {isOnlineUnpaid(d) && (
-                      <div className="mt-1 text-[10px] font-semibold text-warning">
+                      <div {...applyNew('badge-online-unpaid', 'mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold')}>
                         En ligne sans abo
                       </div>
                     )}
@@ -369,6 +370,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                         <ActionBtn
                           busy={busy}
                           primary={isOnlineUnpaid(d)}
+                          newId={isOnlineUnpaid(d) ? 'ban-online-unpaid' : undefined}
                           onClick={() => setBlock(d, 'banned')}
                           title="Bannir (freeloader / abus)"
                         >
@@ -608,7 +610,7 @@ function DeviceDetailModal({
       setOv((prev) => (prev ? { ...prev, license: null } : prev));
       onLicense?.(device.mac, null);
       void rtActionFeedback(r.rt);
-      toast('Abonnement effacé.', 'success');
+      toast('Abonnement effacé.', 'success', { isNew: true });
       await refreshOverview();
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Échec de la suppression.', 'error');
@@ -997,7 +999,10 @@ function SubscriptionBox({
           disabled={clearing}
           onClick={onClear}
           title="Retire la licence en base : tu peux en activer une autre tout de suite"
-          className="mt-1.5 text-[10px] font-semibold text-red-300 hover:underline disabled:opacity-40"
+          {...applyNew(
+            'clear-license',
+            'mt-1.5 rounded-md border px-2 py-0.5 text-[10px] font-semibold hover:underline disabled:opacity-40',
+          )}
         >
           {clearing ? 'Effacement…' : 'Effacer l’abonnement'}
         </button>
@@ -1566,8 +1571,8 @@ function DeviceStatus({ status }: { status: string }) {
 }
 
 function ActionBtn({
-  children, onClick, busy, danger, primary, title,
-}: { children: ReactNode; onClick: () => void; busy?: boolean; danger?: boolean; primary?: boolean; title?: string }) {
+  children, onClick, busy, danger, primary, title, newId,
+}: { children: ReactNode; onClick: () => void; busy?: boolean; danger?: boolean; primary?: boolean; title?: string; newId?: string }) {
   const cls = primary
     ? 'bg-accent text-black hover:bg-accent-bright border border-transparent'
     : danger
@@ -1578,7 +1583,7 @@ function ActionBtn({
       onClick={onClick}
       disabled={busy}
       title={title}
-      className={'rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-50 ' + cls}
+      {...applyNew(newId, 'rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-50 ' + cls)}
     >
       {children}
     </button>

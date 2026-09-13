@@ -22,6 +22,7 @@ import type {
 } from '@/lib/api';
 import { sendCmd, waitForAck, useLiveDevices } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
+import { applyNew } from '@/components/NewBadge';
 import { cn, formatDateTime } from '@/lib/utils';
 import {
   QuickRenewBar, AdminNoteField, CopyWhatsAppButton, licenseFromActivate,
@@ -206,7 +207,7 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
       const r = await devicesApi.clearLicense(mac);
       setOv((prev) => (prev ? { ...prev, license: null } : prev));
       void rtActionFeedback(r.rt);
-      toast('Abonnement effacé.', 'success');
+      toast('Abonnement effacé.', 'success', { isNew: true });
       const fresh = await devicesApi.overview(mac);
       setOv(fresh);
     } catch (e) {
@@ -405,7 +406,10 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
                     type="button"
                     disabled={clearingLicense}
                     onClick={handleClearLicense}
-                    className="rounded-md border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                    {...applyNew(
+                      'clear-license',
+                      'rounded-md border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-40',
+                    )}
                     title="Retire la licence en base : tu peux en activer une autre tout de suite"
                   >
                     {clearingLicense ? 'Effacement…' : 'Effacer l’abonnement'}
