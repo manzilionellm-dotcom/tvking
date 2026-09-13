@@ -588,7 +588,8 @@ export interface DeviceListCounts {
   frozen: number;
   banned: number;
   online_unpaid: number;
-  problematic?: number;
+  /// Toujours renvoyé (0 si aucun) — sinon `tsc` casse le chip « problématiques ».
+  problematic: number;
 }
 export type DeviceListFilter =
   | 'all'
