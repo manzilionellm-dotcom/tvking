@@ -99,6 +99,9 @@ async function request<T = unknown>(
     method: opts.method || 'GET',
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    // Mutations puis GET overview : sans ça le navigateur peut
+    // resservir la fiche d'avant le DELETE (stale « abo encore là »).
+    cache: 'no-store',
   });
 
   const text = await resp.text();
@@ -449,6 +452,7 @@ export interface Device {
 }
 // Abonnement (licence) d'un appareil, vue panel.
 export interface DeviceLicense {
+  id?: string | null;      // pour DELETE /licenses/:id
   status: string;          // 'active' | 'expired' | 'frozen' | …
   plan: string | null;
   started_at?: number | null;
@@ -561,11 +565,18 @@ export const devicesApi = {
   // Geler ('frozen'), bannir ('banned') ou reactiver ('active') une MAC.
   setBlock: (id: string, block_status: 'active' | 'frozen' | 'banned') =>
     request<{ updated: number; block_status: string | null; rt?: RtInfo }>(
-      `/api/v1/devices/${id}`,
+      `/api/v1/devices/${encodeURIComponent(id)}`,
       { method: 'PATCH', body: { block_status } },
     ),
   remove: (id: string) =>
-    request<{ deleted: number; rt?: RtInfo }>(`/api/v1/devices/${id}`, { method: 'DELETE' }),
+    request<{ deleted: number; rt?: RtInfo }>(`/api/v1/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // Efface l'abonnement (ligne licenses) : UNIQUE(device, app) libérée
+  // → un activate juste après pose une licence NEUVE, sans cumuler.
+  clearLicense: (id: string) =>
+    request<{ ok: boolean; deleted: number; license: null; mac?: string; rt?: RtInfo }>(
+      `/api/v1/devices/${encodeURIComponent(id)}/license`,
+      { method: 'DELETE' },
+    ),
   // Dépose un message PERSISTANT pour cette MAC (livré même hors ligne, à
   // la prochaine ouverture de l'app). :id accepte l'ID de ligne OU la MAC.
   sendMessage: (
@@ -629,6 +640,11 @@ export const licensesApi = {
     request<{ updated: number; expires_at: number | null; rt?: RtInfo }>(
       `/api/v1/licenses/${id}/renew`,
       { method: 'POST', body: { plan, custom_days: customDays } },
+    ),
+  remove: (id: string) =>
+    request<{ deleted: number; license: null; rt?: RtInfo }>(
+      `/api/v1/licenses/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
     ),
 };
 
@@ -832,19 +848,19 @@ export const sourcesApi = {
       `/api/v1/sources/${encodeURIComponent(mac)}`,
     ),
   set: (mac: string, source: DeviceSourceInput) =>
-    request<{ ok: boolean; mac: string; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { source } },
     ),
   // TRIO : pousse 1 à 3 sources d'un coup sur une même MAC. Le client
   // les charge toutes et bascule entre elles dans l'app.
   setMany: (mac: string, sources: DeviceSourceInput[]) =>
-    request<{ ok: boolean; mac: string; count: number; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; count: number; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { sources } },
     ),
   clear: (mac: string) =>
-    request<{ ok: boolean; mac: string; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'DELETE' },
     ),
@@ -857,7 +873,7 @@ export const sourcesApi = {
   // est hors ligne (à sa prochaine synchro), et même si la liste est déjà
   // importée chez lui.
   setActive: (mac: string, index: number) =>
-    request<{ ok: boolean; mac: string; active: number; count: number; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; active: number; count: number; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}/active`,
       { method: 'POST', body: { index } },
     ),
@@ -879,18 +895,18 @@ export const sourcesApi = {
   // MODIFIER une seule source (mot de passe changé, serveur qui bouge, EPG…)
   // sans re-saisir les autres et sans perdre la source active.
   updateAt: (mac: string, index: number, source: DeviceSourceInput, match?: string) =>
-    request<{ ok: boolean; mac: string; updated: number; count: number; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; updated: number; count: number; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}/update`,
       { method: 'POST', body: { index, source, match } },
     ),
   // AJOUTER un abonnement AUX autres (setMany les remplacerait tous).
   add: (mac: string, source: DeviceSourceInput, active?: boolean) =>
-    request<{ ok: boolean; mac: string; count: number; index: number; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; count: number; index: number; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}/add`,
       { method: 'POST', body: { source, active: active === true } },
     ),
   removeAt: (mac: string, index: number, match?: string) =>
-    request<{ ok: boolean; mac: string; removed: number; remaining: number; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; removed: number; remaining: number; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}?index=${index}` +
         (match ? `&match=${encodeURIComponent(match)}` : ''),
       { method: 'DELETE' },

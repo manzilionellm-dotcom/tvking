@@ -69,11 +69,18 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     setBusyId(d.id); setErr(null);
     try {
       const res = await devicesApi.setBlock(d.id, status);
+      // UI immédiate : la fiche ouverte gardait l'ancien block_status
+      // jusqu'au reload (action « OK » mais écran stale).
+      setItems((prev) => prev.map((x) => (x.id === d.id ? { ...x, block_status: status } : x)));
+      setDetailFor((prev) => (prev && prev.id === d.id ? { ...prev, block_status: status } : prev));
       load();
-      // Feedback instantané : l'appareil a-t-il reçu le push en direct ?
       void rtActionFeedback(res.rt);
     }
-    catch (e: any) { setErr(e instanceof ApiError ? e.message : 'Échec.'); }
+    catch (e: unknown) {
+      const msg = e instanceof ApiError ? e.message : 'Échec.';
+      setErr(msg);
+      toast(msg, 'error');
+    }
     finally { setBusyId(null); }
   }
 
@@ -82,10 +89,16 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     setBusyId(d.id); setErr(null);
     try {
       const res = await devicesApi.remove(d.id);
+      setItems((prev) => prev.filter((x) => x.id !== d.id));
+      setDetailFor((prev) => (prev && prev.id === d.id ? null : prev));
       load();
       void rtActionFeedback(res.rt);
     }
-    catch (e: any) { setErr(e instanceof ApiError ? e.message : 'Échec.'); }
+    catch (e: unknown) {
+      const msg = e instanceof ApiError ? e.message : 'Échec.';
+      setErr(msg);
+      toast(msg, 'error');
+    }
     finally { setBusyId(null); }
   }
 
@@ -119,16 +132,22 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     }
     setBulkBusy(true); setErr(null);
     let ok = 0, fail = 0;
+    let lastErr = '';
     for (const d of targets) {
-      try { await run(d); ok++; } catch { fail++; }
+      try { await run(d); ok++; }
+      catch (e: unknown) {
+        fail++;
+        lastErr = e instanceof ApiError ? e.message : (e instanceof Error ? e.message : 'Échec.');
+      }
     }
     setBulkBusy(false);
     setSelected(new Set());
     load();
     toast(
-      `${verb} : ${ok} appliqué(s)${fail ? ` · ${fail} échec(s)` : ''}.`,
+      `${verb} : ${ok} appliqué(s)${fail ? ` · ${fail} échec(s)${lastErr ? ` — ${lastErr}` : ''}` : ''}.`,
       fail ? 'warning' : 'success',
     );
+    if (fail && lastErr) setErr(lastErr);
   }
 
   function bulkBlock(status: 'active' | 'frozen' | 'banned', verb: string, confirm?: string) {
@@ -305,7 +324,14 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         <ActivatePlanModal
           device={activateFor}
           onClose={() => setActivateFor(null)}
-          onDone={() => { setActivateFor(null); load(); }}
+          onDone={() => {
+            const d = activateFor;
+            setActivateFor(null);
+            // Rouvrir la fiche : sinon l'abo tout juste posé n'est
+            // visible qu'après un nouvel ouverture manuelle.
+            setDetailFor(d);
+            load();
+          }}
         />
       )}
 
@@ -441,10 +467,23 @@ function DeviceDetailModal({
     setLoading(true);
     devicesApi.overview(device.id)
       .then((r) => { if (alive) { setOv(r); setErr(null); } })
-      .catch((e) => { if (alive) setErr(e instanceof ApiError ? e.message : 'Échec.'); })
+      .catch((e) => {
+        if (!alive) return;
+        const msg = e instanceof ApiError ? e.message : 'Échec.';
+        setErr(msg);
+        toast(msg, 'error');
+      })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [device.id]);
+
+  // Mutation ailleurs (autre onglet) OU notre propre push `changed` :
+  // on refetch TOUT DE SUITE (pas le debounce 2 s de la liste).
+  useRtEvent('changed', (e: ChangedEvent) => {
+    if (e.mac && e.mac.toUpperCase() !== device.mac.toUpperCase()) return;
+    if (e.scope && !['devices', 'licenses', 'sources', 'audit'].includes(e.scope)) return;
+    void refreshOverview();
+  });
 
   const st = device.block_status || 'active';
   const sources = ov?.sources ?? [];
@@ -456,8 +495,44 @@ function DeviceDetailModal({
       const r = await devicesApi.overview(device.id);
       setOv(r);
       setErr(null);
+      return r;
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Échec.');
+      const msg = e instanceof ApiError ? e.message : 'Échec.';
+      setErr(msg);
+      toast(msg, 'error');
+      return null;
+    }
+  }
+
+  // Applique le tableau renvoyé par la mutation AVANT le GET — la fiche
+  // ne doit jamais rester sur l'ancien abo le temps du round-trip.
+  function applySources(next?: DeviceSource[]) {
+    if (!next) return;
+    setOv((prev) => (prev ? { ...prev, sources: next } : prev));
+  }
+
+  const [clearingLicense, setClearingLicense] = useState(false);
+  async function handleClearLicense() {
+    if (
+      !window.confirm(
+        'Effacer l’abonnement (licence) de ce client ?\n\n' +
+          'L’app rebascule en essai / paywall tout de suite s’il est en ligne.\n' +
+          'Tu pourras en activer un nouveau juste après, sans cumuler les jours.',
+      )
+    ) {
+      return;
+    }
+    setClearingLicense(true);
+    try {
+      const r = await devicesApi.clearLicense(device.id);
+      setOv((prev) => (prev ? { ...prev, license: null } : prev));
+      void rtActionFeedback(r.rt);
+      toast('Abonnement effacé.', 'success');
+      await refreshOverview();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec de la suppression.', 'error');
+    } finally {
+      setClearingLicense(false);
     }
   }
 
@@ -483,6 +558,7 @@ function DeviceDetailModal({
     setClearing(true);
     try {
       const r = await sourcesApi.clear(device.mac);
+      applySources(r.sources ?? []);
       void rtActionFeedback(r.rt);
       toast('Source retirée. Repousse-en une propre si besoin.', 'success');
       await refreshOverview();
@@ -509,7 +585,12 @@ function DeviceDetailModal({
 
         {/* ----- Abonnement + Présence live (résumé d'un coup d'œil) ----- */}
         <div className="mb-4 grid grid-cols-2 gap-3">
-          <SubscriptionBox loading={loading} license={ov?.license ?? null} />
+          <SubscriptionBox
+            loading={loading}
+            license={ov?.license ?? null}
+            clearing={clearingLicense}
+            onClear={handleClearLicense}
+          />
           <PresenceBox loading={loading} presence={ov?.presence ?? null} />
         </div>
 
@@ -556,7 +637,7 @@ function DeviceDetailModal({
             index={i}
             source={s}
             mac={device.mac}
-            onDone={() => { void refreshOverview(); }}
+            onDone={(srcs) => { applySources(srcs); void refreshOverview(); }}
           />
         ))}
 
@@ -570,6 +651,7 @@ function DeviceDetailModal({
               onSubmit={async (s) => {
                 try {
                   const r = await sourcesApi.add(device.mac, s);
+                  applySources(r.sources);
                   void rtActionFeedback(r.rt);
                   toast('Abonnement ajouté.', 'success');
                   setAdding(false);
@@ -766,7 +848,14 @@ function LiveActions({ mac, liveOnline }: { mac: string; liveOnline: boolean }) 
 }
 
 /// Encart « Abonnement » : statut + plan + expiration (jours restants).
-function SubscriptionBox({ loading, license }: { loading: boolean; license: DeviceLicense | null }) {
+function SubscriptionBox({
+  loading, license, clearing, onClear,
+}: {
+  loading: boolean;
+  license: DeviceLicense | null;
+  clearing?: boolean;
+  onClear?: () => void;
+}) {
   if (loading) return <div className="h-16 animate-pulse rounded-lg bg-white/5" />;
   const ok = license && license.status === 'active';
   const lifetime = license && license.expires_at == null && ok;
@@ -791,6 +880,17 @@ function SubscriptionBox({ loading, license }: { loading: boolean; license: Devi
         {ok ? (lifetime ? 'À vie' : 'Actif') : (license ? 'Expiré' : '—')}
       </div>
       <div className="mt-0.5 truncate text-[11px] text-ink-tertiary" title={detail}>{detail}</div>
+      {license && onClear && (
+        <button
+          type="button"
+          disabled={clearing}
+          onClick={onClear}
+          title="Retire la licence en base : tu peux en activer une autre tout de suite"
+          className="mt-1.5 text-[10px] font-semibold text-red-300 hover:underline disabled:opacity-40"
+        >
+          {clearing ? 'Effacement…' : 'Effacer l’abonnement'}
+        </button>
+      )}
     </div>
   );
 }
@@ -833,7 +933,7 @@ function SourceCard({
   index: number;
   source: DeviceSource;
   mac: string;
-  onDone: () => void;
+  onDone: (sources?: DeviceSource[]) => void;
 }) {
   const isXtream = source.type === 'xtream';
   // Ces sources-ci sont EN BASE (poussées par le panel) : on agit
@@ -849,7 +949,7 @@ function SourceCard({
       void rtActionFeedback(r.rt);
       toast('Source modifiée. Le client la recharge tout de suite.', 'success');
       setEditing(false);
-      onDone();
+      onDone(r.sources);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Échec de la modification.', 'error');
     }
@@ -865,7 +965,7 @@ function SourceCard({
       const r = await sourcesApi.setActive(mac, index);
       void rtActionFeedback(r.rt);
       toast('Source active mise à jour.', 'success');
-      onDone();
+      onDone(r.sources);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Échec.', 'error');
     } finally { setBusy(''); }
@@ -881,7 +981,7 @@ function SourceCard({
       const r = await sourcesApi.removeAt(mac, index, ident);
       void rtActionFeedback(r.rt);
       toast(`Source retirée (${r.remaining} restante(s)).`, 'success');
-      onDone();
+      onDone(r.sources);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Échec du retrait.', 'error');
     } finally { setBusy(''); }
@@ -1274,11 +1374,13 @@ function ActivatePlanModal({
     try {
       const res = await activateApi.activate({ mac: device.mac, plan });
       setDone(true);
-      // L'appareil est-il en ligne ? → toast « appliqué en X ms ».
       void rtActionFeedback(res.rt);
-      setTimeout(onDone, 900);
-    } catch (e: any) {
-      setErr(e instanceof ApiError ? e.message : 'Échec.');
+      toast(res.renewed ? 'Abonnement prolongé.' : 'Abonnement activé.', 'success');
+      setTimeout(onDone, 400);
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? e.message : 'Échec.';
+      setErr(msg);
+      toast(msg, 'error');
     } finally { setBusy(false); }
   }
 

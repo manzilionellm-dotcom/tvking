@@ -704,8 +704,9 @@ function withRtConfigBroadcast(env, res) {
 /// id, pas par MAC). Fail-open : null si introuvable/erreur → pas de publish.
 async function macForDeviceId(env, id) {
   try {
-    const r = await env.DB.prepare('SELECT mac FROM devices WHERE id = ?')
-      .bind(id).first();
+    const key = cleDeviceUrl(id);
+    const r = await env.DB.prepare('SELECT mac FROM devices WHERE id = ? OR mac = ?')
+      .bind(key, key.toUpperCase()).first();
     return r && r.mac ? String(r.mac).toUpperCase() : null;
   } catch (_) { return null; }
 }
@@ -1491,6 +1492,22 @@ async function apiV1Inner(request, env) {
         }));
       }
     }
+    // /devices/:id/license — EFFACER l'abonnement (ligne licenses).
+    // DELETE dur : UNIQUE(device_id, app_id) libérée → un POST /activate
+    // juste après INSERTE une licence neuve, sans cumuler les jours.
+    if (parts.length === 3 && parts[2] === 'license') {
+      if (request.method === 'DELETE') {
+        const rtMac = await macForDeviceId(env, parts[1]);
+        return withRt(env, await handleDeviceLicenseClear(env, parts[1], actor, a.user),
+          () => ({
+            macs: rtMac ? [rtMac] : [],
+            what: 'status',
+            scope: 'licenses',
+            changedMac: rtMac || undefined,
+          }));
+      }
+      return errResp('method_not_allowed', 'DELETE attendu.', 405);
+    }
     // /devices/:id/overview — fiche 360° (abonnement + présence + M-Trio).
     if (parts.length === 3 && parts[2] === 'overview') {
       if (request.method === 'GET') return handleDeviceOverview(env, parts[1], a.user);
@@ -1553,6 +1570,17 @@ async function apiV1Inner(request, env) {
       if (request.method === 'PATCH') {
         return withRt(env, await handleLicensesUpdate(request, env, id, actor, a.user),
           () => rtLicense(id));
+      }
+      if (request.method === 'DELETE') {
+        // MAC AVANT le DELETE : après, plus de jointure device.
+        const m = await macForLicenseId(env, id);
+        return withRt(env, await handleLicensesDelete(env, id, actor, a.user),
+          () => ({
+            macs: m ? [m] : [],
+            what: 'status',
+            scope: 'licenses',
+            changedMac: m || undefined,
+          }));
       }
     }
     if (parts.length === 3 && parts[2] === 'renew') {
@@ -3782,6 +3810,9 @@ async function upsertDeviceSource(env, mac, sources) {
       const cible = sourceAsOrderTarget(ancienne);
       if (cible) await enqueueDeviceOrder(env, mac, 'source_remove', cible);
     }
+    // Même raison que writeSourcesArray : un PUT qui REPOSE une ligne
+    // qu'on venait d'effacer ne doit pas garder l'ordre remove.
+    await cancelPendingRemovesMatching(env, mac, panelItems);
   } catch (_) { /* voir « best-effort » ci-dessus */ }
 }
 
@@ -3878,16 +3909,7 @@ async function handleSourceGet(env, mac) {
     .prepare('SELECT * FROM device_sources WHERE mac = ?')
     .bind(m)
     .first();
-  // Renvoie le TRIO (sources_json) si présent, sinon la source simple
-  // historique. `source` reste la 1re (compat panel existant).
-  let sources = [];
-  if (row && row.sources_json) {
-    try { sources = JSON.parse(row.sources_json) || []; } catch (_) { sources = []; }
-  }
-  if (!sources.length && row) {
-    const { sources_json, mac: _mac, updated_at, ...single } = row;
-    sources = [single];
-  }
+  const sources = sourcesFromRow(row);
   return jsonResp({ mac: m, source: sources[0] || null, sources });
 }
 
@@ -3971,7 +3993,12 @@ async function enqueueDeviceOrder(env, mac, kind, target) {
 /// un ordre sans cible ne serait jamais applicable.
 export function sourceAsOrderTarget(s) {
   const src = s || {};
-  const server = String(src.server || '').trim();
+  // POURQUOI les deux noms : `normalizeSource` (panel) écrit `server_url` ;
+  // l'inventaire heartbeat et les cibles d'ordre utilisent `server`.
+  // Ne lire que `server` faisait que AUCUN ordre `source_remove` n'était
+  // déposé après un DELETE panel — l'UI disait « retiré », la box gardait
+  // l'ancien abonnement, et le heartbeat le renvoyait (stale).
+  const server = String(src.server || src.server_url || '').trim();
   const m3u = String(src.m3u_url || src.url || '').trim();
   if (!server && !m3u) return null;
   return {
@@ -3981,6 +4008,80 @@ export function sourceAsOrderTarget(s) {
     m3u_url: server ? '' : m3u,
     name: String(src.label || src.name || '').trim(),
   };
+}
+
+/// Relit les sources d'une ligne `device_sources`.
+/// `sources_json = []` = vraiment vide : on NE ressuscite PAS les
+/// colonnes plates (sinon « j'efface puis j'ajoute » revoit l'ancien).
+export function sourcesFromRow(row) {
+  if (!row) return [];
+  if (row.sources_json != null && String(row.sources_json).trim() !== '') {
+    try {
+      const arr = JSON.parse(row.sources_json);
+      if (Array.isArray(arr)) return arr;
+    } catch (_) { /* repli colonnes plates ci-dessous */ }
+  }
+  if (row.type || row.server_url || row.m3u_url || row.server) {
+    const { sources_json: _j, mac: _m, updated_at: _u, ...single } = row;
+    return [single];
+  }
+  return [];
+}
+
+/// Clé stable d'une cible d'ordre (serveur|user|m3u) — même règle que
+/// `upsertDeviceSource` pour comparer « ancienne vs nouvelle ligne ».
+function orderTargetKey(t) {
+  if (!t) return '';
+  return `${t.server || ''}|${t.username || ''}|${t.m3u_url || ''}`;
+}
+
+/// Après un ADD/PUT de la MÊME ligne qu'on vient d'effacer, l'ordre
+/// `source_remove` encore en file tuerait le nouvel abonnement à la
+/// prochaine synchro. On annule ceux qui matchent les sources gardées.
+async function cancelPendingRemovesMatching(env, mac, sources) {
+  const keys = new Set();
+  for (const s of sources || []) {
+    const t = sourceAsOrderTarget(s);
+    if (t) keys.add(orderTargetKey(t));
+  }
+  if (!keys.size) return;
+  let rows = [];
+  try {
+    const rs = await env.DB.prepare(
+      `SELECT id, target_json FROM device_orders
+        WHERE mac = ? AND kind = 'source_remove' AND applied_at IS NULL`,
+    ).bind(mac).all();
+    rows = (rs && rs.results) || [];
+  } catch (_) { return; }
+  for (const row of rows) {
+    let t = null;
+    try { t = JSON.parse(row.target_json); } catch (_) { continue; }
+    if (!keys.has(orderTargetKey(t))) continue;
+    try {
+      await env.DB.prepare('DELETE FROM device_orders WHERE id = ?').bind(row.id).run();
+    } catch (_) { /* best-effort : un ordre en trop vaut mieux qu'un refus */ }
+  }
+}
+
+/// Cibles `source_remove` encore en file — sert à masquer l'inventaire
+/// heartbeat déjà condamné (sinon la fiche reste stale après un retrait).
+async function pendingRemoveTargets(env, mac) {
+  try {
+    const rs = await env.DB.prepare(
+      `SELECT target_json FROM device_orders
+        WHERE mac = ? AND kind = 'source_remove' AND applied_at IS NULL`,
+    ).bind(mac).all();
+    const out = [];
+    for (const row of (rs && rs.results) || []) {
+      try { out.push(JSON.parse(row.target_json)); } catch (_) { /* ignore */ }
+    }
+    return out;
+  } catch (_) { return []; }
+}
+
+function sourceMatchesTarget(src, target) {
+  const c = sourceAsOrderTarget(src);
+  return !!(c && target && orderTargetKey(c) === orderTargetKey(target));
 }
 
 async function handleSourceOrder(request, env, mac, actor) {
@@ -4044,14 +4145,11 @@ async function handleSourceSetActive(request, env, mac, actor) {
   // Une seule active à la fois : on pose le drapeau sur la cible et on le
   // retire partout ailleurs (sinon l'app en choisirait une au hasard).
   const next = arr.map((s, i) => ({ ...(s || {}), active: i === idx }));
-  await env.DB
-    .prepare('UPDATE device_sources SET sources_json = ? WHERE mac = ?')
-    .bind(JSON.stringify(next), m)
-    .run();
+  await writeSourcesArray(env, m, next);
   await logAudit(env, request, actor, 'source.set_active',
     { type: 'device_source', id: m },
-    { index: idx, server: (arr[idx] || {}).server || '' }, null);
-  return jsonResp({ ok: true, mac: m, active: idx, count: next.length });
+    { index: idx, server: (arr[idx] || {}).server_url || (arr[idx] || {}).server || '' }, null);
+  return jsonResp({ ok: true, mac: m, active: idx, count: next.length, sources: next });
 }
 
 /// Réécrit le tableau complet des sources d'une MAC, en gardant les colonnes
@@ -4075,6 +4173,9 @@ async function writeSourcesArray(env, mac, arr) {
           first.username || null, first.password || null, first.m3u_url || null,
           first.epg_url || null, JSON.stringify(arr), Date.now())
     .run();
+  // Effacer PUIS ré-ajouter la même ligne : sans ça, l'ordre remove
+  // encore en file détruirait le nouvel abonnement à la synchro.
+  await cancelPendingRemovesMatching(env, mac, arr);
 }
 
 /// Relit le tableau des sources d'une MAC (jamais null, jamais throw).
@@ -4126,7 +4227,7 @@ async function handleSourceUpdate(request, env, mac, actor) {
     { type: 'device_source', id: m },
     { index: idx, server: norm.source.server_url || norm.source.m3u_url || '' },
     { server: victim.server_url || victim.m3u_url || '' });
-  return jsonResp({ ok: true, mac: m, updated: idx, count: next.length });
+  return jsonResp({ ok: true, mac: m, updated: idx, count: next.length, sources: next });
 }
 
 // POST /api/v1/sources/:mac/add  { source, active? }
@@ -4157,7 +4258,7 @@ async function handleSourceAdd(request, env, mac, actor) {
   await logAudit(env, request, actor, 'source.add_one',
     { type: 'device_source', id: m },
     { server: norm.source.server_url || norm.source.m3u_url || '', active: wantActive }, null);
-  return jsonResp({ ok: true, mac: m, count: next.length, index: next.length - 1 });
+  return jsonResp({ ok: true, mac: m, count: next.length, index: next.length - 1, sources: next });
 }
 
 // DELETE /api/v1/sources/:mac            → retire TOUT (comportement d'origine)
@@ -4207,10 +4308,9 @@ async function handleSourceDelete(request, env, mac, actor) {
     // On LIT avant d'effacer : après le DELETE, on ne saurait plus quelles
     // listes retirer sur l'appareil.
     const avant = await env.DB
-      .prepare('SELECT sources_json FROM device_sources WHERE mac = ?')
+      .prepare('SELECT * FROM device_sources WHERE mac = ?')
       .bind(m).first();
-    let toutes = [];
-    try { toutes = JSON.parse((avant && avant.sources_json) || '[]') || []; } catch (_) { toutes = []; }
+    const toutes = sourcesFromRow(avant);
     await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
     let ordres = 0;
     if (Array.isArray(toutes)) {
@@ -4223,7 +4323,7 @@ async function handleSourceDelete(request, env, mac, actor) {
     }
     await logAudit(env, request, actor, 'source.clear',
       { type: 'device_source', id: m }, { orders: ordres }, null);
-    return jsonResp({ ok: true, mac: m, orders: ordres });
+    return jsonResp({ ok: true, mac: m, orders: ordres, sources: [] });
   }
 
   const idx = Number.parseInt(rawIndex, 10);
@@ -4241,7 +4341,8 @@ async function handleSourceDelete(request, env, mac, actor) {
   const victim = arr[idx] || {};
   const match = (url.searchParams.get('match') || '').trim();
   if (match) {
-    const ident = String(victim.server || victim.url || victim.m3u_url || '');
+    // panel envoie `server_url` (Xtream) ; anciennes lignes : `server` / `url`.
+    const ident = String(victim.server_url || victim.server || victim.url || victim.m3u_url || '');
     if (!ident.includes(match) && !match.includes(ident)) {
       return jsonResp(
         { error: 'stale index — la liste a changé, recharge la fiche' },
@@ -4253,10 +4354,9 @@ async function handleSourceDelete(request, env, mac, actor) {
   if (next.length === 0) {
     await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
   } else {
-    await env.DB
-      .prepare('UPDATE device_sources SET sources_json = ? WHERE mac = ?')
-      .bind(JSON.stringify(next), m)
-      .run();
+    // writeSourcesArray aligne aussi les colonnes plates — un UPDATE
+    // de sources_json seul laissait l'ancienne 1re source visible.
+    await writeSourcesArray(env, m, next);
   }
   // Même raison qu'au retrait total ci-dessus : sans cet ordre, la liste
   // disparaît du panel mais reste sur la box du client, indéfiniment.
@@ -4268,11 +4368,13 @@ async function handleSourceDelete(request, env, mac, actor) {
   }
   await logAudit(env, request, actor, 'source.remove_one',
     { type: 'device_source', id: m },
-    { index: idx, origin: victim.origin || '', server: victim.server || '',
+    { index: idx, origin: victim.origin || '',
+      server: victim.server_url || victim.server || '',
       order: ordre },
     null);
   return jsonResp(
-    { ok: true, mac: m, removed: idx, remaining: next.length, order: ordre });
+    { ok: true, mac: m, removed: idx, remaining: next.length, order: ordre,
+      sources: next });
 }
 
 // =========================================================
@@ -5375,7 +5477,7 @@ async function handleDeviceOverview(env, id, user) {
   try {
     const lic = await env.DB
       .prepare(
-        `SELECT status, plan, started_at, expires_at, auto_renew
+        `SELECT id, status, plan, started_at, expires_at, auto_renew
            FROM licenses WHERE device_id = ?
           ORDER BY (expires_at IS NULL) DESC, expires_at DESC LIMIT 1`,
       )
@@ -5386,6 +5488,7 @@ async function handleDeviceOverview(env, id, user) {
         && (lic.expires_at == null || lic.expires_at > now);
       const expired = lic.expires_at != null && lic.expires_at <= now;
       license = {
+        id: lic.id || null,
         status: live ? 'active' : (expired ? 'expired' : lic.status),
         plan: lic.plan || null,
         started_at: lic.started_at ?? null,
@@ -5422,13 +5525,7 @@ async function handleDeviceOverview(env, id, user) {
       .prepare('SELECT * FROM device_sources WHERE mac = ?')
       .bind(dev.mac)
       .first();
-    if (row && row.sources_json) {
-      try { sources = JSON.parse(row.sources_json) || []; } catch (_) { sources = []; }
-    }
-    if (!sources.length && row) {
-      const { sources_json, mac: _m, updated_at, ...single } = row;
-      sources = [single];
-    }
+    sources = sourcesFromRow(row);
   } catch (_) { /* table device_sources absente : on ignore */ }
 
   // --- Inventaire RÉEL sur l'appareil (remonté par le heartbeat) : toutes les
@@ -5456,6 +5553,17 @@ async function handleDeviceOverview(env, id, user) {
       if (drow.local_sources_json) {
         try { localSources = JSON.parse(drow.local_sources_json) || []; }
         catch (_) { localSources = []; }
+      }
+      // Inventaire heartbeat encore stale : on masque les listes déjà
+      // condamnées par un source_remove en file (effacer → ajouter
+      // immédiat, sans voir l'ancien abo « sur la TV »).
+      if (Array.isArray(localSources) && localSources.length) {
+        const pending = await pendingRemoveTargets(env, dev.mac);
+        if (pending.length) {
+          localSources = localSources.filter(
+            (s) => !pending.some((t) => sourceMatchesTarget(s, t)),
+          );
+        }
       }
       device = {
         label: drow.label || null,
@@ -5664,7 +5772,7 @@ async function deviceForActor(env, id, user) {
   // Références, Familles…) peuvent ouvrir la fiche 360° en cliquant la MAC,
   // sans devoir résoudre l'ID d'abord. Les ID (uuid préfixé) et les MAC
   // (MK:XX:…) ne se collisionnent pas.
-  const key = String(id || '');
+  const key = cleDeviceUrl(id);
   const dev = await env.DB
     .prepare(
       'SELECT id, mac, reseller_id, block_status FROM devices WHERE id = ? OR mac = ?',
@@ -5696,10 +5804,13 @@ async function handleDeviceUpdate(request, env, id, actor, user) {
   if (body.block_status !== undefined && !allowed.includes(body.block_status)) {
     return errResp('bad_status', "block_status doit etre 'active', 'frozen' ou 'banned'", 400);
   }
+  // TOUJOURS l'id réel de la ligne : `id` d'URL peut être une MAC
+  // (encodée). Un UPDATE WHERE id = MAC réussissait en HTTP (updated:1)
+  // sans rien écrire — gel / ban / réactivation « OK » mais stale.
   await env.DB.prepare('UPDATE devices SET block_status = ? WHERE id = ?')
-    .bind(next ?? null, id).run();
+    .bind(next ?? null, r.dev.id).run();
   await logAudit(env, request, actor, 'device.block',
-    { type: 'device', id }, { block_status: r.dev.block_status }, { block_status: next });
+    { type: 'device', id: r.dev.id }, { block_status: r.dev.block_status }, { block_status: next });
   return jsonResp({ updated: 1, block_status: next });
 }
 
@@ -5709,10 +5820,31 @@ async function handleDeviceUpdate(request, env, id, actor, user) {
 async function handleDeviceDelete(env, id, actor, user) {
   const r = await deviceForActor(env, id, user);
   if (r.error) return r.error;
-  await env.DB.prepare('DELETE FROM devices WHERE id = ?').bind(id).run();
+  await env.DB.prepare('DELETE FROM devices WHERE id = ?').bind(r.dev.id).run();
   await logAudit(env, null, actor, 'device.delete',
-    { type: 'device', id }, { mac: r.dev.mac }, null);
+    { type: 'device', id: r.dev.id }, { mac: r.dev.mac }, null);
   return jsonResp({ deleted: 1 });
+}
+
+// DELETE /devices/:id/license — retire TOUTES les licences de l'appareil.
+// L'app rebascule en essai / paywall à la prochaine synchro (push `status`).
+async function handleDeviceLicenseClear(env, id, actor, user) {
+  if (!resellerCan(user, 'activate')) {
+    return errResp('forbidden',
+      "Ton compte n'a pas le droit d'effacer un abonnement.", 403);
+  }
+  const r = await deviceForActor(env, id, user);
+  if (r.error) return r.error;
+  const res = await env.DB
+    .prepare('DELETE FROM licenses WHERE device_id = ?')
+    .bind(r.dev.id)
+    .run();
+  const n = (res && res.meta && typeof res.meta.changes === 'number')
+    ? res.meta.changes
+    : 0;
+  await logAudit(env, null, actor, 'license.clear',
+    { type: 'device', id: r.dev.id }, { mac: r.dev.mac, deleted: n }, null);
+  return jsonResp({ ok: true, deleted: n, license: null, mac: r.dev.mac });
 }
 
 // =========================================================
@@ -5928,6 +6060,17 @@ async function handleLicensesUpdate(request, env, id, actor, user) {
   await env.DB.prepare(`UPDATE licenses SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
   await logAudit(env, request, actor, 'license.update', { type: 'license', id }, before, body);
   return jsonResp({ updated: 1 });
+}
+
+async function handleLicensesDelete(env, id, actor, user) {
+  const before = await env.DB.prepare('SELECT * FROM licenses WHERE id = ?').bind(id).first();
+  if (!before) return errResp('not_found', 'License not found', 404);
+  const refus = licenseDenied(before, user);
+  if (refus) return refus;
+  await env.DB.prepare('DELETE FROM licenses WHERE id = ?').bind(id).run();
+  await logAudit(env, null, actor, 'license.delete',
+    { type: 'license', id }, before, null);
+  return jsonResp({ deleted: 1, license: null });
 }
 
 async function handleLicensesRenew(request, env, id, actor, user) {
@@ -7079,7 +7222,14 @@ async function handleActivate(request, env, user, actor) {
   if (existing) {
     renewed = true;
     licenseId = existing.id;
-    const base = existing.expires_at && existing.expires_at > now ? existing.expires_at : now;
+    // Licence déjà coupée (inactive/revoked) ou `replace` : on part de
+    // maintenant, on ne cumule PAS les jours de l'abonnement effacé.
+    const reset = body.replace === true
+      || existing.status === 'inactive'
+      || existing.status === 'revoked';
+    const base = !reset && existing.expires_at && existing.expires_at > now
+      ? existing.expires_at
+      : now;
     finalExpiry = days === null ? null : base + days * 24 * 60 * 60 * 1000;
     await env.DB.prepare(
       `UPDATE licenses

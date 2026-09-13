@@ -59,6 +59,7 @@
 import {
   apiV1, verifyJwt, validateFacadeBase,
   publicCampaignsList, trackCampaignEvent, ingestAppReport,
+  sourcesFromRow,
 } from './api_v1.js';
 // Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
 // Durable Object « RealtimeHub » (WebSockets appareils + panel) et helper
@@ -6069,16 +6070,10 @@ async function handlePublicDeviceSource(env, mac) {
         } catch (_) { /* fail-open */ }
       }
       if (row) {
-        // TRIO : si un tableau de sources est stocké, on le renvoie en
-        // entier (l'app charge les 3). Sinon, la source simple historique.
-        let sources = [];
-        if (row.sources_json) {
-          try { sources = JSON.parse(row.sources_json) || []; } catch (_) { sources = []; }
-        }
-        if (!sources.length) {
-          const { sources_json, updated_at, ...single } = row;
-          sources = [single];
-        }
+        // TRIO : `sourcesFromRow` ne ressuscite PAS les colonnes plates
+        // quand sources_json = [] (sinon l'app revoit l'abo qu'on vient
+        // d'effacer). Ligne sans JSON → source simple historique.
+        let sources = sourcesFromRow(row);
         // LABO : les sources de test du maître s'AJOUTENT à la fin (jamais
         // à la place) — pour un non-maître, labSources est toujours [].
         if (labSources.length) sources = sources.concat(labSources);
