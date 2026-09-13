@@ -462,6 +462,8 @@ export interface Device {
   platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
   /// Licence « la plus forte » jointe par GET /devices (Worker récent).
   license?: DeviceLicense | null;
+  /// Dernier heartbeat table `presence` (chasse freeloaders).
+  presence_last_seen?: number | null;
 }
 // Présence live d'un appareil (dernière trace serveur).
 export interface DevicePresence {
@@ -568,6 +570,7 @@ export interface DeviceListCounts {
   no_sub: number;
   frozen: number;
   banned: number;
+  online_unpaid: number;
 }
 export type DeviceListFilter =
   | 'all'
@@ -576,7 +579,8 @@ export type DeviceListFilter =
   | 'expired'
   | 'no_sub'
   | 'frozen'
-  | 'banned';
+  | 'banned'
+  | 'online_unpaid';
 export const devicesApi = {
   list: (q?: string, filter?: DeviceListFilter) => {
     const qs = new URLSearchParams();

@@ -12,7 +12,7 @@ import { toast, rtActionFeedback } from '@/components/Toast';
 import { formatDateTime } from '@/lib/utils';
 import {
   DeviceFilterBar, QuickRenewBar, AdminNoteField, CopyWhatsAppButton, AboChip,
-  countDeviceFilters, licenseFromActivate, matchesDeviceFilter,
+  countDeviceFilters, licenseFromActivate, matchesDeviceFilter, isOnlineUnpaid,
 } from '@/components/DeviceOps';
 
 /// Scopes de mutation qui concernent cette page (évènement `changed`).
@@ -348,7 +348,14 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                       <span className="text-ink-tertiary">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3"><DeviceStatus status={st} /></td>
+                  <td className="px-4 py-3">
+                    <DeviceStatus status={st} />
+                    {isOnlineUnpaid(d) && (
+                      <div className="mt-1 text-[10px] font-semibold text-warning">
+                        En ligne sans abo
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
@@ -359,7 +366,14 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
                       )}
                       {st !== 'banned' && (
-                        <ActionBtn busy={busy} onClick={() => setBlock(d, 'banned')} title="Bannir (abus)">Bannir</ActionBtn>
+                        <ActionBtn
+                          busy={busy}
+                          primary={isOnlineUnpaid(d)}
+                          onClick={() => setBlock(d, 'banned')}
+                          title="Bannir (freeloader / abus)"
+                        >
+                          Bannir
+                        </ActionBtn>
                       )}
                       {st !== 'active' && (
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'active')} title="Réactiver">Réactiver</ActionBtn>

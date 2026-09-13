@@ -26,6 +26,7 @@ export const DEVICE_FILTERS: {
   { id: 'active', label: 'Actifs' },
   { id: 'expiring_7d', label: 'Expire ≤7j', warn: true },
   { id: 'expired', label: 'Expirés', warn: true },
+  { id: 'online_unpaid', label: 'Online sans abo', warn: true },
   { id: 'no_sub', label: 'Sans abo' },
   { id: 'frozen', label: 'Gelés' },
   { id: 'banned', label: 'Bannis' },
@@ -45,8 +46,23 @@ export const TRIAL_PLANS = [
 ] as const;
 
 const EMPTY_COUNTS: DeviceListCounts = {
-  all: 0, active: 0, expiring_7d: 0, expired: 0, no_sub: 0, frozen: 0, banned: 0,
+  all: 0, active: 0, expiring_7d: 0, expired: 0, no_sub: 0,
+  frozen: 0, banned: 0, online_unpaid: 0,
 };
+
+const HUNT_MS = 24 * 60 * 60 * 1000;
+const TRIAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/// Heartbeat récent + pas d'abo live + essai déjà fini (chasse freeloaders).
+export function isOnlineUnpaid(d: Device, now = Date.now()): boolean {
+  const st = d.block_status || 'active';
+  if (st === 'frozen' || st === 'banned') return false;
+  const recent = Math.max(d.presence_last_seen || 0, d.last_seen_at || 0) > now - HUNT_MS;
+  if (!recent) return false;
+  if (isLiveLicense(d.license, now)) return false;
+  const trialOk = !d.license && (d.first_seen_at || 0) > now - TRIAL_WINDOW_MS;
+  return !trialOk;
+}
 
 /// Statut licence « live » (même règle que le Worker overview).
 export function isLiveLicense(lic: DeviceLicense | null | undefined, now = Date.now()): boolean {
@@ -78,6 +94,8 @@ export function matchesDeviceFilter(
       return st === 'frozen';
     case 'banned':
       return st === 'banned';
+    case 'online_unpaid':
+      return isOnlineUnpaid(d, now);
     default:
       return true;
   }
@@ -93,6 +111,7 @@ export function countDeviceFilters(items: Device[], now = Date.now()): DeviceLis
     if (matchesDeviceFilter(d, 'no_sub', now)) c.no_sub++;
     if (matchesDeviceFilter(d, 'frozen', now)) c.frozen++;
     if (matchesDeviceFilter(d, 'banned', now)) c.banned++;
+    if (matchesDeviceFilter(d, 'online_unpaid', now)) c.online_unpaid++;
   }
   return c;
 }

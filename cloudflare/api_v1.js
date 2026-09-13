@@ -4639,19 +4639,32 @@ const DEVICE_LIC_JOIN =
 /// `now` / `week` sont des entiers Date.now() (jamais de saisie user).
 function deviceListPredicates(now) {
   const week = now + 7 * 24 * 60 * 60 * 1000;
+  const hunt = now - 24 * 60 * 60 * 1000;
+  const trialWindow = now - 7 * 24 * 60 * 60 * 1000;
   const live =
     `(l.id IS NOT NULL AND IFNULL(l.status,'active') = 'active'` +
     ` AND (l.expires_at IS NULL OR l.expires_at > ${now}))`;
+  const expired =
+    `(l.id IS NOT NULL AND ((l.expires_at IS NOT NULL AND l.expires_at <= ${now})` +
+    ` OR l.status = 'expired'))`;
+  const recent =
+    `(IFNULL(p.last_seen, 0) > ${hunt} OR d.last_seen_at > ${hunt})`;
+  // Chasse freeloaders : heartbeat récent (24 h) + pas d'abo live +
+  // essai déjà fini (first_seen > 7 j ou licence expirée). Pas les gelés
+  // / bannis (déjà dans leurs pastilles) — ici on veut BANNIR vite.
+  const online_unpaid =
+    `(${recent} AND NOT ${live}` +
+    ` AND (${expired} OR (l.id IS NULL AND IFNULL(d.first_seen_at,0) <= ${trialWindow}))` +
+    ` AND (d.block_status IS NULL OR d.block_status = '' OR d.block_status = 'active'))`;
   return {
     live,
     active: `(${live} AND (d.block_status IS NULL OR d.block_status = '' OR d.block_status = 'active'))`,
     expiring_7d: `(${live} AND l.expires_at IS NOT NULL AND l.expires_at <= ${week})`,
-    expired:
-      `(l.id IS NOT NULL AND ((l.expires_at IS NOT NULL AND l.expires_at <= ${now})` +
-      ` OR l.status = 'expired'))`,
+    expired,
     no_sub: 'l.id IS NULL',
     frozen: `d.block_status = 'frozen'`,
     banned: `d.block_status = 'banned'`,
+    online_unpaid,
   };
 }
 
@@ -4692,9 +4705,11 @@ async function handleDevicesList(request, env, user) {
                     c.name as customer_name, c.email as customer_email,
                     l.id as lic_id, l.status as lic_status, l.plan as lic_plan,
                     l.started_at as lic_started_at, l.expires_at as lic_expires_at,
-                    l.auto_renew as lic_auto_renew
+                    l.auto_renew as lic_auto_renew,
+                    p.last_seen as presence_last_seen
              FROM devices d
              LEFT JOIN customers c ON d.customer_id = c.id
+             LEFT JOIN presence p ON p.mac = d.mac
              ${DEVICE_LIC_JOIN}`;
   const where = []; const binds = [];
   if (q) {
@@ -4709,7 +4724,7 @@ async function handleDevicesList(request, env, user) {
   }
   const baseWhere = where.length ? (' WHERE ' + where.join(' AND ')) : '';
   // Liste fermée : `live` est un prédicat interne, pas un filtre d'URL.
-  const FILTER_KEYS = ['active', 'expiring_7d', 'expired', 'no_sub', 'frozen', 'banned'];
+  const FILTER_KEYS = ['active', 'expiring_7d', 'expired', 'no_sub', 'frozen', 'banned', 'online_unpaid'];
   const filterSql = FILTER_KEYS.includes(filter) ? pred[filter] : null;
   const listWhere = filterSql
     ? (baseWhere ? `${baseWhere} AND ${filterSql}` : ` WHERE ${filterSql}`)
@@ -4724,8 +4739,10 @@ async function handleDevicesList(request, env, user) {
     ` SUM(CASE WHEN ${pred.expired} THEN 1 ELSE 0 END) AS expired_n,` +
     ` SUM(CASE WHEN ${pred.no_sub} THEN 1 ELSE 0 END) AS no_sub_n,` +
     ` SUM(CASE WHEN ${pred.frozen} THEN 1 ELSE 0 END) AS frozen_n,` +
-    ` SUM(CASE WHEN ${pred.banned} THEN 1 ELSE 0 END) AS banned_n` +
-    ` FROM devices d LEFT JOIN customers c ON d.customer_id = c.id ${DEVICE_LIC_JOIN}` +
+    ` SUM(CASE WHEN ${pred.banned} THEN 1 ELSE 0 END) AS banned_n,` +
+    ` SUM(CASE WHEN ${pred.online_unpaid} THEN 1 ELSE 0 END) AS online_unpaid_n` +
+    ` FROM devices d LEFT JOIN customers c ON d.customer_id = c.id` +
+    ` LEFT JOIN presence p ON p.mac = d.mac ${DEVICE_LIC_JOIN}` +
     baseWhere;
 
   try {
@@ -4741,6 +4758,7 @@ async function handleDevicesList(request, env, user) {
       no_sub: cr?.no_sub_n || 0,
       frozen: cr?.frozen_n || 0,
       banned: cr?.banned_n || 0,
+      online_unpaid: cr?.online_unpaid_n || 0,
     };
     const items = (rs.results || []).map((r) => mapDeviceListRow(r, now));
     return jsonResp({ items, counts });
