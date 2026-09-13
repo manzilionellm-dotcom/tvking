@@ -23,6 +23,9 @@ import type {
 import { sendCmd, waitForAck, useLiveDevices } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { cn, formatDateTime } from '@/lib/utils';
+import {
+  QuickRenewBar, AdminNoteField, CopyWhatsAppButton, licenseFromActivate,
+} from '@/components/DeviceOps';
 
 function ago(ts: number | null | undefined): string {
   if (!ts) return '';
@@ -378,6 +381,24 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
                     : 'À vie'
                   : '—'}
               </Row>
+              <div className="pt-2">
+                <QuickRenewBar
+                  mac={mac}
+                  onDone={(res) => {
+                    const next = licenseFromActivate(res);
+                    setOv((prev) => (prev ? { ...prev, license: next } : prev));
+                    void devicesApi.overview(mac).then(setOv).catch(() => {});
+                  }}
+                />
+              </div>
+              <div className="pt-2">
+                <CopyWhatsAppButton
+                  mac={mac}
+                  license={lic}
+                  note={d?.admin_note}
+                  sources={sources}
+                />
+              </div>
               {lic && (
                 <div className="pt-1">
                   <button
@@ -392,6 +413,23 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
                 </div>
               )}
             </Section>
+
+            {d && (
+              <Section title="Note client">
+                <AdminNoteField
+                  deviceId={mac}
+                  value={d.admin_note || ''}
+                  blockStatus={(d.block_status as 'active' | 'frozen' | 'banned' | null) || 'active'}
+                  onSaved={(note) => {
+                    setOv((prev) => (
+                      prev && prev.device
+                        ? { ...prev, device: { ...prev.device, admin_note: note } }
+                        : prev
+                    ));
+                  }}
+                />
+              </Section>
+            )}
 
             {/* Appareil */}
             <Section title="Appareil">

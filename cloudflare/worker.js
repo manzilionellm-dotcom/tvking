@@ -605,7 +605,10 @@ async function ensureScaleSchema(env) {
       // 19882… (cf. AGENTS.md « la règle de la maison »). C'est celui que
       // le panel montre à côté de la MAC et qu'on dicte au téléphone.
       // Distinct de app_build, qui est l'horodatage Android.
-      'recent_json TEXT', 'build_label TEXT']) {
+      'recent_json TEXT', 'build_label TEXT',
+      // Note client du panel (WhatsApp / tél) — créée aussi ici pour que
+      // le heartbeat ne tourne pas sur une base sans la colonne.
+      'admin_note TEXT']) {
     try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run(); } catch (_) {}
   }
   for (const idx of [

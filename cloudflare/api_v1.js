@@ -4615,29 +4615,154 @@ async function handleFamilyRemoveMember(env, familyId, mac, actor) {
 //  DEVICES HANDLERS
 // =========================================================
 
+/// Colonne `admin_note` (carnet WhatsApp / tél). Créée à la volée pour
+/// que le panel puisse l'écrire AVANT que la migration 011 soit passée
+/// à la main sur D1. Duplicate column → ignoré.
+let _adminNoteReady = false;
+async function ensureAdminNoteColumn(env) {
+  if (_adminNoteReady || !env.DB) return;
+  try {
+    await env.DB.prepare('ALTER TABLE devices ADD COLUMN admin_note TEXT').run();
+  } catch (_) { /* déjà présente */ }
+  _adminNoteReady = true;
+}
+
+/// Meilleure licence d'un appareil : à vie d'abord, sinon la plus lointaine.
+/// Corrélée — SQLite tient très bien le parc quotidien (quelques milliers).
+const DEVICE_LIC_JOIN =
+  'LEFT JOIN licenses l ON l.id = (' +
+    'SELECT lx.id FROM licenses lx WHERE lx.device_id = d.id ' +
+    'ORDER BY (lx.expires_at IS NULL) DESC, lx.expires_at DESC LIMIT 1' +
+  ')';
+
+/// Filtres liste /devices — mêmes règles que les pastilles du panel.
+/// `now` / `week` sont des entiers Date.now() (jamais de saisie user).
+function deviceListPredicates(now) {
+  const week = now + 7 * 24 * 60 * 60 * 1000;
+  const live =
+    `(l.id IS NOT NULL AND IFNULL(l.status,'active') = 'active'` +
+    ` AND (l.expires_at IS NULL OR l.expires_at > ${now}))`;
+  return {
+    live,
+    active: `(${live} AND (d.block_status IS NULL OR d.block_status = '' OR d.block_status = 'active'))`,
+    expiring_7d: `(${live} AND l.expires_at IS NOT NULL AND l.expires_at <= ${week})`,
+    expired:
+      `(l.id IS NOT NULL AND ((l.expires_at IS NOT NULL AND l.expires_at <= ${now})` +
+      ` OR l.status = 'expired'))`,
+    no_sub: 'l.id IS NULL',
+    frozen: `d.block_status = 'frozen'`,
+    banned: `d.block_status = 'banned'`,
+  };
+}
+
+function mapDeviceListRow(r, now) {
+  const licId = r.lic_id || null;
+  let license = null;
+  if (licId) {
+    const exp = r.lic_expires_at ?? null;
+    const live = (r.lic_status || 'active') === 'active'
+      && (exp == null || exp > now);
+    const expired = exp != null && exp <= now;
+    license = {
+      id: licId,
+      status: live ? 'active' : (expired ? 'expired' : (r.lic_status || 'active')),
+      plan: r.lic_plan || null,
+      started_at: r.lic_started_at ?? null,
+      expires_at: exp,
+      auto_renew: r.lic_auto_renew ? 1 : 0,
+    };
+  }
+  const {
+    lic_id, lic_status, lic_plan, lic_started_at, lic_expires_at, lic_auto_renew,
+    ...rest
+  } = r;
+  return { ...rest, license };
+}
+
 async function handleDevicesList(request, env, user) {
   const url = new URL(request.url);
   const q = (url.searchParams.get('q') || '').trim();
-  // `d.*` inclut automatiquement les colonnes enrichies par le heartbeat
-  // (device_model, android_build, android_release, app_build) quand elles
-  // existent — sans casser si elles n'ont pas encore été créées.
+  const filter = (url.searchParams.get('filter') || 'all').trim();
+  await ensureAdminNoteColumn(env);
+  const now = Date.now();
+  const pred = deviceListPredicates(now);
+
+  // `d.*` inclut admin_note + colonnes heartbeat dès qu'elles existent.
   let sql = `SELECT d.*,
-                    c.name as customer_name, c.email as customer_email
-             FROM devices d LEFT JOIN customers c ON d.customer_id = c.id`;
+                    c.name as customer_name, c.email as customer_email,
+                    l.id as lic_id, l.status as lic_status, l.plan as lic_plan,
+                    l.started_at as lic_started_at, l.expires_at as lic_expires_at,
+                    l.auto_renew as lic_auto_renew
+             FROM devices d
+             LEFT JOIN customers c ON d.customer_id = c.id
+             ${DEVICE_LIC_JOIN}`;
   const where = []; const binds = [];
   if (q) {
-    where.push('(d.mac LIKE ? OR d.label LIKE ? OR c.name LIKE ?)');
-    binds.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    where.push('(d.mac LIKE ? OR d.label LIKE ? OR IFNULL(d.admin_note,\'\') LIKE ? OR c.name LIKE ?)');
+    const like = `%${q}%`;
+    binds.push(like, like, like, like);
   }
   // Cloisonnement : un revendeur ne voit QUE ses propres appareils.
   if (user && user.role === 'reseller') {
     where.push('d.reseller_id = ?');
     binds.push(user.sub);
   }
-  if (where.length) sql += ' WHERE ' + where.join(' AND ');
-  sql += ` ORDER BY d.last_seen_at DESC LIMIT 200`;
-  const rs = await env.DB.prepare(sql).bind(...binds).all();
-  return jsonResp({ items: rs.results || [] });
+  const baseWhere = where.length ? (' WHERE ' + where.join(' AND ')) : '';
+  // Liste fermée : `live` est un prédicat interne, pas un filtre d'URL.
+  const FILTER_KEYS = ['active', 'expiring_7d', 'expired', 'no_sub', 'frozen', 'banned'];
+  const filterSql = FILTER_KEYS.includes(filter) ? pred[filter] : null;
+  const listWhere = filterSql
+    ? (baseWhere ? `${baseWhere} AND ${filterSql}` : ` WHERE ${filterSql}`)
+    : baseWhere;
+
+  // Compteurs sur TOUT le périmètre (recherche + revendeur), pas seulement
+  // les 200 lignes affichées — sinon « Expire ≤7j » mentirait.
+  const countSql =
+    `SELECT COUNT(*) AS all_n,` +
+    ` SUM(CASE WHEN ${pred.active} THEN 1 ELSE 0 END) AS active_n,` +
+    ` SUM(CASE WHEN ${pred.expiring_7d} THEN 1 ELSE 0 END) AS expiring_7d_n,` +
+    ` SUM(CASE WHEN ${pred.expired} THEN 1 ELSE 0 END) AS expired_n,` +
+    ` SUM(CASE WHEN ${pred.no_sub} THEN 1 ELSE 0 END) AS no_sub_n,` +
+    ` SUM(CASE WHEN ${pred.frozen} THEN 1 ELSE 0 END) AS frozen_n,` +
+    ` SUM(CASE WHEN ${pred.banned} THEN 1 ELSE 0 END) AS banned_n` +
+    ` FROM devices d LEFT JOIN customers c ON d.customer_id = c.id ${DEVICE_LIC_JOIN}` +
+    baseWhere;
+
+  try {
+    const [rs, cr] = await Promise.all([
+      env.DB.prepare(sql + listWhere + ' ORDER BY d.last_seen_at DESC LIMIT 200').bind(...binds).all(),
+      env.DB.prepare(countSql).bind(...binds).first(),
+    ]);
+    const counts = {
+      all: cr?.all_n || 0,
+      active: cr?.active_n || 0,
+      expiring_7d: cr?.expiring_7d_n || 0,
+      expired: cr?.expired_n || 0,
+      no_sub: cr?.no_sub_n || 0,
+      frozen: cr?.frozen_n || 0,
+      banned: cr?.banned_n || 0,
+    };
+    const items = (rs.results || []).map((r) => mapDeviceListRow(r, now));
+    return jsonResp({ items, counts });
+  } catch (_) {
+    // Base ancienne / JOIN licences KO : on retombe sur la liste simple
+    // (le panel filtrera alors côté client).
+    let fallback = `SELECT d.*, c.name as customer_name, c.email as customer_email
+                    FROM devices d LEFT JOIN customers c ON d.customer_id = c.id`;
+    const fw = []; const fb = [];
+    if (q) {
+      fw.push('(d.mac LIKE ? OR d.label LIKE ? OR c.name LIKE ?)');
+      fb.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+    if (user && user.role === 'reseller') {
+      fw.push('d.reseller_id = ?');
+      fb.push(user.sub);
+    }
+    if (fw.length) fallback += ' WHERE ' + fw.join(' AND ');
+    fallback += ' ORDER BY d.last_seen_at DESC LIMIT 200';
+    const rs = await env.DB.prepare(fallback).bind(...fb).all();
+    return jsonResp({ items: rs.results || [] });
+  }
 }
 
 // =========================================================
@@ -5441,6 +5566,7 @@ async function handleAdminMonitorGet(env) {
 //  Le panel affiche tout d'un coup pour aider/diagnostiquer un client par sa
 //  MAC. Respecte le cloisonnement revendeur via deviceForActor.
 async function handleDeviceOverview(env, id, user) {
+  await ensureAdminNoteColumn(env);
   // Voir cleDeviceUrl() : sans ce décodage, TOUTE fiche ouverte par sa MAC
   // répondait 404 — et le panneau en concluait « aucun démarrage de l'app ».
   const key = cleDeviceUrl(id);
@@ -5538,7 +5664,7 @@ async function handleDeviceOverview(env, id, user) {
   try {
     const drow = await env.DB
       .prepare(
-        `SELECT d.local_sources_json, d.label, d.customer_id, d.reseller_id,
+        `SELECT d.local_sources_json, d.label, d.admin_note, d.customer_id, d.reseller_id,
                 d.block_status, d.first_seen_at, d.last_seen_at,
                 d.device_model, d.android_build, d.android_release,
                 d.app_build, d.app_version, d.build_label, d.platform, d.android_id,
@@ -5567,6 +5693,7 @@ async function handleDeviceOverview(env, id, user) {
       }
       device = {
         label: drow.label || null,
+        admin_note: drow.admin_note || null,
         customer_name: drow.customer_name || null,
         reseller_id: drow.reseller_id || null,
         block_status: drow.block_status || null,
@@ -5786,8 +5913,10 @@ async function deviceForActor(env, id, user) {
   return { dev };
 }
 
-// PATCH /devices/:id { block_status: 'active'|'frozen'|'banned' }
-// Geler (rappel de paiement), bannir (abus), ou reactiver une MAC.
+// PATCH /devices/:id { block_status?, admin_note? }
+// Geler / bannir / réactiver, ET/OU enregistrer la note client.
+// On n'écrit QUE les champs fournis : une note ne doit JAMAIS remettre
+// block_status à NULL (c'était le piège d'un UPDATE unique).
 async function handleDeviceUpdate(request, env, id, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
@@ -5795,23 +5924,61 @@ async function handleDeviceUpdate(request, env, id, actor, user) {
   }
   const r = await deviceForActor(env, id, user);
   if (r.error) return r.error;
-  // Bloquer/geler/bannir = droit 'block' (revendeur). L'owner a tout.
-  if (body.block_status !== undefined && !resellerCan(user, 'block')) {
-    return errResp('forbidden', "Ton compte n'a pas le droit de bloquer un client.", 403);
+  await ensureAdminNoteColumn(env);
+
+  const sets = [];
+  const vals = [];
+  let nextBlock;
+  let nextNote;
+
+  if (body.block_status !== undefined) {
+    // Bloquer/geler/bannir = droit 'block' (revendeur). L'owner a tout.
+    if (!resellerCan(user, 'block')) {
+      return errResp('forbidden', "Ton compte n'a pas le droit de bloquer un client.", 403);
+    }
+    const allowed = ['active', 'frozen', 'banned'];
+    if (!allowed.includes(body.block_status)) {
+      return errResp('bad_status', "block_status doit etre 'active', 'frozen' ou 'banned'", 400);
+    }
+    nextBlock = body.block_status === 'active' ? null : body.block_status;
+    sets.push('block_status = ?');
+    vals.push(nextBlock);
   }
-  const allowed = ['active', 'frozen', 'banned'];
-  const next = body.block_status === 'active' ? null : body.block_status;
-  if (body.block_status !== undefined && !allowed.includes(body.block_status)) {
-    return errResp('bad_status', "block_status doit etre 'active', 'frozen' ou 'banned'", 400);
+
+  if (body.admin_note !== undefined) {
+    const raw = body.admin_note == null ? '' : String(body.admin_note);
+    if (raw.length > 2000) {
+      return errResp('too_long', 'La note est trop longue (2000 caractères max).', 400);
+    }
+    nextNote = raw.trim() || null;
+    sets.push('admin_note = ?');
+    vals.push(nextNote);
   }
+
+  if (!sets.length) {
+    return errResp('missing_fields', 'Rien à mettre à jour.', 400);
+  }
+
   // TOUJOURS l'id réel de la ligne : `id` d'URL peut être une MAC
   // (encodée). Un UPDATE WHERE id = MAC réussissait en HTTP (updated:1)
   // sans rien écrire — gel / ban / réactivation « OK » mais stale.
-  await env.DB.prepare('UPDATE devices SET block_status = ? WHERE id = ?')
-    .bind(next ?? null, r.dev.id).run();
-  await logAudit(env, request, actor, 'device.block',
-    { type: 'device', id: r.dev.id }, { block_status: r.dev.block_status }, { block_status: next });
-  return jsonResp({ updated: 1, block_status: next });
+  vals.push(r.dev.id);
+  await env.DB.prepare(`UPDATE devices SET ${sets.join(', ')} WHERE id = ?`)
+    .bind(...vals).run();
+
+  const after = {};
+  if (nextBlock !== undefined) after.block_status = nextBlock;
+  if (nextNote !== undefined) after.admin_note = nextNote;
+  await logAudit(env, request, actor,
+    nextBlock !== undefined ? 'device.block' : 'device.note',
+    { type: 'device', id: r.dev.id },
+    { block_status: r.dev.block_status },
+    after);
+  return jsonResp({
+    updated: 1,
+    block_status: nextBlock !== undefined ? nextBlock : (r.dev.block_status ?? null),
+    admin_note: nextNote !== undefined ? nextNote : null,
+  });
 }
 
 // DELETE /devices/:id — supprime la MAC (et ses licences en cascade).

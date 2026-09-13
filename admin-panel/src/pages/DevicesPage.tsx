@@ -4,11 +4,16 @@ import { AppLayout } from '@/components/AppLayout';
 import {
   devicesApi, activateApi, sourcesApi, flagEmoji, PLAN_LABELS,
   type Device, type DeviceSource, type DeviceSourceInput, type DeviceOverview,
-  type DeviceLocalSource, type DeviceLicense, type DevicePresence, ApiError,
+  type DeviceLocalSource, type DeviceLicense, type DevicePresence,
+  type DeviceListCounts, type DeviceListFilter, type ActivateResult, ApiError,
 } from '@/lib/api';
 import { useLiveDevices, useRtEvent, sendCmd, waitForAck, type ChangedEvent } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { formatDateTime } from '@/lib/utils';
+import {
+  DeviceFilterBar, QuickRenewBar, AdminNoteField, CopyWhatsAppButton, AboChip,
+  countDeviceFilters, licenseFromActivate, matchesDeviceFilter,
+} from '@/components/DeviceOps';
 
 /// Scopes de mutation qui concernent cette page (évènement `changed`).
 const CHANGED_SCOPES = ['devices', 'licenses', 'sources', 'audit'];
@@ -16,6 +21,8 @@ const CHANGED_SCOPES = ['devices', 'licenses', 'sources', 'audit'];
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Device[]>([]);
   const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<DeviceListFilter>('all');
+  const [serverCounts, setServerCounts] = useState<DeviceListCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -35,14 +42,35 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    devicesApi.list(q)
-      .then((r) => { setItems(r.items); setErr(null); })
+    devicesApi.list(q, filter)
+      .then((r) => {
+        setItems(r.items);
+        setServerCounts(r.counts ?? null);
+        setErr(null);
+      })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) onLogout();
         else setErr(e.message);
       })
       .finally(() => setLoading(false));
-  }, [q, onLogout]);
+  }, [q, filter, onLogout]);
+
+  // Worker récent : la liste est déjà filtrée + compteurs globaux.
+  // Worker ancien : on filtre / compte sur les 200 lignes reçues.
+  const displayItems = serverCounts
+    ? items
+    : items.filter((d) => matchesDeviceFilter(d, filter));
+  const counts = serverCounts ?? countDeviceFilters(items);
+
+  function applyLicenseLocal(mac: string, lic: Device['license']) {
+    setItems((prev) => prev.map((x) => (
+      x.mac.toUpperCase() === mac.toUpperCase() ? { ...x, license: lic } : x
+    )));
+    setDetailFor((prev) => (
+      prev && prev.mac.toUpperCase() === mac.toUpperCase()
+        ? { ...prev, license: lic } : prev
+    ));
+  }
 
   useEffect(() => {
     const id = setTimeout(load, 200); // petit debounce sur la recherche
@@ -103,7 +131,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   }
 
   // ---- Sélection multiple ---------------------------------------------
-  const allSelected = items.length > 0 && items.every((d) => selected.has(d.id));
+  const allSelected = displayItems.length > 0 && displayItems.every((d) => selected.has(d.id));
   function toggleOne(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -112,9 +140,9 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     });
   }
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(items.map((d) => d.id)));
+    setSelected(allSelected ? new Set() : new Set(displayItems.map((d) => d.id)));
   }
-  const selectedDevices = items.filter((d) => selected.has(d.id));
+  const selectedDevices = displayItems.filter((d) => selected.has(d.id));
 
   // Exécute une action sur TOUS les appareils sélectionnés, en série (pour
   // ne pas marteler le serveur), avec bilan chiffré. `confirm` : {n} est
@@ -174,16 +202,18 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Appareils"
-      subtitle={`${items.length} appareil(s)`}
+      subtitle={`${displayItems.length} affiché(s)${counts.all && counts.all !== displayItems.length ? ` · ${counts.all} au total` : ''}`}
       onLogout={onLogout}
     >
       <input
         type="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Recherche par MAC, label, client…"
-        className="mb-4 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
+        placeholder="Recherche par MAC, label, note, client…"
+        className="mb-3 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
       />
+
+      <DeviceFilterBar value={filter} counts={counts} onChange={setFilter} />
 
       {err && (
         <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
@@ -227,6 +257,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
               </th>
               <th className="px-4 py-3">MAC</th>
               <th className="px-4 py-3">Client</th>
+              <th className="px-4 py-3">Abo</th>
               <th className="px-4 py-3">Appareil</th>
               <th className="px-4 py-3">Statut</th>
               <th className="px-4 py-3">Dernière vue</th>
@@ -236,18 +267,19 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           <tbody className="divide-y divide-white/5">
             {loading && Array.from({ length: 5 }).map((_, i) => (
               <tr key={i} className="bg-obsidian">
-                <td className="px-4 py-3" colSpan={7}>
+                <td className="px-4 py-3" colSpan={8}>
                   <div className="h-4 w-full animate-pulse rounded bg-white/5" />
                 </td>
               </tr>
             ))}
-            {!loading && items.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-ink-tertiary">
-                Aucun appareil pour l'instant. Dès qu'une app contacte le serveur,
-                sa MAC apparaît ici automatiquement.
+            {!loading && displayItems.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-ink-tertiary">
+                {items.length === 0
+                  ? "Aucun appareil pour l'instant. Dès qu'une app contacte le serveur, sa MAC apparaît ici automatiquement."
+                  : 'Aucun appareil dans ce filtre.'}
               </td></tr>
             )}
-            {items.map((d) => {
+            {displayItems.map((d) => {
               const st = d.block_status || 'active';
               const busy = busyId === d.id;
               const liveOnline = rtConnected && liveMacs.has(d.mac);
@@ -280,7 +312,28 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                       </button>
                     </span>
                   </td>
-                  <td className="px-4 py-3">{d.customer_name || d.customer_email || '—'}</td>
+                  <td className="px-4 py-3">
+                    <div className="text-sm">{d.customer_name || d.customer_email || '—'}</div>
+                    {d.admin_note && (
+                      <div className="mt-0.5 max-w-[160px] truncate text-[10px] text-ink-tertiary" title={d.admin_note}>
+                        {d.admin_note}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <AboChip license={d.license} />
+                    <div className="mt-1">
+                      <QuickRenewBar
+                        mac={d.mac}
+                        compact
+                        showTrials={false}
+                        onDone={(res) => {
+                          applyLicenseLocal(d.mac, licenseFromActivate(res));
+                          load();
+                        }}
+                      />
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <PlatformChip device={d} />
                     {d.device_model ? (
@@ -300,6 +353,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
                       <ActionBtn busy={busy} onClick={() => setDetailFor(d)} title="Fiche complète : M-Trio + infos appareil">Détails</ActionBtn>
+                      <CopyWhatsAppButton mac={d.mac} license={d.license} note={d.admin_note} />
                       <ActionBtn busy={busy} primary onClick={() => setActivateFor(d)} title="Activer / prolonger (le client a payé)">Activer</ActionBtn>
                       {st !== 'frozen' && (
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
@@ -344,6 +398,13 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           onActivate={() => { const d = detailFor; setDetailFor(null); setActivateFor(d); }}
           onBlock={(status) => setBlock(detailFor, status)}
           onRemove={() => { const d = detailFor; setDetailFor(null); remove(d); }}
+          onLicense={(mac, lic) => applyLicenseLocal(mac, lic)}
+          onNote={(note) => {
+            setDetailFor((prev) => (prev ? { ...prev, admin_note: note } : prev));
+            setItems((prev) => prev.map((x) => (
+              x.id === detailFor.id ? { ...x, admin_note: note } : x
+            )));
+          }}
         />
       )}
 
@@ -447,7 +508,7 @@ function BulkActivateModal({
 //  client a ajouté lui-même une liste M3U/Xtream depuis l'app (« Mes sources »),
 //  celle-ci reste stockée localement sur sa TV et n'est pas remontée au serveur.
 function DeviceDetailModal({
-  device, liveOnline, busy, onClose, onActivate, onBlock, onRemove,
+  device, liveOnline, busy, onClose, onActivate, onBlock, onRemove, onLicense, onNote,
 }: {
   device: Device;
   liveOnline: boolean;   // connecté au hub temps réel EN CE MOMENT
@@ -456,6 +517,8 @@ function DeviceDetailModal({
   onActivate: () => void;
   onBlock: (status: 'active' | 'frozen' | 'banned') => void;
   onRemove: () => void;
+  onLicense?: (mac: string, lic: DeviceLicense | null) => void;
+  onNote?: (note: string) => void;
 }) {
   const navigate = useNavigate();
   const [ov, setOv] = useState<DeviceOverview | null>(null);
@@ -485,7 +548,10 @@ function DeviceDetailModal({
     void refreshOverview();
   });
 
-  const st = device.block_status || 'active';
+  const st: 'active' | 'frozen' | 'banned' =
+    device.block_status === 'frozen' || device.block_status === 'banned'
+      ? device.block_status
+      : 'active';
   const sources = ov?.sources ?? [];
   const macUrl = encodeURIComponent(device.mac);
 
@@ -526,6 +592,7 @@ function DeviceDetailModal({
     try {
       const r = await devicesApi.clearLicense(device.id);
       setOv((prev) => (prev ? { ...prev, license: null } : prev));
+      onLicense?.(device.mac, null);
       void rtActionFeedback(r.rt);
       toast('Abonnement effacé.', 'success');
       await refreshOverview();
@@ -587,11 +654,41 @@ function DeviceDetailModal({
         <div className="mb-4 grid grid-cols-2 gap-3">
           <SubscriptionBox
             loading={loading}
-            license={ov?.license ?? null}
+            license={ov?.license ?? device.license ?? null}
             clearing={clearingLicense}
             onClear={handleClearLicense}
           />
           <PresenceBox loading={loading} presence={ov?.presence ?? null} />
+        </div>
+
+        {/* Renouvellement / essai express — même POST /activate que le modal. */}
+        <div className="mb-4 rounded-lg border border-white/5 bg-obsidian px-3 py-2.5">
+          <QuickRenewBar
+            mac={device.mac}
+            onDone={(res: ActivateResult) => {
+              const lic = licenseFromActivate(res);
+              setOv((prev) => (prev ? { ...prev, license: lic } : prev));
+              onLicense?.(device.mac, lic);
+              void refreshOverview();
+            }}
+          />
+          <div className="mt-2">
+            <CopyWhatsAppButton
+              mac={device.mac}
+              license={ov?.license ?? device.license ?? null}
+              note={device.admin_note}
+              sources={sources}
+            />
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <AdminNoteField
+            deviceId={device.id}
+            value={device.admin_note || ''}
+            blockStatus={st}
+            onSaved={(note) => onNote?.(note)}
+          />
         </div>
 
         {/* ----- Infos appareil (le « ventre ») ----- */}

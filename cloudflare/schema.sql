@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS devices (
   customer_id     TEXT NOT NULL,
   mac             TEXT NOT NULL UNIQUE,          -- MK:XX:XX:XX:XX:XX
   label           TEXT,                          -- "Salon Fire TV"
+  admin_note      TEXT,                          -- carnet client (WhatsApp, tél, remarque)
   reseller_id     TEXT,                          -- revendeur "proprietaire" (scoping)
   block_status    TEXT,                          -- NULL/'active' | 'frozen' (rappel paiement) | 'banned' (abus)
   first_seen_at   INTEGER NOT NULL,
