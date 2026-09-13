@@ -13,10 +13,11 @@ import { applyNew } from '@/components/NewBadge';
 import { formatDateTime } from '@/lib/utils';
 import {
   DeviceFilterBar, QuickRenewBar, AdminNoteField, CopyWhatsAppButton, AboChip,
-  ProblemsChip, ChangeMacModal, RegenerateMacModal,
+  ProblemsChip, ChangeMacModal, RegenerateMacModal, BulkWhatsAppRenewModal,
   countDeviceFilters, licenseFromActivate, matchesDeviceFilter, isOnlineUnpaid,
 } from '@/components/DeviceOps';
 import type { MacMigrateResult } from '@/lib/api';
+import { useDeviceSheet } from '@/components/DeviceSheet';
 
 /// Scopes de mutation qui concernent cette page (évènement `changed`).
 const CHANGED_SCOPES = ['devices', 'licenses', 'sources', 'audit'];
@@ -38,6 +39,8 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkActivate, setBulkActivate] = useState(false);
+  const [bulkWa, setBulkWa] = useState(false);
+  const sheet = useDeviceSheet();
   // MACs connectées au hub temps réel → pastille verte instantanée.
   const { devices: liveList, connected: rtConnected } = useLiveDevices();
   const liveMacs = useMemo(
@@ -246,6 +249,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           </span>
           <BulkBtn busy={bulkBusy} onClick={() => setBulkActivate(true)} primary title="Activer / prolonger tous d'un coup">↻ Activer / prolonger</BulkBtn>
           <BulkBtn busy={bulkBusy} onClick={bulkWarn} title="Afficher un message sur l'écran de tous">✉️ Prévenir</BulkBtn>
+          <BulkBtn busy={bulkBusy} newId="bulk-wa-renew" onClick={() => setBulkWa(true)} title="Messages WhatsApp de relance (wa.me un par un ou copie)">Prévenir renew</BulkBtn>
           <BulkBtn busy={bulkBusy} onClick={() => bulkBlock('frozen', 'Gel', 'Geler {n} appareil(s) ?')} title="Geler tous (rappel de paiement)">Geler</BulkBtn>
           <BulkBtn busy={bulkBusy} onClick={() => bulkBlock('active', 'Réactivation')} title="Réactiver tous">Réactiver</BulkBtn>
           <BulkBtn busy={bulkBusy} onClick={() => bulkBlock('banned', 'Bannissement', 'BANNIR {n} appareil(s) ? Action forte.')} title="Bannir tous (abus)">Bannir</BulkBtn>
@@ -323,7 +327,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                       )}
                       <button
                         type="button"
-                        onClick={() => setDetailFor(d)}
+                        onClick={() => sheet.open(d.mac, d)}
                         title="Voir la fiche complète (M-Trio + infos appareil)"
                         className="font-mono text-xs text-accent underline-offset-2 hover:underline"
                       >
@@ -379,8 +383,8 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
-                      <ActionBtn busy={busy} onClick={() => setDetailFor(d)} title="Fiche complète : M-Trio + infos appareil">Détails</ActionBtn>
-                      <CopyWhatsAppButton mac={d.mac} license={d.license} note={d.admin_note} />
+                      <ActionBtn busy={busy} onClick={() => sheet.open(d.mac, d)} title="Fiche complète : M-Trio + infos appareil">Détails</ActionBtn>
+                      <CopyWhatsAppButton mac={d.mac} license={d.license} note={d.admin_note} customerPhone={d.customer_phone} />
                       <ActionBtn busy={busy} primary onClick={() => setActivateFor(d)} title="Activer / prolonger (le client a payé)">Activer</ActionBtn>
                       <ActionBtn
                         busy={busy}
@@ -427,30 +431,9 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
             setActivateFor(null);
             // Rouvrir la fiche : sinon l'abo tout juste posé n'est
             // visible qu'après un nouvel ouverture manuelle.
-            setDetailFor(d);
+            sheet.open(d.mac, d);
             load();
           }}
-        />
-      )}
-
-      {detailFor && (
-        <DeviceDetailModal
-          device={detailFor}
-          liveOnline={rtConnected && liveMacs.has(detailFor.mac)}
-          busy={busyId === detailFor.id}
-          onClose={() => setDetailFor(null)}
-          onActivate={() => { const d = detailFor; setDetailFor(null); setActivateFor(d); }}
-          onBlock={(status) => setBlock(detailFor, status)}
-          onRemove={() => { const d = detailFor; setDetailFor(null); remove(d); }}
-          onLicense={(mac, lic) => applyLicenseLocal(mac, lic)}
-          onNote={(note) => {
-            setDetailFor((prev) => (prev ? { ...prev, admin_note: note } : prev));
-            setItems((prev) => prev.map((x) => (
-              x.id === detailFor.id ? { ...x, admin_note: note } : x
-            )));
-          }}
-          onChangeMac={() => { setChangeMacFor(detailFor); }}
-          onRegenerateMac={() => { setRegenFor(detailFor); }}
         />
       )}
 
@@ -475,6 +458,13 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         />
       )}
 
+      {bulkWa && (
+        <BulkWhatsAppRenewModal
+          devices={selectedDevices}
+          onClose={() => setBulkWa(false)}
+        />
+      )}
+
       {bulkActivate && (
         <BulkActivateModal
           count={selectedDevices.length}
@@ -491,8 +481,8 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
 
 /// Petit bouton de la barre d'actions en masse.
 function BulkBtn({
-  children, onClick, busy, danger, primary, title,
-}: { children: ReactNode; onClick: () => void; busy?: boolean; danger?: boolean; primary?: boolean; title?: string }) {
+  children, onClick, busy, danger, primary, title, newId,
+}: { children: ReactNode; onClick: () => void; busy?: boolean; danger?: boolean; primary?: boolean; title?: string; newId?: string }) {
   const cls = primary
     ? 'bg-accent text-black hover:bg-accent-bright border border-transparent'
     : danger
@@ -504,7 +494,7 @@ function BulkBtn({
       onClick={onClick}
       disabled={busy}
       title={title}
-      className={'rounded-md px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50 ' + cls}
+      {...applyNew(newId, 'rounded-md px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50 ' + cls)}
     >
       {busy ? '…' : children}
     </button>

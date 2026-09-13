@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { MacLink } from '@/components/MacLink';
+import { CallTodayQueue } from '@/components/CallTodayQueue';
 import {
   insightsApi, ApiError,
   type InsightsOverview, type OverviewSilentDevice, type OverviewExpiringDevice,
@@ -204,6 +205,9 @@ export function OverviewPage({ onLogout }: { onLogout: () => void }) {
           onRetry={() => load()}
         />
       )}
+
+      {/* File ops indépendante des insights (GET /devices déjà existant). */}
+      {state.kind !== 'loading' && <CallTodayQueue onLogout={onLogout} />}
 
       {data && (
         <>

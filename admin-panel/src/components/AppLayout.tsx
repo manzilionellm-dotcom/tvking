@@ -1,6 +1,8 @@
 import { ReactNode, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { ToastHost } from './Toast';
+import { DeviceSheetProvider } from './DeviceSheet';
+import { CommandPaletteHost, CommandPaletteTrigger } from './CommandPalette';
 import { useT } from '@/lib/i18n';
 
 interface AppLayoutProps {
@@ -27,6 +29,8 @@ export function AppLayout({
   const t = useT();
 
   return (
+    <DeviceSheetProvider>
+    <CommandPaletteHost>
     <div className="flex h-screen w-screen overflow-hidden bg-obsidian text-ink-primary">
       {/* ===== Sidebar fixe (desktop) ===== */}
       <div className="hidden md:block">
@@ -75,6 +79,7 @@ export function AppLayout({
           {/* Actions de page + bouton DÉCONNEXION (visible partout, y
               compris mobile, sans avoir à ouvrir le menu latéral). */}
           <div className="flex shrink-0 items-center gap-2">
+            <CommandPaletteTrigger />
             {actions}
             <button
               onClick={onLogout}
@@ -103,5 +108,7 @@ export function AppLayout({
       {/* Toasts partagés (feedback des actions temps réel, etc.) */}
       <ToastHost />
     </div>
+    </CommandPaletteHost>
+    </DeviceSheetProvider>
   );
 }

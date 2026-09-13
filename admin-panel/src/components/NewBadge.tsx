@@ -19,14 +19,15 @@
 //
 //  Pour retirer le marquage plus tard : enlever l'id de
 //  NEW_FEATURE_IDS (ou passer `enabled: false`). Le data-attribute
-//  `data-new="2026-09-13"` permet aussi un grep / un retrait CSS.
+//  `data-new="2026-09-13-a"` permet aussi un grep / un retrait CSS.
 // =========================================================
 
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 /// Vague courante — date du marquage (retire-la quand Lionel a testé).
-export const NEW_WAVE_DATE = '2026-09-13';
+/// Vague A cockpit : suffixe « -a » pour grep / retrait CSS ciblé.
+export const NEW_WAVE_DATE = '2026-09-13-a';
 
 /// Contrôles encore « nouveaux ». Retirer un id ici = plus de bleu/danse.
 export const NEW_FEATURE_IDS = [
@@ -51,6 +52,15 @@ export const NEW_FEATURE_IDS = [
   'filter-problematic',
   'change-mac',
   'regenerate-mac',
+  // Vague A — cockpit ops
+  'cmdk-trigger',
+  'cmdk-palette',
+  'whatsapp-open',
+  'bulk-wa-renew',
+  'call-today',
+  'call-today-open',
+  'call-today-wa',
+  'call-today-renew',
 ] as const;
 
 export type NewFeatureId = (typeof NEW_FEATURE_IDS)[number];

@@ -4765,6 +4765,7 @@ async function handleDevicesList(request, env, user) {
   // Compteurs de conflits (licences, android_id) : pastille « problématiques ».
   let sql = `SELECT d.*,
                     c.name as customer_name, c.email as customer_email,
+                    c.phone as customer_phone,
                     l.id as lic_id, l.status as lic_status, l.plan as lic_plan,
                     l.started_at as lic_started_at, l.expires_at as lic_expires_at,
                     l.auto_renew as lic_auto_renew,
@@ -4782,9 +4783,9 @@ async function handleDevicesList(request, env, user) {
              ${deviceLicJoin(now)}`;
   const where = []; const binds = [];
   if (q) {
-    where.push('(d.mac LIKE ? OR d.label LIKE ? OR IFNULL(d.admin_note,\'\') LIKE ? OR c.name LIKE ?)');
+    where.push('(d.mac LIKE ? OR d.label LIKE ? OR IFNULL(d.admin_note,\'\') LIKE ? OR c.name LIKE ? OR IFNULL(c.phone,\'\') LIKE ?)');
     const like = `%${q}%`;
-    binds.push(like, like, like, like);
+    binds.push(like, like, like, like, like);
   }
   // Cloisonnement : un revendeur ne voit QUE ses propres appareils.
   if (user && user.role === 'reseller') {
@@ -5774,7 +5775,7 @@ async function handleDeviceOverview(env, id, user) {
                 d.block_status, d.first_seen_at, d.last_seen_at,
                 d.device_model, d.android_build, d.android_release,
                 d.app_build, d.app_version, d.build_label, d.platform, d.android_id,
-                c.name AS customer_name
+                c.name AS customer_name, c.phone AS customer_phone
            FROM devices d
            LEFT JOIN customers c ON c.id = d.customer_id
           WHERE d.id = ?`,
@@ -5801,6 +5802,7 @@ async function handleDeviceOverview(env, id, user) {
         label: drow.label || null,
         admin_note: drow.admin_note || null,
         customer_name: drow.customer_name || null,
+        customer_phone: drow.customer_phone || null,
         reseller_id: drow.reseller_id || null,
         block_status: drow.block_status || null,
         first_seen_at: drow.first_seen_at || 0,

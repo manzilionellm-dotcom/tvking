@@ -18,6 +18,7 @@ import {
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { applyNew, NewBadge } from '@/components/NewBadge';
 import { formatDateTime, formatMacInput } from '@/lib/utils';
+import { openWhatsApp, parsePhoneDigits, waMeUrl } from '@/lib/phone';
 
 export const DEVICE_FILTERS: {
   id: DeviceListFilter;
@@ -190,6 +191,42 @@ export function buildWhatsAppText(opts: {
     }
   }
   return lines.join('\n') + '\n';
+}
+
+/// Message « pense à renouveler » — plus court, pour le relance WhatsApp.
+export function buildWhatsAppRenewText(opts: {
+  mac: string;
+  license?: DeviceLicense | null;
+  name?: string | null;
+}): string {
+  const who = (opts.name || '').trim();
+  const greeting = who ? `Bonjour ${who},` : 'Bonjour,';
+  return (
+    `${greeting}\n` +
+    `Votre abonnement arrive à échéance.\n` +
+    `MAC: ${opts.mac}\n` +
+    `Plan: ${planLabel(opts.license?.plan)}\n` +
+    `Expire: ${expireLabel(opts.license ?? null)}\n` +
+    `On peut le prolonger dès aujourd'hui — répondez ici.\n`
+  );
+}
+
+/// Tél depuis note + fiche client (Worker récent expose customer_phone).
+export function phoneFromDevice(d: {
+  admin_note?: string | null;
+  customer_phone?: string | null;
+  customer_name?: string | null;
+  label?: string | null;
+}): string | null {
+  return parsePhoneDigits(d.customer_phone, d.admin_note, d.customer_name, d.label);
+}
+
+/// File « À appeler aujourd'hui » : expire ≤3 j OU online sans abo.
+export function isCallToday(d: Device, now = Date.now()): boolean {
+  if (isOnlineUnpaid(d, now)) return true;
+  const lic = d.license ?? null;
+  if (!isLiveLicense(lic, now) || lic?.expires_at == null) return false;
+  return lic.expires_at <= now + 3 * 86400000;
 }
 
 export function DeviceFilterBar({
@@ -389,14 +426,25 @@ export function CopyWhatsAppButton({
   license,
   note,
   sources,
+  customerPhone,
+  renew,
+  compact,
 }: {
   mac: string;
   license?: DeviceLicense | null;
   note?: string | null;
   sources?: DeviceSource[];
+  customerPhone?: string | null;
+  /// Variante relance renouvellement (file / bulk).
+  renew?: boolean;
+  compact?: boolean;
 }) {
+  const digits = parsePhoneDigits(customerPhone, note);
+  const text = renew
+    ? buildWhatsAppRenewText({ mac, license, name: note })
+    : buildWhatsAppText({ mac, license, note, sources });
+
   async function copy() {
-    const text = buildWhatsAppText({ mac, license, note, sources });
     try {
       await navigator.clipboard.writeText(text);
       toast('Copié', 'success', { isNew: true });
@@ -404,18 +452,181 @@ export function CopyWhatsAppButton({
       toast('Impossible de copier.', 'error');
     }
   }
+
+  function open() {
+    openWhatsApp(digits, text);
+    toast(
+      digits ? 'WhatsApp ouvert.' : 'WhatsApp ouvert — choisis le contact (pas de tél dans la note).',
+      'info',
+      { isNew: true },
+    );
+  }
+
   return (
-    <button
-      type="button"
-      onClick={() => { void copy(); }}
-      title="Copie un message prêt à coller dans WhatsApp"
-      {...applyNew(
-        'copy-whatsapp',
-        'rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20',
-      )}
-    >
-      Copier WhatsApp
-    </button>
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <button
+        type="button"
+        onClick={open}
+        title={
+          digits
+            ? `Ouvre WhatsApp vers ${digits} avec le message prérempli`
+            : 'Ouvre WhatsApp (sélecteur de contact) — ajoute un tél dans la note pour viser le client'
+        }
+        {...applyNew(
+          'whatsapp-open',
+          'rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20',
+        )}
+      >
+        {compact ? 'WA' : 'WhatsApp'}
+      </button>
+      <button
+        type="button"
+        onClick={() => { void copy(); }}
+        title="Copie le message (secondaire — le bouton WhatsApp ouvre wa.me)"
+        {...applyNew(
+          'copy-whatsapp',
+          'rounded-md border border-white/10 px-2 py-1 text-[11px] font-medium text-ink-secondary hover:border-white/30',
+        )}
+      >
+        Copier
+      </button>
+    </span>
+  );
+}
+
+/// Bulk Devices : une ligne wa.me + copie par MAC (relance renew).
+export function BulkWhatsAppRenewModal({
+  devices,
+  onClose,
+}: {
+  devices: Device[];
+  onClose: () => void;
+}) {
+  const [idx, setIdx] = useState(0);
+
+  function rowText(d: Device): string {
+    return buildWhatsAppRenewText({
+      mac: d.mac,
+      license: d.license,
+      name: d.customer_name || d.label,
+    });
+  }
+
+  function openOne(d: Device) {
+    openWhatsApp(phoneFromDevice(d), rowText(d));
+  }
+
+  async function copyOne(d: Device) {
+    try {
+      await navigator.clipboard.writeText(rowText(d));
+      toast(`Copié · ${d.mac}`, 'success', { isNew: true });
+    } catch {
+      toast('Impossible de copier.', 'error');
+    }
+  }
+
+  async function copyAll() {
+    const block = devices.map((d) => {
+      const tel = phoneFromDevice(d);
+      return `${d.mac}${tel ? ` · ${tel}` : ''}\n${rowText(d)}`;
+    }).join('\n---\n');
+    try {
+      await navigator.clipboard.writeText(block);
+      toast(`${devices.length} message(s) copiés.`, 'success', { isNew: true });
+    } catch {
+      toast('Impossible de copier.', 'error');
+    }
+  }
+
+  function openNext() {
+    const d = devices[idx];
+    if (!d) return;
+    openOne(d);
+    setIdx((i) => Math.min(i + 1, devices.length));
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10" onClick={onClose}>
+      <div
+        className="w-full max-w-lg rounded-2xl border border-white/10 bg-midnight p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold tracking-tight">Prévenir renew · WhatsApp</h2>
+        <p className="mb-3 text-xs text-ink-tertiary">
+          Un message par client (MAC / plan / expire). Ouvre wa.me un par un,
+          ou copie la liste. Le tél vient de la note ou de la fiche client.
+        </p>
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={openNext}
+            disabled={idx >= devices.length}
+            {...applyNew(
+              'bulk-wa-renew',
+              'rounded-md border px-2.5 py-1.5 text-xs font-semibold disabled:opacity-40',
+            )}
+          >
+            {idx >= devices.length ? 'Tous ouverts' : `Ouvrir le suivant (${idx + 1}/${devices.length})`}
+          </button>
+          <button
+            type="button"
+            onClick={() => { void copyAll(); }}
+            className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs font-semibold text-ink-secondary hover:border-white/30"
+          >
+            Copier tous les messages
+          </button>
+        </div>
+        <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+          {devices.map((d, i) => {
+            const tel = phoneFromDevice(d);
+            return (
+              <div
+                key={d.id}
+                className={
+                  'rounded-lg border px-3 py-2 text-xs ' +
+                  (i === idx ? 'border-accent/40 bg-accent/5' : 'border-white/5 bg-obsidian')
+                }
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-mono text-[11px] text-accent">{d.mac}</div>
+                    <div className="truncate text-ink-secondary">
+                      {d.customer_name || d.label || '—'}
+                      {tel ? ` · ${tel}` : ' · pas de tél'}
+                    </div>
+                  </div>
+                  <span className="inline-flex shrink-0 gap-1">
+                    <a
+                      href={waMeUrl(tel, rowText(d))}
+                      target="_blank"
+                      rel="noreferrer"
+                      {...applyNew(
+                        'whatsapp-open',
+                        'rounded-md border px-2 py-0.5 text-[11px] font-semibold',
+                      )}
+                    >
+                      WA
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => { void copyOne(d); }}
+                      className="rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-ink-secondary"
+                    >
+                      Copier
+                    </button>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary">
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
