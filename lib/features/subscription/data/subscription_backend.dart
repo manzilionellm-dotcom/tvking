@@ -15,8 +15,8 @@
 //  l'app (gelé par l'admin, banni, ou essai expiré sans paiement).
 //
 //  Fallback hors-ligne : si le serveur est inaccessible, l'app
-//  retombe sur le trial local 10 j de SubscriptionState. Ça
-//  évite de bloquer un user légitime quand son WiFi a un creux.
+//  retombe sur une GRÂCE COURTE (heures, cf. kOfflineGraceHours).
+//  Plus d'essai local de plusieurs jours — « offline forever = free TV ».
 // =========================================================
 
 import 'dart:convert';
@@ -62,6 +62,8 @@ class RemoteSubscriptionStatus {
     required this.banned,
     required this.trialUntil,
     this.graceDays = 0,
+    this.graceHours = 0,
+    this.loaned = false,
   });
 
   /// `true` si le serveur connaît ce MAC (= il a déjà fait un
@@ -101,16 +103,25 @@ class RemoteSubscriptionStatus {
   /// Timestamp (ms epoch) d'expiration de l'essai.
   final int trialUntil;
 
-  /// Tolérance hors-ligne (jours) DÉCIDÉE PAR LE SERVEUR (`grace_days`).
-  /// `0` = absent → l'app applique son défaut (kOfflineGraceDays). Permet
-  /// d'allonger/réduire la fenêtre depuis le panel SANS republier d'APK.
+  /// Ancien champ `grace_days` (jours). Ignoré côté app si > 0 : la
+  /// grâce est désormais en HEURES (anti-freeloader). Conservé pour
+  /// ne pas casser un Worker plus ancien qui l'enverrait encore.
   final int graceDays;
 
+  /// Tolérance hors-ligne (heures) DÉCIDÉE PAR LE SERVEUR (`grace_hours`).
+  /// `0` = absent → l'app applique kOfflineGraceHours, plafonné à 12 h.
+  final int graceHours;
+
+  /// Le propriétaire a prêté son abo : plus de lecture ici.
+  final bool loaned;
+
   /// True si le client a le droit d'utiliser l'app.
-  bool get canUse => !banned && !frozen && (paid || !expired);
+  bool get canUse =>
+      !banned && !frozen && !loaned && (paid || !expired);
 
   /// True si on doit afficher un écran bloquant.
-  bool get shouldBlock => banned || frozen || (expired && !paid);
+  bool get shouldBlock =>
+      banned || frozen || loaned || (expired && !paid);
 
   factory RemoteSubscriptionStatus.fromJson(Map<String, dynamic> json) {
     return RemoteSubscriptionStatus(
@@ -125,6 +136,8 @@ class RemoteSubscriptionStatus {
       banned: json['banned'] == true,
       trialUntil: (json['trial_until'] as num?)?.toInt() ?? 0,
       graceDays: (json['grace_days'] as num?)?.toInt() ?? 0,
+      graceHours: (json['grace_hours'] as num?)?.toInt() ?? 0,
+      loaned: json['loaned'] == true,
     );
   }
 
@@ -141,6 +154,7 @@ class RemoteSubscriptionStatus {
     frozen: false,
     banned: false,
     trialUntil: 0,
+    loaned: false,
   );
 }
 

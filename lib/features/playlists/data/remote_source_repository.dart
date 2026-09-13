@@ -31,6 +31,7 @@ import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
+import '../../subscription/data/subscription_state.dart';
 import '../domain/playlist.dart';
 import 'source_opt_outs.dart';
 import 'import_progress.dart';
@@ -114,6 +115,15 @@ abstract final class RemoteSourceRepository {
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
 
+      // VERROU SERVEUR : expired/frozen/banned/loaned → pas de playlist,
+      // et on bascule l'état local tout de suite (sondage 60 s, plus
+      // rapide que le heartbeat périodique).
+      final Object? blocked = body['blocked'];
+      if (blocked is String && blocked.isNotEmpty) {
+        await SubscriptionState.instance.markBlockedFromSource(blocked);
+        return RemoteSyncResult.noSource;
+      }
+
       // TRIO (jusqu'à 3 sources sur une MAC) : si le serveur renvoie un
       // tableau `sources`, on les charge TOUTES. Le client peut ensuite
       // basculer de l'une à l'autre depuis l'accueil. Repli sur la source
@@ -129,7 +139,7 @@ abstract final class RemoteSourceRepository {
       if (list is List && list.isNotEmpty) {
         // Même boucle que applySources (règle du labo comprise) : une seule
         // implémentation, pas deux comportements qui divergent.
-        return applySources(list.whereType<Map<String, dynamic>>().toList());
+        return await applySources(list.whereType<Map<String, dynamic>>().toList());
       }
 
       final Object? src = body['source'];

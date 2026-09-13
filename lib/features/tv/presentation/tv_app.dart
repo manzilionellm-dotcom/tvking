@@ -25,6 +25,7 @@ import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../subscription/data/subscription_state.dart';
+import 'tv_license_lock_screen.dart';
 import '../core/tv_developer_mode.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_program_reminders.dart';
@@ -581,38 +582,20 @@ class _TvGateState extends State<TvGate> {
 
   @override
   Widget build(BuildContext context) {
-    final SubscriptionStatus s = SubscriptionState.instance.status;
-    // L'app s'ouvre dès que l'appareil a un ACCÈS valide : abonnement PAYÉ
-    // OU ESSAI EN COURS. Le revendeur peut activer un essai gratuit (Test
-    // 24 h / 48 h / 7 j) depuis le panel → la TV doit se débloquer pareil,
-    // pas seulement pour un abonnement payant. Ou si le client a apporté sa
-    // propre liste (Xtream).
-    final bool active = s == SubscriptionStatus.paid ||
-        s == SubscriptionStatus.trialActive;
-    // VERROU « après 7 jours, paiement obligatoire » : si le SERVEUR a tranché
-    // que l'accès est fini (essai expiré) ou coupé (gelé / banni), on BLOQUE —
-    // MÊME si des chaînes sont déjà en cache. Sans ça, un client ayant chargé
-    // sa source pendant l'essai continuerait à regarder GRATUITEMENT après les
-    // 7 jours (les chaînes restaient en base locale). C'est la fuite à fermer.
-    final bool mustBlock = s == SubscriptionStatus.trialExpired ||
-        s == SubscriptionStatus.frozen ||
-        s == SubscriptionStatus.banned;
+    // Accès valide = abo PAYÉ ou ESSAI EN COURS (canStream). Plus de
+    // « chaînes en cache + statut inconnu = TV gratuite » : sans droit
+    // jouable, on affiche le verrou, pas l'accueil.
+    final bool active = SubscriptionState.instance.canStream;
+    // VERROU STRICT : expiré / gelé / banni / prêt → écran « abo requis »,
+    // MÊME si des chaînes sont déjà en cache local.
+    final bool mustBlock = SubscriptionState.instance.isLoaded &&
+        !SubscriptionState.instance.canStream;
     final bool hasOwnList =
         PlaylistRepository.instance.currentChannels.isNotEmpty;
-    // `hasOwnList` n'ouvre l'accueil QUE si le statut n'est PAS bloquant. Cas
-    // d'usage : statut INCONNU (serveur injoignable) → on ne verrouille pas un
-    // client légitime sur une coupure réseau ; le verrou serveur reprend la
-    // main dès que la connexion revient (et device-source ne livre plus la
-    // source une fois l'essai expiré).
-    //
-    // ZÉRO CHAÎNE = ACCUEIL CHALEUREUX, même sur une box ACTIVÉE (photo
-    // client du 21/08 : source supprimée → panneau vide « Aucune chaîne
-    // dans ce groupe » au lieu du bel écran). L'appareil payé sans chaîne
-    // retombe sur TvWelcomeScreen (QR + saisie) — qui masque de lui-même
-    // essai/prix pour un client déjà actif. Sans flash au boot :
-    // PlaylistRepository.initialize() est attendu AVANT runApp.
-    // (`active` implique !mustBlock — l'expression se réduit proprement.)
-    final bool showHome = hasOwnList && !mustBlock;
+    // Accueil UNIQUEMENT si on a le droit de streamer ET des chaînes.
+    // Zéro chaîne + abo OK → welcome (QR). Pas de droit → lock, pas welcome
+    // (le welcome laissait coller un M3U à un expiré).
+    final bool showHome = hasOwnList && active;
     // `active` reste lu plus bas (statut visible) — le garder explicite ici
     // documente que le PAIEMENT n'ouvre pas un accueil sans chaînes.
     assert(!(active && mustBlock), 'états serveur mutuellement exclusifs');
@@ -638,7 +621,9 @@ class _TvGateState extends State<TvGate> {
     // 21688197501) : ni prix, ni essai, ni parcours revendeur — seulement
     // l'appairage QR et la saisie manuelle (lecteur PUR « apporte ta
     // playlist », le contenu vient de l'utilisateur).
-    final Widget home = !showHome
+    final Widget home = mustBlock
+        ? const TvShell(child: TvLicenseLockScreen())
+        : !showHome
         ? const TvShell(child: TvWelcomeScreen())
         : needProfilePick
             ? TvShell(

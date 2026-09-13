@@ -345,6 +345,22 @@ async function proxyRelease(upstreamUrl, filename) {
 // via getTrialDays si une valeur y est posée.
 const TRIAL_DAYS = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Grâce hors-ligne côté app (heures). Alignée Flutter kOfflineGraceHours.
+// Quelques heures, PAS des jours : sinon mode avion = TV gratuite.
+const OFFLINE_GRACE_HOURS = 6;
+
+/// Ajoute grace_hours à tout snapshot statut (heartbeat / status).
+function attachLicenseGrace(st) {
+  if (!st || typeof st !== 'object') return st;
+  return { ...st, grace_hours: OFFLINE_GRACE_HOURS };
+}
+
+/// Alias de isPlayableStatus — une seule règle métier (#24 + #25) :
+/// abo payé live OU essai encore valide, et PAS gelé / banni / prêté.
+/// `st == null` → false (MAC inconnue ≠ fail-open : c'est le trou #24).
+function licenseAllowsPlayback(st) {
+  return isPlayableStatus(st);
+}
 
 /// Calcule l'état de monétisation d'un client à partir de sa fiche
 /// KV. Renvoie un objet sérialisable que l'app cliente peut lire
@@ -423,11 +439,11 @@ async function getTrialDays(env) {
 }
 
 /// Un statut est-il jouable (abo payé live, ou essai encore valide) ?
-/// Gel / ban / expiré / pas de fiche → non. Les comptes maîtres passent
-/// ailleurs (isMaster), pas ici.
+/// Gel / ban / prêt (loaned) / expiré / pas de fiche → non.
+/// Les comptes maîtres passent ailleurs (isMaster), pas ici.
 function isPlayableStatus(st) {
   if (!st) return false;
-  if (st.banned || st.frozen) return false;
+  if (st.banned || st.frozen || st.loaned) return false;
   if (st.expired) return false;
   if (st.paid) return true;
   // Essai court encore en cours (plan 'trial', expired=false).
@@ -441,6 +457,7 @@ function denyUsefulContent(mac, st) {
   const blocked = !st ? 'no_license'
     : st.banned ? 'banned'
     : st.frozen ? 'frozen'
+    : st.loaned ? 'loaned'
     : st.source === 'd1-trial-abuse' ? 'trial_abuse'
     : st.expired ? 'expired'
     : 'no_license';
@@ -566,21 +583,23 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
 
     const lifetime = lic.expires_at === null || lic.expires_at === undefined;
     const expiresAt = lifetime ? now + 36500 * DAY_MS : lic.expires_at;
-    const expired = !lifetime && expiresAt <= now;
+    // Jouable = status 'active' ET pas dépassée. Un status 'expired'
+    // admin prime même si expires_at est encore dans le futur.
+    const timeExpired = !lifetime && (Number(expiresAt) <= now || lstatus === 'expired');
     const banned = lstatus === 'banned';
     const frozen = lstatus === 'frozen';
-    const active = lstatus === 'active' && !expired;
+    const playable = lstatus === 'active' && !timeExpired && !banned && !frozen;
     return {
       exists: true,
       status: banned ? 'banned' : frozen ? 'frozen' : 'active',
-      paid: active,            // licence active = debloque l'app
-      // plan pour l'affichage app : 'lifetime' (à vie, expires_at NULL)
-      // sinon 'paid' (abonnement à durée) ; paid_until = fin (null=à vie).
-      plan: lifetime ? 'lifetime' : 'paid',
+      paid: playable,            // licence active non expirée = débloque
+      plan: lifetime && playable ? 'lifetime' : (playable ? 'paid' : 'expired'),
       paid_until: lifetime ? null : expiresAt,
       trial_until: expiresAt,
-      days_left: lifetime ? 36500 : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)),
-      expired: expired && !lifetime,
+      days_left: lifetime && playable
+        ? 36500
+        : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)),
+      expired: !playable && !banned && !frozen,
       frozen,
       banned,
       source: 'd1',
@@ -1969,7 +1988,7 @@ async function handleDeviceOrdersAck(request, env) {
 // Enregistre AUTOMATIQUEMENT une MAC dans la base au 1er heartbeat :
 // cree un client "auto" + le device (l'essai 7 j demarre a first_seen_at).
 // Ainsi TOUTE app installee apparait dans ton panel, sans rien faire.
-async function ensureD1Device(env, mac, now = Date.now()) {
+async function ensureD1Device(env, mac, now = Date.now(), androidId = '') {
   if (!env.DB) return;
   try {
     const dev = await env.DB
@@ -1979,15 +1998,50 @@ async function ensureD1Device(env, mac, now = Date.now()) {
         .bind(now, dev.id).run();
       return;
     }
+    // GARDE-FOU RÉINSTALL : si l'ANDROID_ID est déjà en base (même box,
+    // nouvelle MAC — prefs effacées, ancien build à MAC aléatoire), on
+    // HÉRITE first_seen_at + block_status. L'essai ne repart pas à zéro
+    // et un ban/gel suit l'appareil. Si l'ANDROID_ID change (reset
+    // usine sur certains Firestick), on ne peut pas lier — documenté.
+    let firstSeen = now;
+    let block = null;
+    const aid = String(androidId || '').trim().slice(0, 32);
+    if (aid) {
+      try {
+        const sib = await env.DB
+          .prepare(
+            'SELECT first_seen_at, block_status FROM devices WHERE android_id = ? ' +
+            'ORDER BY first_seen_at ASC LIMIT 1',
+          )
+          .bind(aid).first();
+        if (sib) {
+          if (sib.first_seen_at) firstSeen = Number(sib.first_seen_at) || now;
+          if (sib.block_status === 'banned' || sib.block_status === 'frozen') {
+            block = sib.block_status;
+          }
+        }
+      } catch (_) { /* colonne absente → essai neuf, mieux que planter */ }
+    }
     const cid = 'cus_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
     const did = 'dev_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
+    const ins = block
+      ? env.DB.prepare(
+          'INSERT INTO devices (id, customer_id, mac, first_seen_at, last_seen_at, block_status, android_id) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?)',
+        ).bind(did, cid, mac, firstSeen, now, block, aid)
+      : aid
+        ? env.DB.prepare(
+            'INSERT INTO devices (id, customer_id, mac, first_seen_at, last_seen_at, android_id) ' +
+            'VALUES (?, ?, ?, ?, ?, ?)',
+          ).bind(did, cid, mac, firstSeen, now, aid)
+        : env.DB.prepare(
+            'INSERT INTO devices (id, customer_id, mac, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)',
+          ).bind(did, cid, mac, firstSeen, now);
     await env.DB.batch([
       env.DB.prepare(
         'INSERT INTO customers (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)',
       ).bind(cid, 'Auto ' + mac, now, now),
-      env.DB.prepare(
-        'INSERT INTO devices (id, customer_id, mac, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)',
-      ).bind(did, cid, mac, now, now),
+      ins,
     ]);
   } catch (_) {
     // Course possible entre 2 heartbeats simultanes (mac UNIQUE) → ignore.
@@ -3722,13 +3776,14 @@ async function handleHeartbeat(request, env, ctx) {
     // Prépare colonnes + index UNE fois par isolate (doit précéder
     // updateDeviceInfo qui écrit dans ces colonnes).
     await ensureScaleSchema(env);
-    await ensureD1Device(env, mac, now);
-    // android_id AVANT le calcul d'essai : sinon un spoof de MAC
-    // récupère un nouvel essai le temps que l'écriture parte en fond.
+    // #25 : androidId dès l'INSERT (hérite first_seen_at / block_status).
+    await ensureD1Device(env, mac, now, body.androidId || '');
+    // #24 : android_id AVANT le calcul d'essai — un spoof de MAC ne
+    // doit pas récupérer un essai le temps qu'une écriture parte en fond.
     await updateDeviceInfo(env, mac, body);
     // « Conscient de la famille » : un membre hérite du statut du proprio.
     const d1 = await familyStatusForMac(env, mac, now);
-    if (d1) return json({ ok: true, created: true, ...d1 });
+    if (d1) return json({ ok: true, created: true, ...attachLicenseGrace(d1) });
   }
 
   // --- Repli KV (si D1 pas branchee) ---
@@ -3740,11 +3795,11 @@ async function handleHeartbeat(request, env, ctx) {
       note: '', last_seen_at: now, first_seen_at: now,
     };
     await writeClient(env, mac, fresh);
-    return json({ ok: true, created: true, ...computeStatus(fresh, now) });
+    return json({ ok: true, created: true, ...attachLicenseGrace(computeStatus(fresh, now)) });
   }
   const updated = { ...existing, last_seen_at: now };
   await writeClient(env, mac, updated);
-  return json({ ok: true, created: false, ...computeStatus(updated, now) });
+  return json({ ok: true, created: false, ...attachLicenseGrace(computeStatus(updated, now)) });
 }
 
 // =========================================================
@@ -5374,20 +5429,15 @@ async function handleFamilyRemove(request, env) {
 // =========================================================
 async function handlePublicStatus(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
-  // D1 en priorite. Si la MAC n'est pas encore connue (status appele
-  // avant le heartbeat), on la cree pour demarrer l'essai 7 j.
+  // Lecture seule : on ne CRÉE plus de fiche ici (un GET status
+  // ne doit pas ouvrir un essai). La création passe par heartbeat
+  // qui envoie android_id (lien anti-réinstall).
   if (env.DB) {
-    // « Conscient de la famille » : un membre rattaché hérite du statut
-    // (payé/échéance) de son propriétaire — cf. familyStatusForMac.
-    let d1 = await familyStatusForMac(env, mac);
-    if (!d1) {
-      await ensureD1Device(env, mac);
-      d1 = await familyStatusForMac(env, mac);
-    }
-    if (d1) return json(d1);
+    const d1 = await familyStatusForMac(env, mac);
+    if (d1) return json(attachLicenseGrace(d1));
   }
   const data = await readClient(env, mac);
-  return json(computeStatus(data));
+  return json(attachLicenseGrace(computeStatus(data)));
 }
 
 // =========================================================
@@ -6119,6 +6169,7 @@ async function handlePublicDeviceSource(env, mac) {
   if (env.DB && !isMaster) {
     try {
       const st = await familyStatusForMac(env, MAC);
+      // #24 denyUsefulContent (no_license / trial_abuse) + #25 loaned.
       if (!isPlayableStatus(st)) {
         return denyUsefulContent(MAC, st);
       }
