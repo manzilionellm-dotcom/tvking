@@ -99,6 +99,9 @@ async function request<T = unknown>(
     method: opts.method || 'GET',
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    // Mutations puis GET overview : sans ça le navigateur peut
+    // resservir la fiche d'avant le DELETE (stale « abo encore là »).
+    cache: 'no-store',
   });
 
   const text = await resp.text();
@@ -429,11 +432,22 @@ export const customersApi = {
     request<{ id: string }>('/api/v1/customers', { method: 'POST', body: payload }),
 };
 
+// Abonnement (licence) d'un appareil, vue panel.
+export interface DeviceLicense {
+  id?: string | null;      // pour DELETE /licenses/:id
+  status: string;          // 'active' | 'expired' | 'frozen' | …
+  plan: string | null;
+  started_at?: number | null;
+  expires_at: number | null;
+  auto_renew?: number;
+}
 export interface Device {
   id: string;
   customer_id: string;
   mac: string;
   label: string | null;
+  /// Carnet client (WhatsApp, tél, remarque) — distinct de `label`.
+  admin_note?: string | null;
   reseller_id?: string | null;
   block_status?: string | null; // null/'active' | 'frozen' | 'banned'
   first_seen_at: number;
@@ -446,14 +460,10 @@ export interface Device {
   android_release?: string | null;
   app_build?: number | null;
   platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
-}
-// Abonnement (licence) d'un appareil, vue panel.
-export interface DeviceLicense {
-  status: string;          // 'active' | 'expired' | 'frozen' | …
-  plan: string | null;
-  started_at?: number | null;
-  expires_at: number | null;
-  auto_renew?: number;
+  /// Licence « la plus forte » jointe par GET /devices (Worker récent).
+  license?: DeviceLicense | null;
+  /// Dernier heartbeat table `presence` (chasse freeloaders).
+  presence_last_seen?: number | null;
 }
 // Présence live d'un appareil (dernière trace serveur).
 export interface DevicePresence {
@@ -477,6 +487,7 @@ export interface DeviceLocalSource {
 // depuis n'importe quelle page en ne connaissant QUE la MAC).
 export interface DeviceMeta {
   label: string | null;
+  admin_note?: string | null;
   customer_name: string | null;
   reseller_id: string | null;
   block_status: string | null;
@@ -550,22 +561,66 @@ export const appVersionsApi = {
       '/api/v1/app-versions',
     ),
 };
+/// Compteurs des pastilles /devices (périmètre recherche + revendeur).
+export interface DeviceListCounts {
+  all: number;
+  active: number;
+  expiring_7d: number;
+  expired: number;
+  no_sub: number;
+  frozen: number;
+  banned: number;
+  online_unpaid: number;
+}
+export type DeviceListFilter =
+  | 'all'
+  | 'active'
+  | 'expiring_7d'
+  | 'expired'
+  | 'no_sub'
+  | 'frozen'
+  | 'banned'
+  | 'online_unpaid';
 export const devicesApi = {
-  list: (q?: string) =>
-    request<{ items: Device[] }>(
-      `/api/v1/devices${q ? `?q=${encodeURIComponent(q)}` : ''}`,
-    ),
+  list: (q?: string, filter?: DeviceListFilter) => {
+    const qs = new URLSearchParams();
+    if (q) qs.set('q', q);
+    if (filter && filter !== 'all') qs.set('filter', filter);
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return request<{ items: Device[]; counts?: DeviceListCounts }>(
+      `/api/v1/devices${suffix}`,
+    );
+  },
   // Fiche 360° d'un appareil (abonnement + présence live + M-Trio) en 1 appel.
   overview: (id: string) =>
     request<DeviceOverview>(`/api/v1/devices/${encodeURIComponent(id)}/overview`),
   // Geler ('frozen'), bannir ('banned') ou reactiver ('active') une MAC.
   setBlock: (id: string, block_status: 'active' | 'frozen' | 'banned') =>
-    request<{ updated: number; block_status: string | null; rt?: RtInfo }>(
-      `/api/v1/devices/${id}`,
+    request<{ updated: number; block_status: string | null; admin_note?: string | null; rt?: RtInfo }>(
+      `/api/v1/devices/${encodeURIComponent(id)}`,
       { method: 'PATCH', body: { block_status } },
     ),
+  // Note client (WhatsApp / tél / remarque). On renvoie aussi le
+  // block_status courant : un Worker pas encore mis à jour n'écrit QUE
+  // ce champ — sans lui, un PATCH {admin_note} remettrait le gel à NULL.
+  setNote: (
+    id: string,
+    admin_note: string,
+    block_status?: 'active' | 'frozen' | 'banned',
+  ) =>
+    request<{ updated: number; admin_note: string | null; block_status?: string | null }>(
+      `/api/v1/devices/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: { admin_note, ...(block_status ? { block_status } : {}) } },
+    ),
   remove: (id: string) =>
-    request<{ deleted: number; rt?: RtInfo }>(`/api/v1/devices/${id}`, { method: 'DELETE' }),
+    request<{ deleted: number; rt?: RtInfo }>(`/api/v1/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // Efface l'abonnement (ligne licenses) : UNIQUE(device, app) libérée
+  // → un activate juste après pose une licence NEUVE, sans cumuler.
+  clearLicense: (id: string) =>
+    request<{ ok: boolean; deleted: number; license: null; mac?: string; rt?: RtInfo }>(
+      `/api/v1/devices/${encodeURIComponent(id)}/license`,
+      { method: 'DELETE' },
+    ),
   // Dépose un message PERSISTANT pour cette MAC (livré même hors ligne, à
   // la prochaine ouverture de l'app). :id accepte l'ID de ligne OU la MAC.
   sendMessage: (
@@ -629,6 +684,11 @@ export const licensesApi = {
     request<{ updated: number; expires_at: number | null; rt?: RtInfo }>(
       `/api/v1/licenses/${id}/renew`,
       { method: 'POST', body: { plan, custom_days: customDays } },
+    ),
+  remove: (id: string) =>
+    request<{ deleted: number; license: null; rt?: RtInfo }>(
+      `/api/v1/licenses/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
     ),
 };
 
@@ -832,19 +892,19 @@ export const sourcesApi = {
       `/api/v1/sources/${encodeURIComponent(mac)}`,
     ),
   set: (mac: string, source: DeviceSourceInput) =>
-    request<{ ok: boolean; mac: string; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { source } },
     ),
   // TRIO : pousse 1 à 3 sources d'un coup sur une même MAC. Le client
   // les charge toutes et bascule entre elles dans l'app.
   setMany: (mac: string, sources: DeviceSourceInput[]) =>
-    request<{ ok: boolean; mac: string; count: number; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; count: number; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { sources } },
     ),
   clear: (mac: string) =>
-    request<{ ok: boolean; mac: string; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'DELETE' },
     ),
@@ -857,7 +917,7 @@ export const sourcesApi = {
   // est hors ligne (à sa prochaine synchro), et même si la liste est déjà
   // importée chez lui.
   setActive: (mac: string, index: number) =>
-    request<{ ok: boolean; mac: string; active: number; count: number; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; active: number; count: number; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}/active`,
       { method: 'POST', body: { index } },
     ),
@@ -879,18 +939,18 @@ export const sourcesApi = {
   // MODIFIER une seule source (mot de passe changé, serveur qui bouge, EPG…)
   // sans re-saisir les autres et sans perdre la source active.
   updateAt: (mac: string, index: number, source: DeviceSourceInput, match?: string) =>
-    request<{ ok: boolean; mac: string; updated: number; count: number; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; updated: number; count: number; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}/update`,
       { method: 'POST', body: { index, source, match } },
     ),
   // AJOUTER un abonnement AUX autres (setMany les remplacerait tous).
   add: (mac: string, source: DeviceSourceInput, active?: boolean) =>
-    request<{ ok: boolean; mac: string; count: number; index: number; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; count: number; index: number; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}/add`,
       { method: 'POST', body: { source, active: active === true } },
     ),
   removeAt: (mac: string, index: number, match?: string) =>
-    request<{ ok: boolean; mac: string; removed: number; remaining: number; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; removed: number; remaining: number; sources?: DeviceSource[]; rt?: RtInfo }>(
       `/api/v1/sources/${encodeURIComponent(mac)}?index=${index}` +
         (match ? `&match=${encodeURIComponent(match)}` : ''),
       { method: 'DELETE' },

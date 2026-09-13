@@ -47,7 +47,7 @@ function makeDb(state) {
           if (/FROM app_family_links/.test(s)) {
             return state.loan ? { owner_mac: 'MK:OWNER' } : null;
           }
-          if (/SELECT id, first_seen_at, block_status FROM devices WHERE mac/.test(s)) {
+          if (/SELECT id, first_seen_at, block_status.*FROM devices WHERE mac/.test(s)) {
             return state.device || null;
           }
           if (/SELECT id FROM devices WHERE mac/.test(s)) {
@@ -158,6 +158,16 @@ async function deviceSource(state) {
     source: sourceRow,
   });
   ok(body.source === null && body.blocked === 'banned', '5 ban → blocked banned');
+}
+
+// 5b) MAC inconnue (st=null) → pas de source (#24 fail-closed)
+{
+  const { body } = await deviceSource({
+    device: null,
+    source: sourceRow,
+  });
+  ok(body.source === null && (body.blocked === 'no_license' || body.blocked === 'expired'),
+    '5b MAC inconnue → source vide (fail-closed)');
 }
 
 // 6) GET /api/status MAC inconnue → pas d'INSERT device

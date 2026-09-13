@@ -23,6 +23,9 @@ import type {
 import { sendCmd, waitForAck, useLiveDevices } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { cn, formatDateTime } from '@/lib/utils';
+import {
+  QuickRenewBar, AdminNoteField, CopyWhatsAppButton, licenseFromActivate,
+} from '@/components/DeviceOps';
 
 function ago(ts: number | null | undefined): string {
   if (!ts) return '';
@@ -140,6 +143,7 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
       const r = await sourcesApi.setActive(mac, index);
       void rtActionFeedback(r.rt);
       toast('Source active mise à jour.', 'success');
+      if (r.sources) setOv((prev) => (prev ? { ...prev, sources: r.sources! } : prev));
       const fresh = await devicesApi.overview(mac);
       setOv(fresh);
     } catch (e) {
@@ -171,6 +175,7 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
       const r = await sourcesApi.removeAt(mac, index, ident);
       void rtActionFeedback(r.rt);
       toast(`Source retirée (${r.remaining} restante(s)).`, 'success');
+      if (r.sources) setOv((prev) => (prev ? { ...prev, sources: r.sources! } : prev));
       const fresh = await devicesApi.overview(mac);
       setOv(fresh);
     } catch (e) {
@@ -185,6 +190,31 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
 
   // RETRAIT TOTAL (dépannage « rien ne marche, on repart de zéro »).
   const [clearing, setClearing] = useState(false);
+  const [clearingLicense, setClearingLicense] = useState(false);
+  async function handleClearLicense() {
+    if (
+      !window.confirm(
+        'Effacer l’abonnement (licence) de ce client ?\n\n' +
+          'L’app rebascule en essai / paywall tout de suite s’il est en ligne.\n' +
+          'Tu pourras en activer un nouveau juste après, sans cumuler les jours.',
+      )
+    ) {
+      return;
+    }
+    setClearingLicense(true);
+    try {
+      const r = await devicesApi.clearLicense(mac);
+      setOv((prev) => (prev ? { ...prev, license: null } : prev));
+      void rtActionFeedback(r.rt);
+      toast('Abonnement effacé.', 'success');
+      const fresh = await devicesApi.overview(mac);
+      setOv(fresh);
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec de la suppression.', 'error');
+    } finally {
+      setClearingLicense(false);
+    }
+  }
   async function handleClearSource() {
     if (
       !window.confirm(
@@ -201,6 +231,7 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
       const r = await sourcesApi.clear(mac);
       void rtActionFeedback(r.rt);
       toast('Source retirée.', 'success');
+      setOv((prev) => (prev ? { ...prev, sources: r.sources ?? [] } : prev));
       const fresh = await devicesApi.overview(mac);
       setOv(fresh);
     } catch (e) {
@@ -350,7 +381,55 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
                     : 'À vie'
                   : '—'}
               </Row>
+              <div className="pt-2">
+                <QuickRenewBar
+                  mac={mac}
+                  onDone={(res) => {
+                    const next = licenseFromActivate(res);
+                    setOv((prev) => (prev ? { ...prev, license: next } : prev));
+                    void devicesApi.overview(mac).then(setOv).catch(() => {});
+                  }}
+                />
+              </div>
+              <div className="pt-2">
+                <CopyWhatsAppButton
+                  mac={mac}
+                  license={lic}
+                  note={d?.admin_note}
+                  sources={sources}
+                />
+              </div>
+              {lic && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    disabled={clearingLicense}
+                    onClick={handleClearLicense}
+                    className="rounded-md border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                    title="Retire la licence en base : tu peux en activer une autre tout de suite"
+                  >
+                    {clearingLicense ? 'Effacement…' : 'Effacer l’abonnement'}
+                  </button>
+                </div>
+              )}
             </Section>
+
+            {d && (
+              <Section title="Note client">
+                <AdminNoteField
+                  deviceId={mac}
+                  value={d.admin_note || ''}
+                  blockStatus={(d.block_status as 'active' | 'frozen' | 'banned' | null) || 'active'}
+                  onSaved={(note) => {
+                    setOv((prev) => (
+                      prev && prev.device
+                        ? { ...prev, device: { ...prev.device, admin_note: note } }
+                        : prev
+                    ));
+                  }}
+                />
+              </Section>
+            )}
 
             {/* Appareil */}
             <Section title="Appareil">

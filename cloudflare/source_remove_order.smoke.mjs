@@ -12,7 +12,7 @@
 //
 // Lancer : node cloudflare/source_remove_order.smoke.mjs
 import assert from 'node:assert/strict';
-import { sourceAsOrderTarget } from './api_v1.js';
+import { sourceAsOrderTarget, sourcesFromRow } from './api_v1.js';
 
 let n = 0;
 const ok = (m) => { n++; console.log('  ✓', m); };
@@ -147,6 +147,53 @@ const cle = (s) => {
   assert.notEqual(cle(a), cle(b));
   assert.equal(cle(a), cle({ type: 'm3u', url: 'http://x.test/a.m3u' }));
   ok('M3U : URL différente → oubliée ; même URL (champ ancien) → gardée');
+}
+
+// 12) Forme PANEL (`server_url`, produite par normalizeSource). Sans ça,
+//     aucun ordre n'était déposé après un retrait panel : l'UI disait OK,
+//     la box gardait l'ancien abo.
+{
+  const t = sourceAsOrderTarget({
+    type: 'xtream', server_url: 'http://panel.test:8080',
+    username: 'abo99', password: 'secret', label: 'Principal',
+  });
+  assert.ok(t, 'server_url panel doit produire une cible');
+  assert.equal(t.server, 'http://panel.test:8080');
+  assert.equal(t.username, 'abo99');
+  assert.equal(t.m3u_url, '');
+  ok('Xtream panel (server_url) → cible d\'ordre');
+}
+
+// 13) Même ligne, deux écritures : heartbeat (`server`) vs panel
+//     (`server_url`) → MÊME clé, sinon on dépose un remove en trop
+//     (ou on n'en dépose pas) selon le chemin.
+{
+  const panel = { type: 'xtream', server_url: 'http://a.test:80', username: 'u' };
+  const box = { type: 'xtream', server: 'http://a.test:80', username: 'u' };
+  assert.equal(cle(panel), cle(box));
+  ok('server_url panel ≡ server heartbeat');
+}
+
+// 14) sources_json = [] ne ressuscite PAS les colonnes plates
+//     (ghost subscription après un clear mal aligné).
+{
+  const ghost = sourcesFromRow({
+    type: 'xtream', server_url: 'http://vieux.test', username: 'x',
+    password: 'y', sources_json: '[]',
+  });
+  assert.equal(ghost.length, 0);
+  ok('sources_json vide → pas de resurrection des colonnes plates');
+}
+
+// 15) Ligne historique SANS sources_json → on lit encore les plates.
+{
+  const legacy = sourcesFromRow({
+    type: 'xtream', server_url: 'http://vieux.test', username: 'x',
+    password: 'y', sources_json: null,
+  });
+  assert.equal(legacy.length, 1);
+  assert.equal(legacy[0].server_url, 'http://vieux.test');
+  ok('ligne legacy sans JSON → colonnes plates');
 }
 
 console.log(`\n${n} assertions OK — la suppression panel atteint l'appareil.`);

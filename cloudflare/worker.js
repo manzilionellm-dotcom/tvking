@@ -59,6 +59,7 @@
 import {
   apiV1, verifyJwt, validateFacadeBase,
   publicCampaignsList, trackCampaignEvent, ingestAppReport,
+  sourcesFromRow,
 } from './api_v1.js';
 // Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
 // Durable Object « RealtimeHub » (WebSockets appareils + panel) et helper
@@ -354,14 +355,11 @@ function attachLicenseGrace(st) {
   return { ...st, grace_hours: OFFLINE_GRACE_HOURS };
 }
 
-/// Règle métier UNIQUE : un appareil peut recevoir la playlist / streamer
-/// SSI licence active non expirée OU essai non expiré, et PAS gelé/banni/prêté.
-/// `st == null` → fail-open (panne lecture statut : on ne coupe pas un payant).
+/// Alias de isPlayableStatus — une seule règle métier (#24 + #25) :
+/// abo payé live OU essai encore valide, et PAS gelé / banni / prêté.
+/// `st == null` → false (MAC inconnue ≠ fail-open : c'est le trou #24).
 function licenseAllowsPlayback(st) {
-  if (!st) return true;
-  if (st.banned || st.frozen || st.loaned) return false;
-  if (st.paid) return true;
-  return !st.expired;
+  return isPlayableStatus(st);
 }
 
 /// Calcule l'état de monétisation d'un client à partir de sa fiche
@@ -430,9 +428,67 @@ async function getTrialDays(env) {
       .prepare("SELECT value FROM app_config WHERE key = 'trial_days'")
       .first();
     const td = parseInt(r && r.value, 10);
-    return Number.isFinite(td) && td >= 0 ? td : TRIAL_DAYS;
+    // Plafond dur : un essai panel à 30 j (ancienne valeur) ne doit
+    // plus servir de passe-droit. 7 j max, comme TRIAL_MAX_DAYS côté
+    // /activate. 0 = essai coupé (payant dès l'install).
+    if (!Number.isFinite(td) || td < 0) return TRIAL_DAYS;
+    return Math.min(td, 7);
   } catch (_) {
     return TRIAL_DAYS;
+  }
+}
+
+/// Un statut est-il jouable (abo payé live, ou essai encore valide) ?
+/// Gel / ban / prêt (loaned) / expiré / pas de fiche → non.
+/// Les comptes maîtres passent ailleurs (isMaster), pas ici.
+function isPlayableStatus(st) {
+  if (!st) return false;
+  if (st.banned || st.frozen || st.loaned) return false;
+  if (st.expired) return false;
+  if (st.paid) return true;
+  // Essai court encore en cours (plan 'trial', expired=false).
+  return st.plan === 'trial';
+}
+
+/// Corps « pas de contenu utile » — l'app comprend déjà `blocked`.
+/// On garde HTTP 200 sur les routes app (pas de 403 : un client Flutter
+/// ancien traiterait ça comme une panne réseau, pas un paywall).
+function denyUsefulContent(mac, st) {
+  const blocked = !st ? 'no_license'
+    : st.banned ? 'banned'
+    : st.frozen ? 'frozen'
+    : st.loaned ? 'loaned'
+    : st.source === 'd1-trial-abuse' ? 'trial_abuse'
+    : st.expired ? 'expired'
+    : 'no_license';
+  return jsonPrivate({
+    ok: false,
+    error: 'not_entitled',
+    mac: mac || '',
+    blocked,
+    source: null,
+    sources: [],
+    playlists: [],
+    data: null,
+  });
+}
+
+/// Même android_id déjà vu sur une MAC PLUS ANCIENNE → pas de 2e essai.
+/// Empêche « je change 1 caractère de MAC et je recommence l'essai ».
+async function trialAlreadyConsumed(env, dev) {
+  const aid = dev && dev.android_id ? String(dev.android_id).trim() : '';
+  if (!aid || !dev.id) return false;
+  try {
+    const row = await env.DB
+      .prepare(
+        'SELECT id FROM devices WHERE android_id = ? AND id != ? ' +
+        'AND first_seen_at IS NOT NULL AND first_seen_at < ? LIMIT 1',
+      )
+      .bind(aid, dev.id, dev.first_seen_at || 0)
+      .first();
+    return !!row;
+  } catch (_) {
+    return false;
   }
 }
 
@@ -441,11 +497,18 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
   let dev;
   try {
     dev = await env.DB
-      .prepare('SELECT id, first_seen_at, block_status FROM devices WHERE mac = ?')
+      .prepare('SELECT id, first_seen_at, block_status, android_id FROM devices WHERE mac = ?')
       .bind(mac).first();
   } catch (_) {
-    // Table/binding absents (D1 pas encore deploye) → fallback KV.
-    return null;
+    // Colonne android_id absente (base pas encore migrée) → sans elle.
+    try {
+      dev = await env.DB
+        .prepare('SELECT id, first_seen_at, block_status FROM devices WHERE mac = ?')
+        .bind(mac).first();
+    } catch (__) {
+      // Table/binding absents (D1 pas encore deploye) → fallback KV.
+      return null;
+    }
   }
   if (!dev) return null; // pas connu en D1 → le caller (heartbeat) le creera
 
@@ -546,6 +609,25 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
   // --- Cas 2 : device connu mais PAS de licence → ESSAI (durée réglable) ---
   // L'essai court depuis first_seen_at. Après la durée configurée (panel),
   // expired=true → l'app bloque → le client doit venir te voir pour être activé.
+  //
+  // Anti-abus MAC : si le MÊME android_id a déjà eu un essai sur une
+  // fiche plus ancienne, on n'en redonne pas (plus de « nouvelle MAC
+  // = nouvel essai infini »).
+  if (await trialAlreadyConsumed(env, dev)) {
+    return {
+      exists: true,
+      status: 'active',
+      paid: false,
+      plan: 'expired',
+      paid_until: null,
+      trial_until: now,
+      days_left: 0,
+      expired: true,
+      frozen: false,
+      banned: false,
+      source: 'd1-trial-abuse',
+    };
+  }
   const trialDays = await getTrialDays(env);
   const trialUntil = (dev.first_seen_at || now) + trialDays * DAY_MS;
   const expired = trialUntil <= now;
@@ -625,7 +707,10 @@ async function ensureScaleSchema(env) {
       // 19882… (cf. AGENTS.md « la règle de la maison »). C'est celui que
       // le panel montre à côté de la MAC et qu'on dicte au téléphone.
       // Distinct de app_build, qui est l'horodatage Android.
-      'recent_json TEXT', 'build_label TEXT']) {
+      'recent_json TEXT', 'build_label TEXT',
+      // Note client du panel (WhatsApp / tél) — créée aussi ici pour que
+      // le heartbeat ne tourne pas sur une base sans la colonne.
+      'admin_note TEXT']) {
     try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run(); } catch (_) {}
   }
   for (const idx of [
@@ -3691,9 +3776,11 @@ async function handleHeartbeat(request, env, ctx) {
     // Prépare colonnes + index UNE fois par isolate (doit précéder
     // updateDeviceInfo qui écrit dans ces colonnes).
     await ensureScaleSchema(env);
+    // #25 : androidId dès l'INSERT (hérite first_seen_at / block_status).
     await ensureD1Device(env, mac, now, body.androidId || '');
-    // Enrichissement (modèle, build…) pas nécessaire à la réponse → en fond.
-    defer(updateDeviceInfo(env, mac, body));
+    // #24 : android_id AVANT le calcul d'essai — un spoof de MAC ne
+    // doit pas récupérer un essai le temps qu'une écriture parte en fond.
+    await updateDeviceInfo(env, mac, body);
     // « Conscient de la famille » : un membre hérite du statut du proprio.
     const d1 = await familyStatusForMac(env, mac, now);
     if (d1) return json({ ok: true, created: true, ...attachLicenseGrace(d1) });
@@ -5679,6 +5766,17 @@ async function handleDeleteClient(env, mac) {
 
 async function handlePublicConfig(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = String(mac).toUpperCase();
+  // Trou : /config/:mac livrait les playlists KV SANS vérifier l'abo.
+  if (env.DB) {
+    try {
+      const master = await isMasterCached(env, MAC).catch(() => false);
+      if (!master) {
+        const st = await familyStatusForMac(env, MAC);
+        if (!isPlayableStatus(st)) return denyUsefulContent(MAC, st);
+      }
+    } catch (_) { /* fail-open lecture statut */ }
+  }
   const data = await readClient(env, mac);
   if (!data) return notFound(`Aucun playlist configurée pour ${mac}`);
   // On ne renvoie au client que ce dont il a besoin (pas les
@@ -6060,38 +6158,20 @@ async function handlePublicDeviceSource(env, mac) {
   }
 
   // ===== SÉCURITÉ : verrou licence CÔTÉ SERVEUR =====
-  //  On ne livre la source (= identifiants IPTV : serveur, user, mdp) QUE
-  //  si l'abonnement de cet appareil est jouable. Si la licence est
-  //  EXPIRÉE / GELÉE / BANNIE, on renvoie une source VIDE → un non-payant
-  //  ne peut PAS récupérer les identifiants ni charger les flux, même s'il
-  //  contourne l'écran de paiement de l'app. C'est le serveur qui décide,
-  //  pas l'app (impossible à bidouiller côté client).
-  //  - Appareil inconnu / tout neuf / essai en cours  → null = NON bloqué
-  //    (d1StatusForMac renvoie null ou expired=false) → la source passe.
-  //  - Incident DB (lecture statut impossible)         → fail-open (on ne
-  //    coupe pas un client légitime sur une panne transitoire).
-  //  - Compte MAÎTRE : EXEMPTÉ du verrou (comme il l'est déjà du quota
-  //    d'invitations et de l'obligation de paiement, cf. isMasterMac) —
-  //    ce sont les box du patron, le labo ne doit jamais se retrouver
-  //    « expiré » au milieu d'un test.
+  //  On ne livre la source (= identifiants IPTV) QUE si l'accès est
+  //  jouable : abo payé live, essai COURT encore valide, héritage
+  //  famille d'un proprio payé, ou compte maître.
+  //  MAC inconnue / licence absente / expirée / gelée / bannie /
+  //  2e essai (même android_id) → source VIDE. Avant, une MAC jamais
+  //  vue (st=null) recevait quand même le M-Trio si la ligne existait
+  //  dans device_sources — trou freeloader.
+  //  Incident DB : fail-open (on ne coupe pas un payant sur un blip).
   if (env.DB && !isMaster) {
     try {
-      // « Conscient de la famille » : un membre rattaché à un proprio payé
-      // n'est PAS bloqué (il hérite de sa licence).
       const st = await familyStatusForMac(env, MAC);
-      if (st && !licenseAllowsPlayback(st)) {
-        return jsonPrivate({
-          mac: MAC,
-          source: null,
-          sources: [],
-          blocked: st.banned
-            ? 'banned'
-            : st.frozen
-              ? 'frozen'
-              : st.loaned
-                ? 'loaned'
-                : 'expired',
-        });
+      // #24 denyUsefulContent (no_license / trial_abuse) + #25 loaned.
+      if (!isPlayableStatus(st)) {
+        return denyUsefulContent(MAC, st);
       }
     } catch (_) {
       // fail-open : on ne bloque jamais sur un incident de lecture du statut.
@@ -6126,16 +6206,10 @@ async function handlePublicDeviceSource(env, mac) {
         } catch (_) { /* fail-open */ }
       }
       if (row) {
-        // TRIO : si un tableau de sources est stocké, on le renvoie en
-        // entier (l'app charge les 3). Sinon, la source simple historique.
-        let sources = [];
-        if (row.sources_json) {
-          try { sources = JSON.parse(row.sources_json) || []; } catch (_) { sources = []; }
-        }
-        if (!sources.length) {
-          const { sources_json, updated_at, ...single } = row;
-          sources = [single];
-        }
+        // TRIO : `sourcesFromRow` ne ressuscite PAS les colonnes plates
+        // quand sources_json = [] (sinon l'app revoit l'abo qu'on vient
+        // d'effacer). Ligne sans JSON → source simple historique.
+        let sources = sourcesFromRow(row);
         // LABO : les sources de test du maître s'AJOUTENT à la fin (jamais
         // à la place) — pour un non-maître, labSources est toujours [].
         if (labSources.length) sources = sources.concat(labSources);
@@ -6362,6 +6436,13 @@ async function handleSelfSourceGet(env, mac) {
   if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
+  try {
+    const master = await isMasterCached(env, MAC).catch(() => false);
+    if (!master) {
+      const st = await familyStatusForMac(env, MAC);
+      if (!isPlayableStatus(st)) return denyUsefulContent(MAC, st);
+    }
+  } catch (_) { /* fail-open */ }
   await ensureDeviceSourcesTable(env);
   const { items, needsPersist } = await readDeviceSourceItems(env, MAC);
   // Persiste les ids/origins fraîchement attribués (migration douce, one-shot).
@@ -6386,6 +6467,13 @@ async function handleSelfSource(env, mac, request) {
   if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
+  try {
+    const master = await isMasterCached(env, MAC).catch(() => false);
+    if (!master) {
+      const st = await familyStatusForMac(env, MAC);
+      if (!isPlayableStatus(st)) return denyUsefulContent(MAC, st);
+    }
+  } catch (_) { /* fail-open */ }
 
   let body;
   try { body = await request.json(); } catch (_) { return badRequest('invalid json'); }
@@ -6436,6 +6524,13 @@ async function handleSelfSourceDelete(env, mac, request) {
   if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
+  try {
+    const master = await isMasterCached(env, MAC).catch(() => false);
+    if (!master) {
+      const st = await familyStatusForMac(env, MAC);
+      if (!isPlayableStatus(st)) return denyUsefulContent(MAC, st);
+    }
+  } catch (_) { /* fail-open */ }
   await ensureDeviceSourcesTable(env);
 
   let delId = null;
@@ -6509,6 +6604,28 @@ async function handlePublicFamilyM3u(env, rawToken) {
       .prepare('SELECT source_json FROM families WHERE id = ?')
       .bind(link.family_id).first();
     if (!fam || !fam.source_json) return new Response('source absente', { status: 404 });
+    // Lien M3U famille : plus de playlist si PLUS PERSONNE n'a d'abo live
+    // dans la famille (jeton fuité + abo coupé = plus de flux).
+    try {
+      const paid = await env.DB
+        .prepare(
+          'SELECT l.id FROM family_members fm ' +
+          'JOIN devices d ON d.mac = fm.mac ' +
+          'JOIN licenses l ON l.device_id = d.id ' +
+          'WHERE fm.family_id = ? AND IFNULL(l.status,\'active\') = \'active\' ' +
+          'AND (l.expires_at IS NULL OR l.expires_at > ?) LIMIT 1',
+        )
+        .bind(link.family_id, Date.now())
+        .first();
+      const nMem = await env.DB
+        .prepare('SELECT COUNT(*) AS n FROM family_members WHERE family_id = ?')
+        .bind(link.family_id)
+        .first();
+      // Famille avec des membres, mais plus aucun abo live → plus de flux.
+      if ((nMem && nMem.n > 0) && !paid) {
+        return new Response('abonnement expiré', { status: 403 });
+      }
+    } catch (_) { /* table family_members absente → on sert (compat) */ }
     let src;
     try { src = JSON.parse(fam.source_json); } catch (_) { src = null; }
     if (!src) return new Response('source invalide', { status: 404 });
@@ -6559,6 +6676,20 @@ async function handleDeviceBackup(request, env, mac, method) {
   }
 
   if (method === 'GET') {
+    try {
+      const master = await isMasterCached(env, MAC).catch(() => false);
+      if (!master) {
+        const st = await familyStatusForMac(env, MAC);
+        if (!isPlayableStatus(st)) {
+          return jsonPrivate({
+            ok: false, error: 'not_entitled', mac: MAC,
+            blocked: st && st.banned ? 'banned' : st && st.frozen ? 'frozen'
+              : st && st.expired ? 'expired' : 'no_license',
+            data: null, updated_at: 0,
+          });
+        }
+      }
+    } catch (_) { /* fail-open lecture statut */ }
     try {
       const row = await env.DB
         .prepare('SELECT data_json, updated_at FROM device_backups WHERE mac = ?')

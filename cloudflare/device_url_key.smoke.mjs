@@ -66,7 +66,7 @@ function corpsDe(nom) {
   return j < 0 ? suite : suite.slice(0, j);
 }
 
-for (const nom of ['resolveTargetMac', 'handleDeviceOverview']) {
+for (const nom of ['resolveTargetMac', 'handleDeviceOverview', 'deviceForActor']) {
   const corps = corpsDe(nom);
   assert.match(
     corps,

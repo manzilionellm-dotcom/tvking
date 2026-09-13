@@ -10,7 +10,8 @@
 //    4. ÉTANCHÉITÉ PANEL : GET /api/v1/sources/:mac (liste normale) ne
 //       touche JAMAIS la table lab_sources ;
 //    5. ÉTANCHÉITÉ SYNC (worker.js /api/device-source/:mac) : une MAC
-//       maître reçoit les sources labo EN PLUS, une MAC normale ne les
+//       maître reçoit les sources labo EN PLUS, une MAC normale PAYANTE
+//       (licence D1 active — le verrou sécurité exige un abo) ne les
 //       reçoit JAMAIS ;
 //    6. STATS PROPRES : /insights/overview exclut les MAC maîtres de
 //       chaque compteur (NOT EXISTS … app_masters), en LECTURE SEULE ;
@@ -43,6 +44,9 @@ async function makeJwt(payload) {
 const MASTER = 'MK:AA:AA:AA:AA:01';
 const MASTER2 = 'MK:AA:AA:AA:AA:02';
 const NORMAL = 'MK:BB:BB:BB:BB:01';
+// Fiche D1 de la MAC NORMALE : un client PAYANT (même schéma que
+// d1StatusForMac dans worker.js — devices.id + licenses.status/expires_at).
+const NORMAL_DEV_ID = 'dev_normal';
 const state = {
   labRows: [],   // lignes lab_sources { id, name, url, source_json, created_at }
   masters: [{ mac: MASTER }, { mac: MASTER2 }],
@@ -91,8 +95,34 @@ function makeDb(log) {
           if (/SELECT id, name FROM lab_sources WHERE id/.test(s)) {
             return state.labRows.find((r) => r.id === this._args[0]) || null;
           }
-          // worker.js d1StatusForMac → appareil inconnu = non bloqué.
-          if (/FROM devices WHERE mac = \?/.test(s)) return null;
+          // worker.js d1StatusForMac : la MAC NORMALE est un client PAYANT
+          // (fiche devices + licence active). Depuis le verrou licence
+          // (PR #24), GET /api/device-source/:mac ne livre plus de source
+          // sans abo live / essai valide / famille / maître — c'est voulu
+          // pour les freeloaders. Ce smoke teste l'ÉTANCHÉITÉ labo (une
+          // MAC cliente ne reçoit JAMAIS les sources du maître), pas le
+          // paywall. Sans licence ici, le Worker renverrait vide et le
+          // test 5a serait un faux négatif.
+          if (/FROM devices WHERE mac = \?/.test(s)) {
+            if (this._args[0] === NORMAL) {
+              return {
+                id: NORMAL_DEV_ID,
+                first_seen_at: Date.now() - 86400000,
+                block_status: null,
+                android_id: null,
+              };
+            }
+            return null;
+          }
+          if (/SELECT status AS lstatus, expires_at FROM licenses/.test(s)) {
+            if (this._args[0] === NORMAL_DEV_ID) {
+              return {
+                lstatus: 'active',
+                expires_at: Date.now() + 30 * 86400000,
+              };
+            }
+            return null;
+          }
           // worker.js handlePublicDeviceSource : la MAC NORMALE a une
           // source panel ; la MAC MAÎTRE n'a AUCUNE ligne device_sources.
           if (/FROM device_sources WHERE mac/.test(s)) {
@@ -191,7 +221,9 @@ ok(log4.every((s) => !/lab_sources/.test(s)), '4 aucun SQL vers lab_sources (ét
 // 5) ÉTANCHÉITÉ SYNC (worker.js) : /api/device-source/:mac.
 const ctx = { waitUntil() {}, passThroughOnException() {} };
 const wEnv = { DB: makeDb([]) };
-//    5a. MAC NORMALE : sa source panel, RIEN du labo.
+//    5a. MAC NORMALE PAYANTE : sa source panel, RIEN du labo.
+//        (licence D1 active ci-dessus — sinon le verrou sécurité
+//        renvoie source vide, ce qui n'est plus le sujet de ce test.)
 r = await worker.fetch(new Request('https://app.x/api/device-source/' + NORMAL), wEnv, ctx);
 b = await r.json();
 ok(r.status === 200 && b.source && b.source.m3u_url === 'https://client.tv/liste.m3u',

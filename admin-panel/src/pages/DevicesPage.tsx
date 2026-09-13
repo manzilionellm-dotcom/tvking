@@ -4,11 +4,16 @@ import { AppLayout } from '@/components/AppLayout';
 import {
   devicesApi, activateApi, sourcesApi, flagEmoji, PLAN_LABELS,
   type Device, type DeviceSource, type DeviceSourceInput, type DeviceOverview,
-  type DeviceLocalSource, type DeviceLicense, type DevicePresence, ApiError,
+  type DeviceLocalSource, type DeviceLicense, type DevicePresence,
+  type DeviceListCounts, type DeviceListFilter, type ActivateResult, ApiError,
 } from '@/lib/api';
 import { useLiveDevices, useRtEvent, sendCmd, waitForAck, type ChangedEvent } from '@/lib/realtime';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { formatDateTime } from '@/lib/utils';
+import {
+  DeviceFilterBar, QuickRenewBar, AdminNoteField, CopyWhatsAppButton, AboChip,
+  countDeviceFilters, licenseFromActivate, matchesDeviceFilter, isOnlineUnpaid,
+} from '@/components/DeviceOps';
 
 /// Scopes de mutation qui concernent cette page (évènement `changed`).
 const CHANGED_SCOPES = ['devices', 'licenses', 'sources', 'audit'];
@@ -16,6 +21,8 @@ const CHANGED_SCOPES = ['devices', 'licenses', 'sources', 'audit'];
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Device[]>([]);
   const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<DeviceListFilter>('all');
+  const [serverCounts, setServerCounts] = useState<DeviceListCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -35,14 +42,35 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
 
   const load = useCallback(() => {
     setLoading(true);
-    devicesApi.list(q)
-      .then((r) => { setItems(r.items); setErr(null); })
+    devicesApi.list(q, filter)
+      .then((r) => {
+        setItems(r.items);
+        setServerCounts(r.counts ?? null);
+        setErr(null);
+      })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) onLogout();
         else setErr(e.message);
       })
       .finally(() => setLoading(false));
-  }, [q, onLogout]);
+  }, [q, filter, onLogout]);
+
+  // Worker récent : la liste est déjà filtrée + compteurs globaux.
+  // Worker ancien : on filtre / compte sur les 200 lignes reçues.
+  const displayItems = serverCounts
+    ? items
+    : items.filter((d) => matchesDeviceFilter(d, filter));
+  const counts = serverCounts ?? countDeviceFilters(items);
+
+  function applyLicenseLocal(mac: string, lic: Device['license']) {
+    setItems((prev) => prev.map((x) => (
+      x.mac.toUpperCase() === mac.toUpperCase() ? { ...x, license: lic } : x
+    )));
+    setDetailFor((prev) => (
+      prev && prev.mac.toUpperCase() === mac.toUpperCase()
+        ? { ...prev, license: lic } : prev
+    ));
+  }
 
   useEffect(() => {
     const id = setTimeout(load, 200); // petit debounce sur la recherche
@@ -69,11 +97,18 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     setBusyId(d.id); setErr(null);
     try {
       const res = await devicesApi.setBlock(d.id, status);
+      // UI immédiate : la fiche ouverte gardait l'ancien block_status
+      // jusqu'au reload (action « OK » mais écran stale).
+      setItems((prev) => prev.map((x) => (x.id === d.id ? { ...x, block_status: status } : x)));
+      setDetailFor((prev) => (prev && prev.id === d.id ? { ...prev, block_status: status } : prev));
       load();
-      // Feedback instantané : l'appareil a-t-il reçu le push en direct ?
       void rtActionFeedback(res.rt);
     }
-    catch (e: any) { setErr(e instanceof ApiError ? e.message : 'Échec.'); }
+    catch (e: unknown) {
+      const msg = e instanceof ApiError ? e.message : 'Échec.';
+      setErr(msg);
+      toast(msg, 'error');
+    }
     finally { setBusyId(null); }
   }
 
@@ -82,15 +117,21 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     setBusyId(d.id); setErr(null);
     try {
       const res = await devicesApi.remove(d.id);
+      setItems((prev) => prev.filter((x) => x.id !== d.id));
+      setDetailFor((prev) => (prev && prev.id === d.id ? null : prev));
       load();
       void rtActionFeedback(res.rt);
     }
-    catch (e: any) { setErr(e instanceof ApiError ? e.message : 'Échec.'); }
+    catch (e: unknown) {
+      const msg = e instanceof ApiError ? e.message : 'Échec.';
+      setErr(msg);
+      toast(msg, 'error');
+    }
     finally { setBusyId(null); }
   }
 
   // ---- Sélection multiple ---------------------------------------------
-  const allSelected = items.length > 0 && items.every((d) => selected.has(d.id));
+  const allSelected = displayItems.length > 0 && displayItems.every((d) => selected.has(d.id));
   function toggleOne(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -99,9 +140,9 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     });
   }
   function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(items.map((d) => d.id)));
+    setSelected(allSelected ? new Set() : new Set(displayItems.map((d) => d.id)));
   }
-  const selectedDevices = items.filter((d) => selected.has(d.id));
+  const selectedDevices = displayItems.filter((d) => selected.has(d.id));
 
   // Exécute une action sur TOUS les appareils sélectionnés, en série (pour
   // ne pas marteler le serveur), avec bilan chiffré. `confirm` : {n} est
@@ -119,16 +160,22 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     }
     setBulkBusy(true); setErr(null);
     let ok = 0, fail = 0;
+    let lastErr = '';
     for (const d of targets) {
-      try { await run(d); ok++; } catch { fail++; }
+      try { await run(d); ok++; }
+      catch (e: unknown) {
+        fail++;
+        lastErr = e instanceof ApiError ? e.message : (e instanceof Error ? e.message : 'Échec.');
+      }
     }
     setBulkBusy(false);
     setSelected(new Set());
     load();
     toast(
-      `${verb} : ${ok} appliqué(s)${fail ? ` · ${fail} échec(s)` : ''}.`,
+      `${verb} : ${ok} appliqué(s)${fail ? ` · ${fail} échec(s)${lastErr ? ` — ${lastErr}` : ''}` : ''}.`,
       fail ? 'warning' : 'success',
     );
+    if (fail && lastErr) setErr(lastErr);
   }
 
   function bulkBlock(status: 'active' | 'frozen' | 'banned', verb: string, confirm?: string) {
@@ -155,16 +202,18 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Appareils"
-      subtitle={`${items.length} appareil(s)`}
+      subtitle={`${displayItems.length} affiché(s)${counts.all && counts.all !== displayItems.length ? ` · ${counts.all} au total` : ''}`}
       onLogout={onLogout}
     >
       <input
         type="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Recherche par MAC, label, client…"
-        className="mb-4 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
+        placeholder="Recherche par MAC, label, note, client…"
+        className="mb-3 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
       />
+
+      <DeviceFilterBar value={filter} counts={counts} onChange={setFilter} />
 
       {err && (
         <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
@@ -208,6 +257,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
               </th>
               <th className="px-4 py-3">MAC</th>
               <th className="px-4 py-3">Client</th>
+              <th className="px-4 py-3">Abo</th>
               <th className="px-4 py-3">Appareil</th>
               <th className="px-4 py-3">Statut</th>
               <th className="px-4 py-3">Dernière vue</th>
@@ -217,18 +267,19 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           <tbody className="divide-y divide-white/5">
             {loading && Array.from({ length: 5 }).map((_, i) => (
               <tr key={i} className="bg-obsidian">
-                <td className="px-4 py-3" colSpan={7}>
+                <td className="px-4 py-3" colSpan={8}>
                   <div className="h-4 w-full animate-pulse rounded bg-white/5" />
                 </td>
               </tr>
             ))}
-            {!loading && items.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-ink-tertiary">
-                Aucun appareil pour l'instant. Dès qu'une app contacte le serveur,
-                sa MAC apparaît ici automatiquement.
+            {!loading && displayItems.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-ink-tertiary">
+                {items.length === 0
+                  ? "Aucun appareil pour l'instant. Dès qu'une app contacte le serveur, sa MAC apparaît ici automatiquement."
+                  : 'Aucun appareil dans ce filtre.'}
               </td></tr>
             )}
-            {items.map((d) => {
+            {displayItems.map((d) => {
               const st = d.block_status || 'active';
               const busy = busyId === d.id;
               const liveOnline = rtConnected && liveMacs.has(d.mac);
@@ -261,7 +312,28 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                       </button>
                     </span>
                   </td>
-                  <td className="px-4 py-3">{d.customer_name || d.customer_email || '—'}</td>
+                  <td className="px-4 py-3">
+                    <div className="text-sm">{d.customer_name || d.customer_email || '—'}</div>
+                    {d.admin_note && (
+                      <div className="mt-0.5 max-w-[160px] truncate text-[10px] text-ink-tertiary" title={d.admin_note}>
+                        {d.admin_note}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <AboChip license={d.license} />
+                    <div className="mt-1">
+                      <QuickRenewBar
+                        mac={d.mac}
+                        compact
+                        showTrials={false}
+                        onDone={(res) => {
+                          applyLicenseLocal(d.mac, licenseFromActivate(res));
+                          load();
+                        }}
+                      />
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <PlatformChip device={d} />
                     {d.device_model ? (
@@ -276,17 +348,32 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                       <span className="text-ink-tertiary">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3"><DeviceStatus status={st} /></td>
+                  <td className="px-4 py-3">
+                    <DeviceStatus status={st} />
+                    {isOnlineUnpaid(d) && (
+                      <div className="mt-1 text-[10px] font-semibold text-warning">
+                        En ligne sans abo
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
                       <ActionBtn busy={busy} onClick={() => setDetailFor(d)} title="Fiche complète : M-Trio + infos appareil">Détails</ActionBtn>
+                      <CopyWhatsAppButton mac={d.mac} license={d.license} note={d.admin_note} />
                       <ActionBtn busy={busy} primary onClick={() => setActivateFor(d)} title="Activer / prolonger (le client a payé)">Activer</ActionBtn>
                       {st !== 'frozen' && (
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
                       )}
                       {st !== 'banned' && (
-                        <ActionBtn busy={busy} onClick={() => setBlock(d, 'banned')} title="Bannir (abus)">Bannir</ActionBtn>
+                        <ActionBtn
+                          busy={busy}
+                          primary={isOnlineUnpaid(d)}
+                          onClick={() => setBlock(d, 'banned')}
+                          title="Bannir (freeloader / abus)"
+                        >
+                          Bannir
+                        </ActionBtn>
                       )}
                       {st !== 'active' && (
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'active')} title="Réactiver">Réactiver</ActionBtn>
@@ -305,7 +392,14 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         <ActivatePlanModal
           device={activateFor}
           onClose={() => setActivateFor(null)}
-          onDone={() => { setActivateFor(null); load(); }}
+          onDone={() => {
+            const d = activateFor;
+            setActivateFor(null);
+            // Rouvrir la fiche : sinon l'abo tout juste posé n'est
+            // visible qu'après un nouvel ouverture manuelle.
+            setDetailFor(d);
+            load();
+          }}
         />
       )}
 
@@ -318,6 +412,13 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           onActivate={() => { const d = detailFor; setDetailFor(null); setActivateFor(d); }}
           onBlock={(status) => setBlock(detailFor, status)}
           onRemove={() => { const d = detailFor; setDetailFor(null); remove(d); }}
+          onLicense={(mac, lic) => applyLicenseLocal(mac, lic)}
+          onNote={(note) => {
+            setDetailFor((prev) => (prev ? { ...prev, admin_note: note } : prev));
+            setItems((prev) => prev.map((x) => (
+              x.id === detailFor.id ? { ...x, admin_note: note } : x
+            )));
+          }}
         />
       )}
 
@@ -421,7 +522,7 @@ function BulkActivateModal({
 //  client a ajouté lui-même une liste M3U/Xtream depuis l'app (« Mes sources »),
 //  celle-ci reste stockée localement sur sa TV et n'est pas remontée au serveur.
 function DeviceDetailModal({
-  device, liveOnline, busy, onClose, onActivate, onBlock, onRemove,
+  device, liveOnline, busy, onClose, onActivate, onBlock, onRemove, onLicense, onNote,
 }: {
   device: Device;
   liveOnline: boolean;   // connecté au hub temps réel EN CE MOMENT
@@ -430,6 +531,8 @@ function DeviceDetailModal({
   onActivate: () => void;
   onBlock: (status: 'active' | 'frozen' | 'banned') => void;
   onRemove: () => void;
+  onLicense?: (mac: string, lic: DeviceLicense | null) => void;
+  onNote?: (note: string) => void;
 }) {
   const navigate = useNavigate();
   const [ov, setOv] = useState<DeviceOverview | null>(null);
@@ -441,12 +544,28 @@ function DeviceDetailModal({
     setLoading(true);
     devicesApi.overview(device.id)
       .then((r) => { if (alive) { setOv(r); setErr(null); } })
-      .catch((e) => { if (alive) setErr(e instanceof ApiError ? e.message : 'Échec.'); })
+      .catch((e) => {
+        if (!alive) return;
+        const msg = e instanceof ApiError ? e.message : 'Échec.';
+        setErr(msg);
+        toast(msg, 'error');
+      })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [device.id]);
 
-  const st = device.block_status || 'active';
+  // Mutation ailleurs (autre onglet) OU notre propre push `changed` :
+  // on refetch TOUT DE SUITE (pas le debounce 2 s de la liste).
+  useRtEvent('changed', (e: ChangedEvent) => {
+    if (e.mac && e.mac.toUpperCase() !== device.mac.toUpperCase()) return;
+    if (e.scope && !['devices', 'licenses', 'sources', 'audit'].includes(e.scope)) return;
+    void refreshOverview();
+  });
+
+  const st: 'active' | 'frozen' | 'banned' =
+    device.block_status === 'frozen' || device.block_status === 'banned'
+      ? device.block_status
+      : 'active';
   const sources = ov?.sources ?? [];
   const macUrl = encodeURIComponent(device.mac);
 
@@ -456,8 +575,45 @@ function DeviceDetailModal({
       const r = await devicesApi.overview(device.id);
       setOv(r);
       setErr(null);
+      return r;
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Échec.');
+      const msg = e instanceof ApiError ? e.message : 'Échec.';
+      setErr(msg);
+      toast(msg, 'error');
+      return null;
+    }
+  }
+
+  // Applique le tableau renvoyé par la mutation AVANT le GET — la fiche
+  // ne doit jamais rester sur l'ancien abo le temps du round-trip.
+  function applySources(next?: DeviceSource[]) {
+    if (!next) return;
+    setOv((prev) => (prev ? { ...prev, sources: next } : prev));
+  }
+
+  const [clearingLicense, setClearingLicense] = useState(false);
+  async function handleClearLicense() {
+    if (
+      !window.confirm(
+        'Effacer l’abonnement (licence) de ce client ?\n\n' +
+          'L’app rebascule en essai / paywall tout de suite s’il est en ligne.\n' +
+          'Tu pourras en activer un nouveau juste après, sans cumuler les jours.',
+      )
+    ) {
+      return;
+    }
+    setClearingLicense(true);
+    try {
+      const r = await devicesApi.clearLicense(device.id);
+      setOv((prev) => (prev ? { ...prev, license: null } : prev));
+      onLicense?.(device.mac, null);
+      void rtActionFeedback(r.rt);
+      toast('Abonnement effacé.', 'success');
+      await refreshOverview();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec de la suppression.', 'error');
+    } finally {
+      setClearingLicense(false);
     }
   }
 
@@ -483,6 +639,7 @@ function DeviceDetailModal({
     setClearing(true);
     try {
       const r = await sourcesApi.clear(device.mac);
+      applySources(r.sources ?? []);
       void rtActionFeedback(r.rt);
       toast('Source retirée. Repousse-en une propre si besoin.', 'success');
       await refreshOverview();
@@ -509,8 +666,43 @@ function DeviceDetailModal({
 
         {/* ----- Abonnement + Présence live (résumé d'un coup d'œil) ----- */}
         <div className="mb-4 grid grid-cols-2 gap-3">
-          <SubscriptionBox loading={loading} license={ov?.license ?? null} />
+          <SubscriptionBox
+            loading={loading}
+            license={ov?.license ?? device.license ?? null}
+            clearing={clearingLicense}
+            onClear={handleClearLicense}
+          />
           <PresenceBox loading={loading} presence={ov?.presence ?? null} />
+        </div>
+
+        {/* Renouvellement / essai express — même POST /activate que le modal. */}
+        <div className="mb-4 rounded-lg border border-white/5 bg-obsidian px-3 py-2.5">
+          <QuickRenewBar
+            mac={device.mac}
+            onDone={(res: ActivateResult) => {
+              const lic = licenseFromActivate(res);
+              setOv((prev) => (prev ? { ...prev, license: lic } : prev));
+              onLicense?.(device.mac, lic);
+              void refreshOverview();
+            }}
+          />
+          <div className="mt-2">
+            <CopyWhatsAppButton
+              mac={device.mac}
+              license={ov?.license ?? device.license ?? null}
+              note={device.admin_note}
+              sources={sources}
+            />
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <AdminNoteField
+            deviceId={device.id}
+            value={device.admin_note || ''}
+            blockStatus={st}
+            onSaved={(note) => onNote?.(note)}
+          />
         </div>
 
         {/* ----- Infos appareil (le « ventre ») ----- */}
@@ -556,7 +748,7 @@ function DeviceDetailModal({
             index={i}
             source={s}
             mac={device.mac}
-            onDone={() => { void refreshOverview(); }}
+            onDone={(srcs) => { applySources(srcs); void refreshOverview(); }}
           />
         ))}
 
@@ -570,6 +762,7 @@ function DeviceDetailModal({
               onSubmit={async (s) => {
                 try {
                   const r = await sourcesApi.add(device.mac, s);
+                  applySources(r.sources);
                   void rtActionFeedback(r.rt);
                   toast('Abonnement ajouté.', 'success');
                   setAdding(false);
@@ -766,7 +959,14 @@ function LiveActions({ mac, liveOnline }: { mac: string; liveOnline: boolean }) 
 }
 
 /// Encart « Abonnement » : statut + plan + expiration (jours restants).
-function SubscriptionBox({ loading, license }: { loading: boolean; license: DeviceLicense | null }) {
+function SubscriptionBox({
+  loading, license, clearing, onClear,
+}: {
+  loading: boolean;
+  license: DeviceLicense | null;
+  clearing?: boolean;
+  onClear?: () => void;
+}) {
   if (loading) return <div className="h-16 animate-pulse rounded-lg bg-white/5" />;
   const ok = license && license.status === 'active';
   const lifetime = license && license.expires_at == null && ok;
@@ -791,6 +991,17 @@ function SubscriptionBox({ loading, license }: { loading: boolean; license: Devi
         {ok ? (lifetime ? 'À vie' : 'Actif') : (license ? 'Expiré' : '—')}
       </div>
       <div className="mt-0.5 truncate text-[11px] text-ink-tertiary" title={detail}>{detail}</div>
+      {license && onClear && (
+        <button
+          type="button"
+          disabled={clearing}
+          onClick={onClear}
+          title="Retire la licence en base : tu peux en activer une autre tout de suite"
+          className="mt-1.5 text-[10px] font-semibold text-red-300 hover:underline disabled:opacity-40"
+        >
+          {clearing ? 'Effacement…' : 'Effacer l’abonnement'}
+        </button>
+      )}
     </div>
   );
 }
@@ -833,7 +1044,7 @@ function SourceCard({
   index: number;
   source: DeviceSource;
   mac: string;
-  onDone: () => void;
+  onDone: (sources?: DeviceSource[]) => void;
 }) {
   const isXtream = source.type === 'xtream';
   // Ces sources-ci sont EN BASE (poussées par le panel) : on agit
@@ -849,7 +1060,7 @@ function SourceCard({
       void rtActionFeedback(r.rt);
       toast('Source modifiée. Le client la recharge tout de suite.', 'success');
       setEditing(false);
-      onDone();
+      onDone(r.sources);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Échec de la modification.', 'error');
     }
@@ -865,7 +1076,7 @@ function SourceCard({
       const r = await sourcesApi.setActive(mac, index);
       void rtActionFeedback(r.rt);
       toast('Source active mise à jour.', 'success');
-      onDone();
+      onDone(r.sources);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Échec.', 'error');
     } finally { setBusy(''); }
@@ -881,7 +1092,7 @@ function SourceCard({
       const r = await sourcesApi.removeAt(mac, index, ident);
       void rtActionFeedback(r.rt);
       toast(`Source retirée (${r.remaining} restante(s)).`, 'success');
-      onDone();
+      onDone(r.sources);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Échec du retrait.', 'error');
     } finally { setBusy(''); }
@@ -1274,11 +1485,13 @@ function ActivatePlanModal({
     try {
       const res = await activateApi.activate({ mac: device.mac, plan });
       setDone(true);
-      // L'appareil est-il en ligne ? → toast « appliqué en X ms ».
       void rtActionFeedback(res.rt);
-      setTimeout(onDone, 900);
-    } catch (e: any) {
-      setErr(e instanceof ApiError ? e.message : 'Échec.');
+      toast(res.renewed ? 'Abonnement prolongé.' : 'Abonnement activé.', 'success');
+      setTimeout(onDone, 400);
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError ? e.message : 'Échec.';
+      setErr(msg);
+      toast(msg, 'error');
     } finally { setBusy(false); }
   }
 
