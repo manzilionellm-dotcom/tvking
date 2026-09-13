@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { awaitRtOutcome } from '@/lib/realtime';
 import type { RtInfo } from '@/lib/api';
+import { NEW_WAVE_DATE } from '@/components/NewBadge';
 
 // =========================================================
 //  Toast — notifications éphémères partagées (impératif)
@@ -17,6 +18,7 @@ interface ToastItem {
   id: number;
   msg: string;
   kind: ToastKind;
+  isNew?: boolean;
 }
 
 let nextId = 1;
@@ -25,8 +27,9 @@ let pushFn: ((t: ToastItem) => void) | null = null;
 const pending: ToastItem[] = [];
 
 /// Affiche un toast (appelable hors React).
-export function toast(msg: string, kind: ToastKind = 'info'): void {
-  const item: ToastItem = { id: nextId++, msg, kind };
+/// `opts.isNew` : vague ops — toast bleu + danse (convention Lionel).
+export function toast(msg: string, kind: ToastKind = 'info', opts?: { isNew?: boolean }): void {
+  const item: ToastItem = { id: nextId++, msg, kind, isNew: opts?.isNew };
   if (pushFn) pushFn(item);
   else pending.push(item);
 }
@@ -96,9 +99,10 @@ export function ToastHost() {
       {items.map((t) => (
         <div
           key={t.id}
+          data-new={t.isNew ? NEW_WAVE_DATE : undefined}
           className={cn(
             'pointer-events-auto rounded-lg border px-3 py-2.5 text-xs font-medium shadow-2xl backdrop-blur',
-            KIND_CLS[t.kind],
+            t.isNew ? 'is-new is-new--toast' : KIND_CLS[t.kind],
           )}
         >
           {t.msg}
