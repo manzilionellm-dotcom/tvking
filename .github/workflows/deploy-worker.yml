@@ -77,6 +77,10 @@ on:
       - 'cloudflare/app_versions.js'
       - 'cloudflare/migrate_kv_to_d1.js'
       - 'cloudflare/wrangler.toml'
+      # Smoke tests : un fix smoke-only (ex. #26 lab_sources) doit
+      # redéployer, sinon le Worker live reste sur l'ancienne version.
+      - 'cloudflare/*.smoke.mjs'
+      - 'cloudflare/**/*.smoke.mjs'
       - '.github/workflows/deploy-worker.yml'
 
   # Permet aussi le déploiement manuel depuis l'onglet Actions
