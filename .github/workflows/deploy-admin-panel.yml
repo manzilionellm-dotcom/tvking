@@ -60,16 +60,29 @@ jobs:
           VITE_API_BASE: 'https://app.7themotion.com'
         run: npm run build
 
-      # Cree le projet Pages s'il n'existe pas encore (idempotent :
-      # ignore l'erreur si deja cree).
+      # Idempotent : le projet existe déjà en prod. wrangler-action
+      # annotait ##[error] (npx exit 1) malgré continue-on-error —
+      # run 34763453699 était Success mais Lionel voyait un faux rouge.
       - name: Ensure Pages project exists
-        uses: cloudflare/wrangler-action@v3
-        continue-on-error: true
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: 'admin-panel'
-          command: pages project create tvking-admin --production-branch=main
+        working-directory: admin-panel
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          out=$(npx --yes wrangler@3.90.0 pages project create tvking-admin --production-branch=main 2>&1)
+          code=$?
+          echo "$out"
+          if [ "$code" -eq 0 ]; then
+            echo "✓ projet Pages créé"
+            exit 0
+          fi
+          if echo "$out" | grep -qi "already exists"; then
+            echo "✓ projet Pages déjà présent"
+            exit 0
+          fi
+          echo "❌ create Pages a échoué"
+          exit 1
 
       - name: Deploy to Pages
         uses: cloudflare/wrangler-action@v3

@@ -122,8 +122,17 @@ ok('clé absente → chaîne vide, aucune exception');
 // ---------------------------------------------------------
 //  4. Le panneau n'accuse plus le client sur la foi d'un 404
 // ---------------------------------------------------------
+//  Vague A (#33) : MacLink n'a plus de tiroir maison. Un clic ouvre
+//  DeviceSheet (la même fiche que Devices / Cmd+K). Le bandeau 404
+//  vit donc dans DeviceSheet.tsx — on lit LES DEUX fichiers. Un test
+//  qui ne lisait que MacLink a cassé le deploy Worker après le merge
+//  (run 34763453655) : le texte n'avait pas disparu, il avait bougé.
 const macLink = readFileSync(
   new URL('../admin-panel/src/components/MacLink.tsx', import.meta.url),
+  'utf8',
+);
+const deviceSheet = readFileSync(
+  new URL('../admin-panel/src/components/DeviceSheet.tsx', import.meta.url),
   'utf8',
 );
 //  ON VISE LA PHRASE COMPLÈTE TELLE QU'ELLE ÉTAIT AFFICHÉE, pas un bout.
@@ -137,13 +146,25 @@ assert.doesNotMatch(
   /"Cette MAC n'est pas encore enregistrée \(aucun démarrage de l'app\)\."/,
   "l'ancienne affirmation ne doit plus être affichée",
 );
+assert.doesNotMatch(
+  deviceSheet,
+  /"Cette MAC n'est pas encore enregistrée \(aucun démarrage de l'app\)\."/,
+  "l'ancienne affirmation ne doit plus être affichée (fiche 360°)",
+);
 ok('le bandeau 404 ne conclut plus à la place du revendeur');
+
+assert.match(
+  macLink,
+  /useDeviceSheet|DeviceSheet/,
+  'MacLink doit ouvrir la fiche 360° partagée, pas un tiroir maison',
+);
+ok('MacLink ouvre DeviceSheet (Vague A)');
 
 //  Et la nouvelle formulation est bien là. Sans ce contrôle positif, une
 //  suppression pure et simple du bandeau passerait le test — le
 //  revendeur se retrouverait alors devant une fiche vide, sans un mot.
 assert.match(
-  macLink,
+  deviceSheet,
   /Aucune fiche trouvée pour cette MAC/,
   'le bandeau doit dire ce qu\'on sait, et quoi faire',
 );
