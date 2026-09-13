@@ -35,6 +35,7 @@ class _TvLicenseLockScreenState extends State<TvLicenseLockScreen> {
   @override
   void initState() {
     super.initState();
+    DeviceIdentity.instance.addListener(_onIdentity);
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = DeviceIdentity.stripPrefix(m));
     });
@@ -47,12 +48,21 @@ class _TvLicenseLockScreenState extends State<TvLicenseLockScreen> {
 
   @override
   void dispose() {
+    // Les deux listeners : #30 (SubscriptionState / Revérifier) +
+    // #31 (DeviceIdentity / nouveau MAC affiché après régénérer).
+    DeviceIdentity.instance.removeListener(_onIdentity);
     SubscriptionState.instance.removeListener(_onSub);
     super.dispose();
   }
 
   void _onSub() {
     if (mounted) setState(() {});
+  }
+
+  void _onIdentity() {
+    if (!mounted) return;
+    setState(() =>
+        _mac = DeviceIdentity.stripPrefix(DeviceIdentity.instance.macSync));
   }
 
   Future<void> _recheck() async {

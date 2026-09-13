@@ -69,6 +69,7 @@ Upgrade: websocket
 |---|---|---|
 | `sync` | `{what: 'status'\|'sources'\|'config'\|'all', id?}` | relancer les fetchs HTTP existants correspondants, puis `ack` |
 | `message` | `{id, title, body, kind: 'info'\|'success'\|'warning', durationSec?}` | bannière in-app immédiate, puis `ack` |
+| `mac_reassigned` | `{old_mac, new_mac, id?}` | **adopter** le nouveau MAC (SharedPreferences + cache), reconnecter le socket, puis `sync all`. Canal **mobile** autant que TV. Filet HTTP : heartbeat / device-source portent le même objet. |
 | `bye` | `{reason}` | ne PAS reconnecter immédiatement (attendre backoff max) |
 
 Mapping `sync.what` → actions app :
@@ -127,6 +128,8 @@ appliqué à sa prochaine connexion ».
 | `PATCH /api/v1/devices/:id` (block/unblock), `DELETE` | mac → `sync status` + admins `changed` |
 | `POST /api/v1/licenses` / `.../renew` / `PATCH` | mac (lookup) → `sync status` + admins `changed` |
 | `POST /api/v1/transfer` | les 2 macs → `sync all` + admins `changed` |
+| `POST /api/v1/devices/:id/change-mac` | ancienne → `mac_reassigned` ; nouvelle → `sync all` + admins `changed` |
+| `POST /api/v1/devices/:id/regenerate-mac` | idem change-mac (identité neuve + tombstone anti-freeloader) |
 | `POST /api/v1/grant-trial-all` | `all-devices` → `sync status` |
 | annonces, thème, home-layout, featured, ad, pricing, force-update, feedback-prompt, servers | `all-devices` → `sync config` + admins `changed` |
 | legacy `POST /admin/clients/:mac/action` (worker.js) | mac → `sync status` |

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { transferApi, ApiError } from '@/lib/api';
 import { formatMacInput } from '@/lib/utils';
+import { applyNew } from '@/components/NewBadge';
 
 // =========================================================
 //  TransferPage — CHANGER LA MAC d'un client
@@ -32,6 +33,7 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [ack, setAck] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -41,6 +43,7 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
     if (!MAC_RX.test(o)) { setErr('MAC actuelle invalide (format MK:XX:XX:XX:XX:XX).'); return; }
     if (!MAC_RX.test(n)) { setErr('Nouvelle MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
     if (o === n) { setErr('Les deux MAC sont identiques.'); return; }
+    if (!ack) { setErr('Coche la confirmation : c’est un geste danger.'); return; }
     setBusy(true);
     try {
       const r = await transferApi.transfer(o, n);
@@ -116,6 +119,13 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
             </p>
           </div>
 
+          <label className="flex items-start gap-2 text-xs text-ink-secondary">
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5" />
+            Je confirme ce changement d’identité. Pour une MAC zombie
+            (licences conflictuelles), préfère <strong>Régénérer MAC</strong>
+            dans la fiche Appareils : l’app adopte le nouveau numéro.
+          </label>
+
           {err && (
             <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>
           )}
@@ -125,8 +135,11 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
 
           <button
             type="submit"
-            disabled={busy}
-            className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={busy || !ack}
+            {...applyNew(
+              'change-mac',
+              'w-full rounded-md px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50',
+            )}
           >
             {busy ? 'Changement en cours…' : 'Changer la MAC'}
           </button>

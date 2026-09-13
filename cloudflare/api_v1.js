@@ -71,6 +71,11 @@
 // Object n'est pas déployé, publishRt renvoie {delivered:0} sans erreur.
 import { publishRt } from './realtime.js';
 import { bestLicenseOrderSql } from './license_pick.js';
+import {
+  normalizeMac, isValidMac, generateVirtualMac,
+  migrateDeviceMac, ensureSupersededColumn,
+  problemPredicates, classifyProblems,
+} from './mac_identity.js';
 //  Profils famille : MÊME code que la route publique interrogée par
 //  l'app. Deux implémentations auraient signifié deux calculs de PIN à
 //  maintenir — le jour où l'un dérive, les codes posés depuis le panel
@@ -699,6 +704,36 @@ async function withRt(env, res, resolve) {
 /// panels reçoivent changed{scope:'config'}.
 function withRtConfigBroadcast(env, res) {
   return withRt(env, res, () => ({ macs: 'all-devices', what: 'config', scope: 'config' }));
+}
+
+/// Après un changement / régénération de MAC : l'ANCIEN socket reçoit
+/// `mac_reassigned` (l'app ADOPTE le nouveau numéro), le nouveau reçoit
+/// `sync all` (licence + sources), les panels `changed`.
+async function withMacReassignRt(env, res) {
+  try {
+    if (!res || res.status < 200 || res.status >= 300) return res;
+    const body = await res.clone().json();
+    const oldMac = body.old_mac;
+    const newMac = body.new_mac;
+    if (!oldMac || !newMac) return res;
+    const [rtOld] = await Promise.all([
+      publishRt(env, {
+        targets: [oldMac],
+        event: { type: 'mac_reassigned', old_mac: oldMac, new_mac: newMac },
+      }),
+      publishRt(env, {
+        targets: [newMac],
+        event: { type: 'sync', what: 'all' },
+      }),
+      publishRt(env, {
+        targets: 'admins',
+        event: { type: 'changed', scope: 'devices', mac: newMac },
+      }),
+    ]);
+    return jsonResp({ ...body, rt: rtOld }, res.status);
+  } catch (_) {
+    return res;
+  }
 }
 
 /// MAC d'un device par son id (les mutations /devices/:id sont keyées par
@@ -1512,6 +1547,28 @@ async function apiV1Inner(request, env) {
     // /devices/:id/overview — fiche 360° (abonnement + présence + M-Trio).
     if (parts.length === 3 && parts[2] === 'overview') {
       if (request.method === 'GET') return handleDeviceOverview(env, parts[1], a.user);
+    }
+    // /devices/:id/change-mac — éditer l'identité (danger : confirmation
+    // `confirm:true` obligatoire). L'app ADOPTE via RT mac_reassigned.
+    if (parts.length === 3 && parts[2] === 'change-mac') {
+      if (request.method === 'POST') {
+        if (!resellerCan(a.user, 'transfer')) {
+          return errResp('forbidden', "Ton compte n'a pas le droit de changer une MAC.", 403);
+        }
+        return withMacReassignRt(env,
+          await handleDeviceChangeMac(request, env, parts[1], actor, a.user));
+      }
+    }
+    // /devices/:id/regenerate-mac — génère un MAC propre, migre, invalide
+    // l'ancien (anti-freeloader), pousse RT, active si demandé.
+    if (parts.length === 3 && parts[2] === 'regenerate-mac') {
+      if (request.method === 'POST') {
+        if (!resellerCan(a.user, 'transfer')) {
+          return errResp('forbidden', "Ton compte n'a pas le droit de régénérer une MAC.", 403);
+        }
+        return withMacReassignRt(env,
+          await handleDeviceRegenerateMac(request, env, parts[1], actor, a.user));
+      }
     }
     // /devices/:id/message — DÉPOSER un message persistant (livré même si
     // l'appareil est hors ligne, à sa prochaine ouverture). :id = id OU MAC.
@@ -4667,6 +4724,7 @@ function deviceListPredicates(now) {
     frozen: `d.block_status = 'frozen'`,
     banned: `d.block_status = 'banned'`,
     online_unpaid,
+    ...problemPredicates(now),
   };
 }
 
@@ -4699,16 +4757,25 @@ async function handleDevicesList(request, env, user) {
   const q = (url.searchParams.get('q') || '').trim();
   const filter = (url.searchParams.get('filter') || 'all').trim();
   await ensureAdminNoteColumn(env);
+  await ensureSupersededColumn(env);
   const now = Date.now();
   const pred = deviceListPredicates(now);
 
   // `d.*` inclut admin_note + colonnes heartbeat dès qu'elles existent.
+  // Compteurs de conflits (licences, android_id) : pastille « problématiques ».
   let sql = `SELECT d.*,
                     c.name as customer_name, c.email as customer_email,
                     l.id as lic_id, l.status as lic_status, l.plan as lic_plan,
                     l.started_at as lic_started_at, l.expires_at as lic_expires_at,
                     l.auto_renew as lic_auto_renew,
-                    p.last_seen as presence_last_seen
+                    p.last_seen as presence_last_seen,
+                    (SELECT COUNT(*) FROM licenses lx WHERE lx.device_id = d.id) AS lic_count,
+                    (SELECT COUNT(*) FROM devices d2 WHERE IFNULL(d.android_id,'') != ''
+                       AND d2.android_id = d.android_id AND d2.id != d.id
+                       AND IFNULL(d2.superseded_by,'') = '') AS android_id_siblings,
+                    CASE WHEN ${pred.lifetime_masks_active} THEN 1 ELSE 0 END AS lifetime_masks,
+                    CASE WHEN ${pred.license_pick} THEN 1 ELSE 0 END AS license_pick,
+                    CASE WHEN ${pred.online_unpaid} THEN 1 ELSE 0 END AS online_unpaid_flag
              FROM devices d
              LEFT JOIN customers c ON d.customer_id = c.id
              LEFT JOIN presence p ON p.mac = d.mac
@@ -4726,7 +4793,7 @@ async function handleDevicesList(request, env, user) {
   }
   const baseWhere = where.length ? (' WHERE ' + where.join(' AND ')) : '';
   // Liste fermée : `live` est un prédicat interne, pas un filtre d'URL.
-  const FILTER_KEYS = ['active', 'expiring_7d', 'expired', 'no_sub', 'frozen', 'banned', 'online_unpaid'];
+  const FILTER_KEYS = ['active', 'expiring_7d', 'expired', 'no_sub', 'frozen', 'banned', 'online_unpaid', 'problematic'];
   const filterSql = FILTER_KEYS.includes(filter) ? pred[filter] : null;
   const listWhere = filterSql
     ? (baseWhere ? `${baseWhere} AND ${filterSql}` : ` WHERE ${filterSql}`)
@@ -4742,7 +4809,8 @@ async function handleDevicesList(request, env, user) {
     ` SUM(CASE WHEN ${pred.no_sub} THEN 1 ELSE 0 END) AS no_sub_n,` +
     ` SUM(CASE WHEN ${pred.frozen} THEN 1 ELSE 0 END) AS frozen_n,` +
     ` SUM(CASE WHEN ${pred.banned} THEN 1 ELSE 0 END) AS banned_n,` +
-    ` SUM(CASE WHEN ${pred.online_unpaid} THEN 1 ELSE 0 END) AS online_unpaid_n` +
+    ` SUM(CASE WHEN ${pred.online_unpaid} THEN 1 ELSE 0 END) AS online_unpaid_n,` +
+    ` SUM(CASE WHEN ${pred.problematic} THEN 1 ELSE 0 END) AS problematic_n` +
     ` FROM devices d LEFT JOIN customers c ON d.customer_id = c.id` +
     ` LEFT JOIN presence p ON p.mac = d.mac ${deviceLicJoin(now)}` +
     baseWhere;
@@ -4761,8 +4829,26 @@ async function handleDevicesList(request, env, user) {
       frozen: cr?.frozen_n || 0,
       banned: cr?.banned_n || 0,
       online_unpaid: cr?.online_unpaid_n || 0,
+      problematic: cr?.problematic_n || 0,
     };
-    const items = (rs.results || []).map((r) => mapDeviceListRow(r, now));
+    const items = (rs.results || []).map((r) => {
+      const mapped = mapDeviceListRow(r, now);
+      const {
+        lic_count, android_id_siblings, lifetime_masks, license_pick,
+        online_unpaid_flag, ...rest
+      } = mapped;
+      return {
+        ...rest,
+        problems: classifyProblems({
+          ...r,
+          lic_count,
+          android_id_siblings,
+          lifetime_masks,
+          license_pick,
+          online_unpaid_flag,
+        }, now),
+      };
+    });
     return jsonResp({ items, counts });
   } catch (_) {
     // Base ancienne / JOIN licences KO : on retombe sur la liste simple
@@ -7065,6 +7151,120 @@ async function handleTreasuryRegenerate(request, env, actor, user) {
   await logAudit(env, request, actor, 'treasury.regenerate',
     { type: 'treasury', id: 'pool' }, { pool: cur }, { pool: next });
   return jsonResp({ ok: true, pool: next });
+}
+
+// ----- CHANGER / RÉGÉNÉRER l'identité MAC (même appareil) -----
+//  Différent du TRANSFERT : ici on ne vise pas une autre box qui a
+//  déjà son numéro. On DONNE un nouveau numéro à CETTE fiche, on
+//  invalide l'ancien (tombstone banni, sans android_id), et l'app
+//  ADOPTE via RT `mac_reassigned` + heartbeat.
+
+function macMigrateError(code) {
+  const map = {
+    bad_old_mac: ['bad_mac', 'MAC actuelle invalide.', 400],
+    bad_new_mac: ['bad_mac', 'Nouvelle MAC invalide (format MK:XX:XX:XX:XX:XX).', 400],
+    same_mac: ['same_mac', 'Les deux MAC sont identiques.', 400],
+    not_found: ['not_found', 'Appareil introuvable.', 404],
+    already_superseded: ['already_superseded', 'Cette MAC a déjà été remplacée. Ouvre la nouvelle fiche.', 409],
+    mac_taken: ['mac_taken', 'Cette nouvelle MAC existe déjà sur un autre appareil. Choisis-en une autre, ou utilise « Transférer ».', 409],
+    tombstone_failed: ['tombstone_failed', 'Impossible d’invalider l’ancienne MAC. Réessaie.', 500],
+  };
+  const [err, msg, st] = map[code] || ['mac_migrate', 'Changement de MAC impossible.', 400];
+  return errResp(err, msg, st);
+}
+
+async function handleDeviceChangeMac(request, env, id, actor, user) {
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  // Confirmation danger : un clic trop vite ne doit pas migrer.
+  if (body.confirm !== true) {
+    return errResp('confirm_required',
+      'Coche la confirmation : changer la MAC invalide l’ancienne (anti-freeloader).', 400);
+  }
+  const r = await deviceForActor(env, id, user);
+  if (r.error) return r.error;
+  const newMac = normalizeMac(body.new_mac || body.mac || '');
+  if (!isValidMac(newMac)) {
+    return errResp('bad_mac', 'Nouvelle MAC invalide (format MK:XX:XX:XX:XX:XX).', 400);
+  }
+  const out = await migrateDeviceMac(env, {
+    oldMac: r.dev.mac,
+    newMac,
+    now: Date.now(),
+    label: body.label || null,
+  });
+  if (out.error) return macMigrateError(out.error);
+  await logAudit(env, request, actor, 'device.change_mac',
+    { type: 'device', id: out.device_id },
+    { old_mac: out.old_mac },
+    { new_mac: out.new_mac, tombstone_id: out.tombstone_id, moved: out.moved });
+  return jsonResp({ ...out, regenerated: false });
+}
+
+async function handleDeviceRegenerateMac(request, env, id, actor, user) {
+  let body = {};
+  try { body = await request.json(); } catch (_) { /* corps optionnel */ }
+  if (body.confirm !== true) {
+    return errResp('confirm_required',
+      'Coche la confirmation : régénérer invalide l’ancienne MAC et l’app doit adopter le nouveau numéro.', 400);
+  }
+  const r = await deviceForActor(env, id, user);
+  if (r.error) return r.error;
+  // Droit d'activer : on le vérifie AVANT de migrer, sinon le client
+  // se retrouverait avec un nouveau MAC sans abo.
+  if (body.activate === true && !resellerCan(user, 'activate')) {
+    return errResp('forbidden', "Ton compte n'a pas le droit d'activer un abonnement.", 403);
+  }
+
+  // Génère un MAC libre (quelques essais : collision ≈ impossible).
+  let newMac = '';
+  for (let i = 0; i < 8; i++) {
+    const cand = generateVirtualMac();
+    const clash = await env.DB.prepare('SELECT id FROM devices WHERE mac = ?')
+      .bind(cand).first();
+    if (!clash) { newMac = cand; break; }
+  }
+  if (!newMac) return errResp('gen_failed', 'Impossible de tirer un MAC libre.', 500);
+
+  const out = await migrateDeviceMac(env, {
+    oldMac: r.dev.mac,
+    newMac,
+    now: Date.now(),
+    label: body.label || null,
+  });
+  if (out.error) return macMigrateError(out.error);
+
+  let activated = false;
+  let activate = null;
+  if (body.activate === true) {
+    // Réutilise /activate : la fiche NEW existe déjà (pas allow_new).
+    const actReq = new Request('https://internal/api/v1/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mac: out.new_mac,
+        plan: body.plan || 'yearly',
+        source: body.source || undefined,
+        sources: body.sources || undefined,
+      }),
+    });
+    const actRes = await handleActivate(actReq, env, user, actor);
+    try { activate = await actRes.json(); } catch (_) { activate = { ok: actRes.ok }; }
+    activated = !!(activate && activate.ok);
+  }
+
+  await logAudit(env, request, actor, 'device.regenerate_mac',
+    { type: 'device', id: out.device_id },
+    { old_mac: out.old_mac },
+    { new_mac: out.new_mac, tombstone_id: out.tombstone_id, activated, moved: out.moved });
+  return jsonResp({
+    ...out,
+    regenerated: true,
+    activated,
+    activate,
+  });
 }
 
 // ----- TRANSFERT d'abonnement (ancienne MAC → nouvelle MAC) -----

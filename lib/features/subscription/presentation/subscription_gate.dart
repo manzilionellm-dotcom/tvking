@@ -50,6 +50,7 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
   @override
   void initState() {
     super.initState();
+    DeviceIdentity.instance.addListener(_onIdentity);
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _ref = DeviceIdentity.stripPrefix(m));
     });
@@ -65,6 +66,21 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
     setState(() => _recheckBusy = true);
     await SubscriptionState.instance.syncWithBackend();
     if (mounted) setState(() => _recheckBusy = false);
+  }
+
+  @override
+  void dispose() {
+    DeviceIdentity.instance.removeListener(_onIdentity);
+    super.dispose();
+  }
+
+  /// Régénérer MAC : le Worker pousse le nouveau numéro → cet écran
+  /// doit afficher LE NOUVEAU, pas l'ancien CD:18:… zombie.
+  void _onIdentity() {
+    if (!mounted) return;
+    setState(() => _ref = DeviceIdentity.stripPrefix(
+          DeviceIdentity.instance.macSync,
+        ));
   }
 
   @override

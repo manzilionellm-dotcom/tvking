@@ -13,10 +13,11 @@ import {
   activateApi, devicesApi, PLAN_LABELS, ApiError,
   type ActivateResult, type Device, type DeviceLicense,
   type DeviceListCounts, type DeviceListFilter, type DeviceSource,
+  type DeviceSourceInput, type MacMigrateResult,
 } from '@/lib/api';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { applyNew, NewBadge } from '@/components/NewBadge';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, formatMacInput } from '@/lib/utils';
 
 export const DEVICE_FILTERS: {
   id: DeviceListFilter;
@@ -29,6 +30,7 @@ export const DEVICE_FILTERS: {
   { id: 'expiring_7d', label: 'Expire ≤7j', warn: true, newId: 'filter-expiring-7d' },
   { id: 'expired', label: 'Expirés', warn: true, newId: 'filter-expired' },
   { id: 'online_unpaid', label: 'Online sans abo', warn: true, newId: 'filter-online-unpaid' },
+  { id: 'problematic', label: 'MACs problématiques', warn: true, newId: 'filter-problematic' },
   { id: 'no_sub', label: 'Sans abo', newId: 'filter-no-sub' },
   { id: 'frozen', label: 'Gelés', newId: 'filter-frozen' },
   { id: 'banned', label: 'Bannis', newId: 'filter-banned' },
@@ -49,7 +51,7 @@ export const TRIAL_PLANS = [
 
 const EMPTY_COUNTS: DeviceListCounts = {
   all: 0, active: 0, expiring_7d: 0, expired: 0, no_sub: 0,
-  frozen: 0, banned: 0, online_unpaid: 0,
+  frozen: 0, banned: 0, online_unpaid: 0, problematic: 0,
 };
 
 const HUNT_MS = 24 * 60 * 60 * 1000;
@@ -98,10 +100,30 @@ export function matchesDeviceFilter(
       return st === 'banned';
     case 'online_unpaid':
       return isOnlineUnpaid(d, now);
+    case 'problematic':
+      return isProblematicDevice(d, now);
     default:
       return true;
   }
 }
+
+/// Signaux que le Worker attache (`problems`) + filet local si Worker ancien.
+export function isProblematicDevice(d: Device, now = Date.now()): boolean {
+  if (d.problems && d.problems.length > 0) {
+    return d.problems.some((p) => p !== 'superseded');
+  }
+  return isOnlineUnpaid(d, now);
+}
+
+export const PROBLEM_LABELS: Record<string, string> = {
+  multi_license: 'Plusieurs licences',
+  android_id_dup: 'android_id en double',
+  lifetime_masks_active: 'Lifetime inactive masque un abo',
+  license_pick: 'Licence lue ≠ jouable (paid=false)',
+  online_unpaid: 'En ligne sans abo',
+  pending_reassign: 'MAC remplacée, app pas migrée',
+  superseded: 'MAC remplacée',
+};
 
 export function countDeviceFilters(items: Device[], now = Date.now()): DeviceListCounts {
   const c = { ...EMPTY_COUNTS };
@@ -114,6 +136,7 @@ export function countDeviceFilters(items: Device[], now = Date.now()): DeviceLis
     if (matchesDeviceFilter(d, 'frozen', now)) c.frozen++;
     if (matchesDeviceFilter(d, 'banned', now)) c.banned++;
     if (matchesDeviceFilter(d, 'online_unpaid', now)) c.online_unpaid++;
+    if (matchesDeviceFilter(d, 'problematic', now)) c.problematic = (c.problematic || 0) + 1;
   }
   return c;
 }
@@ -412,5 +435,207 @@ export function AboChip({ license }: { license?: DeviceLicense | null }) {
     <span className={'text-[11px] font-medium ' + (live ? 'text-success' : 'text-warning')}>
       {plan}{extra}
     </span>
+  );
+}
+
+export function ProblemsChip({ problems }: { problems?: string[] | null }) {
+  if (!problems || problems.length === 0) return null;
+  const shown = problems.filter((p) => p !== 'superseded');
+  if (!shown.length) return null;
+  const title = shown.map((p) => PROBLEM_LABELS[p] || p).join(' · ');
+  return (
+    <div
+      title={title}
+      {...applyNew(
+        'filter-problematic',
+        'mt-1 inline-block max-w-[180px] truncate rounded-full px-2 py-0.5 text-[10px] font-semibold',
+      )}
+    >
+      {shown.length === 1 ? (PROBLEM_LABELS[shown[0]] || shown[0]) : `${shown.length} signaux`}
+    </div>
+  );
+}
+
+/// Changer la MAC (saisie manuelle) — confirmation danger obligatoire.
+export function ChangeMacModal({
+  device,
+  onClose,
+  onDone,
+}: {
+  device: Device;
+  onClose: () => void;
+  onDone: (r: MacMigrateResult) => void;
+}) {
+  const [next, setNext] = useState('');
+  const [ack, setAck] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function go() {
+    if (!ack) {
+      toast('Coche la confirmation danger.', 'warning', { isNew: true });
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await devicesApi.changeMac(device.id, next);
+      void rtActionFeedback(r.rt);
+      toast(`MAC changée : ${r.old_mac} → ${r.new_mac}`, 'success', { isNew: true });
+      onDone(r);
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec du changement de MAC.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-2xl border border-white/10 bg-midnight p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-1 text-lg font-semibold tracking-tight">Changer la MAC</h2>
+        <p className="mb-3 font-mono text-xs text-accent">{device.mac}</p>
+        <p className="mb-3 text-sm text-ink-secondary">
+          L’ancienne adresse est <strong>invalidée</strong> (bannie, sans android_id)
+          pour qu’un freeloader ne la réutilise pas. L’app mobile reçoit
+          <code className="mx-1">mac_reassigned</code> et affiche le nouveau
+          numéro de référence.
+        </p>
+        <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+          Nouvelle MAC
+        </label>
+        <input
+          value={next}
+          onChange={(e) => setNext(formatMacInput(e.target.value))}
+          maxLength={17}
+          placeholder="MK:XX:XX:XX:XX:XX"
+          className="mb-3 w-full rounded-md border border-white/5 bg-obsidian px-3 py-2 font-mono text-sm outline-none focus:ring-1 focus:ring-accent"
+        />
+        <label className="mb-4 flex items-start gap-2 text-xs text-ink-secondary">
+          <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5" />
+          Je confirme : l’ancienne MAC sera bannie (anti-freeloader) et l’app
+          devra adopter le nouveau numéro.
+        </label>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary">Annuler</button>
+          <button
+            type="button"
+            disabled={busy || !ack}
+            onClick={() => { void go(); }}
+            {...applyNew('change-mac', 'rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-40')}
+          >
+            {busy ? 'Changement…' : 'Changer la MAC'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/// Régénère un MAC propre + option Activer + M3U (geste Lionel).
+export function RegenerateMacModal({
+  device,
+  onClose,
+  onDone,
+}: {
+  device: Device;
+  onClose: () => void;
+  onDone: (r: MacMigrateResult) => void;
+}) {
+  const [ack, setAck] = useState(false);
+  const [activate, setActivate] = useState(true);
+  const [plan, setPlan] = useState('yearly');
+  const [m3u, setM3u] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function go() {
+    if (!ack) {
+      toast('Coche la confirmation danger.', 'warning', { isNew: true });
+      return;
+    }
+    setBusy(true);
+    try {
+      const source: DeviceSourceInput | undefined = m3u.trim()
+        ? { type: 'm3u', m3u_url: m3u.trim(), label: 'Bouquet' }
+        : undefined;
+      const r = await devicesApi.regenerateMac(device.id, {
+        activate,
+        plan,
+        source,
+      });
+      void rtActionFeedback(r.rt);
+      const extra = r.activated ? ' + abo activé' : '';
+      toast(`Nouveau MAC : ${r.new_mac}${extra}`, 'success', { isNew: true });
+      try { await navigator.clipboard.writeText(r.new_mac.replace(/^MK:/, '')); } catch { /* */ }
+      onDone(r);
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Échec de la régénération.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+      <div
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-midnight p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-1 text-lg font-semibold tracking-tight">Régénérer la MAC</h2>
+        <p className="mb-3 font-mono text-xs text-accent">{device.mac}</p>
+        <p className="mb-3 text-sm text-ink-secondary">
+          Génère une identité <strong>propre</strong>, y déménage licence / sources / notes,
+          invalide l’ancienne (anti-freeloader), et pousse l’app mobile pour
+          qu’elle affiche le nouveau numéro de référence.
+        </p>
+        <label className="mb-2 flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={activate} onChange={(e) => setActivate(e.target.checked)} />
+          Activer tout de suite
+        </label>
+        {activate && (
+          <div className="mb-3 grid grid-cols-3 gap-1.5">
+            {(['monthly', 'yearly', 'lifetime'] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPlan(p)}
+                className={
+                  'rounded-md border px-2 py-1 text-[11px] font-semibold ' +
+                  (plan === p ? 'border-accent bg-accent/15 text-accent-bright' : 'border-white/10 text-ink-secondary')
+                }
+              >
+                {PLAN_LABELS[p] || p}
+              </button>
+            ))}
+          </div>
+        )}
+        <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+          M3U à pousser (facultatif)
+        </label>
+        <input
+          value={m3u}
+          onChange={(e) => setM3u(e.target.value)}
+          placeholder="http://…/get.php?username=…"
+          className="mb-3 w-full rounded-md border border-white/5 bg-obsidian px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-accent"
+        />
+        <label className="mb-4 flex items-start gap-2 text-xs text-ink-secondary">
+          <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5" />
+          Je confirme : l’ancienne MAC sera bannie. L’app doit montrer le
+          NOUVEAU numéro. Copie le numéro après succès.
+        </label>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary">Annuler</button>
+          <button
+            type="button"
+            disabled={busy || !ack}
+            onClick={() => { void go(); }}
+            {...applyNew('regenerate-mac', 'rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-40')}
+          >
+            {busy ? 'Régénération…' : 'Régénérer la MAC'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

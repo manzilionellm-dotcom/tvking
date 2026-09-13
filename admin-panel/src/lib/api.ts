@@ -59,6 +59,19 @@ export interface RtInfo {
   id: string;
 }
 
+/// Réponse change-mac / regenerate-mac (même fiche, nouveau numéro).
+export interface MacMigrateResult {
+  ok: boolean;
+  old_mac: string;
+  new_mac: string;
+  device_id: string;
+  tombstone_id?: string;
+  moved?: string[];
+  regenerated?: boolean;
+  activated?: boolean;
+  rt?: RtInfo;
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -464,6 +477,10 @@ export interface Device {
   license?: DeviceLicense | null;
   /// Dernier heartbeat table `presence` (chasse freeloaders).
   presence_last_seen?: number | null;
+  /// Signaux D1 d'une MAC à inspecter (licences conflictuelles, etc.).
+  problems?: string[];
+  superseded_by?: string | null;
+  android_id?: string | null;
 }
 // Présence live d'un appareil (dernière trace serveur).
 export interface DevicePresence {
@@ -571,6 +588,7 @@ export interface DeviceListCounts {
   frozen: number;
   banned: number;
   online_unpaid: number;
+  problematic?: number;
 }
 export type DeviceListFilter =
   | 'all'
@@ -580,7 +598,8 @@ export type DeviceListFilter =
   | 'no_sub'
   | 'frozen'
   | 'banned'
-  | 'online_unpaid';
+  | 'online_unpaid'
+  | 'problematic';
 export const devicesApi = {
   list: (q?: string, filter?: DeviceListFilter) => {
     const qs = new URLSearchParams();
@@ -614,6 +633,37 @@ export const devicesApi = {
     ),
   remove: (id: string) =>
     request<{ deleted: number; rt?: RtInfo }>(`/api/v1/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // Change l'identité MAC (même fiche) + tombstone anti-freeloader.
+  // `confirm: true` obligatoire (geste danger).
+  changeMac: (id: string, newMac: string, opts?: { label?: string }) =>
+    request<MacMigrateResult>(
+      `/api/v1/devices/${encodeURIComponent(id)}/change-mac`,
+      { method: 'POST', body: { new_mac: newMac, confirm: true, label: opts?.label } },
+    ),
+  // Génère un MAC propre, migre, invalide l'ancien, pousse RT.
+  // `activate` + `source` = déverrouillage Lionel en un geste.
+  regenerateMac: (
+    id: string,
+    opts?: {
+      activate?: boolean;
+      plan?: string;
+      source?: DeviceSourceInput;
+      label?: string;
+    },
+  ) =>
+    request<MacMigrateResult>(
+      `/api/v1/devices/${encodeURIComponent(id)}/regenerate-mac`,
+      {
+        method: 'POST',
+        body: {
+          confirm: true,
+          activate: opts?.activate === true,
+          plan: opts?.plan,
+          source: opts?.source,
+          label: opts?.label,
+        },
+      },
+    ),
   // Efface l'abonnement (ligne licenses) : UNIQUE(device, app) libérée
   // → un activate juste après pose une licence NEUVE, sans cumuler.
   clearLicense: (id: string) =>
