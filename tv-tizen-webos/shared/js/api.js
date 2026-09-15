@@ -48,11 +48,13 @@ DFT.api = (function () {
   }
 
   function status(mac) {
-    return http('GET', base() + '/api/status/' + encodeURIComponent(mac));
+    // MAC en clair : les « : » sont valides en URL. encodeURIComponent
+    // les transforme en %3A et le Worker répond 400 invalid mac.
+    return http('GET', base() + '/api/status/' + mac);
   }
 
   function deviceSource(mac) {
-    return http('GET', base() + '/api/device-source/' + encodeURIComponent(mac));
+    return http('GET', base() + '/api/device-source/' + mac);
   }
 
   return { http: http, heartbeat: heartbeat, status: status, deviceSource: deviceSource };

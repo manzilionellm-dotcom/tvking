@@ -1335,7 +1335,7 @@ async function apiV1Inner(request, env) {
     // rt : l'appareil recharge sa playlist DANS LA SECONDE (au lieu du
     // sync 5 min) — le corps de réponse contient la MAC normalisée.
     if (request.method === 'PUT') {
-      return withRt(env, await handleSourcePut(request, env, mac, actor),
+      return withRt(env, await handleSourcePut(request, env, mac, actor, a.user),
         (b) => ({ macs: [b.mac], what: 'all', scope: 'sources', changedMac: b.mac }));
     }
     if (request.method === 'DELETE') {
@@ -1372,7 +1372,7 @@ async function apiV1Inner(request, env) {
     }
     const resp = parts[2] === 'update'
       ? await handleSourceUpdate(request, env, mac, actor)
-      : await handleSourceAdd(request, env, mac, actor);
+      : await handleSourceAdd(request, env, mac, actor, a.user);
     return withRt(env, resp,
       (b) => ({ macs: [b.mac], what: 'all', scope: 'sources', changedMac: b.mac }));
   }
@@ -3886,6 +3886,85 @@ function decodeMac(mac) {
   }
 }
 
+/// Licence JOUABLE maintenant ? (abo actif, ou à vie). Pas d'essai
+/// implicite ici : coller un M3U doit DÉBLOQUER, pas compter sur le
+/// trial d'install. Gel / ban / MAC remplacée → non.
+async function deviceHasPlayableLicense(env, mac) {
+  if (!env || !env.DB) return false;
+  const now = Date.now();
+  let dev;
+  try {
+    dev = await env.DB
+      .prepare('SELECT id, block_status, superseded_by FROM devices WHERE mac = ?')
+      .bind(mac).first();
+  } catch (_) {
+    try {
+      dev = await env.DB
+        .prepare('SELECT id, block_status FROM devices WHERE mac = ?')
+        .bind(mac).first();
+    } catch (__) { return false; }
+  }
+  if (!dev) return false;
+  if (dev.block_status === 'banned' || dev.block_status === 'frozen') return false;
+  if (dev.superseded_by) return false;
+  try {
+    const lic = await env.DB.prepare(
+      `SELECT id FROM licenses
+       WHERE device_id = ?
+         AND IFNULL(status,'active') = 'active'
+         AND (expires_at IS NULL OR expires_at > ?)
+       LIMIT 1`,
+    ).bind(dev.id, now).first();
+    return !!lic;
+  } catch (_) { return false; }
+}
+
+/// Pousser un M3U / Xtream = intention d'ACTIVER. Si la box n'est pas
+/// jouable, on pose la licence (plan du body, défaut 1 an) PUIS le
+/// realtime `sync all` débloque téléphone + TV dans la seconde.
+/// Déjà payé → on ne touche PAS à la licence (pas de crédit surprise).
+async function autoActivateIfNeeded(env, mac, actor, user, body) {
+  const auto = !body || body.auto_activate !== false;
+  if (!auto) return { activated: false, skipped: 'disabled' };
+  if (await deviceHasPlayableLicense(env, mac)) {
+    return { activated: false, already_playable: true };
+  }
+  if (!resellerCan(user, 'activate')) {
+    return { activated: false, needs_activation: true };
+  }
+  const plan = (body && body.plan) || 'yearly';
+  const actReq = new Request('https://internal/api/v1/activate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mac,
+      plan,
+      allow_new: true,
+      customer_name: (body && body.customer_name) || undefined,
+      app_id: (body && body.app_id) || undefined,
+    }),
+  });
+  const actRes = await handleActivate(actReq, env, user, actor);
+  let activate = null;
+  try { activate = await actRes.json(); } catch (_) { activate = { ok: actRes.ok }; }
+  if (actRes.status >= 400) {
+    return {
+      activated: false,
+      error: (activate && (activate.error || activate.message)) || 'activate_failed',
+      status: actRes.status,
+      activate,
+    };
+  }
+  return {
+    activated: !!(activate && activate.ok),
+    activate,
+    credits_charged: activate && activate.credits_charged,
+    credit_balance: activate && activate.credit_balance,
+    plan: activate && activate.plan,
+    expires_at: activate && activate.expires_at,
+  };
+}
+
 // =========================================================
 //  PROFILS FAMILLE — GET/PUT /api/v1/profiles/:mac
 // =========================================================
@@ -3971,13 +4050,13 @@ async function handleSourceGet(env, mac) {
   return jsonResp({ mac: m, source: sources[0] || null, sources });
 }
 
-async function handleSourcePut(request, env, mac, actor) {
+async function handleSourcePut(request, env, mac, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
-  const m = decodeMac(mac).trim().toUpperCase();
-  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+  const m = normalizeMac(decodeMac(mac));
+  if (!isValidMac(m)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
   // TRIO : on accepte un tableau `sources` (1 à 3) OU une source unique
@@ -3993,11 +4072,31 @@ async function handleSourcePut(request, env, mac, actor) {
   if (sources.length === 0) {
     return errResp('bad_source', 'at least one source required', 400);
   }
+  // D'ABORD la licence (sinon denyUsefulContent vide le catalogue
+  // au moment du RT). Coller un M3U = débloquer téléphone / TV.
+  const act = await autoActivateIfNeeded(env, m, actor, user, body);
+  if (act.status >= 400) {
+    return errResp(
+      act.error || 'activate_failed',
+      (act.activate && act.activate.message) || 'Activation automatique impossible.',
+      act.status,
+    );
+  }
   await upsertDeviceSource(env, m, sources);
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
-    { count: sources.length, types: sources.map((s) => s.type) });
-  return jsonResp({ ok: true, mac: m, count: sources.length });
+    { count: sources.length, types: sources.map((s) => s.type),
+      activated: !!act.activated, already_playable: !!act.already_playable });
+  return jsonResp({
+    ok: true, mac: m, count: sources.length,
+    activated: !!act.activated,
+    already_playable: !!act.already_playable,
+    needs_activation: !!act.needs_activation,
+    credits_charged: act.credits_charged ?? 0,
+    credit_balance: act.credit_balance ?? null,
+    plan: act.plan || null,
+    expires_at: act.expires_at ?? null,
+  });
 }
 
 // POST /api/v1/sources/:mac/order  { kind, server, username, m3u_url }
@@ -4292,10 +4391,10 @@ async function handleSourceUpdate(request, env, mac, actor) {
 //  AJOUTER un abonnement à ceux déjà en place, sans écraser l'existant
 //  (PUT /sources/:mac remplace tout le trio). Plafond volontaire à 6 entrées :
 //  au-delà, l'app passe son temps à charger des listes que personne ne regarde.
-async function handleSourceAdd(request, env, mac, actor) {
+async function handleSourceAdd(request, env, mac, actor, user) {
   await ensureSourcesTable(env);
-  const m = decodeMac(mac).trim().toUpperCase();
-  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+  const m = normalizeMac(decodeMac(mac));
+  if (!isValidMac(m)) {
     return jsonResp({ error: 'mac must be MK:XX:XX:XX:XX:XX' }, 400);
   }
   let body = {};
@@ -4307,6 +4406,14 @@ async function handleSourceAdd(request, env, mac, actor) {
   if (arr.length >= 6) {
     return jsonResp({ error: '6 sources maximum — retires-en une avant d’ajouter.' }, 409);
   }
+  const act = await autoActivateIfNeeded(env, m, actor, user, body);
+  if (act.status >= 400) {
+    return errResp(
+      act.error || 'activate_failed',
+      (act.activate && act.activate.message) || 'Activation automatique impossible.',
+      act.status,
+    );
+  }
   const wantActive = body && body.active === true;
   const added = { ...norm.source, origin: 'panel', ...(wantActive ? { active: true } : {}) };
   const next = wantActive
@@ -4316,7 +4423,10 @@ async function handleSourceAdd(request, env, mac, actor) {
   await logAudit(env, request, actor, 'source.add_one',
     { type: 'device_source', id: m },
     { server: norm.source.server_url || norm.source.m3u_url || '', active: wantActive }, null);
-  return jsonResp({ ok: true, mac: m, count: next.length, index: next.length - 1, sources: next });
+  return jsonResp({
+    ok: true, mac: m, count: next.length, index: next.length - 1, sources: next,
+    activated: !!act.activated, already_playable: !!act.already_playable,
+  });
 }
 
 // DELETE /api/v1/sources/:mac            → retire TOUT (comportement d'origine)
@@ -7481,7 +7591,7 @@ async function handleActivate(request, env, user, actor) {
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
-  const mac = (body.mac || '').trim().toUpperCase();
+  const mac = normalizeMac(body.mac || '');
   const plan = body.plan || 'monthly';
   // UNE MAC = UN DROIT. On pose la licence sur le produit principal
   // (app_7motion, ou l'app choisie par le panel). Téléphone / tablette
@@ -7490,7 +7600,7 @@ async function handleActivate(request, env, user, actor) {
   // PAS une ligne par app de la famille : ça n'ajouterait rien au
   // verdict et une vieille lifetime inactive pouvait masquer la neuve.
   const appId = body.app_id || 'app_7motion';
-  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(mac)) {
+  if (!isValidMac(mac)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
 

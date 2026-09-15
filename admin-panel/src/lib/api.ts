@@ -917,6 +917,7 @@ export const activateApi = {
     custom_days?: number;
     reseller_id?: string;
     source?: DeviceSourceInput;
+    sources?: DeviceSourceInput[];
     /// CONFIRMATION D'UNE MAC INCONNUE (09/09/2026).
     ///
     //  Sans ce drapeau, le serveur REFUSE d'activer une adresse qu'il
@@ -941,17 +942,20 @@ export const sourcesApi = {
     request<{ mac: string; source: DeviceSource | null; sources?: DeviceSource[] }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
     ),
-  set: (mac: string, source: DeviceSourceInput) =>
-    request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo }>(
+  set: (mac: string, source: DeviceSourceInput, opts?: { plan?: string; auto_activate?: boolean; customer_name?: string }) =>
+    request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo; activated?: boolean }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
-      { method: 'PUT', body: { source } },
+      { method: 'PUT', body: { source, auto_activate: opts?.auto_activate !== false, plan: opts?.plan, customer_name: opts?.customer_name } },
     ),
   // TRIO : pousse 1 à 3 sources d'un coup sur une même MAC. Le client
   // les charge toutes et bascule entre elles dans l'app.
-  setMany: (mac: string, sources: DeviceSourceInput[]) =>
-    request<{ ok: boolean; mac: string; count: number; sources?: DeviceSource[]; rt?: RtInfo }>(
+  // auto_activate (défaut true) : si la box n'a pas d'abo jouable, le
+  // Worker pose la licence et le téléphone / la TV se débloquent dans
+  // la seconde via le WebSocket. Déjà payé → playlist seule, 0 crédit.
+  setMany: (mac: string, sources: DeviceSourceInput[], opts?: { plan?: string; auto_activate?: boolean; customer_name?: string }) =>
+    request<{ ok: boolean; mac: string; count: number; sources?: DeviceSource[]; rt?: RtInfo; activated?: boolean; already_playable?: boolean; credits_charged?: number; credit_balance?: number | null }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
-      { method: 'PUT', body: { sources } },
+      { method: 'PUT', body: { sources, auto_activate: opts?.auto_activate !== false, plan: opts?.plan, customer_name: opts?.customer_name } },
     ),
   clear: (mac: string) =>
     request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo }>(

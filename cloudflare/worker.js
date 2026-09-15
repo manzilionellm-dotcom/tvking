@@ -7250,7 +7250,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /config/:mac');
       }
-      return handlePublicConfig(env, segments[1]);
+      return handlePublicConfig(env, decodeMacPath(segments[1]));
     }
 
     // /api/heartbeat — public, l'app pingue à chaque démarrage
@@ -7266,7 +7266,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/status/:mac');
       }
-      return handlePublicStatus(env, segments[2]);
+      return handlePublicStatus(env, decodeMacPath(segments[2]));
     }
 
     // /api/servers — public, l'app récupère les serveurs par défaut
@@ -7282,7 +7282,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
-      return await handlePublicDeviceSource(env, segments[2]);
+      return await handlePublicDeviceSource(env, decodeMacPath(segments[2]));
     }
 
     // /api/device-profiles/:mac — public, l'app recupere SES profils.
@@ -7295,7 +7295,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/device-profiles/:mac');
       }
-      return await handlePublicDeviceProfiles(env, segments[2]);
+      return await handlePublicDeviceProfiles(env, decodeMacPath(segments[2]));
     }
 
     // /api/device-messages/:mac — public : l'app relève sa BOÎTE de messages
@@ -7336,7 +7336,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/history/:mac');
       }
-      return await handlePublicHistory(env, segments[2]);
+      return await handlePublicHistory(env, decodeMacPath(segments[2]));
     }
 
     // /api/master-list/:ref(.m3u) — sert le M3U CURÉ d'un maître (liste de test
@@ -7613,7 +7613,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET' && request.method !== 'PUT') {
         return badRequest('only GET/PUT supported on /api/backup/:mac');
       }
-      return await handleDeviceBackup(request, env, segments[2], request.method);
+      return await handleDeviceBackup(request, env, decodeMacPath(segments[2]), request.method);
     }
 
     // /api/ai/search — public POST, recherche en langage naturel (Claude).
