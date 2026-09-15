@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import Row from "../components/Row";
 import { formationRows } from "../lib/data";
+
+export const metadata: Metadata = {
+  title: "Formation",
+  description: "Parcours par niveau, progression et intervenants.",
+};
 
 export default function FormationPage() {
   return (
@@ -11,9 +17,6 @@ export default function FormationPage() {
         <h1 className="font-display text-[3rem] font-extrabold tracking-tight text-[var(--text-high)]">
           Progresser, à votre rythme
         </h1>
-        <p className="mt-[0.3rem] text-[1.3rem] text-[var(--text-medium)]">
-          Parcours par niveau, durée et intervenant — votre progression vous suit.
-        </p>
       </header>
       {formationRows.map((row) => (
         <Row key={row.id} row={row} />
