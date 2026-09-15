@@ -6,7 +6,7 @@ const NUMBER =
   "447307410512";
 
 const HREF = `https://wa.me/${NUMBER}?text=${encodeURIComponent(
-  "Bonjour TV King — je veux un essai / de l'aide pour ma playlist.",
+  "TV King — 24h trial. City + device",
 )}`;
 
 declare global {
