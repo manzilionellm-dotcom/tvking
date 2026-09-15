@@ -9,6 +9,26 @@ const HREF = `https://wa.me/${NUMBER}?text=${encodeURIComponent(
   "Bonjour TV King — je veux un essai / de l'aide pour ma playlist.",
 )}`;
 
+declare global {
+  interface Window {
+    gtag?: (...args: unknown[]) => void;
+    fbq?: (...args: unknown[]) => void;
+    dataLayer?: unknown[];
+  }
+}
+
+function track() {
+  try {
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({ event: "whatsapp_click", placement: "fab" });
+    window.gtag?.("event", "whatsapp_click", { placement: "fab" });
+    window.fbq?.("track", "Contact");
+    window.fbq?.("trackCustom", "WhatsAppClick", { placement: "fab" });
+  } catch {
+    /* no-op */
+  }
+}
+
 export default function WhatsAppFab() {
   return (
     <a
@@ -16,6 +36,8 @@ export default function WhatsAppFab() {
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Contacter TV King sur WhatsApp"
+      data-cta="fab"
+      onClick={track}
       className="fixed bottom-[6.2rem] right-4 z-[60] grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-white shadow-lg md:bottom-6"
     >
       <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" fill="currentColor">
