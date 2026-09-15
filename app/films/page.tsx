@@ -1,10 +1,12 @@
+import type { Metadata } from "next";
 import Row from "../components/Row";
 import { filmsRows } from "../lib/data";
 
-/*
- * Films — every title plays from the device (auto-download on its detail
- * page), so starting a film is instantaneous: no buffering, no spinner.
- */
+export const metadata: Metadata = {
+  title: "Films",
+  description: "Films téléchargés sur l'appareil. Lecture instantanée, sans spinner.",
+};
+
 export default function FilmsPage() {
   return (
     <div className="pb-[var(--safe-y)] pl-[var(--safe-x)] pt-[var(--safe-y)]">

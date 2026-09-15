@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import Row from "../components/Row";
 import { sportRows } from "../lib/data";
+
+export const metadata: Metadata = {
+  title: "Sport en direct",
+  description: "Live, scores, calendrier et replays — classés par discipline.",
+};
 
 export default function SportPage() {
   return (

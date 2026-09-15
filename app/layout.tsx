@@ -7,14 +7,13 @@ import SpatialNav from "./components/SpatialNav";
 import Preferences from "./components/Preferences";
 import ConsentGate from "./components/ConsentGate";
 import MiniPlayer from "./components/MiniPlayer";
+import WhatsAppFab from "./components/WhatsAppFab";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
 
-// Elegant high-contrast serif for display titles — the "royal" voice. Used only
-// at large sizes (legible at TV distance); body stays in the sans for clarity.
 const playfair = Playfair_Display({
   variable: "--font-display",
   subsets: ["latin"],
@@ -22,18 +21,30 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "TV King — Sport & Formation",
+  metadataBase: new URL("https://tvking.vercel.app"),
+  title: {
+    default: "TV King — Sport, films & formation",
+    template: "%s | TV King",
+  },
   description:
-    "Application de streaming pensée pour la télévision : sport en direct et formation, en grand écran.",
+    "Lecteur IPTV personnel : vos playlists M3U, films, sport et formation. Aucun contenu n'est fourni avec l'app.",
+  manifest: "/manifest.webmanifest",
+  icons: { icon: "/icon.svg" },
+  openGraph: {
+    title: "TV King — Sport, films & formation",
+    description: "Lecteur IPTV personnel. Vos playlists, vos liens.",
+    url: "https://tvking.vercel.app",
+    siteName: "TV King",
+    locale: "fr_FR",
+    type: "website",
+  },
 };
 
-// Lock the layout to the device width (1:1 device pixels) so our viewport-based
-// scaling controls the size — no pinch-zoom on a TV.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
+  userScalable: true,
   themeColor: "#121212",
 };
 
@@ -46,16 +57,13 @@ export default function RootLayout({
     <html lang="fr" className={`${geistSans.variable} ${playfair.variable} h-full antialiased`}>
       <body className="min-h-full bg-[var(--bg)]">
         <Preferences />
-        {/* Gate at first launch: the terms must be accepted before anything else. */}
         <ConsentGate />
         <Sidebar />
         <MobileNav />
         <SpatialNav />
-        {/* Content is inset past the collapsed nav rail (TV/desktop) or above
-            the bottom tab bar (mobile). */}
         <main className="min-h-screen pl-[5.5rem] max-md:pb-[5.5rem] max-md:pl-0">{children}</main>
-        {/* Floating mini-player: playback continues while browsing (YouTube pattern). */}
         <MiniPlayer />
+        <WhatsAppFab />
       </body>
     </html>
   );

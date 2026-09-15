@@ -1,8 +1,12 @@
+import type { Metadata } from "next";
 import Row from "../components/Row";
 import { homeRows } from "../lib/data";
 
-/* "Ma liste" — investment surface (Hooked model): saved items the user has
-   chosen, which personalises future recommendations. */
+export const metadata: Metadata = {
+  title: "Ma liste",
+  description: "Vos titres sauvegardés dans TV King.",
+};
+
 export default function ListPage() {
   const saved = { id: "saved", title: "Ma liste", items: homeRows.flatMap((r) => r.items).slice(0, 8) };
   return (
