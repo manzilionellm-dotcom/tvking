@@ -1,0 +1,7 @@
+User-Agent: *
+Allow: /
+Disallow: /api/
+Disallow: /ops
+
+Host: https://tvking.vercel.app
+Sitemap: https://tvking.vercel.app/sitemap.xml

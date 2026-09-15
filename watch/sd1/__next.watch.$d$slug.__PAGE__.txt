@@ -1,0 +1,6 @@
+1:"$Sreact.fragment"
+2:I[81447,["/tvking/_next/static/chunks/14_0nsoij30e2.js","/tvking/_next/static/chunks/14mrh2-p_w84d.js","/tvking/_next/static/chunks/3eyqj1p0gvy6q.js"],"default"]
+3:I[97367,["/tvking/_next/static/chunks/14_0nsoij30e2.js","/tvking/_next/static/chunks/14mrh2-p_w84d.js"],"OutletBoundary"]
+4:"$Sreact.suspense"
+0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"item":{"id":"sd1","title":"Football","shape":"1:1","art":{"from":"#1f3a5f","to":"#0c1622"}},"next":{"id":"hero-masterclass","title":"Formation — Maîtriser la prise de parole","subtitle":"12 leçons avec une oratrice de renommée mondiale","art":{"from":"#3a2b5f","to":"#140f24"},"level":"Intermédiaire","lessons":12,"badge":"NOUVEAU"}}],[["$","script","script-0",{"src":"/tvking/_next/static/chunks/3eyqj1p0gvy6q.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"DTdnlVPJavJ9pN7_LqoQr"}
+5:null
