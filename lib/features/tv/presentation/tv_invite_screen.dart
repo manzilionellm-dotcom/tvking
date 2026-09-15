@@ -691,11 +691,10 @@ class _RedeemFlowState extends State<_RedeemFlow> {
 //  Briques communes
 // =========================================================
 String _normalizeMac(String raw) {
-  final String hex = raw.toUpperCase().replaceAll(RegExp(r'[^0-9A-F]'), '');
-  if (hex.length != 12) return '';
-  final List<String> p = <String>[];
-  for (int i = 0; i < 12; i += 2) p.add(hex.substring(i, i + 2));
-  return 'MK:${p.join(':')}';
+  final String next = DeviceIdentity.normalizeMac(raw);
+  return RegExp(r'^MK(?::[0-9A-F]{2}){5}$', caseSensitive: false).hasMatch(next)
+      ? next
+      : '';
 }
 
 class _FlowScaffold extends StatelessWidget {

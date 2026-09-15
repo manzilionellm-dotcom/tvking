@@ -966,9 +966,18 @@ async function apiV1Inner(request, env) {
     if (!resellerCan(a.user, 'transfer')) {
       return errResp('forbidden', 'Ton compte n\'a pas le droit de transférer.', 403);
     }
-    // rt : les DEUX macs re-fetchent tout (l'ancienne perd sa licence,
-    // la nouvelle la gagne) — spec §4 « les 2 macs → sync all ».
-    return withRt(env, await handleDeviceTransfer(request, env, a.user, actor),
+    // rt : si la nouvelle MAC n'existait pas (même box, nouvel identifiant)
+    // → mac_reassigned pour que l'app ADOPTE. Si elle existait déjà
+    // (vrai nouveau téléphone) → sync all sur les deux, SANS adopter
+    // (sinon deux appareils partageraient le même numéro).
+    const res = await handleDeviceTransfer(request, env, a.user, actor);
+    try {
+      if (res && res.status >= 200 && res.status < 300) {
+        const b = await res.clone().json();
+        if (b && b.adopt_old) return withMacReassignRt(env, res);
+      }
+    } catch (_) { /* repli sync all */ }
+    return withRt(env, res,
       (b) => ({ macs: [b.old_mac, b.new_mac], what: 'all', scope: 'devices', changedMac: b.new_mac }));
   }
 
@@ -7389,11 +7398,10 @@ async function handleDeviceTransfer(request, env, user, actor) {
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
-  const oldMac = (body.old_mac || '').trim().toUpperCase();
-  const newMac = (body.new_mac || '').trim().toUpperCase();
-  const macRx = /^MK(?::[0-9A-F]{2}){5}$/i;
-  if (!macRx.test(oldMac)) return errResp('bad_mac', 'Ancienne MAC invalide.', 400);
-  if (!macRx.test(newMac)) return errResp('bad_mac', 'Nouvelle MAC invalide.', 400);
+  const oldMac = normalizeMac(body.old_mac || '');
+  const newMac = normalizeMac(body.new_mac || '');
+  if (!isValidMac(oldMac)) return errResp('bad_mac', 'Ancienne MAC invalide.', 400);
+  if (!isValidMac(newMac)) return errResp('bad_mac', 'Nouvelle MAC invalide.', 400);
   if (oldMac === newMac) return errResp('same_mac', 'Les deux MAC sont identiques.', 400);
 
   const isReseller = user.role === 'reseller';
@@ -7418,6 +7426,7 @@ async function handleDeviceTransfer(request, env, user, actor) {
   let newDev = await env.DB
     .prepare('SELECT id, reseller_id FROM devices WHERE mac = ?')
     .bind(newMac).first();
+  const destExisted = !!newDev;
   let newDeviceId;
   if (newDev) {
     if (isReseller && newDev.reseller_id && newDev.reseller_id !== user.sub) {
@@ -7434,6 +7443,16 @@ async function handleDeviceTransfer(request, env, user, actor) {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).bind(newDeviceId, oldDev.customer_id, newMac,
            body.label || 'Transfert', oldDev.reseller_id, now, now).run();
+  }
+
+  // Destination a souvent un essai (le nouveau téléphone a déjà ouvert
+  // l'app) → UNIQUE(device_id, app_id) faisait 500 le UPDATE. On jette
+  // les licences de destination (essai) pour garder celle qu'on déplace.
+  if (destExisted) {
+    try {
+      await env.DB.prepare('DELETE FROM licenses WHERE device_id = ?')
+        .bind(newDeviceId).run();
+    } catch (_) { /* pas de licence dest */ }
   }
 
   // Déplace les licences vers le nouveau device (temps restant intact).
@@ -7527,6 +7546,9 @@ async function handleDeviceTransfer(request, env, user, actor) {
     old_mac: oldMac,
     new_mac: newMac,
     moved_licenses: licRows.length,
+    // true = la nouvelle MAC n'existait pas : l'ANCIENNE box doit
+    // ADOPTER le numéro (mac_reassigned). false = vrai nouvel appareil.
+    adopt_old: !destExisted,
     //  CE QUI A RÉELLEMENT SUIVI, table par table. Le panel l'affiche au
     //  revendeur : sans ce détail, un transfert réussi et un transfert
     //  qui a silencieusement laissé les profils derrière lui se

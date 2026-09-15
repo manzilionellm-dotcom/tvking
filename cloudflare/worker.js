@@ -3523,8 +3523,16 @@ async function handleClearAnnouncements(env) {
 }
 
 // ----- KV helpers -----
+//  KV est DÉBRANCHÉ en prod (wrangler.toml). Un GET /api/status sur une
+//  MAC inconnue de D1 tombait ici et 500 (KV_7MOTION.get sur undefined).
+//  Fail-open : pas de KV = pas de fiche, jamais d'exception.
+
+function kvOk(env) {
+  return !!(env && env.KV_7MOTION);
+}
 
 async function readIndex(env) {
+  if (!kvOk(env)) return [];
   const raw = await env.KV_7MOTION.get('_index');
   if (!raw) return [];
   try {
@@ -3535,12 +3543,14 @@ async function readIndex(env) {
 }
 
 async function writeIndex(env, list) {
+  if (!kvOk(env)) return;
   // Dédup + tri par added_at descendant si dispo
   const dedup = Array.from(new Set(list));
   await env.KV_7MOTION.put('_index', JSON.stringify(dedup));
 }
 
 async function readClient(env, mac) {
+  if (!kvOk(env)) return null;
   const raw = await env.KV_7MOTION.get(`client:${mac}`);
   if (!raw) return null;
   try {
@@ -3551,6 +3561,7 @@ async function readClient(env, mac) {
 }
 
 async function writeClient(env, mac, data) {
+  if (!kvOk(env)) return;
   await env.KV_7MOTION.put(`client:${mac}`, JSON.stringify(data));
   const idx = await readIndex(env);
   if (!idx.includes(mac)) {
@@ -3560,6 +3571,7 @@ async function writeClient(env, mac, data) {
 }
 
 async function deleteClient(env, mac) {
+  if (!kvOk(env)) return;
   await env.KV_7MOTION.delete(`client:${mac}`);
   const idx = await readIndex(env);
   await writeIndex(env, idx.filter((m) => m !== mac));
@@ -5475,12 +5487,18 @@ async function handlePublicStatus(env, mac) {
   // Lecture seule : on ne CRÉE plus de fiche ici (un GET status
   // ne doit pas ouvrir un essai). La création passe par heartbeat
   // qui envoie android_id (lien anti-réinstall).
-  if (env.DB) {
-    const d1 = await familyStatusForMac(env, mac);
-    if (d1) return json(attachLicenseGrace(d1));
+  try {
+    if (env.DB) {
+      const d1 = await familyStatusForMac(env, mac);
+      if (d1) return json(attachLicenseGrace(d1));
+    }
+  } catch (_) { /* D1 blip → empty snapshot, jamais 500 */ }
+  try {
+    const data = await readClient(env, mac);
+    return json(attachLicenseGrace(computeStatus(data)));
+  } catch (_) {
+    return json(attachLicenseGrace(computeStatus(null)));
   }
-  const data = await readClient(env, mac);
-  return json(attachLicenseGrace(computeStatus(data)));
 }
 
 // =========================================================
@@ -5822,7 +5840,8 @@ async function handlePublicConfig(env, mac) {
       }
     } catch (_) { /* fail-open lecture statut */ }
   }
-  const data = await readClient(env, mac);
+  let data = null;
+  try { data = await readClient(env, mac); } catch (_) { data = null; }
   if (!data) return notFound(`Aucun playlist configurée pour ${mac}`);
   // On ne renvoie au client que ce dont il a besoin (pas les
   // métadonnées admin comme added_at). `jsonPrivate` = pas de CORS '*'
