@@ -204,7 +204,7 @@ export function DeviceFilterBar({
   return (
     <div className="mb-3 flex flex-wrap gap-1.5">
       {DEVICE_FILTERS.map((f) => {
-        const n = counts[f.id];
+        const n = counts[f.id] ?? 0;
         const on = value === f.id;
         return (
           <button
