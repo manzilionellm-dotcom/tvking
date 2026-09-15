@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 export const dynamic = "force-static";
 
-const paths = ["/", "/tv", "/films", "/sport", "/formation", "/search", "/list", "/reglages"];
+const paths = ["/", "/start", "/tv", "/films", "/sport", "/formation", "/search", "/list", "/reglages"];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
