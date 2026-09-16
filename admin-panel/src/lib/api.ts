@@ -943,7 +943,7 @@ export const sourcesApi = {
       `/api/v1/sources/${encodeURIComponent(mac)}`,
     ),
   set: (mac: string, source: DeviceSourceInput, opts?: { plan?: string; auto_activate?: boolean; customer_name?: string }) =>
-    request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo; activated?: boolean }>(
+    request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo; activated?: boolean; already_playable?: boolean; needs_activation?: boolean; activate_error?: string; message?: string }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { source, auto_activate: opts?.auto_activate !== false, plan: opts?.plan, customer_name: opts?.customer_name } },
     ),
@@ -953,7 +953,7 @@ export const sourcesApi = {
   // Worker pose la licence et le téléphone / la TV se débloquent dans
   // la seconde via le WebSocket. Déjà payé → playlist seule, 0 crédit.
   setMany: (mac: string, sources: DeviceSourceInput[], opts?: { plan?: string; auto_activate?: boolean; customer_name?: string }) =>
-    request<{ ok: boolean; mac: string; count: number; sources?: DeviceSource[]; rt?: RtInfo; activated?: boolean; already_playable?: boolean; credits_charged?: number; credit_balance?: number | null }>(
+    request<{ ok: boolean; mac: string; count: number; sources?: DeviceSource[]; rt?: RtInfo; activated?: boolean; already_playable?: boolean; needs_activation?: boolean; activate_error?: string; message?: string; credits_charged?: number; credit_balance?: number | null }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
       { method: 'PUT', body: { sources, auto_activate: opts?.auto_activate !== false, plan: opts?.plan, customer_name: opts?.customer_name } },
     ),
@@ -999,7 +999,7 @@ export const sourcesApi = {
     ),
   // AJOUTER un abonnement AUX autres (setMany les remplacerait tous).
   add: (mac: string, source: DeviceSourceInput, active?: boolean) =>
-    request<{ ok: boolean; mac: string; count: number; index: number; sources?: DeviceSource[]; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; count: number; index: number; sources?: DeviceSource[]; rt?: RtInfo; activated?: boolean; already_playable?: boolean; needs_activation?: boolean; activate_error?: string }>(
       `/api/v1/sources/${encodeURIComponent(mac)}/add`,
       { method: 'POST', body: { source, active: active === true } },
     ),

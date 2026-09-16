@@ -301,8 +301,10 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             ? '✅ Appareil activé — chaînes envoyées. Téléphone / TV se débloquent maintenant.'
             : last?.already_playable
               ? '✅ Chaînes envoyées — l\'appareil était déjà actif.'
-              : `✅ ${sources.length} source(s) envoyée(s).`,
-        'success',
+              : last?.activate_error || last?.needs_activation
+                ? (last?.message || '✅ Playlist enregistrée. Active l\'appareil à part si besoin.')
+                : `✅ ${sources.length} source(s) envoyée(s).`,
+        last?.activate_error || last?.needs_activation ? 'warning' : 'success',
       );
       if (last) {
         trackRt(last.rt);

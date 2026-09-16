@@ -820,7 +820,12 @@ function DeviceDetailModal({
                   const r = await sourcesApi.add(device.mac, s);
                   applySources(r.sources);
                   void rtActionFeedback(r.rt);
-                  toast('Abonnement ajouté.', 'success');
+                  toast(
+                    r.activate_error || r.needs_activation
+                      ? 'Abonnement ajouté. Active l’appareil à part si besoin.'
+                      : 'Abonnement ajouté.',
+                    r.activate_error || r.needs_activation ? 'warning' : 'success',
+                  );
                   setAdding(false);
                   await refreshOverview();
                 } catch (e) {
@@ -1263,7 +1268,7 @@ function SourceForm({
   onCancel: () => void;
   onSubmit: (s: DeviceSourceInput) => Promise<void>;
 }) {
-  const [type, setType] = useState<'xtream' | 'm3u'>(initial?.type === 'm3u' ? 'm3u' : 'xtream');
+  const [type, setType] = useState<'xtream' | 'm3u'>(initial?.type === 'xtream' ? 'xtream' : 'm3u');
   const [label, setLabel] = useState(initial?.label || '');
   const [server, setServer] = useState(initial?.server_url || '');
   const [user, setUser] = useState(initial?.username || '');

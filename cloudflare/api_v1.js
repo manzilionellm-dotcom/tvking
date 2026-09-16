@@ -3711,9 +3711,13 @@ export function autoDetectSource(raw) {
   const label = (raw.label || '').trim() || null;
   const epg = (raw.epg_url || '').trim() || null;
   // Candidats d'URL par ordre de priorité (on prend le 1er non vide).
-  const blob = [raw.url, raw.paste, raw.text, raw.m3u_url, raw.server_url]
+  const blobRaw = [raw.url, raw.paste, raw.text, raw.m3u_url, raw.server_url]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .find((v) => v) || '';
+  // Collage sans schéma (serveur.com/playlist.m3u) → HTTP, pas d'erreur.
+  const blob = (blobRaw && !/^https?:\/\//i.test(blobRaw) && blobRaw.includes('.'))
+    ? 'http://' + blobRaw
+    : blobRaw;
   // 1) Xtream si on peut extraire des identifiants d'une URL collée…
   const xt = parseXtreamUrl(blob);
   if (xt) {
@@ -3767,8 +3771,12 @@ export function normalizeSource(raw) {
     return { source: { type, label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
   }
   if (type === 'm3u') {
-    const m3u = (raw.m3u_url || raw.url || '').trim();
+    let m3u = (raw.m3u_url || raw.url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
+    // Collage sans schéma (serveur.com/get.php?…) → HTTP, pas d'erreur.
+    if (!/^https?:\/\//i.test(m3u) && m3u.includes('.')) {
+      m3u = 'http://' + m3u;
+    }
     // Si la « playlist M3U » est en réalité un lien Xtream get.php, on
     // bascule sur Xtream (plus robuste : creds structurés, cascade d'URL).
     const clean = parseXtreamUrl(m3u);
@@ -4081,31 +4089,35 @@ async function handleSourcePut(request, env, mac, actor, user) {
   if (sources.length === 0) {
     return errResp('bad_source', 'at least one source required', 400);
   }
-  // D'ABORD la licence (sinon denyUsefulContent vide le catalogue
-  // au moment du RT). Coller un M3U = débloquer téléphone / TV.
-  const act = await autoActivateIfNeeded(env, m, actor, user, body);
-  if (act.status >= 400) {
-    return errResp(
-      act.error || 'activate_failed',
-      (act.activate && act.activate.message) || 'Activation automatique impossible.',
-      act.status,
-    );
-  }
+  // Playlist D'ABORD. L'activation auto ne doit JAMAIS empêcher
+  // d'enregistrer un M3U (sinon le panel « ne marche plus »).
   await upsertDeviceSource(env, m, sources);
+  let act = { activated: false };
+  try {
+    act = await autoActivateIfNeeded(env, m, actor, user, body);
+  } catch (_) {
+    act = { activated: false, error: 'activate_threw', status: 500 };
+  }
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
     { count: sources.length, types: sources.map((s) => s.type),
       activated: !!act.activated, already_playable: !!act.already_playable });
-  return jsonResp({
-    ok: true, mac: m, count: sources.length,
+  const out = {
+    ok: true, mac: m, count: sources.length, sources,
     activated: !!act.activated,
     already_playable: !!act.already_playable,
-    needs_activation: !!act.needs_activation,
+    needs_activation: !!act.needs_activation || (act.status >= 400),
     credits_charged: act.credits_charged ?? 0,
     credit_balance: act.credit_balance ?? null,
     plan: act.plan || null,
     expires_at: act.expires_at ?? null,
-  });
+  };
+  if (act.status >= 400) {
+    out.activate_error = act.error || 'activate_failed';
+    out.message = (act.activate && act.activate.message)
+      || 'Playlist enregistrée. Active l’appareil à part si besoin.';
+  }
+  return jsonResp(out);
 }
 
 // POST /api/v1/sources/:mac/order  { kind, server, username, m3u_url }
@@ -4415,26 +4427,26 @@ async function handleSourceAdd(request, env, mac, actor, user) {
   if (arr.length >= 6) {
     return jsonResp({ error: '6 sources maximum — retires-en une avant d’ajouter.' }, 409);
   }
-  const act = await autoActivateIfNeeded(env, m, actor, user, body);
-  if (act.status >= 400) {
-    return errResp(
-      act.error || 'activate_failed',
-      (act.activate && act.activate.message) || 'Activation automatique impossible.',
-      act.status,
-    );
-  }
   const wantActive = body && body.active === true;
   const added = { ...norm.source, origin: 'panel', ...(wantActive ? { active: true } : {}) };
   const next = wantActive
     ? [...arr.map((s) => ({ ...(s || {}), active: false })), added]
     : [...arr, added];
   await writeSourcesArray(env, m, next);
+  let act = { activated: false };
+  try {
+    act = await autoActivateIfNeeded(env, m, actor, user, body);
+  } catch (_) {
+    act = { activated: false, error: 'activate_threw', status: 500 };
+  }
   await logAudit(env, request, actor, 'source.add_one',
     { type: 'device_source', id: m },
     { server: norm.source.server_url || norm.source.m3u_url || '', active: wantActive }, null);
   return jsonResp({
     ok: true, mac: m, count: next.length, index: next.length - 1, sources: next,
     activated: !!act.activated, already_playable: !!act.already_playable,
+    needs_activation: !!act.needs_activation || (act.status >= 400),
+    activate_error: act.status >= 400 ? (act.error || 'activate_failed') : undefined,
   });
 }
 

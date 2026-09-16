@@ -96,5 +96,29 @@ ok(parseXtreamUrl('pas une url') === null, '12b non-URL → null');
 r = normalizeSource({ type: 'auto', url: 'http://s.tv:99/get.php?username=q&password=w' });
 eq(r.source?.type, 'xtream', '13 type=auto → détecté');
 
+// 14) type='m3u' sans schéma → http:// préfixé (collage panel)
+r = normalizeSource({ type: 'm3u', m3u_url: 'cdn.example.net/list.m3u' });
+ok(!r.error, '14 sans schéma → pas d\'erreur');
+eq(r.source?.type, 'm3u', '14 type=m3u');
+eq(r.source?.m3u_url, 'http://cdn.example.net/list.m3u', '14 http:// préfixé');
+
+// 15) type='m3u' get.php sans schéma → bascule Xtream après préfixe
+r = normalizeSource({
+  type: 'm3u',
+  m3u_url: 'host.tv:8080/get.php?username=aa&password=bb',
+});
+eq(r.source?.type, 'xtream', '15 m3u get.php sans schéma → xtream');
+eq(r.source?.server_url, 'http://host.tv:8080', '15 server préfixé');
+eq(r.source?.username, 'aa', '15 username récupéré');
+
+// 16) auto-détection URL playlist sans schéma → m3u
+r = normalizeSource({ url: 'cdn.example.net/playlist.m3u8' });
+eq(r.source?.type, 'm3u', '16 auto sans schéma → m3u');
+eq(r.source?.m3u_url, 'http://cdn.example.net/playlist.m3u8', '16 http:// préfixé');
+
+// 17) https conservé (pas de double préfixe)
+r = normalizeSource({ type: 'm3u', m3u_url: 'https://secure.tv/list.m3u' });
+eq(r.source?.m3u_url, 'https://secure.tv/list.m3u', '17 https conservé');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

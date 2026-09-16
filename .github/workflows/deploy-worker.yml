@@ -72,6 +72,8 @@ on:
       #   app_versions.js       : « cette box est-elle à jour ? »
       #   migrate_kv_to_d1.js   : migration KV → D1
       - 'cloudflare/device_profiles.js'
+      - 'cloudflare/license_pick.js'
+      - 'cloudflare/mac_identity.js'
       - 'cloudflare/sports_predictions.js'
       - 'cloudflare/sports_event.js'
       - 'cloudflare/app_versions.js'
