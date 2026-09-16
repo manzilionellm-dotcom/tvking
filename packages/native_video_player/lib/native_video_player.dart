@@ -44,16 +44,14 @@ class NativeDeviceInfo {
   }
 }
 
-/// Chemin de RENDU vidéo — le correctif « l'image ne vient pas » (terrain) :
-/// aucun chemin unique n'affiche l'image sur 100 % des box.
-///   • `surface`  : PlatformView + SurfaceView Android (overlay MediaCodec) —
-///     DÉFAUT TV. Chemin historique, le plus fiable sur box.
-///   • `texture`  : la vidéo est décodée vers une texture Flutter et rendue
-///     par le MÊME pipeline que l'interface. REPLI (watchdog / préférence
-///     explicite) pour les box où SurfaceView resterait noire.
-/// Le choix est MÉMORISÉ nativement (SharedPreferences) par box ; le widget
-/// [NativeVideoView] bascule automatiquement (watchdog « lecture en cours
-/// mais aucune 1re trame ») et persiste le chemin qui marche.
+/// Chemin de RENDU vidéo — « l'enregistrement marche, l'image non »
+/// (16/09/2026). Le décodeur écrit les octets (REC OK) mais SurfaceView
+/// en hybrid composition reste NOIRE sur beaucoup de box (Amlogic,
+/// après FLAG_SECURE, compositeur qui rate l'overlay).
+///   • `texture` : DÉFAUT. La vidéo passe par le MÊME pipeline que l'UI
+///     Flutter — si tu vois les menus, tu vois l'image.
+///   • `surface` : overlay MediaCodec. Seulement si mémorisé explicitement.
+/// Pas de bascule en cours de séance (jamais redémarrer le décodeur).
 class NativeVideoRender {
   const NativeVideoRender._();
   static const MethodChannel _channel =
@@ -66,8 +64,7 @@ class NativeVideoRender {
   /// (zap, aperçus). Rempli au 1er accès, mis à jour par [setMode].
   static String? _cached;
 
-  /// Chemin de rendu à utiliser (mémorisé pour cette box). Ne lève jamais :
-  /// en cas d'échec canal (tests, plateforme sans plugin), défaut `surface`.
+  /// Chemin de rendu. Ne lève jamais : défaut `texture` (l'image sort).
   static Future<String> mode() async {
     final String? c = _cached;
     if (c != null) return c;
@@ -75,14 +72,13 @@ class NativeVideoRender {
       final String? m = await _channel
           .invokeMethod<String>('getRenderMode')
           .timeout(const Duration(milliseconds: 800));
-      // Seuls `texture` / `surface` sont valides. null, inconnu, canal
-      // muet → défaut TV = surface (overlay MediaCodec). Texture n'est
-      // conservé que s'il a été mémorisé explicitement (user / watchdog).
-      final String v = (m == texture) ? texture : surface;
+      // Seul `surface` est un choix explicite. Tout le reste → texture
+      // (l'image suit l'UI, pas un overlay que le compositeur peut rater).
+      final String v = (m == surface) ? surface : texture;
       _cached = v;
       return v;
     } catch (_) {
-      return surface;
+      return texture;
     }
   }
 
@@ -738,11 +734,9 @@ class _NativeVideoViewState extends State<NativeVideoView>
   int? _textureId;
 
   /// JAMAIS de bascule texture↔surface en cours de séance (demande
-  /// propriétaire 16/09 : « je ne veux jamais que ça se redémarre »).
-  /// Détruire le décodeur pour changer de chemin = écran noir + relance
-  /// = exactement le redémarrage interdit. Le défaut est SurfaceView
-  /// (plugin getRenderMode). Si une box a déjà mémorisé texture, on
-  /// honore cette préférence AU DÉMARRAGE, une fois, et on n'y touche plus.
+  /// propriétaire : jamais redémarrer). Le défaut est désormais TEXTURE
+  /// : l'image sort par le pipeline Flutter (REC marchait, SurfaceView
+  /// restait noire). Une box qui a mémorisé surface est honorée au boot.
   Timer? _watchdog;
   int _stalledTicks = 0;
   bool _switchedOnce = true; // bascule DÉSACTIVÉE — ne plus jamais switcher

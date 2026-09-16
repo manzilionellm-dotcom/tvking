@@ -132,16 +132,15 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                     result.success(null)
                 }
                 "getRenderMode" -> {
-                    // 16/09 : FLAG_SECURE a empoisonné le chemin mémorisé
-                    // (watchdog a pu figer « texture » ou « surface » HS).
-                    // On oublie UNE fois, la box réapprend.
-                    if (!prefs.getBoolean("render_reset_v2", false)) {
+                    // 16/09 v3 : REC OK + image noire = SurfaceView pas
+                    // composée. Défaut TEXTURE (même pipeline que l'UI).
+                    if (!prefs.getBoolean("render_reset_v3", false)) {
                         prefs.edit()
                             .remove("render_mode")
-                            .putBoolean("render_reset_v2", true)
+                            .putBoolean("render_reset_v3", true)
                             .apply()
                     }
-                    result.success(prefs.getString("render_mode", "surface"))
+                    result.success(prefs.getString("render_mode", "texture"))
                 }
                 "setRenderMode" -> {
                     val mode = call.argument<String>("mode")
