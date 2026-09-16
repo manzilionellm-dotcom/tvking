@@ -47,6 +47,7 @@ import '../../vod/domain/m3u_vod_classifier.dart';
 import '../domain/playlist.dart';
 import 'import_progress.dart';
 import 'm3u_fetcher.dart';
+import 'm3u_normalizer.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
 import 'source_link_utils.dart';
@@ -911,6 +912,15 @@ class PlaylistRepository {
             ? ''
             : '\n\n${l10nNow.m3uParserDetails}\n'
                 '${parsed.warnings.take(3).join('\n')}';
+        // QUAND ON SAIT POURQUOI, ON LE DIT (16/09/2026). « Aucune chaîne »
+        // est vrai mais inutile : le client ne peut rien en faire, et le
+        // support non plus. Si l'examen a nommé la cause — page web
+        // d'erreur servie en 200, réponse d'API, lien qui ne pointe pas
+        // vers une liste — c'est ELLE qu'on met en titre.
+        final RaisonM3uInvalide? raison = parsed.raisonInvalide;
+        if (raison != null) {
+          throw Exception('${messageM3uInvalide(raison)}$hint');
+        }
         throw Exception('${l10nNow.m3uImportNoChannels}$hint');
       }
 

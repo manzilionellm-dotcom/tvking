@@ -31,11 +31,13 @@ import '../../../core/i18n/l10n_now.dart';
 //  classe. Le drapeau existe toujours et sert ailleurs, notamment à
 //  l'updater in-app et aux profils distants.)
 import '../../channels/data/recently_watched_repository.dart';
+import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../../subscription/data/subscription_state.dart';
 import '../domain/playlist.dart';
+import 'instant_activation.dart';
 import 'source_opt_outs.dart';
 import 'import_progress.dart';
 import 'playlist_repository.dart';
@@ -418,6 +420,12 @@ abstract final class RemoteSourceRepository {
     // (Garde « build magasin » RETIRÉE le 16/09/2026 — voir le bloc en
     //  tête de classe. Les événements temps réel du panel chargent donc
     //  la source sur toutes les distributions.)
+    // ÉTAT AVANT (16/09/2026) : y avait-il déjà des chaînes ? C'est LA
+    // question qui décide si on a le droit de lancer tout seul plus bas.
+    // Elle se pose ICI, avant tout import — après, la réponse a changé.
+    final bool avaitDejaDesChaines =
+        PlaylistRepository.instance.currentChannels.isNotEmpty;
+
     RemoteSyncResult agg = RemoteSyncResult.noSource;
     for (final Map<String, dynamic> item in sources) {
       final RemoteSyncResult r = await _applySource(
@@ -432,7 +440,71 @@ abstract final class RemoteSourceRepository {
         agg = RemoteSyncResult.sourceFailed;
       }
     }
+
+    // =========================================================
+    //  LE MAILLON MANQUANT (16/09/2026) : ÇA DOIT JOUER TOUT SEUL
+    // =========================================================
+    //  Jusqu'ici la chaîne s'arrêtait ici : la playlist était chargée et
+    //  rendue active… puis l'app affichait la grille des catégories et
+    //  attendait. Le client devait encore choisir une catégorie, puis une
+    //  chaîne — trois gestes à la télécommande après une activation
+    //  vendue comme automatique.
+    //
+    //  On ne lance rien DEPUIS ICI (aucun BuildContext dans un dépôt, et
+    //  téléphone et TV n'ouvrent pas le lecteur de la même façon) : on
+    //  DÉPOSE la décision, l'écran à l'affiche la ramasse.
+    //
+    //  ON NE LANCE QUE SUR UNE VRAIE ACTIVATION — c'est-à-dire quand
+    //  l'appareil n'avait AUCUNE chaîne avant. Sinon le revendeur qui
+    //  ajoute une deuxième source à un client en train de regarder lui
+    //  arracherait l'image. Cette garde vit ICI, en un seul endroit :
+    //  la mettre dans chaque écran, c'est la voir diverger.
+    if (agg == RemoteSyncResult.loaded && !avaitDejaDesChaines) {
+      _deposerLectureInstantanee(sources);
+    }
     return agg;
+  }
+
+  /// Choisit la chaîne à lancer et la dépose pour l'écran à l'affiche.
+  ///
+  ///  Best-effort de bout en bout : si quoi que ce soit manque (pas de
+  ///  chaînes encore visibles, source déjà présente donc rien de neuf),
+  ///  on ne dépose rien. Une activation qui n'auto-démarre pas reste une
+  ///  activation réussie — l'inverse (planter la synchro pour un confort)
+  ///  ne serait pas un échange acceptable.
+  static void _deposerLectureInstantanee(
+    List<Map<String, dynamic>> sources,
+  ) {
+    try {
+      final List<Channel> chaines =
+          PlaylistRepository.instance.currentChannels;
+      if (chaines.isEmpty) return;
+
+      // Le panel peut désigner la chaîne d'accueil (`start_channel`). Il
+      // ne l'envoie pas encore ; le champ est lu dès aujourd'hui pour que
+      // le jour où il l'enverra, RIEN ne soit à changer côté app — c'est
+      // la partie qu'on ne peut pas mettre à jour d'un clic.
+      String? demandee;
+      for (final Map<String, dynamic> s in sources) {
+        final Object? v = s['start_channel'];
+        if (v is String && v.trim().isNotEmpty) {
+          demandee = v;
+          break;
+        }
+      }
+
+      final Channel? c = chaineADemarrer(chaines, demandee: demandee);
+      if (c == null) return;
+      InstantActivation.demander(
+        DemandeLectureInstantanee(chaine: c, liste: chaines),
+      );
+      if (kDebugMode) {
+        debugPrint('[RemoteSource] lecture instantanée -> ' + c.name);
+      }
+    } catch (e) {
+      // Jamais bloquant : la source est chargée, c'est l'essentiel.
+      if (kDebugMode) debugPrint('[RemoteSource] lecture instantanée KO: $e');
+    }
   }
 
   /// LABO DU MAÎTRE — une source de test a-t-elle le droit de devenir la

@@ -32,6 +32,7 @@ import '../../security/data/parental_controls.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/instant_activation.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -240,6 +241,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // ignore: discarded_futures
     CategoryOrderStore.instance.ensureLoaded();
     CategoryOrderStore.instance.addListener(_onCatOrderChanged);
+    // ACTIVATION INSTANTANÉE : le panel pousse le M3U, l'import réussit,
+    // la chaîne part toute seule (cf. instant_activation.dart).
+    InstantActivation.tick.addListener(_onLectureInstantanee);
     // Chargement initial : rangées + catalogue + 1re page.
     _refreshAll();
   }
@@ -269,6 +273,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _ambient.dispose();
     ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
     CategoryOrderStore.instance.removeListener(_onCatOrderChanged);
+    InstantActivation.tick.removeListener(_onLectureInstantanee);
     super.dispose();
   }
 
@@ -631,6 +636,40 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // ============================================================
   //  NAVIGATION LECTEUR
   // ============================================================
+
+  /// Le panel a poussé, l'import a réussi : on LANCE, sans que personne
+  /// n'ait à toucher la télécommande. C'est tout l'objet du correctif du
+  /// 16/09/2026 — avant, la box affichait la grille et attendait.
+  ///
+  ///  ON NE JETTE JAMAIS LA DEMANDE : si on ne peut pas jouer tout de
+  ///  suite (lecteur en cours d'ouverture, page pas au premier plan), on
+  ///  la laisse en attente plutôt que de l'annuler. Annuler dans ces
+  ///  cas-là, c'est perdre la lecture sans un mot — et sur le téléphone
+  ///  ça arrivait à TOUS LES COUPS, l'écran d'import étant encore
+  ///  par-dessus au moment du dépôt.
+  ///
+  ///  Le droit de jouer a déjà été tranché en amont (RemoteSourceRepository :
+  ///  uniquement si l'appareil n'avait AUCUNE chaîne), donc on ne vole
+  ///  l'image de personne. `consommer()` ne rend la demande qu'UNE fois :
+  ///  une rafale `sync all` + `sync sources` n'ouvre pas deux lecteurs.
+  void _onLectureInstantanee() {
+    if (!mounted) return;
+    if (_openingPlayer || !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      return;
+    }
+    final DemandeLectureInstantanee? d = InstantActivation.consommer();
+    if (d == null) return;
+    // Repérage par IDENTIFIANT, pas par `indexOf` : `Channel` ne
+    // redéfinit pas `==`, donc `indexOf` compare des références. Ça marche
+    // tant que la liste déposée est exactement celle d'où vient la chaîne
+    // — un détail vrai aujourd'hui, et qu'un futur `copyWith` casserait
+    // en silence (index -1 = aucune lecture, aucun message).
+    final int i = d.liste.indexWhere((Channel c) => c.id == d.chaine.id);
+    if (i < 0) return;
+    // On passe par le chemin NORMAL d'ouverture : il porte déjà le garde
+    // anti-double-ouverture et la restitution du focus au retour.
+    unawaited(_openPlayerWith(d.liste, i, fromRail: false));
+  }
 
   /// Ouvre le lecteur pour [index] de [list], PUIS — au retour — DÉSIGNE la
   /// chaîne quittée pour que SA carte reprenne le focus (on revient où on était).

@@ -65,6 +65,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../channels/domain/channel.dart';
 import '../../vod/domain/m3u_vod_classifier.dart';
+import 'm3u_normalizer.dart';
 import 'playlist_import_limits.dart';
 
 /// Résultat du parsing : la liste des chaînes + warnings non
@@ -79,10 +80,19 @@ class M3uParseResult {
     required this.channels,
     required this.warnings,
     this.httpHeaders = const <String, Map<String, String>>{},
+    this.raisonInvalide,
   });
 
   final List<Channel> channels;
   final List<String> warnings;
+
+  /// POURQUOI zéro chaîne, quand on le sait (16/09/2026). `null` = la
+  /// playlist était exploitable ; un parsing à vide est alors un vrai
+  /// « 0 chaîne », pas un document qui n'était pas une playlist.
+  ///
+  /// L'appelant s'en sert pour DIRE la cause au client au lieu de le
+  /// laisser devant un fond dégradé — voir m3u_normalizer.dart.
+  final RaisonM3uInvalide? raisonInvalide;
 
   /// En-têtes HTTP par URL (`User-Agent`, `Referer`, `Cookie`…).
   final Map<String, Map<String, String>> httpHeaders;
@@ -334,8 +344,10 @@ class _M3uLineConsumer {
 ///  `content.split('\n')` matérialise deux millions de String pour un
 ///  M3U d'un million d'entrées — 79 Mo mesurés, en plus des 407 Mo du
 ///  texte lui-même. Ce générateur n'en tient qu'une à la fois.
-Iterable<String> _lignesParesseuses(String content) sync* {
-  int debut = 0;
+///  [debut] permet de sauter le BOM et les blancs de tête SANS recopier
+///  le contenu (16/09/2026) : `examinerM3u` rend un offset, pas une
+///  String — voir m3u_normalizer.dart.
+Iterable<String> _lignesParesseuses(String content, {int debut = 0}) sync* {
   while (debut <= content.length) {
     final int fin = content.indexOf('\n', debut);
     if (fin < 0) {
@@ -376,32 +388,36 @@ abstract final class M3uParser {
     final List<Channel> channels = <Channel>[];
     final _M3uLineConsumer conso = _M3uLineConsumer(playlistId: playlistId);
 
-    // Strip BOM UTF-8 si présent (commun sur les exports Windows).
-    if (content.isNotEmpty && content.codeUnitAt(0) == 0xFEFF) {
-      content = content.substring(1);
-    }
-    if (content.isEmpty) {
+    // EXAMEN AVANT PARSING (16/09/2026). Remplace l'ancien strip BOM
+    // improvisé : il ne retirait qu'UN BOM, à l'index 0, et laissait
+    // passer sans un mot une page HTML d'erreur servie en HTTP 200 — le
+    // cas terrain n°1. Le verdict rend un OFFSET, jamais une copie :
+    // recopier le contenu ici coûtait 486 Mo sur un M3U d'un million
+    // d'entrées (mesuré le 05/09, cf. le commentaire plus bas).
+    final VerdictM3u verdict = examinerM3u(content);
+    if (!verdict.exploitable) {
       return M3uParseResult(
         channels: channels,
-        warnings: <String>['Fichier vide.'],
+        warnings: <String>[
+          ...verdict.corrections,
+          messageM3uInvalide(verdict.raison!),
+        ],
+        raisonInvalide: verdict.raison,
       );
     }
+    conso.warnings.addAll(verdict.corrections);
+    // On démarre APRÈS le BOM et les blancs de tête, sans rien recopier.
+    final int debut = verdict.offset;
 
     //  PLUS DE `replaceAll` NI DE `split` (05/09/2026). Ces trois appels
     //  recopiaient le fichier entier — 486 Mo mesurés sur un M3U d'un
     //  million d'entrées, avant même la première chaîne produite. Le
     //  `trim()` du consommateur mange déjà les « \r » de Windows, et
     //  [_lignesParesseuses] ne tient qu'une ligne à la fois.
-    bool premiere = true;
-    for (final String ligne in _lignesParesseuses(content)) {
-      if (premiere) {
-        premiere = false;
-        if (!ligne.trim().toUpperCase().startsWith('#EXTM3U')) {
-          conso.warnings.add(
-            'Pas de #EXTM3U au début — on tente quand même de parser.',
-          );
-        }
-      }
+    for (final String ligne in _lignesParesseuses(content, debut: debut)) {
+      // (L'en-tête #EXTM3U a déjà été tranché par `examinerM3u` : présent,
+      //  ou forcé implicitement avec une correction consignée. Plus besoin
+      //  de traiter la première ligne à part.)
       // PLAFOND MÉMOIRE (anti-OOM box faibles) : au-delà de [maxChannels]
       // on arrête de matérialiser — le reste reste en source, l'app est
       // utilisable, juste tronquée à une taille tenable. [maxChannels] est
