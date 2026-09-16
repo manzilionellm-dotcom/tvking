@@ -462,8 +462,6 @@ class NativeVideoView(
         // qui doit revenir au Focus Flutter).
         surfaceView.isFocusable = false
         surfaceView.isFocusableInTouchMode = false
-        // Surface « secure » = image noire sur Amlogic. Toujours OFF.
-        surfaceView.setSecure(false)
 
         //  ⚠ CORRECTION DE COMMENTAIRE (28/08/2026). Cette ligne portait
         //  « on garde l'écran allumé ». C'ÉTAIT FAUX dans le mode de rendu

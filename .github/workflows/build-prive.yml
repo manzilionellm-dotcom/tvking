@@ -100,10 +100,6 @@ jobs:
       - name: Apply native overlay (gallery MP4 export + recording)
         run: bash android_overlay/google_cast/apply_cast_patch.sh
 
-      # FLAG_SECURE = image noire sur box. Captures AUTORISÉES.
-      - name: FLAG_SECURE OFF (clearFlags — l'image doit sortir)
-        run: python3 ci/clear_secure_flag.py
-
       - name: Flutter pub get
         run: flutter pub get
 

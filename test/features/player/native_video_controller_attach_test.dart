@@ -121,8 +121,8 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 10));
   });
 
-  // ---- Chemin de rendu : défaut TV = texture (l'image suit l'UI)
-  group('NativeVideoRender.mode — défaut TV = texture', () {
+  // ---- Chemin de rendu : défaut TV = surface (overlay MediaCodec)
+  group('NativeVideoRender.mode — défaut TV = surface', () {
     setUp(NativeVideoRender.debugResetCache);
     tearDown(() {
       NativeVideoRender.debugResetCache();
@@ -141,28 +141,29 @@ void main() {
       });
     }
 
-    test('échec canal / tests → texture', () async {
+    test('échec canal / tests → surface', () async {
       NativeVideoRender.debugResetCache();
-      expect(await NativeVideoRender.mode(), NativeVideoRender.texture);
+      expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
     });
 
-    test('null / inconnu côté natif → texture', () async {
+    test('null / inconnu côté natif → surface', () async {
       NativeVideoRender.debugResetCache();
       mockGetRenderMode(null);
-      expect(await NativeVideoRender.mode(), NativeVideoRender.texture);
+      expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
 
       NativeVideoRender.debugResetCache();
       mockGetRenderMode('unknown');
-      expect(await NativeVideoRender.mode(), NativeVideoRender.texture);
+      expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
     });
 
-    test('surface mémorisé explicitement → surface', () async {
+    test('surface mémorisé → surface', () async {
       NativeVideoRender.debugResetCache();
       mockGetRenderMode(NativeVideoRender.surface);
       expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
     });
 
-    test('texture mémorisé → texture', () async {
+    test('texture mémorisé explicitement (user / watchdog) → texture',
+        () async {
       NativeVideoRender.debugResetCache();
       mockGetRenderMode(NativeVideoRender.texture);
       expect(await NativeVideoRender.mode(), NativeVideoRender.texture);
