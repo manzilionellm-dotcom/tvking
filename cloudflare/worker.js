@@ -67,7 +67,7 @@ import {
 // publishRt() (publication fail-open après une mutation). La classe DO
 // DOIT être ré-exportée par le module d'entrée (voir export plus bas).
 import { RealtimeHub, publishRt } from './realtime.js';
-import { bestLicenseOrderSql } from './license_pick.js';
+import { bestLicenseOrderSql, expiryDayEndMs, paidLicenseExpired, utcDayStartMs } from './license_pick.js';
 //  Profils famille : MEME code que /api/v1/profiles (le panel). Deux
 //  implementations auraient signifie deux calculs de PIN a maintenir.
 import { readDeviceProfiles } from './device_profiles.js';
@@ -575,9 +575,9 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     .prepare(
       `SELECT status AS lstatus, expires_at FROM licenses
        WHERE device_id = ?
-       ORDER BY ${bestLicenseOrderSql()} LIMIT 1`,
+       ORDER BY ${bestLicenseOrderSql('', now)} LIMIT 1`,
     )
-    .bind(dev.id, now).first();
+    .bind(dev.id).first();
 
   // --- Cas 1 : une licence existe (activee par admin/revendeur) ---
   if (lic) {
@@ -623,7 +623,8 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     const expiresAt = lifetime ? now + 36500 * DAY_MS : lic.expires_at;
     // Jouable = status 'active' ET pas dépassée. Un status 'expired'
     // admin prime même si expires_at est encore dans le futur.
-    const timeExpired = !lifetime && (Number(expiresAt) <= now || lstatus === 'expired');
+    // Dernier jour UTC de expires_at INCLUS (abo 7 MOTION).
+    const timeExpired = !lifetime && (paidLicenseExpired(expiresAt, now) || lstatus === 'expired');
     const banned = lstatus === 'banned';
     const frozen = lstatus === 'frozen';
     const playable = lstatus === 'active' && !timeExpired && !banned && !frozen;
@@ -636,7 +637,7 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
       trial_until: expiresAt,
       days_left: lifetime && playable
         ? 36500
-        : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)),
+        : Math.max(0, Math.ceil((expiryDayEndMs(expiresAt) - now) / DAY_MS)),
       expired: !playable && !banned && !frozen,
       frozen,
       banned,
@@ -3523,8 +3524,16 @@ async function handleClearAnnouncements(env) {
 }
 
 // ----- KV helpers -----
+//  KV est DÉBRANCHÉ en prod (wrangler.toml). Un GET /api/status sur une
+//  MAC inconnue de D1 tombait ici et 500 (KV_7MOTION.get sur undefined).
+//  Fail-open : pas de KV = pas de fiche, jamais d'exception.
+
+function kvOk(env) {
+  return !!(env && env.KV_7MOTION);
+}
 
 async function readIndex(env) {
+  if (!kvOk(env)) return [];
   const raw = await env.KV_7MOTION.get('_index');
   if (!raw) return [];
   try {
@@ -3535,12 +3544,14 @@ async function readIndex(env) {
 }
 
 async function writeIndex(env, list) {
+  if (!kvOk(env)) return;
   // Dédup + tri par added_at descendant si dispo
   const dedup = Array.from(new Set(list));
   await env.KV_7MOTION.put('_index', JSON.stringify(dedup));
 }
 
 async function readClient(env, mac) {
+  if (!kvOk(env)) return null;
   const raw = await env.KV_7MOTION.get(`client:${mac}`);
   if (!raw) return null;
   try {
@@ -3551,6 +3562,7 @@ async function readClient(env, mac) {
 }
 
 async function writeClient(env, mac, data) {
+  if (!kvOk(env)) return;
   await env.KV_7MOTION.put(`client:${mac}`, JSON.stringify(data));
   const idx = await readIndex(env);
   if (!idx.includes(mac)) {
@@ -3560,6 +3572,7 @@ async function writeClient(env, mac, data) {
 }
 
 async function deleteClient(env, mac) {
+  if (!kvOk(env)) return;
   await env.KV_7MOTION.delete(`client:${mac}`);
   const idx = await readIndex(env);
   await writeIndex(env, idx.filter((m) => m !== mac));
@@ -5475,12 +5488,18 @@ async function handlePublicStatus(env, mac) {
   // Lecture seule : on ne CRÉE plus de fiche ici (un GET status
   // ne doit pas ouvrir un essai). La création passe par heartbeat
   // qui envoie android_id (lien anti-réinstall).
-  if (env.DB) {
-    const d1 = await familyStatusForMac(env, mac);
-    if (d1) return json(attachLicenseGrace(d1));
+  try {
+    if (env.DB) {
+      const d1 = await familyStatusForMac(env, mac);
+      if (d1) return json(attachLicenseGrace(d1));
+    }
+  } catch (_) { /* D1 blip → empty snapshot, jamais 500 */ }
+  try {
+    const data = await readClient(env, mac);
+    return json(attachLicenseGrace(computeStatus(data)));
+  } catch (_) {
+    return json(attachLicenseGrace(computeStatus(null)));
   }
-  const data = await readClient(env, mac);
-  return json(attachLicenseGrace(computeStatus(data)));
 }
 
 // =========================================================
@@ -5822,7 +5841,8 @@ async function handlePublicConfig(env, mac) {
       }
     } catch (_) { /* fail-open lecture statut */ }
   }
-  const data = await readClient(env, mac);
+  let data = null;
+  try { data = await readClient(env, mac); } catch (_) { data = null; }
   if (!data) return notFound(`Aucun playlist configurée pour ${mac}`);
   // On ne renvoie au client que ce dont il a besoin (pas les
   // métadonnées admin comme added_at). `jsonPrivate` = pas de CORS '*'
@@ -6658,9 +6678,9 @@ async function handlePublicFamilyM3u(env, rawToken) {
           'JOIN devices d ON d.mac = fm.mac ' +
           'JOIN licenses l ON l.device_id = d.id ' +
           'WHERE fm.family_id = ? AND IFNULL(l.status,\'active\') = \'active\' ' +
-          'AND (l.expires_at IS NULL OR l.expires_at > ?) LIMIT 1',
+          'AND (l.expires_at IS NULL OR l.expires_at >= ?) LIMIT 1',
         )
-        .bind(link.family_id, Date.now())
+        .bind(link.family_id, utcDayStartMs(Date.now()))
         .first();
       const nMem = await env.DB
         .prepare('SELECT COUNT(*) AS n FROM family_members WHERE family_id = ?')
@@ -7250,7 +7270,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /config/:mac');
       }
-      return handlePublicConfig(env, segments[1]);
+      return handlePublicConfig(env, decodeMacPath(segments[1]));
     }
 
     // /api/heartbeat — public, l'app pingue à chaque démarrage
@@ -7266,7 +7286,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/status/:mac');
       }
-      return handlePublicStatus(env, segments[2]);
+      return handlePublicStatus(env, decodeMacPath(segments[2]));
     }
 
     // /api/servers — public, l'app récupère les serveurs par défaut
@@ -7282,7 +7302,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
-      return await handlePublicDeviceSource(env, segments[2]);
+      return await handlePublicDeviceSource(env, decodeMacPath(segments[2]));
     }
 
     // /api/device-profiles/:mac — public, l'app recupere SES profils.
@@ -7295,7 +7315,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/device-profiles/:mac');
       }
-      return await handlePublicDeviceProfiles(env, segments[2]);
+      return await handlePublicDeviceProfiles(env, decodeMacPath(segments[2]));
     }
 
     // /api/device-messages/:mac — public : l'app relève sa BOÎTE de messages
@@ -7336,7 +7356,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/history/:mac');
       }
-      return await handlePublicHistory(env, segments[2]);
+      return await handlePublicHistory(env, decodeMacPath(segments[2]));
     }
 
     // /api/master-list/:ref(.m3u) — sert le M3U CURÉ d'un maître (liste de test
@@ -7613,7 +7633,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET' && request.method !== 'PUT') {
         return badRequest('only GET/PUT supported on /api/backup/:mac');
       }
-      return await handleDeviceBackup(request, env, segments[2], request.method);
+      return await handleDeviceBackup(request, env, decodeMacPath(segments[2]), request.method);
     }
 
     // /api/ai/search — public POST, recherche en langage naturel (Claude).

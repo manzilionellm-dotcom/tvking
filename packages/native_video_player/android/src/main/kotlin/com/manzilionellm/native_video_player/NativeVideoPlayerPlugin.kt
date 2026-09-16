@@ -132,10 +132,13 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                     result.success(null)
                 }
                 "getRenderMode" -> {
-                    // Défaut « texture » : la vidéo suit le pipeline de l'UI —
-                    // partout où l'app s'affiche, l'image vient. Les box où la
-                    // texture échouerait basculent (watchdog Dart) sur
-                    // « surface » et la préférence est mémorisée ici.
+                    // v5 : FLAG_SECURE + SurfaceView = noir. Texture.
+                    if (!prefs.getBoolean("render_reset_v5", false)) {
+                        prefs.edit()
+                            .putString("render_mode", "texture")
+                            .putBoolean("render_reset_v5", true)
+                            .apply()
+                    }
                     result.success(prefs.getString("render_mode", "texture"))
                 }
                 "setRenderMode" -> {

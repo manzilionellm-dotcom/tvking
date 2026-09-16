@@ -30,7 +30,7 @@ type SrcDraft = {
   m3uUrl: string;
 };
 const blankSrc = (): SrcDraft => ({
-  type: 'xtream', serverChoice: 'custom', serverUrl: '',
+  type: 'm3u', serverChoice: 'custom', serverUrl: '',
   xtUser: '', xtPass: '', m3uUrl: '',
 });
 const MAX_SOURCES = 3;
@@ -51,7 +51,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [balance, setBalance] = useState<number | null>(null);
   const [servers, setServers] = useState<DefaultServer[]>([]);
   // TRIO : 0 à 3 sources poussées avec l'activation (optionnel).
-  const [items, setItems] = useState<SrcDraft[]>([]);
+  // TRIO : 0 à 3 sources. On ouvre déjà un champ M3U vide — coller
+  // l'URL + Envoyer = le téléphone / la TV se débloquent tout de suite.
+  const [items, setItems] = useState<SrcDraft[]>([blankSrc()]);
   // ABONNEMENT FAMILIAL : appareils EN PLUS du principal (jusqu'à 2 → 3 au
   // total : papa/maman/enfants). Un seul « paiement », tous activés ensemble
   // avec le même plan. Vide = activation simple (1 appareil).
@@ -250,12 +252,12 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  // ===== ACTION ② : ENVOYER LES CHAÎNES (sources) — SEUL =====
-  // Ne touche JAMAIS à l'abonnement. Demande confirmation (anti-confusion).
+  // ===== ACTION ② : ENVOYER LES CHAÎNES — débloque aussi si besoin =====
+  // Coller un M3U = activer. Si la box n'a pas d'abo jouable, le Worker
+  // pose la licence (plan choisi ci-dessus) PUIS pousse les chaînes.
+  // Déjà payé → playlist seule, 0 crédit. Temps réel = dans la seconde.
   async function pushChannels() {
     setErr(null);
-    // CLONAGE FAMILIAL : la principale + les appareils de la famille reçoivent
-    // le MÊME code (même M-Trio / Xtream). Une seule ligne fournisseur, clonée.
     const macs = collectTargetMacs();
     if (!macs) return;
     const sources: DeviceSourceInput[] = [];
@@ -268,34 +270,46 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       sources.push(s);
     }
     if (sources.length === 0) {
-      setErr('Ajoute au moins une source (Xtream ou M3U) avant d\'envoyer les chaînes.');
+      setErr('Colle au moins une URL M3U (ou un code Xtream) — le téléphone et la TV se débloquent tout de suite.');
       return;
     }
+    const planLabel =
+      [...PLANS, ...TRIALS].find((p) => p.id === plan)?.label ?? plan;
     const familyNote = macs.length > 1
-      ? `\n\n👨‍👩‍👧 CLONAGE FAMILIAL : le MÊME code est cloné sur ${macs.length} appareils ` +
-        `(une seule ligne fournisseur — « un seul flux » partagé, papa + maman + enfants).`
+      ? `\n\n👨‍👩‍👧 CLONAGE FAMILIAL : le MÊME code est cloné sur ${macs.length} appareils.`
       : '';
     if (!window.confirm(
-      `Envoyer ${sources.length} source(s) de CHAÎNES ?${familyNote}\n\n` +
+      `Envoyer ${sources.length} source(s) et ACTIVER l'appareil ?${familyNote}\n\n` +
+      `Plan si pas encore d'abo : ${planLabel}\n` +
       `Appareil(s) :\n${macs.join('\n')}\n\n` +
-      `➡️ Ceci remplace les chaînes du/des client(s).\n` +
-      `Ça ne touche PAS à l'abonnement.`,
+      `➡️ Le téléphone / la TV se débloquent et chargent les chaînes tout de suite.`,
     )) return;
-    setBusy(true); setRtOutcome(null); rtSeq.current += 1;
+    setBusy(true); setResult(null); setRtOutcome(null); rtSeq.current += 1;
     try {
-      // Le MÊME jeu de sources est cloné sur chaque appareil de la famille.
-      // Le dernier résultat (le principal) alimente le feedback temps réel.
       let last: Awaited<ReturnType<typeof sourcesApi.setMany>> | null = null;
       for (const one of macs) {
-        last = await sourcesApi.setMany(one, sources);
+        last = await sourcesApi.setMany(one, sources, {
+          plan,
+          auto_activate: true,
+          customer_name: customerName.trim() || undefined,
+        });
       }
       toast(
         macs.length > 1
-          ? `👨‍👩‍👧 Clonage familial : chaînes clonées sur ${macs.length} appareils (même code partagé).`
-          : `✅ ${sources.length} source(s) de chaînes envoyée(s).`,
-        'success',
+          ? `👨‍👩‍👧 Clonage familial : chaînes + activation sur ${macs.length} appareils.`
+          : last?.activated
+            ? '✅ Appareil activé — chaînes envoyées. Téléphone / TV se débloquent maintenant.'
+            : last?.already_playable
+              ? '✅ Chaînes envoyées — l\'appareil était déjà actif.'
+              : last?.activate_error || last?.needs_activation
+                ? (last?.message || '✅ Playlist enregistrée. Active l\'appareil à part si besoin.')
+                : `✅ ${sources.length} source(s) envoyée(s).`,
+        last?.activate_error || last?.needs_activation ? 'warning' : 'success',
       );
-      if (last) trackRt(last.rt);
+      if (last) {
+        trackRt(last.rt);
+        if (last.credit_balance != null) setBalance(last.credit_balance);
+      }
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : 'Envoi des chaînes impossible.');
@@ -324,7 +338,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Activer un appareil"
-      subtitle="Une MAC → licence + sources, tout d'un coup. Le client est configuré automatiquement."
+      subtitle="Colle un M3U → le téléphone et la TV se débloquent tout de suite."
       onLogout={onLogout}
       actions={
         isReseller && balance !== null ? (
@@ -542,7 +556,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
           {canPushSources && (
           <div className="rounded-lg border border-sky-400/25 bg-sky-400/[0.05] p-3">
             <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-sky-300">
-              ② Chaînes du client — sources chargées automatiquement (jusqu'à 3)
+              ② Colle le M3U — le téléphone / la TV s'activent tout de suite
             </label>
 
             {items.map((it, i) => (
@@ -623,8 +637,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
               {busy
                 ? '…'
                 : familyMacs.filter((x) => x.trim() && x.trim() !== 'MK:').length > 0
-                  ? `② Cloner les chaînes · famille (${1 + familyMacs.filter((x) => x.trim() && x.trim() !== 'MK:').length})`
-                  : `② Envoyer les chaînes${items.length > 0 ? ` (${items.length})` : ''}`}
+                  ? `Activer + envoyer · famille (${1 + familyMacs.filter((x) => x.trim() && x.trim() !== 'MK:').length})`
+                  : 'Activer et envoyer — téléphone / TV se débloquent maintenant'}
             </button>
           </div>
           )}
@@ -638,9 +652,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         <div className="rounded-xl border border-white/5 bg-obsidian p-6">
           {!result && (
             <p className="text-sm text-ink-tertiary">
-              Le résultat de l'activation s'affichera ici. Tablette, téléphone
-              ou box : si l'app est ouverte, le déverrouillage part tout de suite
-              (quelques secondes). Hors ligne → au prochain réveil de l'app.
+              Colle un M3U, clique Activer : le téléphone et la TV se
+              débloquent dans la seconde (WebSocket). Hors ligne → au
+              prochain réveil de l'app.
             </p>
           )}
           {result && (

@@ -89,6 +89,9 @@ jobs:
       - name: Setup Android SDK (retry après échec transitoire)
         if: steps.setup_android.outcome == 'failure'
         uses: android-actions/setup-android@v3
+        continue-on-error: true
+        # Google a retiré le paquet `tools` : l'action échoue, le SDK du
+        # runner suffit. On continue pour signer avec release.jks.
 
       - name: Accept Android licenses
         run: yes | sdkmanager --licenses || true
@@ -342,6 +345,9 @@ jobs:
       # message clair.
       - name: Apply Google Cast SDK overlay
         run: bash android_overlay/google_cast/apply_cast_patch.sh
+
+      - name: FLAG_SECURE ON (captures off — vidéo en texture)
+        run: python3 ci/set_secure_flag.py
 
       # Patch AndroidManifest pour activer le Picture-in-Picture
       # natif sur la MainActivity (mode YouTube Premium : vidéo
@@ -771,12 +777,19 @@ jobs:
           ok=
           for attempt in 1 2 3 4; do
             echo "=== Build attempt $attempt ==="
+            # PHONE_UPDATE_TAG : le bouton MAJ du sideload interroge ce
+            # canal. Défaut Dart = phone-latest (`prod` 404 depuis des
+            # semaines). Gravé ici aussi, pour qu'un APK CI voie les
+            # mises à jour même si CETTE branche ne publie pas le canal
+            # (seul claude/7motion-android-tv-compat-e0rtyp le fait via
+            # REL_TAG ; la maison mère vise encore prod).
             flutter build apk --release --no-tree-shake-icons --split-per-abi \
               --build-number=${{ github.run_number }} \
               --obfuscate --split-debug-info=build/symbols \
               --dart-define=APP_BUILD_TS=$BUILD_TS \
               --dart-define=APP_BUILD_LABEL=$BUILD_LABEL \
               --dart-define=GIT_SHA=${{ github.sha }} \
+              --dart-define=PHONE_UPDATE_TAG=phone-latest \
               $MASTER_DEFINE && { ok=1; break; }
             echo "Attempt $attempt failed; retry in 25s"; sleep 25
           done

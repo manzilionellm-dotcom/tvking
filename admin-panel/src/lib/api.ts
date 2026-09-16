@@ -573,6 +573,20 @@ export interface DeviceOverview {
   // seulement), ou si le manifeste publié n'a pas pu être lu.
   version?: DeviceVersionStatus | null;
 }
+export interface DeviceScanFinding {
+  severity: 'critique' | 'probleme' | 'info';
+  code: string;
+  title: string;
+  detail: string;
+}
+export interface DeviceScanResult {
+  ok: boolean;
+  mac: string;
+  verdict: 'ok' | 'probleme' | 'critique';
+  summary: string;
+  findings: DeviceScanFinding[];
+  errors?: { level?: string; tag?: string; message?: string; created_at?: number }[];
+}
 export const appVersionsApi = {
   // Dernier numéro publié, par plateforme. Sert de référence affichée
   // dans la fiche MAC : « le dernier, c'est 19882 ».
@@ -617,6 +631,9 @@ export const devicesApi = {
   // Fiche 360° d'un appareil (abonnement + présence live + M-Trio) en 1 appel.
   overview: (id: string) =>
     request<DeviceOverview>(`/api/v1/devices/${encodeURIComponent(id)}/overview`),
+  // L'app ne marche pas : le serveur lit tout et DIT ce qui cloche.
+  scan: (id: string) =>
+    request<DeviceScanResult>(`/api/v1/devices/${encodeURIComponent(id)}/scan`),
   // Geler ('frozen'), bannir ('banned') ou reactiver ('active') une MAC.
   setBlock: (id: string, block_status: 'active' | 'frozen' | 'banned') =>
     request<{ updated: number; block_status: string | null; admin_note?: string | null; rt?: RtInfo }>(
@@ -935,6 +952,7 @@ export const activateApi = {
     custom_days?: number;
     reseller_id?: string;
     source?: DeviceSourceInput;
+    sources?: DeviceSourceInput[];
     /// CONFIRMATION D'UNE MAC INCONNUE (09/09/2026).
     ///
     //  Sans ce drapeau, le serveur REFUSE d'activer une adresse qu'il
@@ -959,17 +977,20 @@ export const sourcesApi = {
     request<{ mac: string; source: DeviceSource | null; sources?: DeviceSource[] }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
     ),
-  set: (mac: string, source: DeviceSourceInput) =>
-    request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo }>(
+  set: (mac: string, source: DeviceSourceInput, opts?: { plan?: string; auto_activate?: boolean; customer_name?: string }) =>
+    request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo; activated?: boolean; already_playable?: boolean; needs_activation?: boolean; activate_error?: string; message?: string }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
-      { method: 'PUT', body: { source } },
+      { method: 'PUT', body: { source, auto_activate: opts?.auto_activate !== false, plan: opts?.plan, customer_name: opts?.customer_name } },
     ),
   // TRIO : pousse 1 à 3 sources d'un coup sur une même MAC. Le client
   // les charge toutes et bascule entre elles dans l'app.
-  setMany: (mac: string, sources: DeviceSourceInput[]) =>
-    request<{ ok: boolean; mac: string; count: number; sources?: DeviceSource[]; rt?: RtInfo }>(
+  // auto_activate (défaut true) : si la box n'a pas d'abo jouable, le
+  // Worker pose la licence et le téléphone / la TV se débloquent dans
+  // la seconde via le WebSocket. Déjà payé → playlist seule, 0 crédit.
+  setMany: (mac: string, sources: DeviceSourceInput[], opts?: { plan?: string; auto_activate?: boolean; customer_name?: string }) =>
+    request<{ ok: boolean; mac: string; count: number; sources?: DeviceSource[]; rt?: RtInfo; activated?: boolean; already_playable?: boolean; needs_activation?: boolean; activate_error?: string; message?: string; credits_charged?: number; credit_balance?: number | null }>(
       `/api/v1/sources/${encodeURIComponent(mac)}`,
-      { method: 'PUT', body: { sources } },
+      { method: 'PUT', body: { sources, auto_activate: opts?.auto_activate !== false, plan: opts?.plan, customer_name: opts?.customer_name } },
     ),
   clear: (mac: string) =>
     request<{ ok: boolean; mac: string; sources?: DeviceSource[]; rt?: RtInfo }>(
@@ -1013,7 +1034,7 @@ export const sourcesApi = {
     ),
   // AJOUTER un abonnement AUX autres (setMany les remplacerait tous).
   add: (mac: string, source: DeviceSourceInput, active?: boolean) =>
-    request<{ ok: boolean; mac: string; count: number; index: number; sources?: DeviceSource[]; rt?: RtInfo }>(
+    request<{ ok: boolean; mac: string; count: number; index: number; sources?: DeviceSource[]; rt?: RtInfo; activated?: boolean; already_playable?: boolean; needs_activation?: boolean; activate_error?: string }>(
       `/api/v1/sources/${encodeURIComponent(mac)}/add`,
       { method: 'POST', body: { source, active: active === true } },
     ),

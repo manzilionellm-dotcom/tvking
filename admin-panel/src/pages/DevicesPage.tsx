@@ -14,6 +14,7 @@ import { formatDateTime, formatMacAsYouType } from '@/lib/utils';
 import {
   DeviceFilterBar, QuickRenewBar, AdminNoteField, CopyWhatsAppButton, AboChip,
   ProblemsChip, ChangeMacModal, RegenerateMacModal, BulkWhatsAppRenewModal,
+  ScanErrorsButton,
   countDeviceFilters, licenseFromActivate, matchesDeviceFilter, isOnlineUnpaid,
 } from '@/components/DeviceOps';
 import type { MacMigrateResult } from '@/lib/api';
@@ -34,7 +35,6 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [changeMacFor, setChangeMacFor] = useState<Device | null>(null);
   const [regenFor, setRegenFor] = useState<Device | null>(null);
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
-  const [detailFor, setDetailFor] = useState<Device | null>(null);
   // ACTIONS EN MASSE (super-pouvoir) : sélection multiple + barre d'actions.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -76,11 +76,6 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         ? { ...x, mac: r.new_mac, problems: [] }
         : x
     )));
-    setDetailFor((prev) => (
-      prev && (prev.id === r.device_id || prev.mac.toUpperCase() === r.old_mac.toUpperCase())
-        ? { ...prev, mac: r.new_mac, problems: [] }
-        : prev
-    ));
     load();
   }
 
@@ -88,10 +83,6 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     setItems((prev) => prev.map((x) => (
       x.mac.toUpperCase() === mac.toUpperCase() ? { ...x, license: lic } : x
     )));
-    setDetailFor((prev) => (
-      prev && prev.mac.toUpperCase() === mac.toUpperCase()
-        ? { ...prev, license: lic } : prev
-    ));
   }
 
   useEffect(() => {
@@ -119,10 +110,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     setBusyId(d.id); setErr(null);
     try {
       const res = await devicesApi.setBlock(d.id, status);
-      // UI immédiate : la fiche ouverte gardait l'ancien block_status
-      // jusqu'au reload (action « OK » mais écran stale).
       setItems((prev) => prev.map((x) => (x.id === d.id ? { ...x, block_status: status } : x)));
-      setDetailFor((prev) => (prev && prev.id === d.id ? { ...prev, block_status: status } : prev));
       load();
       void rtActionFeedback(res.rt);
     }
@@ -140,7 +128,6 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     try {
       const res = await devicesApi.remove(d.id);
       setItems((prev) => prev.filter((x) => x.id !== d.id));
-      setDetailFor((prev) => (prev && prev.id === d.id ? null : prev));
       load();
       void rtActionFeedback(res.rt);
     }
@@ -727,6 +714,10 @@ function DeviceDetailModal({
           <DeviceStatus status={st} />
         </div>
 
+        <div className="mb-4">
+          <ScanErrorsButton mac={device.mac} />
+        </div>
+
         {/* ----- Abonnement + Présence live (résumé d'un coup d'œil) ----- */}
         <div className="mb-4 grid grid-cols-2 gap-3">
           <SubscriptionBox
@@ -827,7 +818,12 @@ function DeviceDetailModal({
                   const r = await sourcesApi.add(device.mac, s);
                   applySources(r.sources);
                   void rtActionFeedback(r.rt);
-                  toast('Abonnement ajouté.', 'success');
+                  toast(
+                    r.activate_error || r.needs_activation
+                      ? 'Abonnement ajouté. Active l’appareil à part si besoin.'
+                      : 'Abonnement ajouté.',
+                    r.activate_error || r.needs_activation ? 'warning' : 'success',
+                  );
                   setAdding(false);
                   await refreshOverview();
                 } catch (e) {
@@ -1270,7 +1266,7 @@ function SourceForm({
   onCancel: () => void;
   onSubmit: (s: DeviceSourceInput) => Promise<void>;
 }) {
-  const [type, setType] = useState<'xtream' | 'm3u'>(initial?.type === 'm3u' ? 'm3u' : 'xtream');
+  const [type, setType] = useState<'xtream' | 'm3u'>(initial?.type === 'xtream' ? 'xtream' : 'm3u');
   const [label, setLabel] = useState(initial?.label || '');
   const [server, setServer] = useState(initial?.server_url || '');
   const [user, setUser] = useState(initial?.username || '');

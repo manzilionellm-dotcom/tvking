@@ -181,6 +181,9 @@ jobs:
       - name: Setup Android SDK (retry après échec transitoire)
         if: steps.setup_android.outcome == 'failure'
         uses: android-actions/setup-android@v3
+        continue-on-error: true
+        # Google a retiré le paquet `tools` : l'action échoue, le SDK du
+        # runner suffit. On continue pour signer avec release.jks.
 
       - name: Accept Android licenses
         run: yes | sdkmanager --licenses || true
@@ -190,6 +193,9 @@ jobs:
       # installée sur les box. NE PAS changer, sinon double icône.
       - name: Generate native Android folder (org Seven Motion TV)
         run: flutter create . --platforms=android --org com.sevenmotion.tv --project-name seven_tv
+
+      - name: FLAG_SECURE ON (captures off — vidéo en texture)
+        run: python3 ci/set_secure_flag.py
 
       - name: Brand manifest (7 MOTION TV)
         run: |

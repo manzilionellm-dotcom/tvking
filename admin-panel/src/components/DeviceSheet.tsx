@@ -33,6 +33,7 @@ import { formatDateTime, cn, formatMacInput } from '@/lib/utils';
 import {
   QuickRenewBar, AdminNoteField, CopyWhatsAppButton,
   ChangeMacModal, RegenerateMacModal, licenseFromActivate,
+  ScanErrorsButton,
 } from '@/components/DeviceOps';
 
 type SheetState = { mac: string; seed?: Device } | null;
@@ -331,6 +332,13 @@ export function DeviceSheet({
         {!loading && !err && (
           <>
             <VersionCard ver={ov?.version ?? null} appVersion={meta?.app_version ?? null} />
+
+            {/* « L'app ne marche pas ? » — il vivait dans l'ancien tiroir
+                MacLink, que la Vague A a remplacé par cette fiche. Sans
+                cette ligne, le bouton disparaissait de la fiche 360°. */}
+            <div className="mt-3">
+              <ScanErrorsButton mac={mac} />
+            </div>
 
             <div className="mb-4 mt-4 grid grid-cols-2 gap-3">
               <SubscriptionBox
@@ -877,6 +885,22 @@ function SourceCard({
         {source.label && <span className="truncate text-xs text-ink-secondary">{source.label}</span>}
         {source.active && (
           <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">active</span>
+        )}
+        {/* « Si j'efface la liste au téléphone, même au panel la liste ne
+            part pas » (propriétaire, 16/09). Vrai : l'app efface en local
+            et ne prévient personne. Le serveur confronte maintenant ce
+            qu'on a poussé à l'inventaire remonté par l'appareil.
+            `present === false` seulement : `undefined` veut dire « je ne
+            sais pas » (app ancienne, heartbeat pas encore passé) et ne
+            doit RIEN afficher — accuser à tort coûte plus cher que de se
+            taire. */}
+        {source.present === false && (
+          <span
+            className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300"
+            title="Le client a supprimé cette liste sur son appareil. Elle reste ici : « Rendre active » la renvoie."
+          >
+            supprimée par le client
+          </span>
         )}
       </div>
       {isXtream ? (

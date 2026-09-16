@@ -110,22 +110,31 @@ class UpdateService {
   static const String _tvUpdateTag =
       String.fromEnvironment('TV_UPDATE_TAG', defaultValue: 'seventv-latest');
 
-  /// Canal du TÉLÉPHONE — VOLONTAIREMENT SANS MANIFESTE.
+  /// Canal du TÉLÉPHONE — sideload officiel `phone-latest`.
+  /// Passé au build par `--dart-define=PHONE_UPDATE_TAG` (comme
+  /// `TV_UPDATE_TAG` pour la TV).
   ///
-  /// Vérifié le 10/09/2026 : aucune release `prod` n'existe dans le
-  /// dépôt, ce canal répond 404, et c'est VOULU. Décision du
-  /// propriétaire du 22/08 : « efface tous les builds téléphone, on
-  /// laisse celui qui est activé sur le Play Store, que tout pointe
-  /// dessus ». Un téléphone reçoit donc ses mises à jour du Store, pas
-  /// d'ici — le sideload a été retiré exprès.
+  /// ⚠ DÉFAUT CORRIGÉ : il valait `prod`, un canal qui **404 depuis
+  /// des semaines**. Conséquence : le bouton MAJ mentait. Un APK
+  /// sideload interrogeait `prod`, ne trouvait rien, et affichait
+  /// « vous êtes à jour » alors que 198842+ était déjà publié sur
+  /// `phone-latest` (app.7themotion.com/mobile). Panne vicieuse : le
+  /// client ne se plaint pas, il reste sur une vieille version.
   ///
-  /// NE LE FAIS PAS POINTER SUR `phone-latest` en croyant réparer une
-  /// panne : tu rallumerais le sideload que le propriétaire a éteint, et
-  /// tu désaccorderais l'app du panel (`cloudflare/app_versions.js`
-  /// garde `mobile: 'prod'` pour viser EXACTEMENT le même canal). Le
-  /// jour où un manifeste téléphone repart, les deux se rallument
-  /// ensemble, en changeant les deux fichiers.
-  static const String _phoneUpdateTag = 'prod';
+  /// Le Play Store reste une autre piste (AAB, `kIsPlayBuild` : les
+  /// MAJ viennent du Store, jamais d'ici). Un APK sideload, lui, DOIT
+  /// voir les mises à jour — d'où le défaut `phone-latest`.
+  ///
+  /// ⚠ PUBLICATION : `build-android.yml` n'écrit `phone-latest` QUE
+  /// depuis `claude/7motion-android-tv-compat-e0rtyp` (étape « Publier
+  /// l'APK téléphone sur son canal direct », `REL_TAG == phone-latest`).
+  /// La maison mère (`claude/maison-mere-phone`) cible encore `prod`.
+  /// Le défaut Dart vise quand même le canal RÉELLEMENT servi au
+  /// sideload, pas le canal de CETTE branche : un repli doit pointer
+  /// vers quelque chose qui existe, sinon ce n'est pas un repli,
+  /// c'est un piège.
+  static const String _phoneUpdateTag =
+      String.fromEnvironment('PHONE_UPDATE_TAG', defaultValue: 'phone-latest');
 
   /// Canal du PC.
   ///

@@ -131,15 +131,28 @@ async function deviceSource(state) {
   ok(body.blocked === 'expired', '2 blocked=expired');
 }
 
-// 3) Licence D1 expirée (status active mais expires_at passé)
+// 3) Licence D1 expirée (status active mais expires_at un jour calendaire passé)
 {
   const { r, body } = await deviceSource({
     device: { id: 'dev_1', first_seen_at: 1, block_status: null },
-    license: { lstatus: 'active', expires_at: Date.now() - 1000 },
+    license: { lstatus: 'active', expires_at: Date.now() - 2 * 86400000 },
     source: sourceRow,
   });
   ok(body.source === null && body.blocked === 'expired',
-    '3 licence expires_at passé → blocked expired');
+    '3 licence expires_at un jour passé → blocked expired');
+}
+
+// 3b) Dernier jour INCLUS : expires_at = aujourd'hui 00:00 UTC → encore jouable
+{
+  const n = new Date();
+  const todayUtc = Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), 0, 0, 0, 0);
+  const { body } = await deviceSource({
+    device: { id: 'dev_1', first_seen_at: 1, block_status: null },
+    license: { lstatus: 'active', expires_at: todayUtc },
+    source: sourceRow,
+  });
+  ok(body.source && body.source.username === 'u' && !body.blocked,
+    '3b expires_at = aujourd\'hui 00:00 UTC → encore jouable (dernier jour inclus)');
 }
 
 // 4) Gel admin

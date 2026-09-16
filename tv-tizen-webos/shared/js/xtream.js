@@ -8,10 +8,16 @@
 window.DFT = window.DFT || {};
 
 DFT.xtream = (function () {
-  // Normalise l'URL serveur (ajoute http:// si absent, retire le / final).
+  // Normalise l'URL serveur (retire le / final).
+  // - Si l'utilisateur a saisi https://, on ne rétrograde JAMAIS vers http://.
+  // - Essayer https d'abord puis fallback http serait trop asynchrone ici.
+  // - Sans schéma : défaut historique http:// (beaucoup de Xtream n'ont pas TLS).
   function normServer(s) {
     var u = String(s || '').trim();
-    if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+    if (/^https:\/\//i.test(u)) {
+      return u.replace(/\/+$/, '');
+    }
+    if (!/^http:\/\//i.test(u)) u = 'http://' + u;
     return u.replace(/\/+$/, '');
   }
 

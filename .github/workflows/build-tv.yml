@@ -106,6 +106,9 @@ jobs:
       - name: Setup Android SDK (retry après échec transitoire)
         if: steps.setup_android.outcome == 'failure'
         uses: android-actions/setup-android@v3
+        continue-on-error: true
+        # Google a retiré le paquet `tools` : l'action échoue, le SDK du
+        # runner suffit. On continue pour signer avec release.jks.
 
       - name: Accept Android licenses
         run: yes | sdkmanager --licenses || true

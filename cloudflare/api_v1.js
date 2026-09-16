@@ -33,6 +33,7 @@
 //      GET    /api/v1/customers/:id/devices
 //      POST   /api/v1/devices                { customer_id, mac, label }
 //      GET    /api/v1/devices/:id/overview   fiche 360 (+ verdict version)
+//      GET    /api/v1/devices/:id/scan       scan erreurs (dit ce qui cloche)
 //
 //    Versions publiees
 //      GET    /api/v1/app-versions           dernier numero publie, par
@@ -70,7 +71,7 @@
 // le changement (`changed{scope}`). TOUJOURS fail-open : si le Durable
 // Object n'est pas déployé, publishRt renvoie {delivered:0} sans erreur.
 import { publishRt } from './realtime.js';
-import { bestLicenseOrderSql } from './license_pick.js';
+import { bestLicenseOrderSql, expiryDayEndMs, paidLicenseExpired, utcDayStartMs } from './license_pick.js';
 import {
   normalizeMac, isValidMac, generateVirtualMac,
   migrateDeviceMac, ensureSupersededColumn,
@@ -483,14 +484,14 @@ async function handleReferencesList(env, user) {
       if (r.lic_status === 'banned') status = 'banned';
       else if (r.lic_status === 'frozen') status = 'frozen';
       else if (hasLic) {
-        status = lifetime ? 'active' : (r.lic_expires <= now ? 'expired' : 'active');
+        status = lifetime ? 'active' : (paidLicenseExpired(r.lic_expires, now) ? 'expired' : 'active');
       }
       // Détails « combien de temps reste » : échéance + jours restants
       // (à vie → null jours mais lifetime=true), et présence live.
       const DAY = 24 * 60 * 60 * 1000;
       const expires_at = (r.lic_expires === undefined) ? null : r.lic_expires;
       const days_left = (hasLic && !lifetime && expires_at)
-        ? Math.max(0, Math.ceil((expires_at - now) / DAY))
+        ? Math.max(0, Math.ceil((expiryDayEndMs(expires_at) - now) / DAY))
         : null;
       const last_seen = r.pres_last_seen || r.dev_last_seen || null;
       const ONLINE_MS = 15 * 60 * 1000;
@@ -967,9 +968,18 @@ async function apiV1Inner(request, env) {
     if (!resellerCan(a.user, 'transfer')) {
       return errResp('forbidden', 'Ton compte n\'a pas le droit de transférer.', 403);
     }
-    // rt : les DEUX macs re-fetchent tout (l'ancienne perd sa licence,
-    // la nouvelle la gagne) — spec §4 « les 2 macs → sync all ».
-    return withRt(env, await handleDeviceTransfer(request, env, a.user, actor),
+    // rt : si la nouvelle MAC n'existait pas (même box, nouvel identifiant)
+    // → mac_reassigned pour que l'app ADOPTE. Si elle existait déjà
+    // (vrai nouveau téléphone) → sync all sur les deux, SANS adopter
+    // (sinon deux appareils partageraient le même numéro).
+    const res = await handleDeviceTransfer(request, env, a.user, actor);
+    try {
+      if (res && res.status >= 200 && res.status < 300) {
+        const b = await res.clone().json();
+        if (b && b.adopt_old) return withMacReassignRt(env, res);
+      }
+    } catch (_) { /* repli sync all */ }
+    return withRt(env, res,
       (b) => ({ macs: [b.old_mac, b.new_mac], what: 'all', scope: 'devices', changedMac: b.new_mac }));
   }
 
@@ -1336,7 +1346,7 @@ async function apiV1Inner(request, env) {
     // rt : l'appareil recharge sa playlist DANS LA SECONDE (au lieu du
     // sync 5 min) — le corps de réponse contient la MAC normalisée.
     if (request.method === 'PUT') {
-      return withRt(env, await handleSourcePut(request, env, mac, actor),
+      return withRt(env, await handleSourcePut(request, env, mac, actor, a.user),
         (b) => ({ macs: [b.mac], what: 'all', scope: 'sources', changedMac: b.mac }));
     }
     if (request.method === 'DELETE') {
@@ -1373,7 +1383,7 @@ async function apiV1Inner(request, env) {
     }
     const resp = parts[2] === 'update'
       ? await handleSourceUpdate(request, env, mac, actor)
-      : await handleSourceAdd(request, env, mac, actor);
+      : await handleSourceAdd(request, env, mac, actor, a.user);
     return withRt(env, resp,
       (b) => ({ macs: [b.mac], what: 'all', scope: 'sources', changedMac: b.mac }));
   }
@@ -1548,6 +1558,11 @@ async function apiV1Inner(request, env) {
     // /devices/:id/overview — fiche 360° (abonnement + présence + M-Trio).
     if (parts.length === 3 && parts[2] === 'overview') {
       if (request.method === 'GET') return handleDeviceOverview(env, parts[1], a.user);
+    }
+    // /devices/:id/scan — l'app ne marche pas : on lit licence, playlist,
+    // version, présence et journaux, puis on DIT ce qui cloche.
+    if (parts.length === 3 && parts[2] === 'scan') {
+      if (request.method === 'GET') return handleDeviceScan(env, parts[1], a.user);
     }
     // /devices/:id/change-mac — éditer l'identité (danger : confirmation
     // `confirm:true` obligatoire). L'app ADOPTE via RT mac_reassigned.
@@ -1794,11 +1809,11 @@ async function handleStatsOverview(env, user) {
         ? env.DB.prepare('SELECT COUNT(*) as n FROM licenses WHERE reseller_id = ?').bind(rid).first()
         : env.DB.prepare('SELECT COUNT(*) as n FROM licenses').first(),
       isReseller
-        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at > ?) AND reseller_id = ?`).bind(now, rid).first()
-        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at > ?)`).bind(now).first(),
+        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at >= ?) AND reseller_id = ?`).bind(utcDayStartMs(now), rid).first()
+        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at >= ?)`).bind(utcDayStartMs(now)).first(),
       isReseller
-        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at <= ? AND reseller_id = ?`).bind(now, rid).first()
-        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at <= ?`).bind(now).first(),
+        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at < ? AND reseller_id = ?`).bind(utcDayStartMs(now), rid).first()
+        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at < ?`).bind(utcDayStartMs(now)).first(),
       env.DB.prepare('SELECT COUNT(*) as n FROM apps WHERE is_active = 1').first(),
     ]);
 
@@ -1814,8 +1829,8 @@ async function handleStatsOverview(env, user) {
   // Abonnements ACTIFS qui expirent dans les 7 jours → relance/renouvellement.
   const week = 7 * 24 * 60 * 60 * 1000;
   const expSoon = isReseller
-    ? await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ? AND reseller_id = ?`).bind(now, now + week, rid).first()
-    : await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ?`).bind(now, now + week).first();
+    ? await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at >= ? AND expires_at <= ? AND reseller_id = ?`).bind(utcDayStartMs(now), now + week, rid).first()
+    : await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at >= ? AND expires_at <= ?`).bind(utcDayStartMs(now), now + week).first();
   out.expiring_7d = expSoon.n;
 
   if (isReseller) {
@@ -1862,7 +1877,7 @@ async function handleInsights(env) {
     plan: r.plan,
     expires_at: r.expires_at,
     // Arrondi SUPÉRIEUR : « expire dans 0 jour » = aujourd'hui même.
-    days_left: Math.max(0, Math.ceil((r.expires_at - now) / DAY)),
+    days_left: Math.max(0, Math.ceil((expiryDayEndMs(r.expires_at) - now) / DAY)),
   });
 
   // Toutes les requêtes sont INDÉPENDANTES → elles partent EN PARALLÈLE
@@ -1905,10 +1920,10 @@ async function handleInsights(env) {
            JOIN devices d ON d.id = l.device_id
            LEFT JOIN customers c ON c.id = l.customer_id
            WHERE l.status = 'active' AND l.expires_at IS NOT NULL
-             AND l.expires_at > ? AND l.expires_at <= ?${exD}
+             AND l.expires_at >= ? AND l.expires_at <= ?${exD}
            GROUP BY d.mac
            ORDER BY expires_at ASC LIMIT 30`,
-        ).bind(now, now + 7 * DAY).all(),
+        ).bind(utcDayStartMs(now), now + 7 * DAY).all(),
         { results: [] },
       ),
       // Essais qui se terminent dans les 48 h → fenêtre de conversion.
@@ -1938,11 +1953,11 @@ async function handleInsights(env) {
            JOIN licenses l ON l.device_id = d.id
            WHERE l.status = 'active'
              AND l.plan NOT LIKE 'trial%'
-             AND (l.expires_at IS NULL OR l.expires_at > ?)
+             AND (l.expires_at IS NULL OR l.expires_at >= ?)
              AND d.last_seen_at < ?${exD}
            GROUP BY d.mac
            ORDER BY d.last_seen_at ASC LIMIT 20`,
-        ).bind(now, now - 7 * DAY).all(),
+        ).bind(utcDayStartMs(now), now - 7 * DAY).all(),
         { results: [] },
       ),
       // Nouveaux appareils DU JOUR (UTC) : le pouls de l'acquisition.
@@ -1970,12 +1985,12 @@ async function handleInsights(env) {
           env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE 1=1' + exDev).first(),
           env.DB.prepare(
             `SELECT COUNT(*) AS n FROM licenses
-             WHERE status='active' AND (expires_at IS NULL OR expires_at > ?)`,
-          ).bind(now).first(),
+             WHERE status='active' AND (expires_at IS NULL OR expires_at >= ?)`,
+          ).bind(utcDayStartMs(now)).first(),
           env.DB.prepare(
             `SELECT COUNT(*) AS n FROM licenses
-             WHERE expires_at IS NOT NULL AND expires_at <= ?`,
-          ).bind(now).first(),
+             WHERE expires_at IS NOT NULL AND expires_at < ?`,
+          ).bind(utcDayStartMs(now)).first(),
         ]),
         null,
       ),
@@ -2143,10 +2158,10 @@ async function handleInsightsOverview(env) {
          FROM licenses l
          JOIN devices d ON d.id = l.device_id
          WHERE l.status = 'active' AND l.expires_at IS NOT NULL
-           AND l.expires_at > ? AND l.expires_at <= ?${exD}
+           AND l.expires_at >= ? AND l.expires_at <= ?${exD}
          GROUP BY d.mac
          ORDER BY paid_until ASC LIMIT 50`,
-      ).bind(now, now + 7 * DAY).all(),
+      ).bind(utcDayStartMs(now), now + 7 * DAY).all(),
       { results: [] },
     ),
     // Versions d'app en circulation (devices.app_version, remplie par le
@@ -3703,9 +3718,13 @@ export function autoDetectSource(raw) {
   const label = (raw.label || '').trim() || null;
   const epg = (raw.epg_url || '').trim() || null;
   // Candidats d'URL par ordre de priorité (on prend le 1er non vide).
-  const blob = [raw.url, raw.paste, raw.text, raw.m3u_url, raw.server_url]
+  const blobRaw = [raw.url, raw.paste, raw.text, raw.m3u_url, raw.server_url]
     .map((v) => (typeof v === 'string' ? v.trim() : ''))
     .find((v) => v) || '';
+  // Collage sans schéma (serveur.com/playlist.m3u) → HTTP, pas d'erreur.
+  const blob = (blobRaw && !/^https?:\/\//i.test(blobRaw) && blobRaw.includes('.'))
+    ? 'http://' + blobRaw
+    : blobRaw;
   // 1) Xtream si on peut extraire des identifiants d'une URL collée…
   const xt = parseXtreamUrl(blob);
   if (xt) {
@@ -3759,8 +3778,12 @@ export function normalizeSource(raw) {
     return { source: { type, label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
   }
   if (type === 'm3u') {
-    const m3u = (raw.m3u_url || raw.url || '').trim();
+    let m3u = (raw.m3u_url || raw.url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
+    // Collage sans schéma (serveur.com/get.php?…) → HTTP, pas d'erreur.
+    if (!/^https?:\/\//i.test(m3u) && m3u.includes('.')) {
+      m3u = 'http://' + m3u;
+    }
     // Si la « playlist M3U » est en réalité un lien Xtream get.php, on
     // bascule sur Xtream (plus robuste : creds structurés, cascade d'URL).
     const clean = parseXtreamUrl(m3u);
@@ -3887,6 +3910,85 @@ function decodeMac(mac) {
   }
 }
 
+/// Licence JOUABLE maintenant ? (abo actif, ou à vie). Pas d'essai
+/// implicite ici : coller un M3U doit DÉBLOQUER, pas compter sur le
+/// trial d'install. Gel / ban / MAC remplacée → non.
+async function deviceHasPlayableLicense(env, mac) {
+  if (!env || !env.DB) return false;
+  const now = Date.now();
+  let dev;
+  try {
+    dev = await env.DB
+      .prepare('SELECT id, block_status, superseded_by FROM devices WHERE mac = ?')
+      .bind(mac).first();
+  } catch (_) {
+    try {
+      dev = await env.DB
+        .prepare('SELECT id, block_status FROM devices WHERE mac = ?')
+        .bind(mac).first();
+    } catch (__) { return false; }
+  }
+  if (!dev) return false;
+  if (dev.block_status === 'banned' || dev.block_status === 'frozen') return false;
+  if (dev.superseded_by) return false;
+  try {
+    const lic = await env.DB.prepare(
+      `SELECT id FROM licenses
+       WHERE device_id = ?
+         AND IFNULL(status,'active') = 'active'
+         AND (expires_at IS NULL OR expires_at >= ?)
+       LIMIT 1`,
+    ).bind(dev.id, utcDayStartMs(now)).first();
+    return !!lic;
+  } catch (_) { return false; }
+}
+
+/// Pousser un M3U / Xtream = intention d'ACTIVER. Si la box n'est pas
+/// jouable, on pose la licence (plan du body, défaut 1 an) PUIS le
+/// realtime `sync all` débloque téléphone + TV dans la seconde.
+/// Déjà payé → on ne touche PAS à la licence (pas de crédit surprise).
+async function autoActivateIfNeeded(env, mac, actor, user, body) {
+  const auto = !body || body.auto_activate !== false;
+  if (!auto) return { activated: false, skipped: 'disabled' };
+  if (await deviceHasPlayableLicense(env, mac)) {
+    return { activated: false, already_playable: true };
+  }
+  if (!resellerCan(user, 'activate')) {
+    return { activated: false, needs_activation: true };
+  }
+  const plan = (body && body.plan) || 'yearly';
+  const actReq = new Request('https://internal/api/v1/activate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mac,
+      plan,
+      allow_new: true,
+      customer_name: (body && body.customer_name) || undefined,
+      app_id: (body && body.app_id) || undefined,
+    }),
+  });
+  const actRes = await handleActivate(actReq, env, user, actor);
+  let activate = null;
+  try { activate = await actRes.json(); } catch (_) { activate = { ok: actRes.ok }; }
+  if (actRes.status >= 400) {
+    return {
+      activated: false,
+      error: (activate && (activate.error || activate.message)) || 'activate_failed',
+      status: actRes.status,
+      activate,
+    };
+  }
+  return {
+    activated: !!(activate && activate.ok),
+    activate,
+    credits_charged: activate && activate.credits_charged,
+    credit_balance: activate && activate.credit_balance,
+    plan: activate && activate.plan,
+    expires_at: activate && activate.expires_at,
+  };
+}
+
 // =========================================================
 //  PROFILS FAMILLE — GET/PUT /api/v1/profiles/:mac
 // =========================================================
@@ -3972,13 +4074,13 @@ async function handleSourceGet(env, mac) {
   return jsonResp({ mac: m, source: sources[0] || null, sources });
 }
 
-async function handleSourcePut(request, env, mac, actor) {
+async function handleSourcePut(request, env, mac, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
-  const m = decodeMac(mac).trim().toUpperCase();
-  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+  const m = normalizeMac(decodeMac(mac));
+  if (!isValidMac(m)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
   // TRIO : on accepte un tableau `sources` (1 à 3) OU une source unique
@@ -3994,11 +4096,35 @@ async function handleSourcePut(request, env, mac, actor) {
   if (sources.length === 0) {
     return errResp('bad_source', 'at least one source required', 400);
   }
+  // Playlist D'ABORD. L'activation auto ne doit JAMAIS empêcher
+  // d'enregistrer un M3U (sinon le panel « ne marche plus »).
   await upsertDeviceSource(env, m, sources);
+  let act = { activated: false };
+  try {
+    act = await autoActivateIfNeeded(env, m, actor, user, body);
+  } catch (_) {
+    act = { activated: false, error: 'activate_threw', status: 500 };
+  }
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
-    { count: sources.length, types: sources.map((s) => s.type) });
-  return jsonResp({ ok: true, mac: m, count: sources.length });
+    { count: sources.length, types: sources.map((s) => s.type),
+      activated: !!act.activated, already_playable: !!act.already_playable });
+  const out = {
+    ok: true, mac: m, count: sources.length, sources,
+    activated: !!act.activated,
+    already_playable: !!act.already_playable,
+    needs_activation: !!act.needs_activation || (act.status >= 400),
+    credits_charged: act.credits_charged ?? 0,
+    credit_balance: act.credit_balance ?? null,
+    plan: act.plan || null,
+    expires_at: act.expires_at ?? null,
+  };
+  if (act.status >= 400) {
+    out.activate_error = act.error || 'activate_failed';
+    out.message = (act.activate && act.activate.message)
+      || 'Playlist enregistrée. Active l’appareil à part si besoin.';
+  }
+  return jsonResp(out);
 }
 
 // POST /api/v1/sources/:mac/order  { kind, server, username, m3u_url }
@@ -4293,10 +4419,10 @@ async function handleSourceUpdate(request, env, mac, actor) {
 //  AJOUTER un abonnement à ceux déjà en place, sans écraser l'existant
 //  (PUT /sources/:mac remplace tout le trio). Plafond volontaire à 6 entrées :
 //  au-delà, l'app passe son temps à charger des listes que personne ne regarde.
-async function handleSourceAdd(request, env, mac, actor) {
+async function handleSourceAdd(request, env, mac, actor, user) {
   await ensureSourcesTable(env);
-  const m = decodeMac(mac).trim().toUpperCase();
-  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+  const m = normalizeMac(decodeMac(mac));
+  if (!isValidMac(m)) {
     return jsonResp({ error: 'mac must be MK:XX:XX:XX:XX:XX' }, 400);
   }
   let body = {};
@@ -4314,10 +4440,21 @@ async function handleSourceAdd(request, env, mac, actor) {
     ? [...arr.map((s) => ({ ...(s || {}), active: false })), added]
     : [...arr, added];
   await writeSourcesArray(env, m, next);
+  let act = { activated: false };
+  try {
+    act = await autoActivateIfNeeded(env, m, actor, user, body);
+  } catch (_) {
+    act = { activated: false, error: 'activate_threw', status: 500 };
+  }
   await logAudit(env, request, actor, 'source.add_one',
     { type: 'device_source', id: m },
     { server: norm.source.server_url || norm.source.m3u_url || '', active: wantActive }, null);
-  return jsonResp({ ok: true, mac: m, count: next.length, index: next.length - 1, sources: next });
+  return jsonResp({
+    ok: true, mac: m, count: next.length, index: next.length - 1, sources: next,
+    activated: !!act.activated, already_playable: !!act.already_playable,
+    needs_activation: !!act.needs_activation || (act.status >= 400),
+    activate_error: act.status >= 400 ? (act.error || 'activate_failed') : undefined,
+  });
 }
 
 // DELETE /api/v1/sources/:mac            → retire TOUT (comportement d'origine)
@@ -4701,11 +4838,12 @@ function deviceListPredicates(now) {
   const week = now + 7 * 24 * 60 * 60 * 1000;
   const hunt = now - 24 * 60 * 60 * 1000;
   const trialWindow = now - 7 * 24 * 60 * 60 * 1000;
+  const dayStart = utcDayStartMs(now);
   const live =
     `(l.id IS NOT NULL AND IFNULL(l.status,'active') = 'active'` +
-    ` AND (l.expires_at IS NULL OR l.expires_at > ${now}))`;
+    ` AND (l.expires_at IS NULL OR l.expires_at >= ${dayStart}))`;
   const expired =
-    `(l.id IS NOT NULL AND ((l.expires_at IS NOT NULL AND l.expires_at <= ${now})` +
+    `(l.id IS NOT NULL AND ((l.expires_at IS NOT NULL AND l.expires_at < ${dayStart})` +
     ` OR l.status = 'expired'))`;
   const recent =
     `(IFNULL(p.last_seen, 0) > ${hunt} OR d.last_seen_at > ${hunt})`;
@@ -4735,8 +4873,8 @@ function mapDeviceListRow(r, now) {
   if (licId) {
     const exp = r.lic_expires_at ?? null;
     const live = (r.lic_status || 'active') === 'active'
-      && (exp == null || exp > now);
-    const expired = exp != null && exp <= now;
+      && (exp == null || !paidLicenseExpired(exp, now));
+    const expired = exp != null && paidLicenseExpired(exp, now);
     license = {
       id: licId,
       status: live ? 'active' : (expired ? 'expired' : (r.lic_status || 'active')),
@@ -5748,14 +5886,14 @@ async function handleDeviceOverview(env, id, user) {
       .prepare(
         `SELECT id, status, plan, started_at, expires_at, auto_renew
            FROM licenses WHERE device_id = ?
-          ORDER BY ${bestLicenseOrderSql()} LIMIT 1`,
+          ORDER BY ${bestLicenseOrderSql('', now)} LIMIT 1`,
       )
-      .bind(dev.id, now)
+      .bind(dev.id)
       .first();
     if (lic) {
       const live = lic.status === 'active'
-        && (lic.expires_at == null || lic.expires_at > now);
-      const expired = lic.expires_at != null && lic.expires_at <= now;
+        && (lic.expires_at == null || !paidLicenseExpired(lic.expires_at, now));
+      const expired = lic.expires_at != null && paidLicenseExpired(lic.expires_at, now);
       license = {
         id: lic.id || null,
         status: live ? 'active' : (expired ? 'expired' : lic.status),
@@ -5887,6 +6025,136 @@ async function handleDeviceOverview(env, id, user) {
     localSources,
     device,
     version,
+  });
+}
+
+/// Scan d'une MAC : transforme la fiche + les journaux en phrases claires.
+export function diagnoseDevice(input, now = Date.now()) {
+  const findings = [];
+  const push = (severity, code, title, detail) => {
+    findings.push({ severity, code, title, detail: detail || '' });
+  };
+  const d = (input && input.device) || {};
+  const lic = input && input.license;
+  const p = input && input.presence;
+  const sources = Array.isArray(input && input.sources) ? input.sources : [];
+  const local = Array.isArray(input && input.localSources) ? input.localSources : [];
+  const ver = input && input.version;
+  const errors = Array.isArray(input && input.errors) ? input.errors : [];
+  const block = (d.block_status || 'active').toLowerCase();
+
+  if (block === 'banned') {
+    push('critique', 'banned', 'Appareil BANNI',
+      'Le panel a bloqué cette MAC. Débannis-la pour que l’app rejoue.');
+  } else if (block === 'frozen') {
+    push('critique', 'frozen', 'Appareil GELÉ',
+      'Compte gelé. Dégèle-le, sinon l’app reste verrouillée.');
+  }
+
+  const licLive = !!(lic && lic.status === 'active'
+    && (lic.expires_at == null || lic.expires_at > now));
+  if (!lic) {
+    push('critique', 'no_license', 'Pas d’abonnement',
+      'Aucune licence. Active d’abord, puis envoie le M3U.');
+  } else if (!licLive) {
+    const exp = lic.expires_at
+      ? new Date(lic.expires_at).toLocaleDateString('fr-FR')
+      : '';
+    push('critique', 'expired', 'Abonnement expiré' + (exp ? ` (${exp})` : ''),
+      'Le dernier jour payé est passé. Renouvelle, sinon pas d’image.');
+  }
+
+  if (sources.length === 0 && local.length === 0) {
+    push('critique', 'no_playlist', 'Aucune playlist',
+      'Rien collé au panel, rien sur l’appareil. Colle un M3U.');
+  } else if (sources.length > 0 && local.length === 0) {
+    const seen = p && p.last_seen ? (now - p.last_seen) : null;
+    const recent = seen != null && seen < 30 * 60 * 1000;
+    push('probleme', 'playlist_not_loaded',
+      'Playlist au panel, PAS chargée sur l’appareil',
+      recent
+        ? 'L’app a parlé récemment mais n’a pas pris le M3U. Souvent : app Play Store trop vieille — elle ignorait le panel. Fais mettre à jour, ou installe le lien téléphone.'
+        : 'L’appareil n’a pas encore récupéré la liste. Allume l’app, ou elle est hors ligne.');
+  }
+
+  if (ver && ver.state === 'outdated') {
+    push('probleme', 'outdated',
+      `App pas à jour (${ver.installed || '?'} → ${ver.latest || '?'})`,
+      ver.store
+        ? `Mise à jour via ${ver.store}.`
+        : 'Le client n’a pas le dernier numéro. Sans ça, image / M3U peuvent rester cassés.');
+  }
+
+  const lastSeen = (p && p.last_seen) || d.last_seen_at || 0;
+  if (lastSeen && (now - lastSeen) > 24 * 60 * 60 * 1000) {
+    push('info', 'offline', 'Hors ligne depuis plus de 24 h',
+      'Rien n’arrive tant que l’app n’est pas ouverte.');
+  } else if (!lastSeen && !(p && p.online)) {
+    push('info', 'never_seen', 'Jamais vu en ligne',
+      'Cette MAC n’a pas encore ouvert l’app, ou le code est faux.');
+  }
+
+  const blob = errors.map((e) =>
+    `${e.tag || ''} ${e.message || ''} ${e.detail || ''}`.toLowerCase()).join('\n');
+  if (/flag_secure|secure.?flag|surfaceview|image noire|black.?frame|firstframe/.test(blob)) {
+    push('probleme', 'black_video', 'Image noire (lecteur)',
+      'L’app a remonté un écran noir. Capture bloquée + overlay = pas d’image sur certaines box. Dernier build texture + FLAG_SECURE.');
+  }
+  if (/\b403\b|\b401\b|forbidden|unauthorized/.test(blob)) {
+    push('probleme', 'iptv_denied', 'Le serveur IPTV refuse (403/401)',
+      'Identifiants ou lien M3U refusés par le fournisseur. Vérifie l’URL.');
+  }
+  if (/timeout|timed out|econnreset|failed host lookup|network/.test(blob)) {
+    push('probleme', 'network', 'Réseau / timeout',
+      'L’appareil n’atteint pas le serveur des chaînes (Wi-Fi, DNS, fournisseur down).');
+  }
+
+  const seenMsg = new Set();
+  for (const e of errors.slice(0, 8)) {
+    const msg = String(e.message || '').trim();
+    if (!msg || seenMsg.has(msg)) continue;
+    seenMsg.add(msg);
+    const when = e.created_at
+      ? new Date(e.created_at).toLocaleString('fr-FR')
+      : '';
+    push('info', 'log',
+      `${(e.level || 'error').toUpperCase()}${e.tag ? ' · ' + e.tag : ''}`,
+      (when ? when + ' — ' : '') + msg);
+  }
+
+  const hasCrit = findings.some((f) => f.severity === 'critique');
+  const hasPb = findings.some((f) => f.severity === 'probleme');
+  const verdict = hasCrit ? 'critique' : (hasPb ? 'probleme' : 'ok');
+  const summary = verdict === 'ok'
+    ? 'Rien d’anormal côté serveur. Si l’image ne vient pas, c’est l’app / le réseau du client.'
+    : findings.filter((f) => f.severity !== 'info').map((f) => f.title).join(' · ');
+  return { verdict, summary, findings };
+}
+
+async function handleDeviceScan(env, id, user) {
+  const ovRes = await handleDeviceOverview(env, id, user);
+  if (ovRes.status !== 200) return ovRes;
+  let ov = {};
+  try { ov = await ovRes.json(); } catch (_) { ov = {}; }
+  let errors = [];
+  try {
+    const rs = await env.DB
+      .prepare(
+        'SELECT level, tag, message, detail, app_version, app_build, platform, created_at '
+        + 'FROM error_logs WHERE mac = ? ORDER BY created_at DESC LIMIT 50',
+      )
+      .bind(ov.mac)
+      .all();
+    errors = (rs && rs.results) || [];
+  } catch (_) { /* table absente → scan sans journaux */ }
+  const diag = diagnoseDevice({ ...ov, errors }, Date.now());
+  return jsonResp({
+    ok: true,
+    mac: ov.mac,
+    verdict: diag.verdict,
+    summary: diag.summary,
+    findings: diag.findings,
+    errors: errors.slice(0, 12),
   });
 }
 
@@ -7411,11 +7679,10 @@ async function handleDeviceTransfer(request, env, user, actor) {
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
-  const oldMac = (body.old_mac || '').trim().toUpperCase();
-  const newMac = (body.new_mac || '').trim().toUpperCase();
-  const macRx = /^MK(?::[0-9A-F]{2}){5}$/i;
-  if (!macRx.test(oldMac)) return errResp('bad_mac', 'Ancienne MAC invalide.', 400);
-  if (!macRx.test(newMac)) return errResp('bad_mac', 'Nouvelle MAC invalide.', 400);
+  const oldMac = normalizeMac(body.old_mac || '');
+  const newMac = normalizeMac(body.new_mac || '');
+  if (!isValidMac(oldMac)) return errResp('bad_mac', 'Ancienne MAC invalide.', 400);
+  if (!isValidMac(newMac)) return errResp('bad_mac', 'Nouvelle MAC invalide.', 400);
   if (oldMac === newMac) return errResp('same_mac', 'Les deux MAC sont identiques.', 400);
 
   const isReseller = user.role === 'reseller';
@@ -7440,6 +7707,7 @@ async function handleDeviceTransfer(request, env, user, actor) {
   let newDev = await env.DB
     .prepare('SELECT id, reseller_id FROM devices WHERE mac = ?')
     .bind(newMac).first();
+  const destExisted = !!newDev;
   let newDeviceId;
   if (newDev) {
     if (isReseller && newDev.reseller_id && newDev.reseller_id !== user.sub) {
@@ -7456,6 +7724,16 @@ async function handleDeviceTransfer(request, env, user, actor) {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).bind(newDeviceId, oldDev.customer_id, newMac,
            body.label || 'Transfert', oldDev.reseller_id, now, now).run();
+  }
+
+  // Destination a souvent un essai (le nouveau téléphone a déjà ouvert
+  // l'app) → UNIQUE(device_id, app_id) faisait 500 le UPDATE. On jette
+  // les licences de destination (essai) pour garder celle qu'on déplace.
+  if (destExisted) {
+    try {
+      await env.DB.prepare('DELETE FROM licenses WHERE device_id = ?')
+        .bind(newDeviceId).run();
+    } catch (_) { /* pas de licence dest */ }
   }
 
   // Déplace les licences vers le nouveau device (temps restant intact).
@@ -7549,6 +7827,9 @@ async function handleDeviceTransfer(request, env, user, actor) {
     old_mac: oldMac,
     new_mac: newMac,
     moved_licenses: licRows.length,
+    // true = la nouvelle MAC n'existait pas : l'ANCIENNE box doit
+    // ADOPTER le numéro (mac_reassigned). false = vrai nouvel appareil.
+    adopt_old: !destExisted,
     //  CE QUI A RÉELLEMENT SUIVI, table par table. Le panel l'affiche au
     //  revendeur : sans ce détail, un transfert réussi et un transfert
     //  qui a silencieusement laissé les profils derrière lui se
@@ -7613,7 +7894,7 @@ async function handleActivate(request, env, user, actor) {
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
-  const mac = (body.mac || '').trim().toUpperCase();
+  const mac = normalizeMac(body.mac || '');
   const plan = body.plan || 'monthly';
   // UNE MAC = UN DROIT. On pose la licence sur le produit principal
   // (app_7motion, ou l'app choisie par le panel). Téléphone / tablette
@@ -7622,7 +7903,7 @@ async function handleActivate(request, env, user, actor) {
   // PAS une ligne par app de la famille : ça n'ajouterait rien au
   // verdict et une vieille lifetime inactive pouvait masquer la neuve.
   const appId = body.app_id || 'app_7motion';
-  if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(mac)) {
+  if (!isValidMac(mac)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
 

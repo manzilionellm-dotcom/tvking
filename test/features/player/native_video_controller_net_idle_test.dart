@@ -133,4 +133,55 @@ void main() {
         reason: 'une attente qui survivrait au dispose bloquerait la '
             'fermeture d\'écran jusqu\'à son timeout complet');
   });
+
+  test('stop() attend la fermeture TCP réelle (awaitNetworkIdle) — les '
+      'appelants qui n\'attendent que stop() ne croisent pas le flux suivant',
+      () async {
+    const String name = 'native_video_player/test-stop-wait';
+    final Future<void> Function(String, Object?) fromNative = fakeNative(name);
+    final NativeVideoController controller = NativeVideoController();
+    controller.debugAttachChannel(name);
+
+    await fromNative('netActive', true);
+    bool resolved = false;
+    final Future<void> stopped = controller.stop().then((_) {
+      resolved = true;
+    });
+    // Laisse invokeMethod('stop') se résoudre : on ne doit PAS revenir
+    // tant que le natif n'a pas signalé netActive:false.
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(resolved, isFalse,
+        reason: 'stop() ne doit pas revenir avant la fermeture TCP');
+    expect(controller.isStopped, isTrue);
+
+    await fromNative('netActive', false);
+    await stopped;
+    expect(resolved, isTrue);
+  });
+
+  test('stop() revient IMMÉDIATEMENT si déjà idle (aucune socket ouverte)',
+      () async {
+    const String name = 'native_video_player/test-stop-idle';
+    fakeNative(name);
+    final NativeVideoController controller = NativeVideoController();
+    controller.debugAttachChannel(name);
+
+    final Stopwatch sw = Stopwatch()..start();
+    await controller.stop();
+    expect(sw.elapsed, lessThan(const Duration(milliseconds: 500)));
+    expect(controller.isStopped, isTrue);
+  });
+
+  test('stop() n\'est PAS levé si la socket ne se ferme pas (timeout 2 s)',
+      () async {
+    const String name = 'native_video_player/test-stop-timeout';
+    final Future<void> Function(String, Object?) fromNative = fakeNative(name);
+    final NativeVideoController controller = NativeVideoController();
+    controller.debugAttachChannel(name);
+
+    await fromNative('netActive', true);
+    await controller.stop();
+    expect(controller.isStopped, isTrue);
+    controller.dispose();
+  });
 }

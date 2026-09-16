@@ -41,6 +41,7 @@ import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_alias_index.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../player/data/stream_diagnostics.dart';
+import '../../player/data/stream_http_options.dart';
 import '../../vod/data/vod_download_service.dart';
 import '../../vod/domain/m3u_vod_classifier.dart';
 import '../domain/playlist.dart';
@@ -898,6 +899,9 @@ class PlaylistRepository {
         playlistId: playlistId,
         maxChannels: DeviceMemory.channelCap,
       );
+      // En-têtes HTTP portés par le M3U (#EXTVLCOPT / #KODIPROP) :
+      // mémorisés pour la session ; le lecteur les relira via headersFor.
+      StreamHttpOptions.instance.importAll(parsed.httpHeaders);
 
       if (parsed.channels.isEmpty) {
         // Source invalide → on lève ; le `catch` retire l'orpheline.
@@ -1544,6 +1548,9 @@ class PlaylistRepository {
           playlistId: playlist.id!,
           maxChannels: DeviceMemory.channelCap,
         );
+        // En-têtes HTTP portés par le M3U (#EXTVLCOPT / #KODIPROP) :
+        // mémorisés pour la session ; le lecteur les relira via headersFor.
+        StreamHttpOptions.instance.importAll(parsed.httpHeaders);
         if (parsed.channels.isEmpty) {
           throw Exception(l10nNow.m3uRefreshNoChannels);
         }

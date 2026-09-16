@@ -17,4 +17,8 @@ DFT.config = {
   streamExt: 'm3u8',
   // Délais réseau (ms).
   httpTimeout: 12000,
+  // Builds Samsung/LG STORE : passer à true pour couper la poussée de source
+  // par le panel (équivalent PLAY_BUILD côté Android). L'utilisateur ajoute
+  // lui-même sa playlist. Sideload : laisser false.
+  storeBuild: false,
 };
