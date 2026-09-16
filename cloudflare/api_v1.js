@@ -33,6 +33,7 @@
 //      GET    /api/v1/customers/:id/devices
 //      POST   /api/v1/devices                { customer_id, mac, label }
 //      GET    /api/v1/devices/:id/overview   fiche 360 (+ verdict version)
+//      GET    /api/v1/devices/:id/scan       scan erreurs (dit ce qui cloche)
 //
 //    Versions publiees
 //      GET    /api/v1/app-versions           dernier numero publie, par
@@ -1556,6 +1557,11 @@ async function apiV1Inner(request, env) {
     // /devices/:id/overview — fiche 360° (abonnement + présence + M-Trio).
     if (parts.length === 3 && parts[2] === 'overview') {
       if (request.method === 'GET') return handleDeviceOverview(env, parts[1], a.user);
+    }
+    // /devices/:id/scan — l'app ne marche pas : on lit licence, playlist,
+    // version, présence et journaux, puis on DIT ce qui cloche.
+    if (parts.length === 3 && parts[2] === 'scan') {
+      if (request.method === 'GET') return handleDeviceScan(env, parts[1], a.user);
     }
     // /devices/:id/change-mac — éditer l'identité (danger : confirmation
     // `confirm:true` obligatoire). L'app ADOPTE via RT mac_reassigned.
@@ -5972,6 +5978,136 @@ async function handleDeviceOverview(env, id, user) {
 
   return jsonResp({
     mac: dev.mac, license, presence, sources, localSources, device, version,
+  });
+}
+
+/// Scan d'une MAC : transforme la fiche + les journaux en phrases claires.
+export function diagnoseDevice(input, now = Date.now()) {
+  const findings = [];
+  const push = (severity, code, title, detail) => {
+    findings.push({ severity, code, title, detail: detail || '' });
+  };
+  const d = (input && input.device) || {};
+  const lic = input && input.license;
+  const p = input && input.presence;
+  const sources = Array.isArray(input && input.sources) ? input.sources : [];
+  const local = Array.isArray(input && input.localSources) ? input.localSources : [];
+  const ver = input && input.version;
+  const errors = Array.isArray(input && input.errors) ? input.errors : [];
+  const block = (d.block_status || 'active').toLowerCase();
+
+  if (block === 'banned') {
+    push('critique', 'banned', 'Appareil BANNI',
+      'Le panel a bloqué cette MAC. Débannis-la pour que l’app rejoue.');
+  } else if (block === 'frozen') {
+    push('critique', 'frozen', 'Appareil GELÉ',
+      'Compte gelé. Dégèle-le, sinon l’app reste verrouillée.');
+  }
+
+  const licLive = !!(lic && lic.status === 'active'
+    && (lic.expires_at == null || lic.expires_at > now));
+  if (!lic) {
+    push('critique', 'no_license', 'Pas d’abonnement',
+      'Aucune licence. Active d’abord, puis envoie le M3U.');
+  } else if (!licLive) {
+    const exp = lic.expires_at
+      ? new Date(lic.expires_at).toLocaleDateString('fr-FR')
+      : '';
+    push('critique', 'expired', 'Abonnement expiré' + (exp ? ` (${exp})` : ''),
+      'Le dernier jour payé est passé. Renouvelle, sinon pas d’image.');
+  }
+
+  if (sources.length === 0 && local.length === 0) {
+    push('critique', 'no_playlist', 'Aucune playlist',
+      'Rien collé au panel, rien sur l’appareil. Colle un M3U.');
+  } else if (sources.length > 0 && local.length === 0) {
+    const seen = p && p.last_seen ? (now - p.last_seen) : null;
+    const recent = seen != null && seen < 30 * 60 * 1000;
+    push('probleme', 'playlist_not_loaded',
+      'Playlist au panel, PAS chargée sur l’appareil',
+      recent
+        ? 'L’app a parlé récemment mais n’a pas pris le M3U. Souvent : app Play Store trop vieille — elle ignorait le panel. Fais mettre à jour, ou installe le lien téléphone.'
+        : 'L’appareil n’a pas encore récupéré la liste. Allume l’app, ou elle est hors ligne.');
+  }
+
+  if (ver && ver.state === 'outdated') {
+    push('probleme', 'outdated',
+      `App pas à jour (${ver.installed || '?'} → ${ver.latest || '?'})`,
+      ver.store
+        ? `Mise à jour via ${ver.store}.`
+        : 'Le client n’a pas le dernier numéro. Sans ça, image / M3U peuvent rester cassés.');
+  }
+
+  const lastSeen = (p && p.last_seen) || d.last_seen_at || 0;
+  if (lastSeen && (now - lastSeen) > 24 * 60 * 60 * 1000) {
+    push('info', 'offline', 'Hors ligne depuis plus de 24 h',
+      'Rien n’arrive tant que l’app n’est pas ouverte.');
+  } else if (!lastSeen && !(p && p.online)) {
+    push('info', 'never_seen', 'Jamais vu en ligne',
+      'Cette MAC n’a pas encore ouvert l’app, ou le code est faux.');
+  }
+
+  const blob = errors.map((e) =>
+    `${e.tag || ''} ${e.message || ''} ${e.detail || ''}`.toLowerCase()).join('\n');
+  if (/flag_secure|secure.?flag|surfaceview|image noire|black.?frame|firstframe/.test(blob)) {
+    push('probleme', 'black_video', 'Image noire (lecteur)',
+      'L’app a remonté un écran noir. Capture bloquée + overlay = pas d’image sur certaines box. Dernier build texture + FLAG_SECURE.');
+  }
+  if (/\b403\b|\b401\b|forbidden|unauthorized/.test(blob)) {
+    push('probleme', 'iptv_denied', 'Le serveur IPTV refuse (403/401)',
+      'Identifiants ou lien M3U refusés par le fournisseur. Vérifie l’URL.');
+  }
+  if (/timeout|timed out|econnreset|failed host lookup|network/.test(blob)) {
+    push('probleme', 'network', 'Réseau / timeout',
+      'L’appareil n’atteint pas le serveur des chaînes (Wi-Fi, DNS, fournisseur down).');
+  }
+
+  const seenMsg = new Set();
+  for (const e of errors.slice(0, 8)) {
+    const msg = String(e.message || '').trim();
+    if (!msg || seenMsg.has(msg)) continue;
+    seenMsg.add(msg);
+    const when = e.created_at
+      ? new Date(e.created_at).toLocaleString('fr-FR')
+      : '';
+    push('info', 'log',
+      `${(e.level || 'error').toUpperCase()}${e.tag ? ' · ' + e.tag : ''}`,
+      (when ? when + ' — ' : '') + msg);
+  }
+
+  const hasCrit = findings.some((f) => f.severity === 'critique');
+  const hasPb = findings.some((f) => f.severity === 'probleme');
+  const verdict = hasCrit ? 'critique' : (hasPb ? 'probleme' : 'ok');
+  const summary = verdict === 'ok'
+    ? 'Rien d’anormal côté serveur. Si l’image ne vient pas, c’est l’app / le réseau du client.'
+    : findings.filter((f) => f.severity !== 'info').map((f) => f.title).join(' · ');
+  return { verdict, summary, findings };
+}
+
+async function handleDeviceScan(env, id, user) {
+  const ovRes = await handleDeviceOverview(env, id, user);
+  if (ovRes.status !== 200) return ovRes;
+  let ov = {};
+  try { ov = await ovRes.json(); } catch (_) { ov = {}; }
+  let errors = [];
+  try {
+    const rs = await env.DB
+      .prepare(
+        'SELECT level, tag, message, detail, app_version, app_build, platform, created_at '
+        + 'FROM error_logs WHERE mac = ? ORDER BY created_at DESC LIMIT 50',
+      )
+      .bind(ov.mac)
+      .all();
+    errors = (rs && rs.results) || [];
+  } catch (_) { /* table absente → scan sans journaux */ }
+  const diag = diagnoseDevice({ ...ov, errors }, Date.now());
+  return jsonResp({
+    ok: true,
+    mac: ov.mac,
+    verdict: diag.verdict,
+    summary: diag.summary,
+    findings: diag.findings,
+    errors: errors.slice(0, 12),
   });
 }
 

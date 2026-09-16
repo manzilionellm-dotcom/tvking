@@ -13,7 +13,7 @@ import { applyNew } from '@/components/NewBadge';
 import { formatDateTime } from '@/lib/utils';
 import {
   DeviceFilterBar, QuickRenewBar, AdminNoteField, CopyWhatsAppButton, AboChip,
-  ProblemsChip, ChangeMacModal, RegenerateMacModal,
+  ProblemsChip, ChangeMacModal, RegenerateMacModal, ScanErrorsButton,
   countDeviceFilters, licenseFromActivate, matchesDeviceFilter, isOnlineUnpaid,
 } from '@/components/DeviceOps';
 import type { MacMigrateResult } from '@/lib/api';
@@ -718,6 +718,10 @@ function DeviceDetailModal({
             <p className="mt-0.5 font-mono text-xs text-accent">{device.mac}</p>
           </div>
           <DeviceStatus status={st} />
+        </div>
+
+        <div className="mb-4">
+          <ScanErrorsButton mac={device.mac} />
         </div>
 
         {/* ----- Abonnement + Présence live (résumé d'un coup d'œil) ----- */}

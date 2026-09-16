@@ -26,6 +26,7 @@ import { applyNew } from '@/components/NewBadge';
 import { cn, formatDateTime } from '@/lib/utils';
 import {
   QuickRenewBar, AdminNoteField, CopyWhatsAppButton, licenseFromActivate,
+  ScanErrorsButton,
 } from '@/components/DeviceOps';
 
 function ago(ts: number | null | undefined): string {
@@ -347,6 +348,8 @@ function MacDetailDrawer({ mac, onClose }: { mac: string; onClose: () => void })
                 publié par cœur. C'est la première question du support :
                 « il a bien fait sa mise à jour ? ». */}
             <VersionCard ver={ver} appVersion={d?.app_version ?? null} />
+
+            <ScanErrorsButton mac={mac} />
 
             {/* Connexion (live) */}
             <Section title="Connexion">

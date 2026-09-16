@@ -13,7 +13,7 @@ import {
   activateApi, devicesApi, PLAN_LABELS, ApiError,
   type ActivateResult, type Device, type DeviceLicense,
   type DeviceListCounts, type DeviceListFilter, type DeviceSource,
-  type DeviceSourceInput, type MacMigrateResult,
+  type DeviceSourceInput, type DeviceScanResult, type MacMigrateResult,
 } from '@/lib/api';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { applyNew, NewBadge } from '@/components/NewBadge';
@@ -636,6 +636,63 @@ export function RegenerateMacModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/// Bouton « Scanner les erreurs » : le panel lit tout et DIT ce qui cloche.
+export function ScanErrorsButton({ mac }: { mac: string }) {
+  const [busy, setBusy] = useState(false);
+  const [scan, setScan] = useState<DeviceScanResult | null>(null);
+
+  async function go() {
+    setBusy(true);
+    try {
+      const r = await devicesApi.scan(mac);
+      setScan(r);
+      if (r.verdict === 'ok') toast(r.summary, 'success');
+      else toast(r.summary, r.verdict === 'critique' ? 'error' : 'warning');
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'Scan impossible.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const tone = scan?.verdict === 'critique'
+    ? 'border-red-500/30 bg-red-500/10 text-red-200'
+    : scan?.verdict === 'probleme'
+      ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+      : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200';
+
+  return (
+    <div className="rounded-lg border border-sky-400/25 bg-sky-400/[0.05] px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold text-sky-200">
+          L’app ne marche pas ?
+        </p>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => { void go(); }}
+          className="rounded-md bg-sky-500 px-2.5 py-1 text-[11px] font-semibold text-black hover:bg-sky-400 disabled:opacity-40"
+        >
+          {busy ? 'Scan…' : 'Scanner les erreurs'}
+        </button>
+      </div>
+      {scan && (
+        <div className={`mt-2 rounded-md border px-2.5 py-2 text-[11px] ${tone}`}>
+          <p className="font-semibold">{scan.summary}</p>
+          <ul className="mt-1.5 space-y-1.5">
+            {scan.findings.map((f, i) => (
+              <li key={i}>
+                <span className="font-semibold">{f.title}</span>
+                {f.detail ? <span className="block text-[10px] opacity-80">{f.detail}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

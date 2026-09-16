@@ -570,6 +570,20 @@ export interface DeviceOverview {
   // seulement), ou si le manifeste publié n'a pas pu être lu.
   version?: DeviceVersionStatus | null;
 }
+export interface DeviceScanFinding {
+  severity: 'critique' | 'probleme' | 'info';
+  code: string;
+  title: string;
+  detail: string;
+}
+export interface DeviceScanResult {
+  ok: boolean;
+  mac: string;
+  verdict: 'ok' | 'probleme' | 'critique';
+  summary: string;
+  findings: DeviceScanFinding[];
+  errors?: { level?: string; tag?: string; message?: string; created_at?: number }[];
+}
 export const appVersionsApi = {
   // Dernier numéro publié, par plateforme. Sert de référence affichée
   // dans la fiche MAC : « le dernier, c'est 19882 ».
@@ -613,6 +627,9 @@ export const devicesApi = {
   // Fiche 360° d'un appareil (abonnement + présence live + M-Trio) en 1 appel.
   overview: (id: string) =>
     request<DeviceOverview>(`/api/v1/devices/${encodeURIComponent(id)}/overview`),
+  // L'app ne marche pas : le serveur lit tout et DIT ce qui cloche.
+  scan: (id: string) =>
+    request<DeviceScanResult>(`/api/v1/devices/${encodeURIComponent(id)}/scan`),
   // Geler ('frozen'), bannir ('banned') ou reactiver ('active') une MAC.
   setBlock: (id: string, block_status: 'active' | 'frozen' | 'banned') =>
     request<{ updated: number; block_status: string | null; admin_note?: string | null; rt?: RtInfo }>(
