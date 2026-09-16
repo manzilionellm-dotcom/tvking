@@ -44,16 +44,13 @@ class NativeDeviceInfo {
   }
 }
 
-/// Chemin de RENDU vidéo — le correctif « l'image ne vient pas » (terrain) :
-/// aucun chemin unique n'affiche l'image sur 100 % des box.
-///   • `surface`  : PlatformView + SurfaceView Android (overlay MediaCodec) —
-///     DÉFAUT TV. Chemin historique, le plus fiable sur box.
-///   • `texture`  : la vidéo est décodée vers une texture Flutter et rendue
-///     par le MÊME pipeline que l'interface. REPLI (watchdog / préférence
-///     explicite) pour les box où SurfaceView resterait noire.
-/// Le choix est MÉMORISÉ nativement (SharedPreferences) par box ; le widget
-/// [NativeVideoView] bascule automatiquement (watchdog « lecture en cours
-/// mais aucune 1re trame ») et persiste le chemin qui marche.
+/// Chemin de RENDU — captures OFF + image ON (16/09/2026).
+/// FLAG_SECURE sur la fenêtre empêche screenshot/Recents. Sur une
+/// SurfaceView (overlay MediaCodec) les box Amlogic affichent du noir.
+/// Donc le défaut est TEXTURE : même pipeline que les menus. Tu vois
+/// l'image ; une capture reste noire.
+///   • `texture` : DÉFAUT. Compatible FLAG_SECURE.
+///   • `surface` : overlay. Interdit avec FLAG_SECURE (image morte).
 class NativeVideoRender {
   const NativeVideoRender._();
   static const MethodChannel _channel =
@@ -66,8 +63,7 @@ class NativeVideoRender {
   /// (zap, aperçus). Rempli au 1er accès, mis à jour par [setMode].
   static String? _cached;
 
-  /// Chemin de rendu à utiliser (mémorisé pour cette box). Ne lève jamais :
-  /// en cas d'échec canal (tests, plateforme sans plugin), défaut `surface`.
+  /// Défaut `texture` : FLAG_SECURE + overlay = image noire.
   static Future<String> mode() async {
     final String? c = _cached;
     if (c != null) return c;
@@ -75,14 +71,11 @@ class NativeVideoRender {
       final String? m = await _channel
           .invokeMethod<String>('getRenderMode')
           .timeout(const Duration(milliseconds: 800));
-      // Seuls `texture` / `surface` sont valides. null, inconnu, canal
-      // muet → défaut TV = surface (overlay MediaCodec). Texture n'est
-      // conservé que s'il a été mémorisé explicitement (user / watchdog).
-      final String v = (m == texture) ? texture : surface;
+      final String v = (m == surface) ? surface : texture;
       _cached = v;
       return v;
     } catch (_) {
-      return surface;
+      return texture;
     }
   }
 
