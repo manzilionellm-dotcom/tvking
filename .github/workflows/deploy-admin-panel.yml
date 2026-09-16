@@ -27,8 +27,10 @@ on:
       - 'admin-panel/**'
       - '.github/workflows/deploy-admin-panel.yml'
 
+# `contents: write` : le garde-fou grave un tag `deployed/<canal>`
+# après chaque publication réussie (cf. ci/guard_no_rollback.sh).
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -38,6 +40,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Le garde-fou compare des ancêtres : historique complet requis.
+          fetch-depth: 0
+
+      # ---------------------------------------------------------
+      #  NE JAMAIS FAIRE RECULER LA PRODUCTION (16/09/2026)
+      # ---------------------------------------------------------
+      #  Ce workflow part sur TOUTE branche `claude/**`. Deux branches
+      #  vivantes = la dernière poussée écrase l'autre, en silence et
+      #  avec un ✅ vert. C'est arrivé : 7 commits déjà en ligne ont
+      #  disparu sans que rien ne s'allume. Le garde-fou refuse de
+      #  publier un commit qui n'a pas la production pour ancêtre.
+      #  Explication complète : ci/guard_no_rollback.sh
+      # ---------------------------------------------------------
+      - name: Refuser un déploiement qui ferait reculer la production
+        run: ci/guard_no_rollback.sh check admin-panel "$GITHUB_SHA"
+
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
@@ -91,3 +110,8 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'admin-panel'
           command: pages deploy dist --project-name=tvking-admin --branch=main
+
+      # Le registre ne bouge QU'APRÈS un déploiement réussi : un build
+      # qui échoue ne doit pas laisser croire qu'il est en ligne.
+      - name: Graver ce qui est désormais en ligne
+        run: ci/guard_no_rollback.sh mark admin-panel "$GITHUB_SHA"

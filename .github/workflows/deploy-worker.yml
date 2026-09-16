@@ -90,8 +90,10 @@ on:
   # ex: si Cloudflare a fait une rotation interne).
   workflow_dispatch: {}
 
+# `contents: write` : le garde-fou grave un tag `deployed/<canal>`
+# après chaque publication réussie (cf. ci/guard_no_rollback.sh).
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -102,6 +104,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Le garde-fou compare des ancêtres : il lui faut l'historique
+          # complet, pas le clone superficiel par défaut.
+          fetch-depth: 0
+
+      # ---------------------------------------------------------
+      #  NE JAMAIS FAIRE RECULER LA PRODUCTION (16/09/2026)
+      # ---------------------------------------------------------
+      #  Ce workflow part sur TOUTE branche `claude/**`. Deux branches
+      #  vivantes = la dernière poussée écrase l'autre, en silence et
+      #  avec un ✅ vert. C'est arrivé : 7 commits déjà en ligne ont
+      #  disparu sans que rien ne s'allume. Le garde-fou refuse de
+      #  publier un commit qui n'a pas la production pour ancêtre.
+      #  Explication complète : ci/guard_no_rollback.sh
+      # ---------------------------------------------------------
+      - name: Refuser un déploiement qui ferait reculer la production
+        run: ci/guard_no_rollback.sh check worker "$GITHUB_SHA"
+
 
       # Sanity check : on échoue tôt et fort si les secrets manquent,
       # plutôt que de laisser wrangler renvoyer une erreur cryptique.
@@ -145,3 +165,8 @@ jobs:
           # config + le worker.js référencé en `main = "worker.js"`.
           workingDirectory: 'cloudflare'
           command: deploy
+
+      # Le registre ne bouge QU'APRÈS un déploiement réussi : un build
+      # qui échoue ne doit pas laisser croire qu'il est en ligne.
+      - name: Graver ce qui est désormais en ligne
+        run: ci/guard_no_rollback.sh mark worker "$GITHUB_SHA"
