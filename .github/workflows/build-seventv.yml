@@ -194,9 +194,6 @@ jobs:
       - name: Generate native Android folder (org Seven Motion TV)
         run: flutter create . --platforms=android --org com.sevenmotion.tv --project-name seven_tv
 
-      - name: Bloquer les captures d'écran (FLAG_SECURE)
-        run: python3 ci/flag_secure_activity.py
-
       - name: Brand manifest (7 MOTION TV)
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml

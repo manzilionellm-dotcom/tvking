@@ -346,9 +346,6 @@ jobs:
       - name: Apply Google Cast SDK overlay
         run: bash android_overlay/google_cast/apply_cast_patch.sh
 
-      - name: Bloquer les captures d'écran (FLAG_SECURE)
-        run: python3 ci/flag_secure_activity.py
-
       # Patch AndroidManifest pour activer le Picture-in-Picture
       # natif sur la MainActivity (mode YouTube Premium : vidéo
       # continue en mini-fenêtre quand on quitte l'app).

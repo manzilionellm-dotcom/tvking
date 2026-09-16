@@ -26,7 +26,6 @@ import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
 import android.util.Rational
-import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -79,16 +78,6 @@ class MainActivity : FlutterFragmentActivity() {
     /// Récepteur des appuis sur les actions de la mini-fenêtre PiP
     /// (🎧 / ⏯ — parité « The Few Master », demande du 21/08).
     private var pipControlReceiver: android.content.BroadcastReceiver? = null
-
-    override fun onCreate(savedInstanceState: android.os.Bundle?) {
-        super.onCreate(savedInstanceState)
-        // Pas de capture d'écran, pas d'aperçu Recents, pas de
-        // screencast : le flux IPTV ne sort pas de l'appareil.
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE,
-        )
-    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
