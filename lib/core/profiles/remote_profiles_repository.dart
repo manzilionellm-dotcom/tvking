@@ -44,7 +44,6 @@ import '../../features/device/data/device_identity.dart';
 import '../../features/subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../observability/structured_logger.dart';
-import '../update/build_flags.dart';
 import 'profiles_repository.dart';
 
 class RemoteProfilesRepository {
@@ -62,22 +61,11 @@ class RemoteProfilesRepository {
 
   /// Point d'entrée normal : résout la MAC tout seul.
   ///
-  ///  DEUX GARDES, LES MÊMES QUE POUR LA SOURCE POUSSÉE :
-  ///
-  ///   • BUILD STORE. Une app publiée sur un store n'a pas de panel
-  ///     derrière : personne ne lui pousse de profils. On n'appelle donc
-  ///     même pas le serveur — ça évite un aller-retour inutile à chaque
-  ///     démarrage sur des dizaines de milliers d'appareils.
-  ///
-  ///   • MAC NON RECONNUE. `DeviceIdentity` préfixe les identifiants
-  ///     qu'il a vraiment calculés par « MK: ». Sans ce préfixe, on
-  ///     interrogerait le serveur avec une clé qui ne désigne personne.
+  ///  GARDE : MAC NON RECONNUE. `DeviceIdentity` préfixe les identifiants
+  ///  qu'il a vraiment calculés par « MK: ». Sans ce préfixe, on
+  ///  interrogerait le serveur avec une clé qui ne désigne personne.
+  ///  (Le Play Store reçoit aussi les profils du panel — 16/09/2026.)
   Future<bool> syncSelf() async {
-    // `kIsPlayBuild` directement, et non `RemoteSourceRepository.storeBuild`
-    // (qui est @visibleForTesting) : lire un membre réservé aux tests depuis
-    // du code de production, c'est se donner rendez-vous avec une surprise
-    // le jour où quelqu'un le bascule dans un test.
-    if (kIsPlayBuild) return false;
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return false;
