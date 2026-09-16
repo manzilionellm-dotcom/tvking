@@ -70,7 +70,7 @@
 // le changement (`changed{scope}`). TOUJOURS fail-open : si le Durable
 // Object n'est pas déployé, publishRt renvoie {delivered:0} sans erreur.
 import { publishRt } from './realtime.js';
-import { bestLicenseOrderSql } from './license_pick.js';
+import { bestLicenseOrderSql, expiryDayEndMs, paidLicenseExpired, utcDayStartMs } from './license_pick.js';
 import {
   normalizeMac, isValidMac, generateVirtualMac,
   migrateDeviceMac, ensureSupersededColumn,
@@ -482,14 +482,14 @@ async function handleReferencesList(env, user) {
       if (r.lic_status === 'banned') status = 'banned';
       else if (r.lic_status === 'frozen') status = 'frozen';
       else if (hasLic) {
-        status = lifetime ? 'active' : (r.lic_expires <= now ? 'expired' : 'active');
+        status = lifetime ? 'active' : (paidLicenseExpired(r.lic_expires, now) ? 'expired' : 'active');
       }
       // Détails « combien de temps reste » : échéance + jours restants
       // (à vie → null jours mais lifetime=true), et présence live.
       const DAY = 24 * 60 * 60 * 1000;
       const expires_at = (r.lic_expires === undefined) ? null : r.lic_expires;
       const days_left = (hasLic && !lifetime && expires_at)
-        ? Math.max(0, Math.ceil((expires_at - now) / DAY))
+        ? Math.max(0, Math.ceil((expiryDayEndMs(expires_at) - now) / DAY))
         : null;
       const last_seen = r.pres_last_seen || r.dev_last_seen || null;
       const ONLINE_MS = 15 * 60 * 1000;
@@ -1802,11 +1802,11 @@ async function handleStatsOverview(env, user) {
         ? env.DB.prepare('SELECT COUNT(*) as n FROM licenses WHERE reseller_id = ?').bind(rid).first()
         : env.DB.prepare('SELECT COUNT(*) as n FROM licenses').first(),
       isReseller
-        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at > ?) AND reseller_id = ?`).bind(now, rid).first()
-        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at > ?)`).bind(now).first(),
+        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at >= ?) AND reseller_id = ?`).bind(utcDayStartMs(now), rid).first()
+        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND (expires_at IS NULL OR expires_at >= ?)`).bind(utcDayStartMs(now)).first(),
       isReseller
-        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at <= ? AND reseller_id = ?`).bind(now, rid).first()
-        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at <= ?`).bind(now).first(),
+        ? env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at < ? AND reseller_id = ?`).bind(utcDayStartMs(now), rid).first()
+        : env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE expires_at IS NOT NULL AND expires_at < ?`).bind(utcDayStartMs(now)).first(),
       env.DB.prepare('SELECT COUNT(*) as n FROM apps WHERE is_active = 1').first(),
     ]);
 
@@ -1822,8 +1822,8 @@ async function handleStatsOverview(env, user) {
   // Abonnements ACTIFS qui expirent dans les 7 jours → relance/renouvellement.
   const week = 7 * 24 * 60 * 60 * 1000;
   const expSoon = isReseller
-    ? await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ? AND reseller_id = ?`).bind(now, now + week, rid).first()
-    : await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at > ? AND expires_at <= ?`).bind(now, now + week).first();
+    ? await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at >= ? AND expires_at <= ? AND reseller_id = ?`).bind(utcDayStartMs(now), now + week, rid).first()
+    : await env.DB.prepare(`SELECT COUNT(*) as n FROM licenses WHERE status='active' AND expires_at IS NOT NULL AND expires_at >= ? AND expires_at <= ?`).bind(utcDayStartMs(now), now + week).first();
   out.expiring_7d = expSoon.n;
 
   if (isReseller) {
@@ -1870,7 +1870,7 @@ async function handleInsights(env) {
     plan: r.plan,
     expires_at: r.expires_at,
     // Arrondi SUPÉRIEUR : « expire dans 0 jour » = aujourd'hui même.
-    days_left: Math.max(0, Math.ceil((r.expires_at - now) / DAY)),
+    days_left: Math.max(0, Math.ceil((expiryDayEndMs(r.expires_at) - now) / DAY)),
   });
 
   // Toutes les requêtes sont INDÉPENDANTES → elles partent EN PARALLÈLE
@@ -1913,10 +1913,10 @@ async function handleInsights(env) {
            JOIN devices d ON d.id = l.device_id
            LEFT JOIN customers c ON c.id = l.customer_id
            WHERE l.status = 'active' AND l.expires_at IS NOT NULL
-             AND l.expires_at > ? AND l.expires_at <= ?${exD}
+             AND l.expires_at >= ? AND l.expires_at <= ?${exD}
            GROUP BY d.mac
            ORDER BY expires_at ASC LIMIT 30`,
-        ).bind(now, now + 7 * DAY).all(),
+        ).bind(utcDayStartMs(now), now + 7 * DAY).all(),
         { results: [] },
       ),
       // Essais qui se terminent dans les 48 h → fenêtre de conversion.
@@ -1946,11 +1946,11 @@ async function handleInsights(env) {
            JOIN licenses l ON l.device_id = d.id
            WHERE l.status = 'active'
              AND l.plan NOT LIKE 'trial%'
-             AND (l.expires_at IS NULL OR l.expires_at > ?)
+             AND (l.expires_at IS NULL OR l.expires_at >= ?)
              AND d.last_seen_at < ?${exD}
            GROUP BY d.mac
            ORDER BY d.last_seen_at ASC LIMIT 20`,
-        ).bind(now, now - 7 * DAY).all(),
+        ).bind(utcDayStartMs(now), now - 7 * DAY).all(),
         { results: [] },
       ),
       // Nouveaux appareils DU JOUR (UTC) : le pouls de l'acquisition.
@@ -1978,12 +1978,12 @@ async function handleInsights(env) {
           env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE 1=1' + exDev).first(),
           env.DB.prepare(
             `SELECT COUNT(*) AS n FROM licenses
-             WHERE status='active' AND (expires_at IS NULL OR expires_at > ?)`,
-          ).bind(now).first(),
+             WHERE status='active' AND (expires_at IS NULL OR expires_at >= ?)`,
+          ).bind(utcDayStartMs(now)).first(),
           env.DB.prepare(
             `SELECT COUNT(*) AS n FROM licenses
-             WHERE expires_at IS NOT NULL AND expires_at <= ?`,
-          ).bind(now).first(),
+             WHERE expires_at IS NOT NULL AND expires_at < ?`,
+          ).bind(utcDayStartMs(now)).first(),
         ]),
         null,
       ),
@@ -2151,10 +2151,10 @@ async function handleInsightsOverview(env) {
          FROM licenses l
          JOIN devices d ON d.id = l.device_id
          WHERE l.status = 'active' AND l.expires_at IS NOT NULL
-           AND l.expires_at > ? AND l.expires_at <= ?${exD}
+           AND l.expires_at >= ? AND l.expires_at <= ?${exD}
          GROUP BY d.mac
          ORDER BY paid_until ASC LIMIT 50`,
-      ).bind(now, now + 7 * DAY).all(),
+      ).bind(utcDayStartMs(now), now + 7 * DAY).all(),
       { results: [] },
     ),
     // Versions d'app en circulation (devices.app_version, remplie par le
@@ -3921,9 +3921,9 @@ async function deviceHasPlayableLicense(env, mac) {
       `SELECT id FROM licenses
        WHERE device_id = ?
          AND IFNULL(status,'active') = 'active'
-         AND (expires_at IS NULL OR expires_at > ?)
+         AND (expires_at IS NULL OR expires_at >= ?)
        LIMIT 1`,
-    ).bind(dev.id, now).first();
+    ).bind(dev.id, utcDayStartMs(now)).first();
     return !!lic;
   } catch (_) { return false; }
 }
@@ -4819,11 +4819,12 @@ function deviceListPredicates(now) {
   const week = now + 7 * 24 * 60 * 60 * 1000;
   const hunt = now - 24 * 60 * 60 * 1000;
   const trialWindow = now - 7 * 24 * 60 * 60 * 1000;
+  const dayStart = utcDayStartMs(now);
   const live =
     `(l.id IS NOT NULL AND IFNULL(l.status,'active') = 'active'` +
-    ` AND (l.expires_at IS NULL OR l.expires_at > ${now}))`;
+    ` AND (l.expires_at IS NULL OR l.expires_at >= ${dayStart}))`;
   const expired =
-    `(l.id IS NOT NULL AND ((l.expires_at IS NOT NULL AND l.expires_at <= ${now})` +
+    `(l.id IS NOT NULL AND ((l.expires_at IS NOT NULL AND l.expires_at < ${dayStart})` +
     ` OR l.status = 'expired'))`;
   const recent =
     `(IFNULL(p.last_seen, 0) > ${hunt} OR d.last_seen_at > ${hunt})`;
@@ -4853,8 +4854,8 @@ function mapDeviceListRow(r, now) {
   if (licId) {
     const exp = r.lic_expires_at ?? null;
     const live = (r.lic_status || 'active') === 'active'
-      && (exp == null || exp > now);
-    const expired = exp != null && exp <= now;
+      && (exp == null || !paidLicenseExpired(exp, now));
+    const expired = exp != null && paidLicenseExpired(exp, now);
     license = {
       id: licId,
       status: live ? 'active' : (expired ? 'expired' : (r.lic_status || 'active')),
@@ -5830,14 +5831,14 @@ async function handleDeviceOverview(env, id, user) {
       .prepare(
         `SELECT id, status, plan, started_at, expires_at, auto_renew
            FROM licenses WHERE device_id = ?
-          ORDER BY ${bestLicenseOrderSql()} LIMIT 1`,
+          ORDER BY ${bestLicenseOrderSql('', now)} LIMIT 1`,
       )
-      .bind(dev.id, now)
+      .bind(dev.id)
       .first();
     if (lic) {
       const live = lic.status === 'active'
-        && (lic.expires_at == null || lic.expires_at > now);
-      const expired = lic.expires_at != null && lic.expires_at <= now;
+        && (lic.expires_at == null || !paidLicenseExpired(lic.expires_at, now));
+      const expired = lic.expires_at != null && paidLicenseExpired(lic.expires_at, now);
       license = {
         id: lic.id || null,
         status: live ? 'active' : (expired ? 'expired' : lic.status),

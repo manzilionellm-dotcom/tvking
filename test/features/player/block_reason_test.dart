@@ -39,7 +39,7 @@ void main() {
   test('une date d’expiration PASSÉE déclenche bien « expiré »', () {
     d.recordXtreamAccount(
       status: 'Active',
-      expDate: DateTime.now().subtract(const Duration(days: 1)),
+      expDate: DateTime.now().subtract(const Duration(days: 5)),
     );
     expect(d.blockReason, StreamBlockReason.expired);
   });

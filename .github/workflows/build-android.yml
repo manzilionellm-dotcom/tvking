@@ -774,12 +774,19 @@ jobs:
           ok=
           for attempt in 1 2 3 4; do
             echo "=== Build attempt $attempt ==="
+            # PHONE_UPDATE_TAG : le bouton MAJ du sideload interroge ce
+            # canal. Défaut Dart = phone-latest (`prod` 404 depuis des
+            # semaines). Gravé ici aussi, pour qu'un APK CI voie les
+            # mises à jour même si CETTE branche ne publie pas le canal
+            # (seul claude/7motion-android-tv-compat-e0rtyp le fait via
+            # REL_TAG ; la maison mère vise encore prod).
             flutter build apk --release --no-tree-shake-icons --split-per-abi \
               --build-number=${{ github.run_number }} \
               --obfuscate --split-debug-info=build/symbols \
               --dart-define=APP_BUILD_TS=$BUILD_TS \
               --dart-define=APP_BUILD_LABEL=$BUILD_LABEL \
               --dart-define=GIT_SHA=${{ github.sha }} \
+              --dart-define=PHONE_UPDATE_TAG=phone-latest \
               $MASTER_DEFINE && { ok=1; break; }
             echo "Attempt $attempt failed; retry in 25s"; sleep 25
           done

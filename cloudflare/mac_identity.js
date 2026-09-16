@@ -16,6 +16,8 @@
 //  heartbeat, RT. Une seule vérité.
 // =========================================================
 
+import { utcDayStartMs } from './license_pick.js';
+
 /// Format canonique interne : MK + 5 octets (celui que l'app stocke).
 export const MAC_RX = /^MK(?::[0-9A-F]{2}){5}$/i;
 
@@ -80,11 +82,12 @@ export const MAC_OWNED_TABLES = [
 export function problemPredicates(now) {
   const hunt = now - 24 * 60 * 60 * 1000;
   const trialWindow = now - 7 * 24 * 60 * 60 * 1000;
+  const dayStart = utcDayStartMs(now);
   const live =
     `(l.id IS NOT NULL AND IFNULL(l.status,'active') = 'active'` +
-    ` AND (l.expires_at IS NULL OR l.expires_at > ${now}))`;
+    ` AND (l.expires_at IS NULL OR l.expires_at >= ${dayStart}))`;
   const expired =
-    `(l.id IS NOT NULL AND ((l.expires_at IS NOT NULL AND l.expires_at <= ${now})` +
+    `(l.id IS NOT NULL AND ((l.expires_at IS NOT NULL AND l.expires_at < ${dayStart})` +
     ` OR l.status = 'expired'))`;
   const recent =
     `(IFNULL(p.last_seen, 0) > ${hunt} OR d.last_seen_at > ${hunt})`;
@@ -100,12 +103,12 @@ export function problemPredicates(now) {
   const pickedDead =
     `(l.id IS NOT NULL AND NOT (` +
       `IFNULL(l.status,'active') = 'active'` +
-      ` AND (l.expires_at IS NULL OR l.expires_at > ${now})` +
+      ` AND (l.expires_at IS NULL OR l.expires_at >= ${dayStart})` +
     `))`;
   const otherLive =
     `EXISTS (SELECT 1 FROM licenses a WHERE a.device_id = d.id AND a.id != l.id` +
     ` AND IFNULL(a.status,'active') = 'active'` +
-    ` AND (a.expires_at IS NULL OR a.expires_at > ${now}))`;
+    ` AND (a.expires_at IS NULL OR a.expires_at >= ${dayStart}))`;
   const lifetimeMasksActive =
     `(${pickedDead} AND l.expires_at IS NULL AND ${otherLive})`;
   const licensePick = `(${pickedDead} AND ${otherLive})`;

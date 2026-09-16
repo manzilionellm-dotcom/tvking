@@ -67,7 +67,7 @@ import {
 // publishRt() (publication fail-open après une mutation). La classe DO
 // DOIT être ré-exportée par le module d'entrée (voir export plus bas).
 import { RealtimeHub, publishRt } from './realtime.js';
-import { bestLicenseOrderSql } from './license_pick.js';
+import { bestLicenseOrderSql, expiryDayEndMs, paidLicenseExpired, utcDayStartMs } from './license_pick.js';
 //  Profils famille : MEME code que /api/v1/profiles (le panel). Deux
 //  implementations auraient signifie deux calculs de PIN a maintenir.
 import { readDeviceProfiles } from './device_profiles.js';
@@ -575,9 +575,9 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     .prepare(
       `SELECT status AS lstatus, expires_at FROM licenses
        WHERE device_id = ?
-       ORDER BY ${bestLicenseOrderSql()} LIMIT 1`,
+       ORDER BY ${bestLicenseOrderSql('', now)} LIMIT 1`,
     )
-    .bind(dev.id, now).first();
+    .bind(dev.id).first();
 
   // --- Cas 1 : une licence existe (activee par admin/revendeur) ---
   if (lic) {
@@ -623,7 +623,8 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     const expiresAt = lifetime ? now + 36500 * DAY_MS : lic.expires_at;
     // Jouable = status 'active' ET pas dépassée. Un status 'expired'
     // admin prime même si expires_at est encore dans le futur.
-    const timeExpired = !lifetime && (Number(expiresAt) <= now || lstatus === 'expired');
+    // Dernier jour UTC de expires_at INCLUS (abo 7 MOTION).
+    const timeExpired = !lifetime && (paidLicenseExpired(expiresAt, now) || lstatus === 'expired');
     const banned = lstatus === 'banned';
     const frozen = lstatus === 'frozen';
     const playable = lstatus === 'active' && !timeExpired && !banned && !frozen;
@@ -636,7 +637,7 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
       trial_until: expiresAt,
       days_left: lifetime && playable
         ? 36500
-        : Math.max(0, Math.ceil((expiresAt - now) / DAY_MS)),
+        : Math.max(0, Math.ceil((expiryDayEndMs(expiresAt) - now) / DAY_MS)),
       expired: !playable && !banned && !frozen,
       frozen,
       banned,
@@ -6677,9 +6678,9 @@ async function handlePublicFamilyM3u(env, rawToken) {
           'JOIN devices d ON d.mac = fm.mac ' +
           'JOIN licenses l ON l.device_id = d.id ' +
           'WHERE fm.family_id = ? AND IFNULL(l.status,\'active\') = \'active\' ' +
-          'AND (l.expires_at IS NULL OR l.expires_at > ?) LIMIT 1',
+          'AND (l.expires_at IS NULL OR l.expires_at >= ?) LIMIT 1',
         )
-        .bind(link.family_id, Date.now())
+        .bind(link.family_id, utcDayStartMs(Date.now()))
         .first();
       const nMem = await env.DB
         .prepare('SELECT COUNT(*) AS n FROM family_members WHERE family_id = ?')

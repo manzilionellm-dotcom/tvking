@@ -21,7 +21,9 @@ class IptvCertTrust {
   static const String _kPrefs = 'net.iptv_cert_pins.v1';
   static const int _kMaxPins = 256;
   static final Map<String, String> _pins = <String, String>{};
-  static bool _loaded = false;
+  /// Pins vus AVANT la fin de load() — mémoire seule, le disque gagne.
+  static final Map<String, String> _pending = <String, String>{};
+  static bool _hydrated = false;
 
   static bool isOurBackend(String host) {
     final String h = host.toLowerCase();
@@ -29,9 +31,14 @@ class IptvCertTrust {
   }
 
   static Future<void> load() async {
-    if (_loaded) return;
-    _loaded = true;
+    if (_hydrated) return;
     await _hydrate();
+    // Le pin DISQUE gagne : un MITM au boot ne l'écrase plus.
+    _pending.forEach((String h, String p) {
+      _pins.putIfAbsent(h, () => p);
+    });
+    _pending.clear();
+    _hydrated = true;
   }
 
   static Future<void> _hydrate() async {
@@ -54,6 +61,7 @@ class IptvCertTrust {
 
   static void forgetAll() {
     _pins.clear();
+    _pending.clear();
     SharedPreferences.getInstance()
         .then((SharedPreferences p) => p.remove(_kPrefs))
         .catchError((Object _) => false);
@@ -61,27 +69,30 @@ class IptvCertTrust {
 
   static void forget(String host) {
     _pins.remove(host.toLowerCase());
+    _pending.remove(host.toLowerCase());
     _persist();
   }
 
   /// Callback [HttpClient.badCertificateCallback].
   static bool allow(X509Certificate cert, String host, int port) {
-    if (!_loaded) {
-      _loaded = true;
-      // ignore: discarded_futures
-      _hydrate();
-    }
     if (isOurBackend(host)) return false;
     final String h = host.toLowerCase();
     final String pin = sha256.convert(cert.der).toString();
     final String? seen = _pins[h];
-    if (seen == null) {
-      if (_pins.length >= _kMaxPins) _pins.clear();
-      _pins[h] = pin;
-      _persist();
+    if (seen != null) return seen == pin;
+    if (!_hydrated) {
+      // load() pas fini : on n'écrit PAS le disque (course MITM).
+      _pending[h] = pin;
       return true;
     }
-    return seen == pin;
+    if (_pins.length >= _kMaxPins) {
+      // Pas de wipe global : un plein store refuse le nouveau hôte
+      // plutôt que de re-TOFU tout le monde.
+      return false;
+    }
+    _pins[h] = pin;
+    _persist();
+    return true;
   }
 
   static void _persist() {

@@ -59,6 +59,7 @@ import '../../../core/observability/structured_logger.dart';
 import 'hls_playlist_normalizer.dart';
 import 'player_settings.dart';
 import 'stream_diagnostics.dart';
+import 'stream_http_options.dart';
 import 'ts_stream_conditioner.dart';
 
 /// Nombre d'échecs de reconnexion CONSÉCUTIFS tolérés avant d'abandonner
@@ -403,6 +404,14 @@ class LocalStreamRelay {
           await client.getUrl(Uri.parse(realUrl));
       up.followRedirects = true;
       up.maxRedirects = 8;
+      final Map<String, String>? extraHls =
+          StreamHttpOptions.instance.headersFor(realUrl);
+      if (extraHls != null) {
+        extraHls.forEach((String k, String v) {
+          if (k.isEmpty || v.isEmpty) return;
+          up.headers.set(k, v);
+        });
+      }
       final HttpClientResponse resp = await up.close();
       final Uri finalUri = resp.redirects.isEmpty
           ? Uri.parse(realUrl)
@@ -1006,6 +1015,16 @@ class LocalStreamRelay {
       cReq.followRedirects = true;
       cReq.maxRedirects = 8;
       cReq.headers.set(HttpHeaders.acceptHeader, '*/*');
+      // #EXTVLCOPT / #KODIPROP : sans Referer/UA/Cookie le panel sert
+      // une page d'erreur → écran noir (TiviMate les envoie, nous non).
+      final Map<String, String>? extra =
+          StreamHttpOptions.instance.headersFor(url);
+      if (extra != null) {
+        extra.forEach((String k, String v) {
+          if (k.isEmpty || v.isEmpty) return;
+          cReq.headers.set(k, v);
+        });
+      }
 
       // TIMEOUT DE RÉPONSE (correctif d'audit) : connectionTimeout ne borne
       // QUE l'établissement TCP. Un serveur qui ACCEPTE la connexion mais
@@ -1174,13 +1193,17 @@ class LocalStreamRelay {
     // n'applique banni/expiré que si le compte contrôlé est celui de CE flux.
     final StreamBlockReason r =
         StreamDiagnostics.instance.blockReasonForUrl(session.realUrl);
-    // `providerBlocked` compte AUSSI comme mort : c'est l'ancien cas « écran
-    // noir », qui rentrait ici sous l'étiquette `expired` avant qu'on ne les
-    // sépare. Le séparer sans le rajouter ici aurait relancé les
-    // reconnexions à l'infini sur une chaîne qui ne rendra jamais d'image.
-    if (r != StreamBlockReason.expired &&
-        r != StreamBlockReason.banned &&
-        r != StreamBlockReason.providerBlocked) {
+    // 16/09 : « terminé » alors qu'il reste un jour. Un panel qui dit
+    // Expired + date encore devant → providerBlocked (contradictoire).
+    // AVANT : on abortait comme un black.ts → TV coupée, message faux.
+    // On n'arrête plus que le VRAI écran noir (placeholder) ou le compte
+    // bel et bien mort / banni.
+    if (r == StreamBlockReason.expired || r == StreamBlockReason.banned) {
+      // compte mort : on continue vers l'abort ci-dessous
+    } else if (r == StreamBlockReason.providerBlocked &&
+        StreamDiagnostics.instance.placeholderStream) {
+      // black.ts réellement servi
+    } else {
       return false;
     }
     StreamDiagnostics.instance.recordEvent(

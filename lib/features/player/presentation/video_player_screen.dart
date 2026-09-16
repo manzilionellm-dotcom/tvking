@@ -69,6 +69,7 @@ import '../data/player_settings.dart';
 import '../data/stream_blocked_fallback.dart';
 import '../data/line_expiry.dart';
 import '../data/stream_diagnostics.dart';
+import '../data/stream_http_options.dart';
 import '../data/xtream_url_variants.dart';
 import '../domain/playback_error_taxonomy.dart';
 import '../domain/playback_session_stats.dart';
@@ -626,18 +627,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       PipService.instance.setPlaybackActive(p);
     }));
     // Fin de lecture d'un contenu FINI → autoplay « À suivre ».
-    // REPRISE INTELLIGENTE (phase fluidité) : sur un LIVE qui décodait,
-    // un EOF est une MICRO-COUPURE réseau (edge recyclé) → reprise
-    // SILENCIEUSE sous ~1 s, sans écran d'erreur. L'erreur visible
-    // n'apparaît que si la reprise échoue (budget watchdog, puis
-    // diagnostic complet).
+    // LIVE via relais : le relais reconnecte déjà — ne PAS rouvrir mpv
+    // (2e socket). HLS live : micro-coupure → reprise silencieuse.
+    // Budget watchdog épuisé → erreur visible (pas un return silencieux).
     _subs.add(_player.stream.completed.listen((bool done) {
       if (!done || !mounted) return;
       final bool liveDecoded = widget.overrideUrl == null &&
           _currentChannel.isLive &&
           _playedChannelId == _currentChannel.id;
       if (liveDecoded) {
-        if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) return;
+        if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) {
+          setState(() {
+            _hasError = true;
+            _errorMessage =
+                _blockMessage(context.l10n.playerStreamInterrupted);
+          });
+          return;
+        }
         _watchdogRecoveries++;
         _sessionStats?.onRecovery(); // S3 : zombie devenu donnée
         StreamDiagnostics.instance.recordEvent(
@@ -646,6 +652,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               '#$_watchdogRecoveries',
           level: 'warn',
         );
+        // Relais TS : le relais reconnecte déjà. Ne pas appeler _openMedia
+        // (ouvrirait une 2e socket sur un compte 1-connexion).
+        if (_liveViaRelay) return;
         _eofReopenTimer?.cancel();
         _eofReopenTimer = Timer(const Duration(milliseconds: 800), () {
           if (!mounted || _hasError) return;
@@ -731,7 +740,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       final bool isError = l.level == 'error' || l.level == 'fatal';
       StreamDiagnostics.instance.recordEvent(
         'mpv',
-        '[${l.prefix}] ${l.text}'.trim(),
+        StreamDiagnostics.maskCredentials('[${l.prefix}] ${l.text}'.trim()),
         level: isError ? 'error' : 'warn',
       );
     }));
@@ -1420,6 +1429,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       );
       return;
     }
+    // Démuxeur HLS collé : un zap HLS→TS laissait `hls` et écran noir.
+    // Reset `auto` AVANT tout open ; le chemin playlist le reforce `hls`.
+    await _setMpvProperty('demuxer-lavf-format', 'auto');
+    if (!mounted || gen != _openGeneration) return;
     // FERMETURE ATTENDUE, MÊME instance mpv (jamais de redémarrage).
     await _releaseCurrentSession();
     if (!mounted || gen != _openGeneration) return;
@@ -1505,7 +1518,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _armStartupTimeout();
     if (widget.overrideUrl != null) {
       _playerOpenedOnce = true;
-      _player.open(Media(realUrl));
+      await _player.open(Media(
+        realUrl,
+        httpHeaders: StreamHttpOptions.instance.headersFor(realUrl),
+      ));
+      if (!mounted || gen != _openGeneration) return;
       return;
     }
     // HLS (.m3u8) : BYPASS du relais — mpv gère nativement master/media
@@ -1560,7 +1577,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       if (!mounted || gen != _openGeneration) return;
       // FILET : force le démuxeur HLS de ffmpeg sur ce contenu, au cas
       // où un panel servirait un document encore plus exotique. Remis à
-      // « auto » sur le chemin TS (_applyMpvOptions n'y touche pas).
+      // « auto » en tête de _openMediaInner (zap HLS→TS).
       final bool forced =
           await _setMpvProperty('demuxer-lavf-format', 'hls');
       StreamDiagnostics.instance.recordEvent(
@@ -1571,7 +1588,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       // (la fermeture attendue a déjà eu lieu dans _releaseCurrentSession :
       // même instance, socket précédente fermée, pas de chevauchement)
       _playerOpenedOnce = true;
-      _player.open(Media(normalizedUrl));
+      await _player.open(Media(normalizedUrl));
+      if (!mounted || gen != _openGeneration) return;
       return;
     }
     // VOD (film / épisode) ou FICHIER LOCAL téléchargé : lecture DIRECTE
@@ -1609,7 +1627,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           await _vodDirectTarget(realUrl);
       if (!mounted || gen != _openGeneration) return;
       _playerOpenedOnce = true;
-      _player.open(Media(openUrl, httpHeaders: headers));
+      final Map<String, String> merged = <String, String>{
+        ...?headers,
+        ...?StreamHttpOptions.instance.headersFor(realUrl),
+      };
+      await _player.open(Media(
+        openUrl,
+        httpHeaders: merged.isEmpty ? null : merged,
+      ));
+      if (!mounted || gen != _openGeneration) return;
       // FILET « jamais bloqué » (terrain 2026-07-18) : si la lecture
       // directe ne produit AUCUNE image en quelques secondes, on lance
       // la CASCADE de variantes — PAS le relais. Le relais est un tuyau
@@ -1646,14 +1672,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           await LocalStreamRelay.instance.playUrlFor(realUrl);
       if (!mounted || gen != _openGeneration) return;
       _playerOpenedOnce = true;
-      _player.open(Media(localUrl));
+      await _player.open(Media(localUrl));
+      if (!mounted || gen != _openGeneration) return;
     } catch (e) {
       // Si le relais ne démarre pas (cas improbable), on retombe sur la
       // lecture directe pour ne jamais priver l'utilisateur de l'image.
       debugPrint('[Player] relais indisponible, lecture directe: $e');
       if (!mounted || gen != _openGeneration) return;
       _playerOpenedOnce = true;
-      _player.open(Media(realUrl));
+      await _player.open(Media(
+        realUrl,
+        httpHeaders: StreamHttpOptions.instance.headersFor(realUrl),
+      ));
+      if (!mounted || gen != _openGeneration) return;
     }
   }
 
@@ -2031,12 +2062,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       //    - reconnect=1            : reconnecte sur erreur HTTP
       //    - reconnect_streamed=1   : OK aussi sur les flux non-seekable
       //    - reconnect_delay_max=30 : jusqu'à 30s de backoff
-      //    - reconnect_at_eof=1     : redémarre aussi à l'EOF prématuré
-      //    - reconnect_on_http_error=4xx,5xx : reconnect sur erreurs HTTP
+      //    - reconnect_at_eof=0     : EOF live géré par le Dart/relais
+      //    - reconnect_on_http_error=5xx,408,429 : pas de 4xx (458 = 2e socket)
       await native?.setProperty(
         'stream-lavf-o',
         'reconnect=1,reconnect_streamed=1,reconnect_delay_max=30,'
-            'reconnect_at_eof=1,reconnect_on_http_error=4xx,5xx,'
+            'reconnect_at_eof=0,reconnect_on_http_error=5xx,408,429,'
             'reconnect_on_network_error=1',
       );
 
@@ -2749,6 +2780,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     // seekable, sa position s'arrête légitimement (pause, fin) → ce ne
     // serait pas un gel.
     if (widget.overrideUrl != null) return;
+    if (!_currentChannel.isLive) return;
     // Un VRAI gel = mpv se croit en lecture, ne bufferise pas, aucune
     // erreur affichée, mais la position stagne. Sinon on ne compte rien
     // et on resynchronise la position de référence.
