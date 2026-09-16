@@ -26,7 +26,6 @@ import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
 import android.util.Rational
-import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -82,13 +81,8 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
-        // Captures bloquées. La vidéo N'EST PAS un overlay SurfaceView
-        // (FLAG_SECURE + overlay = image noire Amlogic). Elle passe par
-        // une texture Flutter : tu vois l'image, Recents/screencast non.
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE,
-        )
+        // 14/09/2026 : PAS de FLAG_SECURE. Sur les box et le téléphone
+        // ça éteint l'image. Les captures marchent ; la vidéo aussi.
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

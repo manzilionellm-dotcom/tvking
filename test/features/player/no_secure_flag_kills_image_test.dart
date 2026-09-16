@@ -1,4 +1,5 @@
-// FLAG_SECURE ON (pas de capture) + rendu TEXTURE (l'image sort).
+// FLAG_SECURE = image noire. Interdit de le REPOSER.
+// Rendu = SurfaceView (14/09/2026, l'image marchait).
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -10,32 +11,40 @@ void main() {
       .where((String l) => !l.trimLeft().startsWith('//'))
       .join('\n');
 
-  test('MainActivity BLOQUE les captures (setFlags FLAG_SECURE)', () {
+  test('MainActivity n\'ACTIVE JAMAIS FLAG_SECURE', () {
     final String code =
         _code(File('android_overlay/google_cast/MainActivity.kt'));
-    expect(code, contains('window.setFlags'));
-    expect(code, contains('FLAG_SECURE'));
-    expect(code.contains('clearFlags'), isFalse);
+    expect(code.contains('FLAG_SECURE'), isFalse);
+    expect(code.contains('setFlags'), isFalse);
   });
 
-  test('défaut rendu = texture (compatible FLAG_SECURE)', () {
+  test('défaut rendu = surface (14/09, image visible)', () {
     final String dart = _code(
         File('packages/native_video_player/lib/native_video_player.dart'));
-    expect(dart, contains('return texture'));
+    expect(dart, contains('return surface'));
     final String kt = _code(File(
       'packages/native_video_player/android/src/main/kotlin/'
       'com/manzilionellm/native_video_player/NativeVideoPlayerPlugin.kt',
     ));
-    expect(kt, contains('"texture"'));
-    expect(kt, contains('render_reset_v5'));
+    expect(kt, contains('"surface"'));
+    expect(kt, contains('render_reset_v6'));
   });
 
-  test('CI pose FLAG_SECURE sur TV et téléphone', () {
+  test('SurfaceView n\'est pas setSecure(true)', () {
+    final String code = _code(File(
+      'packages/native_video_player/android/src/main/kotlin/'
+      'com/manzilionellm/native_video_player/NativeVideoView.kt',
+    ));
+    expect(code.contains('setSecure(true)'), isFalse);
+  });
+
+  test('CI ne pose PAS FLAG_SECURE sur TV ni téléphone', () {
     for (final String p in <String>[
       '.github/workflows/build-seventv.yml',
       '.github/workflows/build-android.yml',
+      '.github/workflows/build-prive.yml',
     ]) {
-      expect(File(p).readAsStringSync(), contains('ci/set_secure_flag.py'),
+      expect(File(p).readAsStringSync(), isNot(contains('ci/set_secure_flag.py')),
           reason: p);
     }
   });

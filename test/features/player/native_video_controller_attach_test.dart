@@ -122,7 +122,7 @@ void main() {
   });
 
   // ---- Chemin de rendu : défaut TV = surface (overlay MediaCodec)
-  group('NativeVideoRender.mode — défaut TV = texture (FLAG_SECURE)', () {
+  group('NativeVideoRender.mode — défaut TV = surface (14/09)', () {
     setUp(NativeVideoRender.debugResetCache);
     tearDown(() {
       NativeVideoRender.debugResetCache();
@@ -141,19 +141,19 @@ void main() {
       });
     }
 
-    test('échec canal / tests → texture', () async {
+    test('échec canal / tests → surface', () async {
       NativeVideoRender.debugResetCache();
-      expect(await NativeVideoRender.mode(), NativeVideoRender.texture);
+      expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
     });
 
-    test('null / inconnu côté natif → texture', () async {
+    test('null / inconnu côté natif → surface', () async {
       NativeVideoRender.debugResetCache();
       mockGetRenderMode(null);
-      expect(await NativeVideoRender.mode(), NativeVideoRender.texture);
+      expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
 
       NativeVideoRender.debugResetCache();
       mockGetRenderMode('unknown');
-      expect(await NativeVideoRender.mode(), NativeVideoRender.texture);
+      expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
     });
 
     test('surface mémorisé explicitement → surface', () async {

@@ -462,8 +462,7 @@ class NativeVideoView(
         // qui doit revenir au Focus Flutter).
         surfaceView.isFocusable = false
         surfaceView.isFocusableInTouchMode = false
-        // Overlay « secure » = image noire. La fenêtre a déjà FLAG_SECURE
-        // (captures). Cette SurfaceView, si elle sert, reste affichable.
+        // Overlay « secure » = image noire. Jamais setSecure(true).
         surfaceView.setSecure(false)
 
         //  ⚠ CORRECTION DE COMMENTAIRE (28/08/2026). Cette ligne portait

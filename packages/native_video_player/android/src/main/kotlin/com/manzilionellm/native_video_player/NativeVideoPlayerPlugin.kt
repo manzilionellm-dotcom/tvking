@@ -132,14 +132,15 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                     result.success(null)
                 }
                 "getRenderMode" -> {
-                    // v5 : FLAG_SECURE + SurfaceView = noir. Texture.
-                    if (!prefs.getBoolean("render_reset_v5", false)) {
+                    // v6 : retour 14/09 — SurfaceView, l'image marchait.
+                    // Oublie texture/FLAG_SECURE (v5) sur les box déjà flashées.
+                    if (!prefs.getBoolean("render_reset_v6", false)) {
                         prefs.edit()
-                            .putString("render_mode", "texture")
-                            .putBoolean("render_reset_v5", true)
+                            .remove("render_mode")
+                            .putBoolean("render_reset_v6", true)
                             .apply()
                     }
-                    result.success(prefs.getString("render_mode", "texture"))
+                    result.success(prefs.getString("render_mode", "surface"))
                 }
                 "setRenderMode" -> {
                     val mode = call.argument<String>("mode")

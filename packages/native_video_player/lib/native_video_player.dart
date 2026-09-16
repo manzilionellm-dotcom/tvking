@@ -44,13 +44,10 @@ class NativeDeviceInfo {
   }
 }
 
-/// Chemin de RENDU — captures OFF + image ON (16/09/2026).
-/// FLAG_SECURE sur la fenêtre empêche screenshot/Recents. Sur une
-/// SurfaceView (overlay MediaCodec) les box Amlogic affichent du noir.
-/// Donc le défaut est TEXTURE : même pipeline que les menus. Tu vois
-/// l'image ; une capture reste noire.
-///   • `texture` : DÉFAUT. Compatible FLAG_SECURE.
-///   • `surface` : overlay. Interdit avec FLAG_SECURE (image morte).
+/// Chemin de RENDU — 14/09/2026, l'image marchait.
+///   • `surface` : DÉFAUT. Overlay MediaCodec (box Amlogic, téléphone).
+///   • `texture` : repli seulement si mémorisé explicitement.
+/// FLAG_SECURE est INTERDIT : overlay + secure = image morte.
 class NativeVideoRender {
   const NativeVideoRender._();
   static const MethodChannel _channel =
@@ -63,7 +60,7 @@ class NativeVideoRender {
   /// (zap, aperçus). Rempli au 1er accès, mis à jour par [setMode].
   static String? _cached;
 
-  /// Défaut `texture` : FLAG_SECURE + overlay = image noire.
+  /// Défaut `surface` : c'est le chemin du 14/09, image visible.
   static Future<String> mode() async {
     final String? c = _cached;
     if (c != null) return c;
@@ -71,11 +68,11 @@ class NativeVideoRender {
       final String? m = await _channel
           .invokeMethod<String>('getRenderMode')
           .timeout(const Duration(milliseconds: 800));
-      final String v = (m == surface) ? surface : texture;
+      final String v = (m == texture) ? texture : surface;
       _cached = v;
       return v;
     } catch (_) {
-      return texture;
+      return surface;
     }
   }
 
