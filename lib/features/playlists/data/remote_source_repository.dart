@@ -26,7 +26,10 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/i18n/l10n_now.dart';
-import '../../../core/update/build_flags.dart';
+// (`build_flags.dart` / `kIsPlayBuild` n'est plus importé ici depuis le
+//  retrait du verrou magasin du 16/09/2026 — voir le bloc en tête de
+//  classe. Le drapeau existe toujours et sert ailleurs, notamment à
+//  l'updater in-app et aux profils distants.)
 import '../../channels/data/recently_watched_repository.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
@@ -55,22 +58,41 @@ enum RemoteSyncResult {
 }
 
 abstract final class RemoteSourceRepository {
-  /// CONFORMITÉ MAGASINS (refus Amazon du 19/08/2026, « pirated content ») :
-  /// dans les builds DISTRIBUÉS PAR UN STORE (Google Play TV, Amazon
-  /// Appstore — `PLAY_BUILD=true`), l'app est un LECTEUR « apporte ton
-  /// abonnement » : AUCUNE source n'est poussée par le panel. Le testeur du
-  /// store — comme n'importe quel utilisateur venu du store — ne voit que
-  /// les écrans « Ajouter une source » et charge lui-même sa propre liste.
-  /// C'est la posture sous laquelle les lecteurs IPTV génériques sont
-  /// publiés, et la seule compatible avec la règle n°2 du projet (« aucune
-  /// playlist pré-remplie ») du point de vue d'un réviseur de contenu.
-  /// Les builds SIDELOAD (distribution directe de l'exploitant) sont
-  /// inchangés : le modèle « tout géré par le revendeur » reste entier.
-  ///
-  /// Champ (et non const) UNIQUEMENT pour rester testable : `kIsPlayBuild`
-  /// est figé à la compilation, les tests ne peuvent pas le basculer.
-  @visibleForTesting
-  static bool storeBuild = kIsPlayBuild;
+  // =========================================================
+  //  LE VERROU MAGASIN A ÉTÉ RETIRÉ (16/09/2026)
+  // =========================================================
+  //  IL A EXISTÉ, ET IL AVAIT UNE RAISON. Après le refus Amazon du
+  //  19/08/2026 (« pirated content »), on avait fermé trois portes dans
+  //  ce fichier : dans un build distribué par un magasin
+  //  (`PLAY_BUILD=true` — Google Play, Amazon Appstore), l'app ne
+  //  récupérait AUCUNE source poussée par le panel. Le testeur du store
+  //  ne voyait alors que « Ajoute ta source », jamais un bouquet tout
+  //  prêt. C'est cette posture qui a fait accepter l'app.
+  //
+  //  POURQUOI ON L'ENLÈVE QUAND MÊME. Décision du propriétaire, prise le
+  //  16/09/2026 en connaissance du refus du 19/08 — il a été rappelé
+  //  explicitement avant l'arbitrage. Le motif est commercial et il est
+  //  net : il active un client depuis son panneau alors que le client
+  //  n'est PAS avec lui, et il veut que les chaînes arrivent seules. Un
+  //  client qui a installé depuis le Play Store restait bloqué sans que
+  //  personne — ni lui, ni le client, ni le panneau — puisse le voir.
+  //
+  //  CE QU'ON ACCEPTE EN ÉCHANGE, ET IL FAUT L'ÉCRIRE : un examinateur
+  //  Google ou Amazon qui ouvre l'app sur une MAC à laquelle une source
+  //  a été poussée reverra un bouquet garni. C'est EXACTEMENT le motif
+  //  du refus du 19/08. Le risque n'est pas théorique, il est déjà
+  //  arrivé une fois.
+  //
+  //  SI UN REFUS ARRIVE : la correction est de remettre les trois
+  //  gardes supprimées ici (sync, fetchAssignedSources, applySources),
+  //  pas de chercher ailleurs. Le test
+  //  test/features/playlists/remote_source_store_gate_test.dart garde
+  //  l'historique complet et vérifie l'état courant.
+  //
+  //  La règle n°2 du projet (« aucune playlist pré-remplie ») reste
+  //  respectée au sens strict : rien n'est en dur dans le code. Ce qui
+  //  change, c'est ce qu'un réviseur de contenu VOIT à l'écran.
+  // =========================================================
 
   /// Signal « le revendeur vient d'ASSIGNER / METTRE À JOUR une source pour
   /// CET appareil » (poussé en TEMPS RÉEL par le panel via le WebSocket).
@@ -97,9 +119,9 @@ abstract final class RemoteSourceRepository {
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
   static Future<RemoteSyncResult> sync({int hop = 0}) async {
-    // Build store : pas de source poussée, pas d'ordres du panel (cf.
-    // [storeBuild]). L'utilisateur ajoute ses sources lui-même.
-    if (storeBuild) return RemoteSyncResult.noSource;
+    // (Garde « build magasin » RETIRÉE le 16/09/2026 — voir le bloc en
+    //  tête de classe. Toutes les distributions récupèrent désormais la
+    //  source poussée par le panel, y compris Play Store et Amazon.)
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
@@ -353,8 +375,8 @@ abstract final class RemoteSourceRepository {
   /// afficher l'écran de progression VIVANT (chaînes qui s'ajoutent) au lieu
   /// d'un simple message. `[]` = rien d'assigné / réseau KO (best-effort).
   static Future<List<Map<String, dynamic>>> fetchAssignedSources() async {
-    // Build store : rien d'assigné, jamais (cf. [storeBuild]).
-    if (storeBuild) return <Map<String, dynamic>>[];
+    // (Garde « build magasin » RETIRÉE le 16/09/2026 — voir le bloc en
+    //  tête de classe.)
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return <Map<String, dynamic>>[];
@@ -393,9 +415,9 @@ abstract final class RemoteSourceRepository {
     List<Map<String, dynamic>> sources, {
     ImportProgressCallback? onProgress,
   }) async {
-    // Build store : même les événements temps réel du panel (pushedTick →
-    // fetch + apply) ne chargent rien (cf. [storeBuild]).
-    if (storeBuild) return RemoteSyncResult.noSource;
+    // (Garde « build magasin » RETIRÉE le 16/09/2026 — voir le bloc en
+    //  tête de classe. Les événements temps réel du panel chargent donc
+    //  la source sur toutes les distributions.)
     RemoteSyncResult agg = RemoteSyncResult.noSource;
     for (final Map<String, dynamic> item in sources) {
       final RemoteSyncResult r = await _applySource(
