@@ -905,6 +905,20 @@ export interface DeviceSource extends DeviceSourceInput {
   // (poussée par nous, verrouillée) ou 'self' (ajoutée par le client).
   active?: boolean;
   origin?: string;
+
+  /// La source poussée est-elle ENCORE sur l'appareil du client ?
+  ///
+  /// Calculée par le Worker (`marquerPresenceSurAppareil`) en confrontant
+  /// ce qu'on a poussé à l'inventaire remonté par le heartbeat. Signalé
+  /// par le propriétaire le 16/09/2026 : « si j'efface la liste au
+  /// téléphone, même au panel la liste ne part pas ». C'est vrai — l'app
+  /// ne prévient personne quand le client supprime une liste.
+  ///
+  /// `undefined` NE VEUT PAS DIRE `false` : c'est « on ne sait pas »
+  /// (app ancienne, ou heartbeat pas encore passé). N'affiche jamais un
+  /// verdict sur un `undefined` — accuser sur un silence, c'est l'erreur
+  /// du bandeau « aucun démarrage de l'app ».
+  present?: boolean;
 }
 
 export const activateApi = {

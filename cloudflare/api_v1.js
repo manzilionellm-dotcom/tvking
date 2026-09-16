@@ -5877,8 +5877,102 @@ async function handleDeviceOverview(env, id, user) {
   } catch (_) { /* jamais bloquant */ }
 
   return jsonResp({
-    mac: dev.mac, license, presence, sources, localSources, device, version,
+    mac: dev.mac,
+    license,
+    presence,
+    // Chaque source POUSSÉE est confrontée à l'inventaire RÉEL de
+    // l'appareil : le panel peut alors dire « le client l'a supprimée »
+    // au lieu d'afficher une ligne qui n'existe plus chez lui.
+    sources: marquerPresenceSurAppareil(sources, localSources),
+    localSources,
+    device,
+    version,
   });
+}
+
+// =========================================================
+//  « Le client l'a-t-il encore ? » — pousse vs inventaire réel
+// =========================================================
+//  SIGNALÉ PAR LE PROPRIÉTAIRE (16/09/2026) : « si j'efface la liste au
+//  téléphone, même au panel la liste ne part pas ».
+//
+//  C'est exact, et ce n'est pas une panne de synchro. Quand le client
+//  supprime une liste dans l'app, celle-ci pose une empreinte LOCALE
+//  (SourceOptOuts, pour ne pas la réimporter au redémarrage) puis efface
+//  sa base. Elle ne prévient PERSONNE : la route publique
+//  `/api/device-source/:mac` n'accepte que la lecture. La ligne poussée
+//  reste donc en base, et le panel l'affiche — fidèlement, mais à côté
+//  de la réalité du salon.
+//
+//  LE PANEL AVAIT DÉJÀ LA RÉPONSE SOUS LES YEUX. Le heartbeat remonte
+//  `localSources` : l'inventaire de ce que l'appareil porte VRAIMENT.
+//  Personne ne confrontait les deux listes. On le fait ici, une fois,
+//  côté serveur — pas dans un écran, sinon la règle se dédoublera au
+//  premier écran suivant qui affichera des sources.
+//
+//  CE QU'ON NE FAIT PAS, ET C'EST LE POINT IMPORTANT : si l'inventaire
+//  est VIDE, on n'affirme RIEN. Un inventaire vide veut dire « app
+//  ancienne, ou heartbeat pas encore passé », pas « le client a tout
+//  supprimé ». Accuser sur un silence, c'est l'erreur du bandeau
+//  « aucun démarrage de l'app » qui a envoyé le revendeur chercher un
+//  problème inexistant. Sans preuve, pas de verdict : le champ
+//  `present` est alors simplement absent.
+// =========================================================
+
+/// Origine d'une URL (`http://hote:port`), sans chemin ni requête.
+///
+/// INDISPENSABLE POUR LE M3U : l'inventaire de l'app ne remonte QUE
+/// l'origine (une URL M3U porte presque toujours `username=…&password=…`,
+/// qu'on refuse de faire voyager). Comparer les URLs entières ferait
+/// paraître TOUTE liste M3U comme supprimée.
+export function origineUrl(url) {
+  try {
+    const u = new URL(String(url || '').trim());
+    return `${u.protocol}//${u.host}`;
+  } catch (_) {
+    return '';
+  }
+}
+
+/// Une source poussée et une entrée d'inventaire désignent-elles la même
+/// chose ? Fonction PURE.
+export function memeSource(pousse, local) {
+  if (!pousse || !local) return false;
+  const tp = String(pousse.type || '').trim().toLowerCase();
+  const tl = String(local.type || '').trim().toLowerCase();
+  // Types connus ET différents → ce n'est pas la même source. Un type
+  // manquant ne tranche rien : on laisse la comparaison d'adresse décider.
+  if (tp && tl && tp !== tl) return false;
+
+  const origineLocale = origineUrl(local.server || '');
+  if (!origineLocale) return false;
+
+  if (tp === 'xtream' || tl === 'xtream') {
+    if (origineUrl(pousse.server_url || pousse.server || '') !== origineLocale) {
+      return false;
+    }
+    // MÊME PANEL, DEUX LIGNES : sans l'utilisateur, la ligne du frère
+    // passerait pour la sienne. On exige donc un identifiant des DEUX
+    // côtés — un champ vide ne prouve rien.
+    const up = String(pousse.username || '').trim().toLowerCase();
+    const ul = String(local.username || '').trim().toLowerCase();
+    return up !== '' && up === ul;
+  }
+  return origineUrl(pousse.m3u_url || '') === origineLocale;
+}
+
+/// Ajoute `present` (booléen) à chaque source poussée. Fonction PURE.
+///
+/// Inventaire vide → aucun champ ajouté : « je ne sais pas » ne se dit
+/// pas « supprimée ».
+export function marquerPresenceSurAppareil(sources, localSources) {
+  const pousses = Array.isArray(sources) ? sources : [];
+  const locaux = Array.isArray(localSources) ? localSources : [];
+  if (locaux.length === 0) return pousses.map((s) => ({ ...s }));
+  return pousses.map((s) => ({
+    ...s,
+    present: locaux.some((l) => memeSource(s, l)),
+  }));
 }
 
 // =========================================================
