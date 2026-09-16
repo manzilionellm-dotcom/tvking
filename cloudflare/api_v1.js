@@ -6031,8 +6031,12 @@ async function handleDeviceOverview(env, id, user) {
 /// Scan d'une MAC : transforme la fiche + les journaux en phrases claires.
 export function diagnoseDevice(input, now = Date.now()) {
   const findings = [];
-  const push = (severity, code, title, detail) => {
-    findings.push({ severity, code, title, detail: detail || '' });
+  const push = (severity, code, title, detail, action) => {
+    findings.push({
+      severity, code, title,
+      detail: detail || '',
+      action: action || '',
+    });
   };
   const d = (input && input.device) || {};
   const lic = input && input.license;
@@ -6041,32 +6045,41 @@ export function diagnoseDevice(input, now = Date.now()) {
   const local = Array.isArray(input && input.localSources) ? input.localSources : [];
   const ver = input && input.version;
   const errors = Array.isArray(input && input.errors) ? input.errors : [];
+  const probes = Array.isArray(input && input.probes) ? input.probes : [];
   const block = (d.block_status || 'active').toLowerCase();
 
   if (block === 'banned') {
     push('critique', 'banned', 'Appareil BANNI',
-      'Le panel a bloqué cette MAC. Débannis-la pour que l’app rejoue.');
+      'Le panel a bloqué cette MAC. Débannis-la pour que l’app rejoue.',
+      'Fiche appareil → Débannir.');
   } else if (block === 'frozen') {
     push('critique', 'frozen', 'Appareil GELÉ',
-      'Compte gelé. Dégèle-le, sinon l’app reste verrouillée.');
+      'Compte gelé. Dégèle-le, sinon l’app reste verrouillée.',
+      'Fiche appareil → Dégeler.');
   }
 
+  // Dernier jour payé INCLUS (même règle que l’app). expires_at à minuit
+  // le 16 = le 16 ENTIER est jouable. L’ancien `expires_at > now` mentait
+  // dès 00:01 et le scan criait « expiré » pendant que le client regardait.
   const licLive = !!(lic && lic.status === 'active'
-    && (lic.expires_at == null || lic.expires_at > now));
+    && !paidLicenseExpired(lic.expires_at, now));
   if (!lic) {
     push('critique', 'no_license', 'Pas d’abonnement',
-      'Aucune licence. Active d’abord, puis envoie le M3U.');
+      'Aucune licence. Active d’abord, puis envoie le M3U.',
+      'Page Activer → colle la MAC → choisis la durée.');
   } else if (!licLive) {
     const exp = lic.expires_at
       ? new Date(lic.expires_at).toLocaleDateString('fr-FR')
       : '';
     push('critique', 'expired', 'Abonnement expiré' + (exp ? ` (${exp})` : ''),
-      'Le dernier jour payé est passé. Renouvelle, sinon pas d’image.');
+      'Le dernier jour payé est passé. Renouvelle, sinon pas d’image.',
+      'Fiche appareil → renouveler (1 an / à vie).');
   }
 
   if (sources.length === 0 && local.length === 0) {
     push('critique', 'no_playlist', 'Aucune playlist',
-      'Rien collé au panel, rien sur l’appareil. Colle un M3U.');
+      'Rien collé au panel, rien sur l’appareil. Colle un M3U.',
+      'Page Activer (ou fiche) → coller le lien M3U.');
   } else if (sources.length > 0 && local.length === 0) {
     const seen = p && p.last_seen ? (now - p.last_seen) : null;
     const recent = seen != null && seen < 30 * 60 * 1000;
@@ -6074,7 +6087,40 @@ export function diagnoseDevice(input, now = Date.now()) {
       'Playlist au panel, PAS chargée sur l’appareil',
       recent
         ? 'L’app a parlé récemment mais n’a pas pris le M3U. Souvent : app Play Store trop vieille — elle ignorait le panel. Fais mettre à jour, ou installe le lien téléphone.'
-        : 'L’appareil n’a pas encore récupéré la liste. Allume l’app, ou elle est hors ligne.');
+        : 'L’appareil n’a pas encore récupéré la liste. Allume l’app, ou elle est hors ligne.',
+      recent
+        ? 'Mise à jour Play Store, ou APK téléphone officiel.'
+        : 'Ouvre l’app sur l’appareil, attends 10 s, re-scanne.');
+  }
+
+  for (const pr of probes) {
+    const host = pr.host || 'fournisseur';
+    if (pr.ok) {
+      const n = pr.channels != null ? pr.channels : 0;
+      push('info', 'playlist_ok',
+        n > 0
+          ? `Playlist joignable · ${n} chaîne${n > 1 ? 's' : ''} (${host})`
+          : `Playlist joignable (${host})`,
+        'Le serveur du fournisseur répond. Si l’image ne vient pas, c’est l’app ou le Wi-Fi du client.',
+        '');
+    } else if (pr.code === 'denied' || pr.status === 401 || pr.status === 403) {
+      push('critique', 'playlist_denied',
+        `Le fournisseur refuse la playlist (${host})`,
+        pr.detail || `HTTP ${pr.status || '401/403'}. Identifiants ou lien périmés.`,
+        'Redemande un M3U / Xtream frais au fournisseur, re-colle-le.');
+    } else if (pr.code === 'empty') {
+      push('probleme', 'playlist_empty',
+        `Playlist vide (${host})`,
+        pr.detail || 'Le lien répond mais sans chaînes.',
+        'Vérifie le lien chez le fournisseur.');
+    } else {
+      push('critique', 'playlist_dead',
+        `Playlist injoignable (${host})`,
+        pr.detail || (pr.error === 'timeout'
+          ? 'Le serveur du fournisseur ne répond pas (timeout).'
+          : `HTTP ${pr.status || '—'} / ${pr.error || 'réseau'}.`),
+        'Teste le même lien dans VLC. S’il est mort, ce n’est pas l’app.');
+    }
   }
 
   if (ver && ver.state === 'outdated') {
@@ -6082,31 +6128,37 @@ export function diagnoseDevice(input, now = Date.now()) {
       `App pas à jour (${ver.installed || '?'} → ${ver.latest || '?'})`,
       ver.store
         ? `Mise à jour via ${ver.store}.`
-        : 'Le client n’a pas le dernier numéro. Sans ça, image / M3U peuvent rester cassés.');
+        : 'Le client n’a pas le dernier numéro. Sans ça, image / M3U peuvent rester cassés.',
+      ver.store || 'Mise à jour sur l’appareil.');
   }
 
   const lastSeen = (p && p.last_seen) || d.last_seen_at || 0;
   if (lastSeen && (now - lastSeen) > 24 * 60 * 60 * 1000) {
     push('info', 'offline', 'Hors ligne depuis plus de 24 h',
-      'Rien n’arrive tant que l’app n’est pas ouverte.');
+      'Rien n’arrive tant que l’app n’est pas ouverte.',
+      'Demande au client d’ouvrir l’app.');
   } else if (!lastSeen && !(p && p.online)) {
     push('info', 'never_seen', 'Jamais vu en ligne',
-      'Cette MAC n’a pas encore ouvert l’app, ou le code est faux.');
+      'Cette MAC n’a pas encore ouvert l’app, ou le code est faux.',
+      'Vérifie la MAC affichée dans l’app (À propos).');
   }
 
   const blob = errors.map((e) =>
     `${e.tag || ''} ${e.message || ''} ${e.detail || ''}`.toLowerCase()).join('\n');
   if (/flag_secure|secure.?flag|surfaceview|image noire|black.?frame|firstframe/.test(blob)) {
     push('probleme', 'black_video', 'Image noire (lecteur)',
-      'L’app a remonté un écran noir. Capture bloquée + overlay = pas d’image sur certaines box. Dernier build texture + FLAG_SECURE.');
+      'L’app a remonté un écran noir. Ce n’est PAS la playlist : le lecteur n’affiche pas. Enregistrements OK + image noire = rendu / capture.',
+      'Installe le dernier APK box/téléphone. Ne change rien au panel.');
   }
   if (/\b403\b|\b401\b|forbidden|unauthorized/.test(blob)) {
     push('probleme', 'iptv_denied', 'Le serveur IPTV refuse (403/401)',
-      'Identifiants ou lien M3U refusés par le fournisseur. Vérifie l’URL.');
+      'Identifiants ou lien M3U refusés par le fournisseur. Vérifie l’URL.',
+      'Re-colle un lien frais.');
   }
   if (/timeout|timed out|econnreset|failed host lookup|network/.test(blob)) {
     push('probleme', 'network', 'Réseau / timeout',
-      'L’appareil n’atteint pas le serveur des chaînes (Wi-Fi, DNS, fournisseur down).');
+      'L’appareil n’atteint pas le serveur des chaînes (Wi-Fi, DNS, fournisseur down).',
+      'Teste le Wi-Fi du client, ou un autre réseau.');
   }
 
   const seenMsg = new Set();
@@ -6131,6 +6183,132 @@ export function diagnoseDevice(input, now = Date.now()) {
   return { verdict, summary, findings };
 }
 
+/// Hôte sans identifiants — pour parler au patron sans coller le mot de passe.
+export function safeHost(url) {
+  try {
+    return new URL(url).host || '(hôte vide)';
+  } catch (_) {
+    return '(url invalide)';
+  }
+}
+
+/// Où frapper pour savoir si UNE source du panel est encore vivante.
+export function playlistTarget(source) {
+  if (!source || typeof source !== 'object') return null;
+  const type = String(source.type || '').toLowerCase();
+  if (type === 'xtream') {
+    let server = String(source.server_url || '').trim();
+    if (server && !/^[a-z][a-z0-9+.-]*:\/\//i.test(server)) server = 'http://' + server;
+    const user = String(source.username || '').trim();
+    const pass = String(source.password || '');
+    if (!server || !user) return null;
+    const base = server.replace(/\/+$/, '');
+    return {
+      kind: 'xtream',
+      url: `${base}/player_api.php?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`,
+    };
+  }
+  let m3u = String(source.m3u_url || source.url || '').trim();
+  if (!m3u) return null;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(m3u)) m3u = 'http://' + m3u;
+  return { kind: 'm3u', url: m3u };
+}
+
+/// Interprète le corps d'une sonde (sans réseau) — testable.
+export function interpretProbe(kind, status, text) {
+  const body = String(text || '');
+  if (status === 401 || status === 403) {
+    return {
+      ok: false, status, channels: 0, code: 'denied',
+      detail: `HTTP ${status} : le fournisseur refuse (identifiants / lien).`,
+    };
+  }
+  if (status >= 400) {
+    return {
+      ok: false, status, channels: 0, code: 'dead',
+      detail: `HTTP ${status} : le lien ne répond pas.`,
+    };
+  }
+  if (kind === 'xtream') {
+    try {
+      const j = JSON.parse(body);
+      const ui = (j && j.user_info) || j || {};
+      const auth = ui.auth;
+      const st = String(ui.status || '').toLowerCase();
+      if (auth === 0 || auth === '0' || /expired|disabled|banned/.test(st)) {
+        return {
+          ok: false, status, channels: 0, code: 'denied',
+          detail: `Xtream refuse (status=${ui.status || auth}). Compte expiré ou faux.`,
+        };
+      }
+      return {
+        ok: true, status, channels: 0, code: 'ok',
+        detail: 'Compte Xtream accepté.',
+      };
+    } catch (_) {
+      return {
+        ok: false, status, channels: 0, code: 'dead',
+        detail: 'Réponse Xtream illisible (pas du JSON).',
+      };
+    }
+  }
+  const channels = (body.match(/#EXTINF/gi) || []).length;
+  if (/#EXTM3U|#EXTINF/i.test(body)) {
+    if (channels === 0) {
+      return {
+        ok: false, status, channels: 0, code: 'empty',
+        detail: 'Le fichier est un M3U, mais sans chaînes.',
+      };
+    }
+    return {
+      ok: true, status, channels, code: 'ok',
+      detail: `${channels} chaîne${channels > 1 ? 's' : ''} dans le M3U.`,
+    };
+  }
+  if (!body.trim()) {
+    return {
+      ok: false, status, channels: 0, code: 'empty',
+      detail: 'Le lien répond vide.',
+    };
+  }
+  return {
+    ok: false, status, channels: 0, code: 'dead',
+    detail: 'Le lien ne renvoie pas un M3U (page HTML / autre).',
+  };
+}
+
+/// Sonde réseau d'une playlist. Timeout court, jamais bloquant pour le scan.
+export async function probePlaylistUrl(url, kind, fetchFn = fetch, timeoutMs = 7000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetchFn(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: ctrl.signal,
+      headers: { 'User-Agent': '7MOTION-scan/1', Accept: '*/*' },
+    });
+    let text = '';
+    try {
+      const buf = await res.arrayBuffer();
+      text = new TextDecoder('utf-8').decode(buf.byteLength > 80000 ? buf.slice(0, 80000) : buf);
+    } catch (_) { text = ''; }
+    return interpretProbe(kind, res.status, text);
+  } catch (e) {
+    const aborted = e && (e.name === 'AbortError' || /abort|timeout/i.test(String(e && e.message)));
+    return {
+      ok: false, status: 0, channels: 0,
+      code: aborted ? 'timeout' : 'network',
+      error: aborted ? 'timeout' : 'network',
+      detail: aborted
+        ? 'Le serveur du fournisseur ne répond pas à temps.'
+        : 'Impossible de joindre le fournisseur (réseau).',
+    };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function handleDeviceScan(env, id, user) {
   const ovRes = await handleDeviceOverview(env, id, user);
   if (ovRes.status !== 200) return ovRes;
@@ -6147,13 +6325,34 @@ async function handleDeviceScan(env, id, user) {
       .all();
     errors = (rs && rs.results) || [];
   } catch (_) { /* table absente → scan sans journaux */ }
-  const diag = diagnoseDevice({ ...ov, errors }, Date.now());
+
+  // On tape vraiment le fournisseur (max 2 sources, 7 s chacune, en parallèle)
+  // pour que le panel dise « le M3U est mort » au lieu de « ça a l'air OK ».
+  const probes = [];
+  const toProbe = (Array.isArray(ov.sources) ? ov.sources : []).slice(0, 2);
+  await Promise.all(toProbe.map(async (s) => {
+    const t = playlistTarget(s);
+    if (!t) return;
+    try {
+      const r = await probePlaylistUrl(t.url, t.kind);
+      probes.push({ ...r, host: safeHost(t.url), kind: t.kind });
+    } catch (_) {
+      probes.push({
+        ok: false, status: 0, channels: 0, code: 'network', error: 'network',
+        host: safeHost(t.url), kind: t.kind,
+        detail: 'Sonde playlist impossible.',
+      });
+    }
+  }));
+
+  const diag = diagnoseDevice({ ...ov, errors, probes }, Date.now());
   return jsonResp({
     ok: true,
     mac: ov.mac,
     verdict: diag.verdict,
     summary: diag.summary,
     findings: diag.findings,
+    probes,
     errors: errors.slice(0, 12),
   });
 }

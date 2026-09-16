@@ -578,6 +578,8 @@ export interface DeviceScanFinding {
   code: string;
   title: string;
   detail: string;
+  /// Phrase « quoi faire » (optionnelle : les journaux n'en ont pas).
+  action?: string;
 }
 export interface DeviceScanResult {
   ok: boolean;

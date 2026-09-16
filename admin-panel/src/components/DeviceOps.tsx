@@ -851,6 +851,38 @@ export function RegenerateMacModal({
   );
 }
 
+/// Rapport d'un scan : liste des constats + quoi faire. Partagé par le
+/// bouton de la fiche et la page Diagnostic.
+export function ScanReport({ scan }: { scan: DeviceScanResult }) {
+  const tone = scan.verdict === 'critique'
+    ? 'border-red-500/30 bg-red-500/10 text-red-200'
+    : scan.verdict === 'probleme'
+      ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+      : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200';
+  const badge = (s: string) => (
+    s === 'critique' ? 'BLOQUE' : s === 'probleme' ? 'À CORRIGER' : 'INFO'
+  );
+  return (
+    <div className={`rounded-md border px-2.5 py-2 text-[11px] ${tone}`}>
+      {!scan.findings.some((f) => f.title === scan.summary) && (
+        <p className="font-semibold">{scan.summary}</p>
+      )}
+      <ul className="space-y-2">
+        {scan.findings.map((f, i) => (
+          <li key={i}>
+            <span className="mr-1.5 inline-block rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide opacity-80">
+              {badge(f.severity)}
+            </span>
+            <span className="font-semibold">{f.title}</span>
+            {f.detail ? <span className="mt-0.5 block text-[10px] opacity-80">{f.detail}</span> : null}
+            {f.action ? <span className="mt-0.5 block text-[10px] font-medium text-sky-200">→ {f.action}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /// Bouton « Scanner les erreurs » : le panel lit tout et DIT ce qui cloche.
 export function ScanErrorsButton({ mac }: { mac: string }) {
   const [busy, setBusy] = useState(false);
@@ -870,12 +902,6 @@ export function ScanErrorsButton({ mac }: { mac: string }) {
     }
   }
 
-  const tone = scan?.verdict === 'critique'
-    ? 'border-red-500/30 bg-red-500/10 text-red-200'
-    : scan?.verdict === 'probleme'
-      ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
-      : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200';
-
   return (
     <div className="rounded-lg border border-sky-400/25 bg-sky-400/[0.05] px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
@@ -892,24 +918,8 @@ export function ScanErrorsButton({ mac }: { mac: string }) {
         </button>
       </div>
       {scan && (
-        <div className={`mt-2 rounded-md border px-2.5 py-2 text-[11px] ${tone}`}>
-          {/* `summary` REPREND le titre du constat le plus grave. Quand ce
-              constat figure dans la liste juste en dessous, l'afficher
-              aussi en tête écrit la même phrase deux fois — le
-              propriétaire l'a photographié le 16/09. On ne garde donc le
-              résumé que s'il n'apparaît nulle part dans la liste (cas
-              « ok », ou résumé synthétique de plusieurs constats). */}
-          {!scan.findings.some((f) => f.title === scan.summary) && (
-            <p className="font-semibold">{scan.summary}</p>
-          )}
-          <ul className="space-y-1.5">
-            {scan.findings.map((f, i) => (
-              <li key={i}>
-                <span className="font-semibold">{f.title}</span>
-                {f.detail ? <span className="block text-[10px] opacity-80">{f.detail}</span> : null}
-              </li>
-            ))}
-          </ul>
+        <div className="mt-2">
+          <ScanReport scan={scan} />
         </div>
       )}
     </div>
