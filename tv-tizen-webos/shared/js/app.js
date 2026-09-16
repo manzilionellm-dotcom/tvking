@@ -96,6 +96,13 @@ DFT.app = (function () {
   function loadSource() {
     screen('boot');
     DFT.ui.setText('boot-text', 'Chargement de tes chaînes…');
+    // Build store (Samsung/LG STORE, storeBuild=true) : aucune source poussée
+    // par le panel — l'utilisateur ajoute sa playlist lui-même (équivalent
+    // PLAY_BUILD). Sideload (storeBuild false) : poussée panel inchangée.
+    if (DFT.config && DFT.config.storeBuild) {
+      showActivation({ expired: false });
+      return;
+    }
     DFT.api.deviceSource(mac).then(function (res) {
       var list = (res && res.sources && res.sources.length)
         ? res.sources : (res && res.source ? [res.source] : []);
@@ -169,10 +176,27 @@ DFT.app = (function () {
   function chanTile(ch) {
     var d = document.createElement('div');
     d.className = 'tile focusable';
-    var logo = ch.logo
-      ? '<div class="tile-logo" style="background-image:url(\'' + ch.logo.replace(/'/g, '') + '\')"></div>'
-      : '<div class="tile-logo tile-logo-empty">' + (ch.name || '?').charAt(0) + '</div>';
-    d.innerHTML = logo + '<div class="tile-name">' + escapeHtml(ch.name) + '</div>';
+
+    var logoDiv = document.createElement('div');
+    var raw = String(ch.logo || '');
+    // Logo : jamais d'innerHTML. Uniquement http(s), et on retire quotes /
+    // backslash / parenthèses / chevrons pour empêcher une injection CSS
+    // via background-image.
+    var safe = raw.replace(/['"\\()<>]/g, '');
+    if (/^https?:\/\//i.test(safe)) {
+      logoDiv.className = 'tile-logo';
+      logoDiv.style.backgroundImage = 'url("' + safe + '")';
+    } else {
+      logoDiv.className = 'tile-logo tile-logo-empty';
+      logoDiv.textContent = (ch.name || '?').charAt(0);
+    }
+    d.appendChild(logoDiv);
+
+    var nameDiv = document.createElement('div');
+    nameDiv.className = 'tile-name';
+    nameDiv.textContent = ch.name || '';
+    d.appendChild(nameDiv);
+
     d.onclick = function () { openPlayer(ch); };
     return d;
   }

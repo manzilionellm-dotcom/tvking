@@ -10,6 +10,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/core/profiles/profiles_repository.dart';
+import 'package:tv_king/features/security/data/app_pin_settings.dart';
 import 'package:tv_king/features/security/data/parental_controls.dart';
 
 void main() {
@@ -52,6 +53,7 @@ void main() {
   test('l interrupteur de l appareil bride TOUS les profils', () async {
     await pousserProfils();
     await ProfilesRepository.instance.setActive('papa');
+    await AppPinSettings.instance.setPin('1234');
     await ParentalControls.instance.setKidsMode(true);
     expect(ParentalControls.instance.kidsMode.value, isTrue);
   });

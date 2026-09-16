@@ -51,6 +51,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/net/doh_resolver.dart';
@@ -91,6 +92,34 @@ const Duration _kUpstreamStallTimeout = Duration(seconds: 12);
 
 /// Période de la ronde qui surveille le silence d'ingestion ci-dessus.
 const Duration _kStallCheckInterval = Duration(seconds: 4);
+
+/// Hôte loopback (faux panel des tests). Autorisé seulement si l'URL
+/// est déjà dans l'allowlist — un `/s?u=http://127.0.0.1/…` non
+/// enregistré reste un SSRF.
+bool _isLoopbackHost(String host) {
+  String h = host.toLowerCase();
+  if (h.startsWith('[') && h.endsWith(']')) {
+    h = h.substring(1, h.length - 1);
+  }
+  return h == 'localhost' || h == '127.0.0.1' || h == '::1';
+}
+
+/// Hôtes interdits en amont (SSRF) : loopback, catch-all, link-local
+/// / métadonnées cloud.
+bool _isSsrfBlockedHost(String host) {
+  String h = host.toLowerCase();
+  if (h.startsWith('[') && h.endsWith(']')) {
+    h = h.substring(1, h.length - 1);
+  }
+  if (h == 'localhost' ||
+      h == '127.0.0.1' ||
+      h == '0.0.0.0' ||
+      h == '::1') {
+    return true;
+  }
+  if (h == '169.254.169.254' || h.startsWith('169.254.')) return true;
+  return false;
+}
 
 /// Échec DÉFINITIF annoncé par le relais : l'URL réelle concernée et le
 /// dernier statut HTTP vu (`null` = échec réseau / serveur muet, aucune
@@ -133,6 +162,15 @@ class LocalStreamRelay {
   /// l'URL upstream, pas l'URL locale). Une session = une chaîne tirée
   /// une seule fois et distribuée à ses consommateurs.
   final Map<String, _RelaySession> _sessions = <String, _RelaySession>{};
+
+  /// Allowlist SSRF : seules ces URLs amont peuvent être fetchées via
+  /// `/s?u=` et `/hls?u=`. Remplie par [playUrlFor] / [hlsPlaylistUrlFor] /
+  /// [startRecording] / [startTimeshift] et par le rewrite des sous-playlists
+  /// HLS. Plafond [_kMaxAllowedUpstreamUrls] (FIFO).
+  final Set<String> _allowedUpstreamUrls = <String>{};
+
+  /// Plafond anti-OOM de l'allowlist SSRF (zaps + sous-playlists HLS).
+  static const int _kMaxAllowedUpstreamUrls = 500;
 
   /// URL de la SEULE lecture intentionnelle en cours (posée par
   /// [closeOtherPlaybacks], donc par [playUrlFor] / [hlsPlaylistUrlFor]).
@@ -213,12 +251,41 @@ class LocalStreamRelay {
   int upstreamReconnects(String realUrl) =>
       _sessions[realUrl]?.reconnectCount ?? 0;
 
+  /// Enregistre [url] comme amont autorisé (anti-SSRF). FIFO au-delà
+  /// de [_kMaxAllowedUpstreamUrls].
+  void _allowUpstreamUrl(String url) {
+    if (url.isEmpty) return;
+    if (_allowedUpstreamUrls.contains(url)) return;
+    if (_allowedUpstreamUrls.length >= _kMaxAllowedUpstreamUrls) {
+      _allowedUpstreamUrls.remove(_allowedUpstreamUrls.first);
+    }
+    _allowedUpstreamUrls.add(url);
+  }
+
+  /// `true` si [url] peut être fetchée comme amont : déjà enregistrée,
+  /// schéma http(s), hôte pas métadonnées / 0.0.0.0. Le loopback n'est
+  /// accepté QUE s'il est dans l'allowlist (faux panel des tests).
+  bool _canFetchUpstream(String url) {
+    if (!_allowedUpstreamUrls.contains(url)) return false;
+    final Uri? u = Uri.tryParse(url);
+    if (u == null || u.host.isEmpty) return false;
+    final String scheme = u.scheme.toLowerCase();
+    if (scheme != 'http' && scheme != 'https') return false;
+    if (_isSsrfBlockedHost(u.host)) {
+      // Loopback enregistré = faux panel de test. 169.254 / 0.0.0.0 : jamais.
+      if (_isLoopbackHost(u.host)) return true;
+      return false;
+    }
+    return true;
+  }
+
   /// Démarre le serveur local si besoin et renvoie l'URL LOCALE que le
   /// lecteur doit ouvrir à la place de l'URL IPTV réelle. L'URL réelle
   /// est passée percent-encodée dans le paramètre `u` (Dart la décode
   /// automatiquement côté serveur via `queryParameters`).
   Future<String> playUrlFor(String realUrl) async {
     await _ensureServer();
+    _allowUpstreamUrl(realUrl);
     // ZAP / bascule de variante : une seule lecture à la fois. On ferme
     // toute session d'une AUTRE URL (sauf enregistrement en cours) —
     // sinon les relais des chaînes quittées continuaient leurs
@@ -312,6 +379,7 @@ class LocalStreamRelay {
   /// absolues) — seul le petit document texte transite ici.
   Future<String> hlsPlaylistUrlFor(String realUrl) async {
     await _ensureServer();
+    _allowUpstreamUrl(realUrl);
     // Une seule lecture à la fois : ferme (et attend) les sessions TS restantes.
     await closeOtherPlaybacks(realUrl);
     final String token = Uri.encodeComponent(realUrl);
@@ -328,8 +396,7 @@ class LocalStreamRelay {
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 8)
       ..userAgent = PlayerSettings.instance.userAgent
-      ..badCertificateCallback =
-          ((X509Certificate cert, String host, int port) => true);
+      ..badCertificateCallback = _trustIptv;
     installDohResolution(client); // domaines panel bloqués par le DNS FAI
     try {
       final HttpClientRequest up =
@@ -357,8 +424,10 @@ class LocalStreamRelay {
       final NormalizedPlaylist normalized = HlsPlaylistNormalizer.normalize(
         raw,
         finalUri,
-        rewriteSubPlaylist: (String abs) =>
-            'http://127.0.0.1:$_port/hls?u=${Uri.encodeComponent(abs)}',
+        rewriteSubPlaylist: (String abs) {
+          _allowUpstreamUrl(abs);
+          return 'http://127.0.0.1:$_port/hls?u=${Uri.encodeComponent(abs)}';
+        },
       );
       if (firstServe) {
         // PREUVE demandée : les 3 premières lignes BRUTES, octets
@@ -413,6 +482,7 @@ class LocalStreamRelay {
     required String realUrl,
     required String filePath,
   }) async {
+    _allowUpstreamUrl(realUrl);
     final _RelaySession session = _ensureSession(realUrl);
     _ensureUpstream(session);
     if (session.recordSink != null) {
@@ -518,6 +588,7 @@ class LocalStreamRelay {
   /// Ouvre le tampon de différé pour la chaîne EN COURS (session déjà
   /// branchée au lecteur). `false` si le fichier ne peut pas être créé.
   Future<bool> startTimeshift(String realUrl) async {
+    _allowUpstreamUrl(realUrl);
     final _RelaySession session = _ensureSession(realUrl);
     _ensureUpstream(session);
     if (session.shiftSink != null) return true; // déjà en différé
@@ -688,6 +759,14 @@ class LocalStreamRelay {
     // segments en direct CDN). Tout le reste → 404.
     final String? realUrl = req.uri.queryParameters['u'];
     if (req.uri.path == '/hls' && realUrl != null && realUrl.isNotEmpty) {
+      if (!_canFetchUpstream(realUrl)) {
+        if (kDebugMode) {
+          debugPrint('[Relay] SSRF 403 /hls ${_short(realUrl)}');
+        }
+        req.response.statusCode = HttpStatus.forbidden;
+        await req.response.close();
+        return;
+      }
       await _serveNormalizedPlaylist(req, realUrl);
       return;
     }
@@ -704,6 +783,17 @@ class LocalStreamRelay {
     }
     if (req.uri.path != '/s' || realUrl == null || realUrl.isEmpty) {
       req.response.statusCode = HttpStatus.notFound;
+      await req.response.close();
+      return;
+    }
+
+    // Anti-SSRF : refuser toute URL non enregistrée, tout schéma hors
+    // http(s), et les hôtes métadonnées / catch-all.
+    if (!_canFetchUpstream(realUrl)) {
+      if (kDebugMode) {
+        debugPrint('[Relay] SSRF 403 /s ${_short(realUrl)}');
+      }
+      req.response.statusCode = HttpStatus.forbidden;
       await req.response.close();
       return;
     }
@@ -907,8 +997,8 @@ class LocalStreamRelay {
         // Serveurs IPTV https à certificat auto-signé/expiré : les lecteurs
         // du marché (IBO, VLC…) les acceptent — sans ça, écran noir sur ces
         // sources alors que le flux est bon (cf. iptv_http.dart).
-        ..badCertificateCallback =
-            ((X509Certificate cert, String host, int port) => true);
+        // TOFU : pin SHA-256 par hôte ; nos propres domaines restent stricts.
+        ..badCertificateCallback = _trustIptv;
       installDohResolution(session.client!); // DNS FAI bloqué → DoH
 
       final HttpClientRequest cReq =
@@ -1458,8 +1548,12 @@ class LocalStreamRelay {
     }
   }
 
-  String _short(String url) =>
-      url.length <= 48 ? url : '${url.substring(0, 45)}…';
+  /// URL courte pour les traces debug : identifiants MASQUÉS puis
+  /// tronqués à 48 caractères. Jamais d'USER/PASS en clair.
+  String _short(String url) {
+    final String masked = StreamDiagnostics.maskCredentials(url);
+    return masked.length <= 48 ? masked : '${masked.substring(0, 45)}…';
+  }
 }
 
 /// Un lecteur branché sur une session (la réponse HTTP locale vers mpv).
@@ -1569,3 +1663,34 @@ class _RelaySession {
   bool get hasConsumers =>
       players.isNotEmpty || recordSink != null || shiftSink != null;
 }
+
+/// TOFU TLS pour les panels IPTV (certificats auto-signés / expirés).
+/// Nos propres hôtes (7themotion / pages.dev) : JAMAIS d'exception —
+/// un MITM sur notre infra ne doit pas passer. Pour le reste : le
+/// premier SHA-256(der) vu par hôte est mémorisé ; un certificat
+/// différent ensuite est refusé.
+class _RelayCertTrust {
+  _RelayCertTrust._();
+
+  static final Map<String, String> _pinByHost = <String, String>{};
+  static const int _kMaxPins = 256;
+
+  static bool allow(X509Certificate cert, String host, int port) {
+    final String h = host.toLowerCase();
+    if (h.contains('7themotion.com') || h.contains('pages.dev')) {
+      return false;
+    }
+    final String pin = sha256.convert(cert.der).toString();
+    final String? seen = _pinByHost[h];
+    if (seen == null) {
+      if (_pinByHost.length >= _kMaxPins) _pinByHost.clear();
+      _pinByHost[h] = pin;
+      return true;
+    }
+    return seen == pin;
+  }
+}
+
+/// Callback [HttpClient.badCertificateCallback] du relais.
+bool _trustIptv(X509Certificate cert, String host, int port) =>
+    _RelayCertTrust.allow(cert, host, port);

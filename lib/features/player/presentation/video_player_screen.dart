@@ -127,23 +127,24 @@ class VideoPlayerScreen extends StatefulWidget {
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     with WidgetsBindingObserver {
-  // INSTANCE mpv JETABLE (fix connexions 2026-07-08 17:07) : réutiliser
-  // la même instance laissait FUIR des connexions à chaque échec
-  // (« [lavf] Leaking 1 nested connections (FFmpeg bug) ») — sur un
-  // compte 1-connexion le panel voyait 2/1 et refusait les chaînes
-  // suivantes. On RECRÉE donc l'instance (dispose + new) avant CHAQUE
-  // nouvelle ouverture — cf. _recyclePlayer(). Non-final pour ça.
+  // INSTANCE mpv GARDÉE POUR TOUTE LA SESSION (demande 16/09 :
+  // « je ne veux jamais que ça se redémarre »). On STOPPE et on
+  // attend la socket (le panel 1-connexion voit la fermeture), puis
+  // on rouvre sur LA MÊME instance — comme la box (`stop` + `setUrl`
+  // sans détruire NativeVideoView). Recréer libmpv à chaque zap
+  // éteignait l'image. `_recyclePlayer` reste le filet « instance
+  // morte » (écran quitté), plus le chemin normal d'ouverture.
   late Player _player;
   late VideoController _videoController;
 
-  /// Epoch d'instance : change à chaque recréation du player, sert de
-  /// clé au widget `Video` pour forcer son remontage sur le NOUVEAU
-  /// VideoController.
+  /// Epoch d'instance : change seulement si on recréait le player.
+  /// Reste stable pendant la session → le widget `Video` ne se
+  /// remontre pas (parité box : `ValueKey('tv-player-surface')`).
   int _playerEpoch = 0;
 
-  /// `true` dès qu'un `open()` a été lancé sur l'instance courante — la
-  /// prochaine ouverture doit alors passer par le recyclage (une
-  /// instance jamais ouverte est neuve : rien à fermer).
+  /// `true` dès qu'un `open()` a été lancé sur l'instance courante —
+  /// la prochaine ouverture doit alors STOPPER (même instance) avant
+  /// de rouvrir. Une instance jamais ouverte n'a rien à fermer.
   bool _playerOpenedOnce = false;
 
   /// SÉRIALISATION des ouvertures : chaque _openMedia s'enchaîne à la
@@ -276,7 +277,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   static const Duration _kWatchdogInterval = Duration(seconds: 5);
   static const int _kWatchdogStaleTicksBeforeRecover = 3; // ~15 s figé
   static const int _kWatchdogGoodTicksToReset = 6; // ~30 s sains
-  static const int _kWatchdogMaxRecoveries = 4;
+  static const int _kWatchdogMaxRecoveries = 2;
 
   // ── Borne de DÉMARRAGE (angle mort du watchdog) ────────────────────
   // Le watchdog ne surveille que la lecture EN COURS (`_isPlaying`). Une
@@ -483,9 +484,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     // Charge d'abord les réglages persistés
     PlayerSettings.instance.load();
 
-    // Crée l'instance mpv + controller + options + abonnements. Elle
-    // sera RECRÉÉE avant chaque ouverture suivante (instance jetable —
-    // parade au leak de connexions FFmpeg, cf. _recyclePlayer).
+    // Crée l'instance mpv + controller + options + abonnements.
+    // UNE fois pour l'écran : les ouvertures suivantes STOPPENT
+    // puis rouvrent sur la même instance (jamais de redémarrage).
     _createPlayer();
     _initStateAfterPlayer();
     // Après le player : ban / gel / expiration en cours de lecture → coupe.
@@ -501,8 +502,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   /// Crée une instance mpv NEUVE (+ controller, options, abonnements,
-  /// vitesse persistée). Appelée par initState puis par _recyclePlayer
-  /// avant chaque nouvelle ouverture.
+  /// vitesse persistée). Appelée par initState, et par `_recyclePlayer`
+  /// uniquement si l'écran est encore là après un filet « instance morte ».
   void _createPlayer() {
     _playerEpoch++;
     _playerOpenedOnce = false;
@@ -836,17 +837,48 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _startWatchdog();
   }
 
-  /// FERMETURE ATTENDUE + INSTANCE NEUVE — le cœur du comportement
-  /// « client 1-connexion parfait » (mission 2026-07-08 17:07) :
+  /// Ferme la lecture EN COURS sans détruire le lecteur.
+  ///
+  /// Décision propriétaire 16/09 : « je ne veux jamais que ça se
+  /// redémarre ». Recréer libmpv à chaque zap/watchdog (dispose + new)
+  /// éteignait l'image. On STOPPE et on attend la socket (le panel
+  /// 1-connexion voit la fermeture), puis on rouvre sur LA MÊME
+  /// instance — comme la box. `_recyclePlayer` reste le filet
+  /// « instance morte » (écran quitté / orphelin), plus le chemin
+  /// normal d'ouverture.
+  Future<void> _releaseCurrentSession() async {
+    if (!_playerOpenedOnce) return;
+    final Stopwatch sw = Stopwatch()..start();
+    try {
+      await _player.stop().timeout(const Duration(seconds: 5));
+    } catch (_) {
+      StructuredLogger.instance.warn(
+        domain: 'player',
+        event: 'release.stop_fail',
+      );
+    }
+    _isPlaying = false;
+    _isBuffering = true;
+    _resetWeakConnection();
+    _lastWatchdogPos = Duration.zero;
+    _watchdogStaleTicks = 0;
+    _watchdogGoodTicks = 0;
+    StreamDiagnostics.instance.recordEvent(
+      'player',
+      'session fermée (attendue, même instance mpv) en '
+          '${sw.elapsedMilliseconds} ms — jamais de recyclage en cours '
+          'de lecture',
+    );
+  }
+
+  /// FERMETURE ATTENDUE + INSTANCE NEUVE — filet « instance morte »
+  /// seulement (écran quitté entre deux await). Plus le chemin d'une
+  /// ouverture normale (demande 16/09 : jamais redémarrer). Conservé
+  /// parce que le test exit_guards vérifie le garde `if (!mounted)`.
+  ///
   ///   1. STOP ATTENDU et MESURÉ : le panel doit voir l'ancienne socket
-  ///      FERMÉE avant qu'une nouvelle lecture ne se connecte (sinon il
-  ///      compte 2/1 et refuse les chaînes suivantes) ;
-  ///   2. instance mpv JETABLE (dispose + new) : l'instance réutilisée
-  ///      laissait fuir des connexions à chaque échec — « [lavf] Leaking
-  ///      1 nested connections (FFmpeg bug) » dans les logs terrain.
-  ///      Une instance neuve ne peut rien laisser fuir.
-  /// Le coût est journalisé pour prouver qu'on ne dégrade pas le
-  /// « zap → première frame » (590 ms mesurés pour 2000 visés).
+  ///      FERMÉE avant qu'une nouvelle lecture ne se connecte ;
+  ///   2. dispose + new UNIQUEMENT ici, pas à chaque zap.
   Future<void> _recyclePlayer() async {
     if (!_playerOpenedOnce) return; // instance jamais ouverte : neuve
     final Stopwatch sw = Stopwatch()..start();
@@ -1135,10 +1167,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   /// variante HLS), `null` = Auto. Mémorisée PAR SESSION DE LECTURE
   /// uniquement — jamais persistée : un live n'a pas les mêmes variantes
   /// qu'un film, et les ids mpv ne valent que pour le flux courant.
-  /// Chaque `_openMedia` recrée l'instance mpv (jetable, cf.
-  /// _recyclePlayer) → le choix est réappliqué dès que le track-list de
-  /// la NOUVELLE instance expose la piste (réouvertures silencieuses :
-  /// reprise EOF, watchdog, retour de cast). Remis à `null` au zap.
+  /// Chaque `_openMedia` STOPPE puis rouvre sur la MÊME instance mpv
+  /// (jamais de recyclage en cours de lecture) → le choix de qualité
+  /// est réappliqué dès que le track-list du nouveau flux expose la
+  /// piste (réouvertures silencieuses : reprise EOF, watchdog, retour
+  /// de cast). Remis à `null` au zap.
   String? _sessionVideoTrackId;
 
   /// Garde anti-boucle de `_maybeReapplyVideoTrack` (le track-list est
@@ -1179,9 +1212,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   /// Réapplique la qualité vidéo choisie pour la session (sélecteur
-  /// « Qualité » des réglages) après une réouverture : l'instance mpv est
-  /// jetable, elle repart en Auto à chaque `_openMedia`. Best-effort : si
-  /// la piste voulue n'existe pas (variante d'URL différente adoptée par
+  /// « Qualité » des réglages) après une réouverture : un nouveau flux
+  /// repart en Auto, on repose la piste voulue. Best-effort : si
+  /// la piste n'existe pas (variante d'URL différente adoptée par
   /// la cascade), on n'insiste pas — mpv reste en Auto.
   void _maybeReapplyVideoTrack(Tracks t) {
     if (_sessionVideoTrackApplied) return;
@@ -1248,13 +1281,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       case StreamBlockReason.providerBlocked:
         return context.l10n.playerBlockedProvider;
       case StreamBlockReason.maxConnections:
-        // DÉCISION PROPRIÉTAIRE (21/08, parité TV) : « je veux plus voir ce
-        // message ». L'accusation « un autre écran regarde déjà » était
-        // fausse dans le scénario dominant (session fantôme de la lecture
-        // qu'on vient de fermer) — le créneau occupé ne terminalise plus
-        // (patrouille 458 du fallback) ; si un chemin résiduel arrive ici,
-        // message générique. La Boîte noire garde les vrais compteurs.
-        return fallback;
+        // 3 essais 458 puis cet écran (demande 16/09 : jamais de
+        // relance infinie). Le client comprend, ferme l'autre lecture,
+        // appuie sur Réessayer. La Boîte noire garde les vrais compteurs.
+        return context.l10n.playerMaxConnectionsGeneric;
       case StreamBlockReason.banned:
         return context.l10n.playerBlockedBanned;
       case StreamBlockReason.none:
@@ -1390,12 +1420,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       );
       return;
     }
-    // FERMETURE ATTENDUE + instance mpv neuve AVANT toute connexion.
-    await _recyclePlayer();
+    // FERMETURE ATTENDUE, MÊME instance mpv (jamais de redémarrage).
+    await _releaseCurrentSession();
     if (!mounted || gen != _openGeneration) return;
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
-    // Instance mpv neuve = repart en Auto → la qualité de session (si
-    // choisie) devra être réappliquée quand le track-list arrivera.
+    // Même instance, nouveau flux → la qualité de session (si choisie)
+    // devra être réappliquée quand le track-list arrivera.
     _sessionVideoTrackApplied = false;
     // MODE BOUCLIER (HTTPS préféré, parité TV) : variante https quand le
     // serveur du fournisseur sert du TLS — les identifiants de l'URL ne
@@ -1538,8 +1568,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         'Playlist normalisée servie en local → mpv ; démuxeur HLS forcé : '
             '${forced ? 'oui' : 'non (propriété refusée)'}',
       );
-      // (la fermeture attendue a déjà eu lieu dans _recyclePlayer :
-      // l'instance est NEUVE, aucune socket précédente à chevaucher)
+      // (la fermeture attendue a déjà eu lieu dans _releaseCurrentSession :
+      // même instance, socket précédente fermée, pas de chevauchement)
       _playerOpenedOnce = true;
       _player.open(Media(normalizedUrl));
       return;
@@ -2898,7 +2928,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         videoTrackId: _sessionVideoTrackId,
         // Choix de qualité (variante HLS) : mémorisé pour la SESSION de
         // lecture seulement — réappliqué après les réouvertures
-        // silencieuses (instance mpv jetable, cf. _recyclePlayer), remis
+        // silencieuses (même instance mpv, stop + open), remis
         // à Auto au zap (les variantes appartiennent à l'ancien flux).
         onVideoTrackChanged: (String? id) {
           _sessionVideoTrackId = id;
@@ -3327,8 +3357,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                   Center(
                     child: _forcedAspect(mode) == null
                         ? Video(
-                            // Remonté à chaque recréation du player
-                            // (instance jetable → nouveau controller).
+                            // Epoch stable pendant la session → le widget
+                            // Video ne se remonte pas (jamais de redémarrage).
                             key: ValueKey<int>(_playerEpoch),
                             controller: _videoController,
                             controls: (VideoState _) => const SizedBox.shrink(),

@@ -120,4 +120,160 @@ void main() {
     // sur une erreur asynchrone non gérée.
     await Future<void>.delayed(const Duration(milliseconds: 10));
   });
+
+  // ---- Chemin de rendu : défaut TV = surface (overlay MediaCodec)
+  group('NativeVideoRender.mode — défaut TV = surface', () {
+    setUp(NativeVideoRender.debugResetCache);
+    tearDown(() {
+      NativeVideoRender.debugResetCache();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+              const MethodChannel('native_video_player/info'), null);
+    });
+
+    void mockGetRenderMode(String? value) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+              const MethodChannel('native_video_player/info'),
+              (MethodCall call) async {
+        if (call.method == 'getRenderMode') return value;
+        return null;
+      });
+    }
+
+    test('échec canal / tests → surface', () async {
+      NativeVideoRender.debugResetCache();
+      expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
+    });
+
+    test('null / inconnu côté natif → surface', () async {
+      NativeVideoRender.debugResetCache();
+      mockGetRenderMode(null);
+      expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
+
+      NativeVideoRender.debugResetCache();
+      mockGetRenderMode('unknown');
+      expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
+    });
+
+    test('surface mémorisé → surface', () async {
+      NativeVideoRender.debugResetCache();
+      mockGetRenderMode(NativeVideoRender.surface);
+      expect(await NativeVideoRender.mode(), NativeVideoRender.surface);
+    });
+
+    test('texture mémorisé explicitement (user / watchdog) → texture',
+        () async {
+      NativeVideoRender.debugResetCache();
+      mockGetRenderMode(NativeVideoRender.texture);
+      expect(await NativeVideoRender.mode(), NativeVideoRender.texture);
+    });
+
+    test('setMode(texture) est conservé par le cache', () async {
+      NativeVideoRender.debugResetCache();
+      await NativeVideoRender.setMode(NativeVideoRender.texture);
+      expect(await NativeVideoRender.mode(), NativeVideoRender.texture);
+    });
+  });
+
+  // ---- Ticks live : pas de notifyListeners sur position/buffered
+  test('position/buffered sur un DIRECT (duration==0) mettent à jour les '
+      'champs SANS notifyListeners', () async {
+    const String name = 'native_video_player/test-live-ticks';
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel(name), (MethodCall call) async => null);
+    Future<void> fromNative(String method, Object? args) async {
+      final ByteData? message =
+          const StandardMethodCodec().encodeMethodCall(MethodCall(method, args));
+      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(name, message, (ByteData? _) {});
+    }
+
+    final NativeVideoController controller = NativeVideoController();
+    controller.debugAttachChannel(name);
+    int notifies = 0;
+    controller.addListener(() => notifies++);
+
+    expect(controller.duration, Duration.zero);
+    await fromNative('position', 1500);
+    expect(controller.position, const Duration(milliseconds: 1500));
+    expect(notifies, 0,
+        reason: 'un tick position live ne doit pas reconstruire l\'écran');
+
+    await fromNative('buffered', 2000);
+    expect(controller.buffered, const Duration(milliseconds: 2000));
+    expect(notifies, 0,
+        reason: 'un tick buffered live ne doit pas reconstruire l\'écran');
+
+    await fromNative('playing', true);
+    expect(controller.isPlaying, isTrue);
+    expect(notifies, 1);
+
+    await fromNative('buffering', false);
+    expect(controller.isBuffering, isFalse);
+    expect(notifies, 2);
+
+    await fromNative('firstFrame', null);
+    expect(controller.firstFrame, isTrue);
+    expect(notifies, 3);
+
+    await fromNative('duration', 60000);
+    expect(controller.duration, const Duration(milliseconds: 60000));
+    expect(notifies, 4);
+
+    await fromNative('position', 2500);
+    expect(controller.position, const Duration(milliseconds: 2500));
+    expect(notifies, 5,
+        reason: 'VOD (duration > 0) : position DOIT notifier (barre)');
+
+    controller.dispose();
+  });
+
+  test('error / ended / tracks / cueText / netActive / videoSize notifient '
+      'toujours (même en direct)', () async {
+    const String name = 'native_video_player/test-always-notify';
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel(name), (MethodCall call) async => null);
+    Future<void> fromNative(String method, Object? args) async {
+      final ByteData? message =
+          const StandardMethodCodec().encodeMethodCall(MethodCall(method, args));
+      await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(name, message, (ByteData? _) {});
+    }
+
+    final NativeVideoController controller = NativeVideoController();
+    controller.debugAttachChannel(name);
+    int notifies = 0;
+    controller.addListener(() => notifies++);
+
+    await fromNative('error', <String, Object>{'message': 'boom'});
+    expect(controller.hasError, isTrue);
+    expect(notifies, 1);
+
+    await fromNative('ended', null);
+    expect(controller.isEnded, isTrue);
+    expect(notifies, 2);
+
+    await fromNative('tracks', <String, Object>{
+      'audio': <Object>[],
+      'text': <Object>[],
+    });
+    expect(notifies, 3);
+
+    await fromNative('cueText', 'bonjour');
+    expect(controller.subtitleText, 'bonjour');
+    expect(notifies, 4);
+
+    await fromNative('netActive', true);
+    expect(controller.netActive, isTrue);
+    expect(notifies, 5);
+
+    await fromNative('videoSize', <String, Object>{'width': 1920, 'height': 1080});
+    expect(controller.videoWidth, 1920);
+    expect(notifies, 6);
+
+    controller.dispose();
+  });
 }

@@ -270,7 +270,10 @@ class _TvLivePreviewState extends State<TvLivePreview>
 
   @override
   void dispose() {
-    StreamSlot.instance.unregister(this);
+    // PAS d'unregister ici : _reset(disposePlayer: true) pose le handOff
+    // (si un lecteur part) ou unregister (s'il n'y a rien). Unregister
+    // AVANT le handOff ouvrait une fenêtre où claim() ne voyait plus
+    // personne à attendre pendant que la socket se fermait encore.
     WidgetsBinding.instance.removeObserver(this);
     TvLivePreview.routeObserver.unsubscribe(this);
     _reset(disposePlayer: true);
@@ -294,8 +297,8 @@ class _TvLivePreviewState extends State<TvLivePreview>
       // attendu = exactement le motif corrigé par handOff sur les lecteurs
       // plein écran — le claim() suivant ne trouvait plus personne à
       // attendre pendant que la socket de l'aperçu se fermait encore. La
-      // fermeture (stop natif attendu, puis dispose) devient un détenteur
-      // de transition que le prochain claim() attend.
+      // fermeture (stop natif attendu, puis awaitNetworkIdle, puis dispose)
+      // devient un détenteur de transition que le prochain claim() attend.
       final NativeVideoController? leaving = _ctrl;
       if (leaving != null) {
         leaving.removeListener(_onPlayer);
@@ -304,6 +307,11 @@ class _TvLivePreviewState extends State<TvLivePreview>
             await leaving.stop();
           } catch (_) {
             // canal natif déjà mort : la socket est fermée de toute façon.
+          }
+          try {
+            await leaving.awaitNetworkIdle();
+          } catch (_) {
+            // fail-open : le claim suivant ouvre quand même.
           }
           leaving.dispose();
         }();

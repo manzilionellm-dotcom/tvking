@@ -23,6 +23,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/crash/secret_redactor.dart';
 import 'line_expiry.dart';
 
 /// Raison CLAIRE d'un échec de lecture, à écrire noir sur blanc à l'écran
@@ -453,7 +454,11 @@ class StreamDiagnostics extends ChangeNotifier {
   }
 
   void _add(String tag, String message, {String level = 'info'}) {
-    _events.add(StreamDiagEvent(tag: tag, message: message, level: level));
+    _events.add(StreamDiagEvent(
+      tag: tag,
+      message: SecretRedactor.redact(message),
+      level: level,
+    ));
     if (_events.length > _kMaxEvents) _events.removeAt(0);
     notifyListeners();
   }

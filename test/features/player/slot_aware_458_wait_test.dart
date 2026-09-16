@@ -2,24 +2,21 @@
 //  slot_aware_458_wait_test.dart — attente MESURÉE du créneau
 // =========================================================
 //  Terrain 20/08 22:08 (« je ferme bien le cinéma, j'ouvre une chaîne →
-//  Limite de connexions atteinte (1/1) ») : le calendrier 458 de ~90 s
-//  rouvrait À L'AVEUGLE à chaque palier et abandonnait sur un chiffre
-//  rond — parfois juste avant que le panel ne libère la session du film
-//  (son horloge démarre à la fermeture RÉELLE de la socket, jusqu'à
-//  ~15 s après la sortie de l'écran, cf. mesure H1).
+//  Limite de connexions atteinte (1/1) ») : le calendrier 458 rouvrait
+//  À L'AVEUGLE à chaque palier.
 //
-//  Et décision propriétaire du 21/08 (photo « Prime: 13eme RUE »,
-//  « je veux plus voir ce message ») : l'écran « Limite de connexions
-//  atteinte » ne doit PLUS JAMAIS s'afficher — la patrouille continue
-//  sans fin et le flux redémarre seul à la libération.
+//  Décision propriétaire du 16/09 : « je ne veux jamais que ça se
+//  redémarre ». 3 essais max (1,1 s + 2 s + 5 s), puis écran clair
+//  « limite de connexions » + Réessayer manuel. PLUS de patrouille
+//  infinie toutes les 30 s.
 //
 //  Contrat testé ici (sans réseau : sondage de créneau injecté) :
 //    1. créneau occupé → AUCUNE réouverture brûlée ; libéré → réouverture
 //       au palier suivant, pas à la fin du calendrier ;
-//    2. créneau longtemps occupé → AUCUN verdict, patrouille sans fin,
-//       réouverture dès la libération même après ~150 s ;
+//    2. créneau longtemps occupé → 1 réouverture de garantie (3e sondage
+//       occupé), puis écran d'erreur, PLUS aucune relance auto ;
 //    3. compteurs illisibles (source non-Xtream…) → comportement
-//       historique : réouverture à l'aveugle à chaque palier.
+//       historique : réouverture à l'aveugle à chaque palier (max 3).
 // =========================================================
 
 import 'package:fake_async/fake_async.dart';
@@ -89,44 +86,41 @@ void main() {
     });
   });
 
-  test('créneau longtemps occupé → AUCUN écran d\'erreur, patrouille sans '
-      'fin, réouverture dès la libération (même après ~150 s)', () {
+  test('créneau longtemps occupé → 3 essais puis écran limite de '
+      'connexions, pas de patrouille infinie', () {
     fakeAsync((FakeAsync fake) {
       final List<String> reopens = <String>[];
       final List<BlockedVerdict> verdicts = <BlockedVerdict>[];
-      bool freed = false;
       final StreamBlockedFallback fallback = build(
-        probe: () async => !freed,
+        probe: () async => true, // toujours occupé
         reopens: reopens,
         verdicts: verdicts,
       );
 
       expect(fallback.onContainerUnsupported(), isTrue);
-      // Paliers 1-2 (1,1 + 2 s) : occupé → sautés. 3e sondage occupé
-      // (t ≈ 6,1 s) : RÉOUVERTURE DE GARANTIE (terrain 21/08 — des panels
-      // figent/faussent active_cons ; sans elle, « logo qui tourne » sans
-      // fin). Aucun écran d'erreur, toujours.
-      fake.elapse(const Duration(seconds: 7));
+      // 1,1 + 2 + 5 = 8,1 s. 3e sondage occupé → RÉOUVERTURE DE GARANTIE
+      // (busySkips % 3 == 0). Pas encore d'écran : le calendrier n'est
+      // épuisé qu'au 4e essai.
+      fake.elapse(const Duration(seconds: 9));
       expect(reopens, hasLength(1),
           reason: '3 sondages occupés d\'affilée = une réouverture de '
               'garantie (le compteur du panel peut mentir)');
       expect(verdicts, isEmpty,
-          reason: 'décision du 21/08 : plus JAMAIS l\'écran « limite de '
-              'connexions » — la patrouille continue en silence');
+          reason: 'pas d\'écran tant que le calendrier n\'est pas épuisé');
 
-      // La garantie a échoué (toujours occupé) → nouveau cycle : paliers
-      // 4-5 (5 + 8 s) sautés, 6e sondage occupé (12 s) → garantie n° 2.
+      // 4e essai : calendrier (3 paliers) épuisé → verdict, plus de
+      // réouverture automatique.
       expect(fallback.onContainerUnsupported(), isTrue);
-      fake.elapse(const Duration(seconds: 26));
-      expect(reopens, hasLength(2));
-      expect(verdicts, isEmpty);
+      fake.flushMicrotasks();
+      expect(verdicts, hasLength(1));
+      expect(verdicts.single.kind, BlockedKind.maxConnections);
+      expect(reopens, hasLength(1),
+          reason: 'plus aucune réouverture automatique après 3 essais');
 
-      // Libération tardive → le palier suivant (14 s) rouvre en mesuré.
-      freed = true;
-      expect(fallback.onContainerUnsupported(), isTrue);
-      fake.elapse(const Duration(seconds: 15));
-      expect(reopens, hasLength(3));
-      expect(verdicts, isEmpty);
+      // 60 s de plus : toujours rien (la patrouille 30 s n'existe plus).
+      fake.elapse(const Duration(seconds: 60));
+      expect(reopens, hasLength(1));
+      expect(verdicts, hasLength(1));
     });
   });
 
@@ -151,6 +145,19 @@ void main() {
       fake.elapse(const Duration(seconds: 2));
       expect(reopens, hasLength(2));
       expect(verdicts, isEmpty);
+
+      // Palier 3 (5 s) : encore une réouverture, puis budget épuisé.
+      expect(fallback.onContainerUnsupported(), isTrue);
+      fake.elapse(const Duration(seconds: 5));
+      expect(reopens, hasLength(3));
+      expect(verdicts, isEmpty);
+
+      expect(fallback.onContainerUnsupported(), isTrue);
+      fake.flushMicrotasks();
+      expect(verdicts, hasLength(1));
+      expect(verdicts.single.kind, BlockedKind.maxConnections);
+      expect(reopens, hasLength(3),
+          reason: '4e essai = écran, plus de réouverture auto');
     });
   });
 

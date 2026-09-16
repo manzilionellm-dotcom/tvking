@@ -26,6 +26,7 @@ import 'package:video_player_avplay/video_player.dart';
 
 import '../../../../core/curation/title_curator.dart';
 import '../../../../core/i18n/l10n_extension.dart';
+import '../../../../core/playback/stream_slot.dart';
 import '../../../channels/data/recently_watched_repository.dart';
 import '../../../channels/domain/channel.dart';
 import '../../../playlists/data/favorites_repository.dart';
@@ -64,6 +65,12 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
   Timer? _hideTimer;
   Timer? _numTimer;
   Timer? _presenceTimer;
+  Timer? _zapSettle;
+
+  /// Invalide une `_open` dépassée par un zap / une sortie d'écran : après
+  /// chaque `await`, si le jeton a bougé on abandonne (pas d'`initialize` /
+  /// `play` sur un contrôleur déjà détruit).
+  int _openGen = 0;
 
   // =====================================================================
   //  RECONNEXION AUTOMATIQUE (parité avec la « forteresse » Android TV).
@@ -78,7 +85,7 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
   //  jamais lever d'erreur (flux gelé) → 15 s de chargement continu sur
   //  une ouverture = traité comme une erreur (relance silencieuse).
   // =====================================================================
-  static const int _maxSilentRetries = 3;
+  static const int _maxSilentRetries = 2;
   int _silentRetries = 0;
   Timer? _retryTimer;
   Timer? _stuckTimer;
@@ -110,25 +117,62 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
       if (mounted) setState(() => _favIds = ids);
     });
     FavoritesRepository.instance.initialize();
+    StreamSlot.instance.register(
+      this,
+      teardown: () async {
+        try {
+          await _controller?.pause();
+        } catch (_) {}
+        try {
+          await _controller?.dispose();
+        } catch (_) {}
+        _controller = null;
+      },
+      label: 'tizen player',
+    );
     _open();
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
         (_) => SubscriptionState.instance.syncWithBackend());
   }
 
   Future<void> _open() async {
+    final int gen = ++_openGen;
     _retryTimer?.cancel();
     _retryTimer = null;
     _stuckTimer?.cancel();
+    _zapSettle?.cancel();
     if (mounted) {
       setState(() {
         _buffering = true;
         _fatal = false;
       });
     }
+
+    // Créneau : attendre que l'ancien détenteur ait vraiment fermé sa
+    // socket AVANT d'ouvrir la nôtre (comptes 1 connexion).
+    await StreamSlot.instance.claim(this);
+    if (gen != _openGen || !mounted) return;
+
     // On détruit l'ancien lecteur AVANT d'en ouvrir un nouveau (1 décodeur).
+    // AVPlay n'a pas de stop() : pause + dispose libère le décodeur.
     final VideoPlayerController? old = _controller;
     _controller = null;
-    await old?.dispose();
+    if (old != null) {
+      old.removeListener(_onPlayer);
+      try {
+        await old.pause();
+      } catch (_) {}
+      if (gen != _openGen || !mounted) {
+        try {
+          await old.dispose();
+        } catch (_) {}
+        return;
+      }
+      try {
+        await old.dispose();
+      } catch (_) {}
+      if (gen != _openGen || !mounted) return;
+    }
 
     final VideoPlayerController c =
         VideoPlayerController.network(_current.streamUrl);
@@ -136,11 +180,13 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
     c.addListener(_onPlayer);
     try {
       await c.initialize();
-      if (!mounted) return;
+      if (gen != _openGen || !mounted) return;
       await c.play();
+      if (gen != _openGen || !mounted) return;
       setState(() => _buffering = false);
       _silentRetries = 0; // lecture partie → budget de relance rechargé
     } catch (_) {
+      if (gen != _openGen || !mounted) return;
       _onPlaybackError();
       return;
     }
@@ -201,7 +247,20 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
     if (n <= 1) return;
     _silentRetries = 0; // nouvelle chaîne = budget de relance neuf
     setState(() => _index = (_index + delta) % n);
-    _open();
+    _showOverlayTemporarily();
+    _scheduleOpen();
+  }
+
+  /// Zapping rapide : l'habillage change tout de suite, l'ouverture
+  /// réseau ne part qu'après un court répit sans nouvel appui. Ch+ Ch+
+  /// Ch+ n'ouvre AUCUNE connexion sur les chaînes traversées.
+  static const Duration _kZapSettle = Duration(milliseconds: 150);
+
+  void _scheduleOpen() {
+    _zapSettle?.cancel();
+    _zapSettle = Timer(_kZapSettle, () {
+      if (mounted) _open();
+    });
   }
 
   void _retry() {
@@ -234,7 +293,8 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
     }
     _silentRetries = 0; // nouvelle chaîne = budget de relance neuf
     setState(() => _index = (n - 1).clamp(0, widget.channels.length - 1));
-    _open();
+    _showOverlayTemporarily();
+    _scheduleOpen();
   }
 
   void _showOverlayTemporarily() {
@@ -309,14 +369,26 @@ class _TizenPlayerScreenState extends State<TizenPlayerScreen> {
 
   @override
   void dispose() {
+    _openGen++;
     _hideTimer?.cancel();
     _numTimer?.cancel();
     _presenceTimer?.cancel();
     _retryTimer?.cancel();
     _stuckTimer?.cancel();
+    _zapSettle?.cancel();
     _favSub?.cancel();
     _controller?.removeListener(_onPlayer);
-    _controller?.dispose();
+    final VideoPlayerController? leaving = _controller;
+    _controller = null;
+    final Future<void> shutdown = () async {
+      try {
+        await leaving?.pause();
+      } catch (_) {}
+      try {
+        await leaving?.dispose();
+      } catch (_) {}
+    }();
+    StreamSlot.instance.handOff(this, shutdown, label: 'fermeture tizen');
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend();
     _focus.dispose();

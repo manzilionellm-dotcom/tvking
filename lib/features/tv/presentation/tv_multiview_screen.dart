@@ -164,6 +164,11 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen>
     // pendant que les 2 tuiles décodaient encore (3 flux amont). handOff :
     // le claim() du lecteur suivant attend l'arrêt réel des deux tuiles.
     final List<NativeVideoController> leaving = _ctrl;
+    // UN seul jeton de transition (tuile A) : sa fermeture couvre LES DEUX
+    // tuiles (stop + awaitNetworkIdle + dispose). On ne désinscrit PAS B
+    // tout de suite — sinon claim() ne verrait plus que le jeton A pendant
+    // que la socket de B se ferme encore. B est retiré À LA FIN, une fois
+    // les deux sockets réellement rendues.
     final Future<void> shutdown = () async {
       for (final NativeVideoController c in leaving) {
         try {
@@ -174,16 +179,23 @@ class _TvMultiViewScreenState extends State<TvMultiViewScreen>
       }
       for (final NativeVideoController c in leaving) {
         try {
+          await c.awaitNetworkIdle();
+        } catch (_) {
+          // fail-open : le claim suivant ouvre quand même.
+        }
+      }
+      for (final NativeVideoController c in leaving) {
+        try {
           c.dispose();
         } catch (_) {
           // best-effort : le natif a peut-être déjà relâché ce lecteur ; on
           // continue impérativement avec la ou les tuiles suivantes.
         }
       }
+      StreamSlot.instance.unregister(leaving[1]);
     }();
     StreamSlot.instance.handOff(leaving[0], shutdown,
         label: 'fermeture multi-vue');
-    StreamSlot.instance.unregister(leaving[1]);
     _focus.dispose();
     super.dispose();
   }

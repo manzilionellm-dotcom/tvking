@@ -30,6 +30,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/net/iptv_cert_store.dart';
 import '../../../core/observability/structured_logger.dart';
 
 /// Résultat d'un pré-vol. Tout `null` veut dire "non déterminé".
@@ -351,8 +352,7 @@ class StreamProbe {
       ..autoUncompress = false
       // Serveurs IPTV https à certificat auto-signé/expiré : la sonde doit
       // les traiter comme joignables (le relais/lecteur les accepte aussi).
-      ..badCertificateCallback =
-          ((X509Certificate cert, String host, int port) => true);
+      ..badCertificateCallback = IptvCertTrust.allow;
 
     String currentUrl = url;
     int redirects = 0;

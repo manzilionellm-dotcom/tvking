@@ -132,11 +132,11 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                     result.success(null)
                 }
                 "getRenderMode" -> {
-                    // Défaut « texture » : la vidéo suit le pipeline de l'UI —
-                    // partout où l'app s'affiche, l'image vient. Les box où la
-                    // texture échouerait basculent (watchdog Dart) sur
-                    // « surface » et la préférence est mémorisée ici.
-                    result.success(prefs.getString("render_mode", "texture"))
+                    // Défaut « surface » : Android TV / Fire TV = overlay
+                    // SurfaceView. « texture » n'est qu'un repli mémorisé
+                    // après le watchdog (box dont le compositeur rate
+                    // les SurfaceView — l'image ne vient pas).
+                    result.success(prefs.getString("render_mode", "surface"))
                 }
                 "setRenderMode" -> {
                     val mode = call.argument<String>("mode")
