@@ -1550,9 +1550,19 @@ class LocalStreamRelay {
 
   /// URL courte pour les traces debug : identifiants MASQUÉS puis
   /// tronqués à 48 caractères. Jamais d'USER/PASS en clair.
+  ///
+  /// `maskCredentials` passe par `Uri.replace` : les puces « ••• »
+  /// ressortent percent-encodées (`%E2%80%A2`). On les décode pour que
+  /// le journal reste lisible (et que le test voie « ••• », pas l'octet).
   String _short(String url) {
     final String masked = StreamDiagnostics.maskCredentials(url);
-    return masked.length <= 48 ? masked : '${masked.substring(0, 45)}…';
+    String readable;
+    try {
+      readable = Uri.decodeFull(masked);
+    } catch (_) {
+      readable = masked;
+    }
+    return readable.length <= 48 ? readable : '${readable.substring(0, 45)}…';
   }
 }
 

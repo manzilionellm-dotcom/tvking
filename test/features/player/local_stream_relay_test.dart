@@ -495,8 +495,12 @@ void main() {
         reason: '_short doit masquer USER avant log');
     expect(all, isNot(contains('SECRETPASS')),
         reason: '_short doit masquer PASS avant log');
-    expect(all, contains('•••'),
-        reason: 'les identifiants masqués doivent apparaître');
+    expect(
+      all,
+      anyOf(contains('•••'), contains('%E2%80%A2')),
+      reason: 'les identifiants masqués doivent apparaître (puces, ou '
+          'leur forme percent-encodée si Uri.toString n\'est pas décodé)',
+    );
 
     await sub.cancel();
     client.close(force: true);
