@@ -346,6 +346,9 @@ jobs:
       - name: Apply Google Cast SDK overlay
         run: bash android_overlay/google_cast/apply_cast_patch.sh
 
+      - name: Captures autorisées (FLAG_SECURE OFF — sinon image noire)
+        run: python3 ci/clear_secure_flag.py
+
       # Patch AndroidManifest pour activer le Picture-in-Picture
       # natif sur la MainActivity (mode YouTube Premium : vidéo
       # continue en mini-fenêtre quand on quitte l'app).
