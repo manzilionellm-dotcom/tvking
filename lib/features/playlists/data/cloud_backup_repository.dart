@@ -97,10 +97,6 @@ class CloudBackupRepository {
               m.remove('id');
               m.remove('channel_count');
               m.remove('last_synced_at');
-              // Jamais le mot de passe Xtream en clair sur une route
-              // publique indexée par MAC. À la restauration, le client
-              // resaisit le code — moins grave que de le faire voler.
-              m.remove('xtream_password');
               return m;
             })
             .toList(),
