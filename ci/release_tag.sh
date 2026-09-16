@@ -50,6 +50,9 @@ case "$KIND" in
       # client historique continue de mener au magasin, seul le nouveau
       # /apk sert ce canal-ci.
       claude/7motion-android-tv-compat-e0rtyp)       echo 'phone-latest' ;;
+      # Branche de travail actuelle : le sideload téléphone doit
+      # recevoir CE build, signé officiel (demande 16/09).
+      claude/instant-m3u-activate)                    echo 'phone-latest' ;;
       *)                                             echo 'latest' ;;
     esac
     ;;
