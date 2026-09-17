@@ -38,6 +38,7 @@ import { GatewayPage } from '@/pages/GatewayPage';
 import { CreditsPage } from '@/pages/CreditsPage';
 import { LabPage } from '@/pages/LabPage';
 import { ProfilesPage } from '@/pages/ProfilesPage';
+import { DiagnosticPage } from '@/pages/DiagnosticPage';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -147,6 +148,7 @@ export default function App() {
       <Route path="/reviews" element={<ReviewsPage onLogout={handleLogout} />} />
       <Route path="/customers"   element={<CustomersPage   onLogout={handleLogout} />} />
       <Route path="/devices"     element={<DevicesPage     onLogout={handleLogout} />} />
+      <Route path="/diagnostic"  element={<DiagnosticPage  onLogout={handleLogout} />} />
       <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />
       <Route path="/servers"     element={<ServersPage     onLogout={handleLogout} />} />
       <Route path="/activations" element={<ActivationsPage onLogout={handleLogout} />} />

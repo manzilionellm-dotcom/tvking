@@ -121,6 +121,13 @@ function CommandPalette({
         hint: 'Liste MAC',
         run: () => go('/devices'),
       });
+      actions.push({
+        kind: 'action',
+        id: 'go-diagnostic',
+        label: 'Scanner les erreurs d’une MAC',
+        hint: 'Diagnostic',
+        run: () => go('/diagnostic'),
+      });
     }
     if (owner) {
       actions.push({
