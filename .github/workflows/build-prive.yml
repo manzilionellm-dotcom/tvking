@@ -20,6 +20,11 @@ on:
       - 'assets/branding/prive_icon_fg.png'
       - 'flutter_launcher_icons_prive.yaml'
       - '.github/workflows/build-prive.yml'
+      # ⚠ MANQUAIT (17/09/2026). `android_overlay/` contient la
+      # MainActivity RÉELLEMENT embarquée. Un correctif qui ne touche
+      # QUE ce dossier — comme le retrait de FLAG_SECURE, qui rendait
+      # l'image noire sur les box — ne déclenchait AUCUN build.
+      - 'android_overlay/**'
   workflow_dispatch:
 
 permissions:

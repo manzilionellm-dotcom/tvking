@@ -51,6 +51,13 @@ on:
       - 'pubspec.yaml'
       - 'assets/**'
       - 'packages/**'
+      # ⚠ MANQUAIT (17/09/2026). `android_overlay/` contient la
+      # MainActivity RÉELLEMENT embarquée. Un correctif qui ne
+      # touche QUE ce dossier — comme le retrait de FLAG_SECURE,
+      # qui rendait l'image noire sur les box — ne déclenchait
+      # AUCUN build. Il restait dans Git sans jamais atteindre un
+      # seul client, et rien ne le signalait.
+      - 'android_overlay/**'
       - 'ci/**'
   workflow_dispatch:
     inputs:
@@ -102,7 +109,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # Le garde-fou compare des ancetres : historique complet.
+          fetch-depth: 0
+
+      # =========================================================
+      #  NE JAMAIS ECRASER UNE RELEASE PLUS RECENTE (17/09/2026)
+      # =========================================================
+      #  Arrive TROIS FOIS en deux jours : un correctif publie sur
+      #  `seventv-latest` est ecrase quelques minutes plus tard par une
+      #  autre branche qui ne l'a pas. Le client recoit alors une
+      #  version OU LES BUGS SONT REVENUS, et GitHub affiche du vert des
+      #  deux cotes.
+      #
+      #  Meme regle que le versionCode : ce qui est publie ne recule
+      #  jamais. Explication complete : ci/guard_no_rollback.sh
+      #
+      #  On ne verifie QUE si on publie : une compilation qui ne publie
+      #  rien n'ecrase personne.
+      - name: Refuser une publication qui ferait reculer seventv
+        if: env.PUBLIER == 'true'
+        run: ci/guard_no_rollback.sh check app-seventv "$GITHUB_SHA"
 
       # =========================================================
       #  VERROU DE PUBLICATION — avant tout le reste
@@ -1008,3 +1034,8 @@ jobs:
           [ "$MCODE" = "200" ] || echo "::warning title=Miroir muet::le miroir /r/ ne repond pas (HTTP $MCODE) — GitHub direct fonctionne, mais les box mal servies par leur FAI n auront pas de secours"
 
           echo "OK — la chaine de mise a jour est verifiee de bout en bout."
+
+      # Le registre ne bouge QU'APRES une publication reussie.
+      - name: Graver la version publiee sur seventv
+        if: env.PUBLIER == 'true'
+        run: ci/guard_no_rollback.sh mark app-seventv "$GITHUB_SHA"

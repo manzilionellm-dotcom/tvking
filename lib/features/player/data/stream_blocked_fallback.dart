@@ -122,6 +122,23 @@ class BlockedVerdict {
 /// Toutes les liaisons vers le widget sont des callbacks : le
 /// contrôleur ne connaît pas Flutter et se teste avec le vrai réseau.
 class StreamBlockedFallback {
+  /// COMBIEN DE SIGNATURES ONT ÉTÉ RÉELLEMENT ESSAYÉES au dernier
+  /// diagnostic (17/09/2026).
+  ///
+  ///  La Boîte noire affichait `uaTried: 0` sur CHAQUE échec, parce que
+  ///  personne ne renseignait jamais ce chiffre : les trois appels à
+  ///  `_recordPlaybackFailure` laissaient la valeur par défaut. On en
+  ///  concluait — à tort — que la cascade de signatures ne s'était pas
+  ///  déclenchée, et le verdict « serveur du fournisseur instable »
+  ///  accusait le fournisseur sans preuve.
+  ///
+  ///  Un journal de diagnostic qui affiche toujours zéro est pire qu'un
+  ///  journal muet : il donne une réponse fausse à une question qu'on ne
+  ///  repose plus. Ce compteur est donc la VÉRITÉ du dernier diagnostic —
+  ///  et sur une ligne à connexion unique, 1 est la bonne réponse (la
+  ///  salve multi-signatures y est volontairement désactivée).
+  int signaturesTestees = 0;
+
   StreamBlockedFallback({
     required this.getChannel,
     required this.getOverrideUrl,
@@ -837,6 +854,10 @@ class StreamBlockedFallback {
     final List<String> uaCandidates = singleConn
         ? <String>[currentUa]
         : <String>[currentUa, ...PlayerSettings.userAgentPresets.values];
+    // La Boîte noire lira ce chiffre (cf. [signaturesTestees]). On le pose
+    // ICI, au moment où la décision est prise, et pas au moment de
+    // l'échec : à l'échec, la liste n'existe plus.
+    signaturesTestees = uaCandidates.length;
     if (singleConn) {
       _log('[1-connexion] compte à connexion unique → sonde limitée à la '
           'signature courante et cascade mono-signature (pas de salve '

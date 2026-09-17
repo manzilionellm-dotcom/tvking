@@ -54,7 +54,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # Le garde-fou compare des ancetres : historique complet.
+          fetch-depth: 0
+
+      # =========================================================
+      #  NE JAMAIS ECRASER UNE RELEASE PLUS RECENTE (17/09/2026)
+      # =========================================================
+      #  Arrive TROIS FOIS en deux jours sur le canal TV : un correctif
+      #  publie est ecrase quelques minutes plus tard par une autre
+      #  branche qui ne l'a pas, et le client recoit une version OU LES
+      #  BUGS SONT REVENUS — avec du vert affiche des deux cotes.
+      #
+      #  Meme regle que le versionCode : ce qui est publie ne recule
+      #  jamais. Explication complete : ci/guard_no_rollback.sh
+      #
+      #  `REL_TAG` n'est calcule que plus tard dans le job, donc on ne
+      #  peut pas conditionner cette etape dessus. On verifie a chaque
+      #  push sur une branche qui publie : le cout est une comparaison
+      #  d'ancetres, et le gain est qu'un ecrasement s'arrete AVANT
+      #  d'avoir compile quoi que ce soit.
+      - name: Refuser une publication qui ferait reculer le telephone
+        if: github.event_name == 'push'
+        run: ci/guard_no_rollback.sh check app-phone "$GITHUB_SHA"
 
       - name: Setup Java 17 (Temurin)
         uses: actions/setup-java@v4
@@ -1260,3 +1281,8 @@ jobs:
             Commit `${{ github.sha }}`.
           files: build/app/outputs/flutter-apk/app-debug.apk
           prerelease: true
+
+      # Le registre ne bouge QU'APRES une publication reussie.
+      - name: Graver la version publiee sur le telephone
+        if: env.REL_TAG == 'phone-latest'
+        run: ci/guard_no_rollback.sh mark app-phone "$GITHUB_SHA"

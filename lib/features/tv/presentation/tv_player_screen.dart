@@ -534,7 +534,13 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         // possède le contexte fin ; ici on capture les codes ExoPlayer réels.
         // Le verdict est volontairement ignoré : l'écran d'erreur TV compose
         // son message via _tvBlockMessage (blockReason + l10n).
-        _recordPlaybackFailure();
+        //
+        //  ⚠ 17/09/2026 : on passe enfin le NOMBRE DE SIGNATURES essayées.
+        //  Il manquait, donc la Boîte noire écrivait `uaTried: 0` à chaque
+        //  échec — y compris quand la cascade avait tout essayé. On en
+        //  déduisait que le repli ne se déclenchait pas, et le verdict
+        //  « serveur du fournisseur instable » accusait sans preuve.
+        _recordPlaybackFailure(uaTried: _fallback.signaturesTestees);
         if (!mounted) return;
         setState(() {
           _fatal = true;
@@ -997,7 +1003,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         },
       );
       _rebufferTimes.clear();
-      _recordPlaybackFailure();
+      // On passe le compteur RÉEL : ici la cascade n'a en général pas
+      // tourné (c'est un excès de rebuffer, pas un échec d'ouverture),
+      // et un 0 devient alors une INFORMATION exacte — « aucune
+      // signature essayée » — au lieu d'un zéro par défaut qui ne
+      // voulait rien dire.
+      _recordPlaybackFailure(uaTried: _fallback.signaturesTestees);
       // Ça « tourne » trop : cause = connexion trop faible / serveur lent. On
       // le trace dans la boîte noire et on écrit clairement au client que
       // c'est son réseau (pas l'app).
@@ -1518,7 +1529,8 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         } else {
           // ÉCHEC DÉFINITIF après lecture OK (reconnexions épuisées) →
           // gravé dans le journal durable de la Boîte noire (Réglages).
-          _recordPlaybackFailure();
+          // Compteur réel, même raison qu'au-dessus.
+          _recordPlaybackFailure(uaTried: _fallback.signaturesTestees);
           if (mounted) {
             setState(() {
               _fatal = true;

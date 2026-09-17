@@ -27,6 +27,11 @@ on:
       - 'lib/features/channels/**'
       - 'lib/features/playlists/**'
       - 'lib/features/epg/**'
+      # ⚠ MANQUAIT (17/09/2026). `android_overlay/` contient la
+      # MainActivity RÉELLEMENT embarquée. Un correctif qui ne touche
+      # QUE ce dossier — comme le retrait de FLAG_SECURE, qui rendait
+      # l'image noire sur les box — ne déclenchait AUCUN build.
+      - 'android_overlay/**'
       # Cœur de LECTURE partagé avec la TV (relais local, fallback 458/cascade,
       # diagnostics, réglages lecteur) : une correction ici DOIT rebuild la TV.
       - 'lib/features/player/**'
