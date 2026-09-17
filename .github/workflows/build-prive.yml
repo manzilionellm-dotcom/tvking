@@ -100,8 +100,11 @@ jobs:
       - name: Apply native overlay (gallery MP4 export + recording)
         run: bash android_overlay/google_cast/apply_cast_patch.sh
 
-      - name: FLAG_SECURE ON (captures off — vidéo en texture)
-        run: python3 ci/set_secure_flag.py
+      # FLAG_SECURE ÉTEINT (17/09/2026) — même raison que les autres
+      # builds : une fenêtre « secure » ne sort pas sur HDMI, le son
+      # continue et l'image s'éteint.
+      - name: FLAG_SECURE OFF (l'image doit sortir)
+        run: python3 ci/clear_secure_flag.py
 
       - name: Flutter pub get
         run: flutter pub get

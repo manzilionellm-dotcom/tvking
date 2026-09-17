@@ -82,13 +82,30 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
-        // Captures bloquées. La vidéo N'EST PAS un overlay SurfaceView
-        // (FLAG_SECURE + overlay = image noire Amlogic). Elle passe par
-        // une texture Flutter : tu vois l'image, Recents/screencast non.
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE,
-        )
+        // =========================================================
+        //  FLAG_SECURE RETIRÉ — 17/09/2026
+        // =========================================================
+        //  Le propriétaire, sur une box en clientèle : « même
+        //  l'application TV ne fonctionne pas, il sort seulement le
+        //  son ». Son sans image : c'est la signature de FLAG_SECURE.
+        //
+        //  Le pari écrit ici était qu'une texture Flutter y échappait.
+        //  Le terrain a tranché : sur les box (Amlogic et compagnie),
+        //  une fenêtre marquée « secure » n'est pas composée vers la
+        //  sortie HDMI. Le son continue, l'image s'éteint.
+        //
+        //  L'arbitrage n'est même pas serré. Bloquer les captures
+        //  d'écran est un confort ; une box qui ne montre plus rien
+        //  est un client perdu, et il ne peut pas la réparer lui-même.
+        //
+        //  On ÉTEINT explicitement plutôt que de ne rien écrire : le
+        //  drapeau peut être hérité d'un thème ou d'une lib, et un
+        //  simple « on ne le pose pas » ne le garantit pas.
+        //
+        //  SI ÇA DOIT REVENIR UN JOUR : ça se teste sur une VRAIE box
+        //  avant de partir en production, pas sur un émulateur — c'est
+        //  précisément l'étape qui a manqué.
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

@@ -346,8 +346,12 @@ jobs:
       - name: Apply Google Cast SDK overlay
         run: bash android_overlay/google_cast/apply_cast_patch.sh
 
-      - name: FLAG_SECURE ON (captures off — vidéo en texture)
-        run: python3 ci/set_secure_flag.py
+      # FLAG_SECURE ÉTEINT (17/09/2026). Sur une box, une fenêtre
+      # « secure » n'est pas composée vers la sortie HDMI : le son
+      # continue, l'image s'éteint. Signalé en clientèle — « il sort
+      # seulement le son ». Voir android_overlay/google_cast/MainActivity.kt.
+      - name: FLAG_SECURE OFF (l'image doit sortir)
+        run: python3 ci/clear_secure_flag.py
 
       # Patch AndroidManifest pour activer le Picture-in-Picture
       # natif sur la MainActivity (mode YouTube Premium : vidéo
