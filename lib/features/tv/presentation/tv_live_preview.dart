@@ -40,6 +40,7 @@ import '../../playlists/domain/playlist.dart' as pl;
 import '../core/tv_dimens.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_memory_guard.dart';
+import '../core/tv_preview_feature.dart';
 import '../core/tv_tokens.dart';
 
 /// URL (et signature) effectives à jouer pour un aperçu.
@@ -377,6 +378,17 @@ class _TvLivePreviewState extends State<TvLivePreview>
   static bool _accountProbeAttempted = false;
 
   Future<void> _start() async {
+    // INTERRUPTEUR APERÇU (17/09/2026). LE GARDE EST ICI, dans la seule
+    // méthode qui ouvre un lecteur, et PAS chez les quatre écrans qui
+    // posent un aperçu (Lanceur, Rails, TiviMate, liste des chaînes).
+    // Quatre gardes, c'est trois occasions d'en oublier un — et celui
+    // qu'on oublie est celui qui tue la box, un soir, chez un client.
+    //
+    // Sans lecteur, `build` retombe tout seul sur le repli LOGO (`_ctrl`
+    // reste null) : la tuile garde sa place et son cadre, elle ne décode
+    // simplement plus rien. Voir tv_preview_feature.dart pour le
+    // pourquoi — deux flux vidéo à la fois sur une box de 1 Go.
+    if (!kApercuDirectActif) return;
     // Tests widget : aucun démarrage (la branche startImmediately de
     // didUpdateWidget appelle _start directement — d'où ce second garde).
     if (TvLivePreview.debugDisableAutoStart) return;
