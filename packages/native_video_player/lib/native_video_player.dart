@@ -426,13 +426,7 @@ class NativeVideoController extends ChangeNotifier {
         // du canal `stop` ne prouve que l'exécution de la commande, pas la
         // fermeture (stop() Media3 est asynchrone en interne).
         netActive = call.arguments as bool;
-        if (!netActive) {
-          lastNetIdleAt = DateTime.now();
-          for (final Completer<bool> w in _netIdleWaiters) {
-            if (!w.isCompleted) w.complete(true);
-          }
-          _netIdleWaiters.clear();
-        }
+        if (!netActive) _marquerReseauIdle();
     }
     // Position / buffered à ~500 ms : ne PAS reconstruire l'écran sur un
     // DIRECT (duration == 0) — l'UI n'a rien à redessiner. Les champs sont
@@ -579,20 +573,37 @@ class NativeVideoController extends ChangeNotifier {
   /// Déjà idle → retour immédiat. Ne lève jamais. C'est ce qui permet à
   /// l'appelant de n'ouvrir le flux suivant qu'ensuite — sans quoi les
   /// deux connexions se croisent et un compte 1-connexion refuse la seconde.
-  Future<void> stop() async {
+  Future<void> stop({bool awaitIdle = true}) async {
     isStopped = true;
     isBuffering = false;
     firstFrame = false;
     try {
-      await _channel?.invokeMethod<void>('stop');
+      //  LA RÉPONSE DU NATIF PORTE L'INFORMATION — ON LA JETAIT.
+      //
+      //  Côté Android, le canal `stop` ne répond qu'après avoir SONDÉ son
+      //  compteur de transferts réseau (`completeWhenNetIdle`, plafond
+      //  2 s). Il renvoie maintenant `true` quand plus aucune socket n'est
+      //  ouverte. On lisait `void` : la réponse partait à la poubelle, et
+      //  on se remettait à attendre un ÉVÉNEMENT pour apprendre ce que la
+      //  réponse venait de dire.
+      final Object? idle = await _channel?.invokeMethod<Object?>('stop');
+      if (idle == true) _marquerReseauIdle();
     } catch (_) {
       // Canal deja mort (vue detruite) : la connexion est fermee de toute
       // facon. Ne JAMAIS propager -- un arret rate ne doit pas bloquer
       // l'ouverture suivante.
     }
-    // Les appelants qui n'attendent que stop() doivent aussi attendre
-    // la fermeture TCP réelle (Media3 stop() est asynchrone). Déjà idle
-    // → retour immédiat. Timeout 2 s, jamais d'exception.
+    // Les appelants qui n'attendent que stop() doivent aussi attendre la
+    // fermeture TCP réelle (Media3 stop() est asynchrone). Déjà idle →
+    // retour immédiat. Timeout 2 s, jamais d'exception.
+    //
+    //  [awaitIdle] = false : POUR L'APPELANT QUI ATTEND LUI-MÊME.
+    //  `tv_player_screen` mesure séparément « stop natif » et « sockets
+    //  fermées » pour la Boîte noire — il refaisait donc l'attente une
+    //  TROISIÈME fois (natif 2 s + ici 2 s + chez lui 3 s = 7 s bloquées
+    //  en quittant une chaîne, sur la même condition). Il passe `false`,
+    //  et `stopMs` redevient le VRAI temps d'arrêt natif.
+    if (!awaitIdle) return;
     try {
       await awaitNetworkIdle(timeout: const Duration(seconds: 2));
     } catch (_) {
@@ -631,6 +642,29 @@ class NativeVideoController extends ChangeNotifier {
   /// de la commande sur le thread lecteur, PAS la fermeture de la socket
   /// (Media3 stop() est asynchrone en interne — la fermeture survient après,
   /// sur le thread de chargement).
+  /// « Plus aucune socket » : on le note et on réveille TOUT le monde.
+  ///
+  /// Deux sources peuvent l'affirmer, et il fallait les traiter pareil :
+  ///   • l'événement natif `netActive:false` (rapide, mais il peut se
+  ///     perdre — `notifyNetActive` l'abandonne si la vue est déjà
+  ///     démontée, et le canal est alors mort) ;
+  ///   • la RÉPONSE du canal `stop`, qui vient d'un natif ayant SONDÉ son
+  ///     compteur de transferts. Celle-là ne se perd pas : c'est une
+  ///     réponse, pas une notification.
+  ///
+  /// Avant, seul l'événement comptait. Quand il se perdait, l'app attendait
+  /// un signal qui n'arriverait jamais, puis écrivait « fermeture NON
+  /// confirmée » — alors que le natif SAVAIT que tout était fermé et
+  /// venait de le dire.
+  void _marquerReseauIdle() {
+    netActive = false;
+    lastNetIdleAt = DateTime.now();
+    for (final Completer<bool> w in _netIdleWaiters) {
+      if (!w.isCompleted) w.complete(true);
+    }
+    _netIdleWaiters.clear();
+  }
+
   Future<bool> awaitNetworkIdle(
       {Duration timeout = const Duration(seconds: 3)}) {
     if (!netActive || _disposed || _channel == null) {

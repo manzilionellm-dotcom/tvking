@@ -1307,17 +1307,34 @@ class NativeVideoView(
      * avant le TCP FIN → 458 sur la ligne suivante.
      */
     private fun completeWhenNetIdle(result: MethodChannel.Result, timeoutMs: Long = 2_000L) {
+        //  ON RÉPOND MAINTENANT `true` / `false` AU LIEU DE `null`.
+        //
+        //  Cette méthode SONDE le compteur réel de transferts : elle SAIT
+        //  si le lecteur tient encore une socket. Elle répondait `null` —
+        //  l'information était mesurée puis jetée.
+        //
+        //  Dart en était réduit à attendre l'ÉVÉNEMENT `netActive:false`
+        //  pour apprendre la même chose. Or cet événement PEUT SE PERDRE :
+        //  `notifyNetActive` l'abandonne quand la vue est déjà démontée
+        //  (`if (!isDisposed)`), et le canal est alors mort de toute façon.
+        //  Quand il se perdait, l'app attendait en vain puis écrivait dans
+        //  la Boîte noire « fermeture réseau NON confirmée » — alors que
+        //  ce sondage-ci venait de constater que tout était fermé.
+        //
+        //  Une réponse ne se perd pas. Un événement, si.
         if (activeNetTransfers.get() <= 0) {
-            handler.post { result.success(null) }
+            handler.post { result.success(true) }
             return
         }
         val deadline = android.os.SystemClock.elapsedRealtime() + timeoutMs
         val poll = object : Runnable {
             override fun run() {
-                if (activeNetTransfers.get() <= 0 ||
-                    android.os.SystemClock.elapsedRealtime() >= deadline
-                ) {
-                    handler.post { result.success(null) }
+                val idle = activeNetTransfers.get() <= 0
+                if (idle || android.os.SystemClock.elapsedRealtime() >= deadline) {
+                    // `false` ICI veut dire quelque chose : le plafond est
+                    // atteint ET une socket est encore comptée ouverte.
+                    // C'est le seul cas où « non confirmée » est mérité.
+                    handler.post { result.success(idle) }
                 } else {
                     playerHandler.postDelayed(this, 50)
                 }

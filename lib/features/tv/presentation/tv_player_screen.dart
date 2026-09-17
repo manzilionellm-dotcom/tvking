@@ -748,7 +748,19 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         // la COMMANDE est passée. La fermeture RÉELLE de la socket, elle,
         // arrive APRÈS (stop() Media3 est asynchrone en interne) — elle est
         // attendue plus bas, mesurée par awaitNetworkIdle.
-        await controller.stop();
+        //  `awaitIdle: false` — ON N'ATTEND PLUS TROIS FOIS LA MÊME CHOSE.
+        //
+        //  La même condition (« plus aucune socket ») était attendue à
+        //  trois étages empilés : le natif sonde son compteur (2 s), puis
+        //  `stop()` attendait l'événement (2 s), puis on l'attendait
+        //  encore ici (3 s). Sept secondes de blocage possibles en
+        //  quittant une chaîne — sur une box, ça s'appelle « ça rame ».
+        //
+        //  Et ça faussait la mesure : `stopMs` incluait 2 s d'attente
+        //  réseau et affichait « stop natif : 2209 ms » pour un arrêt qui
+        //  en prend ~200. On cherchait une lenteur natif qui n'existait
+        //  pas. Une seule attente, ci-dessous, et deux chiffres justes.
+        await controller.stop(awaitIdle: false);
       } catch (_) {
         // Canal déjà mort : la connexion est fermée de toute façon.
       }
@@ -775,10 +787,22 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                 '(stop natif : $stopMs ms · sockets réellement fermées : '
                 '$idleMs ms · total : '
                 '${DateTime.now().difference(exitAt).inMilliseconds} ms)'
-            : 'Fermeture réseau NON confirmée : une socket du lecteur était '
-                'encore ouverte $idleMs ms après la sortie (stop natif : '
-                '$stopMs ms) — si le panel refuse la lecture suivante, le '
-                'chevauchement vient d\'ici',
+            //  CE MESSAGE AFFIRMAIT CE QU'IL N'AVAIT PAS MESURÉ.
+            //
+            //  Il disait « une socket était encore ouverte 5211 ms après la
+            //  sortie ». On n'en savait rien : on avait simplement CESSÉ
+            //  d'attendre. Et les 5211 ms n'étaient que la somme de nos
+            //  propres délais (2 s + 3 s), pas une observation.
+            //
+            //  Même défaut que `uaTried: 0` corrigé le même soir : un
+            //  journal qui répond faux à une question qu'on ne repose plus
+            //  envoie chercher au mauvais endroit. Ici il accusait le
+            //  lecteur d'un chevauchement imaginaire.
+            : 'Fermeture réseau NON confirmée : aucun signal de fermeture '
+                'reçu dans les $idleMs ms (stop natif : $stopMs ms). On a '
+                'CESSÉ D\'ATTENDRE — on n\'affirme pas qu\'une socket est '
+                'restée ouverte. Si le panel refuse la lecture suivante, '
+                'c\'est ici qu\'il faut regarder',
         level: netIdle ? 'info' : 'warn',
       );
       //  LE VERROU DES TÉLÉCHARGEMENTS SE LÈVE ICI, ET NULLE PART AILLEURS.
