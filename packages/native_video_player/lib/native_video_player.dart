@@ -44,13 +44,20 @@ class NativeDeviceInfo {
   }
 }
 
-/// Chemin de RENDU — captures OFF + image ON (16/09/2026).
-/// FLAG_SECURE sur la fenêtre empêche screenshot/Recents. Sur une
-/// SurfaceView (overlay MediaCodec) les box Amlogic affichent du noir.
-/// Donc le défaut est TEXTURE : même pipeline que les menus. Tu vois
-/// l'image ; une capture reste noire.
-///   • `texture` : DÉFAUT. Compatible FLAG_SECURE.
-///   • `surface` : overlay. Interdit avec FLAG_SECURE (image morte).
+/// Chemin de RENDU — mis à jour le 17/09/2026.
+///
+/// FLAG_SECURE a été RETIRÉ (voir android_overlay/.../MainActivity.kt) :
+/// il éteignait l'image sur les box. Les deux chemins sont donc de
+/// nouveau permis, et aucun n'est « interdit ».
+///
+///   • `texture` : DÉFAUT. La vidéo suit le pipeline de l'UI.
+///   • `surface` : overlay MediaCodec. Nécessaire sur les box où la
+///     texture reste noire (HEVC notamment).
+///
+/// AUCUN des deux ne marche partout — c'est pour ça que le WATCHDOG de
+/// [_NativeVideoViewState] existe : il détecte « le son joue, l'image ne
+/// vient pas », bascule sur l'autre chemin et MÉMORISE. Le désactiver,
+/// c'est condamner toutes les box du mauvais côté.
 class NativeVideoRender {
   const NativeVideoRender._();
   static const MethodChannel _channel =
@@ -63,7 +70,7 @@ class NativeVideoRender {
   /// (zap, aperçus). Rempli au 1er accès, mis à jour par [setMode].
   static String? _cached;
 
-  /// Défaut `texture` : FLAG_SECURE + overlay = image noire.
+  /// Défaut `texture` ; le watchdog bascule si l'image ne vient pas.
   static Future<String> mode() async {
     final String? c = _cached;
     if (c != null) return c;
@@ -732,20 +739,55 @@ class _NativeVideoViewState extends State<NativeVideoView>
 
   /// JAMAIS de bascule texture↔surface en cours de séance (demande
   /// propriétaire 16/09 : « je ne veux jamais que ça se redémarre »).
-  /// Détruire le décodeur pour changer de chemin = écran noir + relance
-  /// = exactement le redémarrage interdit. Le défaut est SurfaceView
-  /// (plugin getRenderMode). Si une box a déjà mémorisé texture, on
-  /// honore cette préférence AU DÉMARRAGE, une fois, et on n'y touche plus.
+  /// WATCHDOG « l'image ne vient pas » — RÉTABLI LE 17/09/2026.
+  ///
+  ///  Toutes les 3 s : si la lecture est EN COURS (le son joue, la position
+  ///  avance) mais qu'AUCUNE 1re trame n'a été rendue, on cumule ; à ~6 s
+  ///  on bascule sur l'AUTRE chemin de rendu et on MÉMORISE. Une seule
+  ///  bascule par vue (anti ping-pong) ; la préférence étant persistée,
+  ///  toutes les vues suivantes naissent sur le bon chemin.
+  ///
+  ///  POURQUOI IL EST REVENU. Il avait été désactivé
+  ///  (`_switchedOnce = true` d'entrée, Timer supprimé, au motif qu'« un
+  ///  GOP lent n'est PAS un crash »). Dans le même mouvement, le plugin
+  ///  s'est mis à FORCER `render_mode = texture` sur toutes les box
+  ///  (clé `render_reset_v5`), ce qui a EFFACÉ le `surface` que ce
+  ///  watchdog avait mémorisé sur les box incapables de rendre en
+  ///  texture.
+  ///
+  ///  Les deux ensemble ferment la porte à clé : la box est remise en
+  ///  texture, la texture reste noire, et plus rien ne peut la ramener
+  ///  sur surface. Résultat mesuré en clientèle : « ça sort seulement le
+  ///  son ». Le son joue (renderer audio intact), l'image jamais.
+  ///
+  ///  Le watchdog n'est pas un confort : c'est le SEUL mécanisme par
+  ///  lequel une box découvre le chemin de rendu qui marche chez elle.
+  ///  Sans lui il faut connaître le modèle de chaque box à l'avance —
+  ///  ce que personne ne peut faire.
   Timer? _watchdog;
   int _stalledTicks = 0;
-  bool _switchedOnce = true; // bascule DÉSACTIVÉE — ne plus jamais switcher
+  bool _switchedOnce = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initRenderPath();
-    // Pas de Timer watchdog de bascule. Un GOP lent n'est PAS un crash.
+    _watchdog = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || _switchedOnce) return;
+      // L'image est arrivée : rien à faire, et on repart de zéro (un
+      // rebuffer plus tard ne doit pas compter comme un échec de rendu).
+      if (controller.firstFrame) {
+        _stalledTicks = 0;
+        return;
+      }
+      // On ne compte QUE si ça joue vraiment et sans erreur : sinon on
+      // basculerait pour une coupure réseau, ce qui ne réparerait rien.
+      if (controller.isPlaying && !controller.hasError) {
+        _stalledTicks++;
+        if (_stalledTicks >= 2) _switchRenderPath();
+      }
+    });
   }
 
   Future<void> _initRenderPath() async {

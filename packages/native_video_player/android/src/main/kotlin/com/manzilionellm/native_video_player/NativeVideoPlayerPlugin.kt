@@ -132,12 +132,30 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
                     result.success(null)
                 }
                 "getRenderMode" -> {
-                    // v5 : FLAG_SECURE + SurfaceView = noir. Texture.
-                    if (!prefs.getBoolean("render_reset_v5", false)) {
-                        prefs.edit()
-                            .putString("render_mode", "texture")
-                            .putBoolean("render_reset_v5", true)
-                            .apply()
+                    // =========================================================
+                    //  ON NE FORCE PLUS RIEN — 17/09/2026
+                    // =========================================================
+                    //  Une version precedente ecrivait d'autorite
+                    //  `render_mode = texture` sur CHAQUE box (cle
+                    //  `render_reset_v5`), au motif que FLAG_SECURE rendait
+                    //  la SurfaceView noire.
+                    //
+                    //  Ce faisant, elle EFFACAIT le `surface` que le watchdog
+                    //  avait mémorisé sur les box incapables de rendre en
+                    //  texture. Et le watchdog etait desactive dans le meme
+                    //  mouvement : plus rien ne pouvait les ramener. Resultat
+                    //  en clientele : « ca sort seulement le son ».
+                    //
+                    //  FLAG_SECURE a ete retire (voir MainActivity.kt), donc
+                    //  le motif n'existe plus. On rend la preference TELLE
+                    //  QUE LA BOX l'a apprise ; le defaut reste `texture`,
+                    //  et le watchdog Dart bascule sur `surface` si l'image
+                    //  ne vient pas — c'est lui qui sait, pas nous.
+                    //
+                    //  On efface aussi le drapeau v5 : sans ca, une box
+                    //  garderait une trace d'un forcage qui n'existe plus.
+                    if (prefs.contains("render_reset_v5")) {
+                        prefs.edit().remove("render_reset_v5").apply()
                     }
                     result.success(prefs.getString("render_mode", "texture"))
                 }

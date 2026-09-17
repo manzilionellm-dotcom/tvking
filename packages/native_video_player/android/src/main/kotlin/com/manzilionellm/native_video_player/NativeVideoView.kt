@@ -513,12 +513,36 @@ class NativeVideoView(
         // false) reste LA garde anti-OOM, donc aucune régression mémoire.
         val lowRam = (activityManager?.isLowRamDevice == true) ||
             (memInfo.totalMem in 1..(800L * 1024 * 1024))
+        // =========================================================
+        //  LE PLAFOND D'OCTETS DOIT RESTER UN PLAFOND — 17/09/2026
+        // =========================================================
+        //  `setPrioritizeTimeOverSizeThresholds(true)` avait été posé sur
+        //  les TROIS profils. Ce drapeau dit à ExoPlayer de continuer à
+        //  remplir jusqu'à atteindre la DURÉE demandée MÊME SI la cible en
+        //  OCTETS est dépassée : `setTargetBufferBytes` cesse d'être une
+        //  limite et devient un souhait.
+        //
+        //  Or la leçon inscrite ici de longue date, et effacée en même
+        //  temps que le drapeau était posé, disait :
+        //
+        //    « un buffer trop gros (90 s / 64 Mo) faisait planter les box
+        //      par MANQUE DE MÉMOIRE (OOM → l'OS tue l'app → boucle de
+        //      redémarrage) »
+        //
+        //  C'est exactement ce que le propriétaire a signalé en clientèle :
+        //  « ça se redémarre ». Sur une box à 1 Go, un flux HD qui déborde
+        //  son plafond fait tuer l'app par le système, qui la relance, qui
+        //  redéborde.
+        //
+        //  On remet donc `false` partout. Les durées choisies (8–15 s)
+        //  restent celles d'aujourd'hui : le but n'est pas de tout
+        //  reprendre, seulement de rendre au plafond son pouvoir.
         val loadControl = if (preview) {
             // APERÇU : tampon MINIMAL — 1re image rapide, ~8 Mo.
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(8_000, 15_000, 500, 2_000)
                 .setTargetBufferBytes(8 * 1024 * 1024)
-                .setPrioritizeTimeOverSizeThresholds(true)
+                .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
         } else if (lowRam) {
             // Petites box : start 2 s (plus de start-stall 500 ms),
@@ -526,7 +550,7 @@ class NativeVideoView(
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(8_000, 15_000, 2_000, 3_000)
                 .setTargetBufferBytes(18 * 1024 * 1024)
-                .setPrioritizeTimeOverSizeThresholds(true)
+                .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
         } else {
             // Box normales : mêmes durées live (fenêtre HLS 6–18 s).
@@ -534,7 +558,7 @@ class NativeVideoView(
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(8_000, 15_000, 2_000, 3_000)
                 .setTargetBufferBytes(32 * 1024 * 1024)
-                .setPrioritizeTimeOverSizeThresholds(true)
+                .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
         }
 
