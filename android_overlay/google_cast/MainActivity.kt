@@ -108,6 +108,15 @@ class MainActivity : FlutterFragmentActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Le drapeau peut REVENIR après onCreate (thème, Cast, embedding
+        // Flutter). Sans ce 2e clear, l'image HDMI meurt dès qu'une lib
+        // le repose — son sans image, watchdog impuissant si firstFrame
+        // a déjà été émis sur une surface invisible.
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
