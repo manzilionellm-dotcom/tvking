@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/app/family_feature.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -205,11 +206,15 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                         color: focused ? TvTokens.goldBright : TvTokens.muted)),
               ),
             ),
-            const SizedBox(height: 14),
+            // INTERRUPTEUR FAMILLE (17/09/2026) : l'espace ET le bouton
+            // partent ensemble, sinon l'écran d'activation garde un blanc
+            // de 14 px sous le dernier bouton utile.
+            if (kFamilleActivee) const SizedBox(height: 14),
             // ABONNEMENT FAMILLE : un proche a déjà payé → il suffit de taper
             // son code à 6 chiffres (généré dans Réglages → Abonnement
             // Famille) pour rattacher CET appareil au même abonnement.
-            TvFocusBuilder(
+            if (kFamilleActivee)
+              TvFocusBuilder(
               scale: TvFocusScale.large,
               onSelect: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(

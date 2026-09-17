@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/app/family_feature.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../core/i18n/locale_resolver.dart';
@@ -898,8 +899,12 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                     setState(() => _selected = TvDest.news);
                     TvAmbience.instance.set(TvAmbienceKind.sport);
                   }),
-                  const SizedBox(width: 12),
-                  const _ProfileChip(),
+                  // INTERRUPTEUR FAMILLE (17/09/2026) : la pastille du
+                  // profil actif disparaît de la barre du haut. Elle
+                  // n'affichait plus que « Famille » et ouvrait un « Qui
+                  // regarde ? » à un seul avatar.
+                  if (kFamilleActivee) const SizedBox(width: 12),
+                  if (kFamilleActivee) const _ProfileChip(),
                   const SizedBox(width: 12),
                   // GROS bouton « Changer le template » — ENTRE « Famille » et
                   // « Direct ». Ouvre le sélecteur (Classique/IBO/TiviMate).

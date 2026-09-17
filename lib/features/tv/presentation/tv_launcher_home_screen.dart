@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/app/family_feature.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/watch_history_repository.dart';
@@ -363,10 +364,14 @@ class _TvLauncherHomeScreenState extends State<TvLauncherHomeScreen> {
       children: <Widget>[
         const TvLogo(width: 116),
         const Spacer(),
-        _TopIcon(
-            icon: Icons.people_alt_rounded,
-            tip: context.l10n.profileAccount,
-            onSelect: () => _open(const TvProfilesScreen())),
+        // INTERRUPTEUR FAMILLE (17/09/2026) : raccourci « Profils » retiré
+        // de la barre du haut. Sans famille, il ouvrirait une liste à un
+        // seul élément.
+        if (kFamilleActivee)
+          _TopIcon(
+              icon: Icons.people_alt_rounded,
+              tip: context.l10n.profileAccount,
+              onSelect: () => _open(const TvProfilesScreen())),
         _TopIcon(
             icon: Icons.swap_horiz_rounded,
             tip: context.l10n.tvTooltipSource,

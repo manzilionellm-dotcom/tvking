@@ -20,6 +20,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/app/family_feature.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -298,14 +299,17 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                           // logiciel (même action que « Redémarrer » de la
                           // boîte Quitter), conforme au rôle du bouton.
                           onSelect: () => RestartWidget.restart(context)),
-                      const SizedBox(width: 10),
-                      _TopIcon(
-                          icon: Icons.person_outline_rounded,
-                          restoreId: 'profil',
-                          restoreFocusId: _restoreFocusId,
-                          onRestored: _clearRestore,
-                          onSelect: () => _open(const TvProfilesScreen(),
-                              restoreId: 'profil')),
+                      // INTERRUPTEUR FAMILLE (17/09/2026) : même raccourci
+                      // que sur le lanceur, retiré pour la même raison.
+                      if (kFamilleActivee) const SizedBox(width: 10),
+                      if (kFamilleActivee)
+                        _TopIcon(
+                            icon: Icons.person_outline_rounded,
+                            restoreId: 'profil',
+                            restoreFocusId: _restoreFocusId,
+                            onRestored: _clearRestore,
+                            onSelect: () => _open(const TvProfilesScreen(),
+                                restoreId: 'profil')),
                       const SizedBox(width: 10),
                       _TopIcon(
                           icon: Icons.settings_outlined,

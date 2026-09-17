@@ -8,15 +8,29 @@
 // =========================================================
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/app/family_feature.dart';
 import 'package:tv_king/core/profiles/profiles_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
+    // INTERRUPTEUR FAMILLE (17/09/2026). La fonctionnalité est ÉTEINTE en
+    // production : le propriétaire a demandé « une application normale,
+    // sans trucs de famille, sans users ». Ce fichier décrit ce que la
+    // fonctionnalité fait QUAND ELLE EST ALLUMÉE — c'est la garantie
+    // qu'elle est encore entière si on la rallume un jour.
+    //
+    // Éteindre une fonctionnalité ET jeter ses tests, c'est éteindre deux
+    // fois : la deuxième sans pouvoir revenir en arrière.
+    familleActiveePourTest = true;
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await ProfilesRepository.instance.debugReset();
   });
+
+  // Un test qui laisse l'interrupteur allumé ferait passer à tort les
+  // tests d'extinction exécutés après lui, dans le même processus.
+  tearDown(reinitialiserFamillePourTest);
 
   TvProfile p(String id,
           {bool enabled = true, bool kids = false, ProfilePin? pin}) =>

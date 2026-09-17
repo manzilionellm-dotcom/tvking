@@ -14,6 +14,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../core/app/family_feature.dart';
 import 'subscription_backend.dart' show kSubscriptionBaseUrl;
 
 abstract final class FamilyBackend {
@@ -25,6 +26,7 @@ abstract final class FamilyBackend {
 
   static Future<Map<String, dynamic>?> _post(
       String path, Map<String, Object?> body) async {
+    if (!kFamilleActivee) return null;
     try {
       final http.Response r = await http
           .post(Uri.parse('$kSubscriptionBaseUrl$path'),
@@ -47,6 +49,7 @@ abstract final class FamilyBackend {
 
   /// Vue famille pour [mac] (rôle owner/member, membres, code actif).
   static Future<Map<String, dynamic>?> info(String mac) async {
+    if (!kFamilleActivee) return null;
     try {
       final http.Response r = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/family/info/$mac'),
@@ -64,6 +67,7 @@ abstract final class FamilyBackend {
   /// poster_url, is_episode). Null si le réseau se tait.
   static Future<List<Map<String, dynamic>>?> positions(
       String mac, String profile) async {
+    if (!kFamilleActivee) return null;
     try {
       final Uri url = Uri.parse(
         '$kSubscriptionBaseUrl/api/family/positions/$mac'
@@ -87,6 +91,7 @@ abstract final class FamilyBackend {
   /// Fusion serveur « le plus récent gagne ». `true` si le serveur a accepté.
   static Future<bool> pushPositions(
       String mac, String profile, List<Map<String, Object?>> items) async {
+    if (!kFamilleActivee) return false;
     try {
       final http.Response r = await http
           .put(

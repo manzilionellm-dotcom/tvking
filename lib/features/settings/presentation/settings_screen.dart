@@ -10,6 +10,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/app/family_feature.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/profiles/profiles_repository.dart';
 import '../../../core/update/update_prompt.dart';
@@ -74,33 +75,39 @@ class SettingsScreen extends StatelessWidget {
             //  Parité avec la TV (tv_profiles_screen) : chacun son univers
             //  (derniers vus, recherches, collections), favoris partagés.
             //  L'écran mobile réutilise le MÊME ProfilesRepository.
-            _SectionTitle(context.l10n.tvProfilesTitle),
-            _ActionTile(
-              icon: Icons.people_alt_rounded,
-              title: context.l10n.tvManageProfiles,
-              subtitle: context.l10n.tvSettingsProfiles,
-              onTap: () => Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => const ProfilePickerScreen(),
+            //  INTERRUPTEUR FAMILLE (17/09/2026) : les deux sections
+            //  ci-dessous — « Profils » et « Bouquet famille » — sont les
+            //  SEULES portes d'entrée côté téléphone. Fermées ici, les
+            //  écrans deviennent inatteignables sans être supprimés.
+            if (kFamilleActivee) ...<Widget>[
+              _SectionTitle(context.l10n.tvProfilesTitle),
+              _ActionTile(
+                icon: Icons.people_alt_rounded,
+                title: context.l10n.tvManageProfiles,
+                subtitle: context.l10n.tvSettingsProfiles,
+                onTap: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ProfilePickerScreen(),
+                  ),
                 ),
               ),
-            ),
 
-            // ====== BOUQUET FAMILLE ======
-            //  Rattacher ce téléphone à la ligne de la TV (code à 6
-            //  chiffres), voir qui regarde en ce moment, reprise par
-            //  personne partagée. Même FamilyBackend que la TV.
-            _SectionTitle(context.l10n.settingsFamilyTile),
-            _ActionTile(
-              icon: Icons.family_restroom_rounded,
-              title: context.l10n.settingsFamilyTile,
-              subtitle: context.l10n.settingsFamilySubtitle,
-              onTap: () => Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => const FamilyScreen(),
+              // ====== BOUQUET FAMILLE ======
+              //  Rattacher ce téléphone à la ligne de la TV (code à 6
+              //  chiffres), voir qui regarde en ce moment, reprise par
+              //  personne partagée. Même FamilyBackend que la TV.
+              _SectionTitle(context.l10n.settingsFamilyTile),
+              _ActionTile(
+                icon: Icons.family_restroom_rounded,
+                title: context.l10n.settingsFamilyTile,
+                subtitle: context.l10n.settingsFamilySubtitle,
+                onTap: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const FamilyScreen(),
+                  ),
                 ),
               ),
-            ),
+            ],
 
             // ====== CONTRÔLE PARENTAL ======
             //  Parité avec la TV (tv_parental_screen) : Mode Enfants qui

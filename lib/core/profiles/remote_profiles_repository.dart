@@ -41,6 +41,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../features/device/data/device_identity.dart';
+import '../app/family_feature.dart';
 import '../backend/backend_hosts.dart';
 import '../observability/structured_logger.dart';
 import 'profiles_repository.dart';
@@ -79,6 +80,13 @@ class RemoteProfilesRepository {
   /// Renvoie `true` si la liste locale a CHANGÉ — l'appelant peut alors
   /// rafraîchir l'écran sans le faire à chaque passage.
   Future<bool> sync(String mac) async {
+    // INTERRUPTEUR FAMILLE (17/09/2026). Le garde est ICI, au point de
+    // passage obligé, et pas chez les cinq appelants (les trois `main_*`,
+    // le réveil, le temps réel) : un appelant s'oublie, une source non.
+    //
+    // C'est cette méthode qui gravait, toutes les 2-3 minutes, sur la box
+    // du client : `profiles.remote.sync_fail {Failed host lookup … errno=7}`.
+    if (!kFamilleActivee) return false;
     if (mac.isEmpty) return false;
     // Deux synchronisations ne se chevauchent jamais : la poussée temps
     // réel et le poll périodique peuvent tomber à la même seconde.

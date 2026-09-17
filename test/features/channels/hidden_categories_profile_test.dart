@@ -9,6 +9,7 @@
 // =========================================================
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/app/family_feature.dart';
 import 'package:tv_king/core/profiles/profiles_repository.dart';
 import 'package:tv_king/features/channels/data/hidden_categories_store.dart';
 
@@ -18,12 +19,21 @@ void main() {
   late HiddenCategoriesStore store;
 
   setUp(() async {
+    // INTERRUPTEUR FAMILLE (17/09/2026) : éteint en production (le
+    // propriétaire veut « une application normale, sans trucs de
+    // famille »). Ce fichier décrit ce que la fonctionnalité fait QUAND
+    // ELLE EST ALLUMÉE — la preuve qu'elle est encore entière si on la
+    // rallume. Voir test/core/famille_eteinte_test.dart pour l'autre
+    // moitié : ce qui se passe une fois éteinte.
+    familleActiveePourTest = true;
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await ProfilesRepository.instance.debugReset();
     store = HiddenCategoriesStore.instance;
     store.debugReset();
     await store.ensureLoaded();
   });
+
+  tearDown(reinitialiserFamillePourTest);
 
   Future<void> connecter(String id, List<String> bloquees) async {
     await ProfilesRepository.instance.applyRemote(<TvProfile>[
