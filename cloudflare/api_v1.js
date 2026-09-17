@@ -5943,9 +5943,17 @@ async function handleDeviceOverview(env, id, user) {
   let localSources = [];
   let device = null;
   try {
+    // La colonne `superseded_by` est ADDITIVE (créée à la volée le jour
+    // où « changer de MAC » est arrivé). Sur une base qui ne l'a pas
+    // encore, le SELECT ci-dessous échouerait — et comme tout ce bloc
+    // est en best-effort, la fiche perdrait D'UN COUP modèle, version,
+    // note, client… pour une colonne manquante. On s'assure donc
+    // qu'elle existe (appel idempotent) avant de la lire.
+    await ensureSupersededColumn(env);
     const drow = await env.DB
       .prepare(
         `SELECT d.local_sources_json, d.label, d.admin_note, d.customer_id, d.reseller_id,
+                d.superseded_by,
                 d.block_status, d.first_seen_at, d.last_seen_at,
                 d.device_model, d.android_build, d.android_release,
                 d.app_build, d.app_version, d.build_label, d.platform, d.android_id,
@@ -5973,6 +5981,24 @@ async function handleDeviceOverview(env, id, user) {
         }
       }
       device = {
+        // =========================================================
+        //  CETTE MAC A-T-ELLE ÉTÉ REMPLACÉE ? (17/09/2026)
+        // =========================================================
+        //  Le propriétaire a perdu une journée dessus. Sa fiche
+        //  affichait « Actif · En ligne · 365 j restants » pendant que
+        //  le serveur répondait `not_entitled / mac_reassigned` à
+        //  l'appareil. Il poussait sur une adresse morte, sans aucun
+        //  moyen de le deviner.
+        //
+        //  La base le savait depuis le début (`devices.superseded_by`),
+        //  et le compteur « MACs problématiques » s'en servait déjà.
+        //  Mais la FICHE — l'écran qu'on ouvre justement pour dépanner —
+        //  ne le montrait nulle part.
+        //
+        //  On renvoie le NOUVEAU numéro, pas seulement un drapeau : sans
+        //  lui, le panel dirait « remplacée » sans dire par quoi, et il
+        //  faudrait encore chercher.
+        superseded_by: drow.superseded_by || null,
         label: drow.label || null,
         admin_note: drow.admin_note || null,
         customer_name: drow.customer_name || null,
@@ -6047,6 +6073,18 @@ export function diagnoseDevice(input, now = Date.now()) {
   const errors = Array.isArray(input && input.errors) ? input.errors : [];
   const probes = Array.isArray(input && input.probes) ? input.probes : [];
   const block = (d.block_status || 'active').toLowerCase();
+
+  //  D'ABORD : cette MAC existe-t-elle encore ? (17/09/2026)
+  //  Une MAC remplacée reçoit `not_entitled` sur TOUTES ses requêtes.
+  //  Tant qu'on n'a pas vu ça, le reste du diagnostic parle d'un
+  //  appareil fantôme — licence, playlist, version : plus rien ne le
+  //  concerne. Le propriétaire a perdu une journée à pousser sur une
+  //  adresse morte que le panel affichait « Actif · En ligne ».
+  if (d.superseded_by) {
+    push('critique', 'superseded', 'Cette MAC a été REMPLACÉE',
+      `Elle ne reçoit plus rien. Tout doit se faire sur ${d.superseded_by}. `
+      + 'Activer ou pousser une source ici ne sert à rien.');
+  }
 
   if (block === 'banned') {
     push('critique', 'banned', 'Appareil BANNI',

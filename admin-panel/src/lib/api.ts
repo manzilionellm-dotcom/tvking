@@ -505,6 +505,18 @@ export interface DeviceLocalSource {
 // Méta appareil renvoyée par l'overview (permet d'ouvrir la fiche 360°
 // depuis n'importe quelle page en ne connaissant QUE la MAC).
 export interface DeviceMeta {
+  /// LA MAC A ÉTÉ REMPLACÉE, et voici par quoi (17/09/2026).
+  ///
+  ///  Le propriétaire a perdu une journée sur une fiche qui affichait
+  ///  « Actif · En ligne » pendant que le serveur répondait
+  ///  `not_entitled / mac_reassigned` à l'appareil. Il poussait sur une
+  ///  adresse morte, sans aucun moyen de le voir.
+  ///
+  ///  `undefined` = Worker antérieur au 17/09 (il ne l'envoie pas
+  ///  encore) ; `null` = MAC bien vivante. Les deux ne doivent afficher
+  ///  AUCUN bandeau : crier « remplacée » à tort enverrait chercher un
+  ///  numéro qui n'existe pas.
+  superseded_by?: string | null;
   label: string | null;
   admin_note?: string | null;
   customer_name: string | null;

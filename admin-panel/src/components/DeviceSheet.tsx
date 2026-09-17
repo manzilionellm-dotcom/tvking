@@ -93,6 +93,11 @@ export function DeviceSheet({
   onChanged?: () => void;
 }) {
   const navigate = useNavigate();
+  // La fiche est rendue PAR le Provider, donc à l'intérieur de son
+  // contexte : elle peut se rouvrir sur une autre MAC. C'est ce qui
+  // permet au bandeau « MAC remplacée » d'emmener d'un clic sur le bon
+  // numéro, au lieu de laisser chercher à la main.
+  const sheet = useDeviceSheet();
   const user = getCurrentUser();
   const canActivate = userCan(user, 'activate');
   const canBlock = userCan(user, 'block');
@@ -331,6 +336,50 @@ export function DeviceSheet({
 
         {!loading && !err && (
           <>
+            {/* =========================================================
+                 CETTE MAC A ÉTÉ REMPLACÉE (17/09/2026)
+                =========================================================
+                 Le propriétaire a perdu une journée dessus. Cette fiche
+                 affichait « Actif · En ligne · 365 j restants » pendant
+                 que le serveur répondait `not_entitled / mac_reassigned`
+                 à l'appareil. Il activait, il repoussait, il recommençait
+                 — sur une adresse morte, sans rien qui le lui dise.
+
+                 La base le savait depuis le début. Le compteur « MACs
+                 problématiques » s'en servait déjà. Mais l'écran qu'on
+                 ouvre JUSTEMENT pour dépanner ne le montrait nulle part.
+
+                 En PREMIER, avant tout le reste : si ce bandeau est là,
+                 rien d'autre sur cette fiche n'a d'importance.
+
+                 `superseded_by` absent (Worker ancien) ou null (MAC
+                 vivante) → aucun bandeau : annoncer un remplacement à
+                 tort enverrait chercher un numéro qui n'existe pas. */}
+            {meta?.superseded_by ? (
+              <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-3">
+                <p className="text-sm font-bold text-red-200">
+                  Cette MAC a été remplacée — elle ne reçoit plus rien
+                </p>
+                <p className="mt-1 text-xs text-red-200/80">
+                  Activer ou pousser une source ici ne servira à rien : le
+                  serveur répond « non autorisée » à l'appareil. Tout doit
+                  se faire sur le nouveau numéro.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded bg-black/30 px-2 py-1 font-mono text-xs text-red-100">
+                    {meta.superseded_by}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => sheet.open(meta.superseded_by as string)}
+                    className="rounded-md border border-red-400/40 px-2 py-1 text-[11px] font-semibold text-red-200 hover:bg-red-500/20"
+                  >
+                    Ouvrir la bonne fiche →
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <VersionCard ver={ov?.version ?? null} appVersion={meta?.app_version ?? null} />
 
             {/* « L'app ne marche pas ? » — il vivait dans l'ancien tiroir

@@ -124,5 +124,42 @@ const now = Date.UTC(2026, 8, 16, 12, 0, 0);
   ok(r.findings.some((f) => f.action), '10 constat grave a une action');
 }
 
+{
+  //  UNE MAC REMPLACÉE PASSE AVANT TOUT LE RESTE (17/09/2026).
+  //  Le propriétaire a perdu une journée à activer sur une adresse morte
+  //  que le panel affichait « Actif · En ligne ». Tant que ce constat
+  //  n'est pas dit EN PREMIER, le reste du diagnostic décrit un appareil
+  //  fantôme : sa licence, sa playlist et sa version ne le concernent
+  //  plus — il ne reçoit simplement plus rien.
+  const r = diagnoseDevice({
+    license: { status: 'active', expires_at: now + 86400000 },
+    sources: [{ type: 'm3u', m3u_url: 'http://x.example/l.m3u' }],
+    localSources: [],
+    presence: { online: true, last_seen: now - 1000 },
+    device: { block_status: 'active', superseded_by: 'MK:95:E4:07:81:25' },
+    errors: [],
+  }, now);
+  ok(r.verdict === 'critique', '11 MAC remplacée → critique');
+  ok(r.findings[0] && r.findings[0].code === 'superseded',
+    '11 le remplacement est le PREMIER constat');
+  ok(r.findings[0].detail.includes('MK:95:E4:07:81:25'),
+    '11 le nouveau numéro est donné, pas seulement le drapeau');
+}
+
+{
+  //  Et une MAC BIEN VIVANTE ne doit surtout pas déclencher ce constat :
+  //  envoyer chercher un numéro qui n'existe pas coûterait une seconde
+  //  journée.
+  const r = diagnoseDevice({
+    license: { status: 'active', expires_at: now + 86400000 },
+    sources: [], localSources: [],
+    presence: { online: true, last_seen: now - 1000 },
+    device: { block_status: 'active', superseded_by: null },
+    errors: [],
+  }, now);
+  ok(!r.findings.some((f) => f.code === 'superseded'),
+    '11 MAC vivante → aucun faux « remplacée »');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);
