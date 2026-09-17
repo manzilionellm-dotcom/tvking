@@ -6275,6 +6275,39 @@ async function handlePublicDeviceSource(env, mac) {
         // quand sources_json = [] (sinon l'app revoit l'abo qu'on vient
         // d'effacer). Ligne sans JSON → source simple historique.
         let sources = sourcesFromRow(row);
+        // =========================================================
+        //  QUAND LE PANEL A-T-IL ASSIGNÉ CETTE LIGNE ? (17/09/2026)
+        // =========================================================
+        //  Le propriétaire, deux jours durant : « si j'écris bonjour,
+        //  l'application reçoit bonjour ; mais si j'active à distance,
+        //  elle ne s'active pas. Et si le client le saisit à la main,
+        //  ça marche. »
+        //
+        //  Le transport allait donc bien. Ce qui bloquait était DANS
+        //  l'app : depuis le 21/08, une source supprimée par le client
+        //  laisse une empreinte locale, et la provision automatique la
+        //  SAUTE — en silence, pour toujours. Les messages, eux,
+        //  passent par une autre porte sans ce filtre : d'où le
+        //  symptôme, qui désignait le réseau alors que la cause était
+        //  une mémoire locale.
+        //
+        //  L'empreinte n'était levée QUE par un événement WebSocket.
+        //  Socket coupé, app en arrière-plan, réveil par sondage : elle
+        //  restait posée et le revendeur poussait dans le vide.
+        //
+        //  `updated_at` existe déjà et est réécrit à CHAQUE poussée du
+        //  panel. En le faisant simplement voyager, l'app peut trancher
+        //  toute seule, et les deux besoins cessent de se contredire :
+        //    • supprimée APRÈS la dernière assignation → reste supprimée
+        //      (la demande du 21/08 est respectée) ;
+        //    • assignée APRÈS la suppression → le revendeur a reparlé,
+        //      la source revient (la demande d'aujourd'hui).
+        //
+        //  Porté par CHAQUE source : la ligne n'a qu'un `updated_at`,
+        //  mais l'app traite les sources une par une et n'a pas le
+        //  corps de la réponse sous la main au moment de décider.
+        const assignedAt = Number(row.updated_at) || 0;
+        sources = sources.map((s) => ({ ...s, assigned_at: assignedAt }));
         // LABO : les sources de test du maître s'AJOUTENT à la fin (jamais
         // à la place) — pour un non-maître, labSources est toujours [].
         if (labSources.length) sources = sources.concat(labSources);
@@ -6282,6 +6315,7 @@ async function handlePublicDeviceSource(env, mac) {
           mac: MAC,
           source: sources[0] || null,
           sources,
+          assigned_at: assignedAt,
           // ORDRES EN ATTENTE sur les listes LOCALES du client (celles
           // qu'il a ajoutées lui-même : elles ne sont pas en base, donc
           // seul l'appareil peut les toucher). File durable → un appareil
@@ -6318,6 +6352,7 @@ async function handlePublicDeviceSource(env, mac) {
           m3u_url: null,
           epg_url: p.epg_url || null,
           updated_at: updatedAt,
+          assigned_at: updatedAt,
         };
       } else if (p.type === 'm3u' && p.url) {
         source = {
@@ -6329,6 +6364,7 @@ async function handlePublicDeviceSource(env, mac) {
           m3u_url: p.url,
           epg_url: p.epg_url || null,
           updated_at: updatedAt,
+          assigned_at: updatedAt,
         };
       }
       if (source) {
