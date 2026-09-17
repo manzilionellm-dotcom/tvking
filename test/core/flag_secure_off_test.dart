@@ -44,10 +44,18 @@ void main() {
   test('la MainActivity embarquée ÉTEINT FLAG_SECURE', () {
     final String code = overlay.readAsStringSync();
     expect(
-      code.contains('clearFlags(WindowManager.LayoutParams.FLAG_SECURE)'),
+      'clearFlags(WindowManager.LayoutParams.FLAG_SECURE)'
+          .allMatches(code)
+          .length,
+      greaterThanOrEqualTo(2),
+      reason: 'onCreate NE SUFFIT PAS : Cast/embedding peuvent reposer le '
+          'drapeau. onResume doit le re-éteindre, sinon son sans image '
+          'après une pause.',
+    );
+    expect(
+      code.contains('override fun onResume()'),
       isTrue,
-      reason: 'on éteint EXPLICITEMENT : le drapeau peut être hérité d\'un '
-          'thème ou d\'une lib, « ne pas le poser » ne suffit pas',
+      reason: 'sans onResume, FLAG_SECURE revient et l\'image HDMI meurt',
     );
     expect(
       code.contains('setFlags('),

@@ -335,6 +335,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   final FreezeRecoveryPolicy _freeze =
       FreezeRecoveryPolicy(now: DateTime.now());
   bool _fatal = false;
+  /// Verdict humain de l'échec définitif (HTTP 502, DNS, etc.). Affiché
+  /// sur l'écran d'erreur à la place du générique « Chaîne indisponible »
+  /// — le diagnostic le savait déjà, l'overlay l'ignorait.
+  String? _fatalWhy;
 
   /// MODE BOUCLIER : `true` quand la lecture est refusée parce que le
   /// coupe-circuit VPN est armé et qu'aucun VPN n'est actif. L'écran d'erreur
@@ -804,7 +808,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _lastPos = _controller.position;
       _freeze.onProgress(DateTime.now());
       if (_fatal && mounted)
-        setState(() => _fatal = false);
+        setState(() {
+          _fatal = false;
+          _fatalWhy = null;
+        });
       // FILM : quand la barre est visible, on la fait AVANCER (tick 500 ms du
       // natif). Uniquement en VOD + overlay → aucun rebuild inutile en direct.
       else if (_isVod && _overlay && mounted) {
@@ -1109,6 +1116,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _armStartupWatchdog(); // coupure rapide si aucune image en ~20 s
     _fatalNetworkHint = false;
     _weakConnectionFatal = false;
+    _fatalWhy = null;
     _errorLoggedThisOpen = false; // nouvelle ouverture → on re-journalise
     _adoptedAltUrl =
         null; // la variante adoptée était propre à l'ancienne chaîne
@@ -1139,6 +1147,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       setState(() {
         _buffering = true;
         _fatal = false;
+        _fatalWhy = null;
       });
     // Charge la chaîne courante VIA LE RELAIS (parité téléphone) : le
     // relais ouvre l'unique connexion, gère la reconnexion, et surtout
@@ -1401,6 +1410,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       setState(() {
         _buffering = true;
         _fatal = false;
+        _fatalWhy = null;
       });
     }
     _showOverlayTemporarily();
@@ -1655,6 +1665,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         everShownFrame: _everShownFrame,
         dnsFailed: networkBlocked,
       );
+      _fatalWhy = why.why;
       unawaited(PlaybackFailureLog.instance.record(PlaybackFailureEntry(
         timestamp: DateTime.now(),
         channelName: c.cleanName,
@@ -1704,6 +1715,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _armStartupWatchdog(); // si la reprise ne démarre pas non plus → coupure rapide
     setState(() {
       _fatal = false;
+      _fatalWhy = null;
       _buffering = true;
     });
     // CHEMIN OFFICIEL (audit 19/08) : l'ancien `setUrl(_relayPlayUrl ??
@@ -2937,9 +2949,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                             Text(
                                 _weakConnectionFatal
                                     ? context.l10n.playerWeakConnection
-                                    : _tvBlockMessage(_everShownFrame
-                                        ? context.l10n.tvChannelUnavailable
-                                        : context.l10n.tvChannelBlockedBySource),
+                                    : (_fatalWhy ??
+                                        _tvBlockMessage(_everShownFrame
+                                            ? context.l10n.tvChannelUnavailable
+                                            : context.l10n
+                                                .tvChannelBlockedBySource)),
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                     fontSize: TvDimens.body,
