@@ -167,6 +167,15 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // ACTIVATION INSTANTANÉE : quand une source poussée par le panel a fini
     // de charger, la chaîne part toute seule (cf. instant_activation.dart).
     InstantActivation.tick.addListener(_onLectureInstantanee);
+    // UN ValueNotifier NE RAPPELLE PAS UN ÉCOUTEUR ARRIVÉ APRÈS COUP.
+    // Si la source a été chargée AVANT que cet écran soit monté — box qui
+    // démarre déjà activée, import lancé depuis un autre écran — le tick
+    // est déjà passé et la demande dormirait pour toujours. On regarde
+    // donc une fois, après la première frame (avant, il n'y a pas encore
+    // de route à interroger ni de Navigator où pousser le lecteur).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (InstantActivation.enAttente) _lancerSiDemande();
+    });
     // Démarre le sondage auto SEULEMENT si on est sur l'écran vide. Si des
     // chaînes sont déjà là (client qui revient), inutile de sonder.
     if (PlaylistRepository.instance.currentChannels.isEmpty) {

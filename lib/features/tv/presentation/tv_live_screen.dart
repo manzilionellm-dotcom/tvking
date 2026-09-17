@@ -244,6 +244,15 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // ACTIVATION INSTANTANÉE : le panel pousse le M3U, l'import réussit,
     // la chaîne part toute seule (cf. instant_activation.dart).
     InstantActivation.tick.addListener(_onLectureInstantanee);
+    // UN ValueNotifier NE RAPPELLE PAS UN ÉCOUTEUR ARRIVÉ APRÈS COUP.
+    // Si la source a été chargée AVANT que cet écran soit monté — box qui
+    // démarre déjà activée, import lancé depuis un autre écran — le tick
+    // est déjà passé et la demande dormirait pour toujours. On regarde
+    // donc une fois, après la première frame (avant, il n'y a pas encore
+    // de route à interroger ni de Navigator où pousser le lecteur).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (InstantActivation.enAttente) _onLectureInstantanee();
+    });
     // Chargement initial : rangées + catalogue + 1re page.
     _refreshAll();
   }
