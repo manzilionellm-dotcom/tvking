@@ -252,7 +252,10 @@ class NativeVideoView(
     // flux (.ts ⇄ .m3u8) — rester à marteler une URL morte retarde la bascule.
     private var retryCount = 0
     private var pendingRetry: Runnable? = null
-    private val maxSilentRetries = 2
+    //  RESTAURÉ à 3 le 17/09 : à 2, une micro-coupure suffisait à faire
+    //  abandonner le lecteur, donc à couper l'image là où il aurait suffi
+    //  d'attendre un instant de plus.
+    private val maxSilentRetries = 3
 
     // ==================================================================
     //  FAILOVER MULTI-SOURCES (natif). Dart peut fournir, avec setUrl, une
@@ -545,18 +548,24 @@ class NativeVideoView(
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
         } else if (lowRam) {
-            // Petites box : start 2 s (plus de start-stall 500 ms),
-            // after-rebuffer 3 s, fenêtre live 8–15 s.
+            // Petites box (≤800 Mo) : profil serré mais avec de la réserve.
+            //  ⚠ DURÉES RESTAURÉES le 17/09 (valeurs d'avant la série). Le
+            //  couple 8–15 s / démarrage à 2 s laissait trop peu de réserve :
+            //  on repart à 2 s de tampon, on épuise, on re-attend — la
+            //  saccade toutes les deux secondes signalée en clientèle.
             DefaultLoadControl.Builder()
-                .setBufferDurationsMs(8_000, 15_000, 2_000, 3_000)
+                .setBufferDurationsMs(15_000, 30_000, 500, 4_000)
                 .setTargetBufferBytes(18 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
         } else {
-            // Box normales : mêmes durées live (fenêtre HLS 6–18 s).
-            // 20/50 s + start 500 ms = rebuffer en boucle + latence.
+            // Box normales (>800 Mo) : tampon GÉNÉREUX (~20 s cible, jusqu'à
+            // 50 s) pour tenir un lien instable sans rebuffer — et après une
+            // coupure on attend 5 s de réserve avant de repartir (on ne se
+            // re-bloque pas aussitôt, comme Netflix).
+            //  ⚠ DURÉES RESTAURÉES le 17/09 : voir le profil au-dessus.
             DefaultLoadControl.Builder()
-                .setBufferDurationsMs(8_000, 15_000, 2_000, 3_000)
+                .setBufferDurationsMs(20_000, 50_000, 500, 5_000)
                 .setTargetBufferBytes(32 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
@@ -594,7 +603,7 @@ class NativeVideoView(
         // couche Dart bascule alors sur la variante .m3u8/.ts du même flux
         // (failover silencieux) au lieu d'attendre ~15 s de retries inutiles.
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
-            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(3))
+            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
 
         // ADAPTATION AUTOMATIQUE DE LA QUALITÉ. Ne s'applique QUE si le flux
         // propose PLUSIEURS qualités (HLS/DASH multi-débit, VOD) — un flux à
@@ -1245,11 +1254,28 @@ class NativeVideoView(
         MediaItem.Builder()
             .setUri(url)
             .setLiveConfiguration(
+                //  ⚠ `setMaxOffsetMs` RETIRÉ — 17/09/2026.
+                //
+                //  Symptôme en clientèle : « ça retourne l'image après deux
+                //  secondes, deux secondes ». L'image coupe et revient, en
+                //  boucle.
+                //
+                //  C'est ce que fait un plafond de décalage sur une ligne
+                //  IPTV instable : dès que le retard dépasse la borne, le
+                //  lecteur SAUTE au bord du direct. Un saut réinitialise le
+                //  décodeur → l'image disparaît puis revient. Sur un lien qui
+                //  respire, ça se répète sans fin.
+                //
+                //  `setMinPlaybackSpeed(0.97f)` allait dans le même sens :
+                //  ralentir le flux pour rattraper un décalage fait vibrer
+                //  l'horloge de rendu au lieu de laisser le tampon absorber.
+                //
+                //  On revient aux bornes qui ont tourné des mois : cible 8 s,
+                //  plancher 4 s, AUCUN plafond — le tampon absorbe, personne
+                //  ne saute.
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(6_000)
-                    .setMinOffsetMs(3_000)
-                    .setMaxOffsetMs(12_000)
-                    .setMinPlaybackSpeed(0.97f)
+                    .setTargetOffsetMs(8_000)
+                    .setMinOffsetMs(4_000)
                     .setMaxPlaybackSpeed(1.03f)
                     .build(),
             )
@@ -1267,7 +1293,7 @@ class NativeVideoView(
             .setUserAgent(userAgent)
         val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
         return DefaultMediaSourceFactory(dataSourceFactory)
-            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(3))
+            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
     }
 
     // Positionné par la pression mémoire (cf. companion onMemoryPressure) :

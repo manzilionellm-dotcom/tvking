@@ -102,6 +102,40 @@ void main() {
     );
   });
 
+  test('AUCUN plafond de décalage direct — sinon l\'image saute', () {
+    final String c = code(vue);
+    expect(
+      c.contains('setMaxOffsetMs'),
+      isFalse,
+      reason: 'dès que le retard dépasse la borne, le lecteur SAUTE au bord '
+          'du direct ; un saut réinitialise le décodeur, l\'image coupe et '
+          'revient. Sur une ligne qui respire, ça se répète sans fin — '
+          '« ça retourne l\'image après deux secondes, deux secondes ».',
+    );
+    expect(
+      c.contains('setMinPlaybackSpeed'),
+      isFalse,
+      reason: 'ralentir le flux pour rattraper un décalage fait vibrer '
+          'l\'horloge de rendu au lieu de laisser le tampon absorber',
+    );
+    expect(c.contains('setTargetOffsetMs(8_000)'), isTrue);
+  });
+
+  test('les tampons gardent de la réserve', () {
+    final String c = code(vue);
+    // Le 3e paramètre est le démarrage. À 2 s, on repart avec presque
+    // rien, on épuise, on re-attend : la saccade toutes les deux
+    // secondes. Les profils qui ont tourné des mois démarrent à 500 ms
+    // avec 15–30 s et 20–50 s de réserve derrière.
+    expect(c.contains('setBufferDurationsMs(8_000, 15_000, 2_000, 3_000)'),
+        isFalse,
+        reason: 'profil sans réserve — rebuffer en boucle sur lien instable');
+    expect(c.contains('setBufferDurationsMs(15_000, 30_000, 500, 4_000)'),
+        isTrue, reason: 'petites box');
+    expect(c.contains('setBufferDurationsMs(20_000, 50_000, 500, 5_000)'),
+        isTrue, reason: 'box normales');
+  });
+
   test('le plafond mémoire reste un plafond', () {
     final String c = code(vue);
     expect(
