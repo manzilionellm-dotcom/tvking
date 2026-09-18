@@ -224,8 +224,20 @@ jobs:
       # « secure » n'est pas composée vers la sortie HDMI : le son
       # continue, l'image s'éteint. Signalé en clientèle — « il sort
       # seulement le son ». Voir android_overlay/google_cast/MainActivity.kt.
-      - name: FLAG_SECURE OFF (l'image doit sortir)
-        run: python3 ci/clear_secure_flag.py
+      #  ÉTAPE NEUTRALISÉE POUR CE BUILD (18/09/2026).
+      #
+      #  Le propriétaire a validé sur une vraie box l'APK `test-13-sept`,
+      #  compilé avec le workflow du 13/09 — qui n'avait PAS cette étape.
+      #  Le build de production, lui, l'avait : c'était la SEULE
+      #  différence de chaîne entre les deux binaires.
+      #
+      #  Sur le code du 13/09, FLAG_SECURE n'est posé NULLE PART (toute
+      #  cette saga a commencé le 16/09). Le script n'a donc rien à
+      #  éteindre : le retirer ne peut pas rallumer le drapeau, et ça
+      #  supprime la dernière variable entre « ce qu'il a testé » et
+      #  « ce que reçoivent ses clients ».
+      #
+      #  À REMETTRE dès qu'on repart d'un code postérieur au 16/09.
 
       - name: Brand manifest (7 MOTION TV)
         run: |
