@@ -181,6 +181,24 @@ jobs:
       - name: Setup Android SDK (retry après échec transitoire)
         if: steps.setup_android.outcome == 'failure'
         uses: android-actions/setup-android@v3
+        continue-on-error: true
+        #  REPORTÉ DEPUIS c17df6e0 (16/09) — ET C'EST LA SEULE LIGNE DE
+        #  CE WORKFLOW QUI NE VIENT PAS DU 13 SEPTEMBRE.
+        #
+        #  Ce build de test a échoué en 1 min 7 s sur :
+        #      Warning: Failed to find package 'tools'
+        #      Error: sdkmanager failed with exit code 1
+        #
+        #  Google a RETIRÉ le paquet `tools` du dépôt SDK depuis. Le
+        #  workflow du 13/09 le réclame encore, et l'étape de reprise
+        #  faisait tomber le job. Ce n'est PAS le code de l'app qui est
+        #  en cause : c'est l'infrastructure de compilation qui a vieilli
+        #  sous lui.
+        #
+        #  Le SDK déjà présent sur le runner suffit — d'où
+        #  `continue-on-error`. On restaure la capacité à COMPILER le
+        #  vieux code, on ne modifie pas ce vieux code d'une virgule.
+        #  C'est exactement ce que fait la production depuis le 16/09.
 
       - name: Accept Android licenses
         run: yes | sdkmanager --licenses || true
