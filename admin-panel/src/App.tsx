@@ -40,6 +40,7 @@ import { LabPage } from '@/pages/LabPage';
 import { ProfilesPage } from '@/pages/ProfilesPage';
 import { DiagnosticPage } from '@/pages/DiagnosticPage';
 import { PhonePage, TvPage } from '@/pages/DeviceScreenPage';
+import { BenchPage } from '@/pages/BenchPage';
 import { DeviceSheetProvider } from '@/components/DeviceSheet';
 
 /// Etats possibles de l'app :
@@ -184,6 +185,14 @@ export default function App() {
           Deux copies auraient dérivé — un correctif dans l'une, oublié
           dans l'autre, et le support dépendrait de la porte d'entrée. */}
       <Route path="/television"  element={<TvPage          onLogout={handleLogout} />} />
+      {/* Banc d'essai — ADMIN seulement : la santé des builds est une
+          affaire de maison. Le Worker refuse de toute façon (403). */}
+      <Route
+        path="/banc"
+        element={owner
+          ? <BenchPage onLogout={handleLogout} />
+          : <Navigate to="/" replace />}
+      />
       <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />
       <Route path="/servers"     element={<ServersPage     onLogout={handleLogout} />} />
       <Route path="/activations" element={<ActivationsPage onLogout={handleLogout} />} />

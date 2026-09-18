@@ -561,6 +561,39 @@ export interface PlayDiag {
   client_pareil: boolean | null;
 }
 
+// =========================================================
+//  LE BANC D'ESSAI (18/09/2026)
+// =========================================================
+//  Chaque box calcule SA note à partir de sa propre boîte noire, et
+//  l'envoie dans le heartbeat. Le serveur regroupe par build. Le panel
+//  ne recalcule rien non plus : il affiche.
+//
+//  `note_mediane` est la note de la box TYPIQUE, pas une moyenne : une
+//  seule box pourrie — fournisseur en rade, box qui chauffe dans un
+//  meuble fermé — ferait condamner un build sain.
+//
+//  `note_pire` est là exprès à côté : « la moitié du parc va bien » ne
+//  console pas quand l'autre moitié appelle.
+export interface BenchBuild {
+  build: string;
+  /// Combien de box ont rendu une note. Un build noté par UNE box ne se
+  /// compare pas à un build noté par trente, et la page doit le dire.
+  boxes: number;
+  note_mediane: number;
+  note_pire: number;
+  note_meilleure: number;
+  /// La plus longue session observée, en minutes : le « ça a tenu
+  /// combien de temps ? » du propriétaire.
+  minutes_max: number;
+  crashs: number;
+  nostart: number;
+  gels: number;
+  mem: number;
+  verrou_ko: number;
+  lecture: number;
+  vu_le: number;
+}
+
 export interface DeviceLocalSource {
   type: 'xtream' | 'm3u';
   name: string;
@@ -699,6 +732,12 @@ export type DeviceListFilter =
   | 'banned'
   | 'online_unpaid'
   | 'problematic';
+// Le banc d'essai, build par build. Admin uniquement : la santé des
+// builds est une affaire de maison.
+export const benchApi = {
+  list: () => request<{ builds: BenchBuild[] }>('/api/v1/bench'),
+};
+
 export const devicesApi = {
   list: (q?: string, filter?: DeviceListFilter) => {
     const qs = new URLSearchParams();

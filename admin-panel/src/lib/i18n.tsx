@@ -78,6 +78,9 @@ const STR: Record<string, Record<Lang, string>> = {
   // entre appareils) : deux choses differentes, deux entrees.
   'nav.profiles': { fr: 'Profils', en: 'Profiles', ar: 'الملفات الشخصية' },
   'nav.account': { fr: 'Mon compte', en: 'My account', ar: 'حسابي' },
+  // Banc d'essai — « ce build tient-il mieux que le précédent ? ».
+  // ADMIN uniquement : la santé des builds est une affaire de maison.
+  'nav.bench': { fr: 'Banc d’essai', en: 'Test bench', ar: 'منصة الاختبار' },
   // Labo du Maître — visible ADMIN uniquement (jamais dans le menu revendeur).
   'nav.lab': { fr: '🔬 Labo du Maître', en: '🔬 Master Lab', ar: '🔬 مختبر المدير' },
 

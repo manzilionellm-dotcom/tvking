@@ -147,6 +147,30 @@ class BancVerdict {
 
   /// `true` seulement si on a osé donner une note ET qu'elle est bonne.
   bool get bon => note != null && note! >= 80;
+
+  /// Le verdict, prêt à voyager dans le heartbeat.
+  ///
+  ///  COMPACT ET SANS PHRASES : les textes français se refabriquent
+  ///  côté panel à partir des mêmes chiffres. Les envoyer 200 fois par
+  ///  jour depuis chaque box, pour les réécrire à l'identique, serait
+  ///  de la donnée payée pour rien — et deux rédactions à tenir.
+  ///
+  ///  AUCUNE INFORMATION SUR CE QUE LE CLIENT REGARDE. Uniquement des
+  ///  compteurs de nos propres pannes. C'est ce qui rend ce paquet
+  ///  acceptable à envoyer ; le jour où on aurait envie d'y glisser un
+  ///  nom de chaîne, la réponse est non.
+  Map<String, Object?> toJson() => <String, Object?>{
+        'note': note,
+        'minutes': mesure.duree.inMinutes,
+        'crashs': mesure.crashs,
+        'err': mesure.erreursNonRattrapees,
+        'mem': mesure.purgesMemoire,
+        'nostart': mesure.demarragesRates,
+        'lecture': mesure.erreursLecture,
+        'gels': mesure.gelsBudgetDepasse,
+        'verrou_ko': mesure.verrouRefuse,
+        'verrou_ok': mesure.verrouRetabli,
+      };
 }
 
 /// En dessous de ça, on refuse de noter. Une demi-heure est le délai au

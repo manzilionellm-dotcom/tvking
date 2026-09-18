@@ -1465,6 +1465,38 @@ async function apiV1Inner(request, env) {
     return errResp('method_not_allowed', 'unsupported', 405);
   }
 
+  // =========================================================
+  //  /bench — LE BANC D'ESSAI, BUILD PAR BUILD
+  // =========================================================
+  //  « Fais un benchmark » (propriétaire, 18/09/2026). Répond à UNE
+  //  question : le dernier build tient-il mieux que le précédent ?
+  //
+  //  ADMIN SEULEMENT. La santé des builds est une affaire de maison ;
+  //  un revendeur n'a pas à savoir que le build d'avant crashait.
+  if (parts[0] === 'bench' && parts.length === 1) {
+    if (isReseller) return errResp('forbidden', 'Admin only', 403);
+    if (request.method !== 'GET') {
+      return errResp('method_not_allowed', 'GET attendu.', 405);
+    }
+    let rows = [];
+    try {
+      const r = await env.DB
+        .prepare(
+          'SELECT build_label, platform, note, minutes, crashs, err, mem, ' +
+            'nostart, lecture, gels, verrou_ko, verrou_ok, updated_at ' +
+            'FROM bench_runs ORDER BY build_label DESC LIMIT 2000'
+        )
+        .all();
+      rows = (r && r.results) || [];
+    } catch (_) {
+      // Table absente = aucune box n'a encore envoyé de note. Ce n'est
+      // pas une panne : c'est « pas encore ». On rend une liste vide et
+      // le panel le dit avec des mots.
+      rows = [];
+    }
+    return jsonResp({ builds: resumerBancs(rows) });
+  }
+
   // /lab/sources — LABO DU MAÎTRE : sources M3U/Xtream de TEST privées du
   // patron, poussées AUTOMATIQUEMENT à toutes les MAC maîtres (app_masters)
   // par le canal de sync existant (worker.js /api/device-source/:mac).
@@ -5791,6 +5823,77 @@ async function handleMasterChannels(request, env) {
 //  par le heartbeat). Ajouter une route qui les redonnerait, ce serait
 //  une deuxième vérité à tenir à jour.
 // =========================================================
+
+// =========================================================
+//  LE BANC D'ESSAI, RÉSUMÉ PAR BUILD (18/09/2026)
+// =========================================================
+//  Chaque box envoie SA note (calculée chez elle, cf. banc_essai.dart).
+//  Ici on ne recalcule rien : on regroupe par numéro de build et on
+//  répond à « lequel tient le mieux ? ».
+//
+//  LA MÉDIANE, PAS LA MOYENNE. Une seule box pourrie — une box dont le
+//  fournisseur est en rade, ou qui chauffe dans un meuble fermé —
+//  tirerait la moyenne vers le bas et ferait condamner un build sain.
+//  La médiane dit ce que vit la box TYPIQUE, et c'est la question.
+//
+//  ON GARDE AUSSI LE PIRE. Parce que « la moitié du parc va bien » ne
+//  suffit pas quand l'autre moitié appelle : la pire note nomme le
+//  problème que la médiane cache.
+//
+//  Fonction PURE et exportée : c'est un jugement sur des chiffres, et
+//  un jugement se vérifie.
+export function resumerBancs(rows) {
+  const parBuild = new Map();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const build = String((r && r.build_label) || '').trim();
+    if (!build) continue;
+    if (!parBuild.has(build)) parBuild.set(build, []);
+    parBuild.get(build).push(r);
+  }
+
+  const n = (v) => (Number.isFinite(v) ? v : 0);
+  const out = [];
+  for (const [build, list] of parBuild) {
+    const notes = list
+      .map((r) => (Number.isFinite(r.note) ? r.note : null))
+      .filter((v) => v !== null)
+      .sort((a, b) => a - b);
+    if (notes.length === 0) continue;
+    const milieu = Math.floor(notes.length / 2);
+    const mediane = notes.length % 2
+      ? notes[milieu]
+      : Math.round((notes[milieu - 1] + notes[milieu]) / 2);
+
+    out.push({
+      build,
+      // Combien de box ont réellement rendu une note sur ce build. Un
+      // build noté par UNE box ne se compare pas à un build noté par
+      // trente — le panel doit pouvoir le dire.
+      boxes: notes.length,
+      note_mediane: mediane,
+      note_pire: notes[0],
+      note_meilleure: notes[notes.length - 1],
+      // La plus longue session observée : le « ça a tenu combien de
+      // temps ? » du propriétaire.
+      minutes_max: list.reduce((m, r) => Math.max(m, n(r.minutes)), 0),
+      // Totaux bruts, pour que le panel puisse dire ce qui cloche sans
+      // avoir à redemander le détail.
+      crashs: list.reduce((s, r) => s + n(r.crashs), 0),
+      nostart: list.reduce((s, r) => s + n(r.nostart), 0),
+      gels: list.reduce((s, r) => s + n(r.gels), 0),
+      mem: list.reduce((s, r) => s + n(r.mem), 0),
+      verrou_ko: list.reduce((s, r) => s + n(r.verrou_ko), 0),
+      lecture: list.reduce((s, r) => s + n(r.lecture), 0),
+      vu_le: list.reduce((m, r) => Math.max(m, n(r.updated_at)), 0),
+    });
+  }
+
+  //  Du plus récent au plus ancien. Les numéros de la maison sont
+  //  croissants (198876, 198877…) : un tri NUMÉRIQUE, pas alphabétique,
+  //  sinon « 1988100 » passerait avant « 198899 ».
+  out.sort((a, b) => (Number(b.build) || 0) - (Number(a.build) || 0));
+  return out;
+}
 
 /// CE COMPTE A-T-IL LE DROIT DE VOIR CET APPAREIL ?
 ///

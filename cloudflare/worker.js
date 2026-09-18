@@ -2170,8 +2170,88 @@ async function updateDeviceInfo(env, mac, body) {
         srcJson, srcJson, recentJson, recentJson, mac,
       )
       .run();
+
+    // =========================================================
+    //  LA NOTE DU BANC D'ESSAI (18/09/2026)
+    // =========================================================
+    //  « Fais un benchmark » — demande du propriétaire. L'app calcule
+    //  la note toute seule, à partir de sa propre boîte noire
+    //  (banc_essai.dart) ; le serveur ne fait que la RANGER, il ne
+    //  recalcule rien. Deux calculs auraient fini par se contredire, et
+    //  la note affichée dans le panel ne serait plus celle lue sur la
+    //  box.
+    //
+    //  Rien n'arrive tant que la session dure moins d'une heure : le
+    //  banc refuse alors de noter, et l'app n'envoie pas de champ.
+    await enregistrerBanc(env, mac, buildLabel, platform, body.bench);
   } catch (_) {
     // best-effort : ne jamais faire échouer un heartbeat.
+  }
+}
+
+// =========================================================
+//  bench_runs — une ligne par (box, build)
+// =========================================================
+//  POURQUOI UNE LIGNE PAR COUPLE, ET PAS UN JOURNAL. Ce qu'on veut
+//  répondre est « le build 198877 tient-il mieux que le 198876 ? ».
+//  Garder chaque envoi (toutes les 30 s, par box) ferait grossir la
+//  base pour rien et noierait la réponse.
+//
+//  ON GARDE LA PLUS LONGUE OBSERVATION. Une box qui redémarre écrase
+//  sinon six heures de bon comportement par dix minutes fraîches, et le
+//  build passerait pour mauvais alors qu'il a tenu. La plus longue
+//  session est aussi la plus informative : c'est celle qui a eu le
+//  temps de rencontrer les pannes.
+async function assurerTableBanc(env) {
+  await env.DB
+    .prepare(
+      'CREATE TABLE IF NOT EXISTS bench_runs (' +
+        'mac TEXT NOT NULL, build_label TEXT NOT NULL, platform TEXT, ' +
+        'note INTEGER, minutes INTEGER, crashs INTEGER, err INTEGER, ' +
+        'mem INTEGER, nostart INTEGER, lecture INTEGER, gels INTEGER, ' +
+        'verrou_ko INTEGER, verrou_ok INTEGER, updated_at INTEGER, ' +
+        'PRIMARY KEY (mac, build_label))'
+    )
+    .run();
+}
+
+/// Range la note envoyée par une box. Best-effort de bout en bout : un
+/// banc d'essai ne doit JAMAIS empêcher un heartbeat d'aboutir.
+async function enregistrerBanc(env, mac, buildLabel, platform, bench) {
+  try {
+    if (!bench || typeof bench !== 'object') return;
+    if (!buildLabel) return; // sans numéro de build, rien à comparer
+    const n = (v) => (Number.isFinite(v) ? (v | 0) : 0);
+    const note = Number.isFinite(bench.note) ? (bench.note | 0) : null;
+    if (note === null) return; // « je ne sais pas » ne se range pas
+    const minutes = n(bench.minutes);
+    if (minutes < 60) return; // le banc ne note pas sous une heure
+
+    await assurerTableBanc(env);
+    await env.DB
+      .prepare(
+        'INSERT INTO bench_runs (mac, build_label, platform, note, minutes, ' +
+          'crashs, err, mem, nostart, lecture, gels, verrou_ko, verrou_ok, ' +
+          'updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ' +
+          'ON CONFLICT(mac, build_label) DO UPDATE SET ' +
+          // La plus LONGUE observation gagne — voir l'en-tête.
+          'platform=excluded.platform, note=excluded.note, ' +
+          'minutes=excluded.minutes, crashs=excluded.crashs, ' +
+          'err=excluded.err, mem=excluded.mem, nostart=excluded.nostart, ' +
+          'lecture=excluded.lecture, gels=excluded.gels, ' +
+          'verrou_ko=excluded.verrou_ko, verrou_ok=excluded.verrou_ok, ' +
+          'updated_at=excluded.updated_at ' +
+          'WHERE excluded.minutes > bench_runs.minutes'
+      )
+      .bind(
+        mac, String(buildLabel).slice(0, 16), platform || '', note, minutes,
+        n(bench.crashs), n(bench.err), n(bench.mem), n(bench.nostart),
+        n(bench.lecture), n(bench.gels), n(bench.verrou_ko), n(bench.verrou_ok),
+        Date.now(),
+      )
+      .run();
+  } catch (_) {
+    // best-effort : voir plus haut.
   }
 }
 

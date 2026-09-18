@@ -32,6 +32,11 @@ export const OWNER_NAV: NavSection[] = [
       // OWNER_NAV : un revendeur ne verra jamais cette entrée (et la
       // route /lab le redirige de toute façon vers l'accueil).
       { key: 'nav.lab', to: '/lab' },
+      // Banc d'essai — au PILOTAGE, pas dans les appareils : c'est la
+      // question « ce build tient-il ? », pas « ce client va-t-il ? ».
+      // Absent de RESELLER_NAV : la sante des builds est une affaire
+      // de maison, et la route renvoie un revendeur a l'accueil.
+      { key: 'nav.bench', to: '/banc' },
     ],
   },
   {

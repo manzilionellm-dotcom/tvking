@@ -28,6 +28,11 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
 import '../../../core/backend/backend_hosts.dart';
+//  La note du banc d'essai vient de la boîte noire, qui la calcule à
+//  partir de ses PROPRES lignes. Rien n'est compté ici : ce fichier ne
+//  fait que la transporter (cf. core/observability/banc_essai.dart).
+import '../../../core/observability/banc_essai.dart';
+import '../../../core/observability/black_box.dart';
 import '../../../core/privacy/privacy_shield.dart';
 import '../../device/data/device_identity.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -217,6 +222,24 @@ abstract final class SubscriptionBackend {
         // HISTORIQUE de visionnage (ids de chaînes, du + récent au + ancien) :
         // sauvegardé côté serveur → restauré sur une 2e box (cf. /api/history).
         'recent': shielded ? const <String>[] : _recentInventory(),
+        // =========================================================
+        //  LA NOTE DE CE BUILD (18/09/2026)
+        // =========================================================
+        //  « Fais un benchmark » — demande du propriétaire. Sans cette
+        //  remontée, la note reste sur la box et il faut la
+        //  photographier une par une ; elle ne se compare donc pas d'un
+        //  build à l'autre, ce qui est tout l'objet du banc.
+        //
+        //  ENVOYÉE SEULEMENT QUAND ELLE EXISTE. Sous une heure
+        //  d'observation le banc refuse de noter (cf. banc_essai.dart) :
+        //  on n'envoie alors rien du tout. Répéter « je ne sais pas »
+        //  toutes les trente secondes ne remplirait que la base.
+        //
+        //  MODE BOUCLIER : rien non plus. Ce paquet ne dit pourtant rien
+        //  de ce que le client regarde — uniquement si NOTRE app a
+        //  flanché. Mais « télémétrie minimale » est un choix qu'il a
+        //  fait, et un banc d'essai est notre confort, pas son besoin.
+        if (!shielded) ..._bancSiNotable(),
       };
       // FAILOVER : domaine maison d'abord (auto-guérison), puis l'adresse
       // Cloudflare de secours. Le premier hôte qui répond 200 devient
@@ -278,6 +301,26 @@ abstract final class SubscriptionBackend {
   /// transmet JAMAIS le mot de passe : type, nom, serveur, identifiant,
   /// nombre de chaînes et « active » suffisent à diagnostiquer. Tout est
   /// gardé dans un try/catch pour ne jamais faire échouer le heartbeat.
+  /// La note du banc d'essai, ou RIEN.
+  ///
+  ///  Un `Map` vide se répand sans effet dans le payload (`...`), donc
+  ///  « pas de note » veut dire « pas de champ » — le serveur n'a rien
+  ///  à écraser et la base ne se remplit pas de « je ne sais pas ».
+  ///
+  ///  Best-effort, comme tout ce qui entoure le heartbeat : si la boîte
+  ///  noire n'est pas encore prête ou jette, on n'envoie pas de note.
+  ///  Un banc d'essai ne doit JAMAIS empêcher une box de dire au
+  ///  serveur qu'elle est vivante.
+  static Map<String, Object?> _bancSiNotable() {
+    try {
+      final BancVerdict v = BlackBox.instance.bench();
+      if (v.note == null) return const <String, Object?>{};
+      return <String, Object?>{'bench': v.toJson()};
+    } catch (_) {
+      return const <String, Object?>{};
+    }
+  }
+
   static List<Map<String, Object?>> _sourcesInventory() {
     try {
       final List<Playlist> all =
