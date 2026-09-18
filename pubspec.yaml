@@ -300,6 +300,23 @@ dev_dependencies:
   # Règles de lint officielles Flutter
   flutter_lints: ^4.0.0
 
+  # ----- Fausse box pour tester le verrou d'écran -----
+  #  QUE FAIT-ELLE : c'est l'interface que `wakelock_plus` appelle pour
+  #  poser `FLAG_KEEP_SCREEN_ON`. On l'étend dans les tests
+  #  (`test/core/tv/verrou_ecran_relance_test.dart`) pour simuler une
+  #  vraie box : une qui pose le verrou, une qui le REFUSE, une qui ne
+  #  sait pas dire s'il est posé.
+  #
+  #  POURQUOI ON LA CHOISIT : l'écran noir au bout de 30 minutes venait
+  #  d'une pose ratée au démarrage que plus rien ne retentait. Sans
+  #  pouvoir faire ÉCHOUER la plateforme dans un test, ce défaut n'est
+  #  pas reproductible — et il est déjà passé une fois.
+  #
+  #  AUCUNE NOUVELLE DÉPENDANCE RÉELLE : elle est déjà dans l'arbre de
+  #  `wakelock_plus` (production). On la déclare seulement pour avoir
+  #  le droit de l'importer directement, comme `fake_async` ci-dessus.
+  wakelock_plus_platform_interface: ^1.2.0
+
   # ----- Génération des icônes de lancement -----
   # Sans ce package, `flutter create` met l'icône Flutter par défaut
   # (le F bleu). Avec, on génère toutes les tailles mipmap-* depuis

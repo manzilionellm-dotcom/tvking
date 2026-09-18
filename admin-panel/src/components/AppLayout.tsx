@@ -1,7 +1,6 @@
 import { ReactNode, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { ToastHost } from './Toast';
-import { DeviceSheetProvider } from './DeviceSheet';
 import { CommandPaletteHost, CommandPaletteTrigger } from './CommandPalette';
 import { useT } from '@/lib/i18n';
 
@@ -29,7 +28,22 @@ export function AppLayout({
   const t = useT();
 
   return (
-    <DeviceSheetProvider>
+    // =========================================================
+    //  LE FOURNISSEUR DE LA FICHE APPAREIL N'EST PLUS ICI
+    // =========================================================
+    //  Il enveloppait ce layout, et ça paraissait le bon endroit :
+    //  toutes les pages passent par `AppLayout`.
+    //
+    //  Sauf qu'une page appelle `useDeviceSheet()` dans SON corps, puis
+    //  rend `<AppLayout>`. Le fournisseur était donc PLUS BAS qu'elle
+    //  dans l'arbre, et un contexte ne remonte jamais : la page lisait
+    //  du vide. Sur DevicesPage, « Détails » ne faisait plus rien —
+    //  sans erreur, sans trace, pendant que les MAC des autres pages
+    //  (rendues par `MacLink`, un enfant) continuaient d'ouvrir la
+    //  fiche. Le panel avait l'air en parfait état.
+    //
+    //  Il vit maintenant dans `App.tsx`, au-dessus des routes. NE LE
+    //  REMETS PAS ICI : `ci/check_panel_sheet_context.mjs` le refuse.
     <CommandPaletteHost>
     <div className="flex h-screen w-screen overflow-hidden bg-obsidian text-ink-primary">
       {/* ===== Sidebar fixe (desktop) ===== */}
@@ -109,6 +123,5 @@ export function AppLayout({
       <ToastHost />
     </div>
     </CommandPaletteHost>
-    </DeviceSheetProvider>
   );
 }

@@ -49,6 +49,19 @@ jobs:
           # genere automatiquement par npm install ci-dessous et
           # committe via un futur commit.
 
+      # ---------------------------------------------------------
+      #  LE BOUTON « DÉTAILS » DOIT RÉPONDRE (18/09/2026)
+      # ---------------------------------------------------------
+      #  TypeScript et Vite étaient verts pendant que ce bouton ne
+      #  faisait plus rien : le fournisseur de la fiche appareil se
+      #  retrouvait PLUS BAS que la page dans l'arbre React. Aucun
+      #  outil ne voit ça — les types sont justes des deux côtés.
+      #  Explication complète : ci/check_panel_sheet_context.mjs
+      # ---------------------------------------------------------
+      - name: La fiche appareil est-elle branchée au bon niveau ?
+        working-directory: .
+        run: node ci/check_panel_sheet_context.mjs
+
       - name: Install dependencies
         run: npm install
 

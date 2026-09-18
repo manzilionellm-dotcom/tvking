@@ -63,6 +63,19 @@ jobs:
         with:
           node-version: '20'
 
+      # ---------------------------------------------------------
+      #  LE BOUTON « DÉTAILS » DOIT RÉPONDRE (18/09/2026)
+      # ---------------------------------------------------------
+      #  Avant de mettre EN LIGNE, pas seulement avant de builder : le
+      #  17/09, un panel parfaitement vert a été publié avec son bouton
+      #  « Détails » muet. Une seule implémentation, deux appelants
+      #  (ce workflow et build-admin-panel.yml) — même raison que
+      #  ci/build_label.sh : une copie qui dérive dit « c'est bon »
+      #  pendant que l'autre dit non.
+      # ---------------------------------------------------------
+      - name: La fiche appareil est-elle branchée au bon niveau ?
+        run: node ci/check_panel_sheet_context.mjs
+
       - name: Install deps
         working-directory: admin-panel
         run: npm ci

@@ -39,6 +39,7 @@ import { CreditsPage } from '@/pages/CreditsPage';
 import { LabPage } from '@/pages/LabPage';
 import { ProfilesPage } from '@/pages/ProfilesPage';
 import { DiagnosticPage } from '@/pages/DiagnosticPage';
+import { DeviceSheetProvider } from '@/components/DeviceSheet';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -124,6 +125,31 @@ export default function App() {
   // (entrée « Statistiques » du menu) — aucune page n'est supprimée.
   const owner = isOwnerRole(getCurrentUser()?.role);
   return (
+    // =========================================================
+    //  LA FICHE APPAREIL S'OUVRE DEPUIS N'IMPORTE QUELLE PAGE
+    // =========================================================
+    //  ELLE VIT ICI, AU-DESSUS DES PAGES, ET NULLE PART AILLEURS.
+    //
+    //  Elle a vécu dans `AppLayout` — et c'était un piège silencieux.
+    //  Une page appelle `useDeviceSheet()` dans SON corps puis rend
+    //  `<AppLayout>` : le fournisseur se retrouve alors PLUS BAS que
+    //  la page dans l'arbre React. Or un contexte ne descend que vers
+    //  les enfants. La page lisait donc un contexte VIDE, et
+    //  `useDeviceSheet` renvoyait sa version « qui ne fait rien ».
+    //
+    //  Résultat mesuré sur DevicesPage (18/09/2026) : le bouton
+    //  « Détails » et le numéro MAC cliquable ne répondaient plus du
+    //  tout. Pas d'erreur, pas de page blanche, pas une ligne dans la
+    //  console — un bouton qui s'enfonce et rien derrière. Les MAC des
+    //  AUTRES pages marchaient toujours (elles passent par `MacLink`,
+    //  un composant ENFANT, donc bien sous le fournisseur) : de quoi
+    //  croire que le panel allait bien.
+    //
+    //  Posé ici, au-dessus des routes, toutes les pages sont dessous
+    //  par construction — y compris celles qui rendent `AppLayout`.
+    //  `ci/check_panel_sheet_context.mjs` refuse désormais la moindre
+    //  rechute.
+    <DeviceSheetProvider>
     <Routes>
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route
@@ -181,5 +207,6 @@ export default function App() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </DeviceSheetProvider>
   );
 }

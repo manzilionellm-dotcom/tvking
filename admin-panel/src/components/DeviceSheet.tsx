@@ -45,13 +45,42 @@ type SheetCtx = {
 
 const DeviceSheetCtx = createContext<SheetCtx | null>(null);
 
+/// Le repli quand le fournisseur manque. Il NE DOIT PLUS JAMAIS ÊTRE
+/// MUET (18/09/2026).
+///
+///  Il rendait `{ open: () => {} }` — « plutôt qu'un crash ». L'idée
+///  était bonne, l'exécution non : le jour où le fournisseur s'est
+///  retrouvé plus bas que `DevicesPage` dans l'arbre, le bouton
+///  « Détails » a cessé de répondre. Aucune erreur, aucune page
+///  blanche, pas une ligne dans la console. Un bouton qui s'enfonce et
+///  rien derrière — le symptôme le plus coûteux à diagnostiquer qui
+///  soit, parce que rien ne dit où chercher.
+///
+///  On garde le refus de planter (le panel sert à dépanner des clients
+///  en ligne ; une page blanche serait pire). Mais on le DIT : une
+///  bannière que Lionel voit, et une trace console qui nomme la cause.
+const kSheetIndisponible: SheetCtx = {
+  open: (mac: string) => {
+    // eslint-disable-next-line no-console
+    console.error(
+      '[DeviceSheet] Fiche impossible à ouvrir pour ' + mac + ' : ce '
+      + 'composant est RENDU AU-DESSUS du fournisseur, donc hors de son '
+      + 'contexte. Le fournisseur vit dans App.tsx, au-dessus des '
+      + 'routes — voir ci/check_panel_sheet_context.mjs.',
+    );
+    toast(
+      'Impossible d’ouvrir la fiche de cet appareil (fiche non branchée '
+      + 'sur cette page). Recharge la page ; si ça recommence, c’est un '
+      + 'bug du panel à signaler.',
+      'error',
+    );
+  },
+  close: () => {},
+};
+
 export function useDeviceSheet(): SheetCtx {
   const ctx = useContext(DeviceSheetCtx);
-  if (!ctx) {
-    // Hors AppLayout (ne devrait pas arriver) : no-op plutôt qu'un crash.
-    return { open: () => {}, close: () => {} };
-  }
-  return ctx;
+  return ctx ?? kSheetIndisponible;
 }
 
 export function DeviceSheetProvider({
