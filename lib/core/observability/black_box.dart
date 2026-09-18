@@ -41,6 +41,7 @@ import 'package:flutter/foundation.dart';
 
 import '../crash/crash_reporting.dart';
 import '../crash/secret_redactor.dart';
+import 'banc_essai.dart';
 import 'structured_logger.dart';
 
 /// Un constat produit par l'analyse automatique.
@@ -94,6 +95,10 @@ class BlackBox {
   /// (la fin du fichier). Non vide après un crash = or massif.
   List<String> previousSessionTail = <String>[];
 
+  /// Heure de démarrage de CETTE session. Posée par [initialize],
+  /// jamais devinée : sans elle, le banc d'essai refuse de noter.
+  DateTime? _startedAt;
+
   bool get isInitialized => _initialized;
 
   /// À appeler UNE fois, tôt dans le boot (guarded_main). [directory]
@@ -103,6 +108,7 @@ class BlackBox {
   Future<void> initialize({required Directory directory}) async {
     if (_initialized) return;
     _initialized = true;
+    _startedAt = DateTime.now();
     final bool firstAttach = !_hooksAttached;
     try {
       _dir = Directory('${directory.path}/black_box');
@@ -235,17 +241,47 @@ class BlackBox {
   /// Passe l'anneau au crible et rend les constats triés (critique →
   /// info). Chaque règle est une paire (prédicat sur l'entrée JSON,
   /// constat) ; les occurrences sont agrégées.
-  List<BlackBoxFinding> analyze() {
+  /// L'anneau, décodé. Les règles d'[analyze] ET le banc d'essai lisent
+  /// CETTE liste — deux décodages auraient fini par diverger sur ce
+  /// qu'est une ligne valable, et le banc aurait compté autre chose que
+  /// ce que le rapport affiche.
+  ///
+  /// Une ligne non-JSON (repli texte du logger) est ignorée ici, mais
+  /// reste présente dans le journal exporté : on ne perd rien, on ne
+  /// compte simplement pas ce qu'on ne sait pas lire.
+  List<Map<String, Object?>> decodedEntries() {
     final List<Map<String, Object?>> entries = <Map<String, Object?>>[];
     for (final String line in _ring) {
       try {
         final Object? decoded = jsonDecode(line);
         if (decoded is Map<String, dynamic>) entries.add(decoded);
       } on Object {
-        // ligne non-JSON (fallback texte du logger) — ignorée par les
-        // règles, mais toujours présente dans le journal exporté.
+        // ligne illisible — voir ci-dessus.
       }
     }
+    return entries;
+  }
+
+  /// Depuis combien de temps cette session tourne.
+  ///
+  ///  C'EST LE CHIFFRE QUE LE PROPRIÉTAIRE LIT EN PREMIER : « la box a
+  ///  tenu combien de temps ? » Il est passé de 25 minutes à 6 h 40
+  ///  entre deux builds, et ça se mesurait à la main jusqu'ici.
+  ///
+  ///  `Duration.zero` tant que la boîte noire n'est pas initialisée :
+  ///  sans horloge de départ, on ne devine pas une durée — le banc
+  ///  refusera alors de noter, ce qui est le bon comportement.
+  Duration get uptime => _startedAt == null
+      ? Duration.zero
+      : DateTime.now().difference(_startedAt!);
+
+  /// La NOTE de cette session : ce que la boîte noire a vu, pesé.
+  /// Voir `banc_essai.dart` — ce fichier-ci ne compte rien lui-même.
+  BancVerdict bench() =>
+      noterBanc(mesurerBanc(decodedEntries(), duree: uptime));
+
+  List<BlackBoxFinding> analyze() {
+    final List<Map<String, Object?>> entries = decodedEntries();
 
     final List<BlackBoxFinding> findings = <BlackBoxFinding>[];
     void addIf(
@@ -403,6 +439,36 @@ class BlackBox {
       ..writeln('=== BOÎTE NOIRE — 7 MOTION ===')
       ..writeln('Généré : ${DateTime.now().toIso8601String()}')
       ..writeln();
+
+    // ---------------------------------------------------------
+    //  LA NOTE, EN PREMIER (18/09/2026)
+    // ---------------------------------------------------------
+    //  Le propriétaire photographie cet écran plusieurs fois par jour.
+    //  Jusqu'ici il y lisait une liste de constats — utile pour
+    //  comprendre UNE panne, inutile pour répondre à sa vraie question :
+    //  « ce build tient-il mieux que le précédent ? »
+    //
+    //  La note est donc en tête, avec la durée tenue et ce qui a coûté
+    //  des points. Elle se compare d'un build à l'autre parce que les
+    //  compteurs sont ramenés à l'heure — voir banc_essai.dart.
+    //
+    //  ET ELLE PEUT REFUSER DE SE PRONONCER. Sous une heure
+    //  d'observation, pas de note : trois minutes sans crash ne
+    //  prouvent rien, et un « 100/100 » de complaisance ferait
+    //  republier par-dessus un vrai défaut.
+    final BancVerdict banc = bench();
+    b
+      ..writeln('--- Note de ce build ---')
+      ..writeln(banc.resume);
+    for (final String r in banc.reproches) {
+      b.writeln('  • $r');
+    }
+    b.writeln('  Ce que cette note ne prouve pas :');
+    for (final String n in banc.nonMesure) {
+      b.writeln('   - $n');
+    }
+    b.writeln();
+
     final List<BlackBoxFinding> findings = analyze();
     b.writeln('--- Constats automatiques (${findings.length}) ---');
     if (findings.isEmpty) {
