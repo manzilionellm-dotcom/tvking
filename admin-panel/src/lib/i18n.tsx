@@ -52,6 +52,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.devices': { fr: 'Appareils', en: 'Devices', ar: 'الأجهزة' },
   'nav.diagnostic': { fr: 'Diagnostic', en: 'Diagnostics', ar: 'تشخيص' },
   'nav.phone': { fr: 'Téléphone', en: 'Phone', ar: 'الهاتف' },
+  'nav.television': { fr: 'Télévision', en: 'Television', ar: 'التلفاز' },
   'nav.radar': { fr: 'Radar d’expiration', en: 'Expiry radar', ar: 'رادار الانتهاء' },
   'nav.gateway': { fr: 'Passerelle', en: 'Gateway', ar: 'البوابة' },
   'nav.credits': { fr: 'Crédits', en: 'Credits', ar: 'الأرصدة' },

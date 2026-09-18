@@ -1,5 +1,23 @@
 // =========================================================
-//  PhonePage — « je mets la MAC, et le téléphone vient »
+//  DeviceScreenPage — « je mets la MAC, et l'appareil vient »
+// =========================================================
+//  UN SEUL ÉCRAN, DEUX PORTES : « Téléphone » et « Télévision ».
+//
+//  Demande du propriétaire, une heure après la première :
+//
+//    « Comme tu as créé la section Téléphone, il faut créer aussi la
+//      section Télévision qui fonctionne la même chose. »
+//
+//  « La même chose » au sens propre : c'est le MÊME code. Un téléphone
+//  et une box lisent la même liste, chez le même fournisseur, par les
+//  mêmes routes — seuls le cadre dessiné à l'écran et les mots changent
+//  (« son téléphone » / « sa box »).
+//
+//  DEUX COPIES DE CETTE PAGE AURAIENT DÉRIVÉ, et vite : on corrige un
+//  bug de retrait de liste dans l'une, on oublie l'autre, et le support
+//  se met à dépendre de la porte par laquelle on est entré. Même raison
+//  que ci/build_label.sh et cloudflare/stream_proxy.js — une seule
+//  implémentation, autant d'appelants qu'on veut.
 // =========================================================
 //  DEMANDE DU PROPRIÉTAIRE (18/09/2026), mot pour mot :
 //
@@ -74,7 +92,62 @@ function nomListe(s: DeviceSource, i: number): string {
   return `Liste ${i + 1}`;
 }
 
+/// Ce qui CHANGE entre les deux portes — et rien d'autre. Tout le
+/// reste du fichier est commun, volontairement.
+type Appareil = 'phone' | 'tv';
+
+const APPARENCE: Record<Appareil, {
+  titre: string;
+  sousTitre: string;
+  ouvrir: string;
+  /// « son téléphone » / « sa box » — utilisé dans les phrases.
+  possessif: string;
+  /// Largeur et arrondi du cadre : un téléphone est étroit et très
+  /// arrondi, un téléviseur large et presque carré. C'est décoratif,
+  /// mais c'est ce qui fait reconnaître l'écran d'un coup d'œil.
+  cadre: string;
+  ecran: string;
+  /// Combien de tuiles de chaînes par rangée. Une box a de la place.
+  colonnes: string;
+}> = {
+  phone: {
+    titre: 'Téléphone',
+    sousTitre: 'Colle une MAC : tu vois ses listes et ses chaînes, et tu les changes.',
+    ouvrir: 'Ouvrir le téléphone',
+    possessif: 'son téléphone',
+    cadre: 'mx-auto w-full max-w-[360px]',
+    ecran: 'rounded-[2rem] border-4 border-white/10 bg-[#08080A] p-3 shadow-2xl',
+    colonnes: 'grid-cols-3',
+  },
+  tv: {
+    titre: 'Télévision',
+    sousTitre: 'Colle la MAC d’une box : tu vois ses listes et ses chaînes, et tu les changes.',
+    ouvrir: 'Ouvrir la box',
+    possessif: 'sa box',
+    cadre: 'mx-auto w-full max-w-[560px]',
+    ecran: 'rounded-xl border-4 border-white/10 bg-[#08080A] p-3 shadow-2xl',
+    colonnes: 'grid-cols-4',
+  },
+};
+
+/// La porte « Téléphone ».
 export function PhonePage({ onLogout }: { onLogout: () => void }) {
+  return <DeviceScreenPage onLogout={onLogout} kind="phone" />;
+}
+
+/// La porte « Télévision ». MÊME page, même code, même serveur.
+export function TvPage({ onLogout }: { onLogout: () => void }) {
+  return <DeviceScreenPage onLogout={onLogout} kind="tv" />;
+}
+
+function DeviceScreenPage({
+  onLogout,
+  kind,
+}: {
+  onLogout: () => void;
+  kind: Appareil;
+}) {
+  const look = APPARENCE[kind];
   const [sp, setSp] = useSearchParams();
   const [mac, setMac] = useState(sp.get('mac') || 'MK:');
   const [busy, setBusy] = useState(false);
@@ -202,7 +275,7 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
 
   async function retirer(i: number, s: DeviceSource) {
     if (!window.confirm(
-      `Retirer « ${nomListe(s, i)} » de ce téléphone ?\n\n`
+      `Retirer « ${nomListe(s, i)} » de ${look.possessif} ?\n\n`
       + 'Elle disparaît de son app à sa prochaine synchro.',
     )) return;
     setBusy(true);
@@ -236,7 +309,7 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
     if (!window.confirm(
       `Retirer « ${l.name || l.server} » ?\n\n`
       + 'Cette liste, c’est le CLIENT qui l’a ajoutée sur son '
-      + 'téléphone : elle n’est pas chez nous. On envoie l’ordre, '
+      + `${kind === 'tv' ? 'sa box' : 'son téléphone'} : elle n’est pas chez nous. On envoie l’ordre, `
       + 'l’appareil l’exécutera à sa prochaine synchro — même s’il est '
       + 'éteint en ce moment.',
     )) return;
@@ -250,7 +323,7 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
       });
       void rtActionFeedback(r.rt);
       toast(
-        'Ordre envoyé. Il s’appliquera dès que le téléphone se '
+        `Ordre envoyé. Il s’appliquera dès que ${look.possessif} se `
         + 'resynchronise.',
         'success',
       );
@@ -269,8 +342,8 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
       void rtActionFeedback(r.rt);
       toast(
         enLigne
-          ? 'Liste ajoutée. Le téléphone la charge dans la seconde.'
-          : 'Liste ajoutée. Le téléphone la prendra à son prochain '
+          ? `Liste ajoutée. ${kind === 'tv' ? 'La box' : 'Le téléphone'} la charge dans la seconde.`
+          : `Liste ajoutée. ${kind === 'tv' ? 'La box la prendra' : 'Le téléphone la prendra'} à son prochain `
             + 'démarrage.',
         'success',
       );
@@ -291,8 +364,8 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       onLogout={onLogout}
-      title="Téléphone"
-      subtitle="Colle une MAC : tu vois ses listes et ses chaînes, et tu les changes."
+      title={look.titre}
+      subtitle={look.sousTitre}
     >
       {/* ===== La barre de saisie ===== */}
       <form onSubmit={onSubmit} className="mb-6 flex flex-wrap items-center gap-2">
@@ -308,7 +381,7 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
           disabled={charge}
           className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
         >
-          {charge ? 'Ouverture…' : 'Ouvrir le téléphone'}
+          {charge ? 'Ouverture…' : look.ouvrir}
         </button>
         {ov && (
           <span className="inline-flex items-center gap-2 text-xs text-ink-tertiary">
@@ -327,7 +400,7 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
 
       {!ov && !charge && (
         <p className="max-w-2xl text-sm text-ink-tertiary">
-          Colle la MAC d’un client et son téléphone s’ouvre ici : ses
+          Colle la MAC d’un client et {look.possessif} s’ouvre ici : ses
           listes, et les chaînes qu’il a vraiment.
         </p>
       )}
@@ -341,8 +414,8 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
                pour que Lionel reconnaisse d'un coup d'œil ce que son
                client a sous les yeux. Le cadre est décoratif ; ce qui
                compte est dedans. */}
-          <div className="mx-auto w-full max-w-[360px]">
-            <div className="rounded-[2rem] border-4 border-white/10 bg-[#08080A] p-3 shadow-2xl">
+          <div className={look.cadre}>
+            <div className={look.ecran}>
               <div className="mb-2 flex items-center justify-between px-2 text-[10px] text-ink-tertiary">
                 <span className="font-mono">{ov.mac}</span>
                 <span>{enLigne ? '● en ligne' : '○ hors ligne'}</span>
@@ -454,7 +527,7 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
                             <p className="mb-1 px-1 text-[10px] uppercase tracking-wider text-[#4E4A45]">
                               {c.name}
                             </p>
-                            <div className="grid grid-cols-3 gap-1.5">
+                            <div className={'grid gap-1.5 ' + look.colonnes}>
                               {c.channels.map((ch) => (
                                 <button
                                   key={ch.id}
@@ -516,7 +589,7 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
               Ce n’est pas l’écran du client filmé : c’est <b>sa liste, lue
               chez son fournisseur</b>, rangée comme son app la range. Ses
               favoris, son historique et ses catégories masquées ne vivent
-              que sur son téléphone — ils n’apparaissent pas ici.
+              que sur {look.possessif} — ils n’apparaissent pas ici.
             </p>
           </div>
 
@@ -608,7 +681,7 @@ export function PhonePage({ onLogout }: { onLogout: () => void }) {
                   Listes que le client a ajoutées lui-même
                 </h3>
                 <p className="mb-2 text-[11px] text-ink-tertiary">
-                  Elles vivent sur son téléphone, pas chez nous. Les
+                  Elles vivent sur {look.possessif}, pas chez nous. Les
                   retirer envoie un <b>ordre</b> : il s’applique à sa
                   prochaine synchro, même appareil éteint au moment du
                   clic.

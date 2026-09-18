@@ -39,7 +39,7 @@ import { CreditsPage } from '@/pages/CreditsPage';
 import { LabPage } from '@/pages/LabPage';
 import { ProfilesPage } from '@/pages/ProfilesPage';
 import { DiagnosticPage } from '@/pages/DiagnosticPage';
-import { PhonePage } from '@/pages/PhonePage';
+import { PhonePage, TvPage } from '@/pages/DeviceScreenPage';
 import { DeviceSheetProvider } from '@/components/DeviceSheet';
 
 /// Etats possibles de l'app :
@@ -180,6 +180,10 @@ export default function App() {
           et on y touche. Le Worker re-vérifie l'appartenance appareil par
           appareil : la route n'est pas la sécurité. */}
       <Route path="/telephone"   element={<PhonePage       onLogout={handleLogout} />} />
+      {/* MÊME page, même code : seuls le cadre et les mots changent.
+          Deux copies auraient dérivé — un correctif dans l'une, oublié
+          dans l'autre, et le support dépendrait de la porte d'entrée. */}
+      <Route path="/television"  element={<TvPage          onLogout={handleLogout} />} />
       <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />
       <Route path="/servers"     element={<ServersPage     onLogout={handleLogout} />} />
       <Route path="/activations" element={<ActivationsPage onLogout={handleLogout} />} />

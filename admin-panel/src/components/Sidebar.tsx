@@ -47,6 +47,7 @@ export const OWNER_NAV: NavSection[] = [
       // en dépannant. « Diagnostic » dit ce qui cloche ; « Téléphone »
       // montre ce que le client a sous les yeux et permet d'y toucher.
       { key: 'nav.phone',       to: '/telephone' },
+      { key: 'nav.television',  to: '/television' },
       { key: 'nav.radar',       to: '/radar' },
       { key: 'nav.resellers',   to: '/resellers' },
       { key: 'nav.credits',     to: '/credits' },
@@ -113,6 +114,7 @@ export const RESELLER_NAV: NavSection[] = [
       // re-vérifie de toute façon, appareil par appareil
       // (resellerMaySeeDevice) — le menu n'est jamais la sécurité.
       { key: 'nav.phone',         to: '/telephone',   cap: 'devices' },
+      { key: 'nav.television',    to: '/television',  cap: 'devices' },
       { key: 'nav.myActivations', to: '/activations', cap: 'activations' },
       { key: 'nav.references',    to: '/references',  cap: 'activations' },
     ],
