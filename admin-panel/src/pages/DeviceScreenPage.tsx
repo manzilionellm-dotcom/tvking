@@ -462,9 +462,12 @@ function DeviceScreenPage({
                 />
 
                 {erreurChaines && (
-                  <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-2 text-[11px] text-red-200">
-                    {erreurChaines}
-                  </div>
+                  <SansChaines
+                    message={erreurChaines}
+                    locales={locales}
+                    possessif={look.possessif}
+                    enLigne={enLigne}
+                  />
                 )}
 
                 {/* LE LECTEUR, DANS LE CADRE DU TÉLÉPHONE. Il n'apparaît
@@ -724,6 +727,117 @@ function DeviceScreenPage({
         </div>
       )}
     </AppLayout>
+  );
+}
+
+// =========================================================
+//  QUAND ON N'A AUCUNE CHAÎNE À MONTRER
+// =========================================================
+//  CE QUE CE COMPOSANT RÉPARE (18/09/2026). Lionel regardait BBC One
+//  sur son téléphone pendant que ce panneau lui annonçait :
+//
+//    « Cet appareil n'a aucune liste poussée depuis le panel. »
+//
+//  Techniquement exact. Humainement faux, et dangereux : lu vite, ça
+//  dit « ce client n'a rien », alors qu'il était en train de regarder
+//  la télévision. Un support qui appelle sur cette base se trompe de
+//  conversation.
+//
+//  ---------------------------------------------------------
+//  POURQUOI ON NE PEUT PAS MONTRER SES CHAÎNES À LUI
+//  ---------------------------------------------------------
+//  Quand le CLIENT saisit sa liste lui-même, son mot de passe reste
+//  chez lui : l'app remonte le nom, l'origine du serveur, l'identifiant
+//  et le NOMBRE de chaînes — jamais le mot de passe, et pour un M3U
+//  jamais l'URL complète (elle porte presque toujours les
+//  identifiants). C'est une décision de vie privée prise avant ce
+//  panneau, et elle est juste : on ne collecte pas les accès de nos
+//  clients « au cas où ».
+//
+//  Sans ces accès, le serveur ne PEUT PAS aller lire son bouquet. Ce
+//  n'est pas une limite à corriger, c'est le prix d'un choix qu'on
+//  assume. Ce qu'on doit à Lionel, c'est de le dire clairement et de
+//  montrer tout ce qu'on sait quand même.
+//
+//  ---------------------------------------------------------
+//  ET SI ON NE VOIT RIEN DU TOUT ?
+//  ---------------------------------------------------------
+//  Alors on ne conclut PAS « il n'a rien ». L'inventaire n'arrive que
+//  par le heartbeat : un appareil hors ligne peut très bien être plein
+//  de chaînes sans que le serveur en sache quoi que ce soit. C'est
+//  exactement le cas de la capture qui a motivé ce correctif.
+function SansChaines({
+  message,
+  locales,
+  possessif,
+  enLigne,
+}: {
+  message: string;
+  locales: DeviceLocalSource[];
+  possessif: string;
+  enLigne: boolean;
+}) {
+  //  Cas 1 — RIEN de poussé, mais le client a SES listes à lui.
+  if (locales.length > 0) {
+    const total = locales.reduce((n, l) => n + (l.channels || 0), 0);
+    return (
+      <div className="rounded-lg border border-warning/40 bg-warning/10 px-2.5 py-2 text-[11px] text-warning">
+        <p className="font-semibold">
+          Ce client a {locales.length} liste{locales.length > 1 ? 's' : ''} —
+          mais {locales.length > 1 ? 'ce sont les siennes' : 'c’est la sienne'}.
+        </p>
+        <ul className="mt-1.5 space-y-1">
+          {locales.map((l, i) => (
+            <li key={i} className="flex items-baseline justify-between gap-2">
+              <span className="truncate">
+                {l.name || l.server || 'Liste du client'}
+                {l.active ? ' ●' : ''}
+              </span>
+              <span className="shrink-0 opacity-80">{l.channels} chaînes</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 opacity-90">
+          Il regarde bien la télévision — {total} chaînes au total d’après son
+          app. Je ne peux pas te les LISTER ici : quand le client saisit sa
+          liste lui-même, son mot de passe reste chez lui et le serveur n’a
+          pas de quoi aller lire son bouquet.
+        </p>
+        <p className="mt-1 opacity-90">
+          Pour les voir : pousse-lui la liste depuis le panel (là on a les
+          accès), ou demande-lui son mot de passe et ajoute-la ci-contre.
+        </p>
+      </div>
+    );
+  }
+
+  //  Cas 2 — on ne voit RIEN, et l'appareil est hors ligne. Ne jamais
+  //  en conclure qu'il est vide : l'inventaire ne voyage que par le
+  //  heartbeat.
+  if (!enLigne) {
+    return (
+      <div className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-2 text-[11px] text-[#B6B0A8]">
+        <p className="font-semibold text-[#F0EDE9]">
+          Rien à afficher — et ça ne veut PAS dire qu’il n’a rien.
+        </p>
+        <p className="mt-1">
+          Aucune liste poussée depuis le panel, et {possessif} n’a rien
+          remonté non plus. Or son inventaire ne voyage que quand l’app
+          tourne : hors ligne, le serveur ne sait tout simplement pas ce
+          qu’il a. Il peut très bien être devant sa télé en ce moment.
+        </p>
+        <p className="mt-1">
+          Attends qu’il rouvre l’app, ou pousse-lui une liste ci-contre.
+        </p>
+      </div>
+    );
+  }
+
+  //  Cas 3 — en ligne, et vraiment rien : là on peut le dire.
+  return (
+    <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-2 text-[11px] text-red-200">
+      {message}
+    </div>
   );
 }
 
