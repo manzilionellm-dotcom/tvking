@@ -42,6 +42,11 @@ export const OWNER_NAV: NavSection[] = [
       { key: 'nav.customers',   to: '/customers' },
       { key: 'nav.devices',     to: '/devices' },
       { key: 'nav.diagnostic',  to: '/diagnostic' },
+      // TÉLÉPHONE (18/09/2026) — juste après Diagnostic : les deux
+      // s'ouvrent avec une MAC collée, et on passe de l'un à l'autre
+      // en dépannant. « Diagnostic » dit ce qui cloche ; « Téléphone »
+      // montre ce que le client a sous les yeux et permet d'y toucher.
+      { key: 'nav.phone',       to: '/telephone' },
       { key: 'nav.radar',       to: '/radar' },
       { key: 'nav.resellers',   to: '/resellers' },
       { key: 'nav.credits',     to: '/credits' },
@@ -103,6 +108,11 @@ export const RESELLER_NAV: NavSection[] = [
       { key: 'nav.myResellers',   to: '/resellers',   cap: 'resellers' },
       { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },
       { key: 'nav.diagnostic',    to: '/diagnostic',  cap: 'devices' },
+      // Même capacité que Diagnostic : qui a le droit de voir les
+      // appareils a le droit de voir leurs listes. Le Worker
+      // re-vérifie de toute façon, appareil par appareil
+      // (resellerMaySeeDevice) — le menu n'est jamais la sécurité.
+      { key: 'nav.phone',         to: '/telephone',   cap: 'devices' },
       { key: 'nav.myActivations', to: '/activations', cap: 'activations' },
       { key: 'nav.references',    to: '/references',  cap: 'activations' },
     ],

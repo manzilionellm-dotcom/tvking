@@ -494,6 +494,47 @@ export interface DevicePresence {
 }
 // Source réellement présente sur la TV (remontée par le heartbeat de l'app).
 // Sans mot de passe : le client ne le transmet jamais.
+// =========================================================
+//  LES CHAÎNES DU CLIENT (18/09/2026)
+// =========================================================
+//  Demande du propriétaire : « Je mets l'adresse MAC et le téléphone
+//  vient. Je vois les chaînes qu'il a. »
+//
+//  Jusqu'ici la fiche appareil ne disait que COMBIEN de chaînes. Pour
+//  dépanner au téléphone, un compteur ne sert à rien : « je n'ai pas
+//  TF1 » ne se vérifie pas avec « 1 842 ».
+//
+//  Ce que ça N'EST PAS : une recopie de l'écran du client. Personne ne
+//  filme son téléphone. C'est la MÊME source, lue deux fois — par son
+//  app et par le panel.
+export interface DeviceChannel {
+  id: string;
+  name: string;
+  /// Peut être vide : beaucoup de fournisseurs ne mettent pas de logo.
+  logo: string;
+}
+export interface DeviceChannelCategory {
+  id: string;
+  name: string;
+  channels: DeviceChannel[];
+}
+export interface DeviceChannels {
+  mac: string;
+  /// Quelle liste a réellement été lue (pas forcément celle demandée :
+  /// un index hors bornes retombe sur la liste active).
+  index: number;
+  /// Combien de listes cet appareil a en tout.
+  count: number;
+  type: 'xtream' | 'm3u';
+  source_label: string | null;
+  categories: DeviceChannelCategory[];
+  total: number;
+  /// Au-delà de 6 000 chaînes le serveur tronque. On le DIT à l'écran :
+  /// un panneau qui montre 6 000 lignes sur 9 000 sans le signaler
+  /// ferait conclure « il n'a pas cette chaîne » à tort.
+  truncated: boolean;
+}
+
 export interface DeviceLocalSource {
   type: 'xtream' | 'm3u';
   name: string;
@@ -648,6 +689,26 @@ export const devicesApi = {
   // L'app ne marche pas : le serveur lit tout et DIT ce qui cloche.
   scan: (id: string) =>
     request<DeviceScanResult>(`/api/v1/devices/${encodeURIComponent(id)}/scan`),
+  // LES CHAÎNES QUE LE CLIENT A VRAIMENT, rangées par catégories, lues
+  // en direct chez son fournisseur. `index` = quelle liste (absent : la
+  // liste ACTIVE, celle qu'il regarde). Voir PhonePage.
+  channels: (id: string, index?: number) => {
+    const qs = index == null ? '' : `?index=${index}`;
+    return request<DeviceChannels>(
+      `/api/v1/devices/${encodeURIComponent(id)}/channels${qs}`,
+    );
+  },
+  // LIRE une chaîne depuis le panel. Le Worker fabrique l'URL avec les
+  // identifiants qu'il a en base, la SIGNE, et ne renvoie que le lien du
+  // relais (`/cast-proxy`, valable 12 h). Le mot de passe du fournisseur
+  // n'arrive jamais jusqu'au navigateur.
+  play: (id: string, streamId: string, index?: number) => {
+    const qs = new URLSearchParams({ id: streamId });
+    if (index != null) qs.set('index', String(index));
+    return request<{ mac: string; url: string; expires_at: number }>(
+      `/api/v1/devices/${encodeURIComponent(id)}/play?${qs}`,
+    );
+  },
   // Geler ('frozen'), bannir ('banned') ou reactiver ('active') une MAC.
   setBlock: (id: string, block_status: 'active' | 'frozen' | 'banned') =>
     request<{ updated: number; block_status: string | null; admin_note?: string | null; rt?: RtInfo }>(

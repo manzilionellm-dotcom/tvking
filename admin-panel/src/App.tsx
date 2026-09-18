@@ -39,6 +39,7 @@ import { CreditsPage } from '@/pages/CreditsPage';
 import { LabPage } from '@/pages/LabPage';
 import { ProfilesPage } from '@/pages/ProfilesPage';
 import { DiagnosticPage } from '@/pages/DiagnosticPage';
+import { PhonePage } from '@/pages/PhonePage';
 import { DeviceSheetProvider } from '@/components/DeviceSheet';
 
 /// Etats possibles de l'app :
@@ -175,6 +176,10 @@ export default function App() {
       <Route path="/customers"   element={<CustomersPage   onLogout={handleLogout} />} />
       <Route path="/devices"     element={<DevicesPage     onLogout={handleLogout} />} />
       <Route path="/diagnostic"  element={<DiagnosticPage  onLogout={handleLogout} />} />
+      {/* TÉLÉPHONE — on colle une MAC, on voit ses listes et ses chaînes,
+          et on y touche. Le Worker re-vérifie l'appartenance appareil par
+          appareil : la route n'est pas la sécurité. */}
+      <Route path="/telephone"   element={<PhonePage       onLogout={handleLogout} />} />
       <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />
       <Route path="/servers"     element={<ServersPage     onLogout={handleLogout} />} />
       <Route path="/activations" element={<ActivationsPage onLogout={handleLogout} />} />

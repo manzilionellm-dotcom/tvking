@@ -62,6 +62,7 @@ import {
   publicCampaignsList, trackCampaignEvent, ingestAppReport,
   sourcesFromRow,
 } from './api_v1.js';
+import { hmacHex, isSafeUpstream, signProxyUrl } from './stream_proxy.js';
 // Temps réel (cf. cloudflare/realtime.js + docs/REALTIME-PROTOCOL.md) :
 // Durable Object « RealtimeHub » (WebSockets appareils + panel) et helper
 // publishRt() (publication fail-open après une mutation). La classe DO
@@ -2446,59 +2447,15 @@ function decodeMacPath(mac) {
 // signatures de lecteurs répandus.
 const CAST_PROXY_UA = 'VLC/3.0.20 LibVLC/3.0.20';
 
-// HMAC-SHA256(secret, message) → hex. Web Crypto (dispo dans le runtime Worker).
-async function hmacHex(secret, message) {
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
+// `hmacHex`, `isSafeUpstream` et la signature du relais vivent désormais
+// dans `stream_proxy.js` (importé en haut de ce fichier) : le panneau
+// « Téléphone » du panel en a besoin lui aussi, et `api_v1.js` ne peut
+// pas importer `worker.js` sans faire un cercle. Recopier la signature
+// aurait été pire : un jeton signé d'un côté, refusé de l'autre, sans
+// que rien ne l'explique.
 
 // (La comparaison à temps constant `safeEqual` est déjà définie plus bas dans
 //  ce fichier — réutilisée ici pour vérifier le token du proxy Cast.)
-
-// Anti-SSRF : n'autorise que http(s) vers un hôte PUBLIC. Refuse localhost, les
-// domaines *.local et les IP littérales privées / réservées (RFC1918, loopback,
-// link-local, CGNAT, IPv6 ULA/loopback/link-local). Un hôte en nom de domaine
-// est laissé passer (le runtime Worker ne route de toute façon pas vers les
-// réseaux privés), mais une IP littérale privée est bloquée nettement.
-function isSafeUpstream(rawUrl) {
-  let u;
-  try { u = new URL(rawUrl); } catch (_) { return false; }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
-  let host = u.hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return false;
-  // IPv6 littéral entre crochets → new URL garde les crochets dans hostname.
-  if (host.startsWith('[')) host = host.slice(1, -1);
-  // IPv4 littérale ?
-  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) {
-    const o = m.slice(1).map((n) => parseInt(n, 10));
-    if (o.some((n) => n > 255)) return false;
-    const [a, b] = o;
-    if (a === 10) return false;                       // 10.0.0.0/8
-    if (a === 127) return false;                      // loopback
-    if (a === 0) return false;                        // 0.0.0.0/8
-    if (a === 169 && b === 254) return false;         // link-local
-    if (a === 172 && b >= 16 && b <= 31) return false; // 172.16.0.0/12
-    if (a === 192 && b === 168) return false;         // 192.168.0.0/16
-    if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT 100.64.0.0/10
-    if (a >= 224) return false;                       // multicast / réservé
-    return true;
-  }
-  // IPv6 littérale : bloque loopback (::1), ULA (fc00::/7), link-local (fe80::/10),
-  // non-spécifié (::). Laisse passer le reste (adresses globales).
-  if (host.includes(':')) {
-    if (host === '::1' || host === '::') return false;
-    if (host.startsWith('fc') || host.startsWith('fd')) return false;
-    if (host.startsWith('fe8') || host.startsWith('fe9') ||
-        host.startsWith('fea') || host.startsWith('feb')) return false;
-    return true;
-  }
-  return true; // nom de domaine
-}
 
 // GET /vendor/mpegts.js — sert mpegts.js en MÊME ORIGINE que le récepteur Cast.
 // Pourquoi : la page /cast-receiver chargeait mpegts.js depuis cdn.jsdelivr.net ;
@@ -2552,13 +2509,13 @@ async function handleCastSign(env, url) {
   const secret = env.CAST_PROXY_SECRET;
   if (!secret) return json({ ok: false, error: 'proxy_unconfigured' }, 503);
   const u = url.searchParams.get('u') || '';
-  if (!u || !isSafeUpstream(u)) return badRequest('invalid or private upstream url');
-  const exp = Math.floor(Date.now() / 1000) + 12 * 3600; // 12 h
-  const sig = (await hmacHex(secret, u + '\n' + exp)).slice(0, 32);
-  const origin = url.origin || 'https://app.7themotion.com';
-  const proxyUrl = origin + '/cast-proxy?u=' + encodeURIComponent(u) +
-    '&e=' + exp + '&t=' + sig;
-  return json({ ok: true, url: proxyUrl, expires_at: exp });
+  // MÊME signature que le panneau « Téléphone » du panel, parce que
+  // c'est LA MÊME fonction (stream_proxy.js). `null` = amont refusé
+  // (schéma exotique ou IP privée) : le secret, lui, a déjà été
+  // vérifié juste au-dessus.
+  const signe = await signProxyUrl(secret, url.origin, u);
+  if (!signe) return badRequest('invalid or private upstream url');
+  return json({ ok: true, url: signe.url, expires_at: signe.expires_at });
 }
 
 // GET/HEAD /cast-proxy?u=&e=&t= — vérifie le token puis STREAME l'upstream.

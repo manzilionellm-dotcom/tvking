@@ -91,6 +91,11 @@ import {
 //  contredire : le panel dirait « à jour » pendant que la box propose
 //  une mise à jour. Cf. cloudflare/app_versions.js.
 import { publishedVersions, deviceVersionStatus } from './app_versions.js';
+//  Relais de lecture signé : MÊME signature que `/cast-sign` du
+//  récepteur Cast. Deux copies auraient voulu dire un jeton signé d'un
+//  côté et refusé de l'autre, avec pour seul symptôme « la chaîne ne
+//  démarre pas ». Cf. cloudflare/stream_proxy.js.
+import { signProxyUrl } from './stream_proxy.js';
 
 // ---------------------------------------------------------
 //  Helpers reponse
@@ -1563,6 +1568,53 @@ async function apiV1Inner(request, env) {
     // version, présence et journaux, puis on DIT ce qui cloche.
     if (parts.length === 3 && parts[2] === 'scan') {
       if (request.method === 'GET') return handleDeviceScan(env, parts[1], a.user);
+    }
+    // =========================================================
+    //  /devices/:id/channels — CE QUE LE CLIENT A VRAIMENT
+    // =========================================================
+    //  Demande du propriétaire (18/09/2026) : « Je mets l'adresse MAC
+    //  et le téléphone vient. Je vois les chaînes qu'il a. »
+    //
+    //  Jusqu'ici la fiche appareil disait COMBIEN de chaînes ("1 842")
+    //  et rien de plus. Pour dépanner un client au téléphone, c'est
+    //  inutilisable : « je n'ai pas TF1 » ne se vérifie pas avec un
+    //  compteur. On lit donc la liste chez le FOURNISSEUR, rangée par
+    //  catégories, exactement comme l'app la range.
+    //
+    //  MÊME LECTEUR QUE LE COPIEUR DES MAÎTRES (`_copyXtream` /
+    //  `_copyM3u`). Une seule implémentation, deux appelants : le jour
+    //  où une copie dérive, le panel montrerait une liste et l'app une
+    //  autre, et plus personne ne saurait laquelle croire.
+    //
+    //  SANS FAÇADE ET SANS URL DE LECTURE : ce panneau sert à REGARDER,
+    //  pas à jouer. Renvoyer les URLs, c'est promener le mot de passe
+    //  du fournisseur dans une réponse de plus, pour rien.
+    if (parts.length === 3 && parts[2] === 'channels') {
+      if (request.method === 'GET') {
+        return handleDeviceChannels(request, env, parts[1], a.user);
+      }
+      return errResp('method_not_allowed', 'GET attendu.', 405);
+    }
+    // =========================================================
+    //  /devices/:id/play?index=N&id=STREAM — LIRE LA CHAÎNE
+    // =========================================================
+    //  « Je dois avoir accès à toute l'app du téléphone, même faire
+    //   play à tous » (propriétaire, 18/09/2026).
+    //
+    //  LE MOT DE PASSE DU FOURNISSEUR NE SORT PAS D'ICI. Le Worker
+    //  fabrique l'URL de lecture avec les identifiants qu'il a déjà en
+    //  base, la SIGNE, et ne renvoie que le lien `/cast-proxy` — valable
+    //  12 h, lisible par personne d'autre. Le navigateur de Lionel ne
+    //  voit jamais l'identifiant du client.
+    //
+    //  C'est aussi pour ça que la liste (`/channels`) ne porte AUCUNE
+    //  URL : six mille liens avec un mot de passe dedans, pour n'en
+    //  jouer qu'un seul à la fois, n'aurait servi qu'à le promener.
+    if (parts.length === 3 && parts[2] === 'play') {
+      if (request.method === 'GET') {
+        return handleDevicePlay(request, env, parts[1], a.user);
+      }
+      return errResp('method_not_allowed', 'GET attendu.', 405);
     }
     // /devices/:id/change-mac — éditer l'identité (danger : confirmation
     // `confirm:true` obligatoire). L'app ADOPTE via RT mac_reassigned.
@@ -5715,6 +5767,266 @@ async function handleMasterChannels(request, env) {
 }
 
 // =========================================================
+//  LE TÉLÉPHONE DU CLIENT, VU DU PANEL (18/09/2026)
+// =========================================================
+//  DEMANDE DU PROPRIÉTAIRE, mot pour mot :
+//
+//    « Je veux une option qui s'appelle Téléphone. Je mets l'adresse
+//      MAC et le téléphone vient. Je vois les chaînes qu'il a. Et je
+//      efface ou j'ajoute les listes. »
+//
+//  CE QUE CETTE ROUTE FAIT : elle rend les CHAÎNES d'une des listes de
+//  l'appareil, rangées par catégories, lues en direct chez le
+//  fournisseur — la même lecture que l'app fait de son côté.
+//
+//  CE QU'ELLE NE FAIT PAS, ET IL FAUT LE SAVOIR EN LA LISANT : ce n'est
+//  pas une recopie de l'écran du client. Personne ne filme son
+//  téléphone. C'est la MÊME SOURCE lue deux fois — par son app et par
+//  ce panneau. Là où les deux peuvent différer : ses favoris, son
+//  historique et ses catégories masquées, qui ne vivent que chez lui.
+//
+//  LES LISTES ELLES-MÊMES ne passent pas par ici : le panel les a déjà
+//  (`/sources/:mac` pour celles qu'il a poussées, `/devices/:id/
+//  overview` pour celles que le client a ajoutées tout seul, remontées
+//  par le heartbeat). Ajouter une route qui les redonnerait, ce serait
+//  une deuxième vérité à tenir à jour.
+// =========================================================
+
+/// CE COMPTE A-T-IL LE DROIT DE VOIR CET APPAREIL ?
+///
+///  L'owner voit tout. Un revendeur ne voit QUE ses appareils — et,
+///  quand aucune fiche `devices` n'existe pour la MAC (donc aucun
+///  propriétaire vérifiable), il ne voit rien : sans fiche, impossible
+///  de prouver que l'appareil est à lui.
+///
+///  UNE SEULE IMPLÉMENTATION, PLUSIEURS APPELANTS (la fiche 360° et le
+///  panneau Téléphone). Le jour où une copie de cette règle dérive,
+///  l'un des deux écrans laisse un revendeur lire les chaînes — donc la
+///  ligne — d'un client qui n'est pas le sien. Ce n'est pas un détail
+///  d'affichage, c'est la cloison entre deux revendeurs.
+export function resellerMaySeeDevice(user, dev) {
+  if (!user || user.role !== 'reseller') return true;
+  if (!dev || dev.reseller_id == null) return false;
+  return dev.reseller_id === user.sub;
+}
+
+/// QUELLE liste on montre. Extraite et exportée parce que c'est la
+/// seule vraie décision de cette route — le reste est de la plomberie.
+///
+///  • un index demandé et valide gagne (le panel a des onglets) ;
+///  • sinon la liste ACTIVE, celle que le client regarde vraiment ;
+///  • sinon la première.
+///
+///  UN INDEX HORS BORNES NE FAIT PAS ÉCHOUER. Entre le moment où le
+///  panel affiche les onglets et celui où on clique, une liste peut
+///  avoir été retirée — par le client, ou par un autre revendeur. Dans
+///  ce cas on montre la liste active plutôt qu'une erreur rouge : un
+///  décalage d'un cran n'est pas une panne, et Lionel dépanne au
+///  téléphone pendant ce temps-là.
+export function pickSourceIndex(sources, demande) {
+  const list = Array.isArray(sources) ? sources : [];
+  if (list.length === 0) return 0;
+  //  `Number` et PAS `parseInt` : `parseInt('1.5')` rend 1, donc un
+  //  index absurde serait accepté en silence — et mon propre test
+  //  l'aurait « vérifié » pour une raison fausse. `Number('1.5')` rend
+  //  1.5, qui n'est pas un entier, donc on retombe sur la liste active.
+  //
+  //  La chaîne vide est écartée AVANT : `Number('')` vaut 0, ce qui
+  //  ferait passer « aucun onglet demandé » pour « onglet n°1 ».
+  const brut = String(demande ?? '').trim();
+  if (brut !== '') {
+    const n = Number(brut);
+    if (Number.isInteger(n) && n >= 0 && n < list.length) return n;
+  }
+  const actif = list.findIndex((s) => s && s.active);
+  return actif < 0 ? 0 : actif;
+}
+
+/// `GET /api/v1/devices/:id/channels?index=N`
+///
+///  `index` = la N-ième liste poussée à cet appareil. Absent → la liste
+///  ACTIVE, celle que le client regarde réellement.
+async function handleDeviceChannels(request, env, id, user) {
+  const url = new URL(request.url);
+  const mac = normalizeMac(decodeMac(id));
+  if (!isValidMac(mac)) {
+    return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
+  }
+
+  //  LA CLOISON ENTRE REVENDEURS, AVANT TOUT LE RESTE. Les chaînes
+  //  d'un appareil disent quelle ligne il utilise : un revendeur qui
+  //  lirait celles d'un client d'un autre revendeur y verrait son
+  //  fournisseur. Même règle que la fiche 360°, même fonction.
+  const dev = await env.DB
+    .prepare('SELECT id, mac, reseller_id FROM devices WHERE id = ? OR mac = ?')
+    .bind(mac, mac)
+    .first();
+  if (!resellerMaySeeDevice(user, dev)) {
+    return errResp('forbidden', 'Cet appareil ne vous appartient pas', 403);
+  }
+
+  let sources = [];
+  try {
+    await ensureSourcesTable(env);
+    const row = await env.DB
+      .prepare('SELECT * FROM device_sources WHERE mac = ?')
+      .bind(mac)
+      .first();
+    sources = sourcesFromRow(row);
+  } catch (_) { /* table absente : traité comme « aucune liste » */ }
+
+  if (sources.length === 0) {
+    //  404 AVEC UNE PHRASE UTILE. « no_source » tout seul enverrait
+    //  chercher une panne ; ici il n'y a rien à réparer, il y a une
+    //  liste à pousser — et le panneau doit le dire comme ça.
+    return errResp('no_source',
+      'Cet appareil n\'a aucune liste poussée depuis le panel. '
+      + 'Ajoute-lui-en une ci-dessous, ou regarde ses listes locales '
+      + '(celles qu\'il a saisies lui-même sur son téléphone).', 404);
+  }
+
+  const index = pickSourceIndex(sources, url.searchParams.get('index'));
+  const src = sources[index];
+
+  try {
+    let out;
+    if (src.type === 'xtream' && src.server_url && src.username && src.password) {
+      out = await _copyXtream(src);
+    } else if (src.m3u_url) {
+      out = await _copyM3u(src);
+    } else {
+      return errResp('bad_source',
+        'Cette liste est incomplète côté panel (ni Xtream complet, ni '
+        + 'M3U). Le client voit la même chose que nous : rien.', 400);
+    }
+    out.categories.sort((a, b) => a.name.localeCompare(b.name));
+    for (const c of out.categories) c.channels.sort((a, b) => a.name.localeCompare(b.name));
+    return jsonResp({
+      mac,
+      index,
+      count: sources.length,
+      type: out.type,
+      source_label: src.label || null,
+      //  ON RETIRE L'URL DE LECTURE. Elle porte les identifiants du
+      //  fournisseur, et ce panneau sert à REGARDER la liste, pas à
+      //  jouer une chaîne. Moins on promène le mot de passe, mieux on
+      //  se porte — c'est la même raison que le caviardage de la boîte
+      //  noire.
+      categories: out.categories.map((c) => ({
+        id: c.id,
+        name: c.name,
+        channels: c.channels.map((ch) => ({
+          id: ch.id,
+          name: ch.name,
+          logo: ch.logo || '',
+        })),
+      })),
+      total: out.total,
+      truncated: out.truncated,
+    });
+  } catch (e) {
+    //  502 ET LA VRAIE RAISON. « Impossible de lire » tout court a déjà
+    //  coûté une demi-journée sur un HTTP 520 pris pour un refus du
+    //  fournisseur. Ici on dit ce qu'on a mesuré, pas ce qu'on suppose.
+    return errResp('provider_unreachable',
+      'Le fournisseur n\'a pas répondu : ' + String((e && e.message) || e)
+      + '. Le client voit donc la même chose — ce n\'est pas le panel '
+      + 'qui est en cause.', 502);
+  }
+}
+
+/// L'URL de LECTURE d'une chaîne, telle que l'app la construit.
+///
+///  Xtream : `/live/<user>/<pass>/<id>.ts` — le format que le lecteur
+///  de l'app utilise, et que mpegts.js sait lire dans un navigateur.
+///
+///  M3U : on ne fabrique rien. Une liste M3U porte déjà l'URL de
+///  chaque chaîne, et elle peut être n'importe quoi. On renvoie donc
+///  `null` plutôt que d'inventer une adresse qui ne jouera pas —
+///  l'appelant dira honnêtement qu'il ne sait pas lire celle-ci.
+///
+///  Exportée pour être testable sans réseau : c'est une construction
+///  de chaîne, et une construction de chaîne se vérifie.
+export function xtreamLiveUrl(src, streamId) {
+  if (!src || src.type !== 'xtream') return null;
+  const base = String(src.server_url || '').replace(/\/+$/, '');
+  const user = String(src.username || '');
+  const pass = String(src.password || '');
+  const id = String(streamId || '').trim();
+  if (!base || !user || !pass || !id) return null;
+  //  L'identifiant vient de la requête : on n'accepte QUE des chiffres.
+  //  Sans ce filtre, on collerait n'importe quoi dans un chemin d'URL
+  //  que le Worker ira ensuite chercher lui-même.
+  if (!/^\d+$/.test(id)) return null;
+  return `${base}/live/${encodeURIComponent(user)}/${encodeURIComponent(pass)}/${id}.ts`;
+}
+
+/// `GET /api/v1/devices/:id/play?index=N&id=STREAM`
+async function handleDevicePlay(request, env, id, user) {
+  const url = new URL(request.url);
+  const mac = normalizeMac(decodeMac(id));
+  if (!isValidMac(mac)) {
+    return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
+  }
+
+  // Même cloison que partout ailleurs, et avant tout le reste.
+  const dev = await env.DB
+    .prepare('SELECT id, mac, reseller_id FROM devices WHERE id = ? OR mac = ?')
+    .bind(mac, mac)
+    .first();
+  if (!resellerMaySeeDevice(user, dev)) {
+    return errResp('forbidden', 'Cet appareil ne vous appartient pas', 403);
+  }
+
+  let sources = [];
+  try {
+    await ensureSourcesTable(env);
+    const row = await env.DB
+      .prepare('SELECT * FROM device_sources WHERE mac = ?')
+      .bind(mac)
+      .first();
+    sources = sourcesFromRow(row);
+  } catch (_) { /* traité comme « aucune liste » juste en dessous */ }
+  if (sources.length === 0) {
+    return errResp('no_source', 'Cet appareil n\'a aucune liste poussée.', 404);
+  }
+
+  const src = sources[pickSourceIndex(sources, url.searchParams.get('index'))];
+  const flux = xtreamLiveUrl(src, url.searchParams.get('id'));
+  if (!flux) {
+    //  DIRE LAQUELLE DES DEUX RAISONS, parce qu'elles n'appellent pas
+    //  la même suite : sur un M3U il n'y a rien à réparer, c'est une
+    //  limite assumée ; sur un Xtream incomplet, il manque vraiment
+    //  quelque chose dans la fiche.
+    return errResp('not_playable',
+      src && src.type === 'm3u'
+        ? 'Lecture depuis le panel disponible sur les listes Xtream '
+          + 'seulement. Une liste M3U porte ses propres adresses, et '
+          + 'elles ne sont pas toutes lisibles dans un navigateur.'
+        : 'Cette liste Xtream est incomplète (serveur, identifiant ou '
+          + 'mot de passe manquant) : le client ne peut pas lire non plus.',
+      400);
+  }
+
+  const signe = await signProxyUrl(env.CAST_PROXY_SECRET, url.origin, flux);
+  if (!signe) {
+    //  Deux causes, un seul `null` — on les sépare pour ne pas envoyer
+    //  chercher une panne de configuration là où il y a une adresse
+    //  refusée, et inversement.
+    if (!env.CAST_PROXY_SECRET) {
+      return errResp('proxy_unconfigured',
+        'Le relais de lecture n\'est pas configuré sur ce serveur '
+        + '(secret CAST_PROXY_SECRET absent). La liste s\'affiche quand '
+        + 'même — seule la lecture est indisponible.', 503);
+    }
+    return errResp('bad_upstream',
+      'L\'adresse de ce fournisseur est refusée par le relais (adresse '
+      + 'privée ou schéma inattendu).', 400);
+  }
+  return jsonResp({ mac, url: signe.url, expires_at: signe.expires_at });
+}
+
+// =========================================================
 //  BOÎTE NOIRE — DIAGNOSTIC (côté panel, authentifié)
 // =========================================================
 //  Même esprit que le diagnostic de l'app, mais lu depuis le panel : teste
@@ -5859,7 +6171,9 @@ async function handleDeviceOverview(env, id, user) {
     .bind(key, key.toUpperCase())
     .first();
   if (dev) {
-    if (isReseller && dev.reseller_id !== user.sub) {
+    // Règle commune à la fiche 360° et au panneau Téléphone — elle vit
+    // dans `resellerMaySeeDevice` et nulle part ailleurs.
+    if (!resellerMaySeeDevice(user, dev)) {
       return errResp('forbidden', 'Cet appareil ne vous appartient pas', 403);
     }
   } else {
@@ -5873,7 +6187,12 @@ async function handleDeviceOverview(env, id, user) {
     if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(key)) {
       return errResp('not_found', 'Device not found', 404);
     }
-    if (isReseller) return errResp('not_found', 'Device not found', 404);
+    // Même règle, cas « aucune fiche » : sans fiche, un revendeur ne
+    // peut pas prouver que l'appareil est à lui — donc il ne le voit
+    // pas. `resellerMaySeeDevice(user, null)` dit exactement ça.
+    if (!resellerMaySeeDevice(user, null)) {
+      return errResp('not_found', 'Device not found', 404);
+    }
     dev = { id: null, mac: key.toUpperCase(), reseller_id: null, block_status: null };
   }
   const now = Date.now();
