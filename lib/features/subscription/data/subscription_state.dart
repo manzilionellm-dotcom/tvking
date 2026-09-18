@@ -437,10 +437,21 @@ class SubscriptionState extends ChangeNotifier {
           await SubscriptionBackend.heartbeat(mac);
       if (!snap.exists) {
         // Réseau KO / Worker muet : on GARDE le cache (grâce courte).
+        //
+        //  ON ÉCRIT MAINTENANT LAQUELLE DES DEUX (terrain 18/09/2026).
+        //  Cette ligne tombait toutes les 45 minutes, huit fois dans une
+        //  nuit, toujours avec le même `remote_unknown` — alors qu'elle
+        //  recouvrait trois causes sans rapport : aucun hôte joignable
+        //  (la ligne du client), un hôte qui répond en erreur (NOTRE
+        //  Worker), ou une casse avant l'envoi (l'appareil). Impossible
+        //  de savoir qui réveiller. `heartbeat` porte désormais la
+        //  raison ; on la recopie telle quelle.
         StructuredLogger.instance.warn(
           domain: 'sub',
           event: 'sync.empty',
-          ctx: const <String, Object?>{'reason': 'remote_unknown'},
+          ctx: <String, Object?>{
+            'reason': snap.raisonEchec ?? 'remote_unknown',
+          },
         );
         notifyListeners();
         return;
