@@ -53,7 +53,60 @@ case "$KIND" in
       # Branche de travail actuelle : le sideload téléphone doit
       # recevoir CE build, signé officiel (demande 16/09).
       claude/instant-m3u-activate)                    echo 'phone-latest' ;;
-      *)                                             echo 'latest' ;;
+      # =========================================================
+      #  LE CANAL TÉLÉPHONE ÉTAIT GELÉ (18/09/2026)
+      # =========================================================
+      #  Mesuré, pas supposé : `phone-latest/version.json` annonçait
+      #  encore 198870 pendant que la TV en était à 198875. Cinq
+      #  numéros d'écart — donc cinq builds téléphone compilés, verts,
+      #  et jamais arrivés sur un seul appareil.
+      #
+      #  La cause est cette liste-ci. Le travail a changé de branche ;
+      #  personne n'a pensé à l'y réinscrire, et rien n'est prévu pour
+      #  le dire. La branche est alors tombée sur « latest », un canal
+      #  générique que l'app téléphone ne regarde pas. Aucune erreur,
+      #  aucune alerte : exactement la règle n°2 de la maison, « vert
+      #  ne veut pas dire livré ».
+      #
+      #  Le correctif du juge des empreintes — celui qui fait qu'une
+      #  liste poussée depuis le panel arrive sur le téléphone — était
+      #  dans le lot bloqué. On corrigeait la panne que le
+      #  propriétaire signalait, et le correctif ne partait nulle part.
+      #
+      #  ⚠ CETTE LISTE RECOMMENCERA. Elle demande à un humain de se
+      #  souvenir d'y revenir à chaque changement de branche, et c'est
+      #  déjà arrivé deux fois. La vraie sortie serait que `phone` ait
+      #  le même défaut que `tv` (un canal par défaut plutôt qu'une
+      #  liste blanche) — mais ça changerait ce que reçoivent de VRAIS
+      #  clients depuis n'importe quelle branche : c'est une décision
+      #  du propriétaire, pas un choix de passage.
+      claude/retour-13sept-notifications)            echo 'phone-latest' ;;
+      *)
+        # =========================================================
+        #  DIRE QUAND ON NE PUBLIE NULLE PART (18/09/2026)
+        # =========================================================
+        #  « latest » est un canal générique : l'app téléphone ne le
+        #  regarde pas. Tomber ici veut donc dire « ce build ne partira
+        #  sur AUCUN appareil » — et jusqu'à aujourd'hui ça se passait
+        #  sans un mot, avec un ✅ vert au bout. Cinq builds ont été
+        #  perdus comme ça.
+        #
+        #  On l'écrit sur la SORTIE D'ERREUR : les appelants capturent
+        #  `$(...)`, c'est-à-dire la sortie standard uniquement. Le
+        #  canal renvoyé est donc strictement inchangé — on ajoute une
+        #  phrase dans le journal, on ne touche pas à la mécanique.
+        #
+        #  Une branche `test/**` tombe ici elle aussi, et c'est VOULU :
+        #  elle ne doit rien publier. L'avertissement confirme alors
+        #  que la protection joue, au lieu de laisser deviner.
+        echo "release_tag.sh : branche « $BRANCH » → canal « latest »." >&2
+        echo "  ⚠ L'app TÉLÉPHONE lit « phone-latest », pas « latest »." >&2
+        echo "  ⚠ Ce build ne parviendra donc à AUCUN téléphone." >&2
+        echo "  Si c'est une branche de travail, inscris-la dans la" >&2
+        echo "  liste « phone » de ci/release_tag.sh. Si c'est un essai," >&2
+        echo "  c'est le comportement attendu." >&2
+        echo 'latest'
+        ;;
     esac
     ;;
   tv)
