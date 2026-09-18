@@ -12,7 +12,6 @@
 // =========================================================
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:tv_king/core/app/family_feature.dart';
 import 'package:tv_king/core/privacy/privacy_shield.dart';
 import 'package:tv_king/features/vod/data/family_position_sync.dart';
 import 'package:tv_king/features/vod/data/playback_position_repository.dart';
@@ -50,13 +49,6 @@ void main() {
   final DateTime t0 = DateTime(2026, 9, 1, 20, 0);
 
   setUp(() async {
-    // INTERRUPTEUR FAMILLE (17/09/2026) : éteint en production (le
-    // propriétaire veut « une application normale, sans trucs de
-    // famille »). Ce fichier décrit ce que la fonctionnalité fait QUAND
-    // ELLE EST ALLUMÉE — la preuve qu'elle est encore entière si on la
-    // rallume. Voir test/core/famille_eteinte_test.dart pour l'autre
-    // moitié : ce qui se passe une fois éteinte.
-    familleActiveePourTest = true;
     SharedPreferences.setMockInitialValues(<String, Object>{});
     PrivacyShield.instance.resetForTest();
     repo = PlaybackPositionRepository.instance;
@@ -71,7 +63,6 @@ void main() {
   });
 
   tearDown(() {
-    reinitialiserFamillePourTest();
     sync.resetForTest();
     repo.resetForTest();
     PrivacyShield.instance.resetForTest();

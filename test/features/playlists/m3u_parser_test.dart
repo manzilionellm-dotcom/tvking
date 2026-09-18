@@ -187,27 +187,5 @@ void main() {
       expect(r.channels.length, 10);
       expect(r.warnings.any((String w) => w.contains('Limite atteinte')), isTrue);
     });
-
-    test('#EXTVLCOPT http-user-agent / http-referrer → httpHeaders', () {
-      final M3uParseResult r = M3uParser.parse(
-        _m3u(<String>[
-          '#EXTM3U',
-          '#EXTINF:-1,Test',
-          '#EXTVLCOPT:http-user-agent=VLC/3.0.21',
-          '#EXTVLCOPT:http-referrer=http://referer.example/',
-          'http://host/live/1.ts',
-        ]),
-        playlistId: 1,
-      );
-      expect(r.channels, hasLength(1));
-      expect(
-        r.httpHeaders['http://host/live/1.ts']!['User-Agent'],
-        'VLC/3.0.21',
-      );
-      expect(
-        r.httpHeaders['http://host/live/1.ts']!['Referer'],
-        'http://referer.example/',
-      );
-    });
   });
 }

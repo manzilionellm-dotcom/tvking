@@ -27,10 +27,8 @@ import androidx.media3.ui.SubtitleView
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.TransferListener
-import androidx.media3.datasource.okhttp.OkHttpDataSource
-import okhttp3.OkHttpClient
-import java.util.concurrent.TimeUnit
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -123,31 +121,7 @@ class NativeVideoView(
          * pause remonte à Dart via onIsPlayingChanged → l'UI reste cohérente.
          */
         fun pauseAll() {
-            // Copie : dispose() retire de `instances` sur le main thread.
-            for (v in instances.toList()) {
-                v.playerHandler.post {
-                    if (v.fsm == Fsm.RELEASED) return@post
-                    try {
-                        if (v.preview || v.player.isCurrentMediaItemLive) {
-                            // DIRECT / aperçu : STOP, pas pause. Une pause
-                            // GARDE la socket panel → 458 sur la ligne 1/1
-                            // quand le client appuie sur Home. Demande
-                            // propriétaire 16/09 : jamais laisser un flux
-                            // « relancer » tout seul en arrière-plan.
-                            v.cancelRetry()
-                            v.player.stop()
-                            v.player.clearMediaItems()
-                            v.evictHttp()
-                            v.currentUrl = null
-                            v.fsm = Fsm.IDLE
-                            v.recordEvent("pause_all_stopped")
-                        } else {
-                            v.player.pause()
-                        }
-                    } catch (_: Exception) {
-                    }
-                }
-            }
+            for (v in instances) v.playerHandler.post { v.player.pause() }
         }
 
         /**
@@ -213,27 +187,6 @@ class NativeVideoView(
     private val handler = Handler(Looper.getMainLooper())
     private val playerHandler = Handler(playerThread.looper)
 
-    // UN pool HTTP PAR lecteur. Keep-alive pendant la lecture (HLS :
-    // pas un handshake TCP par segment). À l'arrêt, on ÉVINCÉ le pool
-    // → le panel 1-connexion voit la socket fermée tout de suite,
-    // sans l'en-tête « Connection: close » qui cassait le HLS.
-    private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .retryOnConnectionFailure(true)
-        .followRedirects(true)
-        .followSslRedirects(true)
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .build()
-
-    /** Annule les requêtes en vol et ferme les sockets keep-alive de CE lecteur. */
-    private fun evictHttp() {
-        try {
-            okHttpClient.dispatcher.cancelAll()
-            okHttpClient.connectionPool.evictAll()
-        } catch (_: Exception) {
-        }
-    }
-
     private var currentUrl: String? = null
 
     // Signature de lecteur CUSTOM pour la chaîne courante (diagnostic
@@ -252,9 +205,6 @@ class NativeVideoView(
     // flux (.ts ⇄ .m3u8) — rester à marteler une URL morte retarde la bascule.
     private var retryCount = 0
     private var pendingRetry: Runnable? = null
-    //  RESTAURÉ à 3 le 17/09 : à 2, une micro-coupure suffisait à faire
-    //  abandonner le lecteur, donc à couper l'image là où il aurait suffi
-    //  d'attendre un instant de plus.
     private val maxSilentRetries = 3
 
     // ==================================================================
@@ -465,9 +415,6 @@ class NativeVideoView(
         // qui doit revenir au Focus Flutter).
         surfaceView.isFocusable = false
         surfaceView.isFocusableInTouchMode = false
-        // Overlay « secure » = image noire. La fenêtre a déjà FLAG_SECURE
-        // (captures). Cette SurfaceView, si elle sert, reste affichable.
-        surfaceView.setSecure(false)
 
         //  ⚠ CORRECTION DE COMMENTAIRE (28/08/2026). Cette ligne portait
         //  « on garde l'écran allumé ». C'ÉTAIT FAUX dans le mode de rendu
@@ -516,55 +463,41 @@ class NativeVideoView(
         // false) reste LA garde anti-OOM, donc aucune régression mémoire.
         val lowRam = (activityManager?.isLowRamDevice == true) ||
             (memInfo.totalMem in 1..(800L * 1024 * 1024))
-        // =========================================================
-        //  LE PLAFOND D'OCTETS DOIT RESTER UN PLAFOND — 17/09/2026
-        // =========================================================
-        //  `setPrioritizeTimeOverSizeThresholds(true)` avait été posé sur
-        //  les TROIS profils. Ce drapeau dit à ExoPlayer de continuer à
-        //  remplir jusqu'à atteindre la DURÉE demandée MÊME SI la cible en
-        //  OCTETS est dépassée : `setTargetBufferBytes` cesse d'être une
-        //  limite et devient un souhait.
-        //
-        //  Or la leçon inscrite ici de longue date, et effacée en même
-        //  temps que le drapeau était posé, disait :
-        //
-        //    « un buffer trop gros (90 s / 64 Mo) faisait planter les box
-        //      par MANQUE DE MÉMOIRE (OOM → l'OS tue l'app → boucle de
-        //      redémarrage) »
-        //
-        //  C'est exactement ce que le propriétaire a signalé en clientèle :
-        //  « ça se redémarre ». Sur une box à 1 Go, un flux HD qui déborde
-        //  son plafond fait tuer l'app par le système, qui la relance, qui
-        //  redéborde.
-        //
-        //  On remet donc `false` partout. Les durées choisies (8–15 s)
-        //  restent celles d'aujourd'hui : le but n'est pas de tout
-        //  reprendre, seulement de rendre au plafond son pouvoir.
         val loadControl = if (preview) {
-            // APERÇU : tampon MINIMAL — 1re image rapide, ~8 Mo.
+            // APERÇU (vignette) : tampon MINIMAL — 1re image rapide, ~8 Mo de
+            // plafond. Un aperçu muet n'a pas besoin d'absorber 50 s de
+            // coupure ; par contre 2 aperçus + l'UI sur une box 1 Go faisaient
+            // sortir l'app en OOM (retour terrain « l'app s'est fermée »).
             DefaultLoadControl.Builder()
+                // bufferForPlayback (3e param) = 500 ms : l'aperçu démarre dès
+                // qu'un demi-tampon est prêt (vignette quasi instantanée).
                 .setBufferDurationsMs(8_000, 15_000, 500, 2_000)
                 .setTargetBufferBytes(8 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
         } else if (lowRam) {
-            // Petites box (≤800 Mo) : profil serré mais avec de la réserve.
-            //  ⚠ DURÉES RESTAURÉES le 17/09 (valeurs d'avant la série). Le
-            //  couple 8–15 s / démarrage à 2 s laissait trop peu de réserve :
-            //  on repart à 2 s de tampon, on épuise, on re-attend — la
-            //  saccade toutes les deux secondes signalée en clientèle.
+            // Vraies petites box (≤800 Mo) : profil serré mais un peu plus de
+            // réserve qu'avant (15 s / 18 Mo) pour absorber les micro-coupures.
             DefaultLoadControl.Builder()
+                // bufferForPlayback 500 ms (au lieu de 1500) : 1re image ~1 s
+                // plus tôt au zap. La réserve totale (15-30 s) et le délai
+                // après-coupure (4 s) restent inchangés → aucune régression de
+                // stabilité, seul le démarrage à froid accélère.
                 .setBufferDurationsMs(15_000, 30_000, 500, 4_000)
                 .setTargetBufferBytes(18 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .build()
         } else {
-            // Box normales (>800 Mo) : tampon GÉNÉREUX (~20 s cible, jusqu'à
-            // 50 s) pour tenir un lien instable sans rebuffer — et après une
-            // coupure on attend 5 s de réserve avant de repartir (on ne se
-            // re-bloque pas aussitôt, comme Netflix).
-            //  ⚠ DURÉES RESTAURÉES le 17/09 : voir le profil au-dessus.
+            // Box normales (>800 Mo, dont les 1-2 Go) : tampon GÉNÉREUX (~20 s
+            // cible, jusqu'à 50 s) pour tenir un lien instable sans rebuffer —
+            // et après une coupure on attend 5 s de réserve avant de repartir
+            // (on ne se re-bloque pas aussitôt, comme Netflix).
             DefaultLoadControl.Builder()
+                // bufferForPlayback 500 ms (au lieu de 2000) : c'était le plus
+                // gros délai FIXE avant la 1re image au zap. On démarre dès
+                // 0,5 s de réserve ; la cible (20 s) et surtout le délai
+                // APRÈS-COUPURE (5 s, 4e param) restent identiques → on garde
+                // la stabilité « à la Netflix » sur lien instable.
                 .setBufferDurationsMs(20_000, 50_000, 500, 5_000)
                 .setTargetBufferBytes(32 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(false)
@@ -578,12 +511,24 @@ class NativeVideoView(
         // User-Agent type lecteur connu + redirections cross-protocole : des
         // panels Xtream ne servent le vrai flux qu'aux signatures connues.
         //
-        // Pool OkHttp PAR lecteur : keep-alive pendant le HLS (un TCP
-        // pour plusieurs segments) ; evictAll() au stop libère le
-        // créneau 1-connexion SANS « Connection: close » (handshake
-        // par segment HLS).
-        val httpFactory = OkHttpDataSource.Factory(okHttpClient)
+        // « Connection: close » (recherche du 21/08, cause RACINE du
+        // « limite de connexions » après la sortie d'un film) : les panels
+        // Xtream/XUI ne libèrent le créneau QU'À LA FERMETURE DU SOCKET TCP
+        // (aucun signal applicatif de stop — documenté chez Dispatcharr
+        // #451/#1033). Or les sockets keep-alive retournent au pool JVM
+        // ENCORE OUVERTS après release() → le panel voyait le film « en
+        // cours » de longues secondes et refusait le live (458). En
+        // désactivant le keep-alive, la fin de lecture ferme le socket →
+        // le panel libère le créneau tout de suite. Coût : une poignée de
+        // mains TCP par segment HLS (les panels sont en HTTP nu → minime) ;
+        // le direct .ts (UNE longue requête) ne paie rien.
+        val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("VLC/3.0.20 LibVLC/3.0.20")
+            .setDefaultRequestProperties(mapOf("Connection" to "close"))
+            .setAllowCrossProtocolRedirects(true)
+            .setKeepPostFor302Redirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(15_000)
 
         // DefaultDataSource délègue le http(s) au httpFactory ci-dessus (donc
         // MÊME User-Agent / redirections pour le DIRECT) MAIS sait AUSSI ouvrir
@@ -603,7 +548,7 @@ class NativeVideoView(
         // couche Dart bascule alors sur la variante .m3u8/.ts du même flux
         // (failover silencieux) au lieu d'attendre ~15 s de retries inutiles.
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
-            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
+            .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(3))
 
         // ADAPTATION AUTOMATIQUE DE LA QUALITÉ. Ne s'applique QUE si le flux
         // propose PLUSIEURS qualités (HLS/DASH multi-débit, VOD) — un flux à
@@ -622,10 +567,10 @@ class NativeVideoView(
         val trackSelector = DefaultTrackSelector(
             appContext,
             AdaptiveTrackSelection.Factory(
-                10_000, // minDurationForQualityIncreaseMs (pas de yo-yo)
-                18_000, // maxDurationForQualityDecreaseMs
+                4_000,  // minDurationForQualityIncreaseMs (monte vite en HD)
+                18_000, // maxDurationForQualityDecreaseMs (descend vite)
                 20_000, // minDurationToRetainAfterDiscardMs
-                0.70f,  // bandwidthFraction (marge 30 % anti-rebuffer)
+                0.80f,  // bandwidthFraction (netteté priorisée, marge 20 %)
             ),
         )
 
@@ -636,7 +581,7 @@ class NativeVideoView(
         // corrige en quelques secondes. Sans effet sur un flux à débit unique
         // (le .ts live habituel), donc aucun risque de saturation.
         val bandwidthMeter = DefaultBandwidthMeter.Builder(appContext)
-            .setInitialBitrateEstimate(3_000_000L)
+            .setInitialBitrateEstimate(8_000_000L)
             .build()
 
         player = ExoPlayer.Builder(appContext, renderersFactory)
@@ -819,7 +764,6 @@ class NativeVideoView(
                         if (currentUrl != null) {
                             player.stop()
                             player.clearMediaItems()
-                            evictHttp()
                         }
                     }
                     sourceUrls = listOf(url) + fallbacks
@@ -954,14 +898,17 @@ class NativeVideoView(
                         cancelRetry()
                         player.stop()
                         player.clearMediaItems()
-                        evictHttp()
                         currentUrl = null
                         fsm = Fsm.IDLE
                         recordEvent("stop")
                     } catch (t: Throwable) {
+                        // Lecteur deja detruit / course a la sortie d'ecran :
+                        // un arret rate ne doit jamais remonter en crash.
                         recordEvent("stop_error")
                     }
-                    completeWhenNetIdle(result)
+                    // Le resultat d'un MethodChannel se rend sur le thread
+                    // plateforme, pas sur le thread player.
+                    handler.post { result.success(null) }
                 }
             }
             "seekTo" -> {
@@ -1254,25 +1201,6 @@ class NativeVideoView(
         MediaItem.Builder()
             .setUri(url)
             .setLiveConfiguration(
-                //  ⚠ `setMaxOffsetMs` RETIRÉ — 17/09/2026.
-                //
-                //  Symptôme en clientèle : « ça retourne l'image après deux
-                //  secondes, deux secondes ». L'image coupe et revient, en
-                //  boucle.
-                //
-                //  C'est ce que fait un plafond de décalage sur une ligne
-                //  IPTV instable : dès que le retard dépasse la borne, le
-                //  lecteur SAUTE au bord du direct. Un saut réinitialise le
-                //  décodeur → l'image disparaît puis revient. Sur un lien qui
-                //  respire, ça se répète sans fin.
-                //
-                //  `setMinPlaybackSpeed(0.97f)` allait dans le même sens :
-                //  ralentir le flux pour rattraper un décalage fait vibrer
-                //  l'horloge de rendu au lieu de laisser le tampon absorber.
-                //
-                //  On revient aux bornes qui ont tourné des mois : cible 8 s,
-                //  plancher 4 s, AUCUN plafond — le tampon absorbe, personne
-                //  ne saute.
                 MediaItem.LiveConfiguration.Builder()
                     .setTargetOffsetMs(8_000)
                     .setMinOffsetMs(4_000)
@@ -1289,9 +1217,31 @@ class NativeVideoView(
      * multi-UA "ça marche sur IBO, pas chez nous").
      */
     private fun mediaSourceFactoryFor(userAgent: String): DefaultMediaSourceFactory {
-        val httpFactory = OkHttpDataSource.Factory(okHttpClient)
+        val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setKeepPostFor302Redirects(true)
+            //  ⚠ MANQUAIT (corrige le 30/08). Cette fabrique oubliait
+            //  « Connection: close », que la fabrique principale pose depuis
+            //  le 21/08. Sans lui, les sockets repartent au pool JVM ENCORE
+            //  OUVERTS apres release() : le panel Xtream, qui ne libere le
+            //  creneau qu'a la fermeture du socket TCP, continue de compter
+            //  la lecture comme « en cours » — et refuse la suivante avec
+            //  « deja ouverte sur un autre appareil ».
+            //
+            //  Le chemin concerne est celui du diagnostic multi-signature,
+            //  donc rare. Mais une lecture de diagnostic qui laisse le
+            //  creneau pris est precisement le genre de detail qui fait
+            //  croire que le probleme est revenu alors qu'on vient de le
+            //  corriger ailleurs. Les deux fabriques doivent se comporter
+            //  a l'identique.
+            .setDefaultRequestProperties(mapOf("Connection" to "close"))
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(15_000)
         val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
+            // Même compteur de sockets que la fabrique de l'init : une lecture
+            // sous signature CUSTOM doit compter ses connexions à l'identique.
+            .setTransferListener(netTransferListener)
         return DefaultMediaSourceFactory(dataSourceFactory)
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
     }
@@ -1300,48 +1250,6 @@ class NativeVideoView(
     // les codecs « chauds » ont été rendus à l'OS ; le prochain setMedia les
     // reprend (le confort de zap revient dès que la pression est retombée).
     private var foregroundReleased = false
-
-    /**
-     * Répond à Dart seulement quand les sockets de CE lecteur sont
-     * fermées (ou après 2 s). Sans ça, `await stop()` rendait la main
-     * avant le TCP FIN → 458 sur la ligne suivante.
-     */
-    private fun completeWhenNetIdle(result: MethodChannel.Result, timeoutMs: Long = 2_000L) {
-        //  ON RÉPOND MAINTENANT `true` / `false` AU LIEU DE `null`.
-        //
-        //  Cette méthode SONDE le compteur réel de transferts : elle SAIT
-        //  si le lecteur tient encore une socket. Elle répondait `null` —
-        //  l'information était mesurée puis jetée.
-        //
-        //  Dart en était réduit à attendre l'ÉVÉNEMENT `netActive:false`
-        //  pour apprendre la même chose. Or cet événement PEUT SE PERDRE :
-        //  `notifyNetActive` l'abandonne quand la vue est déjà démontée
-        //  (`if (!isDisposed)`), et le canal est alors mort de toute façon.
-        //  Quand il se perdait, l'app attendait en vain puis écrivait dans
-        //  la Boîte noire « fermeture réseau NON confirmée » — alors que
-        //  ce sondage-ci venait de constater que tout était fermé.
-        //
-        //  Une réponse ne se perd pas. Un événement, si.
-        if (activeNetTransfers.get() <= 0) {
-            handler.post { result.success(true) }
-            return
-        }
-        val deadline = android.os.SystemClock.elapsedRealtime() + timeoutMs
-        val poll = object : Runnable {
-            override fun run() {
-                val idle = activeNetTransfers.get() <= 0
-                if (idle || android.os.SystemClock.elapsedRealtime() >= deadline) {
-                    // `false` ICI veut dire quelque chose : le plafond est
-                    // atteint ET une socket est encore comptée ouverte.
-                    // C'est le seul cas où « non confirmée » est mérité.
-                    handler.post { result.success(idle) }
-                } else {
-                    playerHandler.postDelayed(this, 50)
-                }
-            }
-        }
-        playerHandler.postDelayed(poll, 50)
-    }
 
     /** Charge [url] avec la signature [userAgent] (`null` = défaut de l'init). */
     private fun setMedia(url: String, userAgent: String?) {
@@ -1370,10 +1278,13 @@ class NativeVideoView(
                 // arrive par le back-off ou par le retour du réseau
                 // (networkCallback) — jamais les deux.
                 if (pendingRetry === this) pendingRetry = null
-                if (fsm == Fsm.RELEASED || fsm == Fsm.IDLE) return
                 val url = currentUrl
                 if (url != null) {
+                    // Garde la MÊME signature que la session courante (celle
+                    // qui a marché si un diagnostic multi-UA a déjà eu lieu).
                     setMedia(url, currentUserAgent)
+                } else {
+                    player.prepare()
                 }
             }
         }
@@ -1423,7 +1334,6 @@ class NativeVideoView(
             }
             player.setForegroundMode(false) // relâche les codecs avant release
             player.release()
-            evictHttp()
             // Mode TEXTURE : la Surface puis l'entrée de texture Flutter sont
             // libérées APRÈS le release du lecteur (le codec n'écrit plus
             // dedans) ; l'entrée se libère côté main (contrat TextureRegistry).

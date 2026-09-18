@@ -44,20 +44,16 @@ class NativeDeviceInfo {
   }
 }
 
-/// Chemin de RENDU — mis à jour le 17/09/2026.
-///
-/// FLAG_SECURE a été RETIRÉ (voir android_overlay/.../MainActivity.kt) :
-/// il éteignait l'image sur les box. Les deux chemins sont donc de
-/// nouveau permis, et aucun n'est « interdit ».
-///
-///   • `texture` : DÉFAUT. La vidéo suit le pipeline de l'UI.
-///   • `surface` : overlay MediaCodec. Nécessaire sur les box où la
-///     texture reste noire (HEVC notamment).
-///
-/// AUCUN des deux ne marche partout — c'est pour ça que le WATCHDOG de
-/// [_NativeVideoViewState] existe : il détecte « le son joue, l'image ne
-/// vient pas », bascule sur l'autre chemin et MÉMORISE. Le désactiver,
-/// c'est condamner toutes les box du mauvais côté.
+/// Chemin de RENDU vidéo — le correctif « l'image ne vient pas » (terrain) :
+/// aucun chemin unique n'affiche l'image sur 100 % des box.
+///   • `texture`  : la vidéo est décodée vers une texture Flutter et rendue
+///     par le MÊME pipeline que l'interface → partout où l'app s'affiche,
+///     l'image vient. DÉFAUT.
+///   • `surface`  : PlatformView + SurfaceView Android (chemin historique) —
+///     secours pour les box où la texture resterait noire.
+/// Le choix est MÉMORISÉ nativement (SharedPreferences) par box ; le widget
+/// [NativeVideoView] bascule automatiquement (watchdog « lecture en cours
+/// mais aucune 1re trame ») et persiste le chemin qui marche.
 class NativeVideoRender {
   const NativeVideoRender._();
   static const MethodChannel _channel =
@@ -70,7 +66,8 @@ class NativeVideoRender {
   /// (zap, aperçus). Rempli au 1er accès, mis à jour par [setMode].
   static String? _cached;
 
-  /// Défaut `texture` ; le watchdog bascule si l'image ne vient pas.
+  /// Chemin de rendu à utiliser (mémorisé pour cette box). Ne lève jamais :
+  /// en cas d'échec canal (tests, plateforme sans plugin), défaut `texture`.
   static Future<String> mode() async {
     final String? c = _cached;
     if (c != null) return c;
@@ -85,10 +82,6 @@ class NativeVideoRender {
       return texture;
     }
   }
-
-  /// TESTS UNIQUEMENT : vide le cache pour forcer un nouvel aller-retour.
-  @visibleForTesting
-  static void debugResetCache() => _cached = null;
 
   /// Mémorise [m] comme chemin de rendu de cette box (best-effort).
   static Future<void> setMode(String m) async {
@@ -426,17 +419,15 @@ class NativeVideoController extends ChangeNotifier {
         // du canal `stop` ne prouve que l'exécution de la commande, pas la
         // fermeture (stop() Media3 est asynchrone en interne).
         netActive = call.arguments as bool;
-        if (!netActive) _marquerReseauIdle();
+        if (!netActive) {
+          lastNetIdleAt = DateTime.now();
+          for (final Completer<bool> w in _netIdleWaiters) {
+            if (!w.isCompleted) w.complete(true);
+          }
+          _netIdleWaiters.clear();
+        }
     }
-    // Position / buffered à ~500 ms : ne PAS reconstruire l'écran sur un
-    // DIRECT (duration == 0) — l'UI n'a rien à redessiner. Les champs sont
-    // quand même mis à jour (watchdog « position avance »). Toujours
-    // notifier buffering / playing / firstFrame / error / ended / tracks /
-    // cueText / netActive / videoSize / duration.
-    final bool liveTick =
-        (call.method == 'position' || call.method == 'buffered') &&
-            duration == Duration.zero;
-    if (!liveTick && !_disposed) notifyListeners();
+    if (!_disposed) notifyListeners();
     return null;
   }
 
@@ -568,46 +559,21 @@ class NativeVideoController extends ChangeNotifier {
   /// un lecteur en pause GARDE la session ouverte vers le panel, ce qui
   /// bloque les abonnements à 1 connexion alors que plus personne ne
   /// regarde. Sur un FILM, garder [pause] (la position doit survivre).
-  /// ATTENDABLE : la Future se résout une fois `stop` exécuté côté natif
-  /// ET les sockets réellement fermées ([awaitNetworkIdle], timeout 2 s).
-  /// Déjà idle → retour immédiat. Ne lève jamais. C'est ce qui permet à
-  /// l'appelant de n'ouvrir le flux suivant qu'ensuite — sans quoi les
-  /// deux connexions se croisent et un compte 1-connexion refuse la seconde.
-  Future<void> stop({bool awaitIdle = true}) async {
+  /// ATTENDABLE : la Future ne se resout qu'une fois la socket REELLEMENT
+  /// fermee cote natif (le natif ne repond qu'apres execution sur son thread
+  /// lecteur). C'est ce qui permet a l'appelant de n'ouvrir le flux suivant
+  /// qu'ensuite -- sans quoi les deux connexions se croisent et un compte
+  /// 1-connexion refuse la seconde.
+  Future<void> stop() async {
     isStopped = true;
     isBuffering = false;
     firstFrame = false;
     try {
-      //  LA RÉPONSE DU NATIF PORTE L'INFORMATION — ON LA JETAIT.
-      //
-      //  Côté Android, le canal `stop` ne répond qu'après avoir SONDÉ son
-      //  compteur de transferts réseau (`completeWhenNetIdle`, plafond
-      //  2 s). Il renvoie maintenant `true` quand plus aucune socket n'est
-      //  ouverte. On lisait `void` : la réponse partait à la poubelle, et
-      //  on se remettait à attendre un ÉVÉNEMENT pour apprendre ce que la
-      //  réponse venait de dire.
-      final Object? idle = await _channel?.invokeMethod<Object?>('stop');
-      if (idle == true) _marquerReseauIdle();
+      await _channel?.invokeMethod<void>('stop');
     } catch (_) {
       // Canal deja mort (vue detruite) : la connexion est fermee de toute
       // facon. Ne JAMAIS propager -- un arret rate ne doit pas bloquer
       // l'ouverture suivante.
-    }
-    // Les appelants qui n'attendent que stop() doivent aussi attendre la
-    // fermeture TCP réelle (Media3 stop() est asynchrone). Déjà idle →
-    // retour immédiat. Timeout 2 s, jamais d'exception.
-    //
-    //  [awaitIdle] = false : POUR L'APPELANT QUI ATTEND LUI-MÊME.
-    //  `tv_player_screen` mesure séparément « stop natif » et « sockets
-    //  fermées » pour la Boîte noire — il refaisait donc l'attente une
-    //  TROISIÈME fois (natif 2 s + ici 2 s + chez lui 3 s = 7 s bloquées
-    //  en quittant une chaîne, sur la même condition). Il passe `false`,
-    //  et `stopMs` redevient le VRAI temps d'arrêt natif.
-    if (!awaitIdle) return;
-    try {
-      await awaitNetworkIdle(timeout: const Duration(seconds: 2));
-    } catch (_) {
-      // Ne JAMAIS propager.
     }
   }
 
@@ -642,29 +608,6 @@ class NativeVideoController extends ChangeNotifier {
   /// de la commande sur le thread lecteur, PAS la fermeture de la socket
   /// (Media3 stop() est asynchrone en interne — la fermeture survient après,
   /// sur le thread de chargement).
-  /// « Plus aucune socket » : on le note et on réveille TOUT le monde.
-  ///
-  /// Deux sources peuvent l'affirmer, et il fallait les traiter pareil :
-  ///   • l'événement natif `netActive:false` (rapide, mais il peut se
-  ///     perdre — `notifyNetActive` l'abandonne si la vue est déjà
-  ///     démontée, et le canal est alors mort) ;
-  ///   • la RÉPONSE du canal `stop`, qui vient d'un natif ayant SONDÉ son
-  ///     compteur de transferts. Celle-là ne se perd pas : c'est une
-  ///     réponse, pas une notification.
-  ///
-  /// Avant, seul l'événement comptait. Quand il se perdait, l'app attendait
-  /// un signal qui n'arriverait jamais, puis écrivait « fermeture NON
-  /// confirmée » — alors que le natif SAVAIT que tout était fermé et
-  /// venait de le dire.
-  void _marquerReseauIdle() {
-    netActive = false;
-    lastNetIdleAt = DateTime.now();
-    for (final Completer<bool> w in _netIdleWaiters) {
-      if (!w.isCompleted) w.complete(true);
-    }
-    _netIdleWaiters.clear();
-  }
-
   Future<bool> awaitNetworkIdle(
       {Duration timeout = const Duration(seconds: 3)}) {
     if (!netActive || _disposed || _channel == null) {
@@ -771,33 +714,11 @@ class _NativeVideoViewState extends State<NativeVideoView>
   /// Id de texture Flutter (mode texture uniquement, une fois créé).
   int? _textureId;
 
-  /// JAMAIS de bascule texture↔surface en cours de séance (demande
-  /// propriétaire 16/09 : « je ne veux jamais que ça se redémarre »).
-  /// WATCHDOG « l'image ne vient pas » — RÉTABLI LE 17/09/2026.
-  ///
-  ///  Toutes les 3 s : si la lecture est EN COURS (le son joue, la position
-  ///  avance) mais qu'AUCUNE 1re trame n'a été rendue, on cumule ; à ~6 s
-  ///  on bascule sur l'AUTRE chemin de rendu et on MÉMORISE. Une seule
-  ///  bascule par vue (anti ping-pong) ; la préférence étant persistée,
-  ///  toutes les vues suivantes naissent sur le bon chemin.
-  ///
-  ///  POURQUOI IL EST REVENU. Il avait été désactivé
-  ///  (`_switchedOnce = true` d'entrée, Timer supprimé, au motif qu'« un
-  ///  GOP lent n'est PAS un crash »). Dans le même mouvement, le plugin
-  ///  s'est mis à FORCER `render_mode = texture` sur toutes les box
-  ///  (clé `render_reset_v5`), ce qui a EFFACÉ le `surface` que ce
-  ///  watchdog avait mémorisé sur les box incapables de rendre en
-  ///  texture.
-  ///
-  ///  Les deux ensemble ferment la porte à clé : la box est remise en
-  ///  texture, la texture reste noire, et plus rien ne peut la ramener
-  ///  sur surface. Résultat mesuré en clientèle : « ça sort seulement le
-  ///  son ». Le son joue (renderer audio intact), l'image jamais.
-  ///
-  ///  Le watchdog n'est pas un confort : c'est le SEUL mécanisme par
-  ///  lequel une box découvre le chemin de rendu qui marche chez elle.
-  ///  Sans lui il faut connaître le modèle de chaque box à l'avance —
-  ///  ce que personne ne peut faire.
+  /// WATCHDOG « l'image ne vient pas » : toutes les 3 s, si la lecture est
+  /// EN COURS (le son joue, la position avance) mais qu'AUCUNE 1re trame n'a
+  /// été rendue, on cumule ; à ~6 s on bascule sur l'AUTRE chemin de rendu et
+  /// on MÉMORISE. Une seule bascule par vue (anti ping-pong) ; la préférence
+  /// étant persistée, toutes les vues suivantes naissent sur le bon chemin.
   Timer? _watchdog;
   int _stalledTicks = 0;
   bool _switchedOnce = false;
@@ -809,14 +730,10 @@ class _NativeVideoViewState extends State<NativeVideoView>
     _initRenderPath();
     _watchdog = Timer.periodic(const Duration(seconds: 3), (_) {
       if (!mounted || _switchedOnce) return;
-      // L'image est arrivée : rien à faire, et on repart de zéro (un
-      // rebuffer plus tard ne doit pas compter comme un échec de rendu).
       if (controller.firstFrame) {
         _stalledTicks = 0;
         return;
       }
-      // On ne compte QUE si ça joue vraiment et sans erreur : sinon on
-      // basculerait pour une coupure réseau, ce qui ne réparerait rien.
       if (controller.isPlaying && !controller.hasError) {
         _stalledTicks++;
         if (_stalledTicks >= 2) _switchRenderPath();

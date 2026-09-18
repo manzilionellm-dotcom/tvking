@@ -28,7 +28,6 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 
-import '../../../core/app/family_feature.dart';
 import '../../../core/privacy/privacy_shield.dart';
 import '../../../core/profiles/profiles_repository.dart';
 import '../../device/data/device_identity.dart';
@@ -87,13 +86,8 @@ class FamilyPositionSync {
   /// Dernier envoi réussi : on ne renvoie que ce qui a changé depuis.
   DateTime _lastPushedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// INTERRUPTEUR FAMILLE (17/09/2026) en tête de condition : partager sa
-  /// position de lecture n'a de sens qu'entre PLUSIEURS profils. Sans
-  /// famille, ce module enverrait la position d'un appareil… à lui-même.
   bool get _allowed =>
-      kFamilleActivee &&
-      enabled &&
-      !PrivacyShield.instance.minimalTelemetryActive;
+      enabled && !PrivacyShield.instance.minimalTelemetryActive;
 
   /// Le dépôt local a changé (position enregistrée) → envoi différé.
   void noteChanged() {

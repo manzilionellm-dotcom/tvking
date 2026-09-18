@@ -31,7 +31,6 @@ import '../../../core/playback/stream_slot.dart';
 import '../../../core/privacy/privacy_shield.dart';
 import '../../../core/playback/vod_pause_release_policy.dart';
 
-import '../../../core/crash/secret_redactor.dart';
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/observability/structured_logger.dart';
@@ -335,10 +334,6 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   final FreezeRecoveryPolicy _freeze =
       FreezeRecoveryPolicy(now: DateTime.now());
   bool _fatal = false;
-  /// Verdict humain de l'échec définitif (HTTP 502, DNS, etc.). Affiché
-  /// sur l'écran d'erreur à la place du générique « Chaîne indisponible »
-  /// — le diagnostic le savait déjà, l'overlay l'ignorait.
-  String? _fatalWhy;
 
   /// MODE BOUCLIER : `true` quand la lecture est refusée parce que le
   /// coupe-circuit VPN est armé et qu'aucun VPN n'est actif. L'écran d'erreur
@@ -534,13 +529,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         // possède le contexte fin ; ici on capture les codes ExoPlayer réels.
         // Le verdict est volontairement ignoré : l'écran d'erreur TV compose
         // son message via _tvBlockMessage (blockReason + l10n).
-        //
-        //  ⚠ 17/09/2026 : on passe enfin le NOMBRE DE SIGNATURES essayées.
-        //  Il manquait, donc la Boîte noire écrivait `uaTried: 0` à chaque
-        //  échec — y compris quand la cascade avait tout essayé. On en
-        //  déduisait que le repli ne se déclenchait pas, et le verdict
-        //  « serveur du fournisseur instable » accusait sans preuve.
-        _recordPlaybackFailure(uaTried: _fallback.signaturesTestees);
+        _recordPlaybackFailure();
         if (!mounted) return;
         setState(() {
           _fatal = true;
@@ -748,19 +737,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         // la COMMANDE est passée. La fermeture RÉELLE de la socket, elle,
         // arrive APRÈS (stop() Media3 est asynchrone en interne) — elle est
         // attendue plus bas, mesurée par awaitNetworkIdle.
-        //  `awaitIdle: false` — ON N'ATTEND PLUS TROIS FOIS LA MÊME CHOSE.
-        //
-        //  La même condition (« plus aucune socket ») était attendue à
-        //  trois étages empilés : le natif sonde son compteur (2 s), puis
-        //  `stop()` attendait l'événement (2 s), puis on l'attendait
-        //  encore ici (3 s). Sept secondes de blocage possibles en
-        //  quittant une chaîne — sur une box, ça s'appelle « ça rame ».
-        //
-        //  Et ça faussait la mesure : `stopMs` incluait 2 s d'attente
-        //  réseau et affichait « stop natif : 2209 ms » pour un arrêt qui
-        //  en prend ~200. On cherchait une lenteur natif qui n'existait
-        //  pas. Une seule attente, ci-dessous, et deux chiffres justes.
-        await controller.stop(awaitIdle: false);
+        await controller.stop();
       } catch (_) {
         // Canal déjà mort : la connexion est fermée de toute façon.
       }
@@ -787,22 +764,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                 '(stop natif : $stopMs ms · sockets réellement fermées : '
                 '$idleMs ms · total : '
                 '${DateTime.now().difference(exitAt).inMilliseconds} ms)'
-            //  CE MESSAGE AFFIRMAIT CE QU'IL N'AVAIT PAS MESURÉ.
-            //
-            //  Il disait « une socket était encore ouverte 5211 ms après la
-            //  sortie ». On n'en savait rien : on avait simplement CESSÉ
-            //  d'attendre. Et les 5211 ms n'étaient que la somme de nos
-            //  propres délais (2 s + 3 s), pas une observation.
-            //
-            //  Même défaut que `uaTried: 0` corrigé le même soir : un
-            //  journal qui répond faux à une question qu'on ne repose plus
-            //  envoie chercher au mauvais endroit. Ici il accusait le
-            //  lecteur d'un chevauchement imaginaire.
-            : 'Fermeture réseau NON confirmée : aucun signal de fermeture '
-                'reçu dans les $idleMs ms (stop natif : $stopMs ms). On a '
-                'CESSÉ D\'ATTENDRE — on n\'affirme pas qu\'une socket est '
-                'restée ouverte. Si le panel refuse la lecture suivante, '
-                'c\'est ici qu\'il faut regarder',
+            : 'Fermeture réseau NON confirmée : une socket du lecteur était '
+                'encore ouverte $idleMs ms après la sortie (stop natif : '
+                '$stopMs ms) — si le panel refuse la lecture suivante, le '
+                'chevauchement vient d\'ici',
         level: netIdle ? 'info' : 'warn',
       );
       //  LE VERROU DES TÉLÉCHARGEMENTS SE LÈVE ICI, ET NULLE PART AILLEURS.
@@ -838,10 +803,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       _lastPos = _controller.position;
       _freeze.onProgress(DateTime.now());
       if (_fatal && mounted)
-        setState(() {
-          _fatal = false;
-          _fatalWhy = null;
-        });
+        setState(() => _fatal = false);
       // FILM : quand la barre est visible, on la fait AVANCER (tick 500 ms du
       // natif). Uniquement en VOD + overlay → aucun rebuild inutile en direct.
       else if (_isVod && _overlay && mounted) {
@@ -954,11 +916,6 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       // STABLE (ex. "ERROR_CODE_IO_BAD_HTTP_STATUS") — bien plus exploitable
       // à distance que le message brut, souvent vague ("Source error").
       if (_controller.hasError) {
-        final String? rawErr = _controller.lastErrorMessage;
-        final String? safeErr = rawErr == null
-            ? null
-            : SecretRedactor.redact(
-                StreamDiagnostics.maskCredentials(rawErr));
         StructuredLogger.instance.warn(
           domain: 'native',
           event: 'tv_player.error',
@@ -967,7 +924,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
             'everShownFrame': _everShownFrame,
             'errorCodeName': _controller.lastErrorCodeName,
             'errorCode': _controller.lastErrorCode,
-            'message': safeErr,
+            'message': _controller.lastErrorMessage,
           },
         );
         // BOÎTE NOIRE : l'erreur ExoPlayer, UNE fois par ouverture. Sans
@@ -978,11 +935,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           _errorLoggedThisOpen = true;
           StreamDiagnostics.instance.recordEvent(
             'exoplayer',
-            SecretRedactor.redact(
-              'ExoPlayer : ${_controller.lastErrorCodeName ?? 'erreur'}'
-                  '${_controller.lastErrorCode == null ? '' : ' (${_controller.lastErrorCode})'}'
-                  ' — ${safeErr ?? 'lecture impossible'}',
-            ),
+            'ExoPlayer : ${_controller.lastErrorCodeName ?? 'erreur'}'
+                '${_controller.lastErrorCode == null ? '' : ' (${_controller.lastErrorCode})'}'
+                ' — ${_controller.lastErrorMessage ?? 'lecture impossible'}',
             level: 'error',
           );
         }
@@ -1027,12 +982,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         },
       );
       _rebufferTimes.clear();
-      // On passe le compteur RÉEL : ici la cascade n'a en général pas
-      // tourné (c'est un excès de rebuffer, pas un échec d'ouverture),
-      // et un 0 devient alors une INFORMATION exacte — « aucune
-      // signature essayée » — au lieu d'un zéro par défaut qui ne
-      // voulait rien dire.
-      _recordPlaybackFailure(uaTried: _fallback.signaturesTestees);
+      _recordPlaybackFailure();
       // Ça « tourne » trop : cause = connexion trop faible / serveur lent. On
       // le trace dans la boîte noire et on écrit clairement au client que
       // c'est son réseau (pas l'app).
@@ -1151,7 +1101,6 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _armStartupWatchdog(); // coupure rapide si aucune image en ~20 s
     _fatalNetworkHint = false;
     _weakConnectionFatal = false;
-    _fatalWhy = null;
     _errorLoggedThisOpen = false; // nouvelle ouverture → on re-journalise
     _adoptedAltUrl =
         null; // la variante adoptée était propre à l'ancienne chaîne
@@ -1182,7 +1131,6 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       setState(() {
         _buffering = true;
         _fatal = false;
-        _fatalWhy = null;
       });
     // Charge la chaîne courante VIA LE RELAIS (parité téléphone) : le
     // relais ouvre l'unique connexion, gère la reconnexion, et surtout
@@ -1211,7 +1159,29 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         final DateTime? left = StreamSlot.instance.lastHandOffAt;
         final bool sortieRecente = left != null &&
             DateTime.now().difference(left) < const Duration(minutes: 2);
-        if (sortieRecente) {
+        //  ⚠ CONDITION ÉLARGIE LE 30/08, et voici pourquoi.
+        //
+        //  Elle ne gardait que `sortieRecente`. Le raisonnement d'origine
+        //  était bon — inutile de sonder si personne n'a quitté de lecture
+        //  récemment — mais il rate le scénario signalé sur le terrain :
+        //
+        //    on quitte un DIRECT, on navigue dans le Cinéma (catalogue,
+        //    fiche série, saisons), on lance un épisode. Deux minutes ont
+        //    passé. La pré-attente est donc DÉSARMÉE — exactement au
+        //    moment où elle serait le plus utile, parce que pendant cette
+        //    navigation la synchronisation EPG, le veilleur de catalogue
+        //    ou la file de téléchargements ont pu reprendre la ligne.
+        //
+        //  Autrement dit : plus la navigation est longue, moins on
+        //  vérifiait. C'était à l'envers.
+        //
+        //  Sur une ligne à UNE connexion, on sonde donc TOUJOURS avant
+        //  d'ouvrir. Ce que ça coûte : un aller-retour `player_api.php`,
+        //  de l'ordre de 200 ms, et UNIQUEMENT quand le créneau est déjà
+        //  libre — sinon on attend de toute façon moins longtemps que le
+        //  temps qu'aurait pris l'erreur, la lecture d'un message et un
+        //  « Réessayer ». Sur un compte multi-connexions, rien ne change.
+        if (sortieRecente || StreamDiagnostics.instance.singleConnectionLine) {
           await StreamBlockedFallback.awaitProviderSlot(
             _current,
             isCancelled: () => !mounted,
@@ -1239,14 +1209,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
     NowPlaying.instance.set(_current.cleanName);
+    SubscriptionState.instance.syncWithBackend();
     _showOverlayTemporarily();
   }
 
   /// Pointe le lecteur sur la chaîne courante EN PASSANT PAR LE RELAIS
   /// pour le live TS (1 connexion + reconnexion + résolution DoH des
-  /// domaines bloqués par le FAI). Le HLS live passe par
-  /// [LocalStreamRelay.hlsPlaylistUrlFor] (playlist TLS+DoH, ExoPlayer lit
-  /// 127.0.0.1/hls) ; la VOD reste en DIRECT (Range natif). Best-effort :
+  /// domaines bloqués par le FAI). Le HLS (.m3u8) reste en DIRECT : le
+  /// relais est un tuyau TS, et ExoPlayer gère le HLS nativement (seule
+  /// limite : le DoH ne couvre pas ce cas natif sur TV). Best-effort :
   /// si le relais ne démarre pas, on retombe sur l'URL directe.
   Future<void> _loadCurrentUrl({String? userAgent}) async {
     final Channel channel = _current;
@@ -1344,38 +1315,20 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // Le relais est un tuyau TS live SANS requêtes Range (contrat documenté
     // dans local_stream_relay.dart) : un mp4/mkv qui y passait perdait
     // l'avance/recul propre et la reprise exacte (ExoPlayer seek = Range).
-    if (_isVod) {
+    // En direct, ExoPlayer gère nativement Range + reconnexion progressive.
+    if (isHls || _isVod) {
       _relayPlayUrl = null;
       _relayRealUrl = null;
       // FERMER LE RELAIS AVANT D'OUVRIR EN DIRECT (bug terrain du 19/08 :
       // « j'ouvre le cinéma, je pars sur une chaîne → un autre flux est déjà
       // en cours », journal `HTTP 458 · text/html`, compte `Active 1/1`).
-      // Ce chemin (VOD) lit SANS relais — mais une session relais
+      // Ce chemin (HLS et VOD) lit SANS relais — mais une session relais
       // laissée par la lecture précédente, elle, garde sa connexion amont
       // ouverte vers le panel. Sur un compte 1-connexion, la nouvelle
       // lecture se voyait refuser par la précédente.
       await LocalStreamRelay.instance.closeOtherPlaybacks('');
       if (!mounted || channel.id != _current.id) return;
       _controller.setUrl(realUrl, userAgent: userAgent);
-      return;
-    }
-    // HLS live : playlist via le relais (TLS+DoH Dart) ; ExoPlayer lit
-    // http://127.0.0.1/hls. Les SEGMENTS restent en direct vers le CDN.
-    // Échec → repli URL directe (comme le chemin TS).
-    if (isHls) {
-      try {
-        final String localUrl =
-            await LocalStreamRelay.instance.hlsPlaylistUrlFor(realUrl);
-        if (!mounted || channel.id != _current.id) return;
-        _relayPlayUrl = localUrl;
-        _relayRealUrl = realUrl;
-        _controller.setUrl(localUrl, userAgent: userAgent);
-      } catch (_) {
-        if (!mounted || channel.id != _current.id) return;
-        _relayPlayUrl = null;
-        _relayRealUrl = null;
-        _controller.setUrl(realUrl, userAgent: userAgent);
-      }
       return;
     }
     try {
@@ -1434,18 +1387,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _zapSettle?.cancel();
     // Quitter la chaîne = couper son son immédiatement (l'image est déjà
     // recouverte par l'écran de marque via _buffering).
-    // Live : stop() libère le créneau 1-connexion pendant le settle du zap
-    // (pause garderait la socket ouverte). VOD : pause() conserve la position.
-    if (!_isVod) {
-      unawaited(_controller.stop());
-    } else {
-      _controller.pause();
-    }
+    _controller.pause();
     if (mounted) {
       setState(() {
         _buffering = true;
         _fatal = false;
-        _fatalWhy = null;
       });
     }
     _showOverlayTemporarily();
@@ -1498,10 +1444,15 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       case StreamBlockReason.providerBlocked:
         return context.l10n.playerBlockedProvider;
       case StreamBlockReason.maxConnections:
-        // 3 essais 458 puis cet écran (demande 16/09 : jamais de
-        // relance infinie). Le client comprend, ferme l'autre lecture,
-        // appuie sur Réessayer. La Boîte noire garde les vrais compteurs.
-        return context.l10n.playerMaxConnectionsGeneric;
+        // DÉCISION PROPRIÉTAIRE (21/08, photos TF1 puis « Prime: 13eme
+        // RUE ») : « je veux plus voir ce message ». L'accusation « un autre
+        // écran regarde déjà » était fausse dans le scénario dominant (la
+        // session fantôme du film qu'on vient de fermer) et n'est plus
+        // affichée. Le créneau occupé ne terminalise plus (patrouille 458 du
+        // fallback) ; si un chemin résiduel arrive quand même ici, on montre
+        // le message générique — la Boîte noire garde les vrais compteurs
+        // pour le revendeur.
+        return fallback;
       case StreamBlockReason.banned:
         return context.l10n.playerBlockedBanned;
       case StreamBlockReason.none:
@@ -1553,8 +1504,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         } else {
           // ÉCHEC DÉFINITIF après lecture OK (reconnexions épuisées) →
           // gravé dans le journal durable de la Boîte noire (Réglages).
-          // Compteur réel, même raison qu'au-dessus.
-          _recordPlaybackFailure(uaTried: _fallback.signaturesTestees);
+          _recordPlaybackFailure();
           if (mounted) {
             setState(() {
               _fatal = true;
@@ -1701,7 +1651,6 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         everShownFrame: _everShownFrame,
         dnsFailed: networkBlocked,
       );
-      _fatalWhy = why.why;
       unawaited(PlaybackFailureLog.instance.record(PlaybackFailureEntry(
         timestamp: DateTime.now(),
         channelName: c.cleanName,
@@ -1751,7 +1700,6 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _armStartupWatchdog(); // si la reprise ne démarre pas non plus → coupure rapide
     setState(() {
       _fatal = false;
-      _fatalWhy = null;
       _buffering = true;
     });
     // CHEMIN OFFICIEL (audit 19/08) : l'ancien `setUrl(_relayPlayUrl ??
@@ -2015,10 +1963,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   ///   - Remplir → zoom qui GARDE le ratio et rogne les bords (utile
   ///     pour les flux 4:3 letterboxés sur TV 16:9).
   Widget _buildVideoSurface() {
-    final Widget view = NativeVideoView(
-      key: const ValueKey<String>('tv-player-surface'),
-      controller: _controller,
-    );
+    final Widget view = NativeVideoView(controller: _controller);
     final double streamAr = _controller.videoAspectRatio ?? (16 / 9);
     switch (_aspect) {
       case AspectRatioMode.fit:
@@ -2985,11 +2930,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                             Text(
                                 _weakConnectionFatal
                                     ? context.l10n.playerWeakConnection
-                                    : (_fatalWhy ??
-                                        _tvBlockMessage(_everShownFrame
-                                            ? context.l10n.tvChannelUnavailable
-                                            : context.l10n
-                                                .tvChannelBlockedBySource)),
+                                    : _tvBlockMessage(_everShownFrame
+                                        ? context.l10n.tvChannelUnavailable
+                                        : context.l10n.tvChannelBlockedBySource),
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                     fontSize: TvDimens.body,

@@ -237,14 +237,6 @@ else
   echo "✅ Patched AndroidManifest (INTERNET + ACCESS_NETWORK_STATE + CHANGE_WIFI_MULTICAST_STATE)"
 fi
 
-# --- 3c. allowBackup=false (audit TV : pas d'extraction ADB de la MAC) ---
-if grep -q 'android:allowBackup=' "$MANIFEST"; then
-  sed -i 's/android:allowBackup="true"/android:allowBackup="false"/' "$MANIFEST"
-else
-  sed -i 's|<application |<application android:allowBackup="false" |' "$MANIFEST"
-fi
-echo "✅ Patched AndroidManifest (allowBackup=false)"
-
 echo "----- AFTER: build.gradle (last 30 lines) -----"
 tail -30 "$BUILD_GRADLE"
 echo "----- AFTER: AndroidManifest.xml -----"

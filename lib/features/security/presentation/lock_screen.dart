@@ -49,6 +49,9 @@ class _LockScreenState extends State<LockScreen> {
   // pouvoir clear() le champ apres une tentative ratee.
   final TextEditingController _pinCtrl = TextEditingController();
   String? _pinError;
+  // Le PIN est-il encore le defaut "0000" ? Si oui, on affiche un
+  // helper pour le faire savoir au user (utile sur premiere install).
+  bool _isDefaultPin = false;
 
   @override
   void initState() {
@@ -57,6 +60,9 @@ class _LockScreenState extends State<LockScreen> {
     // bancaire. Si ca echoue (capteur HS, annulation), le user a
     // toujours le PIN comme parachute.
     WidgetsBinding.instance.addPostFrameCallback((_) => _tryBiometric());
+    AppPinSettings.instance.isUsingDefault().then((bool isDefault) {
+      if (mounted) setState(() => _isDefaultPin = isDefault);
+    });
   }
 
   @override
@@ -264,9 +270,22 @@ class _LockScreenState extends State<LockScreen> {
                   child: Text(context.l10n.lockValidateCode),
                 ),
 
-                // Le code par défaut n'est JAMAIS affiché à l'écran
-                // (un enfant / un voleur le lirait). On invite juste à
-                // en choisir un dans Réglages.
+                // ===== HELPER PIN PAR DEFAUT =====
+                if (_isDefaultPin) ...[
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      context.l10n.lockDefaultPin(AppPinSettings.defaultPin),
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: AppColors.textTertiary,
+                        fontSize: 12,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

@@ -127,12 +127,6 @@ class StreamSlot {
   /// prochain [claim] attend [shutdown] (toujours plafonné par
   /// [_kTeardownBudget], fail-open), et le détenteur de transition se
   /// retire tout seul dès la fermeture terminée.
-  ///
-  /// Appelants live : [shutdown] doit enchaîner `stop` PUIS
-  /// `awaitNetworkIdle` AVANT `dispose` — [stop] ne prouve que la commande
-  /// passée, pas la fermeture réelle de la socket. Le créneau, lui, reste
-  /// fail-open (budgets inchangés).
-  ///
   /// Dernière SORTIE d'écran de lecture ([handOff]) : borne la fenêtre où
   /// le panel du fournisseur peut encore compter la session FANTÔME de la
   /// lecture quittée (il la libère à l'expiration de SA session, souvent

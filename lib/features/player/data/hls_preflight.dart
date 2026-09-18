@@ -31,7 +31,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/net/doh_resolver.dart';
-import '../../../core/net/iptv_cert_store.dart';
 import 'player_settings.dart';
 import 'stream_diagnostics.dart';
 
@@ -61,7 +60,8 @@ class HlsPreflight {
     final HttpClient client = HttpClient()
       ..connectionTimeout = kTimeout
       ..userAgent = PlayerSettings.instance.userAgent
-      ..badCertificateCallback = IptvCertTrust.allow;
+      ..badCertificateCallback =
+          ((X509Certificate cert, String host, int port) => true);
     installDohResolution(client); // DNS FAI bloqué → DoH
     try {
       final HttpClientRequest req =
@@ -92,7 +92,8 @@ class HlsPreflight {
     final HttpClient client = HttpClient()
       ..connectionTimeout = kTimeout
       ..userAgent = PlayerSettings.instance.userAgent
-      ..badCertificateCallback = IptvCertTrust.allow;
+      ..badCertificateCallback =
+          ((X509Certificate cert, String host, int port) => true);
     installDohResolution(client); // DNS FAI bloqué → DoH
     try {
       // ----- 1. Playlist telle que le lecteur l'ouvre -----

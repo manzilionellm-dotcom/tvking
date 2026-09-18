@@ -18,7 +18,6 @@ import 'package:media_kit/media_kit.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/backend/backend_hosts.dart';
-import 'core/net/iptv_cert_store.dart';
 import 'core/privacy/privacy_shield.dart';
 import 'core/profiles/profiles_repository.dart';
 import 'core/profiles/remote_profiles_repository.dart';
@@ -132,14 +131,6 @@ Future<void> bootApp() async {
   // mémoire en ré-important une grosse source), on saute le ré-import
   // distant plus bas pour casser la boucle.
   await BootGuard.instance.beginBoot();
-
-  // Pins TLS IPTV AVANT le 1er HttpClient (sinon le 1er handshake
-  // pinne un MITM et écrase le store).
-  try {
-    await IptvCertTrust.load();
-  } catch (_) {
-    // best-effort : sans pins on reste fail-open mémoire, pas crash.
-  }
 
   // Rotation auto autorisée sur toutes les orientations supportées.
   // Sans ça, même quand l'utilisateur incline son téléphone en mode

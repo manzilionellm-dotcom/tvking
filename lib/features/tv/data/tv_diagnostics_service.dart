@@ -23,7 +23,6 @@ import '../../cast/data/stream_probe.dart';
 import '../../device/data/device_identity.dart';
 import '../../player/data/player_settings.dart';
 import '../../player/data/stream_diagnostics.dart';
-import '../../player/domain/cloudflare_origin_codes.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 
@@ -165,8 +164,6 @@ class TvDiagnosticsService {
       } else if (code >= 200 && code < 400) {
         return TvCheckResult(TvCheckStatus.ok, 'HTTP $code (flux joignable)');
       }
-      final String? cf = expliquerCodeCloudflare(code);
-      if (cf != null) return TvCheckResult(TvCheckStatus.fail, 'HTTP $code — $cf');
       return TvCheckResult(TvCheckStatus.fail, 'HTTP $code');
     } on TimeoutException {
       return const TvCheckResult(TvCheckStatus.timeout, 'pas de réponse en 8 s');
@@ -265,31 +262,6 @@ class TvDiagnosticsService {
           TvCheckStatus.fail,
           '${probe.attempts.length} signatures testées, toutes bloquées au '
               'niveau RÉSEAU (DNS/timeout) — un VPN peut aider',
-        );
-      }
-      //  PANNE D'ORIGINE ≠ REFUS (terrain 18/09/2026).
-      //
-      //  Sur une box en clientèle, ce verdict disait « le fournisseur
-      //  refuse ce flux » alors que la ligne juste au-dessus affichait
-      //  HTTP 520 — un code CLOUDFLARE qui signifie l'inverse : le
-      //  serveur du fournisseur est en panne et Cloudflare n'en tire
-      //  rien. Le fournisseur ne refusait rien du tout.
-      //
-      //  L'écart n'est pas cosmétique : « refuse » envoie fouiller les
-      //  identifiants, la signature, l'abonnement — une soirée pour
-      //  rien. « En panne » dit d'attendre ou d'appeler le fournisseur.
-      //
-      //  Et insister avec d'autres signatures serait ici du gaspillage :
-      //  aucune signature ne réveille une machine éteinte.
-      final int? codeOrigine = probe.attempts.values
-          .map((StreamProbeResult r) => r.errorCode)
-          .firstWhere(estPanneOrigine, orElse: () => null);
-      if (codeOrigine != null) {
-        return TvCheckResult(
-          TvCheckStatus.fail,
-          'HTTP $codeOrigine — ${expliquerCodeCloudflare(codeOrigine)}. '
-              'Changer de signature n\'y changerait rien : il faut '
-              'attendre, ou prévenir le fournisseur',
         );
       }
       return TvCheckResult(

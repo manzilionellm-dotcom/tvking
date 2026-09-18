@@ -40,8 +40,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../net/iptv_cert_store.dart';
-
 /// Sonde « un VPN est-il actif sur l'appareil ? ».
 typedef VpnProbe = Future<bool> Function();
 
@@ -276,7 +274,8 @@ class PrivacyShield extends ChangeNotifier {
     // un panel en HTTPS auto-signé protège quand même l'URL en transit.
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 3)
-      ..badCertificateCallback = IptvCertTrust.allow;
+      ..badCertificateCallback =
+          ((X509Certificate cert, String host, int port) => true);
     try {
       final HttpClientRequest req = await client.headUrl(root);
       req.followRedirects = false;

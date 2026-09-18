@@ -40,7 +40,6 @@ import '../../playlists/domain/playlist.dart' as pl;
 import '../core/tv_dimens.dart';
 import '../core/tv_logo.dart';
 import '../core/tv_memory_guard.dart';
-import '../core/tv_preview_feature.dart';
 import '../core/tv_tokens.dart';
 
 /// URL (et signature) effectives à jouer pour un aperçu.
@@ -271,10 +270,7 @@ class _TvLivePreviewState extends State<TvLivePreview>
 
   @override
   void dispose() {
-    // PAS d'unregister ici : _reset(disposePlayer: true) pose le handOff
-    // (si un lecteur part) ou unregister (s'il n'y a rien). Unregister
-    // AVANT le handOff ouvrait une fenêtre où claim() ne voyait plus
-    // personne à attendre pendant que la socket se fermait encore.
+    StreamSlot.instance.unregister(this);
     WidgetsBinding.instance.removeObserver(this);
     TvLivePreview.routeObserver.unsubscribe(this);
     _reset(disposePlayer: true);
@@ -298,8 +294,8 @@ class _TvLivePreviewState extends State<TvLivePreview>
       // attendu = exactement le motif corrigé par handOff sur les lecteurs
       // plein écran — le claim() suivant ne trouvait plus personne à
       // attendre pendant que la socket de l'aperçu se fermait encore. La
-      // fermeture (stop natif attendu, puis awaitNetworkIdle, puis dispose)
-      // devient un détenteur de transition que le prochain claim() attend.
+      // fermeture (stop natif attendu, puis dispose) devient un détenteur
+      // de transition que le prochain claim() attend.
       final NativeVideoController? leaving = _ctrl;
       if (leaving != null) {
         leaving.removeListener(_onPlayer);
@@ -308,11 +304,6 @@ class _TvLivePreviewState extends State<TvLivePreview>
             await leaving.stop();
           } catch (_) {
             // canal natif déjà mort : la socket est fermée de toute façon.
-          }
-          try {
-            await leaving.awaitNetworkIdle();
-          } catch (_) {
-            // fail-open : le claim suivant ouvre quand même.
           }
           leaving.dispose();
         }();
@@ -378,17 +369,6 @@ class _TvLivePreviewState extends State<TvLivePreview>
   static bool _accountProbeAttempted = false;
 
   Future<void> _start() async {
-    // INTERRUPTEUR APERÇU (17/09/2026). LE GARDE EST ICI, dans la seule
-    // méthode qui ouvre un lecteur, et PAS chez les quatre écrans qui
-    // posent un aperçu (Lanceur, Rails, TiviMate, liste des chaînes).
-    // Quatre gardes, c'est trois occasions d'en oublier un — et celui
-    // qu'on oublie est celui qui tue la box, un soir, chez un client.
-    //
-    // Sans lecteur, `build` retombe tout seul sur le repli LOGO (`_ctrl`
-    // reste null) : la tuile garde sa place et son cadre, elle ne décode
-    // simplement plus rien. Voir tv_preview_feature.dart pour le
-    // pourquoi — deux flux vidéo à la fois sur une box de 1 Go.
-    if (!kApercuDirectActif) return;
     // Tests widget : aucun démarrage (la branche startImmediately de
     // didUpdateWidget appelle _start directement — d'où ce second garde).
     if (TvLivePreview.debugDisableAutoStart) return;

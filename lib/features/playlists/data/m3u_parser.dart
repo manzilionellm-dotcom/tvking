@@ -11,9 +11,7 @@
 //    - Saut de ligne mixte    (\r\n, \n, \r)
 //    - Attributs sans guillemets ou avec guillemets simples
 //    - #EXTGRP: pour le group-title sur une ligne séparée
-//    - #EXTVLCOPT:http-user-agent/referrer/cookie → en-têtes HTTP
-//    - #KODIPROP:inputstream.adaptive.stream_headers → idem
-//    - #EXT-X-* et autres directives (ignorés proprement)
+//    - #EXTVLCOPT:, #KODIPROP:, #EXT-X-* (ignorés proprement)
 //    - URLs rtmp://, udp://, https://, http://
 //    - Lignes vides multiples entre entrées
 //    - Espaces/tabs aléatoires partout
@@ -65,37 +63,18 @@ import 'package:flutter/foundation.dart';
 
 import '../../channels/domain/channel.dart';
 import '../../vod/domain/m3u_vod_classifier.dart';
-import 'm3u_normalizer.dart';
 import 'playlist_import_limits.dart';
 
 /// Résultat du parsing : la liste des chaînes + warnings non
 /// bloquants (lignes ignorées, attributs étranges, etc.).
-///
-/// [httpHeaders] : en-têtes HTTP extraits de `#EXTVLCOPT:` /
-/// `#KODIPROP:`, indexés par URL de flux. Vide (défaut) si la
-/// playlist n'en porte pas — les constructeurs existants restent
-/// valides.
 class M3uParseResult {
   const M3uParseResult({
     required this.channels,
     required this.warnings,
-    this.httpHeaders = const <String, Map<String, String>>{},
-    this.raisonInvalide,
   });
 
   final List<Channel> channels;
   final List<String> warnings;
-
-  /// POURQUOI zéro chaîne, quand on le sait (16/09/2026). `null` = la
-  /// playlist était exploitable ; un parsing à vide est alors un vrai
-  /// « 0 chaîne », pas un document qui n'était pas une playlist.
-  ///
-  /// L'appelant s'en sert pour DIRE la cause au client au lieu de le
-  /// laisser devant un fond dégradé — voir m3u_normalizer.dart.
-  final RaisonM3uInvalide? raisonInvalide;
-
-  /// En-têtes HTTP par URL (`User-Agent`, `Referer`, `Cookie`…).
-  final Map<String, Map<String, String>> httpHeaders;
 }
 
 
@@ -108,17 +87,12 @@ class M3uParseResult {
 ///
 ///  [feed] rend la [Channel] produite, ou `null` si la ligne était une
 ///  directive, un commentaire, ou du bruit. Les avertissements
-///  s'accumulent dans [warnings]. Les en-têtes HTTP (`#EXTVLCOPT` /
-///  `#KODIPROP`) s'accumulent dans [httpHeaders], indexés par URL.
+///  s'accumulent dans [warnings].
 class _M3uLineConsumer {
   _M3uLineConsumer({required this.playlistId});
 
   final int playlistId;
   final List<String> warnings = <String>[];
-
-  /// En-têtes HTTP collés à une URL de flux (session, pas SQLite).
-  final Map<String, Map<String, String>> httpHeaders =
-      <String, Map<String, String>>{};
 
   /// Nombre de chaînes produites — sert aux identifiants de repli
   /// (`m3u-<playlist>-<index>`) et au nom « Chaîne N ». En streaming, la
@@ -128,10 +102,6 @@ class _M3uLineConsumer {
   Map<String, String>? _pendingAttrs;
   String? _pendingName;
   String? _pendingGroup;
-
-  /// En-têtes HTTP en attente, collés à la prochaine ligne URL
-  /// (même sémantique que `#EXTINF` : état transitoire).
-  final Map<String, String> _pendingHttpHeaders = <String, String>{};
 
   Channel? feed(String raw) {
     // `trim()` mange aussi le « \r » d'un fichier Windows : c'est ce qui
@@ -156,21 +126,8 @@ class _M3uLineConsumer {
       return null;
     }
 
-    // #EXTVLCOPT:http-user-agent=… → User-Agent (idem referrer / cookie).
-    // S'applique à la prochaine ligne URL, comme #EXTINF.
-    if (line.toUpperCase().startsWith('#EXTVLCOPT:')) {
-      _accumulerExtVlcOpt(line);
-      return null;
-    }
-
-    // #KODIPROP:inputstream.adaptive.stream_headers=User-Agent=foo&Referer=bar
-    if (line.toUpperCase().startsWith('#KODIPROP:')) {
-      _accumulerKodiProp(line);
-      return null;
-    }
-
     // Toutes les autres directives sont ignorées proprement
-    // (#EXT-X-*, commentaires, EXTVLCOPT/KODIPROP non-HTTP).
+    // (#EXTVLCOPT, #KODIPROP, #EXT-X-*, commentaires).
     if (line.startsWith('#')) return null;
 
     // ----- Ligne URL -----
@@ -180,14 +137,6 @@ class _M3uLineConsumer {
       warnings.add('Ligne ignorée (pas une URL valide) : '
           '${line.length > 80 ? "${line.substring(0, 80)}…" : line}');
       return null;
-    }
-
-    // En-têtes HTTP en attente (#EXTVLCOPT / #KODIPROP) → collés à
-    // CETTE URL, puis vidés (comme #EXTINF). La dernière gagne si
-    // la même URL apparaît deux fois.
-    if (_pendingHttpHeaders.isNotEmpty) {
-      httpHeaders[line] = Map<String, String>.from(_pendingHttpHeaders);
-      _pendingHttpHeaders.clear();
     }
 
     // URL SANS #EXTINF avant : M3U « simple ». On génère un nom et une
@@ -263,80 +212,6 @@ class _M3uLineConsumer {
     count++;
     return c;
   }
-
-  /// `#EXTVLCOPT:http-user-agent=VLC/3.0.21` → User-Agent, etc.
-  /// Les options non-HTTP (network-caching, …) sont ignorées.
-  void _accumulerExtVlcOpt(String line) {
-    final String payload = line.substring('#EXTVLCOPT:'.length).trim();
-    final int eq = payload.indexOf('=');
-    if (eq <= 0) return;
-    final String cle = payload.substring(0, eq).trim().toLowerCase();
-    final String valeur = _sansGuillemets(payload.substring(eq + 1).trim());
-    if (valeur.isEmpty) return;
-    final String? header = _nomEnTeteVlc(cle);
-    if (header == null) return;
-    _pendingHttpHeaders[header] = valeur;
-  }
-
-  /// `#KODIPROP:inputstream.adaptive.stream_headers=User-Agent=foo&Referer=bar`
-  /// Parse query-like. Les autres KODIPROP (inputstream, license_key…)
-  /// sont ignorés.
-  void _accumulerKodiProp(String line) {
-    final String payload = line.substring('#KODIPROP:'.length).trim();
-    final int eq = payload.indexOf('=');
-    if (eq <= 0) return;
-    final String cle = payload.substring(0, eq).trim().toLowerCase();
-    if (cle != 'inputstream.adaptive.stream_headers') return;
-    final String valeur = _sansGuillemets(payload.substring(eq + 1).trim());
-    if (valeur.isEmpty) return;
-    final Map<String, String> parsed = Uri.splitQueryString(valeur);
-    parsed.forEach((String k, String v) {
-      final String header = _normaliserNomEnTete(k.trim());
-      final String val = v.trim();
-      if (header.isEmpty || val.isEmpty) return;
-      _pendingHttpHeaders[header] = val;
-    });
-  }
-
-  /// Valeur éventuellement entourée de `"…"` ou `'…'`.
-  static String _sansGuillemets(String valeur) {
-    if (valeur.length >= 2 &&
-        ((valeur.startsWith('"') && valeur.endsWith('"')) ||
-            (valeur.startsWith("'") && valeur.endsWith("'")))) {
-      return valeur.substring(1, valeur.length - 1);
-    }
-    return valeur;
-  }
-
-  /// Clef VLC (`http-user-agent`, …) → nom d'en-tête HTTP canonique.
-  static String? _nomEnTeteVlc(String cle) {
-    switch (cle) {
-      case 'http-user-agent':
-        return 'User-Agent';
-      case 'http-referrer':
-      case 'http-referer':
-        return 'Referer';
-      case 'http-cookie':
-        return 'Cookie';
-      default:
-        return null;
-    }
-  }
-
-  /// Normalise les noms d'en-têtes Kodi connus ; le reste passe tel quel.
-  static String _normaliserNomEnTete(String cle) {
-    switch (cle.toLowerCase()) {
-      case 'user-agent':
-        return 'User-Agent';
-      case 'referer':
-      case 'referrer':
-        return 'Referer';
-      case 'cookie':
-        return 'Cookie';
-      default:
-        return cle;
-    }
-  }
 }
 
 /// Parcourt les lignes d'un texte SANS le découper en liste.
@@ -344,10 +219,8 @@ class _M3uLineConsumer {
 ///  `content.split('\n')` matérialise deux millions de String pour un
 ///  M3U d'un million d'entrées — 79 Mo mesurés, en plus des 407 Mo du
 ///  texte lui-même. Ce générateur n'en tient qu'une à la fois.
-///  [debut] permet de sauter le BOM et les blancs de tête SANS recopier
-///  le contenu (16/09/2026) : `examinerM3u` rend un offset, pas une
-///  String — voir m3u_normalizer.dart.
-Iterable<String> _lignesParesseuses(String content, {int debut = 0}) sync* {
+Iterable<String> _lignesParesseuses(String content) sync* {
+  int debut = 0;
   while (debut <= content.length) {
     final int fin = content.indexOf('\n', debut);
     if (fin < 0) {
@@ -388,36 +261,32 @@ abstract final class M3uParser {
     final List<Channel> channels = <Channel>[];
     final _M3uLineConsumer conso = _M3uLineConsumer(playlistId: playlistId);
 
-    // EXAMEN AVANT PARSING (16/09/2026). Remplace l'ancien strip BOM
-    // improvisé : il ne retirait qu'UN BOM, à l'index 0, et laissait
-    // passer sans un mot une page HTML d'erreur servie en HTTP 200 — le
-    // cas terrain n°1. Le verdict rend un OFFSET, jamais une copie :
-    // recopier le contenu ici coûtait 486 Mo sur un M3U d'un million
-    // d'entrées (mesuré le 05/09, cf. le commentaire plus bas).
-    final VerdictM3u verdict = examinerM3u(content);
-    if (!verdict.exploitable) {
+    // Strip BOM UTF-8 si présent (commun sur les exports Windows).
+    if (content.isNotEmpty && content.codeUnitAt(0) == 0xFEFF) {
+      content = content.substring(1);
+    }
+    if (content.isEmpty) {
       return M3uParseResult(
         channels: channels,
-        warnings: <String>[
-          ...verdict.corrections,
-          messageM3uInvalide(verdict.raison!),
-        ],
-        raisonInvalide: verdict.raison,
+        warnings: <String>['Fichier vide.'],
       );
     }
-    conso.warnings.addAll(verdict.corrections);
-    // On démarre APRÈS le BOM et les blancs de tête, sans rien recopier.
-    final int debut = verdict.offset;
 
     //  PLUS DE `replaceAll` NI DE `split` (05/09/2026). Ces trois appels
     //  recopiaient le fichier entier — 486 Mo mesurés sur un M3U d'un
     //  million d'entrées, avant même la première chaîne produite. Le
     //  `trim()` du consommateur mange déjà les « \r » de Windows, et
     //  [_lignesParesseuses] ne tient qu'une ligne à la fois.
-    for (final String ligne in _lignesParesseuses(content, debut: debut)) {
-      // (L'en-tête #EXTM3U a déjà été tranché par `examinerM3u` : présent,
-      //  ou forcé implicitement avec une correction consignée. Plus besoin
-      //  de traiter la première ligne à part.)
+    bool premiere = true;
+    for (final String ligne in _lignesParesseuses(content)) {
+      if (premiere) {
+        premiere = false;
+        if (!ligne.trim().toUpperCase().startsWith('#EXTM3U')) {
+          conso.warnings.add(
+            'Pas de #EXTM3U au début — on tente quand même de parser.',
+          );
+        }
+      }
       // PLAFOND MÉMOIRE (anti-OOM box faibles) : au-delà de [maxChannels]
       // on arrête de matérialiser — le reste reste en source, l'app est
       // utilisable, juste tronquée à une taille tenable. [maxChannels] est
@@ -439,11 +308,7 @@ abstract final class M3uParser {
         '${conso.warnings.length} warning(s).',
       );
     }
-    return M3uParseResult(
-      channels: channels,
-      warnings: conso.warnings,
-      httpHeaders: conso.httpHeaders,
-    );
+    return M3uParseResult(channels: channels, warnings: conso.warnings);
   }
 
   /// Parse un flux d'octets et rend les chaînes PAR PAQUETS.
@@ -467,9 +332,6 @@ abstract final class M3uParser {
     int tailleLot = 1000,
   }) async* {
     final _M3uLineConsumer conso = _M3uLineConsumer(playlistId: playlistId);
-    // Le flux ne rend que des chaînes ; les en-têtes se lisent après
-    // (même contrat que [derniersAvertissementsStream]).
-    derniersHttpHeadersStream = conso.httpHeaders;
     List<Channel> lot = <Channel>[];
     int total = 0;
 
@@ -503,11 +365,6 @@ abstract final class M3uParser {
   /// Les avertissements du dernier [parseStream]. Le flux ne rend que des
   /// chaînes ; les avertissements sont secondaires et se lisent après.
   static List<String> derniersAvertissementsStream = <String>[];
-
-  /// En-têtes HTTP du dernier [parseStream], indexés par URL.
-  /// Le flux ne rend que des chaînes ; les en-têtes se lisent après.
-  static Map<String, Map<String, String>> derniersHttpHeadersStream =
-      const <String, Map<String, String>>{};
 
   // ============================================================
   //  Helpers

@@ -1522,12 +1522,13 @@ class _Card extends StatelessWidget {
   }
 }
 
-/// Normalise un identifiant saisi (MAC) → « MK:XX:XX:XX:XX:XX » ou '' si invalide.
-/// 10 hex (5 octets) — c'est le format Worker / l'écran À propos. 12 hex
-/// (NIC MAG) était rejeté ou produisait 6 paires que le Worker refuse.
+/// Normalise un identifiant saisi (MAC) → « MK:XX:XX:… » ou '' si invalide.
 String _normalizeMac(String raw) {
-  final String next = DeviceIdentity.normalizeMac(raw);
-  return RegExp(r'^MK(?::[0-9A-F]{2}){5}$', caseSensitive: false).hasMatch(next)
-      ? next
-      : '';
+  final String hex = raw.toUpperCase().replaceAll(RegExp(r'[^0-9A-F]'), '');
+  if (hex.length != 12) return '';
+  final List<String> p = <String>[];
+  for (int i = 0; i < 12; i += 2) {
+    p.add(hex.substring(i, i + 2));
+  }
+  return 'MK:${p.join(':')}';
 }

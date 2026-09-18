@@ -38,7 +38,6 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/profiles/profiles_repository.dart';
-import 'app_pin_settings.dart';
 
 class ParentalControls {
   ParentalControls._();
@@ -84,11 +83,7 @@ class ParentalControls {
   }
 
   /// Active / désactive le Mode Enfants de l'APPAREIL et persiste le choix.
-  /// PIN encore à 0000 → on n'active PAS (un enfant saurait le code).
   Future<void> setKidsMode(bool value) async {
-    if (value && await AppPinSettings.instance.isUsingDefault()) {
-      return;
-    }
     _deviceKidsMode = value;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();

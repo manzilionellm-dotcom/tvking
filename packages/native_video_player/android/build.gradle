@@ -50,10 +50,6 @@ dependencies {
     // meilleure reprise après erreur de chargement.
     implementation "androidx.media3:media3-exoplayer:1.8.0"
     implementation "androidx.media3:media3-exoplayer-hls:1.8.0"
-    // DASH IPTV + pool OkHttp : keep-alive pendant HLS, close au stop
-    // (éviction anti-458). NativeVideoView.kt consommera OkHttp (autre worker).
-    implementation "androidx.media3:media3-exoplayer-dash:1.8.0"
-    implementation "androidx.media3:media3-datasource-okhttp:1.8.0"
     // media3-ui : uniquement pour SubtitleView (rendu des sous-titres par-dessus
     // la SurfaceView). On n'utilise AUCUN autre widget de ce module.
     implementation "androidx.media3:media3-ui:1.8.0"

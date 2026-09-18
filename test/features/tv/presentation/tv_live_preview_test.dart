@@ -17,7 +17,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:native_video_player/native_video_player.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/tv/core/tv_logo.dart';
-import 'package:tv_king/features/tv/core/tv_preview_feature.dart';
 import 'package:tv_king/features/tv/presentation/tv_live_preview.dart';
 
 Channel _channel(String id, String name) => Channel(
@@ -37,19 +36,6 @@ Widget _host(Widget child) => MaterialApp(
     );
 
 void main() {
-  // INTERRUPTEUR APERÇU (17/09/2026). L'aperçu vidéo est ÉTEINT en
-  // production : il ouvrait un SECOND lecteur ExoPlayer pendant qu'une
-  // chaîne jouait déjà, et sur une box de 1 Go c'est ce deuxième
-  // décodeur qui faisait tuer l'app par Android (boîte noire :
-  // `memoire.pressure.purge` 1→4 puis `lifecycle.boot`).
-  //
-  // Ce fichier décrit ce que l'aperçu fait QUAND IL MARCHE — l'anti-rebond,
-  // le repli logo, le court-circuit sur OK. C'est la garantie qu'il est
-  // encore entier si on le rallume sur des box qui peuvent l'encaisser.
-  // Le jeter aurait éteint deux fois : la deuxième sans pouvoir revenir.
-  setUp(() => apercuDirectPourTest = true);
-  tearDown(reinitialiserApercuPourTest);
-
   testWidgets(
       'repli logo (sans vue vidéo) tant que l’aperçu n’a pas démarré, '
       'puis logo + spinner pendant la résolution', (WidgetTester tester) async {

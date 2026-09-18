@@ -41,7 +41,6 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../app/family_feature.dart';
 import '../observability/structured_logger.dart';
 
 /// Empreinte d'un PIN de profil.
@@ -233,20 +232,8 @@ class ProfilesRepository extends ChangeNotifier {
   /// Tous les profils : « Famille », puis ceux du PANEL, puis les locaux.
   /// Les profils du panel passent devant : ce sont ceux que la famille
   /// utilise au quotidien, ils doivent être les premiers sous le pouce.
-  List<TvProfile> get profiles => kFamilleActivee
-      ? <TvProfile>[familyProfile, ..._managed, ..._extras]
-      // INTERRUPTEUR FAMILLE (17/09/2026) : UN SEUL profil, celui qui
-      // porte les clés historiques. Tout le reste de l'app lit ce getter
-      // — `active`, `selectable`, `keySuffix`, et le « Qui regarde ? » de
-      // `tv_app.dart` qui ne s'affiche que si `profiles.length > 1`. Le
-      // couper ici suffit donc à faire disparaître l'écran d'avatars au
-      // démarrage, sans y toucher.
-      //
-      // On ne VIDE PAS `_managed` / `_extras` pour autant : si le
-      // propriétaire rallume un jour la fonctionnalité, les profils que
-      // les clients avaient créés sont toujours là. Éteindre n'est pas
-      // effacer.
-      : const <TvProfile>[familyProfile];
+  List<TvProfile> get profiles =>
+      <TvProfile>[familyProfile, ..._managed, ..._extras];
 
   /// Ceux qu'on peut réellement choisir. Un profil désactivé par le panel
   /// reste dans [profiles] (affiché grisé) mais sort d'ici.
@@ -298,12 +285,6 @@ class ProfilesRepository extends ChangeNotifier {
       // un profil qu'on n'a plus le droit d'utiliser.
       final TvProfile? current = byId(_activeId);
       if (current == null || !current.enabled) _activeId = familyProfile.id;
-      // INTERRUPTEUR FAMILLE : une box qui tournait sur le profil d'un
-      // enfant garderait sinon son `keySuffix` (« .p_leo ») et
-      // n'afficherait plus ni ses favoris ni son historique — un client
-      // qui croit avoir tout perdu. On rend la main à « Famille », dont
-      // le suffixe est VIDE : ce sont les clés d'origine.
-      if (!kFamilleActivee) _activeId = familyProfile.id;
     } catch (e) {
       debugPrint('[Profils] load: $e');
       _extras = <TvProfile>[];
@@ -336,10 +317,6 @@ class ProfilesRepository extends ChangeNotifier {
   /// deux listes vivent séparément. Un panel qui pousse ses cinq profils
   /// n'efface pas celui que le client s'était fait.
   Future<bool> applyRemote(List<TvProfile> remote) async {
-    // INTERRUPTEUR FAMILLE : la synchro qui appelle ceci est déjà éteinte
-    // à la source. Ce garde-là couvre le reste — un test, un écran admin,
-    // un futur appelant qui ne connaîtrait pas l'interrupteur.
-    if (!kFamilleActivee) return false;
     final List<TvProfile> next = remote
         .map((TvProfile p) => p.copyWith(managed: true))
         .toList(growable: true);
@@ -363,11 +340,6 @@ class ProfilesRepository extends ChangeNotifier {
   }
 
   Future<void> create(String name, String emoji) async {
-    // INTERRUPTEUR FAMILLE : sans ce garde, un profil créé serait écrit
-    // sur le disque puis jamais affiché (le getter `profiles` ne le rend
-    // plus). Écrire ce qu'on n'affichera pas, c'est fabriquer un bug
-    // pour le jour du rallumage.
-    if (!kFamilleActivee) return;
     final String n = name.trim();
     if (n.isEmpty || byName(n) != null) return;
     if (profiles.length >= maxProfiles) return;

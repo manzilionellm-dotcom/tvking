@@ -21,7 +21,6 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import '../../../core/net/doh_resolver.dart';
-import '../../../core/net/iptv_cert_store.dart';
 
 /// Crée un client HTTP tolérant aux certificats invalides, destiné aux
 /// serveurs IPTV tiers uniquement. À fermer (`close()`) après usage,
@@ -32,7 +31,8 @@ import '../../../core/net/iptv_cert_store.dart';
 /// DNS-over-HTTPS quand le DNS système échoue — cf. `installDohResolution`.
 http.Client createIptvHttpClient() {
   final HttpClient inner = HttpClient()
-    ..badCertificateCallback = IptvCertTrust.allow;
+    ..badCertificateCallback =
+        (X509Certificate cert, String host, int port) => true;
   installDohResolution(inner);
   return IOClient(inner);
 }

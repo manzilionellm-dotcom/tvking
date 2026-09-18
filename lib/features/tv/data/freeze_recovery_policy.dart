@@ -37,7 +37,7 @@ enum FreezeAction {
 class FreezeRecoveryPolicy {
   FreezeRecoveryPolicy({
     this.frozen = const Duration(seconds: 15),
-    this.maxAttempts = 2,
+    this.maxAttempts = 5,
     required DateTime now,
   }) : _lastProgress = now;
 

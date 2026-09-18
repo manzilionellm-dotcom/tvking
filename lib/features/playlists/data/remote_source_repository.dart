@@ -26,18 +26,13 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/i18n/l10n_now.dart';
-// (`build_flags.dart` / `kIsPlayBuild` n'est plus importé ici depuis le
-//  retrait du verrou magasin du 16/09/2026 — voir le bloc en tête de
-//  classe. Le drapeau existe toujours et sert ailleurs, notamment à
-//  l'updater in-app et aux profils distants.)
+import '../../../core/update/build_flags.dart';
 import '../../channels/data/recently_watched_repository.dart';
-import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../../subscription/data/subscription_state.dart';
 import '../domain/playlist.dart';
-import 'instant_activation.dart';
 import 'source_opt_outs.dart';
 import 'import_progress.dart';
 import 'playlist_repository.dart';
@@ -60,41 +55,22 @@ enum RemoteSyncResult {
 }
 
 abstract final class RemoteSourceRepository {
-  // =========================================================
-  //  LE VERROU MAGASIN A ÉTÉ RETIRÉ (16/09/2026)
-  // =========================================================
-  //  IL A EXISTÉ, ET IL AVAIT UNE RAISON. Après le refus Amazon du
-  //  19/08/2026 (« pirated content »), on avait fermé trois portes dans
-  //  ce fichier : dans un build distribué par un magasin
-  //  (`PLAY_BUILD=true` — Google Play, Amazon Appstore), l'app ne
-  //  récupérait AUCUNE source poussée par le panel. Le testeur du store
-  //  ne voyait alors que « Ajoute ta source », jamais un bouquet tout
-  //  prêt. C'est cette posture qui a fait accepter l'app.
-  //
-  //  POURQUOI ON L'ENLÈVE QUAND MÊME. Décision du propriétaire, prise le
-  //  16/09/2026 en connaissance du refus du 19/08 — il a été rappelé
-  //  explicitement avant l'arbitrage. Le motif est commercial et il est
-  //  net : il active un client depuis son panneau alors que le client
-  //  n'est PAS avec lui, et il veut que les chaînes arrivent seules. Un
-  //  client qui a installé depuis le Play Store restait bloqué sans que
-  //  personne — ni lui, ni le client, ni le panneau — puisse le voir.
-  //
-  //  CE QU'ON ACCEPTE EN ÉCHANGE, ET IL FAUT L'ÉCRIRE : un examinateur
-  //  Google ou Amazon qui ouvre l'app sur une MAC à laquelle une source
-  //  a été poussée reverra un bouquet garni. C'est EXACTEMENT le motif
-  //  du refus du 19/08. Le risque n'est pas théorique, il est déjà
-  //  arrivé une fois.
-  //
-  //  SI UN REFUS ARRIVE : la correction est de remettre les trois
-  //  gardes supprimées ici (sync, fetchAssignedSources, applySources),
-  //  pas de chercher ailleurs. Le test
-  //  test/features/playlists/remote_source_store_gate_test.dart garde
-  //  l'historique complet et vérifie l'état courant.
-  //
-  //  La règle n°2 du projet (« aucune playlist pré-remplie ») reste
-  //  respectée au sens strict : rien n'est en dur dans le code. Ce qui
-  //  change, c'est ce qu'un réviseur de contenu VOIT à l'écran.
-  // =========================================================
+  /// CONFORMITÉ MAGASINS (refus Amazon du 19/08/2026, « pirated content ») :
+  /// dans les builds DISTRIBUÉS PAR UN STORE (Google Play TV, Amazon
+  /// Appstore — `PLAY_BUILD=true`), l'app est un LECTEUR « apporte ton
+  /// abonnement » : AUCUNE source n'est poussée par le panel. Le testeur du
+  /// store — comme n'importe quel utilisateur venu du store — ne voit que
+  /// les écrans « Ajouter une source » et charge lui-même sa propre liste.
+  /// C'est la posture sous laquelle les lecteurs IPTV génériques sont
+  /// publiés, et la seule compatible avec la règle n°2 du projet (« aucune
+  /// playlist pré-remplie ») du point de vue d'un réviseur de contenu.
+  /// Les builds SIDELOAD (distribution directe de l'exploitant) sont
+  /// inchangés : le modèle « tout géré par le revendeur » reste entier.
+  ///
+  /// Champ (et non const) UNIQUEMENT pour rester testable : `kIsPlayBuild`
+  /// est figé à la compilation, les tests ne peuvent pas le basculer.
+  @visibleForTesting
+  static bool storeBuild = kIsPlayBuild;
 
   /// Signal « le revendeur vient d'ASSIGNER / METTRE À JOUR une source pour
   /// CET appareil » (poussé en TEMPS RÉEL par le panel via le WebSocket).
@@ -121,9 +97,9 @@ abstract final class RemoteSourceRepository {
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
   static Future<RemoteSyncResult> sync({int hop = 0}) async {
-    // (Garde « build magasin » RETIRÉE le 16/09/2026 — voir le bloc en
-    //  tête de classe. Toutes les distributions récupèrent désormais la
-    //  source poussée par le panel, y compris Play Store et Amazon.)
+    // Build store : pas de source poussée, pas d'ordres du panel (cf.
+    // [storeBuild]). L'utilisateur ajoute ses sources lui-même.
+    if (storeBuild) return RemoteSyncResult.noSource;
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
@@ -377,8 +353,8 @@ abstract final class RemoteSourceRepository {
   /// afficher l'écran de progression VIVANT (chaînes qui s'ajoutent) au lieu
   /// d'un simple message. `[]` = rien d'assigné / réseau KO (best-effort).
   static Future<List<Map<String, dynamic>>> fetchAssignedSources() async {
-    // (Garde « build magasin » RETIRÉE le 16/09/2026 — voir le bloc en
-    //  tête de classe.)
+    // Build store : rien d'assigné, jamais (cf. [storeBuild]).
+    if (storeBuild) return <Map<String, dynamic>>[];
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return <Map<String, dynamic>>[];
@@ -417,15 +393,9 @@ abstract final class RemoteSourceRepository {
     List<Map<String, dynamic>> sources, {
     ImportProgressCallback? onProgress,
   }) async {
-    // (Garde « build magasin » RETIRÉE le 16/09/2026 — voir le bloc en
-    //  tête de classe. Les événements temps réel du panel chargent donc
-    //  la source sur toutes les distributions.)
-    // ÉTAT AVANT (16/09/2026) : y avait-il déjà des chaînes ? C'est LA
-    // question qui décide si on a le droit de lancer tout seul plus bas.
-    // Elle se pose ICI, avant tout import — après, la réponse a changé.
-    final bool avaitDejaDesChaines =
-        PlaylistRepository.instance.currentChannels.isNotEmpty;
-
+    // Build store : même les événements temps réel du panel (pushedTick →
+    // fetch + apply) ne chargent rien (cf. [storeBuild]).
+    if (storeBuild) return RemoteSyncResult.noSource;
     RemoteSyncResult agg = RemoteSyncResult.noSource;
     for (final Map<String, dynamic> item in sources) {
       final RemoteSyncResult r = await _applySource(
@@ -440,71 +410,7 @@ abstract final class RemoteSourceRepository {
         agg = RemoteSyncResult.sourceFailed;
       }
     }
-
-    // =========================================================
-    //  LE MAILLON MANQUANT (16/09/2026) : ÇA DOIT JOUER TOUT SEUL
-    // =========================================================
-    //  Jusqu'ici la chaîne s'arrêtait ici : la playlist était chargée et
-    //  rendue active… puis l'app affichait la grille des catégories et
-    //  attendait. Le client devait encore choisir une catégorie, puis une
-    //  chaîne — trois gestes à la télécommande après une activation
-    //  vendue comme automatique.
-    //
-    //  On ne lance rien DEPUIS ICI (aucun BuildContext dans un dépôt, et
-    //  téléphone et TV n'ouvrent pas le lecteur de la même façon) : on
-    //  DÉPOSE la décision, l'écran à l'affiche la ramasse.
-    //
-    //  ON NE LANCE QUE SUR UNE VRAIE ACTIVATION — c'est-à-dire quand
-    //  l'appareil n'avait AUCUNE chaîne avant. Sinon le revendeur qui
-    //  ajoute une deuxième source à un client en train de regarder lui
-    //  arracherait l'image. Cette garde vit ICI, en un seul endroit :
-    //  la mettre dans chaque écran, c'est la voir diverger.
-    if (agg == RemoteSyncResult.loaded && !avaitDejaDesChaines) {
-      _deposerLectureInstantanee(sources);
-    }
     return agg;
-  }
-
-  /// Choisit la chaîne à lancer et la dépose pour l'écran à l'affiche.
-  ///
-  ///  Best-effort de bout en bout : si quoi que ce soit manque (pas de
-  ///  chaînes encore visibles, source déjà présente donc rien de neuf),
-  ///  on ne dépose rien. Une activation qui n'auto-démarre pas reste une
-  ///  activation réussie — l'inverse (planter la synchro pour un confort)
-  ///  ne serait pas un échange acceptable.
-  static void _deposerLectureInstantanee(
-    List<Map<String, dynamic>> sources,
-  ) {
-    try {
-      final List<Channel> chaines =
-          PlaylistRepository.instance.currentChannels;
-      if (chaines.isEmpty) return;
-
-      // Le panel peut désigner la chaîne d'accueil (`start_channel`). Il
-      // ne l'envoie pas encore ; le champ est lu dès aujourd'hui pour que
-      // le jour où il l'enverra, RIEN ne soit à changer côté app — c'est
-      // la partie qu'on ne peut pas mettre à jour d'un clic.
-      String? demandee;
-      for (final Map<String, dynamic> s in sources) {
-        final Object? v = s['start_channel'];
-        if (v is String && v.trim().isNotEmpty) {
-          demandee = v;
-          break;
-        }
-      }
-
-      final Channel? c = chaineADemarrer(chaines, demandee: demandee);
-      if (c == null) return;
-      InstantActivation.demander(
-        DemandeLectureInstantanee(chaine: c, liste: chaines),
-      );
-      if (kDebugMode) {
-        debugPrint('[RemoteSource] lecture instantanée -> ' + c.name);
-      }
-    } catch (e) {
-      // Jamais bloquant : la source est chargée, c'est l'essentiel.
-      if (kDebugMode) debugPrint('[RemoteSource] lecture instantanée KO: $e');
-    }
   }
 
   /// LABO DU MAÎTRE — une source de test a-t-elle le droit de devenir la
@@ -551,19 +457,6 @@ abstract final class RemoteSourceRepository {
     if (kDebugMode) debugPrint('[RemoteSource] active -> ' + p.name);
   }
 
-  /// Depuis quand le panel assigne-t-il cette source ? (`assigned_at`, ms).
-  ///
-  ///  0 = le serveur ne le dit pas (Worker plus ancien que le 17/09). Le
-  ///  juge des empreintes ne bloque alors pas : on préfère une source de
-  ///  trop à un client payant devant un écran vide.
-  static int _assignationMs(Map<String, dynamic> src) {
-    final Object? v = src['assigned_at'];
-    if (v is int) return v;
-    if (v is num) return v.toInt();
-    if (v is String) return int.tryParse(v) ?? 0;
-    return 0;
-  }
-
   /// Charge la source en base locale si elle n'y est pas déjà.
   static Future<RemoteSyncResult> _applySource(
     Map<String, dynamic> src, {
@@ -598,11 +491,7 @@ abstract final class RemoteSourceRepository {
       // SUPPRIMÉE VOLONTAIREMENT par le client (SourceOptOuts) : la
       // provision automatique ne la ressuscite PAS au boot. Un push
       // temps réel du panel lève les empreintes (signalPushed).
-      // SUPPRIMÉE PAR LE CLIENT — mais QUAND, par rapport à la dernière
-      // poussée du panel ? Sans cette date, ce filtre a rendu toute
-      // activation à distance impossible (17/09, voir source_opt_outs.dart).
-      if (await SourceOptOuts.isXtreamOptedOut(server, user,
-          assignedAt: _assignationMs(src))) {
+      if (await SourceOptOuts.isXtreamOptedOut(server, user)) {
         if (kDebugMode) debugPrint('[RemoteSource] opt-out, sautée ($server)');
         return RemoteSyncResult.noSource;
       }
@@ -664,9 +553,7 @@ abstract final class RemoteSourceRepository {
       if (m3u.isEmpty) return RemoteSyncResult.sourceFailed;
 
       // Même règle que le chemin Xtream : suppression volontaire respectée.
-      // Même règle que le chemin Xtream (voir plus haut).
-      if (await SourceOptOuts.isM3uOptedOut(m3u,
-          assignedAt: _assignationMs(src))) {
+      if (await SourceOptOuts.isM3uOptedOut(m3u)) {
         if (kDebugMode) debugPrint('[RemoteSource] opt-out, sautée (m3u)');
         return RemoteSyncResult.noSource;
       }

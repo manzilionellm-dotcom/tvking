@@ -13,18 +13,47 @@
 //  se contente donc pas de mentir au client — il lui coupe la télévision
 //  alors qu'il a payé, et aucune relance ne la rallumera.
 //
-//  CORRECTIF DU 16/09/2026 (le client a ENCORE UN JOUR) :
-//  le revendeur écrit « expire le 13/09 ». Chez Xtream, `exp_date` à
-//  minuit le 13 est la DATE imprimée, pas « mort dès la première
-//  seconde du 13 ». Le 13 est le DERNIER JOUR PAYÉ, entier. Couper le
-//  12, ou le 13 au matin, c'est voler une journée. On juge donc :
-//    — dernier jour couvert = le jour calendaire de `exp_date` ;
-//    — mort seulement après le LENDEMAIN 00:00 + marge.
+//  Trois défauts se cumulaient, chacun suffisant à lui seul :
 //
-//  RÈGLE RETENUE, asymétrique À DESSEIN : se tromper en disant
-//  « vivante » coûte un écran noir, que le client comprend. Se tromper
-//  en disant « morte » coupe la télé d'un client qui a payé. Dans le
+//  1. LE MESSAGE NOMMAIT LE MAUVAIS JOUR. Chez Xtream, `exp_date` est
+//     l'instant de FIN, pas le dernier jour couvert. Un panel qui écrit
+//     « 13/09 00:00 » dit « valable jusqu'à la fin du 12 ». L'app
+//     recopiait l'instant tel quel : « expiré le 13/09 » — un jour que
+//     le client n'a jamais eu, annoncé la veille. D'où sa phrase.
+//
+//  2. ON COMPARAIT À L'HORLOGE DE L'APPAREIL. La date de fin est posée
+//     par le PANEL, dans le fuseau du PANEL. On la comparait à l'heure
+//     du téléphone. Une box dont l'horloge avance (réglage manuel,
+//     absence de NTP, fuseau faux — banal sur les boîtiers bon marché)
+//     déclare la ligne morte avant l'heure, pour de bon. Le panel envoie
+//     pourtant sa propre heure dans `server_info.timestamp_now` : c'est
+//     ELLE qui fait autorité sur la vie d'une ligne, pas notre montre.
+//
+//  3. AUCUNE MARGE, ET UN STATUT QUI PRIME SUR LA DATE. La coupure se
+//     jouait à la seconde près, et un statut contenant « expired »
+//     suffisait à tuer la ligne même quand la date de fin était encore
+//     loin devant. Or ces deux informations viennent du même panel : si
+//     elles se contredisent, c'est le panel qui se trompe, pas le
+//     client. Accuser dans le doute, c'est facturer un appel au support.
+//
+//  RÈGLE RETENUE, et elle est asymétrique À DESSEIN : se tromper en
+//  disant « vivante » coûte un écran noir de plus, que le client
+//  comprend (il appelle son fournisseur). Se tromper en disant
+//  « morte » coupe la télé d'un client qui a payé ET verrouille les
+//  reconnexions. Les deux erreurs ne pèsent pas le même poids : dans le
 //  doute, la ligne est VIVANTE.
+//
+//  UNE SEULE IMPLÉMENTATION, AUTANT D'APPELANTS QU'ON VEUT (règle de la
+//  maison, cf. cloudflare/device_profiles.js). Quatre endroits jugeaient
+//  l'expiration chacun dans son coin — la boîte noire, le lecteur
+//  téléphone, le lecteur TV, la calibration de source. Ils avaient déjà
+//  divergé une fois : la boîte noire disait « expiré » pendant que
+//  l'écran, lui, avait un garde-fou. Ici, tout le monde appelle
+//  [jugerLigne], et le jour où la règle change, elle change une fois.
+//
+//  Ce fichier est du Dart PUR (aucun import Flutter) : il se teste sans
+//  émulateur, sans écran, sans réseau — voir
+//  test/features/player/line_expiry_test.dart.
 // =========================================================
 
 /// Ce que l'on sait de la vie d'une ligne fournisseur.
@@ -47,11 +76,20 @@ enum VerdictLigne {
   contradictoire,
 }
 
-/// Marge après la fin du dernier jour calendaire.
+/// Marge avant de déclarer une ligne morte SUR LA DATE.
 ///
-/// Douze heures : fuseau panel vs box, minuit mal posé, NTP absent.
-/// Un client vraiment fini peut lire une demi-journée de plus. Le
-/// fournisseur coupe de son côté — on ne coupe jamais AVANT lui.
+/// Pourquoi douze heures, et pas zéro : la date de fin est posée par le
+/// panel, dans son fuseau, souvent à minuit. On la compare — au mieux — à
+/// l'horloge de ce même panel, et — au pire, quand il ne la donne pas —
+/// à celle de l'appareil. Entre un panel à Londres, une box réglée à la
+/// main et un client à Stockholm, un écart de quelques heures est la
+/// normale, pas l'exception.
+///
+/// Ce que cette marge coûte : un client réellement expiré peut lire une
+/// demi-journée de plus. Ce qu'elle évite : couper un client qui a payé.
+/// Le fournisseur, lui, coupe de son côté quand il veut — sa décision ne
+/// dépend pas de nous. La marge ne donne donc rien gratuitement : elle
+/// nous empêche seulement de couper AVANT lui.
 const Duration kMargeExpiration = Duration(hours: 12);
 
 /// Statuts de panel qui signifient « ligne terminée ».
@@ -90,17 +128,6 @@ bool statutSanctionne(String? statut) {
 bool statutDeFin(String? statut) =>
     _statutsDeFin.contains((statut ?? '').trim().toLowerCase());
 
-/// Premier instant NON couvert : lendemain 00:00 du jour calendaire
-/// de [finDeLigne], puis + [marge].
-DateTime _mortApres(DateTime finDeLigne, Duration marge) {
-  final DateTime lendemain = DateTime(
-    finDeLigne.year,
-    finDeLigne.month,
-    finDeLigne.day,
-  ).add(const Duration(days: 1));
-  return lendemain.add(marge);
-}
-
 /// Verdict complet sur une ligne.
 ///
 /// [statut] : le champ `status` du panel (`Active`, `Expired`…), tel quel.
@@ -129,9 +156,8 @@ VerdictLigne jugerLigne({
     return leStatutDitFin ? VerdictLigne.morte : VerdictLigne.vivante;
   }
 
-  // Dernier jour calendaire INCLUS + marge. Un `exp_date` au 13/09 00:00
-  // (ou 13/09 14:30) couvre TOUT le 13. Mort à partir du 14 00:00 + marge.
-  final bool dateDepassee = maintenant.isAfter(_mortApres(finDeLigne, marge));
+  // La date est-elle dépassée, marge comprise ?
+  final bool dateDepassee = maintenant.isAfter(finDeLigne.add(marge));
   if (dateDepassee) return VerdictLigne.morte;
 
   // La date tient encore. Si le statut crie quand même « expired », les
@@ -141,12 +167,20 @@ VerdictLigne jugerLigne({
   return VerdictLigne.vivante;
 }
 
-/// Le DERNIER JOUR RÉELLEMENT COUVERT — le jour que le panel imprime.
+/// Le DERNIER JOUR RÉELLEMENT COUVERT par la ligne — celui qu'il faut
+/// écrire au client, et pas l'instant de fin brut.
 ///
-/// 16/09/2026 : « expire le 13/09 » = le 13 est payé en entier. Annoncer
-/// la veille volait un jour au client (et affichait « terminé » trop tôt).
+/// `exp_date` marque la FIN. Un panel qui pose « 13/09 00:00:00 » couvre
+/// jusqu'à la dernière seconde du 12 : annoncer « expiré le 13 » nomme un
+/// jour que le client n'a jamais eu — et, quand on est le 12, annonce une
+/// date qui n'est même pas arrivée.
+///
+/// Reculer d'une seconde règle les deux cas d'un coup, sans rien casser :
+/// une fin à minuit pile retombe sur la veille (le bon jour), une fin en
+/// milieu de journée (13/09 14:30) reste sur son propre jour (13/09), qui
+/// est bien le dernier couvert.
 DateTime dernierJourCouvert(DateTime finDeLigne) =>
-    DateTime(finDeLigne.year, finDeLigne.month, finDeLigne.day);
+    finDeLigne.subtract(const Duration(seconds: 1));
 
 /// Formate un jour en `JJ/MM/AAAA` — la forme que le propriétaire lit au
 /// téléphone avec ses clients. Ici et nulle part ailleurs : le même jour

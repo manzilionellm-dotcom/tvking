@@ -41,9 +41,10 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../features/device/data/device_identity.dart';
-import '../app/family_feature.dart';
-import '../backend/backend_hosts.dart';
+import '../../features/subscription/data/subscription_backend.dart'
+    show kSubscriptionBaseUrl;
 import '../observability/structured_logger.dart';
+import '../update/build_flags.dart';
 import 'profiles_repository.dart';
 
 class RemoteProfilesRepository {
@@ -61,11 +62,22 @@ class RemoteProfilesRepository {
 
   /// Point d'entrée normal : résout la MAC tout seul.
   ///
-  ///  GARDE : MAC NON RECONNUE. `DeviceIdentity` préfixe les identifiants
-  ///  qu'il a vraiment calculés par « MK: ». Sans ce préfixe, on
-  ///  interrogerait le serveur avec une clé qui ne désigne personne.
-  ///  (Le Play Store reçoit aussi les profils du panel — 16/09/2026.)
+  ///  DEUX GARDES, LES MÊMES QUE POUR LA SOURCE POUSSÉE :
+  ///
+  ///   • BUILD STORE. Une app publiée sur un store n'a pas de panel
+  ///     derrière : personne ne lui pousse de profils. On n'appelle donc
+  ///     même pas le serveur — ça évite un aller-retour inutile à chaque
+  ///     démarrage sur des dizaines de milliers d'appareils.
+  ///
+  ///   • MAC NON RECONNUE. `DeviceIdentity` préfixe les identifiants
+  ///     qu'il a vraiment calculés par « MK: ». Sans ce préfixe, on
+  ///     interrogerait le serveur avec une clé qui ne désigne personne.
   Future<bool> syncSelf() async {
+    // `kIsPlayBuild` directement, et non `RemoteSourceRepository.storeBuild`
+    // (qui est @visibleForTesting) : lire un membre réservé aux tests depuis
+    // du code de production, c'est se donner rendez-vous avec une surprise
+    // le jour où quelqu'un le bascule dans un test.
+    if (kIsPlayBuild) return false;
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return false;
@@ -80,92 +92,57 @@ class RemoteProfilesRepository {
   /// Renvoie `true` si la liste locale a CHANGÉ — l'appelant peut alors
   /// rafraîchir l'écran sans le faire à chaque passage.
   Future<bool> sync(String mac) async {
-    // INTERRUPTEUR FAMILLE (17/09/2026). Le garde est ICI, au point de
-    // passage obligé, et pas chez les cinq appelants (les trois `main_*`,
-    // le réveil, le temps réel) : un appelant s'oublie, une source non.
-    //
-    // C'est cette méthode qui gravait, toutes les 2-3 minutes, sur la box
-    // du client : `profiles.remote.sync_fail {Failed host lookup … errno=7}`.
-    if (!kFamilleActivee) return false;
     if (mac.isEmpty) return false;
     // Deux synchronisations ne se chevauchent jamais : la poussée temps
     // réel et le poll périodique peuvent tomber à la même seconde.
     if (_inFlight) return false;
     _inFlight = true;
-    Object? lastError;
     try {
-      // FAILOVER : le GET unique sur kSubscriptionBaseUrl (le domaine
-      // maison) produisait `profiles.remote.sync_fail` en boucle quand
-      // le DNS de `app.7themotion.com` tombait (errno=7), alors que le
-      // heartbeat savait déjà basculer sur workers.dev. Même liste
-      // d'hôtes, même markGood : une fois le secours validé, TOUTE
-      // l'app (kSubscriptionBaseUrl) le suit.
-      final List<String> bases = <String>[];
-      void add(String h) {
-        if (!bases.contains(h)) bases.add(h);
+      final Uri url = Uri.parse(
+        '$kSubscriptionBaseUrl/api/device-profiles/${Uri.encodeComponent(mac)}',
+      );
+      final http.Response r = await http
+          .get(url, headers: const <String, String>{'Accept': 'application/json'})
+          .timeout(_timeout);
+      if (r.statusCode != 200) return false; // règle 1 : on ne touche à rien
+      final Object? decoded = jsonDecode(utf8.decode(r.bodyBytes));
+      if (decoded is! Map<String, dynamic>) return false;
+
+      final Object? list = decoded['profiles'];
+      if (list is! List || list.isEmpty) {
+        // Règle 2 : « aucun profil » n'efface pas ce qu'on a déjà.
+        return false;
       }
+      final List<TvProfile> parsed = list
+          .map(TvProfile.fromJson)
+          .whereType<TvProfile>()
+          .toList(growable: false);
+      if (parsed.isEmpty) return false; // que des lignes illisibles
 
-      add(BackendHosts.current);
-      for (final String h in BackendHosts.candidates()) {
-        add(h);
+      final bool changed =
+          await ProfilesRepository.instance.applyRemote(parsed);
+      _lastOk = DateTime.now();
+      if (changed) {
+        StructuredLogger.instance.info(
+          domain: 'profiles',
+          event: 'remote.applied',
+          ctx: <String, Object?>{
+            'count': parsed.length,
+            'disabled': parsed.where((TvProfile p) => !p.enabled).length,
+            'withPin': parsed.where((TvProfile p) => p.pin != null).length,
+          },
+        );
       }
-
-      for (final String base in bases) {
-        try {
-          final Uri url = Uri.parse(
-            '$base/api/device-profiles/${Uri.encodeComponent(mac)}',
-          );
-          final http.Response r = await http.get(
-            url,
-            headers: const <String, String>{'Accept': 'application/json'},
-          ).timeout(_timeout);
-          if (r.statusCode != 200) {
-            lastError = 'HTTP ${r.statusCode} ($base)';
-            continue; // hôte joignable mais en erreur → le suivant
-          }
-          final Object? decoded = jsonDecode(utf8.decode(r.bodyBytes));
-          if (decoded is! Map<String, dynamic>) return false;
-
-          final Object? list = decoded['profiles'];
-          if (list is! List || list.isEmpty) {
-            // Règle 2 : « aucun profil » n'efface pas ce qu'on a déjà.
-            await BackendHosts.markGood(base);
-            return false;
-          }
-          final List<TvProfile> parsed = list
-              .map(TvProfile.fromJson)
-              .whereType<TvProfile>()
-              .toList(growable: false);
-          if (parsed.isEmpty) return false; // que des lignes illisibles
-
-          await BackendHosts.markGood(base);
-          final bool changed =
-              await ProfilesRepository.instance.applyRemote(parsed);
-          _lastOk = DateTime.now();
-          if (changed) {
-            StructuredLogger.instance.info(
-              domain: 'profiles',
-              event: 'remote.applied',
-              ctx: <String, Object?>{
-                'count': parsed.length,
-                'disabled': parsed.where((TvProfile p) => !p.enabled).length,
-                'withPin': parsed.where((TvProfile p) => p.pin != null).length,
-              },
-            );
-          }
-          return changed;
-        } catch (e) {
-          lastError = e;
-          // DNS/timeout de CET hôte → on tente le secours. Ne pas
-          // journaliser encore : un échec du primaire suivi d'un
-          // succès du backup n'est PAS un sync_fail.
-        }
-      }
-      if (kDebugMode) debugPrint('[Profils] sync KO: $lastError');
+      return changed;
+    } catch (e) {
+      // Règle 1 : réseau muet → on garde ce qu'on a. On le NOTE, pour
+      // pouvoir répondre « le panel n'était pas joignable » au lieu de
+      // chercher un bug dans l'app.
+      if (kDebugMode) debugPrint('[Profils] sync KO: $e');
       StructuredLogger.instance.warn(
         domain: 'profiles',
         event: 'remote.sync_fail',
-        ctx: <String, Object?>{'error': lastError?.toString()},
+        ctx: <String, Object?>{'error': e.toString()},
       );
       return false;
     } finally {

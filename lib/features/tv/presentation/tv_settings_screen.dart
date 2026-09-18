@@ -8,7 +8,6 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../../../core/app/family_feature.dart';
 import '../../../core/app/build_info.dart' show kBuildLabel;
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_ambience.dart';
@@ -314,10 +313,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
 
             _CatTitle(context.l10n.tvSettingsCatAccount),
             // ----- Abonnement Famille (partager avec 4 proches) -----
-            //  INTERRUPTEUR FAMILLE (17/09/2026) : porte fermée. L'écran
-            //  reste dans le dépôt, il n'est simplement plus atteignable.
-            if (kFamilleActivee)
-              TvFocusBuilder(
+            TvFocusBuilder(
               scale: TvFocusScale.large,
               onSelect: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
@@ -353,9 +349,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                 );
               },
             ),
-            // L'espace suit la tuile : sans ça, une catégorie éteinte
-            // laisserait un trou de 14 px que personne ne s'explique.
-            if (kFamilleActivee) const SizedBox(height: 14),
+            const SizedBox(height: 14),
             // ----- Pass Partage (« regarder ensemble ») : inviter un ami 2 jours
             //  OU activer un code reçu. TvInviteScreen ne s'enveloppe pas → TvShell.
             TvFocusBuilder(
@@ -396,10 +390,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             ),
             const SizedBox(height: 14),
             // ----- Profils famille (chacun son univers) -----
-            //  INTERRUPTEUR FAMILLE (17/09/2026) : même raison que la
-            //  tuile « Abonnement Famille » quelques lignes plus haut.
-            if (kFamilleActivee)
-              TvFocusBuilder(
+            TvFocusBuilder(
               scale: TvFocusScale.large,
               onSelect: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
@@ -435,7 +426,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                 );
               },
             ),
-            if (kFamilleActivee) const SizedBox(height: 14),
+            const SizedBox(height: 14),
 
             _CatTitle(context.l10n.tvSettingsCatChannels),
             // ----- Gérer mes sources (M3U / Xtream) -----

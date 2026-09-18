@@ -64,29 +64,7 @@ class RemoteSubscriptionStatus {
     this.graceDays = 0,
     this.graceHours = 0,
     this.loaned = false,
-    this.raisonEchec,
   });
-
-  /// POURQUOI on n'a rien appris — et pas seulement QU'ON n'a rien appris.
-  ///
-  ///  TERRAIN (18/09/2026). La Boîte noire d'une box en clientèle
-  ///  affichait, toutes les 45 minutes, huit fois dans la nuit :
-  ///
-  ///    WARN  sub.sync.empty  {reason: remote_unknown}
-  ///
-  ///  `remote_unknown` était écrit dans TROIS situations qui n'ont rien
-  ///  à voir : aucun hôte joignable (réseau/DNS coupé), les hôtes
-  ///  répondent mais en erreur HTTP (le Worker est cassé), ou une
-  ///  exception avant même l'envoi (l'appareil lui-même).
-  ///
-  ///  On ne pouvait donc pas répondre à la seule question qui compte :
-  ///  faut-il regarder la box du client, ou notre serveur ? Même défaut
-  ///  que `uaTried: 0`, que « socket encore ouverte 5211 ms » et que
-  ///  « le fournisseur refuse ce flux » — un message qui affirme moins
-  ///  que ce qu'il sait.
-  ///
-  ///  `null` quand la réponse est arrivée : il n'y a rien à expliquer.
-  final String? raisonEchec;
 
   /// `true` si le serveur connaît ce MAC (= il a déjà fait un
   /// heartbeat). `false` la 1ère fois (création en cours).
@@ -178,29 +156,6 @@ class RemoteSubscriptionStatus {
     trialUntil: 0,
     loaned: false,
   );
-
-  /// Le même « inconnu », mais qui DIT pourquoi.
-  ///
-  /// [raison] est un mot court et stable, fait pour être lu à trois
-  /// mètres sur une TV et cherché dans un journal :
-  ///   • `reseau`      — aucun hôte joignable (DNS, timeout, coupure) ;
-  ///   • `http_<code>` — un hôte a répondu, mais en erreur (notre Worker) ;
-  ///   • `exception`   — ça a cassé avant même l'envoi (l'appareil).
-  static RemoteSubscriptionStatus inconnuCar(String raison) =>
-      RemoteSubscriptionStatus(
-        exists: false,
-        status: 'unknown',
-        paid: false,
-        plan: 'unknown',
-        paidUntil: 0,
-        daysLeft: 0,
-        expired: false,
-        frozen: false,
-        banned: false,
-        trialUntil: 0,
-        loaned: false,
-        raisonEchec: raison,
-      );
 }
 
 abstract final class SubscriptionBackend {
@@ -267,10 +222,6 @@ abstract final class SubscriptionBackend {
       // Cloudflare de secours. Le premier hôte qui répond 200 devient
       // l'hôte COURANT de toute l'app (BackendHosts.markGood).
       final String body = jsonEncode(payload);
-      // On RETIENT le dernier échec au lieu de le laisser tomber : c'est
-      // lui qui répond à « la box est-elle coupée, ou notre Worker est-il
-      // cassé ? ». Sans ça, les deux s'écrivaient `remote_unknown`.
-      String? dernierEchec;
       for (final String base in BackendHosts.candidates()) {
         try {
           final http.Response resp = await http
@@ -288,10 +239,6 @@ abstract final class SubscriptionBackend {
               debugPrint(
                   '[Subscription] heartbeat HTTP ${resp.statusCode} ($base)');
             }
-            // Joignable MAIS en erreur : c'est NOTRE serveur qui répond
-            // mal, pas le réseau du client. La distinction décide de qui
-            // doit être réveillé à 3 h du matin.
-            dernierEchec = 'http_${resp.statusCode}';
             continue; // hôte joignable mais en erreur → on tente l'autre
           }
           await BackendHosts.markGood(base);
@@ -316,19 +263,13 @@ abstract final class SubscriptionBackend {
           if (kDebugMode) {
             debugPrint('[Subscription] heartbeat error ($base): $e');
           }
-          // Réseau/timeout → hôte suivant. Un échec RÉSEAU l'emporte sur
-          // un `http_xxx` déjà retenu : si le dernier hôte n'est même pas
-          // joignable, c'est la ligne du client qu'il faut regarder.
-          dernierEchec = 'reseau';
+          // Réseau/timeout → hôte suivant.
         }
       }
-      return RemoteSubscriptionStatus.inconnuCar(dernierEchec ?? 'aucun_hote');
+      return RemoteSubscriptionStatus.unknown;
     } catch (e) {
       if (kDebugMode) debugPrint('[Subscription] heartbeat error: $e');
-      // Ça a cassé AVANT l'envoi (infos appareil, encodage…) : ni le
-      // réseau ni le serveur ne sont en cause, et les accuser ferait
-      // perdre une soirée du mauvais côté.
-      return RemoteSubscriptionStatus.inconnuCar('exception');
+      return RemoteSubscriptionStatus.unknown;
     }
   }
 

@@ -26,7 +26,6 @@ import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
 import android.util.Rational
-import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -79,43 +78,6 @@ class MainActivity : FlutterFragmentActivity() {
     /// Récepteur des appuis sur les actions de la mini-fenêtre PiP
     /// (🎧 / ⏯ — parité « The Few Master », demande du 21/08).
     private var pipControlReceiver: android.content.BroadcastReceiver? = null
-
-    override fun onCreate(savedInstanceState: android.os.Bundle?) {
-        super.onCreate(savedInstanceState)
-        // =========================================================
-        //  FLAG_SECURE RETIRÉ — 17/09/2026
-        // =========================================================
-        //  Le propriétaire, sur une box en clientèle : « même
-        //  l'application TV ne fonctionne pas, il sort seulement le
-        //  son ». Son sans image : c'est la signature de FLAG_SECURE.
-        //
-        //  Le pari écrit ici était qu'une texture Flutter y échappait.
-        //  Le terrain a tranché : sur les box (Amlogic et compagnie),
-        //  une fenêtre marquée « secure » n'est pas composée vers la
-        //  sortie HDMI. Le son continue, l'image s'éteint.
-        //
-        //  L'arbitrage n'est même pas serré. Bloquer les captures
-        //  d'écran est un confort ; une box qui ne montre plus rien
-        //  est un client perdu, et il ne peut pas la réparer lui-même.
-        //
-        //  On ÉTEINT explicitement plutôt que de ne rien écrire : le
-        //  drapeau peut être hérité d'un thème ou d'une lib, et un
-        //  simple « on ne le pose pas » ne le garantit pas.
-        //
-        //  SI ÇA DOIT REVENIR UN JOUR : ça se teste sur une VRAIE box
-        //  avant de partir en production, pas sur un émulateur — c'est
-        //  précisément l'étape qui a manqué.
-        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Le drapeau peut REVENIR après onCreate (thème, Cast, embedding
-        // Flutter). Sans ce 2e clear, l'image HDMI meurt dès qu'une lib
-        // le repose — son sans image, watchdog impuissant si firstFrame
-        // a déjà été émis sur une surface invisible.
-        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

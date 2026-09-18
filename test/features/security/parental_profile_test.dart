@@ -9,29 +9,18 @@
 // =========================================================
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:tv_king/core/app/family_feature.dart';
 import 'package:tv_king/core/profiles/profiles_repository.dart';
-import 'package:tv_king/features/security/data/app_pin_settings.dart';
 import 'package:tv_king/features/security/data/parental_controls.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
-    // INTERRUPTEUR FAMILLE (17/09/2026) : éteint en production (le
-    // propriétaire veut « une application normale, sans trucs de
-    // famille »). Ce fichier décrit ce que la fonctionnalité fait QUAND
-    // ELLE EST ALLUMÉE — la preuve qu'elle est encore entière si on la
-    // rallume. Voir test/core/famille_eteinte_test.dart pour l'autre
-    // moitié : ce qui se passe une fois éteinte.
-    familleActiveePourTest = true;
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await ProfilesRepository.instance.debugReset();
     await ParentalControls.instance.load();
     await ParentalControls.instance.setKidsMode(false);
   });
-
-  tearDown(reinitialiserFamillePourTest);
 
   Future<void> pousserProfils() => ProfilesRepository.instance.applyRemote(
         <TvProfile>[
@@ -63,7 +52,6 @@ void main() {
   test('l interrupteur de l appareil bride TOUS les profils', () async {
     await pousserProfils();
     await ProfilesRepository.instance.setActive('papa');
-    await AppPinSettings.instance.setPin('1234');
     await ParentalControls.instance.setKidsMode(true);
     expect(ParentalControls.instance.kidsMode.value, isTrue);
   });

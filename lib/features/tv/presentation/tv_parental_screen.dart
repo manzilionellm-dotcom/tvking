@@ -41,12 +41,8 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
 
   // ----- Bascule du Mode Enfants -----
   Future<void> _toggleKids(bool wantOn) async {
-    if (wantOn && _usingDefaultPin) {
-      // PIN 0000 : on force d'abord un vrai code, sinon n'importe
-      // quel enfant coupe/active le mode.
-      await _changePin();
-      if (_usingDefaultPin) return;
-    }
+    // Activer : libre. Désactiver : code parental obligatoire (sinon un
+    // enfant le couperait lui-même).
     if (!wantOn) {
       final bool ok =
           await _askPin(context, context.l10n.tvParentalEnterCode);

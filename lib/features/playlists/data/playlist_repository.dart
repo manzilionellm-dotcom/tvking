@@ -41,13 +41,11 @@ import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_alias_index.dart';
 import '../../epg/data/epg_repository.dart';
 import '../../player/data/stream_diagnostics.dart';
-import '../../player/data/stream_http_options.dart';
 import '../../vod/data/vod_download_service.dart';
 import '../../vod/domain/m3u_vod_classifier.dart';
 import '../domain/playlist.dart';
 import 'import_progress.dart';
 import 'm3u_fetcher.dart';
-import 'm3u_normalizer.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
 import 'source_link_utils.dart';
@@ -900,9 +898,6 @@ class PlaylistRepository {
         playlistId: playlistId,
         maxChannels: DeviceMemory.channelCap,
       );
-      // En-têtes HTTP portés par le M3U (#EXTVLCOPT / #KODIPROP) :
-      // mémorisés pour la session ; le lecteur les relira via headersFor.
-      StreamHttpOptions.instance.importAll(parsed.httpHeaders);
 
       if (parsed.channels.isEmpty) {
         // Source invalide → on lève ; le `catch` retire l'orpheline.
@@ -912,15 +907,6 @@ class PlaylistRepository {
             ? ''
             : '\n\n${l10nNow.m3uParserDetails}\n'
                 '${parsed.warnings.take(3).join('\n')}';
-        // QUAND ON SAIT POURQUOI, ON LE DIT (16/09/2026). « Aucune chaîne »
-        // est vrai mais inutile : le client ne peut rien en faire, et le
-        // support non plus. Si l'examen a nommé la cause — page web
-        // d'erreur servie en 200, réponse d'API, lien qui ne pointe pas
-        // vers une liste — c'est ELLE qu'on met en titre.
-        final RaisonM3uInvalide? raison = parsed.raisonInvalide;
-        if (raison != null) {
-          throw Exception('${messageM3uInvalide(raison)}$hint');
-        }
         throw Exception('${l10nNow.m3uImportNoChannels}$hint');
       }
 
@@ -1558,9 +1544,6 @@ class PlaylistRepository {
           playlistId: playlist.id!,
           maxChannels: DeviceMemory.channelCap,
         );
-        // En-têtes HTTP portés par le M3U (#EXTVLCOPT / #KODIPROP) :
-        // mémorisés pour la session ; le lecteur les relira via headersFor.
-        StreamHttpOptions.instance.importAll(parsed.httpHeaders);
         if (parsed.channels.isEmpty) {
           throw Exception(l10nNow.m3uRefreshNoChannels);
         }

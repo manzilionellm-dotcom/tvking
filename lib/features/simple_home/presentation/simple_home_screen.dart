@@ -49,9 +49,7 @@ import '../../sports/presentation/sport_screen.dart';
 import '../../../core/app/device_memory.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/domain/vod_movie.dart';
-import '../../playlists/data/instant_activation.dart';
 import '../../playlists/data/remote_source_repository.dart';
-import '../../player/presentation/play_channel.dart';
 import '../../playlists/presentation/import_progress_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -164,18 +162,6 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // TEMENT (import vivant), sans attendre le prochain tick du sondage. C'est
     // ce qui rend l'activation INSTANTANÉE côté client.
     RemoteSourceRepository.pushedTick.addListener(_onSourcePushed);
-    // ACTIVATION INSTANTANÉE : quand une source poussée par le panel a fini
-    // de charger, la chaîne part toute seule (cf. instant_activation.dart).
-    InstantActivation.tick.addListener(_onLectureInstantanee);
-    // UN ValueNotifier NE RAPPELLE PAS UN ÉCOUTEUR ARRIVÉ APRÈS COUP.
-    // Si la source a été chargée AVANT que cet écran soit monté — box qui
-    // démarre déjà activée, import lancé depuis un autre écran — le tick
-    // est déjà passé et la demande dormirait pour toujours. On regarde
-    // donc une fois, après la première frame (avant, il n'y a pas encore
-    // de route à interroger ni de Navigator où pousser le lecteur).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (InstantActivation.enAttente) _lancerSiDemande();
-    });
     // Démarre le sondage auto SEULEMENT si on est sur l'écran vide. Si des
     // chaînes sont déjà là (client qui revient), inutile de sonder.
     if (PlaylistRepository.instance.currentChannels.isEmpty) {
@@ -198,42 +184,10 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     unawaited(_pollActivation());
   }
 
-  /// Le panel a poussé, l'import a réussi : on LANCE. Sans ça, le client
-  /// se retrouvait devant la grille des catégories après une activation
-  /// qu'on lui avait vendue comme automatique.
-  ///
-  ///  ON NE JETTE JAMAIS LA DEMANDE ICI, et c'est le piège qu'on a failli
-  ///  poser : au moment où elle est déposée, l'écran d'import plein écran
-  ///  est encore PAR-DESSUS l'accueil (c'est lui qui a lancé l'import).
-  ///  Une garde « une autre page est au-dessus → on annule » aurait donc
-  ///  annulé la lecture à TOUS LES COUPS, sur le chemin le plus fréquent,
-  ///  sans que rien ne le signale.
-  ///
-  ///  Donc : si on ne peut pas jouer maintenant, on laisse la demande en
-  ///  attente et on la reprend quand l'écran redevient le premier.
-  ///  Le droit de jouer, lui, a déjà été tranché en amont
-  ///  (RemoteSourceRepository : uniquement si l'appareil n'avait AUCUNE
-  ///  chaîne) — inutile de le rejuger ici.
-  void _onLectureInstantanee() => _lancerSiDemande();
-
-  /// Joue la demande en attente, s'il y en a une et si c'est le moment.
-  void _lancerSiDemande() {
-    if (!mounted) return;
-    // Pas au premier plan (écran d'import encore affiché, feuille
-    // ouverte…) → on repassera. La demande reste intacte.
-    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
-    // Consommée UNE SEULE FOIS : `sync all` et `sync sources` arrivent
-    // souvent en rafale, et deux lecteurs ouverts est pire que zéro.
-    final DemandeLectureInstantanee? d = InstantActivation.consommer();
-    if (d == null) return;
-    unawaited(playChannel(context, d.chaine, zapPlaylist: d.liste));
-  }
-
   @override
   void dispose() {
     _activationPoll?.cancel();
     RemoteSourceRepository.pushedTick.removeListener(_onSourcePushed);
-    InstantActivation.tick.removeListener(_onLectureInstantanee);
     EngagementService.instance.removeListener(_maybeCelebrate);
     super.dispose();
   }
@@ -287,14 +241,6 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // téléchargement, sans avoir rien tapé.
     _activationPoll?.cancel();
     _importing = true;
-    // POURQUOI ON RETIENT L'ERREUR (16/09/2026). Ce `catch` était un
-    // `catch (_) {}` muet : quand la source du panel ne chargeait pas, le
-    // client restait devant le fond dégradé pendant que l'app re-sondait
-    // toutes les 6 secondes, sans fin et sans un mot. Ni lui ni le
-    // revendeur ne pouvaient savoir pourquoi. La cause, elle, est connue
-    // et nommable (page d'erreur du fournisseur, lien mort, identifiants)
-    // — depuis m3u_normalizer.dart elle remonte jusqu'ici.
-    Object? echec;
     try {
       await runImportWithProgress<RemoteSyncResult>(
         context,
@@ -302,8 +248,8 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
         task: (onProgress) =>
             RemoteSourceRepository.applySources(pending, onProgress: onProgress),
       );
-    } catch (e) {
-      echec = e;
+    } catch (_) {
+      // Best-effort : un échec ne doit jamais bloquer l'accueil.
     } finally {
       _importing = false;
     }
@@ -311,44 +257,11 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
     // L'import a-t-il vraiment chargé des chaînes ? Sinon (provider KO), on
     // relance le sondage de secours pour retenter au prochain tick.
     if (PlaylistRepository.instance.currentChannels.isEmpty) {
-      if (echec != null) _direPourquoiCaNaPasCharge(echec);
       _activationPoll ??= Timer.periodic(
         const Duration(seconds: 6),
         (_) => _pollActivation(),
       );
-      return;
     }
-    // L'écran d'import vient de se refermer : c'est MAINTENANT qu'on peut
-    // lancer. Le tick a été émis pendant qu'il masquait l'accueil.
-    _lancerSiDemande();
-  }
-
-  /// Dit au client CE QUI cloche, en une phrase qu'il peut répéter au
-  /// support. On ne relance pas l'erreur : le sondage continue en fond,
-  /// et une source qui se répare côté fournisseur chargera toute seule.
-  ///
-  ///  Le `Exception: ` que Dart colle devant chaque message est retiré :
-  ///  il ne veut rien dire pour quelqu'un qui regarde la télé.
-  void _direPourquoiCaNaPasCharge(Object echec) {
-    String texte = echec.toString();
-    if (texte.startsWith('Exception: ')) {
-      texte = texte.substring('Exception: '.length);
-    }
-    // On garde la PREMIÈRE ligne : le détail technique du parseur suit
-    // après un saut de ligne, utile au journal, illisible dans un bandeau.
-    final int saut = texte.indexOf('\n');
-    if (saut > 0) texte = texte.substring(0, saut);
-    if (texte.trim().isEmpty) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(
-        content: Text(texte),
-        // `warning` et pas `live` (le rouge des directs) : l'activation
-        // n'est pas perdue — le sondage continue en fond et une source
-        // réparée côté fournisseur chargera toute seule.
-        backgroundColor: AppColors.warning,
-        duration: const Duration(seconds: 8),
-      ),
-    );
   }
 
 
