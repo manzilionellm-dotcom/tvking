@@ -21,7 +21,7 @@
 #    3. lancer le workflow « Sceller le verrou ».
 # =============================================
 update_tag_code=seventv-latest
-update_tag_ci=seventv-latest
+update_tag_ci=test-13-sept
 apk_url=releases/download/seventv-latest/seven-tv.apk
 public_route=1
 keystore_sha256=4aa844530bfb51dd86fed45edf9b3ec4d688d21a0704f8abc9960b6807f0c919

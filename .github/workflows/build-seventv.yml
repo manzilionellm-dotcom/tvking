@@ -90,7 +90,7 @@ env:
 #  Le groupe ne dépend PAS de la branche : le canal publié est unique,
 #  la file d'attente doit l'être aussi.
 concurrency:
-  group: publish-seventv-latest
+  group: publish-test-13-sept
   cancel-in-progress: false
 
 jobs:
@@ -621,7 +621,7 @@ jobs:
           #  LE NUMÉRO LISIBLE (« 19881 »), celui qu'on dicte au client.
           #  Calcul PARTAGÉ par toutes les apps : ci/build_label.sh. Ne
           #  recopie pas la formule ici — voir l'en-tête du script.
-          BUILD_LABEL=$(ci/build_label.sh "${{ github.repository }}" seventv-latest)
+          BUILD_LABEL="TEST-13SEPT"
           echo "numero lisible = $BUILD_LABEL"
           echo "SEVENTV_BUILD_LABEL=$BUILD_LABEL" >> "$GITHUB_ENV"
           flutter build apk --release --no-tree-shake-icons \
@@ -629,7 +629,7 @@ jobs:
             --build-number="$BUILD_NUMBER" \
             --obfuscate --split-debug-info=build/symbols \
             --dart-define=GIT_SHA=${{ github.sha }} \
-            --dart-define=TV_UPDATE_TAG=seventv-latest \
+            --dart-define=TV_UPDATE_TAG=test-13-sept \
             --dart-define=APP_BUILD_LABEL="$BUILD_LABEL" \
             --target=lib/main_tv.dart
           cp build/app/outputs/flutter-apk/app-release.apk \
@@ -840,7 +840,7 @@ jobs:
         run: |
           set -ex
           REPO="${{ github.repository }}"
-          TAG="seventv-latest"
+          TAG="test-13-sept"
           NEW_VC=${SEVENTV_BUILD_NUMBER:-0}
           PREV_VC=$(curl -fsSL "https://github.com/$REPO/releases/download/$TAG/version.json" 2>/dev/null \
             | tr -d ' \n' | grep -oE '"versionCode":[0-9]+' | grep -oE '[0-9]+' || true)
@@ -874,11 +874,11 @@ jobs:
 
           Commit : ${{ github.sha }} · Branche : ${{ github.ref_name }}"
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release edit "$TAG" --repo "$REPO" --title "7 MOTION TV — dernier build" --notes "$NOTES" --prerelease
+            gh release edit "$TAG" --repo "$REPO" --title "TEST — code du 13 septembre (NE PAS DIFFUSER)" --notes "$NOTES" --prerelease
             up "$APK" seven-tv-amazon.apk
           else
             gh release create "$TAG" --repo "$REPO" \
-              --title "7 MOTION TV — dernier build" \
+              --title "TEST — code du 13 septembre (NE PAS DIFFUSER)" \
               --notes "$NOTES" --prerelease "$APK" seven-tv-amazon.apk
           fi
           VN=$(grep -m1 '^version:' pubspec.yaml | sed -E 's/version:[[:space:]]*//; s/\+.*//')
@@ -932,7 +932,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          TAG="seventv-latest"
+          TAG="test-13-sept"
           BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
 
           #  ⚠ CORRIGÉ LE 07/09/2026 — LA VÉRIFICATION SE TROMPAIT DE PANNE.
