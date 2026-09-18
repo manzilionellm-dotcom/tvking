@@ -5961,7 +5961,145 @@ export function xtreamLiveUrl(src, streamId) {
   return `${base}/live/${encodeURIComponent(user)}/${encodeURIComponent(pass)}/${id}.ts`;
 }
 
-/// `GET /api/v1/devices/:id/play?index=N&id=STREAM`
+// =========================================================
+//  POURQUOI CETTE CHAÎNE NE DÉMARRE PAS (18/09/2026)
+// =========================================================
+//  Premier essai de lecture depuis le panel, premier écran rouge :
+//  « Le flux s'est interrompu (HttpStatusCodeInvalid). »
+//
+//  Ce code ne veut rien dire pour personne. Il sort de mpegts.js et
+//  signifie seulement « la réponse HTTP n'était pas 200 ». Or le relais
+//  `/cast-proxy`, lui, SAIT pourquoi : il remonte le status du
+//  fournisseur dans son corps et dans `X-Upstream-Status`. C'est la
+//  bibliothèque qui écrase l'information en chemin.
+//
+//  Encore le défaut de la maison, dans l'autre sens cette fois : on a
+//  mesuré quelque chose de précis, et on l'affiche en charabia.
+//
+//  CE QUE CETTE FONCTION TRANCHE, ET QUI EST LA SEULE QUESTION QUI
+//  COMPTE POUR LIONEL : est-ce que SON CLIENT voit la même chose ?
+//
+//   • Le fournisseur ne répond pas du tout au relais → très souvent un
+//     blocage des adresses de centre de données. Le téléphone du
+//     client, sur son réseau à lui, peut très bien lire la chaîne. NE
+//     PAS annoncer une panne au client sur cette base.
+//   • Le fournisseur REFUSE (401/403/456) → soit la limite de
+//     connexions simultanées est atteinte, soit il bloque nos adresses.
+//   • 404 → la chaîne n'existe plus chez lui ; la liste est à recharger.
+//   • 5xx → son serveur est en panne, et là le client voit bien la
+//     même chose.
+//
+//  Fonction PURE, exportée, testée : c'est un jugement, et un jugement
+//  se vérifie.
+export function expliquerEchecLecture(status, erreur) {
+  const s = Number(status) || 0;
+  if (s >= 200 && s < 400) {
+    return {
+      ok: true,
+      code: 'ok',
+      raison: 'Le fournisseur répond normalement (HTTP ' + s + ').',
+      conseil: 'Si l\'image ne vient toujours pas, réessaie : le flux '
+        + 'était peut-être en train de redémarrer.',
+      client_pareil: null,
+    };
+  }
+  if (s === 0) {
+    return {
+      ok: false,
+      code: 'injoignable',
+      raison: 'Le serveur du fournisseur n\'a pas répondu du tout à notre '
+        + 'relais' + (erreur ? ' (' + String(erreur).slice(0, 80) + ')' : '') + '.',
+      conseil: 'C\'est le plus souvent un blocage des adresses de centre '
+        + 'de données, pas une panne. Le téléphone du client, sur son '
+        + 'réseau à lui, peut très bien lire cette chaîne — demande-lui '
+        + 'avant de conclure.',
+      client_pareil: false,
+    };
+  }
+  if (s === 401 || s === 403 || s === 456) {
+    return {
+      ok: false,
+      code: 'refuse',
+      raison: 'Le fournisseur REFUSE la connexion (HTTP ' + s + ').',
+      conseil: 'Deux causes, et elles ne se règlent pas pareil : soit la '
+        + 'ligne a atteint sa limite de connexions simultanées — si le '
+        + 'client regarde en ce moment, c\'est ça —, soit le fournisseur '
+        + 'bloque nos adresses et le client, lui, n\'a aucun problème.',
+      client_pareil: null,
+    };
+  }
+  if (s === 404) {
+    return {
+      ok: false,
+      code: 'introuvable',
+      raison: 'Cette chaîne n\'existe plus chez le fournisseur (HTTP 404).',
+      conseil: 'Sa liste a bougé. Recharge-la ici : les identifiants de '
+        + 'chaînes changent quand le fournisseur réorganise son bouquet. '
+        + 'Le client a le même problème.',
+      client_pareil: true,
+    };
+  }
+  if (s >= 500) {
+    return {
+      ok: false,
+      code: 'panne_fournisseur',
+      raison: 'Le serveur du fournisseur est en panne (HTTP ' + s + ').',
+      conseil: 'Ce n\'est ni le panel ni l\'app : le client voit exactement '
+        + 'la même chose. Il n\'y a rien à faire de notre côté que '
+        + 'l\'attendre, ou changer de fournisseur si ça dure.',
+      client_pareil: true,
+    };
+  }
+  return {
+    ok: false,
+    code: 'inattendu',
+    raison: 'Réponse inattendue du fournisseur (HTTP ' + s + ').',
+    conseil: 'Note ce numéro : c\'est ce qu\'il faut donner au fournisseur '
+      + 'pour qu\'il regarde de son côté.',
+    client_pareil: null,
+  };
+}
+
+/// Sonde une chaîne AVEC LA SIGNATURE D'UN LECTEUR.
+///
+///  Indispensable : beaucoup de panels Xtream ne servent le vrai flux
+///  qu'aux agents de lecteurs répandus, et répondent 403 à tout le
+///  reste. Sonder sans cet en-tête nous ferait conclure « le
+///  fournisseur refuse » alors qu'il refusait seulement notre sonde.
+///  C'est le même agent que celui du relais `/cast-proxy` — la sonde
+///  doit mesurer ce que la lecture vivra, pas autre chose.
+const _UA_LECTEUR = 'VLC/3.0.20 LibVLC/3.0.20';
+
+async function _sonderFlux(url, ms = 6000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  const t0 = Date.now();
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-1', 'User-Agent': _UA_LECTEUR, Accept: '*/*' },
+      signal: ctrl.signal,
+      redirect: 'follow',
+    });
+    // On ne télécharge PAS le flux : deux octets demandés, corps annulé.
+    try { if (res.body) await res.body.cancel(); } catch (_) { /* déjà clos */ }
+    return { status: res.status, ms: Date.now() - t0, error: '' };
+  } catch (e) {
+    return { status: 0, ms: Date.now() - t0, error: String((e && e.message) || e) };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/// `GET /api/v1/devices/:id/play?index=N&id=STREAM[&diag=1]`
+///
+///  Sans `diag` : rend le lien signé, tout de suite, sans rien sonder —
+///  la lecture doit démarrer vite quand tout va bien.
+///
+///  Avec `diag=1` : ne rend AUCUN lien, va demander au fournisseur ce
+///  qu'il répond, et le dit en français. Le panel l'appelle seulement
+///  quand la lecture a échoué. Coût zéro tant que ça marche, réponse
+///  précise quand ça casse.
 async function handleDevicePlay(request, env, id, user) {
   const url = new URL(request.url);
   const mac = normalizeMac(decodeMac(id));
@@ -6006,6 +6144,17 @@ async function handleDevicePlay(request, env, id, user) {
         : 'Cette liste Xtream est incomplète (serveur, identifiant ou '
           + 'mot de passe manquant) : le client ne peut pas lire non plus.',
       400);
+  }
+
+  //  MODE DIAGNOSTIC : on ne signe rien, on va MESURER.
+  if (url.searchParams.get('diag') === '1') {
+    const sonde = await _sonderFlux(flux);
+    const verdict = expliquerEchecLecture(sonde.status, sonde.error);
+    return jsonResp({
+      mac,
+      probe: { status: sonde.status, ms: sonde.ms },
+      ...verdict,
+    });
   }
 
   const signe = await signProxyUrl(env.CAST_PROXY_SECRET, url.origin, flux);

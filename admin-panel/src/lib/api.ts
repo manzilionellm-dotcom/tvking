@@ -535,6 +535,32 @@ export interface DeviceChannels {
   truncated: boolean;
 }
 
+// =========================================================
+//  POURQUOI LA CHAÎNE N'A PAS DÉMARRÉ (18/09/2026)
+// =========================================================
+//  `client_pareil` est LE champ de cette réponse, et c'est la seule
+//  question qui compte quand Lionel a un client au téléphone :
+//
+//    true  → le client voit exactement la même chose (chaîne disparue,
+//            serveur du fournisseur en panne).
+//    false → NON : le relais sort d'un centre de données, et beaucoup
+//            de fournisseurs bloquent ces adresses-là. Le téléphone du
+//            client, sur son réseau, lit sans doute très bien.
+//    null  → on ne sait pas, et on ne l'invente pas. Un 403 veut dire
+//            « limite de connexions atteinte » OU « nos adresses sont
+//            bloquées » : les deux ne se règlent pas pareil, et
+//            trancher au hasard enverrait chercher la mauvaise piste.
+export interface PlayDiag {
+  mac: string;
+  probe: { status: number; ms: number };
+  ok: boolean;
+  code: 'ok' | 'injoignable' | 'refuse' | 'introuvable'
+    | 'panne_fournisseur' | 'inattendu';
+  raison: string;
+  conseil: string;
+  client_pareil: boolean | null;
+}
+
 export interface DeviceLocalSource {
   type: 'xtream' | 'm3u';
   name: string;
@@ -706,6 +732,18 @@ export const devicesApi = {
     const qs = new URLSearchParams({ id: streamId });
     if (index != null) qs.set('index', String(index));
     return request<{ mac: string; url: string; expires_at: number }>(
+      `/api/v1/devices/${encodeURIComponent(id)}/play?${qs}`,
+    );
+  },
+  // POURQUOI ÇA N'A PAS DÉMARRÉ. mpegts.js ne sait dire que
+  // « HttpStatusCodeInvalid », ce qui ne veut rien dire pour personne.
+  // Cet appel va DEMANDER au fournisseur ce qu'il répond, et le
+  // traduit — en disant surtout si le CLIENT voit la même chose.
+  // Appelé uniquement après un échec : coût zéro quand ça marche.
+  playDiag: (id: string, streamId: string, index?: number) => {
+    const qs = new URLSearchParams({ id: streamId, diag: '1' });
+    if (index != null) qs.set('index', String(index));
+    return request<PlayDiag>(
       `/api/v1/devices/${encodeURIComponent(id)}/play?${qs}`,
     );
   },

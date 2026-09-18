@@ -17,7 +17,10 @@
 //  liste n°2 pendant que le client en regarde une autre.
 // =========================================================
 
-import { pickSourceIndex, resellerMaySeeDevice, xtreamLiveUrl } from './api_v1.js';
+import {
+  pickSourceIndex, resellerMaySeeDevice, xtreamLiveUrl,
+  expliquerEchecLecture,
+} from './api_v1.js';
 
 let pass = 0;
 let fail = 0;
@@ -144,6 +147,84 @@ ok(xtreamLiveUrl({ ...xt, username: '' }, '42') === null,
 ok(xtreamLiveUrl({ ...xt, server_url: '' }, '42') === null,
   '32 serveur manquant → null');
 ok(xtreamLiveUrl(null, '42') === null, '33 aucune source → null');
+
+// =========================================================
+//  « SA FAIS PA PLAYER » — dire POURQUOI, pas un code
+// =========================================================
+//  Premier essai de lecture depuis le panel, premier ecran rouge :
+//  « Le flux s'est interrompu (HttpStatusCodeInvalid) ». Ce code sort
+//  de mpegts.js et veut seulement dire « la reponse n'etait pas 200 ».
+//  Le relais, lui, SAIT : il remonte le status du fournisseur. C'est la
+//  bibliotheque qui ecrase l'information en chemin.
+//
+//  LA SEULE QUESTION QUI COMPTE POUR LIONEL : est-ce que SON CLIENT
+//  voit la meme chose ? C'est `client_pareil` qui y repond, et se
+//  tromper la-dessus coute cher dans les deux sens — annoncer une
+//  panne a un client qui n'a rien, ou jurer que tout va bien pendant
+//  qu'il regarde un ecran noir.
+{
+  const r = expliquerEchecLecture(200, '');
+  ok(r.ok === true && r.code === 'ok', '34 HTTP 200 → tout va bien');
+}
+{
+  const r = expliquerEchecLecture(206, '');
+  ok(r.ok === true, '35 HTTP 206 (contenu partiel) compte aussi comme bon');
+}
+{
+  //  LE CAS LE PLUS PIEGEUX. Le Worker sort d'un centre de donnees ; de
+  //  tres nombreux fournisseurs bloquent ces adresses-la. Le client,
+  //  sur son reseau, lit la chaine sans probleme. Conclure « panne »
+  //  ici ferait deplacer un client pour rien.
+  const r = expliquerEchecLecture(0, 'connection refused');
+  ok(r.ok === false && r.code === 'injoignable', '36 aucune reponse → injoignable');
+  ok(r.client_pareil === false,
+    '37 et on DIT que le client ne voit pas forcement la meme chose');
+  ok(r.raison.includes('connection refused'),
+    '38 la vraie erreur technique est citee, pas masquee');
+}
+{
+  for (const s of [401, 403, 456]) {
+    const r = expliquerEchecLecture(s, '');
+    ok(r.code === 'refuse', `39 HTTP ${s} → refus du fournisseur`);
+    //  On NE TRANCHE PAS entre « limite de connexions » et « blocage
+    //  d'adresses » : les deux donnent le meme status, et inventer
+    //  l'une des deux enverrait chercher la mauvaise piste.
+    ok(r.client_pareil === null,
+      `40 HTTP ${s} → on n'invente pas laquelle des deux causes`);
+  }
+}
+{
+  const r = expliquerEchecLecture(404, '');
+  ok(r.code === 'introuvable', '41 HTTP 404 → chaine disparue');
+  ok(r.client_pareil === true, '42 et la, le client a bien le meme probleme');
+}
+{
+  for (const s of [500, 502, 503, 520]) {
+    const r = expliquerEchecLecture(s, '');
+    ok(r.code === 'panne_fournisseur', `43 HTTP ${s} → panne du fournisseur`);
+    ok(r.client_pareil === true, `44 HTTP ${s} → le client voit la meme chose`);
+  }
+}
+{
+  //  Un status qu'on n'a pas prevu ne doit pas faire tomber l'ecran ni
+  //  inventer une explication.
+  const r = expliquerEchecLecture(418, '');
+  ok(r.code === 'inattendu', '45 status inconnu → « inattendu », sans invention');
+  ok(r.client_pareil === null, '46 et on ne se prononce pas sur le client');
+}
+{
+  const r = expliquerEchecLecture(undefined, undefined);
+  ok(r.code === 'injoignable', '47 status absent → traite comme injoignable');
+}
+{
+  //  Chaque verdict doit porter un CONSEIL : un diagnostic sans suite
+  //  laisse Lionel devant le meme ecran rouge.
+  for (const s of [0, 403, 404, 500, 418, 200]) {
+    const r = expliquerEchecLecture(s, '');
+    ok(typeof r.conseil === 'string' && r.conseil.length > 20,
+      `48 HTTP ${s} → un conseil, pas seulement un constat`);
+  }
+}
 
 console.log(`\n${pass} PASS, ${fail} FAIL`);
 if (fail > 0) process.exit(1);
