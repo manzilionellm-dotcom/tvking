@@ -26,6 +26,61 @@ import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import 'tv_components.dart';
 
+// =========================================================
+//  L'INTERRUPTEUR DE VEILLE (18/09/2026)
+// =========================================================
+//  DEMANDE DU PROPRIÉTAIRE :
+//
+//    « Il faut désactiver que ça ne soit jamais en veille. Parce
+//      qu'apparemment, si ça fait longtemps, ça entre en veille. Il
+//      faut que ce soit actif. »
+//
+//  CE N'ÉTAIT PAS LA BOX QUI S'ENDORMAIT. `core/tv/screen_awake.dart`
+//  pose bien `FLAG_KEEP_SCREEN_ON` dès le démarrage TV
+//  (`main_tv.dart`), et il est bien branché — vérifié. Le système, lui,
+//  ne coupe rien.
+//
+//  C'est l'APPLICATION qui s'endormait toute seule : ce surveillant-ci
+//  pousse son propre écran de veille après dix minutes sans appui sur
+//  la télécommande. Or regarder la télévision, c'est précisément rester
+//  dix minutes sans toucher à la télécommande. Le client voyait un
+//  écran noir avec un logo qui bouge et croyait à une panne.
+//
+//  L'écran de veille reste dans le dépôt — il protège d'une brûlure
+//  d'écran sur les dalles OLED, et c'est un vrai sujet. Mais le
+//  propriétaire connaît son parc, et une box qui a l'air en panne coûte
+//  plus cher qu'une dalle qui vieillit. Son parc, sa décision.
+//
+//  LE GARDE EST ICI, dans le surveillant, et PAS chez les quatre écrans
+//  qui l'utilisent (tv_app, Lanceur, Rails, TiviMate). Quatre gardes,
+//  c'est trois occasions d'en oublier un — et celui qu'on oublie est
+//  celui qui endort la box d'un client.
+// =========================================================
+
+/// L'écran de veille de l'application est-il actif ?
+///
+/// **Éteint par défaut.** Pour le rallumer sans toucher au code :
+///
+/// ```sh
+/// flutter build apk --dart-define=VEILLE_APP=true
+/// ```
+const bool kVeilleAppCompilee =
+    bool.fromEnvironment('VEILLE_APP', defaultValue: false);
+
+bool _veilleApp = kVeilleAppCompilee;
+
+/// Lu par [TvScreensaverWatcher], et par personne d'autre.
+bool get kVeilleAppActive => _veilleApp;
+
+/// Rallume/éteint la veille LE TEMPS D'UN TEST. Appelle
+/// [reinitialiserVeillePourTest] en `tearDown`.
+@visibleForTesting
+set veilleAppPourTest(bool v) => _veilleApp = v;
+
+/// Remet l'interrupteur sur ce que dit la compilation.
+@visibleForTesting
+void reinitialiserVeillePourTest() => _veilleApp = kVeilleAppCompilee;
+
 /// Enveloppe l'ACCUEIL : surveille l'inactivité (touches + toucher) et pousse
 /// l'écran de veille quand l'accueil est resté visible 10 min sans action.
 class TvScreensaverWatcher extends StatefulWidget {
@@ -67,6 +122,17 @@ class _TvScreensaverWatcherState extends State<TvScreensaverWatcher> {
 
   void _arm() {
     _idle?.cancel();
+    //  INTERRUPTEUR DE VEILLE (18/09/2026) — LE GARDE EST ICI.
+    //
+    //  On ne se contente pas de refuser d'AFFICHER : on n'arme même pas
+    //  la minuterie. Éteinte, cette fonctionnalité ne coûte donc pas un
+    //  seul réveil — et sur une box qu'on soupçonne de manquer de
+    //  souffle, une minuterie qui tourne pour rien toutes les dix
+    //  minutes n'est pas rien.
+    //
+    //  Le surveillant reste dans l'arbre et laisse passer son enfant :
+    //  les quatre écrans qui l'utilisent n'ont pas une ligne à changer.
+    if (!kVeilleAppActive) return;
     _idle = Timer(_idleDelay, _maybeShow);
   }
 
