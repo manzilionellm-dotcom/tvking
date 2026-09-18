@@ -457,6 +457,19 @@ abstract final class RemoteSourceRepository {
     if (kDebugMode) debugPrint('[RemoteSource] active -> ' + p.name);
   }
 
+  /// Depuis quand le panel assigne-t-il cette source ? (`assigned_at`, ms).
+  ///
+  ///  0 = le serveur ne le dit pas (Worker plus ancien que le 17/09). Le
+  ///  juge des empreintes ne bloque alors pas : on préfère une source de
+  ///  trop à un client payant devant un écran vide.
+  static int _assignationMs(Map<String, dynamic> src) {
+    final Object? v = src['assigned_at'];
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v) ?? 0;
+    return 0;
+  }
+
   /// Charge la source en base locale si elle n'y est pas déjà.
   static Future<RemoteSyncResult> _applySource(
     Map<String, dynamic> src, {
@@ -491,7 +504,11 @@ abstract final class RemoteSourceRepository {
       // SUPPRIMÉE VOLONTAIREMENT par le client (SourceOptOuts) : la
       // provision automatique ne la ressuscite PAS au boot. Un push
       // temps réel du panel lève les empreintes (signalPushed).
-      if (await SourceOptOuts.isXtreamOptedOut(server, user)) {
+      // SUPPRIMÉE PAR LE CLIENT — mais QUAND, par rapport à la dernière
+      // poussée du panel ? Sans cette date, ce filtre a rendu toute
+      // activation à distance impossible (17/09, voir source_opt_outs.dart).
+      if (await SourceOptOuts.isXtreamOptedOut(server, user,
+          assignedAt: _assignationMs(src))) {
         if (kDebugMode) debugPrint('[RemoteSource] opt-out, sautée ($server)');
         return RemoteSyncResult.noSource;
       }
@@ -553,7 +570,9 @@ abstract final class RemoteSourceRepository {
       if (m3u.isEmpty) return RemoteSyncResult.sourceFailed;
 
       // Même règle que le chemin Xtream : suppression volontaire respectée.
-      if (await SourceOptOuts.isM3uOptedOut(m3u)) {
+      // Même règle que le chemin Xtream (voir plus haut).
+      if (await SourceOptOuts.isM3uOptedOut(m3u,
+          assignedAt: _assignationMs(src))) {
         if (kDebugMode) debugPrint('[RemoteSource] opt-out, sautée (m3u)');
         return RemoteSyncResult.noSource;
       }
