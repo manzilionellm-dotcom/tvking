@@ -1,8 +1,10 @@
 package com.manzilionellm.tvking_miroir
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -162,9 +164,28 @@ class TvkingMiroirPlugin :
 
     private fun disponible(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return false
-        val mgr = appContext?.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+        val ctx = appContext ?: return false
+        val mgr = ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
             as? MediaProjectionManager
-        return mgr != null
+        if (mgr == null) return false
+        // LE SERVICE EST-IL DÉCLARÉ ? Le build Play Store (AAB) le retire
+        // du manifeste, avec la permission FOREGROUND_SERVICE_MEDIA_PROJECTION,
+        // pour ne pas avoir à déclarer la capture d'écran à Google (voir
+        // build-android.yml, « (b ter) »). Sans service typé, une projection
+        // est impossible depuis Android 10 : on le dit TOUT DE SUITE, et le
+        // Dart passe à la capture Flutter — plutôt que d'afficher au client
+        // une boîte de dialogue système qui n'aboutirait à rien.
+        return try {
+            ctx.packageManager.getServiceInfo(
+                ComponentName(ctx, MiroirService::class.java), 0)
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            Log.i(TAG, "MiroirService absent du manifeste (build Play) → capture native indisponible")
+            false
+        } catch (e: Throwable) {
+            Log.w(TAG, "getServiceInfo : $e")
+            false
+        }
     }
 
     /**

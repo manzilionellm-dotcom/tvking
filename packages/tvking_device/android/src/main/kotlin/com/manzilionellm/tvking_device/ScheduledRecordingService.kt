@@ -87,11 +87,29 @@ class ScheduledRecordingService : Service() {
                     Log.w(TAG, "START $id : inconnu du carnet")
                     // startForegroundService exige un startForeground()
                     // rapide, même pour s'arrêter aussitôt.
-                    startForeground(NOTIFICATION_ID, buildNotification(entry, "7 MOTION"))
+                    passerAuPremierPlan(buildNotification(entry, "7 MOTION"))
                     finishAndStop()
                     return START_NOT_STICKY
                 }
-                startForeground(NOTIFICATION_ID, buildNotification(entry, entry.optString("title", "7 MOTION")))
+                // ANDROID 15 : passer au premier plan peut être REFUSÉ
+                // (ForegroundServiceStartNotAllowedException) quand le
+                // système juge que le service part « de l'arrière-plan » —
+                // par exemple une alarme re-posée juste après un redémarrage,
+                // dont l'heure est déjà passée, et qui sonne dans la foulée
+                // du BOOT_COMPLETED. Avant, l'exception n'était pas attrapée
+                // ICI (seulement autour de startForegroundService, dans le
+                // receiver) : le service plantait, et l'app avec. Signalé
+                // par la console Play (19/09/2026). Refus → on le note dans
+                // le carnet et on s'arrête proprement, comme le receiver.
+                if (!passerAuPremierPlan(
+                        buildNotification(entry, entry.optString("title", "7 MOTION")))) {
+                    store.update(id) { e ->
+                        e.put("state", "failed")
+                        e.put("error", "fgsDenied:onStart")
+                    }
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 if (recording) {
                     Log.w(TAG, "START $id refusé : $activeId déjà en cours")
                     store.update(id) { e ->
@@ -425,6 +443,25 @@ class ScheduledRecordingService : Service() {
         } catch (_: Throwable) {}
         thread = null
         activeConn = null
+    }
+
+    /**
+     * `startForeground` qui ne fait JAMAIS tomber l'app.
+     *
+     * Android 12+ peut refuser le passage au premier plan
+     * (ForegroundServiceStartNotAllowedException, une IllegalStateException)
+     * et Android 14+ peut lever une SecurityException si le type déclaré ne
+     * colle pas. Les deux sont attrapées : `false` = refusé, l'appelant
+     * s'arrête proprement au lieu de planter.
+     */
+    private fun passerAuPremierPlan(notif: Notification): Boolean {
+        return try {
+            startForeground(NOTIFICATION_ID, notif)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground refusé : $e")
+            false
+        }
     }
 
     private fun finishAndStop() {

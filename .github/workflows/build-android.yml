@@ -928,6 +928,56 @@ jobs:
           #  box installées hors magasin gardent l'alarme d'office.
           sed -i '/<manifest /a\    <uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove"/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="replace"/>' "$MANIFEST"
           echo "✓ USE_EXACT_ALARM retirée / SCHEDULE_EXACT_ALARM conservée (AAB Play)"
+          # (b ter) FOREGROUND_SERVICE_MEDIA_PROJECTION — À RETIRER POUR LE
+          #         PLAY STORE (19/09/2026)
+          #
+          #  CONSTATÉ EN VRAI, sur l'écran de release du build 1707 : Google
+          #  bloque avec « Vous devez nous indiquer si votre appli utilise des
+          #  autorisations de services de premier plan » — la case
+          #  « projection de contenus » n'est pas cochée, et le bouton
+          #  Enregistrer reste gris.
+          #
+          #  D'OÙ ELLE VIENT : du plugin maison packages/tvking_miroir, qui
+          #  capture l'écran système (MediaProjection) pour que le support
+          #  VOIE la box du client pendant une assistance. Sur une BOX c'est
+          #  la seule façon de voir la vidéo en cours ; c'est indispensable,
+          #  et la box ne passe pas par le Play Store.
+          #
+          #  SUR LE PLAY STORE, on ne la déclare PAS : la déclarer ouvre un
+          #  examen manuel (vidéo de démonstration, 3 à 7 jours) avec un vrai
+          #  risque de refus — Google range la capture d'écran parmi les
+          #  usages sensibles. Et l'app téléphone n'en a pas BESOIN : sans le
+          #  plugin natif, l'assistance retombe d'elle-même sur la capture
+          #  Flutter (assistance_overlay.dart, « voie 2 »), qui montre toute
+          #  l'interface — seule la vidéo en lecture reste noire, ce qui est
+          #  acceptable pour dépanner un téléphone.
+          #
+          #  ON RETIRE LES DEUX : la permission ET le service typé
+          #  « mediaProjection ». Le plugin regarde si son service est
+          #  déclaré (TvkingMiroirPlugin.disponible) : absent → il répond
+          #  « pas disponible » tout de suite, sans afficher au client une
+          #  boîte de dialogue système qui ne mènerait nulle part.
+          #
+          #  L'APK sideload (phone-latest), déjà empaqueté plus haut, N'EST
+          #  PAS touché : les téléphones hors magasin gardent la vraie
+          #  capture. Même logique que REQUEST_INSTALL_PACKAGES ci-dessus.
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" tools:node="remove"/>' "$MANIFEST"
+          python3 << 'PYEOF'
+          import re
+          f = "android/app/src/main/AndroidManifest.xml"
+          s = open(f).read()
+          # La balise <application ...> s'étale sur plusieurs lignes : on
+          # insère APRÈS son « > » de fermeture, jamais au milieu des attributs.
+          m = re.search(r'<application\b[^>]*>', s)
+          if not m:
+              raise SystemExit("<application> introuvable dans le manifeste")
+          service = ('\n        <service android:name="com.manzilionellm.tvking_miroir.MiroirService"'
+                     ' tools:node="remove"/>')
+          s = s[:m.end()] + service + s[m.end():]
+          open(f, 'w').write(s)
+          print('MiroirService marque tools:node=remove (AAB Play)')
+          PYEOF
+          echo "✓ FOREGROUND_SERVICE_MEDIA_PROJECTION + MiroirService retirés (AAB Play)"
           # (c) applicationId Play Store : com.manzilionellm.tvking (EXACT,
           #     package de la fiche « 7 MOTION »). `flutter create` a produit
           #     com.manzilionellm.tvking.tv_king ; l'APK sideload (déjà
