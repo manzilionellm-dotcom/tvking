@@ -46,6 +46,24 @@ const RT_MAC_RX = /^MK(?::[0-9A-F]{2}){5}$/i;
 // Taille max d'une frame entrante (spec §8) — au-delà on ignore.
 const MAX_FRAME_BYTES = 8 * 1024;
 
+/// Plafond réservé à l'image d'écran (`type: 'screen'`), et à elle
+/// seule — voir le pavé dans webSocketMessage().
+///
+///  128 Ko : une image de 420 px de large, encodée en PNG puis en
+///  base64, pèse 20 à 60 Ko. Le double laisse de la marge sans ouvrir
+///  la porte en grand ; l'app, de son côté, jette déjà tout ce qui
+///  dépasse 90 Ko avant même d'essayer de l'envoyer.
+const MAX_SCREEN_FRAME_BYTES = 128 * 1024;
+
+/// Cadence maximale des images, par appareil.
+///
+///  L'app envoie toutes les 2 s. Ce plancher à 1 s ne la gêne donc
+///  jamais — il est là pour l'app QUI DÉRAILLE : une boucle qui
+///  s'emballe inonderait le panel et ferait payer la bande passante à
+///  tout le monde. Le hub est le seul endroit qui puisse l'arrêter,
+///  parce qu'il est le seul que l'app ne peut pas contourner.
+const MIN_SCREEN_INTERVAL_MS = 900;
+
 // Throttle d'écriture présence D1 : au plus une écriture / 30 s / MAC.
 const PRESENCE_WRITE_MS = 30 * 1000;
 
@@ -69,6 +87,11 @@ export class RealtimeHub {
     // relaie `latencyMs: null` — acceptable (la latence est purement
     // informative, l'ack lui-même n'est jamais perdu).
     this._sentAt = new Map();
+    // Dernière image d'écran relayée, par MAC — sert uniquement au
+    // plancher de cadence (MIN_SCREEN_INTERVAL_MS). En mémoire, donc
+    // perdu si l'objet hiberne : sans conséquence, on laisserait au
+    // pire passer une image de plus au réveil.
+    this._lastScreen = new Map();
 
     // Throttle présence : dernière écriture D1 par MAC. Même logique :
     // perdre cette Map à l'hibernation ne coûte qu'une écriture de plus.
@@ -272,8 +295,22 @@ export class RealtimeHub {
   async webSocketMessage(ws, message) {
     // Frames binaires : jamais utilisées par notre protocole → ignorées.
     if (typeof message !== 'string') return;
-    // Garde-fou taille (spec §8) : 8 Ko max, au-delà on ignore.
-    if (message.length > MAX_FRAME_BYTES) return;
+    // =========================================================
+    //  GARDE-FOU TAILLE — 8 Ko, SAUF POUR UNE IMAGE D'ÉCRAN
+    // =========================================================
+    //  8 Ko suffisent très largement à tout notre protocole… sauf au
+    //  miroir d'écran ajouté le 19/09/2026 (« je vois pas l'écran »),
+    //  qui transporte un PNG de ~20 à 60 Ko en base64.
+    //
+    //  ON NE RELÈVE PAS LE PLAFOND POUR TOUT LE MONDE. Le laisser à
+    //  8 Ko partout et l'ouvrir POUR CE SEUL TYPE garde la protection
+    //  là où elle sert : une app boguée qui déverse du texte se fait
+    //  toujours couper à 8 Ko.
+    //
+    //  ON REFUSE D'ABORD SUR LA TAILLE BRUTE, avant même de lire le
+    //  JSON : analyser une frame d'un mégaoctet pour découvrir ensuite
+    //  qu'elle est à jeter, c'est offrir le travail à qui l'envoie.
+    if (message.length > MAX_SCREEN_FRAME_BYTES) return;
     // 'ping' littéral : normalement absorbé par setWebSocketAutoResponse
     // SANS réveiller l'objet ; si on arrive quand même ici (vieux runtime),
     // on répond à la main.
@@ -287,6 +324,8 @@ export class RealtimeHub {
     let msg;
     try { msg = JSON.parse(message); } catch (_) { return; }
     if (!msg || typeof msg.type !== 'string') return;
+    // Le dépassement des 8 Ko n'est toléré QUE pour l'image d'écran.
+    if (message.length > MAX_FRAME_BYTES && msg.type !== 'screen') return;
 
     // L'attachment est notre état par socket (survit à l'hibernation).
     let att;
@@ -350,6 +389,41 @@ export class RealtimeHub {
           ok: msg.ok !== false,
           latencyMs,
           ...(msg.error ? { error: strOr(msg.error, '', 200) } : {}),
+        });
+        return;
+      }
+
+      // =========================================================
+      //  screen : l'écran du client, pour que le support le VOIE
+      // =========================================================
+      //  DEMANDE DU PROPRIÉTAIRE (19/09/2026) : « ça pointe bien, mais
+      //  je vois rien côté admin ». Montrer du doigt sans voir, c'est
+      //  viser dans le noir.
+      //
+      //  LE HUB NE STOCKE RIEN. L'image traverse et disparaît : elle
+      //  n'est écrite ni en D1, ni en KV, ni nulle part. Ce qui n'est
+      //  pas gardé ne peut pas fuiter plus tard, et une capture de
+      //  l'écran de quelqu'un est exactement le genre de chose qu'on
+      //  ne veut pas retrouver dans une base dans six mois.
+      //
+      //  L'APP DÉCIDE, PAS LE HUB. Elle n'envoie que pendant une
+      //  session d'assistance, avec le bandeau rouge affiché chez le
+      //  client. Le hub ne fait que transporter et BORNER : trop gros
+      //  (déjà refusé plus haut), trop souvent (ci-dessous).
+      case 'screen': {
+        const png = typeof msg.png === 'string' ? msg.png : '';
+        if (!png) return;
+        const last = this._lastScreen.get(att.mac) || 0;
+        if (now - last < MIN_SCREEN_INTERVAL_MS) return;
+        this._lastScreen.set(att.mac, now);
+        att.lastSeenAt = now;
+        this.broadcastToAdmins({
+          type: 'screen',
+          mac: att.mac,
+          png,
+          w: Number(msg.w) || 0,
+          h: Number(msg.h) || 0,
+          at: now,
         });
         return;
       }

@@ -370,6 +370,22 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
     if (_started) return;
     _started = true;
     _platform = platform;
+    //  LE MIROIR D'ÉCRAN, BRANCHÉ ICI ET NULLE PART AILLEURS.
+    //
+    //  Le contrôleur d'assistance ne sait pas envoyer sur le réseau, et
+    //  ne doit pas l'apprendre : c'est CE fichier qui tient le socket.
+    //  Tant que cette ligne n'est pas passée, `miroirBranche` est faux,
+    //  aucune image n'est capturée, et le bandeau du client ne prétend
+    //  pas qu'on le regarde. Un appareil sans canal temps réel ne passe
+    //  donc pas son temps à encoder des PNG que personne ne recevra.
+    AssistanceController.instance.installerMiroir(
+      (String png, int largeur, int hauteur) => _sendJson(<String, Object?>{
+        'type': 'screen',
+        'png': png,
+        'w': largeur,
+        'h': hauteur,
+      }),
+    );
     // Hook cycle de vie : au retour au premier plan on reconnecte tout
     // de suite ET on re-vérifie la licence (l'admin a pu agir pendant
     // que l'app était en arrière-plan). Best-effort si le binding

@@ -44,10 +44,12 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
 import 'assistance_controller.dart';
+import 'assistance_miroir.dart';
 import 'assistance_session.dart';
 
 /// Enveloppe l'application. À poser une fois, au-dessus de tout.
@@ -69,6 +71,20 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
   final AssistanceController _c = AssistanceController.instance;
   Timer? _tic;
 
+  /// La zone capturée pour le miroir. Elle entoure TOUT — l'app, le
+  /// halo et le bandeau — pour que le support voie exactement ce que
+  /// le client a sous les yeux, bandeau rouge compris. Voir sur son
+  /// image que le bandeau est bien affiché, c'est vérifier d'un coup
+  /// d'œil que le client sait qu'on est là.
+  final GlobalKey _zone = GlobalKey();
+
+  Timer? _ticMiroir;
+
+  /// Une capture est-elle en cours ? Sur une box lente, encoder un PNG
+  /// peut dépasser la période ; sans ce verrou les captures
+  /// s'empileraient jusqu'à ce que la mémoire lâche.
+  bool _captureEnCours = false;
+
   @override
   void initState() {
     super.initState();
@@ -79,6 +95,7 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
   void dispose() {
     _c.removeListener(_maj);
     _tic?.cancel();
+    _ticMiroir?.cancel();
     super.dispose();
   }
 
@@ -94,13 +111,45 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
   void _reglerTic() {
     _tic?.cancel();
     _tic = null;
+    _ticMiroir?.cancel();
+    _ticMiroir = null;
     if (_c.etat != EtatAssistance.active) return;
+
     _tic = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
       // `etat` rafraîchit la session au passage : c'est ce qui fait
       // disparaître le bandeau tout seul quand le temps est écoulé.
       setState(() {});
     });
+
+    //  LE MIROIR NE TOURNE QUE PENDANT UNE SESSION, et seulement si
+    //  quelqu'un peut recevoir les images. Encoder un PNG toutes les
+    //  deux secondes sur une box à 1 Go n'est pas gratuit : ça se
+    //  mérite, et ça s'arrête avec le bandeau.
+    if (!_c.miroirBranche) return;
+    _ticMiroir = Timer.periodic(periodeMiroir, (_) => _capturer());
+  }
+
+  Future<void> _capturer() async {
+    if (!mounted || _captureEnCours) return;
+    if (_c.etat != EtatAssistance.active) return;
+    _captureEnCours = true;
+    try {
+      final ImageMiroir? img = await capturerMiroir(_zone);
+      if (img == null || !mounted) return;
+      // On revérifie la session APRÈS l'attente : le client a pu
+      // appuyer sur « Arrêter » pendant l'encodage. Sans ce second
+      // contrôle, sa dernière image partirait quand même — une image
+      // de plus après qu'il a dit non.
+      if (_c.etat != EtatAssistance.active) return;
+      _c.publierImageMiroir(
+        base64Encode(img.octets),
+        img.largeur,
+        img.hauteur,
+      );
+    } finally {
+      _captureEnCours = false;
+    }
   }
 
   @override
@@ -120,18 +169,27 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     //
     //  Les surcouches s'ajoutent donc APRÈS l'enfant, et lui ne bouge
     //  jamais de l'index 0.
-    return Stack(
-      children: <Widget>[
-        widget.child,
-        if (active && d != null && d.aUnHalo) _Halo(x: d.x!, y: d.y!),
-        if (active)
-          _Bandeau(
-            support: _c.support,
-            restant: _c.tempsRestant,
-            phrase: d?.phrase ?? '',
-            onArreter: _c.arreterParClient,
-          ),
-      ],
+    return RepaintBoundary(
+      key: _zone,
+      child: Stack(
+        children: <Widget>[
+          widget.child,
+          if (active && d != null && d.aUnHalo) _Halo(x: d.x!, y: d.y!),
+          if (active)
+            _Bandeau(
+              support: _c.support,
+              restant: _c.tempsRestant,
+              phrase: d?.phrase ?? '',
+              //  ON LE DIT. Le support voit son écran : c'est la seule
+              //  chose de ce mode que le client ne peut pas deviner en
+              //  regardant sa télé. Le bandeau annonce déjà QUI l'aide
+              //  et pour combien de temps ; taire le regard serait
+              //  garder la fenêtre la plus importante fermée.
+              regarde: _c.miroirBranche,
+              onArreter: _c.arreterParClient,
+            ),
+        ],
+      ),
     );
   }
 }
@@ -237,17 +295,32 @@ class _Bandeau extends StatelessWidget {
     required this.support,
     required this.restant,
     required this.phrase,
+    required this.regarde,
     required this.onArreter,
   });
 
   final String support;
   final Duration? restant;
   final String phrase;
+
+  /// Le support reçoit-il des images de cet écran ?
+  final bool regarde;
+
   final VoidCallback onArreter;
 
   @override
   Widget build(BuildContext context) {
     final int min = restant == null ? 0 : restant!.inMinutes;
+    final String duree =
+        min > 0 ? 'se termine dans $min min' : 'se termine dans un instant';
+    //  LE REGARD PASSE AVANT LA DURÉE. Si une seule ligne doit être
+    //  lue, c'est celle-là : savoir que quelqu'un voit son écran change
+    //  ce qu'on fait devant, savoir qu'il reste 12 minutes ne change
+    //  rien. La phrase du support, elle, reste prioritaire : c'est
+    //  l'instruction qu'il est en train de lui donner.
+    final String sousTitre = phrase.isNotEmpty
+        ? phrase
+        : (regarde ? 'Il voit cet écran · $duree' : 'Ça $duree');
     return Positioned(
       top: 0,
       left: 0,
@@ -276,11 +349,7 @@ class _Bandeau extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        phrase.isNotEmpty
-                            ? phrase
-                            : (min > 0
-                                ? 'Se termine tout seul dans $min min'
-                                : 'Se termine dans un instant'),
+                        sousTitre,
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 13,

@@ -57,6 +57,12 @@ export type RtEventType =
   | 'watching'
   | 'ack'
   | 'changed'
+  // L'écran du client, pendant une session « Prendre la main »
+  // (19/09/2026). Aucun cas dans le `switch` de handleMessage : il n'y
+  // a rien à ranger dans l'état global, l'image ne concerne que le
+  // panneau ouvert. Le `dispatch()` de fin de fonction la livre à
+  // onRt('screen') — c'est justement à ça qu'il sert.
+  | 'screen'
   | 'bye';
 
 export type RtState = 'connected' | 'connecting' | 'offline';

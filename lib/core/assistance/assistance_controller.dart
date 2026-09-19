@@ -141,6 +141,14 @@ class Designation {
   bool get aUnHalo => x != null && y != null;
 }
 
+/// Comment une image de l'écran part vers le panel.
+///
+///  Le contrôleur ne sait pas envoyer sur le réseau, et ne doit pas
+///  l'apprendre : c'est `realtime_sync_service.dart` qui tient le
+///  socket. Il pose donc sa fonction ici au démarrage, exactement
+///  comme l'application pose son [AssistanceExecuteur].
+typedef EnvoiMiroir = void Function(String pngBase64, int largeur, int hauteur);
+
 /// Combien de temps le halo reste posé avant de s'effacer tout seul.
 ///
 ///  Un doigt ne reste pas pointé indéfiniment. Passé ce délai, le halo
@@ -156,6 +164,7 @@ class AssistanceController extends ChangeNotifier {
 
   final AssistanceSession _session = AssistanceSession();
   AssistanceExecuteur? _executeur;
+  EnvoiMiroir? _miroir;
   Designation? _designation;
   Timer? _effaceHalo;
 
@@ -164,6 +173,28 @@ class AssistanceController extends ChangeNotifier {
   /// `plateforme_sans_executeur`), tandis que le halo et la phrase,
   /// eux, marchent quand même : ils ne touchent à aucun écran.
   void installerExecuteur(AssistanceExecuteur e) => _executeur = e;
+
+  /// Le service temps réel pose ici de quoi envoyer une image au panel.
+  ///
+  ///  TANT QU'IL N'A PAS ÉTÉ POSÉ, AUCUNE IMAGE N'EST CAPTURÉE. C'est
+  ///  ce qui garantit qu'un appareil sans canal temps réel ne passe
+  ///  pas son temps à encoder des PNG que personne ne recevra.
+  void installerMiroir(EnvoiMiroir e) => _miroir = e;
+
+  /// Le miroir est-il branché ? Sert au bandeau du client : tant qu'il
+  /// est vrai, on lui DIT que le support voit son écran.
+  bool get miroirBranche => _miroir != null;
+
+  /// Envoie une image. Silencieux si le miroir n'est pas branché.
+  void publierImageMiroir(String pngBase64, int largeur, int hauteur) {
+    //  PAS D'IMAGE HORS SESSION, jamais. C'est la garde qui compte le
+    //  plus de ce fichier : sans elle, une minuterie oubliée continuerait
+    //  d'envoyer l'écran de quelqu'un après la fin de l'assistance —
+    //  sans bandeau, donc sans qu'il le sache. Ce serait exactement ce
+    //  que ce mode s'interdit.
+    if (!_session.guidagePermis) return;
+    _miroir?.call(pngBase64, largeur, hauteur);
+  }
 
   AssistanceSession get session => _session;
   Designation? get designation => _designation;
@@ -448,5 +479,6 @@ class AssistanceController extends ChangeNotifier {
     _session.reinitialiser();
     _effacerDesignation();
     _executeur = null;
+    _miroir = null;
   }
 }

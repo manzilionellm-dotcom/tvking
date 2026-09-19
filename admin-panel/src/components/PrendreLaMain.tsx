@@ -58,9 +58,11 @@
 //  RÉPONDU. Un bouton pressé n'est pas un bouton appliqué.
 // =========================================================
 
-import { useRef, useState, type PointerEvent as PointerEvt } from 'react';
+import {
+  useEffect, useRef, useState, type PointerEvent as PointerEvt,
+} from 'react';
 import { getCurrentUser } from '@/lib/api';
-import { sendCmd, waitForAck } from '@/lib/realtime';
+import { onRt, sendCmd, waitForAck } from '@/lib/realtime';
 import { toast } from '@/components/Toast';
 
 /// Les écrans que l'app sait ouvrir à distance. Les NOMS sont ceux du
@@ -245,7 +247,7 @@ export function PrendreLaMain({
         </button>
       </div>
 
-      <EcranTactile busy={busy} forme={forme} onEnvoyer={envoyer} />
+      <EcranTactile busy={busy} forme={forme} mac={mac} onEnvoyer={envoyer} />
 
       <p className="mt-3 text-[11px] font-semibold text-ink-secondary">
         Ouvrir un écran chez lui
@@ -329,9 +331,10 @@ export function PrendreLaMain({
 
       <p className="mt-3 text-[11px] leading-relaxed text-ink-tertiary">
         Tu conduis <b>son application</b>, pas son téléphone : il faut
-        qu’il ait 7 MOTION ouvert. Tu ne vois pas son écran — tu vois ce
-        que l’appareil répond à chaque geste. Et tu ne peux ni payer, ni
-        toucher à son mot de passe ou à son code parental.
+        qu’il ait 7 MOTION ouvert. Il voit un bandeau rouge avec ton nom
+        pendant toute la session, et il y lit que tu vois son écran. Tu
+        ne peux ni payer, ni toucher à son mot de passe ou à son code
+        parental.
       </p>
     </section>
   );
@@ -350,10 +353,12 @@ export function PrendreLaMain({
 function EcranTactile({
   busy,
   forme,
+  mac,
   onEnvoyer,
 }: {
   busy: boolean;
   forme: Forme;
+  mac: string;
   onEnvoyer: (
     quoi: string,
     payload: Record<string, unknown>,
@@ -364,6 +369,38 @@ function EcranTactile({
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
   const [phrase, setPhrase] = useState('C’est ici');
   const cadre = useRef<HTMLDivElement | null>(null);
+
+  //  L'ÉCRAN DU CLIENT, EN VRAI. L'app en envoie une image toutes les
+  //  deux secondes pendant la session, et seulement pendant.
+  //
+  //  ON N'AFFICHE QUE CE QU'ON A REÇU. Pas d'image, pas de cadre
+  //  inventé : le quadrillage reste, avec la phrase qui explique
+  //  pourquoi il n'y a rien. Dessiner une maquette approximative de
+  //  son écran serait pire que le vide — le support montrerait du
+  //  doigt un bouton qui n'est pas là.
+  const [vue, setVue] = useState<{ png: string; at: number } | null>(null);
+
+  useEffect(() => {
+    if (!mac) return undefined;
+    return onRt('screen', (e: { mac?: string; png?: string }) => {
+      // Le hub diffuse à TOUS les panels connectés : on ne garde que
+      // l'appareil ouvert ici. Sans ce filtre, ouvrir deux fiches
+      // ferait clignoter l'une avec l'écran de l'autre.
+      if (e?.mac !== mac || !e?.png) return;
+      setVue({ png: e.png, at: Date.now() });
+    });
+  }, [mac]);
+
+  //  UNE IMAGE VIEILLE N'EST PLUS UNE IMAGE. Passé 10 s sans rien
+  //  recevoir (session finie, app partie en arrière-plan, réseau
+  //  coupé), on l'efface. La garder afficherait un écran figé que le
+  //  support croirait actuel — il dirait « tu es toujours sur les
+  //  réglages ? » alors que le client est ailleurs depuis longtemps.
+  useEffect(() => {
+    if (!vue) return undefined;
+    const t = setTimeout(() => setVue(null), 10000);
+    return () => clearTimeout(t);
+  }, [vue]);
 
   function toucher(e: PointerEvt<HTMLDivElement>) {
     const el = cadre.current;
@@ -420,14 +457,28 @@ function EcranTactile({
         }
         style={silhouette === 'phone' ? { aspectRatio: '9 / 19.5' } : undefined}
       >
-        {/* Des repères aux tiers : sans eux, « un peu à droite » ne
-            veut rien dire quand on vise à l'aveugle. */}
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/3 top-0 h-full w-px bg-white/5" />
-          <div className="absolute left-2/3 top-0 h-full w-px bg-white/5" />
-          <div className="absolute left-0 top-1/3 h-px w-full bg-white/5" />
-          <div className="absolute left-0 top-2/3 h-px w-full bg-white/5" />
-        </div>
+        {/* SON ÉCRAN, s'il en arrive une image. */}
+        {vue && (
+          <img
+            src={`data:image/png;base64,${vue.png}`}
+            alt="Écran du client"
+            draggable={false}
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+          />
+        )}
+
+        {/* Des repères aux tiers, utiles TANT QU'ON NE VOIT RIEN :
+            sans eux, « un peu à droite » ne veut rien dire quand on
+            vise à l'aveugle. Dès que l'image arrive, ils s'effacent —
+            un quadrillage par-dessus son écran gênerait la lecture. */}
+        {!vue && (
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute left-1/3 top-0 h-full w-px bg-white/5" />
+            <div className="absolute left-2/3 top-0 h-full w-px bg-white/5" />
+            <div className="absolute left-0 top-1/3 h-px w-full bg-white/5" />
+            <div className="absolute left-0 top-2/3 h-px w-full bg-white/5" />
+          </div>
+        )}
 
         {point && (
           <div
@@ -436,10 +487,21 @@ function EcranTactile({
           />
         )}
 
-        {!point && (
+        {!vue && !point && (
           <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-center text-[10px] leading-snug text-ink-tertiary">
             Touche ici : le même endroit s’allume sur son écran.
           </p>
+        )}
+
+        {/* LE VOYANT « EN DIRECT » — il ne s'allume QUE si une image
+            est arrivée dans les 10 dernières secondes. Un voyant qui
+            resterait vert sur une image figée est exactement le genre
+            de mensonge qui coûte une journée. */}
+        {vue && (
+          <span className="pointer-events-none absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-success">
+            <span className="h-1 w-1 animate-pulse rounded-full bg-success" />
+            en direct
+          </span>
         )}
       </div>
 
@@ -477,14 +539,27 @@ function EcranTactile({
         </button>
       </div>
 
-      {/* CE QUE CE CADRE N'EST PAS. Sans cette phrase, un support finit
-          par croire qu'il voit l'écran du client et lui dit « appuie
-          sur le bouton bleu » alors qu'il n'y a pas de bouton bleu. */}
+      {/* LA SEULE LIMITE QUI PEUT TROMPER LE SUPPORT, DITE EN CLAIR.
+          Un support qui verrait du noir et croirait la chaîne plantée
+          raccrocherait après avoir « diagnostiqué » une panne qui
+          n'existe pas. */}
       <p className="mt-1.5 text-[10px] leading-snug text-ink-tertiary">
-        Ce cadre <b>ne montre pas son écran</b> — personne ne filme sa
-        télé. C’est un pavé tactile : en haut à droite ici = en haut à
-        droite chez lui. Le doigt s’efface tout seul au bout de
-        12 secondes.
+        {vue ? (
+          <>
+            Tu vois <b>ses menus</b>, rafraîchis toutes les 2 secondes.
+            La <b>vidéo sort noire</b> — Android la dessine hors de
+            l’application, on ne peut pas la capturer. Un rectangle noir
+            ne veut donc <b>pas</b> dire que sa chaîne est plantée.
+          </>
+        ) : (
+          <>
+            Pas encore d’image : elle n’arrive que pendant une session,
+            et seulement depuis une app en <b>198883 ou plus</b>. En
+            attendant, le cadre reste un pavé tactile — en haut à droite
+            ici = en haut à droite chez lui.
+          </>
+        )}{' '}
+        Le doigt s’efface tout seul au bout de 12 secondes.
       </p>
     </>
   );
