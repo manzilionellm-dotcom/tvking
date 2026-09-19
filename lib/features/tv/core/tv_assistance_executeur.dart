@@ -141,9 +141,12 @@ class TvAssistanceExecuteur implements AssistanceExecuteur {
     //  que le bouton « Redémarrer » de l'écran de sortie — le support
     //  fait exactement ce que le client ferait à la télécommande, pas
     //  un chemin parallèle.
-    final BuildContext? ctx = tvNavigatorKey.currentContext;
-    if (ctx == null) return 'app_en_arriere_plan';
-    RestartWidget.restart(ctx);
+    //  `restartGlobal()` ET PAS `restart(contexte)` : le contexte du
+    //  navigateur est AU-DESSUS du RestartWidget, donc la recherche
+    //  d'ancêtre ne le trouvait jamais — le panel répondait « fait »
+    //  sans que rien ne redémarre. La clé globale vise directement le
+    //  bon widget.
+    if (!RestartWidget.restartGlobal()) return 'app_en_arriere_plan';
     _dernier = '';
     return null;
   }
@@ -154,8 +157,27 @@ class TvAssistanceExecuteur implements AssistanceExecuteur {
     //  reconstruire l'écran : pour « je ne vois pas la liste que tu
     //  viens de me pousser », on re-tire licence + listes tout de
     //  suite, et le client reste où il est.
-    await SubscriptionState.instance.syncWithBackend();
-    await RemoteSourceRepository.sync();
+    //
+    //  LES DEUX SONT INDÉPENDANTES. Si la licence échoue (réseau,
+    //  fournisseur), on veut quand même tirer les listes, et
+    //  inversement. Avant, une exception sur la première empêchait la
+    //  seconde et faisait remonter « exception » alors qu'une moitié
+    //  aurait pu réussir.
+    bool licenceOk = true;
+    bool listesOk = true;
+    try {
+      await SubscriptionState.instance.syncWithBackend();
+    } catch (_) {
+      licenceOk = false;
+    }
+    try {
+      await RemoteSourceRepository.sync();
+    } catch (_) {
+      listesOk = false;
+    }
+    // Tout raté = on le DIT ; sinon c'est un succès (au moins partiel,
+    // et le plus utile — les listes — a le plus de chances de passer).
+    if (!licenceOk && !listesOk) return 'resync_echouee';
     return null;
   }
 

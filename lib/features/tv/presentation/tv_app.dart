@@ -327,7 +327,7 @@ class TvApp extends StatelessWidget {
         // de se COUPER automatiquement quand un écran passe par-dessus
         // (stabilité : jamais 2 lecteurs natifs simultanés).
         navigatorObservers: <NavigatorObserver>[TvLivePreview.routeObserver],
-        home: const RestartWidget(child: TvGate()),
+        home: RestartWidget(key: RestartWidget.cle, child: const TvGate()),
       ),
     );
   }
@@ -370,8 +370,28 @@ class RestartWidget extends StatefulWidget {
   const RestartWidget({super.key, required this.child});
   final Widget child;
 
+  /// Posée sur l'unique RestartWidget racine (voir `home:` ci-dessus).
+  /// Sert à le redémarrer DEPUIS UN SERVICE qui n'a pas de contexte
+  /// descendant — typiquement l'assistance à distance.
+  static final GlobalKey<_RestartWidgetState> cle =
+      GlobalKey<_RestartWidgetState>();
+
+  /// Redémarrage PAR CONTEXTE. Marche depuis un écran (il est sous le
+  /// RestartWidget). NE MARCHE PAS depuis le contexte du navigateur, qui
+  /// est AU-DESSUS — c'est le piège qui a fait que « Redémarrer l'app »
+  /// du panel répondait « fait » sans rien redémarrer (19/09 au soir).
+  /// Pour ce cas, voir [restartGlobal].
   static void restart(BuildContext context) {
     context.findAncestorStateOfType<_RestartWidgetState>()?._restart();
+  }
+
+  /// Redémarrage À COUP SÛR, via la clé racine — sans contexte. Renvoie
+  /// `false` si l'arbre n'est pas monté (app en arrière-plan).
+  static bool restartGlobal() {
+    final _RestartWidgetState? s = cle.currentState;
+    if (s == null) return false;
+    s._restart();
+    return true;
   }
 
   @override

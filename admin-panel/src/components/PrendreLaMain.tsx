@@ -102,6 +102,12 @@ const RAISONS: Record<string, string> = {
   plateforme_sans_executeur:
     'Cette application ne sait pas encore ouvrir ses écrans à distance. '
     + 'Le doigt et le message, eux, marchent.',
+  plateforme_sans_tapeur:
+    'Cette application ne sait pas encore recevoir un vrai clic à '
+    + 'distance (le doigt, lui, marche).',
+  resync_echouee:
+    'La resynchronisation a échoué des deux côtés (licence ET listes) — '
+    + 'sa box n’a probablement pas de réseau en ce moment.',
   ecran_inconnu:
     'Cet écran n’existe pas dans la version installée chez lui.',
   app_en_arriere_plan:
