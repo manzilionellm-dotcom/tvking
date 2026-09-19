@@ -327,6 +327,27 @@ enum GesteGuidage {
   /// Revient en arrière, comme la touche Retour.
   retour,
 
+  /// REDÉMARRE L'APPLICATION (19/09/2026 au soir).
+  ///
+  ///  Demande du propriétaire : régler « ça marche pas » depuis le
+  ///  panel, sans toucher à la box. Le redémarrage de l'app remonte les
+  ///  trois quarts des blocages (lecteur figé, écran resté sur une
+  ///  vieille liste) sans que le client ait à débrancher quoi que ce
+  ///  soit.
+  ///
+  ///  C'EST L'APP QU'ON RELANCE, PAS LA BOX. Une app Android n'a pas le
+  ///  droit de redémarrer l'appareil — seul le constructeur l'a. On
+  ///  remet donc l'application à son écran de départ, ce qui suffit
+  ///  presque toujours et ne fait perdre au client que deux secondes.
+  redemarrer,
+
+  /// RESYNCHRONISE : re-télécharge la licence et les listes.
+  ///
+  ///  Le geste pour « je ne vois pas la liste que tu viens de me
+  ///  pousser ». Au lieu d'attendre la synchro automatique, on la
+  ///  force tout de suite.
+  resynchroniser,
+
   /// LE DOIGT DU SUPPORT, POSÉ SUR L'ÉCRAN DU CLIENT (19/09/2026).
   ///
   ///  Demande du propriétaire, mot pour mot : « il va y avoir un
@@ -368,6 +389,10 @@ GesteGuidage? lireGeste(String? nom) {
       return GesteGuidage.basculerFavori;
     case 'retour':
       return GesteGuidage.retour;
+    case 'redemarrer':
+      return GesteGuidage.redemarrer;
+    case 'resync':
+      return GesteGuidage.resynchroniser;
     case 'pointeur':
       return GesteGuidage.pointer;
     case 'designer':

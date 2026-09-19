@@ -495,6 +495,10 @@ export class RealtimeHub {
             // se parler, et inversement.
             'prendre', 'demander', 'fin',
             'ouvrir', 'categorie', 'chaine', 'favori', 'retour',
+            // Commandes de dépannage (19/09/2026 au soir) : relancer
+            // l'app, re-tirer licence + listes. Le hub transporte, il
+            // ne décide pas — l'app vérifie le consentement.
+            'redemarrer', 'resync',
             // LE DOIGT DU SUPPORT (19/09/2026) : « où je touche, il
             // voit où je touche ».
             'pointeur', 'designer', 'effacer',

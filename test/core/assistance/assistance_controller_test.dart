@@ -67,6 +67,18 @@ class _ExecuteurTemoin implements AssistanceExecuteur {
   }
 
   @override
+  Future<String?> redemarrer() async {
+    gestes.add('redemarrer');
+    return raison;
+  }
+
+  @override
+  Future<String?> resynchroniser() async {
+    gestes.add('resync');
+    return raison;
+  }
+
+  @override
   String ecranCourant() => 'Accueil';
 }
 
@@ -83,6 +95,10 @@ class _ExecuteurQuiJette implements AssistanceExecuteur {
   Future<String?> basculerFavori(String id) async => throw StateError('boum');
   @override
   Future<String?> retour() async => throw StateError('boum');
+  @override
+  Future<String?> redemarrer() async => throw StateError('boum');
+  @override
+  Future<String?> resynchroniser() async => throw StateError('boum');
   @override
   String ecranCourant() => '';
 }
@@ -224,6 +240,54 @@ void main() {
       expect(r.raison, 'autre_session_en_cours');
       expect(c.support, _moi,
           reason: 'le nom affiché chez le client ne change pas sous ses yeux');
+    });
+  });
+
+  group('les commandes de dépannage', () {
+    test('resynchroniser passe par la même porte et l\'exécuteur bouge',
+        () async {
+      final ResultatGeste r = await c.executer(
+        GesteGuidage.resynchroniser,
+        const <String, Object?>{},
+        support: _moi,
+      );
+      expect(r.ok, isTrue, reason: r.raison);
+      expect(ex.gestes, <String>['resync']);
+    });
+
+    test('redémarrer aussi', () async {
+      final ResultatGeste r = await c.executer(
+        GesteGuidage.redemarrer,
+        const <String, Object?>{},
+        support: _moi,
+      );
+      expect(r.ok, isTrue, reason: r.raison);
+      expect(ex.gestes, <String>['redemarrer']);
+    });
+
+    test('elles restent soumises au « Arrêter » du client', () async {
+      c.arreterParClient();
+      for (final GesteGuidage g in <GesteGuidage>[
+        GesteGuidage.redemarrer,
+        GesteGuidage.resynchroniser,
+      ]) {
+        final ResultatGeste r =
+            await c.executer(g, const <String, Object?>{}, support: _moi);
+        expect(r.ok, isFalse, reason: g.name);
+        expect(r.raison, 'client_a_coupe', reason: g.name);
+      }
+      expect(ex.gestes, isEmpty);
+    });
+
+    test('sans nom de support, elles ne partent pas non plus', () async {
+      final ResultatGeste r = await c.executer(
+        GesteGuidage.redemarrer,
+        const <String, Object?>{},
+        support: '',
+      );
+      expect(r.ok, isFalse);
+      expect(r.raison, 'sans_nom_de_support');
+      expect(ex.gestes, isEmpty);
     });
   });
 

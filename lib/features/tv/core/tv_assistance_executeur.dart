@@ -40,6 +40,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/assistance/assistance_controller.dart';
 import '../../playlists/data/favorites_repository.dart';
+import '../../playlists/data/remote_source_repository.dart';
+import '../../subscription/data/subscription_state.dart';
 import '../presentation/tv_about_screen.dart';
 import '../presentation/tv_app.dart';
 import '../presentation/tv_black_box_screen.dart';
@@ -129,6 +131,32 @@ class TvAssistanceExecuteur implements AssistanceExecuteur {
     //  RIEN À DÉPILER N'EST PAS UNE PANNE : le client est déjà à
     //  l'accueil. Le support doit lire ça, pas « refusé ».
     return depile ? null : 'deja_a_l_accueil';
+  }
+
+  @override
+  Future<String?> redemarrer() async {
+    //  ON RELANCE L'APP, PAS LA BOX. `RestartWidget` est posé à la
+    //  racine de l'app TV (tv_app.dart) : il reconstruit tout l'arbre
+    //  avec une clé neuve et re-synchronise. C'est le MÊME mécanisme
+    //  que le bouton « Redémarrer » de l'écran de sortie — le support
+    //  fait exactement ce que le client ferait à la télécommande, pas
+    //  un chemin parallèle.
+    final BuildContext? ctx = tvNavigatorKey.currentContext;
+    if (ctx == null) return 'app_en_arriere_plan';
+    RestartWidget.restart(ctx);
+    _dernier = '';
+    return null;
+  }
+
+  @override
+  Future<String?> resynchroniser() async {
+    //  EXACTEMENT ce que fait le redémarrage côté données, mais SANS
+    //  reconstruire l'écran : pour « je ne vois pas la liste que tu
+    //  viens de me pousser », on re-tire licence + listes tout de
+    //  suite, et le client reste où il est.
+    await SubscriptionState.instance.syncWithBackend();
+    await RemoteSourceRepository.sync();
+    return null;
   }
 
   @override

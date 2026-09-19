@@ -106,6 +106,12 @@ abstract class AssistanceExecuteur {
   /// Revient en arrière, comme la touche Retour.
   Future<String?> retour();
 
+  /// Redémarre l'application (pas la box — voir [GesteGuidage.redemarrer]).
+  Future<String?> redemarrer();
+
+  /// Re-télécharge licence et listes tout de suite.
+  Future<String?> resynchroniser();
+
   /// Où en est le client, en clair (« Chaînes › Favoris »). Sert à ce
   /// que le support ne pilote pas à l'aveugle.
   String ecranCourant();
@@ -390,6 +396,12 @@ class AssistanceController extends ChangeNotifier {
           break;
         case GesteGuidage.retour:
           raison = await e.retour();
+          break;
+        case GesteGuidage.redemarrer:
+          raison = await e.redemarrer();
+          break;
+        case GesteGuidage.resynchroniser:
+          raison = await e.resynchroniser();
           break;
         case GesteGuidage.pointer:
         case GesteGuidage.designer:

@@ -297,6 +297,8 @@ void main() {
       expect(lireGeste('chaine'), GesteGuidage.ouvrirChaine);
       expect(lireGeste('favori'), GesteGuidage.basculerFavori);
       expect(lireGeste('retour'), GesteGuidage.retour);
+      expect(lireGeste('redemarrer'), GesteGuidage.redemarrer);
+      expect(lireGeste('resync'), GesteGuidage.resynchroniser);
       expect(lireGeste('pointeur'), GesteGuidage.pointer);
       expect(lireGeste('designer'), GesteGuidage.designer);
       expect(lireGeste('effacer'), GesteGuidage.effacer);

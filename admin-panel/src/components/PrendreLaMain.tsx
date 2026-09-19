@@ -294,6 +294,43 @@ export function PrendreLaMain({
       </div>
 
       <p className="mt-3 text-[11px] font-semibold text-ink-secondary">
+        Dépanner à distance
+      </p>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {/* RESYNC D'ABORD : c'est le geste doux, celui qui règle « je ne
+            vois pas ma liste » sans rien interrompre. Le redémarrage
+            coupe la lecture deux secondes — on le met après, comme le
+            cran du dessus. */}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            void envoyer('Resynchroniser (licence + listes)', {
+              geste: 'resync',
+            });
+          }}
+          className={btn}
+        >
+          ⟳ Resynchroniser
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (!window.confirm(
+              'Redémarrer son application ?\n\nSa lecture s’arrête deux '
+              + 'secondes, puis l’app revient à son écran d’accueil. '
+              + '(Ça ne redémarre pas la box, seulement 7 MOTION.)',
+            )) return;
+            void envoyer('Redémarrer l’application', { geste: 'redemarrer' });
+          }}
+          className={btn}
+        >
+          ↻ Redémarrer l’app
+        </button>
+      </div>
+
+      <p className="mt-3 text-[11px] font-semibold text-ink-secondary">
         Mettre / retirer un favori
       </p>
       <FavoriRapide busy={busy} onEnvoyer={envoyer} />
