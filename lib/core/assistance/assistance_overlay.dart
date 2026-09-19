@@ -335,31 +335,47 @@ class _PeintreCurseur extends CustomPainter {
       ..lineTo(9.7, 16.7)
       ..lineTo(17.4, 16.4)
       ..close();
-    final Matrix4 m = Matrix4.identity()
-      ..translateByDouble(pointe.dx, pointe.dy, 0, 1)
-      ..scaleByDouble(k, k, 1, 1);
-    final Path place = fleche.transform(m.storage);
 
+    //  ON TRANSFORME LE CANEVAS, PAS LE CHEMIN — et ce n'est pas un
+    //  détail de style. La première version passait par
+    //  `Matrix4.translateByDouble`, une méthode récente : elle compile
+    //  ici (Flutter 3.47) et PAS sur les deux builds TV, épinglés en
+    //  3.32. Les deux box sont tombées, et je ne pouvais pas le voir
+    //  d'ici — mon conteneur n'a pas la version qu'elles utilisent.
+    //
+    //  `save` / `translate` / `scale` existent depuis toujours. Quand
+    //  une API récente et une API ancienne font la même chose, sur ce
+    //  dépôt c'est l'ancienne qui gagne : le parc n'est pas sur la même
+    //  version que la machine qui compile.
+    canvas.save();
+    canvas.translate(pointe.dx, pointe.dy);
+    canvas.scale(k);
+
+    //  Les épaisseurs sont divisées par l'échelle pour rester des
+    //  tailles À L'ÉCRAN : sans ça, le liseré et le flou grossiraient
+    //  avec la flèche et la noieraient.
+    //
     //  L'OMBRE PORTÉE N'EST PAS DE LA DÉCORATION. Le curseur passe sur
     //  des fonds clairs comme sur des fonds sombres ; sans elle, il
     //  disparaît sur une affiche de film claire, exactement au moment
     //  où le support croit le montrer.
     canvas.drawPath(
-      place.shift(const Offset(0, 3)),
+      fleche.shift(const Offset(0, 3 / k)),
       Paint()
         ..color = const Color(0x66000000)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6 / k),
     );
-    canvas.drawPath(place, Paint()..color = rouge);
+    canvas.drawPath(fleche, Paint()..color = rouge);
     //  Le liseré blanc fait le reste du travail de contraste : rouge
     //  sur rouge (un logo, un bouton d'alerte) resterait illisible.
     canvas.drawPath(
-      place,
+      fleche,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2
+        ..strokeWidth = 2.2 / k
         ..color = Colors.white.withValues(alpha: 0.92),
     );
+    canvas.restore();
   }
 
   @override
