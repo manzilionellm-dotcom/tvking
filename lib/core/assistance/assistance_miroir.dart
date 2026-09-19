@@ -124,8 +124,17 @@ enum EchecMiroir {
   /// L'image encodée dépasse [poidsMaxMiroir].
   tropGrosse,
 
-  /// Le moteur graphique a refusé la capture.
-  erreurGraphique,
+  /// `toImage` a jeté : le moteur graphique n'a pas pu LIRE l'écran.
+  ///
+  ///  Sur une box en Skia (Impeller OFF), capturer une zone qui
+  ///  contient la surface vidéo est le suspect n°1 — la vidéo vit dans
+  ///  une couche matérielle que la lecture GPU ne voit pas toujours.
+  ///  On distingue ce cas de l'encodage : les deux se réparent
+  ///  différemment.
+  captureRatee,
+
+  /// La capture a réussi, mais l'ENCODAGE JPEG a jeté (mémoire, format).
+  encodageRate,
 }
 
 /// Le facteur d'échelle à demander à `toImage()` pour obtenir une
@@ -169,44 +178,59 @@ double ratioMiroir(double largeurLogique, {double largeurMax = largeurMiroir}) {
 ///  support pour rien, au pire moment — pendant qu'il a un client au
 ///  téléphone.
 Future<ResultatMiroir> capturerMiroir(GlobalKey cle) async {
-  try {
-    final RenderObject? ro = cle.currentContext?.findRenderObject();
-    if (ro is! RenderRepaintBoundary) {
-      return const ResultatMiroir.echec(EchecMiroir.pasDEcran);
-    }
-    //  `debugNeedsPaint` NE SERT QU'EN DÉBOGAGE — en release il rend
-    //  toujours `false`, par construction. Ce n'est donc pas une vraie
-    //  protection sur la box du client, juste un filtre qui évite une
-    //  assertion bruyante quand on développe.
-    if (ro.debugNeedsPaint) {
-      return const ResultatMiroir.echec(EchecMiroir.pasDEcran);
-    }
-    final ui.Size taille = ro.size;
-    if (!(taille.width > 0) || !(taille.height > 0)) {
-      return const ResultatMiroir.echec(EchecMiroir.pasDEcran);
-    }
+  final RenderObject? ro = cle.currentContext?.findRenderObject();
+  if (ro is! RenderRepaintBoundary) {
+    return const ResultatMiroir.echec(EchecMiroir.pasDEcran);
+  }
+  //  `debugNeedsPaint` NE SERT QU'EN DÉBOGAGE — en release il rend
+  //  toujours `false`, par construction. Ce n'est donc pas une vraie
+  //  protection sur la box du client, juste un filtre qui évite une
+  //  assertion bruyante quand on développe.
+  if (ro.debugNeedsPaint) {
+    return const ResultatMiroir.echec(EchecMiroir.pasDEcran);
+  }
+  final ui.Size taille = ro.size;
+  if (!(taille.width > 0) || !(taille.height > 0)) {
+    return const ResultatMiroir.echec(EchecMiroir.pasDEcran);
+  }
 
+  //  ÉTAPE 1 — LIRE L'ÉCRAN (GPU). Séparée de l'encodage, et c'est tout
+  //  l'intérêt : quand ça rate sur la vraie box, on sait maintenant
+  //  LAQUELLE des deux étapes a jeté, et avec quel message exact. Le
+  //  19/09, un seul « erreurGraphique » fourre-tout ne disait pas s'il
+  //  fallait regarder la lecture GPU ou l'encodeur.
+  int largeur;
+  int hauteur;
+  ByteData? brut;
+  try {
     final ui.Image img = await ro.toImage(
       pixelRatio: ratioMiroir(taille.width),
     );
-    final int largeur = img.width;
-    final int hauteur = img.height;
-    ByteData? brut;
+    largeur = img.width;
+    hauteur = img.height;
     try {
       //  `rawRgba` ET PAS `png` : on veut les pixels bruts pour les
       //  donner directement à l'encodeur JPEG. Demander un PNG puis le
-      //  redécoder ferait deux fois le travail, dont une compression
-      //  sans perte dont on ne veut pas.
+      //  redécoder ferait deux fois le travail.
       brut = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
     } finally {
       // Sans ça, chaque capture laisse une image en mémoire graphique.
       // Toutes les deux secondes, sur une box à 1 Go, ça finit mal.
       img.dispose();
     }
-    if (brut == null) {
-      return const ResultatMiroir.echec(EchecMiroir.erreurGraphique);
-    }
+  } catch (e) {
+    if (kDebugMode) debugPrint('[Miroir] capture GPU: $e');
+    return ResultatMiroir.echec(EchecMiroir.captureRatee, detail: '$e');
+  }
+  if (brut == null) {
+    return const ResultatMiroir.echec(
+      EchecMiroir.captureRatee,
+      detail: 'rawRgba null',
+    );
+  }
 
+  //  ÉTAPE 2 — ENCODER EN JPEG (processeur, pur Dart).
+  try {
     final img_lib.Image bitmap = img_lib.Image.fromBytes(
       width: largeur,
       height: hauteur,
@@ -214,16 +238,20 @@ Future<ResultatMiroir> capturerMiroir(GlobalKey cle) async {
       numChannels: 4,
       order: img_lib.ChannelOrder.rgba,
     );
-    final Uint8List octets = img_lib.encodeJpg(bitmap, quality: qualiteMiroir);
+    final Uint8List octets =
+        img_lib.encodeJpg(bitmap, quality: qualiteMiroir);
     if (octets.length > poidsMaxMiroir) {
-      return const ResultatMiroir.echec(EchecMiroir.tropGrosse);
+      return ResultatMiroir.echec(
+        EchecMiroir.tropGrosse,
+        detail: '${(octets.length / 1024).round()} Ko',
+      );
     }
     return ResultatMiroir.image(
       ImageMiroir(octets: octets, largeur: largeur, hauteur: hauteur),
     );
   } catch (e) {
-    if (kDebugMode) debugPrint('[Miroir] capture: $e');
-    return const ResultatMiroir.echec(EchecMiroir.erreurGraphique);
+    if (kDebugMode) debugPrint('[Miroir] encodage: $e');
+    return ResultatMiroir.echec(EchecMiroir.encodageRate, detail: '$e');
   }
 }
 
@@ -235,11 +263,19 @@ Future<ResultatMiroir> capturerMiroir(GlobalKey cle) async {
 ///  devant ce vide.
 @immutable
 class ResultatMiroir {
-  const ResultatMiroir.image(ImageMiroir this.image) : echec = null;
-  const ResultatMiroir.echec(EchecMiroir this.echec) : image = null;
+  const ResultatMiroir.image(ImageMiroir this.image)
+      : echec = null,
+        detail = null;
+  const ResultatMiroir.echec(EchecMiroir this.echec, {this.detail})
+      : image = null;
 
   final ImageMiroir? image;
   final EchecMiroir? echec;
+
+  /// Le message exact de l'erreur (tronqué), quand il y en a une. Remonte
+  /// jusqu'au panel : le support n'a plus à ouvrir la boîte noire, il lit
+  /// la vraie cause sous la maquette.
+  final String? detail;
 }
 
 /// Une image prête à partir.

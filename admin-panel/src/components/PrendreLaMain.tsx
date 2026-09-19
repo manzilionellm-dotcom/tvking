@@ -131,9 +131,17 @@ const ECHECS_MIROIR: Record<string, string> = {
   tropGrosse:
     'L’image de son écran est trop lourde pour passer. Signale-le-moi : '
     + 'c’est un réglage de qualité à baisser, pas une panne de sa box.',
+  // Ancien nom (box en 198887/198888), gardé le temps de la mise à jour.
   erreurGraphique:
-    'Sa box a refusé de rendre l’image. Rare — si ça se répète, sa '
-    + 'boîte noire en garde la trace.',
+    'Sa box a refusé de rendre l’image. Mets-la à jour : la version '
+    + 'suivante dit précisément où ça casse.',
+  captureRatee:
+    'La LECTURE de l’écran (GPU) a échoué sur sa box — probablement la '
+    + 'surface vidéo qui ne se laisse pas capturer. Le détail exact est '
+    + 'entre crochets : envoie-le-moi tel quel.',
+  encodageRate:
+    'La capture a marché, c’est l’ENCODAGE JPEG qui a échoué (mémoire ou '
+    + 'format). Le détail exact est entre crochets : envoie-le-moi.',
 };
 
 type Ligne = { quand: string; quoi: string; ok: boolean | null; pourquoi?: string };
@@ -435,11 +443,17 @@ function EcranTactile({
   //  panel n'affichait qu'un cadre vide : le propriétaire a cru que
   //  c'était lui qui s'y prenait mal.
   const [echec, setEchec] = useState<string>('');
+  //  Le message EXACT venu de la box (tronqué). C'est ce qui permet de
+  //  réparer sans deviner : « erreurGraphique » tout seul ne disait pas
+  //  si la lecture GPU ou l'encodeur JPEG avait jeté.
+  const [detail, setDetail] = useState<string>('');
 
   useEffect(() => {
     if (!mac) return undefined;
     const cible = mac.trim().toUpperCase();
-    return onRt('screen', (e: { mac?: string; jpg?: string; echec?: string }) => {
+    return onRt('screen', (e: {
+      mac?: string; jpg?: string; echec?: string; detail?: string;
+    }) => {
       // Le hub diffuse à TOUS les panels connectés : on ne garde que
       // l'appareil ouvert ici. Sans ce filtre, ouvrir deux fiches
       // ferait clignoter l'une avec l'écran de l'autre.
@@ -447,9 +461,11 @@ function EcranTactile({
       if (e?.jpg) {
         setVue({ jpg: e.jpg, at: Date.now() });
         setEchec('');
+        setDetail('');
       } else if (e?.echec) {
         setVue(null);
         setEchec(e.echec);
+        setDetail(e.detail || '');
       }
     });
   }, [mac]);
@@ -465,24 +481,106 @@ function EcranTactile({
     return () => clearTimeout(t);
   }, [vue]);
 
-  function toucher(e: PointerEvt<HTMLDivElement>) {
+  // =========================================================
+  //  UNE VRAIE SOURIS, PAS UN POINTAGE (19/09/2026 au soir)
+  // =========================================================
+  //  Demande du propriétaire, après trois heures :
+  //    « Ça doit glisser. Si je glisse la souris, ça glisse aussi. »
+  //    « Si j'appuie, ça ne s'appuie pas — ça pointe seulement. »
+  //
+  //  Donc deux gestes distincts, comme sur n'importe quel pavé :
+  //   • GLISSER (doigt enfoncé qui bouge) → le curseur suit chez lui,
+  //     en continu. On envoie une position toutes les ~70 ms, pas à
+  //     chaque pixel : assez pour être fluide, pas assez pour noyer le
+  //     fil. L'app, elle, anime entre deux positions.
+  //   • TAPER (appui bref, sans bouger) → un VRAI clic injecté dans son
+  //     app, à cet endroit exact. Le widget dessous réagit comme si le
+  //     client avait touché son écran.
+  //
+  //  Un appui qui a BOUGÉ n'est pas un clic. Sinon, chaque fin de
+  //  glissement cliquerait sur ce qui traîne sous le curseur — et le
+  //  support ouvrirait des chaînes sans le vouloir.
+  const enfonce = useRef(false);
+  const aBouge = useRef(false);
+  const depuis = useRef(0);
+  const dernierEnvoi = useRef(0);
+  const CADENCE_MS = 70;
+  const SEUIL_BOUGE = 0.02; // 2 % de l'écran : au-delà, c'est un glissement
+
+  function fraction(e: PointerEvt<HTMLDivElement>): { x: number; y: number } | null {
     const el = cadre.current;
-    if (!el) return;
+    if (!el) return null;
     const r = el.getBoundingClientRect();
-    if (r.width <= 0 || r.height <= 0) return;
+    if (r.width <= 0 || r.height <= 0) return null;
     //  DES FRACTIONS, JAMAIS DES PIXELS. Cette maquette fait quelques
     //  centaines de points ; sa télé en fait quelques milliers, et la
-    //  session suivante sera peut-être sur un téléphone. Des pixels
-    //  pointeraient à côté — l'app refuserait, ou pire, montrerait un
-    //  coin que personne n'a désigné.
-    const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
-    setPoint({ x, y });
+    //  session suivante sera peut-être sur un téléphone.
+    return {
+      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+    };
+  }
+
+  function glisserVers(p: { x: number; y: number }, force = false) {
+    setPoint(p);
+    const now = Date.now();
+    if (!force && now - dernierEnvoi.current < CADENCE_MS) return;
+    dernierEnvoi.current = now;
     void onEnvoyer(
-      `Doigt en ${Math.round(x * 100)} % / ${Math.round(y * 100)} %`,
-      { geste: 'pointeur', x, y, phrase: phrase.trim() },
+      `Curseur en ${Math.round(p.x * 100)} % / ${Math.round(p.y * 100)} %`,
+      { geste: 'pointeur', x: p.x, y: p.y, phrase: phrase.trim() },
       { bloquant: false },
     );
+  }
+
+  function cliquerEn(p: { x: number; y: number }) {
+    setPoint(p);
+    void onEnvoyer(
+      `CLIC en ${Math.round(p.x * 100)} % / ${Math.round(p.y * 100)} %`,
+      { geste: 'taper', x: p.x, y: p.y },
+      { bloquant: false },
+    );
+  }
+
+  const origine = useRef<{ x: number; y: number } | null>(null);
+
+  function surAppui(e: PointerEvt<HTMLDivElement>) {
+    const p = fraction(e);
+    if (!p) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    enfonce.current = true;
+    aBouge.current = false;
+    depuis.current = Date.now();
+    origine.current = p;
+    glisserVers(p, true);
+  }
+
+  function surMouvement(e: PointerEvt<HTMLDivElement>) {
+    if (!enfonce.current) return;
+    const p = fraction(e);
+    if (!p) return;
+    const o = origine.current;
+    if (o && (Math.abs(p.x - o.x) > SEUIL_BOUGE || Math.abs(p.y - o.y) > SEUIL_BOUGE)) {
+      aBouge.current = true;
+    }
+    glisserVers(p);
+  }
+
+  function surRelache(e: PointerEvt<HTMLDivElement>) {
+    if (!enfonce.current) return;
+    enfonce.current = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* déjà libéré */ }
+    const p = fraction(e) || origine.current;
+    if (!p) return;
+    // Appui bref (< 400 ms) sans mouvement = clic. Sinon, c'était un
+    // glissement : on s'arrête là, on ne clique pas.
+    const bref = Date.now() - depuis.current < 400;
+    if (bref && !aBouge.current) cliquerEn(p);
+  }
+
+  function surAnnulation(e: PointerEvt<HTMLDivElement>) {
+    enfonce.current = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* déjà libéré */ }
   }
 
   return (
@@ -512,7 +610,10 @@ function EcranTactile({
 
       <div
         ref={cadre}
-        onPointerDown={toucher}
+        onPointerDown={surAppui}
+        onPointerMove={surMouvement}
+        onPointerUp={surRelache}
+        onPointerCancel={surAnnulation}
         className={
           'relative mt-1.5 w-full cursor-crosshair select-none touch-none '
           + 'overflow-hidden rounded-lg border border-white/15 bg-midnight '
@@ -591,6 +692,15 @@ function EcranTactile({
         </button>
         <button
           type="button"
+          disabled={busy || !point}
+          title="Un vrai appui, à l’endroit du curseur"
+          onClick={() => { if (point) cliquerEn(point); }}
+          className="rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-black disabled:opacity-50"
+        >
+          ● Cliquer ici
+        </button>
+        <button
+          type="button"
           disabled={busy}
           onClick={() => {
             setPoint(null);
@@ -618,6 +728,13 @@ function EcranTactile({
           <span className="text-warning">
             <b>Son app a essayé, et n’a pas pu :</b>{' '}
             {ECHECS_MIROIR[echec] || echec}
+            {detail && (
+              <>
+                {' '}<span className="font-mono text-[9px] text-ink-tertiary">
+                  [{detail}]
+                </span>
+              </>
+            )}
           </span>
         ) : (
           <>
@@ -627,7 +744,8 @@ function EcranTactile({
             ici = en haut à droite chez lui.
           </>
         )}{' '}
-        Le doigt s’efface tout seul au bout de 12 secondes.
+        <b>Glisse</b> pour déplacer le curseur chez lui, <b>tape</b> (appui
+        bref) pour cliquer vraiment. Le curseur s’efface au bout de 12 s.
       </p>
     </>
   );

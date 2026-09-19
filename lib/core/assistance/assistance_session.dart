@@ -362,6 +362,20 @@ enum GesteGuidage {
   ///  d'un téléphone à une box. Des pixels pointeraient à côté.
   pointer,
 
+  /// UN VRAI CLIC, PAS UN POINTAGE (19/09/2026 au soir).
+  ///
+  ///  Demande du propriétaire, après trois heures : « si j'appuie, ça
+  ///  ne s'appuie pas, ça pointe seulement. Il faut faire comme un
+  ///  professionnel. » Montrer du doigt ne suffit pas — il veut appuyer
+  ///  À SA PLACE.
+  ///
+  ///  L'app synthétise un vrai appui (bas + haut) à la position visée,
+  ///  via le moteur de gestes de Flutter : le widget sous ce point le
+  ///  reçoit EXACTEMENT comme si le client avait touché l'écran. Pas de
+  ///  privilège système — on injecte dans NOTRE propre arbre, là où on
+  ///  a le droit.
+  taper,
+
   /// Affiche une phrase (« c'est ici ») dans le bandeau. Utile APRÈS
   /// avoir montré : le client refait tout seul.
   designer,
@@ -395,6 +409,8 @@ GesteGuidage? lireGeste(String? nom) {
       return GesteGuidage.resynchroniser;
     case 'pointeur':
       return GesteGuidage.pointer;
+    case 'taper':
+      return GesteGuidage.taper;
     case 'designer':
       return GesteGuidage.designer;
     case 'effacer':

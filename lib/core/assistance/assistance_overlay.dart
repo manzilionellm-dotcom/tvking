@@ -46,6 +46,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import 'assistance_controller.dart';
@@ -89,6 +90,11 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
   void initState() {
     super.initState();
     _c.addListener(_maj);
+    //  LE TAPEUR : c'est ICI qu'on peut injecter un vrai appui, parce
+    //  que c'est ici qu'on connaît la taille réelle de l'écran et qu'on
+    //  peut parler au moteur de gestes. Le contrôleur, lui, ne sait pas
+    //  taper.
+    _c.installerTapeur(_injecterTap);
   }
 
   @override
@@ -97,6 +103,54 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     _tic?.cancel();
     _ticMiroir?.cancel();
     super.dispose();
+  }
+
+  /// INJECTE UN VRAI APPUI à la position [fx],[fy] (fractions d'écran).
+  ///
+  ///  On fabrique un couple bas + haut au même endroit et on le donne
+  ///  au `GestureBinding` : Flutter fait son hit-test et le widget sous
+  ///  ce point reçoit le tap EXACTEMENT comme si le client avait touché
+  ///  l'écran. Aucun privilège système — on reste dans notre arbre.
+  ///
+  ///  ON VISE LA ZONE DE L'APP, PAS LE BANDEAU. Les coordonnées sont
+  ///  relatives à la même boîte que la maquette du panel (l'écran
+  ///  entier) ; le bandeau rouge est au-dessus mais ne prend qu'une
+  ///  bande en haut, et le support ne clique pas dedans.
+  void _injecterTap(double fx, double fy) {
+    if (!mounted) return;
+    final RenderObject? ro = _zone.currentContext?.findRenderObject();
+    if (ro is! RenderBox || !ro.hasSize) return;
+    final Size s = ro.size;
+    if (s.isEmpty) return;
+    final Offset local = Offset(fx * s.width, fy * s.height);
+    final Offset global = ro.localToGlobal(local);
+
+    //  ON CONSTRUIT LES ÉVÉNEMENTS DIRECTEMENT, avec l'API PUBLIQUE.
+    //  La première version passait par `PointerData.toPointerEvent`,
+    //  une méthode interne au moteur : elle n'existe pas pour nous, et
+    //  la suite de tests entière a refusé de compiler. `PointerDownEvent`
+    //  et `PointerUpEvent` sont publics, stables, et présents sur la
+    //  3.32 des builds TV. C'est exactement ce que `WidgetTester` fait
+    //  pour simuler un tap.
+    //
+    //  Un identifiant de pointeur À NOUS, hors de la plage des vrais
+    //  doigts, pour ne jamais brouiller un appui réel du client s'il
+    //  touche en même temps.
+    const int idPointeur = 0xA551;
+    final GestureBinding gb = GestureBinding.instance;
+    gb.handlePointerEvent(PointerDownEvent(
+      pointer: idPointeur,
+      device: idPointeur,
+      kind: PointerDeviceKind.touch,
+      position: global,
+      buttons: kPrimaryButton,
+    ));
+    gb.handlePointerEvent(PointerUpEvent(
+      pointer: idPointeur,
+      device: idPointeur,
+      kind: PointerDeviceKind.touch,
+      position: global,
+    ));
   }
 
   void _maj() {
@@ -156,7 +210,7 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
       //  jetée pour dépassement de poids, et le support n'avait devant
       //  lui qu'un cadre vide et une phrase qui parlait d'autre chose.
       //  Une panne muette coûte une session entière.
-      _c.signalerEchecMiroir(r.echec!.name);
+      _c.signalerEchecMiroir(r.echec!.name, r.detail ?? '');
     } finally {
       _captureEnCours = false;
     }
@@ -240,15 +294,57 @@ class _Curseur extends StatefulWidget {
 }
 
 class _CurseurState extends State<_Curseur>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _anim = AnimationController(
+    with TickerProviderStateMixin {
+  //  L'ONDE qui respire — un rythme constant, indépendant des
+  //  déplacements.
+  late final AnimationController _onde = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1800),
   )..repeat();
 
+  //  LE GLISSEMENT — c'est LUI la demande du propriétaire : « ça doit
+  //  glisser, pas sauter ». Chaque nouvelle position n'est pas affichée
+  //  d'un coup ; on anime de l'ancienne vers la nouvelle, vite mais en
+  //  continu, comme une vraie souris.
+  late final AnimationController _glisse = AnimationController(
+    vsync: this,
+    duration: _dureeGlisse,
+  );
+
+  //  130 ms : assez court pour coller au doigt du support (le panel
+  //  envoie une position toutes les ~70 ms), assez long pour que le
+  //  trajet se voie au lieu de clignoter. Le curseur est donc toujours
+  //  en train de rattraper la dernière position — c'est exactement ce
+  //  qui donne le glissement fluide.
+  static const Duration _dureeGlisse = Duration(milliseconds: 130);
+
+  late Offset _depart = Offset(widget.x, widget.y);
+  late Offset _cible = Offset(widget.x, widget.y);
+  late Animation<Offset> _piste =
+      AlwaysStoppedAnimation<Offset>(Offset(widget.x, widget.y));
+
+  @override
+  void didUpdateWidget(_Curseur old) {
+    super.didUpdateWidget(old);
+    final Offset cible = Offset(widget.x, widget.y);
+    if (cible == _cible) return;
+    //  On repart de LÀ OÙ LE CURSEUR EST VRAIMENT à cet instant (pas de
+    //  la dernière cible) : si une nouvelle position arrive avant la
+    //  fin du glissement précédent, le mouvement enchaîne sans à-coup.
+    _depart = _piste.value;
+    _cible = cible;
+    _piste = Tween<Offset>(begin: _depart, end: _cible).animate(
+      CurvedAnimation(parent: _glisse, curve: Curves.easeOut),
+    );
+    _glisse
+      ..value = 0
+      ..forward();
+  }
+
   @override
   void dispose() {
-    _anim.dispose();
+    _onde.dispose();
+    _glisse.dispose();
     super.dispose();
   }
 
@@ -266,21 +362,22 @@ class _CurseurState extends State<_Curseur>
           //  directions — y compris vers le haut et la gauche, là où la
           //  flèche, elle, ne va pas.
           const double zone = 220;
-          return Stack(
-            children: <Widget>[
-              Positioned(
-                left: widget.x * c.maxWidth - zone / 2,
-                top: widget.y * c.maxHeight - zone / 2,
-                width: zone,
-                height: zone,
-                child: AnimatedBuilder(
-                  animation: _anim,
-                  builder: (BuildContext context, _) => CustomPaint(
-                    painter: _PeintreCurseur(_anim.value),
+          return AnimatedBuilder(
+            animation: Listenable.merge(<Listenable>[_onde, _glisse]),
+            builder: (BuildContext context, _) {
+              final Offset p = _piste.value;
+              return Stack(
+                children: <Widget>[
+                  Positioned(
+                    left: p.dx * c.maxWidth - zone / 2,
+                    top: p.dy * c.maxHeight - zone / 2,
+                    width: zone,
+                    height: zone,
+                    child: CustomPaint(painter: _PeintreCurseur(_onde.value)),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           );
         },
       ),

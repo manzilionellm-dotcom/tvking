@@ -418,6 +418,10 @@ export class RealtimeHub {
           : (typeof msg.png === 'string' ? msg.png : '');
         const echec = typeof msg.echec === 'string'
           ? msg.echec.slice(0, 40) : '';
+        // Le message exact de l'erreur, borné. C'est ce que le support
+        // lit sous la maquette pour savoir QUOI réparer.
+        const detail = typeof msg.detail === 'string'
+          ? msg.detail.slice(0, 200) : '';
         // Ni image ni explication : rien à relayer.
         if (!jpg && !echec) return;
         const last = this._lastScreen.get(att.mac) || 0;
@@ -429,6 +433,7 @@ export class RealtimeHub {
           mac: att.mac,
           jpg,
           ...(echec ? { echec } : {}),
+          ...(detail ? { detail } : {}),
           w: Number(msg.w) || 0,
           h: Number(msg.h) || 0,
           at: now,
@@ -500,8 +505,9 @@ export class RealtimeHub {
             // ne décide pas — l'app vérifie le consentement.
             'redemarrer', 'resync',
             // LE DOIGT DU SUPPORT (19/09/2026) : « où je touche, il
-            // voit où je touche ».
-            'pointeur', 'designer', 'effacer',
+            // voit où je touche ». Et `taper` : un VRAI clic injecté
+            // dans l'app, pas un simple pointage.
+            'pointeur', 'taper', 'designer', 'effacer',
           ];
           if (connus.includes(geste)) {
             event = {

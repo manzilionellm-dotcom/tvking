@@ -162,7 +162,16 @@ typedef EnvoiMiroir = void Function(
   int largeur,
   int hauteur,
   String echec,
+  String detail,
 );
+
+/// Injecte un VRAI appui à la position [x],[y] (fractions d'écran).
+///
+///  Posé par la surcouche d'assistance (`assistance_overlay.dart`), qui
+///  est la seule à connaître la taille réelle de l'écran et à pouvoir
+///  parler au moteur de gestes. Le contrôleur ne sait pas taper — il
+///  sait à qui demander. Même séparation que l'exécuteur et le miroir.
+typedef Tapeur = void Function(double x, double y);
 
 /// Combien de temps le halo reste posé avant de s'effacer tout seul.
 ///
@@ -180,6 +189,7 @@ class AssistanceController extends ChangeNotifier {
   final AssistanceSession _session = AssistanceSession();
   AssistanceExecuteur? _executeur;
   EnvoiMiroir? _miroir;
+  Tapeur? _tapeur;
   Designation? _designation;
   Timer? _effaceHalo;
 
@@ -196,6 +206,9 @@ class AssistanceController extends ChangeNotifier {
   ///  pas son temps à encoder des PNG que personne ne recevra.
   void installerMiroir(EnvoiMiroir e) => _miroir = e;
 
+  /// La surcouche pose ici de quoi injecter un vrai appui.
+  void installerTapeur(Tapeur t) => _tapeur = t;
+
   /// Le miroir est-il branché ? Sert au bandeau du client : tant qu'il
   /// est vrai, on lui DIT que le support voit son écran.
   bool get miroirBranche => _miroir != null;
@@ -208,17 +221,20 @@ class AssistanceController extends ChangeNotifier {
     //  sans bandeau, donc sans qu'il le sache. Ce serait exactement ce
     //  que ce mode s'interdit.
     if (!_session.guidagePermis) return;
-    _miroir?.call(jpegBase64, largeur, hauteur, '');
+    _miroir?.call(jpegBase64, largeur, hauteur, '', '');
   }
 
-  /// Dit au panel pourquoi il n'y a pas d'image.
+  /// Dit au panel pourquoi il n'y a pas d'image, avec le message exact.
   ///
   ///  Même garde de session : hors assistance, on ne raconte rien de
   ///  cet appareil, pas même ses échecs.
-  void signalerEchecMiroir(String echec) {
+  void signalerEchecMiroir(String echec, [String detail = '']) {
     if (!_session.guidagePermis) return;
-    _journal('assist.miroir_echec', <String, Object?>{'cause': echec});
-    _miroir?.call('', 0, 0, echec);
+    _journal('assist.miroir_echec', <String, Object?>{
+      'cause': echec,
+      if (detail.isNotEmpty) 'detail': detail,
+    });
+    _miroir?.call('', 0, 0, echec, detail);
   }
 
   AssistanceSession get session => _session;
@@ -352,6 +368,9 @@ class AssistanceController extends ChangeNotifier {
     if (geste == GesteGuidage.pointer) {
       return _poserHalo(args);
     }
+    if (geste == GesteGuidage.taper) {
+      return _taper(args);
+    }
     if (geste == GesteGuidage.designer) {
       _designation = Designation(
         cible: '${args['cible'] ?? ''}',
@@ -404,6 +423,7 @@ class AssistanceController extends ChangeNotifier {
           raison = await e.resynchroniser();
           break;
         case GesteGuidage.pointer:
+        case GesteGuidage.taper:
         case GesteGuidage.designer:
         case GesteGuidage.effacer:
           // Traités plus haut — ils ne descendent jamais jusqu'ici.
@@ -430,6 +450,36 @@ class AssistanceController extends ChangeNotifier {
         : ResultatGeste.refuse(raison);
   }
 
+  /// APPUIE POUR DE VRAI à l'endroit visé, et pose le curseur dessus
+  /// pour que le client VOIE où ça a cliqué.
+  ResultatGeste _taper(Map<String, Object?> args) {
+    final double? x = _fraction(args['x']);
+    final double? y = _fraction(args['y']);
+    if (x == null || y == null) {
+      return const ResultatGeste.refuse('position_invalide');
+    }
+    final Tapeur? t = _tapeur;
+    if (t == null) {
+      // Le téléphone n'a pas encore de tapeur : on le dit franchement,
+      // plutôt qu'un clic qui ne fait rien sans qu'on sache pourquoi.
+      _journal('assist.sans_tapeur', const <String, Object?>{});
+      return const ResultatGeste.refuse('plateforme_sans_tapeur');
+    }
+    // Le curseur saute sur le point cliqué : c'est le retour visuel du
+    // clic pour le client (et pour le support, dans le miroir).
+    _designation = Designation(
+      cible: '',
+      phrase: _designation?.phrase ?? '',
+      x: x,
+      y: y,
+    );
+    _armerEffacementHalo();
+    notifyListeners();
+    t(x, y);
+    _journal('assist.tape', <String, Object?>{'x': x, 'y': y});
+    return const ResultatGeste.fait();
+  }
+
   /// Pose le doigt du support à l'endroit qu'il a touché dans le panel.
   ResultatGeste _poserHalo(Map<String, Object?> args) {
     final double? x = _fraction(args['x']);
@@ -451,7 +501,11 @@ class AssistanceController extends ChangeNotifier {
     );
     _armerEffacementHalo();
     notifyListeners();
-    _journal('assist.pointe', <String, Object?>{'x': x, 'y': y});
+    //  ON NE JOURNALISE PAS CHAQUE MOUVEMENT. Le curseur glisse : à
+    //  plusieurs positions par seconde, écrire chacune noierait la
+    //  boîte noire et cacherait les événements qui comptent (session
+    //  ouverte, écran ouvert, favori, CLIC). Le pointage est un retour
+    //  visuel qui ne laisse pas de trace ; le clic, lui, en laisse une.
     return const ResultatGeste.fait();
   }
 
@@ -511,5 +565,6 @@ class AssistanceController extends ChangeNotifier {
     _effacerDesignation();
     _executeur = null;
     _miroir = null;
+    _tapeur = null;
   }
 }
