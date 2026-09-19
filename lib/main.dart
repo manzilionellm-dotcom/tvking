@@ -16,6 +16,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'core/app/boot_guard.dart';
+import 'core/assistance/assistance_overlay.dart';
 import 'core/app/guarded_main.dart';
 import 'core/backend/backend_hosts.dart';
 import 'core/privacy/privacy_shield.dart';
@@ -509,16 +510,40 @@ class TvKingApp extends StatelessWidget {
             // arrive, personne ne pensera à revenir ici. `transparency`
             // ne peint rien du tout ; les écrans qui ont déjà leur
             // Scaffold gardent le leur.
-            return Material(
-              type: MaterialType.transparency,
-              child: MediaQuery(
-                data: mq.copyWith(
-                  textScaler: mq.textScaler.clamp(
-                    minScaleFactor: 0.9,
-                    maxScaleFactor: 1.25,
+            // =========================================================
+            //  L'ASSISTANCE, AU-DESSUS DE TOUT — AUSSI SUR TÉLÉPHONE
+            // =========================================================
+            //  La box l'avait depuis le 18/09 ; le téléphone, non. Le
+            //  propriétaire a pourtant demandé les deux dès le premier
+            //  jour (« dans le téléphone d'un client… »), et la box a
+            //  simplement été branchée en premier.
+            //
+            //  Posée ICI, dans le `builder` de MaterialApp : elle
+            //  enveloppe le navigateur, donc le bandeau rouge et son
+            //  bouton Arrêter restent visibles quel que soit l'écran où
+            //  le support emmène le client. Dans un écran, il suffirait
+            //  d'en ouvrir un autre pour que la sortie disparaisse — et
+            //  une sortie qu'on peut perdre n'est pas une sortie.
+            //
+            //  CE QUI MARCHE DÉJÀ ICI : le halo (« où je touche, il
+            //  voit où je touche »), la phrase, le bandeau, l'arrêt.
+            //  CE QUI NE MARCHE PAS ENCORE : ouvrir un écran à
+            //  distance — le téléphone n'a pas encore d'exécuteur, et
+            //  l'app répond alors `plateforme_sans_executeur`, que le
+            //  panel affiche en toutes lettres. Refusé et DIT, plutôt
+            //  qu'un bouton qui ne fait rien sans qu'on sache pourquoi.
+            return AssistanceOverlay(
+              child: Material(
+                type: MaterialType.transparency,
+                child: MediaQuery(
+                  data: mq.copyWith(
+                    textScaler: mq.textScaler.clamp(
+                      minScaleFactor: 0.9,
+                      maxScaleFactor: 1.25,
+                    ),
                   ),
+                  child: child ?? const SizedBox.shrink(),
                 ),
-                child: child ?? const SizedBox.shrink(),
               ),
             );
           },

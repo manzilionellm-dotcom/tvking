@@ -213,6 +213,14 @@ class RtEvent {
               'cible': str('cible'),
               'phrase': str('phrase'),
               'id_cible': str('id_cible'),
+              // LE DOIGT DU SUPPORT (19/09/2026) : des fractions
+              // d'écran, transportées telles quelles. On ne les valide
+              // pas ici — c'est le contrôleur qui décide ce qu'est une
+              // position acceptable, et il doit être le seul, sinon
+              // deux endroits finissent par ne plus être d'accord sur
+              // ce qui est « hors écran ».
+              'x': decoded['x'],
+              'y': decoded['y'],
             },
           );
         case 'bye':
@@ -716,14 +724,45 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final Map<String, Object?> a = event.assist ?? const <String, Object?>{};
       final String geste = '${a['geste'] ?? ''}';
+      final String support = '${a['support'] ?? ''}';
       final AssistanceController c = AssistanceController.instance;
 
       switch (geste) {
+        //  DEUX MOTS POUR LA MÊME CHOSE, ET C'EST VOLONTAIRE.
+        //
+        //  `prendre` est le mot d'aujourd'hui. `demander` est celui des
+        //  panels d'avant le 19/09, quand la main se DEMANDAIT et que
+        //  le client répondait sur sa télé.
+        //
+        //  Les deux ouvrent désormais la session tout de suite. Refuser
+        //  l'ancien mot aurait cassé le bouton principal pour toute box
+        //  restée sur une version antérieure — et c'est exactement le
+        //  genre de panne qu'on ne voit pas depuis ici : l'app répond,
+        //  proprement, « je ne connais pas ce geste ».
+        case 'prendre':
         case 'demander':
-          // La demande s'AFFICHE chez le client ; elle ne prend pas la
-          // main. C'est lui qui répondra, ou personne.
-          ok = c.demandeRecue('${a['support'] ?? ''}');
-          if (!ok) erreur = 'demande_refusee';
+          ok = c.prendreLaMain(support);
+          if (!ok) {
+            //  RECLIQUER SUR SA PROPRE SESSION N'EST PAS UN ÉCHEC : le
+            //  support a simplement réappuyé. On ne lui affiche pas un
+            //  rouge pour ça.
+            //
+            //  ON COMPARE LE NOM, pas seulement l'état. Une session
+            //  active peut être celle d'un COLLÈGUE ; répondre « c'est
+            //  bon » ferait croire à ce support qu'il a la main, et il
+            //  cliquerait dans le vide en expliquant au client ce qui
+            //  est censé bouger.
+            if (c.etat == EtatAssistance.active &&
+                c.support == support.trim()) {
+              ok = true;
+            } else if (support.trim().isEmpty) {
+              erreur = 'sans_nom_de_support';
+            } else {
+              erreur = c.session.clientARefuse
+                  ? 'client_a_coupe'
+                  : 'autre_session_en_cours';
+            }
+          }
           break;
         case 'fin':
           c.arreterParSupport();
@@ -739,13 +778,29 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
             erreur = 'geste_inconnu';
             break;
           }
-          ok = await c.executer(g, <String, Object?>{
-            'nom': a['nom'],
-            'id': a['id_cible'],
-            'cible': a['cible'],
-            'phrase': a['phrase'],
-          });
-          if (!ok) erreur = 'refuse_ou_echoue';
+          //  LE NOM DU SUPPORT VOYAGE AVEC CHAQUE GESTE. C'est ce qui
+          //  rend la prise automatique possible : si aucune session
+          //  n'est ouverte, le contrôleur en ouvre une AU NOM DE
+          //  CELUI-LÀ, et le bandeau rouge apparaît chez le client
+          //  dans la même seconde que le geste.
+          final ResultatGeste r = await c.executer(
+            g,
+            <String, Object?>{
+              'nom': a['nom'],
+              'id': a['id_cible'],
+              'cible': a['cible'],
+              'phrase': a['phrase'],
+              'x': a['x'],
+              'y': a['y'],
+            },
+            support: support,
+          );
+          ok = r.ok;
+          //  L'ACCUSÉ PORTE LA VRAIE CAUSE, pas un mot fourre-tout.
+          //  `refuse_ou_echoue` a fait perdre une matinée au
+          //  propriétaire : il lisait « refusé » sans pouvoir savoir
+          //  quoi faire ensuite.
+          erreur = r.raison;
       }
     } catch (e) {
       ok = false;

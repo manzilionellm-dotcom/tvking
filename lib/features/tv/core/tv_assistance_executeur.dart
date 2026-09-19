@@ -19,12 +19,17 @@
 //  délibéré : on l'inscrit dans cette liste, ou il n'existe pas.
 //
 //  ---------------------------------------------------------
-//  « ÇA A MARCHÉ » SE MESURE, ÇA NE SE SUPPOSE PAS
+//  « ÇA A MARCHÉ » SE MESURE, ET « ÇA A RATÉ » SE NOMME
 //  ---------------------------------------------------------
-//  Chaque méthode rend `true` seulement si le geste a EU LIEU. Le
-//  navigateur absent (app en arrière-plan, écran pas encore monté), un
-//  nom inconnu, une chaîne introuvable : `false`, et le panel affiche
-//  « refusé ».
+//  Chaque méthode rend `null` seulement si le geste a EU LIEU. Sinon
+//  elle rend une RAISON courte — pas un `false` muet.
+//
+//  Le 19/09/2026, le propriétaire a lu trois fois « refusé
+//  (refuse_ou_echoue) » sur son panel. Techniquement exact ; sans
+//  aucune valeur. Il ne pouvait pas savoir s'il fallait rappeler le
+//  client, lui faire rouvrir l'app, ou simplement changer de bouton.
+//  C'est le défaut que ce dépôt traque depuis des mois : un message
+//  qui en dit moins que ce qu'on a mesuré.
 //
 //  Un support qui croit avoir cliqué alors que rien n'a bougé appuie
 //  dix fois — et le client voit son app partir dans tous les sens
@@ -70,53 +75,60 @@ class TvAssistanceExecuteur implements AssistanceExecuteur {
   String _dernier = '';
 
   @override
-  Future<bool> ouvrirEcran(String nom) async {
+  Future<String?> ouvrirEcran(String nom) async {
     final Widget Function()? builder = _ecrans[nom.trim().toLowerCase()];
-    if (builder == null) return false;
+    if (builder == null) return 'ecran_inconnu';
     final NavigatorState? nav = tvNavigatorKey.currentState;
-    if (nav == null) return false;
+    //  PAS DE NAVIGATEUR = l'app n'est pas à l'écran (en arrière-plan,
+    //  ou pas encore montée). C'est la cause la plus fréquente, et la
+    //  seule que le support peut régler tout seul : il demande au
+    //  client de revenir dans 7 MOTION. D'où un nom explicite.
+    if (nav == null) return 'app_en_arriere_plan';
     await nav.push(MaterialPageRoute<void>(builder: (_) => builder()));
     _dernier = nom;
-    return true;
+    return null;
   }
 
   @override
-  Future<bool> ouvrirCategorie(String nom) async {
+  Future<String?> ouvrirCategorie(String nom) async {
     //  PAS ENCORE BRANCHÉ, ET ON LE DIT. Ouvrir une catégorie précise
     //  demande d'entrer dans l'état interne de l'écran des chaînes ;
     //  tant que ce n'est pas fait proprement, on refuse au lieu de
     //  « faire à peu près » — ouvrir le mauvais dossier chez un client
     //  est pire que ne rien ouvrir.
-    return false;
+    return 'pas_encore_branche';
   }
 
   @override
-  Future<bool> ouvrirChaine(String id) async {
+  Future<String?> ouvrirChaine(String id) async {
     // Même raison que ci-dessus : le lecteur TV a son propre cycle
     // (créneau de lecture, relais). On ne s'y branche pas à la hâte.
-    return false;
+    return 'pas_encore_branche';
   }
 
   @override
-  Future<bool> basculerFavori(String id) async {
+  Future<String?> basculerFavori(String id) async {
     final String clef = id.trim();
-    if (clef.isEmpty) return false;
+    if (clef.isEmpty) return 'identifiant_vide';
     //  CELUI-LÀ EST RÉEL. `toggle` est exactement ce qu'appelle le
     //  bouton cœur de l'écran des chaînes : le support fait le même
     //  geste que le client, pas un geste parallèle qui pourrait
     //  diverger.
     await FavoritesRepository.instance.toggle(clef);
-    return true;
+    return null;
   }
 
   @override
-  Future<bool> retour() async {
+  Future<String?> retour() async {
     final NavigatorState? nav = tvNavigatorKey.currentState;
-    if (nav == null) return false;
+    if (nav == null) return 'app_en_arriere_plan';
     //  `maybePop` et pas `pop` : sur l'accueil il n'y a rien à
     //  dépiler, et `pop` fermerait l'APPLICATION. Le client verrait sa
     //  télé revenir au menu de la box pendant qu'on l'aide.
-    return nav.maybePop();
+    final bool depile = await nav.maybePop();
+    //  RIEN À DÉPILER N'EST PAS UNE PANNE : le client est déjà à
+    //  l'accueil. Le support doit lire ça, pas « refusé ».
+    return depile ? null : 'deja_a_l_accueil';
   }
 
   @override

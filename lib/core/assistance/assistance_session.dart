@@ -3,63 +3,63 @@
 // =========================================================
 //  DEMANDE DU PROPRIÉTAIRE (18/09/2026), en deux temps :
 //
-//    « Je veux dans le panel entrer dans le téléphone d'un client,
-//      S'IL ME PERMET. J'appuie sur mon ordinateur et ça s'appuie dans
-//      son téléphone. Je lui montre : il faut appuyer comme ça. »
-//
-//    « Relie ça comme Klarna : entrer dans l'app pour lui montrer des
-//      trucs. »
-//
-//  Puis, quand j'avais compris trop étroit (« le support désigne, le
-//  client appuie »), il a corrigé, et c'est SA correction qui fait foi :
+//    « Je veux dans le panel entrer dans le téléphone d'un client.
+//      J'appuie sur mon ordinateur et ça s'appuie dans son téléphone.
+//      Je lui montre : il faut appuyer comme ça. »
 //
 //    « Non, non, moi je veux entrer RÉELLEMENT. Un client me dit : sur
 //      ma TV je ne trouve pas les favoris. Je lui dis : regarde ta
 //      télé. Et j'appuie — chaîne, favoris, tout. Je lui montre tout. »
 //
-//  Donc le support CONDUIT l'app du client, et le client regarde son
-//  propre écran bouger. Ce n'est pas une recopie d'écran (personne ne
-//  filme son téléphone) : c'est SON application qui reçoit les mêmes
-//  ordres que s'il appuyait lui-même.
+//  Puis, le 19/09/2026, après avoir essayé sur une vraie box et vu
+//  trois « refusé » d'affilée parce que personne n'avait répondu à la
+//  question posée sur la télé :
 //
-//  CE QUI REND ÇA ACCEPTABLE N'EST PAS DE SE RETENIR D'AGIR — c'est
-//  que le client VOIT tout, sur son propre écran, et qu'il peut couper
-//  à la seconde. Un support qui agit sous les yeux du client, avec un
-//  bandeau permanent et un bouton d'arrêt, est franc. Un support qui
-//  agirait en douce ne le serait pas, même en faisant moins.
+//    « Je veux que ça soit automatique. »
 //
 //  ---------------------------------------------------------
-//  « S'IL ME PERMET » — CE FICHIER NE FAIT QUE ÇA
+//  CE QUE « AUTOMATIQUE » A CHANGÉ, ET CE QUE ÇA N'A PAS CHANGÉ
 //  ---------------------------------------------------------
-//  Le propriétaire l'a dit lui-même, et c'est la bonne façon de le
-//  construire : rien ne commence sans que le client ait dit oui.
+//  AVANT : le support demandait, une question s'affichait sur la télé,
+//  et RIEN ne partait tant que le client n'avait pas appuyé sur « Oui ».
+//  Dans la vraie vie du support, ça ne marche pas : le client est au
+//  téléphone, il tient son combiné, il ne regarde pas sa télécommande,
+//  et il dit « oui oui vas-y » à l'oreille du support — pas à son
+//  écran. Le support, lui, voit « refusé » et ne comprend pas.
 //
-//  Ce fichier est la machine à états du consentement, et RIEN
-//  D'AUTRE : pas de réseau, pas de Flutter, horloge injectée. Il tient
-//  les règles qui ne doivent jamais dépendre de l'humeur d'un écran :
+//  MAINTENANT : la session s'ouvre TOUT DE SUITE. Le premier geste du
+//  support l'ouvre, même s'il n'a rien cliqué avant.
 //
-//   1. AUCUNE SESSION SANS UN OUI EXPLICITE. Jamais un « qui ne dit
-//      rien consent » : une demande sans réponse EXPIRE, elle ne
-//      s'accepte pas toute seule.
+//  CE QUI N'A PAS BOUGÉ D'UN MILLIMÈTRE, et ne bougera pas :
 //
-//   2. LE CLIENT PEUT TOUJOURS ARRÊTER, à la seconde, sans rien
-//      demander à personne. Il n'existe aucun état d'où il ne peut pas
-//      sortir.
+//   1. LE CLIENT VOIT. Dès la première seconde, un bandeau rouge
+//      s'installe en haut de son écran, avec le NOM de qui le guide.
+//      Il ne se réduit pas, il ne se range pas au bout de 5 secondes.
+//      Supprimer la question était un choix de confort ; supprimer le
+//      bandeau serait entrer chez quelqu'un en cachette, et c'est non.
 //
-//   3. LA SESSION EXPIRE D'ELLE-MÊME. Une assistance oubliée ouverte
-//      est une assistance qui regarde. Deux limites : un silence trop
-//      long ([inactiviteMax]) et une durée totale ([dureeMax]) que rien
-//      ne prolonge — même un support très actif finit par être coupé.
+//   2. LE CLIENT PEUT ARRÊTER, à la seconde, sans rien demander à
+//      personne. Le bouton est DANS le bandeau, donc toujours là.
 //
-//   4. UNE SEULE À LA FOIS. Une deuxième demande pendant une session
-//      est refusée, pas empilée : le client saurait plus qui le guide.
+//   3. ÇA S'ARRÊTE TOUT SEUL. Un silence trop long ([inactiviteMax])
+//      ou une durée totale atteinte ([dureeMax]) ferment la session,
+//      que tout le monde ait oublié ou non.
+//
+//   4. UNE SEULE À LA FOIS. Deux supports ne conduisent pas la même
+//      app : le client ne saurait plus qui le guide.
+//
+//  Autrement dit : on a retiré la PORTE, pas les FENÊTRES. Le mode
+//  reste franc — ce qui rend une assistance honnête, ce n'est pas de
+//  se retenir d'agir, c'est que la personne voie tout et puisse
+//  couper. Un support qui agit sous les yeux du client, avec un
+//  bandeau permanent et une sortie à portée de pouce, est franc. Un
+//  support invisible ne le serait pas, même en faisant moins.
 //
 //  ---------------------------------------------------------
 //  LES DEUX SEULES CHOSES QUE CE MODE N'AUTORISE PAS
 //  ---------------------------------------------------------
-//  Le support conduit l'app : il ouvre les écrans, met un favori, entre
-//  dans une catégorie, choisit une chaîne. Tout ce que le client ferait
-//  lui-même, et le client le voit se faire.
+//  Le support conduit l'app : il ouvre les écrans, met un favori,
+//  montre du doigt. Tout ce que le client ferait lui-même.
 //
 //  Deux exceptions, et elles ne sont pas négociables :
 //
@@ -71,38 +71,39 @@
 //     protège, y compris de nous.
 //
 //  Ces deux-là passent par les routes du panel, sous le nom du
-//  revendeur, et laissent une trace. Tout le reste, oui : c'est ce que
-//  le propriétaire a demandé, et c'est son produit.
+//  revendeur, et laissent une trace. Tout le reste, oui.
+//
+//  ---------------------------------------------------------
+//  CE FICHIER EST PUR
+//  ---------------------------------------------------------
+//  Pas de réseau, pas de Flutter, horloge injectée. C'est la machine à
+//  états, et rien d'autre : les règles de temps ne doivent jamais
+//  dépendre de l'humeur d'un écran.
 // =========================================================
 
 /// Où en est l'assistance sur CET appareil.
+///
+///  DEUX ÉTATS, PAS TROIS. L'état « demandée » (la question posée, la
+///  réponse attendue) a été retiré le 19/09/2026 — voir l'en-tête. Le
+///  guidage ne connaît plus que deux situations : personne, ou
+///  quelqu'un, et le client le voit dans les deux cas.
 enum EtatAssistance {
   /// Rien en cours. L'état normal, et celui vers lequel tout retombe.
   inactive,
 
-  /// Le support a demandé ; le client n'a pas encore répondu. L'app
-  /// affiche la question. Sans réponse, ça expire — voir [attenteMax].
-  demandee,
-
-  /// Le client a dit OUI. Le guidage est possible, et un bandeau reste
-  /// affiché pendant tout ce temps.
+  /// Un support conduit l'app. Un bandeau reste affiché pendant tout
+  /// ce temps, et le client peut couper à la seconde.
   active,
 }
 
 /// Pourquoi une session s'est terminée. Sert à DIRE au client ce qui
 /// s'est passé — « ça s'est arrêté tout seul » sans raison inquiète.
 enum FinAssistance {
-  /// Le client a refusé la demande.
-  refusee,
-
   /// Le client a arrêté la session en cours.
   arreteeParClient,
 
   /// Le support a rendu la main.
   arreteeParSupport,
-
-  /// Personne n'a répondu à la demande.
-  demandeExpiree,
 
   /// Trop longtemps sans rien faire.
   silence,
@@ -110,13 +111,6 @@ enum FinAssistance {
   /// Durée maximale atteinte.
   tempsEcoule,
 }
-
-/// Combien de temps une demande reste affichée avant de s'effacer.
-///
-///  Assez pour que le client pose son café et lise ; assez court pour
-///  qu'une demande oubliée à l'écran ne serve pas de « oui » plus tard,
-///  quand il aura oublié qui la lui avait posée.
-const Duration attenteMax = Duration(seconds: 90);
 
 /// Silence au-delà duquel on coupe. Un support qui ne fait plus rien
 /// n'a plus de raison d'avoir la main.
@@ -126,7 +120,32 @@ const Duration inactiviteMax = Duration(minutes: 10);
 /// demi-heure n'est plus une assistance.
 const Duration dureeMax = Duration(minutes: 30);
 
-/// La machine à états du consentement. Pure, horloge injectée.
+/// Combien de temps le NON du client tient, après qu'il a appuyé sur
+/// « Arrêter ».
+///
+///  ---------------------------------------------------------
+///  POURQUOI CE DÉLAI EXISTE (19/09/2026)
+///  ---------------------------------------------------------
+///  Tant que la session commençait par une question, « Arrêter »
+///  suffisait : pour revenir, il fallait reposer la question, et le
+///  client pouvait dire non.
+///
+///  Depuis que la prise est automatique, ce n'est plus vrai. Sans ce
+///  délai, le client appuie sur « Arrêter », le support reclique une
+///  seconde plus tard, et le bandeau revient. Le bouton serait décoratif
+///  — et un bouton d'arrêt décoratif est pire que pas de bouton du tout,
+///  parce qu'il fait croire à une sortie qui n'existe pas.
+///
+///  Deux minutes : assez pour que le NON compte et se remarque,
+///  assez court pour qu'un client qui a coupé par erreur ne reste pas
+///  bloqué pendant que le support l'a au téléphone.
+///
+///  CE DÉLAI NE S'APPLIQUE QU'AU NON DU CLIENT. Quand c'est le SUPPORT
+///  qui rend la main, il peut reprendre tout de suite : il ne s'est
+///  rien refusé à lui-même.
+const Duration repitApresArret = Duration(minutes: 2);
+
+/// La machine à états de l'assistance. Pure, horloge injectée.
 class AssistanceSession {
   AssistanceSession({DateTime Function()? horloge})
       : _horloge = horloge ?? DateTime.now;
@@ -134,18 +153,23 @@ class AssistanceSession {
   final DateTime Function() _horloge;
 
   EtatAssistance _etat = EtatAssistance.inactive;
-  DateTime? _demandeeA;
-  DateTime? _accepteeA;
+  DateTime? _ouverteA;
   DateTime? _dernierOrdre;
   String _support = '';
   FinAssistance? _derniereFin;
 
+  /// Jusqu'à quand le NON du client tient. Voir [repitApresArret].
+  DateTime? _repitJusqua;
+
   EtatAssistance get etat => _etat;
 
-  /// Qui demande / guide, tel qu'on l'affiche au client. Vide hors
-  /// session. On ne montre JAMAIS une session anonyme : « quelqu'un
-  /// veut prendre la main » n'est pas une question à laquelle on peut
-  /// répondre.
+  /// Qui guide, tel qu'on l'affiche au client. Vide hors session.
+  ///
+  ///  ON NE GUIDE JAMAIS ANONYMEMENT. Un bandeau qui dirait « quelqu'un
+  ///  vous aide » est plus inquiétant qu'utile : le client ne peut ni
+  ///  reconnaître la personne qu'il a au téléphone, ni se plaindre de
+  ///  celle qu'il n'a pas appelée. C'est pourquoi [prendre] refuse un
+  ///  nom vide.
   String get support => _support;
 
   /// Pourquoi la dernière session s'est terminée. `null` si aucune.
@@ -155,49 +179,63 @@ class AssistanceSession {
   /// que le reste de l'app doit poser.
   bool get guidagePermis => _etat == EtatAssistance.active;
 
-  /// LE SUPPORT DEMANDE. Renvoie `false` si on ne peut pas — déjà une
-  /// demande en cours, ou déjà une session : on ne fait pas la queue.
-  bool demander(String support) {
-    _expirerSiNecessaire();
-    if (_etat != EtatAssistance.inactive) return false;
-    final String nom = support.trim();
-    // Une demande sans nom ne se pose pas : le client doit savoir QUI.
-    if (nom.isEmpty) return false;
-    _support = nom;
-    _demandeeA = _horloge();
-    _etat = EtatAssistance.demandee;
-    return true;
+  /// Le client vient-il de couper ? Pendant [repitApresArret], son NON
+  /// tient et aucune session ne peut s'ouvrir. Sert au panel, pour dire
+  /// au support pourquoi son bouton ne répond pas — sinon il croit à
+  /// une panne et appuie dix fois.
+  bool get clientARefuse {
+    final DateTime? fin = _repitJusqua;
+    return fin != null && _horloge().isBefore(fin);
   }
 
-  /// LE CLIENT DIT OUI. Renvoie `false` s'il n'y avait rien à accepter
-  /// (demande expirée entre-temps, par exemple) — et dans ce cas AUCUNE
-  /// session ne démarre. Un « oui » qui arrive après l'expiration ne
-  /// rattrape rien : c'est une réponse à une question qui n'est plus
-  /// posée.
-  bool accepter() {
+  /// LE SUPPORT PREND LA MAIN — tout de suite, sans question posée.
+  ///
+  ///  Renvoie `false` dans deux cas seulement :
+  ///   • une session est DÉJÀ ouverte (règle n°4 : une seule à la fois,
+  ///     on ne fait pas la queue et on ne double pas le pilote) ;
+  ///   • le nom est vide (voir [support] : on ne guide pas masqué).
+  ///
+  ///  Appeler [prendre] pendant sa PROPRE session renvoie aussi
+  ///  `false` — et c'est sans conséquence : la session continue, rien
+  ///  n'est réinitialisé. Un support qui reclique sur « Prendre la
+  ///  main » ne doit pas remettre le compteur de 30 minutes à zéro,
+  ///  sinon la limite totale ne serait plus une limite.
+  bool prendre(String support) {
     _expirerSiNecessaire();
-    if (_etat != EtatAssistance.demandee) return false;
+    if (_etat != EtatAssistance.inactive) return false;
+    // LE NON DU CLIENT TIENT. Voir [repitApresArret] : sans ça, son
+    // bouton « Arrêter » ne serait qu'une pause d'une seconde.
+    if (clientARefuse) return false;
+    final String nom = support.trim();
+    if (nom.isEmpty) return false;
     final DateTime t = _horloge();
-    _accepteeA = t;
+    _support = nom;
+    _ouverteA = t;
     _dernierOrdre = t;
     _etat = EtatAssistance.active;
     _derniereFin = null;
     return true;
   }
 
-  /// LE CLIENT DIT NON.
-  void refuser() => _terminer(FinAssistance.refusee);
-
-  /// LE CLIENT ARRÊTE une session en cours. Toujours possible : c'est
-  /// la règle n°2, et elle n'a pas d'exception.
-  void arreterParClient() => _terminer(FinAssistance.arreteeParClient);
+  /// LE CLIENT ARRÊTE. Toujours possible : c'est la règle n°2, et elle
+  /// n'a pas d'exception.
+  ///
+  ///  Son NON tient ensuite pendant [repitApresArret], MÊME s'il n'y
+  ///  avait pas de session ouverte à ce moment-là. C'est voulu : un
+  ///  client qui appuie sur « Arrêter » pendant que le bandeau
+  ///  disparaît tout seul a quand même dit non, et son geste doit
+  ///  compter autant.
+  void arreterParClient() {
+    _repitJusqua = _horloge().add(repitApresArret);
+    _terminer(FinAssistance.arreteeParClient);
+  }
 
   /// LE SUPPORT rend la main.
   void arreterParSupport() => _terminer(FinAssistance.arreteeParSupport);
 
   /// Un ordre de guidage vient d'arriver. Renvoie `false` si le guidage
   /// n'est PAS permis — l'appelant doit alors ignorer l'ordre, pas
-  /// demander une confirmation ni « essayer quand même ».
+  /// « essayer quand même ».
   bool noterOrdre() {
     _expirerSiNecessaire();
     if (_etat != EtatAssistance.active) return false;
@@ -217,40 +255,47 @@ class AssistanceSession {
     _expirerSiNecessaire();
     if (_etat != EtatAssistance.active) return null;
     final DateTime t = _horloge();
-    final Duration parDuree = dureeMax - t.difference(_accepteeA!);
+    final Duration parDuree = dureeMax - t.difference(_ouverteA!);
     final Duration parSilence = inactiviteMax - t.difference(_dernierOrdre!);
-    final Duration restant =
-        parDuree < parSilence ? parDuree : parSilence;
+    final Duration restant = parDuree < parSilence ? parDuree : parSilence;
     return restant.isNegative ? Duration.zero : restant;
+  }
+
+  /// Remet la session à neuf — Y COMPRIS le répit du client.
+  ///
+  ///  Réservé aux tests. `arreterParClient()` ne suffirait pas : il
+  ///  pose justement le répit de deux minutes, et le test suivant ne
+  ///  pourrait plus rien ouvrir. Un test qui échoue pour une raison
+  ///  qui n'a rien à voir avec lui fait perdre plus de temps que le
+  ///  bug qu'il cherchait.
+  void reinitialiser() {
+    _etat = EtatAssistance.inactive;
+    _derniereFin = null;
+    _ouverteA = null;
+    _dernierOrdre = null;
+    _support = '';
+    _repitJusqua = null;
   }
 
   void _terminer(FinAssistance raison) {
     if (_etat == EtatAssistance.inactive) return;
     _etat = EtatAssistance.inactive;
     _derniereFin = raison;
-    _demandeeA = null;
-    _accepteeA = null;
+    _ouverteA = null;
     _dernierOrdre = null;
     _support = '';
   }
 
   /// Le temps fait son travail, sans que personne n'ait à y penser.
   void _expirerSiNecessaire() {
+    if (_etat != EtatAssistance.active) return;
     final DateTime t = _horloge();
-    if (_etat == EtatAssistance.demandee) {
-      if (t.difference(_demandeeA!) >= attenteMax) {
-        _terminer(FinAssistance.demandeExpiree);
-      }
+    if (t.difference(_ouverteA!) >= dureeMax) {
+      _terminer(FinAssistance.tempsEcoule);
       return;
     }
-    if (_etat == EtatAssistance.active) {
-      if (t.difference(_accepteeA!) >= dureeMax) {
-        _terminer(FinAssistance.tempsEcoule);
-        return;
-      }
-      if (t.difference(_dernierOrdre!) >= inactiviteMax) {
-        _terminer(FinAssistance.silence);
-      }
+    if (t.difference(_dernierOrdre!) >= inactiviteMax) {
+      _terminer(FinAssistance.silence);
     }
   }
 }
@@ -282,11 +327,25 @@ enum GesteGuidage {
   /// Revient en arrière, comme la touche Retour.
   retour,
 
-  /// Éclaire un élément et affiche une phrase (« c'est ici »). Utile
-  /// APRÈS avoir montré : le client refait tout seul.
+  /// LE DOIGT DU SUPPORT, POSÉ SUR L'ÉCRAN DU CLIENT (19/09/2026).
+  ///
+  ///  Demande du propriétaire, mot pour mot : « il va y avoir un
+  ///  simulateur de TV ou de téléphone ; où je touche, il voit où je
+  ///  touche ».
+  ///
+  ///  Le support touche une maquette d'écran dans le panel ; un halo
+  ///  apparaît au MÊME ENDROIT, en proportion, sur l'écran du client.
+  ///  Les coordonnées sont donc des FRACTIONS (0 → 1), jamais des
+  ///  pixels : la maquette du panel fait quelques centaines de points,
+  ///  la télé du client quelques milliers, et une session peut sauter
+  ///  d'un téléphone à une box. Des pixels pointeraient à côté.
+  pointer,
+
+  /// Affiche une phrase (« c'est ici ») dans le bandeau. Utile APRÈS
+  /// avoir montré : le client refait tout seul.
   designer,
 
-  /// Efface la désignation en cours.
+  /// Efface le halo et la phrase en cours.
   effacer,
 }
 
@@ -309,6 +368,8 @@ GesteGuidage? lireGeste(String? nom) {
       return GesteGuidage.basculerFavori;
     case 'retour':
       return GesteGuidage.retour;
+    case 'pointeur':
+      return GesteGuidage.pointer;
     case 'designer':
       return GesteGuidage.designer;
     case 'effacer':

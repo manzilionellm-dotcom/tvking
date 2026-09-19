@@ -41,6 +41,21 @@ import { useLiveDevices } from '@/lib/realtime';
 import { formatMacInput } from '@/lib/utils';
 import { devicesApi, ApiError, type DeviceOverview } from '@/lib/api';
 
+/// Télé ou téléphone ? Uniquement pour donner sa SILHOUETTE à la
+/// maquette tactile (16/9 ou allongée).
+///
+///  C'EST UNE SUPPOSITION, ET ELLE PEUT SE TROMPER : le modèle remonté
+///  par l'appareil est un texte libre, et une tablette ou un mini-PC
+///  ne ressemblent ni à l'un ni à l'autre. C'est pour ça que la
+///  maquette garde un interrupteur Télé / Téléphone : on propose, on
+///  n'impose pas. Se tromper ici ne casse rien — les positions
+///  envoyées sont des fractions, pas des pixels.
+function silhouetteDe(modele?: string | null): 'tv' | 'phone' {
+  const m = (modele || '').toLowerCase();
+  const indices = ['tv', 'shield', 'box', 'stick', 'mibox', 'chromecast', 'firetv'];
+  return indices.some((i) => m.includes(i)) ? 'tv' : 'phone';
+}
+
 export function MainPage({ onLogout }: { onLogout: () => void }) {
   const [sp, setSp] = useSearchParams();
   const [mac, setMac] = useState(sp.get('mac') || 'MK:');
@@ -143,7 +158,11 @@ export function MainPage({ onLogout }: { onLogout: () => void }) {
 
       {ov ? (
         <div className="max-w-2xl">
-          <PrendreLaMain mac={macCourante} enLigne={enLigne} />
+          <PrendreLaMain
+            mac={macCourante}
+            enLigne={enLigne}
+            forme={silhouetteDe(ov.device?.device_model)}
+          />
         </div>
       ) : (
         <div className="max-w-2xl rounded-xl border border-white/10 bg-obsidian px-4 py-4 text-sm text-ink-secondary">

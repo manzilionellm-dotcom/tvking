@@ -615,7 +615,11 @@ function DeviceScreenPage({
           <div className="order-1 space-y-6 lg:order-2">
             {/* PRENDRE LA MAIN — en premier : quand on ouvre cette page
                 avec un client au téléphone, c'est ce qu'on vient faire. */}
-            <PrendreLaMain mac={macCourante} enLigne={enLigne} />
+            {/* La maquette tactile prend la SILHOUETTE de la page où
+                on se trouve : 16/9 sur Télévision, allongée sur
+                Téléphone. Ce qui part sur le réseau reste des
+                fractions — c'est purement pour viser juste. */}
+            <PrendreLaMain mac={macCourante} enLigne={enLigne} forme={kind} />
 
             <section>
               <h3 className="mb-2 text-sm font-semibold">

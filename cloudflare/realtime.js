@@ -407,23 +407,38 @@ export class RealtimeHub {
           const p = msg.payload || {};
           const geste = String(p.geste || '');
           const connus = [
-            'demander', 'fin',
+            // `prendre` est le mot d'aujourd'hui ; `demander` celui des
+            // panels d'avant le 19/09/2026. Les deux passent : une box
+            // restée en arrière et un panel à jour doivent continuer à
+            // se parler, et inversement.
+            'prendre', 'demander', 'fin',
             'ouvrir', 'categorie', 'chaine', 'favori', 'retour',
-            'designer', 'effacer',
+            // LE DOIGT DU SUPPORT (19/09/2026) : « où je touche, il
+            // voit où je touche ».
+            'pointeur', 'designer', 'effacer',
           ];
           if (connus.includes(geste)) {
             event = {
               type: 'assist',
               id,
               geste,
-              // QUI demande : l'app l'affiche au client, et une demande
-              // anonyme est refusée côté app. On borne, on n'invente
-              // pas de valeur par défaut.
+              // QUI guide : l'app l'affiche au client dans le bandeau,
+              // et un geste anonyme est refusé côté app. On borne, on
+              // n'invente pas de valeur par défaut.
               support: strOr(p.support, '', 60),
               nom: strOr(p.nom, '', 60),
               cible: strOr(p.cible, '', 60),
               phrase: strOr(p.phrase, '', 120),
               id_cible: strOr(p.id_cible, '', 80),
+              // POSITION DU DOIGT, en fraction d'écran (0 → 1).
+              //
+              // Le hub BORNE, il ne CORRIGE PAS : hors intervalle, la
+              // valeur devient `null` et l'app refusera le geste avec
+              // `position_invalide`. Ramener 1,4 à 1 poserait le halo
+              // dans un coin que personne n'a désigné, et le client
+              // irait regarder là.
+              x: fraction(p.x),
+              y: fraction(p.y),
             };
           }
         }
@@ -619,6 +634,26 @@ function jsonInternal(body, status = 200) {
 }
 
 /// Coercition champ texte : valeur si string non vide, sinon fallback.
+/// Une fraction d'écran (0 → 1), ou `null`.
+///
+///  `Number(null)` vaut 0 et `Number('')` vaut 0 : sans la garde sur
+///  la chaîne vide, un payload sans position poserait un halo en haut
+///  à gauche de la télé du client. On refuse aussi `NaN`, que la
+///  comparaison `v <= 1` laisserait passer si on l'écrivait à
+///  l'envers (`!(v > 1)` est vrai pour NaN).
+export function fraction(v) {
+  //  ON N'ACCEPTE QUE DES NOMBRES ET DU TEXTE, et c'est le test de
+  //  fumée qui l'a imposé : `Number([])` vaut 0, et `Number([0.5])`
+  //  vaut 0,5. Sans cette ligne, un payload mal formé posait quand
+  //  même un doigt sur l'écran de quelqu'un — en haut à gauche, à un
+  //  endroit que personne n'avait désigné.
+  if (typeof v !== 'number' && typeof v !== 'string') return null;
+  if (v === '') return null;
+  const n = Number(v);
+  if (!(n >= 0 && n <= 1)) return null;
+  return n;
+}
+
 function strOr(v, fallback, maxLen) {
   const s = typeof v === 'string' ? v : (v === 0 ? '0' : '');
   const out = s !== '' ? s : (fallback || '');

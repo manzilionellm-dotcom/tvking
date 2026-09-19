@@ -6,13 +6,18 @@
 //  seule chose qu'il voit — et c'est donc lui qui décide si le mode
 //  est honnête ou pas.
 //
-//  TROIS RÈGLES, ET ELLES SE VOIENT À L'ŒIL NU :
+//  DEPUIS LE 19/09/2026, ON NE LUI DEMANDE PLUS SON ACCORD à l'écran
+//  (« je veux que ça soit automatique » — le client est au téléphone,
+//  il dit oui à l'oreille du support, pas à sa télécommande). Ce
+//  fichier porte donc TOUT le poids de la franchise du mode. Les
+//  règles qui restent ne sont pas décoratives :
 //
-//   1. ON LUI DEMANDE, AVEC UN NOM. « Lionel (7 MOTION) veut vous
-//      aider » — jamais « une demande d'assistance ». Il doit savoir
-//      qui, sinon il ne peut pas répondre.
+//   1. LE BANDEAU EST IMMÉDIAT, ET IL PORTE UN NOM. « Lionel vous aide
+//      en ce moment » — jamais « assistance à distance ». Le client
+//      doit reconnaître la personne qu'il a au téléphone, et repérer
+//      tout de suite celle qu'il n'a pas appelée.
 //
-//   2. PENDANT TOUTE LA SESSION, UN BANDEAU RESTE. Il ne se réduit
+//   2. LE BANDEAU NE PART JAMAIS pendant la session. Il ne se réduit
 //      pas, il ne se cache pas au bout de cinq secondes, il ne se
 //      range pas dans un coin. Quelqu'un est dans son appareil : ça
 //      doit se voir en permanence, sans avoir à y penser.
@@ -24,6 +29,18 @@
 //  Le bandeau annonce aussi le temps qui reste. C'est rassurant ET
 //  c'est vrai : la session s'arrête toute seule, même si tout le monde
 //  oublie.
+//
+//  ---------------------------------------------------------
+//  LE HALO — « OÙ JE TOUCHE, IL VOIT OÙ JE TOUCHE »
+//  ---------------------------------------------------------
+//  Le support touche une maquette d'écran dans le panel ; un rond
+//  lumineux apparaît au même endroit, en proportion, sur l'écran du
+//  client. C'est le doigt du support, posé sur sa télé.
+//
+//  IL NE CAPTE PAS LES APPUIS. Le halo est dessiné par-dessus, en
+//  `IgnorePointer` : si le client veut appuyer exactement là où on lui
+//  montre, son doigt doit passer à travers. Un guide qui bloque le
+//  passage n'est plus un guide.
 // =========================================================
 
 import 'dart:async';
@@ -88,21 +105,30 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    final EtatAssistance etat = _c.etat;
+    final bool active = _c.etat == EtatAssistance.active;
+    final Designation? d = _c.designation;
+    //  LE `Stack` EST TOUJOURS LÀ, MÊME HORS SESSION — et ce n'est pas
+    //  du gaspillage, c'est une protection.
+    //
+    //  Si on rendait `widget.child` tout seul hors session, alors au
+    //  moment où le support prend la main l'application changerait de
+    //  place dans l'arbre (enfant direct → premier enfant d'un Stack).
+    //  Flutter détruirait et reconstruirait tout ce qui est en dessous :
+    //  le lecteur vidéo repartirait de zéro, la liste sauterait en
+    //  haut, le client verrait son film s'arrêter pile au moment où on
+    //  lui dit « ne bougez pas, je regarde ».
+    //
+    //  Les surcouches s'ajoutent donc APRÈS l'enfant, et lui ne bouge
+    //  jamais de l'index 0.
     return Stack(
       children: <Widget>[
         widget.child,
-        if (etat == EtatAssistance.demandee)
-          _Demande(
-            support: _c.support,
-            onOui: _c.accepter,
-            onNon: _c.refuser,
-          ),
-        if (etat == EtatAssistance.active)
+        if (active && d != null && d.aUnHalo) _Halo(x: d.x!, y: d.y!),
+        if (active)
           _Bandeau(
             support: _c.support,
             restant: _c.tempsRestant,
-            phrase: _c.designation?.phrase ?? '',
+            phrase: d?.phrase ?? '',
             onArreter: _c.arreterParClient,
           ),
       ],
@@ -110,90 +136,96 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
   }
 }
 
-/// « Lionel veut vous aider » — la question, en grand, au milieu.
-class _Demande extends StatelessWidget {
-  const _Demande({
-    required this.support,
-    required this.onOui,
-    required this.onNon,
-  });
+/// Le doigt du support, posé sur l'écran du client.
+///
+///  Deux ronds concentriques qui respirent : un point plein qui dit
+///  « exactement ici », et une onde qui s'ouvre pour attirer l'œil
+///  depuis l'autre bout d'une télé de 55 pouces. Un simple point fixe
+///  se perd dans une grille de logos de chaînes.
+class _Halo extends StatefulWidget {
+  const _Halo({required this.x, required this.y});
 
-  final String support;
-  final VoidCallback onOui;
-  final VoidCallback onNon;
+  /// Fractions de l'écran (0 → 1). Voir [Designation.x].
+  final double x;
+  final double y;
+
+  @override
+  State<_Halo> createState() => _HaloState();
+}
+
+class _HaloState extends State<_Halo> with SingleTickerProviderStateMixin {
+  late final AnimationController _anim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: Material(
-        color: Colors.black.withValues(alpha: 0.82),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: Padding(
-              padding: const EdgeInsets.all(28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    '$support veut vous aider',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xFFF0EDE9),
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  //  ON DIT CE QUI VA SE PASSER, sans enjoliver. « Il va
-                  //  toucher à votre application » est la vérité ; la
-                  //  cacher derrière « assistance à distance » ferait
-                  //  accepter quelque chose qu'on n'a pas compris.
-                  const Text(
-                    'Il pourra ouvrir des écrans et changer des réglages '
-                    'sur cet appareil, pendant que vous regardez. Vous '
-                    'voyez tout ce qu’il fait, et vous pouvez arrêter '
-                    'à tout moment.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFFB6B0A8), fontSize: 16),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Il ne peut ni payer, ni changer votre mot de passe, '
-                    'ni votre code parental.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFF7E7872), fontSize: 14),
-                  ),
-                  const SizedBox(height: 26),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      //  « NON » EN PREMIER ET AUSSI VISIBLE QUE « OUI ».
-                      //  Mettre le refus en petit, en gris, sur le côté,
-                      //  c'est fabriquer un oui.
-                      _Bouton(
-                        texte: 'Non merci',
-                        onTap: onNon,
-                        principal: false,
-                      ),
-                      const SizedBox(width: 16),
-                      _Bouton(
-                        texte: 'Oui, aidez-moi',
-                        onTap: onOui,
-                        principal: true,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Sans réponse, la demande s’efface toute seule.',
-                    style: TextStyle(color: Color(0xFF4E4A45), fontSize: 12),
-                  ),
-                ],
+    //  `IgnorePointer` : le halo MONTRE, il ne bloque pas. Si le client
+    //  appuie pile là où on lui indique, son doigt doit atteindre le
+    //  bouton qui est dessous.
+    return IgnorePointer(
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints c) {
+          const double taille = 132;
+          return Stack(
+            children: <Widget>[
+              Positioned(
+                left: widget.x * c.maxWidth - taille / 2,
+                top: widget.y * c.maxHeight - taille / 2,
+                width: taille,
+                height: taille,
+                child: AnimatedBuilder(
+                  animation: _anim,
+                  builder: (BuildContext context, _) {
+                    final double t = _anim.value;
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: <Widget>[
+                        // L'onde qui s'ouvre et s'efface.
+                        Opacity(
+                          opacity: (1 - t).clamp(0.0, 1.0) * 0.75,
+                          child: Container(
+                            width: taille * (0.35 + 0.65 * t),
+                            height: taille * (0.35 + 0.65 * t),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: const Color(0xFFE84A3E),
+                                width: 4,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Le point plein : « exactement ici ».
+                        Container(
+                          width: taille * 0.3,
+                          height: taille * 0.3,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFFE84A3E),
+                            boxShadow: <BoxShadow>[
+                              BoxShadow(
+                                color: Color(0x88000000),
+                                blurRadius: 12,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
-            ),
-          ),
-        ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -258,7 +290,7 @@ class _Bandeau extends StatelessWidget {
                   ),
                 ),
                 //  LA SORTIE, TOUJOURS LÀ, TOUJOURS AU MÊME ENDROIT.
-                _Bouton(texte: 'Arrêter', onTap: onArreter, principal: false),
+                _Bouton(texte: 'Arrêter', onTap: onArreter),
               ],
             ),
           ),
@@ -269,20 +301,14 @@ class _Bandeau extends StatelessWidget {
 }
 
 class _Bouton extends StatelessWidget {
-  const _Bouton({
-    required this.texte,
-    required this.onTap,
-    required this.principal,
-  });
+  const _Bouton({required this.texte, required this.onTap});
 
   final String texte;
   final VoidCallback onTap;
-  final bool principal;
 
   @override
   Widget build(BuildContext context) {
     return Focus(
-      autofocus: principal,
       child: Builder(
         builder: (BuildContext context) {
           final bool focus = Focus.of(context).hasFocus;
@@ -292,9 +318,7 @@ class _Bouton extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
               decoration: BoxDecoration(
-                color: principal
-                    ? const Color(0xFFE84A3E)
-                    : Colors.white.withValues(alpha: 0.14),
+                color: Colors.white.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: focus ? Colors.white : Colors.transparent,
