@@ -49,20 +49,25 @@ const MAX_FRAME_BYTES = 8 * 1024;
 /// Plafond réservé à l'image d'écran (`type: 'screen'`), et à elle
 /// seule — voir le pavé dans webSocketMessage().
 ///
-///  128 Ko : une image de 420 px de large, encodée en PNG puis en
-///  base64, pèse 20 à 60 Ko. Le double laisse de la marge sans ouvrir
-///  la porte en grand ; l'app, de son côté, jette déjà tout ce qui
-///  dépasse 90 Ko avant même d'essayer de l'envoyer.
-const MAX_SCREEN_FRAME_BYTES = 128 * 1024;
+///  512 Ko : la capture SYSTÈME (MediaProjection, 960 px, JPEG q55)
+///  pèse 60 à 120 Ko, soit 80 à 160 Ko en base64. L'app jette tout ce
+///  qui dépasse 300 Ko avant d'envoyer (400 Ko en base64) : ce plafond
+///  reste au-dessus, avec de la marge, et bien sous la limite d'un
+///  message WebSocket Cloudflare (1 Mo). Relevé le 19/09 au soir pour
+///  « un écran géant et lisible » ; le 8 Ko de tout le reste ne bouge pas.
+const MAX_SCREEN_FRAME_BYTES = 512 * 1024;
 
 /// Cadence maximale des images, par appareil.
 ///
-///  L'app envoie toutes les 2 s. Ce plancher à 1 s ne la gêne donc
-///  jamais — il est là pour l'app QUI DÉRAILLE : une boucle qui
-///  s'emballe inonderait le panel et ferait payer la bande passante à
-///  tout le monde. Le hub est le seul endroit qui puisse l'arrêter,
-///  parce qu'il est le seul que l'app ne peut pas contourner.
-const MIN_SCREEN_INTERVAL_MS = 900;
+///  L'app envoie toutes les 350 ms quand la capture système est ouverte
+///  (~3 images/s, « l'écran doit être fluide »), toutes les 2 s sinon.
+///  Ce plancher à 250 ms ne la gêne donc jamais — il est là pour l'app
+///  QUI DÉRAILLE : une boucle qui s'emballe inonderait le panel et ferait
+///  payer la bande passante à tout le monde. Le hub est le seul endroit
+///  qui puisse l'arrêter, parce qu'il est le seul que l'app ne peut pas
+///  contourner. Abaissé de 900 à 250 ms le 19/09 au soir, EN MÊME TEMPS
+///  que la cadence de l'app — voir le test qui lie les deux.
+const MIN_SCREEN_INTERVAL_MS = 250;
 
 // Throttle d'écriture présence D1 : au plus une écriture / 30 s / MAC.
 const PRESENCE_WRITE_MS = 30 * 1000;
@@ -508,6 +513,10 @@ export class RealtimeHub {
             // voit où je touche ». Et `taper` : un VRAI clic injecté
             // dans l'app, pas un simple pointage.
             'pointeur', 'taper', 'designer', 'effacer',
+            // LA TÉLÉCOMMANDE (19/09 au soir) : haut/bas/gauche/droite/ok,
+            // dans `dir`. Le hub borne le mot ; l'app refuse tout ce
+            // qu'elle ne connaît pas.
+            'naviguer',
           ];
           if (connus.includes(geste)) {
             event = {
@@ -522,6 +531,7 @@ export class RealtimeHub {
               cible: strOr(p.cible, '', 60),
               phrase: strOr(p.phrase, '', 120),
               id_cible: strOr(p.id_cible, '', 80),
+              dir: strOr(p.dir, '', 12),
               // POSITION DU DOIGT, en fraction d'écran (0 → 1).
               //
               // Le hub BORNE, il ne CORRIGE PAS : hors intervalle, la

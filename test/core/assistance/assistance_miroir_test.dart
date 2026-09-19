@@ -58,26 +58,34 @@ void main() {
 
   group('les réglages tiennent ensemble', () {
     test('l\'app jette avant que le hub ne refuse', () {
-      //  Le hub accepte 128 Ko ; l'app jette au-delà de 90 Ko. L'écart
+      //  Le hub accepte 512 Ko ; l'app jette au-delà de 300 Ko. L'écart
       //  n'est pas décoratif : il faut que l'app s'arrête D'ELLE-MÊME
       //  avant le mur, sinon elle dépense l'encodage ET la montée
       //  réseau pour une image que le serveur jettera.
       //
-      //  90 Ko de PNG deviennent 120 Ko en base64 (+33 %), donc encore
-      //  sous les 128 Ko du hub. Si quelqu'un remonte `poidsMaxMiroir`
-      //  sans toucher au hub, ce test tombe — et c'est exactement son
-      //  rôle.
-      const int plafondHub = 128 * 1024;
+      //  300 Ko deviennent 400 Ko en base64 (+33 %), donc encore sous
+      //  les 512 Ko du hub. Les deux chiffres ont été relevés ENSEMBLE
+      //  le 19/09 au soir (capture système 960 px). Si quelqu'un remonte
+      //  `poidsMaxMiroir` sans toucher au hub, ce test tombe — et c'est
+      //  exactement son rôle.
+      const int plafondHub = 512 * 1024;
       expect((poidsMaxMiroir * 4 / 3).round(), lessThan(plafondHub),
           reason: 'le base64 gonfle de 33 % : l\'app doit rester sous '
               'le plafond du hub MÊME une fois encodée');
     });
 
-    test('la cadence laisse de la marge au plancher du hub', () {
-      // Le hub refuse plus d'une image par 900 ms. L'app en envoie une
-      // toutes les 2 s : elle ne doit jamais s'en approcher, sinon un
-      // décalage d'horloge ferait sauter des images au hasard.
-      expect(periodeMiroir.inMilliseconds, greaterThan(900 * 2));
+    test('les deux cadences restent au-dessus du plancher du hub', () {
+      //  Le hub refuse plus d'une image par 250 ms. Les DEUX cadences de
+      //  l'app doivent rester au-dessus avec de la marge, sinon un
+      //  décalage d'horloge ferait sauter des images au hasard — et
+      //  l'écran « fluide » deviendrait saccadé sans qu'on sache pourquoi.
+      //  Si quelqu'un accélère l'app sans toucher au hub, ce test tombe.
+      const int plancherHubMs = 250;
+      expect(periodeMiroirNatif.inMilliseconds,
+          greaterThanOrEqualTo((plancherHubMs * 1.3).round()),
+          reason: 'la voie système (~3/s) doit garder 30 % de marge');
+      expect(periodeMiroir.inMilliseconds, greaterThan(plancherHubMs * 2),
+          reason: 'la voie Flutter reste lente : toImage est lourd');
     });
   });
 }

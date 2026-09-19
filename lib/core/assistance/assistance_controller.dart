@@ -173,6 +173,14 @@ typedef EnvoiMiroir = void Function(
 ///  sait à qui demander. Même séparation que l'exécuteur et le miroir.
 typedef Tapeur = void Function(double x, double y);
 
+/// Déplace le focus / fait défiler, comme une télécommande.
+///
+///  [dir] : `haut`, `bas`, `gauche`, `droite`, `ok`. Rend `null` si le
+///  geste a eu lieu, sinon une raison courte (`bord_atteint`,
+///  `pas_de_focus`…). Posé par la surcouche, qui seule a accès au
+///  gestionnaire de focus et au moteur de gestes.
+typedef Navigateur = String? Function(String dir);
+
 /// Combien de temps le halo reste posé avant de s'effacer tout seul.
 ///
 ///  Un doigt ne reste pas pointé indéfiniment. Passé ce délai, le halo
@@ -190,6 +198,7 @@ class AssistanceController extends ChangeNotifier {
   AssistanceExecuteur? _executeur;
   EnvoiMiroir? _miroir;
   Tapeur? _tapeur;
+  Navigateur? _navigateur;
   Designation? _designation;
   Timer? _effaceHalo;
 
@@ -208,6 +217,9 @@ class AssistanceController extends ChangeNotifier {
 
   /// La surcouche pose ici de quoi injecter un vrai appui.
   void installerTapeur(Tapeur t) => _tapeur = t;
+
+  /// La surcouche pose ici la télécommande (focus / défilement).
+  void installerNavigateur(Navigateur n) => _navigateur = n;
 
   /// Le miroir est-il branché ? Sert au bandeau du client : tant qu'il
   /// est vrai, on lui DIT que le support voit son écran.
@@ -371,6 +383,26 @@ class AssistanceController extends ChangeNotifier {
     if (geste == GesteGuidage.taper) {
       return _taper(args);
     }
+    if (geste == GesteGuidage.naviguer) {
+      final String dir = '${args['dir'] ?? ''}'.trim().toLowerCase();
+      if (!const <String>{'haut', 'bas', 'gauche', 'droite', 'ok'}.contains(dir)) {
+        return const ResultatGeste.refuse('direction_invalide');
+      }
+      final Navigateur? n = _navigateur;
+      if (n == null) {
+        _journal('assist.sans_navigateur', const <String, Object?>{});
+        return const ResultatGeste.refuse('plateforme_sans_navigateur');
+      }
+      final String? raison = n(dir);
+      _journal('assist.navigue', <String, Object?>{
+        'dir': dir,
+        'ok': raison == null,
+        if (raison != null) 'raison': raison,
+      });
+      return raison == null
+          ? const ResultatGeste.fait()
+          : ResultatGeste.refuse(raison);
+    }
     if (geste == GesteGuidage.designer) {
       _designation = Designation(
         cible: '${args['cible'] ?? ''}',
@@ -424,6 +456,7 @@ class AssistanceController extends ChangeNotifier {
           break;
         case GesteGuidage.pointer:
         case GesteGuidage.taper:
+        case GesteGuidage.naviguer:
         case GesteGuidage.designer:
         case GesteGuidage.effacer:
           // Traités plus haut — ils ne descendent jamais jusqu'ici.
@@ -566,5 +599,6 @@ class AssistanceController extends ChangeNotifier {
     _executeur = null;
     _miroir = null;
     _tapeur = null;
+    _navigateur = null;
   }
 }

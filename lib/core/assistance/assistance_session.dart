@@ -376,6 +376,19 @@ enum GesteGuidage {
   ///  a le droit.
   taper,
 
+  /// LA TÉLÉCOMMANDE : haut / bas / gauche / droite / OK (19/09/2026).
+  ///
+  ///  Demande du propriétaire, en voyant l'écran de sa box dans le panel :
+  ///  « je dois avoir un bouton pour descendre ou monter ». Sur une box,
+  ///  on ne fait pas défiler avec le doigt, on DÉPLACE LE FOCUS avec les
+  ///  flèches — c'est exactement ce que fait ce geste, par le mécanisme
+  ///  de Flutter (`focusInDirection`). OK appuie sur l'élément qui a le
+  ///  focus. Sur un téléphone, où les listes n'ont pas de focus, haut et
+  ///  bas font DÉFILER (un glissement injecté).
+  ///
+  ///  Argument `dir` : `haut`, `bas`, `gauche`, `droite`, `ok`.
+  naviguer,
+
   /// Affiche une phrase (« c'est ici ») dans le bandeau. Utile APRÈS
   /// avoir montré : le client refait tout seul.
   designer,
@@ -411,6 +424,8 @@ GesteGuidage? lireGeste(String? nom) {
       return GesteGuidage.pointer;
     case 'taper':
       return GesteGuidage.taper;
+    case 'naviguer':
+      return GesteGuidage.naviguer;
     case 'designer':
       return GesteGuidage.designer;
     case 'effacer':

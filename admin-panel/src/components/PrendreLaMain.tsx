@@ -120,6 +120,17 @@ const RAISONS: Record<string, string> = {
     + 'Refusé franchement plutôt qu’ouvrir le mauvais dossier chez lui.',
   identifiant_vide: 'Identifiant de chaîne vide.',
   position_invalide: 'Position hors de l’écran — rien n’a été montré.',
+  direction_invalide: 'Direction inconnue — rien n’a bougé.',
+  plateforme_sans_navigateur:
+    'Cette application ne sait pas encore recevoir la télécommande à '
+    + 'distance.',
+  pas_de_focus:
+    'Rien n’est sélectionné chez lui en ce moment : clique d’abord sur un '
+    + 'élément dans le cadre, puis utilise les flèches.',
+  bord_atteint:
+    'Il est déjà au bout dans cette direction — rien de plus à atteindre.',
+  rien_a_activer:
+    'L’élément sélectionné chez lui ne réagit pas à OK.',
   geste_inconnu:
     'Son application est plus ancienne que ce panel : elle ne connaît '
     + 'pas ce bouton. Une mise à jour de son app le rendra disponible.',
@@ -424,6 +435,10 @@ export function PrendreLaMain({
 ///  Le point qu'on voit ici est LOCAL : il montre au support où il
 ///  vient de toucher. Ce qui compte vraiment — le halo chez le client —
 ///  est confirmé par le journal, comme tous les autres gestes.
+/// Style d'une touche de la télécommande à l'écran.
+const btnTc =
+  'h-10 rounded-md border border-white/10 text-sm hover:border-white/30 disabled:opacity-50';
+
 function EcranTactile({
   busy,
   forme,
@@ -443,6 +458,28 @@ function EcranTactile({
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
   const [phrase, setPhrase] = useState('C’est ici');
   const cadre = useRef<HTMLDivElement | null>(null);
+
+  //  PLEIN ÉCRAN (19/09 au soir) : « l'écran doit être géant et
+  //  lisible ». Le cadre normal est déjà large ; en plein écran il
+  //  prend toute la fenêtre, en gardant sa forme (16/9 ou téléphone).
+  //  Échap referme. Les gestes (glisser, taper) restent les mêmes —
+  //  c'est le MÊME élément, juste plus grand.
+  const [grand, setGrand] = useState(false);
+  useEffect(() => {
+    if (!grand) return undefined;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setGrand(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [grand]);
+
+  //  LA TÉLÉCOMMANDE : comme celle du client. Haut/bas déplacent le
+  //  focus sur une box, font défiler sur un téléphone ; OK appuie sur
+  //  ce qui est sélectionné. Non bloquant, comme le curseur : on doit
+  //  pouvoir appuyer plusieurs fois de suite sans attendre.
+  function telecommande(dir: 'haut' | 'bas' | 'gauche' | 'droite' | 'ok') {
+    const libelle = { haut: '↑ Haut', bas: '↓ Bas', gauche: '← Gauche', droite: '→ Droite', ok: 'OK' }[dir];
+    void onEnvoyer(`Télécommande ${libelle}`, { geste: 'naviguer', dir }, { bloquant: false });
+  }
 
   //  L'ÉCRAN DU CLIENT, EN VRAI. L'app en envoie une image toutes les
   //  deux secondes pendant la session, et seulement pendant.
@@ -540,7 +577,10 @@ function EcranTactile({
   const aBouge = useRef(false);
   const depuis = useRef(0);
   const dernierEnvoi = useRef(0);
-  const CADENCE_MS = 70;
+  //  50 ms (≈ 20 positions/s) : « je dois pointer à l'aise ». Assez
+  //  pour que le curseur colle au doigt du support, pas assez pour noyer
+  //  le fil — un pointage ne pèse que quelques octets.
+  const CADENCE_MS = 50;
   const SEUIL_BOUGE = 0.02; // 2 % de l'écran : au-delà, c'est un glissement
 
   function fraction(e: PointerEvt<HTMLDivElement>): { x: number; y: number } | null {
@@ -626,6 +666,14 @@ function EcranTactile({
           Lui montrer où appuyer
         </p>
         <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => setGrand(true)}
+            title="Afficher son écran en grand (Échap pour revenir)"
+            className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-ink-tertiary hover:border-white/30"
+          >
+            ⛶ Plein écran
+          </button>
           {(['tv', 'phone'] as Forme[]).map((f) => (
             <button
               key={f}
@@ -644,6 +692,24 @@ function EcranTactile({
         </div>
       </div>
 
+      {/* En plein écran, le MÊME cadre est simplement posé dans une
+          couche qui couvre la fenêtre : mêmes gestes, même image, rien
+          de dupliqué. */}
+      <div
+        className={grand
+          ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4'
+          : ''}
+        onClick={(e) => { if (grand && e.target === e.currentTarget) setGrand(false); }}
+      >
+      {grand && (
+        <button
+          type="button"
+          onClick={() => setGrand(false)}
+          className="absolute right-4 top-4 rounded-md bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
+        >
+          ✕ Réduire (Échap)
+        </button>
+      )}
       <div
         ref={cadre}
         onPointerDown={surAppui}
@@ -651,11 +717,23 @@ function EcranTactile({
         onPointerUp={surRelache}
         onPointerCancel={surAnnulation}
         className={
-          'relative mt-1.5 w-full cursor-crosshair select-none touch-none '
+          'relative cursor-crosshair select-none touch-none '
           + 'overflow-hidden rounded-lg border border-white/15 bg-midnight '
-          + (silhouette === 'tv' ? 'aspect-video max-w-md' : 'max-w-[190px]')
+          + (grand
+            ? ''
+            : 'mt-1.5 w-full ' + (silhouette === 'tv' ? 'aspect-video max-w-3xl' : 'max-w-[260px]'))
         }
-        style={silhouette === 'phone' ? { aspectRatio: '9 / 19.5' } : undefined}
+        style={{
+          ...(silhouette === 'phone' ? { aspectRatio: '9 / 19.5' } : { aspectRatio: '16 / 9' }),
+          // Plein écran : le plus grand cadre qui tient dans la fenêtre
+          // SANS déformer — la largeur est bornée par la hauteur
+          // disponible × le ratio, et inversement.
+          ...(grand
+            ? (silhouette === 'tv'
+              ? { width: 'min(96vw, calc(92vh * 16 / 9))' }
+              : { height: '92vh', width: 'calc(92vh * 9 / 19.5)' })
+            : {}),
+        }}
       >
         {/* SON ÉCRAN, s'il en arrive une image. */}
         {vue && (
@@ -703,6 +781,28 @@ function EcranTactile({
             en direct
           </span>
         )}
+      </div>
+      </div>
+
+      {/* LA TÉLÉCOMMANDE — « je dois avoir un bouton pour descendre ou
+          monter ». Disposée comme une vraie : OK au centre. */}
+      <div className="mt-2 flex items-center gap-3">
+        <p className="text-[11px] font-semibold text-ink-secondary">Télécommande</p>
+        <div className="grid grid-cols-3 gap-1" style={{ width: 132 }}>
+          <span />
+          <button type="button" disabled={busy} onClick={() => telecommande('haut')} className={btnTc} title="Haut">↑</button>
+          <span />
+          <button type="button" disabled={busy} onClick={() => telecommande('gauche')} className={btnTc} title="Gauche">←</button>
+          <button type="button" disabled={busy} onClick={() => telecommande('ok')} className={btnTc + ' bg-accent font-bold text-black'} title="OK">OK</button>
+          <button type="button" disabled={busy} onClick={() => telecommande('droite')} className={btnTc} title="Droite">→</button>
+          <span />
+          <button type="button" disabled={busy} onClick={() => telecommande('bas')} className={btnTc} title="Bas">↓</button>
+          <span />
+        </div>
+        <p className="text-[10px] leading-snug text-ink-tertiary">
+          Sur une box : déplace la sélection, comme sa télécommande.
+          Sur un téléphone : ↑↓ font défiler.
+        </p>
       </div>
 
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

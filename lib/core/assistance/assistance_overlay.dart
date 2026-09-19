@@ -111,6 +111,118 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     //  peut parler au moteur de gestes. Le contrôleur, lui, ne sait pas
     //  taper.
     _c.installerTapeur(_injecterTap);
+    //  LA TÉLÉCOMMANDE : même raison, même endroit — le focus et le
+    //  moteur de gestes ne sont accessibles que d'ici.
+    _c.installerNavigateur(_naviguer);
+  }
+
+  /// HAUT / BAS / GAUCHE / DROITE / OK, comme la télécommande du client.
+  ///
+  ///  Sur une box, une liste ne se fait pas défiler au doigt : on
+  ///  DÉPLACE LE FOCUS. `focusInDirection` est exactement ce que Flutter
+  ///  fait quand la télécommande envoie une flèche — on emprunte le même
+  ///  chemin, pas un chemin parallèle. Sur un téléphone, les listes
+  ///  n'ont pas de focus : si le focus ne bouge pas, haut et bas font
+  ///  DÉFILER par un glissement injecté au centre de l'écran.
+  ///
+  ///  OK = un vrai appui au centre de l'élément qui a le focus (le même
+  ///  mécanisme que le clic de la maquette), sinon l'action « activer »
+  ///  standard de Flutter.
+  String? _naviguer(String dir) {
+    if (!mounted) return 'app_en_arriere_plan';
+    final FocusNode? f = FocusManager.instance.primaryFocus;
+    switch (dir) {
+      case 'ok':
+        if (f == null) return 'pas_de_focus';
+        final RenderObject? ro = f.context?.findRenderObject();
+        if (ro is RenderBox && ro.hasSize && !ro.size.isEmpty) {
+          _tapGlobal(ro.localToGlobal(ro.size.center(Offset.zero)));
+          return null;
+        }
+        final BuildContext? ctx = f.context;
+        if (ctx != null && Actions.maybeInvoke(ctx, const ActivateIntent()) != null) {
+          return null;
+        }
+        return 'rien_a_activer';
+      case 'gauche':
+      case 'droite':
+      case 'haut':
+      case 'bas':
+        final TraversalDirection td = switch (dir) {
+          'gauche' => TraversalDirection.left,
+          'droite' => TraversalDirection.right,
+          'haut' => TraversalDirection.up,
+          _ => TraversalDirection.down,
+        };
+        if (f != null && f.focusInDirection(td)) return null;
+        // Pas de focus, ou le focus est au bord : sur un téléphone c'est
+        // la situation normale d'une liste — on fait défiler.
+        if (dir == 'haut' || dir == 'bas') {
+          return _defiler(versLeBas: dir == 'bas') ? null : 'bord_atteint';
+        }
+        return f == null ? 'pas_de_focus' : 'bord_atteint';
+      default:
+        return 'direction_invalide';
+    }
+  }
+
+  /// Un glissement vertical injecté au centre de l'écran : c'est ce que
+  /// fait un pouce sur une liste de téléphone. Plusieurs événements de
+  /// mouvement, pas un seul : le reconnaisseur de défilement de Flutter
+  /// veut voir le doigt BOUGER, pas sauter.
+  bool _defiler({required bool versLeBas}) {
+    final RenderObject? ro = _zone.currentContext?.findRenderObject();
+    if (ro is! RenderBox || !ro.hasSize || ro.size.isEmpty) return false;
+    final Size s = ro.size;
+    final Offset centre = ro.localToGlobal(Offset(s.width / 2, s.height / 2));
+    // Un tiers de l'écran : assez pour avancer d'un vrai cran, pas assez
+    // pour perdre le client — il doit pouvoir suivre ce qui bouge.
+    final double course = s.height / 3;
+    final double depart = versLeBas ? centre.dy + course / 2 : centre.dy - course / 2;
+    final double arrivee = versLeBas ? centre.dy - course / 2 : centre.dy + course / 2;
+    const int id = 0xA552;
+    final GestureBinding gb = GestureBinding.instance;
+    gb.handlePointerEvent(PointerDownEvent(
+      pointer: id, device: id, kind: PointerDeviceKind.touch,
+      position: Offset(centre.dx, depart), buttons: kPrimaryButton,
+    ));
+    const int pas = 8;
+    for (int i = 1; i <= pas; i++) {
+      final double y = depart + (arrivee - depart) * i / pas;
+      gb.handlePointerEvent(PointerMoveEvent(
+        pointer: id, device: id, kind: PointerDeviceKind.touch,
+        position: Offset(centre.dx, y), buttons: kPrimaryButton,
+        delta: Offset(0, (arrivee - depart) / pas),
+      ));
+    }
+    gb.handlePointerEvent(PointerUpEvent(
+      pointer: id, device: id, kind: PointerDeviceKind.touch,
+      position: Offset(centre.dx, arrivee),
+    ));
+    return true;
+  }
+
+  /// Un vrai appui (bas + haut) à une position GLOBALE. Partagé par le
+  /// clic de la maquette et par le OK de la télécommande.
+  void _tapGlobal(Offset global) {
+    //  Un identifiant de pointeur À NOUS, hors de la plage des vrais
+    //  doigts, pour ne jamais brouiller un appui réel du client s'il
+    //  touche en même temps.
+    const int idPointeur = 0xA551;
+    final GestureBinding gb = GestureBinding.instance;
+    gb.handlePointerEvent(PointerDownEvent(
+      pointer: idPointeur,
+      device: idPointeur,
+      kind: PointerDeviceKind.touch,
+      position: global,
+      buttons: kPrimaryButton,
+    ));
+    gb.handlePointerEvent(PointerUpEvent(
+      pointer: idPointeur,
+      device: idPointeur,
+      kind: PointerDeviceKind.touch,
+      position: global,
+    ));
   }
 
   @override
@@ -147,6 +259,9 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     }
     if (ok) {
       _natif = true;
+      // On passe à la cadence rapide TOUT DE SUITE, sans attendre la fin
+      // de la minuterie lente en cours.
+      if (_ticMiroir != null) _armerMiroir();
       return;
     }
     //  LE CLIENT A DIT NON (ou n'a pas répondu). On le DIT au panel,
@@ -173,34 +288,14 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     final Size s = ro.size;
     if (s.isEmpty) return;
     final Offset local = Offset(fx * s.width, fy * s.height);
-    final Offset global = ro.localToGlobal(local);
-
-    //  ON CONSTRUIT LES ÉVÉNEMENTS DIRECTEMENT, avec l'API PUBLIQUE.
-    //  La première version passait par `PointerData.toPointerEvent`,
-    //  une méthode interne au moteur : elle n'existe pas pour nous, et
-    //  la suite de tests entière a refusé de compiler. `PointerDownEvent`
-    //  et `PointerUpEvent` sont publics, stables, et présents sur la
-    //  3.32 des builds TV. C'est exactement ce que `WidgetTester` fait
-    //  pour simuler un tap.
-    //
-    //  Un identifiant de pointeur À NOUS, hors de la plage des vrais
-    //  doigts, pour ne jamais brouiller un appui réel du client s'il
-    //  touche en même temps.
-    const int idPointeur = 0xA551;
-    final GestureBinding gb = GestureBinding.instance;
-    gb.handlePointerEvent(PointerDownEvent(
-      pointer: idPointeur,
-      device: idPointeur,
-      kind: PointerDeviceKind.touch,
-      position: global,
-      buttons: kPrimaryButton,
-    ));
-    gb.handlePointerEvent(PointerUpEvent(
-      pointer: idPointeur,
-      device: idPointeur,
-      kind: PointerDeviceKind.touch,
-      position: global,
-    ));
+    //  ON CONSTRUIT LES ÉVÉNEMENTS DIRECTEMENT, avec l'API PUBLIQUE
+    //  (voir _tapGlobal). La première version passait par
+    //  `PointerData.toPointerEvent`, une méthode interne au moteur : elle
+    //  n'existe pas pour nous, et la suite de tests entière a refusé de
+    //  compiler. `PointerDownEvent` / `PointerUpEvent` sont publics,
+    //  stables, présents sur la 3.32 des builds TV — c'est exactement ce
+    //  que `WidgetTester` fait pour simuler un tap.
+    _tapGlobal(ro.localToGlobal(local));
   }
 
   void _maj() {
@@ -239,7 +334,19 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     //  demande l'accord du client (boîte d'Android) ; pendant qu'il
     //  répond, le miroir Flutter tourne déjà, et on bascule dès le oui.
     unawaited(_ouvrirNatif());
-    _ticMiroir = Timer.periodic(periodeMiroir, (_) => _capturer());
+    _armerMiroir();
+  }
+
+  /// (Ré)arme la minuterie du miroir à la cadence de la voie en cours :
+  /// lente pour la capture Flutter, rapide (~3/s) dès que la capture
+  /// système est ouverte. Appelé au début de session ET au moment où le
+  /// client accepte la boîte d'Android — c'est là que ça devient fluide.
+  void _armerMiroir() {
+    _ticMiroir?.cancel();
+    _ticMiroir = Timer.periodic(
+      _natif ? periodeMiroirNatif : periodeMiroir,
+      (_) => _capturer(),
+    );
   }
 
   Future<void> _capturer() async {

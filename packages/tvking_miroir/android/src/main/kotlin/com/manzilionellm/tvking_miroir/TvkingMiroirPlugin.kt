@@ -64,14 +64,28 @@ class TvkingMiroirPlugin :
         private const val CHANNEL = "com.manzilionellm.tvking/miroir"
         private const val REQ_PROJECTION = 7318
 
-        /** Largeur cible de l'image envoyée au panel. 420 px : assez pour
-         *  lire un menu et repérer le focus, dix fois moins d'octets que
-         *  l'écran natif. Même chiffre que le miroir Flutter, pour que
-         *  les deux chemins se ressemblent côté panel. */
-        private const val LARGEUR_CIBLE = 420
+        /** Plus grand côté de l'image envoyée au panel.
+         *
+         *  960 px, et pas 420 comme le miroir Flutter : le propriétaire a
+         *  vu son écran arriver (19/09 au soir) et a tranché — « l'écran
+         *  doit être géant et lisible ». À 420 px, agrandi dans le panel,
+         *  le texte des menus devient de la bouillie. À 960 px on lit un
+         *  menu TV comme sur la télé.
+         *
+         *  On borne le PLUS GRAND côté, pas la largeur : une box (paysage)
+         *  donne 960×540, un téléphone (portrait) 432×960. Borner la
+         *  largeur ferait un téléphone en 960×2133 — inutile et lourd.
+         *
+         *  Le JPEG est natif (Bitmap.compress), donc la taille ne coûte
+         *  presque rien au processeur ; elle coûte des octets sur la ligne
+         *  du client : ~60 à 120 Ko toutes les 2 s. Accepté pour une
+         *  session de dépannage. */
+        private const val COTE_MAX = 960
 
-        /** Qualité JPEG. 60 : texte lisible, 15 à 30 Ko. */
-        private const val QUALITE_JPEG = 60
+        /** Qualité JPEG. 50 : texte parfaitement lisible à 960 px, et
+         *  assez léger pour tenir ~3 images/s (« l'écran doit être
+         *  fluide ») ; on n'envoie pas une photo, on envoie un menu. */
+        private const val QUALITE_JPEG = 50
     }
 
     private var channel: MethodChannel? = null
@@ -240,12 +254,14 @@ class TvkingMiroirPlugin :
             }
         }, main)
 
-        // Taille RÉDUITE dès la source : Android compose directement en
-        // 420 px de large. Pas de redimensionnement à faire, et dix fois
-        // moins de pixels à lire à chaque capture.
+        // Taille RÉDUITE dès la source : Android compose directement à la
+        // taille demandée. Pas de redimensionnement à faire côté app.
+        // On borne le PLUS GRAND côté à COTE_MAX (voir la constante) ; on
+        // ne grossit jamais un écran plus petit que ça.
         val dm: DisplayMetrics = ctx.resources.displayMetrics
-        val ratio = LARGEUR_CIBLE.toFloat() / dm.widthPixels.toFloat()
-        largeur = LARGEUR_CIBLE
+        val plusGrand = maxOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(1)
+        val ratio = (COTE_MAX.toFloat() / plusGrand.toFloat()).coerceAtMost(1f)
+        largeur = (dm.widthPixels * ratio).toInt().coerceAtLeast(2)
         hauteur = (dm.heightPixels * ratio).toInt().coerceAtLeast(2)
         // Certains encodeurs veulent des dimensions paires.
         if (largeur % 2 != 0) largeur -= 1

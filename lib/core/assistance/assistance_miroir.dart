@@ -75,6 +75,20 @@ const double largeurMiroir = 420;
 ///  lui qui dit « fait », l'image ne fait que MONTRER.
 const Duration periodeMiroir = Duration(seconds: 2);
 
+/// Cadence quand la capture SYSTÈME (MediaProjection) est ouverte.
+///
+///  350 ms, soit ~3 images par seconde : « l'écran doit être fluide »
+///  (propriétaire, 19/09 au soir). C'est possible parce que cette voie
+///  ne coûte presque rien au processeur — Android compose directement
+///  à 960 px et le JPEG est natif. Ce qu'elle coûte, ce sont des octets
+///  sur la ligne du client : ~50 à 80 Ko × 3/s ≈ 150 à 240 Ko/s pendant
+///  la session. Accepté pour un dépannage ; ce n'est pas un flux vidéo
+///  permanent.
+///
+///  La voie Flutter (`toImage`) garde [periodeMiroir] : elle est lourde
+///  et peut geler — l'accélérer empilerait des captures.
+const Duration periodeMiroirNatif = Duration(milliseconds: 350);
+
 /// Qualité JPEG de l'image envoyée.
 ///
 ///  ---------------------------------------------------------
@@ -107,10 +121,13 @@ const int qualiteMiroir = 60;
 ///  tout l'encodage ET toute la montée réseau pour rien. Mieux vaut
 ///  s'en apercevoir ici, le DIRE, et laisser le tour suivant passer.
 ///
-///  En JPEG qualité 60 on n'en approche jamais — ce plafond n'est plus
-///  le fonctionnement normal comme il l'était en PNG, c'est redevenu
-///  un garde-fou.
-const int poidsMaxMiroir = 90 * 1024;
+///  300 Ko : relevé le 19/09 au soir quand la capture SYSTÈME est passée
+///  à 960 px (« l'écran doit être géant et lisible »). Une image native
+///  à cette taille pèse 60 à 120 Ko ; le plafond garde une marge ×2,5
+///  et reste sous le plafond du hub une fois en base64 (voir le test
+///  qui lie les deux). Le miroir Flutter (420 px, q60) n'en approche
+///  jamais.
+const int poidsMaxMiroir = 300 * 1024;
 
 /// Pourquoi une capture n'a rien donné.
 ///

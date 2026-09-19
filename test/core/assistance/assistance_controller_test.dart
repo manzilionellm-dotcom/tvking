@@ -291,6 +291,70 @@ void main() {
     });
   });
 
+  group('la télécommande (haut / bas / gauche / droite / OK)', () {
+    test('sans navigateur installé, refusé et DIT', () async {
+      final ResultatGeste r = await c.executer(
+        GesteGuidage.naviguer,
+        <String, Object?>{'dir': 'bas'},
+        support: _moi,
+      );
+      expect(r.ok, isFalse);
+      expect(r.raison, 'plateforme_sans_navigateur');
+    });
+
+    test('avec un navigateur, la direction lui est transmise', () async {
+      final List<String> recues = <String>[];
+      c.installerNavigateur((String d) {
+        recues.add(d);
+        return null;
+      });
+      for (final String d in <String>['haut', 'bas', 'gauche', 'droite', 'ok']) {
+        final ResultatGeste r = await c.executer(
+          GesteGuidage.naviguer,
+          <String, Object?>{'dir': d},
+          support: _moi,
+        );
+        expect(r.ok, isTrue, reason: '$d → ${r.raison}');
+      }
+      expect(recues, <String>['haut', 'bas', 'gauche', 'droite', 'ok']);
+    });
+
+    test('la raison du navigateur remonte telle quelle', () async {
+      c.installerNavigateur((String _) => 'bord_atteint');
+      final ResultatGeste r = await c.executer(
+        GesteGuidage.naviguer,
+        <String, Object?>{'dir': 'haut'},
+        support: _moi,
+      );
+      expect(r.ok, isFalse);
+      expect(r.raison, 'bord_atteint');
+    });
+
+    test('UNE DIRECTION INCONNUE NE FAIT RIEN — on ne devine pas', () async {
+      final List<String> recues = <String>[];
+      c.installerNavigateur((String d) {
+        recues.add(d);
+        return null;
+      });
+      for (final Object? mauvais in <Object?>['diagonale', '', null, 'OK ', 42]) {
+        final ResultatGeste r = await c.executer(
+          GesteGuidage.naviguer,
+          <String, Object?>{'dir': mauvais},
+          support: _moi,
+        );
+        // « OK » avec une espace est nettoyé (trim + minuscules) : c'est
+        // la seule entrée « sale » qu'on accepte, le reste est refusé.
+        if (mauvais == 'OK ') {
+          expect(r.ok, isTrue);
+        } else {
+          expect(r.ok, isFalse, reason: '$mauvais');
+          expect(r.raison, 'direction_invalide', reason: '$mauvais');
+        }
+      }
+      expect(recues, <String>['ok']);
+    });
+  });
+
   group('4. LE SUPPORT SAIT CE QUI S\'EST VRAIMENT PASSÉ', () {
     test('la raison de l\'app remonte telle quelle', () async {
       ex.raison = 'ecran_inconnu';

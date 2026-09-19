@@ -221,6 +221,8 @@ class RtEvent {
               // ce qui est « hors écran ».
               'x': decoded['x'],
               'y': decoded['y'],
+              // LA TÉLÉCOMMANDE (19/09 au soir) : haut/bas/gauche/droite/ok.
+              'dir': str('dir'),
             },
           );
         case 'bye':
@@ -820,6 +822,7 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
               'phrase': a['phrase'],
               'x': a['x'],
               'y': a['y'],
+              'dir': a['dir'],
             },
             support: support,
           );
