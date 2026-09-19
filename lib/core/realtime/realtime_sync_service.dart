@@ -379,11 +379,18 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
     //  pas qu'on le regarde. Un appareil sans canal temps réel ne passe
     //  donc pas son temps à encoder des PNG que personne ne recevra.
     AssistanceController.instance.installerMiroir(
-      (String png, int largeur, int hauteur) => _sendJson(<String, Object?>{
+      (String jpeg, int largeur, int hauteur, String echec) =>
+          _sendJson(<String, Object?>{
         'type': 'screen',
-        'png': png,
+        // `jpg` et plus `png` : l'encodage a changé le 19/09 au soir,
+        // le PNG dépassait tous les plafonds et rien n'arrivait.
+        'jpg': jpeg,
         'w': largeur,
         'h': hauteur,
+        // Vide quand tout va bien. Renseigné, c'est l'app qui explique
+        // pourquoi elle n'a rien à montrer — plutôt que de laisser le
+        // support devant un cadre vide.
+        if (echec.isNotEmpty) 'echec': echec,
       }),
     );
     // Hook cycle de vie : au retour au premier plan on reconnecte tout

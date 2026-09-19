@@ -35,6 +35,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { ListesAppareil } from '@/components/ListesAppareil';
 import { PrendreLaMain } from '@/components/PrendreLaMain';
 import { toast } from '@/components/Toast';
 import { useLiveDevices } from '@/lib/realtime';
@@ -163,6 +164,29 @@ export function MainPage({ onLogout }: { onLogout: () => void }) {
             enLigne={enLigne}
             forme={silhouetteDe(ov.device?.device_model)}
           />
+
+          {/* =========================================================
+               LES LISTES, ICI AUSSI (19/09/2026)
+              =========================================================
+               « Dans cette option, je dois avoir le secteur de
+               supprimer / ajouter la liste. »
+
+               C'est une question de MOMENT : quand on a un client au
+               téléphone et qu'on conduit son app, le geste suivant est
+               presque toujours « je lui remets sa liste ». L'envoyer
+               changer de page pour ça, c'est lui faire perdre le fil —
+               et la MAC qu'il vient de coller.
+
+               C'est le MÊME composant que sur Téléphone et Télévision,
+               pas une copie : le jour où l'un gagne un bouton, l'autre
+               l'a aussi. */}
+          <div className="mt-5">
+            <ListesAppareil
+              mac={macCourante}
+              kind={silhouetteDe(ov.device?.device_model) === 'tv' ? 'tv' : 'phone'}
+              enLigne={enLigne}
+            />
+          </div>
         </div>
       ) : (
         <div className="max-w-2xl rounded-xl border border-white/10 bg-obsidian px-4 py-4 text-sm text-ink-secondary">

@@ -147,7 +147,16 @@ class Designation {
 ///  l'apprendre : c'est `realtime_sync_service.dart` qui tient le
 ///  socket. Il pose donc sa fonction ici au démarrage, exactement
 ///  comme l'application pose son [AssistanceExecuteur].
-typedef EnvoiMiroir = void Function(String pngBase64, int largeur, int hauteur);
+///  [jpegBase64] vide + [echec] renseigné = « pas d'image, et voilà
+///  pourquoi ». Le panel a alors quelque chose à afficher au support,
+///  au lieu d'un cadre vide qu'il regardera en se demandant si c'est
+///  lui qui s'y prend mal.
+typedef EnvoiMiroir = void Function(
+  String jpegBase64,
+  int largeur,
+  int hauteur,
+  String echec,
+);
 
 /// Combien de temps le halo reste posé avant de s'effacer tout seul.
 ///
@@ -186,14 +195,24 @@ class AssistanceController extends ChangeNotifier {
   bool get miroirBranche => _miroir != null;
 
   /// Envoie une image. Silencieux si le miroir n'est pas branché.
-  void publierImageMiroir(String pngBase64, int largeur, int hauteur) {
+  void publierImageMiroir(String jpegBase64, int largeur, int hauteur) {
     //  PAS D'IMAGE HORS SESSION, jamais. C'est la garde qui compte le
     //  plus de ce fichier : sans elle, une minuterie oubliée continuerait
     //  d'envoyer l'écran de quelqu'un après la fin de l'assistance —
     //  sans bandeau, donc sans qu'il le sache. Ce serait exactement ce
     //  que ce mode s'interdit.
     if (!_session.guidagePermis) return;
-    _miroir?.call(pngBase64, largeur, hauteur);
+    _miroir?.call(jpegBase64, largeur, hauteur, '');
+  }
+
+  /// Dit au panel pourquoi il n'y a pas d'image.
+  ///
+  ///  Même garde de session : hors assistance, on ne raconte rien de
+  ///  cet appareil, pas même ses échecs.
+  void signalerEchecMiroir(String echec) {
+    if (!_session.guidagePermis) return;
+    _journal('assist.miroir_echec', <String, Object?>{'cause': echec});
+    _miroir?.call('', 0, 0, echec);
   }
 
   AssistanceSession get session => _session;

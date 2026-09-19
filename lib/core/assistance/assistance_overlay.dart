@@ -135,18 +135,28 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     if (_c.etat != EtatAssistance.active) return;
     _captureEnCours = true;
     try {
-      final ImageMiroir? img = await capturerMiroir(_zone);
-      if (img == null || !mounted) return;
+      final ResultatMiroir r = await capturerMiroir(_zone);
+      if (!mounted) return;
       // On revérifie la session APRÈS l'attente : le client a pu
       // appuyer sur « Arrêter » pendant l'encodage. Sans ce second
       // contrôle, sa dernière image partirait quand même — une image
       // de plus après qu'il a dit non.
       if (_c.etat != EtatAssistance.active) return;
-      _c.publierImageMiroir(
-        base64Encode(img.octets),
-        img.largeur,
-        img.hauteur,
-      );
+      final ImageMiroir? img = r.image;
+      if (img != null) {
+        _c.publierImageMiroir(
+          base64Encode(img.octets),
+          img.largeur,
+          img.hauteur,
+        );
+        return;
+      }
+      //  ON DIT POURQUOI IL N'Y A PAS D'IMAGE. C'est la correction qui
+      //  compte le plus de ce tour : en 198884, chaque capture était
+      //  jetée pour dépassement de poids, et le support n'avait devant
+      //  lui qu'un cadre vide et une phrase qui parlait d'autre chose.
+      //  Une panne muette coûte une session entière.
+      _c.signalerEchecMiroir(r.echec!.name);
     } finally {
       _captureEnCours = false;
     }
@@ -174,7 +184,7 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
       child: Stack(
         children: <Widget>[
           widget.child,
-          if (active && d != null && d.aUnHalo) _Halo(x: d.x!, y: d.y!),
+          if (active && d != null && d.aUnHalo) _Curseur(x: d.x!, y: d.y!),
           if (active)
             _Bandeau(
               support: _c.support,
@@ -194,27 +204,46 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
   }
 }
 
-/// Le doigt du support, posé sur l'écran du client.
+/// LE CURSEUR DU SUPPORT, posé sur l'écran du client.
 ///
-///  Deux ronds concentriques qui respirent : un point plein qui dit
-///  « exactement ici », et une onde qui s'ouvre pour attirer l'œil
-///  depuis l'autre bout d'une télé de 55 pouces. Un simple point fixe
-///  se perd dans une grille de logos de chaînes.
-class _Halo extends StatefulWidget {
-  const _Halo({required this.x, required this.y});
+///  ---------------------------------------------------------
+///  POURQUOI UNE FLÈCHE, ET PLUS UNE BOULE (19/09/2026 au soir)
+///  ---------------------------------------------------------
+///  La première version dessinait un gros rond rouge qui pulsait. Le
+///  propriétaire l'a vu sur sa télé et a tranché :
+///
+///    « La boule sur TV n'est pas sexy. Fais une petite souris rouge,
+///      ou un [curseur] élégant, qui peut pointer partout. »
+///
+///  Il a raison au-delà du goût. UN ROND NE DÉSIGNE PAS, IL ENTOURE.
+///  Posé sur une grille de chaînes, il couvre ce qu'il montre, et le
+///  client doit deviner si on lui désigne le logo au centre ou la
+///  ligne entière. Une flèche a une POINTE : elle dit « ça », et elle
+///  ne cache rien de ce qu'elle indique.
+///
+///  Et c'est une forme que tout le monde connaît. Personne n'a besoin
+///  qu'on lui explique ce qu'est un curseur de souris — pas même
+///  quelqu'un qui n'a qu'une télécommande.
+///
+///  LA POINTE TOMBE EXACTEMENT SUR LE POINT VISÉ. C'est tout l'intérêt
+///  d'une flèche : si on centrait le dessin sur la cible comme on
+///  centrait la boule, elle désignerait un endroit à côté.
+class _Curseur extends StatefulWidget {
+  const _Curseur({required this.x, required this.y});
 
   /// Fractions de l'écran (0 → 1). Voir [Designation.x].
   final double x;
   final double y;
 
   @override
-  State<_Halo> createState() => _HaloState();
+  State<_Curseur> createState() => _CurseurState();
 }
 
-class _HaloState extends State<_Halo> with SingleTickerProviderStateMixin {
+class _CurseurState extends State<_Curseur>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _anim = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1400),
+    duration: const Duration(milliseconds: 1800),
   )..repeat();
 
   @override
@@ -225,60 +254,30 @@ class _HaloState extends State<_Halo> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    //  `IgnorePointer` : le halo MONTRE, il ne bloque pas. Si le client
-    //  appuie pile là où on lui indique, son doigt doit atteindre le
-    //  bouton qui est dessous.
+    //  `IgnorePointer` : le curseur MONTRE, il ne bloque pas. Si le
+    //  client appuie pile là où on lui indique, son doigt doit
+    //  atteindre le bouton qui est dessous.
     return IgnorePointer(
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints c) {
-          const double taille = 132;
+          //  LE DESSIN DÉBORDE LARGEMENT DE LA FLÈCHE : l'onde s'ouvre
+          //  autour de la pointe, donc la zone de peinture est centrée
+          //  sur elle et doit pouvoir s'étendre dans les QUATRE
+          //  directions — y compris vers le haut et la gauche, là où la
+          //  flèche, elle, ne va pas.
+          const double zone = 220;
           return Stack(
             children: <Widget>[
               Positioned(
-                left: widget.x * c.maxWidth - taille / 2,
-                top: widget.y * c.maxHeight - taille / 2,
-                width: taille,
-                height: taille,
+                left: widget.x * c.maxWidth - zone / 2,
+                top: widget.y * c.maxHeight - zone / 2,
+                width: zone,
+                height: zone,
                 child: AnimatedBuilder(
                   animation: _anim,
-                  builder: (BuildContext context, _) {
-                    final double t = _anim.value;
-                    return Stack(
-                      alignment: Alignment.center,
-                      children: <Widget>[
-                        // L'onde qui s'ouvre et s'efface.
-                        Opacity(
-                          opacity: (1 - t).clamp(0.0, 1.0) * 0.75,
-                          child: Container(
-                            width: taille * (0.35 + 0.65 * t),
-                            height: taille * (0.35 + 0.65 * t),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: const Color(0xFFE84A3E),
-                                width: 4,
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Le point plein : « exactement ici ».
-                        Container(
-                          width: taille * 0.3,
-                          height: taille * 0.3,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Color(0xFFE84A3E),
-                            boxShadow: <BoxShadow>[
-                              BoxShadow(
-                                color: Color(0x88000000),
-                                blurRadius: 12,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                  builder: (BuildContext context, _) => CustomPaint(
+                    painter: _PeintreCurseur(_anim.value),
+                  ),
                 ),
               ),
             ],
@@ -287,6 +286,84 @@ class _HaloState extends State<_Halo> with SingleTickerProviderStateMixin {
       ),
     );
   }
+}
+
+/// Dessine la flèche et son onde. La POINTE est au centre exact de la
+/// zone de peinture — c'est ce qui fait correspondre le geste du
+/// support et l'endroit désigné chez le client.
+class _PeintreCurseur extends CustomPainter {
+  const _PeintreCurseur(this.t);
+
+  /// Avancement de l'animation, 0 → 1.
+  final double t;
+
+  /// Le rouge de la maison (`AppColors.accent`). Écrit en dur ICI et
+  /// nulle part ailleurs dans ce fichier : cette surcouche est posée
+  /// au-dessus de l'application, avant tout thème, et ne peut donc pas
+  /// lire les couleurs par le contexte comme un écran normal le ferait.
+  static const Color rouge = Color(0xFFE84A3E);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Offset pointe = Offset(size.width / 2, size.height / 2);
+
+    //  1) L'ONDE, discrète. Elle sert à RETROUVER le curseur sur une
+    //  télé de 55 pouces quand le support vient de le déplacer ; elle
+    //  ne doit pas devenir le sujet. D'où un seul trait fin, très
+    //  transparent, qui s'efface en s'ouvrant — rien à voir avec le
+    //  gros rond plein d'avant.
+    final double r = 26 + 58 * t;
+    canvas.drawCircle(
+      pointe,
+      r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = rouge.withValues(alpha: (1 - t) * 0.45),
+    );
+
+    //  2) LA FLÈCHE. Tracée depuis la pointe (0,0) vers le bas-droite,
+    //  comme un curseur de souris : c'est l'orientation que tout le
+    //  monde reconnaît sans y penser.
+    const double k = 2.6; // échelle : ~62 px de haut, lisible de loin
+    final Path fleche = Path()
+      ..moveTo(0, 0)
+      ..lineTo(0, 24)
+      ..lineTo(5.8, 18.2)
+      ..lineTo(9.6, 26.4)
+      ..lineTo(13.4, 24.6)
+      ..lineTo(9.7, 16.7)
+      ..lineTo(17.4, 16.4)
+      ..close();
+    final Matrix4 m = Matrix4.identity()
+      ..translateByDouble(pointe.dx, pointe.dy, 0, 1)
+      ..scaleByDouble(k, k, 1, 1);
+    final Path place = fleche.transform(m.storage);
+
+    //  L'OMBRE PORTÉE N'EST PAS DE LA DÉCORATION. Le curseur passe sur
+    //  des fonds clairs comme sur des fonds sombres ; sans elle, il
+    //  disparaît sur une affiche de film claire, exactement au moment
+    //  où le support croit le montrer.
+    canvas.drawPath(
+      place.shift(const Offset(0, 3)),
+      Paint()
+        ..color = const Color(0x66000000)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+    canvas.drawPath(place, Paint()..color = rouge);
+    //  Le liseré blanc fait le reste du travail de contraste : rouge
+    //  sur rouge (un logo, un bouton d'alerte) resterait illisible.
+    canvas.drawPath(
+      place,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..color = Colors.white.withValues(alpha: 0.92),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PeintreCurseur old) => old.t != t;
 }
 
 /// Le bandeau permanent. Il ne se cache jamais.

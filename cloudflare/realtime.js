@@ -411,8 +411,15 @@ export class RealtimeHub {
       //  client. Le hub ne fait que transporter et BORNER : trop gros
       //  (déjà refusé plus haut), trop souvent (ci-dessous).
       case 'screen': {
-        const png = typeof msg.png === 'string' ? msg.png : '';
-        if (!png) return;
+        // `jpg` depuis le 19/09 au soir ; `png` était le nom de la
+        // toute première version, gardé pour une box qui n'aurait pas
+        // encore la mise à jour.
+        const jpg = typeof msg.jpg === 'string' ? msg.jpg
+          : (typeof msg.png === 'string' ? msg.png : '');
+        const echec = typeof msg.echec === 'string'
+          ? msg.echec.slice(0, 40) : '';
+        // Ni image ni explication : rien à relayer.
+        if (!jpg && !echec) return;
         const last = this._lastScreen.get(att.mac) || 0;
         if (now - last < MIN_SCREEN_INTERVAL_MS) return;
         this._lastScreen.set(att.mac, now);
@@ -420,7 +427,8 @@ export class RealtimeHub {
         this.broadcastToAdmins({
           type: 'screen',
           mac: att.mac,
-          png,
+          jpg,
+          ...(echec ? { echec } : {}),
           w: Number(msg.w) || 0,
           h: Number(msg.h) || 0,
           at: now,

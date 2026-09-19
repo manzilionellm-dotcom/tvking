@@ -44,6 +44,8 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:image/image.dart' as img_lib;
+
 // TROIS IMPORTS, et chacun sert : ce fichier fait le pont entre un
 // widget et son rendu. `GlobalKey` vient de widgets.dart, la classe
 // `RenderRepaintBoundary` — celle qui sait rendre son image — de
@@ -73,12 +75,58 @@ const double largeurMiroir = 420;
 ///  lui qui dit « fait », l'image ne fait que MONTRER.
 const Duration periodeMiroir = Duration(seconds: 2);
 
+/// Qualité JPEG de l'image envoyée.
+///
+///  ---------------------------------------------------------
+///  POURQUOI DU JPEG, ET PAS LE PNG D'ORIGINE (19/09/2026)
+///  ---------------------------------------------------------
+///  La première version utilisait `toByteData(format: png)`, le seul
+///  encodage que `dart:ui` sache faire. Le résultat : le propriétaire
+///  a mis sa box en 198884, pris la main, et n'a vu AUCUNE image.
+///
+///  Le PNG est SANS PERTE. Sur un écran de télé — logos de chaînes,
+///  affiches, dégradés — il rend 100 à 300 Ko par capture, alors que
+///  l'app jetait au-delà de 90 Ko et le hub au-delà de 128 Ko. Chaque
+///  image partait donc à la poubelle, sans un mot. Deux leçons, et
+///  elles sont dans ce dépôt depuis des mois :
+///
+///   • ON NE DEVINE PAS UN POIDS. Je l'avais estimé « 20 à 60 Ko » à
+///     partir de rien. Le JPEG, lui, donne un poids qui dépend de la
+///     QUALITÉ demandée, pas de ce que le client a à l'écran.
+///   • UN ÉCHEC SILENCIEUX EST LE PIRE DES ÉCHECS. C'est pour ça que
+///     [EchecMiroir] existe maintenant : quand ça rate, le panel le
+///     DIT, au lieu d'afficher un cadre vide.
+///
+///  Qualité 60 : les menus et le texte restent parfaitement lisibles
+///  (c'est tout ce que le support a besoin de lire), pour 15 à 30 Ko.
+const int qualiteMiroir = 60;
+
 /// Au-delà, on jette l'image au lieu de l'envoyer.
 ///
 ///  Le hub refuse les frames trop grosses ; une image refusée coûte
-///  toute l'encodage ET toute la montée réseau pour rien. Mieux vaut
-///  s'en apercevoir ici, sauter ce tour, et laisser le suivant passer.
+///  tout l'encodage ET toute la montée réseau pour rien. Mieux vaut
+///  s'en apercevoir ici, le DIRE, et laisser le tour suivant passer.
+///
+///  En JPEG qualité 60 on n'en approche jamais — ce plafond n'est plus
+///  le fonctionnement normal comme il l'était en PNG, c'est redevenu
+///  un garde-fou.
 const int poidsMaxMiroir = 90 * 1024;
+
+/// Pourquoi une capture n'a rien donné.
+///
+///  Des identifiants courts, traduits par le panel — même règle que
+///  les raisons de refus d'un geste : une phrase gravée dans un APK ne
+///  se corrige plus.
+enum EchecMiroir {
+  /// L'app n'est pas à l'écran, ou pas encore montée.
+  pasDEcran,
+
+  /// L'image encodée dépasse [poidsMaxMiroir].
+  tropGrosse,
+
+  /// Le moteur graphique a refusé la capture.
+  erreurGraphique,
+}
 
 /// Le facteur d'échelle à demander à `toImage()` pour obtenir une
 /// image d'au plus [largeurMax] pixels de large.
@@ -120,36 +168,78 @@ double ratioMiroir(double largeurLogique, {double largeurMax = largeurMiroir}) {
 ///  deux secondes. Faire remonter ça comme une panne inquiéterait le
 ///  support pour rien, au pire moment — pendant qu'il a un client au
 ///  téléphone.
-Future<ImageMiroir?> capturerMiroir(GlobalKey cle) async {
+Future<ResultatMiroir> capturerMiroir(GlobalKey cle) async {
   try {
     final RenderObject? ro = cle.currentContext?.findRenderObject();
-    if (ro is! RenderRepaintBoundary) return null;
-    if (ro.debugNeedsPaint) return null;
+    if (ro is! RenderRepaintBoundary) {
+      return const ResultatMiroir.echec(EchecMiroir.pasDEcran);
+    }
+    //  `debugNeedsPaint` NE SERT QU'EN DÉBOGAGE — en release il rend
+    //  toujours `false`, par construction. Ce n'est donc pas une vraie
+    //  protection sur la box du client, juste un filtre qui évite une
+    //  assertion bruyante quand on développe.
+    if (ro.debugNeedsPaint) {
+      return const ResultatMiroir.echec(EchecMiroir.pasDEcran);
+    }
     final ui.Size taille = ro.size;
-    if (!(taille.width > 0) || !(taille.height > 0)) return null;
+    if (!(taille.width > 0) || !(taille.height > 0)) {
+      return const ResultatMiroir.echec(EchecMiroir.pasDEcran);
+    }
 
     final ui.Image img = await ro.toImage(
       pixelRatio: ratioMiroir(taille.width),
     );
+    final int largeur = img.width;
+    final int hauteur = img.height;
+    ByteData? brut;
     try {
-      final ByteData? d = await img.toByteData(format: ui.ImageByteFormat.png);
-      if (d == null) return null;
-      final Uint8List octets = d.buffer.asUint8List();
-      if (octets.length > poidsMaxMiroir) return null;
-      return ImageMiroir(
-        octets: octets,
-        largeur: img.width,
-        hauteur: img.height,
-      );
+      //  `rawRgba` ET PAS `png` : on veut les pixels bruts pour les
+      //  donner directement à l'encodeur JPEG. Demander un PNG puis le
+      //  redécoder ferait deux fois le travail, dont une compression
+      //  sans perte dont on ne veut pas.
+      brut = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
     } finally {
       // Sans ça, chaque capture laisse une image en mémoire graphique.
       // Toutes les deux secondes, sur une box à 1 Go, ça finit mal.
       img.dispose();
     }
+    if (brut == null) {
+      return const ResultatMiroir.echec(EchecMiroir.erreurGraphique);
+    }
+
+    final img_lib.Image bitmap = img_lib.Image.fromBytes(
+      width: largeur,
+      height: hauteur,
+      bytes: brut.buffer,
+      numChannels: 4,
+      order: img_lib.ChannelOrder.rgba,
+    );
+    final Uint8List octets = img_lib.encodeJpg(bitmap, quality: qualiteMiroir);
+    if (octets.length > poidsMaxMiroir) {
+      return const ResultatMiroir.echec(EchecMiroir.tropGrosse);
+    }
+    return ResultatMiroir.image(
+      ImageMiroir(octets: octets, largeur: largeur, hauteur: hauteur),
+    );
   } catch (e) {
     if (kDebugMode) debugPrint('[Miroir] capture: $e');
-    return null;
+    return const ResultatMiroir.echec(EchecMiroir.erreurGraphique);
   }
+}
+
+/// Une image, ou la raison pour laquelle il n'y en a pas.
+///
+///  JAMAIS `null` TOUT SEUL. La première version rendait `null` dans
+///  cinq cas différents, et le panel affichait un cadre vide sans
+///  pouvoir dire lequel. Le propriétaire a passé une session entière
+///  devant ce vide.
+@immutable
+class ResultatMiroir {
+  const ResultatMiroir.image(ImageMiroir this.image) : echec = null;
+  const ResultatMiroir.echec(EchecMiroir this.echec) : image = null;
+
+  final ImageMiroir? image;
+  final EchecMiroir? echec;
 }
 
 /// Une image prête à partir.

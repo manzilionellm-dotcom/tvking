@@ -159,6 +159,31 @@ dependencies:
   # Cache + chargement asynchrone des logos de chaînes.
   cached_network_image: ^3.4.1
 
+  # ENCODAGE JPEG DU MIROIR D'ÉCRAN (19/09/2026).
+  #
+  # QUE FAIT-IL : lit/écrit des images en Dart pur. On ne s'en sert que
+  # pour UNE chose — transformer la capture de l'écran du client en
+  # JPEG avant de l'envoyer au panel (lib/core/assistance/
+  # assistance_miroir.dart).
+  #
+  # POURQUOI ON EN A BESOIN : `dart:ui` ne sait encoder qu'en PNG, et
+  # le PNG est SANS PERTE. Sur un écran de télé — logos de chaînes,
+  # affiches, dégradés — ça donne 100 à 300 Ko par image. Envoyer ça
+  # toutes les deux secondes depuis la connexion d'un client qui
+  # regarde la télé en même temps n'est pas acceptable, et c'est ce qui
+  # a fait que le miroir n'affichait RIEN en 198884 : chaque image
+  # dépassait le plafond et se faisait jeter, en silence.
+  #
+  # En JPEG qualité 60, la même image pèse 15 à 30 Ko — dix fois moins,
+  # et surtout un poids PRÉVISIBLE, qui ne dépend plus de ce que le
+  # client a à l'écran.
+  #
+  # POURQUOI CELUI-LÀ : il était DÉJÀ dans l'arbre de dépendances
+  # (transitif, via le traitement d'images). On ne rajoute donc aucun
+  # code au paquet final — on se contente de le déclarer pour avoir le
+  # droit de l'importer.
+  image: ^4.3.0
+
   # Extraction de la COULEUR DOMINANTE d'un logo (gradient ambiant du hero TV,
   # §6). Package officiel Flutter. Utilisé UNIQUEMENT pour le hero (1 image à la
   # fois), résultat MIS EN CACHE par chaîne → conforme à la cible 60 fps.

@@ -122,6 +122,20 @@ const RAISONS: Record<string, string> = {
     + 'La boîte noire de l’appareil en garde la trace.',
 };
 
+/// Pourquoi l'app n'a pas pu envoyer d'image. Mêmes identifiants que
+/// `EchecMiroir` côté app, traduits ici — et ici seulement.
+const ECHECS_MIROIR: Record<string, string> = {
+  pasDEcran:
+    '7 MOTION n’est pas à l’écran chez lui (en arrière-plan, ou en '
+    + 'train de démarrer). Demande-lui de revenir dans l’application.',
+  tropGrosse:
+    'L’image de son écran est trop lourde pour passer. Signale-le-moi : '
+    + 'c’est un réglage de qualité à baisser, pas une panne de sa box.',
+  erreurGraphique:
+    'Sa box a refusé de rendre l’image. Rare — si ça se répète, sa '
+    + 'boîte noire en garde la trace.',
+};
+
 type Ligne = { quand: string; quoi: string; ok: boolean | null; pourquoi?: string };
 type Forme = 'tv' | 'phone';
 
@@ -378,16 +392,28 @@ function EcranTactile({
   //  pourquoi il n'y a rien. Dessiner une maquette approximative de
   //  son écran serait pire que le vide — le support montrerait du
   //  doigt un bouton qui n'est pas là.
-  const [vue, setVue] = useState<{ png: string; at: number } | null>(null);
+  const [vue, setVue] = useState<{ jpg: string; at: number } | null>(null);
+  //  POURQUOI IL N'Y A PAS D'IMAGE, quand l'app le dit. Le 19/09 au
+  //  soir, chaque capture était jetée pour dépassement de poids et le
+  //  panel n'affichait qu'un cadre vide : le propriétaire a cru que
+  //  c'était lui qui s'y prenait mal.
+  const [echec, setEchec] = useState<string>('');
 
   useEffect(() => {
     if (!mac) return undefined;
-    return onRt('screen', (e: { mac?: string; png?: string }) => {
+    const cible = mac.trim().toUpperCase();
+    return onRt('screen', (e: { mac?: string; jpg?: string; echec?: string }) => {
       // Le hub diffuse à TOUS les panels connectés : on ne garde que
       // l'appareil ouvert ici. Sans ce filtre, ouvrir deux fiches
       // ferait clignoter l'une avec l'écran de l'autre.
-      if (e?.mac !== mac || !e?.png) return;
-      setVue({ png: e.png, at: Date.now() });
+      if ((e?.mac || '').trim().toUpperCase() !== cible) return;
+      if (e?.jpg) {
+        setVue({ jpg: e.jpg, at: Date.now() });
+        setEchec('');
+      } else if (e?.echec) {
+        setVue(null);
+        setEchec(e.echec);
+      }
     });
   }, [mac]);
 
@@ -460,7 +486,7 @@ function EcranTactile({
         {/* SON ÉCRAN, s'il en arrive une image. */}
         {vue && (
           <img
-            src={`data:image/png;base64,${vue.png}`}
+            src={`data:image/jpeg;base64,${vue.jpg}`}
             alt="Écran du client"
             draggable={false}
             className="pointer-events-none absolute inset-0 h-full w-full object-contain"
@@ -551,10 +577,15 @@ function EcranTactile({
             l’application, on ne peut pas la capturer. Un rectangle noir
             ne veut donc <b>pas</b> dire que sa chaîne est plantée.
           </>
+        ) : echec ? (
+          <span className="text-warning">
+            <b>Son app a essayé, et n’a pas pu :</b>{' '}
+            {ECHECS_MIROIR[echec] || echec}
+          </span>
         ) : (
           <>
             Pas encore d’image : elle n’arrive que pendant une session,
-            et seulement depuis une app en <b>198883 ou plus</b>. En
+            et seulement depuis une app en <b>198885 ou plus</b>. En
             attendant, le cadre reste un pavé tactile — en haut à droite
             ici = en haut à droite chez lui.
           </>
