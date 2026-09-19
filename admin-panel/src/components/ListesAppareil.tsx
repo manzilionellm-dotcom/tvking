@@ -359,6 +359,115 @@ export function ListesAppareil({
 //  On AJOUTE (`sourcesApi.add`), on ne remplace pas : `setMany`
 //  écraserait les listes déjà en place, y compris celle que le client
 //  est en train de regarder.
+// =========================================================
+//  COLLER LE CODE DU FOURNISSEUR — instantané, sans deviner
+// =========================================================
+//  DEMANDE DU PROPRIÉTAIRE (19/09/2026, tard) : « je dois pouvoir
+//  copier-coller les codes M3U facilement pour un client, ça doit
+//  être fluide, instantané. »
+//
+//  CE QUE LE SUPPORT REÇOIT VRAIMENT d'un fournisseur, en pratique :
+//  rarement un serveur/identifiant/mot de passe déjà séparés en trois
+//  champs. Le plus souvent, un SEUL bloc de texte collé depuis
+//  WhatsApp : un lien complet, ou un « code » du genre
+//  « serveur:port:identifiant:motdepasse ». Lui faire recopier ça à
+//  la main dans trois cases, chaque fois, à chaque client, c'est
+//  exactement le contraire de « fluide ».
+//
+//  [analyserCode] lit ce bloc et retrouve le bon découpage — mais ne
+//  DEVINE JAMAIS un identifiant ou un mot de passe qui ne serait pas
+//  littéralement dans le texte collé. Trois issues, et rien d'autre :
+//
+//   1. Un lien Xtream (get.php / player_api.php avec `username` et
+//      `password` en paramètres, OU la forme courte
+//      `serveur/identifiant/motdepasse`) → les trois champs Xtream se
+//      remplissent, l'onglet bascule dessus.
+//   2. Un « code » `serveur:port:identifiant:motdepasse` (le format
+//      que beaucoup de fournisseurs envoient tel quel) → pareil.
+//   3. N'importe quel autre lien, ou rien de reconnu → le texte part
+//      TEL QUEL dans le champ M3U. On ne perd rien, on ne fabrique
+//      rien : c'est exactement ce que le support aurait tapé à la
+//      main.
+//
+//  L'ANALYSE EST INSTANTANÉE PARCE QU'ELLE NE PART NULLE PART. Pas
+//  d'appel réseau, pas d'attente : c'est du texte relu localement, au
+//  caractère près, pendant que le support tape. Et rien ne part
+//  jamais vers l'appareil du client tant qu'il n'a pas cliqué
+//  « Ajouter » — coller ne fait que PRÉ-REMPLIR, ça ne soumet rien.
+// =========================================================
+
+type ResultatCollage =
+  | { ok: true; type: 'xtream'; server_url: string; username: string; password: string; note: string }
+  | { ok: true; type: 'm3u'; m3u_url: string; note: string }
+  | { ok: false; brut: string };
+
+function analyserCode(brutEntree: string): ResultatCollage | null {
+  const brut = brutEntree.trim();
+  if (!brut) return null;
+
+  // 1) « serveur:port:identifiant:motdepasse » — le format que
+  //    beaucoup de fournisseurs envoient tel quel, sans lien du tout.
+  const mColon = brut.match(/^([a-zA-Z0-9_.-]+):(\d{2,5}):([^\s:]+):([^\s:]+)$/);
+  if (mColon) {
+    const [, host, port, u, p] = mColon;
+    return {
+      ok: true, type: 'xtream',
+      server_url: `http://${host}:${port}`, username: u, password: p,
+      note: `Détecté : Xtream — ${host}:${port} · ${u}`,
+    };
+  }
+
+  // 2) Une URL quelque part dans le texte collé. Le support colle
+  //    souvent une phrase entière autour (« voici ton accès :
+  //    http://… ») : on ne garde que le lien, pas la phrase.
+  const mUrl = brut.match(/https?:\/\/[^\s"'<>]+/i);
+  if (!mUrl) {
+    // Rien reconnu : ON NE DEVINE PAS PLUS LOIN. Le texte part tel
+    // quel vers le champ M3U — l'utilisateur verra que ce n'en est
+    // pas un au moment de valider, exactement comme s'il l'avait
+    // tapé lui-même.
+    return { ok: false, brut };
+  }
+  let url: URL;
+  try {
+    url = new URL(mUrl[0]);
+  } catch {
+    return { ok: false, brut };
+  }
+
+  const u = url.searchParams.get('username');
+  const p = url.searchParams.get('password');
+  if (u && p) {
+    return {
+      ok: true, type: 'xtream',
+      server_url: `${url.protocol}//${url.host}`, username: u, password: p,
+      note: `Détecté : Xtream — ${url.host} · ${u}`,
+    };
+  }
+
+  // 3) La forme courte « serveur/identifiant/motdepasse », sans
+  //    get.php ni paramètres — très répandue chez les fournisseurs
+  //    qui ne donnent QUE ce lien-là.
+  const segments = url.pathname.split('/').filter(Boolean);
+  if (segments.length >= 2 && !/get\.php|player_api\.php|xmltv\.php/i.test(url.pathname)) {
+    const [seg1, seg2] = segments;
+    // Le dernier segment peut porter une extension (.m3u8, .ts…) —
+    // elle ne fait pas partie du mot de passe.
+    const p2 = seg2.replace(/\.(m3u8?|ts)$/i, '');
+    if (seg1 && p2) {
+      return {
+        ok: true, type: 'xtream',
+        server_url: `${url.protocol}//${url.host}`, username: seg1, password: p2,
+        note: `Détecté : Xtream (lien court) — ${url.host} · ${seg1}`,
+      };
+    }
+  }
+
+  // 4) Un lien qu'on ne sait pas découper en identifiants : c'est
+  //    exactement ce que le champ M3U attend, tel quel.
+  return { ok: true, type: 'm3u', m3u_url: url.toString(), note: 'Détecté : lien M3U direct' };
+}
+
 function FormulaireAjout({
   busy,
   onCancel,
@@ -375,6 +484,39 @@ function FormulaireAjout({
   const [pass, setPass] = useState('');
   const [m3u, setM3u] = useState('');
   const [active, setActive] = useState(true);
+
+  // Le champ « coller le code » : purement une aide au remplissage,
+  // il n'est jamais envoyé lui-même — voir analyserCode ci-dessus.
+  const [collage, setCollage] = useState('');
+  const [detection, setDetection] = useState<string | null>(null);
+
+  function surCollage(texte: string) {
+    setCollage(texte);
+    const r = analyserCode(texte);
+    if (!r) {
+      setDetection(null);
+      return;
+    }
+    if (!r.ok) {
+      setType('m3u');
+      setM3u(r.brut);
+      setDetection(
+        '⚠ Format non reconnu — le texte a été mis dans le champ M3U '
+        + 'ci-dessous, vérifie-le avant d’ajouter.',
+      );
+      return;
+    }
+    if (r.type === 'xtream') {
+      setType('xtream');
+      setServer(r.server_url);
+      setUser(r.username);
+      setPass(r.password);
+    } else {
+      setType('m3u');
+      setM3u(r.m3u_url);
+    }
+    setDetection(r.note);
+  }
 
   function envoyer(e: FormEvent) {
     e.preventDefault();
@@ -407,6 +549,33 @@ function FormulaireAjout({
       onSubmit={envoyer}
       className="mt-3 space-y-2 rounded-lg border border-white/10 bg-midnight p-3"
     >
+      {/* COLLER LE CODE — voir le pavé plus haut. Une seule case, tout
+          ce qui suit se remplit tout seul, instantanément, sans rien
+          envoyer nulle part. */}
+      <div>
+        <label className="mb-1 block text-[11px] font-semibold text-ink-secondary">
+          Colle le code du fournisseur (un lien, ou serveur:port:id:mdp)
+        </label>
+        <textarea
+          value={collage}
+          onChange={(e) => surCollage(e.target.value)}
+          placeholder="http://serveur:port/get.php?username=…&password=…  —  ou serveur:port:identifiant:motdepasse"
+          spellCheck={false}
+          rows={2}
+          className={champ + ' resize-none font-mono text-xs'}
+        />
+        {detection && (
+          <p
+            className={
+              'mt-1 text-[11px] '
+              + (detection.startsWith('⚠') ? 'text-warning' : 'text-success')
+            }
+          >
+            {detection}
+          </p>
+        )}
+      </div>
+
       <div className="flex gap-2">
         {(['xtream', 'm3u'] as const).map((t) => (
           <button
@@ -436,7 +605,7 @@ function FormulaireAjout({
         <>
           <input
             value={server}
-            onChange={(e) => setServer(e.target.value)}
+            onChange={(e) => { setServer(e.target.value); setDetection(null); }}
             placeholder="http://serveur:port"
             spellCheck={false}
             className={champ}
@@ -444,14 +613,14 @@ function FormulaireAjout({
           <div className="grid gap-2 sm:grid-cols-2">
             <input
               value={user}
-              onChange={(e) => setUser(e.target.value)}
+              onChange={(e) => { setUser(e.target.value); setDetection(null); }}
               placeholder="Identifiant"
               spellCheck={false}
               className={champ}
             />
             <input
               value={pass}
-              onChange={(e) => setPass(e.target.value)}
+              onChange={(e) => { setPass(e.target.value); setDetection(null); }}
               placeholder="Mot de passe"
               spellCheck={false}
               className={champ}
@@ -461,7 +630,7 @@ function FormulaireAjout({
       ) : (
         <input
           value={m3u}
-          onChange={(e) => setM3u(e.target.value)}
+          onChange={(e) => { setM3u(e.target.value); setDetection(null); }}
           placeholder="http://…/get.php?…&type=m3u_plus"
           spellCheck={false}
           className={champ}
