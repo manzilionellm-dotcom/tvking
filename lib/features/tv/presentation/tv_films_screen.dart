@@ -40,6 +40,7 @@ import '../../vod/data/vod_novelty_service.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/data/vod_taste.dart';
 import '../../vod/data/vod_watchlist_repository.dart';
+import '../../vod/domain/pays_cinema.dart';
 import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../core/tv_dimens.dart';
@@ -193,7 +194,10 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     ]..sort((VodMovie a, VodMovie b) => b.addedEpoch!.compareTo(a.addedEpoch!));
     setState(() {
       _all = movies;
-      _cats = cats;
+      // PAR PAYS (19/09/2026) : la France en tête, le généraliste, puis
+      // chaque pays groupé — même règle que les séries, même fonction.
+      // Voir vod/domain/pays_cinema.dart.
+      _cats = ordonnerParPays(cats);
       _byCat = byCat;
       _latest = dated.take(24).toList(growable: false);
       _recent = RecentVodRepository.instance.items;

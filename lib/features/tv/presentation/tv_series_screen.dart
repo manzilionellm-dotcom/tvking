@@ -22,6 +22,7 @@ import '../../vod/data/series_repository.dart';
 import '../../vod/data/vod_download_service.dart';
 import '../../vod/data/vod_novelty_service.dart';
 import '../../vod/data/vod_taste.dart';
+import '../../vod/domain/pays_cinema.dart';
 import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_movie.dart';
 import '../../vod/domain/vod_series.dart';
@@ -125,7 +126,11 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     }
     setState(() {
       _all = series;
-      _cats = cats;
+      // PAR PAYS (19/09/2026) : la France en tête, le généraliste, puis
+      // chaque pays groupé — les rangées ne changent pas, seulement leur
+      // ordre. « Les Turcs ne voient pas leurs séries, c'est mélangé. »
+      // Voir vod/domain/pays_cinema.dart.
+      _cats = ordonnerParPays(cats);
       _byCat = byCat;
       _loading = false;
     });
