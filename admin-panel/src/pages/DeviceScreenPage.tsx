@@ -415,7 +415,7 @@ function DeviceScreenPage({
                pour que Lionel reconnaisse d'un coup d'œil ce que son
                client a sous les yeux. Le cadre est décoratif ; ce qui
                compte est dedans. */}
-          <div className={look.cadre}>
+          <div className={look.cadre + ' order-2 lg:order-1'}>
             <div className={look.ecran}>
               <div className="mb-2 flex items-center justify-between px-2 text-[10px] text-ink-tertiary">
                 <span className="font-mono">{ov.mac}</span>
@@ -600,7 +600,19 @@ function DeviceScreenPage({
           {/* =========================================================
                LES LISTES, ET CE QU'ON PEUT EN FAIRE
               ========================================================= */}
-          <div className="space-y-6">
+          {/* SUR TÉLÉPHONE, LES ACTIONS PASSENT DEVANT (19/09/2026).
+               Le propriétaire pilote le panel depuis son mobile, et il
+               a cherché « Prendre la main » sans la trouver : sur un
+               écran étroit, les deux colonnes s'empilent, et ce bloc
+               se retrouvait SOUS toute la maquette et sa liste de
+               chaînes — plusieurs écrans de défilement.
+
+               Or on n'ouvre pas cette page pour regarder une maquette :
+               on l'ouvre avec un client au téléphone, pour agir. Les
+               actions passent donc en premier sur mobile, et la
+               maquette reprend sa place à gauche dès qu'il y a de la
+               largeur (`lg:`). */}
+          <div className="order-1 space-y-6 lg:order-2">
             {/* PRENDRE LA MAIN — en premier : quand on ouvre cette page
                 avec un client au téléphone, c'est ce qu'on vient faire. */}
             <PrendreLaMain mac={macCourante} enLigne={enLigne} />
