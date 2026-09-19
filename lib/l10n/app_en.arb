@@ -859,6 +859,7 @@
   "tvDisplayTitle": "Display",
   "tvOverscanLabel": "Screen margin (overscan)",
   "tvOverscanHint": "Increase if your TV cuts off the edges of the picture.",
+  "tvOverscanAuto": "Set automatically for your box (Android TV safe zone). Lower to 0% if your TV shows everything.",
   "tvTextSizeLabel": "Text size",
   "tvTextNormal": "Normal",
   "tvTextLarge": "Large",

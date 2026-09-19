@@ -853,6 +853,7 @@
   "tvDisplayTitle": "Onyesho",
   "tvOverscanLabel": "Ukingo wa skrini (overscan)",
   "tvOverscanHint": "Ongeza ikiwa TV yako inakata kingo za picha.",
+  "tvOverscanAuto": "Imewekwa kiotomatiki kwa kisanduku chako (eneo salama la Android TV). Punguza hadi 0% ikiwa TV yako inaonyesha picha yote.",
   "tvTextSizeLabel": "Ukubwa wa maandishi",
   "tvTextNormal": "Ya kawaida",
   "tvTextLarge": "Kubwa",

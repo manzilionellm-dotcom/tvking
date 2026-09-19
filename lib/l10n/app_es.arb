@@ -853,6 +853,7 @@
   "tvDisplayTitle": "Pantalla",
   "tvOverscanLabel": "Margen de pantalla (overscan)",
   "tvOverscanHint": "Auméntalo si tu TV recorta los bordes de la imagen.",
+  "tvOverscanAuto": "Ajustado automáticamente para tu box (zona segura de Android TV). Bájalo a 0 % si tu TV muestra todo.",
   "tvTextSizeLabel": "Tamaño del texto",
   "tvTextNormal": "Normal",
   "tvTextLarge": "Grande",

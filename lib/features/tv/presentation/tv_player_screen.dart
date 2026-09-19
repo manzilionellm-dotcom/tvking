@@ -61,6 +61,7 @@ import '../../vod/data/vod_download_service.dart';
 import '../../hue/data/hue_service.dart';
 import '../data/autoplay_policy.dart';
 import '../data/cine_perf.dart';
+import '../data/display_settings.dart';
 import '../data/failure_explainer.dart';
 import '../data/freeze_recovery_policy.dart';
 import '../data/playback_failure_log.dart';
@@ -456,6 +457,11 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // L'image prend TOUT l'écran : la racine retire sa marge d'overscan
+    // pendant la lecture et la publie dans MediaQuery.padding, où
+    // `_margeZoneSure` la lit pour reculer les habillages. Rendue dans
+    // dispose(). Voir display_settings.dart, « vidéo plein écran ».
+    DisplaySettings.instance.entrerPleinEcran();
     // Le décodage (MediaCodec matériel + repli logiciel), le tampon réseau et
     // le User-Agent sont gérés côté natif (NativeVideoView.kt). Ici on se
     // contente de piloter l'URL et d'écouter l'état.
@@ -645,6 +651,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    DisplaySettings.instance.quitterPleinEcran(); // la marge revient
     _licenseGuard?.dispose();
     //  ⚠ LE VERROU DES TÉLÉCHARGEMENTS NE SE LÈVE PLUS ICI (30/08).
     //
@@ -2856,6 +2863,23 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     return KeyEventResult.ignored;
   }
 
+  /// De combien reculer les habillages pour rester hors de la zone que la
+  /// télé rogne (marge publiée par la racine pendant la lecture, en unités
+  /// du canevas — 0 hors box Android, 5 % par défaut sur une box).
+  ///
+  /// C'est un PLANCHER, pas un supplément : les pastilles et la barre se
+  /// placent déjà à `TvDimens.safeH` / `safeV` du bord (la même zone sûre,
+  /// exprimée en dp). On ne recule donc que de ce qui MANQUE — avec 5 % sur
+  /// 1280 = 64 dp et safeH = 48, la pastille REC finit à 64 dp du bord,
+  /// pas à 112. Sans marge publiée, tout reste exactement où c'était.
+  EdgeInsets _margeZoneSure(BuildContext context) {
+    final EdgeInsets m = MediaQuery.paddingOf(context);
+    return EdgeInsets.symmetric(
+      horizontal: (m.left - TvDimens.safeH).clamp(0.0, double.infinity),
+      vertical: (m.top - TvDimens.safeV).clamp(0.0, double.infinity),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Material TRANSPARENT : le lecteur est poussé depuis des dizaines
@@ -2970,217 +2994,241 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                         ),
                       ),
                     ),
-                  // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
-                  // bas + fondu, masqué automatiquement après 5 s. Contient l'info
-                  // chaîne + tous les contrôles (dont REC et en bas).
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: AnimatedSlide(
-                      offset: _overlay ? Offset.zero : const Offset(0, 0.28),
-                      duration: TvDimens.focusAnim,
-                      curve: Curves.easeOutCubic,
-                      child: AnimatedOpacity(
-                        opacity: _overlay ? 1 : 0,
-                        duration: TvDimens.focusAnim,
-                        child: IgnorePointer(
-                          ignoring: !_overlay,
-                          child: _ControlsBar(
-                            channel: _current,
-                            index: _index,
-                            total: widget.channels.length,
-                            isRecording: _isRecording,
-                            isFavorite: _isFavorite,
-                            focusedIndex: _btnFocus,
-                            onGuide: _openGuide,
-                            onRecord: _toggleRecording,
-                            onFavorite: _toggleFavorite,
-                            onMulti: _openMultiView,
-                            onTracks: _openTracksSheet,
-                            timeshift: _timeshift,
-                            onBackToLive: () => unawaited(_backToLive()),
-                            // ---- Mode FILM (Netflix) ----
-                            isVod: _isVod,
-                            position: _controller.position,
-                            duration: _controller.duration,
-                            buffered: _controller.buffered,
-                            isPlaying: _controller.isPlaying,
-                            onSeekBack: () =>
-                                _seekRelative(const Duration(seconds: -10)),
-                            onSeekFwd: () =>
-                                _seekRelative(const Duration(seconds: 10)),
-                            onPlayPause: _togglePlayPause,
-                            seekPreview: _seekPreview,
-                            onSeekToFraction: _seekToFraction,
+                  // ZONE SÛRE DES HABILLAGES (19/09/2026). Tout ce qui suit — barre,
+                  // pastilles, panneau des pistes, carte « à suivre » — recule de la
+                  // marge que la racine publie dans MediaQuery.padding pendant la
+                  // lecture (voir display_settings.dart, « vidéo plein écran »).
+                  // L'image et le voile de zap, AU-DESSUS dans cette liste, restent
+                  // plein écran : sur une télé qui rogne, perdre 5 % de bord d'image
+                  // est invisible ; perdre le bouton « Pistes », ça se voit.
+                  Positioned.fill(
+                    child: Padding(
+                      padding: _margeZoneSure(context),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: <Widget>[
+                          // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
+                          // bas + fondu, masqué automatiquement après 5 s. Contient l'info
+                          // chaîne + tous les contrôles (dont REC et en bas).
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: AnimatedSlide(
+                              offset: _overlay ? Offset.zero : const Offset(0, 0.28),
+                              duration: TvDimens.focusAnim,
+                              curve: Curves.easeOutCubic,
+                              child: AnimatedOpacity(
+                                opacity: _overlay ? 1 : 0,
+                                duration: TvDimens.focusAnim,
+                                child: IgnorePointer(
+                                  ignoring: !_overlay,
+                                  child: _ControlsBar(
+                                    channel: _current,
+                                    index: _index,
+                                    total: widget.channels.length,
+                                    isRecording: _isRecording,
+                                    isFavorite: _isFavorite,
+                                    focusedIndex: _btnFocus,
+                                    onGuide: _openGuide,
+                                    onRecord: _toggleRecording,
+                                    onFavorite: _toggleFavorite,
+                                    onMulti: _openMultiView,
+                                    onTracks: _openTracksSheet,
+                                    timeshift: _timeshift,
+                                    onBackToLive: () => unawaited(_backToLive()),
+                                    // ---- Mode FILM (Netflix) ----
+                                    isVod: _isVod,
+                                    position: _controller.position,
+                                    duration: _controller.duration,
+                                    buffered: _controller.buffered,
+                                    isPlaying: _controller.isPlaying,
+                                    onSeekBack: () =>
+                                        _seekRelative(const Duration(seconds: -10)),
+                                    onSeekFwd: () =>
+                                        _seekRelative(const Duration(seconds: 10)),
+                                    onPlayPause: _togglePlayPause,
+                                    seekPreview: _seekPreview,
+                                    onSeekToFraction: _seekToFraction,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          // Numéro saisi à la télécommande (coin haut-droit).
+                          if (_numBuffer.isNotEmpty)
+                            Positioned(
+                              top: TvDimens.safeV + 8,
+                              right: TvDimens.safeH,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 20, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.7),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.white24),
+                                ),
+                                child: Text(_numBuffer,
+                                    style: const TextStyle(
+                                        fontSize: 44,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                        letterSpacing: 4)),
+                              ),
+                            ),
+                          // Badge « DIFFÉRÉ · retard m:ss » pendant le timeshift
+                          // (sous la pastille REC si les deux sont actifs).
+                          if (_timeshift)
+                            Positioned(
+                              top: TvDimens.safeV + 8 + (_isRecording ? 44 : 0),
+                              left: TvDimens.safeH,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(100),
+                                  border: Border.all(color: TvTokens.gold),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Icon(
+                                        _timeshiftPlaying
+                                            ? Icons.history_rounded
+                                            : Icons.pause_circle_filled_rounded,
+                                        color: TvTokens.goldBright,
+                                        size: 16),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                        _timeshiftDelay == null
+                                            ? context.l10n.tvTimeshiftBadge
+                                            : context.l10n.tvTimeshiftDelay(
+                                                _fmtClock(_timeshiftDelay!)),
+                                        style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 1.5,
+                                            color: TvTokens.goldBright)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          // Pastille « ● REC » visible en permanence pendant l'enregistrement
+                          // (même quand la barre est masquée).
+                          if (_isRecording)
+                            Positioned(
+                              top: TvDimens.safeV + 8,
+                              left: TvDimens.safeH,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(100),
+                                  border: Border.all(color: TvTokens.live),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Icon(Icons.fiber_manual_record_rounded,
+                                        color: TvTokens.live, size: 16),
+                                    const SizedBox(width: 8),
+                                    Text(context.l10n.playerRec,
+                                        style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 2,
+                                            color: TvTokens.text)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          // Message éphémère (sauvegardé / vide / échec).
+                          if (_toastMsg != null)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: TvDimens.safeV + 120,
+                              child: Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 22, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.78),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.white24),
+                                  ),
+                                  child: Text(_toastMsg!,
+                                      style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w700,
+                                          color: TvTokens.text)),
+                                ),
+                              ),
+                            ),
+                          // Carte « À SUIVRE » (bas-droite, façon Netflix) : titre du
+                          // prochain épisode + compte à rebours 10 s + Lire maintenant /
+                          // Annuler. Uniquement à la fin d'un ÉPISODE avec un suivant
+                          // (cf. _handleVodEnded) — jamais en live ni pour un film.
+                          // Feuille « Pistes & format d'image » (panneau latéral droit,
+                          // focus émulé — cf. _onKey qui lui détourne tout le D-pad).
+                          if (_tracksVisible)
+                            Positioned(
+                              top: 0,
+                              // Le panneau colle au bord (pas à safeH comme
+                              // les pastilles) : il reçoit donc ce que le
+                              // plancher de _margeZoneSure ne lui donne pas,
+                              // pour finir exactement à la marge publiée.
+                              // Sans marge : 0, collé à droite comme avant.
+                              right: MediaQuery.paddingOf(context)
+                                  .right
+                                  .clamp(0.0, TvDimens.safeH),
+                              bottom: 0,
+                              child: _TracksSheet(
+                                audio: _controller.audioTracks,
+                                text: _controller.textTracks,
+                                entries: _sheetEntries(),
+                                focusedIndex: _tracksFocus,
+                                aspect: _aspect,
+                                onActivate: _activateSheetEntry,
+                                onClose: _closeTracksSheet,
+                              ),
+                            ),
+                          // Pastille « Épisode suivant » (30 dernières secondes d'un
+                          // épisode, barre masquée) : OK = enchaîner tout de suite,
+                          // ne rien faire = regarder le générique. Se cache quand la
+                          // barre s'ouvre (OK redevient lecture/pause, sans ambiguïté).
+                          if (_endPillVisible && !_overlay && _nextUpChannel != null)
+                            Positioned(
+                              right: TvDimens.safeH,
+                              bottom: TvDimens.safeV + 24,
+                              child: _NextEpisodePill(
+                                onTap: () {
+                                  _autoplay.onUserInteraction();
+                                  _playUpNext(auto: false);
+                                },
+                              ),
+                            ),
+                          if (_upNextVisible && _nextUpChannel != null)
+                            Positioned(
+                              right: TvDimens.safeH,
+                              bottom: TvDimens.safeV + 24,
+                              child: _UpNextCard(
+                                title: _nextUpChannel!.cleanName,
+                                seconds: _upNextAuto ? _upNextSeconds : null,
+                                totalSeconds: _autoplay.countdownSeconds,
+                                focusedIndex: _upNextBtn,
+                                // Tactile : un tap direct sur un bouton de la carte.
+                                onPlay: () {
+                                  _autoplay.onUserInteraction();
+                                  _playUpNext(auto: false);
+                                },
+                                onCancel: _cancelUpNext,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),
-                  // Numéro saisi à la télécommande (coin haut-droit).
-                  if (_numBuffer.isNotEmpty)
-                    Positioned(
-                      top: TvDimens.safeV + 8,
-                      right: TvDimens.safeH,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                        child: Text(_numBuffer,
-                            style: const TextStyle(
-                                fontSize: 44,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                letterSpacing: 4)),
-                      ),
-                    ),
-                  // Badge « DIFFÉRÉ · retard m:ss » pendant le timeshift
-                  // (sous la pastille REC si les deux sont actifs).
-                  if (_timeshift)
-                    Positioned(
-                      top: TvDimens.safeV + 8 + (_isRecording ? 44 : 0),
-                      left: TvDimens.safeH,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(100),
-                          border: Border.all(color: TvTokens.gold),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(
-                                _timeshiftPlaying
-                                    ? Icons.history_rounded
-                                    : Icons.pause_circle_filled_rounded,
-                                color: TvTokens.goldBright,
-                                size: 16),
-                            const SizedBox(width: 8),
-                            Text(
-                                _timeshiftDelay == null
-                                    ? context.l10n.tvTimeshiftBadge
-                                    : context.l10n.tvTimeshiftDelay(
-                                        _fmtClock(_timeshiftDelay!)),
-                                style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.5,
-                                    color: TvTokens.goldBright)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  // Pastille « ● REC » visible en permanence pendant l'enregistrement
-                  // (même quand la barre est masquée).
-                  if (_isRecording)
-                    Positioned(
-                      top: TvDimens.safeV + 8,
-                      left: TvDimens.safeH,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(100),
-                          border: Border.all(color: TvTokens.live),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(Icons.fiber_manual_record_rounded,
-                                color: TvTokens.live, size: 16),
-                            const SizedBox(width: 8),
-                            Text(context.l10n.playerRec,
-                                style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 2,
-                                    color: TvTokens.text)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  // Message éphémère (sauvegardé / vide / échec).
-                  if (_toastMsg != null)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: TvDimens.safeV + 120,
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 22, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.78),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white24),
-                          ),
-                          child: Text(_toastMsg!,
-                              style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: TvTokens.text)),
-                        ),
-                      ),
-                    ),
-                  // Carte « À SUIVRE » (bas-droite, façon Netflix) : titre du
-                  // prochain épisode + compte à rebours 10 s + Lire maintenant /
-                  // Annuler. Uniquement à la fin d'un ÉPISODE avec un suivant
-                  // (cf. _handleVodEnded) — jamais en live ni pour un film.
-                  // Feuille « Pistes & format d'image » (panneau latéral droit,
-                  // focus émulé — cf. _onKey qui lui détourne tout le D-pad).
-                  if (_tracksVisible)
-                    Positioned(
-                      top: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: _TracksSheet(
-                        audio: _controller.audioTracks,
-                        text: _controller.textTracks,
-                        entries: _sheetEntries(),
-                        focusedIndex: _tracksFocus,
-                        aspect: _aspect,
-                        onActivate: _activateSheetEntry,
-                        onClose: _closeTracksSheet,
-                      ),
-                    ),
-                  // Pastille « Épisode suivant » (30 dernières secondes d'un
-                  // épisode, barre masquée) : OK = enchaîner tout de suite,
-                  // ne rien faire = regarder le générique. Se cache quand la
-                  // barre s'ouvre (OK redevient lecture/pause, sans ambiguïté).
-                  if (_endPillVisible && !_overlay && _nextUpChannel != null)
-                    Positioned(
-                      right: TvDimens.safeH,
-                      bottom: TvDimens.safeV + 24,
-                      child: _NextEpisodePill(
-                        onTap: () {
-                          _autoplay.onUserInteraction();
-                          _playUpNext(auto: false);
-                        },
-                      ),
-                    ),
-                  if (_upNextVisible && _nextUpChannel != null)
-                    Positioned(
-                      right: TvDimens.safeH,
-                      bottom: TvDimens.safeV + 24,
-                      child: _UpNextCard(
-                        title: _nextUpChannel!.cleanName,
-                        seconds: _upNextAuto ? _upNextSeconds : null,
-                        totalSeconds: _autoplay.countdownSeconds,
-                        focusedIndex: _upNextBtn,
-                        // Tactile : un tap direct sur un bouton de la carte.
-                        onPlay: () {
-                          _autoplay.onUserInteraction();
-                          _playUpNext(auto: false);
-                        },
-                        onCancel: _cancelUpNext,
-                      ),
-                    ),
                 ],
               ),
             ),

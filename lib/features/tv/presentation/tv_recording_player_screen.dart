@@ -29,6 +29,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../recordings/domain/recording.dart';
 import '../../vod/data/vod_download_service.dart';
 import '../core/tv_tokens.dart';
+import '../data/display_settings.dart';
 
 class TvRecordingPlayerScreen extends StatefulWidget {
   const TvRecordingPlayerScreen({super.key, required this.recording});
@@ -56,6 +57,9 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Même règle que le lecteur live : l'image plein écran, le bandeau
+    // titre reculé de la marge publiée (voir display_settings.dart).
+    DisplaySettings.instance.entrerPleinEcran();
     _verifyThenOpen();
   }
 
@@ -150,6 +154,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    DisplaySettings.instance.quitterPleinEcran();
     _controller?.removeListener(_onPlayer);
     _controller?.dispose();
     _focus.dispose();
@@ -208,10 +213,12 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
               ),
 
             // ----- Bandeau titre (haut) -----
+            // Reculé de la marge d'overscan publiée pendant la lecture :
+            // sur une télé qui rogne, le titre resterait sinon coupé.
             Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
+              top: MediaQuery.paddingOf(context).top,
+              left: MediaQuery.paddingOf(context).left,
+              right: MediaQuery.paddingOf(context).right,
               child: Container(
                 padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
                 decoration: BoxDecoration(

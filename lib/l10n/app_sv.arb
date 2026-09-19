@@ -853,6 +853,7 @@
   "tvDisplayTitle": "Visning",
   "tvOverscanLabel": "Skärmmarginal (overscan)",
   "tvOverscanHint": "Öka om din TV klipper bort bildens kanter.",
+  "tvOverscanAuto": "Inställd automatiskt för din box (Android TV-säkerhetszon). Sänk till 0 % om din TV visar hela bilden.",
   "tvTextSizeLabel": "Textstorlek",
   "tvTextNormal": "Normal",
   "tvTextLarge": "Stor",

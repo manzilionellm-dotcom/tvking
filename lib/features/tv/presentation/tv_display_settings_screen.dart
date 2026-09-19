@@ -42,7 +42,12 @@ class TvDisplaySettingsScreen extends StatelessWidget {
                 // ----- Overscan (marge autour de l'image) -----
                 _label(context.l10n.tvOverscanLabel),
                 const SizedBox(height: 4),
-                _hint(context.l10n.tvOverscanHint),
+                // Tant que le client n'a rien choisi, on dit d'où vient le
+                // chiffre (zone sûre Android TV, 5 % sur une box) — sinon
+                // le support croirait que le client l'a réglé lui-même.
+                _hint(d.overscanChoisi
+                    ? context.l10n.tvOverscanHint
+                    : context.l10n.tvOverscanAuto),
                 const SizedBox(height: 12),
                 Row(
                   children: <Widget>[

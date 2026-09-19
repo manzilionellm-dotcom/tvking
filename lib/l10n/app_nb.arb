@@ -853,6 +853,7 @@
   "tvDisplayTitle": "Skjerm",
   "tvOverscanLabel": "Skjermmarg (overscan)",
   "tvOverscanHint": "Øk hvis TV-en din kutter bort kantene av bildet.",
+  "tvOverscanAuto": "Satt automatisk for boksen din (Android TV-sikkerhetssone). Sett til 0 % hvis TV-en viser hele bildet.",
   "tvTextSizeLabel": "Tekststørrelse",
   "tvTextNormal": "Normal",
   "tvTextLarge": "Stor",

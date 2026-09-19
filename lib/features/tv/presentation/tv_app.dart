@@ -169,12 +169,38 @@ class TvApp extends StatelessWidget {
           }
           const double designW = kTvDesignWidth;
           final double designH = designW * screen.height / screen.width;
-          // OVERSCAN : marge réglable de chaque côté (0 → 8 %) pour les TV qui
+          // OVERSCAN : marge de chaque côté (0 → 8 %) pour les TV qui
           // rognent les bords. Fraction identique en H et V → l'aspect reste
-          // exact (pas de déformation). Défaut 0 % = comportement inchangé.
-          final double ov = DisplaySettings.instance.overscanFraction;
+          // exact (pas de déformation). Défaut 5 % sur une box Android (la
+          // zone sûre Android TV — voir display_settings.dart, qui porte la
+          // décision du 19/09/2026 et sa raison), 0 % sur PC et Samsung.
+          final DisplaySettings ecran = DisplaySettings.instance;
+          final double ov = ecran.overscanFraction;
+          // VIDÉO PLEIN ÉCRAN : tant qu'un lecteur est ouvert, la marge
+          // n'est plus RETIRÉE à l'image, elle est PUBLIÉE (MediaQuery
+          // .padding, en unités du canevas). Le lecteur y lit de combien
+          // reculer ses habillages ; l'image, elle, prend tout l'écran —
+          // comme Netflix, qui n'entoure jamais un film d'un cadre noir.
+          //
+          // Coût du basculement : nul pour l'arbre. Le canevas garde sa
+          // taille logique (designW × designH) ; seule l'échelle du
+          // FittedBox change. Aucun écran n'est re-mesuré, la Surface
+          // vidéo n'est pas redimensionnée.
+          final bool video = ecran.videoPleinEcran;
+          final EdgeInsets margeRetiree = video
+              ? EdgeInsets.zero
+              : EdgeInsets.symmetric(
+                  horizontal: screen.width * ov,
+                  vertical: screen.height * ov,
+                );
+          final EdgeInsets margePubliee = video
+              ? EdgeInsets.symmetric(
+                  horizontal: designW * ov,
+                  vertical: designH * ov,
+                )
+              : mq.padding;
           // TAILLE DU TEXTE : 1.0 (normal) ou 1.08 (grand, confort seniors).
-          final double ts = DisplaySettings.instance.textScale;
+          final double ts = ecran.textScale;
           // =========================================================
           //  « ÉCHAP » RECULE — POUR TOUTE L'APP, D'UN SEUL ENDROIT
           // =========================================================
@@ -278,13 +304,11 @@ class TvApp extends StatelessWidget {
             fit: StackFit.expand,
             children: <Widget>[
               Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: screen.width * ov,
-                  vertical: screen.height * ov,
-                ),
+                padding: margeRetiree,
                 child: MediaQuery(
                   data: mq.copyWith(
                     size: Size(designW, designH),
+                    padding: margePubliee,
                     textScaler: TextScaler.linear(ts),
                   ),
                   child: FittedBox(

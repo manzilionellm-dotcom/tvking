@@ -853,6 +853,7 @@
   "tvDisplayTitle": "العرض",
   "tvOverscanLabel": "هامش الشاشة (overscan)",
   "tvOverscanHint": "زِدْه إذا كان تلفازك يقصّ أطراف الصورة.",
+  "tvOverscanAuto": "مضبوط تلقائيًا لجهازك (المنطقة الآمنة في Android TV). اخفضه إلى 0٪ إذا كان تلفازك يعرض كل الصورة.",
   "tvTextSizeLabel": "حجم النص",
   "tvTextNormal": "عادي",
   "tvTextLarge": "كبير",
