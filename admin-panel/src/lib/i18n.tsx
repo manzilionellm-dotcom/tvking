@@ -53,6 +53,9 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.diagnostic': { fr: 'Diagnostic', en: 'Diagnostics', ar: 'تشخيص' },
   'nav.phone': { fr: 'Téléphone', en: 'Phone', ar: 'الهاتف' },
   'nav.television': { fr: 'Télévision', en: 'Television', ar: 'التلفاز' },
+  // Cherchée TROIS FOIS dans le menu avant d'y être mise. Le nom
+  // est exactement celui que le propriétaire prononce.
+  'nav.main': { fr: '✋ Prendre la main', en: '✋ Take control', ar: '✋ التحكم عن بعد' },
   'nav.radar': { fr: 'Radar d’expiration', en: 'Expiry radar', ar: 'رادار الانتهاء' },
   'nav.gateway': { fr: 'Passerelle', en: 'Gateway', ar: 'البوابة' },
   'nav.credits': { fr: 'Crédits', en: 'Credits', ar: 'الأرصدة' },

@@ -41,6 +41,7 @@ import { ProfilesPage } from '@/pages/ProfilesPage';
 import { DiagnosticPage } from '@/pages/DiagnosticPage';
 import { PhonePage, TvPage } from '@/pages/DeviceScreenPage';
 import { BenchPage } from '@/pages/BenchPage';
+import { MainPage } from '@/pages/MainPage';
 import { DeviceSheetProvider } from '@/components/DeviceSheet';
 
 /// Etats possibles de l'app :
@@ -185,6 +186,10 @@ export default function App() {
           Deux copies auraient dérivé — un correctif dans l'une, oublié
           dans l'autre, et le support dépendrait de la porte d'entrée. */}
       <Route path="/television"  element={<TvPage          onLogout={handleLogout} />} />
+      {/* PRENDRE LA MAIN — sa propre entrée de menu, parce que c'est
+          là que le propriétaire l'a cherchée trois fois. Le bloc est
+          le MÊME composant que dans Téléphone/Télévision. */}
+      <Route path="/main"        element={<MainPage        onLogout={handleLogout} />} />
       {/* Banc d'essai — ADMIN seulement : la santé des builds est une
           affaire de maison. Le Worker refuse de toute façon (403). */}
       <Route
