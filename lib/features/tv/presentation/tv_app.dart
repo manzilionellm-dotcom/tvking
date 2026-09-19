@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/assistance/assistance_overlay.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../core/i18n/locale_resolver.dart';
@@ -237,7 +238,23 @@ class TvApp extends StatelessWidget {
           //  Material ou leur Scaffold gardent le leur — Flutter prend
           //  toujours le plus proche. Zéro changement visuel, sauf les
           //  traits jaunes qui disparaissent.
-          return Material(
+          // =========================================================
+          //  L'ASSISTANCE, AU-DESSUS DE TOUT (18/09/2026)
+          // =========================================================
+          //  Demande du propriétaire : « je veux entrer réellement…
+          //  j'appuie sur mon ordinateur et ça s'appuie chez lui ».
+          //
+          //  POSÉE ICI, À LA RACINE, et pas dans les écrans. Le bandeau
+          //  rouge « quelqu'un vous aide en ce moment » et son bouton
+          //  Arrêter doivent rester visibles QUEL QUE SOIT l'écran où
+          //  le support emmène le client. Dans un écran, il suffirait
+          //  d'en ouvrir un autre pour que la sortie disparaisse — une
+          //  sortie qu'on peut perdre n'est pas une sortie.
+          //
+          //  Hors session, ce surveillant ne rend rien de plus que son
+          //  enfant et n'arme aucune minuterie : coût zéro.
+          return AssistanceOverlay(
+            child: Material(
             type: MaterialType.transparency,
             child: Shortcuts(
             shortcuts: <ShortcutActivator, Intent>{
@@ -302,6 +319,7 @@ class TvApp extends StatelessWidget {
             ],
           ),
             ),
+          ),
           ),
           );
         },

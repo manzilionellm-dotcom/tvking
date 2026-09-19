@@ -38,6 +38,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+//  Le consentement de l'assistance vit dans `core/assistance/` et
+//  nulle part ailleurs. Ce service ne fait que lui passer les gestes.
+import '../assistance/assistance_controller.dart';
+import '../assistance/assistance_session.dart';
 import '../privacy/privacy_shield.dart';
 import '../../features/about/data/force_update_checker.dart';
 import '../../features/ads/data/startup_ad_repository.dart';
@@ -108,6 +112,7 @@ class RtEvent {
     this.message,
     this.newMac,
     this.oldMac,
+    this.assist,
   });
 
   /// `'sync'` | `'message'` | `'bye'` | `'mac_reassigned'`.
@@ -131,6 +136,10 @@ class RtEvent {
 
   /// Pour `mac_reassigned` : l'ancien (tombstone), informatif.
   final String? oldMac;
+
+  /// Pour `assist` : le geste demandé par le support et ses arguments.
+  /// `null` pour tous les autres types.
+  final Map<String, Object?>? assist;
 
   /// Valeurs acceptées pour `sync.what` (contrat §3).
   static const List<String> kSyncWhats = <String>[
@@ -187,6 +196,24 @@ class RtEvent {
                   : 'info',
               durationSec: durationSec,
             ),
+          );
+        case 'assist':
+          //  PRENDRE LA MAIN CHEZ UN CLIENT. On ne fait QUE transporter
+          //  les mots jusqu'au contrôleur : c'est lui qui vérifie le
+          //  consentement, et lui seul. Ici, pas de décision — sinon on
+          //  aurait deux endroits qui croient savoir si la session est
+          //  ouverte, et un jour ils ne seraient plus d'accord.
+          return RtEvent._(
+            type: 'assist',
+            id: str('id').isEmpty ? null : str('id'),
+            assist: <String, Object?>{
+              'geste': str('geste'),
+              'support': str('support'),
+              'nom': str('nom'),
+              'cible': str('cible'),
+              'phrase': str('phrase'),
+              'id_cible': str('id_cible'),
+            },
           );
         case 'bye':
           return RtEvent._(type: 'bye', reason: str('reason'));
@@ -657,10 +684,76 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
         case 'mac_reassigned':
           unawaited(_handleMacReassigned(event));
           break;
+        case 'assist':
+          unawaited(_handleAssist(event));
+          break;
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Realtime] onFrame: $e');
     }
+  }
+
+  // =========================================================
+  //  PRENDRE LA MAIN CHEZ UN CLIENT (18/09/2026)
+  // =========================================================
+  //  Demande du propriétaire : « je veux entrer RÉELLEMENT… un client
+  //  me dit qu'il ne trouve pas les favoris, je lui dis regarde ta
+  //  télé, et j'appuie ».
+  //
+  //  CE BLOC NE DÉCIDE RIEN. Il traduit une frame en geste et la passe
+  //  au contrôleur, qui est le SEUL à savoir si le client a dit oui.
+  //  Deux endroits qui croiraient connaître l'état de la session
+  //  finiraient par ne plus être d'accord — et le jour où ils ne le
+  //  sont plus, quelqu'un pilote l'écran d'un client qui a raccroché.
+  //
+  //  L'ACK PORTE LE VRAI RÉSULTAT. Refusé faute de consentement, geste
+  //  inconnu, écran introuvable : le panel affiche « refusé », jamais
+  //  un vert de complaisance. Un support qui croit avoir cliqué alors
+  //  que rien n'a bougé appuie dix fois.
+  Future<void> _handleAssist(RtEvent event) async {
+    bool ok = false;
+    String? erreur;
+    try {
+      final Map<String, Object?> a = event.assist ?? const <String, Object?>{};
+      final String geste = '${a['geste'] ?? ''}';
+      final AssistanceController c = AssistanceController.instance;
+
+      switch (geste) {
+        case 'demander':
+          // La demande s'AFFICHE chez le client ; elle ne prend pas la
+          // main. C'est lui qui répondra, ou personne.
+          ok = c.demandeRecue('${a['support'] ?? ''}');
+          if (!ok) erreur = 'demande_refusee';
+          break;
+        case 'fin':
+          c.arreterParSupport();
+          ok = true;
+          break;
+        default:
+          final GesteGuidage? g = lireGeste(geste);
+          if (g == null) {
+            // Un panel plus récent que l'app : on ne devine pas « le
+            // geste le plus proche », ce serait appuyer au hasard sur
+            // l'écran de quelqu'un.
+            ok = false;
+            erreur = 'geste_inconnu';
+            break;
+          }
+          ok = await c.executer(g, <String, Object?>{
+            'nom': a['nom'],
+            'id': a['id_cible'],
+            'cible': a['cible'],
+            'phrase': a['phrase'],
+          });
+          if (!ok) erreur = 'refuse_ou_echoue';
+      }
+    } catch (e) {
+      ok = false;
+      erreur = '$e';
+      if (kDebugMode) debugPrint('[Realtime] assist: $e');
+    }
+    final String? id = event.id;
+    if (id != null) _sendAck(id, ok: ok, error: erreur);
   }
 
   /// Adopte le nouveau MAC, reconnecte le socket (hello avec le

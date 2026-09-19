@@ -386,6 +386,46 @@ export class RealtimeHub {
             kind: ['info', 'success', 'warning'].includes(p.kind) ? p.kind : 'info',
             ...(Number(p.durationSec) > 0 ? { durationSec: Number(p.durationSec) } : {}),
           };
+        } else if (msg.action === 'assist') {
+          // =========================================================
+          //  PRENDRE LA MAIN CHEZ UN CLIENT (18/09/2026)
+          // =========================================================
+          //  Demande du propriétaire : « je veux entrer réellement…
+          //  j'appuie sur mon ordinateur et ça s'appuie chez lui ».
+          //
+          //  LE HUB NE DÉCIDE RIEN. Il transporte. Le consentement vit
+          //  DANS L'APP (lib/core/assistance/), et c'est le seul
+          //  endroit où il peut vivre : c'est là que le client répond,
+          //  c'est là qu'il coupe. Un serveur qui croirait la session
+          //  ouverte alors que le client vient de raccrocher enverrait
+          //  des ordres dans le dos de quelqu'un.
+          //
+          //  On se contente donc de BORNER ce qui passe : un geste
+          //  connu, des arguments courts. Un mot inconnu ne part même
+          //  pas — l'app le refuserait de toute façon, autant ne pas
+          //  encombrer la ligne.
+          const p = msg.payload || {};
+          const geste = String(p.geste || '');
+          const connus = [
+            'demander', 'fin',
+            'ouvrir', 'categorie', 'chaine', 'favori', 'retour',
+            'designer', 'effacer',
+          ];
+          if (connus.includes(geste)) {
+            event = {
+              type: 'assist',
+              id,
+              geste,
+              // QUI demande : l'app l'affiche au client, et une demande
+              // anonyme est refusée côté app. On borne, on n'invente
+              // pas de valeur par défaut.
+              support: strOr(p.support, '', 60),
+              nom: strOr(p.nom, '', 60),
+              cible: strOr(p.cible, '', 60),
+              phrase: strOr(p.phrase, '', 120),
+              id_cible: strOr(p.id_cible, '', 80),
+            };
+          }
         }
         if (!event) return;
         const frame = JSON.stringify(event);

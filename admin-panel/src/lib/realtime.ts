@@ -334,7 +334,11 @@ function newCmdId(): string {
 /// Retourne l'id généré — à passer à waitForAck() pour la confirmation.
 export function sendCmd(
   mac: string,
-  action: 'sync' | 'message',
+  // « assist » (18/09/2026) : PRENDRE LA MAIN chez un client, s'il
+  // l'autorise. Le hub ne fait que transporter ; le consentement vit
+  // DANS L'APP (lib/core/assistance/) et nulle part ailleurs — c'est
+  // là que le client répond, et là qu'il coupe.
+  action: 'sync' | 'message' | 'assist',
   payload: unknown,
 ): string {
   const id = newCmdId();

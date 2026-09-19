@@ -32,7 +32,9 @@ import 'core/realtime/realtime_sync_service.dart';
 import 'core/profiles/profiles_repository.dart';
 import 'core/profiles/remote_profiles_repository.dart';
 import 'core/theme/accent_controller.dart';
+import 'core/assistance/assistance_controller.dart';
 import 'core/tv/screen_awake.dart';
+import 'features/tv/core/tv_assistance_executeur.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/device/data/device_identity.dart';
 import 'features/player/data/player_settings.dart';
@@ -135,6 +137,19 @@ Future<void> _bootstrap() async {
   //  Le verrou suit le cycle de vie (relâché en arrière-plan) — voir
   //  core/tv/screen_awake.dart.
   await ScreenAwake.instance.install();
+
+  // =========================================================
+  //  ASSISTANCE À DISTANCE — la box sait obéir au support
+  // =========================================================
+  //  Demande du propriétaire (18/09/2026) : « je veux entrer
+  //  réellement… j'appuie sur mon ordinateur et ça s'appuie chez lui ».
+  //
+  //  On installe seulement l'EXÉCUTEUR (qui sait ouvrir un écran,
+  //  basculer un favori, revenir en arrière). Il ne se déclenche
+  //  jamais tout seul : chaque geste passe d'abord par le
+  //  consentement du client (core/assistance/). Sans son « oui »,
+  //  cette ligne ne change strictement rien au démarrage.
+  AssistanceController.instance.installerExecuteur(TvAssistanceExecuteur());
 
   // Langue de l'app : on charge le choix mémorisé (ou « Système » =>
   // l'app suit la langue de la TV). BLOQUANT et rapide : garantit que le

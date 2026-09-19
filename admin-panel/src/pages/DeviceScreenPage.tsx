@@ -64,6 +64,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { ChannelPlayer } from '@/components/ChannelPlayer';
+import { PrendreLaMain } from '@/components/PrendreLaMain';
 import { toast, rtActionFeedback } from '@/components/Toast';
 import { useLiveDevices } from '@/lib/realtime';
 import { formatMacInput } from '@/lib/utils';
@@ -600,6 +601,10 @@ function DeviceScreenPage({
                LES LISTES, ET CE QU'ON PEUT EN FAIRE
               ========================================================= */}
           <div className="space-y-6">
+            {/* PRENDRE LA MAIN — en premier : quand on ouvre cette page
+                avec un client au téléphone, c'est ce qu'on vient faire. */}
+            <PrendreLaMain mac={macCourante} enLigne={enLigne} />
+
             <section>
               <h3 className="mb-2 text-sm font-semibold">
                 Listes poussées depuis le panel
