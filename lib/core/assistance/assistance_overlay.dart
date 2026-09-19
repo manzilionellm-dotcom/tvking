@@ -189,7 +189,35 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     if (_c.etat != EtatAssistance.active) return;
     _captureEnCours = true;
     try {
-      final ResultatMiroir r = await capturerMiroir(_zone);
+      ResultatMiroir r;
+      try {
+        //  UN DÉLAI DE GARDE, et c'est LE correctif du 19/09 au soir.
+        //  Sur cette box (SHIELD, Skia), `capturerMiroir` ne JETAIT pas
+        //  — elle RESTAIT SUSPENDUE. `toImage` d'un écran qui contient
+        //  la surface vidéo peut ne jamais rendre la main. Résultat : la
+        //  toute première capture bloquait `_captureEnCours` pour
+        //  toujours, et plus une seule trame ne partait — ni image, ni
+        //  erreur. Le support voyait « Pas encore d'image » à l'infini,
+        //  session pourtant ouverte. Un `try/catch` n'attrape pas un
+        //  gel ; un `timeout`, si.
+        r = await capturerMiroir(_zone)
+            .timeout(const Duration(milliseconds: 2500));
+      } on TimeoutException {
+        //  ON LE DIT, ET ON ARRÊTE D'ESSAYER. Si la capture gèle une
+        //  fois sur cette box, elle gèlera à chaque fois : réessayer
+        //  toutes les 2 s empilerait des captures fantômes en mémoire.
+        //  On signale la cause UNE fois, on coupe le miroir pour cette
+        //  session — le reste (curseur, clic) continue de marcher.
+        _ticMiroir?.cancel();
+        _ticMiroir = null;
+        if (mounted && _c.etat == EtatAssistance.active) {
+          _c.signalerEchecMiroir(
+            'capture_bloquee',
+            'toImage sans reponse > 2,5 s',
+          );
+        }
+        return;
+      }
       if (!mounted) return;
       // On revérifie la session APRÈS l'attente : le client a pu
       // appuyer sur « Arrêter » pendant l'encodage. Sans ce second

@@ -148,6 +148,11 @@ const ECHECS_MIROIR: Record<string, string> = {
   encodageRate:
     'La capture a marché, c’est l’ENCODAGE JPEG qui a échoué (mémoire ou '
     + 'format). Le détail exact est entre crochets : envoie-le-moi.',
+  capture_bloquee:
+    'Sa box n’arrive pas à photographier son écran : la capture reste '
+    + 'bloquée (c’est la couche vidéo d’Android, qui ne se laisse pas '
+    + 'lire par cette méthode). Voir son écran demandera un vrai module '
+    + 'de capture — le curseur et le clic, eux, marchent.',
 };
 
 type Ligne = { quand: string; quoi: string; ok: boolean | null; pourquoi?: string };
