@@ -1,0 +1,171 @@
+# =========================================================
+#  ios-signing-bootstrap.yml — Certificat + profil iOS SANS Mac
+# =========================================================
+#  DEMANDE DU PROPRIÉTAIRE (19/09/2026) : « un prompt complet où
+#  Claude, le navigateur, va déposer l'application sur les iPhones ».
+#
+#  LE PROBLÈME QUE CE WORKFLOW FERME. Pour signer une app iOS il faut
+#  un certificat « Apple Distribution » (.p12) et un profil App Store.
+#  Les créer demande normalement un Mac : on y génère une clé privée,
+#  une demande de certificat, on l'envoie au portail Apple… Un
+#  navigateur ne sait pas fabriquer une clé privée, et le propriétaire
+#  n'a pas forcément de Mac sous la main.
+#
+#  ICI, c'est le runner macOS de GitHub qui joue le Mac, UNE fois :
+#    1. il génère la clé privée (openssl) ;
+#    2. avec la clé API App Store Connect, il demande à Apple le
+#       certificat de distribution et le profil App Store (Codemagic
+#       CLI, headless — recommandé par docs/ios-app-store-playbook.md) ;
+#    3. il range le tout dans les secrets du dépôt (gh secret set, avec
+#       un jeton GitHub à portée « secrets » que le navigateur a créé).
+#
+#  Après ça, build-ios-release.yml a tout ce qu'il lui faut, et le
+#  navigateur n'a jamais eu à toucher une clé privée : elle est née sur
+#  le runner et n'en est sortie que chiffrée, dans un secret.
+#
+#  ---------------------------------------------------------
+#  SECRETS ATTENDUS EN ENTRÉE (posés depuis le navigateur)
+#  ---------------------------------------------------------
+#    ASC_KEY_ID              App Store Connect API — Key ID
+#    ASC_ISSUER_ID           App Store Connect API — Issuer ID
+#    ASC_API_KEY_P8_BASE64   la clé .p8, EN CLAIR (collée) ou en base64
+#    APPLE_BUNDLE_ID         com.manzilionellm.tvking
+#    GH_ADMIN_PAT            jeton GitHub (fine-grained, ce dépôt,
+#                            permission « Secrets : lecture/écriture »)
+#
+#  SECRETS ÉCRITS EN SORTIE (ceux que build-ios-release.yml lit)
+#    APPLE_CERT_P12_BASE64, APPLE_CERT_P12_PASSWORD,
+#    APPLE_PROFILE_BASE64, APPLE_PROFILE_NAME, APPLE_KEYCHAIN_PASSWORD
+#
+#  RIEN DE SENSIBLE DANS LES LOGS : ni clé, ni certificat, ni mot de
+#  passe n'est jamais écrit sur la sortie standard.
+#
+#  DORMANT sans ses secrets : le 1ᵉʳ step s'arrête vert, comme le
+#  workflow de release.
+# =========================================================
+
+name: iOS signing bootstrap (certificat + profil, sans Mac)
+
+concurrency:
+  group: ios-signing-bootstrap-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch: {}
+  # Indexation par GitHub (voir build-ios-release.yml) : tourne une fois
+  # quand ce fichier change ; sans secrets, vert et inerte.
+  push:
+    branches:
+      - 'claude/retour-13sept-notifications'
+    paths:
+      - '.github/workflows/ios-signing-bootstrap.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Créer certificat + profil, les ranger en secrets
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      HAS_SECRETS: ${{ secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.ASC_API_KEY_P8_BASE64 != '' && secrets.APPLE_BUNDLE_ID != '' && secrets.GH_ADMIN_PAT != '' }}
+
+    steps:
+      - name: Garde — les 5 secrets d'entrée sont-ils là ?
+        run: |
+          if [ "${HAS_SECRETS}" != "true" ]; then
+            echo "::notice::Secrets manquants (ASC_KEY_ID, ASC_ISSUER_ID, ASC_API_KEY_P8_BASE64, APPLE_BUNDLE_ID, GH_ADMIN_PAT) → rien à faire."
+          else
+            echo "✓ Secrets présents — on fabrique le certificat et le profil."
+          fi
+
+      - name: Installer Codemagic CLI (app-store-connect)
+        if: env.HAS_SECRETS == 'true'
+        run: |
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet codemagic-cli-tools
+          app-store-connect --version
+
+      - name: Clé API App Store Connect (clair ou base64)
+        if: env.HAS_SECRETS == 'true'
+        env:
+          RAW: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          P8="$RUNNER_TEMP/asc_key.p8"
+          if printf '%s' "$RAW" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$RAW" > "$P8"
+          else
+            echo "$RAW" | base64 --decode > "$P8"
+          fi
+          grep -q 'BEGIN PRIVATE KEY' "$P8" || { echo "::error::La clé .p8 n'est pas lisible (ni PEM, ni base64 d'un PEM)."; exit 1; }
+          echo "✓ Clé API lue."
+
+      - name: Générer la clé privée du certificat (naît ici, ne sort que chiffrée)
+        if: env.HAS_SECRETS == 'true'
+        run: |
+          set -euo pipefail
+          openssl genrsa -out "$RUNNER_TEMP/cert_key.pem" 2048 2>/dev/null
+          echo "✓ Clé privée générée."
+
+      - name: Demander à Apple le certificat de distribution + le profil App Store
+        if: env.HAS_SECRETS == 'true'
+        env:
+          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID }}
+        run: |
+          set -euo pipefail
+          export APP_STORE_CONNECT_PRIVATE_KEY="$(cat "$RUNNER_TEMP/asc_key.p8")"
+          export CERTIFICATE_PRIVATE_KEY="$(cat "$RUNNER_TEMP/cert_key.pem")"
+          mkdir -p "$RUNNER_TEMP/certs" "$RUNNER_TEMP/profiles"
+          # --create : crée le certificat et le profil s'ils n'existent pas
+          # encore pour CETTE clé privée. Type IOS_APP_STORE = profil de
+          # distribution App Store (TestFlight compris).
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --platform IOS \
+            --type IOS_APP_STORE \
+            --create \
+            --certificates-dir "$RUNNER_TEMP/certs" \
+            --profiles-dir "$RUNNER_TEMP/profiles" \
+            > "$RUNNER_TEMP/fetch.log" 2>&1 || { echo "::error::Apple a refusé : lis fetch.log ci-dessous."; sed -e 's/-----BEGIN[^-]*-----.*//' "$RUNNER_TEMP/fetch.log" | tail -40; exit 1; }
+          ls "$RUNNER_TEMP/certs" "$RUNNER_TEMP/profiles" >/dev/null
+          echo "✓ Certificat et profil reçus d'Apple."
+
+      - name: Ranger le tout dans les secrets du dépôt
+        if: env.HAS_SECRETS == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_ADMIN_PAT }}
+        run: |
+          set -euo pipefail
+          CERT_IN=$(ls "$RUNNER_TEMP"/certs/*.p12 | head -1)
+          PROFILE=$(ls "$RUNNER_TEMP"/profiles/*.mobileprovision | head -1)
+          [ -f "$CERT_IN" ] && [ -f "$PROFILE" ] || { echo "::error::Certificat ou profil absent."; exit 1; }
+
+          # Mot de passe du .p12 : on RÉEMBALLE le certificat avec un mot de
+          # passe à nous (openssl), quel que soit celui posé par l'outil.
+          # Ainsi build-ios-release.yml reçoit toujours la paire qui va bien.
+          P12_PASS=$(openssl rand -hex 16)
+          KC_PASS=$(openssl rand -hex 16)
+          openssl pkcs12 -in "$CERT_IN" -passin pass: -nodes -out "$RUNNER_TEMP/cert_all.pem" 2>/dev/null \
+            || openssl pkcs12 -in "$CERT_IN" -passin pass: -nodes -out "$RUNNER_TEMP/cert_all.pem" -legacy
+          openssl pkcs12 -export -in "$RUNNER_TEMP/cert_all.pem" -passout "pass:$P12_PASS" -out "$RUNNER_TEMP/cert.p12"
+
+          # Le NOM exact du profil : c'est ce que l'export App Store attend.
+          PROFILE_NAME=$(security cms -D -i "$PROFILE" | plutil -extract Name raw -o - -)
+          [ -n "$PROFILE_NAME" ] || { echo "::error::Nom du profil illisible."; exit 1; }
+
+          REPO="$GITHUB_REPOSITORY"
+          gh secret set APPLE_CERT_P12_BASE64    --repo "$REPO" --body "$(base64 -i "$RUNNER_TEMP/cert.p12")"
+          gh secret set APPLE_CERT_P12_PASSWORD  --repo "$REPO" --body "$P12_PASS"
+          gh secret set APPLE_PROFILE_BASE64     --repo "$REPO" --body "$(base64 -i "$PROFILE")"
+          gh secret set APPLE_PROFILE_NAME       --repo "$REPO" --body "$PROFILE_NAME"
+          gh secret set APPLE_KEYCHAIN_PASSWORD  --repo "$REPO" --body "$KC_PASS"
+          echo "✓ 5 secrets écrits : APPLE_CERT_P12_BASE64, APPLE_CERT_P12_PASSWORD, APPLE_PROFILE_BASE64, APPLE_PROFILE_NAME, APPLE_KEYCHAIN_PASSWORD"
+          echo "Profil : $PROFILE_NAME"
+          echo "Tu peux maintenant lancer « iOS release (signed → TestFlight) »."
+
+      - name: Nettoyage (rien ne reste sur le runner)
+        if: always() && env.HAS_SECRETS == 'true'
+        run: rm -rf "$RUNNER_TEMP/asc_key.p8" "$RUNNER_TEMP/cert_key.pem" "$RUNNER_TEMP/cert_all.pem" "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/certs" "$RUNNER_TEMP/profiles" 2>/dev/null || true

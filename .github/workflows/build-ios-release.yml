@@ -42,6 +42,16 @@ on:
         description: 'Envoyer le build sur TestFlight après le build ? (true/false)'
         required: false
         default: 'true'
+  # BOOTSTRAP (19/09/2026) : GitHub n'indexe un workflow — donc ne
+  # propose « Run workflow » — qu'une fois qu'il a tourné sur un push.
+  # Ce déclencheur fait tourner CE fichier une fois quand il change ;
+  # sans secrets Apple, la garde du 1ᵉʳ step le rend vert et inerte.
+  # Même mécanique que publish-play-aab.yml.
+  push:
+    branches:
+      - 'claude/retour-13sept-notifications'
+    paths:
+      - '.github/workflows/build-ios-release.yml'
 
 permissions:
   contents: read
@@ -183,7 +193,13 @@ jobs:
           set -euo pipefail
           # Clé .p8 décodée + fichier JSON attendu par fastlane pilot.
           P8="$RUNNER_TEMP/asc_key.p8"
-          echo "$ASC_API_KEY_P8_BASE64" | base64 --decode > "$P8"
+          # Le secret accepte la clé .p8 EN CLAIR (collée depuis un éditeur
+          # de texte — c'est ce qu'un navigateur sait faire) OU en base64.
+          if printf '%s' "$ASC_API_KEY_P8_BASE64" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$ASC_API_KEY_P8_BASE64" > "$P8"
+          else
+            echo "$ASC_API_KEY_P8_BASE64" | base64 --decode > "$P8"
+          fi
           KEYJSON="$RUNNER_TEMP/asc_key.json"
           python3 - "$P8" > "$KEYJSON" <<'PY'
           import json, sys

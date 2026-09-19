@@ -305,7 +305,10 @@ class _AboutScreenState extends State<AboutScreen> {
                     icon: Icons.privacy_tip_outlined,
                     label: context.l10n.aboutPrivacyPolicy,
                     onTap: () => _openUrl(
-                      'https://7motion.app/privacy',
+                      // La politique est servie par NOTRE Worker, sur le
+                      // domaine de l'app (cf. cloudflare/worker.js, /privacy).
+                      // C'est aussi l'URL déclarée aux stores : une seule.
+                      'https://app.7themotion.com/privacy',
                     ),
                   ),
                 ],

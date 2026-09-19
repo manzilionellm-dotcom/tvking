@@ -69,6 +69,13 @@ set_scalar "NSLocalNetworkUsageDescription" string \
 # --- Nom affiché sous l'icône ---
 set_scalar "CFBundleDisplayName" string "7 MOTION"
 
+# --- Conformité export (chiffrement) : HTTPS standard uniquement ---
+# Sans cette clé, App Store Connect pose la question « votre app utilise-
+# t-elle du chiffrement ? » à CHAQUE build TestFlight et bloque le build
+# tant qu'on n'a pas répondu. L'app n'utilise que le TLS du système
+# (exempté) → on le déclare une fois pour toutes ici.
+set_scalar "ITSAppUsesNonExemptEncryption" bool false
+
 # --- On ne demande AUCUNE permission inutile (friction de review) ---
 "$PB" -c "Delete :NSPhotoLibraryUsageDescription" "$PL" 2>/dev/null || true
 "$PB" -c "Delete :NSPhotoLibraryAddUsageDescription" "$PL" 2>/dev/null || true
