@@ -33,6 +33,7 @@ import '../../../core/backend/backend_hosts.dart';
 //  fait que la transporter (cf. core/observability/banc_essai.dart).
 import '../../../core/observability/banc_essai.dart';
 import '../../../core/observability/black_box.dart';
+import '../../../core/observability/ressources_moniteur.dart';
 import '../../../core/privacy/privacy_shield.dart';
 import '../../device/data/device_identity.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -240,6 +241,16 @@ abstract final class SubscriptionBackend {
         //  flanché. Mais « télémétrie minimale » est un choix qu'il a
         //  fait, et un banc d'essai est notre confort, pas son besoin.
         if (!shielded) ..._bancSiNotable(),
+        // =========================================================
+        //  RAM ET CPU RÉELS (19/09/2026)
+        // =========================================================
+        //  « Pour savoir quelles box vivent au bord. » Mo résidents de
+        //  NOTRE processus et pourcentage de l'appareil, relevés chaque
+        //  minute, avec le pic de l'heure écoulée (ressources_moniteur).
+        //  Absent tant qu'aucun relevé n'existe ; absent aussi sous le
+        //  bouclier, par la même règle que le banc : c'est notre
+        //  confort, pas le besoin du client.
+        if (!shielded) ..._ressources(),
       };
       // FAILOVER : domaine maison d'abord (auto-guérison), puis l'adresse
       // Cloudflare de secours. Le premier hôte qui répond 200 devient
@@ -316,6 +327,17 @@ abstract final class SubscriptionBackend {
       final BancVerdict v = BlackBox.instance.bench();
       if (v.note == null) return const <String, Object?>{};
       return <String, Object?>{'bench': v.toJson()};
+    } catch (_) {
+      return const <String, Object?>{};
+    }
+  }
+
+  /// RAM / CPU de l'app, ou RIEN (même contrat que [_bancSiNotable]).
+  static Map<String, Object?> _ressources() {
+    try {
+      final Map<String, Object?> r = RessourcesMoniteur.instance.toJson();
+      if (r.isEmpty) return const <String, Object?>{};
+      return <String, Object?>{'res': r};
     } catch (_) {
       return const <String, Object?>{};
     }

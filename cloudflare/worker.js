@@ -753,7 +753,12 @@ async function ensureScaleSchema(env) {
       'admin_note TEXT',
       // MAC remplacée : l'ancienne fiche pointe vers le nouveau numéro
       // (heartbeat / status renvoient mac_reassigned → l'app ADOPTE).
-      'superseded_by TEXT']) {
+      'superseded_by TEXT',
+      // RAM / CPU réels de l'app (19/09/2026) : Mo résidents, pic sur
+      // l'heure, pourcentage de l'appareil — relevés par l'app elle-même
+      // (ressources_moniteur.dart). res_at = date du dernier relevé reçu.
+      'mem_mb INTEGER', 'mem_peak_mb INTEGER', 'cpu_pct INTEGER',
+      'cpu_peak_pct INTEGER', 'res_at INTEGER']) {
     try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run(); } catch (_) {}
   }
   for (const idx of [
@@ -2144,10 +2149,17 @@ async function updateDeviceInfo(env, mac, body) {
         .filter((x) => x.length > 0);
       if (ids.length) recentJson = JSON.stringify(ids);
     }
+    // RAM / CPU RÉELS de l'app (19/09/2026) — `res` du heartbeat, cf.
+    // lib/core/observability/ressources_moniteur.dart. Des entiers bornés
+    // ou null ; null = « pas relevé », qui n'écrase pas la valeur en base.
+    const res = lireRessources(body.res);
     if (!model && !build && !release && !appBuild && !platform &&
-        !androidId && !appVersion && !buildLabel && !srcJson && !recentJson) return;
+        !androidId && !appVersion && !buildLabel && !srcJson && !recentJson &&
+        !res) return;
     // UNE SEULE écriture (au lieu de 4) : le CASE n'écrase JAMAIS un champ
     // existant avec une valeur vide → robuste ET économe en écritures D1.
+    const r = res || {};
+    const resAt = res ? Date.now() : null;
     await env.DB
       .prepare(
         "UPDATE devices SET " +
@@ -2160,14 +2172,25 @@ async function updateDeviceInfo(env, mac, body) {
           "build_label = CASE WHEN ? != '' THEN ? ELSE build_label END, " +
           "platform = CASE WHEN ? != '' THEN ? ELSE platform END, " +
           "local_sources_json = CASE WHEN ? != '' THEN ? ELSE local_sources_json END, " +
-          "recent_json = CASE WHEN ? != '' THEN ? ELSE recent_json END " +
+          "recent_json = CASE WHEN ? != '' THEN ? ELSE recent_json END, " +
+          "mem_mb = CASE WHEN ? IS NOT NULL THEN ? ELSE mem_mb END, " +
+          "mem_peak_mb = CASE WHEN ? IS NOT NULL THEN ? ELSE mem_peak_mb END, " +
+          "cpu_pct = CASE WHEN ? IS NOT NULL THEN ? ELSE cpu_pct END, " +
+          "cpu_peak_pct = CASE WHEN ? IS NOT NULL THEN ? ELSE cpu_peak_pct END, " +
+          "res_at = CASE WHEN ? IS NOT NULL THEN ? ELSE res_at END " +
           "WHERE mac = ? AND IFNULL(superseded_by,'') = ''"
       )
       .bind(
         model, model, build, build, release, release, appBuild, appBuild,
         androidId, androidId, appVersion, appVersion,
         buildLabel, buildLabel, platform, platform,
-        srcJson, srcJson, recentJson, recentJson, mac,
+        srcJson, srcJson, recentJson, recentJson,
+        r.mem_mb ?? null, r.mem_mb ?? null,
+        r.mem_peak_mb ?? null, r.mem_peak_mb ?? null,
+        r.cpu_pct ?? null, r.cpu_pct ?? null,
+        r.cpu_peak_pct ?? null, r.cpu_peak_pct ?? null,
+        resAt, resAt,
+        mac,
       )
       .run();
 
@@ -2189,6 +2212,23 @@ async function updateDeviceInfo(env, mac, body) {
   }
 }
 
+/// Le paquet `res` du heartbeat, ou null. Entiers ≥ 0 bornés (un Mo
+/// négatif ou un CPU à 400 % est une ligne abîmée, pas une mesure) ;
+/// un champ illisible devient null et n'écrase rien en base.
+function lireRessources(res) {
+  if (!res || typeof res !== 'object') return null;
+  const n = (v, max) => (Number.isFinite(v) && v >= 0
+    ? Math.min(max, Math.round(v)) : null);
+  const out = {
+    mem_mb: n(res.mem_mb, 65536),
+    mem_peak_mb: n(res.mem_peak_mb, 65536),
+    cpu_pct: n(res.cpu_pct, 100),
+    cpu_peak_pct: n(res.cpu_peak_pct, 100),
+  };
+  if (out.mem_mb === null && out.cpu_pct === null) return null;
+  return out;
+}
+
 // =========================================================
 //  bench_runs — une ligne par (box, build)
 // =========================================================
@@ -2202,7 +2242,9 @@ async function updateDeviceInfo(env, mac, body) {
 //  build passerait pour mauvais alors qu'il a tenu. La plus longue
 //  session est aussi la plus informative : c'est celle qui a eu le
 //  temps de rencontrer les pannes.
+let _bancSchemaPret = false;
 async function assurerTableBanc(env) {
+  if (_bancSchemaPret) return;
   await env.DB
     .prepare(
       'CREATE TABLE IF NOT EXISTS bench_runs (' +
@@ -2210,9 +2252,20 @@ async function assurerTableBanc(env) {
         'note INTEGER, minutes INTEGER, crashs INTEGER, err INTEGER, ' +
         'mem INTEGER, nostart INTEGER, lecture INTEGER, gels INTEGER, ' +
         'verrou_ko INTEGER, verrou_ok INTEGER, updated_at INTEGER, ' +
+        'ttff_med INTEGER, ttff_n INTEGER, ' +
         'PRIMARY KEY (mac, build_label))'
     )
     .run();
+  // Colonnes ajoutées après la création de la table (19/09/2026) : le
+  // temps jusqu'à la 1re image, médiane de la box + nombre d'ouvertures.
+  // Une base créée avant les a en moins → on les ajoute ; « duplicate
+  // column » sur une base neuve → ignoré. Une fois par isolate.
+  for (const col of ['ttff_med INTEGER', 'ttff_n INTEGER']) {
+    try {
+      await env.DB.prepare(`ALTER TABLE bench_runs ADD COLUMN ${col}`).run();
+    } catch (_) { /* déjà présente */ }
+  }
+  _bancSchemaPret = true;
 }
 
 /// Range la note envoyée par une box. Best-effort de bout en bout : un
@@ -2227,12 +2280,19 @@ async function enregistrerBanc(env, mac, buildLabel, platform, bench) {
     const minutes = n(bench.minutes);
     if (minutes < 60) return; // le banc ne note pas sous une heure
 
+    // Temps jusqu'à la 1re image : médiane de la box (ms) et nombre
+    // d'ouvertures. null = rien lu pendant la session, ce n'est pas 0.
+    const ttffMed = Number.isFinite(bench.ttff_med) && bench.ttff_med >= 0
+      ? Math.min(600000, Math.round(bench.ttff_med)) : null;
+    const ttffN = n(bench.ttff_n);
+
     await assurerTableBanc(env);
     await env.DB
       .prepare(
         'INSERT INTO bench_runs (mac, build_label, platform, note, minutes, ' +
           'crashs, err, mem, nostart, lecture, gels, verrou_ko, verrou_ok, ' +
-          'updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ' +
+          'updated_at, ttff_med, ttff_n) ' +
+          'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ' +
           'ON CONFLICT(mac, build_label) DO UPDATE SET ' +
           // La plus LONGUE observation gagne — voir l'en-tête.
           'platform=excluded.platform, note=excluded.note, ' +
@@ -2240,14 +2300,15 @@ async function enregistrerBanc(env, mac, buildLabel, platform, bench) {
           'err=excluded.err, mem=excluded.mem, nostart=excluded.nostart, ' +
           'lecture=excluded.lecture, gels=excluded.gels, ' +
           'verrou_ko=excluded.verrou_ko, verrou_ok=excluded.verrou_ok, ' +
-          'updated_at=excluded.updated_at ' +
+          'updated_at=excluded.updated_at, ' +
+          'ttff_med=excluded.ttff_med, ttff_n=excluded.ttff_n ' +
           'WHERE excluded.minutes > bench_runs.minutes'
       )
       .bind(
         mac, String(buildLabel).slice(0, 16), platform || '', note, minutes,
         n(bench.crashs), n(bench.err), n(bench.mem), n(bench.nostart),
         n(bench.lecture), n(bench.gels), n(bench.verrou_ko), n(bench.verrou_ok),
-        Date.now(),
+        Date.now(), ttffMed, ttffN,
       )
       .run();
   } catch (_) {
@@ -3726,6 +3787,13 @@ async function readClientDetailMeta(env, mac) {
         android_id: d.android_id || '',
         reseller_id: d.reseller_id || '',
         block_status: d.block_status || '',
+        // RAM / CPU réels de l'app, tels que remontés par le dernier
+        // heartbeat (null = jamais relevé : vieille app, ou bouclier).
+        mem_mb: Number.isFinite(d.mem_mb) ? d.mem_mb : null,
+        mem_peak_mb: Number.isFinite(d.mem_peak_mb) ? d.mem_peak_mb : null,
+        cpu_pct: Number.isFinite(d.cpu_pct) ? d.cpu_pct : null,
+        cpu_peak_pct: Number.isFinite(d.cpu_peak_pct) ? d.cpu_peak_pct : null,
+        res_at: d.res_at || 0,
       };
     }
   } catch (_) {}

@@ -65,6 +65,7 @@ import '../../vod/data/vod_download_service.dart';
 import '../data/hls_preflight.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
+import '../data/audio_passthrough.dart';
 import '../data/player_settings.dart';
 import '../data/stream_blocked_fallback.dart';
 import '../data/line_expiry.dart';
@@ -1977,6 +1978,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       // ignore: invalid_use_of_protected_member
       final dynamic native = (_player.platform as dynamic);
       await native?.setProperty('hwdec', hwdec);
+
+      // PASSTHROUGH DOLBY / DTS (19/09/2026) — comme la box. On demande
+      // à Android quels formats compressés la sortie ACTUELLE accepte
+      // (HDMI, USB, ARC) et on les donne à mpv par `audio-spdif` : l'ampli
+      // reçoit le vrai 5.1 au lieu d'un mixage stéréo. Liste vide (pas
+      // d'ampli, option coupée, doute natif) → '' : mpv décode tout,
+      // comme avant. Et si l'ampli refuse malgré tout, mpv retombe
+      // lui-même sur le décodage — jamais de silence. Voir
+      // audio_passthrough.dart.
+      final String spdif = s.dolbyPassthrough
+          ? AudioPassthrough.spdifPour(await AudioPassthrough.formats())
+          : '';
+      await native?.setProperty('audio-spdif', spdif);
+
       await native?.setProperty('cache', 'yes');
       // Secondes de cache conservées. En mode anti-coupure on garde une
       // longue avance bufferisée (>=60s) ; sinon on s'aligne sur le

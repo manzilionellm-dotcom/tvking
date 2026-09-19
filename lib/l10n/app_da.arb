@@ -236,6 +236,8 @@
   "playerBufferHelp": "Højere værdier gør afspilningen mere modstandsdygtig over for netværksudfald (men mere forsinkelse live).",
   "playerAntiFreeze": "Anti-frys",
   "playerAntiFreezeHelp": "Hvis forbindelsen svækkes, trækker afspilleren på bufferen i stedet for at afbryde billedet. Lidt længere opstart, men afspilning uden afbrydelser.",
+  "playerDolbyPassthrough": "Dolby / DTS til forstærkeren",
+  "playerDolbyPassthroughHelp": "Sender Dolby- eller DTS-lyd urørt til soundbaren eller forstærkeren (HDMI, USB), som boksen gør. Uden kompatibel forstærker afkoder telefonen selv: aldrig stilhed.",
   "playerHwDecode": "Hardware-afkodning",
   "playerHwDecodeHelp": "Bruger GPU'en til at afkode video. Nødvendigt for 4K/8K.",
   "playerShowStats": "Vis statistik",

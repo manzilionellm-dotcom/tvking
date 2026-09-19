@@ -36,6 +36,7 @@ import '../crash/crash_reporting.dart';
 import '../crash/crash_reporting_firebase.dart';
 import '../crash/remote_error_reporter.dart';
 import '../observability/black_box.dart';
+import '../observability/ressources_moniteur.dart';
 import '../observability/structured_logger.dart';
 import 'device_memory.dart';
 
@@ -211,6 +212,12 @@ void runGuarded(Future<void> Function() body) {
           );
         } catch (_) {/* la capture mémoire du logger reste sans disque */}
       }
+
+      // RAM / CPU réels de l'app, un relevé par minute, pic sur l'heure —
+      // remontés dans le heartbeat (cf. ressources_moniteur.dart). Posé
+      // ICI, avec la Boîte noire, pour que toutes les apps l'aient :
+      // téléphone, box, PC. Ne bloque rien et ne jette jamais.
+      RessourcesMoniteur.instance.demarrer();
 
       // Crashlytics si (et seulement si) le projet est configuré. Best-effort,
       // jamais bloquant ni fatal : sans google-services.json, no-op silencieux.

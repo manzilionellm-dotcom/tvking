@@ -47,6 +47,7 @@ class PlayerSettings extends ChangeNotifier {
   static const String _kBufferKey = 'player.buffer_seconds';
   static const String _kAspectKey = 'player.aspect_mode';
   static const String _kHwdecKey = 'player.hardware_decode';
+  static const String _kPassthroughKey = 'player.dolby_passthrough';
   static const String _kStatsKey = 'player.show_stats';
   static const String _kSpeedKey = 'player.last_speed';
   static const String _kAntiFreezeKey = 'player.anti_freeze';
@@ -88,6 +89,13 @@ class PlayerSettings extends ChangeNotifier {
   /// Force le décodage hardware (recommandé pour 4K/8K).
   bool _hardwareDecode = true;
 
+  /// Son Dolby / DTS envoyé TEL QUEL à l'ampli ou à la barre de son
+  /// (HDMI, USB) quand la sortie l'accepte — comme la box. Défaut ON :
+  /// sans sortie compatible, la liste des formats est vide et le
+  /// téléphone décode lui-même, exactement comme avant. Voir
+  /// audio_passthrough.dart.
+  bool _dolbyPassthrough = true;
+
   /// Affiche l'overlay de statistiques (FPS, bitrate, etc.).
   bool _showStats = false;
 
@@ -124,6 +132,7 @@ class PlayerSettings extends ChangeNotifier {
   int get bufferSeconds => _bufferSeconds;
   AspectRatioMode get aspectMode => _aspectMode;
   bool get hardwareDecode => _hardwareDecode;
+  bool get dolbyPassthrough => _dolbyPassthrough;
   bool get showStats => _showStats;
   bool get antiFreeze => _antiFreeze;
   double get lastSpeed => _lastSpeed;
@@ -172,6 +181,7 @@ class PlayerSettings extends ChangeNotifier {
     _bufferSeconds = prefs.getInt(_kBufferKey) ?? 20;
     _aspectMode = AspectRatioMode.fromCode(prefs.getString(_kAspectKey));
     _hardwareDecode = prefs.getBool(_kHwdecKey) ?? true;
+    _dolbyPassthrough = prefs.getBool(_kPassthroughKey) ?? true;
     _showStats = prefs.getBool(_kStatsKey) ?? false;
     _antiFreeze = prefs.getBool(_kAntiFreezeKey) ?? true;
     _lastSpeed = prefs.getDouble(_kSpeedKey) ?? 1.0;
@@ -207,6 +217,14 @@ class PlayerSettings extends ChangeNotifier {
     notifyListeners();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kHwdecKey, enabled);
+  }
+
+  Future<void> setDolbyPassthrough(bool enabled) async {
+    if (enabled == _dolbyPassthrough) return;
+    _dolbyPassthrough = enabled;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kPassthroughKey, enabled);
   }
 
   Future<void> setShowStats(bool enabled) async {

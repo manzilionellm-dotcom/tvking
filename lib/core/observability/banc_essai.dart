@@ -63,7 +63,33 @@ class BancMesure {
     required this.gelsBudgetDepasse,
     required this.verrouRefuse,
     required this.verrouRetabli,
+    this.premieresImagesMs = const <int>[],
   });
+
+  /// `native / tv_player.first_frame`, ctx.ms — le temps entre « la
+  /// chaîne s'ouvre » et « la première image est dessinée », pour CHAQUE
+  /// ouverture de la période. C'est le « temps de chargement des
+  /// chaînes » du banc de la famille (19/09/2026) : jusqu'ici il n'avait
+  /// aucun chiffre terrain, seulement des échecs comptés.
+  ///
+  /// UNE LISTE, PAS UNE MOYENNE : un seul zap à 20 s (chaîne morte, puis
+  /// secours) écraserait la moyenne d'une soirée de zaps à 1,5 s. La
+  /// médiane, elle, dit ce que le client vit d'habitude.
+  final List<int> premieresImagesMs;
+
+  /// Nombre d'ouvertures mesurées sur la période.
+  int get premieresImages => premieresImagesMs.length;
+
+  /// Médiane du temps jusqu'à la première image, en ms. `null` = aucune
+  /// ouverture mesurée (la box n'a rien lu, ou tourne un build d'avant).
+  int? get premiereImageMedianeMs {
+    if (premieresImagesMs.isEmpty) return null;
+    final List<int> tri = List<int>.of(premieresImagesMs)..sort();
+    final int milieu = tri.length ~/ 2;
+    return tri.length.isOdd
+        ? tri[milieu]
+        : ((tri[milieu - 1] + tri[milieu]) / 2).round();
+  }
 
   /// Durée observée. C'est LE chiffre que le propriétaire lit en
   /// premier : « la box a tenu combien de temps ? »
@@ -170,6 +196,12 @@ class BancVerdict {
         'gels': mesure.gelsBudgetDepasse,
         'verrou_ko': mesure.verrouRefuse,
         'verrou_ok': mesure.verrouRetabli,
+        // Temps jusqu'à la 1re image : la MÉDIANE de la box et le nombre
+        // d'ouvertures derrière. Le serveur fera la médiane des box par
+        // build ; envoyer la liste entière ne servirait qu'à remplir la
+        // base. `null` quand rien n'a été lu — ce n'est pas « 0 ms ».
+        'ttff_med': mesure.premiereImageMedianeMs,
+        'ttff_n': mesure.premieresImages,
       };
 }
 
@@ -219,6 +251,7 @@ BancMesure mesurerBanc(
   int gels = 0;
   int verrouRefuse = 0;
   int verrouRetabli = 0;
+  final List<int> premieresImages = <int>[];
 
   for (final Map<String, Object?> e in entrees) {
     final String lvl = '${e['lvl'] ?? ''}';
@@ -248,6 +281,13 @@ BancMesure mesurerBanc(
         case 'tv_player.rebuffer_budget_exceeded':
           gels++;
           continue;
+        case 'tv_player.first_frame':
+          // Une mesure, pas une panne : on la garde telle quelle. Un
+          // `ms` absent ou négatif (ligne abîmée) est ignoré sans bruit.
+          final Object? ctx = e['ctx'];
+          final Object? ms = ctx is Map<String, Object?> ? ctx['ms'] : null;
+          if (ms is num && ms >= 0) premieresImages.add(ms.toInt());
+          continue;
       }
     }
     if (domaine == 'ecran') {
@@ -272,6 +312,7 @@ BancMesure mesurerBanc(
     gelsBudgetDepasse: gels,
     verrouRefuse: verrouRefuse,
     verrouRetabli: verrouRetabli,
+    premieresImagesMs: premieresImages,
   );
 }
 

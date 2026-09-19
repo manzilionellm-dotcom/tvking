@@ -3,6 +3,11 @@ package com.manzilionellm.tvking_device
 import android.app.ActivityManager
 import android.content.Context
 import android.content.SharedPreferences
+import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioTrack
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
@@ -125,8 +130,83 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             // lecture réseau sans VPN ». Best-effort : toute erreur → false
             // (le Dart ne bloque jamais une lecture sur un doute natif).
             "isVpnActive" -> result.success(isVpnActive())
+            // PASSTHROUGH DOLBY / DTS (19/09/2026) : quels formats compressés
+            // la sortie audio ACTUELLE accepte tels quels (HDMI, USB, ARC).
+            // Noms au format `audio-spdif` de mpv. Liste vide = on décode
+            // nous-mêmes, jamais de silence. Voir audio_passthrough.dart.
+            "getAudioPassthrough" -> result.success(audioPassthrough())
             else -> result.notImplemented()
         }
+    }
+
+    // =====================================================================
+    //  Passthrough audio (téléphone → ampli / barre de son)
+    // =====================================================================
+    //  La box le fait toute seule : Media3 demande à Android si la sortie
+    //  accepte l'E-AC-3, l'AC-3, le DTS, et les lui envoie sans les
+    //  décoder. Le lecteur du téléphone (mpv) ne pose pas cette question :
+    //  il faut lui dire, par `audio-spdif`, quels formats laisser passer.
+    //  C'est cette question qu'on pose ici, à la place de mpv.
+    //
+    //  DEUX FAÇONS DE DEMANDER, SELON L'ANDROID :
+    //   • Android 10+ (API 29) : AudioTrack.isDirectPlaybackSupported —
+    //     la réponse officielle, format par format, pour la sortie en
+    //     cours. Si le client débranche l'ampli, la réponse change.
+    //   • Android 6 → 9 : on lit les encodages déclarés par les sorties
+    //     numériques présentes (HDMI, ARC, USB, dock, S/PDIF). Moins
+    //     précis, mais honnête : une sortie qui ne déclare rien ne reçoit
+    //     rien.
+    //
+    //  ORDRE FIXE et connu du Dart (ac3, eac3, dts, dts-hd, truehd) : c'est
+    //  celui que mpv attend, et un test le verrouille côté Dart.
+    private fun audioPassthrough(): List<String> {
+        val out = ArrayList<String>()
+        val ctx = appContext ?: return out
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return out
+        val candidats = LinkedHashMap<String, Int>()
+        candidats["ac3"] = AudioFormat.ENCODING_AC3
+        candidats["eac3"] = AudioFormat.ENCODING_E_AC3
+        candidats["dts"] = AudioFormat.ENCODING_DTS
+        candidats["dts-hd"] = AudioFormat.ENCODING_DTS_HD
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            candidats["truehd"] = AudioFormat.ENCODING_DOLBY_TRUEHD
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val attrs = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                    .build()
+                for ((nom, encodage) in candidats) {
+                    val fmt = AudioFormat.Builder()
+                        .setEncoding(encodage)
+                        .setSampleRate(48000)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                        .build()
+                    if (AudioTrack.isDirectPlaybackSupported(fmt, attrs)) out.add(nom)
+                }
+            } else {
+                val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                    ?: return out
+                val numeriques = setOf(
+                    AudioDeviceInfo.TYPE_HDMI, AudioDeviceInfo.TYPE_HDMI_ARC,
+                    AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_ACCESSORY,
+                    AudioDeviceInfo.TYPE_DOCK, AudioDeviceInfo.TYPE_LINE_DIGITAL,
+                )
+                val encodages = HashSet<Int>()
+                for (d in am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+                    if (d.type in numeriques) for (e in d.encodings) encodages.add(e)
+                }
+                for ((nom, encodage) in candidats) {
+                    if (encodages.contains(encodage)) out.add(nom)
+                }
+            }
+        } catch (e: Throwable) {
+            // Un doute natif ne coupe jamais le son : liste vide = décodage
+            // logiciel, comme avant.
+            return ArrayList()
+        }
+        return out
     }
 
     // =====================================================================

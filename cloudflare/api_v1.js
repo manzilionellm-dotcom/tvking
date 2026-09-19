@@ -1483,7 +1483,8 @@ async function apiV1Inner(request, env) {
       const r = await env.DB
         .prepare(
           'SELECT build_label, platform, note, minutes, crashs, err, mem, ' +
-            'nostart, lecture, gels, verrou_ko, verrou_ok, updated_at ' +
+            'nostart, lecture, gels, verrou_ko, verrou_ok, updated_at, ' +
+            'ttff_med, ttff_n ' +
             'FROM bench_runs ORDER BY build_label DESC LIMIT 2000'
         )
         .all();
@@ -5852,6 +5853,15 @@ export function resumerBancs(rows) {
   }
 
   const n = (v) => (Number.isFinite(v) ? v : 0);
+  // Médiane d'une liste DÉJÀ triée. Une seule implémentation pour la
+  // note et pour la 1re image : deux médianes écrites deux fois
+  // finiraient par arrondir différemment.
+  const medianeDe = (tri) => {
+    const milieu = Math.floor(tri.length / 2);
+    return tri.length % 2
+      ? tri[milieu]
+      : Math.round((tri[milieu - 1] + tri[milieu]) / 2);
+  };
   const out = [];
   for (const [build, list] of parBuild) {
     const notes = list
@@ -5859,10 +5869,16 @@ export function resumerBancs(rows) {
       .filter((v) => v !== null)
       .sort((a, b) => a - b);
     if (notes.length === 0) continue;
-    const milieu = Math.floor(notes.length / 2);
-    const mediane = notes.length % 2
-      ? notes[milieu]
-      : Math.round((notes[milieu - 1] + notes[milieu]) / 2);
+    const mediane = medianeDe(notes);
+
+    // TEMPS JUSQU'À LA 1re IMAGE (19/09/2026) : chaque box envoie SA
+    // médiane ; ici, la médiane de ces médianes — une box = une voix,
+    // qu'elle ait zappé dix fois ou mille. Les box qui n'ont rien lu
+    // (ttff_med null) ne votent pas : « pas de mesure » n'est pas 0 ms.
+    const ttff = list
+      .map((r) => (Number.isFinite(r.ttff_med) ? r.ttff_med : null))
+      .filter((v) => v !== null)
+      .sort((a, b) => a - b);
 
     out.push({
       build,
@@ -5885,6 +5901,9 @@ export function resumerBancs(rows) {
       verrou_ko: list.reduce((s, r) => s + n(r.verrou_ko), 0),
       lecture: list.reduce((s, r) => s + n(r.lecture), 0),
       vu_le: list.reduce((m, r) => Math.max(m, n(r.updated_at)), 0),
+      // 1re image : médiane des box (ms) et combien de box ont mesuré.
+      ttff_mediane: ttff.length ? medianeDe(ttff) : null,
+      ttff_boxes: ttff.length,
     });
   }
 

@@ -592,6 +592,11 @@ export interface BenchBuild {
   verrou_ko: number;
   lecture: number;
   vu_le: number;
+  /// Temps jusqu'à la 1re image : médiane des box (ms), null si aucune
+  /// box n'a lu quelque chose sur ce build. `ttff_boxes` = combien ont
+  /// mesuré — un chiffre venu d'une seule box est une anecdote.
+  ttff_mediane: number | null;
+  ttff_boxes: number;
 }
 
 export interface DeviceLocalSource {
@@ -636,6 +641,14 @@ export interface DeviceMeta {
   app_build: number | null;
   platform: string | null;
   android_id: string | null;
+  // RAM / CPU réels de l'app (19/09/2026) : Mo résidents, pic sur
+  // l'heure, pourcentage de l'appareil. null = jamais relevé (app
+  // d'avant, ou mode bouclier). res_at = date du dernier relevé.
+  mem_mb?: number | null;
+  mem_peak_mb?: number | null;
+  cpu_pct?: number | null;
+  cpu_peak_pct?: number | null;
+  res_at?: number;
 }
 // « Cette box est-elle à jour ? » — calculé par le serveur
 // (cloudflare/app_versions.js) en comparant ce que l'appareil a remonté

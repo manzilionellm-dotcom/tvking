@@ -236,6 +236,8 @@
   "playerBufferHelp": "Cuanto más alto, mejor resiste la reproducción a los cortes de red (pero más latencia en directo).",
   "playerAntiFreeze": "Antiinterrupción",
   "playerAntiFreezeHelp": "Si la conexión se debilita, el reproductor recurre al búfer en vez de cortar la imagen. Inicio algo más lento, pero reproducción sin cortes.",
+  "playerDolbyPassthrough": "Dolby / DTS al amplificador",
+  "playerDolbyPassthroughHelp": "Envía el audio Dolby o DTS sin tocar a la barra de sonido o al amplificador (HDMI, USB), como en la box. Sin amplificador compatible, el teléfono lo decodifica: nunca sin sonido.",
   "playerHwDecode": "Decodificación por hardware",
   "playerHwDecodeHelp": "Usa la GPU para decodificar el vídeo. Imprescindible para 4K / 8K.",
   "playerShowStats": "Mostrar estadísticas",

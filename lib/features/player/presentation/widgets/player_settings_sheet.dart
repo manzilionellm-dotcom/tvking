@@ -175,6 +175,18 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
                     ),
                     const SizedBox(height: 14),
 
+                    // ----- Son Dolby / DTS vers l'ampli (passthrough) -----
+                    // Comme la box : si la sortie accepte le format compressé,
+                    // on le laisse passer tel quel. Voir audio_passthrough.dart.
+                    _toggle(
+                      label: context.l10n.playerDolbyPassthrough,
+                      sublabel: context.l10n.playerDolbyPassthroughHelp,
+                      value: PlayerSettings.instance.dolbyPassthrough,
+                      onChanged: (bool v) =>
+                          PlayerSettings.instance.setDolbyPassthrough(v),
+                    ),
+                    const SizedBox(height: 14),
+
                     // ----- Affichage des stats -----
                     _toggle(
                       label: context.l10n.playerShowStats,

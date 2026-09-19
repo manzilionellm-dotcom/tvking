@@ -242,6 +242,8 @@
   "playerBufferHelp": "Higher values make playback more resistant to network drops (but add latency on live).",
   "playerAntiFreeze": "Anti-freeze",
   "playerAntiFreezeHelp": "If the connection weakens, the player draws from the buffer instead of cutting out. Slightly longer start, but uninterrupted playback.",
+  "playerDolbyPassthrough": "Dolby / DTS to your amplifier",
+  "playerDolbyPassthroughHelp": "Sends Dolby or DTS audio untouched to your soundbar or amplifier (HDMI, USB), like the box does. Without a compatible amplifier, the phone decodes it itself: never silent.",
   "playerHwDecode": "Hardware decoding",
   "playerHwDecodeHelp": "Uses the GPU to decode video. Essential for 4K / 8K.",
   "playerShowStats": "Show statistics",

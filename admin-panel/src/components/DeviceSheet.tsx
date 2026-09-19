@@ -498,6 +498,24 @@ export function DeviceSheet({
                   : '—'}
               />
               <InfoRow label="Numéro (maison)" value={meta?.build_label || '—'} />
+              {/* RAM / CPU RÉELS de l'app (19/09/2026) : « quelles box
+                  vivent au bord ». Mo résidents + pic de l'heure écoulée ;
+                  CPU en % de l'appareil entier. « — » = jamais relevé
+                  (app d'avant, ou mode bouclier), pas zéro. */}
+              <InfoRow
+                label="RAM (app)"
+                value={meta?.mem_mb != null
+                  ? `${meta.mem_mb} Mo` + (meta.mem_peak_mb != null && meta.mem_peak_mb > meta.mem_mb
+                    ? ` · pic 1 h ${meta.mem_peak_mb} Mo` : '')
+                  : '—'}
+              />
+              <InfoRow
+                label="CPU (app)"
+                value={meta?.cpu_pct != null
+                  ? `${meta.cpu_pct} %` + (meta.cpu_peak_pct != null && meta.cpu_peak_pct > meta.cpu_pct
+                    ? ` · pic 1 h ${meta.cpu_peak_pct} %` : '')
+                  : '—'}
+              />
               <InfoRow
                 label="Version app"
                 value={meta?.app_version || (meta?.app_build != null ? String(meta.app_build) : '—')}

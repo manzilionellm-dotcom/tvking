@@ -37,6 +37,46 @@ const run = (build, note, extra = {}) => ({
   ...extra,
 });
 
+// --- 1re IMAGE : médiane des box, une box = une voix ----------------
+{
+  //  Trois box sur le même build : 1 200 ms, 1 800 ms, 9 000 ms (celle-là
+  //  a une ligne pourrie). Médiane = 1 800 : ce que vit la box typique.
+  //  La moyenne dirait 4 000 et ferait croire à un build lent.
+  const r = resumerBancs([
+    run('198896', 90, { ttff_med: 1200, ttff_n: 40 }),
+    run('198896', 90, { ttff_med: 1800, ttff_n: 12 }),
+    run('198896', 85, { ttff_med: 9000, ttff_n: 3 }),
+  ]);
+  ok(r[0].ttff_mediane === 1800, 'T1 médiane des médianes de box');
+  ok(r[0].ttff_boxes === 3, 'T2 trois box ont mesuré');
+}
+{
+  //  Une box sans lecture (ttff_med null) ne vote pas : « pas de
+  //  mesure » n'est pas « 0 ms », sinon elle tirerait la médiane vers
+  //  un chiffre que personne n'a vécu.
+  const r = resumerBancs([
+    run('198896', 90, { ttff_med: 2000, ttff_n: 5 }),
+    run('198896', 90, { ttff_med: null, ttff_n: 0 }),
+    run('198896', 90, {}),
+  ]);
+  ok(r[0].ttff_mediane === 2000, 'T3 une box muette ne pèse pas');
+  ok(r[0].ttff_boxes === 1, 'T4 une seule box a mesuré');
+}
+{
+  //  Aucune box n'a mesuré → null, pas 0 : le panel affiche « — ».
+  const r = resumerBancs([run('198895', 90), run('198895', 80)]);
+  ok(r[0].ttff_mediane === null, 'T5 aucune mesure → null');
+  ok(r[0].ttff_boxes === 0, 'T6 zéro box');
+}
+{
+  //  Nombre pair de box : moyenne des deux du milieu, arrondie.
+  const r = resumerBancs([
+    run('198896', 90, { ttff_med: 1000 }),
+    run('198896', 90, { ttff_med: 1500 }),
+  ]);
+  ok(r[0].ttff_mediane === 1250, 'T7 médiane paire = milieu des deux');
+}
+
 // --- Regroupement de base ------------------------------------------
 {
   const r = resumerBancs([

@@ -670,6 +670,8 @@
   "@playerAntiFreezeHelp": {
     "description": "Texte UI : playerAntiFreezeHelp"
   },
+  "playerDolbyPassthrough": "Son Dolby / DTS vers l'ampli",
+  "playerDolbyPassthroughHelp": "Envoie le son Dolby ou DTS tel quel à la barre de son ou à l'ampli (HDMI, USB), comme sur la box. Sans ampli compatible, le téléphone décode lui-même : jamais de silence.",
   "playerHwDecode": "Décodage matériel",
   "@playerHwDecode": {
     "description": "Texte UI : playerHwDecode"

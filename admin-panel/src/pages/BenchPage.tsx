@@ -61,6 +61,14 @@ function duree(minutes: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m}`;
 }
 
+/// « 1,8 s » — le temps jusqu'à la première image, comme on le dit.
+/// Sous la seconde on garde deux décimales (« 0,85 s ») : c'est là que
+/// les bons builds se départagent.
+function secondes(ms: number): string {
+  const s = ms / 1000;
+  return `${(s < 1 ? s.toFixed(2) : s.toFixed(1)).replace('.', ',')} s`;
+}
+
 /// La couleur d'une note. Les seuils sont ceux du banc (`bon` ≥ 80).
 function ton(note: number): string {
   if (note >= 90) return 'text-success';
@@ -173,6 +181,7 @@ export function BenchPage({ onLogout }: { onLogout: () => void }) {
                 <th className="px-4 py-3">Build</th>
                 <th className="px-4 py-3">Note (box typique)</th>
                 <th className="px-4 py-3">Pire / meilleure</th>
+                <th className="px-4 py-3">1ʳᵉ image</th>
                 <th className="px-4 py-3">Box</th>
                 <th className="px-4 py-3">Plus longue session</th>
                 <th className="px-4 py-3">Ce qui cloche</th>
@@ -193,6 +202,26 @@ export function BenchPage({ onLogout }: { onLogout: () => void }) {
                     <span className={ton(b.note_pire)}>{b.note_pire}</span>
                     {' / '}
                     <span className={ton(b.note_meilleure)}>{b.note_meilleure}</span>
+                  </td>
+                  {/* TEMPS JUSQU'À LA 1re IMAGE — le « temps de chargement
+                      des chaînes » du banc de la famille, MESURÉ sur les
+                      box (médiane des médianes). « — » = aucune box n'a
+                      lu quelque chose sur ce build : pas un zéro. */}
+                  <td className="px-4 py-3 font-mono">
+                    {b.ttff_mediane != null ? (
+                      <>
+                        <span className={b.ttff_mediane <= 2500 ? 'text-success' : b.ttff_mediane <= 5000 ? 'text-warning' : 'text-red-300'}>
+                          {secondes(b.ttff_mediane)}
+                        </span>
+                        {b.ttff_boxes < 3 && (
+                          <span className="ml-1 text-[10px] text-ink-tertiary">
+                            ({b.ttff_boxes} box)
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-ink-tertiary">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {b.boxes}
@@ -245,6 +274,12 @@ export function BenchPage({ onLogout }: { onLogout: () => void }) {
             • Un <b>crash</b> et un <b>refus du verrou d’écran</b> pèsent
             lourd même une seule fois : le premier vide le salon, le second
             garantit un écran noir plus tard.
+          </li>
+          <li>
+            • La <b>1ʳᵉ image</b> est la médiane des box, chaque box
+            comptant pour une voix. Elle ne pèse pas dans la note : c’est
+            une mesure, pas un reproche — sous 2,5 s c’est bon, au-delà de
+            5 s le client le sent.
           </li>
         </ul>
       </div>

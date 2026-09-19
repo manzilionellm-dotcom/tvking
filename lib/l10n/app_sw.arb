@@ -236,6 +236,8 @@
   "playerBufferHelp": "Thamani kubwa hufanya ucheza ustahimili zaidi kukatika kwa mtandao (lakini huongeza ucheleweshaji wa moja kwa moja).",
   "playerAntiFreeze": "Kuzuia kukwama",
   "playerAntiFreezeHelp": "Ikiwa muunganisho unadhoofika, kicheza hutumia bafa badala ya kukata picha. Kuanza huchukua muda kidogo zaidi, lakini ucheza usiokatika.",
+  "playerDolbyPassthrough": "Sauti ya Dolby / DTS kwa amplifier",
+  "playerDolbyPassthroughHelp": "Hutuma sauti ya Dolby au DTS kama ilivyo kwenye soundbar au amplifier (HDMI, USB), kama kisanduku. Bila amplifier inayolingana, simu hufasiri yenyewe: kamwe hakuna ukimya.",
   "playerHwDecode": "Usimbuaji wa maunzi",
   "playerHwDecodeHelp": "Hutumia GPU kusimbua video. Muhimu kwa 4K/8K.",
   "playerShowStats": "Onyesha takwimu",

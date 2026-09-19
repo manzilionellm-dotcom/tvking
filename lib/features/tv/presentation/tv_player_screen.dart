@@ -375,6 +375,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
   Timer? _startupWatchdog;
   static const Duration _kStartupTimeout = Duration(seconds: 20);
 
+  /// Chrono « ouverture → première image » de l'ouverture en cours ;
+  /// null une fois la première image dessinée (ou avant toute ouverture).
+  Stopwatch? _chronoOuverture;
+
   // 2) GARDE-FOU ANTI-BOUCLE INFINIE : un flux qui « hoquette » sans arrêt
   //    (rebuffer en rafale) ne doit pas tourner indéfiniment. On garde les
   //    horodatages des rebuffers RÉELS sur une fenêtre glissante ; au-delà de
@@ -839,6 +843,26 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
           CinePerf.isRunning(CinePerf.playToFirstFrame)) {
         CinePerf.end(CinePerf.playToFirstFrame, detail: _current.name);
       }
+      // TEMPS JUSQU'À LA PREMIÈRE IMAGE (19/09/2026) — pour TOUTE
+      // ouverture, live comme film. Écrit dans la Boîte noire ; le Banc
+      // d'essai en fait la médiane de la box, le panel la médiane des
+      // box par build. C'est le seul chiffre terrain du critère « temps
+      // de chargement des chaînes » : avant, on ne comptait que les
+      // ouvertures qui ÉCHOUAIENT (startup_timeout).
+      final Stopwatch? chrono = _chronoOuverture;
+      if (!_everShownFrame && chrono != null) {
+        chrono.stop();
+        _chronoOuverture = null;
+        StructuredLogger.instance.info(
+          domain: 'native',
+          event: 'tv_player.first_frame',
+          ctx: <String, Object?>{
+            'ms': chrono.elapsedMilliseconds,
+            'channelId': _current.id,
+            'vod': _isVod,
+          },
+        );
+      }
       _everShownFrame = true;
       _startupWatchdog?.cancel(); // 1re image → garde-fou démarrage inutile
     }
@@ -1104,6 +1128,10 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     _freeze.openChannel(DateTime.now());
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
+    // Chrono de la 1re image : part ICI, s'arrête à la première frame
+    // (voir _onPlayer). Un Stopwatch, pas DateTime.now() : l'horloge
+    // murale d'une box saute quand le NTP la recale, un chrono non.
+    _chronoOuverture = Stopwatch()..start();
     _rebufferTimes.clear(); // nouvelle chaîne → budget rebuffer neuf
     _armStartupWatchdog(); // coupure rapide si aucune image en ~20 s
     _fatalNetworkHint = false;
