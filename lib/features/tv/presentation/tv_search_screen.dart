@@ -145,7 +145,12 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   ///  - 5 au maximum : au-delà, choisir devient plus long que taper.
   void _refreshSuggestions(List<Channel> from) {
     if (_q.trim().length < 2) {
-      _suggestions.value = const <String>[];
+      // REQUÊTE VIDE (ou une lettre) : les dernières recherches du client,
+      // une par ligne sous la grille — c'est ce que Netflix montre avant
+      // qu'on tape, et c'est souvent ce qu'on revient chercher.
+      _suggestions.value = SearchHistoryRepository.instance.items
+          .take(6)
+          .toList(growable: false);
       return;
     }
     final String deja = _q.trim().toLowerCase();
@@ -204,7 +209,10 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     // Charge l'historique des recherches (best-effort) pour proposer les
     // dernières recherches d'un clic quand la requête est vide.
     SearchHistoryRepository.instance.load().then((_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      setState(() {});
+      // Les dernières recherches s'affichent sous la grille dès l'ouverture.
+      _refreshSuggestions(const <Channel>[]);
     });
     // Favoris + historique : sans ça, « bein 1 » trouverait bien
     // beIN Sports 1, mais la variante que TU regardes ne remonterait
@@ -339,7 +347,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     });
     // Les propositions portaient sur une requête qui n'existe plus. Les
     // laisser afficherait des noms sans rapport avec un champ vide.
-    _suggestions.value = const <String>[];
+    _suggestions.value = SearchHistoryRepository.instance.items
+        .take(6)
+        .toList(growable: false); // requête vide → dernières recherches
     _recopierDansChamp();
   }
 
@@ -478,10 +488,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         // ----- Clavier (instance STABLE → non reconstruite à chaque frappe) -----
-        // 560 px (et non 380) depuis le passage en QWERTY : une rangée
-        // compte désormais 10 touches (12 en arabe) au lieu de 6. À 380 px
-        // elles seraient tombées sous les 32 px — illisibles à trois mètres.
-        SizedBox(width: 560, child: _keyboard),
+        // 400 px : six colonnes de touches carrées (grille Netflix), une
+        // bande étroite qui laisse toute la place aux résultats.
+        SizedBox(width: 400, child: _keyboard),
         const SizedBox(width: TvDimens.gutter),
         // ----- Requête + résultats -----
         Expanded(
@@ -1287,62 +1296,78 @@ class _KeyboardState extends State<_Keyboard> {
   _KbLang _lang = _KbLang.latin;
 
   // =========================================================
-  //  TRACÉS EN RANGÉES — QWERTY (09/09/2026)
+  //  LA GRILLE NETFLIX (19/09/2026) — « un petit clavier intelligent »
   // =========================================================
-  //  Demandé par le propriétaire : « change ce clavier côté TV ».
+  //  Photo du propriétaire : la recherche de Netflix sur sa télé. Une
+  //  grille COMPACTE de six colonnes, les lettres dans l'ordre de
+  //  l'alphabet puis les chiffres à la suite (« y z 1 2 3 4 »), ESPACE
+  //  et EFFACER en deux larges touches AU-DESSUS, et sous la grille une
+  //  liste de propositions, une par ligne. « Sur TV box je besoin d'un
+  //  clavier de recherche pareil. »
   //
-  //  CE QUI N'ALLAIT PAS. Les lettres étaient rangées dans l'ORDRE DE
-  //  L'ALPHABET (A B C D E F / G H I J K L…). C'est la seule disposition
-  //  que personne n'a dans les mains : ni sur un téléphone, ni sur un PC,
-  //  ni sur les autres apps de la télé. Le client devait donc LIRE la
-  //  grille lettre par lettre au lieu de viser d'instinct — six lignes à
-  //  balayer pour trouver un « S ».
+  //  Le 09/09 il avait demandé le QWERTY. Ce n'est pas une
+  //  contradiction : à la télécommande on ne tape pas avec dix doigts,
+  //  on VISE une case. Dans une grille régulière, l'ordre alphabétique
+  //  se vise sans lire (« R » est 3e rangée, 6e case, toujours), et six
+  //  colonnes tiennent dans une bande étroite qui laisse toute la place
+  //  aux résultats. C'est le choix de Netflix, Prime et Disney+ sur télé,
+  //  et c'est ce que le propriétaire a sous les yeux.
   //
-  //  Et ce n'était pas un choix : c'était la conséquence d'un `Wrap`, qui
-  //  se contente d'aligner une liste à plat et coupe où ça déborde. D'où
-  //  aussi les rangées irrégulières, qui rendent le D-pad imprévisible —
-  //  « bas » ne tombait pas sur la touche qu'on visait des yeux.
+  //  ESPACE et EFFACER EN HAUT : c'est là que le pouce revient le plus
+  //  souvent, et « haut » depuis la première rangée y tombe direct.
+  //  Maintenir EFFACER vide tout (le geste du téléphone).
   //
-  //  MAINTENANT : de vraies RANGÉES, en QWERTY. La mémoire des doigts
-  //  fonctionne enfin, et chaque « bas » tombe droit sous la touche
-  //  précédente parce que les rangées sont alignées.
+  //  Les CHIFFRES suivent les lettres dans la même grille (numéros de
+  //  chaîne, années de films) — pas de rangée à part, pas de page « 123 ».
   //
-  //  Les CHIFFRES restent présents dans chaque langue (numéros de chaîne,
-  //  années de films), sur leur propre rangée, comme sur un vrai clavier.
-  static const List<String> _digitRow = <String>[
+  //  « INTELLIGENT » : sous la grille, les propositions. Requête vide →
+  //  les dernières recherches du client, une par ligne (comme Netflix) ;
+  //  dès deux lettres → les noms complets qui correspondent, pour finir
+  //  en un OK au lieu de vingt appuis.
+  static const int _colonnes = 6;
+
+  static const List<String> _digits = <String>[
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
   ];
 
-  static const List<List<String>> _latinRows = <List<String>>[
-    <String>['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
-    <String>['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
-    <String>['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
+  static const List<String> _latin = <String>[
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
   ];
 
-  // Nordique : le QWERTY scandinave place Å après P, puis Ä Ö après L.
-  // Æ et Ø (danois/norvégien) suivent, pour couvrir les trois pays avec
-  // un seul tracé — c'est déjà le choix fait par l'app côté langues.
-  static const List<List<String>> _nordicRows = <List<String>>[
-    <String>['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', 'Å'],
-    <String>['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Ä', 'Ö'],
-    <String>['Z', 'X', 'C', 'V', 'B', 'N', 'M', 'Æ', 'Ø'],
+  // Nordique : l'alphabet latin, puis les lettres propres aux trois pays
+  // dans l'ordre où ils les rangent (Å Ä Ö en Suède / Finlande, Æ Ø au
+  // Danemark / Norvège) — un seul tracé pour les trois, comme les langues.
+  static const List<String> _nordic = <String>[
+    ..._latin, 'Å', 'Ä', 'Ö', 'Æ', 'Ø',
   ];
 
-  // Arabe : l'ordre du CLAVIER arabe standard, pas l'ordre de l'alphabet.
-  // Un arabophone cherche « ش » en haut à gauche de la 2e rangée, jamais
-  // en 13e position d'un abécédaire. Les 32 caractères d'avant sont tous
-  // conservés — aucune lettre perdue, seul l'ordre change.
-  static const List<List<String>> _arabicRows = <List<String>>[
-    <String>['ض', 'ص', 'ث', 'ق', 'ف', 'غ', 'ع', 'ه', 'خ', 'ح', 'ج', 'د'],
-    <String>['ش', 'س', 'ي', 'ب', 'ل', 'ا', 'ت', 'ن', 'م', 'ك', 'ط', 'ذ'],
-    <String>['ء', 'ر', 'ى', 'ة', 'و', 'ز', 'ظ', 'آ'],
+  // Arabe : l'ordre du CLAVIER arabe standard (celui qu'un arabophone a
+  // dans les mains), 32 lettres, replié sur six colonnes. Toutes gardées.
+  static const List<String> _arabic = <String>[
+    'ض', 'ص', 'ث', 'ق', 'ف', 'غ', 'ع', 'ه', 'خ', 'ح', 'ج', 'د',
+    'ش', 'س', 'ي', 'ب', 'ل', 'ا', 'ت', 'ن', 'م', 'ك', 'ط', 'ذ',
+    'ء', 'ر', 'ى', 'ة', 'و', 'ز', 'ظ', 'آ',
   ];
 
-  List<List<String>> get _rows => switch (_lang) {
-        _KbLang.latin => _latinRows,
-        _KbLang.nordic => _nordicRows,
-        _KbLang.arabic => _arabicRows,
+  List<String> get _lettres => switch (_lang) {
+        _KbLang.latin => _latin,
+        _KbLang.nordic => _nordic,
+        _KbLang.arabic => _arabic,
       };
+
+  /// La grille : lettres puis chiffres, repliés sur [_colonnes] colonnes.
+  /// La dernière rangée peut être incomplète (« 5 6 7 8 9 0 » tombe
+  /// juste en latin ; en nordique il reste une case vide) — c'est voulu,
+  /// une grille régulière vaut mieux qu'une case bouche-trou.
+  List<List<String>> get _rows {
+    final List<String> chars = <String>[..._lettres, ..._digits];
+    return <List<String>>[
+      for (int i = 0; i < chars.length; i += _colonnes)
+        chars.sublist(
+            i, i + _colonnes > chars.length ? chars.length : i + _colonnes),
+    ];
+  }
 
   // Étiquette COURTE de chaque langue (sur le bouton de bascule).
   static String _label(_KbLang l) => switch (l) {
@@ -1369,13 +1394,6 @@ class _KeyboardState extends State<_Keyboard> {
   Widget build(BuildContext context) {
     final List<List<String>> rows = _rows;
     final _KbLang next = _KbLang.values[(_lang.index + 1) % _KbLang.values.length];
-    // La rangée la plus longue impose la taille des touches : toutes les
-    // rangées partagent la même largeur de touche, sinon les colonnes ne
-    // s'alignent plus et le D-pad redevient imprévisible.
-    int plusLongue = _digitRow.length;
-    for (final List<String> r in rows) {
-      if (r.length > plusLongue) plusLongue = r.length;
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -1385,93 +1403,85 @@ class _KeyboardState extends State<_Keyboard> {
                 fontWeight: FontWeight.w800,
                 color: TvTokens.text)),
         const SizedBox(height: 12),
-        // BOUTON DE LANGUE — en HAUT, bien visible (pensé personnes âgées).
-        // Montre la langue ACTIVE et vers quoi on bascule. OK = langue suivante.
-        _LangKey(
-          current: _name(_lang),
-          next: _label(next),
-          onTap: _cycleLang,
-        ),
-        const SizedBox(height: 12),
-        // ----- PROPOSITIONS : trois lettres au lieu de vingt -----
-        // Placées ENTRE le bouton de langue et les touches, donc à un seul
-        // « haut » depuis la première rangée. Une proposition qu'il faut
-        // aller chercher à l'autre bout de l'écran ne sert à personne.
-        ValueListenableBuilder<List<String>>(
-          valueListenable: widget.suggestions,
-          builder: (BuildContext context, List<String> noms, _) {
-            if (noms.isEmpty) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  for (final String n in noms)
-                    _SuggestChip(label: n, onTap: () => widget.onSuggest(n)),
-                ],
-              ),
-            );
-          },
-        ),
-        // La taille des touches se DÉDUIT de la place disponible au lieu
-        // d'être gravée en dur : le même clavier tient sur une box 720p et
-        // sur une 4K, et l'ajout d'une langue à rangées plus longues ne
-        // déborde pas de la colonne.
+        // La taille des touches se DÉDUIT de la place disponible : le même
+        // clavier tient sur une box 720p et sur une 4K. Six colonnes → des
+        // touches carrées, jamais plus petites que 32 dp (lisibles à 3 m).
         LayoutBuilder(
           builder: (BuildContext context, BoxConstraints c) {
             const double espace = 8;
-            final double dispo = c.maxWidth;
             final double touche =
-                ((dispo - espace * (plusLongue - 1)) / plusLongue)
+                ((c.maxWidth - espace * (_colonnes - 1)) / _colonnes)
                     .clamp(32.0, 56.0);
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                for (int r = 0; r < rows.length; r++) ...<Widget>[
-                  _Row(
-                    keys: rows[r],
-                    size: touche,
-                    gap: espace,
-                    // Le focus arrive sur la 1re touche de la 1re rangée :
-                    // le pouce part toujours du même endroit.
-                    autofocusFirst: r == 0,
-                    onTap: widget.onType,
+            final double largeur =
+                touche * _colonnes + espace * (_colonnes - 1);
+            return SizedBox(
+              width: largeur,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  // ----- ESPACE + EFFACER, en haut, chacune sur 3 colonnes -----
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      _Key(
+                          label: '␣',
+                          size: touche,
+                          widthFactor: 3,
+                          gap: espace,
+                          onTap: () => widget.onType(' ')),
+                      const SizedBox(width: espace),
+                      _Key(
+                          label: '⌫',
+                          size: touche,
+                          widthFactor: 3,
+                          gap: espace,
+                          onTap: widget.onBackspace,
+                          onHold: widget.onClear),
+                    ],
                   ),
                   const SizedBox(height: espace),
-                ],
-                _Row(
-                  keys: _digitRow,
-                  size: touche,
-                  gap: espace,
-                  onTap: widget.onType,
-                ),
-                const SizedBox(height: espace),
-                // Rangée d'action : espace (large, comme sur un vrai
-                // clavier), effacer une lettre, tout effacer.
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    _Key(
-                        label: '␣',
-                        size: touche,
-                        widthFactor: 3,
-                        gap: espace,
-                        onTap: () => widget.onType(' ')),
-                    SizedBox(width: espace),
-                    // MAINTENIR = TOUT EFFACER. Corriger une requête de
-                    // vingt caractères coûtait vingt appuis. Le geste est
-                    // celui qu'on a déjà dans les mains sur un téléphone.
-                    _Key(
-                        label: '⌫',
-                        size: touche,
-                        onTap: widget.onBackspace,
-                        onHold: widget.onClear),
-                    SizedBox(width: espace),
-                    _Key(label: '✕', size: touche, onTap: widget.onClear),
+                  // ----- La grille : A … Z puis 1 … 0, six par rangée -----
+                  for (int r = 0; r < rows.length; r++) ...<Widget>[
+                    _Row(
+                      keys: rows[r],
+                      size: touche,
+                      gap: espace,
+                      // Le focus arrive sur « A » : le pouce part toujours
+                      // du même endroit.
+                      autofocusFirst: r == 0,
+                      onTap: widget.onType,
+                    ),
+                    const SizedBox(height: espace),
                   ],
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  // ----- Langue du clavier (arabe, nordique) -----
+                  // Sous la grille, sur toute sa largeur : un arabophone
+                  // la trouve en un « bas » de trop, personne d'autre ne
+                  // la croise en tapant.
+                  _LangKey(
+                    current: _name(_lang),
+                    next: _label(next),
+                    onTap: _cycleLang,
+                    width: largeur,
+                  ),
+                  const SizedBox(height: 14),
+                  // ----- PROPOSITIONS, une par ligne (façon Netflix) -----
+                  ValueListenableBuilder<List<String>>(
+                    valueListenable: widget.suggestions,
+                    builder: (BuildContext context, List<String> noms, _) {
+                      if (noms.isEmpty) return const SizedBox.shrink();
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          for (final String n in noms)
+                            _SuggestRow(
+                                label: n, onTap: () => widget.onSuggest(n)),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
             );
           },
         ),
@@ -1519,16 +1529,24 @@ class _Row extends StatelessWidget {
 /// Bouton DORÉ de bascule de langue du clavier. Large et lisible : montre la
 /// langue active + un chevron vers la suivante. OK = passe à la langue suivante.
 class _LangKey extends StatelessWidget {
-  const _LangKey(
-      {required this.current, required this.next, required this.onTap});
+  const _LangKey({
+    required this.current,
+    required this.next,
+    required this.onTap,
+    this.width = 244,
+  });
   final String current;
   final String next;
   final VoidCallback onTap;
 
+  /// Largeur du bouton : celle de la grille quand il est posé sous elle,
+  /// pour que « bas » depuis n'importe quelle touche tombe dessus.
+  final double width;
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 244,
+      width: width,
       height: 54,
       child: TvFocusBuilder(
         scale: TvFocusScale.small,
@@ -1650,59 +1668,42 @@ class _Key extends StatelessWidget {
   }
 }
 
-/// PROPOSITION DE NOM COMPLET, au-dessus des touches.
+/// UNE PROPOSITION, sur sa propre ligne, sous la grille (façon Netflix).
 ///
-/// Large et lisible : c'est un nom de chaîne, pas une lettre. On le
-/// tronque plutôt que de laisser une puce s'étirer sur toute la colonne —
-/// « SE - C More Stars [multi-sub] » ne doit pas pousser les touches hors
-/// de l'écran. Le début du nom suffit à décider.
-class _SuggestChip extends StatelessWidget {
-  const _SuggestChip({required this.label, required this.onTap});
+/// Pleine largeur de la grille, texte seul : c'est une liste qu'on
+/// parcourt au D-pad, pas une deuxième rangée de touches. Un nom trop
+/// long est tronqué — « SE - C More Stars [multi-sub] » ne doit pas
+/// pousser les résultats hors de l'écran ; le début suffit à décider.
+class _SuggestRow extends StatelessWidget {
+  const _SuggestRow({required this.label, required this.onTap});
   final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 260),
-      child: TvFocusBuilder(
-        scale: TvFocusScale.small,
-        onSelect: onTap,
-        builder: (BuildContext context, bool focused) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-            decoration: BoxDecoration(
-              color: focused ? TvTokens.ember : TvTokens.sel,
-              borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-              // Contour discret hors focus : la rangée doit se lire comme
-              // une proposition, pas comme une deuxième rangée de touches.
-              border: Border.all(
-                  color: focused ? TvTokens.ember : TvTokens.lineSoft),
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onTap,
+      builder: (BuildContext context, bool focused) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.ember : Colors.transparent,
+            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: TvDimens.body,
+              fontWeight: FontWeight.w700,
+              color: focused ? TvTokens.onEmber : TvTokens.text,
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Icon(Icons.north_west_rounded,
-                    size: 16,
-                    color: focused ? TvTokens.onEmber : TvTokens.mutedDim),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: TvDimens.body,
-                      fontWeight: FontWeight.w700,
-                      color: focused ? TvTokens.onEmber : TvTokens.text,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }
