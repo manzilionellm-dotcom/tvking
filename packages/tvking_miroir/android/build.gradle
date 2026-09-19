@@ -1,0 +1,52 @@
+// =========================================================
+//  build.gradle — module Android du plugin tvking_miroir
+// =========================================================
+//  Aucune dépendance externe : MediaProjection, ImageReader, Bitmap et
+//  la compression JPEG sont dans le SDK. AGP/Kotlin viennent du projet
+//  app (régénéré par flutter create) → on ne pin rien ici, comme
+//  tvking_device.
+//
+//  compileSdk 35 : nécessaire pour FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+//  et la permission FOREGROUND_SERVICE_MEDIA_PROJECTION (Android 14).
+//  minSdk 21 : le parc de box l'impose (voir build-seventv.yml) ;
+//  MediaProjection existe depuis l'API 21, le service typé est gardé
+//  par des tests de version dans le code.
+// =========================================================
+group = "com.manzilionellm.tvking_miroir"
+version = "1.0"
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+android {
+    namespace = "com.manzilionellm.tvking_miroir"
+    compileSdk = 35
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    defaultConfig {
+        minSdk = 21
+    }
+}
+
+// Le service au premier plan utilise NotificationCompat / ContextCompat
+// (androidx.core). L'embedding Flutter ne garantit pas cette dépendance
+// transitive à tous les projets générés par `flutter create` → déclarée
+// explicitement, même version que tvking_device.
+dependencies {
+    implementation("androidx.core:core:1.13.1")
+}

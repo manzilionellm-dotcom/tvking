@@ -45,9 +45,11 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:tvking_miroir/tvking_miroir.dart';
 
 import 'assistance_controller.dart';
 import 'assistance_miroir.dart';
@@ -86,6 +88,20 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
   /// s'empileraient jusqu'à ce que la mémoire lâche.
   bool _captureEnCours = false;
 
+  /// LA CAPTURE SYSTÈME EST-ELLE OUVERTE pour cette session ?
+  ///
+  ///  `true` = le client a accepté la boîte de dialogue d'Android et la
+  ///  projection (MediaProjection) tourne : on voit TOUT, vidéo comprise.
+  ///  `false` = on retombe sur la capture Flutter (`toImage`), qui ne
+  ///  voit pas la vidéo et gèle sur certaines box — mais qui, elle, DIT
+  ///  pourquoi. Voir packages/tvking_miroir.
+  bool _natif = false;
+
+  /// On ne pose la question d'Android qu'UNE fois par session. Sans ce
+  /// garde-fou, un refus du client ferait réapparaître la boîte de
+  /// dialogue à chaque reconstruction du bandeau.
+  bool _accordDemande = false;
+
   @override
   void initState() {
     super.initState();
@@ -102,7 +118,41 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     _c.removeListener(_maj);
     _tic?.cancel();
     _ticMiroir?.cancel();
+    _fermerNatif();
     super.dispose();
+  }
+
+  /// Libère la projection système, sans faute : une projection qui reste
+  /// ouverte, c'est une notification « partage d'écran » qui reste
+  /// affichée chez le client alors que personne ne regarde plus.
+  void _fermerNatif() {
+    if (!_natif && !_accordDemande) return;
+    _natif = false;
+    _accordDemande = false;
+    unawaited(TvkingMiroir.arreter());
+  }
+
+  /// Ouvre la capture système, si l'appareil le permet et si le client
+  /// accepte. Tourne en tâche de fond : le miroir Flutter continue en
+  /// attendant, et bascule dès que l'accord arrive.
+  Future<void> _ouvrirNatif() async {
+    if (_accordDemande) return;
+    _accordDemande = true;
+    if (!await TvkingMiroir.disponible) return;
+    final bool ok = await TvkingMiroir.demander();
+    if (!mounted || _c.etat != EtatAssistance.active) {
+      // La session s'est fermée pendant que la boîte était à l'écran.
+      unawaited(TvkingMiroir.arreter());
+      return;
+    }
+    if (ok) {
+      _natif = true;
+      return;
+    }
+    //  LE CLIENT A DIT NON (ou n'a pas répondu). On le DIT au panel,
+    //  une fois, avec le bon mot : ce n'est pas une panne, c'est un
+    //  refus — et le support doit lui parler, pas redémarrer la box.
+    _c.signalerEchecMiroir('accord_refuse', '');
   }
 
   /// INJECTE UN VRAI APPUI à la position [fx],[fy] (fractions d'écran).
@@ -167,7 +217,11 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     _tic = null;
     _ticMiroir?.cancel();
     _ticMiroir = null;
-    if (_c.etat != EtatAssistance.active) return;
+    if (_c.etat != EtatAssistance.active) {
+      // Fin de session : on rend la projection système avec le bandeau.
+      _fermerNatif();
+      return;
+    }
 
     _tic = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
@@ -181,6 +235,10 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     //  deux secondes sur une box à 1 Go n'est pas gratuit : ça se
     //  mérite, et ça s'arrête avec le bandeau.
     if (!_c.miroirBranche) return;
+    //  D'ABORD LA VOIE PRO : la capture système, qui voit la vidéo. Elle
+    //  demande l'accord du client (boîte d'Android) ; pendant qu'il
+    //  répond, le miroir Flutter tourne déjà, et on bascule dès le oui.
+    unawaited(_ouvrirNatif());
     _ticMiroir = Timer.periodic(periodeMiroir, (_) => _capturer());
   }
 
@@ -189,6 +247,33 @@ class _AssistanceOverlayState extends State<AssistanceOverlay> {
     if (_c.etat != EtatAssistance.active) return;
     _captureEnCours = true;
     try {
+      //  VOIE 1 — LA CAPTURE SYSTÈME (MediaProjection), quand le client
+      //  a accepté. Elle lit la sortie composée d'Android : menus ET
+      //  vidéo, et elle ne gèle pas. Le JPEG est fait en natif.
+      if (_natif) {
+        final Uint8List? jpeg = await TvkingMiroir.capturer()
+            .timeout(const Duration(milliseconds: 2500), onTimeout: () => null);
+        if (!mounted || _c.etat != EtatAssistance.active) return;
+        // `null` = pas d'image neuve depuis la dernière (écran figé,
+        // ou projection pas encore prête) : on ne dit rien, la suivante
+        // arrive dans deux secondes. Ce n'est PAS une erreur.
+        if (jpeg == null) return;
+        if (jpeg.length > poidsMaxMiroir) {
+          _c.signalerEchecMiroir(
+            EchecMiroir.tropGrosse.name,
+            '${(jpeg.length / 1024).round()} Ko (natif)',
+          );
+          return;
+        }
+        // Largeur/hauteur : le panel n'en a pas besoin (l'image se cale
+        // toute seule dans le cadre) ; 0 signifie « inconnu ».
+        _c.publierImageMiroir(base64Encode(jpeg), 0, 0);
+        return;
+      }
+
+      //  VOIE 2 — LA CAPTURE FLUTTER, en attendant l'accord ou si le
+      //  client a refusé. Elle ne voit pas la vidéo et peut geler ; le
+      //  délai de garde ci-dessous transforme ce gel en message clair.
       ResultatMiroir r;
       try {
         //  UN DÉLAI DE GARDE, et c'est LE correctif du 19/09 au soir.

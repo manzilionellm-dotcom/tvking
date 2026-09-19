@@ -1,0 +1,58 @@
+# =========================================================
+#  tvking_miroir — VOIR l'écran du client, pour de vrai (plugin local)
+# =========================================================
+#  DEMANDE DU PROPRIÉTAIRE (19/09/2026 au soir), après une journée à
+#  essayer de photographier l'écran depuis Flutter :
+#
+#    « Oui, termine comme un pro. »
+#
+#  CE QUE FLUTTER NE PEUT PAS FAIRE. `RenderRepaintBoundary.toImage`
+#  ne voit que ce que Flutter dessine. La VIDÉO, elle, est peinte par
+#  Android dans une surface matérielle composée en dessous — et sur la
+#  box du propriétaire (SHIELD, Skia), capturer un écran qui la contient
+#  ne jette même pas : ça RESTE SUSPENDU. Mesuré, pas supposé (rapport
+#  de test du 19/09 : session ouverte, curseur et clic « fait », zéro
+#  trame d'écran).
+#
+#  CE QUE FAIT CE PLUGIN. Il utilise MediaProjection, l'API système
+#  d'Android pour la capture d'écran — la même que AnyDesk, TeamViewer
+#  ou l'enregistreur d'écran du téléphone. Elle capture TOUT, vidéo
+#  comprise, parce qu'elle lit la sortie composée, pas l'arbre Flutter.
+#
+#  LE PRIX, ET IL N'EST PAS NÉGOCIABLE : Android affiche au client une
+#  boîte de dialogue « 7 MOTION va commencer à capturer l'écran » qu'il
+#  doit accepter, UNE FOIS par session. Aucune app ne peut la
+#  contourner — c'est la protection d'Android, pas la nôtre. Elle
+#  s'ajoute au bandeau rouge (qui, lui, reste tout du long).
+#
+#  POURQUOI UN PLUGIN LOCAL (et pas du code dans android/) : sur les
+#  builds CI, `android/` est REGÉNÉRÉ par `flutter create` à chaque
+#  fois. Du code posé là serait perdu. Un plugin sous packages/ est
+#  déclaré dans pubspec.yaml, s'auto-enregistre via
+#  GeneratedPluginRegistrant, et son manifeste (permissions + service)
+#  est FUSIONNÉ par Gradle. Même raison que tvking_device.
+#
+#  AUCUNE DÉPENDANCE EXTERNE : MediaProjection, ImageReader, Bitmap et
+#  la compression JPEG sont dans le SDK Android. Le JPEG est fait en
+#  natif (Bitmap.compress), des dizaines de fois plus vite que
+#  l'encodeur Dart — sur une box à 1 Go, ça compte.
+# =========================================================
+name: tvking_miroir
+description: "Capture d'écran système (MediaProjection) pour l'assistance à distance — voit la vidéo, avec l'accord du client."
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.manzilionellm.tvking_miroir
+        pluginClass: TvkingMiroirPlugin

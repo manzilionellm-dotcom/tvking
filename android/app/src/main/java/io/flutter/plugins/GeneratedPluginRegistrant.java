@@ -116,6 +116,11 @@ public final class GeneratedPluginRegistrant {
       Log.e(TAG, "Error registering plugin tvking_device, com.manzilionellm.tvking_device.TvkingDevicePlugin", e);
     }
     try {
+      flutterEngine.getPlugins().add(new com.manzilionellm.tvking_miroir.TvkingMiroirPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin tvking_miroir, com.manzilionellm.tvking_miroir.TvkingMiroirPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new io.flutter.plugins.urllauncher.UrlLauncherPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin url_launcher_android, io.flutter.plugins.urllauncher.UrlLauncherPlugin", e);

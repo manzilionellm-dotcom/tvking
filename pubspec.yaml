@@ -236,6 +236,16 @@ dependencies:
   tvking_device:
     path: packages/tvking_device
 
+  # --- Voir l'écran du client (assistance à distance) ---
+  # Capture d'écran SYSTÈME via MediaProjection, la seule méthode qui
+  # voit aussi la vidéo. Plugin local : le code natif vit sous
+  # packages/ et survit au `flutter create` du CI. Le client accepte
+  # une boîte de dialogue d'Android une fois par session — c'est la
+  # protection du système, pas un choix à nous. Voir
+  # packages/tvking_miroir/pubspec.yaml.
+  tvking_miroir:
+    path: packages/tvking_miroir
+
   # Récupère l'IP locale du téléphone sur le WiFi (sinon impossible
   # de construire l'URL "http://<mon-ip>:8090/" que la TV doit ouvrir).
   network_info_plus: ^6.1.1

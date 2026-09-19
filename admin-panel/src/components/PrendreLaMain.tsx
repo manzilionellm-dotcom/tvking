@@ -149,10 +149,14 @@ const ECHECS_MIROIR: Record<string, string> = {
     'La capture a marché, c’est l’ENCODAGE JPEG qui a échoué (mémoire ou '
     + 'format). Le détail exact est entre crochets : envoie-le-moi.',
   capture_bloquee:
-    'Sa box n’arrive pas à photographier son écran : la capture reste '
-    + 'bloquée (c’est la couche vidéo d’Android, qui ne se laisse pas '
-    + 'lire par cette méthode). Voir son écran demandera un vrai module '
-    + 'de capture — le curseur et le clic, eux, marchent.',
+    'La capture Flutter reste bloquée sur sa box (couche vidéo). Si sa '
+    + 'box est en 198892 ou plus, une boîte de dialogue lui a demandé '
+    + 'd’autoriser le partage d’écran : dis-lui d’accepter avec sa '
+    + 'télécommande. Le curseur et le clic, eux, marchent.',
+  accord_refuse:
+    'Le client n’a pas accepté le partage d’écran (boîte de dialogue '
+    + 'd’Android). Ce n’est pas une panne : demande-lui d’accepter, puis '
+    + 'reprends la main pour que la question réapparaisse.',
 };
 
 type Ligne = { quand: string; quoi: string; ok: boolean | null; pourquoi?: string };

@@ -1,0 +1,37 @@
+<!-- Namespace défini dans build.gradle (AGP 8+). Manifest sans package.
+
+     CAPTURE D'ÉCRAN SYSTÈME (MediaProjection) pour l'assistance à
+     distance. Tout est FUSIONNÉ dans le manifeste de l'app par le merger
+     Gradle — c'est ce qui fait que ça existe sur TOUS les builds Android,
+     y compris la box dont `android/` est régénéré au CI.
+
+       - FOREGROUND_SERVICE : depuis Android 10 (API 29), une projection
+         d'écran n'est autorisée QUE si un service au premier plan tourne,
+         et depuis Android 14 (API 34) ce service doit être TYPÉ
+         « mediaProjection » et l'app doit tenir la permission
+         FOREGROUND_SERVICE_MEDIA_PROJECTION. Sans ça : SecurityException
+         au moment de créer la projection.
+       - POST_NOTIFICATIONS : un service au premier plan affiche une
+         notification (« 7 MOTION partage l'écran avec le support »).
+         Sur une box elle est discrète ; sur un téléphone elle est
+         VISIBLE, et c'est voulu — c'est une fenêtre de plus pour le
+         client, pas un inconvénient.
+
+     LA BOÎTE DE DIALOGUE D'AUTORISATION n'a rien à déclarer ici : c'est
+     Android qui l'affiche via createScreenCaptureIntent(), et aucune
+     permission de manifeste ne permet de la sauter. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!-- Le service qui « tient » la projection tant que la session
+             d'assistance dure. Non exporté : personne d'autre que l'app
+             ne peut le démarrer. -->
+        <service
+            android:name="com.manzilionellm.tvking_miroir.MiroirService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+    </application>
+</manifest>
