@@ -450,6 +450,15 @@ function EcranTactile({
 
   useEffect(() => {
     if (!mac) return undefined;
+    //  ON REPART D'UNE ARDOISE PROPRE À CHAQUE MAC. Sans ça, l'erreur
+    //  de l'appareil PRÉCÉDENT (ou d'AVANT une mise à jour de la box)
+    //  restait affichée et faisait croire à une panne qui n'existait
+    //  plus — c'est exactement ce qui a trompé le 19/09 au soir : la
+    //  box était passée en 198889, mais le panel montrait encore le
+    //  message générique du 198888.
+    setVue(null);
+    setEchec('');
+    setDetail('');
     const cible = mac.trim().toUpperCase();
     return onRt('screen', (e: {
       mac?: string; jpg?: string; echec?: string; detail?: string;
@@ -480,6 +489,18 @@ function EcranTactile({
     const t = setTimeout(() => setVue(null), 10000);
     return () => clearTimeout(t);
   }, [vue]);
+
+  //  UNE ERREUR PÉRIMÉE MENT AUTANT QU'UNE IMAGE FIGÉE. Si la box cesse
+  //  d'envoyer des erreurs (elle s'est remise à marcher, la session
+  //  s'est fermée, la box a été mise à jour), on efface au bout de 15 s
+  //  au lieu de laisser un vieux message rouge à l'écran. Chaque
+  //  nouvelle erreur relance ce compte à rebours (la clé `detail`
+  //  change), donc une panne réelle et continue reste affichée.
+  useEffect(() => {
+    if (!echec) return undefined;
+    const t = setTimeout(() => { setEchec(''); setDetail(''); }, 15000);
+    return () => clearTimeout(t);
+  }, [echec, detail]);
 
   // =========================================================
   //  UNE VRAIE SOURIS, PAS UN POINTAGE (19/09/2026 au soir)
