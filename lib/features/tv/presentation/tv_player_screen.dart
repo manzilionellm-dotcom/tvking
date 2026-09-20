@@ -482,6 +482,9 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
     // joue RIEN tant que le chemin officiel (créneau → relais/direct) n'a
     // pas décidé de l'URL.
     _controller = NativeVideoController();
+    // SYNCHRO SON / IMAGE mémorisée : le controller la garde et la rejoue
+    // à chaque instance native (rattachement, bascule de rendu).
+    _controller.setAudioDelay(PlayerSettings.instance.audioDelayMs);
     _controller.addListener(_onPlayer);
     // Ban / gel / expiration en cours de lecture : on COUPE, on ne
     // laisse pas le flux tourner jusqu'au prochain redémarrage.
@@ -1987,7 +1990,23 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
       rows.add(_TrackSheetEntry(
           kind: _SheetKind.aspect, index: AspectRatioMode.values.indexOf(m)));
     }
+    // SYNCHRO SON / IMAGE, en dernier : le focus d'ouverture reste sur les
+    // pistes audio (l'usage le plus fréquent), et la ligne est là pour le
+    // jour où les lèvres ne collent pas — télé qui décode le Dolby, barre
+    // de son en ARC, flux du fournisseur déjà décalé.
+    rows.add(const _TrackSheetEntry(kind: _SheetKind.sync, index: 0));
     return rows;
+  }
+
+  /// Applique un décalage son/image (ms) : au lecteur natif tout de suite
+  /// (effet à l'image suivante), et en mémoire pour les prochaines fois.
+  /// Convention VLC / mpv : positif = son retardé.
+  void _setAudioDelay(int ms) {
+    final int borne = ms.clamp(
+        -PlayerSettings.audioDelayMaxMs, PlayerSettings.audioDelayMaxMs);
+    _controller.setAudioDelay(borne);
+    unawaited(PlayerSettings.instance.setAudioDelayMs(borne));
+    setState(() {});
   }
 
   /// Construit la surface vidéo selon [_aspect] :
@@ -2085,6 +2104,12 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
         final AspectRatioMode m = AspectRatioMode.values[e.index];
         setState(() => _aspect = m);
         unawaited(PlayerSettings.instance.setAspectMode(m));
+        break;
+      case _SheetKind.sync:
+        // OK sur la ligne de synchro = retour à zéro. Le réglage fin se
+        // fait avec ◀ ▶ (cf. _onKey), pas avec OK : un pas de 50 ms à
+        // chaque OK obligerait à faire le tour pour revenir en arrière.
+        _setAudioDelay(0);
         break;
     }
     // On laisse la feuille OUVERTE : l'utilisateur peut comparer les
@@ -2747,6 +2772,20 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
             () => _tracksFocus = (_tracksFocus + 1).clamp(0, rows.length - 1));
         return KeyEventResult.handled;
       }
+      // ◀ ▶ sur la ligne SYNCHRO SON / IMAGE : ±50 ms par appui, à vue,
+      // pendant que ça joue. Sur les autres lignes, gauche/droite ne font
+      // rien (comme avant) : pas de zap sous le panneau.
+      if ((k == LogicalKeyboardKey.arrowLeft ||
+              k == LogicalKeyboardKey.arrowRight) &&
+          _tracksFocus >= 0 &&
+          _tracksFocus < rows.length &&
+          rows[_tracksFocus].kind == _SheetKind.sync) {
+        final int pas = k == LogicalKeyboardKey.arrowRight
+            ? PlayerSettings.audioDelayStepMs
+            : -PlayerSettings.audioDelayStepMs;
+        _setAudioDelay(_controller.audioDelayMs + pas);
+        return KeyEventResult.handled;
+      }
       return KeyEventResult.handled;
     }
 
@@ -3217,6 +3256,7 @@ class _NativeTvPlayerScreenState extends State<NativeTvPlayerScreen>
                                 entries: _sheetEntries(),
                                 focusedIndex: _tracksFocus,
                                 aspect: _aspect,
+                                audioDelayMs: _controller.audioDelayMs,
                                 onActivate: _activateSheetEntry,
                                 onClose: _closeTracksSheet,
                               ),
@@ -4097,8 +4137,10 @@ class _UpNextButton extends StatelessWidget {
 //  de piste passe par un TrackSelectionOverride ExoPlayer (aucun
 //  rebuild du player) ; le ratio est appliqué côté Flutter.
 
-/// Nature d'une ligne actionnable de la feuille.
-enum _SheetKind { audio, textOff, text, aspect }
+/// Nature d'une ligne actionnable de la feuille. `sync` = la ligne de
+/// SYNCHRO SON / IMAGE (◀ ▶ règlent, OK remet à zéro) — ajoutée le
+/// 20/09/2026 : « les sons et les images ne correspondent pas ».
+enum _SheetKind { audio, textOff, text, aspect, sync }
 
 /// Ligne actionnable : sa nature + l'index dans la liste concernée
 /// (piste audio N, piste texte N, mode d'affichage N). textOff : -1.
@@ -4117,6 +4159,7 @@ class _TracksSheet extends StatefulWidget {
     required this.aspect,
     required this.onActivate,
     required this.onClose,
+    this.audioDelayMs = 0,
   });
 
   final List<TrackInfo> audio;
@@ -4124,6 +4167,9 @@ class _TracksSheet extends StatefulWidget {
   final List<_TrackSheetEntry> entries;
   final int focusedIndex;
   final AspectRatioMode aspect;
+
+  /// Décalage son/image courant (ms), affiché sur la ligne de synchro.
+  final int audioDelayMs;
   final void Function(_TrackSheetEntry) onActivate;
   final VoidCallback onClose;
 
@@ -4194,6 +4240,8 @@ class _TracksSheetState extends State<_TracksSheet> {
         return context.l10n.tracksSubtitles;
       case _SheetKind.aspect:
         return context.l10n.tracksAspectSection;
+      case _SheetKind.sync:
+        return context.l10n.tracksSyncSection;
     }
   }
 
@@ -4238,6 +4286,17 @@ class _TracksSheetState extends State<_TracksSheet> {
       case _SheetKind.aspect:
         final AspectRatioMode m = AspectRatioMode.values[e.index];
         return (m.localizedLabel(context), m == widget.aspect);
+      case _SheetKind.sync:
+        // « Décalage du son : +150 ms · ◀ ▶ 50 ms · OK = 0 ». Le signe est
+        // toujours écrit : « +150 » et « −150 » ne se corrigent pas dans le
+        // même sens, et c'est ce que le support demandera au téléphone.
+        final int ms = widget.audioDelayMs;
+        final String signe = ms > 0 ? '+' : (ms < 0 ? '−' : '');
+        return (
+          '${context.l10n.tracksSyncLabel} : $signe${ms.abs()} ms · '
+              '${context.l10n.tracksSyncHint}',
+          ms != 0,
+        );
     }
   }
 
@@ -4316,9 +4375,13 @@ class _TracksSheetState extends State<_TracksSheet> {
                       child: Row(
                         children: <Widget>[
                           Icon(
-                            selected
-                                ? Icons.radio_button_checked_rounded
-                                : Icons.radio_button_off_rounded,
+                            // La synchro n'est pas un choix parmi d'autres :
+                            // une molette, pas un bouton radio.
+                            r.entry!.kind == _SheetKind.sync
+                                ? Icons.tune_rounded
+                                : selected
+                                    ? Icons.radio_button_checked_rounded
+                                    : Icons.radio_button_off_rounded,
                             size: 18,
                             color: focused
                                 ? const Color(0xFF1A1206)

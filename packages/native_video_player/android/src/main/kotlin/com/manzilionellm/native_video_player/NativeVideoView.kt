@@ -33,6 +33,8 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -378,6 +380,18 @@ class NativeVideoView(
     // change pas (elle est stable pour un film, TIME_UNSET pour un direct).
     private var lastDurationMs = -1L
 
+    /// Décalage son/image appliqué à l'horloge audio (voir renderersFactory
+    /// dans init{}), en microsecondes. Positif = son retardé. Écrit depuis le
+    /// thread PLAYER (setAudioDelay), LU depuis le thread de rendu interne
+    /// d'ExoPlayer à chaque image : @Volatile, pas de verrou.
+    @Volatile
+    private var audioDelayUs = 0L
+
+    /// Borne du réglage : ±2 s. Au-delà, ce n'est plus de la synchro, c'est
+    /// un flux cassé — et un décalage énorme ferait sauter ou geler des
+    /// secondes d'image au moment du réglage.
+    private val maxAudioDelayMs = 2_000L
+
     private val positionPump = object : Runnable {
         override fun run() {
             // Tourne sur le thread PLAYER (les getters ExoPlayer exigent le
@@ -505,8 +519,62 @@ class NativeVideoView(
         }
 
         // Décodage matériel (MediaCodec) avec repli logiciel si l'init échoue.
-        val renderersFactory = DefaultRenderersFactory(appContext)
-            .setEnableDecoderFallback(true)
+        //
+        // =========================================================
+        //  SYNCHRO SON / IMAGE RÉGLABLE (20/09/2026)
+        // =========================================================
+        //  Signalement du propriétaire : « les sons et les images ne
+        //  correspondent pas » sur la box.
+        //
+        //  CE QU'IL FAUT SAVOIR. ExoPlayer, lui, est synchrone : l'image
+        //  est calée sur l'horloge du SON (la position réelle de l'AudioTrack
+        //  Android). Le décalage qu'on ENTEND vient presque toujours d'APRÈS
+        //  la box : une télé qui décode le Dolby (AC-3/E-AC-3 en passthrough
+        //  HDMI) met 50 à 150 ms à le faire ; une barre de son branchée en
+        //  ARC ou en optique en rajoute ; et une télé « mode jeu » ou pas
+        //  n'a pas la même latence d'image. La box ne voit rien de tout ça —
+        //  le HDMI ne le lui dit pas. Certaines télés compensent seules ;
+        //  beaucoup non. Un flux IPTV mal remuxé par le fournisseur peut
+        //  aussi arriver déjà décalé de 100-200 ms : là non plus, aucun
+        //  lecteur ne peut le deviner.
+        //
+        //  CE QU'ON FAIT. Comme TiviMate, Kodi et VLC : un réglage manuel,
+        //  par pas de 50 ms, mémorisé. Positif = le son est RETARDÉ (l'image
+        //  passe plus tôt) ; négatif = l'image est retardée. Même convention
+        //  que mpv et VLC, pour que le support parle le même langage
+        //  partout.
+        //
+        //  COMMENT. On n'ajoute aucun tampon : on DÉCALE L'HORLOGE. Le rendu
+        //  vidéo demande sans cesse au puits audio « où en es-tu ? »
+        //  (getCurrentPositionUs) et affiche l'image dont l'heure est
+        //  arrivée. Si le puits répond « +150 ms » de plus que la vérité,
+        //  la vidéo se croit en retard et sort ses images 150 ms plus
+        //  tôt : le son, lui, n'a pas bougé — il paraît donc retardé.
+        //  Ça marche en PCM comme en passthrough Dolby (le bitstream n'est
+        //  pas touché), sans recréer quoi que ce soit. Un changement en
+        //  cours de lecture coûte quelques images sautées ou tenues, une
+        //  fois : c'est le prix d'un réglage à vue, et il est invisible
+        //  au pas de 50 ms.
+        val renderersFactory = object : DefaultRenderersFactory(appContext) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): AudioSink? {
+                val base = super.buildAudioSink(
+                    context, enableFloatOutput, enableAudioTrackPlaybackParams,
+                ) ?: return null
+                return object : ForwardingAudioSink(base) {
+                    override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
+                        val p = super.getCurrentPositionUs(sourceEnded)
+                        // « Pas encore de position » reste tel quel : un
+                        // décalage sur une valeur sentinelle serait un bug.
+                        return if (p == AudioSink.CURRENT_POSITION_NOT_SET) p
+                        else p + audioDelayUs
+                    }
+                }
+            }
+        }.setEnableDecoderFallback(true)
 
         // User-Agent type lecteur connu + redirections cross-protocole : des
         // panels Xtream ne servent le vrai flux qu'aux signatures connues.
@@ -923,6 +991,18 @@ class NativeVideoView(
                     } else {
                         player.seekTo(safe)
                     }
+                }
+                result.success(null)
+            }
+            "setAudioDelay" -> {
+                // SYNCHRO SON / IMAGE : décalage en ms, positif = son retardé.
+                // Voir le bloc renderersFactory dans init{} pour le pourquoi
+                // et le comment. Prend effet à l'image suivante.
+                val ms = (call.argument<Int>("ms") ?: 0).toLong()
+                    .coerceIn(-maxAudioDelayMs, maxAudioDelayMs)
+                playerHandler.post {
+                    audioDelayUs = ms * 1_000L
+                    recordEvent("audio.delay", "${ms}ms")
                 }
                 result.success(null)
             }

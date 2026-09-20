@@ -241,6 +241,10 @@ class NativeVideoController extends ChangeNotifier {
   String? _lastUserAgent;
   List<String>? _lastFallbackUrls;
   double _volume = 1.0; // multi-vue : 0 = muet (tuile inactive), 1 = son actif
+  // Décalage son/image demandé (ms, positif = son retardé). Conservé pour
+  // être REJOUÉ au rattachement : l'écran le règle souvent avant que la vue
+  // native existe, et une bascule de rendu recrée l'instance native.
+  int _audioDelayMs = 0;
   bool _attached = false;
   bool _disposed = false;
 
@@ -350,6 +354,13 @@ class NativeVideoController extends ChangeNotifier {
     // tuile démarre muette).
     if (_volume != 1.0) {
       ch.invokeMethod<void>('setVolume', <String, dynamic>{'volume': _volume});
+    }
+    // Même logique pour la synchro son/image : un réglage mémorisé se
+    // réapplique sur chaque instance native, sinon il serait perdu au
+    // premier zap ou à la première bascule de rendu.
+    if (_audioDelayMs != 0) {
+      ch.invokeMethod<void>(
+          'setAudioDelay', <String, dynamic>{'ms': _audioDelayMs});
     }
   }
 
@@ -655,6 +666,19 @@ class NativeVideoController extends ChangeNotifier {
   /// Sélectionne la [index]-ième piste de sous-titres, ou -1 = désactivés.
   void setSubtitleTrack(int index) =>
       _fire('setSubtitleTrack', <String, dynamic>{'index': index});
+
+  /// SYNCHRO SON / IMAGE : décale le son de [ms] millisecondes. Positif =
+  /// le son est retardé (l'image sort plus tôt), négatif = l'image est
+  /// retardée — la convention de VLC et mpv. Effet à l'image suivante, sans
+  /// coupure. Le natif borne à ±2 s. Voir NativeVideoView.kt (bloc
+  /// renderersFactory) pour d'où vient le décalage et comment on le rattrape.
+  void setAudioDelay(int ms) {
+    _audioDelayMs = ms;
+    _fire('setAudioDelay', <String, dynamic>{'ms': ms});
+  }
+
+  /// Le décalage son/image actuellement demandé (ms).
+  int get audioDelayMs => _audioDelayMs;
 
   /// Règle le volume (0.0 = muet, 1.0 = plein). Sert à la MULTI-VUE : seule la
   /// tuile active garde le son. Conservé pour ré-application au rattachement.

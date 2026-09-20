@@ -54,6 +54,15 @@ class PlayerSettings extends ChangeNotifier {
   static const String _kUserAgentKey = 'player.user_agent';
   static const String _kWifiOnlyKey = 'player.wifi_only';
   static const String _kWarnCellKey = 'player.warn_cellular';
+  static const String _kAudioDelayKey = 'player.audio_delay_ms';
+
+  /// Pas du réglage de synchro (ms) : assez fin pour caler des lèvres,
+  /// assez gros pour qu'on n'appuie pas vingt fois.
+  static const int audioDelayStepMs = 50;
+
+  /// Borne du réglage de synchro (±). Au-delà, le flux est cassé, pas
+  /// désynchronisé.
+  static const int audioDelayMaxMs = 1000;
 
   /// User-Agent par défaut (façon VLC). Beaucoup de serveurs IPTV
   /// n'acceptent le VRAI flux QUE pour des signatures de lecteurs connus
@@ -126,6 +135,13 @@ class PlayerSettings extends ChangeNotifier {
   /// Avertir avant de lire en données cellulaires (si `wifiOnly` = false).
   bool _warnOnCellular = true;
 
+  /// SYNCHRO SON / IMAGE (20/09/2026) : décalage appliqué au son, en ms.
+  /// Positif = son retardé (l'image sort plus tôt), négatif = image
+  /// retardée — convention VLC / mpv. 0 = rien. Mémorisé par appareil :
+  /// le décalage vient de la chaîne télé + barre de son de CE salon, pas
+  /// du flux. Réglé depuis la feuille « Pistes » du lecteur box.
+  int _audioDelayMs = 0;
+
   bool _loaded = false;
 
   // ----- Getters -----
@@ -138,6 +154,7 @@ class PlayerSettings extends ChangeNotifier {
   double get lastSpeed => _lastSpeed;
   bool get wifiOnly => _wifiOnly;
   bool get warnOnCellular => _warnOnCellular;
+  int get audioDelayMs => _audioDelayMs;
 
   /// User-Agent effectif (jamais vide → repli sur le défaut VLC).
   String get userAgent =>
@@ -188,8 +205,20 @@ class PlayerSettings extends ChangeNotifier {
     _userAgent = prefs.getString(_kUserAgentKey) ?? kDefaultUserAgent;
     _wifiOnly = prefs.getBool(_kWifiOnlyKey) ?? false;
     _warnOnCellular = prefs.getBool(_kWarnCellKey) ?? true;
+    _audioDelayMs = (prefs.getInt(_kAudioDelayKey) ?? 0)
+        .clamp(-audioDelayMaxMs, audioDelayMaxMs);
     _loaded = true;
     notifyListeners();
+  }
+
+  /// Règle le décalage son/image (ms), borné à ±[audioDelayMaxMs].
+  Future<void> setAudioDelayMs(int value) async {
+    final int clamped = value.clamp(-audioDelayMaxMs, audioDelayMaxMs);
+    if (clamped == _audioDelayMs) return;
+    _audioDelayMs = clamped;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kAudioDelayKey, clamped);
   }
 
   // ----- Setters (persistance + notification) -----

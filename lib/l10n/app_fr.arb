@@ -699,6 +699,9 @@
   },
   "tracksSubtitles": "Sous-titres",
   "tracksAspectSection": "Format d'image",
+  "tracksSyncSection": "Synchro son / image",
+  "tracksSyncLabel": "Décalage du son",
+  "tracksSyncHint": "◀ ▶ par 50 ms · OK remet à 0",
   "@tracksAspectSection": {
     "description": "Texte UI : tracksAspectSection"
   },
