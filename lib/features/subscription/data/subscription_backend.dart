@@ -27,6 +27,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
+import '../../../core/update/build_flags.dart';
 import '../../../core/backend/backend_hosts.dart';
 //  La note du banc d'essai vient de la boîte noire, qui la calcule à
 //  partir de ses PROPRES lignes. Rien n'est compté ici : ce fichier ne
@@ -212,6 +213,13 @@ abstract final class SubscriptionBackend {
         'playing': NowPlaying.instance.current.isNotEmpty,
         // mobile / tv → le panel distingue les deux apps.
         'platform': AppPlatform.id,
+        // BUILD MAGASIN (Play / Amazon) — 20/09/2026. Dans ce build, l'app
+        // est un lecteur « apporte ta liste » : elle IGNORE les sources
+        // poussées par le panel (RemoteSourceRepository.storeBuild, décidé
+        // après le refus Amazon du 19/08). Sans ce drapeau, le revendeur
+        // pousse une liste, rien n'arrive, et personne ne sait pourquoi —
+        // c'est arrivé au propriétaire lui-même. Avec, le panel le DIT.
+        'store': kIsPlayBuild,
         // INVENTAIRE des sources réellement présentes sur l'appareil (celles
         // poussées par le panel ET celles que le client a ajoutées lui-même).
         // Sert au panel : « tout ce que le client a dans le ventre » pour mieux

@@ -185,6 +185,7 @@ export function MainPage({ onLogout }: { onLogout: () => void }) {
               mac={macCourante}
               kind={silhouetteDe(ov.device?.device_model) === 'tv' ? 'tv' : 'phone'}
               enLigne={enLigne}
+              storeBuild={ov.device?.store_build ?? null}
             />
           </div>
         </div>

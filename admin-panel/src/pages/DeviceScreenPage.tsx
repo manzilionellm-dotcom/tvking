@@ -534,6 +534,7 @@ function DeviceScreenPage({
               mac={macCourante}
               kind={kind}
               enLigne={enLigne}
+              storeBuild={ov?.device?.store_build ?? null}
               onChange={() => { void charger(macCourante); }}
             />
           </div>

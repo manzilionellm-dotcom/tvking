@@ -649,6 +649,11 @@ export interface DeviceMeta {
   cpu_pct?: number | null;
   cpu_peak_pct?: number | null;
   res_at?: number;
+  // Build MAGASIN (Play Store / Amazon) : true = ce build IGNORE les
+  // sources poussées par le panel (lecteur « apporte ta liste », décidé
+  // après le refus Amazon du 19/08/2026). Le client doit saisir son code
+  // lui-même. null = l'app ne l'a jamais dit (version d'avant).
+  store_build?: boolean | null;
 }
 // « Cette box est-elle à jour ? » — calculé par le serveur
 // (cloudflare/app_versions.js) en comparant ce que l'appareil a remonté

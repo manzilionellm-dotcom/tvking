@@ -491,6 +491,15 @@ export function DeviceSheet({
                 }
               />
               <InfoRow label="Modèle" value={meta?.device_model || seed?.device_model || '—'} />
+              {/* BUILD MAGASIN (Play Store / Amazon) : ce build IGNORE les
+                  sources poussées d'ici. Le dire AVANT que le support pousse
+                  dans le vide — c'est arrivé au propriétaire (20/09/2026). */}
+              {meta?.store_build === true && (
+                <InfoRow
+                  label="Distribution"
+                  value="Play Store — le client saisit son code lui-même (pas de source à distance)"
+                />
+              )}
               <InfoRow
                 label="Android"
                 value={meta?.android_release || seed?.android_release

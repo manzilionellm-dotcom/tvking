@@ -81,6 +81,7 @@ export function ListesAppareil({
   kind,
   enLigne,
   onChange,
+  storeBuild,
 }: {
   mac: string;
   kind: 'phone' | 'tv';
@@ -90,6 +91,9 @@ export function ListesAppareil({
   /// chaînes, aperçu). Sans ça, on retirerait une liste sous les yeux
   /// du support tout en lui laissant ses chaînes à l'écran.
   onChange?: () => void;
+  /// true = build Play Store / Amazon : l'app ignore ce qu'on pousse d'ici
+  /// (voir l'avertissement dans le rendu). null = l'app ne l'a pas dit.
+  storeBuild?: boolean | null;
 }) {
   const [sources, setSources] = useState<DeviceSource[]>([]);
   const [locales, setLocales] = useState<DeviceLocalSource[]>([]);
@@ -279,6 +283,23 @@ export function ListesAppareil({
               </li>
             ))}
           </ul>
+        )}
+
+        {/* BUILD MAGASIN (Play Store / Amazon) : ce build IGNORE ce qu'on
+            pousse d'ici — lecteur « apporte ta liste », décidé après le
+            refus Amazon du 19/08/2026. On le dit ICI, à l'endroit exact où
+            le support s'apprête à pousser, pas dans une doc : le
+            propriétaire a poussé une liste vers son propre téléphone Play
+            et attendu des chaînes qui ne pouvaient pas venir. */}
+        {storeBuild === true && (
+          <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+            <p className="font-semibold">Version Play Store : elle ne reçoit pas les listes poussées d'ici.</p>
+            <p className="mt-1 text-warning/90">
+              Donne au client son code Xtream ou son lien M3U : il le colle dans
+              l'app (« J'ai un code »). Pour une activation à distance, c'est
+              l'APK direct (app.7themotion.com) qu'il faut installer.
+            </p>
+          </div>
         )}
 
         {ajout ? (

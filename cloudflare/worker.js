@@ -758,7 +758,11 @@ async function ensureScaleSchema(env) {
       // l'heure, pourcentage de l'appareil — relevés par l'app elle-même
       // (ressources_moniteur.dart). res_at = date du dernier relevé reçu.
       'mem_mb INTEGER', 'mem_peak_mb INTEGER', 'cpu_pct INTEGER',
-      'cpu_peak_pct INTEGER', 'res_at INTEGER']) {
+      'cpu_peak_pct INTEGER', 'res_at INTEGER',
+      // Build MAGASIN (Play / Amazon) : 1 = l'app ignore les sources
+      // poussées par le panel (lecteur « apporte ta liste »). Le panel le
+      // dit au revendeur AVANT qu'il pousse dans le vide.
+      'store_build INTEGER']) {
     try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN ' + col).run(); } catch (_) {}
   }
   for (const idx of [
@@ -2153,9 +2157,12 @@ async function updateDeviceInfo(env, mac, body) {
     // lib/core/observability/ressources_moniteur.dart. Des entiers bornés
     // ou null ; null = « pas relevé », qui n'écrase pas la valeur en base.
     const res = lireRessources(body.res);
+    // BUILD MAGASIN : l'app le dit à chaque heartbeat (true/false). Absent
+    // (vieille app) → null, on n'écrase rien.
+    const storeBuild = typeof body.store === 'boolean' ? (body.store ? 1 : 0) : null;
     if (!model && !build && !release && !appBuild && !platform &&
         !androidId && !appVersion && !buildLabel && !srcJson && !recentJson &&
-        !res) return;
+        !res && storeBuild === null) return;
     // UNE SEULE écriture (au lieu de 4) : le CASE n'écrase JAMAIS un champ
     // existant avec une valeur vide → robuste ET économe en écritures D1.
     const r = res || {};
@@ -2177,7 +2184,8 @@ async function updateDeviceInfo(env, mac, body) {
           "mem_peak_mb = CASE WHEN ? IS NOT NULL THEN ? ELSE mem_peak_mb END, " +
           "cpu_pct = CASE WHEN ? IS NOT NULL THEN ? ELSE cpu_pct END, " +
           "cpu_peak_pct = CASE WHEN ? IS NOT NULL THEN ? ELSE cpu_peak_pct END, " +
-          "res_at = CASE WHEN ? IS NOT NULL THEN ? ELSE res_at END " +
+          "res_at = CASE WHEN ? IS NOT NULL THEN ? ELSE res_at END, " +
+          "store_build = CASE WHEN ? IS NOT NULL THEN ? ELSE store_build END " +
           "WHERE mac = ? AND IFNULL(superseded_by,'') = ''"
       )
       .bind(
@@ -2190,6 +2198,7 @@ async function updateDeviceInfo(env, mac, body) {
         r.cpu_pct ?? null, r.cpu_pct ?? null,
         r.cpu_peak_pct ?? null, r.cpu_peak_pct ?? null,
         resAt, resAt,
+        storeBuild, storeBuild,
         mac,
       )
       .run();
@@ -3794,6 +3803,9 @@ async function readClientDetailMeta(env, mac) {
         cpu_pct: Number.isFinite(d.cpu_pct) ? d.cpu_pct : null,
         cpu_peak_pct: Number.isFinite(d.cpu_peak_pct) ? d.cpu_peak_pct : null,
         res_at: d.res_at || 0,
+        // Build magasin (Play / Amazon) : true = l'app ignore les sources
+        // poussées par le panel. null = l'app ne l'a jamais dit.
+        store_build: d.store_build == null ? null : !!d.store_build,
       };
     }
   } catch (_) {}

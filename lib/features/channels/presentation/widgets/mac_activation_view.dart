@@ -35,6 +35,7 @@ import '../../../../core/support/support_choice_sheet.dart';
 import '../../../../core/support/vip_support.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/update/build_flags.dart';
 import '../../../device/data/device_identity.dart';
 import '../../../pricing/presentation/pricing_banner.dart';
 import '../../../playlists/data/playlist_repository.dart';
@@ -80,41 +81,57 @@ class MacActivationView extends StatelessWidget {
                 context.l10n.activateAtHomeTitle,
                 style: AppTextStyles.headlineMedium.copyWith(fontSize: 19),
               ),
-              const SizedBox(height: 6),
-              Text(
-                context.l10n.activateAtHomeDesc,
-                style: AppTextStyles.bodyMedium.copyWith(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                  height: 1.5,
+              // « Communique cet identifiant à ton revendeur » n'a pas de
+              // sens dans le build magasin : il n'y a pas de numéro à
+              // communiquer, le client saisit son code.
+              if (!kIsPlayBuild) ...<Widget>[
+                const SizedBox(height: 6),
+                Text(
+                  context.l10n.activateAtHomeDesc,
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: 18),
             ],
 
             // ============================================================
             //  ① BLOC DU HAUT — ACTIVER L'APPLICATION
             // ============================================================
-            _SectionCard(
-              step: '1',
-              icon: Icons.workspace_premium_rounded,
-              title: context.l10n.activateAppSectionTitle,
-              subtitle: context.l10n.activateAppSectionDesc,
-              children: <Widget>[
-                // Les DEUX offres (à vie / 1 an) — pilotées par le panel.
-                const PricingBanner(),
-                const SizedBox(height: 16),
-                _referenceBlock(context, macNu),
-              ],
-            ),
-
-            const SizedBox(height: 18),
+            //  JAMAIS DANS LE BUILD MAGASIN (Play / Amazon, 20/09/2026). Ce
+            //  build ignore les sources poussées par le panel (lecteur
+            //  « apporte ta liste », cf. RemoteSourceRepository.storeBuild,
+            //  décidé après le refus Amazon du 19/08). Montrer quand même
+            //  « envoie ton numéro, on active tout à distance » promettait
+            //  une chose que ce build ne fait pas — le propriétaire l'a vécu
+            //  sur son propre téléphone : numéro envoyé, panel activé, rien.
+            //  Et des offres à 35 € affichées dans une app du Play Store,
+            //  c'est une vente hors facturation Google : motif de refus.
+            //  Dans ce build, le client saisit son code (bloc ②), point.
+            if (!kIsPlayBuild) ...<Widget>[
+              _SectionCard(
+                step: '1',
+                icon: Icons.workspace_premium_rounded,
+                title: context.l10n.activateAppSectionTitle,
+                subtitle: context.l10n.activateAppSectionDesc,
+                children: <Widget>[
+                  // Les DEUX offres (à vie / 1 an) — pilotées par le panel.
+                  const PricingBanner(),
+                  const SizedBox(height: 16),
+                  _referenceBlock(context, macNu),
+                ],
+              ),
+              const SizedBox(height: 18),
+            ],
 
             // ============================================================
             //  ② BLOC DU BAS — ACTIVER LES CHAÎNES
             // ============================================================
             _SectionCard(
-              step: '2',
+              step: kIsPlayBuild ? '1' : '2',
               icon: Icons.playlist_add_check_rounded,
               title: context.l10n.activateChannelsSectionTitle,
               subtitle: context.l10n.activateChannelsSectionDesc,
