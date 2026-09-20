@@ -55,6 +55,9 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
   bool _loading = true;
   List<VodSeries> _all = const <VodSeries>[];
   List<String> _cats = const <String>[];
+  // En-tête de LANGUE à dessiner au-dessus de la rangée `_cats[i]`, ou
+  // null. Même longueur que `_cats`, calculé UNE fois avec elle.
+  List<String?> _entetes = const <String?>[];
   // Séries NOUVELLES au catalogue (badge NOUVEAU) et séries suivies ayant
   // reçu de nouveaux épisodes (rangée dédiée en tête).
   Set<String> _newIds = <String>{};
@@ -131,6 +134,9 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
       // ordre. « Les Turcs ne voient pas leurs séries, c'est mélangé. »
       // Voir vod/domain/pays_cinema.dart.
       _cats = ordonnerParPays(cats);
+      // Puis un grand titre dans SA langue au-dessus du premier bloc de
+      // chaque pays (20/09/2026) — « facile surtout pour les gens âgés ».
+      _entetes = entetesDeSection(_cats);
       _byCat = byCat;
       _loading = false;
     });
@@ -287,13 +293,16 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
               markNewEpisodes: r.newEps,
             );
           }
-          final String cat = _cats[i - 1 - lead];
+          final int k = i - 1 - lead;
+          final String cat = _cats[k];
           final List<VodSeries> list = _byCat[cat] ?? const <VodSeries>[];
           if (list.isEmpty) return const SizedBox.shrink();
           return _buildRail(
             context,
             keyStr: 'series-rail-$cat',
             title: TitleCurator.curateCategory(cat),
+            // Bandeau de langue au-dessus de la PREMIÈRE rangée du pays.
+            section: k < _entetes.length ? _entetes[k] : null,
             list: list,
             affinity: affinity,
             maxAffinity: maxAffinity,
@@ -372,6 +381,7 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
     int catIndexForFocus = -1,
     List<VodSeries> prefetchNext = const <VodSeries>[],
     bool markNewEpisodes = false,
+    String? section,
   }) {
     if (list.isEmpty) return const SizedBox.shrink();
     return Padding(
@@ -379,6 +389,11 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          // Grand titre de LANGUE (« Türkçe », « العربية ») au-dessus de la
+          // première rangée de chaque pays — dans la MÊME cellule de la
+          // liste que la rangée, donc aucun index ne bouge, la mémoire du
+          // focus (memCat) reste juste.
+          if (section != null) TvLangueBandeau(section),
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 8),
             child: Text(

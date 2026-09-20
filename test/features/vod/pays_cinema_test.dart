@@ -152,4 +152,65 @@ void main() {
       expect(ordonnerParPays(const <String>[]), isEmpty);
     });
   });
+
+  // DEMANDE DU 20/09/2026 : « que les langues soient différentes… l'arabe
+  // comme ça, les Français… facile surtout pour les gens âgés. »
+  group('entetesDeSection — un grand titre dans SA langue, au bon endroit',
+      () {
+    test('chaque pays écrit comme ses locuteurs l\'écrivent', () {
+      expect(libelleDePays('FR'), 'Français');
+      expect(libelleDePays('TR'), 'Türkçe');
+      expect(libelleDePays('AR'), startsWith('العربية'));
+      expect(libelleDePays('MA'), contains('Maroc'),
+          reason: 'le français en secours si la police arabe manque');
+      expect(libelleDePays('CN'), startsWith('Chine'),
+          reason: 'CJK : le français d\'abord, la police manque souvent');
+    });
+
+    test('un code sans libellé s\'affiche tel quel, il ne disparaît pas', () {
+      expect(libelleDePays('ZZ'), 'ZZ');
+    });
+
+    test('un en-tête sur la PREMIÈRE rangée de chaque pays, jamais ailleurs',
+        () {
+      final List<String> cats = ordonnerParPays(<String>[
+        'TR| Dizi',
+        'FR| Action',
+        'NETFLIX',
+        'AR| أفلام',
+        'FR| Comédie',
+        'TR| Yerli Film',
+        'Nouveautés',
+        'AR| مسلسلات',
+      ]);
+      // Ordre obtenu : FR Action, FR Comédie, NETFLIX, Nouveautés,
+      //                TR Dizi, TR Yerli, AR أفلام, AR مسلسلات
+      expect(entetesDeSection(cats), <String?>[
+        'Français', null, // la deuxième rangée française : rien
+        null, null, // le généraliste ne porte JAMAIS d'en-tête
+        'Türkçe', null,
+        'العربية · Arabe', null,
+      ]);
+    });
+
+    test('même longueur que l\'entrée : l\'écran lit entetes[i] pour la '
+        'rangée i', () {
+      final List<String> cats = <String>['FR| A', 'X', 'TR| B', 'TR| C'];
+      expect(entetesDeSection(cats).length, cats.length);
+    });
+
+    test('une seule langue → aucun en-tête (rien à distinguer)', () {
+      expect(entetesDeSection(<String>['FR| A', 'FR| B', 'NETFLIX']),
+          everyElement(isNull));
+      expect(entetesDeSection(<String>['NETFLIX', '4K']),
+          everyElement(isNull));
+      expect(entetesDeSection(const <String>[]), isEmpty);
+    });
+
+    test('un pays qui réapparaît plus bas reprend un en-tête', () {
+      // Sans passer par ordonnerParPays : la fonction reste juste.
+      expect(entetesDeSection(<String>['FR| A', 'TR| B', 'FR| C']),
+          <String?>['Français', 'Türkçe', 'Français']);
+    });
+  });
 }

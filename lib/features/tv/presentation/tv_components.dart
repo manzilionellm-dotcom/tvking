@@ -140,6 +140,65 @@ class TvSectionLabel extends StatelessWidget {
       );
 }
 
+/// Bandeau de LANGUE au-dessus d'une rangée du Cinéma : « Français »,
+/// « Türkçe », « العربية · Arabe »…
+///
+/// DEMANDE DU PROPRIÉTAIRE (20/09/2026) : « que les langues soient
+/// différentes… facile surtout pour les gens âgés. » D'où le parti pris :
+///  • GRAND (plus gros que tout le reste de la page hors la vedette),
+///    en blanc plein — un client âgé le lit depuis son canapé sans
+///    chercher ;
+///  • une BARRE braise devant, et un FILET qui court sur toute la largeur
+///    dessous : la coupure entre deux langues se voit même de loin, quand
+///    on fait défiler vite ;
+///  • ni focusable, ni cliquable : la télécommande passe par-dessus, le
+///    parcours des rangées ne change pas d'un cran.
+///
+/// Le texte vient de `vod/domain/pays_cinema.dart` (une seule source, deux
+/// écrans). Ici, on ne fait que dessiner.
+class TvLangueBandeau extends StatelessWidget {
+  const TvLangueBandeau(this.libelle, {super.key});
+  final String libelle;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        // De l'air AU-DESSUS (on quitte la langue précédente) et juste ce
+        // qu'il faut dessous : le titre de la première rangée suit.
+        padding: const EdgeInsets.only(top: 18, bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Container(
+                  width: 5,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: TvTokens.ember,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    libelle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(26,
+                        weight: FontWeight.w800,
+                        color: TvTokens.text,
+                        spacing: 0.4),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Container(height: 1, color: TvTokens.line),
+          ],
+        ),
+      );
+}
+
 /// Pastille prix : « À VIE » + montant or.
 class TvPricePill extends StatelessWidget {
   const TvPricePill({super.key, required this.label, required this.amount});

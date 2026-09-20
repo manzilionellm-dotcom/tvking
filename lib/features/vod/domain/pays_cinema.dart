@@ -196,3 +196,105 @@ List<String> ordonnerParPays(List<String> categories, {String premier = 'FR'}) {
     for (final List<String> groupe in autres.values) ...groupe,
   ];
 }
+
+// ---------------------------------------------------------
+//  DEUXIÈME DEMANDE (20/09/2026) : « ranger exactement comme c'est, mais
+//  que les langues soient DIFFÉRENTES. L'arabe comme ça, les Français…
+//  facile surtout pour les gens âgés. »
+// ---------------------------------------------------------
+//  Regrouper les rangées par pays (ci-dessus) ne suffisait pas : un client
+//  âgé voit une page de rangées qui se ressemblent toutes et ne sait pas
+//  OÙ commence sa langue. Il lui faut un grand titre, écrit DANS SA
+//  LANGUE, qu'il reconnaisse d'un coup d'œil sans lire le reste :
+//  « Français », « Türkçe », « العربية ».
+//
+//  Ce fichier ne décide que du TEXTE et de sa PLACE (au-dessus de quelle
+//  rangée). Le dessin est dans l'écran. Rien d'autre ne bouge : ni les
+//  rangées, ni leur ordre, ni le focus — « ranger exactement comme c'est ».
+// ---------------------------------------------------------
+
+/// Le nom de chaque pays / langue, écrit comme ses locuteurs l'écrivent.
+///
+/// Quand l'alphabet n'est pas latin (arabe, cyrillique, grec, CJK), on
+/// écrit AUSSI le nom en français, séparé d'un point médian : la box qui
+/// n'a pas la police d'un alphabet affiche des carrés (« tofu ») à sa
+/// place, et il reste alors un mot lisible. Pour le CJK, dont la police
+/// manque sur bien des boxes, le français passe en premier. Pas de
+/// drapeau emoji : beaucoup de boxes n'en ont pas la police du tout.
+const Map<String, String> _libelles = <String, String>{
+  'FR': 'Français',
+  'BE': 'Belgique',
+  'TR': 'Türkçe',
+  'AR': 'العربية · Arabe',
+  'MA': 'المغرب · Maroc',
+  'DZ': 'الجزائر · Algérie',
+  'TN': 'تونس · Tunisie',
+  'EG': 'مصر · Égypte',
+  'SA': 'السعودية · Arabie saoudite',
+  'LB': 'لبنان · Liban',
+  'EN': 'English',
+  'UK': 'United Kingdom',
+  'US': 'USA',
+  'CA': 'Canada',
+  'ES': 'Español',
+  'LAT': 'Latino',
+  'DE': 'Deutsch',
+  'IT': 'Italiano',
+  'PT': 'Português',
+  'BR': 'Brasil',
+  'NL': 'Nederlands',
+  'PL': 'Polski',
+  'RO': 'Română',
+  'RU': 'Русский · Russe',
+  'IN': 'India',
+  'PK': 'Pakistan · اردو',
+  'GR': 'Ελληνικά · Grec',
+  'AL': 'Shqip',
+  'KU': 'Kurdî',
+  'SE': 'Svenska',
+  'NO': 'Norsk',
+  'DK': 'Dansk',
+  'FI': 'Suomi',
+  'AF': 'Afrique',
+  'CN': 'Chine · 中文',
+  'JP': 'Japon · 日本語',
+  'KR': 'Corée · 한국어',
+};
+
+/// Le libellé humain d'un code renvoyé par [paysDeCategorie]. Un code
+/// inconnu (si on en ajoute un sans son libellé) s'affiche tel quel
+/// plutôt que de disparaître : on le verra, et on le corrigera.
+String libelleDePays(String code) => _libelles[code] ?? code;
+
+/// Pour chaque catégorie de [categories] (déjà ordonnées par
+/// [ordonnerParPays]), l'en-tête de langue à dessiner AU-DESSUS d'elle,
+/// ou `null` s'il n'y en a pas. Même longueur que l'entrée, même ordre :
+/// l'écran lit `entetes[i]` pour la rangée `i`, rien ne se décale.
+///
+/// Un en-tête apparaît sur la PREMIÈRE rangée de chaque pays. Les
+/// catégories sans pays (« NETFLIX », « 4K ») n'en portent jamais : elles
+/// suivent la France comme du contenu de la langue principale.
+///
+/// Un catalogue d'UNE seule langue n'a aucun en-tête : un grand « Français »
+/// au-dessus d'un catalogue entièrement français n'apprendrait rien au
+/// client, et prendrait de la place à l'écran.
+List<String?> entetesDeSection(List<String> categories) {
+  final List<String?> pays = <String?>[
+    for (final String c in categories) paysDeCategorie(c),
+  ];
+  final Set<String> distincts = <String>{
+    for (final String? p in pays) if (p != null) p,
+  };
+  if (distincts.length < 2) {
+    return List<String?>.filled(categories.length, null);
+  }
+  final List<String?> entetes = List<String?>.filled(categories.length, null);
+  for (int i = 0; i < pays.length; i++) {
+    final String? p = pays[i];
+    if (p == null) continue;
+    // Première rangée du pays : soit tout en haut, soit juste après une
+    // rangée d'un AUTRE pays (ou sans pays).
+    if (i == 0 || pays[i - 1] != p) entetes[i] = libelleDePays(p);
+  }
+  return entetes;
+}

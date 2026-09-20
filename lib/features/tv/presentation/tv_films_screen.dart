@@ -79,6 +79,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   bool _loading = true;
   List<VodMovie> _all = const <VodMovie>[];
   List<String> _cats = const <String>[];
+  // En-tête de LANGUE à dessiner au-dessus de la rangée `_cats[i]`, ou
+  // null. Même longueur que `_cats`, calculé UNE fois avec elle.
+  List<String?> _entetes = const <String?>[];
   Map<String, List<VodMovie>> _byCat = const <String, List<VodMovie>>{};
   List<VodMovie> _recent = const <VodMovie>[];
   List<VodMovie> _watchlist = const <VodMovie>[];
@@ -198,6 +201,9 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
       // chaque pays groupé — même règle que les séries, même fonction.
       // Voir vod/domain/pays_cinema.dart.
       _cats = ordonnerParPays(cats);
+      // Puis un grand titre dans SA langue au-dessus du premier bloc de
+      // chaque pays (20/09/2026) — « facile surtout pour les gens âgés ».
+      _entetes = entetesDeSection(_cats);
       _byCat = byCat;
       _latest = dated.take(24).toList(growable: false);
       _recent = RecentVodRepository.instance.items;
@@ -514,15 +520,16 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
       }
     }
 
-    final List<({String title, List<VodMovie> movies, bool resume, bool dl})>
+    final List<_RailSpec>
         rails =
-        <({String title, List<VodMovie> movies, bool resume, bool dl})>[
+        <_RailSpec>[
       if (resumeMovies.isNotEmpty)
         (
           title: context.l10n.tvRailContinueWatching,
           movies: resumeMovies,
           resume: true,
-          dl: false
+          dl: false,
+          section: null,
         ),
       // « DERNIERS AJOUTS » : la vitrine fraîcheur du fournisseur (champ
       // `added` Xtream) — placée tout en haut et rendue ACCROCHEUSE (titre
@@ -533,49 +540,58 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           title: context.l10n.tvRailLatest,
           movies: _latest,
           resume: false,
-          dl: false
+          dl: false,
+          section: null,
         ),
       if (newMovies.isNotEmpty)
         (
           title: context.l10n.tvRailNew,
           movies: newMovies,
           resume: false,
-          dl: false
+          dl: false,
+          section: null,
         ),
       if (becauseMovies.isNotEmpty)
         (
           title: becauseTitle,
           movies: becauseMovies,
           resume: false,
-          dl: false
+          dl: false,
+          section: null,
         ),
       if (dlMovies.isNotEmpty)
         (
           title: context.l10n.tvDlRail,
           movies: dlMovies,
           resume: false,
-          dl: true
+          dl: true,
+          section: null,
         ),
       if (_watchlist.isNotEmpty)
         (
           title: context.l10n.tvMyList,
           movies: _watchlist,
           resume: false,
-          dl: false
+          dl: false,
+          section: null,
         ),
       if (_recent.isNotEmpty)
         (
           title: context.l10n.tvRailRecent,
           movies: _recent,
           resume: false,
-          dl: false
+          dl: false,
+          section: null,
         ),
-      for (final String cat in _cats)
+      // Rangées du CATALOGUE, déjà rangées par pays. La première rangée
+      // de chaque pays porte son grand titre de langue (20/09/2026).
+      for (int k = 0; k < _cats.length; k++)
         (
-          title: TitleCurator.curateCategory(cat),
-          movies: _byCat[cat] ?? const <VodMovie>[],
+          title: TitleCurator.curateCategory(_cats[k]),
+          movies: _byCat[_cats[k]] ?? const <VodMovie>[],
           resume: false,
-          dl: false
+          dl: false,
+          section: k < _entetes.length ? _entetes[k] : null,
         ),
     ];
 
@@ -592,7 +608,7 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
     // reconstruction de l'onglet, c'est ELLE qui reprend l'autofocus (pas le
     // héros). Index clampé — le catalogue a pu changer entre-temps.
     final int memRail = rails.indexWhere(
-        (({String title, List<VodMovie> movies, bool resume, bool dl}) r) =>
+        (_RailSpec r) =>
             r.title == _focusRail);
 
     return PageStorage(
@@ -619,11 +635,12 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
               onSurprise: _surpriseMe,
             );
           }
-          final ({String title, List<VodMovie> movies, bool resume, bool dl})
+          final _RailSpec
               rail = rails[i - 1];
           return _Rail(
             railKey: PageStorageKey<String>('films-rail-${rail.title}'),
             title: rail.title,
+            section: rail.section,
             // Rangée « Derniers ajouts » mise en lumière (titre braise).
             accent: rail.title == context.l10n.tvRailLatest,
             movies: rail.movies,
@@ -1090,6 +1107,17 @@ class _HeroPoster extends StatelessWidget {
   }
 }
 
+/// Ce qu'il faut pour dessiner UNE rangée de l'accueil Films. [section]
+/// est le grand titre de LANGUE à poser au-dessus (« Türkçe »…), ou null :
+/// seule la première rangée de chaque pays en porte un.
+typedef _RailSpec = ({
+  String title,
+  List<VodMovie> movies,
+  bool resume,
+  bool dl,
+  String? section,
+});
+
 /// Une RANGÉE horizontale d'affiches (titre + liste paresseuse), façon Netflix.
 class _Rail extends StatelessWidget {
   const _Rail({
@@ -1106,9 +1134,15 @@ class _Rail extends StatelessWidget {
     this.autofocusIndex,
     this.onCardFocus,
     this.accent = false,
+    this.section,
   });
 
   final String title;
+
+  /// Grand titre de LANGUE (« Türkçe », « العربية · Arabe ») dessiné
+  /// AU-DESSUS du titre de la rangée — seulement sur la première rangée de
+  /// chaque pays (cf. entetesDeSection). Null = rien.
+  final String? section;
 
   /// Rangée MISE EN LUMIÈRE (« Derniers ajouts ») : titre couleur braise +
   /// petit éclair — l'œil du téléspectateur tombe dessus en premier.
@@ -1151,6 +1185,10 @@ class _Rail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          // Bandeau de langue dans la MÊME cellule que la rangée : aucun
+          // index de la liste verticale ne bouge, la mémoire du focus par
+          // rangée (memRail) reste exacte, et la télécommande l'ignore.
+          if (section != null) TvLangueBandeau(section!),
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 8),
             child: Row(
