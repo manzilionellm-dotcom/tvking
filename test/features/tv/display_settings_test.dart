@@ -16,6 +16,8 @@
 //  Si un patch futur remet `?? 0` dans load(), la première assertion
 //  saute : c'est voulu.
 // =========================================================
+import 'dart:ui' show Size;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -104,6 +106,69 @@ void main() {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       expect(prefs.getInt('tv_overscan_pct'), 0,
           reason: 'le 0 est GRAVÉ : au prochain boot ce n\'est plus le défaut');
+    });
+  });
+
+  // ZOOM DE L'INTERFACE (20/09/2026) — « le menu est devenu petit » sur
+  // l'écran de 128 pouces du propriétaire. Deux choses verrouillées ici :
+  // le zoom agrandit vraiment, et la marge ne rétrécit PLUS rien.
+  group('zoom de l\'interface', () {
+    test('défaut 100 %, et le canevas est le 1280 de référence', () {
+      expect(d.zoomPct, 100);
+      d.reinitialiser();
+      // Sans marge (on force 0 %) : canevas = référence exacte.
+      AppPlatform.isTv = false;
+      final Size c = d.canevas(ecran: const Size(1920, 1080));
+      expect(c.width, closeTo(1280, 1e-9));
+      expect(c.height, closeTo(720, 1e-9));
+    });
+
+    test('120 % → un canevas plus PETIT, donc tout dessiné plus grand',
+        () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      AppPlatform.isTv = false; // marge 0 : on isole l'effet du zoom
+      await d.setZoom(120);
+      final Size c = d.canevas(ecran: const Size(1920, 1080));
+      expect(c.width, closeTo(1280 / 1.2, 1e-6));
+      expect(c.height, closeTo(720 / 1.2, 1e-6));
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      expect(prefs.getInt('tv_ui_zoom_pct'), 120, reason: 'mémorisé');
+    });
+
+    test('une valeur hors crans retombe sur le cran le plus proche',
+        () async {
+      SharedPreferences.setMockInitialValues(
+          <String, Object>{'tv_ui_zoom_pct': 999});
+      await d.load();
+      expect(d.zoomPct, 120);
+      await d.setZoom(104);
+      expect(d.zoomPct, 100);
+    });
+
+    test('la marge de 5 % RECULE le contenu sans le rétrécir : même '
+        'échelle écran/canevas qu\'à 0 %', () {
+      // Box Android, rien de mémorisé → 5 % de marge.
+      const Size ecran = Size(1920, 1080);
+      final Size avecMarge = d.canevas(ecran: ecran);
+      expect(d.overscanPct, 5, reason: 'précondition : box = 5 %');
+      // Zone sûre de l'écran = 90 % en largeur ; l'échelle réelle est
+      // (largeur de la zone sûre) / (largeur du canevas).
+      final double echelleAvec = (ecran.width * 0.9) / avecMarge.width;
+      AppPlatform.isTv = false; // → 0 %
+      final Size sansMarge = d.canevas(ecran: ecran);
+      final double echelleSans = ecran.width / sansMarge.width;
+      expect(echelleAvec, closeTo(echelleSans, 1e-9),
+          reason: 'une lettre de 16 fait 16, marge ou pas');
+      expect(avecMarge.width, closeTo(1280 * 0.9, 1e-9));
+      expect(avecMarge.height, closeTo(720 * 0.9, 1e-9));
+    });
+
+    test('pendant la vidéo, le canevas reprend toute sa taille', () {
+      d.entrerPleinEcran();
+      final Size c = d.canevas(ecran: const Size(1920, 1080));
+      expect(c.width, closeTo(1280, 1e-9),
+          reason: 'l\'image prend tout l\'écran, la marge est publiée à part');
+      d.quitterPleinEcran();
     });
   });
 

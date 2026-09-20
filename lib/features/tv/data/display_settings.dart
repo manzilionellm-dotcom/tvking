@@ -39,10 +39,30 @@
 //      pour les seniors). Volontairement MODÉRÉ (+8 %) pour ne pas casser les
 //      mises en page.
 //
+//    • ZOOM DE L'INTERFACE (20/09/2026) : agrandit TOUT — menus, affiches,
+//      textes — de 10 ou 20 %. Demande du propriétaire, écran de 128
+//      pouces : « le menu est devenu petit… il va détecter la TV et
+//      s'adapter ». Ce qu'il faut savoir : une box ne PEUT PAS connaître
+//      la taille de la télé. Le câble HDMI transmet la résolution (1080p,
+//      4K), jamais la diagonale ; et de toute façon c'est la DISTANCE du
+//      canapé qui compte, pas les pouces — un 128" vu de 6 m et un 55" vu
+//      de 2,5 m demandent la même taille de lettres. Netflix, YouTube,
+//      Disney n'ont pas ce réglage automatique non plus : ils ont UNE
+//      taille, pensée pour 3 m, et c'est tout. Nous, on laisse le client
+//      choisir en trois crans, et la box s'en souvient.
+//
+//      À NE PAS CONFONDRE avec la marge (overscan). Le 19/09, la marge
+//      de 5 % RÉTRÉCISSAIT tout le canevas de 10 % : c'est ça que le
+//      propriétaire a vu comme « le menu est devenu petit ». Depuis le
+//      20/09, la marge ne rétrécit plus rien : elle RECULE le contenu du
+//      bord (voir tv_app.dart). La taille des lettres ne dépend que du
+//      zoom, jamais de la marge.
+//
 //  Ces réglages sont appliqués UNE SEULE FOIS à la racine (MaterialApp.builder)
 //  et mémorisés en local (SharedPreferences).
 // =========================================================
 import 'dart:async';
+import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,7 +92,15 @@ class DisplaySettings extends ChangeNotifier {
   static const String _kBigText = 'tv_big_text';
   static const String _kNight = 'tv_night_comfort';
   static const String _kNavSounds = 'tv_nav_sounds';
+  static const String _kZoom = 'tv_ui_zoom_pct';
   static const int maxOverscan = 8;
+
+  /// Les crans de zoom autorisés, en pour cent. Trois, pas un curseur :
+  /// un client âgé choisit entre « normal, grand, très grand », pas entre
+  /// 100 et 137. Plafond à 120 % : au-delà, avec la marge de 5 %, le
+  /// canevas passerait sous 960 px logiques (le 720p d'Android TV) et des
+  /// écrans faits pour 1280 commenceraient à déborder.
+  static const List<int> zoomsPossibles = <int>[100, 110, 120];
 
   /// La « zone sûre » Android TV : 5 % de marge de chaque côté. C'est le
   /// chiffre de la règle officielle (48 dp sur 960 dp de large), celui que
@@ -98,6 +126,7 @@ class DisplaySettings extends ChangeNotifier {
   /// null = jamais réglé par le client → on applique le défaut. Un 0 %
   /// EXPLICITE reste un 0 % (télé qui affiche tout, le client l'a dit).
   int? _overscanPct;
+  int _zoomPct = 100;
   bool _bigText = false;
   bool _navSounds = true; // clic discret à chaque cran de D-pad (défaut ON)
   NightComfortMode _night = NightComfortMode.auto;
@@ -129,6 +158,27 @@ class DisplaySettings extends ChangeNotifier {
   /// Fraction de marge à appliquer de chaque côté (0.0 → 0.08).
   double get overscanFraction => overscanPct.clamp(0, maxOverscan) / 100.0;
 
+  /// Le CANEVAS LOGIQUE à dessiner pour un écran physique [ecran], à
+  /// partir d'une largeur de référence (1280, le 720p « 10-foot »).
+  ///
+  ///  • le ZOOM divise la largeur : 1280 → 1164 (110 %) → 1067 (120 %).
+  ///    Moins de pixels logiques sur le même écran = tout plus grand ;
+  ///  • la MARGE ampute ensuite le canevas de la même fraction que l'écran
+  ///    (5 % de chaque côté → 90 % en largeur ET en hauteur). L'échelle
+  ///    écran/canevas est alors la même qu'à 0 % : la marge RECULE le
+  ///    contenu, elle ne le rétrécit plus (décision du 20/09/2026) ;
+  ///  • pendant la VIDÉO, le canevas reprend toute sa taille : l'image
+  ///    prend tout l'écran, la marge est publiée au lecteur à part.
+  ///
+  /// Fonction pure (pas de widget) : elle se teste à la virgule près.
+  Size canevas({required Size ecran, double largeurReference = 1280}) {
+    final double w = largeurReference / zoomFactor;
+    final double h = w * ecran.height / ecran.width;
+    if (videoPleinEcran) return Size(w, h);
+    final double ov = overscanFraction;
+    return Size(w * (1 - 2 * ov), h * (1 - 2 * ov));
+  }
+
   /// Un lecteur vidéo s'ouvre : l'image prend tout l'écran.
   ///
   /// La notification est DIFFÉRÉE (microtâche) : ces deux méthodes sont
@@ -152,12 +202,33 @@ class DisplaySettings extends ChangeNotifier {
   /// Facteur de taille du texte (1.0 = normal, 1.08 = grand).
   double get textScale => _bigText ? 1.08 : 1.0;
 
+  /// Zoom de l'interface en pour cent (100, 110 ou 120).
+  int get zoomPct => _zoomPct;
+
+  /// Le même zoom en facteur (1.0, 1.1, 1.2). La racine DIVISE la largeur
+  /// du canevas par ce facteur : moins de pixels logiques sur le même
+  /// écran, donc tout paraît plus grand — menus, affiches et textes, dans
+  /// les mêmes proportions. Rien à changer dans les écrans.
+  double get zoomFactor => _zoomPct / 100.0;
+
+  /// Ramène une valeur quelconque au cran autorisé le plus proche : une
+  /// préférence corrompue ou un futur cran retiré ne peuvent pas laisser
+  /// la box avec un zoom impossible.
+  static int _cranDeZoom(int pct) {
+    int meilleur = zoomsPossibles.first;
+    for (final int z in zoomsPossibles) {
+      if ((z - pct).abs() < (meilleur - pct).abs()) meilleur = z;
+    }
+    return meilleur;
+  }
+
   Future<void> load() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     // Pas de `?? 0` : sans valeur mémorisée, on reste sur le défaut de la
     // plateforme (5 % sur une box). Un 0 mémorisé, lui, est un choix.
     _overscanPct = prefs.getInt(_kOverscan)?.clamp(0, maxOverscan);
     _bigText = prefs.getBool(_kBigText) ?? false;
+    _zoomPct = _cranDeZoom(prefs.getInt(_kZoom) ?? 100);
     _navSounds = prefs.getBool(_kNavSounds) ?? true;
     final int n = prefs.getInt(_kNight) ?? NightComfortMode.auto.index;
     _night = NightComfortMode
@@ -180,11 +251,20 @@ class DisplaySettings extends ChangeNotifier {
     await prefs.setInt(_kOverscan, v);
   }
 
+  Future<void> setZoom(int pct) async {
+    final int v = _cranDeZoom(pct);
+    _zoomPct = v;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kZoom, v);
+  }
+
   /// Tests uniquement : revient à l'état « rien de mémorisé, aucun lecteur
   /// ouvert », comme au premier lancement.
   @visibleForTesting
   void reinitialiser() {
     _overscanPct = null;
+    _zoomPct = 100;
     _pleinEcran = 0;
   }
 

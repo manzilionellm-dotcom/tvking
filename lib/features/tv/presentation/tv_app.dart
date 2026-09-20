@@ -167,26 +167,50 @@ class TvApp extends StatelessWidget {
           if (child == null || screen.width <= 0 || screen.height <= 0) {
             return child ?? const SizedBox.shrink();
           }
-          const double designW = kTvDesignWidth;
+          final DisplaySettings ecran = DisplaySettings.instance;
+          // ZOOM DE L'INTERFACE (20/09/2026, écran de 128 pouces du
+          // propriétaire : « le menu est devenu petit »). On DIVISE la
+          // largeur du canevas par le zoom : 1280 → 1164 → 1067 pixels
+          // logiques sur le même écran physique, donc tout est dessiné
+          // 10 ou 20 % plus grand, menus, affiches et lettres ensemble.
+          // Aucun écran n'a à le savoir. Pourquoi pas automatique : la
+          // box ne connaît pas la diagonale de la télé (le HDMI ne la
+          // transmet pas) — voir display_settings.dart.
+          final double designW = kTvDesignWidth / ecran.zoomFactor;
           final double designH = designW * screen.height / screen.width;
           // OVERSCAN : marge de chaque côté (0 → 8 %) pour les TV qui
           // rognent les bords. Fraction identique en H et V → l'aspect reste
           // exact (pas de déformation). Défaut 5 % sur une box Android (la
           // zone sûre Android TV — voir display_settings.dart, qui porte la
           // décision du 19/09/2026 et sa raison), 0 % sur PC et Samsung.
-          final DisplaySettings ecran = DisplaySettings.instance;
+          //
+          // LA MARGE RECULE LE CONTENU, ELLE NE LE RÉTRÉCIT PLUS (20/09).
+          // Avant : le canevas 1280 entier était comprimé dans la zone
+          // sûre → tout perdait 10 %, et c'est ce que le propriétaire a
+          // vu sur son grand écran (« le menu est devenu petit »). Depuis :
+          // le canevas est lui-même AMPUTÉ de la marge (1280 → 1152 de
+          // large à 5 %), et cette zone plus petite est mise à l'échelle
+          // vers la zone sûre de l'écran. L'échelle vaut alors
+          // écran × 0,9 / (canevas × 0,9) = écran / canevas : la MÊME que
+          // sans marge. Un pixel logique garde sa taille ; une lettre de
+          // 16 fait 16, marge ou pas. C'est exactement ce que fait
+          // Android TV avec son padding de 48 dp : il recule, il ne
+          // rapetisse pas. Les écrans, eux, sont fluides (listes, grilles,
+          // Expanded) et remplissent la largeur qu'on leur donne.
           final double ov = ecran.overscanFraction;
           // VIDÉO PLEIN ÉCRAN : tant qu'un lecteur est ouvert, la marge
           // n'est plus RETIRÉE à l'image, elle est PUBLIÉE (MediaQuery
           // .padding, en unités du canevas). Le lecteur y lit de combien
           // reculer ses habillages ; l'image, elle, prend tout l'écran —
           // comme Netflix, qui n'entoure jamais un film d'un cadre noir.
-          //
-          // Coût du basculement : nul pour l'arbre. Le canevas garde sa
-          // taille logique (designW × designH) ; seule l'échelle du
-          // FittedBox change. Aucun écran n'est re-mesuré, la Surface
-          // vidéo n'est pas redimensionnée.
+          // Le canevas reprend alors sa taille pleine (designW × designH) ;
+          // l'écran du dessous est re-mesuré UNE fois à l'ouverture et une
+          // fois à la fermeture — un coût ponctuel, invisible.
           final bool video = ecran.videoPleinEcran;
+          // Le calcul vit dans DisplaySettings (fonction pure, testée) :
+          // ici on ne fait que l'appliquer.
+          final Size canevas =
+              ecran.canevas(ecran: screen, largeurReference: kTvDesignWidth);
           final EdgeInsets margeRetiree = video
               ? EdgeInsets.zero
               : EdgeInsets.symmetric(
@@ -307,14 +331,17 @@ class TvApp extends StatelessWidget {
                 padding: margeRetiree,
                 child: MediaQuery(
                   data: mq.copyWith(
-                    size: Size(designW, designH),
+                    size: canevas,
                     padding: margePubliee,
                     textScaler: TextScaler.linear(ts),
                   ),
                   child: FittedBox(
                     fit: BoxFit.fill,
-                    child:
-                        SizedBox(width: designW, height: designH, child: child),
+                    child: SizedBox(
+                      width: canevas.width,
+                      height: canevas.height,
+                      child: child,
+                    ),
                   ),
                 ),
               ),

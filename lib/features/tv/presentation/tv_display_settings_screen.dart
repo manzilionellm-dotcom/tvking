@@ -1,8 +1,9 @@
 // =========================================================
 //  tv_display_settings_screen.dart — Réglages d'affichage (TV)
 // =========================================================
-//  Deux réglages de CONFORT, appliqués à la racine de l'app (cf.
+//  Réglages de CONFORT, appliqués à la racine de l'app (cf.
 //  DisplaySettings). Aucun contact avec le lecteur vidéo / le rendu image.
+//    • Zoom : agrandit toute l'interface (grand écran, canapé loin).
 //    • Overscan : marge autour de l'image (TV qui rognent les bords).
 //    • Grand texte : agrandit légèrement le texte (lecture seniors).
 // =========================================================
@@ -38,6 +39,39 @@ class TvDisplaySettingsScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
+
+                // ----- Zoom de l'interface (20/09/2026) -----
+                // EN PREMIER : c'est le réglage qu'un client sur un très
+                // grand écran, ou assis loin, cherche. Trois crans, et la
+                // box s'en souvient. Voir display_settings.dart pour
+                // pourquoi ce n'est pas automatique (la box ne connaît pas
+                // la taille de la télé).
+                _label(context.l10n.tvZoomLabel),
+                const SizedBox(height: 4),
+                _hint(context.l10n.tvZoomHint),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    _choice(
+                      label: context.l10n.tvZoomNormal,
+                      selected: d.zoomPct == 100,
+                      onSelect: () => d.setZoom(100),
+                    ),
+                    const SizedBox(width: 12),
+                    _choice(
+                      label: context.l10n.tvZoomLarge,
+                      selected: d.zoomPct == 110,
+                      onSelect: () => d.setZoom(110),
+                    ),
+                    const SizedBox(width: 12),
+                    _choice(
+                      label: context.l10n.tvZoomXLarge,
+                      selected: d.zoomPct == 120,
+                      onSelect: () => d.setZoom(120),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 30),
 
                 // ----- Overscan (marge autour de l'image) -----
                 _label(context.l10n.tvOverscanLabel),
