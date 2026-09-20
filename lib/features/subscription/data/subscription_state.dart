@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/observability/structured_logger.dart';
+import '../../../core/update/build_flags.dart';
 import '../../device/data/device_identity.dart';
 import 'subscription_backend.dart';
 
@@ -274,7 +275,15 @@ class SubscriptionState extends ChangeNotifier {
   }
 
   /// True si l'app doit afficher un écran bloquant.
+  ///
+  /// JAMAIS dans le build Play Store (20/09/2026). Ce build est un lecteur
+  /// « apporte ta liste » : il ne vend pas de licence d'app, donc il ne
+  /// peut pas en bloquer l'usage pour la vendre ailleurs — un écran
+  /// « essai terminé, achète sur 7themotion.com » est une vente hors
+  /// facturation Google, motif de SUSPENSION de la fiche. Gel, ban et
+  /// prêt restent des décisions du panel sur l'APK direct, pas ici.
   bool get shouldBlockUser {
+    if (kIsPlayBuild) return false;
     if (!_loaded) return false;
     if (_remote.exists && _remote.loaned) return true;
     final SubscriptionStatus s = status;
@@ -284,7 +293,9 @@ class SubscriptionState extends ChangeNotifier {
   }
 
   /// True SSI on a le droit de charger des chaînes / lancer le player.
+  /// Build Play Store : toujours — voir [shouldBlockUser].
   bool get canStream {
+    if (kIsPlayBuild) return true;
     if (!_loaded) return false;
     if (shouldBlockUser) return false;
     final SubscriptionStatus s = status;

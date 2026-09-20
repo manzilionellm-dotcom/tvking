@@ -978,6 +978,31 @@ jobs:
           print('MiroirService marque tools:node=remove (AAB Play)')
           PYEOF
           echo "✓ FOREGROUND_SERVICE_MEDIA_PROJECTION + MiroirService retirés (AAB Play)"
+          # (b quater) RECEIVE_BOOT_COMPLETED — À RETIRER POUR LE PLAY STORE
+          #            (20/09/2026)
+          #
+          #  CONSTATÉ dans la Play Console sur le build 1715 : « Types de
+          #  services de premier plan restreints — l'app lance un service
+          #  de premier plan depuis BOOT_COMPLETED ; interdit à partir
+          #  d'Android 15 ». L'analyse de Google est STATIQUE : elle voit
+          #  RECEIVE_BOOT_COMPLETED + un service typé mediaPlayback dans le
+          #  même manifeste et conclut, même si notre receveur ne fait que
+          #  re-poser des alarmes au boot (ScheduledRecordingReceiver).
+          #
+          #  Sans la permission, Android ne livre jamais BOOT_COMPLETED à
+          #  l'app : la condition ne peut plus exister, l'avertissement
+          #  tombe. Ce que ça coûte à la version Play, et seulement à
+          #  elle : un enregistrement PROGRAMMÉ ne survit pas à un
+          #  redémarrage du téléphone tant que l'app n'a pas été rouverte
+          #  (RecordingScheduler re-pose alors les alarmes). L'APK direct
+          #  et la box gardent la permission.
+          #
+          #  Elle est dans le manifeste SOURCE (patch notifications plus
+          #  haut) ET fusionnée depuis le plugin tvking_device : suppression
+          #  directe pour le premier, tools:node=remove pour le second.
+          sed -i '/android.permission.RECEIVE_BOOT_COMPLETED/d' "$MANIFEST"
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove"/>' "$MANIFEST"
+          echo "✓ RECEIVE_BOOT_COMPLETED retirée (AAB Play)"
           # (c) applicationId Play Store : com.manzilionellm.tvking (EXACT,
           #     package de la fiche « 7 MOTION »). `flutter create` a produit
           #     com.manzilionellm.tvking.tv_king ; l'APK sideload (déjà
@@ -1019,18 +1044,33 @@ jobs:
           MERGED=$(find android/app/build build/app -path '*merged_manifest*release*AndroidManifest.xml' 2>/dev/null | head -1)
           if [ -n "$MERGED" ]; then
             echo "Manifeste fusionné : $MERGED"
-            for P in REQUEST_INSTALL_PACKAGES READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_AUDIO USE_EXACT_ALARM; do
+            for P in REQUEST_INSTALL_PACKAGES READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_AUDIO USE_EXACT_ALARM FOREGROUND_SERVICE_MEDIA_PROJECTION RECEIVE_BOOT_COMPLETED; do
               if grep -q "android.permission.$P" "$MERGED"; then
                 echo "❌ $P encore présent dans le manifeste fusionné de l'AAB"; exit 1
               fi
             done
+            # Aucun service typé « mediaProjection » non plus (retiré avec la
+            # permission) : Google en fait un type restreint à déclarer.
+            if grep -q 'foregroundServiceType="[^"]*mediaProjection' "$MERGED"; then
+              echo "❌ un service foregroundServiceType=mediaProjection subsiste dans l'AAB"; exit 1
+            fi
             # …et l'inverse : SCHEDULE_EXACT_ALARM DOIT rester, sinon
             # l'enregistrement programmé serait muet sur la version Play
             # sans que rien ne le signale.
             if ! grep -q 'android.permission.SCHEDULE_EXACT_ALARM' "$MERGED"; then
               echo "❌ SCHEDULE_EXACT_ALARM absente : le magnétoscope ne pourrait plus poser d'alarme"; exit 1
             fi
-            echo "✓ Manifeste AAB : sans USE_EXACT_ALARM ni READ_MEDIA_*, avec SCHEDULE_EXACT_ALARM"
+            echo "✓ Manifeste AAB : sans USE_EXACT_ALARM, READ_MEDIA_*, MEDIA_PROJECTION ni BOOT_COMPLETED, avec SCHEDULE_EXACT_ALARM"
+            # CE QUI EST VRAIMENT EMBARQUÉ — imprimé pour que la Play Console
+            # ne soit plus la première à nous l'apprendre (20/09/2026) :
+            # version, chaque permission, chaque type de service de premier
+            # plan. Lisible dans le journal du build, à côté du SHA-256.
+            echo "--- AAB : version embarquée ---"
+            grep -o 'android:versionCode="[^"]*"\|android:versionName="[^"]*"' "$MERGED" | sort -u
+            echo "--- AAB : permissions ---"
+            grep -o 'android:name="android.permission.[^"]*"' "$MERGED" | sed 's/android:name="android.permission.//; s/"$//' | sort -u
+            echo "--- AAB : types de services de premier plan ---"
+            grep -o 'foregroundServiceType="[^"]*"' "$MERGED" | sort -u || echo '(aucun)'
           else
             echo "⚠️ Manifeste fusionné introuvable — vérif sautée (non bloquant)"
           fi

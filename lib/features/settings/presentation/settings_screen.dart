@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/profiles/profiles_repository.dart';
 import '../../../core/update/update_prompt.dart';
+import '../../../core/update/build_flags.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
@@ -63,7 +64,10 @@ class SettingsScreen extends StatelessWidget {
             //  CTA pour acheter sur 7themotion.com (paiement externe,
             //  pas d'in-app purchase Google Play).
             _SectionTitle(context.l10n.settingsMySubscription),
-            const SubscriptionCard(),
+            // JAMAIS dans le build Play Store (20/09/2026) : la carte mène
+            // à un achat hors facturation Google — motif de suspension,
+            // pas de simple rejet. Dans ce build, l'app ne vend rien.
+            if (!kIsPlayBuild) const SubscriptionCard(),
             const SizedBox(height: 4),
 
             // ====== LANGUE ======

@@ -28,6 +28,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/support/support_choice_sheet.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/update/build_flags.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
 import '../../device/data/device_identity.dart';
 import '../../pricing/presentation/pricing_banner.dart';
@@ -230,7 +231,11 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
                   ),
 
                   // ----- Arguments de vente (uniquement essai terminé) -----
-                  if (expired) ...<Widget>[
+                  // Jamais dans le build Play Store : cet écran n'y est même
+                  // pas atteignable (shouldBlockUser y vaut toujours false),
+                  // et le code d'achat est écarté du binaire par le
+                  // compilateur (kIsPlayBuild est une constante de build).
+                  if (expired && !kIsPlayBuild) ...<Widget>[
                     const SizedBox(height: 22),
                     const PricingBanner(),
                     const SizedBox(height: 18),
@@ -239,7 +244,7 @@ class _SubscriptionGateScreenState extends State<SubscriptionGateScreen> {
                   const SizedBox(height: 28),
 
                   // ----- CTA principal — Acheter (uniquement trial) -----
-                  if (expired)
+                  if (expired && !kIsPlayBuild)
                     SizedBox(
                       height: 54,
                       child: FilledButton.icon(
