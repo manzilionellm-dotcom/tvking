@@ -202,6 +202,7 @@
   "activateAtHomeDesc": "Share this ID with your reseller so they can activate your channels remotely.",
   "activateAppSectionTitle": "Activate the app",
   "activateAppSectionDesc": "Pick your plan, send your number: we activate everything remotely.",
+  "activateAppSectionDescStore": "Your number below: your reseller activates your channels remotely. Tap Check once activated.",
   "activateChannelsSectionTitle": "Activate the channels",
   "activateChannelsSectionDesc": "Already have an access code? Enter it to load your channels.",
   "buttonCopy": "Copy",

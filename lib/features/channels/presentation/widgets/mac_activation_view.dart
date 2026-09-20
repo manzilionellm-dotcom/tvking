@@ -81,57 +81,55 @@ class MacActivationView extends StatelessWidget {
                 context.l10n.activateAtHomeTitle,
                 style: AppTextStyles.headlineMedium.copyWith(fontSize: 19),
               ),
-              // « Communique cet identifiant à ton revendeur » n'a pas de
-              // sens dans le build magasin : il n'y a pas de numéro à
-              // communiquer, le client saisit son code.
-              if (!kIsPlayBuild) ...<Widget>[
-                const SizedBox(height: 6),
-                Text(
-                  context.l10n.activateAtHomeDesc,
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    height: 1.5,
-                  ),
+              const SizedBox(height: 6),
+              Text(
+                context.l10n.activateAtHomeDesc,
+                style: AppTextStyles.bodyMedium.copyWith(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                  height: 1.5,
                 ),
-              ],
+              ),
               const SizedBox(height: 18),
             ],
 
             // ============================================================
             //  ① BLOC DU HAUT — ACTIVER L'APPLICATION
             // ============================================================
-            //  JAMAIS DANS LE BUILD MAGASIN (Play / Amazon, 20/09/2026). Ce
-            //  build ignore les sources poussées par le panel (lecteur
-            //  « apporte ta liste », cf. RemoteSourceRepository.storeBuild,
-            //  décidé après le refus Amazon du 19/08). Montrer quand même
-            //  « envoie ton numéro, on active tout à distance » promettait
-            //  une chose que ce build ne fait pas — le propriétaire l'a vécu
-            //  sur son propre téléphone : numéro envoyé, panel activé, rien.
-            //  Et des offres à 35 € affichées dans une app du Play Store,
-            //  c'est une vente hors facturation Google : motif de refus.
-            //  Dans ce build, le client saisit son code (bloc ②), point.
-            if (!kIsPlayBuild) ...<Widget>[
-              _SectionCard(
-                step: '1',
-                icon: Icons.workspace_premium_rounded,
-                title: context.l10n.activateAppSectionTitle,
-                subtitle: context.l10n.activateAppSectionDesc,
-                children: <Widget>[
-                  // Les DEUX offres (à vie / 1 an) — pilotées par le panel.
+            //  BUILD MAGASIN (Play / Amazon) — décision du propriétaire du
+            //  20/09/2026, réaffirmée : l'activation à distance est le
+            //  cœur du produit, Play Store compris. Le NUMÉRO est donc
+            //  montré partout. Ce qui reste hors du build Play, parce que
+            //  c'est ce que Google sanctionne à coup sûr : les OFFRES et
+            //  les prix (vente hors facturation Google) et le bouton
+            //  « Envoyer » vers WhatsApp (un tunnel de vente). Le client
+            //  copie son numéro et le donne comme il veut ; le revendeur
+            //  active ; « Vérifier » charge la liste.
+            _SectionCard(
+              step: '1',
+              icon: Icons.workspace_premium_rounded,
+              title: context.l10n.activateAppSectionTitle,
+              subtitle: kIsPlayBuild
+                  ? context.l10n.activateAppSectionDescStore
+                  : context.l10n.activateAppSectionDesc,
+              children: <Widget>[
+                // Les DEUX offres (à vie / 1 an) — pilotées par le panel.
+                // Jamais dans le build Play (voir ci-dessus).
+                if (!kIsPlayBuild) ...<Widget>[
                   const PricingBanner(),
                   const SizedBox(height: 16),
-                  _referenceBlock(context, macNu),
                 ],
-              ),
-              const SizedBox(height: 18),
-            ],
+                _referenceBlock(context, macNu),
+              ],
+            ),
+
+            const SizedBox(height: 18),
 
             // ============================================================
             //  ② BLOC DU BAS — ACTIVER LES CHAÎNES
             // ============================================================
             _SectionCard(
-              step: kIsPlayBuild ? '1' : '2',
+              step: '2',
               icon: Icons.playlist_add_check_rounded,
               title: context.l10n.activateChannelsSectionTitle,
               subtitle: context.l10n.activateChannelsSectionDesc,
@@ -221,6 +219,10 @@ class MacActivationView extends StatelessWidget {
                 label: Text(context.l10n.buttonCopy),
               ),
             ),
+            // « Envoyer » (WhatsApp, numéro pré-rempli) : jamais dans le
+            // build Play — c'est un tunnel vers le revendeur, donc vers une
+            // vente hors Google. Le client copie et transmet comme il veut.
+            if (!kIsPlayBuild) ...<Widget>[
             const SizedBox(width: 10),
             Expanded(
               child: FilledButton.icon(
@@ -252,6 +254,7 @@ class MacActivationView extends StatelessWidget {
                 ),
               ),
             ),
+            ],
           ],
         ),
         const SizedBox(height: 10),

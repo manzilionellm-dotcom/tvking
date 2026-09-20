@@ -196,6 +196,7 @@
   "activateAtHomeDesc": "Dela detta ID med din återförsäljare så att de kan aktivera dina kanaler på distans.",
   "activateAppSectionTitle": "Aktivera appen",
   "activateAppSectionDesc": "Välj ditt erbjudande, skicka ditt nummer: vi aktiverar allt på distans.",
+  "activateAppSectionDescStore": "Ditt nummer nedan: din återförsäljare aktiverar dina kanaler på distans. Tryck Kontrollera när det är aktiverat.",
   "activateChannelsSectionTitle": "Aktivera kanalerna",
   "activateChannelsSectionDesc": "Har du redan en åtkomstkod? Ange den för att ladda dina kanaler.",
   "buttonCopy": "Kopiera",

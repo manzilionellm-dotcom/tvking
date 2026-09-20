@@ -196,6 +196,7 @@
   "activateAtHomeDesc": "Del denne ID-en med forhandleren så de kan aktivere kanalene dine eksternt.",
   "activateAppSectionTitle": "Aktiver appen",
   "activateAppSectionDesc": "Velg tilbudet ditt, send nummeret ditt: vi aktiverer alt eksternt.",
+  "activateAppSectionDescStore": "Nummeret ditt nedenfor: forhandleren aktiverer kanalene dine eksternt. Trykk Sjekk når det er aktivert.",
   "activateChannelsSectionTitle": "Aktiver kanalene",
   "activateChannelsSectionDesc": "Har du allerede en tilgangskode? Skriv den inn for å laste inn kanalene dine.",
   "buttonCopy": "Kopier",

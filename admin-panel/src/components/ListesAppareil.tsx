@@ -285,19 +285,19 @@ export function ListesAppareil({
           </ul>
         )}
 
-        {/* BUILD MAGASIN (Play Store / Amazon) : ce build IGNORE ce qu'on
-            pousse d'ici — lecteur « apporte ta liste », décidé après le
-            refus Amazon du 19/08/2026. On le dit ICI, à l'endroit exact où
-            le support s'apprête à pousser, pas dans une doc : le
-            propriétaire a poussé une liste vers son propre téléphone Play
-            et attendu des chaînes qui ne pouvaient pas venir. */}
+        {/* BUILD MAGASIN (Play Store / Amazon) — décision du propriétaire du
+            20/09/2026 : l'activation à distance marche AUSSI sur la version
+            Play, les listes poussées d'ici arrivent. Ce que cette version
+            n'affiche pas, parce que Google le sanctionne : les offres, les
+            prix, le bouton d'achat. Le support le sait AVANT de parler
+            tarifs au client : c'est lui qui les donne, pas l'app. */}
         {storeBuild === true && (
-          <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
-            <p className="font-semibold">Version Play Store : elle ne reçoit pas les listes poussées d'ici.</p>
-            <p className="mt-1 text-warning/90">
-              Donne au client son code Xtream ou son lien M3U : il le colle dans
-              l'app (« J'ai un code »). Pour une activation à distance, c'est
-              l'APK direct (app.7themotion.com) qu'il faut installer.
+          <div className="mt-3 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-ink-secondary">
+            <p className="font-semibold text-ink-primary">Version Play Store : elle reçoit les listes poussées d'ici.</p>
+            <p className="mt-1">
+              Mais elle n'affiche ni offres, ni prix, ni bouton d'achat — le client
+              ne voit que son numéro et « J'ai un code ». Les tarifs, c'est toi qui
+              les lui donnes.
             </p>
           </div>
         )}

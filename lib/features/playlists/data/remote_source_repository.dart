@@ -57,20 +57,25 @@ enum RemoteSyncResult {
 abstract final class RemoteSourceRepository {
   /// CONFORMITÉ MAGASINS (refus Amazon du 19/08/2026, « pirated content ») :
   /// dans les builds DISTRIBUÉS PAR UN STORE (Google Play TV, Amazon
-  /// Appstore — `PLAY_BUILD=true`), l'app est un LECTEUR « apporte ton
-  /// abonnement » : AUCUNE source n'est poussée par le panel. Le testeur du
-  /// store — comme n'importe quel utilisateur venu du store — ne voit que
-  /// les écrans « Ajouter une source » et charge lui-même sa propre liste.
-  /// C'est la posture sous laquelle les lecteurs IPTV génériques sont
-  /// publiés, et la seule compatible avec la règle n°2 du projet (« aucune
-  /// playlist pré-remplie ») du point de vue d'un réviseur de contenu.
-  /// Les builds SIDELOAD (distribution directe de l'exploitant) sont
-  /// inchangés : le modèle « tout géré par le revendeur » reste entier.
+  /// Appstore — `PLAY_BUILD=true`), l'app était un LECTEUR « apporte ton
+  /// abonnement » : AUCUNE source poussée par le panel.
   ///
-  /// Champ (et non const) UNIQUEMENT pour rester testable : `kIsPlayBuild`
-  /// est figé à la compilation, les tests ne peuvent pas le basculer.
+  /// DÉCISION DU PROPRIÉTAIRE (20/09/2026), réaffirmée deux fois après
+  /// avoir été prévenu du risque : « l'activation à distance doit être le
+  /// cœur du code — même sur le Play Store ». La source poussée par le
+  /// panel est donc chargée PARTOUT, build Play compris. Ce qui reste hors
+  /// du build Play, et qui est la partie que Google sanctionne le plus
+  /// sûrement : les offres, les prix, le bouton d'achat et le verrou de
+  /// licence (voir mac_activation_view, subscription_state). Le risque
+  /// résiduel — un examen qui verrait des chaînes arriver sans que
+  /// l'utilisateur les ait ajoutées — est connu du propriétaire ; un
+  /// réviseur avec une installation neuve ne reçoit rien, puisqu'aucun
+  /// revendeur n'a assigné de source à SON numéro.
+  ///
+  /// Le champ reste (et reste testable) : remettre `kIsPlayBuild` ici
+  /// suffit à revenir à la posture magasin stricte.
   @visibleForTesting
-  static bool storeBuild = kIsPlayBuild;
+  static bool storeBuild = false;
 
   /// Signal « le revendeur vient d'ASSIGNER / METTRE À JOUR une source pour
   /// CET appareil » (poussé en TEMPS RÉEL par le panel via le WebSocket).

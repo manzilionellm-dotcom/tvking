@@ -196,6 +196,7 @@
   "activateAtHomeDesc": "Comparte este identificador con tu distribuidor para que active tus canales a distancia.",
   "activateAppSectionTitle": "Activar la aplicación",
   "activateAppSectionDesc": "Elige tu oferta, envía tu número: lo activamos todo a distancia.",
+  "activateAppSectionDescStore": "Tu número abajo: tu revendedor activa tus canales a distancia. Pulsa Verificar una vez activado.",
   "activateChannelsSectionTitle": "Activar los canales",
   "activateChannelsSectionDesc": "¿Ya tienes un código de acceso? Introdúcelo para cargar tus canales.",
   "buttonCopy": "Copiar",

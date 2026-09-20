@@ -467,6 +467,7 @@
     "description": "Titre du bloc du haut : activation de l'abonnement app"
   },
   "activateAppSectionDesc": "Choisis ton offre, envoie ton numéro : on active tout à distance.",
+  "activateAppSectionDescStore": "Ton numéro ci-dessous : ton revendeur active tes chaînes à distance. Appuie sur Vérifier une fois activé.",
   "@activateAppSectionDesc": {
     "description": "Sous-titre du bloc activation de l'application"
   },

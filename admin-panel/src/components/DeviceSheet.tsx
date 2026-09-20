@@ -491,13 +491,13 @@ export function DeviceSheet({
                 }
               />
               <InfoRow label="Modèle" value={meta?.device_model || seed?.device_model || '—'} />
-              {/* BUILD MAGASIN (Play Store / Amazon) : ce build IGNORE les
-                  sources poussées d'ici. Le dire AVANT que le support pousse
-                  dans le vide — c'est arrivé au propriétaire (20/09/2026). */}
+              {/* BUILD MAGASIN (Play Store / Amazon) : reçoit les listes
+                  poussées d'ici (décision du 20/09/2026), mais n'affiche ni
+                  offres ni achat — c'est le support qui donne les tarifs. */}
               {meta?.store_build === true && (
                 <InfoRow
                   label="Distribution"
-                  value="Play Store — le client saisit son code lui-même (pas de source à distance)"
+                  value="Play Store — reçoit les listes ; pas d'offres ni d'achat dans l'app"
                 />
               )}
               <InfoRow
