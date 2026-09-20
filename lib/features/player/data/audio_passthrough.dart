@@ -62,8 +62,14 @@ abstract final class AudioPassthrough {
   static Future<List<String>> formats() async {
     if (!Platform.isAndroid) return const <String>[];
     try {
-      final List<Object?>? brut =
-          await _channel.invokeMethod<List<Object?>>('getAudioPassthrough');
+      // DEUX SECONDES, PAS UNE DE PLUS (20/09/2026). Le natif répond déjà
+      // « rien » au bout de 1,5 s s'il attend le service audio ; ce délai
+      // Dart est le filet au-dessus : quoi qu'il arrive côté Android, le
+      // lecteur reçoit une réponse et démarre. Un flux qui attend une
+      // sonde audio, c'est un client qui regarde une roue tourner.
+      final List<Object?>? brut = await _channel
+          .invokeMethod<List<Object?>>('getAudioPassthrough')
+          .timeout(const Duration(seconds: 2));
       return brut?.whereType<String>().toList(growable: false) ??
           const <String>[];
     } on Object catch (e) {

@@ -11,6 +11,8 @@ import android.media.AudioTrack
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -134,7 +136,7 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             // la sortie audio ACTUELLE accepte tels quels (HDMI, USB, ARC).
             // Noms au format `audio-spdif` de mpv. Liste vide = on décode
             // nous-mêmes, jamais de silence. Voir audio_passthrough.dart.
-            "getAudioPassthrough" -> result.success(audioPassthrough())
+            "getAudioPassthrough" -> audioPassthroughAsync(result)
             else -> result.notImplemented()
         }
     }
@@ -142,6 +144,37 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     // =====================================================================
     //  Passthrough audio (téléphone → ampli / barre de son)
     // =====================================================================
+    //  JAMAIS SUR LE FIL PRINCIPAL (20/09/2026). Un MethodChannel répond
+    //  sur le fil principal d'Android, et interroger la sortie audio
+    //  (isDirectPlaybackSupported, getDevices) passe par le service audio
+    //  du système — un appel binder qui, sur certains téléphones, peut
+    //  attendre le HAL audio plusieurs secondes. Cinq questions d'affilée
+    //  au mauvais moment (une radio qui joue, un ampli qui se réveille) et
+    //  Android affiche « The Few ne répond pas ». Photo du propriétaire le
+    //  lendemain de la mise à jour. La sonde tourne donc sur son propre
+    //  fil ; le fil principal ne fait que rendre la réponse. Et si la
+    //  sonde met plus de 1,5 s, on répond « rien » sans l'attendre : le
+    //  lecteur décode lui-même, comme avant. Jamais de silence, jamais de
+    //  gel.
+    private fun audioPassthroughAsync(result: MethodChannel.Result) {
+        val principal = Handler(Looper.getMainLooper())
+        var repondu = false
+        // Une seule réponse, quelle que soit la course entre la sonde et
+        // le délai : la première arrivée gagne, l'autre est ignorée.
+        fun repondre(valeur: List<String>) {
+            principal.post {
+                if (repondu) return@post
+                repondu = true
+                try { result.success(valeur) } catch (_: Throwable) {}
+            }
+        }
+        principal.postDelayed({ repondre(ArrayList()) }, 1500)
+        Thread({
+            val formats = try { audioPassthrough() } catch (_: Throwable) { ArrayList<String>() }
+            repondre(formats)
+        }, "tvking-audio-passthrough").apply { isDaemon = true }.start()
+    }
+
     //  La box le fait toute seule : Media3 demande à Android si la sortie
     //  accepte l'E-AC-3, l'AC-3, le DTS, et les lui envoie sans les
     //  décoder. Le lecteur du téléphone (mpv) ne pose pas cette question :
