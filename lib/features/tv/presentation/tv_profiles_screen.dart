@@ -136,11 +136,16 @@ class _TvProfilesScreenState extends State<TvProfilesScreen> {
                                         style:
                                             const TextStyle(fontSize: 26)),
                                     const SizedBox(width: 14),
-                                    Text(tvProfileDisplayName(context, p),
-                                        style: TextStyle(
-                                            fontSize: TvDimens.title,
-                                            fontWeight: FontWeight.w700,
-                                            color: fg)),
+                                    Flexible(
+                                      child: Text(
+                                          tvProfileDisplayName(context, p),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                              fontSize: TvDimens.title,
+                                              fontWeight: FontWeight.w700,
+                                              color: fg)),
+                                    ),
                                     // Cadenas / interdit : dit AVANT le clic
                                     // qu'un code sera demandé, ou que le
                                     // profil est fermé.

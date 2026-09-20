@@ -337,11 +337,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.family_restroom_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsFamily,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsFamily,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -376,11 +380,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.card_giftcard_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsInvite,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsInvite,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -414,11 +422,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.people_alt_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsProfiles,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsProfiles,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -454,11 +466,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.playlist_play_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsSources,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsSources,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -493,11 +509,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                       Icon(Icons.collections_bookmark_rounded,
                           color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsCollections,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsCollections,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -532,11 +552,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                       Icon(Icons.download_for_offline_rounded,
                           color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsDownloads,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsDownloads,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -572,11 +596,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.palette_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.themeChooseTitle,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.themeChooseTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -611,11 +639,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.tv_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsDisplay,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsDisplay,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -652,11 +684,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.language_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsLanguage,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsLanguage,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -690,11 +726,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.place_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsWeather,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsWeather,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -730,11 +770,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.lightbulb_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvHueTitle,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvHueTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -770,11 +814,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.child_care_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsParental,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsParental,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -809,11 +857,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.shield_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsShield,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsShield,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -847,11 +899,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.bedtime_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsSleep,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsSleep,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -887,11 +943,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.system_update_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.aboutCheckUpdates,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.aboutCheckUpdates,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -934,11 +994,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.info_outline_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsAbout,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsAbout,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -972,11 +1036,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.query_stats_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsStats,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsStats,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -1012,11 +1080,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.support_agent_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsHelp,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsHelp,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -1050,11 +1122,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.gavel_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsLegal,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsLegal,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -1091,11 +1167,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.shield_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsBlackBox,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsBlackBox,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
@@ -1130,11 +1210,15 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     children: <Widget>[
                       Icon(Icons.bug_report_rounded, color: fg, size: 20),
                       const SizedBox(width: 12),
-                      Text(context.l10n.tvSettingsDiagnostics,
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: fg)),
+                      Flexible(
+                        child: Text(context.l10n.tvSettingsDiagnostics,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: fg)),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],

@@ -130,11 +130,15 @@ class _TvGuideGridScreenState extends State<TvGuideGridScreen> {
           padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
           child: Row(
             children: <Widget>[
-              Text(context.l10n.tvNavGuide.toUpperCase(),
-                  style: TvTokens.ui(13,
-                      weight: FontWeight.w800,
-                      color: TvTokens.mutedDim,
-                      spacing: 2)),
+              Flexible(
+                child: Text(context.l10n.tvNavGuide.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(13,
+                        weight: FontWeight.w800,
+                        color: TvTokens.mutedDim,
+                        spacing: 2)),
+              ),
               const Spacer(),
               // Vue GRILLE HORAIRE (style câble US) : chaînes × heures.
               TvFocusBuilder(

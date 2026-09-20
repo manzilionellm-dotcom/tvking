@@ -395,6 +395,8 @@ class _DownloadRow extends StatelessWidget {
                             color: TvTokens.text)),
                     const SizedBox(height: 4),
                     Text(s.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 14, color: TvTokens.muted)),
                     if (showBar) ...<Widget>[
                       const SizedBox(height: 8),

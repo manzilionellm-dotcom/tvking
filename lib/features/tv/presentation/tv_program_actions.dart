@@ -120,6 +120,8 @@ class _ProgramActionsDialog extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 '${channel.cleanName}  ·  ${program.timeRangeShort}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(15, color: TvTokens.mutedDim),
               ),

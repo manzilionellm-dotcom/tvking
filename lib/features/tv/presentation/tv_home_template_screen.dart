@@ -148,6 +148,8 @@ class _TemplateCard extends StatelessWidget {
                 children: <Widget>[
                   Expanded(
                     child: Text(_templateLabel(context, template),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TvTokens.ui(TvDimens.title,
                             weight: FontWeight.w700, color: TvTokens.text)),
                   ),

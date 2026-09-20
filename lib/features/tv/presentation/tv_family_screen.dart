@@ -623,9 +623,13 @@ class _TvFamilyScreenState extends State<TvFamilyScreen> {
             children: <Widget>[
               Icon(icon, color: fg, size: 24),
               const SizedBox(width: 10),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w800, color: fg)),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 17, fontWeight: FontWeight.w800, color: fg)),
+              ),
             ],
           ),
         );

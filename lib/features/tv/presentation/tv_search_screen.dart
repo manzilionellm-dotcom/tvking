@@ -710,6 +710,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         padding: const EdgeInsets.only(left: 2, bottom: 8),
         child: Text(
           t.toUpperCase(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
@@ -1139,6 +1141,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         children: <Widget>[
           Text(
             context.l10n.tvRecentSearches,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -1189,9 +1193,15 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         children: <Widget>[
           Icon(icon, size: 18, color: TvTokens.muted),
           const SizedBox(width: 8),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.w600, color: fg)),
+          // Flexible : une recherche mémorisée peut être longue — le Wrap
+          // borne la pastille, le texte se coupe en « … ».
+          Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w600, color: fg)),
+          ),
         ],
       ),
     );

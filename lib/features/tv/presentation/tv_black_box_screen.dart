@@ -438,11 +438,15 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
           children: <Widget>[
             const Icon(Icons.shield_rounded, color: TvTokens.gold, size: 34),
             const SizedBox(width: 12),
-            Text(context.l10n.tvBlackBoxTitle,
-                style: const TextStyle(
-                    fontSize: TvDimens.displayS,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text)),
+            Flexible(
+              child: Text(context.l10n.tvBlackBoxTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: TvDimens.displayS,
+                      fontWeight: FontWeight.w800,
+                      color: TvTokens.text)),
+            ),
           ],
         ),
         const SizedBox(height: 4),
@@ -771,14 +775,18 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                 children: <Widget>[
                   Icon(Icons.play_circle_fill_rounded, color: fg, size: 26),
                   const SizedBox(width: 12),
-                  Text(
-                    _diagRunning
-                        ? context.l10n.tvBlackBoxDiagRunning
-                        : context.l10n.tvBlackBoxDiagNow,
-                    style: TextStyle(
-                        fontSize: TvDimens.title,
-                        fontWeight: FontWeight.w700,
-                        color: fg),
+                  Flexible(
+                    child: Text(
+                      _diagRunning
+                          ? context.l10n.tvBlackBoxDiagRunning
+                          : context.l10n.tvBlackBoxDiagNow,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: TvDimens.title,
+                          fontWeight: FontWeight.w700,
+                          color: fg),
+                    ),
                   ),
                 ],
               ),

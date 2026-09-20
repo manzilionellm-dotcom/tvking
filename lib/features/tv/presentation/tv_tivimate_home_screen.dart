@@ -658,6 +658,8 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
             child: Text(context.l10n.tvTmGroups,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                     color: _tmText3,
                     fontSize: 14,
@@ -845,13 +847,17 @@ class _TvTivimateHomeScreenState extends State<TvTivimateHomeScreen> {
   Widget _recentRow(List<Channel> recents) {
     return Row(
       children: <Widget>[
-        Text(
-          context.l10n.tvRailRecent.toUpperCase(),
-          style: const TextStyle(
-              color: _tmText3,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2),
+        Flexible(
+          child: Text(
+            context.l10n.tvRailRecent.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+                color: _tmText3,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2),
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(

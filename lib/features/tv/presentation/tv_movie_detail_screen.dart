@@ -372,35 +372,43 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                 // ----- ACTIONS (D-pad) — focus initial sur ▶ Lecture -----
                 Row(
                   children: <Widget>[
-                    _ActionButton(
-                      icon: Icons.play_arrow_rounded,
-                      label: resume != null
-                          ? context.l10n
-                              .tvResumeAt(VodInfo.formatClock(resume.position))
-                          : context.l10n.tvWatch,
-                      primary: true,
-                      autofocus: true,
-                      onSelect: _play,
+                    // Flexible : quatre boutons sur un canevas étroit — les
+                    // libellés se coupent en « … » au lieu de déborder.
+                    Flexible(
+                      child: _ActionButton(
+                        icon: Icons.play_arrow_rounded,
+                        label: resume != null
+                            ? context.l10n.tvResumeAt(
+                                VodInfo.formatClock(resume.position))
+                            : context.l10n.tvWatch,
+                        primary: true,
+                        autofocus: true,
+                        onSelect: _play,
+                      ),
                     ),
                     if (resume != null) ...<Widget>[
                       const SizedBox(width: 12),
-                      _ActionButton(
-                        icon: Icons.replay_rounded,
-                        label: context.l10n.tvStartOver,
-                        onSelect: () => _play(fromStart: true),
+                      Flexible(
+                        child: _ActionButton(
+                          icon: Icons.replay_rounded,
+                          label: context.l10n.tvStartOver,
+                          onSelect: () => _play(fromStart: true),
+                        ),
                       ),
                     ],
                     const SizedBox(width: 12),
-                    _ActionButton(
-                      icon: inList ? Icons.check_rounded : Icons.add_rounded,
-                      label: inList
-                          ? context.l10n.tvInMyList
-                          : context.l10n.tvMyList,
-                      onSelect: () =>
-                          VodWatchlistRepository.instance.toggle(m),
+                    Flexible(
+                      child: _ActionButton(
+                        icon: inList ? Icons.check_rounded : Icons.add_rounded,
+                        label: inList
+                            ? context.l10n.tvInMyList
+                            : context.l10n.tvMyList,
+                        onSelect: () =>
+                            VodWatchlistRepository.instance.toggle(m),
+                      ),
                     ),
                     const SizedBox(width: 12),
-                    _DownloadButton(movie: m),
+                    Flexible(child: _DownloadButton(movie: m)),
                   ],
                 ),
                 // ----- SIMILAIRES (même catégorie, depuis le cache) -----
@@ -411,6 +419,8 @@ class _TvMovieDetailScreenState extends State<TvMovieDetailScreen> {
                   const SizedBox(height: 20),
                   Text(
                     context.l10n.tvSimilar.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TvTokens.ui(12,
                         weight: FontWeight.w700,
                         color: TvTokens.mutedDim,
@@ -612,9 +622,13 @@ class _ActionButton extends StatelessWidget {
             children: <Widget>[
               Icon(icon, color: fg, size: 22),
               const SizedBox(width: 8),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w800, color: fg)),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800, color: fg)),
+              ),
             ],
           ),
         );

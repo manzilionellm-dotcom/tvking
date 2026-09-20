@@ -148,12 +148,18 @@ class _TvWhoWatchingScreenState extends State<TvWhoWatchingScreen> {
                         const Icon(Icons.play_circle_fill_rounded,
                             size: 20, color: TvTokens.goldBright),
                         const SizedBox(width: 10),
-                        Text(
-                          context.l10n.tvFamilyBusyBanner(_busyName!),
-                          style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: TvTokens.goldBright),
+                        // Flexible : le prénom du proche est libre — le bandeau
+                        // se coupe en « … » au lieu de déborder de l'écran.
+                        Flexible(
+                          child: Text(
+                            context.l10n.tvFamilyBusyBanner(_busyName!),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: TvTokens.goldBright),
+                          ),
                         ),
                       ],
                     ),

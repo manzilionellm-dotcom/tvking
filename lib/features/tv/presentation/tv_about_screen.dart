@@ -171,6 +171,8 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
         children: <Widget>[
           Text(
             context.l10n.tvAboutVersionBuildLabel.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -331,12 +333,16 @@ class _TvAboutScreenState extends State<TvAboutScreen> {
                       Icon(Icons.cleaning_services_rounded,
                           color: fg, size: 26),
                       const SizedBox(width: 12),
-                      Text(
-                        context.l10n.tvAboutClearCache,
-                        style: TextStyle(
-                          fontSize: TvDimens.title,
-                          fontWeight: FontWeight.w700,
-                          color: fg,
+                      Flexible(
+                        child: Text(
+                          context.l10n.tvAboutClearCache,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: fg,
+                          ),
                         ),
                       ),
                     ],

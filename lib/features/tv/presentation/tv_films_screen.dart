@@ -752,38 +752,46 @@ class _HeroBanner extends StatelessWidget {
   /// deux rendus pour garder un comportement de focus identique.
   Widget _actions(BuildContext context) => Row(
         children: <Widget>[
-          _HeroButton(
-            icon: resumeRemaining != null
-                ? Icons.play_arrow_rounded
-                : Icons.play_arrow_rounded,
-            // REPRISE PRÉCISE (premium) : « Reprendre · 23 min » au lieu d'un
-            // simple « Regarder » quand la vedette est un film entamé.
-            label: resumeRemaining != null
-                ? context.l10n.tvResumeMinutes(resumeRemaining!)
-                : context.l10n.tvWatch,
-            autofocus: autofocus,
-            primary: true,
-            onSelect: onPlay,
+          // Flexible : quatre boutons sur un canevas étroit — les libellés
+          // se coupent en « … » au lieu de déborder du rang.
+          Flexible(
+            child: _HeroButton(
+              icon: resumeRemaining != null
+                  ? Icons.play_arrow_rounded
+                  : Icons.play_arrow_rounded,
+              // REPRISE PRÉCISE (premium) : « Reprendre · 23 min » au lieu
+              // d'un simple « Regarder » quand la vedette est un film entamé.
+              label: resumeRemaining != null
+                  ? context.l10n.tvResumeMinutes(resumeRemaining!)
+                  : context.l10n.tvWatch,
+              autofocus: autofocus,
+              primary: true,
+              onSelect: onPlay,
+            ),
           ),
           const SizedBox(width: 12),
           // « Surprends-moi » : un film choisi pour toi, lancé tout de suite.
-          _HeroButton(
-            icon: Icons.casino_rounded,
-            label: context.l10n.tvSurprise,
-            primary: false,
-            onSelect: onSurprise,
+          Flexible(
+            child: _HeroButton(
+              icon: Icons.casino_rounded,
+              label: context.l10n.tvSurprise,
+              primary: false,
+              onSelect: onSurprise,
+            ),
           ),
           const SizedBox(width: 12),
           // « Ma Liste » : ajoute/retire le film vedette (par profil).
-          _HeroButton(
-            icon: inList ? Icons.check_rounded : Icons.add_rounded,
-            label: inList ? context.l10n.tvInMyList : context.l10n.tvMyList,
-            primary: false,
-            onSelect: onToggleList,
+          Flexible(
+            child: _HeroButton(
+              icon: inList ? Icons.check_rounded : Icons.add_rounded,
+              label: inList ? context.l10n.tvInMyList : context.l10n.tvMyList,
+              primary: false,
+              onSelect: onToggleList,
+            ),
           ),
           const SizedBox(width: 12),
           // « Télécharger » : garde le film pour le regarder hors-ligne.
-          _HeroDownloadButton(movie: movie),
+          Flexible(child: _HeroDownloadButton(movie: movie)),
         ],
       );
 
@@ -1060,11 +1068,15 @@ class _HeroButton extends StatelessWidget {
             children: <Widget>[
               Icon(icon, color: fg, size: 22),
               const SizedBox(width: 8),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: fg)),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: fg)),
+              ),
             ],
           ),
         );

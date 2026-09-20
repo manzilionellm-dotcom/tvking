@@ -310,6 +310,8 @@ class _ValueStrip extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 3),
               child: Text(label!.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TvTokens.ui(10,
                       weight: FontWeight.w700,
                       color: TvTokens.gold,

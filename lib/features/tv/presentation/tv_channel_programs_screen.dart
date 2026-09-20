@@ -299,6 +299,8 @@ class _ProgramRow extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       '${program.timeRangeShort}  ·  ${program.durationLabel}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: TvDimens.label, color: TvTokens.mutedDim),
                     ),
@@ -438,6 +440,9 @@ class _StateChip extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: TextStyle(
                 color: fg,
                 fontSize: 11,

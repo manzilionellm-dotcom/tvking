@@ -127,11 +127,15 @@ class _TvCollectionsScreenState extends State<TvCollectionsScreen> {
                               Icon(Icons.collections_bookmark_rounded,
                                   color: fg, size: 26),
                               const SizedBox(width: 12),
-                              Text(c.name,
-                                  style: TextStyle(
-                                      fontSize: TvDimens.title,
-                                      fontWeight: FontWeight.w700,
-                                      color: fg)),
+                              Flexible(
+                                child: Text(c.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: TvDimens.title,
+                                        fontWeight: FontWeight.w700,
+                                        color: fg)),
+                              ),
                               const Spacer(),
                               Text(context.l10n.channelCount(c.ids.length),
                                   style: TextStyle(
@@ -192,11 +196,15 @@ class _TvCollectionsScreenState extends State<TvCollectionsScreen> {
                                           ? fg
                                           : TvTokens.muted),
                                   const SizedBox(width: 6),
-                                  Text(n,
-                                      style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          color: fg)),
+                                  Flexible(
+                                    child: Text(n,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: fg)),
+                                  ),
                                 ],
                               ),
                             );
@@ -443,6 +451,8 @@ class _TvCollectionDetailScreenState
 
   Widget _section(String t) => Text(
         t,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,

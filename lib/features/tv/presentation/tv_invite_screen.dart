@@ -726,9 +726,13 @@ class _FlowScaffold extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 26, fontWeight: FontWeight.w800, color: TvTokens.text)),
+          Flexible(
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 26, fontWeight: FontWeight.w800, color: TvTokens.text)),
+          ),
           const Spacer(),
           const TvLogo(width: 78),
         ]),
@@ -776,10 +780,14 @@ class _HubOption extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: 21, fontWeight: FontWeight.w800, color: fg)),
                   const SizedBox(height: 3),
                   Text(subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 14, color: TvTokens.muted)),
                 ],
               ),
@@ -857,8 +865,13 @@ class _BigButton extends StatelessWidget {
           child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
             Icon(icon, color: fg, size: 22),
             const SizedBox(width: 10),
-            Text(label,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: fg)),
+            Flexible(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w700, color: fg)),
+            ),
           ]),
         );
       },

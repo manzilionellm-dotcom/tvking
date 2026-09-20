@@ -267,6 +267,8 @@ class TvStatsScreen extends StatelessWidget {
         SizedBox(
           width: 90,
           child: Text(_dur(context, c.minutes),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
               style: const TextStyle(
                   fontSize: 15,

@@ -71,9 +71,13 @@ class TvWhatsAppQr extends StatelessWidget {
             const Icon(Icons.qr_code_scanner_rounded,
                 color: TvTokens.goldBright, size: 22),
             const SizedBox(width: 10),
-            Text(context.l10n.tvScanToActivate,
-                style: TvTokens.ui(18,
-                    weight: FontWeight.w700, color: TvTokens.goldBright)),
+            Flexible(
+              child: Text(context.l10n.tvScanToActivate,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.ui(18,
+                      weight: FontWeight.w700, color: TvTokens.goldBright)),
+            ),
           ],
         ),
         const SizedBox(height: 6),
@@ -136,6 +140,8 @@ class TvSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text.toUpperCase(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TvTokens.ui(10.5, weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2.8),
       );
 }
@@ -270,6 +276,8 @@ class TvCtaButton extends StatelessWidget {
             ],
           ),
           child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TvTokens.ui(TvDimens.title,
                   weight: FontWeight.w600, color: const Color(0xFF1A1206))),
         );
@@ -307,7 +315,11 @@ class TvEmptyState extends StatelessWidget {
             child: Icon(icon, color: TvTokens.gold, size: 38),
           ),
           const SizedBox(height: 22),
-          Text(title, style: TvTokens.display(34, color: TvTokens.text)),
+          Text(title,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.display(34, color: TvTokens.text)),
           const SizedBox(height: 10),
           SizedBox(
             width: 460,
@@ -453,6 +465,8 @@ Future<bool?> showTvConfirm(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Text(title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                   style: TvTokens.display(24, color: TvTokens.text)),
               if (message != null) ...<Widget>[
@@ -521,6 +535,8 @@ Future<void> showTvInfo(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Text(title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                   style: TvTokens.display(24, color: TvTokens.text)),
               const SizedBox(height: 10),

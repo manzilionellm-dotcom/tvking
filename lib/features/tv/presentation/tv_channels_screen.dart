@@ -561,6 +561,8 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
                 // + « À suivre » — même appariement que la grille TiviMate,
                 // replis en cascade : EPG courte du panel, puis catégorie.
                 Text(context.l10n.tvEventsHeader,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TvTokens.ui(12,
                         weight: FontWeight.w700,
                         color: TvTokens.mutedDim,
@@ -645,6 +647,8 @@ class _TvChannelsScreenState extends State<TvChannelsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 2, 6, 10),
             child: Text(title.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TvTokens.ui(12,
                     weight: FontWeight.w700,
                     color: TvTokens.mutedDim,

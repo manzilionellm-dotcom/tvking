@@ -35,12 +35,16 @@ class TvShieldScreen extends StatelessWidget {
                     const Icon(Icons.shield_rounded,
                         color: TvTokens.goldBright, size: 30),
                     const SizedBox(width: 12),
-                    Text(
-                      context.l10n.tvShieldTitle,
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        color: TvTokens.text,
+                    Flexible(
+                      child: Text(
+                        context.l10n.tvShieldTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          color: TvTokens.text,
+                        ),
                       ),
                     ),
                     const Spacer(),

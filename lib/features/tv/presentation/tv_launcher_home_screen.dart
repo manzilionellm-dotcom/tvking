@@ -619,11 +619,15 @@ class _Panel extends StatelessWidget {
             children: <Widget>[
               Icon(icon, color: TvTokens.gold, size: 16),
               const SizedBox(width: 6),
-              Text(title.toUpperCase(),
-                  style: TvTokens.ui(12,
-                      weight: FontWeight.w700,
-                      color: TvTokens.mutedDim,
-                      spacing: 1.4)),
+              Flexible(
+                child: Text(title.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(12,
+                        weight: FontWeight.w700,
+                        color: TvTokens.mutedDim,
+                        spacing: 1.4)),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -911,6 +915,8 @@ class _NavTileState extends State<_NavTile> {
                   color: focused ? TvTokens.goldBright : TvTokens.text),
               const SizedBox(height: 8),
               Text(widget.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TvTokens.ui(TvDimens.body,
                       weight: FontWeight.w700,
                       color: focused ? TvTokens.text : TvTokens.muted)),
@@ -1049,6 +1055,8 @@ class _RecentMoviesRailState extends State<_RecentMoviesRail> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(context.l10n.tvLauncherLatestMovies,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TvTokens.ui(12,
                 weight: FontWeight.w700,
                 color: TvTokens.mutedDim,
@@ -1219,6 +1227,8 @@ class _ResumeRailState extends State<_ResumeRail> {
           // Même clé l10n que la rangée « Reprendre » du Direct, même style
           // de titre que « DERNIERS FILMS AJOUTÉS » juste au-dessus.
           Text(context.l10n.resumeEyebrow,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TvTokens.ui(12,
                   weight: FontWeight.w700,
                   color: TvTokens.mutedDim,

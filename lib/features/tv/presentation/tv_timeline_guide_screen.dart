@@ -288,12 +288,16 @@ class _TvTimelineGuideScreenState extends State<TvTimelineGuideScreen> {
                 width: _chanColW,
                 child: Row(
                   children: <Widget>[
-                    Text(
-                      context.l10n.tvGuideGridTitle,
-                      style: TvTokens.ui(13,
-                          weight: FontWeight.w800,
-                          color: TvTokens.gold,
-                          spacing: 1.6),
+                    Flexible(
+                      child: Text(
+                        context.l10n.tvGuideGridTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvTokens.ui(13,
+                            weight: FontWeight.w800,
+                            color: TvTokens.gold,
+                            spacing: 1.6),
+                      ),
                     ),
                     const Spacer(),
                     // Décalage du temps par BOUTONS visibles (les flèches sont

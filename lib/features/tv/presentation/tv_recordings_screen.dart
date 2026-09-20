@@ -162,6 +162,8 @@ class _SectionHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
       child: Text(text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
               fontSize: TvDimens.label,
               fontWeight: FontWeight.w800,

@@ -541,19 +541,25 @@ class _SeriesHero extends StatelessWidget {
                       const SizedBox(height: 18),
                       Row(
                         children: <Widget>[
-                          _SeriesHeroButton(
-                            icon: Icons.play_arrow_rounded,
-                            label: context.l10n.tvViewSeries,
-                            autofocus: autofocus,
-                            primary: true,
-                            onSelect: onOpen,
+                          // Flexible : sur un canevas étroit, le libellé se
+                          // coupe en « … » au lieu de déborder du rang.
+                          Flexible(
+                            child: _SeriesHeroButton(
+                              icon: Icons.play_arrow_rounded,
+                              label: context.l10n.tvViewSeries,
+                              autofocus: autofocus,
+                              primary: true,
+                              onSelect: onOpen,
+                            ),
                           ),
                           const SizedBox(width: 12),
-                          _SeriesHeroButton(
-                            icon: Icons.casino_rounded,
-                            label: context.l10n.tvSurprise,
-                            primary: false,
-                            onSelect: onSurprise,
+                          Flexible(
+                            child: _SeriesHeroButton(
+                              icon: Icons.casino_rounded,
+                              label: context.l10n.tvSurprise,
+                              primary: false,
+                              onSelect: onSurprise,
+                            ),
                           ),
                         ],
                       ),
@@ -640,9 +646,13 @@ class _SeriesHeroButton extends StatelessWidget {
             children: <Widget>[
               Icon(icon, color: fg, size: 22),
               const SizedBox(width: 8),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w800, color: fg)),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800, color: fg)),
+              ),
             ],
           ),
         );
@@ -1408,14 +1418,18 @@ class _SeasonDownloadButton extends StatelessWidget {
                   size: 22,
                   color: fg),
               const SizedBox(width: 10),
-              Text(
-                done
-                    ? context.l10n.tvDlSeasonDone
-                    : context.l10n.tvDlSeason(remaining),
-                style: TextStyle(
-                    fontSize: TvDimens.title,
-                    fontWeight: FontWeight.w700,
-                    color: fg),
+              Flexible(
+                child: Text(
+                  done
+                      ? context.l10n.tvDlSeasonDone
+                      : context.l10n.tvDlSeason(remaining),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: TvDimens.title,
+                      fontWeight: FontWeight.w700,
+                      color: fg),
+                ),
               ),
             ],
           ),

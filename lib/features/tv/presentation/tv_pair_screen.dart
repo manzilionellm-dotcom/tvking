@@ -194,9 +194,13 @@ class _TvPairScreenState extends State<TvPairScreen> {
                     strokeWidth: 2.5, color: TvTokens.gold),
               ),
               const SizedBox(width: 14),
-              Text(context.l10n.tvPairConnecting,
-                  style: TvTokens.ui(18,
-                      weight: FontWeight.w700, color: TvTokens.text)),
+              Flexible(
+                child: Text(context.l10n.tvPairConnecting,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(18,
+                        weight: FontWeight.w700, color: TvTokens.text)),
+              ),
             ],
           ),
         ];
@@ -214,8 +218,12 @@ class _TvPairScreenState extends State<TvPairScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
-              Text('${context.l10n.tvPairCodeIs}  ',
-                  style: TvTokens.ui(15, color: TvTokens.muted)),
+              Flexible(
+                child: Text('${context.l10n.tvPairCodeIs}  ',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(15, color: TvTokens.muted)),
+              ),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -240,8 +248,12 @@ class _TvPairScreenState extends State<TvPairScreen> {
                     strokeWidth: 2, color: TvTokens.mutedDim),
               ),
               const SizedBox(width: 12),
-              Text(context.l10n.tvPairWaiting,
-                  style: TvTokens.ui(15, color: TvTokens.mutedDim)),
+              Flexible(
+                child: Text(context.l10n.tvPairWaiting,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(15, color: TvTokens.mutedDim)),
+              ),
             ],
           ),
         ];

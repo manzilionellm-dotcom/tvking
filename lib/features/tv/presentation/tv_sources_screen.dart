@@ -29,11 +29,15 @@ class TvSourcesScreen extends StatelessWidget {
       children: <Widget>[
         Row(
           children: <Widget>[
-            Text(context.l10n.tvSourcesTitle,
-                style: TextStyle(
-                    fontSize: TvDimens.displayS,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text)),
+            Flexible(
+              child: Text(context.l10n.tvSourcesTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: TvDimens.displayS,
+                      fontWeight: FontWeight.w800,
+                      color: TvTokens.text)),
+            ),
             const Spacer(),
             // UNE SEULE porte d'entrée : l'aiguillage intelligent devine
             // tout seul si le lien collé est M3U ou Xtream — le client n'a
@@ -141,7 +145,10 @@ class _SourceRow extends StatelessWidget {
 
     final int? id = playlist.id;
     // Playlist pas encore enregistrée : rien à compter, on montre ce qu'on a.
-    if (id == null) return Text(rendu(playlist.channelCount), style: style);
+    if (id == null) {
+      return Text(rendu(playlist.channelCount),
+          maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
+    }
 
     return FutureBuilder<int>(
       // Le compte est relancé à chaque reconstruction de la rangée. C'est
@@ -154,7 +161,8 @@ class _SourceRow extends StatelessWidget {
       // vide qui ferait clignoter la ligne.
       initialData: playlist.channelCount,
       builder: (BuildContext _, AsyncSnapshot<int> snap) =>
-          Text(rendu(snap.data ?? playlist.channelCount), style: style),
+          Text(rendu(snap.data ?? playlist.channelCount),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
     );
   }
 

@@ -1567,6 +1567,8 @@ class _ResumeRail extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(context.l10n.resumeEyebrow,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TvTokens.ui(13,
                     weight: FontWeight.w800,
                     color: TvTokens.mutedDim,
@@ -1597,6 +1599,8 @@ class _ResumeRail extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
           child: Text(context.l10n.resumeEyebrow,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TvTokens.ui(13,
                   weight: FontWeight.w800,
                   color: TvTokens.mutedDim,
@@ -1657,6 +1661,8 @@ class _ForYouRail extends StatelessWidget {
           // Titre via la clé l10n existante (« Pour vous » / « For you »), au
           // MÊME style d'eyebrow que « Reprendre ».
           child: Text(context.l10n.tvLiveForYou,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TvTokens.ui(13,
                   weight: FontWeight.w800,
                   color: TvTokens.mutedDim,
@@ -2358,11 +2364,17 @@ class _ActionPill extends StatelessWidget {
             children: <Widget>[
               Icon(icon, size: 20, color: fg),
               const SizedBox(width: 9),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: TvDimens.titleS,
-                      fontWeight: FontWeight.w700,
-                      color: fg)),
+              // Flexible : le Wrap borne la largeur, le libellé se coupe en
+              // « … » au lieu de faire déborder la pilule.
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: TvDimens.titleS,
+                        fontWeight: FontWeight.w700,
+                        color: fg)),
+              ),
             ],
           ),
         );
@@ -2443,6 +2455,8 @@ class _ExpiringRail extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
           child: Text(context.l10n.tvExpiringSoon.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TvTokens.ui(13,
                   weight: FontWeight.w800,
                   color: TvTokens.mutedDim,

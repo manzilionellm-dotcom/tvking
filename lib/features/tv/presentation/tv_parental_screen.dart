@@ -154,11 +154,15 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                   children: <Widget>[
                     Icon(Icons.lock_rounded, color: TvTokens.muted, size: 26),
                     const SizedBox(width: 12),
-                    Text(context.l10n.tvParentalPinTitle,
-                        style: TextStyle(
-                            fontSize: TvDimens.title,
-                            fontWeight: FontWeight.w700,
-                            color: TvTokens.text)),
+                    Flexible(
+                      child: Text(context.l10n.tvParentalPinTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: TvDimens.title,
+                              fontWeight: FontWeight.w700,
+                              color: TvTokens.text)),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),

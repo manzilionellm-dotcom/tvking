@@ -81,11 +81,15 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
         if (tickerItems.isNotEmpty) const SizedBox(height: 16),
         Row(
           children: <Widget>[
-            Text(context.l10n.tvMyTeams,
-                style: TextStyle(
-                    fontSize: TvDimens.displayS,
-                    fontWeight: FontWeight.w800,
-                    color: TvTokens.text)),
+            Flexible(
+              child: Text(context.l10n.tvMyTeams,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: TvDimens.displayS,
+                      fontWeight: FontWeight.w800,
+                      color: TvTokens.text)),
+            ),
             const Spacer(),
             _PillButton(
                 icon: Icons.add_rounded,
@@ -349,6 +353,8 @@ class _MatchCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Text(title.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TvTokens.ui(12,
                   weight: FontWeight.w700, color: TvTokens.mutedDim, spacing: 1.2)),
           const SizedBox(height: 12),
@@ -464,11 +470,17 @@ class _TvPredictionRowState extends State<_TvPredictionRow> {
       padding: const EdgeInsets.only(top: 12),
       child: Row(
         children: <Widget>[
-          Text(
-            open
-                ? context.l10n.sportPredictTitle
-                : context.l10n.sportPredictClosed,
-            style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+          // Flexible : la carte fait une demi-largeur — le libellé cède la
+          // place aux trois boutons au lieu de faire déborder le rang.
+          Flexible(
+            child: Text(
+              open
+                  ? context.l10n.sportPredictTitle
+                  : context.l10n.sportPredictClosed,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+            ),
           ),
           const SizedBox(width: 12),
           for (final Pick p in Pick.values) ...<Widget>[

@@ -346,6 +346,8 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
                               Text(context.l10n.tvQuickAccess,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TvTokens.ui(TvDimens.label,
                                       weight: FontWeight.w600, color: _rTitle)),
                               const SizedBox(height: 8),
@@ -1030,6 +1032,8 @@ class _LiveFavoritesRailState extends State<_LiveFavoritesRail> {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Text(context.l10n.tvFavoritesLive,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TvTokens.ui(TvDimens.title,
                 weight: FontWeight.w600, color: _rTitle)),
         const SizedBox(height: 8),

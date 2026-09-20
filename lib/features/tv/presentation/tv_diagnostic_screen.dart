@@ -464,10 +464,14 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
                   const SizedBox(height: 12),
                   Row(
                     children: <Widget>[
-                      Text(
-                        context.l10n.tvDiagBackToQuit,
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 16),
+                      Flexible(
+                        child: Text(
+                          context.l10n.tvDiagBackToQuit,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 16),
+                        ),
                       ),
                       const Spacer(),
                       // Sonde lecteur (5) : mini-vue native montée seulement

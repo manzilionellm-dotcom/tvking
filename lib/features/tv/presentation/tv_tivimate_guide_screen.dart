@@ -313,12 +313,16 @@ class _TvTivimateGuideScreenState extends State<TvTivimateGuideScreen> {
                       width: _chanColW,
                       child: Row(
                         children: <Widget>[
-                          Text(
-                            _dateLabel(context, DateTime.now()),
-                            style: const TextStyle(
-                                color: _tmAccent,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700),
+                          Flexible(
+                            child: Text(
+                              _dateLabel(context, DateTime.now()),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: _tmAccent,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700),
+                            ),
                           ),
                           const Spacer(),
                           _ShiftChip(

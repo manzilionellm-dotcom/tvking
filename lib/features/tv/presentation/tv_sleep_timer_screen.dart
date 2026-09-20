@@ -59,12 +59,16 @@ class TvSleepTimerScreen extends StatelessWidget {
                         const Icon(Icons.bedtime_rounded,
                             color: TvTokens.gold, size: 24),
                         const SizedBox(width: 12),
-                        Text(
-                          context.l10n.tvSleepCountdown(t.remainingLabel),
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: TvTokens.gold,
+                        Flexible(
+                          child: Text(
+                            context.l10n.tvSleepCountdown(t.remainingLabel),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: TvTokens.gold,
+                            ),
                           ),
                         ),
                       ],
