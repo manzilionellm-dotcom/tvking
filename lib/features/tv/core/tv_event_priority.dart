@@ -191,3 +191,72 @@ int prioriteEvenement(TypeEvenement type) {
       return 0;
   }
 }
+
+// ---------------------------------------------------------
+//  LE DERNIER APPEL À 5 MINUTES (21/09/2026)
+// ---------------------------------------------------------
+//  Demande du propriétaire : « active des petites notifications dans
+//  5 min : le journal et d'autres matchs importants ».
+//
+//  Le rappel de 30 minutes (match) ou 10 minutes (journal) prévient
+//  TÔT : on a le temps de s'installer. Mais il passe une fois, douze
+//  secondes, et une demi-heure plus tard on a oublié. D'où un SECOND
+//  rappel, court, à cinq minutes du début : le dernier appel. Seulement
+//  pour ce qui compte — un match, un journal. Une émission ordinaire
+//  garde son unique rappel de 10 minutes : deux bannières pour un
+//  documentaire, ce serait du bruit, et le bruit tue les rappels.
+//
+//  Chaque étape s'annonce UNE fois par émission : la clé de
+//  déduplication porte l'étape (voir tv_program_reminders.dart).
+// ---------------------------------------------------------
+
+/// Les deux étapes d'un rappel.
+enum EtapeRappel {
+  /// Le rappel d'avance : 30 min (match) ou 10 min (journal, ordinaire).
+  tot,
+
+  /// Le dernier appel, 5 minutes avant. Match et journal seulement.
+  dernierAppel,
+}
+
+/// À combien de minutes du début part le dernier appel.
+const Duration fenetreDernierAppel = Duration(minutes: 5);
+
+/// Un type a-t-il droit au dernier appel ? Match et journal, pas le reste.
+bool aDroitAuDernierAppel(TypeEvenement type) =>
+    type == TypeEvenement.match || type == TypeEvenement.journal;
+
+/// Quelle étape annoncer MAINTENANT pour une émission qui commence dans
+/// [dansCombien], sachant ce qui a déjà été annoncé — ou `null` si rien.
+///
+/// Le dernier appel passe devant le rappel tôt quand les deux sont dus
+/// (l'app était fermée, on rouvre à 4 minutes du match) : on ne dit pas
+/// « dans 30 min » à quelqu'un qui a 4 minutes. Une émission déjà
+/// commencée ([dansCombien] négatif) n'est plus annoncée.
+EtapeRappel? etapeAAnnoncer(
+  TypeEvenement type,
+  Duration dansCombien, {
+  required bool totDejaAnnonce,
+  required bool dernierAppelDejaAnnonce,
+}) {
+  if (dansCombien.isNegative) return null;
+  if (aDroitAuDernierAppel(type) &&
+      !dernierAppelDejaAnnonce &&
+      dansCombien <= fenetreDernierAppel) {
+    return EtapeRappel.dernierAppel;
+  }
+  if (!totDejaAnnonce && dansCombien <= fenetreAnnonce(type)) {
+    return EtapeRappel.tot;
+  }
+  return null;
+}
+
+/// Ordre de passage d'un rappel, étape comprise : un dernier appel (ça
+/// commence dans 5 min) passe devant N'IMPORTE QUEL rappel tôt, et à
+/// étape égale c'est [prioriteEvenement] qui tranche. Le maximum vaut
+/// [rangMaximal] : au-delà, inutile de chercher mieux.
+int rangRappel(TypeEvenement type, EtapeRappel etape) =>
+    prioriteEvenement(type) + (etape == EtapeRappel.dernierAppel ? 3 : 0);
+
+/// Le rang qu'aucun rappel ne dépasse (dernier appel d'un match).
+final int rangMaximal = rangRappel(TypeEvenement.match, EtapeRappel.dernierAppel);

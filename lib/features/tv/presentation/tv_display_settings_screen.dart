@@ -151,6 +151,36 @@ class TvDisplaySettingsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 30),
 
+                // ----- Rappels d'émissions (21/09/2026) -----
+                // « Que ce soit pas gênant » : le client choisit ce qu'il
+                // reçoit. Voir tv_program_reminders.dart pour les règles.
+                _label(context.l10n.tvRemindersLabel),
+                const SizedBox(height: 4),
+                _hint(context.l10n.tvRemindersHint),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    _choice(
+                      label: context.l10n.tvRemindersAll,
+                      selected: d.rappels == ModeRappels.tous,
+                      onSelect: () => d.setRappels(ModeRappels.tous),
+                    ),
+                    const SizedBox(width: 12),
+                    _choice(
+                      label: context.l10n.tvRemindersImportant,
+                      selected: d.rappels == ModeRappels.importants,
+                      onSelect: () => d.setRappels(ModeRappels.importants),
+                    ),
+                    const SizedBox(width: 12),
+                    _choice(
+                      label: context.l10n.tvRemindersOff,
+                      selected: d.rappels == ModeRappels.aucun,
+                      onSelect: () => d.setRappels(ModeRappels.aucun),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 30),
+
                 // ----- Nuit Royale (confort nocturne) -----
                 _label(context.l10n.tvNightComfortTitle),
                 const SizedBox(height: 4),

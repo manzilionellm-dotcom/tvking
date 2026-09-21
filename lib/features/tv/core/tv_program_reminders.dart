@@ -25,6 +25,8 @@ import '../../epg/domain/epg_program.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../subscription/data/now_playing.dart';
+import '../data/display_settings.dart';
 import 'tv_dimens.dart';
 import 'tv_event_priority.dart';
 import 'tv_logo.dart';
@@ -37,6 +39,7 @@ class TvReminder {
     required this.program,
     required this.minutesLeft,
     this.type = TypeEvenement.ordinaire,
+    this.etape = EtapeRappel.tot,
   });
   final Channel channel;
   final EpgProgram program;
@@ -44,7 +47,19 @@ class TvReminder {
 
   /// Match / journal / ordinaire — décide de l'icône et du ton du texte.
   final TypeEvenement type;
+
+  /// Rappel tôt (30 / 10 min) ou DERNIER APPEL à 5 min (21/09/2026).
+  final EtapeRappel etape;
+
+  /// Clé de déduplication : une annonce par (chaîne, horaire, étape).
+  String get cle => cleRappel(channel.id, program.startTime, etape);
 }
+
+/// La clé d'une annonce. L'ÉTAPE en fait partie : le rappel tôt et le
+/// dernier appel de la même émission sont deux annonces distinctes,
+/// chacune passe une fois.
+String cleRappel(String channelId, int startTime, EtapeRappel etape) =>
+    '$channelId@$startTime${etape == EtapeRappel.dernierAppel ? '#5' : ''}';
 
 class TvProgramReminders extends ChangeNotifier {
   TvProgramReminders._();
@@ -61,6 +76,52 @@ class TvProgramReminders extends ChangeNotifier {
 
   Timer? _scanTimer;
   Timer? _hideTimer;
+
+  /// DERNIERS APPELS ARMÉS À LA MINUTE PRÈS. Le balayage passe toutes
+  /// les 5 minutes : à lui seul, il annoncerait « dans 5 min » n'importe
+  /// où entre 5 et 0 minutes — parfois « dans 0 min », trop tard pour
+  /// changer de chaîne. Alors dès qu'un match ou un journal est repéré
+  /// (au rappel tôt), on arme une minuterie EXACTE pour l'instant
+  /// « début − 5 min ». Une par émission, annulée avec stop(). Le
+  /// balayage reste le filet : si la minuterie n'a pas tiré (app en
+  /// pause au mauvais moment), il rattrape le dernier appel au passage.
+  final Map<String, Timer> _derniersAppels = <String, Timer>{};
+
+  // =========================================================
+  //  « QUE CE SOIT PAS GÊNANT » (21/09/2026) — les quatre règles
+  // =========================================================
+  //  Ce que disent les guides (Material « Android notifications »,
+  //  Android TV app quality, Fire TV multimedia requirements, guides UX
+  //  des toasts) tient en une phrase : une annonce non demandée n'est
+  //  tolérée que si elle est RARE, COURTE, PERTINENTE et sous CONTRÔLE
+  //  du client. D'où :
+  //
+  //   1. PERTINENTE — jamais pour la chaîne qu'on regarde DÉJÀ. Annoncer
+  //      « le match commence sur beIN » à quelqu'un qui est sur beIN,
+  //      c'est le cas d'école de la bannière inutile. On compare au
+  //      porte-état NowPlaying que le lecteur remplit.
+  //   2. RARE — pas plus d'une bannière toutes les 3 minutes, hors
+  //      dernier appel (lui, on ne le retient pas : à 5 minutes du
+  //      match, c'est précisément l'information qu'on attend).
+  //   3. COURTE — le dernier appel reste 8 secondes, pas 12 : il n'a
+  //      rien à apprendre, il rappelle. (Les guides UX disent 2 à 6 s
+  //      pour un toast ; à trois mètres d'une télé on lit plus lentement
+  //      qu'au téléphone, d'où un peu plus.)
+  //   4. SOUS CONTRÔLE — Réglages → Affichage → Rappels d'émissions :
+  //      tous / matchs et journaux / aucun (DisplaySettings.rappels).
+  // =========================================================
+
+  /// Écart minimal entre deux bannières « tôt ».
+  static const Duration kEcartMinimal = Duration(minutes: 3);
+
+  /// Instant de la dernière bannière affichée (pour l'écart minimal).
+  DateTime? _derniereBanniere;
+
+  /// Règle 1 : la chaîne du rappel est-elle celle qu'on regarde ?
+  static bool _dejaDessus(Channel ch) {
+    final String enCours = NowPlaying.instance.current;
+    return enCours.isNotEmpty && enCours == ch.cleanName.trim();
+  }
 
   /// Le PREMIER balayage, 20 s après l'ouverture. Il était créé sans être
   /// gardé : impossible de l'annuler, il partait donc même si le balayage
@@ -99,6 +160,10 @@ class TvProgramReminders extends ChangeNotifier {
     _firstScanTimer = null;
     _hideTimer?.cancel();
     _hideTimer = null;
+    for (final Timer t in _derniersAppels.values) {
+      t.cancel();
+    }
+    _derniersAppels.clear();
     _started = false;
   }
 
@@ -128,6 +193,9 @@ class TvProgramReminders extends ChangeNotifier {
 
   Future<void> _scan() async {
     if (current != null) return; // une bannière à la fois
+    // Règle 4 : le client a coupé les rappels → on ne lit même pas l'EPG.
+    final ModeRappels mode = DisplaySettings.instance.rappels;
+    if (mode == ModeRappels.aucun) return;
     final List<String> surveillees = _chainesSurveillees();
     if (surveillees.isEmpty) return;
     final Map<String, Channel> byId = <String, Channel>{
@@ -155,42 +223,118 @@ class TvProgramReminders extends ChangeNotifier {
       }
       if (next == null) continue;
       final Duration untilStart = next.startDateTime.difference(now);
-      if (untilStart.isNegative) continue;
       // LA FENÊTRE DÉPEND DE CE QUI COMMENCE. Un match se prévient 30 min
-      // avant (demande du propriétaire), le reste 10 min comme avant.
+      // avant (demande du propriétaire), le reste 10 min comme avant —
+      // puis DERNIER APPEL à 5 min pour match et journal (21/09/2026).
+      // Le jugement (quelle étape, maintenant ?) vit dans
+      // tv_event_priority.dart, testé sans box ni EPG.
       final TypeEvenement type = classerEvenement(next.title);
-      if (untilStart > fenetreAnnonce(type)) continue;
-      final String key = '${ch.id}@${next.startTime}';
-      if (_announced.contains(key)) continue; // déjà annoncé
-      final int rang = prioriteEvenement(type);
+      // Règle 4 : en mode « importants », l'ordinaire ne passe pas.
+      if (mode == ModeRappels.importants && type == TypeEvenement.ordinaire) {
+        continue;
+      }
+      // Règle 1 : on est déjà sur cette chaîne → rien à annoncer.
+      if (_dejaDessus(ch)) continue;
+      final EtapeRappel? etape = etapeAAnnoncer(
+        type,
+        untilStart,
+        totDejaAnnonce: _announced
+            .contains(cleRappel(ch.id, next.startTime, EtapeRappel.tot)),
+        dernierAppelDejaAnnonce: _announced.contains(
+            cleRappel(ch.id, next.startTime, EtapeRappel.dernierAppel)),
+      );
+      if (etape == null) continue;
+      final int rang = rangRappel(type, etape);
       if (rang <= meilleurRang) continue;
       meilleurRang = rang;
       meilleur = TvReminder(
         channel: ch,
         program: next,
-        minutesLeft: untilStart.inMinutes.clamp(0, 30),
+        minutesLeft: _minutesRestantes(untilStart),
         type: type,
+        etape: etape,
       );
-      // Un match : inutile de chercher mieux, rien ne passe devant.
-      if (rang == 2) break;
+      // Le dernier appel d'un match : rien ne passe devant, on s'arrête.
+      if (rang == rangMaximal) break;
     }
     if (meilleur != null) {
+      // Règle 2 : un rappel TÔT attend son tour si une bannière vient de
+      // passer ; on ne le marque pas annoncé, le balayage suivant le
+      // reprendra. Le dernier appel, lui, passe toujours.
+      final DateTime? derniere = _derniereBanniere;
+      final bool tropTot = meilleur.etape == EtapeRappel.tot &&
+          derniere != null &&
+          now.difference(derniere) < kEcartMinimal;
       // On ne marque QU'À L'AFFICHAGE : une émission écartée parce
       // qu'un match passait devant doit pouvoir être annoncée au
       // balayage suivant, si le match est déjà passé.
-      _announced.add(
-          '${meilleur.channel.id}@${meilleur.program.startTime}');
-      _show(meilleur);
+      if (!tropTot) _annoncer(meilleur);
     }
     // Ménage : la liste des annonces ne grandit pas à l'infini.
     if (_announced.length > 200) _announced.clear();
   }
 
+  /// Minutes restantes ARRONDIES AU-DESSUS : à 4 min 40 s on dit
+  /// « dans 5 min », pas « dans 4 » — et jamais « dans 0 min » à 30 s du
+  /// début, ce qui se lisait comme une erreur.
+  static int _minutesRestantes(Duration d) =>
+      (d.inSeconds / 60).ceil().clamp(0, 30);
+
+  /// Affiche un rappel, le marque annoncé, et — pour un rappel tôt d'un
+  /// match ou d'un journal — arme le dernier appel à la minute près.
+  void _annoncer(TvReminder r) {
+    _announced.add(r.cle);
+    _show(r);
+    if (r.etape == EtapeRappel.tot && aDroitAuDernierAppel(r.type)) {
+      _armerDernierAppel(r);
+    }
+  }
+
+  /// Minuterie exacte pour « début − 5 min ». Idempotente par émission.
+  void _armerDernierAppel(TvReminder r) {
+    final String cle = cleRappel(
+        r.channel.id, r.program.startTime, EtapeRappel.dernierAppel);
+    if (_derniersAppels.containsKey(cle) || _announced.contains(cle)) return;
+    final Duration delai =
+        r.program.startDateTime.difference(DateTime.now()) - fenetreDernierAppel;
+    // Déjà à moins de 5 min : le balayage courant l'a annoncé ou va le
+    // faire ; pas de minuterie dans le passé.
+    if (delai <= Duration.zero) return;
+    _derniersAppels[cle] = Timer(delai, () {
+      _derniersAppels.remove(cle);
+      if (!_started || _announced.contains(cle)) return;
+      // Règle 4 : les rappels ont pu être coupés entre-temps.
+      if (DisplaySettings.instance.rappels == ModeRappels.aucun) return;
+      // Règle 1 : le client est déjà sur la chaîne → on marque annoncé
+      // (le balayage ne le redira pas) et on se tait.
+      if (_dejaDessus(r.channel)) {
+        _announced.add(cle);
+        return;
+      }
+      // Le dernier appel REMPLACE une bannière en cours : à 5 minutes du
+      // match, c'est lui le plus urgent — on ne le fait pas attendre
+      // douze secondes derrière un rappel ordinaire.
+      _annoncer(TvReminder(
+        channel: r.channel,
+        program: r.program,
+        minutesLeft: fenetreDernierAppel.inMinutes,
+        type: r.type,
+        etape: EtapeRappel.dernierAppel,
+      ));
+    });
+  }
+
   void _show(TvReminder r) {
     current = r;
+    _derniereBanniere = DateTime.now();
     notifyListeners();
     _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 12), () {
+    // Règle 3 : le dernier appel est plus court (8 s) que le rappel tôt
+    // (12 s) — il rappelle, il n'apprend rien.
+    final Duration duree = r.etape == EtapeRappel.dernierAppel
+        ? const Duration(seconds: 8)
+        : const Duration(seconds: 12);
+    _hideTimer = Timer(duree, () {
       current = null;
       notifyListeners();
     });
@@ -278,6 +422,15 @@ class _TvReminderBannerState extends State<TvReminderBanner> {
                         color: TvTokens.gold,
                         size: 20,
                       ),
+                      // DERNIER APPEL : une cloche en plus du pictogramme.
+                      // Le client a déjà vu ce match annoncé une demi-heure
+                      // avant ; la cloche dit « cette fois c'est tout de
+                      // suite », sans rien lire.
+                      if (r.etape == EtapeRappel.dernierAppel) ...<Widget>[
+                        const SizedBox(width: 4),
+                        const Icon(Icons.notifications_active_rounded,
+                            color: TvTokens.emberBright, size: 18),
+                      ],
                       const SizedBox(width: 10),
                       TvChannelLogo(
                           logoUrl: r.channel.logoUrl,

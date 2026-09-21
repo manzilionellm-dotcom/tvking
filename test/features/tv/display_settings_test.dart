@@ -172,6 +172,33 @@ void main() {
     });
   });
 
+  // RAPPELS D'ÉMISSIONS (21/09/2026) — « que ce soit pas gênant » : le
+  // client choisit ce qu'il reçoit, et la box s'en souvient.
+  group('rappels d\'émissions', () {
+    test('défaut : tous (le comportement historique)', () {
+      expect(d.rappels, ModeRappels.tous);
+    });
+
+    test('un choix est mémorisé et relu', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      await d.setRappels(ModeRappels.importants);
+      expect(d.rappels, ModeRappels.importants);
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      expect(prefs.getInt('tv_reminders_mode'), ModeRappels.importants.index);
+      d.reinitialiser();
+      await d.load();
+      expect(d.rappels, ModeRappels.importants);
+    });
+
+    test('une valeur mémorisée aberrante retombe sur une position valide',
+        () async {
+      SharedPreferences.setMockInitialValues(
+          <String, Object>{'tv_reminders_mode': 42});
+      await d.load();
+      expect(ModeRappels.values, contains(d.rappels));
+    });
+  });
+
   group('vidéo plein écran', () {
     test('hors lecture : pas de plein écran', () {
       expect(d.videoPleinEcran, isFalse);

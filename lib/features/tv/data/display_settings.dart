@@ -84,6 +84,23 @@ enum NightComfortMode {
   always,
 }
 
+/// RAPPELS D'ÉMISSIONS (21/09/2026) — « des petites notifications dans
+/// 5 min : le journal et d'autres matchs importants… que ce soit pas
+/// gênant ». Une bannière non demandée est gênante par nature ; la seule
+/// façon de ne pas l'être, c'est de laisser le client décider de ce qu'il
+/// veut recevoir. Trois positions, pas une dizaine de cases.
+enum ModeRappels {
+  /// Tout : matchs, journaux, et le rappel ordinaire des chaînes suivies.
+  /// C'est le comportement historique, donc le défaut.
+  tous,
+
+  /// Seulement ce qui compte : matchs et journaux (avec dernier appel).
+  importants,
+
+  /// Aucune bannière, jamais.
+  aucun,
+}
+
 class DisplaySettings extends ChangeNotifier {
   DisplaySettings._();
   static final DisplaySettings instance = DisplaySettings._();
@@ -93,6 +110,7 @@ class DisplaySettings extends ChangeNotifier {
   static const String _kNight = 'tv_night_comfort';
   static const String _kNavSounds = 'tv_nav_sounds';
   static const String _kZoom = 'tv_ui_zoom_pct';
+  static const String _kRappels = 'tv_reminders_mode';
   static const int maxOverscan = 8;
 
   /// Les crans de zoom autorisés, en pour cent. Trois, pas un curseur :
@@ -130,6 +148,7 @@ class DisplaySettings extends ChangeNotifier {
   bool _bigText = false;
   bool _navSounds = true; // clic discret à chaque cran de D-pad (défaut ON)
   NightComfortMode _night = NightComfortMode.auto;
+  ModeRappels _rappels = ModeRappels.tous;
 
   /// Compteur, pas un booléen : un lecteur peut en ouvrir un autre par-
   /// dessus (multivue, épisode suivant). Chaque entrée compte, chaque
@@ -154,6 +173,9 @@ class DisplaySettings extends ChangeNotifier {
 
   /// « NUIT ROYALE » — filtre de confort nocturne (voir NightComfortMode).
   NightComfortMode get nightComfort => _night;
+
+  /// Quels rappels d'émissions le client accepte (voir ModeRappels).
+  ModeRappels get rappels => _rappels;
 
   /// Fraction de marge à appliquer de chaque côté (0.0 → 0.08).
   double get overscanFraction => overscanPct.clamp(0, maxOverscan) / 100.0;
@@ -233,7 +255,16 @@ class DisplaySettings extends ChangeNotifier {
     final int n = prefs.getInt(_kNight) ?? NightComfortMode.auto.index;
     _night = NightComfortMode
         .values[n.clamp(0, NightComfortMode.values.length - 1)];
+    final int r = prefs.getInt(_kRappels) ?? ModeRappels.tous.index;
+    _rappels = ModeRappels.values[r.clamp(0, ModeRappels.values.length - 1)];
     notifyListeners();
+  }
+
+  Future<void> setRappels(ModeRappels mode) async {
+    _rappels = mode;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kRappels, mode.index);
   }
 
   Future<void> setNightComfort(NightComfortMode mode) async {
@@ -265,6 +296,7 @@ class DisplaySettings extends ChangeNotifier {
   void reinitialiser() {
     _overscanPct = null;
     _zoomPct = 100;
+    _rappels = ModeRappels.tous;
     _pleinEcran = 0;
   }
 

@@ -154,4 +154,87 @@ void main() {
     expect(prioriteEvenement(TypeEvenement.journal),
         greaterThan(prioriteEvenement(TypeEvenement.ordinaire)));
   });
+
+  // DEMANDE DU 21/09/2026 : « des petites notifications dans 5 min : le
+  // journal et d'autres matchs importants ». Un second rappel, court,
+  // à cinq minutes — pour ce qui compte seulement.
+  group('le dernier appel à 5 minutes', () {
+    test('match et journal y ont droit, pas une émission ordinaire', () {
+      expect(aDroitAuDernierAppel(TypeEvenement.match), isTrue);
+      expect(aDroitAuDernierAppel(TypeEvenement.journal), isTrue);
+      expect(aDroitAuDernierAppel(TypeEvenement.ordinaire), isFalse,
+          reason: 'deux bannières pour un documentaire, c\'est du bruit');
+    });
+
+    test('un match : rappel tôt à 30 min, puis dernier appel à 5 min', () {
+      // À 25 minutes : le rappel tôt, rien d'autre.
+      expect(
+          etapeAAnnoncer(TypeEvenement.match, const Duration(minutes: 25),
+              totDejaAnnonce: false, dernierAppelDejaAnnonce: false),
+          EtapeRappel.tot);
+      // Rappel tôt passé, on est à 12 minutes : silence.
+      expect(
+          etapeAAnnoncer(TypeEvenement.match, const Duration(minutes: 12),
+              totDejaAnnonce: true, dernierAppelDejaAnnonce: false),
+          isNull);
+      // À 5 minutes : le dernier appel.
+      expect(
+          etapeAAnnoncer(TypeEvenement.match, const Duration(minutes: 5),
+              totDejaAnnonce: true, dernierAppelDejaAnnonce: false),
+          EtapeRappel.dernierAppel);
+      // Les deux sont passés : plus rien, même à 1 minute.
+      expect(
+          etapeAAnnoncer(TypeEvenement.match, const Duration(minutes: 1),
+              totDejaAnnonce: true, dernierAppelDejaAnnonce: true),
+          isNull);
+    });
+
+    test('le journal : rappel tôt à 10 min, dernier appel à 5 min', () {
+      expect(
+          etapeAAnnoncer(TypeEvenement.journal, const Duration(minutes: 9),
+              totDejaAnnonce: false, dernierAppelDejaAnnonce: false),
+          EtapeRappel.tot);
+      expect(
+          etapeAAnnoncer(TypeEvenement.journal, const Duration(minutes: 4),
+              totDejaAnnonce: true, dernierAppelDejaAnnonce: false),
+          EtapeRappel.dernierAppel);
+    });
+
+    test('une émission ordinaire n\'a que son rappel de 10 min, comme avant',
+        () {
+      expect(
+          etapeAAnnoncer(TypeEvenement.ordinaire, const Duration(minutes: 8),
+              totDejaAnnonce: false, dernierAppelDejaAnnonce: false),
+          EtapeRappel.tot);
+      expect(
+          etapeAAnnoncer(TypeEvenement.ordinaire, const Duration(minutes: 3),
+              totDejaAnnonce: true, dernierAppelDejaAnnonce: false),
+          isNull,
+          reason: 'pas de dernier appel pour l\'ordinaire');
+    });
+
+    test('app rouverte à 4 min du match : le dernier appel, pas « dans 30 »',
+        () {
+      // Aucun des deux n'a été annoncé ; le plus urgent l'emporte.
+      expect(
+          etapeAAnnoncer(TypeEvenement.match, const Duration(minutes: 4),
+              totDejaAnnonce: false, dernierAppelDejaAnnonce: false),
+          EtapeRappel.dernierAppel);
+    });
+
+    test('une émission déjà commencée n\'est plus annoncée', () {
+      expect(
+          etapeAAnnoncer(TypeEvenement.match, const Duration(minutes: -1),
+              totDejaAnnonce: false, dernierAppelDejaAnnonce: false),
+          isNull);
+    });
+
+    test('un dernier appel passe devant tout rappel tôt, même celui d\'un '
+        'match', () {
+      expect(rangRappel(TypeEvenement.journal, EtapeRappel.dernierAppel),
+          greaterThan(rangRappel(TypeEvenement.match, EtapeRappel.tot)));
+      expect(rangRappel(TypeEvenement.match, EtapeRappel.dernierAppel),
+          rangMaximal);
+    });
+  });
 }
