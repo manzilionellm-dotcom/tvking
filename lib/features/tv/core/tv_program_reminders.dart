@@ -74,6 +74,10 @@ class TvProgramReminders extends ChangeNotifier {
   /// Un rappel par (chaîne, horaire) — jamais deux fois la même annonce.
   final Set<String> _announced = <String>{};
 
+  /// Le MÊME événement diffusé sur cinq chaînes (beIN 1, RMC, Canal…) ne
+  /// s'annonce qu'une fois : clé « titre aplati @ horaire @ étape ».
+  final Set<String> _evenementsAnnonces = <String>{};
+
   Timer? _scanTimer;
   Timer? _hideTimer;
 
@@ -257,6 +261,63 @@ class TvProgramReminders extends ChangeNotifier {
       // Le dernier appel d'un match : rien ne passe devant, on s'arrête.
       if (rang == rangMaximal) break;
     }
+
+    // =========================================================
+    //  TOUTES LES CHAÎNES, POUR LES GRANDS ÉVÉNEMENTS (21/09/2026)
+    // =========================================================
+    //  « Que tous les grands événements ne manquent pas. » Les douze
+    //  chaînes suivies ne suffisent pas : la finale passe sur une
+    //  chaîne qu'on n'a jamais ouverte. UNE requête sur l'index des
+    //  horaires ramène tout ce qui commence dans les 30 prochaines
+    //  minutes, toutes chaînes confondues ; on n'y retient que les
+    //  GRANDS événements (porte étroite, cf. estGrandEvenement) — pas
+    //  les matchs de tous les jours, sinon un bouquet sport ferait une
+    //  bannière toutes les cinq minutes. Un rappel des chaînes suivies
+    //  déjà trouvé garde la priorité à rang égal (il est passé avant).
+    if (meilleurRang < rangMaximal) {
+      try {
+        final List<EpgProgram> prochains =
+            await EpgRepository.instance.startingBetween(
+          now.millisecondsSinceEpoch,
+          now.add(fenetreAnnonce(TypeEvenement.match)).millisecondsSinceEpoch,
+        );
+        for (final EpgProgram p in prochains) {
+          if (!estGrandEvenement(p.title)) continue;
+          final Channel? ch = byId[p.channelId];
+          if (ch == null) continue; // guide d'une chaîne qu'on n'a pas
+          if (_dejaDessus(ch)) continue;
+          final TypeEvenement type = classerEvenement(p.title);
+          final EtapeRappel? etape = etapeAAnnoncer(
+            type,
+            p.startDateTime.difference(now),
+            totDejaAnnonce: _announced
+                    .contains(cleRappel(ch.id, p.startTime, EtapeRappel.tot)) ||
+                _evenementsAnnonces
+                    .contains(_cleEvenement(p, EtapeRappel.tot)),
+            dernierAppelDejaAnnonce: _announced.contains(
+                    cleRappel(ch.id, p.startTime, EtapeRappel.dernierAppel)) ||
+                _evenementsAnnonces
+                    .contains(_cleEvenement(p, EtapeRappel.dernierAppel)),
+          );
+          if (etape == null) continue;
+          final int rang = rangRappel(type, etape);
+          if (rang <= meilleurRang) continue;
+          meilleurRang = rang;
+          meilleur = TvReminder(
+            channel: ch,
+            program: p,
+            minutesLeft: _minutesRestantes(p.startDateTime.difference(now)),
+            type: type,
+            etape: etape,
+          );
+          if (rang == rangMaximal) break;
+        }
+      } catch (_) {
+        // Guide absent ou base occupée : les chaînes suivies ont déjà
+        // été balayées, on ne perd rien de ce qui marchait avant.
+      }
+    }
+
     if (meilleur != null) {
       // Règle 2 : un rappel TÔT attend son tour si une bannière vient de
       // passer ; on ne le marque pas annoncé, le balayage suivant le
@@ -272,7 +333,14 @@ class TvProgramReminders extends ChangeNotifier {
     }
     // Ménage : la liste des annonces ne grandit pas à l'infini.
     if (_announced.length > 200) _announced.clear();
+    if (_evenementsAnnonces.length > 200) _evenementsAnnonces.clear();
   }
+
+  /// Clé d'un événement indépendante de la chaîne (même titre, même
+  /// heure = même événement, où qu'il passe).
+  static String _cleEvenement(EpgProgram p, EtapeRappel etape) =>
+      '${aplatirTitre(p.title)}@${p.startTime}'
+      '${etape == EtapeRappel.dernierAppel ? '#5' : ''}';
 
   /// Minutes restantes ARRONDIES AU-DESSUS : à 4 min 40 s on dit
   /// « dans 5 min », pas « dans 4 » — et jamais « dans 0 min » à 30 s du
@@ -284,6 +352,10 @@ class TvProgramReminders extends ChangeNotifier {
   /// match ou d'un journal — arme le dernier appel à la minute près.
   void _annoncer(TvReminder r) {
     _announced.add(r.cle);
+    // Le même événement sur une autre chaîne ne repassera pas.
+    if (estGrandEvenement(r.program.title)) {
+      _evenementsAnnonces.add(_cleEvenement(r.program, r.etape));
+    }
     _show(r);
     if (r.etape == EtapeRappel.tot && aDroitAuDernierAppel(r.type)) {
       _armerDernierAppel(r);
@@ -416,6 +488,7 @@ class _TvReminderBannerState extends State<TvReminderBanner> {
                       Icon(
                         switch (r.type) {
                           TypeEvenement.match => Icons.sports_soccer_rounded,
+                          TypeEvenement.evenement => Icons.emoji_events_rounded,
                           TypeEvenement.journal => Icons.podcasts_rounded,
                           TypeEvenement.ordinaire => Icons.star_rounded,
                         },
@@ -461,6 +534,10 @@ class _TvReminderBannerState extends State<TvReminderBanner> {
                                     'Le match commence · ${r.channel.cleanName}',
                                   (TypeEvenement.match, false) =>
                                     'Le match commence dans ${r.minutesLeft} min · ${r.channel.cleanName}',
+                                  (TypeEvenement.evenement, true) =>
+                                    'Ça commence · ${r.channel.cleanName}',
+                                  (TypeEvenement.evenement, false) =>
+                                    'Ça commence dans ${r.minutesLeft} min · ${r.channel.cleanName}',
                                   (TypeEvenement.journal, true) =>
                                     'Le journal commence · ${r.channel.cleanName}',
                                   (TypeEvenement.journal, false) =>

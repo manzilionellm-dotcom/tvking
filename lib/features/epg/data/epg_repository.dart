@@ -657,6 +657,31 @@ class EpgRepository {
     return EpgProgram.fromMap(rows.first);
   }
 
+  /// TOUS les programmes, toutes chaînes confondues, qui COMMENCENT dans
+  /// la fenêtre `]fromMs, toMs]` — pour ne rater aucun grand événement
+  /// (21/09/2026 : « que tous les grands événements ne manquent pas »).
+  ///
+  /// UNE requête sur l'index `idx_epg_start_time`, au lieu d'une par
+  /// chaîne : c'est ce qui permet de balayer neuf cents chaînes toutes
+  /// les cinq minutes sans que la box le sente. [limit] borne le coût
+  /// sur un guide très dense ; l'appelant filtre ensuite par titre.
+  Future<List<EpgProgram>> startingBetween(
+    int fromMs,
+    int toMs, {
+    int limit = 600,
+  }) async {
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> rows = await db.query(
+      'epg_programs',
+      where: 'start_time > ? AND start_time <= ?',
+      whereArgs: <Object>[fromMs, toMs],
+      orderBy: 'start_time ASC',
+      limit: limit,
+    );
+    return rows.map(EpgProgram.fromMap).toList(growable: false);
+  }
+
   /// Programmes d'une chaîne entre deux instants (pour la grille TV).
   Future<List<EpgProgram>> programsBetween(
     String channelId,

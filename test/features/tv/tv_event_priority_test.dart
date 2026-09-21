@@ -155,6 +155,60 @@ void main() {
         greaterThan(prioriteEvenement(TypeEvenement.ordinaire)));
   });
 
+  // « QUE TOUS LES GRANDS ÉVÉNEMENTS NE MANQUENT PAS » (21/09/2026) :
+  // sur les chaînes qu'on ne suit pas, seule la porte étroite passe.
+  group('les grands événements, toutes chaînes confondues', () {
+    for (final String titre in <String>[
+      'Finale Coupe du monde : France - Brésil',
+      'UEFA Champions League · Finale',
+      'Clasico : Real Madrid - FC Barcelone',
+      'Jeux Olympiques — cérémonie d\'ouverture',
+      'Super Bowl LXI',
+      'Soirée électorale : présidentielle 2027',
+      'Allocution du Président de la République',
+      'Eurovision 2027 — la finale',
+      'Miss France 2027',
+    ]) {
+      test('« $titre » est un grand événement', () {
+        expect(estGrandEvenement(titre), isTrue, reason: titre);
+      });
+    }
+
+    for (final String titre in <String>[
+      'Ligue 2 : Pau - Rodez', // un match, mais pas un grand événement
+      'Concert live au Zénith',
+      'Journal de 20h',
+      'Documentaire animalier',
+      'NBA : Lakers @ Celtics',
+      '',
+    ]) {
+      test('« $titre » ne l\'est PAS (pas de bannière hors chaînes suivies)',
+          () {
+        expect(estGrandEvenement(titre), isFalse, reason: titre);
+      });
+    }
+
+    test('un grand événement hors sport se classe « evenement », prévenu '
+        'comme un match', () {
+      expect(classerEvenement('Soirée électorale — édition spéciale'),
+          TypeEvenement.evenement,
+          reason: 'la soirée électorale passe avant le journal');
+      expect(fenetreAnnonce(TypeEvenement.evenement),
+          const Duration(minutes: 30));
+      expect(aDroitAuDernierAppel(TypeEvenement.evenement), isTrue);
+      expect(prioriteEvenement(TypeEvenement.evenement),
+          greaterThan(prioriteEvenement(TypeEvenement.journal)));
+      expect(prioriteEvenement(TypeEvenement.match),
+          greaterThan(prioriteEvenement(TypeEvenement.evenement)));
+    });
+
+    test('la clé de titre reconnaît le même événement écrit différemment',
+        () {
+      expect(aplatirTitre('FINALE  Coupe du Monde'),
+          aplatirTitre('Finale Coupe du monde'));
+    });
+  });
+
   // DEMANDE DU 21/09/2026 : « des petites notifications dans 5 min : le
   // journal et d'autres matchs importants ». Un second rappel, court,
   // à cinq minutes — pour ce qui compte seulement.
