@@ -659,6 +659,10 @@
   "tvVodTracksHint": "Ned: ljud, undertexter & format",
   "tvRailNew": "Nyheter",
   "tvRailLatest": "Nyss tillagda",
+  "tvRailTop10": "Topp 10 · högst betyg",
+  "tvRailSagas": "Kompletta sagor",
+  "tvSagaFilms": "{n} filmer",
+  "@tvSagaFilms": {"placeholders": {"n": {"type": "int"}}},
   "tvRailBecause": "Eftersom du såg {title}",
   "@tvRailBecause": {
     "placeholders": {

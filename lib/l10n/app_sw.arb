@@ -659,6 +659,10 @@
   "tvVodTracksHint": "Chini: sauti, manukuu na umbizo",
   "tvRailNew": "Mpya",
   "tvRailLatest": "Zimeongezwa sasa hivi",
+  "tvRailTop10": "10 bora · zilizokadiriwa juu",
+  "tvRailSagas": "Mfululizo kamili",
+  "tvSagaFilms": "Filamu {n}",
+  "@tvSagaFilms": {"placeholders": {"n": {"type": "int"}}},
   "tvRailBecause": "Kwa sababu ulitazama {title}",
   "@tvRailBecause": {
     "placeholders": {

@@ -2148,6 +2148,10 @@
   "tvVodTracksHint": "Bas : audio, sous-titres & format",
   "tvRailNew": "Nouveautés",
   "tvRailLatest": "Derniers ajouts",
+  "tvRailTop10": "Top 10 · les mieux notés",
+  "tvRailSagas": "Sagas complètes",
+  "tvSagaFilms": "{n} films",
+  "@tvSagaFilms": {"placeholders": {"n": {"type": "int"}}},
   "tvRailBecause": "Parce que vous avez regardé {title}",
   "@tvRailBecause": {
     "placeholders": {

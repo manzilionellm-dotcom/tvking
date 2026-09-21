@@ -659,6 +659,10 @@
   "tvVodTracksHint": "لأسفل: الصوت والترجمة والتنسيق",
   "tvRailNew": "أحدث الإضافات",
   "tvRailLatest": "أُضيف حديثاً",
+  "tvRailTop10": "أفضل 10 · الأعلى تقييمًا",
+  "tvRailSagas": "سلاسل كاملة",
+  "tvSagaFilms": "{n} أفلام",
+  "@tvSagaFilms": {"placeholders": {"n": {"type": "int"}}},
   "tvRailBecause": "لأنك شاهدت {title}",
   "@tvRailBecause": {
     "placeholders": {

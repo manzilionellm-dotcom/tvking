@@ -40,6 +40,7 @@ import '../../vod/data/vod_novelty_service.dart';
 import '../../vod/data/vod_repository.dart';
 import '../../vod/data/vod_taste.dart';
 import '../../vod/data/vod_watchlist_repository.dart';
+import '../../vod/domain/accroche_cinema.dart';
 import '../../vod/domain/pays_cinema.dart';
 import '../../vod/domain/vod_info.dart';
 import '../../vod/domain/vod_movie.dart';
@@ -90,6 +91,12 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
   // (champ `added` d'Xtream), triés du plus frais au plus ancien. Vide si le
   // panel ne fournit pas la date (la rangée disparaît alors, honnête).
   List<VodMovie> _latest = const <VodMovie>[];
+  // ACCROCHE (21/09/2026) : Top 10 des mieux notés, et sagas complètes
+  // (film de tête + taille). Calculés UNE fois par chargement, jamais
+  // dans build. Voir vod/domain/accroche_cinema.dart.
+  List<VodMovie> _top10 = const <VodMovie>[];
+  List<VodMovie> _sagasTete = const <VodMovie>[];
+  Map<String, int> _sagaTailles = const <String, int>{};
   // Ids des films NOUVEAUX (apparus dans le catalogue depuis la dernière
   // visite) → rangée « Nouveautés » + pastille NOUVEAU sur les affiches.
   Set<String> _newIds = <String>{};
@@ -206,6 +213,12 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
       _entetes = entetesDeSection(_cats);
       _byCat = byCat;
       _latest = dated.take(24).toList(growable: false);
+      _top10 = top10(movies);
+      final List<Saga> lesSagas = sagas(movies);
+      _sagasTete = <VodMovie>[for (final Saga sg in lesSagas) sg.films.first];
+      _sagaTailles = <String, int>{
+        for (final Saga sg in lesSagas) sg.films.first.id: sg.films.length,
+      };
       _recent = RecentVodRepository.instance.items;
       _watchlist = VodWatchlistRepository.instance.items;
       _inList = _watchlist.map((VodMovie m) => m.id).toSet();
@@ -530,6 +543,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           resume: true,
           dl: false,
           section: null,
+          classement: false,
+          sagas: const <String, int>{},
         ),
       // « DERNIERS AJOUTS » : la vitrine fraîcheur du fournisseur (champ
       // `added` Xtream) — placée tout en haut et rendue ACCROCHEUSE (titre
@@ -542,6 +557,21 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           resume: false,
           dl: false,
           section: null,
+          classement: false,
+          sagas: const <String, int>{},
+        ),
+      // TOP 10 (21/09/2026, « des choses qui rendent accro ») : les mieux
+      // notés du catalogue, avec les grands numéros façon Netflix. Le
+      // titre dit d'où vient le classement — la note, pas nos vues.
+      if (_top10.isNotEmpty)
+        (
+          title: context.l10n.tvRailTop10,
+          movies: _top10,
+          resume: false,
+          dl: false,
+          section: null,
+          classement: true,
+          sagas: const <String, int>{},
         ),
       if (newMovies.isNotEmpty)
         (
@@ -550,6 +580,20 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           resume: false,
           dl: false,
           section: null,
+          classement: false,
+          sagas: const <String, int>{},
+        ),
+      // SAGAS COMPLÈTES : le film de tête de chaque saga (≥ 3 films), avec
+      // le badge « 8 films » — huit soirées promises d'un coup.
+      if (_sagasTete.isNotEmpty)
+        (
+          title: context.l10n.tvRailSagas,
+          movies: _sagasTete,
+          resume: false,
+          dl: false,
+          section: null,
+          classement: false,
+          sagas: _sagaTailles,
         ),
       if (becauseMovies.isNotEmpty)
         (
@@ -558,6 +602,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           resume: false,
           dl: false,
           section: null,
+          classement: false,
+          sagas: const <String, int>{},
         ),
       if (dlMovies.isNotEmpty)
         (
@@ -566,6 +612,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           resume: false,
           dl: true,
           section: null,
+          classement: false,
+          sagas: const <String, int>{},
         ),
       if (_watchlist.isNotEmpty)
         (
@@ -574,6 +622,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           resume: false,
           dl: false,
           section: null,
+          classement: false,
+          sagas: const <String, int>{},
         ),
       if (_recent.isNotEmpty)
         (
@@ -582,6 +632,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           resume: false,
           dl: false,
           section: null,
+          classement: false,
+          sagas: const <String, int>{},
         ),
       // Rangées du CATALOGUE, déjà rangées par pays. La première rangée
       // de chaque pays porte son grand titre de langue (20/09/2026).
@@ -592,6 +644,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
           resume: false,
           dl: false,
           section: k < _entetes.length ? _entetes[k] : null,
+          classement: false,
+          sagas: const <String, int>{},
         ),
     ];
 
@@ -641,6 +695,8 @@ class _TvFilmsScreenState extends State<TvFilmsScreen> {
             railKey: PageStorageKey<String>('films-rail-${rail.title}'),
             title: rail.title,
             section: rail.section,
+            classement: rail.classement,
+            sagas: rail.sagas,
             // Rangée « Derniers ajouts » mise en lumière (titre braise).
             accent: rail.title == context.l10n.tvRailLatest,
             movies: rail.movies,
@@ -1128,6 +1184,10 @@ typedef _RailSpec = ({
   bool resume,
   bool dl,
   String? section,
+  // TOP 10 : grands numéros de classement sur les affiches.
+  bool classement,
+  // SAGAS : id du film de tête → nombre de films de la saga (badge).
+  Map<String, int> sagas,
 });
 
 /// Une RANGÉE horizontale d'affiches (titre + liste paresseuse), façon Netflix.
@@ -1147,9 +1207,17 @@ class _Rail extends StatelessWidget {
     this.onCardFocus,
     this.accent = false,
     this.section,
+    this.classement = false,
+    this.sagas = const <String, int>{},
   });
 
   final String title;
+
+  /// TOP 10 : chaque affiche porte son grand numéro (1 → 10).
+  final bool classement;
+
+  /// SAGAS : id → nombre de films, pour le badge « 8 films ».
+  final Map<String, int> sagas;
 
   /// Grand titre de LANGUE (« Türkçe », « العربية · Arabe ») dessiné
   /// AU-DESSUS du titre de la rangée — seulement sur la première rangée de
@@ -1245,6 +1313,8 @@ class _Rail extends StatelessWidget {
                     movie: movies[i],
                     inList: inList.contains(movies[i].id),
                     isNew: newIds.contains(movies[i].id),
+                    rank: classement ? i + 1 : null,
+                    sagaCount: sagas[movies[i].id],
                     matchPercent: VodTaste.matchPercent(movies[i],
                         affinity: affinity, maxAffinity: maxAffinity),
                     progress: progress[movies[i].id],
@@ -1277,9 +1347,17 @@ class _PosterCard extends StatelessWidget {
     this.progress,
     this.autofocus = false,
     this.onFocus,
+    this.rank,
+    this.sagaCount,
   });
   final VodMovie movie;
   final bool inList;
+
+  /// Numéro de classement (Top 10) dessiné en grand sur l'affiche.
+  final int? rank;
+
+  /// Nombre de films de la saga dont ce film est la tête (badge).
+  final int? sagaCount;
 
   /// Film récemment apparu au catalogue → pastille « NOUVEAU » (coin haut
   /// gauche, opposée au ✓ « Ma Liste »).
@@ -1366,6 +1444,49 @@ class _PosterCard extends StatelessWidget {
                         ),
                         child: const Icon(Icons.check_rounded,
                             size: 15, color: Color(0xFF1A1206)),
+                      ),
+                    ),
+                  // GRAND NUMÉRO DU TOP 10 (bas gauche, façon Netflix) :
+                  // le chiffre attire l'œil avant l'affiche. Cormorant
+                  // (display) : un chiffre de cinéma, pas un compteur.
+                  if (rank != null)
+                    Positioned(
+                      left: 4,
+                      bottom: 0,
+                      child: Text(
+                        '$rank',
+                        style: TvTokens.display(64,
+                            weight: FontWeight.w700, color: TvTokens.text)
+                            .copyWith(
+                          height: 1,
+                          shadows: const <Shadow>[
+                            Shadow(color: Colors.black, blurRadius: 14),
+                            Shadow(color: Colors.black, blurRadius: 4),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // BADGE « 8 FILMS » (bas droite) sur la tête d'une saga.
+                  if (sagaCount != null)
+                    Positioned(
+                      right: 6,
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: TvTokens.emberBright),
+                        ),
+                        child: Text(
+                          context.l10n.tvSagaFilms(sagaCount!),
+                          style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.4,
+                              color: TvTokens.text),
+                        ),
                       ),
                     ),
                   // Pastille « NOUVEAU » (coin haut gauche) — film apparu

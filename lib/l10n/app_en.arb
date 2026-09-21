@@ -665,6 +665,10 @@
   "tvVodTracksHint": "Down: audio, subtitles & format",
   "tvRailNew": "New releases",
   "tvRailLatest": "Just added",
+  "tvRailTop10": "Top 10 · highest rated",
+  "tvRailSagas": "Complete sagas",
+  "tvSagaFilms": "{n} movies",
+  "@tvSagaFilms": {"placeholders": {"n": {"type": "int"}}},
   "tvRailBecause": "Because you watched {title}",
   "@tvRailBecause": {
     "placeholders": {

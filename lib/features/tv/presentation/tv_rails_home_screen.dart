@@ -403,6 +403,8 @@ class _TvRailsHomeScreenState extends State<TvRailsHomeScreen> {
                           child: _NavTile(
                             icon: Icons.movie_rounded,
                             label: context.l10n.tvNavFilms,
+                            // « 12 nouveautés » : la pastille qui fait entrer.
+                            badge: const TvNouveautesBadge(),
                             restoreId: 'films',
                             restoreFocusId: _restoreFocusId,
                             onRestored: _clearRestore,
@@ -753,10 +755,14 @@ class _NavTile extends StatefulWidget {
     this.restoreId,
     this.restoreFocusId,
     this.onRestored,
+    this.badge,
   });
   final IconData icon;
   final String label;
   final VoidCallback onSelect;
+
+  /// Pastille posée sur l'icône (ex. « 12 » nouveautés sur Films).
+  final Widget? badge;
 
   /// Identité STABLE de cette tuile (ex. 'films') pour la restauration.
   final String? restoreId;
@@ -803,8 +809,15 @@ class _NavTileState extends State<_NavTile> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(widget.icon,
-                  size: 38, color: focused ? _rText : _rMuted),
+              Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  Icon(widget.icon,
+                      size: 38, color: focused ? _rText : _rMuted),
+                  if (widget.badge != null)
+                    Positioned(top: -6, right: -14, child: widget.badge!),
+                ],
+              ),
               const SizedBox(height: 9),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),

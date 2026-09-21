@@ -70,6 +70,16 @@ class VodNoveltyService {
   Set<String> freshMovieIds({required int nowMs}) =>
       _freshWithin(_movieFirstSeen, nowMs: nowMs);
 
+  /// NOMBRE de films nouveaux, tel que le DERNIER passage au Cinéma l'a
+  /// établi — pour la pastille de la tuile Films à l'accueil (21/09/2026,
+  /// « des choses qui rendent accro »). Charge le dictionnaire si besoin :
+  /// l'accueil s'ouvre avant le Cinéma. Zéro tant qu'aucun catalogue n'a
+  /// jamais été réconcilié (rien d'inventé).
+  Future<int> freshMovieCount({required int nowMs}) async {
+    await _ensureMoviesLoaded();
+    return _freshWithin(_movieFirstSeen, nowMs: nowMs).length;
+  }
+
   Future<void> _ensureMoviesLoaded() async {
     if (_movieLoaded) return;
     _movieLoaded = true;

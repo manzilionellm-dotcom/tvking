@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../vod/data/vod_novelty_service.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -203,6 +204,51 @@ class TvLangueBandeau extends StatelessWidget {
           ],
         ),
       );
+}
+
+/// PASTILLE « N NOUVEAUTÉS » sur la tuile Films de l'accueil (21/09/2026).
+///
+/// Le petit chiffre rouge d'un badge d'app : il dit « il y a du neuf pour
+/// toi » avant même d'entrer. Le nombre vient de VodNoveltyService, tel
+/// que le dernier passage au Cinéma l'a établi (films apparus au
+/// catalogue depuis 14 jours). Rien à afficher = rien de construit : pas
+/// de « 0 », pas de pastille vide.
+class TvNouveautesBadge extends StatefulWidget {
+  const TvNouveautesBadge({super.key});
+
+  @override
+  State<TvNouveautesBadge> createState() => _TvNouveautesBadgeState();
+}
+
+class _TvNouveautesBadgeState extends State<TvNouveautesBadge> {
+  int _n = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    VodNoveltyService.instance
+        .freshMovieCount(nowMs: DateTime.now().millisecondsSinceEpoch)
+        .then((int n) {
+      if (mounted && n != _n) setState(() => _n = n);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_n <= 0) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: TvTokens.ember,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        // Au-delà de 99, « 99+ » : le chiffre exact n'apporte plus rien.
+        _n > 99 ? '99+' : '$_n',
+        style: TvTokens.ui(11, weight: FontWeight.w900, color: TvTokens.onEmber),
+      ),
+    );
+  }
 }
 
 /// Pastille prix : « À VIE » + montant or.

@@ -659,6 +659,10 @@
   "tvVodTracksHint": "Abajo: audio, subtítulos y formato",
   "tvRailNew": "Novedades",
   "tvRailLatest": "Recién añadidos",
+  "tvRailTop10": "Top 10 · mejor valoradas",
+  "tvRailSagas": "Sagas completas",
+  "tvSagaFilms": "{n} películas",
+  "@tvSagaFilms": {"placeholders": {"n": {"type": "int"}}},
   "tvRailBecause": "Porque viste {title}",
   "@tvRailBecause": {
     "placeholders": {

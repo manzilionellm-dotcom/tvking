@@ -659,6 +659,10 @@
   "tvVodTracksHint": "Ned: lyd, undertekster & format",
   "tvRailNew": "Nyheder",
   "tvRailLatest": "Lige tilføjet",
+  "tvRailTop10": "Top 10 · bedst bedømt",
+  "tvRailSagas": "Komplette sagaer",
+  "tvSagaFilms": "{n} film",
+  "@tvSagaFilms": {"placeholders": {"n": {"type": "int"}}},
   "tvRailBecause": "Fordi du så {title}",
   "@tvRailBecause": {
     "placeholders": {
