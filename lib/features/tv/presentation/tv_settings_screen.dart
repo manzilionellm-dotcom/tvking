@@ -16,6 +16,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_developer_mode.dart';
 import '../core/tv_dimens.dart';
+import '../data/display_settings.dart';
 import '../core/tv_focusable.dart';
 import 'tv_about_screen.dart';
 import 'tv_black_box_screen.dart';
@@ -652,6 +653,90 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                       Icon(Icons.chevron_right_rounded, color: fg, size: 20),
                     ],
                   ),
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+            // ----- Rappels d'émissions : UN bouton, activé / désactivé -----
+            //  Demande du propriétaire (21/09/2026) : « un bouton activé et
+            //  désactivé en paramètre ». Le réglage fin (tous / matchs et
+            //  journaux / aucun) reste dans Affichage ; ici, l'interrupteur
+            //  que tout le monde trouve, en une touche. OK bascule :
+            //  désactivé ↔ activé (« tous »). Un client réglé sur « matchs
+            //  et journaux » est considéré activé, et le reste tant qu'il
+            //  n'éteint pas.
+            ListenableBuilder(
+              listenable: DisplaySettings.instance,
+              builder: (BuildContext context, _) {
+                final DisplaySettings d = DisplaySettings.instance;
+                final bool actifs = d.rappels != ModeRappels.aucun;
+                return TvFocusBuilder(
+                  scale: TvFocusScale.large,
+                  onSelect: () => d.setRappels(
+                      actifs ? ModeRappels.aucun : ModeRappels.tous),
+                  builder: (BuildContext context, bool focused) {
+                    final Color bg =
+                        focused ? TvTokens.gold : Colors.transparent;
+                    final Color fg =
+                        focused ? TvTokens.onGold : TvTokens.goldBright;
+                    return Container(
+                      width: 640,
+                      decoration: BoxDecoration(
+                          color: bg,
+                          borderRadius:
+                              BorderRadius.circular(TvDimens.cardRadius),
+                          border: Border.all(
+                              color:
+                                  focused ? TvTokens.gold : TvTokens.lineSoft)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 12),
+                      child: Row(
+                        children: <Widget>[
+                          Icon(
+                              actifs
+                                  ? Icons.notifications_active_rounded
+                                  : Icons.notifications_off_rounded,
+                              color: fg,
+                              size: 20),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            child: Text(context.l10n.tvRemindersLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: fg)),
+                          ),
+                          const Spacer(),
+                          // L'état en toutes lettres, pas seulement une
+                          // icône : « Activé » / « Désactivé » se lit
+                          // depuis le canapé.
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: focused
+                                  ? TvTokens.onGold.withValues(alpha: 0.12)
+                                  : (actifs
+                                      ? TvTokens.badgeBg
+                                      : TvTokens.sel),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              actifs
+                                  ? context.l10n.tvEnabled
+                                  : context.l10n.tvDisabled,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: fg),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 );
               },
             ),
