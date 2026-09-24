@@ -102,3 +102,9 @@ flutter build apk --debug     # APK de test
   si on veut les réactiver.
 - Aucun keystore ni secret n'est versionné : la signature release se fait
   via les secrets GitHub Actions (`ANDROID_KEYSTORE_BASE64`, etc.).
+- **7 MOTION TV (box Android TV / Fire TV)** : le workflow racine
+  [`.github/workflows/build-7motion-tv.yml`](.github/workflows/build-7motion-tv.yml)
+  compile `android-app/lib/main_tv.dart` (app reliée au panel admin via
+  `https://app.7themotion.com`) et publie l'APK sur la release `7motion-tv` :
+  `https://github.com/manzilionellm-dotcom/tvking/releases/download/7motion-tv/7motion-tv.apk`.
+  Détails : [`android-app/docs/7motion-tv-panel.md`](android-app/docs/7motion-tv-panel.md).

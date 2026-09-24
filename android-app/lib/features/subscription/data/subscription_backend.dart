@@ -44,8 +44,17 @@ import 'now_playing.dart';
 /// descendait jamais dans l'app). On aligne désormais sur le Custom
 /// Domain FIABLE `app.7themotion.com` (= le worker que le panel utilise
 /// aussi). Résultat : l'activation panel → app redevient automatique.
-const String kSubscriptionBaseUrl =
-    'https://app.7themotion.com';
+///
+/// Surcharge possible AU BUILD, sans toucher au code, pour viser un autre
+/// Worker (staging, second panel, test) :
+///     flutter build apk --dart-define=BACKEND_URL=https://mon-worker.example
+/// Sans ce define, la valeur par défaut ci-dessous s'applique (production).
+/// `String.fromEnvironment` est résolu à la compilation : aucune lecture
+/// d'environnement à l'exécution, aucun coût, et la constante reste `const`.
+const String kSubscriptionBaseUrl = String.fromEnvironment(
+  'BACKEND_URL',
+  defaultValue: 'https://app.7themotion.com',
+);
 
 /// Snapshot de l'état renvoyé par le serveur. Immuable.
 @immutable

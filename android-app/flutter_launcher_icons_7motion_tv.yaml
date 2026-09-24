@@ -1,0 +1,21 @@
+# =========================================================
+#  flutter_launcher_icons_7motion_tv.yaml — Icône du build 7 MOTION TV
+# =========================================================
+#  Utilisée UNIQUEMENT par le workflow racine build-7motion-tv.yml :
+#      dart run flutter_launcher_icons -f flutter_launcher_icons_7motion_tv.yaml
+#  Le téléphone garde sa propre config (dans pubspec.yaml) — non impacté.
+#
+#  Source : le logo 7 MOTION (assets/branding/logo_7motion.jpg) recadré
+#  sur fond charbon #0E0E0E :
+#    - 7motion_tv_icon.png    → icône « classique » (mipmap-*), logo à 80 %
+#    - 7motion_tv_icon_fg.png → premier plan ADAPTATIF, logo à 58 % pour
+#      rester dans la zone sûre (66 % centraux) du masque rond/squircle
+#      d'Android — sinon le « 7 » est tronqué sur la home de certaines box.
+# =========================================================
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/branding/7motion_tv_icon.png"
+  adaptive_icon_background: "#0E0E0E"
+  adaptive_icon_foreground: "assets/branding/7motion_tv_icon_fg.png"
+  min_sdk_android: 21

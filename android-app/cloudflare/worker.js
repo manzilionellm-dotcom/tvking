@@ -85,10 +85,14 @@ import { PWA_MANIFEST, PWA_SW, PWA_ICON_192, PWA_ICON_512, PWA_APPLE_ICON, OG_IM
 const APK_URL =
   'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/7motion.apk';
 
-// APK de DeFew TV (version télévision) — release `tv-latest`. Servi via la
-// route propre `/tv` (Downloader sur box Android TV / Fire TV).
+// APK de la version TÉLÉVISION « 7 MOTION TV » — release `7motion-tv`,
+// publiée par le workflow racine `.github/workflows/build-7motion-tv.yml`
+// (app Flutter `lib/main_tv.dart`, MÊME backend/panel que le téléphone :
+// heartbeat, activation, sources poussées, thème…). Servie via la route
+// propre `/tv` (Downloader sur box Android TV / Fire TV) — c'est le lien
+// `DOWNLOAD_URL_TV` affiché dans le panel admin.
 const TV_APK_URL =
-  'https://github.com/manzilionellm-dotcom/tvking/releases/download/tv-latest/defew-tv.apk';
+  'https://github.com/manzilionellm-dotcom/tvking/releases/download/7motion-tv/7motion-tv.apk';
 
 // NB : les variantes TV (Android TV / Fire TV, wrappers WebView, NOVA+)
 // et Red Room ont été RETIRÉES du projet. Seule l'app mobile 7 MOTION
@@ -3886,16 +3890,18 @@ async function handleRequest(request, env, ctx) {
       return proxyApk(APK_URL, 'TheFew.apk', url.searchParams.get('v'));
     }
 
-    // /tv, /defewtv, /tvbox, /defew + CODES COURTS MÉMORABLES (/777, /7777,
-    // /tv7) — alias de téléchargement DIRECT de l'APK DeFew TV (version TV).
-    // TV_APK_URL pointe sur le tag `tv-latest` → TOUJOURS la dernière version.
-    // Lien propre à coller dans Downloader. Fichier « DeFewTV.apk ».
+    // /tv, /7motiontv, /tvbox, /defewtv, /defew + CODES COURTS MÉMORABLES
+    // (/777, /7777, /tv7) — alias de téléchargement DIRECT de l'APK 7 MOTION TV
+    // (version TV). TV_APK_URL pointe sur le tag `7motion-tv` → TOUJOURS la
+    // dernière version publiée par le workflow build-7motion-tv. Lien propre
+    // à coller dans Downloader. Fichier « 7MotionTV.apk ». Les anciens alias
+    // DeFew sont conservés : les codes déjà donnés aux clients restent valides.
     if (
       segments.length === 1 &&
-      ['tv', 'defewtv', 'tvbox', 'defew', '777', '7777', 'tv7']
+      ['tv', '7motiontv', 'tvbox', 'defewtv', 'defew', '777', '7777', 'tv7']
           .includes(segments[0].toLowerCase())
     ) {
-      return proxyApk(TV_APK_URL, 'DeFewTV.apk', url.searchParams.get('v'));
+      return proxyApk(TV_APK_URL, '7MotionTV.apk', url.searchParams.get('v'));
     }
 
     // /privacy — Politique de confidentialité (exigée par Google Play,
