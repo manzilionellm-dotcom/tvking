@@ -15,6 +15,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import 'tv_add_m3u_screen.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
 import 'tv_shell.dart';
@@ -136,28 +137,45 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               autofocus: true,
               onSelect: _busy ? null : _check,
             ),
-            const SizedBox(height: 14),
-            // Le client peut apporter SA propre liste (The Few ne vend pas
-            // de liste) → il a le droit de l'ajouter lui-même.
-            TvFocusBuilder(
-              scale: TvFocusScale.large,
-              onSelect: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const TvShell(child: TvAddSourceScreen()),
+            const SizedBox(height: 22),
+            // ----- CONNEXION : l'utilisateur apporte sa propre liste -----
+            //  Deux entrées de MÊME rang, bien visibles : identifiants Xtream
+            //  (serveur du panel + code) OU une URL M3U. C'est le point
+            //  d'entrée « lecteur » : The Few ne vend pas de chaînes, le
+            //  client branche la sienne. La licence (code MAC ci-dessus +
+            //  « J'ai payé ») reste le verrou de monétisation piloté par le
+            //  panel : sans essai ni abonnement valide, l'accueil ne s'ouvre
+            //  pas, même après avoir saisi une source.
+            Text(context.l10n.sourceOwnSub.toUpperCase(),
+                style: TvTokens.ui(11,
+                    weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2)),
+            const SizedBox(height: 12),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _ConnectButton(
+                    icon: Icons.vpn_key_rounded,
+                    label: context.l10n.playlistTypeXtream,
+                    onSelect: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const TvShell(child: TvAddSourceScreen()),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              builder: (BuildContext context, bool focused) => Container(
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(TvTokens.rButton),
-                  border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
-                  color: focused ? TvTokens.sel : Colors.transparent,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: _ConnectButton(
+                    icon: Icons.link_rounded,
+                    label: context.l10n.playlistTypeM3u,
+                    onSelect: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const TvShell(child: TvAddM3uScreen()),
+                      ),
+                    ),
+                  ),
                 ),
-                child: Text(context.l10n.tvAddOwnList,
-                    style: TvTokens.ui(19, weight: FontWeight.w600,
-                        color: focused ? TvTokens.accentBright : TvTokens.muted)),
-              ),
+              ],
             ),
             const SizedBox(height: 18),
             Text(context.l10n.tvActivationFooter,
@@ -175,6 +193,54 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               ),
             ),
           ],
+    );
+  }
+}
+
+/// Bouton de CONNEXION (Xtream / M3U) sur le gate : icône + libellé, bordure
+/// braise au focus, remplissage discret. Même langage visuel que le reste du
+/// design system TV (aucune couleur en dur — tout via TvTokens).
+class _ConnectButton extends StatelessWidget {
+  const _ConnectButton({
+    required this.icon,
+    required this.label,
+    required this.onSelect,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.large,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) => Container(
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(TvTokens.rButton),
+          border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
+          color: focused ? TvTokens.sel : TvTokens.card,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(icon,
+                size: 22,
+                color: focused ? TvTokens.accentBright : TvTokens.accent),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.ui(18,
+                      weight: FontWeight.w600,
+                      color: focused ? TvTokens.accentBright : TvTokens.text)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
