@@ -115,7 +115,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      Text(_mac, style: TvTokens.mono(38, color: TvTokens.goldBright, spacing: 2)),
+                      Text(_mac, style: TvTokens.mono(38, color: TvTokens.accentBright, spacing: 2)),
                       const SizedBox(width: 16),
                       _CopyButton(copied: _copied, onSelect: _copy),
                     ],
@@ -151,12 +151,12 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(TvTokens.rButton),
-                  border: Border.all(color: focused ? TvTokens.gold : TvTokens.line),
+                  border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
                   color: focused ? TvTokens.sel : Colors.transparent,
                 ),
                 child: Text(context.l10n.tvAddOwnList,
                     style: TvTokens.ui(19, weight: FontWeight.w600,
-                        color: focused ? TvTokens.goldBright : TvTokens.muted)),
+                        color: focused ? TvTokens.accentBright : TvTokens.muted)),
               ),
             ),
             const SizedBox(height: 18),
@@ -195,11 +195,11 @@ class _CopyButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: TvTokens.card,
-          border: Border.all(color: focused ? TvTokens.gold : TvTokens.line),
+          border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
           borderRadius: BorderRadius.circular(TvTokens.rSmall),
         ),
         child: Icon(copied ? Icons.check_rounded : Icons.copy_rounded,
-            size: 22, color: copied ? const Color(0xFF5FA975) : TvTokens.gold),
+            size: 22, color: copied ? const Color(0xFF5FA975) : TvTokens.accent),
       ),
     );
   }

@@ -300,7 +300,7 @@ class _TickerState extends State<_Ticker> {
                             color: TvTokens.text)),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text('•', style: TextStyle(color: TvTokens.gold)),
+                      child: Text('•', style: TextStyle(color: TvTokens.accent)),
                     ),
                   ],
                 ],
@@ -360,7 +360,7 @@ class _MatchCard extends StatelessWidget {
                       style: TextStyle(
                           fontSize: event!.hasScore ? 28 : 18,
                           fontWeight: FontWeight.w800,
-                          color: TvTokens.goldBright)),
+                          color: TvTokens.accentBright)),
                 ),
                 Expanded(
                   child: Text(event!.away,
@@ -409,11 +409,11 @@ class _IconBtn extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.gold : Colors.transparent,
+            color: focused ? TvTokens.accent : Colors.transparent,
             shape: BoxShape.circle,
           ),
           child: Icon(icon,
-              size: 24, color: focused ? const Color(0xFF1A1206) : TvTokens.muted),
+              size: 24, color: focused ? TvTokens.onAccent : TvTokens.muted),
         );
       },
     );
@@ -438,11 +438,11 @@ class _PillButton extends StatelessWidget {
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.gold : TvTokens.sel,
+            color: focused ? TvTokens.accent : TvTokens.sel,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
           child: Row(

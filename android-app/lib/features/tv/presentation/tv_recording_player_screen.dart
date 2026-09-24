@@ -158,7 +158,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
                   width: 56,
                   height: 56,
                   child: CircularProgressIndicator(
-                      strokeWidth: 3, color: TvTokens.gold),
+                      strokeWidth: 3, color: TvTokens.accent),
                 ),
               ),
 
@@ -202,7 +202,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
                 child: Row(
                   children: <Widget>[
                     Icon(_playing ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                        color: TvTokens.gold, size: 28),
+                        color: TvTokens.accent, size: 28),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(title,

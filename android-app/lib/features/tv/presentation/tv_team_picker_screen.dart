@@ -191,7 +191,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
         child: SizedBox(
             width: 40,
             height: 40,
-            child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.gold)),
+            child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.accent)),
       );
     }
     // Requête vide → CATALOGUE VIP : on choisit une grande équipe en 1 clic.
@@ -201,7 +201,7 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
         child: SizedBox(
             width: 38,
             height: 38,
-            child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.gold)),
+            child: CircularProgressIndicator(strokeWidth: 3, color: TvTokens.accent)),
       );
     }
     if (_results.isEmpty) {
@@ -309,16 +309,16 @@ class _TvTeamPickerScreenState extends State<TvTeamPickerScreen> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.gold : TvTokens.card,
+            color: focused ? TvTokens.accent : TvTokens.card,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(
-                color: focused ? TvTokens.gold : TvTokens.lineSoft),
+                color: focused ? TvTokens.accent : TvTokens.lineSoft),
           ),
           child: Text(name,
               style: TextStyle(
                   fontSize: TvDimens.titleS,
                   fontWeight: FontWeight.w700,
-                  color: focused ? const Color(0xFF1A1206) : TvTokens.text)),
+                  color: focused ? TvTokens.onAccent : TvTokens.text)),
         );
       },
     );
@@ -386,14 +386,14 @@ class _Key extends StatelessWidget {
           return Container(
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: focused ? TvTokens.gold : TvTokens.sel,
+              color: focused ? TvTokens.accent : TvTokens.sel,
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
             ),
             child: Text(label,
                 style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
-                    color: focused ? const Color(0xFF1A1206) : TvTokens.text)),
+                    color: focused ? TvTokens.onAccent : TvTokens.text)),
           );
         },
       ),

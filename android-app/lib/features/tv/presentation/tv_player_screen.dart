@@ -636,7 +636,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                         SizedBox(
                           width: 40, height: 40,
                           child: CircularProgressIndicator(
-                              strokeWidth: 3, color: TvTokens.gold),
+                              strokeWidth: 3, color: TvTokens.accent),
                         ),
                       ],
                     ),
@@ -677,14 +677,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                             borderRadius:
                                 BorderRadius.circular(TvTokens.rButton),
                             border: Border.all(
-                                color: TvTokens.gold,
+                                color: TvTokens.accent,
                                 width: TvDimens.focusOutline),
                           ),
                           child: Text('OK : Réessayer   ·   Retour : Quitter',
                               style: TextStyle(
                                   fontSize: TvDimens.titleS,
                                   fontWeight: FontWeight.w700,
-                                  color: TvTokens.goldBright)),
+                                  color: TvTokens.accentBright)),
                         ),
                       ],
                     ),
@@ -888,7 +888,7 @@ class _ControlsBar extends StatelessWidget {
                     : Icons.favorite_border_rounded,
                 label: 'Favori',
                 onTap: onFavorite,
-                accent: TvTokens.gold,
+                accent: TvTokens.accent,
                 active: isFavorite,
                 focused: focusedIndex == 2,
               ),
@@ -1019,22 +1019,22 @@ class _CtrlButtonState extends State<_CtrlButton> {
   @override
   Widget build(BuildContext context) {
     final double d = widget.primary ? 76 : 62;
-    final Color accent = widget.accent ?? TvTokens.gold;
+    final Color accent = widget.accent ?? TvTokens.accent;
     // Surlignage D-pad = anneau OR épais + halo : visible sur N'IMPORTE quelle
     // télécommande (le repère « où je suis »).
     final Color borderColor = widget.focused
-        ? TvTokens.gold
+        ? TvTokens.accent
         : (widget.active ? accent : Colors.white24);
     final Color bg = widget.focused
-        ? TvTokens.gold.withValues(alpha: 0.28)
+        ? TvTokens.accent.withValues(alpha: 0.28)
         : (widget.active
             ? accent.withValues(alpha: 0.22)
             : Colors.black.withValues(alpha: 0.42));
     final Color iconColor = widget.focused
-        ? TvTokens.gold
+        ? TvTokens.accent
         : (widget.active ? accent : TvTokens.text);
     final Color labelColor = widget.focused
-        ? TvTokens.gold
+        ? TvTokens.accent
         : (widget.active ? accent : TvTokens.muted);
 
     final double scale = _down ? 0.9 : (widget.focused ? 1.12 : 1.0);
@@ -1062,7 +1062,7 @@ class _CtrlButtonState extends State<_CtrlButton> {
                 boxShadow: widget.focused
                     ? <BoxShadow>[
                         BoxShadow(
-                            color: TvTokens.gold.withValues(alpha: 0.45),
+                            color: TvTokens.accent.withValues(alpha: 0.45),
                             blurRadius: 24,
                             spreadRadius: -2),
                       ]

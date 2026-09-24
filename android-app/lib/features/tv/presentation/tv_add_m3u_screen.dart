@@ -129,7 +129,7 @@ class _Field extends StatelessWidget {
         TextField(
           controller: controller,
           style: TextStyle(fontSize: TvDimens.title, color: TvTokens.text),
-          cursorColor: TvTokens.gold,
+          cursorColor: TvTokens.accent,
           keyboardType: TextInputType.url,
           autocorrect: false,
           enableSuggestions: false,
@@ -146,7 +146,7 @@ class _Field extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-              borderSide: const BorderSide(color: TvTokens.gold, width: 2),
+              borderSide: const BorderSide(color: TvTokens.accent, width: 2),
             ),
           ),
         ),

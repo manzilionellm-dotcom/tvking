@@ -131,7 +131,7 @@ class _RecordingRow extends StatelessWidget {
               child: Row(
                 children: <Widget>[
                   const Icon(Icons.play_circle_fill_rounded,
-                      color: TvTokens.gold, size: 38),
+                      color: TvTokens.accent, size: 38),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(

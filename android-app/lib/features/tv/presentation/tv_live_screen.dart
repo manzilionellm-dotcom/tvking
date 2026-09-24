@@ -624,7 +624,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                         const SizedBox(height: 8),
                         Text(_mac,
                             style: TvTokens.mono(28,
-                                color: TvTokens.goldBright, spacing: 2)),
+                                color: TvTokens.accentBright, spacing: 2)),
                       ],
                     ),
                   ),
@@ -853,7 +853,7 @@ class _CRow extends StatelessWidget {
           final Color bg =
               (focused || active) ? TvTokens.sel : Colors.transparent;
           final Color fg = focused
-              ? TvTokens.goldBright
+              ? TvTokens.accentBright
               : (active ? TvTokens.text : TvTokens.muted);
           return Container(
             decoration: BoxDecoration(
@@ -861,7 +861,7 @@ class _CRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(TvTokens.rMenuItem),
               border: focused
                   ? Border.all(
-                      color: TvTokens.gold, width: TvDimens.focusOutline)
+                      color: TvTokens.accent, width: TvDimens.focusOutline)
                   : null,
             ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -887,7 +887,7 @@ class _CRow extends StatelessWidget {
                   style: TextStyle(
                       fontSize: TvDimens.label,
                       fontWeight: FontWeight.w700,
-                      color: focused ? TvTokens.goldBright : TvTokens.mutedDim),
+                      color: focused ? TvTokens.accentBright : TvTokens.mutedDim),
                 ),
               ],
             ),
@@ -1154,7 +1154,7 @@ class _LiveHeroState extends State<_LiveHero> {
                                       backgroundColor: TvTokens.line,
                                       valueColor:
                                           const AlwaysStoppedAnimation<Color>(
-                                              TvTokens.gold),
+                                              TvTokens.accent),
                                     ),
                                   ),
                                 ),
@@ -1432,7 +1432,7 @@ class _ChannelCardState extends State<_ChannelCard> {
               right: 12,
               bottom: 12,
               child:
-                  Icon(Icons.favorite_rounded, size: 16, color: TvTokens.gold),
+                  Icon(Icons.favorite_rounded, size: 16, color: TvTokens.accent),
             ),
           // NOM DOMINANT en bas-gauche : c'est lui qui « porte » la carte.
           Positioned(
@@ -1553,7 +1553,7 @@ class _TagBadge extends StatelessWidget {
               fontSize: 10,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.4,
-              color: TvTokens.gold)),
+              color: TvTokens.accent)),
     );
   }
 }
@@ -1636,11 +1636,11 @@ class _ActionPill extends StatelessWidget {
       scale: TvFocusScale.large,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.gold : TvTokens.sel,
+            color: focused ? TvTokens.accent : TvTokens.sel,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
           child: Row(

@@ -262,14 +262,14 @@ class _Key extends StatelessWidget {
           return Container(
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: focused ? TvTokens.gold : TvTokens.sel,
+              color: focused ? TvTokens.accent : TvTokens.sel,
               borderRadius: BorderRadius.circular(TvDimens.cardRadius),
             ),
             child: Text(label,
                 style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
-                    color: focused ? const Color(0xFF1A1206) : TvTokens.text)),
+                    color: focused ? TvTokens.onAccent : TvTokens.text)),
           );
         },
       ),

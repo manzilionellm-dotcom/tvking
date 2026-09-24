@@ -216,19 +216,19 @@ class _TextField extends StatelessWidget {
       keyboardType: keyboardType,
       autocorrect: false,
       enableSuggestions: false,
-      cursorColor: TvTokens.gold,
+      cursorColor: TvTokens.accent,
       style: TvTokens.ui(18, weight: FontWeight.w500, color: TvTokens.text),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         labelStyle: TvTokens.ui(13, color: TvTokens.muted),
         hintStyle: TvTokens.ui(14, color: TvTokens.mutedDim),
-        floatingLabelStyle: TvTokens.ui(13, color: TvTokens.goldBright),
+        floatingLabelStyle: TvTokens.ui(13, color: TvTokens.accentBright),
         filled: true,
         fillColor: TvTokens.card,
         contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         enabledBorder: border(TvTokens.line, 1),
-        focusedBorder: border(TvTokens.gold, 2),
+        focusedBorder: border(TvTokens.accent, 2),
       ),
     );
   }
@@ -250,16 +250,16 @@ class _ServerChip extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.gold : (selected ? TvTokens.sel : Colors.transparent),
+            color: focused ? TvTokens.accent : (selected ? TvTokens.sel : Colors.transparent),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
-            border: Border.all(color: hl ? TvTokens.gold : TvTokens.line),
+            border: Border.all(color: hl ? TvTokens.accent : TvTokens.line),
           ),
           child: Text(label,
               style: TvTokens.ui(15,
                   weight: FontWeight.w600,
                   color: focused
-                      ? const Color(0xFF1A1206)
-                      : (selected ? TvTokens.goldBright : TvTokens.muted))),
+                      ? TvTokens.onAccent
+                      : (selected ? TvTokens.accentBright : TvTokens.muted))),
         );
       },
     );

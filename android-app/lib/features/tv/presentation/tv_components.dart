@@ -50,7 +50,7 @@ class TvWhatsAppQr extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(TvTokens.rCard),
-            border: Border.all(color: TvTokens.gold, width: 2),
+            border: Border.all(color: TvTokens.accent, width: 2),
           ),
           child: QrImageView(
             data: tvWhatsAppUrl(mac),
@@ -69,11 +69,11 @@ class TvWhatsAppQr extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             const Icon(Icons.qr_code_scanner_rounded,
-                color: TvTokens.goldBright, size: 22),
+                color: TvTokens.accentBright, size: 22),
             const SizedBox(width: 10),
             Text(context.l10n.tvScanToActivate,
                 style: TvTokens.ui(18,
-                    weight: FontWeight.w700, color: TvTokens.goldBright)),
+                    weight: FontWeight.w700, color: TvTokens.accentBright)),
           ],
         ),
         const SizedBox(height: 6),
@@ -120,7 +120,7 @@ class TvCard extends StatelessWidget {
           // Filet d'accent or (1px) en haut.
           const SizedBox(
             height: 1,
-            child: DecoratedBox(decoration: BoxDecoration(gradient: TvTokens.goldHairline)),
+            child: DecoratedBox(decoration: BoxDecoration(gradient: TvTokens.accentHairline)),
           ),
           Padding(padding: padding ?? const EdgeInsets.all(24), child: child),
         ],
@@ -159,10 +159,10 @@ class TvPricePill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Text(label.toUpperCase(),
-              style: TvTokens.ui(15, weight: FontWeight.w600, color: TvTokens.gold, spacing: 2)),
+              style: TvTokens.ui(15, weight: FontWeight.w600, color: TvTokens.accent, spacing: 2)),
           const SizedBox(width: 12),
           Text(amount,
-              style: TvTokens.display(26, weight: FontWeight.w600, color: TvTokens.goldBright)),
+              style: TvTokens.display(26, weight: FontWeight.w600, color: TvTokens.accentBright)),
         ],
       ),
     );
@@ -200,7 +200,7 @@ class TvCtaButton extends StatelessWidget {
             border: focused ? Border.all(color: TvTokens.text, width: 2) : null,
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: const Color(0xFFCCB089).withValues(alpha: focused ? 0.55 : 0.35),
+                color: TvTokens.accent.withValues(alpha: focused ? 0.55 : 0.35),
                 blurRadius: focused ? 36 : 24,
                 spreadRadius: -10,
                 offset: const Offset(0, 8),
@@ -209,7 +209,7 @@ class TvCtaButton extends StatelessWidget {
           ),
           child: Text(label,
               style: TvTokens.ui(TvDimens.title,
-                  weight: FontWeight.w600, color: const Color(0xFF1A1206))),
+                  weight: FontWeight.w600, color: TvTokens.onAccent)),
         );
       },
     );
@@ -242,7 +242,7 @@ class TvEmptyState extends StatelessWidget {
               border: Border.all(color: TvTokens.line),
               borderRadius: BorderRadius.circular(TvTokens.rButton),
             ),
-            child: Icon(icon, color: TvTokens.gold, size: 38),
+            child: Icon(icon, color: TvTokens.accent, size: 38),
           ),
           const SizedBox(height: 22),
           Text(title, style: TvTokens.display(34, color: TvTokens.text)),

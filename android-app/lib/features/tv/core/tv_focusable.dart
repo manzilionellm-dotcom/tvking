@@ -186,7 +186,7 @@ class _TvFocusableState extends State<TvFocusable> {
                 // Signal 4 : CONTOUR OR au focus (visible partout, §5 spec).
                 border: (widget.showOutline && (active || widget.selected))
                     ? Border.all(
-                        color: active ? TvTokens.gold : TvTokens.line,
+                        color: active ? TvTokens.accent : TvTokens.line,
                         width: TvDimens.focusOutline,
                       )
                     : null,
@@ -201,7 +201,7 @@ class _TvFocusableState extends State<TvFocusable> {
                           offset: const Offset(0, TvDimens.focusElevDy),
                         ),
                         BoxShadow(
-                          color: TvTokens.gold.withValues(alpha: 0.30),
+                          color: TvTokens.accent.withValues(alpha: 0.30),
                           blurRadius: TvDimens.focusGlowBlur,
                           spreadRadius: TvDimens.focusGlowSpread,
                         ),

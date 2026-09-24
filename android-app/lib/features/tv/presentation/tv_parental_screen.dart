@@ -93,7 +93,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
             child: Row(
               children: <Widget>[
                 Icon(Icons.child_care_rounded,
-                    color: kids ? TvTokens.gold : TvTokens.muted, size: 30),
+                    color: kids ? TvTokens.accent : TvTokens.muted, size: 30),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -112,7 +112,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                               : 'Désactivé — toutes les chaînes sont visibles.',
                           style: TextStyle(
                               fontSize: TvDimens.label,
-                              color: kids ? TvTokens.gold : TvTokens.muted)),
+                              color: kids ? TvTokens.accent : TvTokens.muted)),
                     ],
                   ),
                 ),
@@ -162,10 +162,10 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                   scale: TvFocusScale.large,
                   onSelect: _changePin,
                   builder: (BuildContext context, bool focused) {
-                    final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+                    final Color bg = focused ? TvTokens.accent : TvTokens.sel;
                     final Color fg = focused
-                        ? const Color(0xFF1A1206)
-                        : TvTokens.goldBright;
+                        ? TvTokens.onAccent
+                        : TvTokens.accentBright;
                     return Container(
                       decoration: BoxDecoration(
                           color: bg,
@@ -351,9 +351,9 @@ class _PinPadScreenState extends State<_PinPadScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: i < _entry.length
-                          ? TvTokens.gold
+                          ? TvTokens.accent
                           : Colors.transparent,
-                      border: Border.all(color: TvTokens.gold, width: 2),
+                      border: Border.all(color: TvTokens.accent, width: 2),
                     ),
                   ),
               ],
@@ -435,9 +435,9 @@ class _PadButton extends StatelessWidget {
         scale: TvFocusScale.large,
         onSelect: onSelect,
         builder: (BuildContext context, bool focused) {
-          final Color bg = focused ? TvTokens.gold : TvTokens.card;
+          final Color bg = focused ? TvTokens.accent : TvTokens.card;
           final Color fg =
-              focused ? const Color(0xFF1A1206) : TvTokens.text;
+              focused ? TvTokens.onAccent : TvTokens.text;
           return Container(
             width: 84,
             height: 64,
@@ -496,26 +496,26 @@ class _TogglePill extends StatelessWidget {
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           decoration: BoxDecoration(
             color: focused
-                ? TvTokens.gold
-                : (on ? TvTokens.gold.withValues(alpha: 0.18) : TvTokens.sel),
+                ? TvTokens.accent
+                : (on ? TvTokens.accent.withValues(alpha: 0.18) : TvTokens.sel),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Icon(on ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
-                  size: 22, color: focused ? fg : (on ? TvTokens.gold : TvTokens.muted)),
+                  size: 22, color: focused ? fg : (on ? TvTokens.accent : TvTokens.muted)),
               const SizedBox(width: 8),
               Text(on ? 'Activé' : 'Désactivé',
                   style: TextStyle(
                       fontSize: TvDimens.titleS,
                       fontWeight: FontWeight.w700,
-                      color: focused ? fg : (on ? TvTokens.goldBright : TvTokens.muted))),
+                      color: focused ? fg : (on ? TvTokens.accentBright : TvTokens.muted))),
             ],
           ),
         );

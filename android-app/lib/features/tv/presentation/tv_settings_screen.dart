@@ -139,8 +139,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   scale: TvFocusScale.large,
                   onSelect: _busy ? null : _refresh,
                   builder: (BuildContext context, bool focused) {
-                    final Color bg = focused ? TvTokens.gold : TvTokens.sel;
-                    final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+                    final Color bg = focused ? TvTokens.accent : TvTokens.sel;
+                    final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
                     return Container(
                       decoration: BoxDecoration(
                           color: bg,
@@ -176,9 +176,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.accent : TvTokens.sel;
               final Color fg =
-                  focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+                  focused ? TvTokens.onAccent : TvTokens.accentBright;
               return Container(
                 width: 760,
                 decoration: BoxDecoration(
@@ -212,9 +212,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.accent : TvTokens.sel;
               final Color fg =
-                  focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+                  focused ? TvTokens.onAccent : TvTokens.accentBright;
               return Container(
                 width: 760,
                 decoration: BoxDecoration(
@@ -248,9 +248,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
               ),
             ),
             builder: (BuildContext context, bool focused) {
-              final Color bg = focused ? TvTokens.gold : TvTokens.sel;
+              final Color bg = focused ? TvTokens.accent : TvTokens.sel;
               final Color fg =
-                  focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+                  focused ? TvTokens.onAccent : TvTokens.accentBright;
               return Container(
                 width: 760,
                 decoration: BoxDecoration(

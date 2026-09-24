@@ -118,14 +118,14 @@ class _SourceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color badge = _xtream ? TvTokens.gold : const Color(0xFF5AA0E8);
+    final Color badge = _xtream ? TvTokens.accent : const Color(0xFF5AA0E8);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
       decoration: BoxDecoration(
         color: TvTokens.panel,
         borderRadius: BorderRadius.circular(TvTokens.rCard),
         border: Border.all(
-            color: playlist.isActive ? TvTokens.gold : TvTokens.lineSoft,
+            color: playlist.isActive ? TvTokens.accent : TvTokens.lineSoft,
             width: playlist.isActive ? 1.5 : 1),
       ),
       child: Row(
@@ -163,7 +163,7 @@ class _SourceRow extends StatelessWidget {
                     style: TextStyle(
                         fontSize: TvDimens.label,
                         color: playlist.isActive
-                            ? TvTokens.gold
+                            ? TvTokens.accent
                             : TvTokens.muted)),
               ],
             ),
@@ -203,11 +203,11 @@ class _Pill extends StatelessWidget {
       scale: TvFocusScale.medium,
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
-        final Color fg = focused ? const Color(0xFF1A1206) : TvTokens.goldBright;
+        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.gold : TvTokens.sel,
+            color: focused ? TvTokens.accent : TvTokens.sel,
             borderRadius: BorderRadius.circular(TvTokens.rButton),
           ),
           child: Row(

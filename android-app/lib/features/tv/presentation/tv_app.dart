@@ -49,7 +49,7 @@ class TvApp extends StatelessWidget {
       scaffoldBackgroundColor: TvTokens.bg,
       colorScheme: const ColorScheme.dark(
         surface: TvTokens.card,
-        primary: TvTokens.gold,
+        primary: TvTokens.accent,
       ),
       useMaterial3: true,
     );
@@ -220,18 +220,18 @@ class _DialogBtn extends StatelessWidget {
       onSelect: onSelect,
       builder: (BuildContext context, bool focused) {
         final Color fg = focused
-            ? const Color(0xFF1A1206)
-            : (primary ? TvTokens.goldBright : TvTokens.text);
+            ? TvTokens.onAccent
+            : (primary ? TvTokens.accentBright : TvTokens.text);
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           decoration: BoxDecoration(
             color: focused
-                ? TvTokens.gold
+                ? TvTokens.accent
                 : (primary ? TvTokens.sel : Colors.transparent),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
             border: Border.all(
-                color: focused ? TvTokens.gold : TvTokens.line),
+                color: focused ? TvTokens.accent : TvTokens.line),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -690,7 +690,7 @@ class _NavItem extends StatelessWidget {
         // Maison Noir : fond `--sel` au focus/actif, barre OR à gauche si
         // actif, texte or. JAMAIS de bloc blanc plein.
         final bool hl = focused || selected;
-        final Color fg = hl ? TvTokens.goldBright : TvTokens.muted;
+        final Color fg = hl ? TvTokens.accentBright : TvTokens.muted;
         return Container(
           height: 54,
           decoration: BoxDecoration(
@@ -704,7 +704,7 @@ class _NavItem extends StatelessWidget {
                 width: 3,
                 margin: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
-                  color: selected ? TvTokens.gold : Colors.transparent,
+                  color: selected ? TvTokens.accent : Colors.transparent,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),

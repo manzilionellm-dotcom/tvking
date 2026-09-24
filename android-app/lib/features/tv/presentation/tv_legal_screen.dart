@@ -155,7 +155,7 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
                   style: TextStyle(
                       fontSize: TvDimens.title,
                       fontWeight: FontWeight.w800,
-                      color: TvTokens.goldBright)),
+                      color: TvTokens.accentBright)),
               const SizedBox(height: 8),
               Container(
                 constraints: const BoxConstraints(maxWidth: 1000),
