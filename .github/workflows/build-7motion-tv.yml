@@ -1,19 +1,23 @@
 # ============================================================================
 #  build-7motion-tv.yml — Compile « 7 MOTION TV » (app Flutter, entrée
 #  android-app/lib/main_tv.dart) en APK sideloadable pour box Android TV /
-#  Fire TV / Google TV, et le publie sur la release « 7motion-tv » :
+#  Fire TV / Google TV, et le publie sur la release « 7motion-tv-panel » :
 #
-#    https://github.com/<repo>/releases/download/7motion-tv/7motion-tv.apk
+#    https://github.com/<repo>/releases/download/7motion-tv-panel/7motion-tv-panel.apk
 #
-#  POURQUOI CE WORKFLOW (24/09/2026). L'APK qui occupait cette release était
-#  un lecteur tiers « 4K Player » simplement rebrandé (binaire fermé, sans
-#  code source ici) : il NE PEUT PAS parler au panel admin. L'app Flutter
-#  `main_tv.dart`, elle, est câblée sur le MÊME Worker que le panel
-#  (https://app.7themotion.com) : heartbeat au démarrage (platform=tv),
-#  statut licence, sources poussées (/api/device-source), thème, annonces,
-#  historique multi-box. Publier CETTE app sous la même URL, c'est ce qui
-#  « connecte l'app au panel ». L'ancien APK 4K Player reste récupérable
-#  (branche claude/salut-mg9ub7, dossier android-app/release-7motion-tv).
+#  ⚠ RELEASE SÉPARÉE (24/09/2026, décision du propriétaire). La release
+#  « 7motion-tv » appartient à l'APK 4K Player rebrandé (workflow
+#  publish-7motion-tv.yml) : CE workflow n'y écrit JAMAIS. Package différent
+#  (com.sevenmotion.tv.seven_tv vs com.manthefew) → les deux apps
+#  cohabitent sur la même box.
+#
+#  POURQUOI CE WORKFLOW (24/09/2026). Le 4K Player rebrandé est un binaire
+#  tiers fermé (sans code source ici) : il s'active sur le serveur de son
+#  fournisseur, pas sur notre panel. L'app Flutter `main_tv.dart`, elle, est
+#  câblée sur le MÊME Worker que le panel (https://app.7themotion.com) :
+#  heartbeat au démarrage (platform=tv), licence essai/payé, sources
+#  Xtream/M3U saisies par le client OU poussées par le panel
+#  (/api/device-source), thème, annonces, historique multi-box.
 #
 #  CE QUI SE PASSE :
 #    1. Flutter stable + Java 17 + SDK Android ; Firebase reste fail-open
@@ -39,7 +43,7 @@
 #       versionCode = secondes epoch (strictement croissant → la mise à jour
 #       s'installe toujours par-dessus), APP_BUILD_TS pour la « mise à jour
 #       forcée » pilotée par le panel.
-#    7. Artefact du run TOUJOURS ; PUBLICATION sur la release 7motion-tv
+#    7. Artefact du run TOUJOURS ; PUBLICATION sur la release 7motion-tv-panel
 #       uniquement (a) sur push vers `main`, ou (b) en lancement manuel avec
 #       publish=true. Un push sur une branche de travail compile et vérifie,
 #       mais n'écrase PAS le lien donné aux clients.
@@ -47,7 +51,7 @@
 #  Surcharger le backend visé (staging…) : input `backend_url` (dispatch)
 #  → `--dart-define=BACKEND_URL=…` (cf. subscription_backend.dart).
 # ============================================================================
-name: Build 7 MOTION TV (APK → release 7motion-tv)
+name: Build 7 MOTION TV (APK → release 7motion-tv-panel)
 
 on:
   push:
@@ -66,7 +70,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publier sur la release 7motion-tv (lien clients)'
+        description: 'Publier sur la release 7motion-tv-panel'
         required: false
         default: 'false'
         type: choice
@@ -83,14 +87,14 @@ permissions:
 env:
   # QUI PUBLIE ? Une seule réponse, lue par toutes les étapes concernées.
   PUBLIER: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.publish == 'true' }}
-  RELEASE_TAG: 7motion-tv
-  APK_NAME: 7motion-tv.apk
+  RELEASE_TAG: 7motion-tv-panel
+  APK_NAME: 7motion-tv-panel.apk
 
 # Une seule publication à la fois sur ce canal : deux runs simultanés
 # écriraient l'APK de l'un et le version.json de l'autre. On fait la queue,
 # on n'annule jamais un téléversement en cours.
 concurrency:
-  group: publish-7motion-tv
+  group: publish-7motion-tv-panel
   cancel-in-progress: false
 
 defaults:
@@ -347,15 +351,15 @@ jobs:
       - name: Upload APK artifact (7 MOTION TV)
         uses: actions/upload-artifact@v4
         with:
-          name: 7motion-tv-apk-${{ github.sha }}
-          path: android-app/build/app/outputs/flutter-apk/7motion-tv.apk
+          name: 7motion-tv-panel-apk-${{ github.sha }}
+          path: android-app/build/app/outputs/flutter-apk/7motion-tv-panel.apk
           retention-days: 30
           if-no-files-found: error
 
       # ------------------------------------------------------------------
-      #  PUBLICATION (main ou dispatch publish=true) — release 7motion-tv
+      #  PUBLICATION (main ou dispatch publish=true) — release 7motion-tv-panel
       # ------------------------------------------------------------------
-      - name: Publier sur la release 7motion-tv
+      - name: Publier sur la release 7motion-tv-panel
         if: env.PUBLIER == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -384,19 +388,18 @@ jobs:
           }
           JSON
           cat version.json
-          NOTES="7 MOTION TV — app Flutter (lib/main_tv.dart) reliée au panel admin (https://app.7themotion.com) : heartbeat, activation par MAC, sources poussées, thème, annonces.
+          NOTES="7 MOTION TV (panel) — app Flutter (lib/main_tv.dart) reliée au panel admin (https://app.7themotion.com) : activation par MAC, licence essai/payé, sources Xtream/M3U saisies par le client ou poussées par le panel, thème sombre 7 MOTION.
 
-          Installation box : Downloader → https://app.7themotion.com/tv
           Lien direct : https://github.com/$REPO/releases/download/$RELEASE_TAG/$APK_NAME
 
           versionCode : $NEW_VC · version : $VN · signature : ${SIGNING:-?}
           SHA-256 : $SHA
           Commit : ${{ github.sha }}"
           if gh release view "$RELEASE_TAG" -R "$REPO" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" -R "$REPO" --title "7 MOTION TV — APK box" --notes "$NOTES"
+            gh release edit "$RELEASE_TAG" -R "$REPO" --title "7 MOTION TV (panel) — APK box" --notes "$NOTES"
           else
             gh release create "$RELEASE_TAG" -R "$REPO" --prerelease \
-              --title "7 MOTION TV — APK box" --notes "$NOTES"
+              --title "7 MOTION TV (panel) — APK box" --notes "$NOTES"
           fi
           gh release upload "$RELEASE_TAG" "$APK" version.json --clobber -R "$REPO"
           echo "✓ https://github.com/$REPO/releases/download/$RELEASE_TAG/$APK_NAME"

@@ -1,20 +1,21 @@
 # 7 MOTION TV ↔ panel admin — comment l'app box est reliée au panel
 
-> Lien clients (box, Downloader) :
-> `https://github.com/manzilionellm-dotcom/tvking/releases/download/7motion-tv/7motion-tv.apk`
-> ou, plus court et de marque : `https://app.7themotion.com/tv`.
+> Lien de l'app reliée au panel :
+> `https://github.com/manzilionellm-dotcom/tvking/releases/download/7motion-tv-panel/7motion-tv-panel.apk`
+>
+> La release `7motion-tv` reste celle de l'APK 4K Player rebrandé : ce
+> workflow n'y écrit jamais. Les deux apps ont des packages différents et
+> cohabitent sur la même box.
 
 ## 1. Ce qui est publié sous ce lien
 
 Le workflow racine `.github/workflows/build-7motion-tv.yml` compile l'app
 Flutter **`android-app/lib/main_tv.dart`** (interface 10-foot, D-pad) et
-dépose l'APK sur la release `7motion-tv`.
+dépose l'APK sur la release `7motion-tv-panel`.
 
-Avant le 24/09/2026, cette release contenait un lecteur tiers « 4K Player »
-rebrandé (binaire fermé, sans code source dans ce dépôt). **Un tel binaire ne
-peut pas être relié au panel** : il ne connaît ni le Worker, ni la MAC
-virtuelle, ni le heartbeat. Il reste récupérable sur la branche
-`claude/salut-mg9ub7` (`android-app/release-7motion-tv/`).
+Le 4K Player rebrandé (release `7motion-tv`) est un binaire tiers fermé : il
+s'active sur le serveur de son fournisseur, pas sur notre panel. C'est pour
+ça que l'app reliée au panel est cette app Flutter, publiée à part.
 
 ## 2. La connexion au panel, concrètement
 
@@ -41,7 +42,7 @@ l'écran bascule seul sur l'accueil.
 ## 3. Publier une nouvelle version
 
 - **Automatique** : tout push sur `main` qui touche `android-app/` recompile
-  et **publie** sur `7motion-tv` (versionCode = secondes epoch, donc toujours
+  et **publie** sur `7motion-tv-panel` (versionCode = secondes epoch, donc toujours
   croissant → la mise à jour s'installe par-dessus).
 - **Manuel** : Actions → « Build 7 MOTION TV » → *Run workflow* →
   `publish = true`. Avec `publish = false` (défaut), le run compile, vérifie
