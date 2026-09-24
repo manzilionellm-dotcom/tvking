@@ -1,0 +1,53 @@
+# ============================================================================
+#  publish-7motion-tv.yml — Publie l'APK 7 MOTION TV (base 4K Player rebrandée)
+#  dans la release « 7motion-tv », pour un LIEN DIRECT à installer sur les box :
+#    https://github.com/<repo>/releases/download/7motion-tv/7motion-tv.apk
+#
+#  L'APK fait ~108 Mo : GitHub refuse les fichiers > 100 Mo dans le dépôt, donc
+#  elle est stockée en 2 morceaux (android-app/release-7motion-tv/). Ce workflow
+#  les recolle, VÉRIFIE l'empreinte SHA-256 (aucun octet perdu), puis publie.
+# ============================================================================
+name: Publish 7 MOTION TV APK
+
+on:
+  push:
+    paths:
+      - 'android-app/release-7motion-tv/**'
+      - '.github/workflows/publish-7motion-tv.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # créer la release et y attacher l'APK
+
+jobs:
+  publish:
+    name: Recolle, vérifie et publie 7motion-tv.apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Recoller les morceaux et vérifier l'empreinte
+        working-directory: android-app/release-7motion-tv
+        run: |
+          set -e
+          cat 7motion-tv.apk.part0 7motion-tv.apk.part1 > 7motion-tv.apk
+          echo "2005629560625644b4fe1f333a8283d5cb37ab42feb7d560cacd7a55c5f40be4  7motion-tv.apk" | sha256sum -c -
+          ls -la 7motion-tv.apk
+
+      - name: Publier dans la release 7motion-tv
+        working-directory: android-app/release-7motion-tv
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          # Crée la release au 1er passage (pre-release : ne devient pas
+          # la « latest » du dépôt), sinon remplace simplement l'APK.
+          if ! gh release view 7motion-tv -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create 7motion-tv -R "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --prerelease \
+              --title "7 MOTION TV — APK box" \
+              --notes "APK 7 MOTION TV (base 4K Player rebrandée, signée clé 7 MOTION). SHA-256 : 2005629560625644b4fe1f333a8283d5cb37ab42feb7d560cacd7a55c5f40be4"
+          fi
+          gh release upload 7motion-tv 7motion-tv.apk --clobber -R "$GITHUB_REPOSITORY"
+          echo "✓ https://github.com/$GITHUB_REPOSITORY/releases/download/7motion-tv/7motion-tv.apk"
