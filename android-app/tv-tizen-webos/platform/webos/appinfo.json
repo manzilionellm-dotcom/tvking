@@ -1,0 +1,21 @@
+{
+  "id": "com.7themotion.defewtv",
+  "version": "1.0.0",
+  "vendor": "7 MOTION",
+  "type": "web",
+  "main": "index.html",
+  "title": "DeFew TV",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "iconColor": "#CCB089",
+  "bgColor": "#070707",
+  "supportPortraitMode": false,
+  "handlesRelaunch": true,
+  "disableBackHistoryAPI": true,
+  "requiredPermissions": [
+    "network.internal",
+    "network.external",
+    "systemservice.deviceinfo",
+    "systemservice"
+  ]
+}

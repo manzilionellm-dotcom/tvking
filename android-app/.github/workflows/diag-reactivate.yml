@@ -1,0 +1,49 @@
+name: Diag reactivate
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/diag-reactivate.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: 'https://seven-motion-backend.manzilionel-lm.workers.dev'
+    steps:
+      - name: Login -> find device -> PATCH active -> verify
+        run: |
+          set +e
+          echo "== login =="
+          TOK=$(curl -s -X POST "$BASE/api/v1/auth/login" -H "Content-Type: application/json" \
+            -d '{"email":"admin","password":"change-me"}' | jq -r '.token')
+          echo "token present: $([ -n "$TOK" ] && echo yes || echo no)"
+
+          echo "== liste devices =="
+          DEVS=$(curl -s "$BASE/api/v1/devices" -H "Authorization: Bearer $TOK")
+          echo "$DEVS" | jq '.items[] | {id, mac, block_status}' 2>/dev/null || echo "$DEVS"
+
+          ID=$(echo "$DEVS" | jq -r '.items[0].id')
+          echo "premier device id = $ID"
+
+          echo "== PATCH block_status=active (Reactiver) =="
+          curl -s -X PATCH "$BASE/api/v1/devices/$ID" \
+            -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
+            -d '{"block_status":"active"}' -w "\n__HTTP__%{http_code}\n"
+
+          echo "== verif apres =="
+          curl -s "$BASE/api/v1/devices" -H "Authorization: Bearer $TOK" \
+            | jq '.items[] | {mac, block_status}' 2>/dev/null
+
+          echo "== test aussi frozen puis active =="
+          curl -s -X PATCH "$BASE/api/v1/devices/$ID" -H "Authorization: Bearer $TOK" \
+            -H "Content-Type: application/json" -d '{"block_status":"frozen"}' -w " [frozen __HTTP__%{http_code}]\n"
+          curl -s -X PATCH "$BASE/api/v1/devices/$ID" -H "Authorization: Bearer $TOK" \
+            -H "Content-Type: application/json" -d '{"block_status":"active"}' -w " [active __HTTP__%{http_code}]\n"
+          curl -s "$BASE/api/v1/devices" -H "Authorization: Bearer $TOK" \
+            | jq -r '.items[0] | "final block_status = \(.block_status)"' 2>/dev/null

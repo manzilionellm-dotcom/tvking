@@ -1,0 +1,106 @@
+#  =========================================================
+#   build-ios.yml — Check de COMPILATION iOS (sans signature)
+#  =========================================================
+#   But : vérifier que l'app 7 MOTION COMPILE pour iOS, sur un
+#   runner macOS, SANS compte Apple Developer (build --no-codesign).
+#   Ça ne produit pas un .ipa installable (il faut un compte Apple +
+#   signature pour ça) — mais ça nous dit exactement ce qui bloque
+#   côté iOS (plugins, Info.plist, version min iOS…).
+#
+#   ADDITIF : ce workflow ne touche NI l'Android NI le cast. Le
+#   dossier ios/ est généré à la volée (comme android/), il n'est
+#   pas commité.
+#
+#   Déclenchement : manuel (Actions → Run workflow) OU push qui
+#   modifie ce fichier / le pubspec (pas sur chaque commit lib/ pour
+#   ne pas spammer le CI).
+#  =========================================================
+
+name: Build iOS (compile check, no signing)
+
+concurrency:
+  group: build-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+      - 'claude/**'
+      - 'feature/**'
+    paths:
+      - '.github/workflows/build-ios.yml'
+      - 'ci/ios/**'
+      - 'pubspec.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    name: Compile iOS (no codesign)
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Toolchain (diagnostic)
+        run: |
+          flutter --version
+          dart --version
+          xcodebuild -version || true
+
+      # Génère le dossier natif iOS (non commité, comme pour Android).
+      - name: Generate native iOS folder
+        run: flutter create . --platforms=ios --org com.manzilionellm.tvking --project-name tv_king
+
+      # Lib vidéo iOS pour media_kit — ajoutée UNIQUEMENT ici (pubspec
+      # du runner, jamais commité) pour ne pas toucher au build Android.
+      - name: Add iOS video libs (runner-only)
+        run: flutter pub add media_kit_libs_ios_video || true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Generate AppLocalizations from .arb files
+        run: flutter gen-l10n || true
+
+      # Version iOS minimale : media_kit (libmpv) exige iOS 13+.
+      # Le Podfile généré commente `platform :ios, '12.0'`.
+      - name: Bump iOS deployment target to 13.0
+        run: |
+          if [ -f ios/Podfile ]; then
+            sed -i '' "s/# *platform :ios, '[0-9.]*'/platform :ios, '13.0'/" ios/Podfile || true
+            echo "--- Podfile platform ---"
+            grep -n "platform :ios" ios/Podfile || true
+          fi
+
+      # Info.plist : config complète pour qu'une app IPTV FONCTIONNE sur
+      # iOS (ATS HTTP clair, audio en arrière-plan, réseau local + Bonjour
+      # pour le cast). Script PARTAGÉ avec build-ios-release.yml → une seule
+      # source de vérité. Détail des clés : docs/ios-app-store-playbook.md.
+      - name: Patch Info.plist (script partagé)
+        run: bash ci/ios/patch_info_plist.sh ios/Runner/Info.plist
+
+      # Compile pour iOS device SANS signature (pas besoin de compte
+      # Apple). Échoue = il reste du travail d'adaptation iOS ; réussit
+      # = l'app est portable telle quelle (hors cast natif).
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Resume
+        if: success()
+        run: |
+          echo "OK - l'app compile pour iOS (sans signature)."
+          echo "Etape suivante = compte Apple Developer + signature pour un .ipa installable."

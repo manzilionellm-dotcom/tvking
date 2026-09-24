@@ -76,3 +76,29 @@ npm run lint
 > Navigation : flèches (D-pad) pour déplacer le focus, Entrée/Espace pour activer.
 > Les visuels sont des dégradés (pas d'images binaires) — à remplacer par de
 > vraies affiches/logos et à brancher sur de vraies données (API sport / cours).
+
+---
+
+## Application Android (Flutter) — dossier `android-app/`
+
+Le dépôt héberge aussi l'application mobile / Android TV **7 MOTION** (projet
+Flutter, codename `tv_king`) dans le dossier [`android-app/`](android-app/).
+Elle est indépendante du site Next.js ci-dessus : chaque projet a ses propres
+dépendances, son propre `.gitignore` et sa propre documentation.
+
+```bash
+cd android-app
+flutter pub get
+flutter build apk --debug     # APK de test
+```
+
+- Documentation de l'app : [`android-app/README.md`](android-app/README.md)
+- Conventions de code de l'app : [`android-app/AGENTS.md`](android-app/AGENTS.md)
+- Package / applicationId actuel : `com.example.tv_king` (voir
+  `android-app/android/app/build.gradle.kts`).
+- Les workflows CI historiques de l'app sont conservés dans
+  `android-app/.github/workflows/` mais ne sont **pas** exécutés par GitHub
+  (seul `.github/` à la racine l'est). À adapter avec `working-directory: android-app`
+  si on veut les réactiver.
+- Aucun keystore ni secret n'est versionné : la signature release se fait
+  via les secrets GitHub Actions (`ANDROID_KEYSTORE_BASE64`, etc.).

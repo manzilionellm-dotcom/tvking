@@ -1,0 +1,370 @@
+# ============================================================================
+#  build-prive.yml — Compile « Privé » (édition 18+) en APK sideloadable.
+#
+#  MÊME app que The Few mobile (entrée lib/main_prive.dart → bootApp()), mais
+#  flavor `prive` : nom/logo « Privé » + adultOnly (chaînes adultes seulement).
+#  applicationId DISTINCT (com.manzilionellm.prive) → s'installe À CÔTÉ de
+#  The Few sans la remplacer.
+#
+#  v1 = release --split-per-abi (arm64) → prive.apk sur la release "prive-latest".
+# ============================================================================
+name: Build Privé (APK)
+
+on:
+  push:
+    branches: ['main', 'claude/**', 'feature/**']
+    paths:
+      - 'lib/main_prive.dart'
+      - 'lib/core/flavor/flavor.dart'
+      - 'assets/branding/prive_icon.png'
+      - 'assets/branding/prive_icon_fg.png'
+      - 'flutter_launcher_icons_prive.yaml'
+      - '.github/workflows/build-prive.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-prive:
+    name: Build Privé APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      # applicationId DISTINCT (com.manzilionellm.prive) pour coexister avec
+      # The Few (com.manzilionellm.tvking). Pas de code natif custom → flutter
+      # create régénère un projet cohérent (MainActivity Flutter par défaut).
+      - name: Generate native Android folder (Privé)
+        run: flutter create . --platforms=android --org com.manzilionellm --project-name prive
+
+      - name: Brand manifest (Privé)
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i 's|android:label="prive"|android:label="Privé"|g' "$MANIFEST" || true
+          grep 'android:label' "$MANIFEST" || true
+
+      - name: Patch manifest — réseau (cleartext HTTP + INTERNET)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+          fi
+          if ! grep -q 'usesCleartextTraffic' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' "$MANIFEST"
+          fi
+          grep -nE 'INTERNET|usesCleartextTraffic' "$MANIFEST" || true
+
+      # Pont natif : export GALERIE en MP4 (remux TS→MP4 via MediaMuxer →
+      # lisible Samsung/Android/WhatsApp) + service d'enregistrement. MÊME
+      # overlay que The Few mobile (éprouvé). Câble les MethodChannels
+      # .../gallery et .../recording_service. NB : embarque aussi Google Cast
+      # (même overlay) — sans incidence si on ne caste pas.
+      - name: Apply native overlay (gallery MP4 export + recording)
+        run: bash android_overlay/google_cast/apply_cast_patch.sh
+
+      # CONFIDENTIALITÉ : FLAG_SECURE → captures/enregistrements d'écran
+      # bloqués + aperçu multitâche masqué. Patch ROBUSTE : marche que le
+      # MainActivity soit le simple FlutterActivity OU celui de l'overlay
+      # (FlutterFragmentActivity, sans onCreate → on en ajoute un).
+      - name: Patch MainActivity for FLAG_SECURE (anti screenshot)
+        run: |
+          set -e
+          python3 << 'PYEOF'
+          import glob, re
+          files = glob.glob('android/app/src/main/kotlin/**/MainActivity.kt', recursive=True)
+          if not files:
+              print('MainActivity.kt introuvable'); raise SystemExit(0)
+          flag = 'window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)'
+          for f in files:
+              s = open(f).read()
+              if 'FLAG_SECURE' in s:
+                  print('deja', f); continue
+              if 'import android.os.Bundle' not in s:
+                  s = re.sub(r'(^package [^\n]+\n)',
+                             r'\1import android.os.Bundle\nimport android.view.WindowManager\n',
+                             s, count=1, flags=re.M)
+              if 'override fun onCreate' in s:
+                  # Injecte après le super.onCreate(...) existant.
+                  s = re.sub(r'(super\.onCreate\([^\n]*\)\n)',
+                             r'\1        ' + flag + '\n', s, count=1)
+              else:
+                  m = re.search(r'class MainActivity\s*:\s*\w+\([^)]*\)\s*\{', s)
+                  if m:
+                      body = ('\n    override fun onCreate(savedInstanceState: Bundle?) {\n'
+                              '        super.onCreate(savedInstanceState)\n'
+                              '        ' + flag + '\n    }\n')
+                      s = s[:m.end()] + body + s[m.end():]
+                  else:
+                      s = re.sub(r'class MainActivity\s*:\s*(\w+)\(\)\s*$',
+                          lambda mo: ('class MainActivity : ' + mo.group(1) + '() {\n'
+                              '    override fun onCreate(savedInstanceState: Bundle?) {\n'
+                              '        super.onCreate(savedInstanceState)\n'
+                              '        ' + flag + '\n    }\n}'),
+                          s, flags=re.M)
+              open(f, 'w').write(s)
+              print('FLAG_SECURE ok', f)
+          PYEOF
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Patch screen_brightness_android build.gradle
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            echo "skip screen_brightness"; exit 0
+          fi
+          export PATCH_FILE="$FILE"
+          python3 << 'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          lines = open(file).readlines()
+          kre = re.compile(r'^\s*kotlin\s*\{')
+          out=[]; ink=False; depth=0; removed=0
+          for line in lines:
+              if not ink:
+                  if kre.match(line):
+                      ink=True; depth=line.count('{')-line.count('}'); removed+=1
+                      if depth<=0: ink=False
+                      continue
+                  out.append(line)
+              else:
+                  depth+=line.count('{')-line.count('}'); removed+=1
+                  if depth<=0: ink=False
+          if removed: open(file,'w').writelines(out); print('patched', removed)
+          else: print('no kotlin block')
+          PYEOF
+
+      - name: Patch build.gradle.kts for notifications (desugaring)
+        run: |
+          set -e
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if 'isCoreLibraryDesugaringEnabled' not in s:
+              s = s.replace('compileOptions {',
+                  'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+          if 'desugar_jdk_libs' not in s:
+              s = s.rstrip() + ('\n\ndependencies {\n'
+                  '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n')
+          open(f, 'w').write(s)
+          PYEOF
+
+      - name: Generate AppLocalizations from .arb files
+        run: flutter gen-l10n || true
+
+      - name: Generate launcher icons (logo Privé)
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons_prive.yaml || true
+
+      # ----- Firebase Crashlytics (OPTIONNEL, activé si secret présent) -----
+      # Si GOOGLE_SERVICES_JSON est posé, on écrit le fichier et on applique le
+      # plugin Gradle google-services. Sans secret : no-op → Crashlytics off,
+      # build vert.
+      - name: Configure Firebase Crashlytics (si secret présent)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -e
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "⊙ GOOGLE_SERVICES_JSON absent → Crashlytics désactivé (build normal)."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          echo "✓ google-services.json écrit."
+          python3 << 'PYEOF'
+          import re
+          settings = "android/settings.gradle.kts"
+          s = open(settings).read()
+          if "com.google.gms.google-services" not in s:
+              s = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                         s, count=1)
+              open(settings, "w").write(s)
+              print("✓ google-services déclaré (settings.gradle.kts)")
+          app = "android/app/build.gradle.kts"
+          a = open(app).read()
+          if "com.google.gms.google-services" not in a:
+              a = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.gms.google-services")',
+                         a, count=1)
+              open(app, "w").write(a)
+              print("✓ google-services appliqué (app/build.gradle.kts)")
+          PYEOF
+
+      # ----- R8 / ProGuard : rétrécissement code + ressources -----
+      - name: Enable R8 + ProGuard (shrink code & resources)
+        run: |
+          set -e
+          cp ci/proguard-rules.pro android/app/proguard-rules.pro
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if "isMinifyEnabled" not in s:
+              s = s.replace(
+                  "release {",
+                  ('release {\n'
+                   '            isMinifyEnabled = true\n'
+                   '            isShrinkResources = true\n'
+                   '            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")'),
+                  1)
+              open(f, "w").write(s)
+              print("R8/shrink actives")
+          else:
+              print("deja actif")
+          PYEOF
+          grep -n "isMinifyEnabled\|isShrinkResources\|proguardFiles" android/app/build.gradle.kts || true
+
+      # ----- Signature RELEASE STABLE (P0-5) -----
+      # Privé DOIT être signé avec le keystore release stable (cert d'identité
+      # stable ⇒ mises à jour en place possibles). AVANT ce correctif, Privé
+      # était signé par le keystore debug ÉPHÉMÈRE du runner (clé aléatoire à
+      # chaque build) → « application not installed » / signature mismatch à la
+      # moindre MAJ. On réutilise ci/release.jks.enc (déchiffré avec
+      # ANDROID_KEYSTORE_PASSWORD) ou ANDROID_KEYSTORE_BASE64 — MÊME clé que The Few.
+      - name: Configure release signing (Privé)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > android/app/release.jks
+            echo "✓ keystore depuis ANDROID_KEYSTORE_BASE64"
+          elif [ -n "$KS_PW" ] && [ -f ci/release.jks.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 \
+              -in ci/release.jks.enc -out android/app/release.jks \
+              -pass pass:"$KS_PW"
+            echo "✓ keystore déchiffré depuis ci/release.jks.enc"
+          else
+            # Aucun keystore release configuré (secrets absents). On NE casse PAS
+            # le build : repli signature debug, mais BRUYANT. ⚠️ Un Privé signé
+            # debug n'est pas updatable de façon stable → pose les secrets
+            # ANDROID_KEYSTORE_BASE64 + ANDROID_KEYSTORE_PASSWORD pour corriger.
+            echo "::warning title=Signature debug::Privé sans keystore release → APK signé en DEBUG (MAJ en place non garanties)."
+            echo "⚠️ Repli signature DEBUG — pose les secrets keystore pour une signature release stable."
+            exit 0
+          fi
+          cat > android/key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$KS_PW
+          keyAlias=sevenmotion
+          keyPassword=$KS_PW
+          EOF
+          echo "✓ release.jks + key.properties écrits (Privé signé release)"
+
+      - name: Patch build.gradle.kts for release signing (Privé)
+        run: |
+          set -e
+          F=android/app/build.gradle.kts
+          [ -f "$F" ] || { echo "❌ $F introuvable"; exit 1; }
+          export GRADLE_FILE="$F"
+          python3 << 'PYEOF'
+          import os
+          f = os.environ['GRADLE_FILE']
+          s = open(f).read()
+          if 'signingConfigs.getByName("release")' in s:
+              print('deja patche'); raise SystemExit
+          imports = 'import java.util.Properties\nimport java.io.FileInputStream\n\n'
+          loader = (
+              'val keystoreProperties = Properties()\n'
+              'val keystorePropertiesFile = rootProject.file("key.properties")\n'
+              'if (keystorePropertiesFile.exists()) {\n'
+              '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n'
+              '}\n\n'
+          )
+          signing = (
+              'android {\n'
+              '    signingConfigs {\n'
+              '        create("release") {\n'
+              '            val sf = keystoreProperties.getProperty("storeFile")\n'
+              '            if (sf != null) {\n'
+              '                storeFile = file(sf)\n'
+              '                storePassword = keystoreProperties.getProperty("storePassword")\n'
+              '                keyAlias = keystoreProperties.getProperty("keyAlias")\n'
+              '                keyPassword = keystoreProperties.getProperty("keyPassword")\n'
+              '            }\n'
+              '        }\n'
+              '    }\n'
+          )
+          if 'android {' not in s:
+              print('pas de bloc android {} — template inattendu'); raise SystemExit(1)
+          if 'import java.util.Properties' not in s:
+              s = imports + s
+          s = s.replace('android {', loader + 'android {', 1)
+          s = s.replace('android {', signing, 1)
+          old = 'signingConfig = signingConfigs.getByName("debug")'
+          new = ('signingConfig = if (keystorePropertiesFile.exists()) '
+                 'signingConfigs.getByName("release") else '
+                 'signingConfigs.getByName("debug")')
+          if old in s:
+              s = s.replace(old, new, 1)
+              print('buildType release -> cle stable')
+          else:
+              print('WARN: ligne signingConfig debug non trouvee')
+          open(f, 'w').write(s)
+          print('build.gradle.kts patche (signing)')
+          PYEOF
+
+      - name: Build Privé (release, arm64, target main_prive)
+        run: |
+          set -e
+          BUILD_TS=$(date +%s)
+          ok=
+          for attempt in 1 2 3 4; do
+            flutter build apk --release --no-tree-shake-icons --split-per-abi \
+              --obfuscate --split-debug-info=build/symbols \
+              --dart-define=APP_BUILD_TS=$BUILD_TS \
+              --target=lib/main_prive.dart && { ok=1; break; }
+            echo "attempt $attempt failed; retry 25s"; sleep 25
+          done
+          [ "$ok" = 1 ] || { echo "build failed"; exit 1; }
+          echo "=== APKs ==="; ls -lah build/app/outputs/flutter-apk/
+
+      - name: Publish "prive-latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -ex
+          REPO="${{ github.repository }}"
+          SRC="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+          OUT="build/app/outputs/flutter-apk/prive.apk"
+          cp "$SRC" "$OUT"
+          NOTES="Privé — édition 18+ (même app que The Few, chaînes adultes uniquement).
+
+          Sideload : https://github.com/$REPO/releases/download/prive-latest/prive.apk
+          S'installe À CÔTÉ de The Few (applicationId distinct).
+
+          Commit : ${{ github.sha }}"
+          if gh release view prive-latest --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit prive-latest --repo "$REPO" --notes "$NOTES"
+            gh release upload prive-latest --repo "$REPO" --clobber "$OUT"
+          else
+            gh release create prive-latest --repo "$REPO" \
+              --title "Privé — dernier build" --notes "$NOTES" --prerelease "$OUT"
+          fi
+          gh release view prive-latest --repo "$REPO"

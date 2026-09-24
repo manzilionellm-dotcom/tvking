@@ -1,0 +1,404 @@
+# ============================================================================
+#  build-tv.yml — Compile DeFew TV (entrée lib/main_tv.dart) en APK
+#  sideloadable et le publie sur la release "tv-latest".
+#
+#  App SŒUR du mobile : MÊME projet Flutter, MÊME backend/panel. Seule
+#  l'UI (10-foot, D-pad) diffère. On régénère android/ via `flutter create`
+#  (comme le build mobile), on patche le manifest (réseau cleartext + TV
+#  leanback + label DeFew TV), puis on build le TARGET main_tv.
+#
+#  Build RELEASE signé avec un KEYSTORE FIXE (ci/defew-debug.keystore) :
+#  toutes les versions partagent la même clé → les mises à jour s'installent
+#  PAR-DESSUS l'ancienne (pas de « désinstaller d'abord »). Bannière Android TV
+#  de marque attachée pour la home Leanback.
+# ============================================================================
+name: Build DeFew TV (APK)
+
+on:
+  push:
+    branches: ['main', 'claude/**', 'feature/**']
+    paths:
+      - 'lib/main_tv.dart'
+      - 'lib/features/tv/**'
+      # Modules PARTAGÉS dont dépend l'app TV — sinon une correction ici ne
+      # déclenchait pas le build TV (ex. identité device / abonnement / cœur).
+      - 'lib/features/device/**'
+      - 'lib/features/subscription/**'
+      - 'lib/features/channels/**'
+      - 'lib/features/playlists/**'
+      - 'lib/features/epg/**'
+      - 'lib/core/**'
+      - 'packages/**'
+      - 'pubspec.yaml'
+      - 'assets/branding/**'
+      - 'lib/l10n/**'
+      - '.github/workflows/build-tv.yml'
+      - 'lib/features/cast/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-tv:
+    name: Build DeFew TV APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Generate native Android folder
+        run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+
+      - name: Brand manifest (DeFew TV)
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i 's|android:label="tv_king"|android:label="The Few TV"|g' "$MANIFEST" || true
+          grep 'android:label' "$MANIFEST" || true
+
+      - name: Patch manifest — réseau (cleartext HTTP + INTERNET)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+          fi
+          if ! grep -q 'usesCleartextTraffic' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' "$MANIFEST"
+          fi
+          grep -nE 'INTERNET|usesCleartextTraffic' "$MANIFEST" || true
+
+      - name: Patch manifest — Android TV (leanback)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.software.leanback' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-feature android:name="android.software.leanback" android:required="false"/>\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>' "$MANIFEST"
+          fi
+          # Catégorie LEANBACK_LAUNCHER sur l'activité principale (visible
+          # dans la home Android TV à côté de Netflix/Prime).
+          if ! grep -q 'LEANBACK_LAUNCHER' "$MANIFEST"; then
+            sed -i 's#<category android:name="android.intent.category.LAUNCHER"/>#<category android:name="android.intent.category.LAUNCHER"/>\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>#' "$MANIFEST"
+          fi
+          grep -nE 'leanback|LEANBACK_LAUNCHER|touchscreen' "$MANIFEST" || true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Patch screen_brightness_android build.gradle
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            echo "⊙ screen_brightness_android pas dans pub-cache, skip"
+            exit 0
+          fi
+          export PATCH_FILE="$FILE"
+          python3 << 'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          with open(file) as f:
+              lines = f.readlines()
+          kotlin_block_re = re.compile(r'^\s*kotlin\s*\{')
+          out = []
+          in_kotlin = False
+          depth = 0
+          removed = 0
+          for line in lines:
+              if not in_kotlin:
+                  if kotlin_block_re.match(line):
+                      in_kotlin = True
+                      depth = line.count('{') - line.count('}')
+                      removed += 1
+                      if depth <= 0:
+                          in_kotlin = False
+                      continue
+                  out.append(line)
+              else:
+                  depth += line.count('{') - line.count('}')
+                  removed += 1
+                  if depth <= 0:
+                      in_kotlin = False
+          if removed > 0:
+              with open(file, 'w') as f:
+                  f.writelines(out)
+              print(f'retire {removed} ligne(s) kotlin{{}}')
+          else:
+              print('aucun bloc kotlin{} (deja fixe)')
+          PYEOF
+
+      - name: Patch build.gradle.kts for notifications (desugaring)
+        run: |
+          set -e
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if 'isCoreLibraryDesugaringEnabled' not in s:
+              s = s.replace(
+                  'compileOptions {',
+                  'compileOptions {\n        isCoreLibraryDesugaringEnabled = true',
+                  1)
+              print('desugaring active')
+          if 'desugar_jdk_libs' not in s:
+              s = s.rstrip() + ('\n\ndependencies {\n'
+                  '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+                  '}\n')
+              print('dep desugar ajoutee')
+          # libVLC (flutter_vlc_player) ET media_kit embarquent libc++_shared.so
+          # → conflit de packaging. On garde la 1re occurrence.
+          if 'pickFirsts.add' not in s:
+              s = s.replace(
+                  'android {',
+                  'android {\n    packaging { jniLibs { pickFirsts.add("**/libc++_shared.so") } }',
+                  1)
+              print('packaging pickFirst ajoute')
+          open(f, 'w').write(s)
+          PYEOF
+
+      - name: Generate AppLocalizations from .arb files
+        run: flutter gen-l10n || true
+
+      # Icône de marque (pas le logo Flutter par défaut) — même source que
+      # le mobile (assets/branding/logo_black7royal.png).
+      - name: Generate launcher icons (logo The Few)
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons_tv.yaml || true
+
+      # BANNIÈRE Android TV — c'est CE logo qu'affiche la home Leanback (à côté
+      # de Netflix/Prime). Sans bannière, la TV montre une vignette grise/
+      # générique (« le logo ne vient pas »). On copie notre bannière de marque
+      # dans les drawables et on l'attache à l'application via android:banner.
+      - name: Bannière Android TV (logo The Few)
+        run: |
+          set -e
+          RES=android/app/src/main/res
+          mkdir -p "$RES/drawable" "$RES/drawable-xhdpi" "$RES/drawable-xxhdpi"
+          cp assets/branding/thefew_tv_banner.png    "$RES/drawable/tv_banner.png"
+          cp assets/branding/thefew_tv_banner.png    "$RES/drawable-xhdpi/tv_banner.png"
+          cp assets/branding/thefew_tv_banner_2x.png "$RES/drawable-xxhdpi/tv_banner.png"
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android:banner' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:banner="@drawable/tv_banner"|' "$MANIFEST"
+          fi
+          grep -n 'android:banner' "$MANIFEST" || true
+          # ANTI-OOM box à FAIBLE RAM (« se connecte puis se ferme direct ») :
+          # on autorise un TAS mémoire agrandi. Sur les Android d'entrée de gamme
+          # (512 Mo–1 Go), le décodage vidéo (MediaCodec) + l'UI Flutter + le cache
+          # d'images dépassent vite le heap par défaut → l'OS tue le process au
+          # démarrage (kill natif non rattrapable). largeHeap repousse cette
+          # limite. Sans effet négatif sur les box puissantes.
+          if ! grep -q 'android:largeHeap' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:largeHeap="true"|' "$MANIFEST"
+          fi
+          grep -n 'largeHeap' "$MANIFEST" || true
+
+      # SIGNATURE STABLE — « mise à jour sans désinstaller ».
+      # Le build release est signé par signingConfigs.debug, qui lit
+      # ~/.android/debug.keystore. Or chaque runner CI en GÉNÈRE un NOUVEAU
+      # (clé différente) → Android refuse la mise à jour (« appli non
+      # installée »). On impose donc NOTRE keystore fixe (ci/defew-debug.keystore,
+      # identifiants debug standard) : toutes les versions sont signées avec LA
+      # MÊME clé → l'update s'installe par-dessus l'ancienne, sans désinstaller.
+      - name: Signature stable (keystore fixe)
+        run: |
+          set -e
+          mkdir -p ~/.android
+          cp ci/defew-debug.keystore ~/.android/debug.keystore
+          echo "Keystore fixe en place (~/.android/debug.keystore)."
+
+      # ----- Firebase Crashlytics (OPTIONNEL, activé si secret présent) -----
+      # Identique au build mobile : si GOOGLE_SERVICES_JSON est posé, on écrit
+      # le fichier et on applique le plugin Gradle google-services. Sans secret,
+      # no-op → Crashlytics désactivé (fail-open), build vert.
+      - name: Configure Firebase Crashlytics (si secret présent)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -e
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "⊙ GOOGLE_SERVICES_JSON absent → Crashlytics désactivé (build normal)."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          echo "✓ google-services.json écrit."
+          python3 << 'PYEOF'
+          import re
+          settings = "android/settings.gradle.kts"
+          s = open(settings).read()
+          if "com.google.gms.google-services" not in s:
+              s = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                         s, count=1)
+              open(settings, "w").write(s)
+              print("✓ google-services déclaré (settings.gradle.kts)")
+          app = "android/app/build.gradle.kts"
+          a = open(app).read()
+          if "com.google.gms.google-services" not in a:
+              a = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.gms.google-services")',
+                         a, count=1)
+              open(app, "w").write(a)
+              print("✓ google-services appliqué (app/build.gradle.kts)")
+          PYEOF
+
+      # ----- R8 / ProGuard : rétrécissement code + ressources -----
+      # Identique au build mobile. Règles keep dans ci/proguard-rules.pro
+      # (conservatrices → media_kit / ExoPlayer / Firebase préservés).
+      - name: Enable R8 + ProGuard (shrink code & resources)
+        run: |
+          set -e
+          cp ci/proguard-rules.pro android/app/proguard-rules.pro
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if "isMinifyEnabled" not in s:
+              s = s.replace(
+                  "release {",
+                  ('release {\n'
+                   '            isMinifyEnabled = true\n'
+                   '            isShrinkResources = true\n'
+                   '            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")'),
+                  1)
+              open(f, "w").write(s)
+              print("R8/shrink actives")
+          else:
+              print("deja actif")
+          PYEOF
+          grep -n "isMinifyEnabled\|isShrinkResources\|proguardFiles" android/app/build.gradle.kts || true
+
+      # COMPATIBILITÉ MAXIMALE BOX (corrige « Application non installée ») :
+      #  1) minSdk fixé à 21 (Android 5.0 = plancher Flutter). Sans ça, le
+      #     minSdk hérite de la valeur la plus haute exigée par un plugin →
+      #     les box sur un Android plus ancien REFUSENT l'install. 21 = le plus
+      #     grand dénominateur commun installable.
+      #  2) Signatures v1 (JAR) + v2 + v3 toutes activées : les box < Android 7
+      #     (API 24) ne savent vérifier QUE la v1 ; sans elle → install refusée.
+      - name: Compatibilité box (minSdk 21 + signatures v1/v2/v3)
+        run: |
+          set -e
+          python3 << 'PYEOF'
+          import re
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          # 1) minSdk -> 21
+          if re.search(r'minSdk\s*=\s*flutter\.minSdkVersion', s):
+              s = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 21', s)
+              print('minSdk -> 21 (depuis flutter.minSdkVersion)')
+          elif re.search(r'minSdk\s*=\s*\d+', s):
+              s = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 21', s, count=1)
+              print('minSdk -> 21 (depuis litteral)')
+          else:
+              print('WARN: minSdk introuvable')
+          # 1b) applicationId DISTINCT du mobile. Le build mobile « The Few » ET
+          #     le build TV utilisaient TOUS LES DEUX com.manzilionellm.tvking.tv_king,
+          #     signés avec des clés DIFFÉRENTES → "Application non installée"
+          #     (conflit même-package/signature-différente) même après désinstall,
+          #     y compris sur une box moderne (SHIELD). On donne à la TV son PROPRE
+          #     package → installation propre, et cohabitation possible avec le
+          #     mobile. Le `namespace` (chemin Kotlin/R) reste inchangé : seul le
+          #     package INSTALLÉ change.
+          if re.search(r'applicationId\s*=\s*"com\.manzilionellm\.tvking\.tv_king"', s):
+              s = re.sub(r'applicationId\s*=\s*"com\.manzilionellm\.tvking\.tv_king"',
+                         'applicationId = "com.manzilionellm.tvking.defewtv"', s, count=1)
+              print('applicationId -> com.manzilionellm.tvking.defewtv (distinct du mobile)')
+          else:
+              print('WARN: applicationId tv_king introuvable')
+          # 2) Forcer v1/v2/v3 sur la config debug (clé fixe utilisée en release).
+          if 'enableV1Signing' not in s:
+              s = s.replace(
+                  'android {',
+                  ('android {\n'
+                   '    signingConfigs {\n'
+                   '        getByName("debug") {\n'
+                   '            enableV1Signing = true\n'
+                   '            enableV2Signing = true\n'
+                   '            enableV3Signing = true\n'
+                   '        }\n'
+                   '    }'),
+                  1)
+              print('signatures v1/v2/v3 forcees sur debug')
+          open(f, 'w').write(s)
+          PYEOF
+          grep -nE "minSdk|enableV1Signing|enableV2Signing|enableV3Signing" android/app/build.gradle.kts || true
+
+      # APK UNIVERSEL (toutes ABIs : arm64-v8a + armeabi-v7a + x86_64).
+      # CRUCIAL pour Amazon Fire Stick : beaucoup de Fire Stick (Lite, Stick de
+      # base) tournent en 32 bits (armeabi-v7a). Un APK arm64-only REFUSE de
+      # s'installer dessus. L'APK universel s'installe sur TOUS les Fire Stick
+      # et toutes les box Android TV — un seul fichier, un seul lien.
+      # BARRIÈRE QUALITÉ (TIER 0) — même garde-fou que le build mobile : on
+      # ne publie pas un APK TV qui rate l'analyse (erreurs) ou les tests.
+      - name: Quality gate (analyze + tests)
+        run: |
+          # `flutter create` (étape native plus haut) régénère un
+          # test/widget_test.dart PAR DÉFAUT (compteur) référençant `MyApp`,
+          # classe inexistante ici → erreur d'analyse. Pas un test du projet
+          # (les vrais sont sous test/features, test/core), non committé. On le
+          # retire avant la barrière.
+          rm -f test/widget_test.dart
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test --reporter expanded
+
+      - name: Build DeFew TV (release universel, target main_tv)
+        run: |
+          set -e
+          # versionCode STRICTEMENT CROISSANT (secondes epoch) : chaque build a
+          # un numéro plus grand que le précédent → Android voit TOUJOURS une
+          # version plus récente et accepte la mise à jour PAR-DESSUS l'ancienne
+          # (jamais de « rétrogradation » refusée). Reste < 2 100 000 000 (max
+          # Android) jusqu'en 2036. Combiné à la signature stable = remplacement
+          # garanti, plus jamais « application non installée ».
+          BUILD_NUMBER=$(date +%s)
+          echo "versionCode = $BUILD_NUMBER"
+          flutter build apk --release --no-tree-shake-icons \
+            --build-number="$BUILD_NUMBER" \
+            --obfuscate --split-debug-info=build/symbols \
+            --target=lib/main_tv.dart
+          echo "=== APK produit ==="
+          ls -lah build/app/outputs/flutter-apk/
+
+      - name: Publish "tv-latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -ex
+          REPO="${{ github.repository }}"
+          SRC="build/app/outputs/flutter-apk/app-release.apk"
+          OUT="build/app/outputs/flutter-apk/defew-tv.apk"
+          cp "$SRC" "$OUT"
+          NOTES="DeFew TV — build de prévisualisation (10-foot, D-pad).
+
+          APK UNIVERSEL : s'installe sur TOUS les Fire Stick (32/64 bits) et
+          box Android TV. Même backend/panel que le mobile. Sideload :
+          Downloader → https://github.com/$REPO/releases/download/tv-latest/defew-tv.apk
+
+          Commit : ${{ github.sha }}"
+          if gh release view tv-latest --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit tv-latest --repo "$REPO" --notes "$NOTES"
+            gh release upload tv-latest --repo "$REPO" --clobber "$OUT"
+          else
+            gh release create tv-latest --repo "$REPO" \
+              --title "DeFew TV — dernier build" \
+              --notes "$NOTES" --prerelease "$OUT"
+          fi
+          gh release view tv-latest --repo "$REPO"

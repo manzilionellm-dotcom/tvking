@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  config.xml — Manifeste application web Samsung Tizen (DeFew TV).
+  Génère un paquet .wgt à soumettre au Samsung Apps TV Seller Office.
+  NOTE signature : les privilèges « partner » (network.public pour lire la MAC)
+  exigent un CERTIFICAT PARTENAIRE Samsung. Voir README (section Samsung).
+-->
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://7themotion.com/defewtv"
+        version="1.0.0" viewmodes="maximized">
+  <tizen:application id="DeFewTV01.DeFewTV" package="DeFewTV01" required_version="5.0"/>
+  <content src="index.html"/>
+  <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+  <icon src="icon.png"/>
+  <name>DeFew TV</name>
+  <tizen:profile name="tv"/>
+  <!-- Accès réseau sans restriction d'origine (flux IPTV de domaines variés). -->
+  <access origin="*" subdomains="true"/>
+  <tizen:allow-navigation>*</tizen:allow-navigation>
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+  <tizen:privilege name="http://tizen.org/privilege/systeminfo"/>
+  <!-- Lecture du MAC réseau (niveau partenaire). -->
+  <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+  <tizen:setting screen-orientation="landscape" context-menu="disable"
+                 background-support="disable" encryption="disable"
+                 install-location="auto" hwkey-event="enable"/>
+</widget>

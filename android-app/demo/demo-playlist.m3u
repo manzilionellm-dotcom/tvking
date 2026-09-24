@@ -1,0 +1,10 @@
+#EXTM3U
+# Playlist de DEMONSTRATION pour la revue Google Play.
+# Flux de TEST publics et legaux uniquement (aucune chaine reelle).
+# Sert a montrer au relecteur que l'app LIT une source fournie par l'utilisateur.
+#EXTINF:-1 tvg-name="Demo 1",Demo TV 1
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1 tvg-name="Demo 2",Demo TV 2
+https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8
+#EXTINF:-1 tvg-name="Demo 3",Demo TV 3
+https://test-streams.mux.dev/tos_ismc/main.m3u8

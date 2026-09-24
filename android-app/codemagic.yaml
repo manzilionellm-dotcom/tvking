@@ -1,0 +1,94 @@
+# ============================================================================
+#  codemagic.yaml — Build + signature + envoi App Store de « The Few » (iOS)
+#
+#  Permet de publier l'app iOS SANS posséder de Mac : Codemagic fournit un
+#  Mac dans le cloud. Tout se pilote depuis le navigateur.
+#
+#  ── À FAIRE UNE FOIS dans l'interface Codemagic (codemagic.io) ──
+#   1. Crée un compte Codemagic (gratuit) et connecte ce dépôt GitHub.
+#   2. Apple Developer (99 $/an) doit être actif.
+#   3. App Store Connect → Utilisateurs et accès → Clés API → crée une clé
+#      « App Manager ». Télécharge le .p8, note le Key ID et l'Issuer ID.
+#   4. Dans Codemagic → Teams/User settings → Integrations → App Store Connect
+#      → ajoute cette clé. Donne-lui le nom EXACT : « The Few ASC Key »
+#      (référencé ci-dessous dans `integrations`).
+#   5. App Store Connect → Mes apps → ＋ → crée l'app « The Few » avec le
+#      Bundle ID : com.manzilionellm.thefew (Codemagic peut aussi l'enregistrer).
+#   6. Lance le workflow « ios-the-few ».
+#
+#  NB : on ne publie QUE « The Few ». « Privé » (18+) est interdit sur iOS.
+#       Ce build n'envoie PAS automatiquement en production : il s'arrête à
+#       TestFlight (review/soumission finale = décision manuelle).
+# ============================================================================
+
+workflows:
+  ios-the-few:
+    name: The Few — iOS App Store
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    integrations:
+      # Doit correspondre AU NOM donné à ta clé App Store Connect dans Codemagic.
+      app_store_connect: The Few ASC Key
+
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.manzilionellm.thefew
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Générer le dossier iOS (projet Android-first)
+        script: |
+          flutter create --platforms=ios --project-name tv_king --org com.manzilionellm .
+
+      - name: Ajouter les libs vidéo iOS de media_kit
+        script: flutter pub add media_kit_libs_ios_video
+
+      - name: Podfile (iOS 13) + Info.plist (flux HTTP IPTV, réseau local, export)
+        script: |
+          # media_kit exige iOS 13+
+          if grep -q "platform :ios" ios/Podfile; then
+            sed -i '' "s/.*platform :ios.*/platform :ios, '13.0'/" ios/Podfile
+          else
+            printf "platform :ios, '13.0'\n%s" "$(cat ios/Podfile)" > ios/Podfile
+          fi
+          PL=ios/Runner/Info.plist
+          PB=/usr/libexec/PlistBuddy
+          # Flux IPTV souvent en http:// → autoriser (sinon bloqués par l'ATS)
+          "$PB" -c "Add :NSAppTransportSecurity dict" "$PL" 2>/dev/null || true
+          "$PB" -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PL" 2>/dev/null || true
+          # Réseau local (lecture/diffusion locale)
+          "$PB" -c "Add :NSLocalNetworkUsageDescription string Lecture sur le reseau local." "$PL" 2>/dev/null || true
+          "$PB" -c "Add :NSBonjourServices array" "$PL" 2>/dev/null || true
+          "$PB" -c "Add :NSBonjourServices:0 string _airplay._tcp" "$PL" 2>/dev/null || true
+          # Chiffrement : seulement HTTPS standard → exempté
+          "$PB" -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PL" 2>/dev/null || true
+
+      - name: Récupérer les dépendances Flutter
+        script: flutter pub get
+
+      - name: Appliquer les profils de signature (gérés par Codemagic)
+        script: xcode-project use-profiles
+
+      - name: Pod install
+        script: find . -name "Podfile" -execdir pod install \;
+
+      - name: Construire l'IPA (release, signé)
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+
+    publishing:
+      # Envoie le build sur TestFlight automatiquement. NE soumet PAS en
+      # production (tu valides la soumission finale à la main).
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

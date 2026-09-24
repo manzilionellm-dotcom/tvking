@@ -1,0 +1,52 @@
+# ============================================================================
+#  cleanup-old-apks.yml — Suppression CONTRÔLÉE d'anciennes releases/APK.
+#
+#  Lancement MANUEL uniquement (workflow_dispatch). On donne la liste des
+#  tags à supprimer ; l'action supprime la release ET le tag git associé.
+#  Par défaut : les vieux builds TÉLÉPHONE périmés (remplacés par `latest`
+#  et `prive-latest`). On ne touche JAMAIS aux apps TV ni aux 2 apps
+#  officielles (latest / prive-latest).
+# ============================================================================
+name: Cleanup old APKs
+
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Tags des releases à supprimer (séparés par des espaces)'
+        required: true
+        default: 'build-522 build-526 cast-1132'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    name: Supprime les anciennes releases
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete releases + tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -u
+          # Garde-fou : on REFUSE de supprimer les 2 apps officielles,
+          # même si elles sont passées par erreur dans la liste.
+          PROTECTED="latest prive-latest"
+          for t in ${{ inputs.tags }}; do
+            skip=0
+            for p in $PROTECTED; do
+              if [ "$t" = "$p" ]; then
+                echo "🔒 PROTÉGÉ, on saute : $t"
+                skip=1
+              fi
+            done
+            [ "$skip" = "1" ] && continue
+            echo ">>> Suppression de la release + tag : $t"
+            gh release delete "$t" --repo "$REPO" --yes --cleanup-tag \
+              && echo "   ✅ supprimé" \
+              || echo "   ⚠️ introuvable (déjà supprimé ?)"
+          done
+          echo ">>> Releases restantes :"
+          gh release list --repo "$REPO" --limit 50

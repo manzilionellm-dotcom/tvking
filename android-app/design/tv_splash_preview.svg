@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" font-family="Inter, Segoe UI, Arial, sans-serif">
+  <defs>
+    <!-- Fond dégradé violet très sombre -->
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1B1626"/>
+      <stop offset="0.5" stop-color="#14121A"/>
+      <stop offset="1" stop-color="#0F0D15"/>
+    </linearGradient>
+    <!-- Halo violet radial -->
+    <radialGradient id="halo" cx="50%" cy="28%" r="55%">
+      <stop offset="0" stop-color="#9B6DFF" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#9B6DFF" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Dégradé pilule ENTRER -->
+    <linearGradient id="cta" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#B794FF"/>
+      <stop offset="1" stop-color="#6D4BD0"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="22" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="30"/>
+    </filter>
+  </defs>
+
+  <!-- Fond -->
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#halo)"/>
+
+  <!-- Halo derrière le logo -->
+  <ellipse cx="640" cy="135" rx="150" ry="120" fill="#9B6DFF" opacity="0.45" filter="url(#softglow)"/>
+
+  <!-- Logo (placeholder du PNG réel logo_black7royal.png) -->
+  <g filter="url(#glow)">
+    <rect x="565" y="60" width="150" height="150" rx="30" fill="#0F0D15" stroke="#9B6DFF" stroke-opacity="0.5" stroke-width="1.5"/>
+    <text x="640" y="158" font-size="86" font-weight="800" fill="#9B6DFF" text-anchor="middle">7</text>
+  </g>
+
+  <!-- Wordmark + badge vérifié -->
+  <g>
+    <text x="612" y="262" font-size="34" font-weight="700" letter-spacing="5" fill="#ECE8F2" text-anchor="middle">BLACK7 ROYAL</text>
+    <circle cx="812" cy="252" r="13" fill="#3897F0"/>
+    <path d="M806 252 l4 4 l8 -8" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="640" y="296" font-size="16" letter-spacing="2" fill="#A39FB0" text-anchor="middle">Cinéma sans limites</text>
+
+  <!-- Carte MAC -->
+  <g>
+    <rect x="360" y="338" width="560" height="208" rx="24" fill="#1E1B26" stroke="#9B6DFF" stroke-opacity="0.45" stroke-width="1.5"/>
+    <text x="640" y="382" font-size="13" letter-spacing="3" font-weight="700" fill="#B794FF" text-anchor="middle">VOTRE IDENTIFIANT APPAREIL</text>
+    <text x="640" y="446" font-family="JetBrains Mono, Consolas, monospace" font-size="44" font-weight="600" letter-spacing="4" fill="#ECE8F2" text-anchor="middle">MK:A3:B2:F1:8E:91</text>
+    <text x="640" y="492" font-size="15" fill="#A39FB0" text-anchor="middle">Communiquez ce code à votre fournisseur</text>
+    <text x="640" y="514" font-size="15" fill="#A39FB0" text-anchor="middle">pour activer votre abonnement.</text>
+  </g>
+
+  <!-- Bouton secondaire "Copier le code" -->
+  <g>
+    <rect x="535" y="556" width="210" height="46" rx="16" fill="none" stroke="#9B6DFF" stroke-opacity="0.5" stroke-width="1.5"/>
+    <text x="655" y="585" font-size="15" font-weight="700" letter-spacing="1" fill="#A39FB0" text-anchor="middle">Copier le code</text>
+    <path d="M566 572 h12 v14 h-12 z M571 572 v-5 h12 v14 h-5" stroke="#A39FB0" stroke-width="1.6" fill="none"/>
+  </g>
+
+  <!-- Bouton primaire ENTRER (focus : halo violet + scale) -->
+  <g filter="url(#glow)">
+    <rect x="510" y="628" width="260" height="64" rx="18" fill="url(#cta)"/>
+    <path d="M598 660 l0 -16 l14 8 z" fill="#0F0D15"/>
+    <text x="648" y="668" font-size="20" font-weight="800" letter-spacing="4" fill="#0F0D15" text-anchor="middle">ENTRER</text>
+  </g>
+</svg>

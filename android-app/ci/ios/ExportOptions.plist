@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  =========================================================
+   ExportOptions.plist — Export App Store de l'.ipa (RÉFÉRENCE)
+  =========================================================
+   Modèle de référence. Le workflow build-ios-release.yml GÉNÈRE sa
+   propre copie à partir des secrets (TEAM_ID, bundle id, nom du
+   profil) — tu n'as donc normalement RIEN à éditer ici. Ce fichier
+   sert de documentation + dépannage manuel (`flutter build ipa
+   --export-options-plist=ci/ios/ExportOptions.plist`).
+
+   Remplace les 3 placeholders si tu l'utilises à la main :
+     $TEAM_ID       → ton Team ID Apple (10 caractères)
+     $BUNDLE_ID     → ex. com.manzilionellm.tvking.tvKing
+     $PROFILE_NAME  → le nom EXACT de ton provisioning profile App Store
+  =========================================================
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store</string>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>teamID</key>
+    <string>$TEAM_ID</string>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>uploadBitcode</key>
+    <false/>
+    <key>stripSwiftSymbols</key>
+    <true/>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>$BUNDLE_ID</key>
+        <string>$PROFILE_NAME</string>
+    </dict>
+</dict>
+</plist>

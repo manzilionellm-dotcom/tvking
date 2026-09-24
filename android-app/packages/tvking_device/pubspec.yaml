@@ -1,0 +1,38 @@
+# =========================================================
+#  tvking_device — identité STABLE de l'appareil (plugin local)
+# =========================================================
+#  COEUR BUSINESS : la « MAC » virtuelle affichée au client et créée par le
+#  revendeur dans le panel NE DOIT JAMAIS CHANGER. Elle est dérivée de
+#  l'ANDROID_ID (Settings.Secure.ANDROID_ID), donc DÉTERMINISTE et stable
+#  d'une réinstallation à l'autre.
+#
+#  POURQUOI UN PLUGIN : sur le build TV (build-tv.yml), `android/` est
+#  régénéré par `flutter create` et le patch `apply_cast_patch.sh` (qui pose la
+#  MainActivity avec getAndroidId) N'EST PAS exécuté — seuls les builds mobile
+#  le font. Résultat avant ce plugin : getAndroidId manquant → MAC ALÉATOIRE
+#  qui changeait à chaque réinstallation → activation perdue.
+#
+#  Ce plugin enregistre le MÊME channel (`com.manzilionellm.tvking/device`) que
+#  le code Dart existant (DeviceIdentity) appelle déjà. Il s'auto-enregistre via
+#  GeneratedPluginRegistrant après `flutter pub get`, donc il est TOUJOURS
+#  présent, quel que soit le workflow. Aucun changement Dart nécessaire.
+# =========================================================
+name: tvking_device
+description: "Identité appareil stable (ANDROID_ID) + infos device, via channel natif qui survit au flutter create du CI."
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.manzilionellm.tvking_device
+        pluginClass: TvkingDevicePlugin

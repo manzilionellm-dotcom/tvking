@@ -1,0 +1,881 @@
+# =========================================================
+#  build-android.yml — Build APK automatique dans le cloud
+# =========================================================
+#  À chaque push sur main / claude/* / feature/* (ou manuel),
+#  GitHub Actions :
+#    1. Récupère le code
+#    2. Installe JDK 17 + Flutter stable + Android SDK
+#    3. Génère les fichiers natifs Android
+#    4. Compile l'APK debug
+#    5. Uploade en artifact + (optionnellement) en Release
+#
+#  Pour récupérer l'APK :
+#    • Actions → Build Android APK → dernier run → Artifacts
+#    • OU Releases (si déclenché manuellement avec "Make release")
+# =========================================================
+
+name: Build Android APK
+
+# Annule les builds en cours sur la même branche dès qu'un nouveau
+# push arrive. Évite les races sur la release "latest" quand on
+# pousse plusieurs commits coup sur coup.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'claude/**'
+      - 'feature/**'
+  workflow_dispatch:
+    inputs:
+      make_release:
+        description: 'Aussi publier en GitHub Release (true/false)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write   # nécessaire pour créer/mettre à jour une release
+
+jobs:
+  build:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # Diagnostic — imprime la version exacte de Flutter récupérée
+      # par l'action. Permet de comparer avec ce dont les nouvelles
+      # APIs (WidgetStateProperty, DialogThemeData, etc.) ont besoin.
+      - name: Print exact Flutter version
+        run: |
+          flutter --version
+          dart --version
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Show toolchain versions (diagnostic)
+        run: |
+          set -e
+          echo "=== java ==="
+          java -version
+          echo "=== flutter ==="
+          flutter --version
+          echo "=== flutter doctor ==="
+          flutter doctor -v || true
+
+      - name: Generate native Android folder
+        run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name tv_king
+
+      # Branding 7 MOTION : remplace le label par défaut du manifest
+      # (`tv_king`) par "7 MOTION" pour que le nom affiché sur le
+      # bureau Android soit le bon. Note : on garde l'org Java
+      # `com.manzilionellm.tvking` pour ne pas casser les installs
+      # existantes (changer l'applicationId = nouvelle app séparée).
+      - name: Brand AndroidManifest with The Few label
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's|android:label="tv_king"|android:label="The Few"|g' "$MANIFEST"
+            echo "--- Patched manifest ---"
+            grep 'android:label' "$MANIFEST" || true
+          fi
+
+      # =====================================================================
+      #  Réseau : INTERNET + HTTP en clair (cleartext)
+      # ---------------------------------------------------------------------
+      #  CAUSE DU BUG « les chaînes ne viennent jamais » :
+      #  La quasi-TOTALITÉ des serveurs IPTV (Xtream / M3U) sont en
+      #  `http://` (pas https). Or, pour une app qui cible Android 9+
+      #  (API 28+), le système BLOQUE par défaut tout trafic HTTP en clair
+      #  (`usesCleartextTraffic` = false). Résultat : le téléchargement de
+      #  la playlist M3U et les appels à l'API Xtream échouent
+      #  silencieusement → l'app affiche « chaînes en route » mais ne reçoit
+      #  jamais rien. `flutter create` régénère le manifeste SANS ce flag, il
+      #  faut donc le réinjecter à CHAQUE build.
+      #
+      #  On force aussi la permission INTERNET sur <manifest> : le manifeste
+      #  principal généré par Flutter ne la contient pas (elle n'est présente
+      #  que dans les variantes debug/profile). En release, sans elle, AUCUN
+      #  accès réseau. On l'ajoute donc explicitement (idempotent : sans
+      #  effet si déjà fusionnée depuis un plugin).
+      #
+      #  Implémentation : sed pur, idempotent (grep de garde avant chaque
+      #  injection → re-run sans effet).
+      # =====================================================================
+      - name: Patch AndroidManifest for network (cleartext HTTP + INTERNET)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ Manifest manquant — flutter create a-t-il tourné ?"
+            exit 1
+          fi
+
+          # 1. Permission INTERNET — enfant de <manifest>
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+            echo "✓ permission INTERNET ajoutée"
+          else
+            echo "⊙ permission INTERNET déjà présente"
+          fi
+
+          # 2. usesCleartextTraffic="true" — attribut de <application>
+          if ! grep -q 'usesCleartextTraffic' "$MANIFEST"; then
+            sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' "$MANIFEST"
+            echo "✓ android:usesCleartextTraffic=\"true\" ajouté (HTTP IPTV en clair autorisé)"
+          else
+            echo "⊙ usesCleartextTraffic déjà présent"
+          fi
+
+          # 3. REQUEST_INSTALL_PACKAGES — permet à l'updater in-app de
+          #    lancer l'installation du nouvel APK sans navigateur externe
+          #    (mise à jour par-dessus, sans désinstallation).
+          if ! grep -q 'REQUEST_INSTALL_PACKAGES' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>' "$MANIFEST"
+            echo "✓ permission REQUEST_INSTALL_PACKAGES ajoutée"
+          else
+            echo "⊙ permission REQUEST_INSTALL_PACKAGES déjà présente"
+          fi
+
+          echo "--- Manifest réseau patché ---"
+          grep -nE 'INTERNET|usesCleartextTraffic|REQUEST_INSTALL_PACKAGES|<application' "$MANIFEST" || true
+
+      # Active le mode Android TV / Fire TV / Google TV :
+      #
+      #   1. <uses-feature android.software.leanback required=false>
+      #      Indique à Google Play Store / Amazon Appstore qu'on
+      #      SAIT tourner sur TV sans pour autant l'exiger (l'app
+      #      reste installable sur téléphone).
+      #
+      #   2. <uses-feature android.hardware.touchscreen required=false>
+      #      ⚠️ SANS CETTE LIGNE, Google Play considère que l'app
+      #      EXIGE un écran tactile et la cache aux Android TVs.
+      #      C'est le bug le plus courant des apps Flutter sur TV.
+      #
+      #   3. Catégorie LEANBACK_LAUNCHER sur l'activité principale,
+      #      pour que la grille d'apps Android TV (le launcher
+      #      natif) liste l'app à côté de Netflix, Prime, etc.
+      #      Sans cette catégorie, l'app apparaît UNIQUEMENT dans
+      #      "Toutes les apps", pas dans la home TV.
+      #
+      #   4. android:banner sur <application> = vignette 320×180 dp
+      #      requise par le launcher TV. On pointe vers le launcher
+      #      icon par défaut (généré par flutter_launcher_icons).
+      #      C'est pas un VRAI banner cinématique, mais ça déverrouille
+      #      la visibilité — un banner dédié sera créé plus tard
+      #      dans assets/branding/tv_banner.png.
+      #
+      # Implémentation : sed pur, idempotent (re-run sans effet si
+      # déjà patché grâce aux greps de vérif).
+      - name: Patch AndroidManifest for Android TV (leanback)
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ Manifest manquant — flutter create a-t-il tourné ?"
+            exit 1
+          fi
+
+          # 1+2. uses-feature — injectés juste après <manifest ...>
+          if ! grep -q 'android.software.leanback' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-feature android:name="android.software.leanback" android:required="false"/>\n    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>' "$MANIFEST"
+            echo "✓ uses-feature leanback + touchscreen ajoutés"
+          else
+            echo "⊙ uses-feature leanback déjà présent (re-run)"
+          fi
+
+          # 3. LEANBACK_LAUNCHER — injecté après LAUNCHER existant
+          if ! grep -q 'LEANBACK_LAUNCHER' "$MANIFEST"; then
+            sed -i 's|<category android:name="android.intent.category.LAUNCHER"/>|<category android:name="android.intent.category.LAUNCHER"/>\n                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>|' "$MANIFEST"
+            echo "✓ catégorie LEANBACK_LAUNCHER ajoutée"
+          else
+            echo "⊙ LEANBACK_LAUNCHER déjà présent"
+          fi
+
+          # 4. android:banner — sur <application>
+          if ! grep -q 'android:banner' "$MANIFEST"; then
+            sed -i 's|android:icon="@mipmap/ic_launcher"|android:icon="@mipmap/ic_launcher"\n        android:banner="@mipmap/ic_launcher"|' "$MANIFEST"
+            echo "✓ android:banner ajouté (pointe vers le launcher icon)"
+          else
+            echo "⊙ android:banner déjà présent"
+          fi
+
+          echo "--- Manifest patché ---"
+          cat "$MANIFEST"
+
+      # Active le Google Cast SDK natif (le VRAI, celui de YouTube /
+      # Netflix). Le script copie nos 3 fichiers Kotlin (MainActivity,
+      # GoogleCastApi, CastOptionsProviderImpl) dans le package Android
+      # généré, ET patche android/app/build.gradle (deps Cast Framework
+      # + AndroidX MediaRouter + AppCompat + Fragment), ET patche
+      # AndroidManifest.xml pour la meta-data OPTIONS_PROVIDER_CLASS_NAME
+      # requise par le SDK Cast.
+      #
+      # Idempotent — re-run sans effet si déjà patché. Si quelque chose
+      # foire dans le script, `set -e` interne le fait crasher avec un
+      # message clair.
+      - name: Apply Google Cast SDK overlay
+        run: bash android_overlay/google_cast/apply_cast_patch.sh
+
+      # Patch AndroidManifest pour activer le Picture-in-Picture
+      # natif sur la MainActivity (mode YouTube Premium : vidéo
+      # continue en mini-fenêtre quand on quitte l'app).
+      #
+      # Trois attributs à AJOUTER sur la balise <activity ...> :
+      #   android:supportsPictureInPicture="true"   ← l'essentiel
+      #   android:resizeableActivity="true"          ← exigé pour multi-window/PiP
+      #   android:configChanges="...|screenLayout|smallestScreenSize|screenSize|orientation"
+      #
+      # Le flutter create génère déjà android:configChanges avec
+      # ces valeurs depuis Flutter 3.0+, donc on ne touche QUE
+      # supportsPictureInPicture + resizeableActivity.
+      # Sed idempotent — re-run sans effet.
+      - name: Patch AndroidManifest for Picture-in-Picture
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ Manifest manquant"; exit 1
+          fi
+          if ! grep -q 'supportsPictureInPicture' "$MANIFEST"; then
+            # Insère les 2 attributs APRÈS android:name=".MainActivity"
+            # qui est toujours présent (généré par flutter create).
+            sed -i 's|android:name=".MainActivity"|android:name=".MainActivity"\n            android:supportsPictureInPicture="true"\n            android:resizeableActivity="true"|' "$MANIFEST"
+            echo "✓ PiP attributes ajoutés sur MainActivity"
+          else
+            echo "⊙ PiP déjà patché (re-run)"
+          fi
+          grep -A2 'supportsPictureInPicture' "$MANIFEST" || true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      # Patch screen_brightness_android 2.1.5 cassé
+      # ─────────────────────────────────────────────
+      # Le package screen_brightness_android 2.1.5 publié sur
+      # pub.dev fin mai 2026 a un build.gradle qui contient un
+      # bloc `kotlin { jvmToolchain(17) }` au top-level. Ce bloc
+      # exige que le plugin Kotlin Gradle soit appliqué au project
+      # root, ce que le `flutter create` du runner CI ne fait pas
+      # automatiquement → erreur "Could not find method kotlin()".
+      #
+      # Le bloc jvmToolchain n'est PAS strictement nécessaire pour
+      # la compilation : on l'enlève avec sed et le build passe.
+      # On garde le reste du build.gradle (compileOptions, deps,
+      # etc.) intact.
+      #
+      # Idempotent : si le fichier ou le bloc n'existent pas, le
+      # step réussit sans rien faire.
+      - name: Patch screen_brightness_android build.gradle
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            echo "⊙ screen_brightness_android pas dans pub-cache, skip"
+            exit 0
+          fi
+          echo "Patching $FILE"
+          export PATCH_FILE="$FILE"
+          # Dump diagnostique : montre ce qu'il y a dans le fichier
+          # autour de la ligne 52 (l'erreur disait line: 52).
+          echo "===== ORIGINAL build.gradle (lignes 40-65) ====="
+          sed -n '40,65p' "$FILE"
+          echo "===== fin dump ====="
+          python3 << 'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          with open(file) as f:
+              lines = f.readlines()
+          # Parseur ligne-par-ligne qui retire tout bloc `kotlin {...}`
+          # quelle que soit l'indentation et même s'il y a des
+          # accolades imbriquées. On compte les `{` et `}` pour
+          # trouver la fin réelle du bloc.
+          kotlin_block_re = re.compile(r'^\s*kotlin\s*\{')
+          out = []
+          in_kotlin = False
+          depth = 0
+          removed = 0
+          for line in lines:
+              if not in_kotlin:
+                  if kotlin_block_re.match(line):
+                      in_kotlin = True
+                      depth = line.count('{') - line.count('}')
+                      removed += 1
+                      if depth <= 0:
+                          in_kotlin = False  # bloc sur une seule ligne
+                      continue
+                  out.append(line)
+              else:
+                  depth += line.count('{') - line.count('}')
+                  removed += 1
+                  if depth <= 0:
+                      in_kotlin = False
+          if removed > 0:
+              with open(file, 'w') as f:
+                  f.writelines(out)
+              print(f'✓ retiré {removed} ligne(s) du bloc kotlin{{}}')
+          else:
+              print('⊙ aucun bloc kotlin{} trouvé (peut-être déjà fixé)')
+          PYEOF
+          echo "===== APRÈS patch (lignes 40-65) ====="
+          sed -n '40,65p' "$FILE"
+          echo "===== fin dump ====="
+      # `generate: true` dans pubspec.yaml, mais sur certaines versions
+      # du SDK ça ne se produit pas. On le lance explicitement.
+      # `|| true` : gen-l10n émet des WARNINGS qui n'affectent pas
+      # AppLocalizations généré — la compile fonctionne quand même.
+      # Sans le `|| true`, set -e fait planter le job sur des warnings
+      # bénins (constaté empiriquement sur runs #54-#60).
+      - name: Generate AppLocalizations from .arb files
+        run: flutter gen-l10n || true
+
+      # Remplace l'icône Flutter par défaut (le F bleu généré par
+      # `flutter create`) par notre logo 7 MOTION dans tous les
+      # dossiers mipmap-* (mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi). Sans
+      # cette étape, l'utilisateur voit le F bleu sur son bureau
+      # même si le contenu de l'app est 7 MOTION.
+      - name: Generate launcher icons (7 MOTION ember)
+        run: dart run flutter_launcher_icons
+
+      # Build avec split par ABI (Phase 1+/perf 2026-06-01) :
+      # Sans split, Flutter produit un fat APK ~209 MB qui embarque
+      # libmpv + media_kit pour les 4 architectures CPU (armeabi-v7a,
+      # arm64-v8a, x86, x86_64). Telechargement insupportable depuis
+      # Downloader sur Fire TV / Android TV avec une connexion FR
+      # standard (5-20 Mb/s sur GitHub direct).
+      #
+      # Avec --split-per-abi, on obtient 4 APK de ~60-70 MB chacun.
+      # On COPIE celui arm64-v8a sous le nom canonique `app-debug.apk`
+      # parce que :
+      #   - 99% des Android TV / Fire TV recents sont arm64 (SHIELD,
+      #     Fire TV Stick 4K Max, Chromecast avec Google TV).
+      #   - Les telephones Android depuis 2019 sont tous arm64.
+      #   - Les vieux Fire TV Stick 1ere gen (armv7) ne sont plus
+      #     pertinents pour cette app (manquent de RAM pour libmpv).
+      # On garde les 4 APKs dans les artifacts pour backup si besoin.
+      # ─────────────────────────────────────────────────────────
+      #  SIGNATURE RELEASE (clé stable) — pour distribution client
+      # ─────────────────────────────────────────────────────────
+      #  Pourquoi : un APK signé avec une clé STABLE peut recevoir des
+      #  mises à jour qui s'installent PAR-DESSUS l'ancienne version. Un
+      #  APK debug est re-signé avec une clé jetable à chaque build → les
+      #  mises à jour refuseraient de s'installer chez le client.
+      #
+      #  La clé n'est JAMAIS dans le repo (public). Elle vit dans 2
+      #  secrets GitHub :
+      #    - ANDROID_KEYSTORE_BASE64   : le fichier .jks encodé base64
+      #    - ANDROID_KEYSTORE_PASSWORD : le mot de passe du keystore
+      #
+      #  REPLI : si le secret n'est pas (encore) défini, on NE casse PAS
+      #  le build — on retombe sur la signature debug (cf. condition dans
+      #  build.gradle.kts). Le build reste vert, juste non distribuable.
+      - name: Configure release signing (si secret présent)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          if [ -n "$KS_B64" ]; then
+            # Voie historique : keystore fourni en base64 via secret.
+            echo "$KS_B64" | base64 -d > android/app/release.jks
+            echo "✓ keystore depuis ANDROID_KEYSTORE_BASE64"
+          elif [ -n "$KS_PW" ] && [ -f ci/release.jks.enc ]; then
+            # Voie simple : keystore CHIFFRÉ commité dans le dépôt
+            # (ci/release.jks.enc), déchiffré avec le SEUL secret mot de passe.
+            openssl enc -d -aes-256-cbc -pbkdf2 \
+              -in ci/release.jks.enc -out android/app/release.jks \
+              -pass pass:"$KS_PW"
+            echo "✓ keystore déchiffré depuis ci/release.jks.enc"
+          else
+            # Aucun keystore release configuré (secrets absents). On NE casse PAS
+            # le build : repli sur la signature debug, MAIS de façon BRUYANTE
+            # (plus de repli muet). ⚠️ Un APK release signé debug n'est pas
+            # distribuable de façon stable / updatable. Pour le corriger : créer
+            # un keystore release et poser les secrets ANDROID_KEYSTORE_BASE64 +
+            # ANDROID_KEYSTORE_PASSWORD (cf. README signing).
+            echo "::warning title=Signature debug::Aucun keystore release (ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD absents) → APK signé en DEBUG (non distribuable pour MAJ stables)."
+            echo "⚠️ Repli signature DEBUG — pose les secrets keystore pour une signature release stable."
+            exit 0
+          fi
+          # key.properties à la racine android/ (rootProject), lu par
+          # build.gradle.kts. storeFile est relatif à android/app/.
+          cat > android/key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$KS_PW
+          keyAlias=sevenmotion
+          keyPassword=$KS_PW
+          EOF
+          echo "✓ release.jks + key.properties écrits (build signé release)"
+          ls -la android/app/release.jks android/key.properties
+
+      # Injecte la config de signature dans le build.gradle.kts généré
+      # par `flutter create`. On ajoute :
+      #   1. un chargeur de key.properties (en tête, sans import grâce
+      #      aux noms pleinement qualifiés java.util.Properties) ;
+      #   2. un signingConfigs.create("release") {…} dans android{} ;
+      #   3. on bascule le buildType release sur cette clé SI le fichier
+      #      key.properties existe, sinon on garde debug (repli sûr).
+      - name: Patch build.gradle.kts for release signing
+        run: |
+          set -e
+          F=android/app/build.gradle.kts
+          if [ ! -f "$F" ]; then
+            echo "❌ $F introuvable"; ls -la android/app/ || true; exit 1
+          fi
+          export GRADLE_FILE="$F"
+          python3 << 'PYEOF'
+          import os
+          f = os.environ['GRADLE_FILE']
+          s = open(f).read()
+          if 'signingConfigs.getByName("release")' in s:
+              print('⊙ déjà patché'); raise SystemExit
+          # En Kotlin DSL Gradle, les noms java.* pleinement qualifiés ne
+          # se résolvent pas : il FAUT de vrais imports en tête de fichier
+          # (avant le bloc plugins{}). C'est le snippet de signature Flutter
+          # standard.
+          imports = 'import java.util.Properties\nimport java.io.FileInputStream\n\n'
+          loader = (
+              'val keystoreProperties = Properties()\n'
+              'val keystorePropertiesFile = rootProject.file("key.properties")\n'
+              'if (keystorePropertiesFile.exists()) {\n'
+              '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n'
+              '}\n\n'
+          )
+          signing = (
+              'android {\n'
+              '    signingConfigs {\n'
+              '        create("release") {\n'
+              '            val sf = keystoreProperties.getProperty("storeFile")\n'
+              '            if (sf != null) {\n'
+              '                storeFile = file(sf)\n'
+              '                storePassword = keystoreProperties.getProperty("storePassword")\n'
+              '                keyAlias = keystoreProperties.getProperty("keyAlias")\n'
+              '                keyPassword = keystoreProperties.getProperty("keyPassword")\n'
+              '            }\n'
+              '        }\n'
+              '    }\n'
+          )
+          if 'android {' not in s:
+              print('❌ pas de bloc android {} — template inattendu'); raise SystemExit(1)
+          if 'import java.util.Properties' not in s:
+              s = imports + s
+          s = s.replace('android {', loader + 'android {', 1)
+          s = s.replace('android {', signing, 1)
+          old = 'signingConfig = signingConfigs.getByName("debug")'
+          new = ('signingConfig = if (keystorePropertiesFile.exists()) '
+                 'signingConfigs.getByName("release") else '
+                 'signingConfigs.getByName("debug")')
+          if old in s:
+              s = s.replace(old, new, 1)
+              print('✓ buildType release basculé sur la clé stable (si présente)')
+          else:
+              print('⚠ ligne signingConfig debug non trouvée — release reste en debug')
+          open(f, 'w').write(s)
+          print('✓ build.gradle.kts patché')
+          PYEOF
+          echo "----- build.gradle.kts (tête) -----"
+          sed -n '1,40p' "$F"
+
+      # Notifications locales (flutter_local_notifications) → le plugin
+      # utilise java.time, ce qui EXIGE le "core library desugaring".
+      # Sans ça, le build casse. On l'active dans compileOptions et on
+      # ajoute la lib desugar. Idempotent.
+      - name: Patch build.gradle.kts for notifications (desugaring)
+        run: |
+          set -e
+          F=android/app/build.gradle.kts
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if 'isCoreLibraryDesugaringEnabled' not in s:
+              s = s.replace(
+                  'compileOptions {',
+                  'compileOptions {\n        isCoreLibraryDesugaringEnabled = true',
+                  1)
+              print('desugaring active')
+          else:
+              print('desugaring deja actif')
+          if 'desugar_jdk_libs' not in s:
+              s = s.rstrip() + ('\n\ndependencies {\n'
+                  '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
+                  '}\n')
+              print('dep desugar ajoutee')
+          else:
+              print('dep desugar deja presente')
+          open(f, 'w').write(s)
+          PYEOF
+          echo "----- build.gradle.kts (queue) -----"
+          tail -n 14 "$F"
+
+      # Permissions Android pour les notifications/rappels :
+      #  - POST_NOTIFICATIONS  : afficher une notif (Android 13+).
+      #  - RECEIVE_BOOT_COMPLETED : reprogrammer les rappels après reboot
+      #    (le boot-receiver du plugin en a besoin).
+      - name: Patch AndroidManifest for notifications
+        run: |
+          set -e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'POST_NOTIFICATIONS' "$MANIFEST"; then
+            sed -i '/<manifest /a\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>' "$MANIFEST"
+            echo "✓ permissions notifications ajoutées"
+          else
+            echo "⊙ permissions notif déjà présentes"
+          fi
+
+      # ----- Firebase Crashlytics (OPTIONNEL, activé si secret présent) -----
+      # Si le secret GOOGLE_SERVICES_JSON est posé (contenu du fichier
+      # google-services.json du projet Firebase), on l'écrit et on applique le
+      # plugin Gradle google-services qui le transforme en ressources lues par
+      # l'auto-init Firebase. SANS ce secret, l'étape ne fait RIEN → Crashlytics
+      # reste désactivé côté Dart (fail-open) et le build reste vert.
+      - name: Configure Firebase Crashlytics (si secret présent)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -e
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "⊙ GOOGLE_SERVICES_JSON absent → Crashlytics désactivé (build normal)."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          echo "✓ google-services.json écrit."
+          python3 << 'PYEOF'
+          import re
+          # 1) déclarer le plugin (apply false) dans settings.gradle.kts
+          settings = "android/settings.gradle.kts"
+          s = open(settings).read()
+          if "com.google.gms.google-services" not in s:
+              s = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                         s, count=1)
+              open(settings, "w").write(s)
+              print("✓ google-services déclaré (settings.gradle.kts)")
+          # 2) appliquer le plugin dans app/build.gradle.kts
+          app = "android/app/build.gradle.kts"
+          a = open(app).read()
+          if "com.google.gms.google-services" not in a:
+              a = re.sub(r'(plugins\s*\{)',
+                         r'\1\n    id("com.google.gms.google-services")',
+                         a, count=1)
+              open(app, "w").write(a)
+              print("✓ google-services appliqué (app/build.gradle.kts)")
+          PYEOF
+
+      # ----- R8 / ProGuard : rétrécissement code + ressources -----
+      # Active le shrink/obfuscation natif Android (en plus de l'obfuscation
+      # Dart) : APK plus léger, plus dur à rétro-concevoir. Règles keep dans
+      # ci/proguard-rules.pro (conservatrices → plugins natifs préservés).
+      - name: Enable R8 + ProGuard (shrink code & resources)
+        run: |
+          set -e
+          cp ci/proguard-rules.pro android/app/proguard-rules.pro
+          python3 << 'PYEOF'
+          f = "android/app/build.gradle.kts"
+          s = open(f).read()
+          if "isMinifyEnabled" not in s:
+              s = s.replace(
+                  "release {",
+                  ('release {\n'
+                   '            isMinifyEnabled = true\n'
+                   '            isShrinkResources = true\n'
+                   '            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")'),
+                  1)
+              open(f, "w").write(s)
+              print("R8/shrink actives")
+          else:
+              print("deja actif")
+          PYEOF
+          grep -n "isMinifyEnabled\|isShrinkResources\|proguardFiles" android/app/build.gradle.kts || true
+
+      # Build release + OBFUSCATION Dart.
+      #  --obfuscate : renomme les symboles Dart (classes, méthodes) →
+      #    rend la rétro-ingénierie / le repackaging beaucoup plus durs.
+      #    C'est la protection recommandée par Flutter ; elle n'affecte
+      #    que le code Dart (les plugins natifs ne sont pas touchés).
+      #  --split-debug-info : sort la table de symboles (pour
+      #    dé-symboliser les crashs plus tard) HORS de l'APK. Le dossier
+      #    build/symbols n'est PAS publié dans la release → un pirate ne
+      #    peut pas s'en servir pour « dé-obfusquer ».
+      # BARRIÈRE QUALITÉ (TIER 0) — on n'embarque PAS une release qui rate
+      # l'analyse ou les tests. `analyze` ne bloque que sur les ERREURS
+      # (--no-fatal-infos/warnings), donc pas de faux rouge sur le bruit ;
+      # `test` doit passer. Si ça casse ici, l'APK/AAB n'est jamais publié.
+      - name: Quality gate (analyze + tests)
+        run: |
+          # `flutter create` (étape « Generate native Android folder » plus
+          # haut) régénère un test/widget_test.dart PAR DÉFAUT (compteur) qui
+          # référence `MyApp`, classe inexistante ici → erreur d'analyse. Ce
+          # n'est PAS un test du projet (les vrais sont sous test/features,
+          # test/core) et il n'est pas committé. On le retire avant la barrière.
+          rm -f test/widget_test.dart
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test --reporter expanded
+
+      - name: Build release APK (split-per-abi, obfusqué)
+        run: |
+          # APP_BUILD_TS : date de ce build (epoch s), injectée dans l'app
+          # pour la "mise à jour forcée" (compare à la dernière release).
+          BUILD_TS=$(date +%s)
+          echo "APP_BUILD_TS=$BUILD_TS"
+          # Retry : le download de libmpv (media_kit) renvoie parfois un
+          # 504 transitoire côté GitHub → on réessaie jusqu'à 4 fois.
+          ok=
+          for attempt in 1 2 3 4; do
+            echo "=== Build attempt $attempt ==="
+            flutter build apk --release --no-tree-shake-icons --split-per-abi \
+              --build-number=${{ github.run_number }} \
+              --obfuscate --split-debug-info=build/symbols \
+              --dart-define=APP_BUILD_TS=$BUILD_TS && { ok=1; break; }
+            echo "Attempt $attempt failed; retry in 25s"; sleep 25
+          done
+          [ "$ok" = 1 ] || { echo "Build failed after retries"; exit 1; }
+
+
+      - name: Pick arm64-v8a as canonical 7motion.apk
+        run: |
+          set -e
+          OUT=build/app/outputs/flutter-apk
+          echo "=== APKs produits par --split-per-abi ==="
+          ls -lah "$OUT" || true
+          # arm64 = cible primaire. Tous les Android TV / phones modernes.
+          ARM64="$OUT/app-arm64-v8a-release.apk"
+          if [ ! -f "$ARM64" ]; then
+            echo "❌ arm64-v8a APK release introuvable apres split."
+            find build -name '*.apk' || true
+            exit 1
+          fi
+          # Nom canonique CLIENT : 7motion.apk (lien public propre).
+          # On garde AUSSI app-debug.apk (même binaire) pour que le Worker
+          # Cloudflare déjà déployé (/dl → app-debug.apk) continue de
+          # fonctionner pendant la transition, sans dépendre d'un redéploiement.
+          cp "$ARM64" "$OUT/7motion.apk"
+          cp "$ARM64" "$OUT/app-debug.apk"
+          ls -lah "$OUT/7motion.apk" "$OUT/app-debug.apk"
+          echo "Taille gain : ~70 MB (split arm64) vs ~209 MB (fat APK)"
+
+      - name: Check APK exists
+        run: |
+          if [ ! -f build/app/outputs/flutter-apk/7motion.apk ]; then
+            echo "❌ APK introuvable — voir les logs ci-dessus."
+            find build -name '*.apk' || true
+            exit 1
+          fi
+          ls -lah build/app/outputs/flutter-apk/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvking-release-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/7motion.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      # ===== Google Play : App Bundle (.aab) SIGNÉ =====
+      # Google Play n'accepte PAS l'APK : il faut un Android App Bundle
+      # (.aab), signé avec la même clé stable (alias sevenmotion). On le
+      # construit en plus de l'APK (qui reste le canal sideload/Aptoide/
+      # Huawei). Récupère le .aab dans les Artifacts du run pour l'uploader
+      # dans la Play Console (Play App Signing re-signe ensuite).
+      - name: Build release AAB (Google Play)
+        run: |
+          BUILD_TS=$(date +%s)
+          # ── Play Store : on RETIRE REQUEST_INSTALL_PACKAGES de l'AAB ──
+          # L'updater interne (sideload de 7motion.apk depuis GitHub) est
+          # inutile sur Play (les MAJ viennent du Store) et cette permission
+          # y est très restreinte (déclaration + vidéo démo + risque de
+          # refus). On la retire donc du manifest UNIQUEMENT pour l'App
+          # Bundle. L'APK sideload, déjà construit et empaqueté plus haut,
+          # la conserve intacte. En parallèle, --dart-define=PLAY_BUILD=true
+          # désactive l'updater côté Dart (cf. kIsPlayBuild).
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          # (a) REQUEST_INSTALL_PACKAGES est dans le manifest SOURCE (ajouté
+          #     plus haut par le patch réseau) → suppression directe.
+          sed -i '/android.permission.REQUEST_INSTALL_PACKAGES/d' "$MANIFEST"
+          if grep -q 'REQUEST_INSTALL_PACKAGES' "$MANIFEST"; then
+            echo "❌ REQUEST_INSTALL_PACKAGES encore présent dans l'AAB"; exit 1
+          fi
+          echo "✓ REQUEST_INSTALL_PACKAGES retiré du manifest pour l'AAB Play"
+          # (b) READ_MEDIA_IMAGES/VIDEO/AUDIO sont MERGÉES depuis le plugin
+          #     media_kit (lecture de médias LOCAUX). 7 MOTION ne lit que des
+          #     flux DISTANTS ; ses enregistrements vont en stockage privé +
+          #     écriture MediaStore (aucun READ requis sur Android 10+). Ces
+          #     permissions sont donc inutiles ET déclenchent la déclaration
+          #     "Photos et vidéos" sur Play. Comme elles viennent d'un plugin
+          #     (absentes du manifest source), on les neutralise via le merger
+          #     avec tools:node="remove" — UNIQUEMENT pour l'AAB. L'APK
+          #     sideload, déjà empaqueté, n'est pas touché.
+          grep -q 'xmlns:tools' "$MANIFEST" || sed -i 's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' "$MANIFEST"
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove"/>' "$MANIFEST"
+          echo "✓ READ_MEDIA_IMAGES/VIDEO/AUDIO marquées tools:node=remove (AAB Play)"
+          ok=
+          for attempt in 1 2 3 4; do
+            echo "=== AAB build attempt $attempt ==="
+            flutter build appbundle --release --no-tree-shake-icons \
+              --build-number=${{ github.run_number }} \
+              --obfuscate --split-debug-info=build/symbols \
+              --dart-define=APP_BUILD_TS=$BUILD_TS \
+              --dart-define=PLAY_BUILD=true && { ok=1; break; }
+            echo "Attempt $attempt failed; retry in 25s"; sleep 25
+          done
+          [ "$ok" = 1 ] || { echo "AAB build failed after retries"; exit 1; }
+          # Vérif anti-régression : le manifeste FUSIONNÉ de l'AAB ne doit
+          # plus contenir aucune permission sensible retirée ci-dessus.
+          MERGED=$(find android/app/build build/app -path '*merged_manifest*release*AndroidManifest.xml' 2>/dev/null | head -1)
+          if [ -n "$MERGED" ]; then
+            echo "Manifeste fusionné : $MERGED"
+            for P in REQUEST_INSTALL_PACKAGES READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_AUDIO; do
+              if grep -q "android.permission.$P" "$MERGED"; then
+                echo "❌ $P encore présent dans le manifeste fusionné de l'AAB"; exit 1
+              fi
+            done
+            echo "✓ Manifeste AAB sans REQUEST_INSTALL_PACKAGES ni READ_MEDIA_*"
+          else
+            echo "⚠️ Manifeste fusionné introuvable — vérif sautée (non bloquant)"
+          fi
+          OUT=build/app/outputs/bundle/release
+          ls -lah "$OUT" || true
+          cp "$OUT/app-release.aab" "$OUT/7motion.aab"
+          ls -lah "$OUT/7motion.aab"
+
+      - name: Upload AAB artifact (Google Play)
+        uses: actions/upload-artifact@v4
+        with:
+          name: 7motion-playstore-aab-${{ github.sha }}
+          path: build/app/outputs/bundle/release/7motion.aab
+          retention-days: 30
+          if-no-files-found: error
+
+      # Toujours mettre à jour la release "latest" pour que le lien
+      # direct https://github.com/.../releases/latest/download/
+      # pointe vers le dernier APK. Ainsi l'utilisateur peut
+      # installer depuis son téléphone sans naviguer dans Actions.
+      # Publication de la release "latest" via gh CLI direct.
+      # Historique : softprops/action-gh-release@v2 ne mettait pas à
+      # jour le body d'une release existante (bug v2). On avait tenté
+      # delete-then-create mais GitHub propage la suppression du tag
+      # de façon asynchrone — le `create` derrière prend parfois une
+      # 422 "Tag already exists".
+      #
+      # Approche stable : edit-or-create.
+      #   - Si la release existe : `gh release edit` (body) + upload
+      #     --clobber (asset). Pas de delete = pas de race.
+      #   - Si elle n'existe pas (1er run) : `gh release create`.
+      # Tout en `set +e` pour ne pas planter le build si une étape
+      # secondaire foire (le build APK lui-même est le délivrable).
+      - name: Publish "latest" release (FAIL-HARD diag)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Mode FAIL-HARD : `set -e` + `set -x` (trace commands).
+          # Si N'IMPORTE QUELLE commande gh foire, le job sera marqué
+          # FAILED — visible dans la liste Actions. C'est le seul moyen
+          # de diagnostiquer le problème sans accès aux logs détaillés.
+          set -ex
+          REPO="${{ github.repository }}"
+          APK="build/app/outputs/flutter-apk/7motion.apk"
+          APK_COMPAT="build/app/outputs/flutter-apk/app-debug.apk"
+          AAB="build/app/outputs/bundle/release/7motion.aab"
+
+          test -f "$APK"
+          test -f "$APK_COMPAT"
+          ls -lh "$APK" "$APK_COMPAT"
+
+          NOTES="Dernier build de 7 MOTION (release signée).
+
+          • Commit : \`${{ github.sha }}\`
+          • Run : #${{ github.run_number }}
+
+          **Installer / mettre à jour :**
+          1. Ouvre ce lien sur ton téléphone Android
+          2. Télécharge \`7motion.apk\`
+          3. Si Android refuse → autorise \"Sources inconnues\"
+          4. Lance l'APK pour installer
+
+          Lien direct (à donner aux clients) :
+          https://github.com/$REPO/releases/download/latest/7motion.apk"
+
+          gh --version
+          gh auth status
+
+          if gh release view latest --repo "$REPO"; then
+            echo ">>> Release latest existe, on l'édite"
+            gh release edit latest --repo "$REPO" \
+              --title "7 MOTION — dernier build" \
+              --notes "$NOTES" \
+              --prerelease
+            # Publie le nom propre 7motion.apk ET garde app-debug.apk
+            # (même binaire) pour compat Worker/anciens liens.
+            gh release upload latest --repo "$REPO" --clobber "$APK" "$APK_COMPAT"
+          else
+            echo ">>> Release latest absente, on la crée"
+            # NB : pas de `--latest` ici. GitHub refuse (HTTP 422) qu'une
+            # release soit à la fois `--prerelease` ET marquée "Latest".
+            # On reste cohérent avec la branche edit (prerelease) ; le tag
+            # `latest` sert juste de lien stable, pas de badge "Latest".
+            gh release create latest --repo "$REPO" \
+              --title "7 MOTION — dernier build" \
+              --notes "$NOTES" \
+              --prerelease \
+              "$APK" "$APK_COMPAT"
+          fi
+
+          # Bonus Google Play : publie aussi l'App Bundle (.aab) signé sur
+          # la release latest → lien direct stable pour le télécharger.
+          # Non bloquant (si absent, on n'échoue pas le build).
+          if [ -f "$AAB" ]; then
+            echo ">>> Upload AAB (Google Play)"
+            gh release upload latest --repo "$REPO" --clobber "$AAB" || true
+          fi
+
+          # version.json — manifeste lu par l'updater in-app pour
+          # detecter une nouvelle version (versionCode = run_number).
+          cat > version.json <<JSON
+          {
+            "versionCode": ${{ github.run_number }},
+            "versionName": "0.3.0",
+            "url": "https://github.com/$REPO/releases/download/latest/7motion.apk",
+            "mandatory": false
+          }
+          JSON
+          gh release upload latest --repo "$REPO" --clobber version.json || true
+
+          echo ">>> État final"
+          gh release view latest --repo "$REPO"
+
+      # Bonus : tag versionné (un par run) pour garder un historique
+      - name: Publish versioned release
+        if: github.event_name == 'workflow_dispatch' && inputs.make_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: 7 MOTION build ${{ github.run_number }}
+          body: |
+            Build #${{ github.run_number }} de la branche `${{ github.ref_name }}`.
+            Commit `${{ github.sha }}`.
+          files: build/app/outputs/flutter-apk/app-debug.apk
+          prerelease: true
