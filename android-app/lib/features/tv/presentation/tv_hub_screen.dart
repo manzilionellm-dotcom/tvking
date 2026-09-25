@@ -24,10 +24,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/app/boot_guard.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
@@ -61,6 +63,24 @@ class _TvHubScreenState extends State<TvHubScreen> {
   String _mac = '…';
   StreamSubscription<List<Channel>>? _srcSub;
 
+  // ----- « Source-push » DIRECT depuis le panel (décision du propriétaire) -----
+  // Le revendeur assigne l'abonnement (Xtream/M3U) à la MAC dans le panel et
+  // la box doit recevoir les chaînes SANS que le client ne fasse rien :
+  //   • tant qu'on est sur l'accueil, on re-demande la source au panel toutes
+  //     les 20 s (simple GET, dédupliqué côté repo → gratuit s'il n'y a rien
+  //     de neuf) ;
+  //   • dès que la licence passe à « actif » (activation dans le panel), on
+  //     synchronise IMMÉDIATEMENT (sans attendre le tick) ;
+  //   • quand les PREMIÈRES chaînes arrivent (0 → n) alors que l'accueil est
+  //     au premier plan, on ouvre Direct tout seul : « le fil entre
+  //     directement ». Une seule fois par session d'accueil, jamais si le
+  //     client est déjà dans un autre écran.
+  Timer? _sourcePoll;
+  bool _hadChannels = false;
+  bool _autoOpened = false;
+  bool _wasActive = false;
+  static const Duration _kSourcePollEvery = Duration(seconds: 20);
+
   // Accès CACHÉ au diagnostic : séquence D-pad HAUT-HAUT-BAS-BAS.
   static const List<bool> _diagSeq = <bool>[true, true, false, false];
   final List<bool> _diagBuf = <bool>[];
@@ -75,10 +95,49 @@ class _TvHubScreenState extends State<TvHubScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
-    SubscriptionState.instance.addListener(_onChange);
+    _hadChannels = PlaylistRepository.instance.currentChannels.isNotEmpty;
+    _wasActive = _isActive(SubscriptionState.instance.status);
+    SubscriptionState.instance.addListener(_onLicenseChange);
     _srcSub =
-        PlaylistRepository.instance.channelsStream.listen((_) => _onChange());
+        PlaylistRepository.instance.channelsStream.listen(_onChannels);
     _initConnectivity();
+    // Source-push direct : voir le commentaire du champ _sourcePoll.
+    if (!BootGuard.instance.safeMode) {
+      _sourcePoll = Timer.periodic(_kSourcePollEvery, (_) {
+        if (mounted) RemoteSourceRepository.sync();
+      });
+    }
+  }
+
+  static bool _isActive(SubscriptionStatus s) =>
+      s == SubscriptionStatus.paid || s == SubscriptionStatus.trialActive;
+
+  /// Licence changée : rafraîchit la barre du bas ET, si l'accès vient de
+  /// s'ouvrir (activation faite dans le panel), va chercher la source TOUT DE
+  /// SUITE — c'est le moment exact où le revendeur vient d'assigner l'abonnement.
+  void _onLicenseChange() {
+    final bool active = _isActive(SubscriptionState.instance.status);
+    if (active && !_wasActive && !BootGuard.instance.safeMode) {
+      RemoteSourceRepository.sync();
+    }
+    _wasActive = active;
+    _onChange();
+  }
+
+  /// Chaînes changées : rafraîchit la barre du bas et, à la PREMIÈRE arrivée
+  /// de chaînes (0 → n) pendant que l'accueil est visible, ouvre Direct.
+  void _onChannels(List<Channel> channels) {
+    final bool has = channels.isNotEmpty;
+    final bool firstArrival = has && !_hadChannels;
+    _hadChannels = has;
+    _onChange();
+    if (!firstArrival || _autoOpened || !mounted) return;
+    // Uniquement si l'accueil est l'écran du dessus (le client n'est pas dans
+    // Réglages/Serveur/lecteur) : on ne vole jamais un écran en cours.
+    final ModalRoute<Object?>? route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
+    _autoOpened = true;
+    _openTile(_Tile.live);
   }
 
   Future<void> _initConnectivity() async {
@@ -102,7 +161,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _clock?.cancel();
     _connSub?.cancel();
     _srcSub?.cancel();
-    SubscriptionState.instance.removeListener(_onChange);
+    _sourcePoll?.cancel();
+    SubscriptionState.instance.removeListener(_onLicenseChange);
     super.dispose();
   }
 
