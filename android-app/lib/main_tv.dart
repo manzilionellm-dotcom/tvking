@@ -28,6 +28,7 @@ import 'features/recordings/data/recording_repository.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
+import 'features/tv/core/tv_activity.dart';
 import 'features/tv/presentation/tv_app.dart';
 
 // =========================================================
@@ -105,26 +106,21 @@ Future<void> _bootstrap() async {
     unawaited(RemoteSourceRepository.sync());
 
     // SYNCHRONISATION DES LISTES (façon TiviMate, demande du propriétaire
-    // 25/09/2026). Jusqu'ici la TV n'actualisait JAMAIS une M3U/Xtream après
-    // l'import : les chaînes ajoutées par le fournisseur n'arrivaient pas.
-    //   • 20 s après le démarrage (l'accueil est déjà affiché, on ne
-    //     concurrence pas le 1er rendu) : re-télécharge les listes dont la
-    //     dernière synchro date de plus de 12 h. Si tout est récent : rien.
-    //   • puis toutes les 24 h tant que la box reste allumée (les box TV
-    //     restent souvent sous tension des jours) : toutes les listes +
-    //     re-vérification de la source poussée par le panel.
-    // Une seule passe à la fois (mutex dans refreshAll), best-effort, et
-    // chaque liste actualisée ré-émet ses chaînes → Direct se met à jour
-    // sans redémarrage. Jamais en mode sans échec (ré-import = suspect OOM).
-    unawaited(Future<void>.delayed(const Duration(seconds: 20), () {
-      if (!BootGuard.instance.safeMode) {
-        PlaylistRepository.instance.refreshStale();
-      }
+    // 25/09/2026). La TV n'actualisait jamais une M3U/Xtream après l'import.
+    //   • 90 s après le démarrage : re-télécharge les listes dont la dernière
+    //     synchro date de plus de 24 h ;
+    //   • puis toutes les 24 h tant que la box reste allumée.
+    // RÈGLE ABSOLUE : jamais pendant que le client est dans Direct ou dans le
+    // lecteur (TvActivity.isBusy) — re-télécharger et re-parser 30 000 chaînes
+    // pendant qu'il zappe figeait l'écran puis Android tuait l'app. On attend
+    // le retour à l'accueil (re-vérification toutes les 60 s, 30 essais max,
+    // sinon on réessaie au prochain tick de 24 h).
+    unawaited(Future<void>.delayed(const Duration(seconds: 90), () {
+      _tvAutoRefresh(onlyStale: true);
     }));
     Timer.periodic(const Duration(hours: 24), (_) {
-      if (BootGuard.instance.safeMode) return;
       RemoteSourceRepository.sync();
-      PlaylistRepository.instance.refreshAll();
+      _tvAutoRefresh(onlyStale: false);
     });
   } else {
     debugPrint('[main_tv] mode sans échec → ré-import de la source distante sauté.');
@@ -166,4 +162,24 @@ Future<void> _bootstrap() async {
   // L'app est lancée : si elle tient quelques secondes, on efface l'historique
   // de boucle (un démarrage réussi « pardonne » les crashs précédents).
   BootGuard.instance.scheduleStableReset();
+}
+
+/// Actualisation des listes quand la box est AU REPOS (cf. TvActivity).
+/// Best-effort, silencieuse, une seule passe à la fois (mutex du repo).
+Future<void> _tvAutoRefresh({required bool onlyStale}) async {
+  if (BootGuard.instance.safeMode) return;
+  for (int i = 0; i < 30 && TvActivity.isBusy; i++) {
+    await Future<void>.delayed(const Duration(seconds: 60));
+  }
+  if (TvActivity.isBusy) return; // toujours occupé → prochain tick
+  try {
+    if (onlyStale) {
+      await PlaylistRepository.instance
+          .refreshStale(staleness: const Duration(hours: 24));
+    } else {
+      await PlaylistRepository.instance.refreshAll();
+    }
+  } catch (_) {
+    // silencieux : la synchro est un confort, jamais une cause de panne
+  }
 }

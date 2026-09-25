@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../core/tv_activity.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
@@ -151,9 +152,18 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   static const int _kSlowSyncEvery = 25;
   String _mac = '…'; // adresse de CET appareil (à montrer si pas de chaînes)
 
+  // Pré-calcul en arrière-plan (cf. ChannelPrecompute) : vrai quand TOUTES
+  // les chaînes affichées ont leur nom curé + genre + pays en cache. Tant que
+  // c'est faux, _recompute SAUTE les parties qui liraient ces valeurs pour
+  // toutes les chaînes (Tendances, « Pour vous ») — sinon ~10 M de regex sur
+  // le fil UI d'un coup → app figée puis tuée par Android.
+  bool _precomputed = false;
+  int _ingestGen = 0;
+
   @override
   void initState() {
     super.initState();
+    TvActivity.enter();
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
     // Favoris en direct : la catégorie « ★ Favoris » se met à jour toute seule.
@@ -220,6 +230,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
 
   @override
   void dispose() {
+    TvActivity.leave();
+    _ingestGen++; // annule un pré-calcul en cours
     _sub?.cancel();
     _favSub?.cancel();
     _trendSub?.cancel();
@@ -288,8 +300,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       ];
     }
     // Tendances (ordre de popularité, match par nom insensible à la casse).
-    if (_trending.isEmpty || _all.isEmpty) {
-      _trendCh = const <Channel>[];
+    if (_trending.isEmpty || _all.isEmpty || !_precomputed) {
+      _trendCh = const <Channel>[]; // attend le pré-calcul (noms curés)
     } else {
       final Map<String, Channel> byName = <String, Channel>{};
       for (final Channel c in _all) {
@@ -309,8 +321,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // puis on SCORE chaque chaîne candidate (hors déjà-vues/favorites) par
     // affinité (genre ×2 + pays ×1) et on garde les meilleures. Calculé ICI
     // (O(n), une fois par changement de source — jamais en build).
-    if (_recentIds.isEmpty || _all.isEmpty) {
-      _forYouCh = const <Channel>[];
+    if (_recentIds.isEmpty || _all.isEmpty || !_precomputed) {
+      _forYouCh = const <Channel>[]; // attend le pré-calcul (genre/pays)
     } else {
       final Map<ChannelGenre, double> genreScore = <ChannelGenre, double>{};
       final Map<String, double> countryScore = <String, double>{};
@@ -543,7 +555,13 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// classifieur complet (des dizaines de regex) à CHAQUE rafraîchissement —
   /// sur une grosse liste (10 000+ chaînes), ça figeait le thread UI → l'app
   /// « ne s'updatait plus » puis se fermait (ANR). Plus jamais.
-  static bool _isAdult(Channel c) => c.genre == ChannelGenre.adult;
+  /// Mode Enfants SANS calcul lourd : on lit le genre EN CACHE uniquement.
+  /// Pas encore calculé → on CACHE la chaîne (jamais d'adulte visible par
+  /// erreur) ; elle réapparaît quand le pré-calcul termine (re-ingest).
+  static bool _hideForKids(Channel c) {
+    final ChannelGenre? g = ChannelPrecompute.cachedGenre(c);
+    return g == null || g == ChannelGenre.adult;
+  }
 
   void _ingest(List<Channel> channels) {
     // On garde la liste BRUTE pour pouvoir re-filtrer si le Mode Enfants change.
@@ -554,7 +572,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     final bool kids = ParentalControls.instance.kidsMode.value;
     final List<Channel> live = channels.where((Channel c) {
       if (!c.isLive) return false;
-      if (kids && _isAdult(c)) return false;
+      if (kids && _hideForKids(c)) return false;
       return true;
     }).toList(growable: false);
     // Ordre des catégories = ordre d'APPARITION ; dédup via Set (O(1)) pour
@@ -584,6 +602,32 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         _selectedCat = cats.isNotEmpty ? cats.first : null;
       }
       _recompute();
+    });
+    _startPrecompute(channels);
+  }
+
+  /// Lance (ou relance) le pré-calcul en arrière-plan pour le lot BRUT reçu.
+  /// Un nouveau lot annule le précédent (génération). À la fin : on rejoue
+  /// _recompute (Tendances / Pour vous deviennent disponibles) et, en Mode
+  /// Enfants, on re-filtre pour faire apparaître les chaînes non-adultes.
+  void _startPrecompute(List<Channel> channels) {
+    final int gen = ++_ingestGen;
+    if (channels.every(ChannelPrecompute.isDone)) {
+      _precomputed = true;
+      return;
+    }
+    _precomputed = false;
+    ChannelPrecompute.run(
+      channels,
+      cancelled: () => !mounted || gen != _ingestGen,
+    ).then((_) {
+      if (!mounted || gen != _ingestGen) return;
+      _precomputed = true;
+      if (ParentalControls.instance.kidsMode.value) {
+        _ingest(_rawLive); // re-filtre avec les genres maintenant connus
+      } else {
+        _scheduleRecompute();
+      }
     });
   }
 

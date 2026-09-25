@@ -94,17 +94,24 @@ abstract final class ChannelClassifier {
 
   /// Pays détecté (null si on ne sait pas).
   static CountryInfo? detectCountry(String name, String category) {
-    final String text = _normalize('$category $name');
+    final String? key = detectCountryKey(name, category);
+    return key == null ? null : _kCountries[key];
+  }
 
+  /// Comme [detectCountry] mais renvoie la CLÉ ('fr', 'uk'…) : sérialisable,
+  /// donc utilisable depuis un isolate (cf. ChannelPrecompute).
+  static String? detectCountryKey(String name, String category) {
+    final String text = _normalize('$category $name');
     for (final MapEntry<String, CountryInfo> e in _kCountries.entries) {
       for (final String pattern in _patternsForCountry(e.key)) {
-        if (_containsAsToken(text, pattern)) {
-          return e.value;
-        }
+        if (_containsAsToken(text, pattern)) return e.key;
       }
     }
     return null;
   }
+
+  /// Retrouve le [CountryInfo] d'une clé renvoyée par [detectCountryKey].
+  static CountryInfo? countryForKey(String key) => _kCountries[key];
 
   // -------------------------------------------------------
   //  QUALITÉ

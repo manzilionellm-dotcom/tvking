@@ -24,6 +24,7 @@ import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../core/tv_activity.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -132,6 +133,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   @override
   void initState() {
     super.initState();
+    TvActivity.enter();
     WidgetsBinding.instance.addObserver(this);
     // Le décodage (MediaCodec matériel + repli logiciel), le tampon réseau et
     // le User-Agent sont gérés côté natif (NativeVideoView.kt). Ici on se
@@ -174,6 +176,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   @override
   void dispose() {
+    TvActivity.leave();
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
     _presenceTimer?.cancel();

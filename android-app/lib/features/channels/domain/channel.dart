@@ -15,6 +15,7 @@
 //  rebuilds Flutter.
 // =========================================================
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 
 import '../../../core/curation/title_curator.dart';
@@ -206,4 +207,84 @@ abstract final class _ChannelComputedCache {
       cleanNames.remove(id);
     }
   }
+}
+
+// =========================================================
+//  PRÉ-CALCUL EN ARRIÈRE-PLAN (performance, 25/09/2026)
+// =========================================================
+//  Le nettoyage des noms (TitleCurator, ~300 regex par nom) et la
+//  classification (genre / pays / qualité, ~350 regex par chaîne) sont
+//  mémoïsés par id, mais le PREMIER calcul restait sur le fil UI : sur une
+//  grosse liste (30 000 chaînes), le premier `_recompute` de l'écran Direct
+//  faisait ~10 millions de tests regex d'un coup → écran figé > 5 s → Android
+//  tue l'app (« ça reste comme ça et ça se ferme »).
+//
+//  Ici, ce premier calcul se fait dans un ISOLATE (compute), par tranches,
+//  et les résultats REMPLISSENT les mêmes caches. Le fil UI ne fait plus que
+//  des lookups O(1). Les écrans qui ont besoin de TOUTES les valeurs
+//  (Tendances, « Pour vous », Mode Enfants) attendent la fin du pré-calcul ;
+//  les lignes visibles, elles, calculent leur nom à la demande (≈ 15 noms).
+abstract final class ChannelPrecompute {
+  static const int _kChunk = 2000;
+
+  /// Vrai si les valeurs de [c] sont déjà en cache (nom curé + genre).
+  static bool isDone(Channel c) =>
+      _ChannelComputedCache.cleanNames.containsKey(c.id) &&
+      _ChannelComputedCache.genres.containsKey(c.id);
+
+  /// Genre déjà calculé, ou `null` s'il n'est pas encore en cache. Permet à
+  /// un filtre (Mode Enfants) de décider SANS déclencher le calcul lourd.
+  static ChannelGenre? cachedGenre(Channel c) =>
+      _ChannelComputedCache.genres[c.id];
+
+  /// Pré-calcule nom curé / genre / pays / qualité pour toutes les chaînes
+  /// pas encore en cache, par tranches de [_kChunk] dans un isolate.
+  /// [cancelled] est consulté entre deux tranches (écran fermé, nouvelle
+  /// liste arrivée…). Ne throw jamais.
+  static Future<void> run(List<Channel> channels,
+      {bool Function()? cancelled}) async {
+    final List<Channel> pending =
+        channels.where((Channel c) => !isDone(c)).toList(growable: false);
+    for (int i = 0; i < pending.length; i += _kChunk) {
+      if (cancelled?.call() ?? false) return;
+      final int end = (i + _kChunk < pending.length) ? i + _kChunk : pending.length;
+      final List<List<String>> input = <List<String>>[
+        for (final Channel c in pending.sublist(i, end))
+          <String>[c.id, c.name, c.category],
+      ];
+      List<List<String>> out;
+      try {
+        out = await compute(_precomputeChunk, input);
+      } catch (_) {
+        return; // best-effort : les getters à la demande prennent le relais
+      }
+      for (final List<String> row in out) {
+        final String id = row[0];
+        _ChannelComputedCache.cleanNames.putIfAbsent(id, () => row[1]);
+        _ChannelComputedCache.genres
+            .putIfAbsent(id, () => ChannelGenre.values[int.parse(row[2])]);
+        _ChannelComputedCache.countries.putIfAbsent(
+            id, () => row[3].isEmpty ? null : ChannelClassifier.countryForKey(row[3]));
+        _ChannelComputedCache.qualities
+            .putIfAbsent(id, () => ChannelQuality.values[int.parse(row[4])]);
+      }
+    }
+  }
+}
+
+/// Corps de l'isolate : uniquement des String en entrée/sortie (sérialisables).
+/// Top-level = requis par `compute`.
+List<List<String>> _precomputeChunk(List<List<String>> rows) {
+  final List<List<String>> out = <List<String>>[];
+  for (final List<String> r in rows) {
+    final String id = r[0], name = r[1], category = r[2];
+    out.add(<String>[
+      id,
+      TitleCurator.curate(name),
+      ChannelClassifier.classifyGenre(name, category).index.toString(),
+      ChannelClassifier.detectCountryKey(name, category) ?? '',
+      ChannelClassifier.detectQuality(name).index.toString(),
+    ]);
+  }
+  return out;
 }
