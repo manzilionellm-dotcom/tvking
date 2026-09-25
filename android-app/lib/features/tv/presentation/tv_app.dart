@@ -152,6 +152,17 @@ class _ExitDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Material TRANSPARENT obligatoire : un showDialog pousse une route
+    // SÉPARÉE, hors de TvShell. Sans Material ancêtre, Flutter dessine tout
+    // le texte avec son style d'erreur (double soulignement jaune) — c'était
+    // le bug visible sur la box (« Quitter … » souligné en jaune).
+    return Material(
+      type: MaterialType.transparency,
+      child: _content(context),
+    );
+  }
+
+  Widget _content(BuildContext context) {
     return Center(
       child: Container(
         width: 560,
