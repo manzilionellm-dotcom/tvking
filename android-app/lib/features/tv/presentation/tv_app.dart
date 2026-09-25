@@ -27,6 +27,7 @@ import '../data/greeting_repository.dart';
 import 'tv_activation_screen.dart';
 import 'tv_components.dart';
 import 'tv_diagnostic_screen.dart';
+import 'tv_hub_screen.dart';
 import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_search_screen.dart';
@@ -318,7 +319,7 @@ class _TvGateState extends State<TvGate> {
     // source une fois l'essai expiré).
     final bool showHome = active || (hasOwnList && !mustBlock);
     final Widget home = showHome
-        ? const TvHomeScreen()
+        ? const TvHubScreen()
         : const TvShell(child: TvActivationScreen());
     // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
