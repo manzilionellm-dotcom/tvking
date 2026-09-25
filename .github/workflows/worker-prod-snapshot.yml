@@ -1,0 +1,119 @@
+# =========================================================
+#  worker-prod-snapshot.yml — Photographie du Worker EN PRODUCTION
+# =========================================================
+#  POURQUOI (25/09/2026) : le Worker Cloudflare qui tourne sur
+#  app.7themotion.com est PLUS RÉCENT que android-app/cloudflare/ (l'API en
+#  ligne renvoie des champs absents du dépôt). Avant toute modification à
+#  déployer, on a besoin du code RÉEL en production, sinon `wrangler deploy`
+#  depuis le dépôt effacerait des fonctions du panel.
+#
+#  CE QUE FAIT CE WORKFLOW (LECTURE SEULE côté Cloudflare) :
+#    1. Liste les Workers du compte (nom, dernière modif).
+#    2. Télécharge le code déployé du Worker `seven-motion-backend`
+#       (tous ses modules) via l'API « Get Script Content ».
+#    3. Liste les projets Cloudflare Pages (pour savoir d'où le panel admin
+#       est déployé : dépôt/branche connectés ou upload manuel).
+#    4. Commit le tout sur la branche `claude/worker-prod-snapshot` (jamais
+#       sur main) → on peut ensuite diff / patcher / redéployer À L'IDENTIQUE.
+#
+#  Secrets réutilisés (déjà posés pour set-admin-password.yml) :
+#  CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID. Aucun secret n'est écrit
+#  dans le dépôt : seulement le CODE du Worker (ses secrets d'exécution,
+#  comme ADMIN_SECRET, ne sont PAS téléchargeables par cette API).
+# =========================================================
+name: Worker prod snapshot (lecture seule)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # pousser la branche de snapshot
+
+env:
+  SCRIPT_NAME: seven-motion-backend
+  SNAPSHOT_BRANCH: claude/worker-prod-snapshot
+  OUT_DIR: android-app/cloudflare/prod-snapshot
+
+jobs:
+  snapshot:
+    name: Télécharger le Worker déployé
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Télécharger (API Cloudflare, GET uniquement)
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          test -n "$CF_TOKEN" || { echo "::error::CLOUDFLARE_API_TOKEN absent"; exit 1; }
+          test -n "$CF_ACCOUNT" || { echo "::error::CLOUDFLARE_ACCOUNT_ID absent"; exit 1; }
+          API="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT"
+          mkdir -p "$OUT_DIR"
+          H="Authorization: Bearer $CF_TOKEN"
+
+          # 1) Liste des Workers (nom + date de modification).
+          curl -fsS -H "$H" "$API/workers/scripts" \
+            | python3 -c 'import sys,json; d=json.load(sys.stdin); [print(f"{s.get(\"id\")}\t{s.get(\"modified_on\")}") for s in d.get("result",[])]' \
+            | tee "$OUT_DIR/workers-list.tsv"
+
+          # 2) Code déployé : multipart avec TOUS les modules (content/v2).
+          curl -fsS -H "$H" "$API/workers/scripts/$SCRIPT_NAME/content/v2" \
+            -D "$OUT_DIR/content-headers.txt" -o /tmp/content.bin
+          python3 - <<'PY'
+          import os, email, email.policy, pathlib
+          out = pathlib.Path(os.environ["OUT_DIR"])
+          hdrs = (out / "content-headers.txt").read_text()
+          ctype = next((l.split(":",1)[1].strip() for l in hdrs.splitlines()
+                        if l.lower().startswith("content-type:")), "")
+          raw = pathlib.Path("/tmp/content.bin").read_bytes()
+          if ctype.startswith("multipart/"):
+              msg = email.message_from_bytes(
+                  b"Content-Type: " + ctype.encode() + b"\r\n\r\n" + raw,
+                  policy=email.policy.default)
+              n = 0
+              for part in msg.iter_parts():
+                  name = part.get_filename() or part.get_param("name", header="content-disposition") or f"module{n}.js"
+                  data = part.get_payload(decode=True)
+                  p = out / "modules" / name
+                  p.parent.mkdir(parents=True, exist_ok=True)
+                  p.write_bytes(data)
+                  n += 1
+                  print(f"module {name}: {len(data)} octets")
+              print(f"{n} module(s)")
+          else:
+              (out / "modules").mkdir(parents=True, exist_ok=True)
+              (out / "modules" / "worker.js").write_bytes(raw)
+              print(f"script unique: {len(raw)} octets (content-type {ctype})")
+          PY
+          rm -f "$OUT_DIR/content-headers.txt"
+
+          # 3) Projets Pages (d'où vient le panel admin ?). Toléré si le token
+          #    n'a pas le droit Pages:Read.
+          curl -fsS -H "$H" "$API/pages/projects" \
+            | python3 -c 'import sys,json; d=json.load(sys.stdin); [print(json.dumps({k:p.get(k) for k in ("name","subdomain","production_branch","source","domains")}, ensure_ascii=False)) for p in d.get("result",[])]' \
+            | tee "$OUT_DIR/pages-projects.jsonl" || echo "(Pages non lisible avec ce token)" | tee "$OUT_DIR/pages-projects.jsonl"
+
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > "$OUT_DIR/SNAPSHOT_AT.txt"
+          wc -l "$OUT_DIR"/modules/* || true
+
+      - name: Pousser sur la branche de snapshot
+        run: |
+          set -e
+          git config user.name "worker-prod-snapshot[bot]"
+          git config user.email "noreply@github.com"
+          git checkout -B "$SNAPSHOT_BRANCH"
+          git add -f "$OUT_DIR"
+          git commit -m "chore(cloudflare): snapshot du Worker $SCRIPT_NAME en production ($(cat "$OUT_DIR/SNAPSHOT_AT.txt"))" \
+            || echo "rien de nouveau"
+          git push -f origin "$SNAPSHOT_BRANCH"
+          {
+            echo "## Snapshot Worker prod"
+            echo "- branche : \`$SNAPSHOT_BRANCH\`"
+            echo "- dossier : \`$OUT_DIR/modules/\`"
+            echo '```'; cat "$OUT_DIR/workers-list.tsv"; echo '```'
+            echo "Pages :"; echo '```'; cat "$OUT_DIR/pages-projects.jsonl"; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

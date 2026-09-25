@@ -12,7 +12,7 @@ import { formatDateTime } from '@/lib/utils';
 
 /// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
 /// tout »). Une MAC → on pose la licence ET on pousse un TRIO de sources
-/// (0 à 3). Le client est débloqué et configuré automatiquement à
+/// (0 à 6). Le client est débloqué et configuré automatiquement à
 /// distance. La page « Pousser une playlist » est fusionnée ici.
 
 type SrcDraft = {
@@ -27,7 +27,7 @@ const blankSrc = (): SrcDraft => ({
   type: 'xtream', serverChoice: 'custom', serverUrl: '',
   xtUser: '', xtPass: '', m3uUrl: '',
 });
-const MAX_SOURCES = 3;
+const MAX_SOURCES = 6; // aligné sur MAX_SOURCES_PER_DEVICE du Worker (api_v1.js)
 
 export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const user = getCurrentUser();
@@ -44,7 +44,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [costs, setCosts] = useState<PlanCost[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [servers, setServers] = useState<DefaultServer[]>([]);
-  // TRIO : 0 à 3 sources poussées avec l'activation (optionnel).
+  // TRIO : 0 à 6 sources poussées avec l'activation (optionnel).
   const [items, setItems] = useState<SrcDraft[]>([]);
 
   const [busy, setBusy] = useState(false);
@@ -281,11 +281,11 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          {/* ===== TRIO de sources (0 à 3) — masqué si niveau insuffisant ===== */}
+          {/* ===== TRIO de sources (0 à 6) — masqué si niveau insuffisant ===== */}
           {canPushSources && (
           <div className="rounded-lg border border-white/5 bg-slate/40 p-3">
             <label className="mb-2 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Sources du client — chargées automatiquement (jusqu'à 3)
+              Sources du client — chargées automatiquement (jusqu'à 6)
             </label>
 
             {items.map((it, i) => (

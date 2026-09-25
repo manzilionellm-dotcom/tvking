@@ -2138,7 +2138,8 @@ async function ensureSourcesTable(env) {
        )`,
     )
     .run();
-  // TRIO (jusqu'à 3 sources sur une même MAC) : colonne additive qui
+  // MULTI-SOURCES (jusqu'à MAX_SOURCES_PER_DEVICE = 6 par MAC, ex-« trio »
+  // limité à 3 — relevé le 25/09/2026 à la demande du propriétaire) : colonne additive qui
   // stocke le tableau JSON des sources. Les colonnes simples ci-dessus
   // gardent la 1re source (compat ascendante avec l'ancien app). ALTER
   // idempotent : ignore l'erreur si la colonne existe déjà.
@@ -2155,6 +2156,11 @@ async function ensureSourcesTable(env) {
     /* colonne déjà présente */
   }
 }
+
+/// Nombre maximum de sources (Xtream/M3U) assignables à UNE MAC depuis le
+/// panel. 6 = décision du propriétaire (25/09/2026) ; l'app TV n'a pas de
+/// limite propre, elle fusionne tout ce que le panel envoie.
+const MAX_SOURCES_PER_DEVICE = 6;
 
 /// Normalise + valide un objet source venant du panel. Retourne
 /// { source } prêt à insérer, ou { error } si invalide.
@@ -2182,8 +2188,8 @@ function normalizeSource(raw) {
   return { error: "type must be 'xtream' or 'm3u'" };
 }
 
-/// Upsert (insère ou remplace) le TRIO de sources d'une MAC.
-/// `sources` = tableau de 1 à 3 sources normalisées. On stocke le tableau
+/// Upsert (insère ou remplace) les sources d'une MAC.
+/// `sources` = tableau de 1 à MAX_SOURCES_PER_DEVICE sources normalisées. On stocke le tableau
 /// complet en JSON (sources_json) ET la 1re dans les colonnes simples
 /// (compat avec l'ancienne app qui ne lit qu'une source).
 async function upsertDeviceSource(env, mac, sources) {
@@ -2268,10 +2274,11 @@ async function handleSourcePut(request, env, mac, actor) {
   if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
-  // TRIO : on accepte un tableau `sources` (1 à 3) OU une source unique
-  // historique (`source` / corps direct). Chaque entrée est validée.
+  // MULTI-SOURCES : on accepte un tableau `sources` (1 à MAX_SOURCES_PER_DEVICE)
+  // OU une source unique historique (`source` / corps direct). Chaque entrée
+  // est validée. L'app TV charge TOUTES les sources reçues et les fusionne.
   let rawList = Array.isArray(body.sources) ? body.sources : [body.source || body];
-  rawList = rawList.slice(0, 3); // garde-fou : 3 sources maximum
+  rawList = rawList.slice(0, MAX_SOURCES_PER_DEVICE); // garde-fou
   const sources = [];
   for (const raw of rawList) {
     const norm = normalizeSource(raw);

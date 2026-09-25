@@ -5,7 +5,7 @@ import {
   type DefaultServer, type DeviceSourceInput, ApiError,
 } from '@/lib/api';
 
-/// Page « Pousser une playlist » — assigne jusqu'à 3 sources (un TRIO)
+/// Page « Pousser une playlist » — assigne jusqu'à 6 sources (un TRIO)
 /// IPTV à une MAC, en une seule fois. Le client les charge TOUTES
 /// automatiquement (≈ 6 s) et bascule de l'une à l'autre dans l'app.
 /// Pas d'option « Aucune » : chaque bloc est forcément Xtream ou M3U.
@@ -26,7 +26,7 @@ const blank = (): SrcDraft => ({
   xtUser: '', xtPass: '', m3uUrl: '',
 });
 
-const MAX_SOURCES = 3;
+const MAX_SOURCES = 6; // aligné sur MAX_SOURCES_PER_DEVICE du Worker (api_v1.js)
 
 export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
   const [mac, setMac] = useState('MK:');
@@ -120,7 +120,7 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Pousser une playlist"
-      subtitle="Assigne jusqu'à 3 sources (un trio) à une MAC — chargées automatiquement"
+      subtitle="Assigne jusqu'à 6 sources (un trio) à une MAC — chargées automatiquement"
       onLogout={onLogout}
     >
       <form

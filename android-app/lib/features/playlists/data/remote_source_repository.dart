@@ -69,10 +69,10 @@ abstract final class RemoteSourceRepository {
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
 
-      // TRIO (jusqu'à 3 sources sur une MAC) : si le serveur renvoie un
-      // tableau `sources`, on les charge TOUTES. Le client peut ensuite
-      // basculer de l'une à l'autre depuis l'accueil. Repli sur la source
-      // unique historique si le tableau est absent.
+      // MULTI-SOURCES (jusqu'à 6 par MAC côté panel, aucune limite ici) : si le
+      // serveur renvoie un tableau `sources`, on les charge TOUTES ; sur TV
+      // elles sont FUSIONNÉES dans Direct (PlaylistRepository.mergeAllPlaylists).
+      // Repli sur la source unique historique si le tableau est absent.
       final Object? list = body['sources'];
       if (list is List && list.isNotEmpty) {
         RemoteSyncResult agg = RemoteSyncResult.noSource;
