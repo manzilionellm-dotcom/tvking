@@ -39,6 +39,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel.dart';
+import 'import_progress.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
 import 'playlist_import_limits.dart';
@@ -80,6 +81,7 @@ class XtreamClient {
   /// Vérifie que les identifiants sont valides.
   /// Lance une `XtreamException` si KO.
   Future<void> verifyCredentials() async {
+    ImportProgressBus.connecting();
     final Map<String, dynamic> data = await _callApi(action: null);
     final Map<String, dynamic>? userInfo =
         data['user_info'] as Map<String, dynamic>?;
@@ -106,6 +108,7 @@ class XtreamClient {
 
   /// Récupère la liste des catégories Live (map id → nom).
   Future<Map<String, String>> fetchLiveCategories() async {
+    ImportProgressBus.categories();
     final List<dynamic> raw = await _callApiList(
       action: 'get_live_categories',
     );
@@ -152,6 +155,7 @@ class XtreamClient {
     final Uint8List? whole = await _getBytes(
       _buildUri(action: 'get_live_streams'),
       softMax: kXtreamSingleShotBytes,
+      onBytes: ImportProgressBus.downloading,
     );
 
     List<Channel> channels;
@@ -159,6 +163,7 @@ class XtreamClient {
       final String mb = (whole.length / (1024 * 1024)).toStringAsFixed(1);
       BlackBox.instance.info('XTREAM', '$host : $mb Mo reçus (bloc unique) → décodage en isolate');
       BlackBox.instance.breadcrumb('Import Xtream $host : décodage $mb Mo (isolate)');
+      ImportProgressBus.decoding(whole.length);
       channels = await compute(
         _mapLiveStreamsInIsolate,
         _LiveStreamsJob(
@@ -180,6 +185,7 @@ class XtreamClient {
         if (channels.length >= kMaxChannelsPerImport) break;
         BlackBox.instance.breadcrumb(
             'Import Xtream $host : catégorie $i/${cats.length} « ${cat.value} »');
+        ImportProgressBus.category(i, cats.length, channels.length);
         try {
           final Uint8List? part = await _getBytes(
             _buildUri(
@@ -210,6 +216,7 @@ class XtreamClient {
     }
 
     BlackBox.instance.info('XTREAM', '$host : ${channels.length} chaînes live récupérées');
+    ImportProgressBus.found(channels.length);
     await BlackBox.instance.logMemory('après import Xtream');
     BlackBox.instance.breadcrumb('');
     if (kDebugMode) {
@@ -344,7 +351,8 @@ class XtreamClient {
   /// [softMax] : plafond SOUPLE — au-delà, on coupe le téléchargement et on
   /// renvoie `null` (l'appelant bascule sur un import par catégorie). Sans
   /// [softMax], seul le plafond dur [kMaxXtreamJsonBytes] s'applique (erreur).
-  Future<Uint8List?> _getBytes(Uri uri, {int? softMax}) async {
+  Future<Uint8List?> _getBytes(Uri uri,
+      {int? softMax, void Function(int received)? onBytes}) async {
     Object? lastError;
     for (final String ua in _candidateUserAgents()) {
       try {
@@ -366,6 +374,7 @@ class XtreamClient {
             resp.stream,
             kMaxXtreamJsonBytes,
             softMax: softMax,
+            onBytes: onBytes,
           ).timeout(_timeout);
         }
         lastError = XtreamException(
@@ -390,11 +399,13 @@ class XtreamClient {
   /// Lit [stream] en bornant à [maxBytes] (anti-OOM) : dépassement →
   /// [PlaylistImportTooLarge], le flux est interrompu et l'abonnement annulé.
   static Future<Uint8List?> _readCapped(
-      Stream<List<int>> stream, int maxBytes, {int? softMax}) async {
+      Stream<List<int>> stream, int maxBytes,
+      {int? softMax, void Function(int received)? onBytes}) async {
     final BytesBuilder builder = BytesBuilder(copy: false);
     int total = 0;
     await for (final List<int> chunk in stream) {
       total += chunk.length;
+      onBytes?.call(total); // progression « Téléchargement… x Mo » (limitée côté bus)
       // Plafond souple : on arrête de lire (le `return` annule l'abonnement →
       // la connexion est fermée) et on signale « trop gros pour un bloc ».
       if (softMax != null && total > softMax) return null;

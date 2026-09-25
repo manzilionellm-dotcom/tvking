@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../playlists/data/default_servers.dart';
+import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -79,6 +80,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       return;
     }
     setState(() { _busy = true; _error = null; });
+    ImportProgressBus.clear();
     BlackBox.instance.breadcrumb('Ajout liste Xtream ${Uri.tryParse(server)?.host ?? server} (utilisateur $user)');
     try {
       await PlaylistRepository.instance.addXtreamPlaylist(
@@ -94,10 +96,12 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       );
       BlackBox.instance.breadcrumb('');
       BlackBox.instance.info('SOURCE', 'liste Xtream ajoutée');
+      ImportProgressBus.clear();
       if (mounted) Navigator.of(context).pop(); // le gate ouvre l'app
     } catch (e) {
       BlackBox.instance.error('SOURCE', 'ajout liste Xtream ÉCHEC', e);
       BlackBox.instance.breadcrumb('');
+      ImportProgressBus.clear();
       if (mounted) setState(() { _busy = false; _error = errConn; });
     }
   }
@@ -178,9 +182,20 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
               ],
               const SizedBox(height: 20),
 
-              TvCtaButton(
-                label: _busy ? context.l10n.tvConnecting : context.l10n.tvAddListValidate,
-                onSelect: _busy ? null : _validate,
+              // Pendant l'import, le TEXTE du bouton suit la progression
+              // (octets reçus, chaînes trouvées, enregistrées) : le client voit
+              // que ça avance. Même bouton, même style — seul le libellé change.
+              ValueListenableBuilder<ImportProgress?>(
+                valueListenable: ImportProgressBus.current,
+                builder: (BuildContext context, ImportProgress? p, Widget? _) {
+                  final String label = !_busy
+                      ? context.l10n.tvAddListValidate
+                      : (p?.label ?? context.l10n.tvConnecting);
+                  return TvCtaButton(
+                    label: label,
+                    onSelect: _busy ? null : _validate,
+                  );
+                },
               ),
             ],
           ),

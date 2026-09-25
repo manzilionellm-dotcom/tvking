@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/import_progress.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
@@ -43,6 +44,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
       _busy = true;
       _error = null;
     });
+    ImportProgressBus.clear();
     try {
       await PlaylistRepository.instance.addM3uPlaylist(
         name: _nameC.text.trim().isEmpty ? 'Ma liste M3U' : _nameC.text.trim(),
@@ -55,6 +57,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
         setState(() => _error = 'Échec : liste injoignable ou vide.');
       }
     } finally {
+      ImportProgressBus.clear();
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -96,11 +99,16 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
                       color: TvTokens.live)),
             ],
             const SizedBox(height: 22),
-            TvCtaButton(
-              label: _busy ? 'Ajout…' : 'Ajouter la liste',
-              autofocus: true,
-              expand: false,
-              onSelect: _busy ? null : _submit,
+            ValueListenableBuilder<ImportProgress?>(
+              valueListenable: ImportProgressBus.current,
+              builder: (BuildContext context, ImportProgress? p, Widget? _) {
+                return TvCtaButton(
+                  label: !_busy ? 'Ajouter la liste' : (p?.label ?? 'Ajout…'),
+                  autofocus: true,
+                  expand: false,
+                  onSelect: _busy ? null : _submit,
+                );
+              },
             ),
           ],
         ),

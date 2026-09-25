@@ -37,6 +37,7 @@ import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
 import '../domain/playlist.dart';
 import 'm3u_fetcher.dart';
+import 'import_progress.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
 import 'xtream_client.dart';
@@ -384,6 +385,7 @@ class PlaylistRepository {
       // affichait l'ancienne source (ou rien) malgré le « connecté ».
       // setActivePlaylist ré-émet l'état → l'accueil bascule aussitôt.
       await setActivePlaylist(playlistId);
+      ImportProgressBus.done(parsed.channels.length);
 
       // Si une URL EPG est fournie → on déclenche la sync en
       // arrière-plan (non bloquant : l'utilisateur peut déjà
@@ -555,6 +557,7 @@ class PlaylistRepository {
       // M3U). Sans ça, un 2e compte ajouté restait invisible car
       // `getAllChannels` ne renvoie que les chaînes de la playlist active.
       await setActivePlaylist(playlistId);
+      ImportProgressBus.done(channels.length);
 
       // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV)
       if (newPlaylist.epgUrl != null) {
@@ -867,6 +870,7 @@ class PlaylistRepository {
         batch.insert('channels', _channelToMap(channels[j]));
       }
       await batch.commit(noResult: true);
+      ImportProgressBus.saving(end, channels.length);
     }
     // ANTI-OOM (P1-3) : on N'ÉMET PLUS d'état ICI — ni par tranche, ni à la
     // fin. Chaque appelant ré-émet l'état UNE seule fois APRÈS l'insertion

@@ -32,6 +32,7 @@ import 'package:http/http.dart' as http;
 import '../../player/data/player_settings.dart';
 import '../../../core/blackbox/black_box.dart';
 import 'm3u_parser.dart' show M3uParser;
+import 'import_progress.dart';
 import 'playlist_import_limits.dart';
 
 abstract final class M3uFetcher {
@@ -104,6 +105,7 @@ abstract final class M3uFetcher {
     final bool owns = httpClient == null;
     final String host = Uri.tryParse(url)?.host ?? '?';
     BlackBox.instance.breadcrumb('Téléchargement M3U $host');
+    ImportProgressBus.connecting();
 
     try {
       final List<String> userAgents = _candidateUserAgents(preferredUserAgent);
@@ -240,6 +242,7 @@ abstract final class M3uFetcher {
     int total = 0;
     await for (final List<int> chunk in stream) {
       total += chunk.length;
+      ImportProgressBus.downloading(total);
       if (total > maxBytes) {
         throw PlaylistImportTooLarge(
           'Playlist trop volumineuse (> ${maxBytes ~/ (1024 * 1024)} Mo). '
