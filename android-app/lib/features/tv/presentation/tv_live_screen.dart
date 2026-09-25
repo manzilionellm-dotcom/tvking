@@ -31,6 +31,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
+import 'tv_live_preview.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
 
@@ -125,6 +126,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // Source du lancement : true = rangée « Reprendre », false = grille. Évite
   // qu'une chaîne présente DANS LES DEUX vole le focus du mauvais côté au retour.
   bool _restoreFromRail = false;
+
+  /// Vrai pendant que le lecteur plein écran est ouvert : l'aperçu vidéo de la
+  /// colonne de droite est alors RETIRÉ de l'arbre (donc fermé) → jamais deux
+  /// flux ouverts en même temps.
+  bool _playerOpen = false;
   bool _syncing = false;
   RemoteSyncResult? _lastSync;
   // Garde-fou : on borne le nombre de ré-imports AUTOMATIQUES de la source.
@@ -396,6 +402,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       {required bool fromRail}) async {
     if (index < 0 || index >= list.length) return;
     final String chId = list[index].id;
+    // On coupe l'aperçu AVANT d'ouvrir le plein écran (une seule connexion).
+    setState(() => _playerOpen = true);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
@@ -403,6 +411,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     );
     if (!mounted) return;
     setState(() {
+      _playerOpen = false;
       _restoreFocusId = chId;
       _restoreFromRail = fromRail;
     });
@@ -668,67 +677,48 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     final Channel? last = _lastWatchedCh;
     _heroShown = last != null;
 
-    // ===== C-LIST (catégories) — COMPACTE, EN HAUT À DROITE =====
-    // Déplacée de l'ancienne colonne gauche de 300 px vers une bande haute à
-    // droite : l'espace central est désormais 100 % dédié aux chaînes. Hauteur
-    // BORNÉE (≤5 lignes puis scroll vertical interne), compteur aligné à droite,
-    // noms tronqués (ellipsis). Le focus D-pad circule menu gauche ⇄ C-List ⇄
-    // grille (traversée directionnelle géométrique de Flutter).
+    // ===== DISPOSITION 3 COLONNES (façon box IPTV) =====
+    //   gauche  : catégories (pleine hauteur)
+    //   centre  : LISTE des chaînes (n° · logo · nom), focus = aperçu à droite
+    //   droite  : aperçu vidéo (même moteur que le plein écran) + guide
     final Widget cList = _CategoryRail(
       cats: _dispCats,
       selectedCat: _selectedCat,
-      // La C-List ne PREND JAMAIS le focus initial / au retour : sinon, en
-      // revenant du lecteur, la 1re catégorie (ex. Angleterre) attrapait le
-      // focus ET se sélectionnait toute seule → on perdait la catégorie ET la
-      // position. Le focus revient désormais sur la CARTE quittée (cf. la
-      // restauration post-frame dans _ChannelCard).
+      // La liste des catégories ne PREND JAMAIS le focus initial / au retour
+      // (sinon la 1re catégorie se sélectionnait toute seule en revenant du
+      // lecteur). Le focus revient sur la LIGNE de chaîne quittée.
       autofocusFirst: false,
+      fill: true,
       labelOf: (String c) => _catLabel(context, c),
       countOf: _countOf,
       onSelect: _select,
       onFocusDebounced: _selectDebounced,
     );
 
-    // Grille de chaînes (virtualisée) — occupe TOUTE la zone principale. Chaque
-    // carte signale son focus → le hero reflète la chaîne survolée.
-    final Widget grid = _ChannelGrid(
+    final Widget list = _ChannelList(
       key: _liveGridKey,
       channels: _shownList,
       onFocused: _setPreview,
       onPlay: _openPlayer,
-      // La grille ne reprend le focus que si le lancement venait de la GRILLE.
       restoreFocusId: _restoreFromRail ? null : _restoreFocusId,
       onRestored: () => _restoreFocusId = null,
     );
 
-    // Rangée « Reprendre » : les ~8 DERNIÈRES chaînes regardées (ordre récent).
-    final List<Channel> recentList =
-        _recentCh.length > 8 ? _recentCh.sublist(0, 8) : _recentCh;
+    // Chaîne prévisualisée : celle sous le focus, sinon la 1re de la liste.
+    final Channel? pv =
+        _previewCh ?? (_shownList.isNotEmpty ? _shownList.first : null);
 
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        // ----- Bande haute : « Reprendre » (récentes) à gauche + C-LIST à droite
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(
-              child: _ResumeRail(
-                channels: recentList,
-                onPlay: (int i) =>
-                    _openPlayerWith(recentList, i, fromRail: true),
-                // La rangée ne reprend le focus que si le lancement venait d'ELLE.
-                restoreFocusId: _restoreFromRail ? _restoreFocusId : null,
-                onRestored: () => _restoreFocusId = null,
-              ),
-            ),
-            const SizedBox(width: TvDimens.gutter),
-            SizedBox(width: 420, child: cList),
-          ],
+        SizedBox(width: 300, child: cList),
+        const SizedBox(width: TvDimens.gutter),
+        Expanded(child: list),
+        const SizedBox(width: TvDimens.gutter),
+        SizedBox(
+          width: 470,
+          child: _PreviewPanel(channel: pv, suspended: _playerOpen),
         ),
-        const SizedBox(height: 14),
-        // ----- Zone principale LIBRE : la grille pleine largeur -----
-        Expanded(child: grid),
       ],
     );
   }
@@ -749,7 +739,12 @@ class _CategoryRail extends StatelessWidget {
     required this.countOf,
     required this.onSelect,
     required this.onFocusDebounced,
+    this.fill = false,
   });
+
+  /// `true` → la liste occupe TOUTE la hauteur disponible (colonne de gauche
+  /// de la disposition 3 colonnes) au lieu d'être bornée à quelques lignes.
+  final bool fill;
 
   final List<String> cats;
   final String? selectedCat;
@@ -777,7 +772,7 @@ class _CategoryRail extends StatelessWidget {
       ),
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Padding(
@@ -792,29 +787,35 @@ class _CategoryRail extends StatelessWidget {
                   spacing: 2),
             ),
           ),
-          SizedBox(
-            height: visible * _kRowExtent,
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              itemExtent: _kRowExtent,
-              itemCount: cats.length,
-              itemBuilder: (BuildContext context, int i) {
-                final String cat = cats[i];
-                return _CRow(
-                  label: labelOf(cat),
-                  count: countOf(cat),
-                  selected: cat == selectedCat,
-                  autofocus: i == 0 && autofocusFirst,
-                  onSelect: () => onSelect(cat),
-                  onFocused: () {
-                    if (selectedCat != cat) onFocusDebounced(cat);
-                  },
-                );
-              },
-            ),
-          ),
+          if (fill)
+            Expanded(child: _buildList())
+          else
+            SizedBox(height: visible * _kRowExtent, child: _buildList()),
         ],
       ),
+    );
+  }
+
+  /// Liste paresseuse des catégories (hauteur fixe par ligne → fluide même
+  /// avec des milliers d'entrées).
+  Widget _buildList() {
+    return ListView.builder(
+      padding: EdgeInsets.zero,
+      itemExtent: _kRowExtent,
+      itemCount: cats.length,
+      itemBuilder: (BuildContext context, int i) {
+        final String cat = cats[i];
+        return _CRow(
+          label: labelOf(cat),
+          count: countOf(cat),
+          selected: cat == selectedCat,
+          autofocus: i == 0 && autofocusFirst,
+          onSelect: () => onSelect(cat),
+          onFocused: () {
+            if (selectedCat != cat) onFocusDebounced(cat);
+          },
+        );
+      },
     );
   }
 }
@@ -1657,6 +1658,311 @@ class _ActionPill extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+// =========================================================
+//  DISPOSITION 3 COLONNES — colonne CENTRALE : liste des chaînes
+// =========================================================
+
+/// Liste verticale des chaînes (n° · logo · nom · chip qualité), virtualisée.
+/// Même contrat que l'ancienne grille : `onFocused` (→ aperçu), `onPlay`
+/// (→ plein écran) et restauration du focus au retour du lecteur.
+class _ChannelList extends StatelessWidget {
+  const _ChannelList(
+      {super.key,
+      required this.channels,
+      this.onFocused,
+      this.onPlay,
+      this.restoreFocusId,
+      this.onRestored});
+  final List<Channel> channels;
+  final void Function(Channel)? onFocused;
+  final void Function(int index)? onPlay;
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
+
+  static const double _kRowExtent = 64;
+
+  @override
+  Widget build(BuildContext context) {
+    if (channels.isEmpty) {
+      return Center(
+        child: Text(context.l10n.tvNoChannelInCategory,
+            style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+      );
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: TvTokens.card.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(TvTokens.rCard),
+        border: Border.all(color: TvTokens.lineSoft),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: ListView.builder(
+        padding: EdgeInsets.zero,
+        itemExtent: _kRowExtent,
+        itemCount: channels.length,
+        itemBuilder: (BuildContext context, int i) => _ChannelRow(
+          channel: channels[i],
+          index: i,
+          autofocus: i == 0 && restoreFocusId == null,
+          onFocused: onFocused,
+          onPlay: onPlay,
+          restoreFocusId: restoreFocusId,
+          onRestored: onRestored,
+        ),
+      ),
+    );
+  }
+}
+
+/// Une ligne de chaîne : numéro · logo · nom (+ chip 4K/FHD/HD).
+class _ChannelRow extends StatefulWidget {
+  const _ChannelRow({
+    required this.channel,
+    required this.index,
+    this.autofocus = false,
+    this.onFocused,
+    this.onPlay,
+    this.restoreFocusId,
+    this.onRestored,
+  });
+  final Channel channel;
+  final int index;
+  final bool autofocus;
+  final void Function(Channel)? onFocused;
+  final void Function(int index)? onPlay;
+  final String? restoreFocusId;
+  final VoidCallback? onRestored;
+
+  @override
+  State<_ChannelRow> createState() => _ChannelRowState();
+}
+
+class _ChannelRowState extends State<_ChannelRow> {
+  // Node possédé par la ligne : nécessaire pour RE-DEMANDER le focus au retour
+  // du lecteur (TvFocusable ne dispose pas un node qu'il n'a pas créé).
+  final FocusNode _node = FocusNode();
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Channel channel = widget.channel;
+    final _ParsedName p = _parseName(channel);
+    final String? quality = p.badges
+        .cast<String?>()
+        .firstWhere((String? b) => b == '4K' || b == 'FHD' || b == 'HD',
+            orElse: () => null);
+    if (widget.restoreFocusId != null && widget.restoreFocusId == channel.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (widget.restoreFocusId == widget.channel.id) {
+          _node.requestFocus();
+          widget.onRestored?.call();
+        }
+      });
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: TvFocusable(
+        focusNode: _node,
+        autofocus: widget.autofocus,
+        scale: TvFocusScale.small,
+        baseColor: Colors.transparent,
+        onFocusChange: (bool f) {
+          if (f) widget.onFocused?.call(channel);
+        },
+        onSelect: () => widget.onPlay?.call(widget.index),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Row(
+            children: <Widget>[
+              SizedBox(
+                width: 44,
+                child: Text('${widget.index + 1}',
+                    textAlign: TextAlign.right,
+                    style: TvTokens.mono(15, color: TvTokens.mutedDim)),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                  width: 48, height: 48, child: _LogoChip(channel: channel)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(p.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(19,
+                        weight: FontWeight.w600, color: TvTokens.text)),
+              ),
+              if (quality != null) ...<Widget>[
+                const SizedBox(width: 10),
+                _TagBadge(label: quality),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =========================================================
+//  DISPOSITION 3 COLONNES — colonne DROITE : aperçu vidéo + guide
+// =========================================================
+
+/// Aperçu vidéo (16:9) de la chaîne focalisée + « Maintenant / À suivre ».
+/// `suspended` = plein écran ouvert → l'aperçu est retiré (flux fermé).
+class _PreviewPanel extends StatelessWidget {
+  const _PreviewPanel({required this.channel, required this.suspended});
+  final Channel? channel;
+  final bool suspended;
+
+  @override
+  Widget build(BuildContext context) {
+    final Channel? c = channel;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        AspectRatio(
+          aspectRatio: 16 / 9,
+          child: (c == null || suspended)
+              ? Container(
+                  decoration: BoxDecoration(
+                    color: TvTokens.tile,
+                    borderRadius: BorderRadius.circular(TvTokens.rCard),
+                    border: Border.all(color: TvTokens.lineSoft),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.live_tv_rounded,
+                      size: 56, color: TvTokens.mutedDim),
+                )
+              : TvLivePreview(channel: c),
+        ),
+        const SizedBox(height: 14),
+        if (c != null) _PreviewInfo(channel: c),
+      ],
+    );
+  }
+}
+
+/// Nom de la chaîne + programme en cours (barre de progression) + suivant.
+class _PreviewInfo extends StatefulWidget {
+  const _PreviewInfo({required this.channel});
+  final Channel channel;
+  @override
+  State<_PreviewInfo> createState() => _PreviewInfoState();
+}
+
+class _PreviewInfoState extends State<_PreviewInfo> {
+  late Future<List<EpgProgram?>> _epg = _load();
+
+  Future<List<EpgProgram?>> _load() => Future.wait(<Future<EpgProgram?>>[
+        EpgRepository.instance.currentProgram(widget.channel.id),
+        EpgRepository.instance.nextProgram(widget.channel.id),
+      ]);
+
+  @override
+  void didUpdateWidget(covariant _PreviewInfo old) {
+    super.didUpdateWidget(old);
+    if (old.channel.id != widget.channel.id) _epg = _load();
+  }
+
+  String _hm(int ms) {
+    final DateTime d = DateTime.fromMillisecondsSinceEpoch(ms);
+    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Channel c = widget.channel;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: TvTokens.card.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(TvTokens.rCard),
+        border: Border.all(color: TvTokens.lineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(_tvPretty(c.cleanName),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TvTokens.display(22, color: TvTokens.text)),
+          const SizedBox(height: 10),
+          FutureBuilder<List<EpgProgram?>>(
+            future: _epg,
+            builder: (BuildContext context,
+                AsyncSnapshot<List<EpgProgram?>> snap) {
+              final EpgProgram? now =
+                  (snap.data != null && snap.data!.isNotEmpty) ? snap.data![0] : null;
+              final EpgProgram? next =
+                  (snap.data != null && snap.data!.length > 1) ? snap.data![1] : null;
+              if (now == null) {
+                final String cat = c.category.trim();
+                return Text(cat.isEmpty ? context.l10n.tvNavLive : _tvPretty(cat),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(15, color: TvTokens.muted));
+              }
+              final int nowMs = DateTime.now().millisecondsSinceEpoch;
+              final int span = now.stopTime - now.startTime;
+              final double prog = span > 0
+                  ? ((nowMs - now.startTime) / span).clamp(0.0, 1.0)
+                  : 0.0;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(context.l10n.tvEpgNow.toUpperCase(),
+                      style: TvTokens.ui(11,
+                          weight: FontWeight.w700,
+                          color: TvTokens.accentBright,
+                          spacing: 2)),
+                  const SizedBox(height: 4),
+                  Text(now.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TvTokens.ui(17,
+                          weight: FontWeight.w600, color: TvTokens.text)),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(TvTokens.rSmall),
+                    child: LinearProgressIndicator(
+                      value: prog,
+                      minHeight: 4,
+                      backgroundColor: TvTokens.line,
+                      color: TvTokens.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text('${_hm(now.startTime)} – ${_hm(now.stopTime)}',
+                      style: TvTokens.ui(13, color: TvTokens.mutedDim)),
+                  if (next != null) ...<Widget>[
+                    const SizedBox(height: 12),
+                    Text(context.l10n.tvEpgNext.toUpperCase(),
+                        style: TvTokens.ui(11,
+                            weight: FontWeight.w700,
+                            color: TvTokens.mutedDim,
+                            spacing: 2)),
+                    const SizedBox(height: 4),
+                    Text('${_hm(next.startTime)}  ${next.title}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvTokens.ui(15, color: TvTokens.muted)),
+                  ],
+                ],
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

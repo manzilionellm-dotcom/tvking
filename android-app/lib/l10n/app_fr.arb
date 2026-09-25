@@ -1950,6 +1950,14 @@
   "tvNavSearch": "Recherche",
   "tvNavSettings": "Réglages",
   "tvComingSoon": "Bientôt disponible. Cette section arrive très vite.",
+  "tvEpgNow": "Maintenant",
+  "@tvEpgNow": {
+    "description": "Étiquette du programme en cours (aperçu Direct)"
+  },
+  "tvEpgNext": "À suivre",
+  "@tvEpgNext": {
+    "description": "Étiquette du programme suivant (aperçu Direct)"
+  },
   "tvHello": "Bonjour",
   "tvNoChannels": "Aucune chaîne pour l'instant",
   "tvNoChannelsHelp": "Active cet appareil dans ton panel, puis pousse-lui une source. Les chaînes apparaîtront ici automatiquement.",
