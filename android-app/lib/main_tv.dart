@@ -103,6 +103,29 @@ Future<void> _bootstrap() async {
   //    crash mémoire en boucle. L'app ouvre sur le cache existant.
   if (!BootGuard.instance.safeMode) {
     unawaited(RemoteSourceRepository.sync());
+
+    // SYNCHRONISATION DES LISTES (façon TiviMate, demande du propriétaire
+    // 25/09/2026). Jusqu'ici la TV n'actualisait JAMAIS une M3U/Xtream après
+    // l'import : les chaînes ajoutées par le fournisseur n'arrivaient pas.
+    //   • 20 s après le démarrage (l'accueil est déjà affiché, on ne
+    //     concurrence pas le 1er rendu) : re-télécharge les listes dont la
+    //     dernière synchro date de plus de 12 h. Si tout est récent : rien.
+    //   • puis toutes les 24 h tant que la box reste allumée (les box TV
+    //     restent souvent sous tension des jours) : toutes les listes +
+    //     re-vérification de la source poussée par le panel.
+    // Une seule passe à la fois (mutex dans refreshAll), best-effort, et
+    // chaque liste actualisée ré-émet ses chaînes → Direct se met à jour
+    // sans redémarrage. Jamais en mode sans échec (ré-import = suspect OOM).
+    unawaited(Future<void>.delayed(const Duration(seconds: 20), () {
+      if (!BootGuard.instance.safeMode) {
+        PlaylistRepository.instance.refreshStale();
+      }
+    }));
+    Timer.periodic(const Duration(hours: 24), (_) {
+      if (BootGuard.instance.safeMode) return;
+      RemoteSourceRepository.sync();
+      PlaylistRepository.instance.refreshAll();
+    });
   } else {
     debugPrint('[main_tv] mode sans échec → ré-import de la source distante sauté.');
   }
