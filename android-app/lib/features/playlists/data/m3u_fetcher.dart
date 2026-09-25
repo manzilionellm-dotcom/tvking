@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../player/data/player_settings.dart';
+import '../../../core/blackbox/black_box.dart';
 import 'm3u_parser.dart' show M3uParser;
 import 'playlist_import_limits.dart';
 
@@ -101,6 +102,8 @@ abstract final class M3uFetcher {
   }) async {
     final http.Client client = httpClient ?? http.Client();
     final bool owns = httpClient == null;
+    final String host = Uri.tryParse(url)?.host ?? '?';
+    BlackBox.instance.breadcrumb('Téléchargement M3U $host');
 
     try {
       final List<String> userAgents = _candidateUserAgents(preferredUserAgent);
@@ -178,6 +181,7 @@ abstract final class M3uFetcher {
           }
 
           // Succès : cette signature a livré une vraie playlist.
+          BlackBox.instance.info('M3U', '$host : ${(bytes.length / (1024 * 1024)).toStringAsFixed(1)} Mo reçus');
           if (kDebugMode && i > 0) {
             debugPrint(
               '[M3uFetcher] playlist obtenue avec la signature #${i + 1} '

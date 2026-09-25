@@ -24,6 +24,7 @@ import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/blackbox/black_box.dart';
 import '../core/tv_activity.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -134,6 +135,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void initState() {
     super.initState();
     TvActivity.enter();
+    BlackBox.instance.info('SCREEN', 'Lecteur ouvert');
     WidgetsBinding.instance.addObserver(this);
     // Le décodage (MediaCodec matériel + repli logiciel), le tampon réseau et
     // le User-Agent sont gérés côté natif (NativeVideoView.kt). Ici on se
@@ -260,6 +262,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _recover() {
+    BlackBox.instance.warn('PLAYER', 'reconnexion (tentative ${_recoverAttempts + 1}/$_kMaxRecover)'
+        '${_controller.hasError ? ' après erreur ExoPlayer' : _controller.isEnded ? ' après fin de flux' : ' après gel 15 s'}');
     if (_recovering || _fatal) return;
     // BORNE (P1-6) : au-delà de _kMaxRecover ré-ouvertures sans reprise, on
     // ARRÊTE la boucle de reconnexion et on bascule en erreur explicite avec

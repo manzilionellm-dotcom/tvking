@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/app/boot_guard.dart';
+import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
@@ -95,6 +96,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
+    BlackBox.instance.info('SCREEN', 'Accueil');
     _hadChannels = PlaylistRepository.instance.currentChannels.isNotEmpty;
     _wasActive = _isActive(SubscriptionState.instance.status);
     SubscriptionState.instance.addListener(_onLicenseChange);

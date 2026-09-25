@@ -30,6 +30,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
 import '../../channels/domain/channel.dart';
+import '../../../core/blackbox/black_box.dart';
 import 'playlist_import_limits.dart';
 
 /// Résultat du parsing : la liste des chaînes + warnings non
@@ -66,10 +67,15 @@ abstract final class M3uParser {
     Uint8List bytes, {
     required int playlistId,
   }) {
+    BlackBox.instance.breadcrumb('Analyse M3U (${(bytes.length / (1024 * 1024)).toStringAsFixed(1)} Mo, isolate)');
     return compute(
       _m3uParseBytesEntry,
       (TransferableTypedData.fromList(<Uint8List>[bytes]), playlistId),
-    );
+    ).then((M3uParseResult r) {
+      BlackBox.instance.info('M3U', '${r.channels.length} chaînes analysées');
+      BlackBox.instance.breadcrumb('');
+      return r;
+    });
   }
 
   /// Décodage UTF-8 → Latin-1 fallback + BOM strip. Partagé avec M3uFetcher.

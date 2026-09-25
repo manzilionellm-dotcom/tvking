@@ -26,6 +26,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../channels/data/recently_watched_repository.dart';
+import '../../../core/blackbox/black_box.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
@@ -64,7 +65,10 @@ abstract final class RemoteSourceRepository {
             headers: const <String, String>{'Accept': 'application/json'},
           )
           .timeout(const Duration(seconds: 8));
-      if (resp.statusCode != 200) return RemoteSyncResult.networkError;
+      if (resp.statusCode != 200) {
+        BlackBox.instance.warn('PANEL', 'device-source HTTP ${resp.statusCode}');
+        return RemoteSyncResult.networkError;
+      }
 
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
@@ -97,6 +101,7 @@ abstract final class RemoteSourceRepository {
       return await _applySource(src);
     } catch (e) {
       if (kDebugMode) debugPrint('[RemoteSource] sync error: $e');
+      BlackBox.instance.warn('PANEL', 'device-source injoignable : $e');
       return RemoteSyncResult.networkError;
     }
   }

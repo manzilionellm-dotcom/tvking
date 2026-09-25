@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/blackbox/black_box.dart';
 import '../../playlists/data/default_servers.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
@@ -78,6 +79,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
       return;
     }
     setState(() { _busy = true; _error = null; });
+    BlackBox.instance.breadcrumb('Ajout liste Xtream ${Uri.tryParse(server)?.host ?? server} (utilisateur $user)');
     try {
       await PlaylistRepository.instance.addXtreamPlaylist(
         name: _manual
@@ -90,8 +92,12 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
         username: user,
         password: pass,
       );
+      BlackBox.instance.breadcrumb('');
+      BlackBox.instance.info('SOURCE', 'liste Xtream ajoutée');
       if (mounted) Navigator.of(context).pop(); // le gate ouvre l'app
-    } catch (_) {
+    } catch (e) {
+      BlackBox.instance.error('SOURCE', 'ajout liste Xtream ÉCHEC', e);
+      BlackBox.instance.breadcrumb('');
       if (mounted) setState(() { _busy = false; _error = errConn; });
     }
   }

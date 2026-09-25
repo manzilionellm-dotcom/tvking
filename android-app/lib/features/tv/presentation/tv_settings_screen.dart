@@ -13,6 +13,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import 'tv_black_box_screen.dart';
 import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
 import 'tv_shell.dart';
@@ -227,6 +228,42 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Icon(Icons.child_care_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
                     Text('Contrôle parental (Mode Enfants + code PIN)',
+                        style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: fg)),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Boîte noire (journal technique : pourquoi l'app s'est fermée) -----
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(child: TvBlackBoxScreen()),
+              ),
+            ),
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.accent : TvTokens.sel;
+              final Color fg =
+                  focused ? TvTokens.onAccent : TvTokens.accentBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.flight_takeoff_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Text('Boîte noire (journal technique)',
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,

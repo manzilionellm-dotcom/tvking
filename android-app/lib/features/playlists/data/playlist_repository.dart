@@ -31,6 +31,7 @@ import 'package:sqflite/sqflite.dart';
 
 
 import '../../../core/flavor/flavor.dart';
+import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
@@ -847,6 +848,14 @@ class PlaylistRepository {
   ///     rafraîchit toutes les ~900ms (chunk + emit) — sensation
   ///     "ça avance" au lieu de "ça dort".
   Future<void> _insertChannels(List<Channel> channels) async {
+    BlackBox.instance.breadcrumb('Insertion en base de ${channels.length} chaînes');
+    final Stopwatch sw = Stopwatch()..start();
+    await _insertChannelsImpl(channels);
+    BlackBox.instance.info('DB', '${channels.length} chaînes insérées en ${sw.elapsedMilliseconds} ms');
+    BlackBox.instance.breadcrumb('');
+  }
+
+  Future<void> _insertChannelsImpl(List<Channel> channels) async {
     const int chunkSize = 1000;
     final Database db = await PlaylistDatabase.instance.database;
     for (int i = 0; i < channels.length; i += chunkSize) {
@@ -883,8 +892,10 @@ class PlaylistRepository {
   }
 
   Future<void> _emitCurrentState() async {
+    final Stopwatch sw = Stopwatch()..start();
     final List<Channel> channels = await getAllChannels();
     final List<Playlist> playlists = await getAllPlaylists();
+    BlackBox.instance.info('DB', 'lecture : ${channels.length} chaînes, ${playlists.length} liste(s) en ${sw.elapsedMilliseconds} ms');
     // Met à jour les caches synchrones avant d'émettre
     // (`currentChannels` est ainsi cohérent avec le dernier event).
     _channelsCache = channels;

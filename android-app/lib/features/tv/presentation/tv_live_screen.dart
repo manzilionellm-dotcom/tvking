@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../../core/app/boot_guard.dart';
+import '../../../core/blackbox/black_box.dart';
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_activity.dart';
@@ -164,6 +165,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   void initState() {
     super.initState();
     TvActivity.enter();
+    BlackBox.instance.info('SCREEN', 'Direct ouvert');
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
     // Favoris en direct : la catégorie « ★ Favoris » se met à jour toute seule.
@@ -231,6 +233,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   @override
   void dispose() {
     TvActivity.leave();
+    BlackBox.instance.info('SCREEN', 'Direct fermé');
     _ingestGen++; // annule un pré-calcul en cours
     _sub?.cancel();
     _favSub?.cancel();
@@ -588,6 +591,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       counts[cat] = (counts[cat] ?? 0) + 1;
     }
     if (!mounted) return;
+    BlackBox.instance.info('DIRECT', '${live.length} chaînes · ${cats.length} catégories');
     setState(() {
       _all = live;
       _cats = cats;
@@ -617,12 +621,14 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       return;
     }
     _precomputed = false;
+    final Stopwatch sw = Stopwatch()..start();
     ChannelPrecompute.run(
       channels,
       cancelled: () => !mounted || gen != _ingestGen,
     ).then((_) {
       if (!mounted || gen != _ingestGen) return;
       _precomputed = true;
+      BlackBox.instance.info('DIRECT', 'pré-calcul noms/genres terminé en ${sw.elapsedMilliseconds} ms (isolate)');
       if (ParentalControls.instance.kidsMode.value) {
         _ingest(_rawLive); // re-filtre avec les genres maintenant connus
       } else {

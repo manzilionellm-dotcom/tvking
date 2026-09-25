@@ -20,6 +20,8 @@
 // =========================================================
 import 'package:flutter/foundation.dart';
 
+import '../blackbox/black_box.dart';
+
 /// Signature d'un « puits » d'erreurs distant (ex. Firebase Crashlytics).
 /// On reste volontairement générique : la couche métier n'a aucune idée
 /// de QUI consomme l'erreur.
@@ -76,6 +78,8 @@ class CrashReporting {
 
     _ring.add(line);
     if (_ring.length > _maxRing) _ring.removeAt(0);
+    // Boîte noire (journal sur disque) : la même erreur, persistée.
+    BlackBox.instance.error(context ?? 'ERREUR', '$error');
 
     debugPrint('[CrashReporting] $line');
 

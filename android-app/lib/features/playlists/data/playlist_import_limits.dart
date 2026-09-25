@@ -28,6 +28,12 @@ const int kMaxM3uBytes = 60 * 1024 * 1024;
 /// laisse un peu plus large. Coupé en streaming dès dépassement.
 const int kMaxXtreamJsonBytes = 80 * 1024 * 1024;
 
+/// Taille au-delà de laquelle `get_live_streams` n'est PLUS importé d'un bloc
+/// mais CATÉGORIE PAR CATÉGORIE (pic mémoire = une catégorie, pas le bouquet
+/// entier). 10 Mo de JSON ≈ 20 000 chaînes ; au-delà, un décodage d'un bloc
+/// sur une box 1 Go finit tué par manque de mémoire (boîte noire : LOW_MEMORY).
+const int kXtreamSingleShotBytes = 10 * 1024 * 1024;
+
 /// Plafond DUR de chaînes matérialisées en mémoire lors d'UN import. Aligné
 /// sur le plafond de LECTURE (`PlaylistRepository.kMaxInMemoryChannels`) pour
 /// que lecture et écriture aient la même borne. Au-delà, on s'arrête (les

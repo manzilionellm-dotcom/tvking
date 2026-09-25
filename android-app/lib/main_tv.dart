@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/app/app_platform.dart';
+import 'core/blackbox/black_box.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/flavor/flavor.dart';
@@ -53,6 +54,14 @@ Future<void> _bootstrap() async {
   // Cette app est la version TÉLÉVISION → le heartbeat enverra
   // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
   AppPlatform.isTv = true;
+
+  // BOÎTE NOIRE (enregistreur de vol) : le plus tôt possible, pour que tout le
+  // démarrage soit journalisé et que la raison de la DERNIÈRE fermeture soit
+  // lue (Android 11+). Best-effort : ne bloque jamais le boot.
+  await BlackBox.instance.initialize(flavor: 'Zuno TV');
+  if (BootGuard.instance.safeMode) {
+    BlackBox.instance.warn('BOOT', 'MODE SANS ÉCHEC : boucle de redémarrage détectée → ré-imports sautés');
+  }
 
   // ANTI-OOM TV (confirmé par logcat: lowmemorykiller / signal 9) : on N'INITIE
   // PLUS le moteur mpv (media_kit) sur la TV. La TV joue EXCLUSIVEMENT via
