@@ -294,13 +294,33 @@ jobs:
           flutter analyze --no-fatal-infos --no-fatal-warnings
           flutter test --reporter expanded
 
+      # ------------------------------------------------------------------
+      #  NUMÉRO DE VERSION VISIBLE (décision du propriétaire, 25/09/2026) :
+      #  la 1re version publiée s'appelle « 88 », puis 89, 90… à CHAQUE
+      #  publication réelle. Il est calculé à partir de la dernière version
+      #  publiée (version.json de la release) → jamais deux publications avec le
+      #  même numéro. Un build NON publié garde le numéro courant (il n'apparaît
+      #  nulle part). Le versionCode (secondes epoch) reste la clé technique
+      #  strictement croissante qui permet l'installation par-dessus.
+      # ------------------------------------------------------------------
+      - name: Numéro de version visible (88, 89, 90…)
+        run: |
+          set -e
+          PREV_VN=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/version.json" 2>/dev/null \
+            | tr -d ' \n' | grep -oE '"versionName":"[^"]*"' | grep -oE '[0-9]+' | head -1 || true)
+          PREV_VN=${PREV_VN:-0}
+          if [ "$PREV_VN" -lt 88 ]; then PREV_VN=87; fi
+          if [ "$PUBLIER" = "true" ]; then NEW_VN=$((PREV_VN + 1)); else NEW_VN=$PREV_VN; fi
+          echo "version visible = $NEW_VN (précédente publiée : $PREV_VN, publication : $PUBLIER)"
+          echo "TV_VERSION_NAME=$NEW_VN" >> "$GITHUB_ENV"
+
       - name: Build Zuno TV (release universel ARM, target main_tv)
         env:
           BACKEND_URL_INPUT: ${{ github.event.inputs.backend_url }}
         run: |
           set -e
           BUILD_NUMBER=$(date +%s)
-          echo "versionCode = $BUILD_NUMBER"
+          echo "versionCode = $BUILD_NUMBER · versionName = $TV_VERSION_NAME"
           echo "TV_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
           EXTRA_DEFINES=""
           if [ -n "$BACKEND_URL_INPUT" ]; then
@@ -310,6 +330,7 @@ jobs:
           flutter build apk --release --no-tree-shake-icons \
             --target-platform android-arm,android-arm64 \
             --build-number="$BUILD_NUMBER" \
+            --build-name="$TV_VERSION_NAME" \
             --obfuscate --split-debug-info=build/symbols \
             --dart-define=APP_BUILD_TS="$BUILD_NUMBER" \
             --dart-define=GIT_SHA=${{ github.sha }} \
@@ -379,7 +400,7 @@ jobs:
             exit 0
           fi
           SHA=$(sha256sum "$APK" | cut -d' ' -f1)
-          VN=$(grep -E '^version:' pubspec.yaml | sed -E 's/^version:\s*([^+ ]+).*/\1/')
+          VN="$TV_VERSION_NAME"
           cat > version.json <<JSON
           {
             "versionCode": $NEW_VC,
@@ -410,7 +431,7 @@ jobs:
           {
             echo "## Zuno TV"
             echo "- applicationId : \`com.sevenmotion.tv.seven_tv\`"
-            echo "- versionCode : \`${TV_BUILD_NUMBER:-?}\` · signature : \`${SIGNING:-?}\`"
+            echo "- version visible : \`${TV_VERSION_NAME:-?}\` · versionCode : \`${TV_BUILD_NUMBER:-?}\` · signature : \`${SIGNING:-?}\`"
             echo "- backend : \`${{ github.event.inputs.backend_url || 'https://app.7themotion.com' }}\`"
             if [ "$PUBLIER" = "true" ]; then
               echo "- publié : https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/$APK_NAME"

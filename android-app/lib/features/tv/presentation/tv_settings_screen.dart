@@ -56,7 +56,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     setState(() => _upd = _UpdState.checking);
     try {
       final PackageInfo p = await PackageInfo.fromPlatform();
-      _current = p.buildNumber;
+      _current = p.version; // numéro visible (88, 89, 90…)
     } catch (_) {}
     final UpdateInfo? u = await UpdateService.instance.check();
     if (!mounted) return;
@@ -103,9 +103,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case _UpdState.checking:
         return 'Mise à jour : vérification…';
       case _UpdState.upToDate:
-        return 'Mise à jour : à jour${_current.isEmpty ? '' : ' (build $_current)'} — OK pour revérifier';
+        return 'Mise à jour : à jour${_current.isEmpty ? '' : ' (version $_current)'} — OK pour revérifier';
       case _UpdState.available:
-        return 'Nouvelle version ${_updInfo?.versionName ?? ''} (build ${_updInfo?.versionCode}) — OK pour installer';
+        return 'Nouvelle version ${_updInfo?.versionName ?? ''} disponible — OK pour installer';
       case _UpdState.downloading:
         return 'Téléchargement de la mise à jour… $_updPct %';
       case _UpdState.failed:
