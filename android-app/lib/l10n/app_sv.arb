@@ -568,5 +568,248 @@
   "tvStay": "Stanna kvar",
   "tvChooseServer": "Välj din server",
   "tvManualServer": "Manuell URL",
-  "tvKeyboardHint": "Tips: du kan skriva med tangentbordet i fjärrkontrollsappen på telefonen (kopiera-klistra funkar)."
+  "tvKeyboardHint": "Tips: du kan skriva med tangentbordet i fjärrkontrollsappen på telefonen (kopiera-klistra funkar).",
+  "tvEpgNow": "Nu",
+  "@tvEpgNow": {
+    "description": "Étiquette du programme en cours (aperçu Direct)"
+  },
+  "tvEpgNext": "Härnäst",
+  "@tvEpgNext": {
+    "description": "Étiquette du programme suivant (aperçu Direct)"
+  },
+  "tvAddM3uTitle": "Lägg till en M3U-lista",
+  "tvAddM3uSubtitle": "Klistra in URL:en till din .m3u-fil (och EPG om du har en).",
+  "tvFieldNameOptional": "Namn (valfritt)",
+  "tvMyListHint": "Min lista",
+  "tvFieldM3uUrl": "M3U-URL",
+  "tvFieldEpgUrlOptional": "EPG-URL (valfritt)",
+  "tvAddM3uBusy": "Lägger till…",
+  "tvAddM3uValidate": "Lägg till listan",
+  "tvAddM3uInvalidUrl": "Ange en giltig M3U-URL (http…).",
+  "tvAddM3uFailed": "Misslyckades: listan går inte att nå eller är tom.",
+  "tvMyM3uList": "Min M3U-lista",
+  "tvBlackBoxTitle": "Svart låda",
+  "tvBlackBoxSubtitle": "Appens tekniska logg (v{version}). Om appen stängdes oväntat hittar du orsaken här.",
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxFirstRun": "Första starten: ingen tidigare session.",
+  "tvBlackBoxCleanExit": "Senaste sessionen avslutades normalt.",
+  "tvBlackBoxBrutal": "OVÄNTAD AVSLUTNING · {reason}",
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxUnknownReason": "okänd orsak (Android < 11)",
+  "tvBlackBoxMemory": "minne {mb} MB",
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxWhen": "När: {when}",
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxLastAction": "Senaste åtgärd: {action}",
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxDetail": "Android-detalj: {detail}",
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "tvRefresh": "Uppdatera",
+  "tvCopy": "Kopiera",
+  "tvCopied": "Kopierat",
+  "tvClear": "Rensa",
+  "tvReading": "Läser…",
+  "tvBlackBoxHelp": "UPP/NER: bläddra · CH+/CH−: sida · Kopiera = urklipp (klistra in det till supporten på WhatsApp).",
+  "tvNavServer": "Server",
+  "tvLegalTitle": "Juridisk information & villkor",
+  "tvResumeLabel": "FORTSÄTT",
+  "tvNowPlayingPrefix": "NU · {title}",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPinUpdated": "Föräldrakod uppdaterad ✔",
+  "tvParentalTitle": "Föräldrakontroll",
+  "tvKidsMode": "Barnläge",
+  "tvParentalCode": "Föräldrakod",
+  "tvCustomPinInPlace": "En egen kod är inställd.",
+  "tvChangePin": "Byt PIN-kod",
+  "tvPinSubtitle": "4-siffrig föräldrakod",
+  "tvNewPin": "Ny kod",
+  "tvNewPinSubtitle": "Välj 4 siffror och bekräfta",
+  "tvPinWrong": "Fel kod, försök igen.",
+  "tvPinMismatch": "Koderna stämmer inte överens.",
+  "tvPlayerFatalHint": "OK: Försök igen   ·   Tillbaka: Avsluta",
+  "tvRec": "REC",
+  "tvStop": "Stopp",
+  "tvGuideBtn": "Guide",
+  "tvFavoriteBtn": "Favorit",
+  "tvPlaybackFinished": "Uppspelningen är klar",
+  "tvPlaybackFinishedBody": "Tryck på Tillbaka för att gå till dina inspelningar.",
+  "tvNoRecordings": "Inga inspelningar",
+  "tvNoRecordingsBody": "Dina inspelningar visas här. Tryck på REC medan du tittar på en kanal för att spela in.",
+  "tvMyRecordings": "Mina inspelningar",
+  "tvDeleteQuestion": "Ta bort?",
+  "tvDeleteRecordingConfirm": "Ta bort ”{name}” permanent?",
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCancel": "Avbryt",
+  "tvDelete": "Ta bort",
+  "tvSettingsSources": "Mina källor (lägg till / aktivera / ta bort)",
+  "tvSettingsParental": "Föräldrakontroll (Barnläge + PIN-kod)",
+  "tvSettingsBlackBox": "Svart låda (teknisk logg)",
+  "tvSettingsLegal": "Juridisk information & användarvillkor",
+  "tvUpdateChecking": "Uppdatering: kontrollerar…",
+  "tvUpdateUpToDate": "Uppdatering: aktuell (version {version}) — OK för att kontrollera igen",
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateUpToDateNoVersion": "Uppdatering: aktuell — OK för att kontrollera igen",
+  "tvUpdateAvailable": "Ny version {version} tillgänglig — OK för att installera",
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateDownloading": "Laddar ner uppdateringen… {pct} %",
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateFailed": "Uppdatering: misslyckades (nätverk eller installation) — OK för att försöka igen",
+  "tvMySources": "Mina källor",
+  "tvAddXtream": "Lägg till Xtream",
+  "tvAddM3u": "Lägg till M3U",
+  "tvDeleteSourceConfirm": "Ta bort källan ”{name}”?",
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvActivate": "Aktivera",
+  "tvMyTeams": "Mina lag",
+  "tvAdd": "Lägg till",
+  "tvPickTeamsTitle": "Välj dina favoritlag",
+  "tvPickTeamsBody": "Du får se deras resultat och kommande matcher, en rullande nyhetsremsa och ett larm ca 1 h före varje match.",
+  "tvPickMyTeam": "Välj mitt lag",
+  "tvLastMatch": "Senaste matchen",
+  "tvNextMatch": "Nästa match",
+  "tvNewsTicker": "NYHETER",
+  "tvNoData": "Ingen data",
+  "tvNoTeamFound": "Inget lag hittades",
+  "tvMyTeam": "Mitt lag",
+  "tvImpConnecting": "Ansluter till servern…",
+  "tvImpCategories": "Läser kategorier…",
+  "tvImpDownloading": "Laddar ner… {mb} MB",
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpDecoding": "Analyserar {mb} MB…",
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpCategory": "Kategori {i}/{total} · {found} kanaler hittade",
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpFound": "{count} kanaler hittade",
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpSaving": "Sparar {done} / {total} kanaler",
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpDone": "{count} kanaler klara",
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvLanguage": "Språk",
+  "tvLanguageAuto": "Automatiskt (TV:ns språk)",
+  "tvSettingsLanguage": "Språk: {value}",
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -995,7 +995,7 @@ class _ResumeRail extends StatelessWidget {
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
-          child: Text('REPRENDRE',
+          child: Text(context.l10n.tvResumeLabel,
               style: TvTokens.ui(13,
                   weight: FontWeight.w800,
                   color: TvTokens.mutedDim,
@@ -1206,7 +1206,7 @@ class _LiveHeroState extends State<_LiveHero> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
-                          Text('EN CE MOMENT · ${p.title}',
+                          Text(context.l10n.tvNowPlayingPrefix(p.title),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -1307,7 +1307,7 @@ class _LivePillState extends State<_LivePill>
             ),
           ),
           const SizedBox(width: 7),
-          Text('EN DIRECT',
+          Text(context.l10n.tvLiveBadge,
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,

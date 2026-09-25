@@ -63,10 +63,13 @@ class TvApp extends StatelessWidget {
       builder: (BuildContext context, _) => MaterialApp(
         title: kAppName,
         debugShowCheckedModeBanner: false,
-        // --- Internationalisation (8 langues, RTL auto pour l'arabe) ---
+        // --- Internationalisation (16 langues, RTL auto pour l'arabe) ---
         locale: LocaleRepository.instance.locale, // null = langue de la TV
         supportedLocales: AppLocalizations.supportedLocales,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
+        // Langue de la TV → langue de l'app (toutes les préférences système,
+        // code langue seul, repli anglais). Voir LocaleRepository.resolve.
+        localeListResolutionCallback: LocaleRepository.resolve,
         theme: base.copyWith(
           // Police par défaut = Inter (Maison Noir) sur TOUT le texte.
           textTheme: GoogleFonts.interTextTheme(base.textTheme)

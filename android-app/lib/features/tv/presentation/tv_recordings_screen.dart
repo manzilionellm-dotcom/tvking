@@ -14,6 +14,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
 import '../core/tv_dimens.dart';
@@ -33,11 +35,10 @@ class TvRecordingsScreen extends StatelessWidget {
       builder: (BuildContext context, AsyncSnapshot<List<Recording>> snap) {
         final List<Recording> recs = snap.data ?? const <Recording>[];
         if (recs.isEmpty) {
-          return const TvEmptyState(
+          return TvEmptyState(
             icon: Icons.video_library_rounded,
-            title: 'Aucun enregistrement',
-            subtitle:
-                'Tes enregistrements apparaîtront ici. Pendant la lecture d\'une chaîne, appuie sur le bouton REC pour enregistrer.',
+            title: context.l10n.tvNoRecordings,
+            subtitle: context.l10n.tvNoRecordingsBody,
           );
         }
         return Column(
@@ -45,7 +46,7 @@ class TvRecordingsScreen extends StatelessWidget {
           children: <Widget>[
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 14),
-              child: Text('Mes enregistrements',
+              child: Text(context.l10n.tvMyRecordings,
                   style: TextStyle(
                       fontSize: TvDimens.displayS,
                       fontWeight: FontWeight.w800,
@@ -89,16 +90,16 @@ class _RecordingRow extends StatelessWidget {
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         backgroundColor: TvTokens.card,
-        title: Text('Supprimer ?', style: TextStyle(color: TvTokens.text)),
-        content: Text('Supprimer définitivement « ${rec.channelName} » ?',
+        title: Text(context.l10n.tvDeleteQuestion, style: TextStyle(color: TvTokens.text)),
+        content: Text(context.l10n.tvDeleteRecordingConfirm(rec.channelName),
             style: TextStyle(color: TvTokens.muted)),
         actions: <Widget>[
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Annuler', style: TextStyle(color: TvTokens.muted))),
+              child: Text(context.l10n.tvCancel, style: TextStyle(color: TvTokens.muted))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('Supprimer', style: TextStyle(color: TvTokens.live))),
+              child: Text(context.l10n.tvDelete, style: TextStyle(color: TvTokens.live))),
         ],
       ),
     );

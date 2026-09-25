@@ -11,6 +11,8 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../security/data/app_pin_settings.dart';
 import '../../security/data/parental_controls.dart';
 import '../core/tv_dimens.dart';
@@ -41,7 +43,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
     // Activer : libre. Désactiver : code parental obligatoire (sinon un
     // enfant le couperait lui-même).
     if (!wantOn) {
-      final bool ok = await _askPin(context, 'Entre le code parental');
+      final bool ok = await _askPin(context, context.l10n.tvEnterParentalCode);
       if (!ok) return;
     }
     await ParentalControls.instance.setKidsMode(wantOn);
@@ -50,7 +52,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
 
   // ----- Changer le code PIN -----
   Future<void> _changePin() async {
-    final bool ok = await _askPin(context, 'Code actuel');
+    final bool ok = await _askPin(context, context.l10n.tvCurrentCode);
     if (!ok) return;
     final String? next = await _pickNewPin(context);
     if (next == null) return;
@@ -63,7 +65,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
     if (mounted) {
       setState(() => _usingDefaultPin = def);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Code parental mis à jour ✔')),
+        SnackBar(content: Text(context.l10n.tvPinUpdated)),
       );
     }
   }
@@ -75,7 +77,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Contrôle parental',
+          Text(context.l10n.tvParentalTitle,
               style: TextStyle(
                   fontSize: TvDimens.displayM,
                   fontWeight: FontWeight.w800,
@@ -100,7 +102,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Text('Mode Enfants',
+                      Text(context.l10n.tvKidsMode,
                           style: TextStyle(
                               fontSize: TvDimens.title,
                               fontWeight: FontWeight.w700,
@@ -136,7 +138,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                   children: <Widget>[
                     Icon(Icons.lock_rounded, color: TvTokens.muted, size: 26),
                     const SizedBox(width: 12),
-                    Text('Code parental',
+                    Text(context.l10n.tvParentalCode,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -154,7 +156,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                         color: TvTokens.live),
                   )
                 else
-                  Text('Un code personnalisé est en place.',
+                  Text(context.l10n.tvCustomPinInPlace,
                       style: TextStyle(
                           fontSize: TvDimens.label, color: TvTokens.muted)),
                 const SizedBox(height: 16),
@@ -178,7 +180,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                         children: <Widget>[
                           Icon(Icons.pin_rounded, color: fg, size: 22),
                           const SizedBox(width: 10),
-                          Text('Changer le code PIN',
+                          Text(context.l10n.tvChangePin,
                               style: TextStyle(
                                   fontSize: TvDimens.title,
                                   fontWeight: FontWeight.w700,
@@ -203,15 +205,18 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
 
 /// Demande le code parental et le vérifie. Retourne true si correct.
 Future<bool> _askPin(BuildContext context, String title) async {
+  // Libellés lus AVANT l'attente (pas de BuildContext après un await).
+  final String subtitle = context.l10n.tvPinSubtitle;
+  final String wrong = context.l10n.tvPinWrong;
   final bool? ok = await Navigator.of(context).push<bool>(
     MaterialPageRoute<bool>(
       builder: (_) => TvShell(
         child: _PinPadScreen(
           title: title,
-          subtitle: 'Code parental à 4 chiffres',
+          subtitle: subtitle,
           onComplete: (String pin) async {
             final bool good = await AppPinSettings.instance.verify(pin);
-            return good ? null : 'Code incorrect, réessaie.';
+            return good ? null : wrong;
           },
         ),
       ),
@@ -222,13 +227,15 @@ Future<bool> _askPin(BuildContext context, String title) async {
 
 /// Choisit un NOUVEAU code (saisie + confirmation). Retourne le code, ou null.
 Future<String?> _pickNewPin(BuildContext context) async {
+  final String title = context.l10n.tvNewPin;
+  final String subtitle = context.l10n.tvNewPinSubtitle;
   String? chosen;
   final bool? ok = await Navigator.of(context).push<bool>(
     MaterialPageRoute<bool>(
       builder: (_) => TvShell(
         child: _PinPadScreen(
-          title: 'Nouveau code',
-          subtitle: 'Choisis 4 chiffres, puis confirme',
+          title: title,
+          subtitle: subtitle,
           confirm: true,
           onComplete: (String pin) async {
             chosen = pin;
@@ -298,7 +305,7 @@ class _PinPadScreenState extends State<_PinPadScreen> {
     }
     if (widget.confirm && _firstEntry != null && _entry != _firstEntry) {
       setState(() {
-        _error = 'Les deux codes ne correspondent pas.';
+        _error = context.l10n.tvPinMismatch;
         _firstEntry = null;
         _entry = '';
       });
@@ -322,7 +329,7 @@ class _PinPadScreenState extends State<_PinPadScreen> {
   @override
   Widget build(BuildContext context) {
     final bool confirmStep = widget.confirm && _firstEntry != null;
-    final String title = confirmStep ? 'Confirme le code' : widget.title;
+    final String title = confirmStep ? context.l10n.tvConfirmCode : widget.title;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),

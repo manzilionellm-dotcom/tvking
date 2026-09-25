@@ -16,6 +16,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../playlists/data/default_servers.dart';
 import '../../playlists/data/import_progress.dart';
+import 'tv_import_progress_label.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -85,10 +86,10 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
     try {
       await PlaylistRepository.instance.addXtreamPlaylist(
         name: _manual
-            ? 'Ma liste'
+            ? context.l10n.tvMyListHint
             : (_servers
                 .firstWhere((DefaultServer s) => s.id == _choice,
-                    orElse: () => const DefaultServer(id: '', label: 'Ma liste', url: ''))
+                    orElse: () => DefaultServer(id: '', label: context.l10n.tvMyListHint, url: ''))
                 .label),
         serverUrl: server,
         username: user,
@@ -190,7 +191,7 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
                 builder: (BuildContext context, ImportProgress? p, Widget? _) {
                   final String label = !_busy
                       ? context.l10n.tvAddListValidate
-                      : (p?.label ?? context.l10n.tvConnecting);
+                      : (p == null ? context.l10n.tvConnecting : importProgressLabel(context, p));
                   return TvCtaButton(
                     label: label,
                     onSelect: _busy ? null : _validate,

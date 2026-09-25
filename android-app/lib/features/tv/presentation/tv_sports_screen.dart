@@ -11,6 +11,8 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../sports/data/sports_repository.dart';
 import '../../sports/domain/sport_models.dart';
 import '../core/tv_dimens.dart';
@@ -77,14 +79,14 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
         if (tickerItems.isNotEmpty) const SizedBox(height: 16),
         Row(
           children: <Widget>[
-            Text('Mes équipes',
+            Text(context.l10n.tvMyTeams,
                 style: TextStyle(
                     fontSize: TvDimens.displayS,
                     fontWeight: FontWeight.w800,
                     color: TvTokens.text)),
             const Spacer(),
             _PillButton(
-                icon: Icons.add_rounded, label: 'Ajouter', onSelect: _addTeam),
+                icon: Icons.add_rounded, label: context.l10n.tvAdd, onSelect: _addTeam),
           ],
         ),
         const SizedBox(height: 14),
@@ -114,14 +116,13 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
           children: <Widget>[
             const Icon(Icons.sports_soccer_rounded, size: 64, color: TvTokens.mutedDim),
             const SizedBox(height: 16),
-            Text('Choisis tes équipes préférées',
+            Text(context.l10n.tvPickTeamsTitle,
                 style: TvTokens.display(32, color: TvTokens.text)),
             const SizedBox(height: 8),
             SizedBox(
               width: 560,
               child: Text(
-                'Tu verras leurs scores et leurs prochains matchs, un bandeau d\'actu '
-                'qui défile, et une alarme ~1 h avant chaque match.',
+                context.l10n.tvPickTeamsBody,
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(16, color: TvTokens.mutedDim),
               ),
@@ -129,7 +130,7 @@ class _TvSportsScreenState extends State<TvSportsScreen> {
             const SizedBox(height: 22),
             _PillButton(
                 icon: Icons.add_rounded,
-                label: 'Choisir mon équipe',
+                label: context.l10n.tvPickMyTeam,
                 autofocus: true,
                 onSelect: _addTeam),
           ],
@@ -201,13 +202,13 @@ class _TeamSection extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: _MatchCard(
-                    title: 'Dernier match',
+                    title: context.l10n.tvLastMatch,
                     event: events.last.isNotEmpty ? events.last.first : null),
               ),
               const SizedBox(width: TvDimens.gutter),
               Expanded(
                 child: _MatchCard(
-                    title: 'Prochain match',
+                    title: context.l10n.tvNextMatch,
                     event: events.next.isNotEmpty ? events.next.first : null),
               ),
             ],
@@ -277,8 +278,8 @@ class _TickerState extends State<_Ticker> {
                 bottomLeft: Radius.circular(TvDimens.cardRadius),
               ),
             ),
-            child: const Text('ACTU',
-                style: TextStyle(
+            child: Text(context.l10n.tvNewsTicker,
+                style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.5,
@@ -336,7 +337,7 @@ class _MatchCard extends StatelessWidget {
                   weight: FontWeight.w700, color: TvTokens.mutedDim, spacing: 1.2)),
           const SizedBox(height: 12),
           if (event == null)
-            Text('Aucune donnée',
+            Text(context.l10n.tvNoData,
                 style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim))
           else ...<Widget>[
             Row(

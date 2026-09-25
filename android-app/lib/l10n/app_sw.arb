@@ -568,5 +568,248 @@
   "tvStay": "Endelea",
   "tvChooseServer": "Chagua seva yako",
   "tvManualServer": "URL ya mkono",
-  "tvKeyboardHint": "Dokezo: unaweza kuandika kwa kibodi ya programu ya rimoti ya simu yako (nakili-bandika hufanya kazi)."
+  "tvKeyboardHint": "Dokezo: unaweza kuandika kwa kibodi ya programu ya rimoti ya simu yako (nakili-bandika hufanya kazi).",
+  "tvEpgNow": "Sasa",
+  "@tvEpgNow": {
+    "description": "Étiquette du programme en cours (aperçu Direct)"
+  },
+  "tvEpgNext": "Kinachofuata",
+  "@tvEpgNext": {
+    "description": "Étiquette du programme suivant (aperçu Direct)"
+  },
+  "tvAddM3uTitle": "Ongeza orodha ya M3U",
+  "tvAddM3uSubtitle": "Bandika URL ya faili yako ya .m3u (na EPG ikiwa unayo).",
+  "tvFieldNameOptional": "Jina (si lazima)",
+  "tvMyListHint": "Orodha yangu",
+  "tvFieldM3uUrl": "URL ya M3U",
+  "tvFieldEpgUrlOptional": "URL ya EPG (si lazima)",
+  "tvAddM3uBusy": "Inaongeza…",
+  "tvAddM3uValidate": "Ongeza orodha",
+  "tvAddM3uInvalidUrl": "Weka URL sahihi ya M3U (http…).",
+  "tvAddM3uFailed": "Imeshindikana: orodha haipatikani au ni tupu.",
+  "tvMyM3uList": "Orodha yangu ya M3U",
+  "tvBlackBoxTitle": "Sanduku jeusi",
+  "tvBlackBoxSubtitle": "Kumbukumbu ya kiufundi ya programu (v{version}). Ikiwa programu ilifungwa ghafla, sababu iko hapa.",
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxFirstRun": "Uzinduzi wa kwanza: hakuna kipindi cha awali.",
+  "tvBlackBoxCleanExit": "Kipindi cha mwisho kilimalizika kawaida.",
+  "tvBlackBoxBrutal": "KUFUNGWA GHAFLA · {reason}",
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxUnknownReason": "sababu haijulikani (Android < 11)",
+  "tvBlackBoxMemory": "kumbukumbu {mb} MB",
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxWhen": "Lini: {when}",
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxLastAction": "Kitendo cha mwisho: {action}",
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxDetail": "Maelezo ya Android: {detail}",
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "tvRefresh": "Onyesha upya",
+  "tvCopy": "Nakili",
+  "tvCopied": "Imenakiliwa",
+  "tvClear": "Futa",
+  "tvReading": "Inasoma…",
+  "tvBlackBoxHelp": "JUU/CHINI: sogeza · CH+/CH−: ukurasa · Nakili = ubao wa kunakili (bandika kwa msaada kwenye WhatsApp).",
+  "tvNavServer": "Seva",
+  "tvLegalTitle": "Taarifa za kisheria na Masharti",
+  "tvResumeLabel": "ENDELEA",
+  "tvNowPlayingPrefix": "SASA · {title}",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPinUpdated": "Msimbo wa wazazi umesasishwa ✔",
+  "tvParentalTitle": "Udhibiti wa wazazi",
+  "tvKidsMode": "Hali ya watoto",
+  "tvParentalCode": "Msimbo wa wazazi",
+  "tvCustomPinInPlace": "Msimbo maalum umewekwa.",
+  "tvChangePin": "Badilisha msimbo wa PIN",
+  "tvPinSubtitle": "Msimbo wa wazazi wa tarakimu 4",
+  "tvNewPin": "Msimbo mpya",
+  "tvNewPinSubtitle": "Chagua tarakimu 4, kisha thibitisha",
+  "tvPinWrong": "Msimbo si sahihi, jaribu tena.",
+  "tvPinMismatch": "Misimbo hiyo miwili hailingani.",
+  "tvPlayerFatalHint": "OK: Jaribu tena   ·   Nyuma: Toka",
+  "tvRec": "REC",
+  "tvStop": "Simamisha",
+  "tvGuideBtn": "Mwongozo",
+  "tvFavoriteBtn": "Kipendwa",
+  "tvPlaybackFinished": "Uchezaji umekamilika",
+  "tvPlaybackFinishedBody": "Bonyeza Nyuma ili kurudi kwenye rekodi zako.",
+  "tvNoRecordings": "Hakuna rekodi",
+  "tvNoRecordingsBody": "Rekodi zako zitaonekana hapa. Unapotazama kituo, bonyeza REC ili kurekodi.",
+  "tvMyRecordings": "Rekodi zangu",
+  "tvDeleteQuestion": "Ufute?",
+  "tvDeleteRecordingConfirm": "Ufute “{name}” kabisa?",
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCancel": "Ghairi",
+  "tvDelete": "Futa",
+  "tvSettingsSources": "Vyanzo vyangu (ongeza / washa / futa)",
+  "tvSettingsParental": "Udhibiti wa wazazi (Hali ya watoto + msimbo wa PIN)",
+  "tvSettingsBlackBox": "Sanduku jeusi (kumbukumbu ya kiufundi)",
+  "tvSettingsLegal": "Taarifa za kisheria na Masharti ya matumizi",
+  "tvUpdateChecking": "Sasisho: inakagua…",
+  "tvUpdateUpToDate": "Sasisho: iko sawa (toleo {version}) — OK kukagua tena",
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateUpToDateNoVersion": "Sasisho: iko sawa — OK kukagua tena",
+  "tvUpdateAvailable": "Toleo jipya {version} linapatikana — OK kusakinisha",
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateDownloading": "Inapakua sasisho… {pct} %",
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateFailed": "Sasisho: imeshindikana (mtandao au kisakinishi) — OK kujaribu tena",
+  "tvMySources": "Vyanzo vyangu",
+  "tvAddXtream": "Ongeza Xtream",
+  "tvAddM3u": "Ongeza M3U",
+  "tvDeleteSourceConfirm": "Ufute chanzo “{name}”?",
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvActivate": "Washa",
+  "tvMyTeams": "Timu zangu",
+  "tvAdd": "Ongeza",
+  "tvPickTeamsTitle": "Chagua timu unazozipenda",
+  "tvPickTeamsBody": "Utaona matokeo yao na mechi zijazo, mkanda wa habari unaosogea, na kengele takriban saa 1 kabla ya kila mechi.",
+  "tvPickMyTeam": "Chagua timu yangu",
+  "tvLastMatch": "Mechi ya mwisho",
+  "tvNextMatch": "Mechi ijayo",
+  "tvNewsTicker": "HABARI",
+  "tvNoData": "Hakuna data",
+  "tvNoTeamFound": "Hakuna timu iliyopatikana",
+  "tvMyTeam": "Timu yangu",
+  "tvImpConnecting": "Inaunganisha na seva…",
+  "tvImpCategories": "Inasoma kategoria…",
+  "tvImpDownloading": "Inapakua… {mb} MB",
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpDecoding": "Inachambua {mb} MB…",
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpCategory": "Kategoria {i}/{total} · vituo {found} vimepatikana",
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpFound": "Vituo {count} vimepatikana",
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpSaving": "Inahifadhi vituo {done} / {total}",
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpDone": "Vituo {count} viko tayari",
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvLanguage": "Lugha",
+  "tvLanguageAuto": "Otomatiki (lugha ya TV)",
+  "tvSettingsLanguage": "Lugha: {value}",
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  }
 }

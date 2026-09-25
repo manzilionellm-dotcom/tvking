@@ -13,15 +13,64 @@
 // =========================================================
 import 'package:flutter/foundation.dart';
 
+/// Nature de l'étape en cours (la couche données ne connaît PAS la langue de
+/// l'utilisateur : elle publie des FAITS, l'écran les met en mots via l10n).
+enum ImportStage {
+  /// Connexion au serveur (aucun chiffre).
+  connecting,
+
+  /// Lecture des catégories Xtream (aucun chiffre).
+  categories,
+
+  /// Téléchargement en cours : [ImportProgress.bytes] reçus.
+  downloading,
+
+  /// Décodage / analyse du contenu : [ImportProgress.bytes] à traiter.
+  decoding,
+
+  /// Import par catégorie : [ImportProgress.index] / [ImportProgress.total],
+  /// [ImportProgress.count] chaînes déjà trouvées.
+  category,
+
+  /// [ImportProgress.count] chaînes trouvées (fin de décodage).
+  found,
+
+  /// Enregistrement : [ImportProgress.index] / [ImportProgress.total] chaînes.
+  saving,
+
+  /// Terminé : [ImportProgress.count] chaînes prêtes.
+  done,
+}
+
 /// Une étape de l'import, avec ce qu'on peut chiffrer.
 class ImportProgress {
-  const ImportProgress(this.label);
+  const ImportProgress(
+    this.stage, {
+    this.bytes = 0,
+    this.index = 0,
+    this.total = 0,
+    this.count = 0,
+  });
 
-  /// Texte prêt à afficher (ex. « Connexion… 12 400 chaînes trouvées »).
-  final String label;
+  final ImportStage stage;
+
+  /// Octets reçus / à analyser (étapes [ImportStage.downloading] et
+  /// [ImportStage.decoding]).
+  final int bytes;
+
+  /// Position courante (catégorie ou chaîne enregistrée) et total.
+  final int index;
+  final int total;
+
+  /// Nombre de chaînes trouvées / prêtes.
+  final int count;
+
+  /// « 12.4 » (Mo, 1 décimale) — pour l'affichage.
+  String get mb => (bytes / (1024 * 1024)).toStringAsFixed(1);
 
   @override
-  String toString() => label;
+  String toString() =>
+      'ImportProgress(${stage.name} bytes=$bytes $index/$total count=$count)';
 }
 
 abstract final class ImportProgressBus {
@@ -34,11 +83,11 @@ abstract final class ImportProgressBus {
 
   /// Publie une étape. [force] = publier même si la précédente est récente
   /// (début / fin d'étape, pour ne jamais rater un jalon).
-  static void set(String label, {bool force = false}) {
+  static void set(ImportProgress p, {bool force = false}) {
     final DateTime now = DateTime.now();
     if (!force && now.difference(_lastEmit) < _kMinGap) return;
     _lastEmit = now;
-    current.value = ImportProgress(label);
+    current.value = p;
   }
 
   static void clear() {
@@ -46,11 +95,8 @@ abstract final class ImportProgressBus {
     current.value = null;
   }
 
-  // ---- Raccourcis lisibles (un seul endroit pour les formulations) ----
-
-  static String mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
-
-  /// « 12 400 » (séparateur de milliers, lisible à 3 m).
+  /// « 12 400 » (séparateur de milliers, lisible à 3 m). Utilisé par les
+  /// écrans pour formater les nombres, quelle que soit la langue.
   static String n(int v) {
     final String s = v.toString();
     final StringBuffer b = StringBuffer();
@@ -61,17 +107,23 @@ abstract final class ImportProgressBus {
     return b.toString();
   }
 
-  static void connecting() => set('Connexion au serveur…', force: true);
-  static void categories() => set('Lecture des catégories…', force: true);
-  static void downloading(int bytes) => set('Téléchargement… ${mb(bytes)} Mo');
+  // ---- Raccourcis lisibles (un seul endroit pour les jalons) ----
+
+  static void connecting() =>
+      set(const ImportProgress(ImportStage.connecting), force: true);
+  static void categories() =>
+      set(const ImportProgress(ImportStage.categories), force: true);
+  static void downloading(int bytes) =>
+      set(ImportProgress(ImportStage.downloading, bytes: bytes));
   static void decoding(int bytes) =>
-      set('Analyse de ${mb(bytes)} Mo…', force: true);
-  static void category(int i, int total, int found) =>
-      set('Catégorie $i/$total · ${n(found)} chaînes trouvées');
+      set(ImportProgress(ImportStage.decoding, bytes: bytes), force: true);
+  static void category(int i, int total, int found) => set(ImportProgress(
+      ImportStage.category, index: i, total: total, count: found));
   static void found(int count) =>
-      set('${n(count)} chaînes trouvées', force: true);
-  static void saving(int done, int total) =>
-      set('Enregistrement ${n(done)} / ${n(total)} chaînes', force: done >= total);
+      set(ImportProgress(ImportStage.found, count: count), force: true);
+  static void saving(int done, int total) => set(
+      ImportProgress(ImportStage.saving, index: done, total: total),
+      force: done >= total);
   static void done(int count) =>
-      set('${n(count)} chaînes prêtes', force: true);
+      set(ImportProgress(ImportStage.done, count: count), force: true);
 }

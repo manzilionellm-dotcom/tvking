@@ -252,7 +252,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       case _Tile.series:
         return (icon: Icons.video_library_rounded, label: c.l10n.tvNavSeries);
       case _Tile.server:
-        return (icon: Icons.dns_rounded, label: 'Serveur');
+        return (icon: Icons.dns_rounded, label: c.l10n.tvNavServer);
       case _Tile.settings:
         return (icon: Icons.settings_rounded, label: c.l10n.tvNavSettings);
     }

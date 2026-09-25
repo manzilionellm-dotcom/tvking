@@ -14,6 +14,8 @@
 //  quitte l'écran.
 // =========================================================
 import 'package:flutter/material.dart';
+
+import '../../../core/i18n/l10n_extension.dart';
 import 'package:flutter/services.dart';
 
 import '../core/tv_dimens.dart';
@@ -137,7 +139,7 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('Mentions légales & Conditions',
+            Text(context.l10n.tvLegalTitle,
                 style: TextStyle(
                     fontSize: TvDimens.displayM,
                     fontWeight: FontWeight.w800,

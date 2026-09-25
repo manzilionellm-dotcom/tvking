@@ -342,10 +342,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       );
       if (mounted) {
         setState(() => _activeRecording = rec);
-        _flash('Enregistrement en cours…');
+        _flash(context.l10n.tvRecordingStarted);
       }
     } catch (e) {
-      _flash('Erreur enregistrement');
+      if (mounted) _flash(context.l10n.tvRecordingError);
     }
   }
 
@@ -373,8 +373,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
     if (mounted) {
       _flash(bytes > 0
-          ? 'Enregistrement sauvegardé (${_humanSize(bytes)})'
-          : 'Enregistrement vide');
+          ? context.l10n.tvRecordingSaved(_humanSize(bytes))
+          : context.l10n.tvRecordingEmpty);
     }
   }
 
@@ -489,7 +489,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _toggleFavorite() {
     final bool wasFav = _isFavorite;
     FavoritesRepository.instance.toggle(_current.id);
-    _flash(wasFav ? 'Retiré des favoris' : 'Ajouté aux favoris ❤');
+    _flash(wasFav ? context.l10n.tvRemovedFromFavorites : context.l10n.tvAddedToFavorites);
     _showOverlayTemporarily();
   }
 
@@ -695,7 +695,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                                 color: TvTokens.accent,
                                 width: TvDimens.focusOutline),
                           ),
-                          child: Text('OK : Réessayer   ·   Retour : Quitter',
+                          child: Text(context.l10n.tvPlayerFatalHint,
                               style: TextStyle(
                                   fontSize: TvDimens.titleS,
                                   fontWeight: FontWeight.w700,
@@ -882,7 +882,7 @@ class _ControlsBar extends StatelessWidget {
             children: <Widget>[
               _CtrlButton(
                 icon: Icons.calendar_month_rounded,
-                label: 'Guide',
+                label: context.l10n.tvGuideBtn,
                 onTap: onGuide,
                 focused: focusedIndex == 0,
               ),
@@ -891,7 +891,7 @@ class _ControlsBar extends StatelessWidget {
                 icon: isRecording
                     ? Icons.stop_rounded
                     : Icons.fiber_manual_record_rounded,
-                label: isRecording ? 'Stop' : 'REC',
+                label: isRecording ? context.l10n.tvStop : context.l10n.tvRec,
                 onTap: onRecord,
                 accent: TvTokens.live,
                 active: isRecording,
@@ -902,7 +902,7 @@ class _ControlsBar extends StatelessWidget {
                 icon: isFavorite
                     ? Icons.favorite_rounded
                     : Icons.favorite_border_rounded,
-                label: 'Favori',
+                label: context.l10n.tvFavoriteBtn,
                 onTap: onFavorite,
                 accent: TvTokens.accent,
                 active: isFavorite,

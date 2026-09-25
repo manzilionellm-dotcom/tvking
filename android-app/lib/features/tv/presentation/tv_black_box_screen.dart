@@ -14,6 +14,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../../core/blackbox/black_box.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -116,15 +118,14 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Boîte noire',
+        Text(context.l10n.tvBlackBoxTitle,
             style: TextStyle(
                 fontSize: TvDimens.displayM,
                 fontWeight: FontWeight.w800,
                 color: TvTokens.text)),
         const SizedBox(height: 6),
         Text(
-          'Journal technique de l\'application (v${BlackBox.instance.appVersion}). '
-          'En cas de fermeture inattendue, la raison est ici.',
+          context.l10n.tvBlackBoxSubtitle(BlackBox.instance.appVersion),
           style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
         ),
         const SizedBox(height: 18),
@@ -143,8 +144,8 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
             children: <Widget>[
               Text(
                 x == null
-                    ? 'Premier lancement : aucune session précédente.'
-                    : x.headline,
+                    ? context.l10n.tvBlackBoxFirstRun
+                    : _headline(context, x),
                 style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
@@ -152,17 +153,17 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
               ),
               if (x != null && x.at != null) ...<Widget>[
                 const SizedBox(height: 6),
-                Text('Quand : ${_fmt(x.at!)}',
+                Text(context.l10n.tvBlackBoxWhen(_fmt(x.at!)),
                     style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted)),
               ],
               if (x != null && x.lastAction.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 6),
-                Text('Dernière action : ${x.lastAction}',
+                Text(context.l10n.tvBlackBoxLastAction(x.lastAction),
                     style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted)),
               ],
               if (x != null && x.nativeDescription.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 6),
-                Text('Détail Android : ${x.nativeDescription}',
+                Text(context.l10n.tvBlackBoxDetail(x.nativeDescription),
                     style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim)),
               ],
             ],
@@ -173,14 +174,14 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
         // ----- Boutons -----
         Row(
           children: <Widget>[
-            _Btn(icon: Icons.refresh_rounded, label: 'Actualiser', autofocus: true, onSelect: _load),
+            _Btn(icon: Icons.refresh_rounded, label: context.l10n.tvRefresh, autofocus: true, onSelect: _load),
             const SizedBox(width: 12),
             _Btn(
                 icon: _copied ? Icons.check_rounded : Icons.copy_rounded,
-                label: _copied ? 'Copié' : 'Copier',
+                label: _copied ? context.l10n.tvCopied : context.l10n.tvCopy,
                 onSelect: _copy),
             const SizedBox(width: 12),
-            _Btn(icon: Icons.delete_outline_rounded, label: 'Effacer', onSelect: _clear),
+            _Btn(icon: Icons.delete_outline_rounded, label: context.l10n.tvClear, onSelect: _clear),
           ],
         ),
         const SizedBox(height: 14),
@@ -202,7 +203,7 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
                 ),
                 child: _loading
                     ? Center(
-                        child: Text('Lecture…',
+                        child: Text(context.l10n.tvReading,
                             style: TextStyle(
                                 fontSize: TvDimens.body, color: TvTokens.mutedDim)))
                     : ListView.builder(
@@ -230,10 +231,22 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        Text('HAUT/BAS : défiler · CH+/CH− : page · Copier = presse-papiers (colle-le dans WhatsApp au support).',
+        Text(context.l10n.tvBlackBoxHelp,
             style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim)),
       ],
     );
+  }
+
+  /// Titre de la carte « dernière fermeture », traduit (la boîte noire elle-
+  /// même ne connaît pas la langue : elle expose des données, l'écran formate).
+  String _headline(BuildContext context, BlackBoxLastExit x) {
+    if (!x.brutal) return context.l10n.tvBlackBoxCleanExit;
+    final String r = x.nativeReason.isEmpty
+        ? context.l10n.tvBlackBoxUnknownReason
+        : x.nativeReason;
+    final String mem =
+        x.pssMb > 0 ? ' · ${context.l10n.tvBlackBoxMemory(x.pssMb.toString())}' : '';
+    return context.l10n.tvBlackBoxBrutal('$r$mem');
   }
 
   static String _fmt(DateTime d) {

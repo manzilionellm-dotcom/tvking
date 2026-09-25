@@ -10,6 +10,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/i18n/locale_repository.dart';
 import '../../../core/update/update_service.dart';
 import '../core/tv_tokens.dart';
 import '../../device/data/device_identity.dart';
@@ -98,18 +99,48 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     }
   }
 
-  String _updateLabel() {
+  // ----- Langue -----
+  // `null` = Automatique : l'app suit la langue de la TV (cas normal). Chaque
+  // OK passe à la langue suivante de la liste, puis revient à Automatique.
+  // Le libellé de chaque langue est dans SA langue (« Deutsch », « 中文 »)
+  // pour qu'un client reconnaisse la sienne même si l'app est dans une
+  // langue qu'il ne lit pas.
+  String _languageLabel(BuildContext context) {
+    final Locale? cur = LocaleRepository.instance.locale;
+    if (cur == null) return context.l10n.tvLanguageAuto;
+    return LocaleRepository.localeLabels[cur.languageCode] ?? cur.languageCode;
+  }
+
+  Future<void> _nextLanguage() async {
+    final List<Locale> all = LocaleRepository.supportedLocales;
+    final Locale? cur = LocaleRepository.instance.locale;
+    Locale? next;
+    if (cur == null) {
+      next = all.first;
+    } else {
+      final int i = all.indexWhere(
+          (Locale l) => l.languageCode == cur.languageCode);
+      next = (i < 0 || i + 1 >= all.length) ? null : all[i + 1];
+    }
+    BlackBox.instance.info('LANGUE', 'choix : ${next?.languageCode ?? 'auto'}');
+    await LocaleRepository.instance.setLocale(next);
+    if (mounted) setState(() {});
+  }
+
+  String _updateLabel(BuildContext context) {
     switch (_upd) {
       case _UpdState.checking:
-        return 'Mise à jour : vérification…';
+        return context.l10n.tvUpdateChecking;
       case _UpdState.upToDate:
-        return 'Mise à jour : à jour${_current.isEmpty ? '' : ' (version $_current)'} — OK pour revérifier';
+        return _current.isEmpty
+            ? context.l10n.tvUpdateUpToDateNoVersion
+            : context.l10n.tvUpdateUpToDate(_current);
       case _UpdState.available:
-        return 'Nouvelle version ${_updInfo?.versionName ?? ''} disponible — OK pour installer';
+        return context.l10n.tvUpdateAvailable(_updInfo?.versionName ?? '');
       case _UpdState.downloading:
-        return 'Téléchargement de la mise à jour… $_updPct %';
+        return context.l10n.tvUpdateDownloading(_updPct.toString());
       case _UpdState.failed:
-        return 'Mise à jour : échec (réseau ou installateur) — OK pour réessayer';
+        return context.l10n.tvUpdateFailed;
     }
   }
 
@@ -266,7 +297,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.playlist_play_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Mes sources (ajouter / activer / supprimer)',
+                    Text(context.l10n.tvSettingsSources,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -302,7 +333,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.child_care_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Contrôle parental (Mode Enfants + code PIN)',
+                    Text(context.l10n.tvSettingsParental,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -340,7 +371,43 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                         size: 26),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(_updateLabel(),
+                      child: Text(_updateLabel(context),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: TvDimens.title,
+                              fontWeight: FontWeight.w700,
+                              color: fg)),
+                    ),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Langue (OK = langue suivante ; « Automatique » = langue de la TV) -----
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: _nextLanguage,
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.accent : TvTokens.sel;
+              final Color fg =
+                  focused ? TvTokens.onAccent : TvTokens.accentBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.language_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                          context.l10n.tvSettingsLanguage(_languageLabel(context)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -378,7 +445,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.flight_takeoff_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Boîte noire (journal technique)',
+                    Text(context.l10n.tvSettingsBlackBox,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,
@@ -414,7 +481,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                   children: <Widget>[
                     Icon(Icons.gavel_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
-                    Text('Mentions légales & Conditions d\'utilisation',
+                    Text(context.l10n.tvSettingsLegal,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,

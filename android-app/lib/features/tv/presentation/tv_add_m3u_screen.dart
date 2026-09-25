@@ -6,8 +6,11 @@
 // =========================================================
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/l10n_extension.dart';
+
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/import_progress.dart';
+import 'tv_import_progress_label.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'tv_components.dart';
@@ -37,7 +40,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
   Future<void> _submit() async {
     final String url = _urlC.text.trim();
     if (url.isEmpty || !(url.startsWith('http://') || url.startsWith('https://'))) {
-      setState(() => _error = 'Entre une URL M3U valide (http…).');
+      setState(() => _error = context.l10n.tvAddM3uInvalidUrl);
       return;
     }
     setState(() {
@@ -47,14 +50,14 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
     ImportProgressBus.clear();
     try {
       await PlaylistRepository.instance.addM3uPlaylist(
-        name: _nameC.text.trim().isEmpty ? 'Ma liste M3U' : _nameC.text.trim(),
+        name: _nameC.text.trim().isEmpty ? context.l10n.tvMyM3uList : _nameC.text.trim(),
         url: url,
         epgUrl: _epgC.text.trim().isEmpty ? null : _epgC.text.trim(),
       );
       if (mounted) Navigator.of(context).maybePop();
     } catch (e) {
       if (mounted) {
-        setState(() => _error = 'Échec : liste injoignable ou vide.');
+        setState(() => _error = context.l10n.tvAddM3uFailed);
       }
     } finally {
       ImportProgressBus.clear();
@@ -70,25 +73,25 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('Ajouter une liste M3U',
+            Text(context.l10n.tvAddM3uTitle,
                 style: TextStyle(
                     fontSize: TvDimens.displayS,
                     fontWeight: FontWeight.w800,
                     color: TvTokens.text)),
             const SizedBox(height: 6),
-            Text('Colle l\'URL de ton fichier .m3u (et l\'EPG si tu en as une).',
+            Text(context.l10n.tvAddM3uSubtitle,
                 style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted)),
             const SizedBox(height: 22),
-            _Field(controller: _nameC, label: 'Nom (optionnel)', hint: 'Ma liste'),
+            _Field(controller: _nameC, label: context.l10n.tvFieldNameOptional, hint: context.l10n.tvMyListHint),
             const SizedBox(height: 14),
             _Field(
                 controller: _urlC,
-                label: 'URL M3U',
+                label: context.l10n.tvFieldM3uUrl,
                 hint: 'http://serveur.com/playlist.m3u'),
             const SizedBox(height: 14),
             _Field(
                 controller: _epgC,
-                label: 'URL EPG (optionnel)',
+                label: context.l10n.tvFieldEpgUrlOptional,
                 hint: 'http://serveur.com/xmltv.php'),
             if (_error != null) ...<Widget>[
               const SizedBox(height: 14),
@@ -103,7 +106,7 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
               valueListenable: ImportProgressBus.current,
               builder: (BuildContext context, ImportProgress? p, Widget? _) {
                 return TvCtaButton(
-                  label: !_busy ? 'Ajouter la liste' : (p?.label ?? 'Ajout…'),
+                  label: !_busy ? context.l10n.tvAddM3uValidate : (p == null ? context.l10n.tvAddM3uBusy : importProgressLabel(context, p)),
                   autofocus: true,
                   expand: false,
                   onSelect: _busy ? null : _submit,

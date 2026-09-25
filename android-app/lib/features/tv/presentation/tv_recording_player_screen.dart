@@ -22,6 +22,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
+import '../../../core/i18n/l10n_extension.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
@@ -167,19 +169,19 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
               _Message(
                 icon: Icons.error_outline_rounded,
                 title: _missing
-                    ? 'Enregistrement introuvable'
-                    : 'Lecture impossible',
+                    ? context.l10n.tvRecordingNotFound
+                    : context.l10n.tvPlaybackImpossible,
                 body: _missing
-                    ? 'Le fichier de cet enregistrement est introuvable ou vide.'
-                    : 'Ce fichier n\'a pas pu être décodé.',
+                    ? context.l10n.tvRecordingNotFoundBody
+                    : context.l10n.tvPlaybackImpossibleBody,
               ),
 
             // ----- Fin de lecture -----
             if (_ended && !_missing && !_error)
-              const _Message(
+              _Message(
                 icon: Icons.check_circle_outline_rounded,
-                title: 'Lecture terminée',
-                body: 'Appuie sur Retour pour revenir à tes enregistrements.',
+                title: context.l10n.tvPlaybackFinished,
+                body: context.l10n.tvPlaybackFinishedBody,
               ),
 
             // ----- Bandeau titre (haut) -----

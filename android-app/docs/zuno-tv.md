@@ -58,6 +58,24 @@ package que les box déjà équipées, la mise à jour s'installe par-dessus), c
 présence de l'URL du Worker dans le code compilé. Un APK qui ne pointe pas
 sur le panel n'est pas publié.
 
+## 3 bis. Langues
+
+L'app parle **16 langues** : français, anglais, espagnol, arabe (RTL),
+allemand, italien, portugais, néerlandais, turc, russe, chinois simplifié,
+hindi, danois, suédois, norvégien, swahili. Fichiers : `lib/l10n/app_<code>.arb`
+(modèle = `app_fr.arb`, toutes les clés `tv*` sont celles de l'app box).
+
+- **Automatique** : au démarrage, l'app prend la **langue de la TV**
+  (toutes les langues préférées du système sont parcourues, correspondance
+  sur le code langue : `pt-BR` → portugais, `zh-Hant` → chinois ; rien de
+  connu → anglais). Voir `LocaleRepository.resolve`.
+- **Manuel** : Réglages → ligne « Langue » : OK passe à la langue suivante,
+  puis revient à « Automatique ». Le choix est mémorisé (survit aux mises
+  à jour, même signature).
+- **Ajouter une langue** : créer `app_<code>.arb` à partir de `app_fr.arb`
+  (mêmes clés, mêmes `{placeholders}`), puis ajouter la `Locale` et son nom
+  natif dans `LocaleRepository`. Le CI (`flutter gen-l10n`) génère le reste.
+
 ## 4. Signature (à faire une fois, recommandé)
 
 Poser les secrets GitHub (Settings → Secrets and variables → Actions) :

@@ -38,6 +38,15 @@ class LocaleRepository extends ChangeNotifier {
     Locale('nb'), // Norsk bokmål
     Locale('ar'), // العربية (RTL)
     Locale('sw'), // Kiswahili
+    // --- Ajoutées le 25/09/2026 (Zuno TV : « toutes les langues courantes ») ---
+    Locale('de'), // Deutsch
+    Locale('it'), // Italiano
+    Locale('pt'), // Português
+    Locale('nl'), // Nederlands
+    Locale('tr'), // Türkçe
+    Locale('ru'), // Русский
+    Locale('zh'), // 中文 (simplifié)
+    Locale('hi'), // हिन्दी
   ];
 
   /// Label humain pour le picker — affiché dans la langue native
@@ -52,7 +61,37 @@ class LocaleRepository extends ChangeNotifier {
     'nb': 'Norsk',
     'ar': 'العربية',
     'sw': 'Kiswahili',
+    'de': 'Deutsch',
+    'it': 'Italiano',
+    'pt': 'Português',
+    'nl': 'Nederlands',
+    'tr': 'Türkçe',
+    'ru': 'Русский',
+    'zh': '中文',
+    'hi': 'हिन्दी',
   };
+
+  /// Choisit la langue de l'app à partir de celle(s) de l'OS / de la TV.
+  ///
+  /// Flutter ne fait par défaut qu'une correspondance simple sur la 1re
+  /// locale système ; ici on parcourt TOUTES les langues préférées de la TV
+  /// (ex. « pt-BR, es, en ») et on prend la première dont le CODE LANGUE est
+  /// supporté (« pt-BR » → `pt`, « zh-Hant-TW » → `zh`, « nb-NO » → `nb`,
+  /// « no » → `nb`). Rien ne correspond → anglais (langue la plus comprise),
+  /// jamais le français par accident.
+  static Locale resolve(List<Locale>? system, Iterable<Locale> supported) {
+    final Set<String> codes = <String>{
+      for (final Locale l in supported) l.languageCode,
+    };
+    for (final Locale l in system ?? const <Locale>[]) {
+      String code = l.languageCode.toLowerCase();
+      if (code == 'no' || code == 'nn') code = 'nb'; // norvégien → bokmål
+      if (code == 'iw') code = 'he'; // ancien code Android de l'hébreu
+      if (code == 'in') code = 'id'; // ancien code Android de l'indonésien
+      if (codes.contains(code)) return Locale(code);
+    }
+    return const Locale('en');
+  }
 
   Locale? _locale; // null = suit l'OS
   Locale? get locale => _locale;

@@ -568,5 +568,248 @@
   "tvStay": "البقاء",
   "tvChooseServer": "اختر الخادم",
   "tvManualServer": "رابط يدوي",
-  "tvKeyboardHint": "نصيحة: يمكنك الكتابة بلوحة مفاتيح تطبيق ريموت هاتفك (النسخ واللصق يعمل)."
+  "tvKeyboardHint": "نصيحة: يمكنك الكتابة بلوحة مفاتيح تطبيق ريموت هاتفك (النسخ واللصق يعمل).",
+  "tvEpgNow": "الآن",
+  "@tvEpgNow": {
+    "description": "Étiquette du programme en cours (aperçu Direct)"
+  },
+  "tvEpgNext": "التالي",
+  "@tvEpgNext": {
+    "description": "Étiquette du programme suivant (aperçu Direct)"
+  },
+  "tvAddM3uTitle": "إضافة قائمة M3U",
+  "tvAddM3uSubtitle": "الصق رابط ملف ‎.m3u الخاص بك (ورابط EPG إن كان لديك).",
+  "tvFieldNameOptional": "الاسم (اختياري)",
+  "tvMyListHint": "قائمتي",
+  "tvFieldM3uUrl": "رابط M3U",
+  "tvFieldEpgUrlOptional": "رابط EPG (اختياري)",
+  "tvAddM3uBusy": "جارٍ الإضافة…",
+  "tvAddM3uValidate": "إضافة القائمة",
+  "tvAddM3uInvalidUrl": "أدخل رابط M3U صالحًا (http…).",
+  "tvAddM3uFailed": "فشل: القائمة غير متاحة أو فارغة.",
+  "tvMyM3uList": "قائمة M3U الخاصة بي",
+  "tvBlackBoxTitle": "الصندوق الأسود",
+  "tvBlackBoxSubtitle": "السجل التقني للتطبيق (v{version}). إذا أُغلق التطبيق فجأة، فالسبب موجود هنا.",
+  "@tvBlackBoxSubtitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxFirstRun": "أول تشغيل: لا توجد جلسة سابقة.",
+  "tvBlackBoxCleanExit": "انتهت الجلسة الأخيرة بشكل طبيعي.",
+  "tvBlackBoxBrutal": "إغلاق مفاجئ · {reason}",
+  "@tvBlackBoxBrutal": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxUnknownReason": "سبب غير معروف (Android < 11)",
+  "tvBlackBoxMemory": "الذاكرة {mb} م.ب",
+  "@tvBlackBoxMemory": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxWhen": "متى: {when}",
+  "@tvBlackBoxWhen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxLastAction": "آخر إجراء: {action}",
+  "@tvBlackBoxLastAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "tvBlackBoxDetail": "تفاصيل Android: {detail}",
+  "@tvBlackBoxDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "tvRefresh": "تحديث",
+  "tvCopy": "نسخ",
+  "tvCopied": "تم النسخ",
+  "tvClear": "مسح",
+  "tvReading": "جارٍ القراءة…",
+  "tvBlackBoxHelp": "أعلى/أسفل: تمرير · CH+/CH−: صفحة · نسخ = الحافظة (الصقه للدعم عبر WhatsApp).",
+  "tvNavServer": "الخادم",
+  "tvLegalTitle": "الإشعار القانوني والشروط",
+  "tvResumeLabel": "استئناف",
+  "tvNowPlayingPrefix": "الآن · {title}",
+  "@tvNowPlayingPrefix": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "tvPinUpdated": "تم تحديث رمز الرقابة الأبوية ✔",
+  "tvParentalTitle": "الرقابة الأبوية",
+  "tvKidsMode": "وضع الأطفال",
+  "tvParentalCode": "رمز الرقابة الأبوية",
+  "tvCustomPinInPlace": "يوجد رمز مخصص مفعّل.",
+  "tvChangePin": "تغيير رمز PIN",
+  "tvPinSubtitle": "رمز رقابة أبوية من 4 أرقام",
+  "tvNewPin": "رمز جديد",
+  "tvNewPinSubtitle": "اختر 4 أرقام ثم أكّد",
+  "tvPinWrong": "رمز خاطئ، حاول مجددًا.",
+  "tvPinMismatch": "الرمزان غير متطابقين.",
+  "tvPlayerFatalHint": "OK: إعادة المحاولة   ·   رجوع: خروج",
+  "tvRec": "REC",
+  "tvStop": "إيقاف",
+  "tvGuideBtn": "الدليل",
+  "tvFavoriteBtn": "مفضلة",
+  "tvPlaybackFinished": "انتهى التشغيل",
+  "tvPlaybackFinishedBody": "اضغط رجوع للعودة إلى تسجيلاتك.",
+  "tvNoRecordings": "لا توجد تسجيلات",
+  "tvNoRecordingsBody": "ستظهر تسجيلاتك هنا. أثناء مشاهدة قناة، اضغط على REC للتسجيل.",
+  "tvMyRecordings": "تسجيلاتي",
+  "tvDeleteQuestion": "حذف؟",
+  "tvDeleteRecordingConfirm": "حذف «{name}» نهائيًا؟",
+  "@tvDeleteRecordingConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvCancel": "إلغاء",
+  "tvDelete": "حذف",
+  "tvSettingsSources": "مصادري (إضافة / تفعيل / حذف)",
+  "tvSettingsParental": "الرقابة الأبوية (وضع الأطفال + رمز PIN)",
+  "tvSettingsBlackBox": "الصندوق الأسود (السجل التقني)",
+  "tvSettingsLegal": "الإشعار القانوني وشروط الاستخدام",
+  "tvUpdateChecking": "التحديث: جارٍ التحقق…",
+  "tvUpdateUpToDate": "التحديث: محدّث (الإصدار {version}) — OK لإعادة التحقق",
+  "@tvUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateUpToDateNoVersion": "التحديث: محدّث — OK لإعادة التحقق",
+  "tvUpdateAvailable": "الإصدار الجديد {version} متاح — OK للتثبيت",
+  "@tvUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateDownloading": "جارٍ تنزيل التحديث… {pct} ٪",
+  "@tvUpdateDownloading": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "tvUpdateFailed": "التحديث: فشل (الشبكة أو المثبّت) — OK لإعادة المحاولة",
+  "tvMySources": "مصادري",
+  "tvAddXtream": "إضافة Xtream",
+  "tvAddM3u": "إضافة M3U",
+  "tvDeleteSourceConfirm": "حذف المصدر «{name}»؟",
+  "@tvDeleteSourceConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tvActivate": "تفعيل",
+  "tvMyTeams": "فرقي",
+  "tvAdd": "إضافة",
+  "tvPickTeamsTitle": "اختر فرقك المفضلة",
+  "tvPickTeamsBody": "سترى نتائجها ومبارياتها القادمة، وشريط أخبار متحركًا، وتنبيهًا قبل كل مباراة بنحو ساعة.",
+  "tvPickMyTeam": "اختيار فريقي",
+  "tvLastMatch": "آخر مباراة",
+  "tvNextMatch": "المباراة القادمة",
+  "tvNewsTicker": "أخبار",
+  "tvNoData": "لا توجد بيانات",
+  "tvNoTeamFound": "لم يُعثر على أي فريق",
+  "tvMyTeam": "فريقي",
+  "tvImpConnecting": "جارٍ الاتصال بالخادم…",
+  "tvImpCategories": "جارٍ قراءة الفئات…",
+  "tvImpDownloading": "جارٍ التنزيل… {mb} م.ب",
+  "@tvImpDownloading": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpDecoding": "جارٍ تحليل {mb} م.ب…",
+  "@tvImpDecoding": {
+    "placeholders": {
+      "mb": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpCategory": "الفئة {i}/{total} · تم العثور على {found} قناة",
+  "@tvImpCategory": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "found": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpFound": "تم العثور على {count} قناة",
+  "@tvImpFound": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpSaving": "جارٍ حفظ {done} / {total} قناة",
+  "@tvImpSaving": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "tvImpDone": "{count} قناة جاهزة",
+  "@tvImpDone": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "tvLanguage": "اللغة",
+  "tvLanguageAuto": "تلقائي (لغة التلفاز)",
+  "tvSettingsLanguage": "اللغة: {value}",
+  "@tvSettingsLanguage": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  }
 }
