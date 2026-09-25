@@ -102,10 +102,10 @@ flutter build apk --debug     # APK de test
   si on veut les réactiver.
 - Aucun keystore ni secret n'est versionné : la signature release se fait
   via les secrets GitHub Actions (`ANDROID_KEYSTORE_BASE64`, etc.).
-- **7 MOTION TV (box Android TV / Fire TV)** : le workflow racine
-  [`.github/workflows/build-7motion-tv.yml`](.github/workflows/build-7motion-tv.yml)
+- **Zuno (box Android TV / Fire TV)** : le workflow racine
+  [`.github/workflows/build-zuno-tv.yml`](.github/workflows/build-zuno-tv.yml)
   compile `android-app/lib/main_tv.dart` (app reliée au panel admin via
-  `https://app.7themotion.com`) et publie l'APK sur la release `7motion-tv-panel` :
-  `https://github.com/manzilionellm-dotcom/tvking/releases/download/7motion-tv-panel/7motion-tv-panel.apk`.
+  `https://app.7themotion.com`) et publie l'APK sur la release `zuno-tv` :
+  `https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv/zuno-tv.apk`.
   La release `7motion-tv` reste celle de l'APK 4K Player (non modifiée par ce workflow).
-  Détails : [`android-app/docs/7motion-tv-panel.md`](android-app/docs/7motion-tv-panel.md).
+  Détails : [`android-app/docs/zuno-tv.md`](android-app/docs/zuno-tv.md).

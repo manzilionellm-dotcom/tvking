@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # =========================================================
-#  patch_manifest.py — Manifeste Android du build 7 MOTION TV
+#  patch_manifest.py — Manifeste Android du build Zuno TV
 # =========================================================
-#  Appelé par le workflow racine `.github/workflows/build-7motion-tv.yml`
+#  Appelé par le workflow racine `.github/workflows/build-zuno-tv.yml`
 #  (ou à la main, pour un build TV local) :
 #
 #      python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
@@ -16,7 +16,7 @@
 #  pourquoi il existe). Il est testable en local avec un simple Python.
 #
 #  Ce qu'il fait, dans l'ordre :
-#    1. Nom affiché « 7 MOTION » (icône du launcher / Leanback).
+#    1. Nom affiché « Zuno » (icône du launcher / Leanback).
 #    2. Réseau : INTERNET + trafic HTTP en clair (les flux IPTV sont
 #       très souvent en http://), + REQUEST_INSTALL_PACKAGES (updater
 #       sideload), + notifications (rappels sport).
@@ -36,7 +36,7 @@
 import re
 import sys
 
-APP_LABEL = "7 MOTION"
+APP_LABEL = "Zuno"
 
 
 def _add_after_manifest_tag(s: str, line: str) -> str:
@@ -150,7 +150,7 @@ def main() -> int:
     if missing:
         print("❌ manifeste TV incomplet, manque :", missing, file=sys.stderr)
         return 1
-    print("✓ manifeste 7 MOTION TV patché :", path)
+    print("✓ manifeste Zuno TV patché :", path)
     return 0
 
 

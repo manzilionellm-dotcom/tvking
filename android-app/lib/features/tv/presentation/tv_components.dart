@@ -13,12 +13,12 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 
 /// Nom produit affiché PARTOUT.
-const String kAppName = 'The Few TV';
+const String kAppName = 'Zuno';
 // Logo « naturel » sur fond TRANSPARENT (pas le carré noir, qui se voyait
 // comme un rectangle plus sombre sur les surfaces gris foncé de l'app).
 // Le carré noir reste UNIQUEMENT pour l'icône de lancement (cf. yaml dédié),
 // où un fond est normal.
-const String _kLogoAsset = 'assets/branding/thefew_logo.png';
+const String _kLogoAsset = 'assets/branding/zuno_logo.png';
 
 /// Numéro WhatsApp business (format international, sans + ni espaces).
 const String kWhatsAppPhone = '447307410512';
@@ -27,7 +27,7 @@ const String kWhatsAppPhone = '447307410512';
 String tvWhatsAppUrl(String mac) {
   final String code = (mac == '…' || mac.isEmpty) ? '' : mac;
   final String msg = Uri.encodeComponent(
-      'Bonjour, je souhaite activer The Few TV.'
+      'Bonjour, je souhaite activer Zuno.'
       '${code.isEmpty ? '' : ' Mon code : $code'}');
   return 'https://wa.me/$kWhatsAppPhone?text=$msg';
 }
@@ -88,7 +88,7 @@ class TvWhatsAppQr extends StatelessWidget {
   }
 }
 
-/// Logo réel « The Few » (or sur noir).
+/// Logo réel « Zuno » (calligraphie or, fond transparent).
 class TvLogo extends StatelessWidget {
   const TvLogo({super.key, this.width = 180});
   final double width;

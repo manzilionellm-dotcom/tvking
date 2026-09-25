@@ -2,7 +2,7 @@
 //  tv_hub_screen.dart — Accueil « lanceur » (grille de tuiles) pour la TV
 // =========================================================
 //  Disposition classique d'un lecteur de box, entièrement en design maison
-//  (TvTokens + logo 7 MOTION) :
+//  (TvTokens + logo Zuno) :
 //
 //    ┌───────────────────────────────────────────────────────────┐
 //    │ [logo]                                    📶  12:34  25/09  │  barre haut

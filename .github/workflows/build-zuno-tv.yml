@@ -1,11 +1,12 @@
 # ============================================================================
-#  build-7motion-tv.yml — Compile « 7 MOTION TV » (app Flutter, entrée
+#  build-zuno-tv.yml — Compile « Zuno » (app TV Flutter, entrée
 #  android-app/lib/main_tv.dart) en APK sideloadable pour box Android TV /
-#  Fire TV / Google TV, et le publie sur la release « 7motion-tv-panel » :
+#  Fire TV / Google TV, et le publie sur la release « zuno-tv » :
 #
-#    https://github.com/<repo>/releases/download/7motion-tv-panel/7motion-tv-panel.apk
+#    https://github.com/<repo>/releases/download/zuno-tv/zuno-tv.apk
 #
-#  ⚠ RELEASE SÉPARÉE (24/09/2026, décision du propriétaire). La release
+#  ⚠ RELEASE SÉPARÉE (24/09/2026, décision du propriétaire ; renommée
+#  « zuno-tv » le 25/09/2026 avec la nouvelle marque Zuno). La release
 #  « 7motion-tv » appartient à l'APK 4K Player rebrandé (workflow
 #  publish-7motion-tv.yml) : CE workflow n'y écrit JAMAIS. Package différent
 #  (com.sevenmotion.tv.seven_tv vs com.manthefew) → les deux apps
@@ -23,13 +24,13 @@
 #    1. Flutter stable + Java 17 + SDK Android ; Firebase reste fail-open
 #       (sans secret GOOGLE_SERVICES_JSON → Crashlytics désactivé, build vert).
 #    2. Manifeste et Gradle patchés POUR CE BUILD par des scripts Python
-#       lisibles et idempotents (android-app/ci/tv/*.py) : label « 7 MOTION »,
+#       lisibles et idempotents (android-app/ci/tv/*.py) : label « Zuno »,
 #       Leanback, bannière, paysage, largeHeap, applicationId historique
 #       com.sevenmotion.tv.seven_tv, signatures v1/v2/v3, R8.
-#    3. Icône + bannière 7 MOTION, écran de lancement sombre.
+#    3. Icône + bannière Zuno (logo or sur noir), écran de lancement sombre.
 #    4. SIGNATURE STABLE — jamais la clé jetable du runner (sinon aucune mise
 #       à jour ne s'installe par-dessus) :
-#         a) clé maîtresse 7 MOTION via secrets ANDROID_KEYSTORE_BASE64 +
+#         a) clé maîtresse du propriétaire via secrets ANDROID_KEYSTORE_BASE64 +
 #            ANDROID_KEYSTORE_PASSWORD (+ ANDROID_KEY_ALIAS, défaut
 #            « sevenmotion », + ANDROID_KEY_PASSWORD, défaut = mot de passe
 #            du keystore) ;
@@ -43,7 +44,7 @@
 #       versionCode = secondes epoch (strictement croissant → la mise à jour
 #       s'installe toujours par-dessus), APP_BUILD_TS pour la « mise à jour
 #       forcée » pilotée par le panel.
-#    7. Artefact du run TOUJOURS ; PUBLICATION sur la release 7motion-tv-panel
+#    7. Artefact du run TOUJOURS ; PUBLICATION sur la release zuno-tv
 #       uniquement (a) sur push vers `main`, ou (b) en lancement manuel avec
 #       publish=true. Un push sur une branche de travail compile et vérifie,
 #       mais n'écrase PAS le lien donné aux clients.
@@ -51,7 +52,7 @@
 #  Surcharger le backend visé (staging…) : input `backend_url` (dispatch)
 #  → `--dart-define=BACKEND_URL=…` (cf. subscription_backend.dart).
 # ============================================================================
-name: Build 7 MOTION TV (APK → release 7motion-tv-panel)
+name: Build Zuno TV (APK → release zuno-tv)
 
 on:
   push:
@@ -65,12 +66,12 @@ on:
       - 'android-app/pubspec.yaml'
       - 'android-app/l10n.yaml'
       - 'android-app/analysis_options.yaml'
-      - 'android-app/flutter_launcher_icons_7motion_tv.yaml'
-      - '.github/workflows/build-7motion-tv.yml'
+      - 'android-app/flutter_launcher_icons_zuno_tv.yaml'
+      - '.github/workflows/build-zuno-tv.yml'
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publier sur la release 7motion-tv-panel'
+        description: 'Publier sur la release zuno-tv'
         required: false
         default: 'false'
         type: choice
@@ -87,14 +88,14 @@ permissions:
 env:
   # QUI PUBLIE ? Une seule réponse, lue par toutes les étapes concernées.
   PUBLIER: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.publish == 'true' }}
-  RELEASE_TAG: 7motion-tv-panel
-  APK_NAME: 7motion-tv-panel.apk
+  RELEASE_TAG: zuno-tv
+  APK_NAME: zuno-tv.apk
 
 # Une seule publication à la fois sur ce canal : deux runs simultanés
 # écriraient l'APK de l'un et le version.json de l'autre. On fait la queue,
 # on n'annule jamais un téléversement en cours.
 concurrency:
-  group: publish-7motion-tv-panel
+  group: publish-zuno-tv
   cancel-in-progress: false
 
 defaults:
@@ -103,7 +104,7 @@ defaults:
 
 jobs:
   build-tv:
-    name: Build 7 MOTION TV APK
+    name: Build Zuno TV APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -143,7 +144,7 @@ jobs:
       # ------------------------------------------------------------------
       #  Manifeste + Gradle propres au build TV (scripts idempotents)
       # ------------------------------------------------------------------
-      - name: Patch manifest (7 MOTION, Leanback, réseau, compat box)
+      - name: Patch manifest (Zuno, Leanback, réseau, compat box)
         run: python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
 
       - name: Patch build.gradle.kts (applicationId TV, signature, R8)
@@ -198,11 +199,11 @@ jobs:
         run: flutter gen-l10n
 
       # ------------------------------------------------------------------
-      #  Identité visuelle 7 MOTION : icône launcher + bannière Leanback +
+      #  Identité visuelle Zuno : icône launcher + bannière Leanback +
       #  écran de lancement sombre (fin de l'écran blanc au démarrage).
       # ------------------------------------------------------------------
-      - name: Icône launcher (logo 7 MOTION)
-        run: dart run flutter_launcher_icons -f flutter_launcher_icons_7motion_tv.yaml
+      - name: Icône launcher (logo Zuno)
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons_zuno_tv.yaml
 
       - name: Bannière Android TV + écran de lancement sombre
         run: |
@@ -210,9 +211,9 @@ jobs:
           RES=android/app/src/main/res
           mkdir -p "$RES/drawable" "$RES/drawable-v21" "$RES/drawable-xhdpi" "$RES/drawable-xxhdpi" "$RES/values" "$RES/values-night"
           # Bannière Leanback (spec Android TV : 320×180 en xhdpi).
-          cp assets/branding/7motion_tv_banner.png    "$RES/drawable/tv_banner.png"
-          cp assets/branding/7motion_tv_banner.png    "$RES/drawable-xhdpi/tv_banner.png"
-          cp assets/branding/7motion_tv_banner_2x.png "$RES/drawable-xxhdpi/tv_banner.png"
+          cp assets/branding/zuno_tv_banner.png    "$RES/drawable/tv_banner.png"
+          cp assets/branding/zuno_tv_banner.png    "$RES/drawable-xhdpi/tv_banner.png"
+          cp assets/branding/zuno_tv_banner_2x.png "$RES/drawable-xxhdpi/tv_banner.png"
           # Splash sombre avec le logo centré (remplace le fond blanc du template).
           for DIR in drawable drawable-v21; do
             cat > "$RES/$DIR/launch_background.xml" <<'XML'
@@ -220,7 +221,7 @@ jobs:
           <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
               <item>
                   <shape android:shape="rectangle">
-                      <solid android:color="#FF0E0E0E" />
+                      <solid android:color="#FF050505" />
                   </shape>
               </item>
               <item>
@@ -272,7 +273,7 @@ jobs:
             echo "SIGNING=release" >> "$GITHUB_ENV"
             exit 0
           fi
-          echo "::warning title=Clé maîtresse absente::Secrets ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD non posés → repli sur le keystore fixe historique (stable entre builds, mais pas la clé 7 MOTION)."
+          echo "::warning title=Clé maîtresse absente::Secrets ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD non posés → repli sur le keystore fixe historique (stable entre builds, mais pas la clé maîtresse du propriétaire)."
           if git fetch --depth=1 origin "$FALLBACK_KEYSTORE_COMMIT" \
              && git show FETCH_HEAD:ci/defew-debug.keystore > /tmp/defew-debug.keystore 2>/dev/null \
              && [ -s /tmp/defew-debug.keystore ]; then
@@ -293,7 +294,7 @@ jobs:
           flutter analyze --no-fatal-infos --no-fatal-warnings
           flutter test --reporter expanded
 
-      - name: Build 7 MOTION TV (release universel ARM, target main_tv)
+      - name: Build Zuno TV (release universel ARM, target main_tv)
         env:
           BACKEND_URL_INPUT: ${{ github.event.inputs.backend_url }}
         run: |
@@ -348,18 +349,18 @@ jobs:
           APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner
           "$APKSIGNER" verify --print-certs "$APK" | grep -i "SHA-256" | head -1 || true
 
-      - name: Upload APK artifact (7 MOTION TV)
+      - name: Upload APK artifact (Zuno TV)
         uses: actions/upload-artifact@v4
         with:
-          name: 7motion-tv-panel-apk-${{ github.sha }}
-          path: android-app/build/app/outputs/flutter-apk/7motion-tv-panel.apk
+          name: zuno-tv-apk-${{ github.sha }}
+          path: android-app/build/app/outputs/flutter-apk/zuno-tv.apk
           retention-days: 30
           if-no-files-found: error
 
       # ------------------------------------------------------------------
-      #  PUBLICATION (main ou dispatch publish=true) — release 7motion-tv-panel
+      #  PUBLICATION (main ou dispatch publish=true) — release zuno-tv
       # ------------------------------------------------------------------
-      - name: Publier sur la release 7motion-tv-panel
+      - name: Publier sur la release zuno-tv
         if: env.PUBLIER == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -388,7 +389,7 @@ jobs:
           }
           JSON
           cat version.json
-          NOTES="7 MOTION TV (panel) — app Flutter (lib/main_tv.dart) reliée au panel admin (https://app.7themotion.com) : activation par MAC, licence essai/payé, sources Xtream/M3U saisies par le client ou poussées par le panel, thème sombre 7 MOTION.
+          NOTES="Zuno — app box Android TV / Fire TV (Flutter, lib/main_tv.dart) reliée au panel admin (https://app.7themotion.com) : activation par MAC, essai 7 jours puis licence payée, sources Xtream/M3U saisies par le client ou poussées par le panel, thème noir & or Zuno.
 
           Lien direct : https://github.com/$REPO/releases/download/$RELEASE_TAG/$APK_NAME
 
@@ -396,10 +397,10 @@ jobs:
           SHA-256 : $SHA
           Commit : ${{ github.sha }}"
           if gh release view "$RELEASE_TAG" -R "$REPO" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" -R "$REPO" --title "7 MOTION TV (panel) — APK box" --notes "$NOTES"
+            gh release edit "$RELEASE_TAG" -R "$REPO" --title "Zuno — APK box Android TV" --notes "$NOTES"
           else
             gh release create "$RELEASE_TAG" -R "$REPO" --prerelease \
-              --title "7 MOTION TV (panel) — APK box" --notes "$NOTES"
+              --title "Zuno — APK box Android TV" --notes "$NOTES"
           fi
           gh release upload "$RELEASE_TAG" "$APK" version.json --clobber -R "$REPO"
           echo "✓ https://github.com/$REPO/releases/download/$RELEASE_TAG/$APK_NAME"
@@ -407,7 +408,7 @@ jobs:
       - name: Résumé
         run: |
           {
-            echo "## 7 MOTION TV"
+            echo "## Zuno TV"
             echo "- applicationId : \`com.sevenmotion.tv.seven_tv\`"
             echo "- versionCode : \`${TV_BUILD_NUMBER:-?}\` · signature : \`${SIGNING:-?}\`"
             echo "- backend : \`${{ github.event.inputs.backend_url || 'https://app.7themotion.com' }}\`"

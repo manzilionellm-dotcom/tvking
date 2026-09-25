@@ -267,3 +267,4 @@ flutter:
     # pour 7 MOTION (charbon + halo braise + logo en filigrane). Pour changer
     # le fond : remplace ce fichier par ta propre image 1920×1080, rien d'autre.
     - assets/branding/tv_hub_background.jpg
+    - assets/branding/zuno_logo.png

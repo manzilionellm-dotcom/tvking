@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # =========================================================
-#  patch_gradle.py — build.gradle.kts du build 7 MOTION TV
+#  patch_gradle.py — build.gradle.kts du build Zuno TV
 # =========================================================
-#  Appelé par le workflow racine `.github/workflows/build-7motion-tv.yml` :
+#  Appelé par le workflow racine `.github/workflows/build-zuno-tv.yml` :
 #
 #      python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
 #
@@ -131,7 +131,7 @@ def main() -> int:
         if must not in s:
             print("❌ build.gradle.kts TV incomplet, manque :", must, file=sys.stderr)
             return 1
-    print("✓ build.gradle.kts 7 MOTION TV patché :", path)
+    print("✓ build.gradle.kts Zuno TV patché :", path)
     return 0
 
 
