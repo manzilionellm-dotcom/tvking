@@ -87,7 +87,6 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   List<Channel> _all = const <Channel>[];
   List<String> _cats = const <String>[];
   String? _selectedCat;
-  bool _heroShown = false;
   // Dernière liste BRUTE reçue (avant filtre Mode Enfants) : permet de
   // re-filtrer instantanément quand le parent bascule le Mode Enfants.
   List<Channel> _rawLive = const <Channel>[];
@@ -673,9 +672,6 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         ),
       );
     }
-
-    final Channel? last = _lastWatchedCh;
-    _heroShown = last != null;
 
     // ===== DISPOSITION 3 COLONNES (façon box IPTV) =====
     //   gauche  : catégories (pleine hauteur)
@@ -1755,7 +1751,9 @@ class _ChannelRowState extends State<_ChannelRow> {
   @override
   Widget build(BuildContext context) {
     final Channel channel = widget.channel;
-    final _ParsedName p = _parseName(channel);
+    // Analyse du nom (badges 4K/FHD/HD) : helper statique mémoïsé partagé avec
+    // la carte de grille — on l'appelle par sa classe.
+    final _ParsedName p = _ChannelCardState._parseName(channel);
     final String? quality = p.badges
         .cast<String?>()
         .firstWhere((String? b) => b == '4K' || b == 'FHD' || b == 'HD',
