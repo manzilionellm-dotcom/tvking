@@ -263,3 +263,7 @@ flutter:
     - assets/branding/thefew_tv_icon.png
     - assets/branding/thefew_logo.png
     - assets/branding/prive_icon.png
+    # Fond plein écran de l'accueil TV (façon box). Image ORIGINALE générée
+    # pour 7 MOTION (charbon + halo braise + logo en filigrane). Pour changer
+    # le fond : remplace ce fichier par ta propre image 1920×1080, rien d'autre.
+    - assets/branding/tv_hub_background.jpg

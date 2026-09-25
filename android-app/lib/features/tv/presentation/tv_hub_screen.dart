@@ -30,6 +30,7 @@ import '../../device/data/device_identity.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_app.dart';
@@ -252,6 +253,20 @@ class _TvHubScreenState extends State<TvHubScreen> {
         skipTraversal: true,
         onKeyEvent: _onKey,
         child: TvShell(
+          // Fond PLEIN ÉCRAN (image de marque, cf. pubspec) + voile sombre pour
+          // garder les textes lisibles, puis le contenu dans les marges TV.
+          applySafeArea: false,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              Image.asset('assets/branding/tv_hub_background.jpg',
+                  fit: BoxFit.cover),
+              DecoratedBox(
+                  decoration:
+                      BoxDecoration(color: TvTokens.bg.withValues(alpha: 0.35))),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: TvDimens.safeH, vertical: TvDimens.safeV),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
@@ -304,6 +319,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
                     Text(src, style: TvTokens.ui(14, color: TvTokens.mutedDim)),
                   ],
                 ],
+              ),
+            ],
+          ),
               ),
             ],
           ),
