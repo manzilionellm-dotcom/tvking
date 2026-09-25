@@ -31,6 +31,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate' show TransferableTypedData;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -130,50 +131,23 @@ class XtreamClient {
     final Map<String, String> cats =
         categories ?? await fetchLiveCategories();
 
-    final List<dynamic> raw = await _callApiList(
-      action: 'get_live_streams',
+    // TOUT EN ISOLATE (performance, 25/09/2026) : décodage UTF-8 du JSON
+    // (plusieurs Mo), jsonDecode ET la construction des 10 000-30 000 objets
+    // Channel se font hors du fil UI. Avant, seul jsonDecode était en isolate :
+    // la boucle de mapping (et le décodage) gelait l'écran ~1-2 s à l'import
+    // d'un gros bouquet. Les octets sont TRANSFÉRÉS (pas copiés) à l'isolate.
+    final Uint8List bytes =
+        await _getBytes(_buildUri(action: 'get_live_streams'));
+    final List<Channel> channels = await compute(
+      _mapLiveStreamsInIsolate,
+      _LiveStreamsJob(
+        payload: TransferableTypedData.fromList(<Uint8List>[bytes]),
+        categories: cats,
+        playlistId: playlistId,
+        streamUrlPrefix: '$_baseUrl/$username/$password/',
+        maxChannels: kMaxChannelsPerImport,
+      ),
     );
-
-    final List<Channel> channels = <Channel>[];
-    for (final dynamic item in raw) {
-      // PLAFOND MÉMOIRE (anti-OOM) : on arrête de matérialiser au-delà du
-      // plafond d'import — le reste reste sur le serveur, la source est juste
-      // tronquée à une taille tenable sur box faible.
-      if (channels.length >= kMaxChannelsPerImport) break;
-      if (item is! Map<String, dynamic>) continue;
-
-      final String streamId = item['stream_id']?.toString() ?? '';
-      if (streamId.isEmpty) continue;
-
-      final String name = item['name']?.toString() ?? '(Sans nom)';
-      final String categoryId = item['category_id']?.toString() ?? '';
-      final String category = cats[categoryId] ?? 'Autres';
-      final String? streamIcon = item['stream_icon']?.toString();
-      final dynamic tvArchiveRaw = item['tv_archive'];
-      final int tvArchive = tvArchiveRaw is int
-          ? tvArchiveRaw
-          : int.tryParse(tvArchiveRaw?.toString() ?? '') ?? 0;
-      final dynamic tvArchiveDurationRaw = item['tv_archive_duration'];
-      final int tvArchiveDuration = tvArchiveDurationRaw is int
-          ? tvArchiveDurationRaw
-          : int.tryParse(tvArchiveDurationRaw?.toString() ?? '') ?? 0;
-
-      channels.add(
-        Channel(
-          id: 'xtream-$streamId',
-          playlistId: playlistId,
-          name: name,
-          category: category.isEmpty ? 'Autres' : category,
-          streamUrl: _buildLiveStreamUrl(streamId),
-          isLive: true,
-          logoUrl: (streamIcon == null || streamIcon.isEmpty)
-              ? null
-              : streamIcon,
-          catchupSupported: tvArchive == 1,
-          catchupDays: tvArchive == 1 ? tvArchiveDuration : null,
-        ),
-      );
-    }
 
     if (kDebugMode) {
       debugPrint('[XtreamClient] ${channels.length} chaînes live récupérées');
@@ -259,9 +233,6 @@ class XtreamClient {
   /// `.ts` est le format brut MPEG-TS reconnu par 100% des serveurs.
   /// (On essaiera `.m3u8` plus tard si on rencontre un fournisseur
   /// qui ne sert que du HLS.)
-  String _buildLiveStreamUrl(String streamId) {
-    return '$_baseUrl/$username/$password/$streamId.ts';
-  }
 
   /// Signature (User-Agent) qui a fonctionné pour ce serveur. Mémorisée
   /// au 1er appel réussi pour ne pas re-tester toute la liste à chaque
@@ -297,6 +268,16 @@ class XtreamClient {
   /// la signature gagnante. Lève une [XtreamException] si aucune signature n'a
   /// 200, ou [PlaylistImportTooLarge] si la réponse dépasse le plafond.
   Future<String> _getBody(Uri uri) async {
+    final Uint8List bytes = await _getBytes(uri);
+    // Xtream sert du JSON (UTF-8). allowMalformed pour ne jamais planter
+    // sur un octet douteux d'un backend exotique.
+    return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  /// Variante OCTETS de [_getBody] : même rotation de signatures, même
+  /// plafond, mais sans décodage — pour confier le décodage à un isolate
+  /// (cf. [fetchLiveChannels]).
+  Future<Uint8List> _getBytes(Uri uri) async {
     Object? lastError;
     for (final String ua in _candidateUserAgents()) {
       try {
@@ -314,13 +295,10 @@ class XtreamClient {
             await _http.send(req).timeout(_timeout);
         if (resp.statusCode == 200) {
           _workingUserAgent = ua;
-          final List<int> bytes = await _readCapped(
+          return await _readCapped(
             resp.stream,
             kMaxXtreamJsonBytes,
           ).timeout(_timeout);
-          // Xtream sert du JSON (UTF-8). allowMalformed pour ne jamais planter
-          // sur un octet douteux d'un backend exotique.
-          return utf8.decode(bytes, allowMalformed: true);
         }
         lastError = XtreamException(
           'Erreur HTTP ${resp.statusCode} sur ${uri.host}',
@@ -343,7 +321,7 @@ class XtreamClient {
 
   /// Lit [stream] en bornant à [maxBytes] (anti-OOM) : dépassement →
   /// [PlaylistImportTooLarge], le flux est interrompu et l'abonnement annulé.
-  static Future<List<int>> _readCapped(
+  static Future<Uint8List> _readCapped(
       Stream<List<int>> stream, int maxBytes) async {
     final BytesBuilder builder = BytesBuilder(copy: false);
     int total = 0;
@@ -419,3 +397,87 @@ class XtreamClient {
 /// envoyable à un isolate. Sert à ne pas geler l'UI sur les grosses réponses
 /// Xtream (get_live_streams / VOD / séries de plusieurs Mo).
 dynamic _decodeJsonInIsolate(String source) => jsonDecode(source);
+
+/// Paramètres du mapping `get_live_streams` exécuté en isolate. Uniquement des
+/// types envoyables (TransferableTypedData, Map, int, String).
+class _LiveStreamsJob {
+  const _LiveStreamsJob({
+    required this.payload,
+    required this.categories,
+    required this.playlistId,
+    required this.streamUrlPrefix,
+    required this.maxChannels,
+  });
+  final TransferableTypedData payload;
+  final Map<String, String> categories;
+  final int playlistId;
+  final String streamUrlPrefix;
+  final int maxChannels;
+}
+
+/// Décode + mappe la réponse `get_live_streams` en objets [Channel], HORS du
+/// fil UI (cf. [XtreamClient.fetchLiveChannels]). Top-level = requis par
+/// `compute`. La logique est celle de l'ancienne boucle synchrone, inchangée.
+List<Channel> _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
+  final Uint8List bytes = job.payload.materialize().asUint8List();
+  final String body = utf8.decode(bytes, allowMalformed: true);
+  dynamic decoded;
+  try {
+    decoded = jsonDecode(body);
+  } on FormatException catch (e) {
+    throw XtreamException(
+      'Réponse non-JSON sur action=get_live_streams : ${e.message}',
+    );
+  }
+  List<dynamic> raw;
+  if (decoded is List<dynamic>) {
+    raw = decoded;
+  } else if (decoded is Map<String, dynamic> && decoded['data'] is List) {
+    raw = decoded['data'] as List<dynamic>; // certains serveurs encapsulent
+  } else {
+    throw XtreamException(
+      'Réponse JSON non attendue (List attendue) sur action=get_live_streams.',
+    );
+  }
+
+  final List<Channel> channels = <Channel>[];
+  for (final dynamic item in raw) {
+    // PLAFOND MÉMOIRE (anti-OOM) : on arrête de matérialiser au-delà du
+    // plafond d'import — le reste reste sur le serveur, la source est juste
+    // tronquée à une taille tenable sur box faible.
+    if (channels.length >= job.maxChannels) break;
+    if (item is! Map<String, dynamic>) continue;
+
+    final String streamId = item['stream_id']?.toString() ?? '';
+    if (streamId.isEmpty) continue;
+
+    final String name = item['name']?.toString() ?? '(Sans nom)';
+    final String categoryId = item['category_id']?.toString() ?? '';
+    final String category = job.categories[categoryId] ?? 'Autres';
+    final String? streamIcon = item['stream_icon']?.toString();
+    final dynamic tvArchiveRaw = item['tv_archive'];
+    final int tvArchive = tvArchiveRaw is int
+        ? tvArchiveRaw
+        : int.tryParse(tvArchiveRaw?.toString() ?? '') ?? 0;
+    final dynamic tvArchiveDurationRaw = item['tv_archive_duration'];
+    final int tvArchiveDuration = tvArchiveDurationRaw is int
+        ? tvArchiveDurationRaw
+        : int.tryParse(tvArchiveDurationRaw?.toString() ?? '') ?? 0;
+
+    channels.add(
+      Channel(
+        id: 'xtream-$streamId',
+        playlistId: job.playlistId,
+        name: name,
+        category: category.isEmpty ? 'Autres' : category,
+        streamUrl: '${job.streamUrlPrefix}$streamId.ts',
+        isLive: true,
+        logoUrl:
+            (streamIcon == null || streamIcon.isEmpty) ? null : streamIcon,
+        catchupSupported: tvArchive == 1,
+        catchupDays: tvArchive == 1 ? tvArchiveDuration : null,
+      ),
+    );
+  }
+  return channels;
+}

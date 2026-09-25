@@ -205,7 +205,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
       final Playlist p =
           all.firstWhere((Playlist x) => x.isActive, orElse: () => all.first);
       final String user = (p.xtreamUsername ?? '').trim();
-      return user.isEmpty ? p.name : '$user · ${p.name}';
+      final String one = user.isEmpty ? p.name : '$user · ${p.name}';
+      // Mode fusion (TV) : toutes les listes sont affichées ensemble → on
+      // l'indique sobrement (« … +2 ») sans changer la mise en page.
+      return all.length > 1 ? '$one +${all.length - 1}' : one;
     } catch (_) {
       return '';
     }

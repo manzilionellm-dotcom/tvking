@@ -90,6 +90,9 @@ Future<void> _bootstrap() async {
   //    qui s'affichait à chaque démarrage le temps que le cache se charge.
   //    Timeout de sécurité : si la base est lente, on n'empêche JAMAIS l'app
   //    de démarrer (au pire, le cache arrivera via le stream juste après).
+  //    TV = TOUTES les listes fusionnées (Xtream + M3U, jusqu'à 4-5 sources
+  //    posées par le client ou le panel) affichées ensemble, façon TiviMate.
+  PlaylistRepository.mergeAllPlaylists = true;
   await PlaylistRepository.instance
       .initialize()
       .timeout(const Duration(seconds: 6), onTimeout: () {});

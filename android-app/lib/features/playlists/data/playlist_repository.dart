@@ -109,8 +109,17 @@ class PlaylistRepository {
   //  LECTURE
   // ============================================================
 
+  /// MODE FUSION (app TV, décision du propriétaire 25/09/2026) : quand `true`,
+  /// `getAllChannels` renvoie les chaînes de TOUTES les playlists en même
+  /// temps (comme TiviMate), au lieu de la seule playlist « active ». Le
+  /// client (ou le panel) peut donc poser 4-5 listes et tout voir d'un coup :
+  /// les catégories de même nom se rejoignent, l'ordre = ordre d'import.
+  /// Le téléphone garde le comportement historique (une active à la fois).
+  static bool mergeAllPlaylists = false;
+
   Future<List<Channel>> getAllChannels() async {
     final Database db = await PlaylistDatabase.instance.database;
+    if (mergeAllPlaylists) return _readMergedChannels(db);
 
     // Phase 1+/Multi-serveurs (2026-06-01) : si une playlist est
     // marquee active, on filtre les chaines pour ne renvoyer que les
@@ -157,6 +166,48 @@ class PlaylistRepository {
       return all.where((Channel c) => c.genre == ChannelGenre.adult).toList();
     }
     return all;
+  }
+
+  /// Lecture FUSIONNÉE (toutes les playlists). Deux listes peuvent porter le
+  /// MÊME identifiant de chaîne (`xtream-123` sur deux serveurs, `tvg-id`
+  /// partagé) : le second doublon reçoit un id suffixé par sa playlist pour
+  /// que favoris, récents et index restent univoques. La première occurrence
+  /// garde son id d'origine → les favoris déjà enregistrés continuent de
+  /// fonctionner.
+  Future<List<Channel>> _readMergedChannels(Database db) async {
+    // Purge des orphelines (même garde-fou que le mode « active »).
+    await db.delete(
+      'channels',
+      where: 'playlist_id NOT IN (SELECT id FROM playlists)',
+    );
+    final List<Channel> all = await _readChannelsBounded(db, null);
+    final Set<String> seen = <String>{};
+    final List<Channel> out = <Channel>[];
+    for (final Channel c in all) {
+      if (seen.add(c.id)) {
+        out.add(c);
+        continue;
+      }
+      final String uid = '${c.id}~p${c.playlistId ?? 0}';
+      if (!seen.add(uid)) continue; // doublon strict dans la même liste
+      out.add(Channel(
+        id: uid,
+        playlistId: c.playlistId,
+        name: c.name,
+        category: c.category,
+        streamUrl: c.streamUrl,
+        isLive: c.isLive,
+        logoUrl: c.logoUrl,
+        currentProgram: c.currentProgram,
+        catchupSupported: c.catchupSupported,
+        catchupDays: c.catchupDays,
+        catchupSource: c.catchupSource,
+      ));
+    }
+    if (FlavorConfig.current.adultOnly) {
+      return out.where((Channel c) => c.genre == ChannelGenre.adult).toList();
+    }
+    return out;
   }
 
   /// Plafond de chaînes chargées EN MÉMOIRE — garde-fou anti-OOM des box
@@ -358,6 +409,16 @@ class PlaylistRepository {
     try {
       final Set<String> ids =
           channels.map((Channel c) => c.id).toSet();
+      // XTREAM : nos ids sont `xtream-<stream_id>` alors que le XMLTV du
+      // serveur référence les chaînes par leur `epg_channel_id` (nom). Aucune
+      // ligne ne matchait jamais, mais on TÉLÉCHARGEAIT et PARSAIT quand même
+      // tout le XMLTV (souvent 100 Mo+) sur le fil UI juste après l'import →
+      // box figée pendant que le client découvre ses chaînes. Tant que
+      // l'appariement par epg_channel_id n'est pas implémenté, on saute.
+      if (ids.isNotEmpty && ids.every((String id) => id.startsWith('xtream-'))) {
+        if (kDebugMode) debugPrint('[EPG] Xtream : sync XMLTV sautée (ids non appariables).');
+        return;
+      }
       await EpgRepository.instance.downloadAndImport(
         url: epgUrl,
         knownChannelIds: ids,

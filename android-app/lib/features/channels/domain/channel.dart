@@ -85,10 +85,14 @@ class Channel {
   /// Initiales (max 2 lettres) — pour le fallback quand pas
   /// de logo. On nettoie les décorations "##" / "**" qui
   /// polluent les playlists IPTV.
+  // Regex précompilées (appelé pour chaque logo manquant à l'écran).
+  static final RegExp _rxDecor = RegExp(r'[#*=•‣◆◇■□●○▪▫]+');
+  static final RegExp _rxWordSep = RegExp(r'[\s\-/+_|]+');
+
   String get initials {
-    final String clean = name.replaceAll(RegExp(r'[#*=•‣◆◇■□●○▪▫]+'), ' ');
+    final String clean = name.replaceAll(_rxDecor, ' ');
     final List<String> words = clean
-        .split(RegExp(r'[\s\-/+_|]+'))
+        .split(_rxWordSep)
         .where((String w) => w.isNotEmpty)
         .toList();
     if (words.isEmpty) return '?';

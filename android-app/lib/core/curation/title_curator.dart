@@ -193,11 +193,42 @@ abstract final class TitleCurator {
     'entertainment': 'Divertissement',
   };
 
+  // ---------------------------------------------------------------
+  //  REGEX PRÉCOMPILÉES (performance, décision 25/09/2026)
+  // ---------------------------------------------------------------
+  //  Avant, `curate()` reconstruisait ~120 objets RegExp À CHAQUE appel
+  //  (préfixes × 4 boucles, mots à retirer × 2 passes, ponctuation…). Sur
+  //  une playlist de 30 000 chaînes, la première passe de nettoyage des
+  //  noms compilait donc plusieurs MILLIONS de regex sur le fil UI : c'est
+  //  ce qui figeait la box (« ça bug avec beaucoup de chaînes »).
+  //  Ici, chaque regex est compilée UNE fois pour toute la session ; le
+  //  résultat de `curate()` est strictement identique.
+  static final RegExp _rxBrackets =
+      RegExp(r'[\[\(\{]\s*([^\[\]\(\)\{\}]+?)\s*[\]\)\}]');
+  static final RegExp _rxDigitsOnly = RegExp(r'^\d{1,4}$');
+  static final List<RegExp> _rxPrefixes = <RegExp>[
+    for (final String prefix in _stripPrefixes)
+      RegExp('^\\s*' + RegExp.escape(prefix) + r'\s*[:|\-–>»]\s*',
+          caseSensitive: false),
+  ];
+  static final List<RegExp> _rxStripWords = <RegExp>[
+    for (final String w in _stripWords)
+      RegExp(r'(^|\s)' + RegExp.escape(w) + r'(\s|$)', caseSensitive: false),
+  ];
+  static final RegExp _rxHasWord = RegExp(r'[A-Za-zÀ-ÿ]{3,}');
+  static final RegExp _rxFeedNumber =
+      RegExp(r'\b(?:opt|src|feed)\s*\d+\b', caseSensitive: false);
+  static final RegExp _rxSlashes = RegExp(r'[\|/\\]+');
+  static final RegExp _rxTrailingDash = RegExp(r'\s*[-–—]\s*$');
+  static final RegExp _rxLeadingDash = RegExp(r'^\s*[-–—]\s*');
+  static final RegExp _rxSpaces = RegExp(r'\s+');
+  static final RegExp _rxUpperAlnum = RegExp(r'^[A-Z0-9]+$');
+
   /// Cache LRU naïf — `curate()` est appelé sur 20 000+ chaînes à
   /// chaque rebuild d'écran. Sans cache, on saturait le main thread
   /// (mêmes raisons que `ChannelClassifier` ailleurs dans la base).
   static final Map<String, String> _cache = <String, String>{};
-  static const int _cacheMaxEntries = 8000;
+  static const int _cacheMaxEntries = 60000;
 
   /// Transforme un nom IPTV brut en titre présentable.
   /// Si le résultat serait vide, retourne `raw` tel quel — l'UI
@@ -226,12 +257,12 @@ abstract final class TitleCurator {
 
     // 2) Retire les crochets [VIP], [HD], (BACKUP), {RAW}, etc.
     s = s.replaceAllMapped(
-      RegExp(r'[\[\(\{]\s*([^\[\]\(\)\{\}]+?)\s*[\]\)\}]'),
+      _rxBrackets,
       (Match m) {
         final String inside = (m.group(1) ?? '').trim().toLowerCase();
         if (_stripWords.contains(inside) ||
             _stripPrefixes.contains(inside) ||
-            RegExp(r'^\d{1,4}$').hasMatch(inside)) {
+            _rxDigitsOnly.hasMatch(inside)) {
           return ' '; // on jette
         }
         return m.group(0)!; // on garde tel quel
@@ -244,11 +275,7 @@ abstract final class TitleCurator {
     int safetyLoops = 4;
     while (changed && safetyLoops-- > 0) {
       changed = false;
-      for (final String prefix in _stripPrefixes) {
-        final RegExp rx = RegExp(
-          '^\\s*' + RegExp.escape(prefix) + r'\s*[:|\-–>»]\s*',
-          caseSensitive: false,
-        );
+      for (final RegExp rx in _rxPrefixes) {
         final String next = s.replaceFirst(rx, '');
         if (next != s) {
           s = next;
@@ -258,11 +285,7 @@ abstract final class TitleCurator {
     }
 
     // 4) Retire les mots-isolés indésirables (raw / fhd / 24/7 / vip…)
-    for (final String w in _stripWords) {
-      final RegExp rx = RegExp(
-        r'(^|\s)' + RegExp.escape(w) + r'(\s|$)',
-        caseSensitive: false,
-      );
+    for (final RegExp rx in _rxStripWords) {
       s = s.replaceAll(rx, ' ');
     }
 
@@ -271,17 +294,17 @@ abstract final class TitleCurator {
     //    déclinaisons techniques qui ne veulent rien dire à l'écran).
     //    On ne touche PAS aux noms qui SONT un numéro entièrement (ex:
     //    "Sport 1", "BeIN Sports 2" ← légitimes).
-    if (RegExp(r'[A-Za-zÀ-ÿ]{3,}').hasMatch(s)) {
-      s = s.replaceAll(RegExp(r'\b(?:opt|src|feed)\s*\d+\b', caseSensitive: false), ' ');
+    if (_rxHasWord.hasMatch(s)) {
+      s = s.replaceAll(_rxFeedNumber, ' ');
     }
 
     // 6) Normalise les espaces et la ponctuation résiduelle.
     //    /|\ deviennent des espaces. C'est ici que "HD/RAW" devient
     //    "HD RAW" et "MOVIES/ACTORS" devient "MOVIES ACTORS".
-    s = s.replaceAll(RegExp(r'[\|/\\]+'), ' ');
-    s = s.replaceAll(RegExp(r'\s*[-–—]\s*$'), '');
-    s = s.replaceAll(RegExp(r'^\s*[-–—]\s*'), '');
-    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    s = s.replaceAll(_rxSlashes, ' ');
+    s = s.replaceAll(_rxTrailingDash, '');
+    s = s.replaceAll(_rxLeadingDash, '');
+    s = s.replaceAll(_rxSpaces, ' ').trim();
 
     // 6.5) DEUXIÈME passe de strip words sur le résultat normalisé.
     //      Apres step 6, "HD/RAW" est devenu "HD RAW" : maintenant
@@ -290,15 +313,11 @@ abstract final class TitleCurator {
     //      le slash etait dans le chemin).
     //      Pareil pour "MOVIES/ACTORS RAW 60fps" qui devient
     //      "MOVIES ACTORS RAW 60fps" → ici on attrape RAW + 60fps.
-    for (final String w in _stripWords) {
-      final RegExp rx = RegExp(
-        r'(^|\s)' + RegExp.escape(w) + r'(\s|$)',
-        caseSensitive: false,
-      );
+    for (final RegExp rx in _rxStripWords) {
       s = s.replaceAll(rx, ' ');
     }
     // Re-normalise les espaces apres ce 2e strip.
-    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    s = s.replaceAll(_rxSpaces, ' ').trim();
 
     // 7) Title-case respectueux (en gardant les acronymes connus
     //    et les sigles courts en majuscules).
@@ -331,7 +350,7 @@ abstract final class TitleCurator {
       'en', 'un', 'une', 'sur',
       'of', 'the', 'and', 'or', 'a', 'an', 'in', 'on', 'at', 'by',
     };
-    final List<String> words = s.split(RegExp(r'\s+'));
+    final List<String> words = s.split(_rxSpaces);
     final List<String> out = <String>[];
     for (int i = 0; i < words.length; i++) {
       final String w = words[i];
@@ -343,7 +362,7 @@ abstract final class TitleCurator {
         continue;
       }
       // Sigles 1-3 lettres déjà tout en majuscules → on garde.
-      if (w.length <= 3 && w == upper && RegExp(r'^[A-Z0-9]+$').hasMatch(w)) {
+      if (w.length <= 3 && w == upper && _rxUpperAlnum.hasMatch(w)) {
         out.add(w);
         continue;
       }

@@ -11,6 +11,7 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../../core/app/boot_guard.dart';
@@ -117,7 +118,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   // HERO « aperçu live » : chaîne actuellement survolée dans la grille. Le hero
   // en haut la reflète (logo + EN DIRECT + EPG). DÉBOUNCÉ : en défilement rapide
   // on ne met à jour le hero (et sa requête EPG) qu'à l'arrêt du focus.
-  Channel? _previewCh;
+  // ValueNotifier (et non un champ + setState) : changer la chaîne prévisualisée
+  // ne reconstruit QUE la colonne de droite (aperçu + guide), plus TOUT l'écran
+  // (catégories + liste + labels regex) à chaque arrêt du focus — c'était une
+  // source majeure de saccades en défilement sur les grosses listes.
+  final ValueNotifier<Channel?> _previewCh = ValueNotifier<Channel?>(null);
   Timer? _previewDebounce;
   // Chaîne à re-focuser au RETOUR du lecteur (désignée par _openPlayer). La
   // carte correspondante reprend le focus à son prochain build (déterministe).
@@ -160,6 +165,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // Tendances en direct : la catégorie « 🔥 Tendances » se met à jour seule.
     TrendingRepository.instance.start();
     _trendSub = TrendingRepository.instance.stream.listen((List<String> names) {
+      // Le dépôt ré-émet toutes les 60 s MÊME sans changement : on ignore les
+      // émissions identiques → plus de recalcul O(n) + rebuild complet chaque
+      // minute pendant que le client navigue.
+      if (listEquals(names, _trending)) return;
       _trending = names;
       _scheduleRecompute(); // coalescé (anti-ANR)
     });
@@ -220,6 +229,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     _catDebounce?.cancel();
     _recomputeDebounce?.cancel();
     _previewDebounce?.cancel();
+    _previewCh.dispose();
+    _catLabelMemo.clear();
     ParentalControls.instance.kidsMode.removeListener(_onKidsModeChanged);
     super.dispose();
   }
@@ -426,11 +437,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // plus. (Placé AVANT le court-circuit pour s'appliquer même si la chaîne est
     // identique au précédent aperçu.)
     _catDebounce?.cancel();
-    if (_previewCh?.id == c.id) return;
+    if (_previewCh.value?.id == c.id) return;
     _previewDebounce?.cancel();
     _previewDebounce = Timer(const Duration(milliseconds: 120), () {
-      if (mounted && _previewCh?.id != c.id) {
-        setState(() => _previewCh = c);
+      if (mounted && _previewCh.value?.id != c.id) {
+        _previewCh.value = c; // seule la colonne de droite se reconstruit
       }
     });
   }
@@ -485,6 +496,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       cat == _kForYouCat;
 
   /// Libellé visible d'une catégorie (les sentinelles sont traduites/ornées).
+  // Libellés de catégories MÉMOÏSÉS : `_catLabel` passe par ~6 regex ; il est
+  // appelé pour chaque ligne visible de la colonne des catégories À CHAQUE
+  // build. Sans mémo, chaque rafraîchissement refaisait tout le nettoyage.
+  final Map<String, String> _catLabelMemo = <String, String>{};
+
   String _catLabel(BuildContext context, String cat) {
     if (cat == _kTrendCat) return '🔥 Tendances';
     if (cat == _kFavCat) return '★ ${context.l10n.navFavorites}';
@@ -493,9 +509,13 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // Catégorie réelle : on NETTOIE le libellé affiché (FR|/UK|, RAW, 60fps,
     // hevc…) via le curateur PARTAGÉ (appel en lecture seule, on ne le modifie
     // pas) + polissage TV. La clé brute (_catOf) reste INTACTE pour le filtrage.
+    final String? hit = _catLabelMemo[cat];
+    if (hit != null) return hit;
     final String pretty =
         _tvPretty(_tvStripCodec(TitleCurator.curateCategory(cat)));
-    return pretty.isEmpty ? cat : pretty;
+    final String out = pretty.isEmpty ? cat : pretty;
+    _catLabelMemo[cat] = out;
+    return out;
   }
 
   Future<void> _kickSourceSync() async {
@@ -701,8 +721,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     );
 
     // Chaîne prévisualisée : celle sous le focus, sinon la 1re de la liste.
-    final Channel? pv =
-        _previewCh ?? (_shownList.isNotEmpty ? _shownList.first : null);
+    // ValueListenableBuilder : le changement de focus ne reconstruit QUE cette
+    // colonne (cf. _previewCh).
+    final Channel? first = _shownList.isNotEmpty ? _shownList.first : null;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -713,7 +734,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         const SizedBox(width: TvDimens.gutter),
         SizedBox(
           width: 470,
-          child: _PreviewPanel(channel: pv, suspended: _playerOpen),
+          child: ValueListenableBuilder<Channel?>(
+            valueListenable: _previewCh,
+            builder: (BuildContext context, Channel? pv, Widget? _) =>
+                _PreviewPanel(channel: pv ?? first, suspended: _playerOpen),
+          ),
         ),
       ],
     );
@@ -1519,7 +1544,10 @@ class _ChannelCardState extends State<_ChannelCard> {
     n = _tvPretty(n); // « Prime: 13e Rue » → « Prime · 13e Rue » (TV-only)
     if (n.isEmpty) n = key; // garde-fou : jamais de nom vide
     final _ParsedName result = _ParsedName(n, badges);
-    if (_nameMemo.length > 4000) _nameMemo.clear(); // garde-fou mémoire
+    // Garde-fou mémoire LARGE : à 4000 le mémo se vidait en plein défilement
+    // d'une grosse liste et chaque ligne repassait par les regex. 60 000 entrées
+    // ≈ quelques Mo, couvre le plafond de chaînes chargées en mémoire.
+    if (_nameMemo.length > 60000) _nameMemo.clear();
     _nameMemo[key] = result;
     return result;
   }
@@ -1584,15 +1612,17 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Widget fallback = Center(
-      child: Text(channel.initials,
-          style: TextStyle(
-              fontSize: TvDimens.title,
-              fontWeight: FontWeight.w800,
-              color: TvTokens.muted)),
-    );
+    // Repli PARESSEUX : `initials` (regex + split) n'est calculé que si le logo
+    // manque ou échoue — pas pour chaque ligne qui a un logo.
+    Widget fallback() => Center(
+          child: Text(channel.initials,
+              style: TextStyle(
+                  fontSize: TvDimens.title,
+                  fontWeight: FontWeight.w800,
+                  color: TvTokens.muted)),
+        );
     final String? url = channel.logoUrl;
-    if (url == null || url.isEmpty) return fallback;
+    if (url == null || url.isEmpty) return fallback();
     // CACHE DISQUE + mémoire (cached_network_image) : après le 1er affichage,
     // les logos s'affichent INSTANTANÉMENT — même après un redémarrage — et ne
     // se RE-TÉLÉCHARGENT jamais. C'est ce qui donne le scroll fluide « façon
@@ -1602,10 +1632,12 @@ class _Logo extends StatelessWidget {
     return CachedNetworkImage(
       imageUrl: url,
       fit: BoxFit.contain,
-      placeholder: (_, __) => Opacity(opacity: 0.35, child: fallback),
-      errorWidget: (_, __, ___) => fallback,
-      memCacheWidth: 200,
-      memCacheHeight: 200, // décodage borné aussi en hauteur (mémoire/image)
+      placeholder: (_, __) => Opacity(opacity: 0.35, child: fallback()),
+      errorWidget: (_, __, ___) => fallback(),
+      // Décodage borné à 2× la taille AFFICHÉE (chip 48 px, écran rendu ≤ 1,5×)
+      // → 4× moins de mémoire par logo qu'à 200 px, rendu identique à l'œil.
+      memCacheWidth: 96,
+      memCacheHeight: 96,
       fadeInDuration: const Duration(milliseconds: 180),
       fadeOutDuration: const Duration(milliseconds: 120),
     );

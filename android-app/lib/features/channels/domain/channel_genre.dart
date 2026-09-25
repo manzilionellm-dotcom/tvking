@@ -136,10 +136,13 @@ abstract final class ChannelClassifier {
 
   /// Enlève les décorations type "## ## ##" / "==" / "•" et trim.
   /// Retourne un libellé propre prêt à afficher.
+  static final RegExp _rxDecor = RegExp(r'[#*=•‣◆◇■□●○▪▫]+');
+  static final RegExp _rxSpaces = RegExp(r'\s+');
+
   static String prettifyCategory(String raw) {
     String s = raw;
-    s = s.replaceAll(RegExp(r'[#*=•‣◆◇■□●○▪▫]+'), ' ');
-    s = s.replaceAll(RegExp(r'\s+'), ' ');
+    s = s.replaceAll(_rxDecor, ' ');
+    s = s.replaceAll(_rxSpaces, ' ');
     s = s.trim();
     if (s.isEmpty) return 'Autres';
     return s;
@@ -174,10 +177,20 @@ abstract final class ChannelClassifier {
   /// Évite que "sport" matche dans "transport".
   static bool _containsAsToken(String text, String needle) {
     if (needle.isEmpty) return false;
-    final RegExp pattern =
-        RegExp(r'(^|[^a-z0-9])' + RegExp.escape(needle) + r'($|[^a-z0-9])');
-    return pattern.hasMatch(text);
+    return _tokenRx(needle).hasMatch(text);
   }
+
+  /// Regex « mot entier » PRÉCOMPILÉE par mot-clé (performance, 25/09/2026).
+  /// Le classifieur teste ~200 mots-clés + ~150 motifs de pays par chaîne :
+  /// recompiler la regex à chaque test faisait des MILLIONS de compilations
+  /// sur une grosse playlist (fil UI figé). Le vocabulaire est fixe et
+  /// petit (< 500 entrées) → cache statique sans borne nécessaire.
+  static final Map<String, RegExp> _tokenCache = <String, RegExp>{};
+  static RegExp _tokenRx(String needle) => _tokenCache.putIfAbsent(
+        needle,
+        () => RegExp(
+            r'(^|[^a-z0-9])' + RegExp.escape(needle) + r'($|[^a-z0-9])'),
+      );
 
   static bool _isInternationalIndicator(String text) {
     // Si on trouve plusieurs marqueurs de pays différents,
