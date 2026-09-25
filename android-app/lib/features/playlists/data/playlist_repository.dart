@@ -22,6 +22,7 @@
 // =========================================================
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -347,11 +348,13 @@ class PlaylistRepository {
       //    strip BOM + timeout 90s — gère les serveurs paranos
       //    ou les exports Windows-1252 mal étiquetés).
       if (kDebugMode) debugPrint('[Repo] GET $url');
-      final String body = await M3uFetcher.fetch(url, httpClient: client);
+      // Octets bruts : décodage ET parsing dans l'isolate (le fil UI ne
+      // touche jamais au contenu, même pour un fichier de 60 Mo).
+      final Uint8List body = await M3uFetcher.fetchBytes(url, httpClient: client);
 
       // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch
       final M3uParseResult parsed =
-          await M3uParser.parseInBackground(body, playlistId: playlistId);
+          await M3uParser.parseBytesInBackground(body, playlistId: playlistId);
 
       if (parsed.channels.isEmpty) {
         // Source invalide → on lève ; le `catch` retire l'orpheline.
@@ -699,12 +702,12 @@ class PlaylistRepository {
       try {
         // Même fetcher robuste qu'à l'ajout initial (Latin-1 fallback,
         // User-Agent navigateur, strip BOM, timeout 90s).
-        final String body = await M3uFetcher.fetch(
+        final Uint8List body = await M3uFetcher.fetchBytes(
           playlist.m3uUrl!,
           httpClient: client,
         );
-        final M3uParseResult parsed =
-            await M3uParser.parseInBackground(body, playlistId: playlist.id!);
+        final M3uParseResult parsed = await M3uParser.parseBytesInBackground(
+            body, playlistId: playlist.id!);
         if (parsed.channels.isEmpty) {
           throw Exception('Aucune chaîne dans la nouvelle version.');
         }

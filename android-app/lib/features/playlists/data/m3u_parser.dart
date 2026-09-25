@@ -23,6 +23,10 @@
 //  importer les 19 999 autres chaînes.
 // =========================================================
 
+import 'dart:convert';
+import 'dart:isolate' show TransferableTypedData;
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 
 import '../../channels/domain/channel.dart';
@@ -50,6 +54,42 @@ abstract final class M3uParser {
     required int playlistId,
   }) {
     return compute(_m3uParseEntry, (content, playlistId));
+  }
+
+  /// Variante OCTETS (performance, 25/09/2026) : les octets bruts du
+  /// téléchargement sont TRANSFÉRÉS (pas copiés) à l'isolate, qui fait le
+  /// décodage (UTF-8 strict → repli Latin-1, BOM) PUIS le parsing. Avant, le
+  /// décodage d'un fichier de 20-60 Mo se faisait sur le fil UI (gel visible
+  /// à l'import et à chaque synchro auto). Le fil UI ne touche plus jamais
+  /// au contenu de la playlist : il ne reçoit que la liste de chaînes.
+  static Future<M3uParseResult> parseBytesInBackground(
+    Uint8List bytes, {
+    required int playlistId,
+  }) {
+    return compute(
+      _m3uParseBytesEntry,
+      (TransferableTypedData.fromList(<Uint8List>[bytes]), playlistId),
+    );
+  }
+
+  /// Décodage UTF-8 → Latin-1 fallback + BOM strip. Partagé avec M3uFetcher.
+  /// On travaille sur les octets bruts pour garder le contrôle de l'encodage.
+  static String decodeBytes(List<int> bytes) {
+    if (bytes.isEmpty) return '';
+    // Strip BOM UTF-8 (EF BB BF) si présent.
+    final List<int> stripped =
+        (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            ? (bytes is Uint8List
+                ? Uint8List.sublistView(bytes, 3) // vue, pas de copie
+                : bytes.sublist(3))
+            : bytes;
+    // UTF-8 strict d'abord — c'est le format légal de M3U_PLUS.
+    try {
+      return utf8.decode(stripped, allowMalformed: false);
+    } catch (_) {
+      // Pas du UTF-8 valide → Latin-1 / Windows-1252 (ne lève jamais).
+      return latin1.decode(stripped);
+    }
   }
 
   /// Parse un contenu M3U complet (String) → liste de chaînes.
@@ -316,3 +356,10 @@ class _ExtInf {
 // est « sendable » entre isolates.
 M3uParseResult _m3uParseEntry((String, int) args) =>
     M3uParser.parse(args.$1, playlistId: args.$2);
+
+/// Entrée isolate de [M3uParser.parseBytesInBackground] : matérialise les
+/// octets transférés, décode, parse. Tout hors du fil UI.
+M3uParseResult _m3uParseBytesEntry((TransferableTypedData, int) args) {
+  final Uint8List bytes = args.$1.materialize().asUint8List();
+  return M3uParser.parse(M3uParser.decodeBytes(bytes), playlistId: args.$2);
+}

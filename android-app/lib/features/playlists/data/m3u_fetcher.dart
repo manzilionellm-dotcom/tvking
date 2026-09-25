@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../player/data/player_settings.dart';
+import 'm3u_parser.dart' show M3uParser;
 import 'playlist_import_limits.dart';
 
 abstract final class M3uFetcher {
@@ -81,6 +82,23 @@ abstract final class M3uFetcher {
     http.Client? httpClient,
     String? preferredUserAgent,
   }) async {
+    final Uint8List bytes = await fetchBytes(
+      url,
+      httpClient: httpClient,
+      preferredUserAgent: preferredUserAgent,
+    );
+    return M3uParser.decodeBytes(bytes);
+  }
+
+  /// Comme [fetch] mais renvoie les OCTETS bruts, sans décodage : à passer à
+  /// `M3uParser.parseBytesInBackground` pour que décodage + parsing se fassent
+  /// dans l'isolate (le fil UI ne manipule jamais le contenu). Le « sniff »
+  /// anti-HTML se fait sur les premiers Ko seulement.
+  static Future<Uint8List> fetchBytes(
+    String url, {
+    http.Client? httpClient,
+    String? preferredUserAgent,
+  }) async {
     final http.Client client = httpClient ?? http.Client();
     final bool owns = httpClient == null;
 
@@ -120,10 +138,13 @@ abstract final class M3uFetcher {
           // Lecture BORNÉE : on accumule les octets mais on COUPE le flux dès
           // kMaxM3uBytes → on ne charge JAMAIS une source géante d'un bloc en
           // RAM (cause racine OOM box faibles). Dépassement → PlaylistImportTooLarge.
-          final List<int> bytes =
+          final Uint8List bytes =
               await _readCapped(resp.stream, kMaxM3uBytes).timeout(_timeout);
-          final String body = _decodeBytes(bytes);
-          final String head = body.trimLeft();
+          // Sniff sur les 64 premiers Ko (Latin-1 : ne lève jamais) — assez
+          // pour voir #EXTM3U / #EXTINF / une URL, sans décoder 60 Mo ici.
+          final int sniffLen = bytes.length < 65536 ? bytes.length : 65536;
+          final String head =
+              latin1.decode(Uint8List.sublistView(bytes, 0, sniffLen)).trimLeft();
           if (head.isEmpty) {
             lastError =
                 Exception('Le serveur a renvoyé une réponse vide pour $url');
@@ -163,7 +184,7 @@ abstract final class M3uFetcher {
               '« $ua » (les précédentes étaient bloquées).',
             );
           }
-          return body;
+          return bytes;
         } on PlaylistImportTooLarge {
           // Source trop volumineuse : la taille ne dépend PAS de la signature
           // → inutile de retenter d'autres UA. On remonte l'erreur claire à l'UI.
@@ -209,7 +230,7 @@ abstract final class M3uFetcher {
   /// Lit [stream] en accumulant les octets, mais COUPE à [maxBytes] : au-delà,
   /// on lève [PlaylistImportTooLarge] (le `for await` s'arrête, l'abonnement est
   /// annulé) → on ne matérialise JAMAIS une source géante d'un bloc. Anti-OOM.
-  static Future<List<int>> _readCapped(
+  static Future<Uint8List> _readCapped(
       Stream<List<int>> stream, int maxBytes) async {
     final BytesBuilder builder = BytesBuilder(copy: false);
     int total = 0;
@@ -226,30 +247,4 @@ abstract final class M3uFetcher {
     return builder.takeBytes();
   }
 
-  /// Décodage UTF-8 → Latin-1 fallback + BOM strip.
-  /// On travaille sur les octets bruts (jamais `body`) pour avoir le
-  /// contrôle total de l'encoding.
-  static String _decodeBytes(List<int> bytes) {
-    if (bytes.isEmpty) return '';
-
-    // Strip BOM UTF-8 (EF BB BF) si présent
-    final List<int> stripped =
-        (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-            ? bytes.sublist(3)
-            : bytes;
-
-    // Tente UTF-8 strict — c'est le format légal de M3U_PLUS.
-    try {
-      return utf8.decode(stripped, allowMalformed: false);
-    } catch (_) {
-      // Pas du UTF-8 valide → c'est probablement Latin-1 / Windows-1252.
-      // Latin-1 ne lève jamais d'exception : chaque byte = un char.
-      if (kDebugMode) {
-        debugPrint(
-          '[M3uFetcher] UTF-8 invalide, fallback Latin-1 pour ${stripped.length} bytes',
-        );
-      }
-      return latin1.decode(stripped);
-    }
-  }
 }
