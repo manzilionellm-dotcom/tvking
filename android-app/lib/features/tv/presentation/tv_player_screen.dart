@@ -598,7 +598,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
+    // Material TRANSPARENT obligatoire : le lecteur est poussé comme route
+    // SÉPARÉE (hors de TvShell). Sans Material ancêtre, Flutter dessine tout
+    // texte avec son style d'ERREUR (police machine à écrire + double
+    // soulignement jaune) — c'était le rendu vu sur la box pour « Guide /
+    // REC / Favori » et le bandeau de chaîne. Aucun autre changement visuel :
+    // les styles TvTokens prévus s'appliquent enfin.
+    return Material(
+      type: MaterialType.transparency,
+      child: PopScope(
       canPop: true,
       child: Focus(
         focusNode: _focus,
@@ -803,6 +811,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
             ),
           ),
         ),
+      ),
       ),
     );
   }
