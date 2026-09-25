@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 
 import 'core/app/app_platform.dart';
 import 'core/blackbox/black_box.dart';
+import 'core/update/update_service.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/flavor/flavor.dart';
@@ -54,6 +55,14 @@ Future<void> _bootstrap() async {
   // Cette app est la version TÉLÉVISION → le heartbeat enverra
   // platform='tv' et le panel l'affichera comme 📺 (vs 📱 mobile).
   AppPlatform.isTv = true;
+
+  // MISE À JOUR IN-APP : la TV ne regarde QUE sa propre release (zuno-tv),
+  // publiée par build-zuno-tv.yml (version.json + zuno-tv.apk). Même clé de
+  // signature à chaque build → l'installateur met à jour PAR-DESSUS, sans
+  // désinstaller (favoris, listes, licence conservés).
+  UpdateService.manifestUrl =
+      'https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv/version.json';
+  UpdateService.apkPrefix = 'zuno-tv';
 
   // BOÎTE NOIRE (enregistreur de vol) : le plus tôt possible, pour que tout le
   // démarrage soit journalisé et que la raison de la DERNIÈRE fermeture soit

@@ -30,6 +30,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../blackbox/black_box.dart';
 import 'build_flags.dart';
 
 class UpdateInfo {
@@ -50,9 +51,14 @@ class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
 
-  /// `version.json` publie par le CI sur la release `latest`.
-  static const String manifestUrl =
+  /// `version.json` publie par le CI. Defaut = release `latest` (telephone).
+  /// L'app TV (Zuno) pointe sur SA release au boot (main_tv.dart) : chaque
+  /// produit ne voit que ses propres mises a jour.
+  static String manifestUrl =
       'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/version.json';
+
+  /// Prefixe du fichier APK temporaire (pour un nom lisible dans l'installateur).
+  static String apkPrefix = '7motion';
 
   /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
   /// sinon `null`. Fail-open : toute erreur → `null`.
@@ -71,6 +77,7 @@ class UpdateService {
       final Map<String, dynamic> j =
           jsonDecode(r.body) as Map<String, dynamic>;
       final int latest = (j['versionCode'] as num?)?.toInt() ?? 0;
+      BlackBox.instance.info('MAJ', 'installee $current · disponible $latest');
       if (latest <= current) return null; // deja a jour
 
       final String url = (j['url'] ?? '').toString();
@@ -84,6 +91,7 @@ class UpdateService {
       );
     } catch (e) {
       if (kDebugMode) debugPrint('[Update] check error: $e');
+      BlackBox.instance.warn('MAJ', 'verification impossible : $e');
       return null;
     }
   }
@@ -99,7 +107,8 @@ class UpdateService {
     IOSink? sink;
     try {
       final Directory dir = await getTemporaryDirectory();
-      final File file = File('${dir.path}/7motion-${update.versionCode}.apk');
+      final File file = File('${dir.path}/$apkPrefix-${update.versionCode}.apk');
+      BlackBox.instance.breadcrumb('Mise a jour : telechargement build ${update.versionCode}');
       if (await file.exists()) {
         try {
           await file.delete();
@@ -127,13 +136,20 @@ class UpdateService {
 
       // Lance l'installateur Android (necessite la permission
       // REQUEST_INSTALL_PACKAGES, ajoutee au manifest par le CI).
+      BlackBox.instance.info('MAJ', 'APK recu (${(received / (1024 * 1024)).toStringAsFixed(1)} Mo) → installateur Android');
+      BlackBox.instance.breadcrumb('');
       final OpenResult res = await OpenFilex.open(
         file.path,
         type: 'application/vnd.android.package-archive',
       );
+      if (res.type != ResultType.done) {
+        BlackBox.instance.warn('MAJ', 'installateur non lance : ${res.type} ${res.message}');
+      }
       return res.type == ResultType.done;
     } catch (e) {
       if (kDebugMode) debugPrint('[Update] install error: $e');
+      BlackBox.instance.error('MAJ', 'echec telechargement/installation', e);
+      BlackBox.instance.breadcrumb('');
       return false;
     } finally {
       try {

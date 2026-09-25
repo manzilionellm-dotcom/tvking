@@ -6,8 +6,11 @@
 //  panel). Un bouton focusable rafraîchit le statut.
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/update/update_service.dart';
 import '../core/tv_tokens.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
@@ -30,12 +33,84 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   String _mac = '…';
   bool _busy = false;
 
+  // ----- Mise à jour in-app (bouton « qui fonctionne réellement ») -----
+  // Cycle : à l'ouverture des Réglages on VÉRIFIE (silencieux) ; la ligne
+  // affiche « À jour (build N) » ou « Nouvelle version N disponible — OK pour
+  // installer » ; OK → téléchargement avec pourcentage → installateur
+  // Android (mise à jour par-dessus, même signature). Tout est journalisé.
+  _UpdState _upd = _UpdState.checking;
+  UpdateInfo? _updInfo;
+  int _updPct = 0;
+  String _current = '';
+
   @override
   void initState() {
     super.initState();
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
+    _checkUpdate();
+  }
+
+  Future<void> _checkUpdate() async {
+    setState(() => _upd = _UpdState.checking);
+    try {
+      final PackageInfo p = await PackageInfo.fromPlatform();
+      _current = p.buildNumber;
+    } catch (_) {}
+    final UpdateInfo? u = await UpdateService.instance.check();
+    if (!mounted) return;
+    setState(() {
+      _updInfo = u;
+      _upd = u == null ? _UpdState.upToDate : _UpdState.available;
+    });
+  }
+
+  Future<void> _onUpdatePressed() async {
+    switch (_upd) {
+      case _UpdState.checking:
+      case _UpdState.downloading:
+        return; // déjà en cours
+      case _UpdState.upToDate:
+      case _UpdState.failed:
+        await _checkUpdate(); // re-vérifie à la demande
+        return;
+      case _UpdState.available:
+        final UpdateInfo? u = _updInfo;
+        if (u == null) return;
+        BlackBox.instance.info('MAJ', 'installation demandée → build ${u.versionCode}');
+        setState(() {
+          _upd = _UpdState.downloading;
+          _updPct = 0;
+        });
+        final bool ok = await UpdateService.instance.downloadAndInstall(
+          u,
+          onProgress: (double p) {
+            final int pct = (p * 100).round();
+            if (mounted && pct != _updPct) setState(() => _updPct = pct);
+          },
+        );
+        if (!mounted) return;
+        // Si l'installateur s'est ouvert, Android prend la main : l'app sera
+        // relancée par le système une fois la mise à jour installée.
+        setState(() => _upd = ok ? _UpdState.available : _UpdState.failed);
+        return;
+    }
+  }
+
+  String _updateLabel() {
+    switch (_upd) {
+      case _UpdState.checking:
+        return 'Mise à jour : vérification…';
+      case _UpdState.upToDate:
+        return 'Mise à jour : à jour${_current.isEmpty ? '' : ' (build $_current)'} — OK pour revérifier';
+      case _UpdState.available:
+        return 'Nouvelle version ${_updInfo?.versionName ?? ''} (build ${_updInfo?.versionCode}) — OK pour installer';
+      case _UpdState.downloading:
+        return 'Téléchargement de la mise à jour… $_updPct %';
+      case _UpdState.failed:
+        return 'Mise à jour : échec (réseau ou installateur) — OK pour réessayer';
+    }
   }
 
   Future<void> _refresh() async {
@@ -240,6 +315,46 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             },
           ),
           const SizedBox(height: 14),
+          // ----- Mise à jour in-app (même gabarit que les autres lignes) -----
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: _onUpdatePressed,
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.accent : TvTokens.sel;
+              final Color fg =
+                  focused ? TvTokens.onAccent : TvTokens.accentBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(
+                        _upd == _UpdState.available
+                            ? Icons.system_update_rounded
+                            : Icons.update_rounded,
+                        color: fg,
+                        size: 26),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(_updateLabel(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: TvDimens.title,
+                              fontWeight: FontWeight.w700,
+                              color: fg)),
+                    ),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
           // ----- Boîte noire (journal technique : pourquoi l'app s'est fermée) -----
           TvFocusBuilder(
             scale: TvFocusScale.large,
@@ -338,3 +453,6 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     );
   }
 }
+
+/// États du bouton de mise à jour des Réglages.
+enum _UpdState { checking, upToDate, available, downloading, failed }
