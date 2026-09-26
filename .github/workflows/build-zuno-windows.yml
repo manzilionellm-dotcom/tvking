@@ -19,6 +19,16 @@
 name: Build Zuno (Windows)
 
 on:
+  # Push : uniquement quand une pièce PROPRE au PC change (le build Windows
+  # dure ~20 min). Tant que ce fichier n'est pas sur la branche par défaut,
+  # GitHub refuse le lancement manuel : le push est alors le seul déclencheur.
+  push:
+    branches: ['main', 'claude/**']
+    paths:
+      - '.github/workflows/build-zuno-windows.yml'
+      - 'android-app/lib/main_windows.dart'
+      - 'android-app/lib/features/tv/desktop/**'
+      - 'android-app/ci/windows/**'
   workflow_dispatch:
     inputs:
       publish:
@@ -181,8 +191,10 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      # Publie sur un lancement manuel publish=true, ou sur push (release
+      # zuno-windows, séparée : aucun effet sur la box ni son lien).
       - name: Publier sur la release zuno-windows
-        if: github.event.inputs.publish == 'true'
+        if: github.event_name == 'push' || github.event.inputs.publish == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
