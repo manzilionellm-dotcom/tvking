@@ -52,7 +52,11 @@ defaults:
 jobs:
   build:
     name: Build Zuno Windows
-    runs-on: windows-latest
+    # windows-2022 (Visual Studio 2022) ÉPINGLÉ : l'image windows-latest est
+    # passée à « windows-2025-vs2026 » (Visual Studio 2026) que Flutter 3.47
+    # ne sait pas encore piloter (constaté au 1er build : « No
+    # CMAKE_CXX_COMPILER could be found »).
+    runs-on: windows-2022
     timeout-minutes: 60
     env:
       RELEASE_TAG: zuno-windows
