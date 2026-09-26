@@ -203,6 +203,19 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       );
 }
 
+/// Clavier à l'écran réutilisable (recherche du Cinéma). Rendu IDENTIQUE à
+/// celui de la recherche du Direct (même widget).
+class TvKeyboard extends StatelessWidget {
+  const TvKeyboard({super.key, required this.onType, required this.onBackspace, required this.onClear});
+  final ValueChanged<String> onType;
+  final VoidCallback onBackspace;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) =>
+      _Keyboard(onType: onType, onBackspace: onBackspace, onClear: onClear);
+}
+
 class _Keyboard extends StatelessWidget {
   const _Keyboard({required this.onType, required this.onBackspace, required this.onClear});
   final ValueChanged<String> onType;

@@ -3,6 +3,7 @@ package com.manzilionellm.tvking_device
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
+import android.os.StatFs
 import android.os.Build
 import android.os.Debug
 import android.os.Process
@@ -66,6 +67,18 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     null
                 }
                 result.success(id)
+            }
+            // Espace LIBRE (octets) sur le volume qui contient [path] : le module
+            // Cinéma refuse un téléchargement qui remplirait la box (un film
+            // HD = 1 à 4 Go ; une box = souvent 8 Go au total).
+            "getFreeBytes" -> {
+                val path = call.argument<String>("path")
+                val free = try {
+                    if (path.isNullOrEmpty()) -1L else StatFs(path).availableBytes
+                } catch (e: Exception) {
+                    -1L
+                }
+                result.success(free)
             }
             "getDeviceInfo" -> {
                 result.success(

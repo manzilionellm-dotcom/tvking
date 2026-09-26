@@ -76,6 +76,25 @@ hindi, danois, suédois, norvégien, swahili. Fichiers : `lib/l10n/app_<code>.ar
   (mêmes clés, mêmes `{placeholders}`), puis ajouter la `Locale` et son nom
   natif dans `LocaleRepository`. Le CI (`flutter gen-l10n`) génère le reste.
 
+## 3 ter. Cinéma (Films + Séries)
+
+Tuiles **Films** et **Séries** de l'accueil. Tout vient des comptes **Xtream**
+du client (tous fusionnés, comme le Direct) ; une source M3U seule n'a pas de
+catalogue VOD exploitable. API : `get_vod_categories`, `get_vod_streams`,
+`get_vod_info`, `get_series_categories`, `get_series`, `get_series_info`.
+
+| Fonction | Comment |
+|---|---|
+| Fluidité | catégories d'abord, chaque catégorie chargée à la demande et décodée en isolate ; index complet (recherche, « Récemment ajoutés », compteurs) construit en arrière-plan, borné à 40 000 titres, libéré en quittant |
+| Langue | déduite du nom des catégories (`FR |`, `[DE]`, `VOSTFR`, `华语`…) — Xtream n'a pas de champ langue ; par défaut la langue de l'app si le catalogue en a ≥ 3 catégories ; choix retenu |
+| Reprise | position enregistrée toutes les 10 s, reprise 5 s avant ; « Continuer à regarder » ; épisode fini → le suivant apparaît |
+| Lecteur | même moteur que le Direct (ExoPlayer, décodage matériel) + avance/retour cumulés (10 s → 30 s → 60 s), audio et sous-titres (choix retenu), carte « Épisode suivant » avec compte à rebours, reconnexion à la même seconde |
+| Téléchargements | refus si < 3 Go libres ; épisode téléchargé terminé → effacé et suivant téléchargé en Wi-Fi/câble (« téléchargement intelligent ») |
+| Enfants / adulte | Mode Enfants = catégories enfants seulement ; catégories adultes verrouillées par le code parental |
+
+Code : `lib/features/cinema/` (données, testées dans `test/features/cinema/`)
+et `lib/features/tv/presentation/tv_cinema_*.dart`, `tv_vod_player_screen.dart`.
+
 ## 4. Signature (à faire une fois, recommandé)
 
 Poser les secrets GitHub (Settings → Secrets and variables → Actions) :

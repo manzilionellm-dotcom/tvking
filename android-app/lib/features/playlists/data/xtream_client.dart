@@ -78,6 +78,23 @@ class XtreamClient {
   //  Endpoints publics
   // ============================================================
 
+  /// Base des URLs de lecture (`…/movie/…`, `…/series/…`), sans slash final.
+  /// Utilisée par le module Cinéma pour construire les URLs de films et
+  /// d'épisodes (jamais d'URL en dur : tout vient du compte du client).
+  String get streamBase => _baseUrl;
+
+  /// Appel brut `player_api.php?action=…` renvoyant les OCTETS de la réponse
+  /// (décodés ensuite en isolate par l'appelant). Même rotation de
+  /// signatures et même plafond mémoire que l'import des chaînes.
+  /// [softMax] : au-delà, renvoie `null` (l'appelant passe au mode « par
+  /// catégorie »). Sert au module Cinéma (films, séries, fiches détaillées).
+  Future<Uint8List?> fetchActionBytes(
+    String action, {
+    Map<String, String>? extra,
+    int? softMax,
+  }) =>
+      _getBytes(_buildUri(action: action, extra: extra), softMax: softMax);
+
   /// Vérifie que les identifiants sont valides.
   /// Lance une `XtreamException` si KO.
   Future<void> verifyCredentials() async {

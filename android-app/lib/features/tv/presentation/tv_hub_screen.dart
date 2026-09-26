@@ -28,6 +28,7 @@ import '../../../core/app/boot_guard.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
+import '../../cinema/domain/cinema_models.dart';
 import '../../device/data/device_identity.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -37,6 +38,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_app.dart';
+import 'tv_cinema_screen.dart';
 import 'tv_components.dart';
 import 'tv_diagnostic_screen.dart';
 import 'tv_live_screen.dart';
@@ -226,17 +228,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
       case _Tile.settings:
         page = const TvSettingsScreen();
       case _Tile.films:
-        page = TvEmptyState(
-          icon: Icons.movie_rounded,
-          title: context.l10n.tvNavFilms,
-          subtitle: context.l10n.tvComingSoon,
-        );
+        page = const TvCinemaScreen(kind: CinemaKind.movie);
       case _Tile.series:
-        page = TvEmptyState(
-          icon: Icons.video_library_rounded,
-          title: context.l10n.tvNavSeries,
-          subtitle: context.l10n.tvComingSoon,
-        );
+        page = const TvCinemaScreen(kind: CinemaKind.series);
     }
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => TvShell(child: page)),

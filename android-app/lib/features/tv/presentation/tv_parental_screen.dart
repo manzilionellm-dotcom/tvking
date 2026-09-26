@@ -53,7 +53,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
   // ----- Changer le code PIN -----
   Future<void> _changePin() async {
     final bool ok = await _askPin(context, context.l10n.tvCurrentCode);
-    if (!ok) return;
+    if (!ok || !mounted) return;
     final String? next = await _pickNewPin(context);
     if (next == null) return;
     try {
@@ -202,6 +202,11 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
 // =========================================================
 //  Helpers de flux PIN (pushés en plein écran, façon app TV)
 // =========================================================
+
+/// Demande le code parental (écran PIN habituel). Utilisé aussi par le
+/// Cinéma pour ouvrir une catégorie adulte.
+Future<bool> askParentalPin(BuildContext context) =>
+    _askPin(context, context.l10n.tvEnterParentalCode);
 
 /// Demande le code parental et le vérifie. Retourne true si correct.
 Future<bool> _askPin(BuildContext context, String title) async {

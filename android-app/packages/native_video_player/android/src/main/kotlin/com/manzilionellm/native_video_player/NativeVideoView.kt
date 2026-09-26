@@ -5,9 +5,13 @@ import android.os.Handler
 import android.os.Looper
 import android.view.SurfaceView
 import android.view.View
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -39,6 +43,14 @@ import io.flutter.plugin.platform.PlatformView
  * SANS rien dire à l'UI (juste « buffering »). On ne remonte une vraie erreur
  * à Dart qu'après plusieurs échecs d'affilée (filet de sécurité ultime).
  *
+ * MODE FILM / ÉPISODE (« vod », 26/09/2026) : pour un fichier fini on
+ * ajoute ce qu'un lecteur façon Netflix exige — démarrage à une position
+ * (reprise), avance/retour (seekTo), durée totale, pistes AUDIO et
+ * SOUS-TITRES (liste + choix), texte des sous-titres envoyé à Dart (affiché
+ * par Flutter par-dessus la vidéo, la SurfaceView ne dessine pas le texte),
+ * et une reconnexion qui REPREND À LA MÊME SECONDE au lieu de repartir du
+ * début. Le direct (vod = false) garde EXACTEMENT son comportement.
+ *
  * Communication avec Dart via un MethodChannel dédié (`native_video_player/<id>`).
  */
 @UnstableApi
@@ -55,6 +67,11 @@ class NativeVideoView(
 
     private var currentUrl: String? = null
 
+    // Mode film/épisode : la reconnexion reprend à [lastKnownPos].
+    private var vodMode = false
+    private var lastKnownPos = 0L
+    private var lastSentDuration = -1L
+
     // Reconnexion auto silencieuse.
     private var retryCount = 0
     private var pendingRetry: Runnable? = null
@@ -63,9 +80,21 @@ class NativeVideoView(
     private val positionPump = object : Runnable {
         override fun run() {
             if (player.isPlaying) {
-                channel.invokeMethod("position", player.currentPosition)
+                val pos = player.currentPosition
+                if (vodMode) lastKnownPos = pos
+                channel.invokeMethod("position", pos)
             }
+            sendDurationIfChanged()
             handler.postDelayed(this, 500)
+        }
+    }
+
+    /** Durée totale (ms) envoyée UNE fois quand elle est connue / change. */
+    private fun sendDurationIfChanged() {
+        val d = player.duration
+        if (d != C.TIME_UNSET && d > 0 && d != lastSentDuration) {
+            lastSentDuration = d
+            channel.invokeMethod("duration", d)
         }
     }
 
@@ -153,9 +182,67 @@ class NativeVideoView(
                 // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
                 if (url != currentUrl) retryCount = 0
                 currentUrl = url
-                player.setMediaItem(MediaItem.fromUri(url))
+                vodMode = call.argument<Boolean>("vod") ?: false
+                val startMs = (call.argument<Number>("startMs"))?.toLong() ?: 0L
+                lastKnownPos = startMs
+                lastSentDuration = -1L
+                // Langue audio / sous-titres préférée (langue de l'app) : si le
+                // film propose la piste, ExoPlayer la choisit d'office.
+                val prefAudio = call.argument<String>("preferredAudio")
+                val prefText = call.argument<String>("preferredText")
+                if (prefAudio != null || prefText != null) {
+                    val b = player.trackSelectionParameters.buildUpon()
+                    if (prefAudio != null) b.setPreferredAudioLanguage(prefAudio)
+                    if (prefText != null) b.setPreferredTextLanguage(prefText)
+                    player.trackSelectionParameters = b.build()
+                }
+                if (vodMode && startMs > 0) {
+                    player.setMediaItem(MediaItem.fromUri(url), startMs)
+                } else {
+                    player.setMediaItem(MediaItem.fromUri(url))
+                }
                 player.prepare()
                 player.playWhenReady = true
+                result.success(null)
+            }
+            "seekTo" -> {
+                val ms = (call.argument<Number>("ms"))?.toLong() ?: 0L
+                val dur = player.duration
+                val target = if (dur != C.TIME_UNSET && dur > 0) ms.coerceIn(0L, dur) else ms.coerceAtLeast(0L)
+                player.seekTo(target)
+                lastKnownPos = target
+                channel.invokeMethod("position", target)
+                result.success(null)
+            }
+            "selectTrack" -> {
+                // Choix explicite d'une piste audio ou de sous-titres.
+                val group = call.argument<Int>("group") ?: -1
+                val index = call.argument<Int>("index") ?: -1
+                val groups = player.currentTracks.groups
+                if (group < 0 || group >= groups.size) {
+                    result.error("bad_track", "groupe inconnu", null)
+                    return
+                }
+                val g = groups[group]
+                if (index < 0 || index >= g.length) {
+                    result.error("bad_track", "piste inconnue", null)
+                    return
+                }
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(g.type, false)
+                    .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, index))
+                    .build()
+                result.success(null)
+            }
+            "disableText" -> {
+                // « Sous-titres : désactivés ».
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .build()
+                channel.invokeMethod("cues", "")
                 result.success(null)
             }
             "play" -> {
@@ -189,6 +276,40 @@ class NativeVideoView(
         channel.invokeMethod("playing", isPlaying)
     }
 
+    /** Pistes disponibles → Dart (menu Audio / Sous-titres). */
+    override fun onTracksChanged(tracks: Tracks) {
+        val out = ArrayList<Map<String, Any?>>()
+        tracks.groups.forEachIndexed { gi, g ->
+            val type = when (g.type) {
+                C.TRACK_TYPE_AUDIO -> "audio"
+                C.TRACK_TYPE_TEXT -> "text"
+                else -> null
+            } ?: return@forEachIndexed
+            for (i in 0 until g.length) {
+                if (!g.isTrackSupported(i)) continue
+                val f = g.getTrackFormat(i)
+                out.add(
+                    mapOf(
+                        "type" to type,
+                        "group" to gi,
+                        "index" to i,
+                        "language" to f.language,
+                        "label" to f.label,
+                        "channels" to f.channelCount,
+                        "selected" to g.isTrackSelected(i),
+                    )
+                )
+            }
+        }
+        channel.invokeMethod("tracks", out)
+    }
+
+    /** Texte des sous-titres courants → Dart (vide = rien à afficher). */
+    override fun onCues(cueGroup: CueGroup) {
+        val text = cueGroup.cues.mapNotNull { it.text?.toString() }.joinToString("\n")
+        channel.invokeMethod("cues", text)
+    }
+
     override fun onRenderedFirstFrame() {
         retryCount = 0
         channel.invokeMethod("firstFrame", null)
@@ -199,6 +320,8 @@ class NativeVideoView(
         // qu'on n'a pas épuisé les essais. On re-prépare avec un back-off.
         if (retryCount < maxSilentRetries) {
             retryCount++
+            // Film : on retient la seconde exacte AVANT de re-préparer.
+            if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
             channel.invokeMethod("buffering", true)
             val delay = (1_000L * (1 shl (retryCount - 1))).coerceAtMost(8_000L)
             scheduleRetry(delay)
@@ -212,7 +335,12 @@ class NativeVideoView(
         cancelRetry()
         val r = Runnable {
             val url = currentUrl
-            if (url != null) {
+            if (url != null && vodMode) {
+                // Film : reprise À LA MÊME SECONDE (jamais depuis le début).
+                player.setMediaItem(MediaItem.fromUri(url), lastKnownPos)
+                player.prepare()
+                player.playWhenReady = true
+            } else if (url != null) {
                 player.setMediaItem(MediaItem.fromUri(url))
                 player.prepare()
                 player.playWhenReady = true

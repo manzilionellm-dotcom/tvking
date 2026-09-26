@@ -16,6 +16,39 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+/// Une piste audio ou de sous-titres proposée par le fichier en cours.
+@immutable
+class NativeTrack {
+  const NativeTrack({
+    required this.isAudio,
+    required this.group,
+    required this.index,
+    required this.selected,
+    this.language,
+    this.label,
+    this.channels = 0,
+  });
+
+  /// `true` = piste audio, `false` = sous-titres.
+  final bool isAudio;
+
+  /// Coordonnées de la piste côté ExoPlayer (pour [NativeVideoController.selectTrack]).
+  final int group;
+  final int index;
+
+  /// Piste actuellement jouée / affichée.
+  final bool selected;
+
+  /// Code langue (ISO 639, ex. « fr », « eng », « zh ») si le fichier le donne.
+  final String? language;
+
+  /// Libellé fourni par le fichier (ex. « VF », « English SDH »).
+  final String? label;
+
+  /// Nombre de canaux audio (2 = stéréo, 6 = 5.1) ; 0 = inconnu.
+  final int channels;
+}
+
 /// Pilote un lecteur natif et publie son état. Un controller = une vue.
 class NativeVideoController extends ChangeNotifier {
   NativeVideoController({this.initialUrl});
@@ -46,6 +79,18 @@ class NativeVideoController extends ChangeNotifier {
   /// Flux terminé (rare en direct, mais on reconnecte si ça arrive).
   bool isEnded = false;
 
+  /// Durée totale (films / épisodes). `Duration.zero` = inconnue (direct).
+  Duration duration = Duration.zero;
+
+  /// Pistes audio + sous-titres du fichier en cours (films / épisodes).
+  List<NativeTrack> tracks = const <NativeTrack>[];
+
+  /// Texte du sous-titre à afficher maintenant ('' = rien).
+  String cues = '';
+
+  // Paramètres du dernier setUrl (rejoués si la vue native arrive après).
+  Map<String, dynamic>? _pendingArgs;
+
   /// Appelé par [NativeVideoView] quand la PlatformView native est créée.
   void _attach(int viewId) {
     if (_attached || _disposed) return;
@@ -55,7 +100,8 @@ class NativeVideoController extends ChangeNotifier {
     ch.setMethodCallHandler(_onNativeCall);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
-      ch.invokeMethod<void>('setUrl', <String, dynamic>{'url': url});
+      ch.invokeMethod<void>(
+          'setUrl', _pendingArgs ?? <String, dynamic>{'url': url});
     }
   }
 
@@ -74,6 +120,25 @@ class NativeVideoController extends ChangeNotifier {
         isEnded = true;
       case 'error':
         hasError = true;
+      case 'duration':
+        duration = Duration(milliseconds: call.arguments as int);
+      case 'cues':
+        cues = (call.arguments as String?) ?? '';
+      case 'tracks':
+        final List<dynamic> raw = call.arguments as List<dynamic>;
+        tracks = <NativeTrack>[
+          for (final dynamic t in raw)
+            if (t is Map)
+              NativeTrack(
+                isAudio: t['type'] == 'audio',
+                group: (t['group'] as int?) ?? 0,
+                index: (t['index'] as int?) ?? 0,
+                selected: t['selected'] == true,
+                language: t['language'] as String?,
+                label: t['label'] as String?,
+                channels: (t['channels'] as int?) ?? 0,
+              ),
+        ];
     }
     if (!_disposed) notifyListeners();
     return null;
@@ -82,18 +147,60 @@ class NativeVideoController extends ChangeNotifier {
   /// Charge (ou recharge) une URL : zap vers une autre chaîne, ou reconnexion
   /// sur la MÊME URL. Réinitialise l'état d'affichage (logo le temps que la
   /// nouvelle 1re trame arrive).
-  void setUrl(String url) {
+  ///
+  /// Film / épisode : [vod] = true active la reprise à la même seconde en cas
+  /// de coupure, [startAt] démarre directement à une position (« Reprendre »),
+  /// [preferredAudio] / [preferredText] choisissent d'office la piste dans la
+  /// langue de l'utilisateur si le fichier la propose.
+  void setUrl(
+    String url, {
+    bool vod = false,
+    Duration startAt = Duration.zero,
+    String? preferredAudio,
+    String? preferredText,
+  }) {
     hasError = false;
     isEnded = false;
     isBuffering = true;
     firstFrame = false;
-    position = Duration.zero;
+    position = startAt;
+    duration = Duration.zero;
+    tracks = const <NativeTrack>[];
+    cues = '';
     if (!_disposed) notifyListeners();
+    final Map<String, dynamic> args = <String, dynamic>{
+      'url': url,
+      if (vod) 'vod': true,
+      if (startAt > Duration.zero) 'startMs': startAt.inMilliseconds,
+      if (preferredAudio != null) 'preferredAudio': preferredAudio,
+      if (preferredText != null) 'preferredText': preferredText,
+    };
     if (_channel != null) {
-      _channel!.invokeMethod<void>('setUrl', <String, dynamic>{'url': url});
+      _channel!.invokeMethod<void>('setUrl', args);
     } else {
       _pendingUrl = url; // pas encore rattaché : on jouera ça à l'attach.
+      _pendingArgs = args;
     }
+  }
+
+  /// Saute à [to] (bornée à la durée côté natif). Films / épisodes.
+  void seekTo(Duration to) {
+    final Duration t = to < Duration.zero ? Duration.zero : to;
+    position = t;
+    if (!_disposed) notifyListeners();
+    _channel?.invokeMethod<void>(
+        'seekTo', <String, dynamic>{'ms': t.inMilliseconds});
+  }
+
+  /// Choisit une piste audio ou de sous-titres (cf. [tracks]).
+  void selectTrack(NativeTrack t) => _channel?.invokeMethod<void>(
+      'selectTrack', <String, dynamic>{'group': t.group, 'index': t.index});
+
+  /// Coupe les sous-titres.
+  void disableSubtitles() {
+    cues = '';
+    if (!_disposed) notifyListeners();
+    _channel?.invokeMethod<void>('disableText');
   }
 
   void play() => _channel?.invokeMethod<void>('play');
