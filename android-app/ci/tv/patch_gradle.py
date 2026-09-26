@@ -27,6 +27,16 @@
 #       projet (ci/proguard-rules.pro, copié par le workflow).
 #    4. `pickFirst **/libc++_shared.so` : media_kit ET d'autres plugins
 #       embarquent la même lib → conflit de packaging sans cette ligne.
+#    5. minSdk 21 (Android 5) — COMPATIBILITÉ TOUTES BOX (26/09/2026).
+#       Flutter ≥ 3.35 impose Android 7 par défaut ; les box Android 5/6
+#       (vieilles MXQ, Fire TV Stick Fire OS 5…) affichaient alors « App non
+#       installée ». Le moteur Flutter embarqué est TOUJOURS compilé pour
+#       l'API 21 (vérifié dans libflutter.so : .note.android.ident = 21) :
+#       la limite est une règle de l'outil, pas du binaire. On passe par une
+#       variable (`kBoxMinSdk`) car l'outil Flutter réécrit à la volée tout
+#       `minSdk = 16…23` littéral ; le build ajoute
+#       --android-skip-build-dependency-validation, et le manifeste déclare
+#       tools:overrideLibrary pour les 4 plugins qui annoncent 24.
 # =========================================================
 import re
 import sys
@@ -114,6 +124,12 @@ def patch(s: str) -> str:
         )
         if n == 0:
             raise SystemExit("❌ bloc buildTypes.release introuvable dans build.gradle.kts")
+    # --- 4. minSdk 21 (voir en-tête, point 5) ---
+    if "kBoxMinSdk" not in s:
+        s, n = re.subn(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = kBoxMinSdk", s, count=1)
+        if n == 0:
+            raise SystemExit("❌ minSdk = flutter.minSdkVersion introuvable dans build.gradle.kts")
+        s = "// Compatibilité toutes box (Android 5+) — cf. ci/tv/patch_gradle.py\nval kBoxMinSdk = 21\n\n" + s
     return s
 
 
@@ -127,7 +143,7 @@ def main() -> int:
     s = patch(s)
     with open(path, "w", encoding="utf-8") as f:
         f.write(s)
-    for must in (TV_APPLICATION_ID, "enableV1Signing", "isMinifyEnabled", "pickFirsts"):
+    for must in (TV_APPLICATION_ID, "enableV1Signing", "isMinifyEnabled", "pickFirsts", "minSdk = kBoxMinSdk"):
         if must not in s:
             print("❌ build.gradle.kts TV incomplet, manque :", must, file=sys.stderr)
             return 1

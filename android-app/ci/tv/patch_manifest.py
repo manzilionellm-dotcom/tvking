@@ -32,11 +32,22 @@
 #    5. Propreté : `android.permission.DUMP` (injecté par un plugin)
 #       retiré via tools:node="remove" — inutile et effrayant pour les
 #       scanners de stores.
+#    6. Box Android 5/6 : 4 plugins officiels annoncent minSdk 24 par simple
+#       alignement sur la politique Flutter ; on autorise leur fusion dans un
+#       APK minSdk 21 (`tools:overrideLibrary`), sinon le build échoue.
 # =========================================================
 import re
 import sys
 
 APP_LABEL = "Zuno"
+
+# Plugins dont le build.gradle annonce minSdk 24 (namespaces Android).
+OVERRIDE_LIBRARIES = (
+    "io.flutter.plugins.flutter_plugin_android_lifecycle",
+    "io.flutter.plugins.localauth",
+    "io.flutter.plugins.sharedpreferences",
+    "io.flutter.plugins.urllauncher",
+)
 
 
 def _add_after_manifest_tag(s: str, line: str) -> str:
@@ -120,6 +131,12 @@ def patch(s: str) -> str:
             1,
         )
 
+    # --- 6. Box Android 5/6 : fusion des plugins annoncés « minSdk 24 » ---
+    s = _add_after_manifest_tag(
+        s,
+        '<uses-sdk tools:overrideLibrary="' + ",".join(OVERRIDE_LIBRARIES) + '"/>',
+    )
+
     # --- 5. Propreté stores ---
     s = _add_after_manifest_tag(
         s, '<uses-permission android:name="android.permission.DUMP" tools:node="remove"/>'
@@ -145,6 +162,7 @@ def main() -> int:
         "LEANBACK_LAUNCHER",
         'android:banner="@drawable/tv_banner"',
         'android:screenOrientation="landscape"',
+        "tools:overrideLibrary",
     )
     missing = [r for r in required if r not in after]
     if missing:

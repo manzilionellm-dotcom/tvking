@@ -28,17 +28,21 @@
 #       Leanback, bannière, paysage, largeHeap, applicationId historique
 #       com.sevenmotion.tv.seven_tv, signatures v1/v2/v3, R8.
 #    3. Icône + bannière Zuno (logo or sur noir), écran de lancement sombre.
-#    4. SIGNATURE STABLE — jamais la clé jetable du runner (sinon aucune mise
-#       à jour ne s'installe par-dessus) :
-#         a) clé maîtresse du propriétaire via secrets ANDROID_KEYSTORE_BASE64 +
-#            ANDROID_KEYSTORE_PASSWORD (+ ANDROID_KEY_ALIAS, défaut
-#            « sevenmotion », + ANDROID_KEY_PASSWORD, défaut = mot de passe
-#            du keystore) ;
-#         b) sinon, repli sur le keystore FIXE historique du projet
-#            (ci/defew-debug.keystore, lu dans l'historique git — il n'est
-#            volontairement pas versionné dans android-app/) ;
-#         c) sinon, ÉCHEC explicite : on ne publie pas un APK impossible à
-#            mettre à jour.
+#    4. SIGNATURE = CLÉ MAÎTRESSE DES BOX CLIENTS (corrigé le 26/09/2026).
+#       Constat sur les APK publiés : les box clients « 7 MOTION TV »
+#       portent le certificat 5145b8e0… ; les builds Zuno 89 et 90 étaient
+#       signés chacun avec une clé DIFFÉRENTE (clé jetable du runner : la
+#       copie de ~/.android/debug.keystore n'était pas prise par Gradle) →
+#       « Application non installée » sur toutes les box déjà équipées et
+#       mise à jour in-app impossible. Désormais :
+#         a) secrets ANDROID_KEYSTORE_BASE64 + ANDROID_KEYSTORE_PASSWORD ;
+#         b) sinon ANDROID_KEYSTORE_PASSWORD seul → déchiffre
+#            android-app/ci/release.jks.enc (la MÊME clé maîtresse que le
+#            workflow historique build-seventv.yml) ;
+#         c) sinon build de contrôle seulement (signature jetable), et la
+#            PUBLICATION EST REFUSÉE.
+#       Garde-fou : on ne publie QUE si le certificat de l'APK produit est
+#       exactement celui des box clients (EXPECTED_CERT) et si minSdk = 21.
 #    5. Barrière qualité : `flutter analyze` + `flutter test`.
 #    6. Build release universel ARM (32 + 64 bits : Fire Stick Lite inclus),
 #       versionCode = secondes epoch (strictement croissant → la mise à jour
@@ -89,6 +93,8 @@ env:
   # QUI PUBLIE ? Une seule réponse, lue par toutes les étapes concernées.
   PUBLIER: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.publish == 'true' }}
   RELEASE_TAG: zuno-tv
+  # Certificat des box clients « 7 MOTION TV » (seven-tv.apk, depuis l'été 2026).
+  EXPECTED_CERT: 5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61
   APK_NAME: zuno-tv.apk
 
 # Une seule publication à la fois sur ce canal : deux runs simultanés
@@ -122,6 +128,9 @@ jobs:
       # Le dossier android-app/android/ versionné a été généré par un Flutter
       # récent (AGP 9, Kotlin 2.3, Gradle 9.1) : on compile avec le canal
       # stable courant, cohérent avec ces fichiers.
+      # Compatibilité Android 5/6 malgré Flutter récent : voir
+      # android-app/ci/tv/patch_gradle.py (point 5) et le drapeau
+      # --android-skip-build-dependency-validation du build.
       - name: Setup Flutter (stable)
         uses: subosito/flutter-action@v2
         with:
@@ -250,41 +259,43 @@ jobs:
       # ------------------------------------------------------------------
       #  SIGNATURE STABLE (voir en-tête, point 4)
       # ------------------------------------------------------------------
-      - name: Signature (clé maîtresse via secrets, sinon keystore fixe)
+      - name: Signature (clé maîtresse des box clients)
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          # Commit de l'historique qui porte ci/defew-debug.keystore (clé fixe,
-          # identifiants debug standard) — repli quand la clé maîtresse manque.
-          FALLBACK_KEYSTORE_COMMIT: 32d7280a31a725fcb7386d20a9a909eff89bf161
         run: |
           set -e
-          if [ -n "$KS_B64" ] && [ -n "$KS_PW" ]; then
-            echo "$KS_B64" | base64 -d > android/app/release.jks
+          write_props() {
             cat > android/key.properties <<EOF
           storeFile=release.jks
           storePassword=$KS_PW
           keyAlias=${KS_ALIAS:-sevenmotion}
           keyPassword=${KEY_PW:-$KS_PW}
           EOF
-            echo "✓ signature RELEASE avec la clé maîtresse (alias ${KS_ALIAS:-sevenmotion})."
+          }
+          if [ -n "$KS_B64" ] && [ -n "$KS_PW" ]; then
+            echo "$KS_B64" | base64 -d > android/app/release.jks
+            write_props
+            echo "✓ clé maîtresse (secret ANDROID_KEYSTORE_BASE64)."
             echo "SIGNING=release" >> "$GITHUB_ENV"
             exit 0
           fi
-          echo "::warning title=Clé maîtresse absente::Secrets ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD non posés → repli sur le keystore fixe historique (stable entre builds, mais pas la clé maîtresse du propriétaire)."
-          if git fetch --depth=1 origin "$FALLBACK_KEYSTORE_COMMIT" \
-             && git show FETCH_HEAD:ci/defew-debug.keystore > /tmp/defew-debug.keystore 2>/dev/null \
-             && [ -s /tmp/defew-debug.keystore ]; then
-            mkdir -p ~/.android
-            cp /tmp/defew-debug.keystore ~/.android/debug.keystore
-            echo "✓ keystore fixe historique installé (~/.android/debug.keystore)."
-            echo "SIGNING=fixed-debug" >> "$GITHUB_ENV"
-            exit 0
+          if [ -n "$KS_PW" ] && [ -f ci/release.jks.enc ]; then
+            if openssl enc -d -aes-256-cbc -pbkdf2 -in ci/release.jks.enc \
+                 -out android/app/release.jks -pass pass:"$KS_PW" 2>/dev/null \
+               && keytool -list -keystore android/app/release.jks -storepass "$KS_PW" >/dev/null 2>&1; then
+              write_props
+              echo "✓ clé maîtresse (ci/release.jks.enc déchiffré, même clé que les box 7 MOTION TV)."
+              echo "SIGNING=release" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "::error title=Clé maîtresse illisible::ci/release.jks.enc ne se déchiffre pas avec ANDROID_KEYSTORE_PASSWORD."
+            exit 1
           fi
-          echo "::error title=Aucune clé stable::Ni clé maîtresse (secrets) ni keystore fixe historique. On refuse de signer avec la clé jetable du runner : aucune mise à jour ne pourrait s'installer par-dessus chez les clients."
-          exit 1
+          echo "::warning title=Pas de clé maîtresse::Aucun secret de signature → build de CONTRÔLE (signature jetable). La publication sera refusée."
+          echo "SIGNING=controle" >> "$GITHUB_ENV"
 
       # ------------------------------------------------------------------
       #  BARRIÈRE QUALITÉ : pas d'APK publié si l'analyse ou les tests échouent.
@@ -328,6 +339,7 @@ jobs:
             echo "backend visé : $BACKEND_URL_INPUT"
           fi
           flutter build apk --release --no-tree-shake-icons \
+            --android-skip-build-dependency-validation \
             --target-platform android-arm,android-arm64 \
             --build-number="$BUILD_NUMBER" \
             --build-name="$TV_VERSION_NAME" \
@@ -366,9 +378,23 @@ jobs:
           unzip -p "$APK" 'lib/*/libapp.so' | grep -aq "$WANT" \
             || { echo "❌ backend $WANT introuvable dans l'APK"; exit 1; }
           echo "✓ APK vérifié : com.sevenmotion.tv.seven_tv, Leanback, backend $WANT"
-          # Empreinte de signature (pour la traçabilité dans les notes de release).
+          # Compatibilité toutes box : minSdk 21 (Android 5) réellement dans l'APK.
+          MIN_SDK=$(echo "$BADGING" | grep -oE "^sdkVersion:'[0-9]+'" | grep -oE "[0-9]+" || true)
+          echo "minSdk de l'APK : ${MIN_SDK:-?}"
+          [ "$MIN_SDK" = "21" ] || { echo "❌ minSdk ${MIN_SDK:-?} ≠ 21 : les box Android 5/6 refuseraient l'installation"; exit 1; }
+          # Signature : DOIT être celle des box clients pour publier.
           APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner
-          "$APKSIGNER" verify --print-certs "$APK" | grep -i "SHA-256" | head -1 || true
+          CERT=$("$APKSIGNER" verify --print-certs "$APK" | grep -m1 -oiE "SHA-256 digest: [0-9a-f]+" | awk '{print $3}')
+          echo "certificat de l'APK : $CERT"
+          echo "APK_CERT=$CERT" >> "$GITHUB_ENV"
+          if [ "$CERT" = "$EXPECTED_CERT" ]; then
+            echo "✓ signature = clé des box clients (mise à jour par-dessus garantie)."
+          elif [ "$PUBLIER" = "true" ]; then
+            echo "::error title=Signature différente des box clients::$CERT ≠ $EXPECTED_CERT → publication refusée (sinon « Application non installée » chez tous les clients)."
+            exit 1
+          else
+            echo "::warning title=Signature de contrôle::$CERT (build non publié)."
+          fi
 
       - name: Upload APK artifact (Zuno TV)
         uses: actions/upload-artifact@v4
