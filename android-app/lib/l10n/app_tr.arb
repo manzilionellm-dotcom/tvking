@@ -1,36 +1,34 @@
 {
-  "@@locale": "fr",
-  "@@x-template": true,
-  "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",
+  "@@locale": "tr",
   "appName": "The Few",
   "@appName": {
     "description": "Nom de la marque — ne pas traduire."
   },
-  "appTagline": "Cinéma sans limites",
+  "appTagline": "Sınırsız sinema",
   "@appTagline": {
     "description": "Phrase signature affichée sous le logo."
   },
-  "navHome": "Accueil",
-  "navLive": "Live TV",
-  "navSearch": "Recherche",
-  "navAi": "IA",
-  "navFavorites": "Favoris",
+  "navHome": "Ana Sayfa",
+  "navLive": "Canlı TV",
+  "navSearch": "Ara",
+  "navAi": "Yapay Zeka",
+  "navFavorites": "Favoriler",
   "navProfile": "Profil",
-  "sectionResume": "Reprendre",
-  "sectionFavorites": "Favoris",
-  "sectionSportsLive": "Sports en direct",
-  "sectionLiveNow": "En direct maintenant",
-  "sectionMovies": "Films",
-  "sectionSeries": "Séries",
-  "sectionKids": "Jeunesse",
-  "sectionNews": "Info & Actualités",
-  "sectionMusic": "Musique",
-  "sectionDocs": "Documentaires",
-  "sectionDiscover": "À découvrir",
-  "sectionLiveOnFavorites": "Live maintenant sur tes favoris",
-  "sectionTonight": "Découvre ce soir",
-  "sectionResumeWhereYouLeftOff": "Reprendre où tu t'es arrêté",
-  "channelCount": "{count, plural, =0{Aucune chaîne} =1{1 chaîne} other{{count} chaînes}}",
+  "sectionResume": "Devam Et",
+  "sectionFavorites": "Favoriler",
+  "sectionSportsLive": "Canlı Spor",
+  "sectionLiveNow": "Şu An Canlı",
+  "sectionMovies": "Filmler",
+  "sectionSeries": "Diziler",
+  "sectionKids": "Çocuk",
+  "sectionNews": "Haber & Güncel",
+  "sectionMusic": "Müzik",
+  "sectionDocs": "Belgeseller",
+  "sectionDiscover": "Keşfet",
+  "sectionLiveOnFavorites": "Favorilerinde şu an canlı",
+  "sectionTonight": "Bu akşam keşfet",
+  "sectionResumeWhereYouLeftOff": "Kaldığın yerden devam et",
+  "channelCount": "{count, plural, =0{Kanal yok} =1{1 kanal} other{{count} kanal}}",
   "@channelCount": {
     "placeholders": {
       "count": {
@@ -38,83 +36,83 @@
       }
     }
   },
-  "buttonContinue": "Continuer",
-  "buttonNext": "Suivant",
-  "buttonSkip": "Passer",
-  "buttonStart": "Commencer",
-  "buttonOk": "OK",
-  "buttonCancel": "Annuler",
-  "buttonSave": "Enregistrer",
-  "buttonDelete": "Supprimer",
-  "buttonRetry": "Réessayer",
-  "buttonResume": "Reprendre",
-  "buttonWatch": "Regarder",
-  "buttonSeeAll": "Tout voir",
-  "buttonSyncNow": "Synchroniser",
-  "playerPause": "Pause",
-  "playerPlay": "Lecture",
+  "buttonContinue": "Devam",
+  "buttonNext": "İleri",
+  "buttonSkip": "Atla",
+  "buttonStart": "Başla",
+  "buttonOk": "Tamam",
+  "buttonCancel": "İptal",
+  "buttonSave": "Kaydet",
+  "buttonDelete": "Sil",
+  "buttonRetry": "Tekrar dene",
+  "buttonResume": "Devam et",
+  "buttonWatch": "İzle",
+  "buttonSeeAll": "Tümünü gör",
+  "buttonSyncNow": "Senkronize et",
+  "playerPause": "Duraklat",
+  "playerPlay": "Oynat",
   "playerRec": "REC",
-  "playerStop": "STOP",
-  "playerAudioOnly": "Écouteurs",
-  "playerVideo": "Vidéo",
-  "playerUpNextIn": "À suivre dans {seconds}s",
+  "playerStop": "DURDUR",
+  "playerAudioOnly": "Sadece ses",
+  "playerVideo": "Video",
+  "playerUpNextIn": "{seconds} sn sonra sıradaki",
   "@playerUpNextIn": {
     "placeholders": { "seconds": { "type": "int" } }
   },
-  "playerUpNextCancel": "Annuler",
-  "playerUpNextPlay": "Lire",
-  "playerTracks": "Pistes",
-  "playerSpeed": "Vitesse",
-  "playerRatio": "Format",
-  "playerSettings": "Réglages",
-  "playerRecording": "Enregistrement en cours",
-  "castIdle": "Cast vers une TV",
-  "castSearching": "Recherche sur ton WiFi…",
-  "castDevicesHint": "DLNA · Roku · navigateur web.",
-  "castSendTo": "Envoyer vers…",
-  "castConnected": "Cast en cours sur",
-  "castStop": "Arrêter",
-  "castViaBrowser": "Cast via navigateur",
-  "castViaBrowserSubtitle": "Marche sur N'IMPORTE quelle TV avec un navigateur web. QR code à scanner avec la TV.",
-  "settingsTitle": "Réglages",
-  "settingsAppearance": "Apparence",
-  "settingsLanguage": "Langue",
-  "settingsLanguageSystem": "Système",
-  "settingsPlayer": "Lecteur vidéo",
-  "settingsPlaylists": "Playlists",
-  "settingsRecordings": "Enregistrements",
-  "settingsStorage": "Stockage",
-  "settingsApp": "Application",
-  "settingsAbout": "À propos",
-  "settingsProvisioning": "Provisioning à distance",
-  "settingsClearHistory": "Vider l'historique de visionnage",
-  "themeCinema": "Cinema",
-  "themeCinemaSubtitle": "Maison Noir",
-  "themeDaylight": "Daylight",
-  "themeDaylightSubtitle": "Lumière du jour",
-  "themeAuto": "Auto",
-  "themeAutoSubtitle": "Suit l'OS",
-  "deviceQuestion": "Tu es sur quoi ?",
-  "deviceHelp": "On adapte l'expérience à ton appareil. Tu pourras changer ce choix dans les Réglages.",
-  "devicePhone": "Téléphone",
-  "devicePhoneSubtitle": "Smartphone, tablette",
-  "devicePhoneDesc": "Interface tactile compacte. Navigation au doigt, mini-player et écran plein écran fluides.",
-  "deviceTv": "Télévision",
+  "playerUpNextCancel": "İptal",
+  "playerUpNextPlay": "Oynat",
+  "playerTracks": "Ses & Altyazı",
+  "playerSpeed": "Hız",
+  "playerRatio": "Görüntü oranı",
+  "playerSettings": "Ayarlar",
+  "playerRecording": "Kayıt yapılıyor",
+  "castIdle": "TV'ye yansıt",
+  "castSearching": "Wi-Fi ağında aranıyor…",
+  "castDevicesHint": "DLNA · Roku · web tarayıcı.",
+  "castSendTo": "Şuraya gönder…",
+  "castConnected": "Yansıtılıyor:",
+  "castStop": "Durdur",
+  "castViaBrowser": "Tarayıcıyla yansıt",
+  "castViaBrowserSubtitle": "Web tarayıcısı olan HER TV'de çalışır. QR kodu TV ile tara.",
+  "settingsTitle": "Ayarlar",
+  "settingsAppearance": "Görünüm",
+  "settingsLanguage": "Dil",
+  "settingsLanguageSystem": "Sistem",
+  "settingsPlayer": "Video oynatıcı",
+  "settingsPlaylists": "Oynatma listeleri",
+  "settingsRecordings": "Kayıtlar",
+  "settingsStorage": "Depolama",
+  "settingsApp": "Uygulama",
+  "settingsAbout": "Hakkında",
+  "settingsProvisioning": "Uzaktan kurulum",
+  "settingsClearHistory": "İzleme geçmişini temizle",
+  "themeCinema": "Sinema",
+  "themeCinemaSubtitle": "Derin siyah",
+  "themeDaylight": "Gün Işığı",
+  "themeDaylightSubtitle": "Aydınlık tema",
+  "themeAuto": "Otomatik",
+  "themeAutoSubtitle": "Sistemi takip eder",
+  "deviceQuestion": "Hangi cihazdasın?",
+  "deviceHelp": "Deneyimi cihazına göre uyarlıyoruz. Bu seçimi Ayarlar'dan değiştirebilirsin.",
+  "devicePhone": "Telefon",
+  "devicePhoneSubtitle": "Akıllı telefon, tablet",
+  "devicePhoneDesc": "Kompakt dokunmatik arayüz. Parmakla gezinme, mini oynatıcı ve akıcı tam ekran.",
+  "deviceTv": "Televizyon",
   "deviceTvSubtitle": "Android TV, Fire TV, Google TV",
-  "deviceTvDesc": "Layout XL pour télécommande. Focus rings visibles à 3 m, tailles cinéma, raccourcis D-pad.",
-  "deviceAuto": "Auto",
-  "deviceAutoSubtitle": "Détection automatique",
-  "deviceAutoDesc": "L'app devine d'après ton écran. Bon choix si tu ne sais pas, ou si tu utilises plusieurs appareils.",
-  "onboardingWelcomeTitle": "Bienvenue sur The Few",
-  "onboardingWelcomeDesc": "Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.",
-  "onboardingLoadTitle": "Charge ta playlist",
-  "onboardingLoadDesc": "Colle une URL M3U, ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.",
-  "onboardingVipTitle": "Profite de la signature VIP",
-  "onboardingVipDesc": "Logos haute qualité, navigation Apple TV, recherche instantanée, lecteur 4K/8K.",
-  "emptyNoPlaylist": "Aucune playlist",
-  "emptyAddYourFirst": "Ajoute ta première playlist M3U ou tes identifiants Xtream pour commencer.",
-  "addPlaylist": "Ajouter une playlist",
-  "resumeBannerTitle": "Reprendre {channel}",
+  "deviceTvDesc": "Kumanda için XL düzen. 3 m'den görünen odak halkaları, sinema boyutları, D-pad kısayolları.",
+  "deviceAuto": "Otomatik",
+  "deviceAutoSubtitle": "Otomatik algılama",
+  "deviceAutoDesc": "Uygulama ekranından tahmin eder. Emin değilsen ya da birden fazla cihaz kullanıyorsan iyi bir seçim.",
+  "onboardingWelcomeTitle": "The Few'a hoş geldin",
+  "onboardingWelcomeDesc": "Sınırsız sinema. TV için tasarlandı, telefonun için optimize edildi, her yerde güzel.",
+  "onboardingLoadTitle": "Listeni yükle",
+  "onboardingLoadDesc": "Bir M3U URL'si ya da Xtream bilgilerini yapıştır. Kanalların saniyeler içinde görünür.",
+  "onboardingVipTitle": "VIP ayrıcalığının tadını çıkar",
+  "onboardingVipDesc": "Yüksek kaliteli logolar, Apple TV tarzı gezinme, anında arama, 4K/8K oynatıcı.",
+  "emptyNoPlaylist": "Oynatma listesi yok",
+  "emptyAddYourFirst": "Başlamak için ilk M3U listeni ya da Xtream bilgilerini ekle.",
+  "addPlaylist": "Liste ekle",
+  "resumeBannerTitle": "Devam et: {channel}",
   "@resumeBannerTitle": {
     "placeholders": {
       "channel": {
@@ -122,7 +120,7 @@
       }
     }
   },
-  "resumeBannerSubtitle": "Tu regardais il y a {minutes} min",
+  "resumeBannerSubtitle": "{minutes} dk önce izliyordun",
   "@resumeBannerSubtitle": {
     "placeholders": {
       "minutes": {
@@ -130,40 +128,40 @@
       }
     }
   },
-  "resumeBannerDismiss": "Plus tard",
-  "detailProgram": "Programme",
+  "resumeBannerDismiss": "Sonra",
+  "detailProgram": "Program",
   "@detailProgram": {
     "description": "Texte UI : detailProgram"
   },
-  "detailNowPlaying": "En cours",
+  "detailNowPlaying": "Şu an",
   "@detailNowPlaying": {
     "description": "Texte UI : detailNowPlaying"
   },
-  "detailUpNext": "Après",
+  "detailUpNext": "Sonraki",
   "@detailUpNext": {
     "description": "Texte UI : detailUpNext"
   },
-  "detailDetails": "Détails",
+  "detailDetails": "Ayrıntılar",
   "@detailDetails": {
     "description": "Texte UI : detailDetails"
   },
-  "detailCategory": "Catégorie",
+  "detailCategory": "Kategori",
   "@detailCategory": {
     "description": "Texte UI : detailCategory"
   },
-  "detailCountry": "Pays",
+  "detailCountry": "Ülke",
   "@detailCountry": {
     "description": "Texte UI : detailCountry"
   },
-  "detailQuality": "Qualité",
+  "detailQuality": "Kalite",
   "@detailQuality": {
     "description": "Texte UI : detailQuality"
   },
-  "detailCatchup": "Catch-up",
+  "detailCatchup": "Arşiv",
   "@detailCatchup": {
     "description": "Texte UI : detailCatchup"
   },
-  "detailCatchupAvailable": "Disponible · {days} j",
+  "detailCatchupAvailable": "Mevcut · {days} gün",
   "@detailCatchupAvailable": {
     "description": "Texte UI : detailCatchupAvailable",
     "placeholders": {
@@ -172,23 +170,23 @@
       }
     }
   },
-  "detailCatchupUnavailable": "Indisponible",
+  "detailCatchupUnavailable": "Mevcut değil",
   "@detailCatchupUnavailable": {
     "description": "Texte UI : detailCatchupUnavailable"
   },
-  "detailProgramsAndReplay": "Programmes du jour & Replay",
+  "detailProgramsAndReplay": "Günün programları & Tekrar",
   "@detailProgramsAndReplay": {
     "description": "Texte UI : detailProgramsAndReplay"
   },
-  "badgeLive": "LIVE",
+  "badgeLive": "CANLI",
   "@badgeLive": {
     "description": "Texte UI : badgeLive"
   },
-  "badgeReplay": "REPLAY",
+  "badgeReplay": "TEKRAR",
   "@badgeReplay": {
     "description": "Texte UI : badgeReplay"
   },
-  "badgeSoon": "BIENTÔT",
+  "badgeSoon": "YAKINDA",
   "@badgeSoon": {
     "description": "Texte UI : badgeSoon"
   },
@@ -196,23 +194,23 @@
   "@viewModeList": {
     "description": "Texte UI : viewModeList"
   },
-  "viewModeGrid": "Grille",
+  "viewModeGrid": "Izgara",
   "@viewModeGrid": {
     "description": "Texte UI : viewModeGrid"
   },
-  "sectionFilterHint": "Filtrer dans cette section...",
+  "sectionFilterHint": "Bu bölümde filtrele...",
   "@sectionFilterHint": {
     "description": "Texte UI : sectionFilterHint"
   },
-  "filterAll": "Toutes",
+  "filterAll": "Tümü",
   "@filterAll": {
     "description": "Texte UI : filterAll"
   },
-  "sectionEmptyNoChannel": "Aucune chaîne dans cette section",
+  "sectionEmptyNoChannel": "Bu bölümde kanal yok",
   "@sectionEmptyNoChannel": {
     "description": "Texte UI : sectionEmptyNoChannel"
   },
-  "searchNoResult": "Aucun résultat pour \"{query}\"",
+  "searchNoResult": "\"{query}\" için sonuç yok",
   "@searchNoResult": {
     "description": "Texte UI : searchNoResult",
     "placeholders": {
@@ -221,75 +219,75 @@
       }
     }
   },
-  "sectionEmptyAdjustFilters": "Essaie d'ajuster les filtres ou la recherche.",
+  "sectionEmptyAdjustFilters": "Filtreleri ya da aramayı değiştirmeyi dene.",
   "@sectionEmptyAdjustFilters": {
     "description": "Texte UI : sectionEmptyAdjustFilters"
   },
-  "sectionTop10Today": "Top 10 aujourd'hui",
+  "sectionTop10Today": "Bugün Top 10",
   "@sectionTop10Today": {
     "description": "Texte UI : sectionTop10Today"
   },
-  "sectionEntertainment": "Divertissement",
+  "sectionEntertainment": "Eğlence",
   "@sectionEntertainment": {
     "description": "Texte UI : sectionEntertainment"
   },
-  "sectionInternational": "International",
+  "sectionInternational": "Uluslararası",
   "@sectionInternational": {
     "description": "Texte UI : sectionInternational"
   },
-  "sectionAdult": "Adulte",
+  "sectionAdult": "Yetişkin",
   "@sectionAdult": {
     "description": "Texte UI : sectionAdult"
   },
-  "sectionOthers": "Autres",
+  "sectionOthers": "Diğer",
   "@sectionOthers": {
     "description": "Texte UI : sectionOthers"
   },
-  "catSport": "Sport",
+  "catSport": "Spor",
   "@catSport": {
     "description": "Texte UI : catSport"
   },
-  "catInfo": "Info",
+  "catInfo": "Haber",
   "@catInfo": {
     "description": "Texte UI : catInfo"
   },
-  "catKids": "Enfants",
+  "catKids": "Çocuk",
   "@catKids": {
     "description": "Texte UI : catKids"
   },
-  "catScience": "Sciences",
+  "catScience": "Bilim",
   "@catScience": {
     "description": "Texte UI : catScience"
   },
-  "catMovies": "Films",
+  "catMovies": "Filmler",
   "@catMovies": {
     "description": "Texte UI : catMovies"
   },
-  "catMusic": "Musique",
+  "catMusic": "Müzik",
   "@catMusic": {
     "description": "Texte UI : catMusic"
   },
-  "homeListRefreshed": "Liste actualisée — chaînes rechargées",
+  "homeListRefreshed": "Liste güncellendi — kanallar yeniden yüklendi",
   "@homeListRefreshed": {
     "description": "Texte UI : homeListRefreshed"
   },
-  "homeListUpToDate": "Liste à jour",
+  "homeListUpToDate": "Liste güncel",
   "@homeListUpToDate": {
     "description": "Texte UI : homeListUpToDate"
   },
-  "tooltipRefreshList": "Actualiser la liste",
+  "tooltipRefreshList": "Listeyi yenile",
   "@tooltipRefreshList": {
     "description": "Texte UI : tooltipRefreshList"
   },
-  "tooltipConnectActivate": "Me connecter / Activer",
+  "tooltipConnectActivate": "Giriş yap / Etkinleştir",
   "@tooltipConnectActivate": {
     "description": "Texte UI : tooltipConnectActivate"
   },
-  "tooltipSearch": "Recherche",
+  "tooltipSearch": "Ara",
   "@tooltipSearch": {
     "description": "Texte UI : tooltipSearch"
   },
-  "tooltipFavorites": "Favoris",
+  "tooltipFavorites": "Favoriler",
   "@tooltipFavorites": {
     "description": "Texte UI : tooltipFavorites"
   },
@@ -297,35 +295,35 @@
   "@tooltipProfile": {
     "description": "Texte UI : tooltipProfile"
   },
-  "adultAuthCancelled": "Authentification annulée — section Adulte verrouillée",
+  "adultAuthCancelled": "Kimlik doğrulama iptal edildi — Yetişkin bölümü kilitli",
   "@adultAuthCancelled": {
     "description": "Texte UI : adultAuthCancelled"
   },
-  "adultAuthReason": "Accède à la section Adulte",
+  "adultAuthReason": "Yetişkin bölümüne eriş",
   "@adultAuthReason": {
     "description": "Texte UI : adultAuthReason"
   },
-  "navDirect": "Direct",
+  "navDirect": "Canlı",
   "@navDirect": {
     "description": "Texte UI : navDirect"
   },
-  "navGuide": "Guide",
+  "navGuide": "Rehber",
   "@navGuide": {
     "description": "Texte UI : navGuide"
   },
-  "navRefresh": "Actualiser",
+  "navRefresh": "Yenile",
   "@navRefresh": {
     "description": "Texte UI : navRefresh"
   },
-  "tvFeatured": "À LA UNE",
+  "tvFeatured": "ÖNE ÇIKANLAR",
   "@tvFeatured": {
     "description": "Texte UI : tvFeatured"
   },
-  "refreshNoPlaylist": "Aucune playlist actualisée.",
+  "refreshNoPlaylist": "Hiçbir liste yenilenmedi.",
   "@refreshNoPlaylist": {
     "description": "Texte UI : refreshNoPlaylist"
   },
-  "refreshDoneCount": "Actualisé : {count} playlist(s).",
+  "refreshDoneCount": "Yenilendi: {count} liste.",
   "@refreshDoneCount": {
     "description": "Texte UI : refreshDoneCount",
     "placeholders": {
@@ -334,7 +332,7 @@
       }
     }
   },
-  "errorWithMessage": "Erreur : {error}",
+  "errorWithMessage": "Hata: {error}",
   "@errorWithMessage": {
     "description": "Texte UI : errorWithMessage",
     "placeholders": {
@@ -343,23 +341,23 @@
       }
     }
   },
-  "gridEmptyTitle": "Aucune chaîne ici",
+  "gridEmptyTitle": "Burada kanal yok",
   "@gridEmptyTitle": {
     "description": "Texte UI : gridEmptyTitle"
   },
-  "gridEmptySubtitle": "Ajoute une playlist ou ajuste tes filtres.",
+  "gridEmptySubtitle": "Bir liste ekle ya da filtrelerini değiştir.",
   "@gridEmptySubtitle": {
     "description": "Texte UI : gridEmptySubtitle"
   },
-  "categoriesTitle": "Catégories",
+  "categoriesTitle": "Kategoriler",
   "@categoriesTitle": {
     "description": "Texte UI : categoriesTitle"
   },
-  "categoriesEmpty": "Aucune chaîne — ajoute d'abord une playlist.",
+  "categoriesEmpty": "Kanal yok — önce bir liste ekle.",
   "@categoriesEmpty": {
     "description": "Texte UI : categoriesEmpty"
   },
-  "focusedNoChannelFound": "Aucune chaîne {title} trouvée dans tes playlists.",
+  "focusedNoChannelFound": "Listelerinde {title} kanalı bulunamadı.",
   "@focusedNoChannelFound": {
     "description": "Texte UI : focusedNoChannelFound",
     "placeholders": {
@@ -368,99 +366,99 @@
       }
     }
   },
-  "searchHint": "Chercher une chaîne, un sport, un film…",
+  "searchHint": "Kanal, spor, film ara…",
   "@searchHint": {
     "description": "Texte UI : searchHint"
   },
-  "buttonBack": "Retour",
+  "buttonBack": "Geri",
   "@buttonBack": {
     "description": "Texte UI : buttonBack"
   },
-  "searchRecent": "Récent",
+  "searchRecent": "Son aramalar",
   "@searchRecent": {
     "description": "Texte UI : searchRecent"
   },
-  "buttonClear": "Effacer",
+  "buttonClear": "Temizle",
   "@buttonClear": {
     "description": "Texte UI : buttonClear"
   },
-  "searchExploreByCategory": "Explorer par catégorie",
+  "searchExploreByCategory": "Kategoriye göre keşfet",
   "@searchExploreByCategory": {
     "description": "Texte UI : searchExploreByCategory"
   },
-  "searchDiscoveryEmpty": "Charge ta première playlist pour découvrir des chaînes.",
+  "searchDiscoveryEmpty": "Kanalları keşfetmek için ilk listeni yükle.",
   "@searchDiscoveryEmpty": {
     "description": "Texte UI : searchDiscoveryEmpty"
   },
-  "searchNoResultHelp": "Vérifie l'orthographe ou essaye un autre mot. Si la chaîne devrait être là, demande à ton revendeur de la rajouter.",
+  "searchNoResultHelp": "Yazımı kontrol et ya da başka bir kelime dene. Kanal burada olmalıysa bayinden eklemesini iste.",
   "@searchNoResultHelp": {
     "description": "Texte UI : searchNoResultHelp"
   },
-  "searchTipsToTry": "PISTES À ESSAYER",
+  "searchTipsToTry": "ŞUNLARI DENE",
   "@searchTipsToTry": {
     "description": "Texte UI : searchTipsToTry"
   },
-  "searchEmptyCatalogTitle": "Aucune chaîne pour l'instant",
+  "searchEmptyCatalogTitle": "Henüz kanal yok",
   "@searchEmptyCatalogTitle": {
     "description": "Texte UI : searchEmptyCatalogTitle"
   },
-  "searchEmptyCatalogHelp": "Ton revendeur doit activer ton abonnement avant que tu puisses chercher. Reviens dans quelques minutes.",
+  "searchEmptyCatalogHelp": "Arama yapabilmen için bayinin aboneliğini etkinleştirmesi gerekiyor. Birkaç dakika sonra tekrar gel.",
   "@searchEmptyCatalogHelp": {
     "description": "Texte UI : searchEmptyCatalogHelp"
   },
-  "navCategories": "Catégories",
+  "navCategories": "Kategoriler",
   "@navCategories": {
     "description": "Texte UI : navCategories"
   },
-  "mySource": "Ma source",
+  "mySource": "Kaynağım",
   "@mySource": {
     "description": "Texte UI : mySource"
   },
-  "sourceQuestion": "Comment veux-tu accéder à tes chaînes ?",
+  "sourceQuestion": "Kanallarına nasıl erişmek istersin?",
   "@sourceQuestion": {
     "description": "Texte UI : sourceQuestion"
   },
-  "sourceLoginCode": "Me connecter avec mon code",
+  "sourceLoginCode": "Kodumla giriş yap",
   "@sourceLoginCode": {
     "description": "Texte UI : sourceLoginCode"
   },
-  "sourceLoginCodeSub": "Saisis ton utilisateur + mot de passe",
+  "sourceLoginCodeSub": "Kullanıcı adı + şifreni gir",
   "@sourceLoginCodeSub": {
     "description": "Texte UI : sourceLoginCodeSub"
   },
-  "sourceOwn": "J'ai ma propre source",
+  "sourceOwn": "Kendi kaynağım var",
   "@sourceOwn": {
     "description": "Texte UI : sourceOwn"
   },
-  "sourceOwnSub": "Lien M3U / M3U8 ou codes Xtream",
+  "sourceOwnSub": "M3U / M3U8 bağlantısı ya da Xtream kodları",
   "@sourceOwnSub": {
     "description": "Texte UI : sourceOwnSub"
   },
-  "sourceActivate": "Activer l'app",
+  "sourceActivate": "Uygulamayı etkinleştir",
   "@sourceActivate": {
     "description": "Texte UI : sourceActivate"
   },
-  "sourceActivateSub": "Contacte-nous (ta MAC est déjà jointe au message)",
+  "sourceActivateSub": "Bize ulaş (MAC adresin mesaja zaten eklendi)",
   "@sourceActivateSub": {
     "description": "Texte UI : sourceActivateSub"
   },
-  "activateAtHomeTitle": "Activer l'app à la maison",
+  "activateAtHomeTitle": "Uygulamayı evden etkinleştir",
   "@activateAtHomeTitle": {
     "description": "Texte UI : activateAtHomeTitle"
   },
-  "activateAtHomeDesc": "Communique cet identifiant à ton revendeur pour qu'il active tes chaînes à distance.",
+  "activateAtHomeDesc": "Kanallarını uzaktan etkinleştirmesi için bu kimliği bayine ilet.",
   "@activateAtHomeDesc": {
     "description": "Texte UI : activateAtHomeDesc"
   },
-  "buttonCopy": "Copier",
+  "buttonCopy": "Kopyala",
   "@buttonCopy": {
     "description": "Texte UI : buttonCopy"
   },
-  "buttonSend": "Envoyer",
+  "buttonSend": "Gönder",
   "@buttonSend": {
     "description": "Texte UI : buttonSend"
   },
-  "idCopied": "Identifiant copié : {id}",
+  "idCopied": "Kimlik kopyalandı: {id}",
   "@idCopied": {
     "description": "Texte UI : idCopied",
     "placeholders": {
@@ -469,15 +467,15 @@
       }
     }
   },
-  "resumeEyebrow": "REPRENDRE",
+  "resumeEyebrow": "DEVAM ET",
   "@resumeEyebrow": {
     "description": "Texte UI : resumeEyebrow"
   },
-  "resumeAgoNow": "à l'instant",
+  "resumeAgoNow": "az önce",
   "@resumeAgoNow": {
     "description": "Texte UI : resumeAgoNow"
   },
-  "resumeAgoMinutes": "il y a {minutes} min",
+  "resumeAgoMinutes": "{minutes} dk önce",
   "@resumeAgoMinutes": {
     "description": "Texte UI : resumeAgoMinutes",
     "placeholders": {
@@ -486,7 +484,7 @@
       }
     }
   },
-  "resumeWatchingAgo": "Tu regardais {ago}",
+  "resumeWatchingAgo": "{ago} izliyordun",
   "@resumeWatchingAgo": {
     "description": "Texte UI : resumeWatchingAgo",
     "placeholders": {
@@ -495,31 +493,31 @@
       }
     }
   },
-  "activateSubTitle": "Active ton abonnement",
+  "activateSubTitle": "Aboneliğini etkinleştir",
   "@activateSubTitle": {
     "description": "Texte UI : activateSubTitle"
   },
-  "activateSubDesc": "Connecte-toi avec ton code (utilisateur + mot de passe), ou donne ta MAC à ton revendeur pour qu'il active à distance.",
+  "activateSubDesc": "Kodunla giriş yap (kullanıcı adı + şifre) ya da uzaktan etkinleştirmesi için MAC adresini bayine ver.",
   "@activateSubDesc": {
     "description": "Texte UI : activateSubDesc"
   },
-  "freeTrialBadge": "Essai gratuit 7 jours · puis 5 €/an",
+  "freeTrialBadge": "7 gün ücretsiz deneme · sonra yılda 5 €",
   "@freeTrialBadge": {
     "description": "Texte UI : freeTrialBadge"
   },
-  "activateMySub": "Activer mon abonnement",
+  "activateMySub": "Aboneliğimi etkinleştir",
   "@activateMySub": {
     "description": "Texte UI : activateMySub"
   },
-  "remoteActivationByReseller": "Activation à distance par ton revendeur",
+  "remoteActivationByReseller": "Bayin tarafından uzaktan etkinleştirme",
   "@remoteActivationByReseller": {
     "description": "Texte UI : remoteActivationByReseller"
   },
-  "recStartFailed": "Enregistrement impossible à démarrer. Réessaie.",
+  "recStartFailed": "Kayıt başlatılamadı. Tekrar dene.",
   "@recStartFailed": {
     "description": "Texte UI : recStartFailed"
   },
-  "startFailedWithError": "Impossible de démarrer : {error}",
+  "startFailedWithError": "Başlatılamadı: {error}",
   "@startFailedWithError": {
     "description": "Texte UI : startFailedWithError",
     "placeholders": {
@@ -528,15 +526,15 @@
       }
     }
   },
-  "recInProgress": "● Enregistrement — continue à regarder, le flux est gardé",
+  "recInProgress": "● Kaydediliyor — izlemeye devam et, yayın kaydediliyor",
   "@recInProgress": {
     "description": "Texte UI : recInProgress"
   },
-  "recEmpty": "Enregistrement vide — réessaie en laissant tourner quelques secondes.",
+  "recEmpty": "Kayıt boş — birkaç saniye çalışmasına izin verip tekrar dene.",
   "@recEmpty": {
     "description": "Texte UI : recEmpty"
   },
-  "recSaved": "Enregistrement sauvegardé ({size}) — Mes enregistrements",
+  "recSaved": "Kayıt kaydedildi ({size}) — Kayıtlarım",
   "@recSaved": {
     "description": "Texte UI : recSaved",
     "placeholders": {
@@ -545,7 +543,7 @@
       }
     }
   },
-  "recStopError": "Erreur arrêt enregistrement : {error}",
+  "recStopError": "Kayıt durdurma hatası: {error}",
   "@recStopError": {
     "description": "Texte UI : recStopError",
     "placeholders": {
@@ -554,15 +552,15 @@
       }
     }
   },
-  "recTapToStop": "REC · appuie pour arrêter",
+  "recTapToStop": "REC · durdurmak için dokun",
   "@recTapToStop": {
     "description": "Texte UI : recTapToStop"
   },
-  "pipUnavailable": "Mini-fenêtre indisponible sur cet appareil (requiert Android 8+). Active aussi la permission Picture-in-picture dans : Paramètres → Apps → 7 MOTION → Permissions.",
+  "pipUnavailable": "Bu cihazda mini pencere kullanılamıyor (Android 8+ gerekir). Ayrıca şuradan Resim içinde resim iznini aç: Ayarlar → Uygulamalar → 7 MOTION → İzinler.",
   "@pipUnavailable": {
     "description": "Texte UI : pipUnavailable"
   },
-  "speedToast": "Vitesse : {speed}x",
+  "speedToast": "Hız: {speed}x",
   "@speedToast": {
     "description": "Texte UI : speedToast",
     "placeholders": {
@@ -571,59 +569,59 @@
       }
     }
   },
-  "tooltipMiniWindow": "Mini-fenêtre",
+  "tooltipMiniWindow": "Mini pencere",
   "@tooltipMiniWindow": {
     "description": "Texte UI : tooltipMiniWindow"
   },
-  "tooltipCastingManage": "Casting en cours — tap pour gérer",
+  "tooltipCastingManage": "Yansıtma sürüyor — yönetmek için dokun",
   "@tooltipCastingManage": {
     "description": "Texte UI : tooltipCastingManage"
   },
-  "tooltipSendToTv": "Envoyer vers une TV",
+  "tooltipSendToTv": "TV'ye gönder",
   "@tooltipSendToTv": {
     "description": "Texte UI : tooltipSendToTv"
   },
-  "tooltipReloadStream": "Recharger le flux",
+  "tooltipReloadStream": "Yayını yeniden yükle",
   "@tooltipReloadStream": {
     "description": "Texte UI : tooltipReloadStream"
   },
-  "seekRewind": "Reculer 2 minutes",
+  "seekRewind": "2 dakika geri",
   "@seekRewind": {
     "description": "Texte UI : seekRewind"
   },
-  "seekForward": "Avancer 2 minutes",
+  "seekForward": "2 dakika ileri",
   "@seekForward": {
     "description": "Texte UI : seekForward"
   },
-  "playerCantPlay": "Impossible de lire ce flux",
+  "playerCantPlay": "Bu yayın oynatılamıyor",
   "@playerCantPlay": {
     "description": "Texte UI : playerCantPlay"
   },
-  "tooltipRemoveFavorite": "Retirer des favoris",
+  "tooltipRemoveFavorite": "Favorilerden çıkar",
   "@tooltipRemoveFavorite": {
     "description": "Texte UI : tooltipRemoveFavorite"
   },
-  "tooltipAddFavorite": "Ajouter aux favoris",
+  "tooltipAddFavorite": "Favorilere ekle",
   "@tooltipAddFavorite": {
     "description": "Texte UI : tooltipAddFavorite"
   },
-  "playerSettingsTitle": "Réglages du lecteur",
+  "playerSettingsTitle": "Oynatıcı ayarları",
   "@playerSettingsTitle": {
     "description": "Texte UI : playerSettingsTitle"
   },
-  "playerSpeedSection": "Vitesse de lecture",
+  "playerSpeedSection": "Oynatma hızı",
   "@playerSpeedSection": {
     "description": "Texte UI : playerSpeedSection"
   },
-  "playerDisplayMode": "Mode d'affichage",
+  "playerDisplayMode": "Görüntü modu",
   "@playerDisplayMode": {
     "description": "Texte UI : playerDisplayMode"
   },
-  "playerBufferSize": "Taille du buffer",
+  "playerBufferSize": "Arabellek boyutu",
   "@playerBufferSize": {
     "description": "Texte UI : playerBufferSize"
   },
-  "playerBufferSeconds": "{seconds} secondes",
+  "playerBufferSeconds": "{seconds} saniye",
   "@playerBufferSeconds": {
     "description": "Texte UI : playerBufferSeconds",
     "placeholders": {
@@ -632,55 +630,55 @@
       }
     }
   },
-  "playerBufferHelp": "Plus c'est haut, mieux la lecture résiste aux coupures réseau (mais plus de latence sur le live).",
+  "playerBufferHelp": "Değer yükseldikçe oynatma ağ kesintilerine daha dayanıklı olur (ama canlı yayında gecikme artar).",
   "@playerBufferHelp": {
     "description": "Texte UI : playerBufferHelp"
   },
-  "playerAntiFreeze": "Anti-coupure",
+  "playerAntiFreeze": "Donma önleyici",
   "@playerAntiFreeze": {
     "description": "Texte UI : playerAntiFreeze"
   },
-  "playerAntiFreezeHelp": "Si la connexion faiblit, le lecteur puise dans le tampon au lieu de couper l'image. Démarrage un peu plus long, mais lecture sans coupure.",
+  "playerAntiFreezeHelp": "Bağlantı zayıflarsa oynatıcı görüntüyü kesmek yerine arabellekten beslenir. Başlangıç biraz uzar ama kesintisiz izlersin.",
   "@playerAntiFreezeHelp": {
     "description": "Texte UI : playerAntiFreezeHelp"
   },
-  "playerHwDecode": "Décodage matériel",
+  "playerHwDecode": "Donanımsal kod çözme",
   "@playerHwDecode": {
     "description": "Texte UI : playerHwDecode"
   },
-  "playerHwDecodeHelp": "Utilise le GPU pour décoder la vidéo. Indispensable pour 4K / 8K.",
+  "playerHwDecodeHelp": "Videoyu çözmek için GPU'yu kullanır. 4K / 8K için şart.",
   "@playerHwDecodeHelp": {
     "description": "Texte UI : playerHwDecodeHelp"
   },
-  "playerShowStats": "Afficher les statistiques",
+  "playerShowStats": "İstatistikleri göster",
   "@playerShowStats": {
     "description": "Texte UI : playerShowStats"
   },
-  "playerShowStatsHelp": "FPS, débit, résolution, codec, frames perdues.",
+  "playerShowStatsHelp": "FPS, bit hızı, çözünürlük, codec, düşen kareler.",
   "@playerShowStatsHelp": {
     "description": "Texte UI : playerShowStatsHelp"
   },
-  "tracksTitle": "Pistes",
+  "tracksTitle": "Ses & Altyazı",
   "@tracksTitle": {
     "description": "Texte UI : tracksTitle"
   },
-  "tracksAudio": "Audio",
+  "tracksAudio": "Ses",
   "@tracksAudio": {
     "description": "Texte UI : tracksAudio"
   },
-  "tracksSubtitles": "Sous-titres",
+  "tracksSubtitles": "Altyazılar",
   "@tracksSubtitles": {
     "description": "Texte UI : tracksSubtitles"
   },
-  "tracksNoAudio": "Aucune piste audio détectée.",
+  "tracksNoAudio": "Ses parçası bulunamadı.",
   "@tracksNoAudio": {
     "description": "Texte UI : tracksNoAudio"
   },
-  "tracksNoSubtitles": "Aucun sous-titre. Astuce : sur certains flux, ils sont embarqués mais détectés tardivement.",
+  "tracksNoSubtitles": "Altyazı yok. İpucu: bazı yayınlarda gömülüdür ama geç algılanır.",
   "@tracksNoSubtitles": {
     "description": "Texte UI : tracksNoSubtitles"
   },
-  "castToDevice": "Cast vers {device}",
+  "castToDevice": "{device} cihazına yansıt",
   "@castToDevice": {
     "description": "Texte UI : castToDevice",
     "placeholders": {
@@ -689,7 +687,7 @@
       }
     }
   },
-  "castFailedLocal": "Cast impossible — lecture en local. ({error})",
+  "castFailedLocal": "Yansıtılamadı — yerel olarak oynatılıyor. ({error})",
   "@castFailedLocal": {
     "description": "Texte UI : castFailedLocal",
     "placeholders": {
@@ -698,7 +696,7 @@
       }
     }
   },
-  "castConnectedTapChannel": "Connecté à {device}. Tape une chaîne pour l'envoyer.",
+  "castConnectedTapChannel": "{device} cihazına bağlandı. Göndermek için bir kanala dokun.",
   "@castConnectedTapChannel": {
     "description": "Texte UI : castConnectedTapChannel",
     "placeholders": {
@@ -707,7 +705,7 @@
       }
     }
   },
-  "castSendingTo": "Envoi vers {device}",
+  "castSendingTo": "{device} cihazına gönderiliyor",
   "@castSendingTo": {
     "description": "Texte UI : castSendingTo",
     "placeholders": {
@@ -716,67 +714,67 @@
       }
     }
   },
-  "castFailedRetry": "Le cast a échoué. Réessaie.",
+  "castFailedRetry": "Yansıtma başarısız. Tekrar dene.",
   "@castFailedRetry": {
     "description": "Texte UI : castFailedRetry"
   },
-  "castSessionStopped": "Session de cast arrêtée",
+  "castSessionStopped": "Yansıtma oturumu durduruldu",
   "@castSessionStopped": {
     "description": "Texte UI : castSessionStopped"
   },
-  "castRefresh": "Rafraîchir",
+  "castRefresh": "Yenile",
   "@castRefresh": {
     "description": "Texte UI : castRefresh"
   },
-  "castByQr": "Cast par QR code",
+  "castByQr": "QR kodla yansıt",
   "@castByQr": {
     "description": "Texte UI : castByQr"
   },
-  "castByQrSub": "Marche sur TOUTES les TVs avec un navigateur",
+  "castByQrSub": "Tarayıcısı olan TÜM TV'lerde çalışır",
   "@castByQrSub": {
     "description": "Texte UI : castByQrSub"
   },
-  "castSearchingShort": "Recherche en cours...",
+  "castSearchingShort": "Aranıyor...",
   "@castSearchingShort": {
     "description": "Texte UI : castSearchingShort"
   },
-  "castNoReceiver": "Aucun récepteur. Vérifie que ton TV est sur le même WiFi et que DLNA est activé.",
+  "castNoReceiver": "Alıcı bulunamadı. TV'nin aynı Wi-Fi ağında olduğundan ve DLNA'nın açık olduğundan emin ol.",
   "@castNoReceiver": {
     "description": "Texte UI : castNoReceiver"
   },
-  "castInProgress": "EN COURS",
+  "castInProgress": "YANSITILIYOR",
   "@castInProgress": {
     "description": "Texte UI : castInProgress"
   },
-  "castConnecting": "Connexion...",
+  "castConnecting": "Bağlanıyor...",
   "@castConnecting": {
     "description": "Texte UI : castConnecting"
   },
-  "castInProgressTitle": "Cast en cours",
+  "castInProgressTitle": "Yansıtma sürüyor",
   "@castInProgressTitle": {
     "description": "Texte UI : castInProgressTitle"
   },
-  "castStopTooltip": "Arrêter le cast",
+  "castStopTooltip": "Yansıtmayı durdur",
   "@castStopTooltip": {
     "description": "Texte UI : castStopTooltip"
   },
-  "castPlayDefault": "Lecture",
+  "castPlayDefault": "Oynat",
   "@castPlayDefault": {
     "description": "Texte UI : castPlayDefault"
   },
-  "webCastTitle": "Cast via navigateur",
+  "webCastTitle": "Tarayıcıyla yansıt",
   "@webCastTitle": {
     "description": "Texte UI : webCastTitle"
   },
-  "webCastDesc": "Marche sur n'importe quelle TV qui a un navigateur web — Google TV, Samsung, LG, Hisense, vieilles smart TVs. Ta TV doit être sur le même WiFi que le téléphone.",
+  "webCastDesc": "Web tarayıcısı olan her TV'de çalışır — Google TV, Samsung, LG, Hisense, eski akıllı TV'ler. TV'n telefonla aynı Wi-Fi ağında olmalı.",
   "@webCastDesc": {
     "description": "Texte UI : webCastDesc"
   },
-  "webCastIpError": "Impossible de détecter ton IP WiFi. Vérifie que tu es bien connecté à un WiFi (pas en données mobiles).",
+  "webCastIpError": "Wi-Fi IP adresin algılanamadı. Bir Wi-Fi ağına bağlı olduğundan emin ol (mobil veri değil).",
   "@webCastIpError": {
     "description": "Texte UI : webCastIpError"
   },
-  "urlCopied": "URL copiée : {url}",
+  "urlCopied": "URL kopyalandı: {url}",
   "@urlCopied": {
     "description": "Texte UI : urlCopied",
     "placeholders": {
@@ -785,67 +783,67 @@
       }
     }
   },
-  "webCastTvConnected": "OK, la TV est connectée",
+  "webCastTvConnected": "Tamam, TV bağlandı",
   "@webCastTvConnected": {
     "description": "Texte UI : webCastTvConnected"
   },
-  "webCastUrlLabel": "Ou tape cette URL dans le navigateur de la TV :",
+  "webCastUrlLabel": "Ya da bu URL'yi TV'nin tarayıcısına yaz:",
   "@webCastUrlLabel": {
     "description": "Texte UI : webCastUrlLabel"
   },
-  "webCastStep1": "Sur ta TV, ouvre son navigateur web",
+  "webCastStep1": "TV'nde web tarayıcısını aç",
   "@webCastStep1": {
     "description": "Texte UI : webCastStep1"
   },
-  "webCastStep2": "Scanne le QR code ci-dessus (ou tape l'URL)",
+  "webCastStep2": "Yukarıdaki QR kodu tara (ya da URL'yi yaz)",
   "@webCastStep2": {
     "description": "Texte UI : webCastStep2"
   },
-  "webCastStep3": "Garde cet onglet ouvert sur la TV",
+  "webCastStep3": "Bu sekmeyi TV'de açık tut",
   "@webCastStep3": {
     "description": "Texte UI : webCastStep3"
   },
-  "webCastStep4": "Reviens ici, tape une chaîne → elle apparaît sur la TV en 2s",
+  "webCastStep4": "Buraya dön, bir kanala dokun → 2 sn içinde TV'de görünür",
   "@webCastStep4": {
     "description": "Texte UI : webCastStep4"
   },
-  "qrCastTitle": "Cast par QR Code",
+  "qrCastTitle": "QR Kodla yansıt",
   "@qrCastTitle": {
     "description": "Texte UI : qrCastTitle"
   },
-  "qrCastDesc": "Scanne ce code depuis n'importe quel appareil (TV, ordi, tablette, autre téléphone) — la chaîne s'ouvre directement dans le navigateur.",
+  "qrCastDesc": "Bu kodu herhangi bir cihazdan tara (TV, bilgisayar, tablet, başka bir telefon) — kanal doğrudan tarayıcıda açılır.",
   "@qrCastDesc": {
     "description": "Texte UI : qrCastDesc"
   },
-  "qrCastCopied": "Lien copié — colle dans le navigateur ou VLC",
+  "qrCastCopied": "Bağlantı kopyalandı — tarayıcıya ya da VLC'ye yapıştır",
   "@qrCastCopied": {
     "description": "Texte UI : qrCastCopied"
   },
-  "qrCastCopyLink": "Copier le lien",
+  "qrCastCopyLink": "Bağlantıyı kopyala",
   "@qrCastCopyLink": {
     "description": "Texte UI : qrCastCopyLink"
   },
-  "qrCastTip": "Astuce : ouvre l'appareil photo de ton autre device, pointe vers ce QR — un lien apparaît. Tape dessus, le navigateur lance la chaîne automatiquement.",
+  "qrCastTip": "İpucu: diğer cihazının kamerasını aç ve bu QR koda tut — bir bağlantı belirir. Dokun, tarayıcı kanalı otomatik başlatır.",
   "@qrCastTip": {
     "description": "Texte UI : qrCastTip"
   },
-  "qrCastDegraded": "Mode dégradé : ouvre dans VLC ou un lecteur natif.",
+  "qrCastDegraded": "Sınırlı mod: VLC ya da yerel bir oynatıcıda aç.",
   "@qrCastDegraded": {
     "description": "Texte UI : qrCastDegraded"
   },
-  "playlistsTitle": "Mes playlists",
+  "playlistsTitle": "Oynatma listelerim",
   "@playlistsTitle": {
     "description": "Texte UI : playlistsTitle"
   },
-  "playlistsAddTooltip": "Ajouter une playlist",
+  "playlistsAddTooltip": "Liste ekle",
   "@playlistsAddTooltip": {
     "description": "Texte UI : playlistsAddTooltip"
   },
-  "playlistsEmptyTitle": "Aucune playlist",
+  "playlistsEmptyTitle": "Oynatma listesi yok",
   "@playlistsEmptyTitle": {
     "description": "Texte UI : playlistsEmptyTitle"
   },
-  "playlistsEmptySubtitle": "Ajoute ta première playlist pour commencer.",
+  "playlistsEmptySubtitle": "Başlamak için ilk listeni ekle.",
   "@playlistsEmptySubtitle": {
     "description": "Texte UI : playlistsEmptySubtitle"
   },
@@ -857,23 +855,23 @@
   "@playlistTypeXtream": {
     "description": "Texte UI : playlistTypeXtream"
   },
-  "playlistNeverSynced": "Jamais synchronisée",
+  "playlistNeverSynced": "Hiç senkronize edilmedi",
   "@playlistNeverSynced": {
     "description": "Texte UI : playlistNeverSynced"
   },
-  "playlistResyncTooltip": "Re-synchroniser",
+  "playlistResyncTooltip": "Yeniden senkronize et",
   "@playlistResyncTooltip": {
     "description": "Texte UI : playlistResyncTooltip"
   },
-  "playlistDeleteTooltip": "Supprimer",
+  "playlistDeleteTooltip": "Sil",
   "@playlistDeleteTooltip": {
     "description": "Texte UI : playlistDeleteTooltip"
   },
-  "playlistResyncing": "Re-synchronisation en cours...",
+  "playlistResyncing": "Yeniden senkronize ediliyor...",
   "@playlistResyncing": {
     "description": "Texte UI : playlistResyncing"
   },
-  "playlistUpToDate": "Playlist \"{name}\" à jour",
+  "playlistUpToDate": "\"{name}\" listesi güncel",
   "@playlistUpToDate": {
     "description": "Texte UI : playlistUpToDate",
     "placeholders": {
@@ -882,15 +880,15 @@
       }
     }
   },
-  "playlistResyncFailed": "Re-synchronisation impossible",
+  "playlistResyncFailed": "Yeniden senkronizasyon başarısız",
   "@playlistResyncFailed": {
     "description": "Texte UI : playlistResyncFailed"
   },
-  "playlistDeleteConfirmTitle": "Supprimer cette playlist ?",
+  "playlistDeleteConfirmTitle": "Bu liste silinsin mi?",
   "@playlistDeleteConfirmTitle": {
     "description": "Texte UI : playlistDeleteConfirmTitle"
   },
-  "playlistDeleteConfirmBody": "Toutes les chaînes liées à \"{name}\" seront retirées de l'app.",
+  "playlistDeleteConfirmBody": "\"{name}\" listesine bağlı tüm kanallar uygulamadan kaldırılacak.",
   "@playlistDeleteConfirmBody": {
     "description": "Texte UI : playlistDeleteConfirmBody",
     "placeholders": {
@@ -899,23 +897,23 @@
       }
     }
   },
-  "recordingsTitle": "Mes enregistrements",
+  "recordingsTitle": "Kayıtlarım",
   "@recordingsTitle": {
     "description": "Texte UI : recordingsTitle"
   },
-  "recordingsEmptyTitle": "Aucun enregistrement",
+  "recordingsEmptyTitle": "Kayıt yok",
   "@recordingsEmptyTitle": {
     "description": "Texte UI : recordingsEmptyTitle"
   },
-  "recordingsEmptySubtitle": "Pendant la lecture, appuie sur REC pour capturer le flux en direct.",
+  "recordingsEmptySubtitle": "Oynatma sırasında canlı yayını yakalamak için REC'e bas.",
   "@recordingsEmptySubtitle": {
     "description": "Texte UI : recordingsEmptySubtitle"
   },
-  "recordingStopped": "Enregistrement arrêté — exporte-le vers la Galerie",
+  "recordingStopped": "Kayıt durduruldu — Galeri'ye aktar",
   "@recordingStopped": {
     "description": "Texte UI : recordingStopped"
   },
-  "recordingStopError": "Erreur arrêt : {error}",
+  "recordingStopError": "Durdurma hatası: {error}",
   "@recordingStopError": {
     "description": "Texte UI : recordingStopError",
     "placeholders": {
@@ -924,7 +922,7 @@
       }
     }
   },
-  "recordingExported": "Exporté dans Galerie › Movies sous \"7MOTION_{name}\"",
+  "recordingExported": "Galeri › Movies içine \"7MOTION_{name}\" adıyla aktarıldı",
   "@recordingExported": {
     "description": "Texte UI : recordingExported",
     "placeholders": {
@@ -933,7 +931,7 @@
       }
     }
   },
-  "recordingExportFailed": "Export échec : {error}",
+  "recordingExportFailed": "Aktarma başarısız: {error}",
   "@recordingExportFailed": {
     "description": "Texte UI : recordingExportFailed",
     "placeholders": {
@@ -942,19 +940,19 @@
       }
     }
   },
-  "recordingStopTooltip": "Arrêter l'enregistrement",
+  "recordingStopTooltip": "Kaydı durdur",
   "@recordingStopTooltip": {
     "description": "Texte UI : recordingStopTooltip"
   },
-  "recordingSaveTooltip": "Sauvegarder dans la Galerie",
+  "recordingSaveTooltip": "Galeri'ye kaydet",
   "@recordingSaveTooltip": {
     "description": "Texte UI : recordingSaveTooltip"
   },
-  "recordingDeleteConfirmTitle": "Supprimer cet enregistrement ?",
+  "recordingDeleteConfirmTitle": "Bu kayıt silinsin mi?",
   "@recordingDeleteConfirmTitle": {
     "description": "Texte UI : recordingDeleteConfirmTitle"
   },
-  "recordingDeleteConfirmBody": "Le fichier \"{name}\" sera effacé.",
+  "recordingDeleteConfirmBody": "\"{name}\" dosyası silinecek.",
   "@recordingDeleteConfirmBody": {
     "description": "Texte UI : recordingDeleteConfirmBody",
     "placeholders": {
@@ -963,19 +961,19 @@
       }
     }
   },
-  "recordingUnreadable": "Lecture impossible : enregistrement illisible ou incomplet.",
+  "recordingUnreadable": "Oynatılamıyor: kayıt okunamıyor ya da eksik.",
   "@recordingUnreadable": {
     "description": "Texte UI : recordingUnreadable"
   },
-  "recordingEmpty": "Enregistrement vide (0 octet) — rien n'a été capturé.",
+  "recordingEmpty": "Kayıt boş (0 bayt) — hiçbir şey yakalanmadı.",
   "@recordingEmpty": {
     "description": "Texte UI : recordingEmpty"
   },
-  "recordingNotFound": "Fichier introuvable — il a peut-être été supprimé.",
+  "recordingNotFound": "Dosya bulunamadı — silinmiş olabilir.",
   "@recordingNotFound": {
     "description": "Texte UI : recordingNotFound"
   },
-  "recordingPlayError": "Lecture impossible : {error}",
+  "recordingPlayError": "Oynatılamıyor: {error}",
   "@recordingPlayError": {
     "description": "Texte UI : recordingPlayError",
     "placeholders": {
@@ -984,27 +982,27 @@
       }
     }
   },
-  "subAccountSuspended": "Compte suspendu",
+  "subAccountSuspended": "Hesap askıya alındı",
   "@subAccountSuspended": {
     "description": "Texte UI : subAccountSuspended"
   },
-  "subAccountFrozen": "Compte temporairement gelé",
+  "subAccountFrozen": "Hesap geçici olarak donduruldu",
   "@subAccountFrozen": {
     "description": "Texte UI : subAccountFrozen"
   },
-  "subUnlockAll": "Débloque tout The Few",
+  "subUnlockAll": "The Few'un tamamını aç",
   "@subUnlockAll": {
     "description": "Texte UI : subUnlockAll"
   },
-  "subBannedMsg": "Ton compte a été suspendu par l'administrateur. Si tu penses que c'est une erreur, contacte-nous.",
+  "subBannedMsg": "Hesabın yönetici tarafından askıya alındı. Bunun bir hata olduğunu düşünüyorsan bize ulaş.",
   "@subBannedMsg": {
     "description": "Texte UI : subBannedMsg"
   },
-  "subFrozenMsg": "Ton compte est en pause. Contacte le support pour réactiver l'accès.",
+  "subFrozenMsg": "Hesabın duraklatıldı. Erişimi yeniden açmak için destekle iletişime geç.",
   "@subFrozenMsg": {
     "description": "Texte UI : subFrozenMsg"
   },
-  "subTrialExpiredMsg": "Ton essai gratuit de {days} jours est terminé. Active ton accès et profite de TOUT, sans aucune limite :",
+  "subTrialExpiredMsg": "{days} günlük ücretsiz denemen sona erdi. Erişimini etkinleştir ve HER ŞEYİN tadını sınırsızca çıkar:",
   "@subTrialExpiredMsg": {
     "description": "Texte UI : subTrialExpiredMsg",
     "placeholders": {
@@ -1013,55 +1011,55 @@
       }
     }
   },
-  "subSubscribePrice": "M'abonner maintenant",
+  "subSubscribePrice": "Şimdi abone ol",
   "@subSubscribePrice": {
     "description": "Texte UI : subSubscribePrice"
   },
-  "subContactSupport": "Contacter le support",
+  "subContactSupport": "Destekle iletişime geç",
   "@subContactSupport": {
     "description": "Texte UI : subContactSupport"
   },
-  "subPullToRefresh": "Tu viens de payer ? Tire vers le bas pour rafraîchir.",
+  "subPullToRefresh": "Az önce ödeme mi yaptın? Yenilemek için aşağı çek.",
   "@subPullToRefresh": {
     "description": "Texte UI : subPullToRefresh"
   },
-  "subBenefitChannels": "Des milliers de chaînes, films & séries du monde entier",
+  "subBenefitChannels": "Dünyanın dört bir yanından binlerce kanal, film & dizi",
   "@subBenefitChannels": {
     "description": "Texte UI : subBenefitChannels"
   },
-  "subBenefitSports": "Tout le sport en direct, en HD / 4K, sans coupure",
+  "subBenefitSports": "Tüm canlı sporlar, HD / 4K, kesintisiz",
   "@subBenefitSports": {
     "description": "Texte UI : subBenefitSports"
   },
-  "subBenefitCast": "Caster sur n'importe quelle télé (Chromecast & Google TV)",
+  "subBenefitCast": "Her TV'ye yansıt (Chromecast & Google TV)",
   "@subBenefitCast": {
     "description": "Texte UI : subBenefitCast"
   },
-  "subBenefitRecord": "Enregistrer tes émissions, films et matchs préférés",
+  "subBenefitRecord": "Sevdiğin programları, filmleri ve maçları kaydet",
   "@subBenefitRecord": {
     "description": "Texte UI : subBenefitRecord"
   },
-  "subBenefitNoAds": "Zéro publicité — lecture fluide, instantanée",
+  "subBenefitNoAds": "Sıfır reklam — akıcı, anında oynatma",
   "@subBenefitNoAds": {
     "description": "Texte UI : subBenefitNoAds"
   },
-  "subBenefitDevices": "Sur tous tes appareils : téléphone, tablette, TV",
+  "subBenefitDevices": "Tüm cihazlarında: telefon, tablet, TV",
   "@subBenefitDevices": {
     "description": "Texte UI : subBenefitDevices"
   },
-  "subCardBuyExpired": "Acheter sur 7themotion.com",
+  "subCardBuyExpired": "7themotion.com'dan satın al",
   "@subCardBuyExpired": {
     "description": "Texte UI : subCardBuyExpired"
   },
-  "subCardSeeOffers": "Voir les offres sur 7themotion.com",
+  "subCardSeeOffers": "7themotion.com'daki teklifleri gör",
   "@subCardSeeOffers": {
     "description": "Texte UI : subCardSeeOffers"
   },
-  "subCardSecurePayment": "Paiement sécurisé sur le site officiel — jamais via Google Play.",
+  "subCardSecurePayment": "Resmi sitede güvenli ödeme — asla Google Play üzerinden değil.",
   "@subCardSecurePayment": {
     "description": "Texte UI : subCardSecurePayment"
   },
-  "subCantOpenUrl": "Impossible d'ouvrir {url}",
+  "subCantOpenUrl": "{url} açılamıyor",
   "@subCantOpenUrl": {
     "description": "Texte UI : subCantOpenUrl",
     "placeholders": {
@@ -1070,11 +1068,11 @@
       }
     }
   },
-  "subActiveTitle": "Abonnement actif",
+  "subActiveTitle": "Abonelik etkin",
   "@subActiveTitle": {
     "description": "Texte UI : subActiveTitle"
   },
-  "subActiveUntil": "Abonnement actif · expire le {date}",
+  "subActiveUntil": "Abonelik etkin · bitiş: {date}",
   "@subActiveUntil": {
     "description": "Texte UI : subActiveUntil",
     "placeholders": {
@@ -1083,15 +1081,15 @@
       }
     }
   },
-  "subTrialEnded": "Essai gratuit terminé",
+  "subTrialEnded": "Ücretsiz deneme sona erdi",
   "@subTrialEnded": {
     "description": "Texte UI : subTrialEnded"
   },
-  "subTrialOneDayLeft": "Essai gratuit · 1 jour restant",
+  "subTrialOneDayLeft": "Ücretsiz deneme · 1 gün kaldı",
   "@subTrialOneDayLeft": {
     "description": "Texte UI : subTrialOneDayLeft"
   },
-  "subTrialDaysLeft": "Essai gratuit · {days} jours restants",
+  "subTrialDaysLeft": "Ücretsiz deneme · {days} gün kaldı",
   "@subTrialDaysLeft": {
     "description": "Texte UI : subTrialDaysLeft",
     "placeholders": {
@@ -1100,15 +1098,15 @@
       }
     }
   },
-  "subLoading": "Chargement…",
+  "subLoading": "Yükleniyor…",
   "@subLoading": {
     "description": "Texte UI : subLoading"
   },
-  "subCardSubPaid": "Merci pour ton soutien — toutes les fonctions sont débloquées sur cet appareil et tes autres installations The Few.",
+  "subCardSubPaid": "Desteğin için teşekkürler — tüm özellikler bu cihazda ve diğer The Few kurulumlarında açık.",
   "@subCardSubPaid": {
     "description": "Texte UI : subCardSubPaid"
   },
-  "subCardSubExpired": "Ton essai gratuit de {days} jours est terminé. Souscris à 5 €/an ou 9,90 € à vie sur 7themotion.com pour continuer.",
+  "subCardSubExpired": "{days} günlük ücretsiz denemen sona erdi. Devam etmek için 7themotion.com'dan yılda 5 € ya da ömür boyu 9,90 € ile abone ol.",
   "@subCardSubExpired": {
     "description": "Texte UI : subCardSubExpired",
     "placeholders": {
@@ -1117,47 +1115,47 @@
       }
     }
   },
-  "subCardSubTrial": "Profite de toutes les fonctions premium pendant ton essai. Ensuite 5 €/an ou 9,90 € à vie sur tous tes appareils.",
+  "subCardSubTrial": "Deneme süresince tüm premium özelliklerin tadını çıkar. Sonrasında tüm cihazlarında yılda 5 € ya da ömür boyu 9,90 €.",
   "@subCardSubTrial": {
     "description": "Texte UI : subCardSubTrial"
   },
-  "subCardSubFrozen": "Ton compte est en pause. Contacte le support pour réactiver.",
+  "subCardSubFrozen": "Hesabın duraklatıldı. Yeniden etkinleştirmek için destekle iletişime geç.",
   "@subCardSubFrozen": {
     "description": "Texte UI : subCardSubFrozen"
   },
-  "subCardSubBanned": "Ton compte a été suspendu par l'administrateur.",
+  "subCardSubBanned": "Hesabın yönetici tarafından askıya alındı.",
   "@subCardSubBanned": {
     "description": "Texte UI : subCardSubBanned"
   },
-  "aboutTitle": "À propos",
+  "aboutTitle": "Hakkında",
   "@aboutTitle": {
     "description": "Texte UI : aboutTitle"
   },
-  "aboutPremiumPlayer": "Lecteur IPTV premium",
+  "aboutPremiumPlayer": "Premium IPTV oynatıcı",
   "@aboutPremiumPlayer": {
     "description": "Texte UI : aboutPremiumPlayer"
   },
-  "aboutUpdateError": "Impossible de contacter le serveur de mises à jour. Vérifie ta connexion.",
+  "aboutUpdateError": "Güncelleme sunucusuna ulaşılamadı. Bağlantını kontrol et.",
   "@aboutUpdateError": {
     "description": "Texte UI : aboutUpdateError"
   },
-  "aboutMyDevice": "Mon appareil",
+  "aboutMyDevice": "Cihazım",
   "@aboutMyDevice": {
     "description": "Texte UI : aboutMyDevice"
   },
-  "aboutUpdates": "Mises à jour",
+  "aboutUpdates": "Güncellemeler",
   "@aboutUpdates": {
     "description": "Texte UI : aboutUpdates"
   },
-  "aboutNewVersion": "Nouvelle version disponible",
+  "aboutNewVersion": "Yeni sürüm mevcut",
   "@aboutNewVersion": {
     "description": "Texte UI : aboutNewVersion"
   },
-  "aboutSeeReleaseNotes": "Voir les notes de version",
+  "aboutSeeReleaseNotes": "Sürüm notlarını gör",
   "@aboutSeeReleaseNotes": {
     "description": "Texte UI : aboutSeeReleaseNotes"
   },
-  "aboutLatestVersion": "Tu as la dernière version (v{version}).",
+  "aboutLatestVersion": "En son sürümü kullanıyorsun (v{version}).",
   "@aboutLatestVersion": {
     "description": "Texte UI : aboutLatestVersion",
     "placeholders": {
@@ -1166,59 +1164,59 @@
       }
     }
   },
-  "aboutChecking": "Vérification...",
+  "aboutChecking": "Kontrol ediliyor...",
   "@aboutChecking": {
     "description": "Texte UI : aboutChecking"
   },
-  "aboutCheckUpdates": "Vérifier les mises à jour",
+  "aboutCheckUpdates": "Güncellemeleri kontrol et",
   "@aboutCheckUpdates": {
     "description": "Texte UI : aboutCheckUpdates"
   },
-  "aboutUsefulLinks": "Liens utiles",
+  "aboutUsefulLinks": "Faydalı bağlantılar",
   "@aboutUsefulLinks": {
     "description": "Texte UI : aboutUsefulLinks"
   },
-  "aboutPrivacyPolicy": "Politique de confidentialité",
+  "aboutPrivacyPolicy": "Gizlilik politikası",
   "@aboutPrivacyPolicy": {
     "description": "Texte UI : aboutPrivacyPolicy"
   },
-  "aboutBuiltWith": "Construit avec",
+  "aboutBuiltWith": "Şunlarla geliştirildi",
   "@aboutBuiltWith": {
     "description": "Texte UI : aboutBuiltWith"
   },
-  "aboutCreditFlutter": "Framework UI multiplateforme",
+  "aboutCreditFlutter": "Çok platformlu arayüz çatısı",
   "@aboutCreditFlutter": {
     "description": "Texte UI : aboutCreditFlutter"
   },
-  "aboutCreditMediaKit": "Moteur vidéo (HLS, MPEG-TS, MP4)",
+  "aboutCreditMediaKit": "Video motoru (HLS, MPEG-TS, MP4)",
   "@aboutCreditMediaKit": {
     "description": "Texte UI : aboutCreditMediaKit"
   },
-  "aboutCreditSqflite": "Stockage local des playlists",
+  "aboutCreditSqflite": "Listelerin yerel depolaması",
   "@aboutCreditSqflite": {
     "description": "Texte UI : aboutCreditSqflite"
   },
-  "aboutCreditCache": "Cache disque des logos",
+  "aboutCreditCache": "Logolar için disk önbelleği",
   "@aboutCreditCache": {
     "description": "Texte UI : aboutCreditCache"
   },
-  "aboutCreditFonts": "Typographie premium",
+  "aboutCreditFonts": "Premium tipografi",
   "@aboutCreditFonts": {
     "description": "Texte UI : aboutCreditFonts"
   },
-  "aboutLegalNotice": "The Few est un lecteur média générique. Aucun contenu n'est inclus avec l'app. Tu es responsable des sources que tu ajoutes et de leur conformité aux lois en vigueur dans ton pays.",
+  "aboutLegalNotice": "The Few genel amaçlı bir medya oynatıcıdır. Uygulamayla birlikte hiçbir içerik sunulmaz. Eklediğin kaynaklardan ve bunların ülkendeki yasalara uygunluğundan sen sorumlusun.",
   "@aboutLegalNotice": {
     "description": "Texte UI : aboutLegalNotice"
   },
-  "lockPinTooShort": "Tape au moins 4 chiffres.",
+  "lockPinTooShort": "En az 4 rakam gir.",
   "@lockPinTooShort": {
     "description": "Texte UI : lockPinTooShort"
   },
-  "lockPinWrong": "Code incorrect.",
+  "lockPinWrong": "Kod yanlış.",
   "@lockPinWrong": {
     "description": "Texte UI : lockPinWrong"
   },
-  "lockUnlockReason": "Déverrouille {app}",
+  "lockUnlockReason": "{app} kilidini aç",
   "@lockUnlockReason": {
     "description": "Texte UI : lockUnlockReason",
     "placeholders": {
@@ -1227,23 +1225,23 @@
       }
     }
   },
-  "lockAppLocked": "Application verrouillée",
+  "lockAppLocked": "Uygulama kilitli",
   "@lockAppLocked": {
     "description": "Texte UI : lockAppLocked"
   },
-  "lockAuthenticating": "Authentification...",
+  "lockAuthenticating": "Kimlik doğrulanıyor...",
   "@lockAuthenticating": {
     "description": "Texte UI : lockAuthenticating"
   },
-  "lockFingerprint": "Empreinte digitale",
+  "lockFingerprint": "Parmak izi",
   "@lockFingerprint": {
     "description": "Texte UI : lockFingerprint"
   },
-  "lockValidateCode": "Valider le code",
+  "lockValidateCode": "Kodu onayla",
   "@lockValidateCode": {
     "description": "Texte UI : lockValidateCode"
   },
-  "lockDefaultPin": "Code par défaut : {pin}\nModifiable dans Réglages > Sécurité.",
+  "lockDefaultPin": "Varsayılan kod: {pin}\nAyarlar > Güvenlik'ten değiştirebilirsin.",
   "@lockDefaultPin": {
     "description": "Texte UI : lockDefaultPin",
     "placeholders": {
@@ -1252,167 +1250,167 @@
       }
     }
   },
-  "ageGateTitle": "Contenu réservé aux adultes",
+  "ageGateTitle": "Yalnızca yetişkinlere yönelik içerik",
   "@ageGateTitle": {
     "description": "Texte UI : ageGateTitle"
   },
-  "ageGateBody": "Cette application diffuse des programmes à caractère explicite réservés aux personnes majeures. En continuant, vous déclarez sur l'honneur avoir atteint l'âge légal de majorité dans votre pays.",
+  "ageGateBody": "Bu uygulama yalnızca reşit kişilere yönelik açık içerikli programlar yayınlar. Devam ederek ülkenizdeki yasal reşitlik yaşına ulaştığınızı beyan etmiş olursunuz.",
   "@ageGateBody": {
     "description": "Texte UI : ageGateBody"
   },
-  "ageGateEnter": "J'AI 18 ANS OU PLUS — ENTRER",
+  "ageGateEnter": "18 YAŞINDAN BÜYÜĞÜM — GİR",
   "@ageGateEnter": {
     "description": "Texte UI : ageGateEnter"
   },
-  "ageGateQuit": "Quitter",
+  "ageGateQuit": "Çık",
   "@ageGateQuit": {
     "description": "Texte UI : ageGateQuit"
   },
-  "ageGateLegal": "En cas de fausse déclaration, la responsabilité incombe exclusivement à l'utilisateur.",
+  "ageGateLegal": "Yanlış beyan halinde sorumluluk tamamen kullanıcıya aittir.",
   "@ageGateLegal": {
     "description": "Texte UI : ageGateLegal"
   },
-  "onboardingSkip": "Passer",
+  "onboardingSkip": "Atla",
   "@onboardingSkip": {
     "description": "Texte UI : onboardingSkip"
   },
-  "onboardingStart": "Commencer",
+  "onboardingStart": "Başla",
   "@onboardingStart": {
     "description": "Texte UI : onboardingStart"
   },
-  "onboardingNext": "Suivant",
+  "onboardingNext": "İleri",
   "@onboardingNext": {
     "description": "Texte UI : onboardingNext"
   },
-  "onboardingYourId": "TON IDENTIFIANT",
+  "onboardingYourId": "KİMLİĞİN",
   "@onboardingYourId": {
     "description": "Texte UI : onboardingYourId"
   },
-  "onboardingActivateChannels": "Activer mes chaînes",
+  "onboardingActivateChannels": "Kanallarımı etkinleştir",
   "@onboardingActivateChannels": {
     "description": "Texte UI : onboardingActivateChannels"
   },
-  "onboardingCopyId": "Copier l'identifiant",
+  "onboardingCopyId": "Kimliği kopyala",
   "@onboardingCopyId": {
     "description": "Texte UI : onboardingCopyId"
   },
-  "devicePreparing": "Préparation…",
+  "devicePreparing": "Hazırlanıyor…",
   "@devicePreparing": {
     "description": "Texte UI : devicePreparing"
   },
-  "simpleChooseCountry": "Choisis un pays",
+  "simpleChooseCountry": "Bir ülke seç",
   "@simpleChooseCountry": {
     "description": "Texte UI : simpleChooseCountry"
   },
-  "simpleMyAccount": "Mon compte",
+  "simpleMyAccount": "Hesabım",
   "@simpleMyAccount": {
     "description": "Texte UI : simpleMyAccount"
   },
-  "simpleRecentlyWatched": "Récemment regardé",
+  "simpleRecentlyWatched": "Son izlenenler",
   "@simpleRecentlyWatched": {
     "description": "Texte UI : simpleRecentlyWatched"
   },
-  "simpleMyFavorites": "Mes favoris",
+  "simpleMyFavorites": "Favorilerim",
   "@simpleMyFavorites": {
     "description": "Texte UI : simpleMyFavorites"
   },
-  "simpleSport": "Sport",
+  "simpleSport": "Spor",
   "@simpleSport": {
     "description": "Texte UI : simpleSport"
   },
-  "simpleEntertainment": "Divertissement",
+  "simpleEntertainment": "Eğlence",
   "@simpleEntertainment": {
     "description": "Texte UI : simpleEntertainment"
   },
-  "simpleInfo": "Info",
+  "simpleInfo": "Haber",
   "@simpleInfo": {
     "description": "Texte UI : simpleInfo"
   },
-  "simpleKids": "Enfants",
+  "simpleKids": "Çocuk",
   "@simpleKids": {
     "description": "Texte UI : simpleKids"
   },
-  "simpleGeneral": "Général",
+  "simpleGeneral": "Genel",
   "@simpleGeneral": {
     "description": "Texte UI : simpleGeneral"
   },
-  "simpleLockedTitle": "Cinéma & Séries",
+  "simpleLockedTitle": "Sinema & Diziler",
   "@simpleLockedTitle": {
     "description": "Texte UI : simpleLockedTitle"
   },
-  "simpleLockedHint": "Touche pour déverrouiller (empreinte ou code)",
+  "simpleLockedHint": "Kilidi açmak için dokun (parmak izi ya da kod)",
   "@simpleLockedHint": {
     "description": "Texte UI : simpleLockedHint"
   },
-  "simpleUnlockReason": "Déverrouiller Cinéma & Séries",
+  "simpleUnlockReason": "Sinema & Diziler kilidini aç",
   "@simpleUnlockReason": {
     "description": "Texte UI : simpleUnlockReason"
   },
-  "simpleAccessCode": "Code d'accès",
+  "simpleAccessCode": "Erişim kodu",
   "@simpleAccessCode": {
     "description": "Texte UI : simpleAccessCode"
   },
-  "buttonAdd": "Ajouter",
+  "buttonAdd": "Ekle",
   "@buttonAdd": {
     "description": "Texte UI : buttonAdd"
   },
-  "moviesTitle": "Films",
+  "moviesTitle": "Filmler",
   "@moviesTitle": {
     "description": "Texte UI : moviesTitle"
   },
-  "moviesTabMovies": "Films",
+  "moviesTabMovies": "Filmler",
   "@moviesTabMovies": {
     "description": "Texte UI : moviesTabMovies"
   },
-  "moviesTabDownloads": "Téléchargés",
+  "moviesTabDownloads": "İndirilenler",
   "@moviesTabDownloads": {
     "description": "Texte UI : moviesTabDownloads"
   },
-  "moviesReloadTooltip": "Recharger le catalogue",
+  "moviesReloadTooltip": "Kataloğu yeniden yükle",
   "@moviesReloadTooltip": {
     "description": "Texte UI : moviesReloadTooltip"
   },
-  "moviesEmptyCatalogue": "Aucun film disponible.\nTon serveur ne propose peut-être pas de VOD, ou tu n'es pas connecté en Xtream.",
+  "moviesEmptyCatalogue": "Film yok.\nSunucun VOD sunmuyor olabilir ya da Xtream ile bağlı değilsin.",
   "@moviesEmptyCatalogue": {
     "description": "Texte UI : moviesEmptyCatalogue"
   },
-  "moviesEmptyDownloads": "Aucun téléchargement.\nTélécharge un film depuis l'onglet « Films » pour le regarder hors-ligne.",
+  "moviesEmptyDownloads": "İndirme yok.\nÇevrimdışı izlemek için « Filmler » sekmesinden bir film indir.",
   "@moviesEmptyDownloads": {
     "description": "Texte UI : moviesEmptyDownloads"
   },
-  "moviesPlayTooltip": "Lire",
+  "moviesPlayTooltip": "Oynat",
   "@moviesPlayTooltip": {
     "description": "Texte UI : moviesPlayTooltip"
   },
-  "moviesDownloaded": "Téléchargé",
+  "moviesDownloaded": "İndirildi",
   "@moviesDownloaded": {
     "description": "Texte UI : moviesDownloaded"
   },
-  "moviesDownloading": "Téléchargement…",
+  "moviesDownloading": "İndiriliyor…",
   "@moviesDownloading": {
     "description": "Texte UI : moviesDownloading"
   },
-  "moviesDownload": "Télécharger",
+  "moviesDownload": "İndir",
   "@moviesDownload": {
     "description": "Texte UI : moviesDownload"
   },
-  "moviesPlayOfflineTooltip": "Lire hors-ligne",
+  "moviesPlayOfflineTooltip": "Çevrimdışı oynat",
   "@moviesPlayOfflineTooltip": {
     "description": "Texte UI : moviesPlayOfflineTooltip"
   },
-  "moviesPauseTooltip": "Pause",
+  "moviesPauseTooltip": "Duraklat",
   "@moviesPauseTooltip": {
     "description": "Texte UI : moviesPauseTooltip"
   },
-  "moviesResumeTooltip": "Reprendre",
+  "moviesResumeTooltip": "Devam et",
   "@moviesResumeTooltip": {
     "description": "Texte UI : moviesResumeTooltip"
   },
-  "moviesDeleteTooltip": "Supprimer",
+  "moviesDeleteTooltip": "Sil",
   "@moviesDeleteTooltip": {
     "description": "Texte UI : moviesDeleteTooltip"
   },
-  "moviesStatusDownloaded": "Téléchargé · {size}",
+  "moviesStatusDownloaded": "İndirildi · {size}",
   "@moviesStatusDownloaded": {
     "description": "Texte UI : moviesStatusDownloaded",
     "placeholders": {
@@ -1421,7 +1419,7 @@
       }
     }
   },
-  "moviesStatusDownloading": "Téléchargement… {size}",
+  "moviesStatusDownloading": "İndiriliyor… {size}",
   "@moviesStatusDownloading": {
     "description": "Texte UI : moviesStatusDownloading",
     "placeholders": {
@@ -1430,7 +1428,7 @@
       }
     }
   },
-  "moviesStatusPaused": "En pause · {size}",
+  "moviesStatusPaused": "Duraklatıldı · {size}",
   "@moviesStatusPaused": {
     "description": "Texte UI : moviesStatusPaused",
     "placeholders": {
@@ -1439,31 +1437,31 @@
       }
     }
   },
-  "moviesStatusError": "Erreur — appuie pour reprendre",
+  "moviesStatusError": "Hata — devam etmek için dokun",
   "@moviesStatusError": {
     "description": "Texte UI : moviesStatusError"
   },
-  "guideTitle": "Guide TV",
+  "guideTitle": "TV Rehberi",
   "@guideTitle": {
     "description": "Texte UI : guideTitle"
   },
-  "guideGoToNow": "Aller à maintenant",
+  "guideGoToNow": "Şimdiye git",
   "@guideGoToNow": {
     "description": "Texte UI : guideGoToNow"
   },
-  "guideNoChannel": "Aucune chaîne",
+  "guideNoChannel": "Kanal yok",
   "@guideNoChannel": {
     "description": "Texte UI : guideNoChannel"
   },
-  "guideEmptyHint": "Ajoute une playlist avec un EPG XMLTV pour voir le guide.",
+  "guideEmptyHint": "Rehberi görmek için XMLTV EPG'li bir liste ekle.",
   "@guideEmptyHint": {
     "description": "Texte UI : guideEmptyHint"
   },
-  "guideSchedule": "Horaires",
+  "guideSchedule": "Yayın saatleri",
   "@guideSchedule": {
     "description": "Texte UI : guideSchedule"
   },
-  "guideCatchupUnavailable": "Catch-up indisponible pour {channel}",
+  "guideCatchupUnavailable": "{channel} için arşiv kullanılamıyor",
   "@guideCatchupUnavailable": {
     "description": "Texte UI : guideCatchupUnavailable",
     "placeholders": {
@@ -1472,23 +1470,23 @@
       }
     }
   },
-  "programsToday": "Programmes d'aujourd'hui",
+  "programsToday": "Bugünün programları",
   "@programsToday": {
     "description": "Texte UI : programsToday"
   },
-  "programsNoneToday": "Pas de programmes pour aujourd'hui",
+  "programsNoneToday": "Bugün için program yok",
   "@programsNoneToday": {
     "description": "Texte UI : programsNoneToday"
   },
-  "programsNoneHelp": "L'EPG XMLTV de ce fournisseur n'a pas cette chaîne, ou il n'a pas encore été synchronisé.",
+  "programsNoneHelp": "Bu sağlayıcının XMLTV EPG'sinde bu kanal yok ya da henüz senkronize edilmedi.",
   "@programsNoneHelp": {
     "description": "Texte UI : programsNoneHelp"
   },
-  "programsCatchupUnavailable": "Catch-up indisponible pour cette chaîne.",
+  "programsCatchupUnavailable": "Bu kanal için arşiv kullanılamıyor.",
   "@programsCatchupUnavailable": {
     "description": "Texte UI : programsCatchupUnavailable"
   },
-  "programStartsAt": "{title} commence à {time}.",
+  "programStartsAt": "{title} şu saatte başlıyor: {time}.",
   "@programStartsAt": {
     "description": "Texte UI : programStartsAt",
     "placeholders": {
@@ -1500,95 +1498,95 @@
       }
     }
   },
-  "deviceIdLabel": "IDENTIFIANT APPAREIL",
+  "deviceIdLabel": "CİHAZ KİMLİĞİ",
   "@deviceIdLabel": {
     "description": "Texte UI : deviceIdLabel"
   },
-  "deviceIdCaption": "Identifie ton installation The Few. Garde ce code pour le support technique de l'app. Pour toute question sur les chaînes, contacte ton fournisseur IPTV.",
+  "deviceIdCaption": "The Few kurulumunu tanımlar. Uygulamanın teknik desteği için bu kodu sakla. Kanallarla ilgili sorular için IPTV sağlayıcına ulaş.",
   "@deviceIdCaption": {
     "description": "Texte UI : deviceIdCaption"
   },
-  "profileDiscovery": "Découverte",
+  "profileDiscovery": "Keşfet",
   "@profileDiscovery": {
     "description": "Texte UI : profileDiscovery"
   },
-  "profileTvGuide": "Guide TV",
+  "profileTvGuide": "TV Rehberi",
   "@profileTvGuide": {
     "description": "Texte UI : profileTvGuide"
   },
-  "profileTvGuideSub": "Programme en cours et à venir",
+  "profileTvGuideSub": "Şu anki ve sıradaki programlar",
   "@profileTvGuideSub": {
     "description": "Texte UI : profileTvGuideSub"
   },
-  "profileRecordings": "Mes enregistrements",
+  "profileRecordings": "Kayıtlarım",
   "@profileRecordings": {
     "description": "Texte UI : profileRecordings"
   },
-  "profileRecordingsSub": "Tes captures de direct",
+  "profileRecordingsSub": "Canlı yayın kayıtların",
   "@profileRecordingsSub": {
     "description": "Texte UI : profileRecordingsSub"
   },
-  "profileAccount": "Compte",
+  "profileAccount": "Hesap",
   "@profileAccount": {
     "description": "Texte UI : profileAccount"
   },
-  "profileSettings": "Réglages",
+  "profileSettings": "Ayarlar",
   "@profileSettings": {
     "description": "Texte UI : profileSettings"
   },
-  "profileSettingsSub": "Lecture, sécurité, langue, thème",
+  "profileSettingsSub": "Oynatma, güvenlik, dil, tema",
   "@profileSettingsSub": {
     "description": "Texte UI : profileSettingsSub"
   },
-  "profileTheme": "Thème",
+  "profileTheme": "Tema",
   "@profileTheme": {
     "description": "Texte UI : bouton choix du thème de couleur"
   },
-  "profileThemeSub": "Choisis ta couleur",
+  "profileThemeSub": "Rengini seç",
   "@profileThemeSub": {
     "description": "Texte UI : sous-titre du bouton Thème"
   },
-  "themeChooseTitle": "Choisis ton thème",
+  "themeChooseTitle": "Temanı seç",
   "@themeChooseTitle": {
     "description": "Titre du sélecteur de thème"
   },
-  "themeChooseSub": "La couleur change instantanément dans toute l'app",
+  "themeChooseSub": "Renk tüm uygulamada anında değişir",
   "@themeChooseSub": {
     "description": "Sous-titre du sélecteur de thème"
   },
-  "forceUpdateTitle": "Nouvelle version disponible",
+  "forceUpdateTitle": "Yeni sürüm mevcut",
   "@forceUpdateTitle": {
     "description": "Titre ecran mise a jour forcee"
   },
-  "forceUpdateBody": "Cette version n'est plus à jour. Télécharge la dernière version pour continuer à utiliser l'application.",
+  "forceUpdateBody": "Bu sürüm artık güncel değil. Uygulamayı kullanmaya devam etmek için en son sürümü indir.",
   "@forceUpdateBody": {
     "description": "Corps ecran mise a jour forcee"
   },
-  "forceUpdateDownloaderHint": "SUR TV / BOX : OUVRE DOWNLOADER ET TAPE CE CODE",
+  "forceUpdateDownloaderHint": "TV / KUTUDA: DOWNLOADER'I AÇ VE BU KODU GİR",
   "@forceUpdateDownloaderHint": {
     "description": "Aide code Downloader"
   },
-  "forceUpdateDownloadBtn": "Télécharger maintenant",
+  "forceUpdateDownloadBtn": "Şimdi indir",
   "@forceUpdateDownloadBtn": {
     "description": "Bouton telecharger"
   },
-  "forceUpdateRetry": "J'ai mis à jour — Réessayer",
+  "forceUpdateRetry": "Güncelledim — Tekrar dene",
   "@forceUpdateRetry": {
     "description": "Bouton reessayer apres MAJ"
   },
-  "profileAbout": "À propos",
+  "profileAbout": "Hakkında",
   "@profileAbout": {
     "description": "Texte UI : profileAbout"
   },
-  "profileAboutSub": "Version, équipe, mentions légales",
+  "profileAboutSub": "Sürüm, ekip, yasal bilgiler",
   "@profileAboutSub": {
     "description": "Texte UI : profileAboutSub"
   },
-  "profilePremiumAccount": "Compte premium",
+  "profilePremiumAccount": "Premium hesap",
   "@profilePremiumAccount": {
     "description": "Texte UI : profilePremiumAccount"
   },
-  "profileCastConnected": "Connecté à {device}",
+  "profileCastConnected": "{device} cihazına bağlı",
   "@profileCastConnected": {
     "description": "Texte UI : profileCastConnected",
     "placeholders": {
@@ -1597,39 +1595,39 @@
       }
     }
   },
-  "profileCastTo": "Diffuser sur un téléviseur",
+  "profileCastTo": "Bir TV'ye yansıt",
   "@profileCastTo": {
     "description": "Texte UI : profileCastTo"
   },
-  "profileCast": "Cast",
+  "profileCast": "Yansıt",
   "@profileCast": {
     "description": "Texte UI : profileCast"
   },
-  "profileDeviceFallback": "appareil",
+  "profileDeviceFallback": "cihaz",
   "@profileDeviceFallback": {
     "description": "Texte UI : profileDeviceFallback"
   },
-  "supportHowToReach": "Comment veux-tu nous joindre ?",
+  "supportHowToReach": "Bize nasıl ulaşmak istersin?",
   "@supportHowToReach": {
     "description": "Texte UI : supportHowToReach"
   },
-  "supportPickChannel": "Choisis le canal qui te convient. Notre équipe répond 7j/7.",
+  "supportPickChannel": "Sana uygun kanalı seç. Ekibimiz haftanın 7 günü yanıt veriyor.",
   "@supportPickChannel": {
     "description": "Texte UI : supportPickChannel"
   },
-  "supportInstantMessage": "Message instantané",
+  "supportInstantMessage": "Anlık mesaj",
   "@supportInstantMessage": {
     "description": "Texte UI : supportInstantMessage"
   },
-  "supportInstantMessageSub": "Conversation écrite · Réponse moyenne 15 min.",
+  "supportInstantMessageSub": "Yazılı sohbet · Ortalama yanıt 15 dk.",
   "@supportInstantMessageSub": {
     "description": "Texte UI : supportInstantMessageSub"
   },
-  "supportPhoneCall": "Appel téléphonique",
+  "supportPhoneCall": "Telefon görüşmesi",
   "@supportPhoneCall": {
     "description": "Texte UI : supportPhoneCall"
   },
-  "supportPhoneCallSub": "Parle à un conseiller · {number}",
+  "supportPhoneCallSub": "Bir danışmanla konuş · {number}",
   "@supportPhoneCallSub": {
     "description": "Texte UI : supportPhoneCallSub",
     "placeholders": {
@@ -1638,23 +1636,23 @@
       }
     }
   },
-  "supportMessageError": "Impossible d'ouvrir la messagerie. Essaie l'appel.",
+  "supportMessageError": "Mesajlaşma açılamadı. Aramayı dene.",
   "@supportMessageError": {
     "description": "Texte UI : supportMessageError"
   },
-  "supportCallError": "Cet appareil ne peut pas appeler. Utilise le message à la place.",
+  "supportCallError": "Bu cihaz arama yapamıyor. Bunun yerine mesaj gönder.",
   "@supportCallError": {
     "description": "Texte UI : supportCallError"
   },
-  "favoritesEmptyTitle": "Aucun favori pour l'instant",
+  "favoritesEmptyTitle": "Henüz favori yok",
   "@favoritesEmptyTitle": {
     "description": "Texte UI : favoritesEmptyTitle"
   },
-  "favoritesEmptyHint": "Appuie sur ♥ dans le menu d'une chaîne pour la garder ici.",
+  "favoritesEmptyHint": "Bir kanalı burada tutmak için menüsünde ♥ simgesine bas.",
   "@favoritesEmptyHint": {
     "description": "Texte UI : favoritesEmptyHint"
   },
-  "focusedResultsCount": "{channels} chaînes · {countries} pays",
+  "focusedResultsCount": "{channels} kanal · {countries} ülke",
   "@focusedResultsCount": {
     "description": "Texte UI : focusedResultsCount",
     "placeholders": {
@@ -1666,7 +1664,7 @@
       }
     }
   },
-  "searchResultsCount": "{count} résultats pour \"{query}\"",
+  "searchResultsCount": "\"{query}\" için {count} sonuç",
   "@searchResultsCount": {
     "description": "Texte UI : searchResultsCount",
     "placeholders": {
@@ -1678,107 +1676,107 @@
       }
     }
   },
-  "loginInvalidUrl": "URL invalide. Elle doit commencer par http:// ou https://",
+  "loginInvalidUrl": "Geçersiz URL. http:// ya da https:// ile başlamalı",
   "@loginInvalidUrl": {
     "description": "Texte UI : loginInvalidUrl"
   },
-  "loginInvalidServer": "Serveur invalide. Format : http://serveur.com:8080",
+  "loginInvalidServer": "Geçersiz sunucu. Biçim: http://sunucu.com:8080",
   "@loginInvalidServer": {
     "description": "Texte UI : loginInvalidServer"
   },
-  "loginCredsRequired": "Utilisateur et mot de passe sont obligatoires.",
+  "loginCredsRequired": "Kullanıcı adı ve şifre zorunlu.",
   "@loginCredsRequired": {
     "description": "Texte UI : loginCredsRequired"
   },
-  "loginServerRequired": "Choisis un serveur.",
+  "loginServerRequired": "Bir sunucu seç.",
   "@loginServerRequired": {
     "description": "Texte UI : loginServerRequired"
   },
-  "loginSourceAdded": "Source ajoutée. Tes chaînes arrivent…",
+  "loginSourceAdded": "Kaynak eklendi. Kanalların geliyor…",
   "@loginSourceAdded": {
     "description": "Texte UI : loginSourceAdded"
   },
-  "loginConnected": "Connecté. Tes chaînes arrivent…",
+  "loginConnected": "Bağlandı. Kanalların geliyor…",
   "@loginConnected": {
     "description": "Texte UI : loginConnected"
   },
-  "loginMySourcePerso": "Ma source perso",
+  "loginMySourcePerso": "Kişisel kaynağım",
   "@loginMySourcePerso": {
     "description": "Texte UI : loginMySourcePerso"
   },
-  "loginUrlM3u": "URL M3U",
+  "loginUrlM3u": "M3U URL",
   "@loginUrlM3u": {
     "description": "Texte UI : loginUrlM3u"
   },
-  "loginServerXtream": "Serveur Xtream",
+  "loginServerXtream": "Xtream sunucusu",
   "@loginServerXtream": {
     "description": "Texte UI : loginServerXtream"
   },
-  "loginUsername": "Utilisateur",
+  "loginUsername": "Kullanıcı adı",
   "@loginUsername": {
     "description": "Texte UI : loginUsername"
   },
-  "loginPassword": "Mot de passe",
+  "loginPassword": "Şifre",
   "@loginPassword": {
     "description": "Texte UI : loginPassword"
   },
-  "loginNameOptional": "Nom (optionnel)",
+  "loginNameOptional": "Ad (isteğe bağlı)",
   "@loginNameOptional": {
     "description": "Texte UI : loginNameOptional"
   },
-  "loginNameHint": "Défaut : \"Ma source\"",
+  "loginNameHint": "Varsayılan: \"Kaynağım\"",
   "@loginNameHint": {
     "description": "Texte UI : loginNameHint"
   },
-  "loginVerifying": "Vérification…",
+  "loginVerifying": "Doğrulanıyor…",
   "@loginVerifying": {
     "description": "Texte UI : loginVerifying"
   },
-  "loginLoadChannels": "Charger mes chaînes",
+  "loginLoadChannels": "Kanallarımı yükle",
   "@loginLoadChannels": {
     "description": "Texte UI : loginLoadChannels"
   },
-  "loginTitle": "Connexion",
+  "loginTitle": "Giriş",
   "@loginTitle": {
     "description": "Texte UI : loginTitle"
   },
-  "loginXtreamIntro": "Choisis ton serveur puis saisis le code que t'a donné ton revendeur.\nTes chaînes seront chargées en quelques secondes.",
+  "loginXtreamIntro": "Sunucunu seç, ardından bayinin verdiği kodu gir.\nKanalların saniyeler içinde yüklenecek.",
   "@loginXtreamIntro": {
     "description": "Texte UI : loginXtreamIntro"
   },
-  "loginServer": "Serveur",
+  "loginServer": "Sunucu",
   "@loginServer": {
     "description": "Texte UI : loginServer"
   },
-  "loginConnecting": "Connexion au serveur...",
+  "loginConnecting": "Sunucuya bağlanılıyor...",
   "@loginConnecting": {
     "description": "Texte UI : loginConnecting"
   },
-  "loginConnectLoad": "Se connecter et charger",
+  "loginConnectLoad": "Bağlan ve yükle",
   "@loginConnectLoad": {
     "description": "Texte UI : loginConnectLoad"
   },
-  "loginLoadingServers": "Chargement des serveurs…",
+  "loginLoadingServers": "Sunucular yükleniyor…",
   "@loginLoadingServers": {
     "description": "Texte UI : loginLoadingServers"
   },
-  "loginServersUnavailable": "Serveurs indisponibles pour le moment.",
+  "loginServersUnavailable": "Sunucular şu anda kullanılamıyor.",
   "@loginServersUnavailable": {
     "description": "Texte UI : loginServersUnavailable"
   },
-  "loginAddIntro": "Choisis ton serveur, puis saisis le code que t'a donné ton revendeur (utilisateur + mot de passe). On vérifie le code avant de charger tes chaînes.",
+  "loginAddIntro": "Sunucunu seç, ardından bayinin verdiği kodu gir (kullanıcı adı + şifre). Kanallarını yüklemeden önce kodu doğrularız.",
   "@loginAddIntro": {
     "description": "Texte UI : loginAddIntro"
   },
-  "loginUsernameHint": "identifiant",
+  "loginUsernameHint": "kullanıcı adı",
   "@loginUsernameHint": {
     "description": "Texte UI : loginUsernameHint"
   },
-  "loginPasswordHint": "mot de passe",
+  "loginPasswordHint": "şifre",
   "@loginPasswordHint": {
     "description": "Texte UI : loginPasswordHint"
   },
-  "seeAllOf": "Voir tout {title}",
+  "seeAllOf": "Tümünü gör: {title}",
   "@seeAllOf": {
     "description": "Texte UI : seeAllOf",
     "placeholders": {
@@ -1787,15 +1785,15 @@
       }
     }
   },
-  "playlistActiveBadge": "Active",
+  "playlistActiveBadge": "Etkin",
   "@playlistActiveBadge": {
     "description": "Badge sur la playlist actuellement active"
   },
-  "playlistTapToActivate": "Activer cette playlist",
+  "playlistTapToActivate": "Bu listeyi etkinleştir",
   "@playlistTapToActivate": {
     "description": "Action pour activer une playlist"
   },
-  "playlistNowActive": "« {name} » est maintenant la playlist active",
+  "playlistNowActive": "« {name} » artık etkin liste",
   "@playlistNowActive": {
     "description": "Confirmation de bascule de playlist active",
     "placeholders": {
@@ -1804,51 +1802,51 @@
       }
     }
   },
-  "subActiveLifetime": "Abonnement à vie",
+  "subActiveLifetime": "Ömür boyu abonelik",
   "@subActiveLifetime": {
     "description": "Titre carte abonnement quand le plan est à vie"
   },
-  "activationCheckButton": "Vérifier mon abonnement",
+  "activationCheckButton": "Aboneliğimi kontrol et",
   "@activationCheckButton": {
     "description": "Bouton pour revérifier l’abonnement et charger la source"
   },
-  "activationChecking": "Vérification en cours…",
+  "activationChecking": "Kontrol ediliyor…",
   "@activationChecking": {
     "description": "Snackbar pendant la vérification d’abonnement"
   },
-  "activationSuccess": "Abonnement vérifié — tes chaînes sont chargées !",
+  "activationSuccess": "Abonelik doğrulandı — kanalların yüklendi!",
   "@activationSuccess": {
     "description": "Snackbar succès vérification (chaînes chargées)"
   },
-  "activationNoSourceYet": "Pas encore de chaînes. Si ton revendeur vient d'activer, patiente un instant puis réessaie, ou redémarre l'app.",
+  "activationNoSourceYet": "Henüz kanal yok. Bayin az önce etkinleştirdiyse biraz bekleyip tekrar dene ya da uygulamayı yeniden başlat.",
   "@activationNoSourceYet": {
     "description": "Snackbar : aucune source encore assignée"
   },
-  "activationActiveNoSource": "Abonnement actif ✅ mais aucune playlist assignée à ta MAC. Ton revendeur doit ajouter une Source (Xtream/M3U).",
+  "activationActiveNoSource": "Abonelik etkin ✅ ama MAC adresine atanmış liste yok. Bayinin bir Kaynak (Xtream/M3U) eklemesi gerekiyor.",
   "@activationActiveNoSource": {
     "description": "Message de diagnostic activation"
   },
-  "activationDeviceKnownNoSub": "Appareil reconnu par le serveur, en attente d'activation par ton revendeur.",
+  "activationDeviceKnownNoSub": "Cihaz sunucu tarafından tanındı, bayinin etkinleştirmesi bekleniyor.",
   "@activationDeviceKnownNoSub": {
     "description": "Message de diagnostic activation"
   },
-  "activationDeviceUnknown": "Appareil pas encore vu par le serveur — vérifie ta connexion internet.",
+  "activationDeviceUnknown": "Cihaz henüz sunucu tarafından görülmedi — internet bağlantını kontrol et.",
   "@activationDeviceUnknown": {
     "description": "Message de diagnostic activation"
   },
-  "emptyPremiumTitle": "Compte premium",
+  "emptyPremiumTitle": "Premium hesap",
   "@emptyPremiumTitle": {
     "description": "Ecran vide quand abonnement actif"
   },
-  "emptyPremiumWaiting": "Abonnement actif — en attente de tes chaînes. Ton revendeur doit assigner ta source (Xtream/M3U).",
+  "emptyPremiumWaiting": "Abonelik etkin — kanalların bekleniyor. Bayinin kaynağını (Xtream/M3U) ataması gerekiyor.",
   "@emptyPremiumWaiting": {
     "description": "Ecran vide quand abonnement actif"
   },
-  "activationSourceFailed": "Source reçue mais 0 chaîne chargée. Vérifie l'URL / les identifiants du provider (URL M3U complète avec get.php, ou utilise le mode Xtream).",
+  "activationSourceFailed": "Kaynak alındı ama 0 kanal yüklendi. Sağlayıcının URL'sini / bilgilerini kontrol et (get.php içeren tam M3U URL'si ya da Xtream modunu kullan).",
   "@activationSourceFailed": {
     "description": "Diagnostic : source assignee mais 0 chaine"
   },
-  "catFilterAll": "Tout",
+  "catFilterAll": "Tümü",
   "@catFilterAll": {
     "description": "Filtre catégories : tout"
   },
@@ -1856,67 +1854,67 @@
   "@catFilterTv": {
     "description": "Filtre catégories : direct/TV"
   },
-  "catFilterAdult": "Adulte",
+  "catFilterAdult": "Yetişkin",
   "@catFilterAdult": {
     "description": "Filtre catégories : adulte"
   },
-  "catNoneInPlaylist": "Aucune catégorie dans ta playlist.",
+  "catNoneInPlaylist": "Listende kategori yok.",
   "@catNoneInPlaylist": {
     "description": "Aucune catégorie dans la playlist"
   },
-  "catEmptyShelf": "Rien dans ce rayon.",
+  "catEmptyShelf": "Bu rafta bir şey yok.",
   "@catEmptyShelf": {
     "description": "Rien dans ce rayon"
   },
-  "recordingOpenWith": "Ouvrir avec…",
+  "recordingOpenWith": "Şununla aç…",
   "@recordingOpenWith": {
     "description": "Enregistrements : ouvrir avec"
   },
-  "recordingShare": "Partager",
+  "recordingShare": "Paylaş",
   "@recordingShare": {
     "description": "Enregistrements : partager"
   },
-  "recordingNoPlayer": "Aucun lecteur compatible. Installe VLC pour lire ce fichier.",
+  "recordingNoPlayer": "Uyumlu oynatıcı yok. Bu dosyayı oynatmak için VLC yükle.",
   "@recordingNoPlayer": {
     "description": "Enregistrements : aucun lecteur compatible"
   },
-  "activationRestartTitle": "Activation réussie",
+  "activationRestartTitle": "Etkinleştirme başarılı",
   "@activationRestartTitle": {
     "description": "Splash activation : titre"
   },
-  "activationRestartSubtitle": "Redémarrage en cours…",
+  "activationRestartSubtitle": "Yeniden başlatılıyor…",
   "@activationRestartSubtitle": {
     "description": "Splash activation : sous-titre"
   },
-  "orSeparator": "ou",
+  "orSeparator": "veya",
   "@orSeparator": {
     "description": "Séparateur « ou »"
   },
-  "xtreamHaveCode": "J'ai un code Xtream",
+  "xtreamHaveCode": "Xtream kodum var",
   "@xtreamHaveCode": {
     "description": "Bouton : j’ai un code Xtream"
   },
-  "catFilterMovies": "Cinéma",
-  "catFilterSeries": "Série",
+  "catFilterMovies": "Sinema",
+  "catFilterSeries": "Dizi",
   "@catFilterMovies": {
     "description": "Filtre catégories : cinéma"
   },
   "@catFilterSeries": {
     "description": "Filtre catégories : série"
   },
-  "pricingOffersTitle": "Nos offres",
+  "pricingOffersTitle": "Tekliflerimiz",
   "@pricingOffersTitle": {
     "description": "Titre bloc offres"
   },
-  "pricingLifetime": "À vie",
+  "pricingLifetime": "Ömür boyu",
   "@pricingLifetime": {
     "description": "Offre à vie"
   },
-  "pricingYearly": "1 an",
+  "pricingYearly": "1 yıl",
   "@pricingYearly": {
     "description": "Offre 1 an"
   },
-  "pricingTrialDays": "Essai gratuit {days} jours",
+  "pricingTrialDays": "{days} gün ücretsiz deneme",
   "@pricingTrialDays": {
     "description": "Essai gratuit en jours",
     "placeholders": {
@@ -1925,52 +1923,52 @@
       }
     }
   },
-  "simpleSwitchSource": "Changer de source",
+  "simpleSwitchSource": "Kaynak değiştir",
   "@simpleSwitchSource": {
     "description": "Bouton : changer de source (trio)"
   },
-  "homeRecentlyWatched": "Récemment regardées",
+  "homeRecentlyWatched": "Son izlenenler",
   "@homeRecentlyWatched": {
     "description": "Titre du rail des dernières chaînes regardées"
   },
-  "tvActivationTagline": "Accès complet, à vie. Un seul paiement.",
-  "tvLifetime": "À vie",
-  "tvActivationCodeLabel": "Ton code d'activation",
-  "tvActivationCodeHelp": "Donne ce code à ton revendeur pour activer. Il reste le même, même après une réinstallation.",
-  "tvPaidCheck": "J'ai payé — Vérifier",
-  "tvChecking": "Vérification…",
-  "tvAddOwnList": "J'ajoute ma propre liste (Xtream)",
-  "tvActivationFooter": "Paiement vérifié · Activation instantanée",
-  "tvScanToActivate": "Scanne-moi pour activer",
-  "tvScanHelp": "Ouvre l'appareil photo de ton téléphone et vise ce code. Ça ouvre WhatsApp avec ton code déjà prêt.",
-  "tvNavLive": "Direct",
-  "tvNavFilms": "Films",
-  "tvNavSeries": "Séries",
-  "tvNavGuide": "Guide",
-  "tvNavSearch": "Recherche",
-  "tvNavSettings": "Réglages",
-  "tvComingSoon": "Bientôt disponible. Cette section arrive très vite.",
-  "tvEpgNow": "Maintenant",
+  "tvActivationTagline": "Tam erişim, ömür boyu. Tek ödeme.",
+  "tvLifetime": "Ömür boyu",
+  "tvActivationCodeLabel": "Etkinleştirme kodun",
+  "tvActivationCodeHelp": "Etkinleştirmek için bu kodu bayine ver. Yeniden kurulumdan sonra bile aynı kalır.",
+  "tvPaidCheck": "Ödedim — Kontrol et",
+  "tvChecking": "Kontrol ediliyor…",
+  "tvAddOwnList": "Kendi listemi ekliyorum (Xtream)",
+  "tvActivationFooter": "Ödeme doğrulandı · Anında etkinleştirme",
+  "tvScanToActivate": "Etkinleştirmek için beni tara",
+  "tvScanHelp": "Telefonunun kamerasını aç ve bu koda tut. WhatsApp, kodun hazır halde açılır.",
+  "tvNavLive": "Canlı",
+  "tvNavFilms": "Filmler",
+  "tvNavSeries": "Diziler",
+  "tvNavGuide": "Rehber",
+  "tvNavSearch": "Ara",
+  "tvNavSettings": "Ayarlar",
+  "tvComingSoon": "Çok yakında. Bu bölüm kısa süre içinde geliyor.",
+  "tvEpgNow": "Şimdi",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
   },
-  "tvEpgNext": "À suivre",
+  "tvEpgNext": "Sıradaki",
   "@tvEpgNext": {
     "description": "Étiquette du programme suivant (aperçu Direct)"
   },
-  "tvHello": "Bonjour",
-  "tvNoChannels": "Aucune chaîne pour l'instant",
-  "tvNoChannelsHelp": "Active cet appareil dans ton panel, puis pousse-lui une source. Les chaînes apparaîtront ici automatiquement.",
-  "tvContinueWatching": "CONTINUER À REGARDER",
-  "tvNoChannelInCategory": "Aucune chaîne dans cette catégorie.",
-  "tvOthers": "Autres",
-  "tvSearchHint": "Tape pour rechercher…",
-  "tvNoResult": "Aucun résultat.",
-  "tvDeviceAddress": "Adresse de cet appareil (MAC)",
-  "tvDeviceAddressHelp": "Donne cette adresse à ton revendeur pour activer Zuno.",
-  "tvStatus": "Statut",
-  "tvStatusPaid": "Abonnement actif",
-  "tvStatusTrial": "Essai — {days} jour(s) restants",
+  "tvHello": "Merhaba",
+  "tvNoChannels": "Henüz kanal yok",
+  "tvNoChannelsHelp": "Bu cihazı panelinde etkinleştir, ardından ona bir kaynak gönder. Kanallar burada otomatik olarak görünecek.",
+  "tvContinueWatching": "İZLEMEYE DEVAM ET",
+  "tvNoChannelInCategory": "Bu kategoride kanal yok.",
+  "tvOthers": "Diğer",
+  "tvSearchHint": "Aramak için yaz…",
+  "tvNoResult": "Sonuç yok.",
+  "tvDeviceAddress": "Bu cihazın adresi (MAC)",
+  "tvDeviceAddressHelp": "Zuno'yu etkinleştirmek için bu adresi bayine ver.",
+  "tvStatus": "Durum",
+  "tvStatusPaid": "Abonelik etkin",
+  "tvStatusTrial": "Deneme — {days} gün kaldı",
   "@tvStatusTrial": {
     "placeholders": {
       "days": {
@@ -1978,158 +1976,158 @@
       }
     }
   },
-  "tvStatusTrialExpired": "Essai terminé — à activer",
-  "tvStatusFrozen": "Compte gelé",
-  "tvStatusBanned": "Compte banni",
-  "tvStatusUnknown": "Non activé",
-  "tvRefreshStatus": "Rafraîchir le statut",
-  "tvLiveBadge": "DIRECT",
-  "tvZapHint": "Haut/Bas pour zapper",
-  "tvAddListTitle": "Ajouter ma liste",
-  "tvAddListSubtitle": "Code Xtream — apporte ta propre playlist.",
-  "tvFieldServer": "Serveur",
-  "tvFieldUser": "Identifiant",
-  "tvFieldPass": "Mot de passe",
-  "tvAddListError": "Remplis le serveur, l'identifiant et le mot de passe.",
-  "tvConnectError": "Connexion impossible. Vérifie les infos.",
-  "tvConnecting": "Connexion…",
-  "tvAddListValidate": "Valider et charger ma liste",
-  "tvSearchingChannels": "Recherche de tes chaînes…",
-  "tvRetry": "Réessayer",
-  "tvSourceInvalid": "Abonnement reçu mais refusé — vérifie les identifiants dans le panel.",
-  "tvQuitTitle": "Quitter Zuno ?",
-  "tvQuitMessage": "Redémarre pour rafraîchir tes chaînes, ou quitte l'application.",
-  "tvRestart": "Redémarrer",
-  "tvQuit": "Quitter",
-  "tvStay": "Continuer",
-  "tvChooseServer": "Choisis ton serveur",
-  "tvManualServer": "URL manuelle",
-  "tvKeyboardHint": "Astuce : tu peux taper avec le clavier de l'appli télécommande de ton téléphone (copier-coller possible).",
-  "tvAddM3uTitle": "Ajouter une liste M3U",
-  "tvAddM3uSubtitle": "Colle l'URL de ton fichier .m3u (et l'EPG si tu en as une).",
-  "tvFieldNameOptional": "Nom (optionnel)",
-  "tvMyListHint": "Ma liste",
-  "tvFieldM3uUrl": "URL M3U",
-  "tvFieldEpgUrlOptional": "URL EPG (optionnel)",
-  "tvAddM3uBusy": "Ajout…",
-  "tvAddM3uValidate": "Ajouter la liste",
-  "tvAddM3uInvalidUrl": "Entre une URL M3U valide (http…).",
-  "tvAddM3uFailed": "Échec : liste injoignable ou vide.",
-  "tvMyM3uList": "Ma liste M3U",
-  "tvBlackBoxTitle": "Boîte noire",
-  "tvBlackBoxSubtitle": "Journal technique de l'application (v{version}). En cas de fermeture inattendue, la raison est ici.",
+  "tvStatusTrialExpired": "Deneme bitti — etkinleştirilmeli",
+  "tvStatusFrozen": "Hesap donduruldu",
+  "tvStatusBanned": "Hesap yasaklandı",
+  "tvStatusUnknown": "Etkinleştirilmedi",
+  "tvRefreshStatus": "Durumu yenile",
+  "tvLiveBadge": "CANLI",
+  "tvZapHint": "Kanal değiştirmek için Yukarı/Aşağı",
+  "tvAddListTitle": "Listemi ekle",
+  "tvAddListSubtitle": "Xtream kodu — kendi listeni getir.",
+  "tvFieldServer": "Sunucu",
+  "tvFieldUser": "Kullanıcı adı",
+  "tvFieldPass": "Şifre",
+  "tvAddListError": "Sunucu, kullanıcı adı ve şifreyi doldur.",
+  "tvConnectError": "Bağlanılamadı. Bilgileri kontrol et.",
+  "tvConnecting": "Bağlanıyor…",
+  "tvAddListValidate": "Onayla ve listemi yükle",
+  "tvSearchingChannels": "Kanalların aranıyor…",
+  "tvRetry": "Tekrar dene",
+  "tvSourceInvalid": "Abonelik alındı ama reddedildi — paneldeki bilgileri kontrol et.",
+  "tvQuitTitle": "Zuno'dan çıkılsın mı?",
+  "tvQuitMessage": "Kanallarını yenilemek için yeniden başlat ya da uygulamadan çık.",
+  "tvRestart": "Yeniden başlat",
+  "tvQuit": "Çık",
+  "tvStay": "Devam et",
+  "tvChooseServer": "Sunucunu seç",
+  "tvManualServer": "Manuel URL",
+  "tvKeyboardHint": "İpucu: telefonundaki kumanda uygulamasının klavyesiyle yazabilirsin (kopyala-yapıştır da olur).",
+  "tvAddM3uTitle": "M3U listesi ekle",
+  "tvAddM3uSubtitle": ".m3u dosyanın URL'sini yapıştır (varsa EPG'yi de).",
+  "tvFieldNameOptional": "Ad (isteğe bağlı)",
+  "tvMyListHint": "Listem",
+  "tvFieldM3uUrl": "M3U URL",
+  "tvFieldEpgUrlOptional": "EPG URL (isteğe bağlı)",
+  "tvAddM3uBusy": "Ekleniyor…",
+  "tvAddM3uValidate": "Listeyi ekle",
+  "tvAddM3uInvalidUrl": "Geçerli bir M3U URL'si gir (http…).",
+  "tvAddM3uFailed": "Başarısız: listeye ulaşılamıyor ya da liste boş.",
+  "tvMyM3uList": "M3U listem",
+  "tvBlackBoxTitle": "Kara kutu",
+  "tvBlackBoxSubtitle": "Uygulamanın teknik günlüğü (v{version}). Beklenmedik bir kapanma olursa nedeni burada.",
   "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
-  "tvBlackBoxFirstRun": "Premier lancement : aucune session précédente.",
-  "tvBlackBoxCleanExit": "Dernière session terminée normalement.",
-  "tvBlackBoxBrutal": "FERMETURE BRUTALE · {reason}",
+  "tvBlackBoxFirstRun": "İlk başlatma: önceki oturum yok.",
+  "tvBlackBoxCleanExit": "Son oturum normal şekilde sona erdi.",
+  "tvBlackBoxBrutal": "ANİ KAPANMA · {reason}",
   "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
-  "tvBlackBoxUnknownReason": "raison inconnue (Android < 11)",
-  "tvBlackBoxMemory": "mémoire {mb} Mo",
+  "tvBlackBoxUnknownReason": "bilinmeyen neden (Android < 11)",
+  "tvBlackBoxMemory": "bellek {mb} MB",
   "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
-  "tvBlackBoxWhen": "Quand : {when}",
+  "tvBlackBoxWhen": "Ne zaman: {when}",
   "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
-  "tvBlackBoxLastAction": "Dernière action : {action}",
+  "tvBlackBoxLastAction": "Son işlem: {action}",
   "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
-  "tvBlackBoxDetail": "Détail Android : {detail}",
+  "tvBlackBoxDetail": "Android ayrıntısı: {detail}",
   "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
-  "tvRefresh": "Actualiser",
-  "tvCopy": "Copier",
-  "tvCopied": "Copié",
-  "tvClear": "Effacer",
-  "tvReading": "Lecture…",
-  "tvBlackBoxHelp": "HAUT/BAS : défiler · CH+/CH− : page · Copier = presse-papiers (colle-le dans WhatsApp au support).",
-  "tvNavServer": "Serveur",
-  "tvLegalTitle": "Mentions légales & Conditions",
-  "tvResumeLabel": "REPRENDRE",
-  "tvNowPlayingPrefix": "EN CE MOMENT · {title}",
+  "tvRefresh": "Yenile",
+  "tvCopy": "Kopyala",
+  "tvCopied": "Kopyalandı",
+  "tvClear": "Temizle",
+  "tvReading": "Okunuyor…",
+  "tvBlackBoxHelp": "YUKARI/AŞAĞI: kaydır · CH+/CH−: sayfa · Kopyala = pano (WhatsApp'tan desteğe yapıştır).",
+  "tvNavServer": "Sunucu",
+  "tvLegalTitle": "Yasal bilgiler & Koşullar",
+  "tvResumeLabel": "DEVAM ET",
+  "tvNowPlayingPrefix": "ŞU AN · {title}",
   "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
-  "tvLiveBadge": "EN DIRECT",
-  "tvPinUpdated": "Code parental mis à jour ✔",
-  "tvParentalTitle": "Contrôle parental",
-  "tvKidsMode": "Mode Enfants",
-  "tvParentalCode": "Code parental",
-  "tvCustomPinInPlace": "Un code personnalisé est en place.",
-  "tvChangePin": "Changer le code PIN",
-  "tvPinSubtitle": "Code parental à 4 chiffres",
-  "tvNewPin": "Nouveau code",
-  "tvNewPinSubtitle": "Choisis 4 chiffres, puis confirme",
-  "tvPinWrong": "Code incorrect, réessaie.",
-  "tvPinMismatch": "Les deux codes ne correspondent pas.",
-  "tvPlayerFatalHint": "OK : Réessayer   ·   Retour : Quitter",
+  "tvLiveBadge": "CANLI",
+  "tvPinUpdated": "Ebeveyn kodu güncellendi ✔",
+  "tvParentalTitle": "Ebeveyn kontrolü",
+  "tvKidsMode": "Çocuk Modu",
+  "tvParentalCode": "Ebeveyn kodu",
+  "tvCustomPinInPlace": "Özel bir kod ayarlı.",
+  "tvChangePin": "PIN kodunu değiştir",
+  "tvPinSubtitle": "4 haneli ebeveyn kodu",
+  "tvNewPin": "Yeni kod",
+  "tvNewPinSubtitle": "4 rakam seç, sonra onayla",
+  "tvPinWrong": "Kod yanlış, tekrar dene.",
+  "tvPinMismatch": "İki kod birbiriyle eşleşmiyor.",
+  "tvPlayerFatalHint": "OK: Tekrar dene   ·   Geri: Çık",
   "tvRec": "REC",
-  "tvStop": "Stop",
-  "tvGuideBtn": "Guide",
+  "tvStop": "Durdur",
+  "tvGuideBtn": "Rehber",
   "tvFavoriteBtn": "Favori",
-  "tvPlaybackFinished": "Lecture terminée",
-  "tvPlaybackFinishedBody": "Appuie sur Retour pour revenir à tes enregistrements.",
-  "tvNoRecordings": "Aucun enregistrement",
-  "tvNoRecordingsBody": "Tes enregistrements apparaîtront ici. Pendant la lecture d'une chaîne, appuie sur le bouton REC pour enregistrer.",
-  "tvMyRecordings": "Mes enregistrements",
-  "tvDeleteQuestion": "Supprimer ?",
-  "tvDeleteRecordingConfirm": "Supprimer définitivement « {name} » ?",
+  "tvPlaybackFinished": "Oynatma bitti",
+  "tvPlaybackFinishedBody": "Kayıtlarına dönmek için Geri'ye bas.",
+  "tvNoRecordings": "Kayıt yok",
+  "tvNoRecordingsBody": "Kayıtların burada görünecek. Bir kanalı izlerken kaydetmek için REC düğmesine bas.",
+  "tvMyRecordings": "Kayıtlarım",
+  "tvDeleteQuestion": "Silinsin mi?",
+  "tvDeleteRecordingConfirm": "« {name} » kalıcı olarak silinsin mi?",
   "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
-  "tvCancel": "Annuler",
-  "tvDelete": "Supprimer",
-  "tvSettingsSources": "Mes sources (ajouter / activer / supprimer)",
-  "tvSettingsParental": "Contrôle parental (Mode Enfants + code PIN)",
-  "tvSettingsBlackBox": "Boîte noire (journal technique)",
-  "tvSettingsLegal": "Mentions légales & Conditions d'utilisation",
-  "tvUpdateChecking": "Mise à jour : vérification…",
-  "tvUpdateUpToDate": "Mise à jour : à jour (version {version}) — OK pour revérifier",
+  "tvCancel": "İptal",
+  "tvDelete": "Sil",
+  "tvSettingsSources": "Kaynaklarım (ekle / etkinleştir / sil)",
+  "tvSettingsParental": "Ebeveyn kontrolü (Çocuk Modu + PIN kodu)",
+  "tvSettingsBlackBox": "Kara kutu (teknik günlük)",
+  "tvSettingsLegal": "Yasal bilgiler & Kullanım koşulları",
+  "tvUpdateChecking": "Güncelleme: kontrol ediliyor…",
+  "tvUpdateUpToDate": "Güncelleme: güncel (sürüm {version}) — yeniden kontrol için OK",
   "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
-  "tvUpdateUpToDateNoVersion": "Mise à jour : à jour — OK pour revérifier",
-  "tvUpdateAvailable": "Nouvelle version {version} disponible — OK pour installer",
+  "tvUpdateUpToDateNoVersion": "Güncelleme: güncel — yeniden kontrol için OK",
+  "tvUpdateAvailable": "Yeni sürüm {version} mevcut — yüklemek için OK",
   "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
-  "tvUpdateDownloading": "Téléchargement de la mise à jour… {pct} %",
+  "tvUpdateDownloading": "Güncelleme indiriliyor… %{pct}",
   "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
-  "tvUpdateFailed": "Mise à jour : échec (réseau ou installateur) — OK pour réessayer",
-  "tvMySources": "Mes sources",
-  "tvAddXtream": "Ajouter Xtream",
-  "tvAddM3u": "Ajouter M3U",
-  "tvDeleteSourceConfirm": "Supprimer la source « {name} » ?",
+  "tvUpdateFailed": "Güncelleme: başarısız (ağ ya da yükleyici) — tekrar denemek için OK",
+  "tvMySources": "Kaynaklarım",
+  "tvAddXtream": "Xtream ekle",
+  "tvAddM3u": "M3U ekle",
+  "tvDeleteSourceConfirm": "« {name} » kaynağı silinsin mi?",
   "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
-  "tvActivate": "Activer",
-  "tvMyTeams": "Mes équipes",
-  "tvAdd": "Ajouter",
-  "tvPickTeamsTitle": "Choisis tes équipes préférées",
-  "tvPickTeamsBody": "Tu verras leurs scores et leurs prochains matchs, un bandeau d'actu qui défile, et une alarme ~1 h avant chaque match.",
-  "tvPickMyTeam": "Choisir mon équipe",
-  "tvLastMatch": "Dernier match",
-  "tvNextMatch": "Prochain match",
-  "tvNewsTicker": "ACTU",
-  "tvNoData": "Aucune donnée",
-  "tvNoTeamFound": "Aucune équipe trouvée",
-  "tvMyTeam": "Mon équipe",
-  "tvImpConnecting": "Connexion au serveur…",
-  "tvImpCategories": "Lecture des catégories…",
-  "tvImpDownloading": "Téléchargement… {mb} Mo",
+  "tvActivate": "Etkinleştir",
+  "tvMyTeams": "Takımlarım",
+  "tvAdd": "Ekle",
+  "tvPickTeamsTitle": "Favori takımlarını seç",
+  "tvPickTeamsBody": "Skorlarını ve sonraki maçlarını, kayan bir haber bandını ve her maçtan ~1 saat önce bir alarmı göreceksin.",
+  "tvPickMyTeam": "Takımımı seç",
+  "tvLastMatch": "Son maç",
+  "tvNextMatch": "Sonraki maç",
+  "tvNewsTicker": "HABER",
+  "tvNoData": "Veri yok",
+  "tvNoTeamFound": "Takım bulunamadı",
+  "tvMyTeam": "Takımım",
+  "tvImpConnecting": "Sunucuya bağlanılıyor…",
+  "tvImpCategories": "Kategoriler okunuyor…",
+  "tvImpDownloading": "İndiriliyor… {mb} MB",
   "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
-  "tvImpDecoding": "Analyse de {mb} Mo…",
+  "tvImpDecoding": "{mb} MB analiz ediliyor…",
   "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
-  "tvImpCategory": "Catégorie {i}/{total} · {found} chaînes trouvées",
+  "tvImpCategory": "Kategori {i}/{total} · {found} kanal bulundu",
   "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
-  "tvImpFound": "{count} chaînes trouvées",
+  "tvImpFound": "{count} kanal bulundu",
   "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
-  "tvImpSaving": "Enregistrement {done} / {total} chaînes",
+  "tvImpSaving": "Kaydediliyor: {done} / {total} kanal",
   "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
-  "tvImpDone": "{count} chaînes prêtes",
+  "tvImpDone": "{count} kanal hazır",
   "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
-  "tvLanguage": "Langue",
-  "tvLanguageAuto": "Automatique (langue de la TV)",
-  "tvSettingsLanguage": "Langue : {value}",
+  "tvLanguage": "Dil",
+  "tvLanguageAuto": "Otomatik (TV dili)",
+  "tvSettingsLanguage": "Dil: {value}",
   "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
-  "tvEnterParentalCode": "Entre le code parental",
-  "tvCurrentCode": "Code actuel",
-  "tvConfirmCode": "Confirme le code",
-  "tvRecordingNotFound": "Enregistrement introuvable",
-  "tvPlaybackImpossible": "Lecture impossible",
-  "tvRecordingNotFoundBody": "Le fichier de cet enregistrement est introuvable ou vide.",
-  "tvPlaybackImpossibleBody": "Ce fichier n'a pas pu être décodé.",
-  "tvRecordingStarted": "Enregistrement en cours…",
-  "tvRecordingError": "Erreur enregistrement",
-  "tvRecordingSaved": "Enregistrement sauvegardé ({size})",
+  "tvEnterParentalCode": "Ebeveyn kodunu gir",
+  "tvCurrentCode": "Mevcut kod",
+  "tvConfirmCode": "Kodu onayla",
+  "tvRecordingNotFound": "Kayıt bulunamadı",
+  "tvPlaybackImpossible": "Oynatılamıyor",
+  "tvRecordingNotFoundBody": "Bu kaydın dosyası eksik veya boş.",
+  "tvPlaybackImpossibleBody": "Bu dosyanın kodu çözülemedi.",
+  "tvRecordingStarted": "Kaydediliyor…",
+  "tvRecordingError": "Kayıt hatası",
+  "tvRecordingSaved": "Kayıt kaydedildi ({size})",
   "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
-  "tvRecordingEmpty": "Enregistrement vide",
-  "tvRemovedFromFavorites": "Retiré des favoris",
-  "tvAddedToFavorites": "Ajouté aux favoris ❤"
+  "tvRecordingEmpty": "Boş kayıt",
+  "tvRemovedFromFavorites": "Favorilerden kaldırıldı",
+  "tvAddedToFavorites": "Favorilere eklendi ❤"
 }

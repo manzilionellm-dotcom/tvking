@@ -811,5 +811,19 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvEnterParentalCode": "Skriv inn foreldrekoden",
+  "tvCurrentCode": "Nåværende kode",
+  "tvConfirmCode": "Bekreft koden",
+  "tvRecordingNotFound": "Opptak ikke funnet",
+  "tvPlaybackImpossible": "Kan ikke spille av",
+  "tvRecordingNotFoundBody": "Filen til dette opptaket mangler eller er tom.",
+  "tvPlaybackImpossibleBody": "Denne filen kunne ikke dekodes.",
+  "tvRecordingStarted": "Tar opp…",
+  "tvRecordingError": "Opptaksfeil",
+  "tvRecordingSaved": "Opptak lagret ({size})",
+  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "tvRecordingEmpty": "Tomt opptak",
+  "tvRemovedFromFavorites": "Fjernet fra favoritter",
+  "tvAddedToFavorites": "Lagt til i favoritter ❤"
 }

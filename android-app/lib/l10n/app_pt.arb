@@ -1,36 +1,34 @@
 {
-  "@@locale": "fr",
-  "@@x-template": true,
-  "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",
+  "@@locale": "pt",
   "appName": "The Few",
   "@appName": {
     "description": "Nom de la marque — ne pas traduire."
   },
-  "appTagline": "Cinéma sans limites",
+  "appTagline": "Cinema sem limites",
   "@appTagline": {
     "description": "Phrase signature affichée sous le logo."
   },
-  "navHome": "Accueil",
-  "navLive": "Live TV",
-  "navSearch": "Recherche",
+  "navHome": "Início",
+  "navLive": "TV ao vivo",
+  "navSearch": "Buscar",
   "navAi": "IA",
-  "navFavorites": "Favoris",
-  "navProfile": "Profil",
-  "sectionResume": "Reprendre",
-  "sectionFavorites": "Favoris",
-  "sectionSportsLive": "Sports en direct",
-  "sectionLiveNow": "En direct maintenant",
-  "sectionMovies": "Films",
+  "navFavorites": "Favoritos",
+  "navProfile": "Perfil",
+  "sectionResume": "Continuar",
+  "sectionFavorites": "Favoritos",
+  "sectionSportsLive": "Esportes ao vivo",
+  "sectionLiveNow": "Ao vivo agora",
+  "sectionMovies": "Filmes",
   "sectionSeries": "Séries",
-  "sectionKids": "Jeunesse",
-  "sectionNews": "Info & Actualités",
-  "sectionMusic": "Musique",
-  "sectionDocs": "Documentaires",
-  "sectionDiscover": "À découvrir",
-  "sectionLiveOnFavorites": "Live maintenant sur tes favoris",
-  "sectionTonight": "Découvre ce soir",
-  "sectionResumeWhereYouLeftOff": "Reprendre où tu t'es arrêté",
-  "channelCount": "{count, plural, =0{Aucune chaîne} =1{1 chaîne} other{{count} chaînes}}",
+  "sectionKids": "Infantil",
+  "sectionNews": "Notícias & Atualidades",
+  "sectionMusic": "Música",
+  "sectionDocs": "Documentários",
+  "sectionDiscover": "Para descobrir",
+  "sectionLiveOnFavorites": "Ao vivo agora nos teus favoritos",
+  "sectionTonight": "Descobre esta noite",
+  "sectionResumeWhereYouLeftOff": "Continuar de onde paraste",
+  "channelCount": "{count, plural, =0{Nenhum canal} =1{1 canal} one{{count} canal} other{{count} canais}}",
   "@channelCount": {
     "placeholders": {
       "count": {
@@ -38,83 +36,83 @@
       }
     }
   },
-  "buttonContinue": "Continuer",
-  "buttonNext": "Suivant",
-  "buttonSkip": "Passer",
-  "buttonStart": "Commencer",
+  "buttonContinue": "Continuar",
+  "buttonNext": "Seguinte",
+  "buttonSkip": "Pular",
+  "buttonStart": "Começar",
   "buttonOk": "OK",
-  "buttonCancel": "Annuler",
-  "buttonSave": "Enregistrer",
-  "buttonDelete": "Supprimer",
-  "buttonRetry": "Réessayer",
-  "buttonResume": "Reprendre",
-  "buttonWatch": "Regarder",
-  "buttonSeeAll": "Tout voir",
-  "buttonSyncNow": "Synchroniser",
-  "playerPause": "Pause",
-  "playerPlay": "Lecture",
+  "buttonCancel": "Cancelar",
+  "buttonSave": "Salvar",
+  "buttonDelete": "Excluir",
+  "buttonRetry": "Tentar novamente",
+  "buttonResume": "Continuar",
+  "buttonWatch": "Assistir",
+  "buttonSeeAll": "Ver tudo",
+  "buttonSyncNow": "Sincronizar",
+  "playerPause": "Pausa",
+  "playerPlay": "Reproduzir",
   "playerRec": "REC",
   "playerStop": "STOP",
-  "playerAudioOnly": "Écouteurs",
-  "playerVideo": "Vidéo",
-  "playerUpNextIn": "À suivre dans {seconds}s",
+  "playerAudioOnly": "Só áudio",
+  "playerVideo": "Vídeo",
+  "playerUpNextIn": "A seguir em {seconds}s",
   "@playerUpNextIn": {
     "placeholders": { "seconds": { "type": "int" } }
   },
-  "playerUpNextCancel": "Annuler",
-  "playerUpNextPlay": "Lire",
-  "playerTracks": "Pistes",
-  "playerSpeed": "Vitesse",
-  "playerRatio": "Format",
-  "playerSettings": "Réglages",
-  "playerRecording": "Enregistrement en cours",
-  "castIdle": "Cast vers une TV",
-  "castSearching": "Recherche sur ton WiFi…",
-  "castDevicesHint": "DLNA · Roku · navigateur web.",
-  "castSendTo": "Envoyer vers…",
-  "castConnected": "Cast en cours sur",
-  "castStop": "Arrêter",
-  "castViaBrowser": "Cast via navigateur",
-  "castViaBrowserSubtitle": "Marche sur N'IMPORTE quelle TV avec un navigateur web. QR code à scanner avec la TV.",
-  "settingsTitle": "Réglages",
-  "settingsAppearance": "Apparence",
-  "settingsLanguage": "Langue",
-  "settingsLanguageSystem": "Système",
-  "settingsPlayer": "Lecteur vidéo",
+  "playerUpNextCancel": "Cancelar",
+  "playerUpNextPlay": "Reproduzir",
+  "playerTracks": "Faixas",
+  "playerSpeed": "Velocidade",
+  "playerRatio": "Formato",
+  "playerSettings": "Configurações",
+  "playerRecording": "Gravação em andamento",
+  "castIdle": "Transmitir para uma TV",
+  "castSearching": "Procurando no teu Wi-Fi…",
+  "castDevicesHint": "DLNA · Roku · navegador web.",
+  "castSendTo": "Enviar para…",
+  "castConnected": "Transmitindo para",
+  "castStop": "Parar",
+  "castViaBrowser": "Transmitir via navegador",
+  "castViaBrowserSubtitle": "Funciona em QUALQUER TV com navegador web. Código QR para escanear com a TV.",
+  "settingsTitle": "Configurações",
+  "settingsAppearance": "Aparência",
+  "settingsLanguage": "Idioma",
+  "settingsLanguageSystem": "Sistema",
+  "settingsPlayer": "Player de vídeo",
   "settingsPlaylists": "Playlists",
-  "settingsRecordings": "Enregistrements",
-  "settingsStorage": "Stockage",
-  "settingsApp": "Application",
-  "settingsAbout": "À propos",
-  "settingsProvisioning": "Provisioning à distance",
-  "settingsClearHistory": "Vider l'historique de visionnage",
+  "settingsRecordings": "Gravações",
+  "settingsStorage": "Armazenamento",
+  "settingsApp": "Aplicativo",
+  "settingsAbout": "Sobre",
+  "settingsProvisioning": "Provisionamento remoto",
+  "settingsClearHistory": "Limpar histórico de visualização",
   "themeCinema": "Cinema",
   "themeCinemaSubtitle": "Maison Noir",
   "themeDaylight": "Daylight",
-  "themeDaylightSubtitle": "Lumière du jour",
+  "themeDaylightSubtitle": "Luz do dia",
   "themeAuto": "Auto",
-  "themeAutoSubtitle": "Suit l'OS",
-  "deviceQuestion": "Tu es sur quoi ?",
-  "deviceHelp": "On adapte l'expérience à ton appareil. Tu pourras changer ce choix dans les Réglages.",
-  "devicePhone": "Téléphone",
-  "devicePhoneSubtitle": "Smartphone, tablette",
-  "devicePhoneDesc": "Interface tactile compacte. Navigation au doigt, mini-player et écran plein écran fluides.",
-  "deviceTv": "Télévision",
+  "themeAutoSubtitle": "Segue o sistema",
+  "deviceQuestion": "Em que aparelho estás?",
+  "deviceHelp": "Adaptamos a experiência ao teu aparelho. Podes mudar esta escolha nas Configurações.",
+  "devicePhone": "Celular",
+  "devicePhoneSubtitle": "Smartphone, tablet",
+  "devicePhoneDesc": "Interface tátil compacta. Navegação por toque, mini-player e tela cheia fluidos.",
+  "deviceTv": "Televisão",
   "deviceTvSubtitle": "Android TV, Fire TV, Google TV",
-  "deviceTvDesc": "Layout XL pour télécommande. Focus rings visibles à 3 m, tailles cinéma, raccourcis D-pad.",
+  "deviceTvDesc": "Layout XL para controle remoto. Foco visível a 3 m, tamanhos de cinema, atalhos do D-pad.",
   "deviceAuto": "Auto",
-  "deviceAutoSubtitle": "Détection automatique",
-  "deviceAutoDesc": "L'app devine d'après ton écran. Bon choix si tu ne sais pas, ou si tu utilises plusieurs appareils.",
-  "onboardingWelcomeTitle": "Bienvenue sur The Few",
-  "onboardingWelcomeDesc": "Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.",
-  "onboardingLoadTitle": "Charge ta playlist",
-  "onboardingLoadDesc": "Colle une URL M3U, ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.",
-  "onboardingVipTitle": "Profite de la signature VIP",
-  "onboardingVipDesc": "Logos haute qualité, navigation Apple TV, recherche instantanée, lecteur 4K/8K.",
-  "emptyNoPlaylist": "Aucune playlist",
-  "emptyAddYourFirst": "Ajoute ta première playlist M3U ou tes identifiants Xtream pour commencer.",
-  "addPlaylist": "Ajouter une playlist",
-  "resumeBannerTitle": "Reprendre {channel}",
+  "deviceAutoSubtitle": "Detecção automática",
+  "deviceAutoDesc": "O app detecta pela tua tela. Boa escolha se não tens certeza ou usas vários aparelhos.",
+  "onboardingWelcomeTitle": "Bem-vindo ao The Few",
+  "onboardingWelcomeDesc": "Cinema sem limites. Feito para a TV, otimizado para o teu celular, bonito em qualquer lugar.",
+  "onboardingLoadTitle": "Carrega a tua playlist",
+  "onboardingLoadDesc": "Cola uma URL M3U ou as tuas credenciais Xtream. Os teus canais aparecem em segundos.",
+  "onboardingVipTitle": "Aproveita a assinatura VIP",
+  "onboardingVipDesc": "Logos em alta qualidade, navegação estilo Apple TV, busca instantânea, player 4K/8K.",
+  "emptyNoPlaylist": "Nenhuma playlist",
+  "emptyAddYourFirst": "Adiciona a tua primeira playlist M3U ou as tuas credenciais Xtream para começar.",
+  "addPlaylist": "Adicionar playlist",
+  "resumeBannerTitle": "Continuar {channel}",
   "@resumeBannerTitle": {
     "placeholders": {
       "channel": {
@@ -122,7 +120,7 @@
       }
     }
   },
-  "resumeBannerSubtitle": "Tu regardais il y a {minutes} min",
+  "resumeBannerSubtitle": "Estavas assistindo há {minutes} min",
   "@resumeBannerSubtitle": {
     "placeholders": {
       "minutes": {
@@ -130,32 +128,32 @@
       }
     }
   },
-  "resumeBannerDismiss": "Plus tard",
-  "detailProgram": "Programme",
+  "resumeBannerDismiss": "Mais tarde",
+  "detailProgram": "Programa",
   "@detailProgram": {
     "description": "Texte UI : detailProgram"
   },
-  "detailNowPlaying": "En cours",
+  "detailNowPlaying": "Agora",
   "@detailNowPlaying": {
     "description": "Texte UI : detailNowPlaying"
   },
-  "detailUpNext": "Après",
+  "detailUpNext": "A seguir",
   "@detailUpNext": {
     "description": "Texte UI : detailUpNext"
   },
-  "detailDetails": "Détails",
+  "detailDetails": "Detalhes",
   "@detailDetails": {
     "description": "Texte UI : detailDetails"
   },
-  "detailCategory": "Catégorie",
+  "detailCategory": "Categoria",
   "@detailCategory": {
     "description": "Texte UI : detailCategory"
   },
-  "detailCountry": "Pays",
+  "detailCountry": "País",
   "@detailCountry": {
     "description": "Texte UI : detailCountry"
   },
-  "detailQuality": "Qualité",
+  "detailQuality": "Qualidade",
   "@detailQuality": {
     "description": "Texte UI : detailQuality"
   },
@@ -163,7 +161,7 @@
   "@detailCatchup": {
     "description": "Texte UI : detailCatchup"
   },
-  "detailCatchupAvailable": "Disponible · {days} j",
+  "detailCatchupAvailable": "Disponível · {days} d",
   "@detailCatchupAvailable": {
     "description": "Texte UI : detailCatchupAvailable",
     "placeholders": {
@@ -172,15 +170,15 @@
       }
     }
   },
-  "detailCatchupUnavailable": "Indisponible",
+  "detailCatchupUnavailable": "Indisponível",
   "@detailCatchupUnavailable": {
     "description": "Texte UI : detailCatchupUnavailable"
   },
-  "detailProgramsAndReplay": "Programmes du jour & Replay",
+  "detailProgramsAndReplay": "Programação do dia & Replay",
   "@detailProgramsAndReplay": {
     "description": "Texte UI : detailProgramsAndReplay"
   },
-  "badgeLive": "LIVE",
+  "badgeLive": "AO VIVO",
   "@badgeLive": {
     "description": "Texte UI : badgeLive"
   },
@@ -188,31 +186,31 @@
   "@badgeReplay": {
     "description": "Texte UI : badgeReplay"
   },
-  "badgeSoon": "BIENTÔT",
+  "badgeSoon": "EM BREVE",
   "@badgeSoon": {
     "description": "Texte UI : badgeSoon"
   },
-  "viewModeList": "Liste",
+  "viewModeList": "Lista",
   "@viewModeList": {
     "description": "Texte UI : viewModeList"
   },
-  "viewModeGrid": "Grille",
+  "viewModeGrid": "Grade",
   "@viewModeGrid": {
     "description": "Texte UI : viewModeGrid"
   },
-  "sectionFilterHint": "Filtrer dans cette section...",
+  "sectionFilterHint": "Filtrar nesta seção...",
   "@sectionFilterHint": {
     "description": "Texte UI : sectionFilterHint"
   },
-  "filterAll": "Toutes",
+  "filterAll": "Todas",
   "@filterAll": {
     "description": "Texte UI : filterAll"
   },
-  "sectionEmptyNoChannel": "Aucune chaîne dans cette section",
+  "sectionEmptyNoChannel": "Nenhum canal nesta seção",
   "@sectionEmptyNoChannel": {
     "description": "Texte UI : sectionEmptyNoChannel"
   },
-  "searchNoResult": "Aucun résultat pour \"{query}\"",
+  "searchNoResult": "Nenhum resultado para \"{query}\"",
   "@searchNoResult": {
     "description": "Texte UI : searchNoResult",
     "placeholders": {
@@ -221,111 +219,111 @@
       }
     }
   },
-  "sectionEmptyAdjustFilters": "Essaie d'ajuster les filtres ou la recherche.",
+  "sectionEmptyAdjustFilters": "Tenta ajustar os filtros ou a busca.",
   "@sectionEmptyAdjustFilters": {
     "description": "Texte UI : sectionEmptyAdjustFilters"
   },
-  "sectionTop10Today": "Top 10 aujourd'hui",
+  "sectionTop10Today": "Top 10 de hoje",
   "@sectionTop10Today": {
     "description": "Texte UI : sectionTop10Today"
   },
-  "sectionEntertainment": "Divertissement",
+  "sectionEntertainment": "Entretenimento",
   "@sectionEntertainment": {
     "description": "Texte UI : sectionEntertainment"
   },
-  "sectionInternational": "International",
+  "sectionInternational": "Internacional",
   "@sectionInternational": {
     "description": "Texte UI : sectionInternational"
   },
-  "sectionAdult": "Adulte",
+  "sectionAdult": "Adulto",
   "@sectionAdult": {
     "description": "Texte UI : sectionAdult"
   },
-  "sectionOthers": "Autres",
+  "sectionOthers": "Outros",
   "@sectionOthers": {
     "description": "Texte UI : sectionOthers"
   },
-  "catSport": "Sport",
+  "catSport": "Esporte",
   "@catSport": {
     "description": "Texte UI : catSport"
   },
-  "catInfo": "Info",
+  "catInfo": "Notícias",
   "@catInfo": {
     "description": "Texte UI : catInfo"
   },
-  "catKids": "Enfants",
+  "catKids": "Crianças",
   "@catKids": {
     "description": "Texte UI : catKids"
   },
-  "catScience": "Sciences",
+  "catScience": "Ciência",
   "@catScience": {
     "description": "Texte UI : catScience"
   },
-  "catMovies": "Films",
+  "catMovies": "Filmes",
   "@catMovies": {
     "description": "Texte UI : catMovies"
   },
-  "catMusic": "Musique",
+  "catMusic": "Música",
   "@catMusic": {
     "description": "Texte UI : catMusic"
   },
-  "homeListRefreshed": "Liste actualisée — chaînes rechargées",
+  "homeListRefreshed": "Lista atualizada — canais recarregados",
   "@homeListRefreshed": {
     "description": "Texte UI : homeListRefreshed"
   },
-  "homeListUpToDate": "Liste à jour",
+  "homeListUpToDate": "Lista atualizada",
   "@homeListUpToDate": {
     "description": "Texte UI : homeListUpToDate"
   },
-  "tooltipRefreshList": "Actualiser la liste",
+  "tooltipRefreshList": "Atualizar a lista",
   "@tooltipRefreshList": {
     "description": "Texte UI : tooltipRefreshList"
   },
-  "tooltipConnectActivate": "Me connecter / Activer",
+  "tooltipConnectActivate": "Entrar / Ativar",
   "@tooltipConnectActivate": {
     "description": "Texte UI : tooltipConnectActivate"
   },
-  "tooltipSearch": "Recherche",
+  "tooltipSearch": "Buscar",
   "@tooltipSearch": {
     "description": "Texte UI : tooltipSearch"
   },
-  "tooltipFavorites": "Favoris",
+  "tooltipFavorites": "Favoritos",
   "@tooltipFavorites": {
     "description": "Texte UI : tooltipFavorites"
   },
-  "tooltipProfile": "Profil",
+  "tooltipProfile": "Perfil",
   "@tooltipProfile": {
     "description": "Texte UI : tooltipProfile"
   },
-  "adultAuthCancelled": "Authentification annulée — section Adulte verrouillée",
+  "adultAuthCancelled": "Autenticação cancelada — seção Adulto bloqueada",
   "@adultAuthCancelled": {
     "description": "Texte UI : adultAuthCancelled"
   },
-  "adultAuthReason": "Accède à la section Adulte",
+  "adultAuthReason": "Acessar a seção Adulto",
   "@adultAuthReason": {
     "description": "Texte UI : adultAuthReason"
   },
-  "navDirect": "Direct",
+  "navDirect": "Ao vivo",
   "@navDirect": {
     "description": "Texte UI : navDirect"
   },
-  "navGuide": "Guide",
+  "navGuide": "Guia",
   "@navGuide": {
     "description": "Texte UI : navGuide"
   },
-  "navRefresh": "Actualiser",
+  "navRefresh": "Atualizar",
   "@navRefresh": {
     "description": "Texte UI : navRefresh"
   },
-  "tvFeatured": "À LA UNE",
+  "tvFeatured": "EM DESTAQUE",
   "@tvFeatured": {
     "description": "Texte UI : tvFeatured"
   },
-  "refreshNoPlaylist": "Aucune playlist actualisée.",
+  "refreshNoPlaylist": "Nenhuma playlist atualizada.",
   "@refreshNoPlaylist": {
     "description": "Texte UI : refreshNoPlaylist"
   },
-  "refreshDoneCount": "Actualisé : {count} playlist(s).",
+  "refreshDoneCount": "Atualizado: {count} playlist(s).",
   "@refreshDoneCount": {
     "description": "Texte UI : refreshDoneCount",
     "placeholders": {
@@ -334,7 +332,7 @@
       }
     }
   },
-  "errorWithMessage": "Erreur : {error}",
+  "errorWithMessage": "Erro: {error}",
   "@errorWithMessage": {
     "description": "Texte UI : errorWithMessage",
     "placeholders": {
@@ -343,23 +341,23 @@
       }
     }
   },
-  "gridEmptyTitle": "Aucune chaîne ici",
+  "gridEmptyTitle": "Nenhum canal aqui",
   "@gridEmptyTitle": {
     "description": "Texte UI : gridEmptyTitle"
   },
-  "gridEmptySubtitle": "Ajoute une playlist ou ajuste tes filtres.",
+  "gridEmptySubtitle": "Adiciona uma playlist ou ajusta os teus filtros.",
   "@gridEmptySubtitle": {
     "description": "Texte UI : gridEmptySubtitle"
   },
-  "categoriesTitle": "Catégories",
+  "categoriesTitle": "Categorias",
   "@categoriesTitle": {
     "description": "Texte UI : categoriesTitle"
   },
-  "categoriesEmpty": "Aucune chaîne — ajoute d'abord une playlist.",
+  "categoriesEmpty": "Nenhum canal — adiciona primeiro uma playlist.",
   "@categoriesEmpty": {
     "description": "Texte UI : categoriesEmpty"
   },
-  "focusedNoChannelFound": "Aucune chaîne {title} trouvée dans tes playlists.",
+  "focusedNoChannelFound": "Nenhum canal {title} encontrado nas tuas playlists.",
   "@focusedNoChannelFound": {
     "description": "Texte UI : focusedNoChannelFound",
     "placeholders": {
@@ -368,99 +366,99 @@
       }
     }
   },
-  "searchHint": "Chercher une chaîne, un sport, un film…",
+  "searchHint": "Buscar um canal, um esporte, um filme…",
   "@searchHint": {
     "description": "Texte UI : searchHint"
   },
-  "buttonBack": "Retour",
+  "buttonBack": "Voltar",
   "@buttonBack": {
     "description": "Texte UI : buttonBack"
   },
-  "searchRecent": "Récent",
+  "searchRecent": "Recentes",
   "@searchRecent": {
     "description": "Texte UI : searchRecent"
   },
-  "buttonClear": "Effacer",
+  "buttonClear": "Limpar",
   "@buttonClear": {
     "description": "Texte UI : buttonClear"
   },
-  "searchExploreByCategory": "Explorer par catégorie",
+  "searchExploreByCategory": "Explorar por categoria",
   "@searchExploreByCategory": {
     "description": "Texte UI : searchExploreByCategory"
   },
-  "searchDiscoveryEmpty": "Charge ta première playlist pour découvrir des chaînes.",
+  "searchDiscoveryEmpty": "Carrega a tua primeira playlist para descobrir canais.",
   "@searchDiscoveryEmpty": {
     "description": "Texte UI : searchDiscoveryEmpty"
   },
-  "searchNoResultHelp": "Vérifie l'orthographe ou essaye un autre mot. Si la chaîne devrait être là, demande à ton revendeur de la rajouter.",
+  "searchNoResultHelp": "Verifica a ortografia ou tenta outra palavra. Se o canal devia estar aqui, pede ao teu revendedor para adicioná-lo.",
   "@searchNoResultHelp": {
     "description": "Texte UI : searchNoResultHelp"
   },
-  "searchTipsToTry": "PISTES À ESSAYER",
+  "searchTipsToTry": "SUGESTÕES PARA TENTAR",
   "@searchTipsToTry": {
     "description": "Texte UI : searchTipsToTry"
   },
-  "searchEmptyCatalogTitle": "Aucune chaîne pour l'instant",
+  "searchEmptyCatalogTitle": "Nenhum canal por enquanto",
   "@searchEmptyCatalogTitle": {
     "description": "Texte UI : searchEmptyCatalogTitle"
   },
-  "searchEmptyCatalogHelp": "Ton revendeur doit activer ton abonnement avant que tu puisses chercher. Reviens dans quelques minutes.",
+  "searchEmptyCatalogHelp": "O teu revendedor precisa ativar a tua assinatura antes de poderes buscar. Volta em alguns minutos.",
   "@searchEmptyCatalogHelp": {
     "description": "Texte UI : searchEmptyCatalogHelp"
   },
-  "navCategories": "Catégories",
+  "navCategories": "Categorias",
   "@navCategories": {
     "description": "Texte UI : navCategories"
   },
-  "mySource": "Ma source",
+  "mySource": "Minha fonte",
   "@mySource": {
     "description": "Texte UI : mySource"
   },
-  "sourceQuestion": "Comment veux-tu accéder à tes chaînes ?",
+  "sourceQuestion": "Como queres acessar os teus canais?",
   "@sourceQuestion": {
     "description": "Texte UI : sourceQuestion"
   },
-  "sourceLoginCode": "Me connecter avec mon code",
+  "sourceLoginCode": "Entrar com o meu código",
   "@sourceLoginCode": {
     "description": "Texte UI : sourceLoginCode"
   },
-  "sourceLoginCodeSub": "Saisis ton utilisateur + mot de passe",
+  "sourceLoginCodeSub": "Digita o teu usuário + senha",
   "@sourceLoginCodeSub": {
     "description": "Texte UI : sourceLoginCodeSub"
   },
-  "sourceOwn": "J'ai ma propre source",
+  "sourceOwn": "Tenho a minha própria fonte",
   "@sourceOwn": {
     "description": "Texte UI : sourceOwn"
   },
-  "sourceOwnSub": "Lien M3U / M3U8 ou codes Xtream",
+  "sourceOwnSub": "Link M3U / M3U8 ou códigos Xtream",
   "@sourceOwnSub": {
     "description": "Texte UI : sourceOwnSub"
   },
-  "sourceActivate": "Activer l'app",
+  "sourceActivate": "Ativar o app",
   "@sourceActivate": {
     "description": "Texte UI : sourceActivate"
   },
-  "sourceActivateSub": "Contacte-nous (ta MAC est déjà jointe au message)",
+  "sourceActivateSub": "Fala conosco (o teu MAC já vai junto na mensagem)",
   "@sourceActivateSub": {
     "description": "Texte UI : sourceActivateSub"
   },
-  "activateAtHomeTitle": "Activer l'app à la maison",
+  "activateAtHomeTitle": "Ativar o app em casa",
   "@activateAtHomeTitle": {
     "description": "Texte UI : activateAtHomeTitle"
   },
-  "activateAtHomeDesc": "Communique cet identifiant à ton revendeur pour qu'il active tes chaînes à distance.",
+  "activateAtHomeDesc": "Envia este identificador ao teu revendedor para que ele ative os teus canais à distância.",
   "@activateAtHomeDesc": {
     "description": "Texte UI : activateAtHomeDesc"
   },
-  "buttonCopy": "Copier",
+  "buttonCopy": "Copiar",
   "@buttonCopy": {
     "description": "Texte UI : buttonCopy"
   },
-  "buttonSend": "Envoyer",
+  "buttonSend": "Enviar",
   "@buttonSend": {
     "description": "Texte UI : buttonSend"
   },
-  "idCopied": "Identifiant copié : {id}",
+  "idCopied": "Identificador copiado: {id}",
   "@idCopied": {
     "description": "Texte UI : idCopied",
     "placeholders": {
@@ -469,15 +467,15 @@
       }
     }
   },
-  "resumeEyebrow": "REPRENDRE",
+  "resumeEyebrow": "CONTINUAR",
   "@resumeEyebrow": {
     "description": "Texte UI : resumeEyebrow"
   },
-  "resumeAgoNow": "à l'instant",
+  "resumeAgoNow": "agora mesmo",
   "@resumeAgoNow": {
     "description": "Texte UI : resumeAgoNow"
   },
-  "resumeAgoMinutes": "il y a {minutes} min",
+  "resumeAgoMinutes": "há {minutes} min",
   "@resumeAgoMinutes": {
     "description": "Texte UI : resumeAgoMinutes",
     "placeholders": {
@@ -486,7 +484,7 @@
       }
     }
   },
-  "resumeWatchingAgo": "Tu regardais {ago}",
+  "resumeWatchingAgo": "Estavas assistindo {ago}",
   "@resumeWatchingAgo": {
     "description": "Texte UI : resumeWatchingAgo",
     "placeholders": {
@@ -495,31 +493,31 @@
       }
     }
   },
-  "activateSubTitle": "Active ton abonnement",
+  "activateSubTitle": "Ativa a tua assinatura",
   "@activateSubTitle": {
     "description": "Texte UI : activateSubTitle"
   },
-  "activateSubDesc": "Connecte-toi avec ton code (utilisateur + mot de passe), ou donne ta MAC à ton revendeur pour qu'il active à distance.",
+  "activateSubDesc": "Entra com o teu código (usuário + senha) ou dá o teu MAC ao teu revendedor para que ele ative à distância.",
   "@activateSubDesc": {
     "description": "Texte UI : activateSubDesc"
   },
-  "freeTrialBadge": "Essai gratuit 7 jours · puis 5 €/an",
+  "freeTrialBadge": "Teste grátis de 7 dias · depois 5 €/ano",
   "@freeTrialBadge": {
     "description": "Texte UI : freeTrialBadge"
   },
-  "activateMySub": "Activer mon abonnement",
+  "activateMySub": "Ativar a minha assinatura",
   "@activateMySub": {
     "description": "Texte UI : activateMySub"
   },
-  "remoteActivationByReseller": "Activation à distance par ton revendeur",
+  "remoteActivationByReseller": "Ativação à distância pelo teu revendedor",
   "@remoteActivationByReseller": {
     "description": "Texte UI : remoteActivationByReseller"
   },
-  "recStartFailed": "Enregistrement impossible à démarrer. Réessaie.",
+  "recStartFailed": "Não foi possível iniciar a gravação. Tenta de novo.",
   "@recStartFailed": {
     "description": "Texte UI : recStartFailed"
   },
-  "startFailedWithError": "Impossible de démarrer : {error}",
+  "startFailedWithError": "Não foi possível iniciar: {error}",
   "@startFailedWithError": {
     "description": "Texte UI : startFailedWithError",
     "placeholders": {
@@ -528,15 +526,15 @@
       }
     }
   },
-  "recInProgress": "● Enregistrement — continue à regarder, le flux est gardé",
+  "recInProgress": "● Gravando — continua assistindo, o fluxo está sendo guardado",
   "@recInProgress": {
     "description": "Texte UI : recInProgress"
   },
-  "recEmpty": "Enregistrement vide — réessaie en laissant tourner quelques secondes.",
+  "recEmpty": "Gravação vazia — tenta de novo deixando rodar alguns segundos.",
   "@recEmpty": {
     "description": "Texte UI : recEmpty"
   },
-  "recSaved": "Enregistrement sauvegardé ({size}) — Mes enregistrements",
+  "recSaved": "Gravação salva ({size}) — Minhas gravações",
   "@recSaved": {
     "description": "Texte UI : recSaved",
     "placeholders": {
@@ -545,7 +543,7 @@
       }
     }
   },
-  "recStopError": "Erreur arrêt enregistrement : {error}",
+  "recStopError": "Erro ao parar a gravação: {error}",
   "@recStopError": {
     "description": "Texte UI : recStopError",
     "placeholders": {
@@ -554,15 +552,15 @@
       }
     }
   },
-  "recTapToStop": "REC · appuie pour arrêter",
+  "recTapToStop": "REC · toca para parar",
   "@recTapToStop": {
     "description": "Texte UI : recTapToStop"
   },
-  "pipUnavailable": "Mini-fenêtre indisponible sur cet appareil (requiert Android 8+). Active aussi la permission Picture-in-picture dans : Paramètres → Apps → 7 MOTION → Permissions.",
+  "pipUnavailable": "Mini-janela indisponível neste aparelho (requer Android 8+). Ativa também a permissão Picture-in-picture em: Configurações → Apps → 7 MOTION → Permissões.",
   "@pipUnavailable": {
     "description": "Texte UI : pipUnavailable"
   },
-  "speedToast": "Vitesse : {speed}x",
+  "speedToast": "Velocidade: {speed}x",
   "@speedToast": {
     "description": "Texte UI : speedToast",
     "placeholders": {
@@ -571,59 +569,59 @@
       }
     }
   },
-  "tooltipMiniWindow": "Mini-fenêtre",
+  "tooltipMiniWindow": "Mini-janela",
   "@tooltipMiniWindow": {
     "description": "Texte UI : tooltipMiniWindow"
   },
-  "tooltipCastingManage": "Casting en cours — tap pour gérer",
+  "tooltipCastingManage": "Transmissão em andamento — toca para gerenciar",
   "@tooltipCastingManage": {
     "description": "Texte UI : tooltipCastingManage"
   },
-  "tooltipSendToTv": "Envoyer vers une TV",
+  "tooltipSendToTv": "Enviar para uma TV",
   "@tooltipSendToTv": {
     "description": "Texte UI : tooltipSendToTv"
   },
-  "tooltipReloadStream": "Recharger le flux",
+  "tooltipReloadStream": "Recarregar o fluxo",
   "@tooltipReloadStream": {
     "description": "Texte UI : tooltipReloadStream"
   },
-  "seekRewind": "Reculer 2 minutes",
+  "seekRewind": "Voltar 2 minutos",
   "@seekRewind": {
     "description": "Texte UI : seekRewind"
   },
-  "seekForward": "Avancer 2 minutes",
+  "seekForward": "Avançar 2 minutos",
   "@seekForward": {
     "description": "Texte UI : seekForward"
   },
-  "playerCantPlay": "Impossible de lire ce flux",
+  "playerCantPlay": "Não foi possível reproduzir este fluxo",
   "@playerCantPlay": {
     "description": "Texte UI : playerCantPlay"
   },
-  "tooltipRemoveFavorite": "Retirer des favoris",
+  "tooltipRemoveFavorite": "Remover dos favoritos",
   "@tooltipRemoveFavorite": {
     "description": "Texte UI : tooltipRemoveFavorite"
   },
-  "tooltipAddFavorite": "Ajouter aux favoris",
+  "tooltipAddFavorite": "Adicionar aos favoritos",
   "@tooltipAddFavorite": {
     "description": "Texte UI : tooltipAddFavorite"
   },
-  "playerSettingsTitle": "Réglages du lecteur",
+  "playerSettingsTitle": "Configurações do player",
   "@playerSettingsTitle": {
     "description": "Texte UI : playerSettingsTitle"
   },
-  "playerSpeedSection": "Vitesse de lecture",
+  "playerSpeedSection": "Velocidade de reprodução",
   "@playerSpeedSection": {
     "description": "Texte UI : playerSpeedSection"
   },
-  "playerDisplayMode": "Mode d'affichage",
+  "playerDisplayMode": "Modo de exibição",
   "@playerDisplayMode": {
     "description": "Texte UI : playerDisplayMode"
   },
-  "playerBufferSize": "Taille du buffer",
+  "playerBufferSize": "Tamanho do buffer",
   "@playerBufferSize": {
     "description": "Texte UI : playerBufferSize"
   },
-  "playerBufferSeconds": "{seconds} secondes",
+  "playerBufferSeconds": "{seconds} segundos",
   "@playerBufferSeconds": {
     "description": "Texte UI : playerBufferSeconds",
     "placeholders": {
@@ -632,55 +630,55 @@
       }
     }
   },
-  "playerBufferHelp": "Plus c'est haut, mieux la lecture résiste aux coupures réseau (mais plus de latence sur le live).",
+  "playerBufferHelp": "Quanto maior, melhor a reprodução resiste às quedas de rede (mas com mais latência no ao vivo).",
   "@playerBufferHelp": {
     "description": "Texte UI : playerBufferHelp"
   },
-  "playerAntiFreeze": "Anti-coupure",
+  "playerAntiFreeze": "Anti-travamento",
   "@playerAntiFreeze": {
     "description": "Texte UI : playerAntiFreeze"
   },
-  "playerAntiFreezeHelp": "Si la connexion faiblit, le lecteur puise dans le tampon au lieu de couper l'image. Démarrage un peu plus long, mais lecture sans coupure.",
+  "playerAntiFreezeHelp": "Se a conexão enfraquecer, o player usa o buffer em vez de cortar a imagem. Início um pouco mais lento, mas reprodução sem cortes.",
   "@playerAntiFreezeHelp": {
     "description": "Texte UI : playerAntiFreezeHelp"
   },
-  "playerHwDecode": "Décodage matériel",
+  "playerHwDecode": "Decodificação por hardware",
   "@playerHwDecode": {
     "description": "Texte UI : playerHwDecode"
   },
-  "playerHwDecodeHelp": "Utilise le GPU pour décoder la vidéo. Indispensable pour 4K / 8K.",
+  "playerHwDecodeHelp": "Usa a GPU para decodificar o vídeo. Indispensável para 4K / 8K.",
   "@playerHwDecodeHelp": {
     "description": "Texte UI : playerHwDecodeHelp"
   },
-  "playerShowStats": "Afficher les statistiques",
+  "playerShowStats": "Mostrar estatísticas",
   "@playerShowStats": {
     "description": "Texte UI : playerShowStats"
   },
-  "playerShowStatsHelp": "FPS, débit, résolution, codec, frames perdues.",
+  "playerShowStatsHelp": "FPS, bitrate, resolução, codec, frames perdidos.",
   "@playerShowStatsHelp": {
     "description": "Texte UI : playerShowStatsHelp"
   },
-  "tracksTitle": "Pistes",
+  "tracksTitle": "Faixas",
   "@tracksTitle": {
     "description": "Texte UI : tracksTitle"
   },
-  "tracksAudio": "Audio",
+  "tracksAudio": "Áudio",
   "@tracksAudio": {
     "description": "Texte UI : tracksAudio"
   },
-  "tracksSubtitles": "Sous-titres",
+  "tracksSubtitles": "Legendas",
   "@tracksSubtitles": {
     "description": "Texte UI : tracksSubtitles"
   },
-  "tracksNoAudio": "Aucune piste audio détectée.",
+  "tracksNoAudio": "Nenhuma faixa de áudio detectada.",
   "@tracksNoAudio": {
     "description": "Texte UI : tracksNoAudio"
   },
-  "tracksNoSubtitles": "Aucun sous-titre. Astuce : sur certains flux, ils sont embarqués mais détectés tardivement.",
+  "tracksNoSubtitles": "Nenhuma legenda. Dica: em alguns fluxos, elas vêm embutidas mas são detectadas mais tarde.",
   "@tracksNoSubtitles": {
     "description": "Texte UI : tracksNoSubtitles"
   },
-  "castToDevice": "Cast vers {device}",
+  "castToDevice": "Transmitir para {device}",
   "@castToDevice": {
     "description": "Texte UI : castToDevice",
     "placeholders": {
@@ -689,7 +687,7 @@
       }
     }
   },
-  "castFailedLocal": "Cast impossible — lecture en local. ({error})",
+  "castFailedLocal": "Transmissão impossível — reproduzindo localmente. ({error})",
   "@castFailedLocal": {
     "description": "Texte UI : castFailedLocal",
     "placeholders": {
@@ -698,7 +696,7 @@
       }
     }
   },
-  "castConnectedTapChannel": "Connecté à {device}. Tape une chaîne pour l'envoyer.",
+  "castConnectedTapChannel": "Conectado a {device}. Toca num canal para enviá-lo.",
   "@castConnectedTapChannel": {
     "description": "Texte UI : castConnectedTapChannel",
     "placeholders": {
@@ -707,7 +705,7 @@
       }
     }
   },
-  "castSendingTo": "Envoi vers {device}",
+  "castSendingTo": "Enviando para {device}",
   "@castSendingTo": {
     "description": "Texte UI : castSendingTo",
     "placeholders": {
@@ -716,67 +714,67 @@
       }
     }
   },
-  "castFailedRetry": "Le cast a échoué. Réessaie.",
+  "castFailedRetry": "A transmissão falhou. Tenta de novo.",
   "@castFailedRetry": {
     "description": "Texte UI : castFailedRetry"
   },
-  "castSessionStopped": "Session de cast arrêtée",
+  "castSessionStopped": "Sessão de transmissão encerrada",
   "@castSessionStopped": {
     "description": "Texte UI : castSessionStopped"
   },
-  "castRefresh": "Rafraîchir",
+  "castRefresh": "Atualizar",
   "@castRefresh": {
     "description": "Texte UI : castRefresh"
   },
-  "castByQr": "Cast par QR code",
+  "castByQr": "Transmitir por código QR",
   "@castByQr": {
     "description": "Texte UI : castByQr"
   },
-  "castByQrSub": "Marche sur TOUTES les TVs avec un navigateur",
+  "castByQrSub": "Funciona em TODAS as TVs com navegador",
   "@castByQrSub": {
     "description": "Texte UI : castByQrSub"
   },
-  "castSearchingShort": "Recherche en cours...",
+  "castSearchingShort": "Procurando...",
   "@castSearchingShort": {
     "description": "Texte UI : castSearchingShort"
   },
-  "castNoReceiver": "Aucun récepteur. Vérifie que ton TV est sur le même WiFi et que DLNA est activé.",
+  "castNoReceiver": "Nenhum receptor. Verifica se a tua TV está no mesmo Wi-Fi e se o DLNA está ativado.",
   "@castNoReceiver": {
     "description": "Texte UI : castNoReceiver"
   },
-  "castInProgress": "EN COURS",
+  "castInProgress": "EM ANDAMENTO",
   "@castInProgress": {
     "description": "Texte UI : castInProgress"
   },
-  "castConnecting": "Connexion...",
+  "castConnecting": "Conectando...",
   "@castConnecting": {
     "description": "Texte UI : castConnecting"
   },
-  "castInProgressTitle": "Cast en cours",
+  "castInProgressTitle": "Transmissão em andamento",
   "@castInProgressTitle": {
     "description": "Texte UI : castInProgressTitle"
   },
-  "castStopTooltip": "Arrêter le cast",
+  "castStopTooltip": "Parar a transmissão",
   "@castStopTooltip": {
     "description": "Texte UI : castStopTooltip"
   },
-  "castPlayDefault": "Lecture",
+  "castPlayDefault": "Reproduzir",
   "@castPlayDefault": {
     "description": "Texte UI : castPlayDefault"
   },
-  "webCastTitle": "Cast via navigateur",
+  "webCastTitle": "Transmitir via navegador",
   "@webCastTitle": {
     "description": "Texte UI : webCastTitle"
   },
-  "webCastDesc": "Marche sur n'importe quelle TV qui a un navigateur web — Google TV, Samsung, LG, Hisense, vieilles smart TVs. Ta TV doit être sur le même WiFi que le téléphone.",
+  "webCastDesc": "Funciona em qualquer TV com navegador web — Google TV, Samsung, LG, Hisense, smart TVs antigas. A tua TV precisa estar no mesmo Wi-Fi que o celular.",
   "@webCastDesc": {
     "description": "Texte UI : webCastDesc"
   },
-  "webCastIpError": "Impossible de détecter ton IP WiFi. Vérifie que tu es bien connecté à un WiFi (pas en données mobiles).",
+  "webCastIpError": "Não foi possível detectar o teu IP Wi-Fi. Verifica se estás conectado a um Wi-Fi (não a dados móveis).",
   "@webCastIpError": {
     "description": "Texte UI : webCastIpError"
   },
-  "urlCopied": "URL copiée : {url}",
+  "urlCopied": "URL copiada: {url}",
   "@urlCopied": {
     "description": "Texte UI : urlCopied",
     "placeholders": {
@@ -785,67 +783,67 @@
       }
     }
   },
-  "webCastTvConnected": "OK, la TV est connectée",
+  "webCastTvConnected": "OK, a TV está conectada",
   "@webCastTvConnected": {
     "description": "Texte UI : webCastTvConnected"
   },
-  "webCastUrlLabel": "Ou tape cette URL dans le navigateur de la TV :",
+  "webCastUrlLabel": "Ou digita esta URL no navegador da TV:",
   "@webCastUrlLabel": {
     "description": "Texte UI : webCastUrlLabel"
   },
-  "webCastStep1": "Sur ta TV, ouvre son navigateur web",
+  "webCastStep1": "Na tua TV, abre o navegador web",
   "@webCastStep1": {
     "description": "Texte UI : webCastStep1"
   },
-  "webCastStep2": "Scanne le QR code ci-dessus (ou tape l'URL)",
+  "webCastStep2": "Escaneia o código QR acima (ou digita a URL)",
   "@webCastStep2": {
     "description": "Texte UI : webCastStep2"
   },
-  "webCastStep3": "Garde cet onglet ouvert sur la TV",
+  "webCastStep3": "Mantém esta aba aberta na TV",
   "@webCastStep3": {
     "description": "Texte UI : webCastStep3"
   },
-  "webCastStep4": "Reviens ici, tape une chaîne → elle apparaît sur la TV en 2s",
+  "webCastStep4": "Volta aqui, toca num canal → ele aparece na TV em 2s",
   "@webCastStep4": {
     "description": "Texte UI : webCastStep4"
   },
-  "qrCastTitle": "Cast par QR Code",
+  "qrCastTitle": "Transmitir por código QR",
   "@qrCastTitle": {
     "description": "Texte UI : qrCastTitle"
   },
-  "qrCastDesc": "Scanne ce code depuis n'importe quel appareil (TV, ordi, tablette, autre téléphone) — la chaîne s'ouvre directement dans le navigateur.",
+  "qrCastDesc": "Escaneia este código a partir de qualquer aparelho (TV, computador, tablet, outro celular) — o canal abre diretamente no navegador.",
   "@qrCastDesc": {
     "description": "Texte UI : qrCastDesc"
   },
-  "qrCastCopied": "Lien copié — colle dans le navigateur ou VLC",
+  "qrCastCopied": "Link copiado — cola no navegador ou no VLC",
   "@qrCastCopied": {
     "description": "Texte UI : qrCastCopied"
   },
-  "qrCastCopyLink": "Copier le lien",
+  "qrCastCopyLink": "Copiar o link",
   "@qrCastCopyLink": {
     "description": "Texte UI : qrCastCopyLink"
   },
-  "qrCastTip": "Astuce : ouvre l'appareil photo de ton autre device, pointe vers ce QR — un lien apparaît. Tape dessus, le navigateur lance la chaîne automatiquement.",
+  "qrCastTip": "Dica: abre a câmera do teu outro aparelho e aponta para este QR — um link aparece. Toca nele e o navegador abre o canal automaticamente.",
   "@qrCastTip": {
     "description": "Texte UI : qrCastTip"
   },
-  "qrCastDegraded": "Mode dégradé : ouvre dans VLC ou un lecteur natif.",
+  "qrCastDegraded": "Modo limitado: abre no VLC ou num player nativo.",
   "@qrCastDegraded": {
     "description": "Texte UI : qrCastDegraded"
   },
-  "playlistsTitle": "Mes playlists",
+  "playlistsTitle": "Minhas playlists",
   "@playlistsTitle": {
     "description": "Texte UI : playlistsTitle"
   },
-  "playlistsAddTooltip": "Ajouter une playlist",
+  "playlistsAddTooltip": "Adicionar playlist",
   "@playlistsAddTooltip": {
     "description": "Texte UI : playlistsAddTooltip"
   },
-  "playlistsEmptyTitle": "Aucune playlist",
+  "playlistsEmptyTitle": "Nenhuma playlist",
   "@playlistsEmptyTitle": {
     "description": "Texte UI : playlistsEmptyTitle"
   },
-  "playlistsEmptySubtitle": "Ajoute ta première playlist pour commencer.",
+  "playlistsEmptySubtitle": "Adiciona a tua primeira playlist para começar.",
   "@playlistsEmptySubtitle": {
     "description": "Texte UI : playlistsEmptySubtitle"
   },
@@ -857,23 +855,23 @@
   "@playlistTypeXtream": {
     "description": "Texte UI : playlistTypeXtream"
   },
-  "playlistNeverSynced": "Jamais synchronisée",
+  "playlistNeverSynced": "Nunca sincronizada",
   "@playlistNeverSynced": {
     "description": "Texte UI : playlistNeverSynced"
   },
-  "playlistResyncTooltip": "Re-synchroniser",
+  "playlistResyncTooltip": "Sincronizar de novo",
   "@playlistResyncTooltip": {
     "description": "Texte UI : playlistResyncTooltip"
   },
-  "playlistDeleteTooltip": "Supprimer",
+  "playlistDeleteTooltip": "Excluir",
   "@playlistDeleteTooltip": {
     "description": "Texte UI : playlistDeleteTooltip"
   },
-  "playlistResyncing": "Re-synchronisation en cours...",
+  "playlistResyncing": "Sincronizando de novo...",
   "@playlistResyncing": {
     "description": "Texte UI : playlistResyncing"
   },
-  "playlistUpToDate": "Playlist \"{name}\" à jour",
+  "playlistUpToDate": "Playlist \"{name}\" atualizada",
   "@playlistUpToDate": {
     "description": "Texte UI : playlistUpToDate",
     "placeholders": {
@@ -882,15 +880,15 @@
       }
     }
   },
-  "playlistResyncFailed": "Re-synchronisation impossible",
+  "playlistResyncFailed": "Não foi possível sincronizar de novo",
   "@playlistResyncFailed": {
     "description": "Texte UI : playlistResyncFailed"
   },
-  "playlistDeleteConfirmTitle": "Supprimer cette playlist ?",
+  "playlistDeleteConfirmTitle": "Excluir esta playlist?",
   "@playlistDeleteConfirmTitle": {
     "description": "Texte UI : playlistDeleteConfirmTitle"
   },
-  "playlistDeleteConfirmBody": "Toutes les chaînes liées à \"{name}\" seront retirées de l'app.",
+  "playlistDeleteConfirmBody": "Todos os canais ligados a \"{name}\" serão removidos do app.",
   "@playlistDeleteConfirmBody": {
     "description": "Texte UI : playlistDeleteConfirmBody",
     "placeholders": {
@@ -899,23 +897,23 @@
       }
     }
   },
-  "recordingsTitle": "Mes enregistrements",
+  "recordingsTitle": "Minhas gravações",
   "@recordingsTitle": {
     "description": "Texte UI : recordingsTitle"
   },
-  "recordingsEmptyTitle": "Aucun enregistrement",
+  "recordingsEmptyTitle": "Nenhuma gravação",
   "@recordingsEmptyTitle": {
     "description": "Texte UI : recordingsEmptyTitle"
   },
-  "recordingsEmptySubtitle": "Pendant la lecture, appuie sur REC pour capturer le flux en direct.",
+  "recordingsEmptySubtitle": "Durante a reprodução, toca em REC para capturar o fluxo ao vivo.",
   "@recordingsEmptySubtitle": {
     "description": "Texte UI : recordingsEmptySubtitle"
   },
-  "recordingStopped": "Enregistrement arrêté — exporte-le vers la Galerie",
+  "recordingStopped": "Gravação parada — exporta-a para a Galeria",
   "@recordingStopped": {
     "description": "Texte UI : recordingStopped"
   },
-  "recordingStopError": "Erreur arrêt : {error}",
+  "recordingStopError": "Erro ao parar: {error}",
   "@recordingStopError": {
     "description": "Texte UI : recordingStopError",
     "placeholders": {
@@ -924,7 +922,7 @@
       }
     }
   },
-  "recordingExported": "Exporté dans Galerie › Movies sous \"7MOTION_{name}\"",
+  "recordingExported": "Exportado para Galeria › Movies como \"7MOTION_{name}\"",
   "@recordingExported": {
     "description": "Texte UI : recordingExported",
     "placeholders": {
@@ -933,7 +931,7 @@
       }
     }
   },
-  "recordingExportFailed": "Export échec : {error}",
+  "recordingExportFailed": "Falha na exportação: {error}",
   "@recordingExportFailed": {
     "description": "Texte UI : recordingExportFailed",
     "placeholders": {
@@ -942,19 +940,19 @@
       }
     }
   },
-  "recordingStopTooltip": "Arrêter l'enregistrement",
+  "recordingStopTooltip": "Parar a gravação",
   "@recordingStopTooltip": {
     "description": "Texte UI : recordingStopTooltip"
   },
-  "recordingSaveTooltip": "Sauvegarder dans la Galerie",
+  "recordingSaveTooltip": "Salvar na Galeria",
   "@recordingSaveTooltip": {
     "description": "Texte UI : recordingSaveTooltip"
   },
-  "recordingDeleteConfirmTitle": "Supprimer cet enregistrement ?",
+  "recordingDeleteConfirmTitle": "Excluir esta gravação?",
   "@recordingDeleteConfirmTitle": {
     "description": "Texte UI : recordingDeleteConfirmTitle"
   },
-  "recordingDeleteConfirmBody": "Le fichier \"{name}\" sera effacé.",
+  "recordingDeleteConfirmBody": "O arquivo \"{name}\" será apagado.",
   "@recordingDeleteConfirmBody": {
     "description": "Texte UI : recordingDeleteConfirmBody",
     "placeholders": {
@@ -963,19 +961,19 @@
       }
     }
   },
-  "recordingUnreadable": "Lecture impossible : enregistrement illisible ou incomplet.",
+  "recordingUnreadable": "Não foi possível reproduzir: gravação ilegível ou incompleta.",
   "@recordingUnreadable": {
     "description": "Texte UI : recordingUnreadable"
   },
-  "recordingEmpty": "Enregistrement vide (0 octet) — rien n'a été capturé.",
+  "recordingEmpty": "Gravação vazia (0 bytes) — nada foi capturado.",
   "@recordingEmpty": {
     "description": "Texte UI : recordingEmpty"
   },
-  "recordingNotFound": "Fichier introuvable — il a peut-être été supprimé.",
+  "recordingNotFound": "Arquivo não encontrado — talvez tenha sido excluído.",
   "@recordingNotFound": {
     "description": "Texte UI : recordingNotFound"
   },
-  "recordingPlayError": "Lecture impossible : {error}",
+  "recordingPlayError": "Não foi possível reproduzir: {error}",
   "@recordingPlayError": {
     "description": "Texte UI : recordingPlayError",
     "placeholders": {
@@ -984,27 +982,27 @@
       }
     }
   },
-  "subAccountSuspended": "Compte suspendu",
+  "subAccountSuspended": "Conta suspensa",
   "@subAccountSuspended": {
     "description": "Texte UI : subAccountSuspended"
   },
-  "subAccountFrozen": "Compte temporairement gelé",
+  "subAccountFrozen": "Conta temporariamente congelada",
   "@subAccountFrozen": {
     "description": "Texte UI : subAccountFrozen"
   },
-  "subUnlockAll": "Débloque tout The Few",
+  "subUnlockAll": "Desbloqueia todo o The Few",
   "@subUnlockAll": {
     "description": "Texte UI : subUnlockAll"
   },
-  "subBannedMsg": "Ton compte a été suspendu par l'administrateur. Si tu penses que c'est une erreur, contacte-nous.",
+  "subBannedMsg": "A tua conta foi suspensa pelo administrador. Se achas que é um erro, fala conosco.",
   "@subBannedMsg": {
     "description": "Texte UI : subBannedMsg"
   },
-  "subFrozenMsg": "Ton compte est en pause. Contacte le support pour réactiver l'accès.",
+  "subFrozenMsg": "A tua conta está pausada. Fala com o suporte para reativar o acesso.",
   "@subFrozenMsg": {
     "description": "Texte UI : subFrozenMsg"
   },
-  "subTrialExpiredMsg": "Ton essai gratuit de {days} jours est terminé. Active ton accès et profite de TOUT, sans aucune limite :",
+  "subTrialExpiredMsg": "O teu teste grátis de {days} dias terminou. Ativa o teu acesso e aproveita TUDO, sem nenhum limite:",
   "@subTrialExpiredMsg": {
     "description": "Texte UI : subTrialExpiredMsg",
     "placeholders": {
@@ -1013,55 +1011,55 @@
       }
     }
   },
-  "subSubscribePrice": "M'abonner maintenant",
+  "subSubscribePrice": "Assinar agora",
   "@subSubscribePrice": {
     "description": "Texte UI : subSubscribePrice"
   },
-  "subContactSupport": "Contacter le support",
+  "subContactSupport": "Falar com o suporte",
   "@subContactSupport": {
     "description": "Texte UI : subContactSupport"
   },
-  "subPullToRefresh": "Tu viens de payer ? Tire vers le bas pour rafraîchir.",
+  "subPullToRefresh": "Acabaste de pagar? Puxa para baixo para atualizar.",
   "@subPullToRefresh": {
     "description": "Texte UI : subPullToRefresh"
   },
-  "subBenefitChannels": "Des milliers de chaînes, films & séries du monde entier",
+  "subBenefitChannels": "Milhares de canais, filmes & séries do mundo inteiro",
   "@subBenefitChannels": {
     "description": "Texte UI : subBenefitChannels"
   },
-  "subBenefitSports": "Tout le sport en direct, en HD / 4K, sans coupure",
+  "subBenefitSports": "Todo o esporte ao vivo, em HD / 4K, sem travar",
   "@subBenefitSports": {
     "description": "Texte UI : subBenefitSports"
   },
-  "subBenefitCast": "Caster sur n'importe quelle télé (Chromecast & Google TV)",
+  "subBenefitCast": "Transmitir para qualquer TV (Chromecast & Google TV)",
   "@subBenefitCast": {
     "description": "Texte UI : subBenefitCast"
   },
-  "subBenefitRecord": "Enregistrer tes émissions, films et matchs préférés",
+  "subBenefitRecord": "Gravar os teus programas, filmes e jogos favoritos",
   "@subBenefitRecord": {
     "description": "Texte UI : subBenefitRecord"
   },
-  "subBenefitNoAds": "Zéro publicité — lecture fluide, instantanée",
+  "subBenefitNoAds": "Zero publicidade — reprodução fluida e instantânea",
   "@subBenefitNoAds": {
     "description": "Texte UI : subBenefitNoAds"
   },
-  "subBenefitDevices": "Sur tous tes appareils : téléphone, tablette, TV",
+  "subBenefitDevices": "Em todos os teus aparelhos: celular, tablet, TV",
   "@subBenefitDevices": {
     "description": "Texte UI : subBenefitDevices"
   },
-  "subCardBuyExpired": "Acheter sur 7themotion.com",
+  "subCardBuyExpired": "Comprar em 7themotion.com",
   "@subCardBuyExpired": {
     "description": "Texte UI : subCardBuyExpired"
   },
-  "subCardSeeOffers": "Voir les offres sur 7themotion.com",
+  "subCardSeeOffers": "Ver as ofertas em 7themotion.com",
   "@subCardSeeOffers": {
     "description": "Texte UI : subCardSeeOffers"
   },
-  "subCardSecurePayment": "Paiement sécurisé sur le site officiel — jamais via Google Play.",
+  "subCardSecurePayment": "Pagamento seguro no site oficial — nunca pelo Google Play.",
   "@subCardSecurePayment": {
     "description": "Texte UI : subCardSecurePayment"
   },
-  "subCantOpenUrl": "Impossible d'ouvrir {url}",
+  "subCantOpenUrl": "Não foi possível abrir {url}",
   "@subCantOpenUrl": {
     "description": "Texte UI : subCantOpenUrl",
     "placeholders": {
@@ -1070,11 +1068,11 @@
       }
     }
   },
-  "subActiveTitle": "Abonnement actif",
+  "subActiveTitle": "Assinatura ativa",
   "@subActiveTitle": {
     "description": "Texte UI : subActiveTitle"
   },
-  "subActiveUntil": "Abonnement actif · expire le {date}",
+  "subActiveUntil": "Assinatura ativa · expira em {date}",
   "@subActiveUntil": {
     "description": "Texte UI : subActiveUntil",
     "placeholders": {
@@ -1083,15 +1081,15 @@
       }
     }
   },
-  "subTrialEnded": "Essai gratuit terminé",
+  "subTrialEnded": "Teste grátis terminado",
   "@subTrialEnded": {
     "description": "Texte UI : subTrialEnded"
   },
-  "subTrialOneDayLeft": "Essai gratuit · 1 jour restant",
+  "subTrialOneDayLeft": "Teste grátis · 1 dia restante",
   "@subTrialOneDayLeft": {
     "description": "Texte UI : subTrialOneDayLeft"
   },
-  "subTrialDaysLeft": "Essai gratuit · {days} jours restants",
+  "subTrialDaysLeft": "Teste grátis · {days} dias restantes",
   "@subTrialDaysLeft": {
     "description": "Texte UI : subTrialDaysLeft",
     "placeholders": {
@@ -1100,15 +1098,15 @@
       }
     }
   },
-  "subLoading": "Chargement…",
+  "subLoading": "Carregando…",
   "@subLoading": {
     "description": "Texte UI : subLoading"
   },
-  "subCardSubPaid": "Merci pour ton soutien — toutes les fonctions sont débloquées sur cet appareil et tes autres installations The Few.",
+  "subCardSubPaid": "Obrigado pelo teu apoio — todas as funções estão desbloqueadas neste aparelho e nas tuas outras instalações do The Few.",
   "@subCardSubPaid": {
     "description": "Texte UI : subCardSubPaid"
   },
-  "subCardSubExpired": "Ton essai gratuit de {days} jours est terminé. Souscris à 5 €/an ou 9,90 € à vie sur 7themotion.com pour continuer.",
+  "subCardSubExpired": "O teu teste grátis de {days} dias terminou. Assina por 5 €/ano ou 9,90 € vitalício em 7themotion.com para continuar.",
   "@subCardSubExpired": {
     "description": "Texte UI : subCardSubExpired",
     "placeholders": {
@@ -1117,47 +1115,47 @@
       }
     }
   },
-  "subCardSubTrial": "Profite de toutes les fonctions premium pendant ton essai. Ensuite 5 €/an ou 9,90 € à vie sur tous tes appareils.",
+  "subCardSubTrial": "Aproveita todas as funções premium durante o teu teste. Depois, 5 €/ano ou 9,90 € vitalício em todos os teus aparelhos.",
   "@subCardSubTrial": {
     "description": "Texte UI : subCardSubTrial"
   },
-  "subCardSubFrozen": "Ton compte est en pause. Contacte le support pour réactiver.",
+  "subCardSubFrozen": "A tua conta está pausada. Fala com o suporte para reativar.",
   "@subCardSubFrozen": {
     "description": "Texte UI : subCardSubFrozen"
   },
-  "subCardSubBanned": "Ton compte a été suspendu par l'administrateur.",
+  "subCardSubBanned": "A tua conta foi suspensa pelo administrador.",
   "@subCardSubBanned": {
     "description": "Texte UI : subCardSubBanned"
   },
-  "aboutTitle": "À propos",
+  "aboutTitle": "Sobre",
   "@aboutTitle": {
     "description": "Texte UI : aboutTitle"
   },
-  "aboutPremiumPlayer": "Lecteur IPTV premium",
+  "aboutPremiumPlayer": "Player IPTV premium",
   "@aboutPremiumPlayer": {
     "description": "Texte UI : aboutPremiumPlayer"
   },
-  "aboutUpdateError": "Impossible de contacter le serveur de mises à jour. Vérifie ta connexion.",
+  "aboutUpdateError": "Não foi possível contatar o servidor de atualizações. Verifica a tua conexão.",
   "@aboutUpdateError": {
     "description": "Texte UI : aboutUpdateError"
   },
-  "aboutMyDevice": "Mon appareil",
+  "aboutMyDevice": "Meu aparelho",
   "@aboutMyDevice": {
     "description": "Texte UI : aboutMyDevice"
   },
-  "aboutUpdates": "Mises à jour",
+  "aboutUpdates": "Atualizações",
   "@aboutUpdates": {
     "description": "Texte UI : aboutUpdates"
   },
-  "aboutNewVersion": "Nouvelle version disponible",
+  "aboutNewVersion": "Nova versão disponível",
   "@aboutNewVersion": {
     "description": "Texte UI : aboutNewVersion"
   },
-  "aboutSeeReleaseNotes": "Voir les notes de version",
+  "aboutSeeReleaseNotes": "Ver as notas da versão",
   "@aboutSeeReleaseNotes": {
     "description": "Texte UI : aboutSeeReleaseNotes"
   },
-  "aboutLatestVersion": "Tu as la dernière version (v{version}).",
+  "aboutLatestVersion": "Tens a versão mais recente (v{version}).",
   "@aboutLatestVersion": {
     "description": "Texte UI : aboutLatestVersion",
     "placeholders": {
@@ -1166,59 +1164,59 @@
       }
     }
   },
-  "aboutChecking": "Vérification...",
+  "aboutChecking": "Verificando...",
   "@aboutChecking": {
     "description": "Texte UI : aboutChecking"
   },
-  "aboutCheckUpdates": "Vérifier les mises à jour",
+  "aboutCheckUpdates": "Verificar atualizações",
   "@aboutCheckUpdates": {
     "description": "Texte UI : aboutCheckUpdates"
   },
-  "aboutUsefulLinks": "Liens utiles",
+  "aboutUsefulLinks": "Links úteis",
   "@aboutUsefulLinks": {
     "description": "Texte UI : aboutUsefulLinks"
   },
-  "aboutPrivacyPolicy": "Politique de confidentialité",
+  "aboutPrivacyPolicy": "Política de privacidade",
   "@aboutPrivacyPolicy": {
     "description": "Texte UI : aboutPrivacyPolicy"
   },
-  "aboutBuiltWith": "Construit avec",
+  "aboutBuiltWith": "Feito com",
   "@aboutBuiltWith": {
     "description": "Texte UI : aboutBuiltWith"
   },
-  "aboutCreditFlutter": "Framework UI multiplateforme",
+  "aboutCreditFlutter": "Framework de UI multiplataforma",
   "@aboutCreditFlutter": {
     "description": "Texte UI : aboutCreditFlutter"
   },
-  "aboutCreditMediaKit": "Moteur vidéo (HLS, MPEG-TS, MP4)",
+  "aboutCreditMediaKit": "Motor de vídeo (HLS, MPEG-TS, MP4)",
   "@aboutCreditMediaKit": {
     "description": "Texte UI : aboutCreditMediaKit"
   },
-  "aboutCreditSqflite": "Stockage local des playlists",
+  "aboutCreditSqflite": "Armazenamento local das playlists",
   "@aboutCreditSqflite": {
     "description": "Texte UI : aboutCreditSqflite"
   },
-  "aboutCreditCache": "Cache disque des logos",
+  "aboutCreditCache": "Cache em disco dos logos",
   "@aboutCreditCache": {
     "description": "Texte UI : aboutCreditCache"
   },
-  "aboutCreditFonts": "Typographie premium",
+  "aboutCreditFonts": "Tipografia premium",
   "@aboutCreditFonts": {
     "description": "Texte UI : aboutCreditFonts"
   },
-  "aboutLegalNotice": "The Few est un lecteur média générique. Aucun contenu n'est inclus avec l'app. Tu es responsable des sources que tu ajoutes et de leur conformité aux lois en vigueur dans ton pays.",
+  "aboutLegalNotice": "O The Few é um player de mídia genérico. Nenhum conteúdo vem incluído no app. És responsável pelas fontes que adicionas e pela sua conformidade com as leis em vigor no teu país.",
   "@aboutLegalNotice": {
     "description": "Texte UI : aboutLegalNotice"
   },
-  "lockPinTooShort": "Tape au moins 4 chiffres.",
+  "lockPinTooShort": "Digita pelo menos 4 dígitos.",
   "@lockPinTooShort": {
     "description": "Texte UI : lockPinTooShort"
   },
-  "lockPinWrong": "Code incorrect.",
+  "lockPinWrong": "Código incorreto.",
   "@lockPinWrong": {
     "description": "Texte UI : lockPinWrong"
   },
-  "lockUnlockReason": "Déverrouille {app}",
+  "lockUnlockReason": "Desbloquear {app}",
   "@lockUnlockReason": {
     "description": "Texte UI : lockUnlockReason",
     "placeholders": {
@@ -1227,23 +1225,23 @@
       }
     }
   },
-  "lockAppLocked": "Application verrouillée",
+  "lockAppLocked": "Aplicativo bloqueado",
   "@lockAppLocked": {
     "description": "Texte UI : lockAppLocked"
   },
-  "lockAuthenticating": "Authentification...",
+  "lockAuthenticating": "Autenticando...",
   "@lockAuthenticating": {
     "description": "Texte UI : lockAuthenticating"
   },
-  "lockFingerprint": "Empreinte digitale",
+  "lockFingerprint": "Impressão digital",
   "@lockFingerprint": {
     "description": "Texte UI : lockFingerprint"
   },
-  "lockValidateCode": "Valider le code",
+  "lockValidateCode": "Confirmar o código",
   "@lockValidateCode": {
     "description": "Texte UI : lockValidateCode"
   },
-  "lockDefaultPin": "Code par défaut : {pin}\nModifiable dans Réglages > Sécurité.",
+  "lockDefaultPin": "Código padrão: {pin}\nPode ser alterado em Configurações > Segurança.",
   "@lockDefaultPin": {
     "description": "Texte UI : lockDefaultPin",
     "placeholders": {
@@ -1252,167 +1250,167 @@
       }
     }
   },
-  "ageGateTitle": "Contenu réservé aux adultes",
+  "ageGateTitle": "Conteúdo reservado a adultos",
   "@ageGateTitle": {
     "description": "Texte UI : ageGateTitle"
   },
-  "ageGateBody": "Cette application diffuse des programmes à caractère explicite réservés aux personnes majeures. En continuant, vous déclarez sur l'honneur avoir atteint l'âge légal de majorité dans votre pays.",
+  "ageGateBody": "Este aplicativo transmite programas de caráter explícito reservados a maiores de idade. Ao continuar, você declara sob sua responsabilidade ter atingido a maioridade legal no seu país.",
   "@ageGateBody": {
     "description": "Texte UI : ageGateBody"
   },
-  "ageGateEnter": "J'AI 18 ANS OU PLUS — ENTRER",
+  "ageGateEnter": "TENHO 18 ANOS OU MAIS — ENTRAR",
   "@ageGateEnter": {
     "description": "Texte UI : ageGateEnter"
   },
-  "ageGateQuit": "Quitter",
+  "ageGateQuit": "Sair",
   "@ageGateQuit": {
     "description": "Texte UI : ageGateQuit"
   },
-  "ageGateLegal": "En cas de fausse déclaration, la responsabilité incombe exclusivement à l'utilisateur.",
+  "ageGateLegal": "Em caso de declaração falsa, a responsabilidade cabe exclusivamente ao usuário.",
   "@ageGateLegal": {
     "description": "Texte UI : ageGateLegal"
   },
-  "onboardingSkip": "Passer",
+  "onboardingSkip": "Pular",
   "@onboardingSkip": {
     "description": "Texte UI : onboardingSkip"
   },
-  "onboardingStart": "Commencer",
+  "onboardingStart": "Começar",
   "@onboardingStart": {
     "description": "Texte UI : onboardingStart"
   },
-  "onboardingNext": "Suivant",
+  "onboardingNext": "Seguinte",
   "@onboardingNext": {
     "description": "Texte UI : onboardingNext"
   },
-  "onboardingYourId": "TON IDENTIFIANT",
+  "onboardingYourId": "TEU IDENTIFICADOR",
   "@onboardingYourId": {
     "description": "Texte UI : onboardingYourId"
   },
-  "onboardingActivateChannels": "Activer mes chaînes",
+  "onboardingActivateChannels": "Ativar os meus canais",
   "@onboardingActivateChannels": {
     "description": "Texte UI : onboardingActivateChannels"
   },
-  "onboardingCopyId": "Copier l'identifiant",
+  "onboardingCopyId": "Copiar o identificador",
   "@onboardingCopyId": {
     "description": "Texte UI : onboardingCopyId"
   },
-  "devicePreparing": "Préparation…",
+  "devicePreparing": "Preparando…",
   "@devicePreparing": {
     "description": "Texte UI : devicePreparing"
   },
-  "simpleChooseCountry": "Choisis un pays",
+  "simpleChooseCountry": "Escolhe um país",
   "@simpleChooseCountry": {
     "description": "Texte UI : simpleChooseCountry"
   },
-  "simpleMyAccount": "Mon compte",
+  "simpleMyAccount": "Minha conta",
   "@simpleMyAccount": {
     "description": "Texte UI : simpleMyAccount"
   },
-  "simpleRecentlyWatched": "Récemment regardé",
+  "simpleRecentlyWatched": "Assistidos recentemente",
   "@simpleRecentlyWatched": {
     "description": "Texte UI : simpleRecentlyWatched"
   },
-  "simpleMyFavorites": "Mes favoris",
+  "simpleMyFavorites": "Meus favoritos",
   "@simpleMyFavorites": {
     "description": "Texte UI : simpleMyFavorites"
   },
-  "simpleSport": "Sport",
+  "simpleSport": "Esporte",
   "@simpleSport": {
     "description": "Texte UI : simpleSport"
   },
-  "simpleEntertainment": "Divertissement",
+  "simpleEntertainment": "Entretenimento",
   "@simpleEntertainment": {
     "description": "Texte UI : simpleEntertainment"
   },
-  "simpleInfo": "Info",
+  "simpleInfo": "Notícias",
   "@simpleInfo": {
     "description": "Texte UI : simpleInfo"
   },
-  "simpleKids": "Enfants",
+  "simpleKids": "Crianças",
   "@simpleKids": {
     "description": "Texte UI : simpleKids"
   },
-  "simpleGeneral": "Général",
+  "simpleGeneral": "Geral",
   "@simpleGeneral": {
     "description": "Texte UI : simpleGeneral"
   },
-  "simpleLockedTitle": "Cinéma & Séries",
+  "simpleLockedTitle": "Cinema & Séries",
   "@simpleLockedTitle": {
     "description": "Texte UI : simpleLockedTitle"
   },
-  "simpleLockedHint": "Touche pour déverrouiller (empreinte ou code)",
+  "simpleLockedHint": "Toca para desbloquear (impressão digital ou código)",
   "@simpleLockedHint": {
     "description": "Texte UI : simpleLockedHint"
   },
-  "simpleUnlockReason": "Déverrouiller Cinéma & Séries",
+  "simpleUnlockReason": "Desbloquear Cinema & Séries",
   "@simpleUnlockReason": {
     "description": "Texte UI : simpleUnlockReason"
   },
-  "simpleAccessCode": "Code d'accès",
+  "simpleAccessCode": "Código de acesso",
   "@simpleAccessCode": {
     "description": "Texte UI : simpleAccessCode"
   },
-  "buttonAdd": "Ajouter",
+  "buttonAdd": "Adicionar",
   "@buttonAdd": {
     "description": "Texte UI : buttonAdd"
   },
-  "moviesTitle": "Films",
+  "moviesTitle": "Filmes",
   "@moviesTitle": {
     "description": "Texte UI : moviesTitle"
   },
-  "moviesTabMovies": "Films",
+  "moviesTabMovies": "Filmes",
   "@moviesTabMovies": {
     "description": "Texte UI : moviesTabMovies"
   },
-  "moviesTabDownloads": "Téléchargés",
+  "moviesTabDownloads": "Baixados",
   "@moviesTabDownloads": {
     "description": "Texte UI : moviesTabDownloads"
   },
-  "moviesReloadTooltip": "Recharger le catalogue",
+  "moviesReloadTooltip": "Recarregar o catálogo",
   "@moviesReloadTooltip": {
     "description": "Texte UI : moviesReloadTooltip"
   },
-  "moviesEmptyCatalogue": "Aucun film disponible.\nTon serveur ne propose peut-être pas de VOD, ou tu n'es pas connecté en Xtream.",
+  "moviesEmptyCatalogue": "Nenhum filme disponível.\nO teu servidor talvez não ofereça VOD, ou não estás conectado via Xtream.",
   "@moviesEmptyCatalogue": {
     "description": "Texte UI : moviesEmptyCatalogue"
   },
-  "moviesEmptyDownloads": "Aucun téléchargement.\nTélécharge un film depuis l'onglet « Films » pour le regarder hors-ligne.",
+  "moviesEmptyDownloads": "Nenhum download.\nBaixa um filme na aba « Filmes » para assistir offline.",
   "@moviesEmptyDownloads": {
     "description": "Texte UI : moviesEmptyDownloads"
   },
-  "moviesPlayTooltip": "Lire",
+  "moviesPlayTooltip": "Reproduzir",
   "@moviesPlayTooltip": {
     "description": "Texte UI : moviesPlayTooltip"
   },
-  "moviesDownloaded": "Téléchargé",
+  "moviesDownloaded": "Baixado",
   "@moviesDownloaded": {
     "description": "Texte UI : moviesDownloaded"
   },
-  "moviesDownloading": "Téléchargement…",
+  "moviesDownloading": "Baixando…",
   "@moviesDownloading": {
     "description": "Texte UI : moviesDownloading"
   },
-  "moviesDownload": "Télécharger",
+  "moviesDownload": "Baixar",
   "@moviesDownload": {
     "description": "Texte UI : moviesDownload"
   },
-  "moviesPlayOfflineTooltip": "Lire hors-ligne",
+  "moviesPlayOfflineTooltip": "Reproduzir offline",
   "@moviesPlayOfflineTooltip": {
     "description": "Texte UI : moviesPlayOfflineTooltip"
   },
-  "moviesPauseTooltip": "Pause",
+  "moviesPauseTooltip": "Pausar",
   "@moviesPauseTooltip": {
     "description": "Texte UI : moviesPauseTooltip"
   },
-  "moviesResumeTooltip": "Reprendre",
+  "moviesResumeTooltip": "Retomar",
   "@moviesResumeTooltip": {
     "description": "Texte UI : moviesResumeTooltip"
   },
-  "moviesDeleteTooltip": "Supprimer",
+  "moviesDeleteTooltip": "Excluir",
   "@moviesDeleteTooltip": {
     "description": "Texte UI : moviesDeleteTooltip"
   },
-  "moviesStatusDownloaded": "Téléchargé · {size}",
+  "moviesStatusDownloaded": "Baixado · {size}",
   "@moviesStatusDownloaded": {
     "description": "Texte UI : moviesStatusDownloaded",
     "placeholders": {
@@ -1421,7 +1419,7 @@
       }
     }
   },
-  "moviesStatusDownloading": "Téléchargement… {size}",
+  "moviesStatusDownloading": "Baixando… {size}",
   "@moviesStatusDownloading": {
     "description": "Texte UI : moviesStatusDownloading",
     "placeholders": {
@@ -1430,7 +1428,7 @@
       }
     }
   },
-  "moviesStatusPaused": "En pause · {size}",
+  "moviesStatusPaused": "Pausado · {size}",
   "@moviesStatusPaused": {
     "description": "Texte UI : moviesStatusPaused",
     "placeholders": {
@@ -1439,31 +1437,31 @@
       }
     }
   },
-  "moviesStatusError": "Erreur — appuie pour reprendre",
+  "moviesStatusError": "Erro — toca para retomar",
   "@moviesStatusError": {
     "description": "Texte UI : moviesStatusError"
   },
-  "guideTitle": "Guide TV",
+  "guideTitle": "Guia de TV",
   "@guideTitle": {
     "description": "Texte UI : guideTitle"
   },
-  "guideGoToNow": "Aller à maintenant",
+  "guideGoToNow": "Ir para agora",
   "@guideGoToNow": {
     "description": "Texte UI : guideGoToNow"
   },
-  "guideNoChannel": "Aucune chaîne",
+  "guideNoChannel": "Nenhum canal",
   "@guideNoChannel": {
     "description": "Texte UI : guideNoChannel"
   },
-  "guideEmptyHint": "Ajoute une playlist avec un EPG XMLTV pour voir le guide.",
+  "guideEmptyHint": "Adiciona uma playlist com um EPG XMLTV para ver o guia.",
   "@guideEmptyHint": {
     "description": "Texte UI : guideEmptyHint"
   },
-  "guideSchedule": "Horaires",
+  "guideSchedule": "Horários",
   "@guideSchedule": {
     "description": "Texte UI : guideSchedule"
   },
-  "guideCatchupUnavailable": "Catch-up indisponible pour {channel}",
+  "guideCatchupUnavailable": "Catch-up indisponível para {channel}",
   "@guideCatchupUnavailable": {
     "description": "Texte UI : guideCatchupUnavailable",
     "placeholders": {
@@ -1472,23 +1470,23 @@
       }
     }
   },
-  "programsToday": "Programmes d'aujourd'hui",
+  "programsToday": "Programação de hoje",
   "@programsToday": {
     "description": "Texte UI : programsToday"
   },
-  "programsNoneToday": "Pas de programmes pour aujourd'hui",
+  "programsNoneToday": "Sem programação para hoje",
   "@programsNoneToday": {
     "description": "Texte UI : programsNoneToday"
   },
-  "programsNoneHelp": "L'EPG XMLTV de ce fournisseur n'a pas cette chaîne, ou il n'a pas encore été synchronisé.",
+  "programsNoneHelp": "O EPG XMLTV deste provedor não tem este canal, ou ainda não foi sincronizado.",
   "@programsNoneHelp": {
     "description": "Texte UI : programsNoneHelp"
   },
-  "programsCatchupUnavailable": "Catch-up indisponible pour cette chaîne.",
+  "programsCatchupUnavailable": "Catch-up indisponível para este canal.",
   "@programsCatchupUnavailable": {
     "description": "Texte UI : programsCatchupUnavailable"
   },
-  "programStartsAt": "{title} commence à {time}.",
+  "programStartsAt": "{title} começa às {time}.",
   "@programStartsAt": {
     "description": "Texte UI : programStartsAt",
     "placeholders": {
@@ -1500,95 +1498,95 @@
       }
     }
   },
-  "deviceIdLabel": "IDENTIFIANT APPAREIL",
+  "deviceIdLabel": "IDENTIFICADOR DO APARELHO",
   "@deviceIdLabel": {
     "description": "Texte UI : deviceIdLabel"
   },
-  "deviceIdCaption": "Identifie ton installation The Few. Garde ce code pour le support technique de l'app. Pour toute question sur les chaînes, contacte ton fournisseur IPTV.",
+  "deviceIdCaption": "Identifica a tua instalação do The Few. Guarda este código para o suporte técnico do app. Para qualquer dúvida sobre os canais, fala com o teu provedor IPTV.",
   "@deviceIdCaption": {
     "description": "Texte UI : deviceIdCaption"
   },
-  "profileDiscovery": "Découverte",
+  "profileDiscovery": "Descobrir",
   "@profileDiscovery": {
     "description": "Texte UI : profileDiscovery"
   },
-  "profileTvGuide": "Guide TV",
+  "profileTvGuide": "Guia de TV",
   "@profileTvGuide": {
     "description": "Texte UI : profileTvGuide"
   },
-  "profileTvGuideSub": "Programme en cours et à venir",
+  "profileTvGuideSub": "Programa atual e a seguir",
   "@profileTvGuideSub": {
     "description": "Texte UI : profileTvGuideSub"
   },
-  "profileRecordings": "Mes enregistrements",
+  "profileRecordings": "Minhas gravações",
   "@profileRecordings": {
     "description": "Texte UI : profileRecordings"
   },
-  "profileRecordingsSub": "Tes captures de direct",
+  "profileRecordingsSub": "As tuas capturas ao vivo",
   "@profileRecordingsSub": {
     "description": "Texte UI : profileRecordingsSub"
   },
-  "profileAccount": "Compte",
+  "profileAccount": "Conta",
   "@profileAccount": {
     "description": "Texte UI : profileAccount"
   },
-  "profileSettings": "Réglages",
+  "profileSettings": "Configurações",
   "@profileSettings": {
     "description": "Texte UI : profileSettings"
   },
-  "profileSettingsSub": "Lecture, sécurité, langue, thème",
+  "profileSettingsSub": "Reprodução, segurança, idioma, tema",
   "@profileSettingsSub": {
     "description": "Texte UI : profileSettingsSub"
   },
-  "profileTheme": "Thème",
+  "profileTheme": "Tema",
   "@profileTheme": {
     "description": "Texte UI : bouton choix du thème de couleur"
   },
-  "profileThemeSub": "Choisis ta couleur",
+  "profileThemeSub": "Escolhe a tua cor",
   "@profileThemeSub": {
     "description": "Texte UI : sous-titre du bouton Thème"
   },
-  "themeChooseTitle": "Choisis ton thème",
+  "themeChooseTitle": "Escolhe o teu tema",
   "@themeChooseTitle": {
     "description": "Titre du sélecteur de thème"
   },
-  "themeChooseSub": "La couleur change instantanément dans toute l'app",
+  "themeChooseSub": "A cor muda instantaneamente em todo o app",
   "@themeChooseSub": {
     "description": "Sous-titre du sélecteur de thème"
   },
-  "forceUpdateTitle": "Nouvelle version disponible",
+  "forceUpdateTitle": "Nova versão disponível",
   "@forceUpdateTitle": {
     "description": "Titre ecran mise a jour forcee"
   },
-  "forceUpdateBody": "Cette version n'est plus à jour. Télécharge la dernière version pour continuer à utiliser l'application.",
+  "forceUpdateBody": "Esta versão está desatualizada. Baixa a versão mais recente para continuar a usar o aplicativo.",
   "@forceUpdateBody": {
     "description": "Corps ecran mise a jour forcee"
   },
-  "forceUpdateDownloaderHint": "SUR TV / BOX : OUVRE DOWNLOADER ET TAPE CE CODE",
+  "forceUpdateDownloaderHint": "NA TV / BOX: ABRE O DOWNLOADER E DIGITA ESTE CÓDIGO",
   "@forceUpdateDownloaderHint": {
     "description": "Aide code Downloader"
   },
-  "forceUpdateDownloadBtn": "Télécharger maintenant",
+  "forceUpdateDownloadBtn": "Baixar agora",
   "@forceUpdateDownloadBtn": {
     "description": "Bouton telecharger"
   },
-  "forceUpdateRetry": "J'ai mis à jour — Réessayer",
+  "forceUpdateRetry": "Já atualizei — Tentar novamente",
   "@forceUpdateRetry": {
     "description": "Bouton reessayer apres MAJ"
   },
-  "profileAbout": "À propos",
+  "profileAbout": "Sobre",
   "@profileAbout": {
     "description": "Texte UI : profileAbout"
   },
-  "profileAboutSub": "Version, équipe, mentions légales",
+  "profileAboutSub": "Versão, equipe, avisos legais",
   "@profileAboutSub": {
     "description": "Texte UI : profileAboutSub"
   },
-  "profilePremiumAccount": "Compte premium",
+  "profilePremiumAccount": "Conta premium",
   "@profilePremiumAccount": {
     "description": "Texte UI : profilePremiumAccount"
   },
-  "profileCastConnected": "Connecté à {device}",
+  "profileCastConnected": "Conectado a {device}",
   "@profileCastConnected": {
     "description": "Texte UI : profileCastConnected",
     "placeholders": {
@@ -1597,7 +1595,7 @@
       }
     }
   },
-  "profileCastTo": "Diffuser sur un téléviseur",
+  "profileCastTo": "Transmitir para uma TV",
   "@profileCastTo": {
     "description": "Texte UI : profileCastTo"
   },
@@ -1605,31 +1603,31 @@
   "@profileCast": {
     "description": "Texte UI : profileCast"
   },
-  "profileDeviceFallback": "appareil",
+  "profileDeviceFallback": "aparelho",
   "@profileDeviceFallback": {
     "description": "Texte UI : profileDeviceFallback"
   },
-  "supportHowToReach": "Comment veux-tu nous joindre ?",
+  "supportHowToReach": "Como queres falar conosco?",
   "@supportHowToReach": {
     "description": "Texte UI : supportHowToReach"
   },
-  "supportPickChannel": "Choisis le canal qui te convient. Notre équipe répond 7j/7.",
+  "supportPickChannel": "Escolhe o canal que preferes. A nossa equipe responde 7 dias por semana.",
   "@supportPickChannel": {
     "description": "Texte UI : supportPickChannel"
   },
-  "supportInstantMessage": "Message instantané",
+  "supportInstantMessage": "Mensagem instantânea",
   "@supportInstantMessage": {
     "description": "Texte UI : supportInstantMessage"
   },
-  "supportInstantMessageSub": "Conversation écrite · Réponse moyenne 15 min.",
+  "supportInstantMessageSub": "Conversa por escrito · Resposta média em 15 min.",
   "@supportInstantMessageSub": {
     "description": "Texte UI : supportInstantMessageSub"
   },
-  "supportPhoneCall": "Appel téléphonique",
+  "supportPhoneCall": "Ligação telefônica",
   "@supportPhoneCall": {
     "description": "Texte UI : supportPhoneCall"
   },
-  "supportPhoneCallSub": "Parle à un conseiller · {number}",
+  "supportPhoneCallSub": "Fala com um atendente · {number}",
   "@supportPhoneCallSub": {
     "description": "Texte UI : supportPhoneCallSub",
     "placeholders": {
@@ -1638,23 +1636,23 @@
       }
     }
   },
-  "supportMessageError": "Impossible d'ouvrir la messagerie. Essaie l'appel.",
+  "supportMessageError": "Não foi possível abrir as mensagens. Tenta a ligação.",
   "@supportMessageError": {
     "description": "Texte UI : supportMessageError"
   },
-  "supportCallError": "Cet appareil ne peut pas appeler. Utilise le message à la place.",
+  "supportCallError": "Este aparelho não pode fazer ligações. Usa a mensagem em vez disso.",
   "@supportCallError": {
     "description": "Texte UI : supportCallError"
   },
-  "favoritesEmptyTitle": "Aucun favori pour l'instant",
+  "favoritesEmptyTitle": "Nenhum favorito por enquanto",
   "@favoritesEmptyTitle": {
     "description": "Texte UI : favoritesEmptyTitle"
   },
-  "favoritesEmptyHint": "Appuie sur ♥ dans le menu d'une chaîne pour la garder ici.",
+  "favoritesEmptyHint": "Toca em ♥ no menu de um canal para guardá-lo aqui.",
   "@favoritesEmptyHint": {
     "description": "Texte UI : favoritesEmptyHint"
   },
-  "focusedResultsCount": "{channels} chaînes · {countries} pays",
+  "focusedResultsCount": "{channels} canais · {countries} países",
   "@focusedResultsCount": {
     "description": "Texte UI : focusedResultsCount",
     "placeholders": {
@@ -1666,7 +1664,7 @@
       }
     }
   },
-  "searchResultsCount": "{count} résultats pour \"{query}\"",
+  "searchResultsCount": "{count} resultados para \"{query}\"",
   "@searchResultsCount": {
     "description": "Texte UI : searchResultsCount",
     "placeholders": {
@@ -1678,31 +1676,31 @@
       }
     }
   },
-  "loginInvalidUrl": "URL invalide. Elle doit commencer par http:// ou https://",
+  "loginInvalidUrl": "URL inválida. Deve começar por http:// ou https://",
   "@loginInvalidUrl": {
     "description": "Texte UI : loginInvalidUrl"
   },
-  "loginInvalidServer": "Serveur invalide. Format : http://serveur.com:8080",
+  "loginInvalidServer": "Servidor inválido. Formato: http://servidor.com:8080",
   "@loginInvalidServer": {
     "description": "Texte UI : loginInvalidServer"
   },
-  "loginCredsRequired": "Utilisateur et mot de passe sont obligatoires.",
+  "loginCredsRequired": "Usuário e senha são obrigatórios.",
   "@loginCredsRequired": {
     "description": "Texte UI : loginCredsRequired"
   },
-  "loginServerRequired": "Choisis un serveur.",
+  "loginServerRequired": "Escolhe um servidor.",
   "@loginServerRequired": {
     "description": "Texte UI : loginServerRequired"
   },
-  "loginSourceAdded": "Source ajoutée. Tes chaînes arrivent…",
+  "loginSourceAdded": "Fonte adicionada. Os teus canais estão chegando…",
   "@loginSourceAdded": {
     "description": "Texte UI : loginSourceAdded"
   },
-  "loginConnected": "Connecté. Tes chaînes arrivent…",
+  "loginConnected": "Conectado. Os teus canais estão chegando…",
   "@loginConnected": {
     "description": "Texte UI : loginConnected"
   },
-  "loginMySourcePerso": "Ma source perso",
+  "loginMySourcePerso": "Minha fonte pessoal",
   "@loginMySourcePerso": {
     "description": "Texte UI : loginMySourcePerso"
   },
@@ -1710,75 +1708,75 @@
   "@loginUrlM3u": {
     "description": "Texte UI : loginUrlM3u"
   },
-  "loginServerXtream": "Serveur Xtream",
+  "loginServerXtream": "Servidor Xtream",
   "@loginServerXtream": {
     "description": "Texte UI : loginServerXtream"
   },
-  "loginUsername": "Utilisateur",
+  "loginUsername": "Usuário",
   "@loginUsername": {
     "description": "Texte UI : loginUsername"
   },
-  "loginPassword": "Mot de passe",
+  "loginPassword": "Senha",
   "@loginPassword": {
     "description": "Texte UI : loginPassword"
   },
-  "loginNameOptional": "Nom (optionnel)",
+  "loginNameOptional": "Nome (opcional)",
   "@loginNameOptional": {
     "description": "Texte UI : loginNameOptional"
   },
-  "loginNameHint": "Défaut : \"Ma source\"",
+  "loginNameHint": "Padrão: \"Minha fonte\"",
   "@loginNameHint": {
     "description": "Texte UI : loginNameHint"
   },
-  "loginVerifying": "Vérification…",
+  "loginVerifying": "Verificando…",
   "@loginVerifying": {
     "description": "Texte UI : loginVerifying"
   },
-  "loginLoadChannels": "Charger mes chaînes",
+  "loginLoadChannels": "Carregar os meus canais",
   "@loginLoadChannels": {
     "description": "Texte UI : loginLoadChannels"
   },
-  "loginTitle": "Connexion",
+  "loginTitle": "Entrar",
   "@loginTitle": {
     "description": "Texte UI : loginTitle"
   },
-  "loginXtreamIntro": "Choisis ton serveur puis saisis le code que t'a donné ton revendeur.\nTes chaînes seront chargées en quelques secondes.",
+  "loginXtreamIntro": "Escolhe o teu servidor e digita o código que o teu revendedor te deu.\nOs teus canais serão carregados em segundos.",
   "@loginXtreamIntro": {
     "description": "Texte UI : loginXtreamIntro"
   },
-  "loginServer": "Serveur",
+  "loginServer": "Servidor",
   "@loginServer": {
     "description": "Texte UI : loginServer"
   },
-  "loginConnecting": "Connexion au serveur...",
+  "loginConnecting": "Conectando ao servidor...",
   "@loginConnecting": {
     "description": "Texte UI : loginConnecting"
   },
-  "loginConnectLoad": "Se connecter et charger",
+  "loginConnectLoad": "Entrar e carregar",
   "@loginConnectLoad": {
     "description": "Texte UI : loginConnectLoad"
   },
-  "loginLoadingServers": "Chargement des serveurs…",
+  "loginLoadingServers": "Carregando servidores…",
   "@loginLoadingServers": {
     "description": "Texte UI : loginLoadingServers"
   },
-  "loginServersUnavailable": "Serveurs indisponibles pour le moment.",
+  "loginServersUnavailable": "Servidores indisponíveis no momento.",
   "@loginServersUnavailable": {
     "description": "Texte UI : loginServersUnavailable"
   },
-  "loginAddIntro": "Choisis ton serveur, puis saisis le code que t'a donné ton revendeur (utilisateur + mot de passe). On vérifie le code avant de charger tes chaînes.",
+  "loginAddIntro": "Escolhe o teu servidor e digita o código que o teu revendedor te deu (usuário + senha). Verificamos o código antes de carregar os teus canais.",
   "@loginAddIntro": {
     "description": "Texte UI : loginAddIntro"
   },
-  "loginUsernameHint": "identifiant",
+  "loginUsernameHint": "usuário",
   "@loginUsernameHint": {
     "description": "Texte UI : loginUsernameHint"
   },
-  "loginPasswordHint": "mot de passe",
+  "loginPasswordHint": "senha",
   "@loginPasswordHint": {
     "description": "Texte UI : loginPasswordHint"
   },
-  "seeAllOf": "Voir tout {title}",
+  "seeAllOf": "Ver tudo de {title}",
   "@seeAllOf": {
     "description": "Texte UI : seeAllOf",
     "placeholders": {
@@ -1787,15 +1785,15 @@
       }
     }
   },
-  "playlistActiveBadge": "Active",
+  "playlistActiveBadge": "Ativa",
   "@playlistActiveBadge": {
     "description": "Badge sur la playlist actuellement active"
   },
-  "playlistTapToActivate": "Activer cette playlist",
+  "playlistTapToActivate": "Ativar esta playlist",
   "@playlistTapToActivate": {
     "description": "Action pour activer une playlist"
   },
-  "playlistNowActive": "« {name} » est maintenant la playlist active",
+  "playlistNowActive": "« {name} » é agora a playlist ativa",
   "@playlistNowActive": {
     "description": "Confirmation de bascule de playlist active",
     "placeholders": {
@@ -1804,51 +1802,51 @@
       }
     }
   },
-  "subActiveLifetime": "Abonnement à vie",
+  "subActiveLifetime": "Assinatura vitalícia",
   "@subActiveLifetime": {
     "description": "Titre carte abonnement quand le plan est à vie"
   },
-  "activationCheckButton": "Vérifier mon abonnement",
+  "activationCheckButton": "Verificar a minha assinatura",
   "@activationCheckButton": {
     "description": "Bouton pour revérifier l’abonnement et charger la source"
   },
-  "activationChecking": "Vérification en cours…",
+  "activationChecking": "Verificando…",
   "@activationChecking": {
     "description": "Snackbar pendant la vérification d’abonnement"
   },
-  "activationSuccess": "Abonnement vérifié — tes chaînes sont chargées !",
+  "activationSuccess": "Assinatura verificada — os teus canais foram carregados!",
   "@activationSuccess": {
     "description": "Snackbar succès vérification (chaînes chargées)"
   },
-  "activationNoSourceYet": "Pas encore de chaînes. Si ton revendeur vient d'activer, patiente un instant puis réessaie, ou redémarre l'app.",
+  "activationNoSourceYet": "Ainda sem canais. Se o teu revendedor acabou de ativar, espera um instante e tenta de novo, ou reinicia o app.",
   "@activationNoSourceYet": {
     "description": "Snackbar : aucune source encore assignée"
   },
-  "activationActiveNoSource": "Abonnement actif ✅ mais aucune playlist assignée à ta MAC. Ton revendeur doit ajouter une Source (Xtream/M3U).",
+  "activationActiveNoSource": "Assinatura ativa ✅ mas nenhuma playlist atribuída ao teu MAC. O teu revendedor precisa adicionar uma Fonte (Xtream/M3U).",
   "@activationActiveNoSource": {
     "description": "Message de diagnostic activation"
   },
-  "activationDeviceKnownNoSub": "Appareil reconnu par le serveur, en attente d'activation par ton revendeur.",
+  "activationDeviceKnownNoSub": "Aparelho reconhecido pelo servidor, aguardando ativação pelo teu revendedor.",
   "@activationDeviceKnownNoSub": {
     "description": "Message de diagnostic activation"
   },
-  "activationDeviceUnknown": "Appareil pas encore vu par le serveur — vérifie ta connexion internet.",
+  "activationDeviceUnknown": "Aparelho ainda não visto pelo servidor — verifica a tua conexão com a internet.",
   "@activationDeviceUnknown": {
     "description": "Message de diagnostic activation"
   },
-  "emptyPremiumTitle": "Compte premium",
+  "emptyPremiumTitle": "Conta premium",
   "@emptyPremiumTitle": {
     "description": "Ecran vide quand abonnement actif"
   },
-  "emptyPremiumWaiting": "Abonnement actif — en attente de tes chaînes. Ton revendeur doit assigner ta source (Xtream/M3U).",
+  "emptyPremiumWaiting": "Assinatura ativa — aguardando os teus canais. O teu revendedor precisa atribuir a tua fonte (Xtream/M3U).",
   "@emptyPremiumWaiting": {
     "description": "Ecran vide quand abonnement actif"
   },
-  "activationSourceFailed": "Source reçue mais 0 chaîne chargée. Vérifie l'URL / les identifiants du provider (URL M3U complète avec get.php, ou utilise le mode Xtream).",
+  "activationSourceFailed": "Fonte recebida mas 0 canais carregados. Verifica a URL / as credenciais do provedor (URL M3U completa com get.php, ou usa o modo Xtream).",
   "@activationSourceFailed": {
     "description": "Diagnostic : source assignee mais 0 chaine"
   },
-  "catFilterAll": "Tout",
+  "catFilterAll": "Tudo",
   "@catFilterAll": {
     "description": "Filtre catégories : tout"
   },
@@ -1856,35 +1854,35 @@
   "@catFilterTv": {
     "description": "Filtre catégories : direct/TV"
   },
-  "catFilterAdult": "Adulte",
+  "catFilterAdult": "Adulto",
   "@catFilterAdult": {
     "description": "Filtre catégories : adulte"
   },
-  "catNoneInPlaylist": "Aucune catégorie dans ta playlist.",
+  "catNoneInPlaylist": "Nenhuma categoria na tua playlist.",
   "@catNoneInPlaylist": {
     "description": "Aucune catégorie dans la playlist"
   },
-  "catEmptyShelf": "Rien dans ce rayon.",
+  "catEmptyShelf": "Nada nesta seção.",
   "@catEmptyShelf": {
     "description": "Rien dans ce rayon"
   },
-  "recordingOpenWith": "Ouvrir avec…",
+  "recordingOpenWith": "Abrir com…",
   "@recordingOpenWith": {
     "description": "Enregistrements : ouvrir avec"
   },
-  "recordingShare": "Partager",
+  "recordingShare": "Compartilhar",
   "@recordingShare": {
     "description": "Enregistrements : partager"
   },
-  "recordingNoPlayer": "Aucun lecteur compatible. Installe VLC pour lire ce fichier.",
+  "recordingNoPlayer": "Nenhum player compatível. Instala o VLC para reproduzir este arquivo.",
   "@recordingNoPlayer": {
     "description": "Enregistrements : aucun lecteur compatible"
   },
-  "activationRestartTitle": "Activation réussie",
+  "activationRestartTitle": "Ativação concluída",
   "@activationRestartTitle": {
     "description": "Splash activation : titre"
   },
-  "activationRestartSubtitle": "Redémarrage en cours…",
+  "activationRestartSubtitle": "Reiniciando…",
   "@activationRestartSubtitle": {
     "description": "Splash activation : sous-titre"
   },
@@ -1892,31 +1890,31 @@
   "@orSeparator": {
     "description": "Séparateur « ou »"
   },
-  "xtreamHaveCode": "J'ai un code Xtream",
+  "xtreamHaveCode": "Tenho um código Xtream",
   "@xtreamHaveCode": {
     "description": "Bouton : j’ai un code Xtream"
   },
-  "catFilterMovies": "Cinéma",
-  "catFilterSeries": "Série",
+  "catFilterMovies": "Cinema",
+  "catFilterSeries": "Séries",
   "@catFilterMovies": {
     "description": "Filtre catégories : cinéma"
   },
   "@catFilterSeries": {
     "description": "Filtre catégories : série"
   },
-  "pricingOffersTitle": "Nos offres",
+  "pricingOffersTitle": "Nossas ofertas",
   "@pricingOffersTitle": {
     "description": "Titre bloc offres"
   },
-  "pricingLifetime": "À vie",
+  "pricingLifetime": "Vitalício",
   "@pricingLifetime": {
     "description": "Offre à vie"
   },
-  "pricingYearly": "1 an",
+  "pricingYearly": "1 ano",
   "@pricingYearly": {
     "description": "Offre 1 an"
   },
-  "pricingTrialDays": "Essai gratuit {days} jours",
+  "pricingTrialDays": "Teste grátis de {days} dias",
   "@pricingTrialDays": {
     "description": "Essai gratuit en jours",
     "placeholders": {
@@ -1925,52 +1923,52 @@
       }
     }
   },
-  "simpleSwitchSource": "Changer de source",
+  "simpleSwitchSource": "Mudar de fonte",
   "@simpleSwitchSource": {
     "description": "Bouton : changer de source (trio)"
   },
-  "homeRecentlyWatched": "Récemment regardées",
+  "homeRecentlyWatched": "Assistidos recentemente",
   "@homeRecentlyWatched": {
     "description": "Titre du rail des dernières chaînes regardées"
   },
-  "tvActivationTagline": "Accès complet, à vie. Un seul paiement.",
-  "tvLifetime": "À vie",
-  "tvActivationCodeLabel": "Ton code d'activation",
-  "tvActivationCodeHelp": "Donne ce code à ton revendeur pour activer. Il reste le même, même après une réinstallation.",
-  "tvPaidCheck": "J'ai payé — Vérifier",
-  "tvChecking": "Vérification…",
-  "tvAddOwnList": "J'ajoute ma propre liste (Xtream)",
-  "tvActivationFooter": "Paiement vérifié · Activation instantanée",
-  "tvScanToActivate": "Scanne-moi pour activer",
-  "tvScanHelp": "Ouvre l'appareil photo de ton téléphone et vise ce code. Ça ouvre WhatsApp avec ton code déjà prêt.",
-  "tvNavLive": "Direct",
-  "tvNavFilms": "Films",
+  "tvActivationTagline": "Acesso completo, vitalício. Um único pagamento.",
+  "tvLifetime": "Vitalício",
+  "tvActivationCodeLabel": "O teu código de ativação",
+  "tvActivationCodeHelp": "Dá este código ao teu revendedor para ativar. Ele continua o mesmo, mesmo depois de reinstalar.",
+  "tvPaidCheck": "Já paguei — Verificar",
+  "tvChecking": "Verificando…",
+  "tvAddOwnList": "Adicionar a minha própria lista (Xtream)",
+  "tvActivationFooter": "Pagamento verificado · Ativação instantânea",
+  "tvScanToActivate": "Escaneia-me para ativar",
+  "tvScanHelp": "Abre a câmera do teu celular e aponta para este código. Ele abre o WhatsApp com o teu código já pronto.",
+  "tvNavLive": "Ao vivo",
+  "tvNavFilms": "Filmes",
   "tvNavSeries": "Séries",
-  "tvNavGuide": "Guide",
-  "tvNavSearch": "Recherche",
-  "tvNavSettings": "Réglages",
-  "tvComingSoon": "Bientôt disponible. Cette section arrive très vite.",
-  "tvEpgNow": "Maintenant",
+  "tvNavGuide": "Guia",
+  "tvNavSearch": "Buscar",
+  "tvNavSettings": "Configurações",
+  "tvComingSoon": "Em breve. Esta seção está chegando.",
+  "tvEpgNow": "Agora",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
   },
-  "tvEpgNext": "À suivre",
+  "tvEpgNext": "A seguir",
   "@tvEpgNext": {
     "description": "Étiquette du programme suivant (aperçu Direct)"
   },
-  "tvHello": "Bonjour",
-  "tvNoChannels": "Aucune chaîne pour l'instant",
-  "tvNoChannelsHelp": "Active cet appareil dans ton panel, puis pousse-lui une source. Les chaînes apparaîtront ici automatiquement.",
-  "tvContinueWatching": "CONTINUER À REGARDER",
-  "tvNoChannelInCategory": "Aucune chaîne dans cette catégorie.",
-  "tvOthers": "Autres",
-  "tvSearchHint": "Tape pour rechercher…",
-  "tvNoResult": "Aucun résultat.",
-  "tvDeviceAddress": "Adresse de cet appareil (MAC)",
-  "tvDeviceAddressHelp": "Donne cette adresse à ton revendeur pour activer Zuno.",
-  "tvStatus": "Statut",
-  "tvStatusPaid": "Abonnement actif",
-  "tvStatusTrial": "Essai — {days} jour(s) restants",
+  "tvHello": "Olá",
+  "tvNoChannels": "Nenhum canal por enquanto",
+  "tvNoChannelsHelp": "Ativa este aparelho no teu painel e envia-lhe uma fonte. Os canais aparecerão aqui automaticamente.",
+  "tvContinueWatching": "CONTINUAR ASSISTINDO",
+  "tvNoChannelInCategory": "Nenhum canal nesta categoria.",
+  "tvOthers": "Outros",
+  "tvSearchHint": "Digita para buscar…",
+  "tvNoResult": "Nenhum resultado.",
+  "tvDeviceAddress": "Endereço deste aparelho (MAC)",
+  "tvDeviceAddressHelp": "Dá este endereço ao teu revendedor para ativar o Zuno.",
+  "tvStatus": "Status",
+  "tvStatusPaid": "Assinatura ativa",
+  "tvStatusTrial": "Teste — {days} dia(s) restante(s)",
   "@tvStatusTrial": {
     "placeholders": {
       "days": {
@@ -1978,158 +1976,158 @@
       }
     }
   },
-  "tvStatusTrialExpired": "Essai terminé — à activer",
-  "tvStatusFrozen": "Compte gelé",
-  "tvStatusBanned": "Compte banni",
-  "tvStatusUnknown": "Non activé",
-  "tvRefreshStatus": "Rafraîchir le statut",
-  "tvLiveBadge": "DIRECT",
-  "tvZapHint": "Haut/Bas pour zapper",
-  "tvAddListTitle": "Ajouter ma liste",
-  "tvAddListSubtitle": "Code Xtream — apporte ta propre playlist.",
-  "tvFieldServer": "Serveur",
-  "tvFieldUser": "Identifiant",
-  "tvFieldPass": "Mot de passe",
-  "tvAddListError": "Remplis le serveur, l'identifiant et le mot de passe.",
-  "tvConnectError": "Connexion impossible. Vérifie les infos.",
-  "tvConnecting": "Connexion…",
-  "tvAddListValidate": "Valider et charger ma liste",
-  "tvSearchingChannels": "Recherche de tes chaînes…",
-  "tvRetry": "Réessayer",
-  "tvSourceInvalid": "Abonnement reçu mais refusé — vérifie les identifiants dans le panel.",
-  "tvQuitTitle": "Quitter Zuno ?",
-  "tvQuitMessage": "Redémarre pour rafraîchir tes chaînes, ou quitte l'application.",
-  "tvRestart": "Redémarrer",
-  "tvQuit": "Quitter",
-  "tvStay": "Continuer",
-  "tvChooseServer": "Choisis ton serveur",
-  "tvManualServer": "URL manuelle",
-  "tvKeyboardHint": "Astuce : tu peux taper avec le clavier de l'appli télécommande de ton téléphone (copier-coller possible).",
-  "tvAddM3uTitle": "Ajouter une liste M3U",
-  "tvAddM3uSubtitle": "Colle l'URL de ton fichier .m3u (et l'EPG si tu en as une).",
-  "tvFieldNameOptional": "Nom (optionnel)",
-  "tvMyListHint": "Ma liste",
+  "tvStatusTrialExpired": "Teste terminado — a ativar",
+  "tvStatusFrozen": "Conta congelada",
+  "tvStatusBanned": "Conta banida",
+  "tvStatusUnknown": "Não ativado",
+  "tvRefreshStatus": "Atualizar o status",
+  "tvLiveBadge": "AO VIVO",
+  "tvZapHint": "Cima/Baixo para mudar de canal",
+  "tvAddListTitle": "Adicionar a minha lista",
+  "tvAddListSubtitle": "Código Xtream — traz a tua própria playlist.",
+  "tvFieldServer": "Servidor",
+  "tvFieldUser": "Usuário",
+  "tvFieldPass": "Senha",
+  "tvAddListError": "Preenche o servidor, o usuário e a senha.",
+  "tvConnectError": "Não foi possível conectar. Verifica os dados.",
+  "tvConnecting": "Conectando…",
+  "tvAddListValidate": "Confirmar e carregar a minha lista",
+  "tvSearchingChannels": "Procurando os teus canais…",
+  "tvRetry": "Tentar novamente",
+  "tvSourceInvalid": "Assinatura recebida mas recusada — verifica as credenciais no painel.",
+  "tvQuitTitle": "Sair do Zuno?",
+  "tvQuitMessage": "Reinicia para atualizar os teus canais, ou sai do aplicativo.",
+  "tvRestart": "Reiniciar",
+  "tvQuit": "Sair",
+  "tvStay": "Continuar",
+  "tvChooseServer": "Escolhe o teu servidor",
+  "tvManualServer": "URL manual",
+  "tvKeyboardHint": "Dica: podes digitar com o teclado do app de controle remoto do teu celular (copiar e colar funciona).",
+  "tvAddM3uTitle": "Adicionar uma lista M3U",
+  "tvAddM3uSubtitle": "Cola a URL do teu arquivo .m3u (e do EPG, se tiveres um).",
+  "tvFieldNameOptional": "Nome (opcional)",
+  "tvMyListHint": "Minha lista",
   "tvFieldM3uUrl": "URL M3U",
-  "tvFieldEpgUrlOptional": "URL EPG (optionnel)",
-  "tvAddM3uBusy": "Ajout…",
-  "tvAddM3uValidate": "Ajouter la liste",
-  "tvAddM3uInvalidUrl": "Entre une URL M3U valide (http…).",
-  "tvAddM3uFailed": "Échec : liste injoignable ou vide.",
-  "tvMyM3uList": "Ma liste M3U",
-  "tvBlackBoxTitle": "Boîte noire",
-  "tvBlackBoxSubtitle": "Journal technique de l'application (v{version}). En cas de fermeture inattendue, la raison est ici.",
+  "tvFieldEpgUrlOptional": "URL EPG (opcional)",
+  "tvAddM3uBusy": "Adicionando…",
+  "tvAddM3uValidate": "Adicionar a lista",
+  "tvAddM3uInvalidUrl": "Digita uma URL M3U válida (http…).",
+  "tvAddM3uFailed": "Falha: lista inacessível ou vazia.",
+  "tvMyM3uList": "Minha lista M3U",
+  "tvBlackBoxTitle": "Caixa preta",
+  "tvBlackBoxSubtitle": "Registro técnico do aplicativo (v{version}). Em caso de fechamento inesperado, o motivo está aqui.",
   "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
-  "tvBlackBoxFirstRun": "Premier lancement : aucune session précédente.",
-  "tvBlackBoxCleanExit": "Dernière session terminée normalement.",
-  "tvBlackBoxBrutal": "FERMETURE BRUTALE · {reason}",
+  "tvBlackBoxFirstRun": "Primeira execução: nenhuma sessão anterior.",
+  "tvBlackBoxCleanExit": "Última sessão encerrada normalmente.",
+  "tvBlackBoxBrutal": "FECHAMENTO BRUSCO · {reason}",
   "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
-  "tvBlackBoxUnknownReason": "raison inconnue (Android < 11)",
-  "tvBlackBoxMemory": "mémoire {mb} Mo",
+  "tvBlackBoxUnknownReason": "motivo desconhecido (Android < 11)",
+  "tvBlackBoxMemory": "memória {mb} MB",
   "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
-  "tvBlackBoxWhen": "Quand : {when}",
+  "tvBlackBoxWhen": "Quando: {when}",
   "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
-  "tvBlackBoxLastAction": "Dernière action : {action}",
+  "tvBlackBoxLastAction": "Última ação: {action}",
   "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
-  "tvBlackBoxDetail": "Détail Android : {detail}",
+  "tvBlackBoxDetail": "Detalhe Android: {detail}",
   "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
-  "tvRefresh": "Actualiser",
-  "tvCopy": "Copier",
-  "tvCopied": "Copié",
-  "tvClear": "Effacer",
-  "tvReading": "Lecture…",
-  "tvBlackBoxHelp": "HAUT/BAS : défiler · CH+/CH− : page · Copier = presse-papiers (colle-le dans WhatsApp au support).",
-  "tvNavServer": "Serveur",
-  "tvLegalTitle": "Mentions légales & Conditions",
-  "tvResumeLabel": "REPRENDRE",
-  "tvNowPlayingPrefix": "EN CE MOMENT · {title}",
+  "tvRefresh": "Atualizar",
+  "tvCopy": "Copiar",
+  "tvCopied": "Copiado",
+  "tvClear": "Limpar",
+  "tvReading": "Lendo…",
+  "tvBlackBoxHelp": "CIMA/BAIXO: rolar · CH+/CH−: página · Copiar = área de transferência (cola no WhatsApp para o suporte).",
+  "tvNavServer": "Servidor",
+  "tvLegalTitle": "Avisos legais & Termos",
+  "tvResumeLabel": "CONTINUAR",
+  "tvNowPlayingPrefix": "AGORA · {title}",
   "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
-  "tvLiveBadge": "EN DIRECT",
-  "tvPinUpdated": "Code parental mis à jour ✔",
-  "tvParentalTitle": "Contrôle parental",
-  "tvKidsMode": "Mode Enfants",
-  "tvParentalCode": "Code parental",
-  "tvCustomPinInPlace": "Un code personnalisé est en place.",
-  "tvChangePin": "Changer le code PIN",
-  "tvPinSubtitle": "Code parental à 4 chiffres",
-  "tvNewPin": "Nouveau code",
-  "tvNewPinSubtitle": "Choisis 4 chiffres, puis confirme",
-  "tvPinWrong": "Code incorrect, réessaie.",
-  "tvPinMismatch": "Les deux codes ne correspondent pas.",
-  "tvPlayerFatalHint": "OK : Réessayer   ·   Retour : Quitter",
+  "tvLiveBadge": "AO VIVO",
+  "tvPinUpdated": "Código parental atualizado ✔",
+  "tvParentalTitle": "Controle parental",
+  "tvKidsMode": "Modo Infantil",
+  "tvParentalCode": "Código parental",
+  "tvCustomPinInPlace": "Um código personalizado está ativo.",
+  "tvChangePin": "Alterar o código PIN",
+  "tvPinSubtitle": "Código parental de 4 dígitos",
+  "tvNewPin": "Novo código",
+  "tvNewPinSubtitle": "Escolhe 4 dígitos e depois confirma",
+  "tvPinWrong": "Código incorreto, tenta de novo.",
+  "tvPinMismatch": "Os dois códigos não coincidem.",
+  "tvPlayerFatalHint": "OK: Tentar novamente   ·   Voltar: Sair",
   "tvRec": "REC",
   "tvStop": "Stop",
-  "tvGuideBtn": "Guide",
-  "tvFavoriteBtn": "Favori",
-  "tvPlaybackFinished": "Lecture terminée",
-  "tvPlaybackFinishedBody": "Appuie sur Retour pour revenir à tes enregistrements.",
-  "tvNoRecordings": "Aucun enregistrement",
-  "tvNoRecordingsBody": "Tes enregistrements apparaîtront ici. Pendant la lecture d'une chaîne, appuie sur le bouton REC pour enregistrer.",
-  "tvMyRecordings": "Mes enregistrements",
-  "tvDeleteQuestion": "Supprimer ?",
-  "tvDeleteRecordingConfirm": "Supprimer définitivement « {name} » ?",
+  "tvGuideBtn": "Guia",
+  "tvFavoriteBtn": "Favorito",
+  "tvPlaybackFinished": "Reprodução concluída",
+  "tvPlaybackFinishedBody": "Pressiona Voltar para regressar às tuas gravações.",
+  "tvNoRecordings": "Nenhuma gravação",
+  "tvNoRecordingsBody": "As tuas gravações aparecerão aqui. Durante a reprodução de um canal, pressiona o botão REC para gravar.",
+  "tvMyRecordings": "Minhas gravações",
+  "tvDeleteQuestion": "Excluir?",
+  "tvDeleteRecordingConfirm": "Excluir definitivamente « {name} »?",
   "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
-  "tvCancel": "Annuler",
-  "tvDelete": "Supprimer",
-  "tvSettingsSources": "Mes sources (ajouter / activer / supprimer)",
-  "tvSettingsParental": "Contrôle parental (Mode Enfants + code PIN)",
-  "tvSettingsBlackBox": "Boîte noire (journal technique)",
-  "tvSettingsLegal": "Mentions légales & Conditions d'utilisation",
-  "tvUpdateChecking": "Mise à jour : vérification…",
-  "tvUpdateUpToDate": "Mise à jour : à jour (version {version}) — OK pour revérifier",
+  "tvCancel": "Cancelar",
+  "tvDelete": "Excluir",
+  "tvSettingsSources": "Minhas fontes (adicionar / ativar / excluir)",
+  "tvSettingsParental": "Controle parental (Modo Infantil + código PIN)",
+  "tvSettingsBlackBox": "Caixa preta (registro técnico)",
+  "tvSettingsLegal": "Avisos legais & Termos de uso",
+  "tvUpdateChecking": "Atualização: verificando…",
+  "tvUpdateUpToDate": "Atualização: em dia (versão {version}) — OK para verificar de novo",
   "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
-  "tvUpdateUpToDateNoVersion": "Mise à jour : à jour — OK pour revérifier",
-  "tvUpdateAvailable": "Nouvelle version {version} disponible — OK pour installer",
+  "tvUpdateUpToDateNoVersion": "Atualização: em dia — OK para verificar de novo",
+  "tvUpdateAvailable": "Nova versão {version} disponível — OK para instalar",
   "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
-  "tvUpdateDownloading": "Téléchargement de la mise à jour… {pct} %",
+  "tvUpdateDownloading": "Baixando a atualização… {pct} %",
   "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
-  "tvUpdateFailed": "Mise à jour : échec (réseau ou installateur) — OK pour réessayer",
-  "tvMySources": "Mes sources",
-  "tvAddXtream": "Ajouter Xtream",
-  "tvAddM3u": "Ajouter M3U",
-  "tvDeleteSourceConfirm": "Supprimer la source « {name} » ?",
+  "tvUpdateFailed": "Atualização: falha (rede ou instalador) — OK para tentar de novo",
+  "tvMySources": "Minhas fontes",
+  "tvAddXtream": "Adicionar Xtream",
+  "tvAddM3u": "Adicionar M3U",
+  "tvDeleteSourceConfirm": "Excluir a fonte « {name} »?",
   "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
-  "tvActivate": "Activer",
-  "tvMyTeams": "Mes équipes",
-  "tvAdd": "Ajouter",
-  "tvPickTeamsTitle": "Choisis tes équipes préférées",
-  "tvPickTeamsBody": "Tu verras leurs scores et leurs prochains matchs, un bandeau d'actu qui défile, et une alarme ~1 h avant chaque match.",
-  "tvPickMyTeam": "Choisir mon équipe",
-  "tvLastMatch": "Dernier match",
-  "tvNextMatch": "Prochain match",
-  "tvNewsTicker": "ACTU",
-  "tvNoData": "Aucune donnée",
-  "tvNoTeamFound": "Aucune équipe trouvée",
-  "tvMyTeam": "Mon équipe",
-  "tvImpConnecting": "Connexion au serveur…",
-  "tvImpCategories": "Lecture des catégories…",
-  "tvImpDownloading": "Téléchargement… {mb} Mo",
+  "tvActivate": "Ativar",
+  "tvMyTeams": "Meus times",
+  "tvAdd": "Adicionar",
+  "tvPickTeamsTitle": "Escolhe os teus times favoritos",
+  "tvPickTeamsBody": "Verás os placares e os próximos jogos deles, uma faixa de notícias rolando e um alarme ~1 h antes de cada jogo.",
+  "tvPickMyTeam": "Escolher o meu time",
+  "tvLastMatch": "Último jogo",
+  "tvNextMatch": "Próximo jogo",
+  "tvNewsTicker": "NOTÍCIAS",
+  "tvNoData": "Nenhum dado",
+  "tvNoTeamFound": "Nenhum time encontrado",
+  "tvMyTeam": "Meu time",
+  "tvImpConnecting": "Conectando ao servidor…",
+  "tvImpCategories": "Lendo as categorias…",
+  "tvImpDownloading": "Baixando… {mb} MB",
   "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
-  "tvImpDecoding": "Analyse de {mb} Mo…",
+  "tvImpDecoding": "Analisando {mb} MB…",
   "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
-  "tvImpCategory": "Catégorie {i}/{total} · {found} chaînes trouvées",
+  "tvImpCategory": "Categoria {i}/{total} · {found} canais encontrados",
   "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
-  "tvImpFound": "{count} chaînes trouvées",
+  "tvImpFound": "{count} canais encontrados",
   "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
-  "tvImpSaving": "Enregistrement {done} / {total} chaînes",
+  "tvImpSaving": "Salvando {done} / {total} canais",
   "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
-  "tvImpDone": "{count} chaînes prêtes",
+  "tvImpDone": "{count} canais prontos",
   "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
-  "tvLanguage": "Langue",
-  "tvLanguageAuto": "Automatique (langue de la TV)",
-  "tvSettingsLanguage": "Langue : {value}",
+  "tvLanguage": "Idioma",
+  "tvLanguageAuto": "Automático (idioma da TV)",
+  "tvSettingsLanguage": "Idioma: {value}",
   "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
-  "tvEnterParentalCode": "Entre le code parental",
-  "tvCurrentCode": "Code actuel",
-  "tvConfirmCode": "Confirme le code",
-  "tvRecordingNotFound": "Enregistrement introuvable",
-  "tvPlaybackImpossible": "Lecture impossible",
-  "tvRecordingNotFoundBody": "Le fichier de cet enregistrement est introuvable ou vide.",
-  "tvPlaybackImpossibleBody": "Ce fichier n'a pas pu être décodé.",
-  "tvRecordingStarted": "Enregistrement en cours…",
-  "tvRecordingError": "Erreur enregistrement",
-  "tvRecordingSaved": "Enregistrement sauvegardé ({size})",
+  "tvEnterParentalCode": "Digite o código parental",
+  "tvCurrentCode": "Código atual",
+  "tvConfirmCode": "Confirme o código",
+  "tvRecordingNotFound": "Gravação não encontrada",
+  "tvPlaybackImpossible": "Não é possível reproduzir",
+  "tvRecordingNotFoundBody": "O arquivo desta gravação está ausente ou vazio.",
+  "tvPlaybackImpossibleBody": "Não foi possível decodificar este arquivo.",
+  "tvRecordingStarted": "Gravando…",
+  "tvRecordingError": "Erro de gravação",
+  "tvRecordingSaved": "Gravação salva ({size})",
   "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
-  "tvRecordingEmpty": "Enregistrement vide",
-  "tvRemovedFromFavorites": "Retiré des favoris",
-  "tvAddedToFavorites": "Ajouté aux favoris ❤"
+  "tvRecordingEmpty": "Gravação vazia",
+  "tvRemovedFromFavorites": "Removido dos favoritos",
+  "tvAddedToFavorites": "Adicionado aos favoritos ❤"
 }

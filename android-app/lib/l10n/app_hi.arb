@@ -1,0 +1,2133 @@
+{
+  "@@locale": "hi",
+  "appName": "The Few",
+  "@appName": {
+    "description": "Nom de la marque — ne pas traduire."
+  },
+  "appTagline": "असीमित सिनेमा",
+  "@appTagline": {
+    "description": "Phrase signature affichée sous le logo."
+  },
+  "navHome": "होम",
+  "navLive": "लाइव TV",
+  "navSearch": "खोजें",
+  "navAi": "AI",
+  "navFavorites": "पसंदीदा",
+  "navProfile": "प्रोफ़ाइल",
+  "sectionResume": "जारी रखें",
+  "sectionFavorites": "पसंदीदा",
+  "sectionSportsLive": "लाइव स्पोर्ट्स",
+  "sectionLiveNow": "अभी लाइव",
+  "sectionMovies": "फ़िल्में",
+  "sectionSeries": "सीरीज़",
+  "sectionKids": "बच्चों के लिए",
+  "sectionNews": "न्यूज़ और ख़बरें",
+  "sectionMusic": "संगीत",
+  "sectionDocs": "डॉक्यूमेंट्री",
+  "sectionDiscover": "नया खोजें",
+  "sectionLiveOnFavorites": "आपके पसंदीदा पर अभी लाइव",
+  "sectionTonight": "आज रात देखें",
+  "sectionResumeWhereYouLeftOff": "जहाँ छोड़ा था, वहीं से जारी रखें",
+  "channelCount": "{count, plural, =0{कोई चैनल नहीं} =1{1 चैनल} other{{count} चैनल}}",
+  "@channelCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "buttonContinue": "जारी रखें",
+  "buttonNext": "आगे",
+  "buttonSkip": "छोड़ें",
+  "buttonStart": "शुरू करें",
+  "buttonOk": "ठीक है",
+  "buttonCancel": "रद्द करें",
+  "buttonSave": "सेव करें",
+  "buttonDelete": "हटाएँ",
+  "buttonRetry": "फिर कोशिश करें",
+  "buttonResume": "जारी रखें",
+  "buttonWatch": "देखें",
+  "buttonSeeAll": "सभी देखें",
+  "buttonSyncNow": "सिंक करें",
+  "playerPause": "पॉज़",
+  "playerPlay": "चलाएँ",
+  "playerRec": "REC",
+  "playerStop": "स्टॉप",
+  "playerAudioOnly": "सिर्फ़ ऑडियो",
+  "playerVideo": "वीडियो",
+  "playerUpNextIn": "{seconds} सेकंड में अगला",
+  "@playerUpNextIn": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "playerUpNextCancel": "रद्द करें",
+  "playerUpNextPlay": "चलाएँ",
+  "playerTracks": "ट्रैक",
+  "playerSpeed": "स्पीड",
+  "playerRatio": "फ़ॉर्मैट",
+  "playerSettings": "सेटिंग्स",
+  "playerRecording": "रिकॉर्डिंग चल रही है",
+  "castIdle": "TV पर कास्ट करें",
+  "castSearching": "आपके Wi-Fi पर खोज रहे हैं…",
+  "castDevicesHint": "DLNA · Roku · वेब ब्राउज़र।",
+  "castSendTo": "भेजें…",
+  "castConnected": "इस पर कास्ट हो रहा है",
+  "castStop": "बंद करें",
+  "castViaBrowser": "ब्राउज़र से कास्ट करें",
+  "castViaBrowserSubtitle": "वेब ब्राउज़र वाली किसी भी TV पर काम करता है। TV से QR कोड स्कैन करें।",
+  "settingsTitle": "सेटिंग्स",
+  "settingsAppearance": "दिखावट",
+  "settingsLanguage": "भाषा",
+  "settingsLanguageSystem": "सिस्टम",
+  "settingsPlayer": "वीडियो प्लेयर",
+  "settingsPlaylists": "प्लेलिस्ट",
+  "settingsRecordings": "रिकॉर्डिंग",
+  "settingsStorage": "स्टोरेज",
+  "settingsApp": "ऐप",
+  "settingsAbout": "ऐप के बारे में",
+  "settingsProvisioning": "रिमोट प्रोविज़निंग",
+  "settingsClearHistory": "देखने का इतिहास मिटाएँ",
+  "themeCinema": "सिनेमा",
+  "themeCinemaSubtitle": "गहरा काला",
+  "themeDaylight": "डेलाइट",
+  "themeDaylightSubtitle": "दिन की रोशनी",
+  "themeAuto": "ऑटो",
+  "themeAutoSubtitle": "सिस्टम के अनुसार",
+  "deviceQuestion": "आप किस डिवाइस पर हैं?",
+  "deviceHelp": "हम अनुभव को आपके डिवाइस के हिसाब से ढालते हैं। आप इसे बाद में सेटिंग्स में बदल सकते हैं।",
+  "devicePhone": "फ़ोन",
+  "devicePhoneSubtitle": "स्मार्टफ़ोन, टैबलेट",
+  "devicePhoneDesc": "कॉम्पैक्ट टच इंटरफ़ेस। उँगली से नेविगेशन, स्मूद मिनी-प्लेयर और फ़ुल स्क्रीन।",
+  "deviceTv": "टेलीविज़न",
+  "deviceTvSubtitle": "Android TV, Fire TV, Google TV",
+  "deviceTvDesc": "रिमोट के लिए XL लेआउट। 3 मीटर से दिखने वाले फ़ोकस रिंग, सिनेमा साइज़, D-pad शॉर्टकट।",
+  "deviceAuto": "ऑटो",
+  "deviceAutoSubtitle": "अपने-आप पहचान",
+  "deviceAutoDesc": "ऐप आपकी स्क्रीन से अंदाज़ा लगाता है। अगर आप तय नहीं कर पा रहे या कई डिवाइस इस्तेमाल करते हैं, तो यह सही विकल्प है।",
+  "onboardingWelcomeTitle": "The Few में आपका स्वागत है",
+  "onboardingWelcomeDesc": "असीमित सिनेमा। TV के लिए बना, आपके फ़ोन के लिए ऑप्टिमाइज़्ड, हर जगह शानदार।",
+  "onboardingLoadTitle": "अपनी प्लेलिस्ट लोड करें",
+  "onboardingLoadDesc": "M3U URL पेस्ट करें या अपने Xtream लॉगिन डालें। आपके चैनल कुछ ही सेकंड में दिखने लगेंगे।",
+  "onboardingVipTitle": "VIP अनुभव का आनंद लें",
+  "onboardingVipDesc": "हाई-क्वालिटी लोगो, Apple TV जैसा नेविगेशन, तुरंत खोज, 4K/8K प्लेयर।",
+  "emptyNoPlaylist": "कोई प्लेलिस्ट नहीं",
+  "emptyAddYourFirst": "शुरू करने के लिए अपनी पहली M3U प्लेलिस्ट या Xtream लॉगिन जोड़ें।",
+  "addPlaylist": "प्लेलिस्ट जोड़ें",
+  "resumeBannerTitle": "{channel} जारी रखें",
+  "@resumeBannerTitle": {
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "resumeBannerSubtitle": "आप {minutes} मिनट पहले देख रहे थे",
+  "@resumeBannerSubtitle": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "resumeBannerDismiss": "बाद में",
+  "detailProgram": "प्रोग्राम",
+  "@detailProgram": {
+    "description": "Texte UI : detailProgram"
+  },
+  "detailNowPlaying": "अभी चल रहा है",
+  "@detailNowPlaying": {
+    "description": "Texte UI : detailNowPlaying"
+  },
+  "detailUpNext": "इसके बाद",
+  "@detailUpNext": {
+    "description": "Texte UI : detailUpNext"
+  },
+  "detailDetails": "विवरण",
+  "@detailDetails": {
+    "description": "Texte UI : detailDetails"
+  },
+  "detailCategory": "कैटेगरी",
+  "@detailCategory": {
+    "description": "Texte UI : detailCategory"
+  },
+  "detailCountry": "देश",
+  "@detailCountry": {
+    "description": "Texte UI : detailCountry"
+  },
+  "detailQuality": "क्वालिटी",
+  "@detailQuality": {
+    "description": "Texte UI : detailQuality"
+  },
+  "detailCatchup": "कैच-अप",
+  "@detailCatchup": {
+    "description": "Texte UI : detailCatchup"
+  },
+  "detailCatchupAvailable": "उपलब्ध · {days} दिन",
+  "@detailCatchupAvailable": {
+    "description": "Texte UI : detailCatchupAvailable",
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "detailCatchupUnavailable": "उपलब्ध नहीं",
+  "@detailCatchupUnavailable": {
+    "description": "Texte UI : detailCatchupUnavailable"
+  },
+  "detailProgramsAndReplay": "आज के प्रोग्राम और रीप्ले",
+  "@detailProgramsAndReplay": {
+    "description": "Texte UI : detailProgramsAndReplay"
+  },
+  "badgeLive": "लाइव",
+  "@badgeLive": {
+    "description": "Texte UI : badgeLive"
+  },
+  "badgeReplay": "रीप्ले",
+  "@badgeReplay": {
+    "description": "Texte UI : badgeReplay"
+  },
+  "badgeSoon": "जल्द ही",
+  "@badgeSoon": {
+    "description": "Texte UI : badgeSoon"
+  },
+  "viewModeList": "लिस्ट",
+  "@viewModeList": {
+    "description": "Texte UI : viewModeList"
+  },
+  "viewModeGrid": "ग्रिड",
+  "@viewModeGrid": {
+    "description": "Texte UI : viewModeGrid"
+  },
+  "sectionFilterHint": "इस सेक्शन में फ़िल्टर करें...",
+  "@sectionFilterHint": {
+    "description": "Texte UI : sectionFilterHint"
+  },
+  "filterAll": "सभी",
+  "@filterAll": {
+    "description": "Texte UI : filterAll"
+  },
+  "sectionEmptyNoChannel": "इस सेक्शन में कोई चैनल नहीं",
+  "@sectionEmptyNoChannel": {
+    "description": "Texte UI : sectionEmptyNoChannel"
+  },
+  "searchNoResult": "\"{query}\" के लिए कोई नतीजा नहीं",
+  "@searchNoResult": {
+    "description": "Texte UI : searchNoResult",
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionEmptyAdjustFilters": "फ़िल्टर या खोज बदलकर देखें।",
+  "@sectionEmptyAdjustFilters": {
+    "description": "Texte UI : sectionEmptyAdjustFilters"
+  },
+  "sectionTop10Today": "आज के टॉप 10",
+  "@sectionTop10Today": {
+    "description": "Texte UI : sectionTop10Today"
+  },
+  "sectionEntertainment": "मनोरंजन",
+  "@sectionEntertainment": {
+    "description": "Texte UI : sectionEntertainment"
+  },
+  "sectionInternational": "इंटरनेशनल",
+  "@sectionInternational": {
+    "description": "Texte UI : sectionInternational"
+  },
+  "sectionAdult": "वयस्क",
+  "@sectionAdult": {
+    "description": "Texte UI : sectionAdult"
+  },
+  "sectionOthers": "अन्य",
+  "@sectionOthers": {
+    "description": "Texte UI : sectionOthers"
+  },
+  "catSport": "खेल",
+  "@catSport": {
+    "description": "Texte UI : catSport"
+  },
+  "catInfo": "न्यूज़",
+  "@catInfo": {
+    "description": "Texte UI : catInfo"
+  },
+  "catKids": "बच्चे",
+  "@catKids": {
+    "description": "Texte UI : catKids"
+  },
+  "catScience": "विज्ञान",
+  "@catScience": {
+    "description": "Texte UI : catScience"
+  },
+  "catMovies": "फ़िल्में",
+  "@catMovies": {
+    "description": "Texte UI : catMovies"
+  },
+  "catMusic": "संगीत",
+  "@catMusic": {
+    "description": "Texte UI : catMusic"
+  },
+  "homeListRefreshed": "लिस्ट अपडेट हो गई — चैनल फिर से लोड हुए",
+  "@homeListRefreshed": {
+    "description": "Texte UI : homeListRefreshed"
+  },
+  "homeListUpToDate": "लिस्ट अप-टू-डेट है",
+  "@homeListUpToDate": {
+    "description": "Texte UI : homeListUpToDate"
+  },
+  "tooltipRefreshList": "लिस्ट रीफ़्रेश करें",
+  "@tooltipRefreshList": {
+    "description": "Texte UI : tooltipRefreshList"
+  },
+  "tooltipConnectActivate": "लॉगिन / एक्टिवेट करें",
+  "@tooltipConnectActivate": {
+    "description": "Texte UI : tooltipConnectActivate"
+  },
+  "tooltipSearch": "खोजें",
+  "@tooltipSearch": {
+    "description": "Texte UI : tooltipSearch"
+  },
+  "tooltipFavorites": "पसंदीदा",
+  "@tooltipFavorites": {
+    "description": "Texte UI : tooltipFavorites"
+  },
+  "tooltipProfile": "प्रोफ़ाइल",
+  "@tooltipProfile": {
+    "description": "Texte UI : tooltipProfile"
+  },
+  "adultAuthCancelled": "प्रमाणीकरण रद्द — वयस्क सेक्शन लॉक है",
+  "@adultAuthCancelled": {
+    "description": "Texte UI : adultAuthCancelled"
+  },
+  "adultAuthReason": "वयस्क सेक्शन खोलें",
+  "@adultAuthReason": {
+    "description": "Texte UI : adultAuthReason"
+  },
+  "navDirect": "लाइव",
+  "@navDirect": {
+    "description": "Texte UI : navDirect"
+  },
+  "navGuide": "गाइड",
+  "@navGuide": {
+    "description": "Texte UI : navGuide"
+  },
+  "navRefresh": "रीफ़्रेश",
+  "@navRefresh": {
+    "description": "Texte UI : navRefresh"
+  },
+  "tvFeatured": "ख़ास पेशकश",
+  "@tvFeatured": {
+    "description": "Texte UI : tvFeatured"
+  },
+  "refreshNoPlaylist": "कोई प्लेलिस्ट रीफ़्रेश नहीं हुई।",
+  "@refreshNoPlaylist": {
+    "description": "Texte UI : refreshNoPlaylist"
+  },
+  "refreshDoneCount": "रीफ़्रेश हुई: {count} प्लेलिस्ट।",
+  "@refreshDoneCount": {
+    "description": "Texte UI : refreshDoneCount",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "errorWithMessage": "एरर: {error}",
+  "@errorWithMessage": {
+    "description": "Texte UI : errorWithMessage",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "gridEmptyTitle": "यहाँ कोई चैनल नहीं",
+  "@gridEmptyTitle": {
+    "description": "Texte UI : gridEmptyTitle"
+  },
+  "gridEmptySubtitle": "प्लेलिस्ट जोड़ें या अपने फ़िल्टर बदलें।",
+  "@gridEmptySubtitle": {
+    "description": "Texte UI : gridEmptySubtitle"
+  },
+  "categoriesTitle": "कैटेगरी",
+  "@categoriesTitle": {
+    "description": "Texte UI : categoriesTitle"
+  },
+  "categoriesEmpty": "कोई चैनल नहीं — पहले एक प्लेलिस्ट जोड़ें।",
+  "@categoriesEmpty": {
+    "description": "Texte UI : categoriesEmpty"
+  },
+  "focusedNoChannelFound": "आपकी प्लेलिस्ट में कोई {title} चैनल नहीं मिला।",
+  "@focusedNoChannelFound": {
+    "description": "Texte UI : focusedNoChannelFound",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "searchHint": "चैनल, खेल या फ़िल्म खोजें…",
+  "@searchHint": {
+    "description": "Texte UI : searchHint"
+  },
+  "buttonBack": "वापस",
+  "@buttonBack": {
+    "description": "Texte UI : buttonBack"
+  },
+  "searchRecent": "हाल ही में",
+  "@searchRecent": {
+    "description": "Texte UI : searchRecent"
+  },
+  "buttonClear": "मिटाएँ",
+  "@buttonClear": {
+    "description": "Texte UI : buttonClear"
+  },
+  "searchExploreByCategory": "कैटेगरी से खोजें",
+  "@searchExploreByCategory": {
+    "description": "Texte UI : searchExploreByCategory"
+  },
+  "searchDiscoveryEmpty": "चैनल खोजने के लिए अपनी पहली प्लेलिस्ट लोड करें।",
+  "@searchDiscoveryEmpty": {
+    "description": "Texte UI : searchDiscoveryEmpty"
+  },
+  "searchNoResultHelp": "स्पेलिंग जाँचें या कोई और शब्द आज़माएँ। अगर चैनल यहाँ होना चाहिए, तो अपने रीसेलर से उसे जोड़ने को कहें।",
+  "@searchNoResultHelp": {
+    "description": "Texte UI : searchNoResultHelp"
+  },
+  "searchTipsToTry": "ये आज़माएँ",
+  "@searchTipsToTry": {
+    "description": "Texte UI : searchTipsToTry"
+  },
+  "searchEmptyCatalogTitle": "अभी कोई चैनल नहीं",
+  "@searchEmptyCatalogTitle": {
+    "description": "Texte UI : searchEmptyCatalogTitle"
+  },
+  "searchEmptyCatalogHelp": "खोज करने से पहले आपके रीसेलर को आपका सब्सक्रिप्शन एक्टिवेट करना होगा। कुछ मिनट बाद फिर आएँ।",
+  "@searchEmptyCatalogHelp": {
+    "description": "Texte UI : searchEmptyCatalogHelp"
+  },
+  "navCategories": "कैटेगरी",
+  "@navCategories": {
+    "description": "Texte UI : navCategories"
+  },
+  "mySource": "मेरा सोर्स",
+  "@mySource": {
+    "description": "Texte UI : mySource"
+  },
+  "sourceQuestion": "आप अपने चैनल कैसे देखना चाहते हैं?",
+  "@sourceQuestion": {
+    "description": "Texte UI : sourceQuestion"
+  },
+  "sourceLoginCode": "अपने कोड से लॉगिन करें",
+  "@sourceLoginCode": {
+    "description": "Texte UI : sourceLoginCode"
+  },
+  "sourceLoginCodeSub": "अपना यूज़रनेम + पासवर्ड डालें",
+  "@sourceLoginCodeSub": {
+    "description": "Texte UI : sourceLoginCodeSub"
+  },
+  "sourceOwn": "मेरे पास अपना सोर्स है",
+  "@sourceOwn": {
+    "description": "Texte UI : sourceOwn"
+  },
+  "sourceOwnSub": "M3U / M3U8 लिंक या Xtream कोड",
+  "@sourceOwnSub": {
+    "description": "Texte UI : sourceOwnSub"
+  },
+  "sourceActivate": "ऐप एक्टिवेट करें",
+  "@sourceActivate": {
+    "description": "Texte UI : sourceActivate"
+  },
+  "sourceActivateSub": "हमसे संपर्क करें (आपका MAC मैसेज में पहले से जुड़ा है)",
+  "@sourceActivateSub": {
+    "description": "Texte UI : sourceActivateSub"
+  },
+  "activateAtHomeTitle": "घर बैठे ऐप एक्टिवेट करें",
+  "@activateAtHomeTitle": {
+    "description": "Texte UI : activateAtHomeTitle"
+  },
+  "activateAtHomeDesc": "यह ID अपने रीसेलर को दें ताकि वह आपके चैनल रिमोट से एक्टिवेट कर सके।",
+  "@activateAtHomeDesc": {
+    "description": "Texte UI : activateAtHomeDesc"
+  },
+  "buttonCopy": "कॉपी करें",
+  "@buttonCopy": {
+    "description": "Texte UI : buttonCopy"
+  },
+  "buttonSend": "भेजें",
+  "@buttonSend": {
+    "description": "Texte UI : buttonSend"
+  },
+  "idCopied": "ID कॉपी हो गई: {id}",
+  "@idCopied": {
+    "description": "Texte UI : idCopied",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "resumeEyebrow": "जारी रखें",
+  "@resumeEyebrow": {
+    "description": "Texte UI : resumeEyebrow"
+  },
+  "resumeAgoNow": "अभी-अभी",
+  "@resumeAgoNow": {
+    "description": "Texte UI : resumeAgoNow"
+  },
+  "resumeAgoMinutes": "{minutes} मिनट पहले",
+  "@resumeAgoMinutes": {
+    "description": "Texte UI : resumeAgoMinutes",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "resumeWatchingAgo": "आप {ago} देख रहे थे",
+  "@resumeWatchingAgo": {
+    "description": "Texte UI : resumeWatchingAgo",
+    "placeholders": {
+      "ago": {
+        "type": "String"
+      }
+    }
+  },
+  "activateSubTitle": "अपना सब्सक्रिप्शन एक्टिवेट करें",
+  "@activateSubTitle": {
+    "description": "Texte UI : activateSubTitle"
+  },
+  "activateSubDesc": "अपने कोड (यूज़रनेम + पासवर्ड) से लॉगिन करें, या अपना MAC रीसेलर को दें ताकि वह रिमोट से एक्टिवेट कर सके।",
+  "@activateSubDesc": {
+    "description": "Texte UI : activateSubDesc"
+  },
+  "freeTrialBadge": "7 दिन का फ़्री ट्रायल · फिर €5/साल",
+  "@freeTrialBadge": {
+    "description": "Texte UI : freeTrialBadge"
+  },
+  "activateMySub": "मेरा सब्सक्रिप्शन एक्टिवेट करें",
+  "@activateMySub": {
+    "description": "Texte UI : activateMySub"
+  },
+  "remoteActivationByReseller": "आपके रीसेलर द्वारा रिमोट एक्टिवेशन",
+  "@remoteActivationByReseller": {
+    "description": "Texte UI : remoteActivationByReseller"
+  },
+  "recStartFailed": "रिकॉर्डिंग शुरू नहीं हो सकी। फिर कोशिश करें।",
+  "@recStartFailed": {
+    "description": "Texte UI : recStartFailed"
+  },
+  "startFailedWithError": "शुरू नहीं हो सका: {error}",
+  "@startFailedWithError": {
+    "description": "Texte UI : startFailedWithError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recInProgress": "● रिकॉर्डिंग — देखते रहें, स्ट्रीम सेव हो रही है",
+  "@recInProgress": {
+    "description": "Texte UI : recInProgress"
+  },
+  "recEmpty": "रिकॉर्डिंग खाली है — कुछ सेकंड चलने देकर फिर कोशिश करें।",
+  "@recEmpty": {
+    "description": "Texte UI : recEmpty"
+  },
+  "recSaved": "रिकॉर्डिंग सेव हो गई ({size}) — मेरी रिकॉर्डिंग",
+  "@recSaved": {
+    "description": "Texte UI : recSaved",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "recStopError": "रिकॉर्डिंग रोकने में एरर: {error}",
+  "@recStopError": {
+    "description": "Texte UI : recStopError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recTapToStop": "REC · रोकने के लिए दबाएँ",
+  "@recTapToStop": {
+    "description": "Texte UI : recTapToStop"
+  },
+  "pipUnavailable": "इस डिवाइस पर मिनी-विंडो उपलब्ध नहीं (Android 8+ चाहिए)। साथ ही Picture-in-picture की अनुमति चालू करें: सेटिंग्स → ऐप्स → 7 MOTION → अनुमतियाँ।",
+  "@pipUnavailable": {
+    "description": "Texte UI : pipUnavailable"
+  },
+  "speedToast": "स्पीड: {speed}x",
+  "@speedToast": {
+    "description": "Texte UI : speedToast",
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      }
+    }
+  },
+  "tooltipMiniWindow": "मिनी-विंडो",
+  "@tooltipMiniWindow": {
+    "description": "Texte UI : tooltipMiniWindow"
+  },
+  "tooltipCastingManage": "कास्टिंग चल रही है — मैनेज करने के लिए टैप करें",
+  "@tooltipCastingManage": {
+    "description": "Texte UI : tooltipCastingManage"
+  },
+  "tooltipSendToTv": "TV पर भेजें",
+  "@tooltipSendToTv": {
+    "description": "Texte UI : tooltipSendToTv"
+  },
+  "tooltipReloadStream": "स्ट्रीम फिर से लोड करें",
+  "@tooltipReloadStream": {
+    "description": "Texte UI : tooltipReloadStream"
+  },
+  "seekRewind": "2 मिनट पीछे",
+  "@seekRewind": {
+    "description": "Texte UI : seekRewind"
+  },
+  "seekForward": "2 मिनट आगे",
+  "@seekForward": {
+    "description": "Texte UI : seekForward"
+  },
+  "playerCantPlay": "यह स्ट्रीम नहीं चल सकी",
+  "@playerCantPlay": {
+    "description": "Texte UI : playerCantPlay"
+  },
+  "tooltipRemoveFavorite": "पसंदीदा से हटाएँ",
+  "@tooltipRemoveFavorite": {
+    "description": "Texte UI : tooltipRemoveFavorite"
+  },
+  "tooltipAddFavorite": "पसंदीदा में जोड़ें",
+  "@tooltipAddFavorite": {
+    "description": "Texte UI : tooltipAddFavorite"
+  },
+  "playerSettingsTitle": "प्लेयर सेटिंग्स",
+  "@playerSettingsTitle": {
+    "description": "Texte UI : playerSettingsTitle"
+  },
+  "playerSpeedSection": "प्लेबैक स्पीड",
+  "@playerSpeedSection": {
+    "description": "Texte UI : playerSpeedSection"
+  },
+  "playerDisplayMode": "डिस्प्ले मोड",
+  "@playerDisplayMode": {
+    "description": "Texte UI : playerDisplayMode"
+  },
+  "playerBufferSize": "बफ़र साइज़",
+  "@playerBufferSize": {
+    "description": "Texte UI : playerBufferSize"
+  },
+  "playerBufferSeconds": "{seconds} सेकंड",
+  "@playerBufferSeconds": {
+    "description": "Texte UI : playerBufferSeconds",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "playerBufferHelp": "जितना ज़्यादा होगा, नेटवर्क रुकावटों में प्लेबैक उतना बेहतर चलेगा (लेकिन लाइव में देरी ज़्यादा होगी)।",
+  "@playerBufferHelp": {
+    "description": "Texte UI : playerBufferHelp"
+  },
+  "playerAntiFreeze": "एंटी-फ़्रीज़",
+  "@playerAntiFreeze": {
+    "description": "Texte UI : playerAntiFreeze"
+  },
+  "playerAntiFreezeHelp": "कनेक्शन कमज़ोर होने पर प्लेयर तस्वीर काटने के बजाय बफ़र से चलाता है। शुरू होने में थोड़ा ज़्यादा समय, लेकिन बिना रुकावट प्लेबैक।",
+  "@playerAntiFreezeHelp": {
+    "description": "Texte UI : playerAntiFreezeHelp"
+  },
+  "playerHwDecode": "हार्डवेयर डिकोडिंग",
+  "@playerHwDecode": {
+    "description": "Texte UI : playerHwDecode"
+  },
+  "playerHwDecodeHelp": "वीडियो डिकोड करने के लिए GPU का इस्तेमाल करता है। 4K / 8K के लिए ज़रूरी।",
+  "@playerHwDecodeHelp": {
+    "description": "Texte UI : playerHwDecodeHelp"
+  },
+  "playerShowStats": "आँकड़े दिखाएँ",
+  "@playerShowStats": {
+    "description": "Texte UI : playerShowStats"
+  },
+  "playerShowStatsHelp": "FPS, बिटरेट, रेज़ोल्यूशन, कोडेक, ड्रॉप हुए फ़्रेम।",
+  "@playerShowStatsHelp": {
+    "description": "Texte UI : playerShowStatsHelp"
+  },
+  "tracksTitle": "ट्रैक",
+  "@tracksTitle": {
+    "description": "Texte UI : tracksTitle"
+  },
+  "tracksAudio": "ऑडियो",
+  "@tracksAudio": {
+    "description": "Texte UI : tracksAudio"
+  },
+  "tracksSubtitles": "सबटाइटल",
+  "@tracksSubtitles": {
+    "description": "Texte UI : tracksSubtitles"
+  },
+  "tracksNoAudio": "कोई ऑडियो ट्रैक नहीं मिला।",
+  "@tracksNoAudio": {
+    "description": "Texte UI : tracksNoAudio"
+  },
+  "tracksNoSubtitles": "कोई सबटाइटल नहीं। टिप: कुछ स्ट्रीम में ये शामिल होते हैं, पर देर से पहचाने जाते हैं।",
+  "@tracksNoSubtitles": {
+    "description": "Texte UI : tracksNoSubtitles"
+  },
+  "castToDevice": "{device} पर कास्ट करें",
+  "@castToDevice": {
+    "description": "Texte UI : castToDevice",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castFailedLocal": "कास्ट नहीं हो सका — लोकल प्लेबैक। ({error})",
+  "@castFailedLocal": {
+    "description": "Texte UI : castFailedLocal",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "castConnectedTapChannel": "{device} से जुड़ गए। भेजने के लिए किसी चैनल पर टैप करें।",
+  "@castConnectedTapChannel": {
+    "description": "Texte UI : castConnectedTapChannel",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castSendingTo": "{device} पर भेज रहे हैं",
+  "@castSendingTo": {
+    "description": "Texte UI : castSendingTo",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castFailedRetry": "कास्ट फ़ेल हो गया। फिर कोशिश करें।",
+  "@castFailedRetry": {
+    "description": "Texte UI : castFailedRetry"
+  },
+  "castSessionStopped": "कास्ट सेशन बंद हो गया",
+  "@castSessionStopped": {
+    "description": "Texte UI : castSessionStopped"
+  },
+  "castRefresh": "रीफ़्रेश",
+  "@castRefresh": {
+    "description": "Texte UI : castRefresh"
+  },
+  "castByQr": "QR कोड से कास्ट",
+  "@castByQr": {
+    "description": "Texte UI : castByQr"
+  },
+  "castByQrSub": "ब्राउज़र वाली हर TV पर काम करता है",
+  "@castByQrSub": {
+    "description": "Texte UI : castByQrSub"
+  },
+  "castSearchingShort": "खोज जारी है...",
+  "@castSearchingShort": {
+    "description": "Texte UI : castSearchingShort"
+  },
+  "castNoReceiver": "कोई रिसीवर नहीं मिला। जाँचें कि आपकी TV उसी Wi-Fi पर है और DLNA चालू है।",
+  "@castNoReceiver": {
+    "description": "Texte UI : castNoReceiver"
+  },
+  "castInProgress": "चालू",
+  "@castInProgress": {
+    "description": "Texte UI : castInProgress"
+  },
+  "castConnecting": "कनेक्ट हो रहा है...",
+  "@castConnecting": {
+    "description": "Texte UI : castConnecting"
+  },
+  "castInProgressTitle": "कास्ट चल रहा है",
+  "@castInProgressTitle": {
+    "description": "Texte UI : castInProgressTitle"
+  },
+  "castStopTooltip": "कास्ट बंद करें",
+  "@castStopTooltip": {
+    "description": "Texte UI : castStopTooltip"
+  },
+  "castPlayDefault": "चलाएँ",
+  "@castPlayDefault": {
+    "description": "Texte UI : castPlayDefault"
+  },
+  "webCastTitle": "ब्राउज़र से कास्ट",
+  "@webCastTitle": {
+    "description": "Texte UI : webCastTitle"
+  },
+  "webCastDesc": "वेब ब्राउज़र वाली किसी भी TV पर काम करता है — Google TV, Samsung, LG, Hisense, पुरानी स्मार्ट TV। आपकी TV फ़ोन वाले Wi-Fi पर ही होनी चाहिए।",
+  "@webCastDesc": {
+    "description": "Texte UI : webCastDesc"
+  },
+  "webCastIpError": "आपका Wi-Fi IP पता नहीं चला। जाँचें कि आप Wi-Fi से जुड़े हैं (मोबाइल डेटा से नहीं)।",
+  "@webCastIpError": {
+    "description": "Texte UI : webCastIpError"
+  },
+  "urlCopied": "URL कॉपी हो गया: {url}",
+  "@urlCopied": {
+    "description": "Texte UI : urlCopied",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "webCastTvConnected": "ठीक है, TV कनेक्ट हो गई",
+  "@webCastTvConnected": {
+    "description": "Texte UI : webCastTvConnected"
+  },
+  "webCastUrlLabel": "या TV के ब्राउज़र में यह URL टाइप करें:",
+  "@webCastUrlLabel": {
+    "description": "Texte UI : webCastUrlLabel"
+  },
+  "webCastStep1": "अपनी TV पर वेब ब्राउज़र खोलें",
+  "@webCastStep1": {
+    "description": "Texte UI : webCastStep1"
+  },
+  "webCastStep2": "ऊपर दिया QR कोड स्कैन करें (या URL टाइप करें)",
+  "@webCastStep2": {
+    "description": "Texte UI : webCastStep2"
+  },
+  "webCastStep3": "TV पर यह टैब खुला रखें",
+  "@webCastStep3": {
+    "description": "Texte UI : webCastStep3"
+  },
+  "webCastStep4": "यहाँ वापस आएँ, किसी चैनल पर टैप करें → 2 सेकंड में TV पर दिखेगा",
+  "@webCastStep4": {
+    "description": "Texte UI : webCastStep4"
+  },
+  "qrCastTitle": "QR कोड से कास्ट",
+  "@qrCastTitle": {
+    "description": "Texte UI : qrCastTitle"
+  },
+  "qrCastDesc": "किसी भी डिवाइस (TV, कंप्यूटर, टैबलेट, दूसरा फ़ोन) से यह कोड स्कैन करें — चैनल सीधे ब्राउज़र में खुल जाएगा।",
+  "@qrCastDesc": {
+    "description": "Texte UI : qrCastDesc"
+  },
+  "qrCastCopied": "लिंक कॉपी हो गया — ब्राउज़र या VLC में पेस्ट करें",
+  "@qrCastCopied": {
+    "description": "Texte UI : qrCastCopied"
+  },
+  "qrCastCopyLink": "लिंक कॉपी करें",
+  "@qrCastCopyLink": {
+    "description": "Texte UI : qrCastCopyLink"
+  },
+  "qrCastTip": "टिप: अपने दूसरे डिवाइस का कैमरा खोलें और इस QR पर रखें — एक लिंक दिखेगा। उस पर टैप करें, ब्राउज़र अपने-आप चैनल चला देगा।",
+  "@qrCastTip": {
+    "description": "Texte UI : qrCastTip"
+  },
+  "qrCastDegraded": "सीमित मोड: VLC या किसी नेटिव प्लेयर में खोलें।",
+  "@qrCastDegraded": {
+    "description": "Texte UI : qrCastDegraded"
+  },
+  "playlistsTitle": "मेरी प्लेलिस्ट",
+  "@playlistsTitle": {
+    "description": "Texte UI : playlistsTitle"
+  },
+  "playlistsAddTooltip": "प्लेलिस्ट जोड़ें",
+  "@playlistsAddTooltip": {
+    "description": "Texte UI : playlistsAddTooltip"
+  },
+  "playlistsEmptyTitle": "कोई प्लेलिस्ट नहीं",
+  "@playlistsEmptyTitle": {
+    "description": "Texte UI : playlistsEmptyTitle"
+  },
+  "playlistsEmptySubtitle": "शुरू करने के लिए अपनी पहली प्लेलिस्ट जोड़ें।",
+  "@playlistsEmptySubtitle": {
+    "description": "Texte UI : playlistsEmptySubtitle"
+  },
+  "playlistTypeM3u": "M3U / URL",
+  "@playlistTypeM3u": {
+    "description": "Texte UI : playlistTypeM3u"
+  },
+  "playlistTypeXtream": "Xtream Codes",
+  "@playlistTypeXtream": {
+    "description": "Texte UI : playlistTypeXtream"
+  },
+  "playlistNeverSynced": "कभी सिंक नहीं हुई",
+  "@playlistNeverSynced": {
+    "description": "Texte UI : playlistNeverSynced"
+  },
+  "playlistResyncTooltip": "फिर से सिंक करें",
+  "@playlistResyncTooltip": {
+    "description": "Texte UI : playlistResyncTooltip"
+  },
+  "playlistDeleteTooltip": "हटाएँ",
+  "@playlistDeleteTooltip": {
+    "description": "Texte UI : playlistDeleteTooltip"
+  },
+  "playlistResyncing": "फिर से सिंक हो रही है...",
+  "@playlistResyncing": {
+    "description": "Texte UI : playlistResyncing"
+  },
+  "playlistUpToDate": "प्लेलिस्ट \"{name}\" अप-टू-डेट है",
+  "@playlistUpToDate": {
+    "description": "Texte UI : playlistUpToDate",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistResyncFailed": "फिर से सिंक नहीं हो सकी",
+  "@playlistResyncFailed": {
+    "description": "Texte UI : playlistResyncFailed"
+  },
+  "playlistDeleteConfirmTitle": "यह प्लेलिस्ट हटाएँ?",
+  "@playlistDeleteConfirmTitle": {
+    "description": "Texte UI : playlistDeleteConfirmTitle"
+  },
+  "playlistDeleteConfirmBody": "\"{name}\" से जुड़े सभी चैनल ऐप से हटा दिए जाएँगे।",
+  "@playlistDeleteConfirmBody": {
+    "description": "Texte UI : playlistDeleteConfirmBody",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingsTitle": "मेरी रिकॉर्डिंग",
+  "@recordingsTitle": {
+    "description": "Texte UI : recordingsTitle"
+  },
+  "recordingsEmptyTitle": "कोई रिकॉर्डिंग नहीं",
+  "@recordingsEmptyTitle": {
+    "description": "Texte UI : recordingsEmptyTitle"
+  },
+  "recordingsEmptySubtitle": "प्लेबैक के दौरान लाइव स्ट्रीम कैप्चर करने के लिए REC दबाएँ।",
+  "@recordingsEmptySubtitle": {
+    "description": "Texte UI : recordingsEmptySubtitle"
+  },
+  "recordingStopped": "रिकॉर्डिंग रुक गई — इसे गैलरी में एक्सपोर्ट करें",
+  "@recordingStopped": {
+    "description": "Texte UI : recordingStopped"
+  },
+  "recordingStopError": "रोकने में एरर: {error}",
+  "@recordingStopError": {
+    "description": "Texte UI : recordingStopError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingExported": "गैलरी › Movies में \"7MOTION_{name}\" नाम से एक्सपोर्ट हुआ",
+  "@recordingExported": {
+    "description": "Texte UI : recordingExported",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingExportFailed": "एक्सपोर्ट फ़ेल: {error}",
+  "@recordingExportFailed": {
+    "description": "Texte UI : recordingExportFailed",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingStopTooltip": "रिकॉर्डिंग रोकें",
+  "@recordingStopTooltip": {
+    "description": "Texte UI : recordingStopTooltip"
+  },
+  "recordingSaveTooltip": "गैलरी में सेव करें",
+  "@recordingSaveTooltip": {
+    "description": "Texte UI : recordingSaveTooltip"
+  },
+  "recordingDeleteConfirmTitle": "यह रिकॉर्डिंग हटाएँ?",
+  "@recordingDeleteConfirmTitle": {
+    "description": "Texte UI : recordingDeleteConfirmTitle"
+  },
+  "recordingDeleteConfirmBody": "फ़ाइल \"{name}\" मिटा दी जाएगी।",
+  "@recordingDeleteConfirmBody": {
+    "description": "Texte UI : recordingDeleteConfirmBody",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingUnreadable": "चल नहीं सकी: रिकॉर्डिंग खराब या अधूरी है।",
+  "@recordingUnreadable": {
+    "description": "Texte UI : recordingUnreadable"
+  },
+  "recordingEmpty": "रिकॉर्डिंग खाली है (0 बाइट) — कुछ भी कैप्चर नहीं हुआ।",
+  "@recordingEmpty": {
+    "description": "Texte UI : recordingEmpty"
+  },
+  "recordingNotFound": "फ़ाइल नहीं मिली — शायद हटा दी गई है।",
+  "@recordingNotFound": {
+    "description": "Texte UI : recordingNotFound"
+  },
+  "recordingPlayError": "चल नहीं सकी: {error}",
+  "@recordingPlayError": {
+    "description": "Texte UI : recordingPlayError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "subAccountSuspended": "अकाउंट सस्पेंड है",
+  "@subAccountSuspended": {
+    "description": "Texte UI : subAccountSuspended"
+  },
+  "subAccountFrozen": "अकाउंट अस्थायी रूप से फ़्रीज़ है",
+  "@subAccountFrozen": {
+    "description": "Texte UI : subAccountFrozen"
+  },
+  "subUnlockAll": "पूरा The Few अनलॉक करें",
+  "@subUnlockAll": {
+    "description": "Texte UI : subUnlockAll"
+  },
+  "subBannedMsg": "आपका अकाउंट एडमिन द्वारा सस्पेंड कर दिया गया है। अगर आपको लगता है कि यह गलती है, तो हमसे संपर्क करें।",
+  "@subBannedMsg": {
+    "description": "Texte UI : subBannedMsg"
+  },
+  "subFrozenMsg": "आपका अकाउंट रुका हुआ है। एक्सेस फिर से चालू करने के लिए सपोर्ट से संपर्क करें।",
+  "@subFrozenMsg": {
+    "description": "Texte UI : subFrozenMsg"
+  },
+  "subTrialExpiredMsg": "आपका {days} दिन का फ़्री ट्रायल खत्म हो गया है। अपना एक्सेस एक्टिवेट करें और बिना किसी सीमा के सब कुछ पाएँ:",
+  "@subTrialExpiredMsg": {
+    "description": "Texte UI : subTrialExpiredMsg",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subSubscribePrice": "अभी सब्सक्राइब करें",
+  "@subSubscribePrice": {
+    "description": "Texte UI : subSubscribePrice"
+  },
+  "subContactSupport": "सपोर्ट से संपर्क करें",
+  "@subContactSupport": {
+    "description": "Texte UI : subContactSupport"
+  },
+  "subPullToRefresh": "अभी पेमेंट किया है? रीफ़्रेश करने के लिए नीचे खींचें।",
+  "@subPullToRefresh": {
+    "description": "Texte UI : subPullToRefresh"
+  },
+  "subBenefitChannels": "दुनिया भर के हज़ारों चैनल, फ़िल्में और सीरीज़",
+  "@subBenefitChannels": {
+    "description": "Texte UI : subBenefitChannels"
+  },
+  "subBenefitSports": "सारे खेल लाइव, HD / 4K में, बिना रुकावट",
+  "@subBenefitSports": {
+    "description": "Texte UI : subBenefitSports"
+  },
+  "subBenefitCast": "किसी भी TV पर कास्ट करें (Chromecast और Google TV)",
+  "@subBenefitCast": {
+    "description": "Texte UI : subBenefitCast"
+  },
+  "subBenefitRecord": "अपने पसंदीदा शो, फ़िल्में और मैच रिकॉर्ड करें",
+  "@subBenefitRecord": {
+    "description": "Texte UI : subBenefitRecord"
+  },
+  "subBenefitNoAds": "कोई विज्ञापन नहीं — स्मूद, तुरंत प्लेबैक",
+  "@subBenefitNoAds": {
+    "description": "Texte UI : subBenefitNoAds"
+  },
+  "subBenefitDevices": "आपके सभी डिवाइस पर: फ़ोन, टैबलेट, TV",
+  "@subBenefitDevices": {
+    "description": "Texte UI : subBenefitDevices"
+  },
+  "subCardBuyExpired": "7themotion.com पर खरीदें",
+  "@subCardBuyExpired": {
+    "description": "Texte UI : subCardBuyExpired"
+  },
+  "subCardSeeOffers": "7themotion.com पर ऑफ़र देखें",
+  "@subCardSeeOffers": {
+    "description": "Texte UI : subCardSeeOffers"
+  },
+  "subCardSecurePayment": "आधिकारिक वेबसाइट पर सुरक्षित पेमेंट — Google Play से कभी नहीं।",
+  "@subCardSecurePayment": {
+    "description": "Texte UI : subCardSecurePayment"
+  },
+  "subCantOpenUrl": "{url} नहीं खुल सका",
+  "@subCantOpenUrl": {
+    "description": "Texte UI : subCantOpenUrl",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "subActiveTitle": "सब्सक्रिप्शन चालू",
+  "@subActiveTitle": {
+    "description": "Texte UI : subActiveTitle"
+  },
+  "subActiveUntil": "सब्सक्रिप्शन चालू · {date} को खत्म होगा",
+  "@subActiveUntil": {
+    "description": "Texte UI : subActiveUntil",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "subTrialEnded": "फ़्री ट्रायल खत्म",
+  "@subTrialEnded": {
+    "description": "Texte UI : subTrialEnded"
+  },
+  "subTrialOneDayLeft": "फ़्री ट्रायल · 1 दिन बाकी",
+  "@subTrialOneDayLeft": {
+    "description": "Texte UI : subTrialOneDayLeft"
+  },
+  "subTrialDaysLeft": "फ़्री ट्रायल · {days} दिन बाकी",
+  "@subTrialDaysLeft": {
+    "description": "Texte UI : subTrialDaysLeft",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subLoading": "लोड हो रहा है…",
+  "@subLoading": {
+    "description": "Texte UI : subLoading"
+  },
+  "subCardSubPaid": "आपके सहयोग के लिए धन्यवाद — इस डिवाइस और आपके दूसरे The Few इंस्टॉलेशन पर सभी फ़ीचर अनलॉक हैं।",
+  "@subCardSubPaid": {
+    "description": "Texte UI : subCardSubPaid"
+  },
+  "subCardSubExpired": "आपका {days} दिन का फ़्री ट्रायल खत्म हो गया है। जारी रखने के लिए 7themotion.com पर €5/साल या €9.90 लाइफ़टाइम में सब्सक्राइब करें।",
+  "@subCardSubExpired": {
+    "description": "Texte UI : subCardSubExpired",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subCardSubTrial": "ट्रायल के दौरान सभी प्रीमियम फ़ीचर का आनंद लें। उसके बाद आपके सभी डिवाइस पर €5/साल या €9.90 लाइफ़टाइम।",
+  "@subCardSubTrial": {
+    "description": "Texte UI : subCardSubTrial"
+  },
+  "subCardSubFrozen": "आपका अकाउंट रुका हुआ है। फिर से चालू करने के लिए सपोर्ट से संपर्क करें।",
+  "@subCardSubFrozen": {
+    "description": "Texte UI : subCardSubFrozen"
+  },
+  "subCardSubBanned": "आपका अकाउंट एडमिन द्वारा सस्पेंड कर दिया गया है।",
+  "@subCardSubBanned": {
+    "description": "Texte UI : subCardSubBanned"
+  },
+  "aboutTitle": "ऐप के बारे में",
+  "@aboutTitle": {
+    "description": "Texte UI : aboutTitle"
+  },
+  "aboutPremiumPlayer": "प्रीमियम IPTV प्लेयर",
+  "@aboutPremiumPlayer": {
+    "description": "Texte UI : aboutPremiumPlayer"
+  },
+  "aboutUpdateError": "अपडेट सर्वर से संपर्क नहीं हो सका। अपना कनेक्शन जाँचें।",
+  "@aboutUpdateError": {
+    "description": "Texte UI : aboutUpdateError"
+  },
+  "aboutMyDevice": "मेरा डिवाइस",
+  "@aboutMyDevice": {
+    "description": "Texte UI : aboutMyDevice"
+  },
+  "aboutUpdates": "अपडेट",
+  "@aboutUpdates": {
+    "description": "Texte UI : aboutUpdates"
+  },
+  "aboutNewVersion": "नया वर्ज़न उपलब्ध है",
+  "@aboutNewVersion": {
+    "description": "Texte UI : aboutNewVersion"
+  },
+  "aboutSeeReleaseNotes": "रिलीज़ नोट्स देखें",
+  "@aboutSeeReleaseNotes": {
+    "description": "Texte UI : aboutSeeReleaseNotes"
+  },
+  "aboutLatestVersion": "आपके पास नवीनतम वर्ज़न है (v{version})।",
+  "@aboutLatestVersion": {
+    "description": "Texte UI : aboutLatestVersion",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutChecking": "जाँच रहे हैं...",
+  "@aboutChecking": {
+    "description": "Texte UI : aboutChecking"
+  },
+  "aboutCheckUpdates": "अपडेट जाँचें",
+  "@aboutCheckUpdates": {
+    "description": "Texte UI : aboutCheckUpdates"
+  },
+  "aboutUsefulLinks": "उपयोगी लिंक",
+  "@aboutUsefulLinks": {
+    "description": "Texte UI : aboutUsefulLinks"
+  },
+  "aboutPrivacyPolicy": "गोपनीयता नीति",
+  "@aboutPrivacyPolicy": {
+    "description": "Texte UI : aboutPrivacyPolicy"
+  },
+  "aboutBuiltWith": "इससे बना है",
+  "@aboutBuiltWith": {
+    "description": "Texte UI : aboutBuiltWith"
+  },
+  "aboutCreditFlutter": "क्रॉस-प्लेटफ़ॉर्म UI फ़्रेमवर्क",
+  "@aboutCreditFlutter": {
+    "description": "Texte UI : aboutCreditFlutter"
+  },
+  "aboutCreditMediaKit": "वीडियो इंजन (HLS, MPEG-TS, MP4)",
+  "@aboutCreditMediaKit": {
+    "description": "Texte UI : aboutCreditMediaKit"
+  },
+  "aboutCreditSqflite": "प्लेलिस्ट का लोकल स्टोरेज",
+  "@aboutCreditSqflite": {
+    "description": "Texte UI : aboutCreditSqflite"
+  },
+  "aboutCreditCache": "लोगो का डिस्क कैश",
+  "@aboutCreditCache": {
+    "description": "Texte UI : aboutCreditCache"
+  },
+  "aboutCreditFonts": "प्रीमियम टाइपोग्राफ़ी",
+  "@aboutCreditFonts": {
+    "description": "Texte UI : aboutCreditFonts"
+  },
+  "aboutLegalNotice": "The Few एक सामान्य मीडिया प्लेयर है। ऐप के साथ कोई कंटेंट शामिल नहीं है। आप जो सोर्स जोड़ते हैं, उनकी और आपके देश के लागू कानूनों के पालन की ज़िम्मेदारी आपकी है।",
+  "@aboutLegalNotice": {
+    "description": "Texte UI : aboutLegalNotice"
+  },
+  "lockPinTooShort": "कम से कम 4 अंक डालें।",
+  "@lockPinTooShort": {
+    "description": "Texte UI : lockPinTooShort"
+  },
+  "lockPinWrong": "गलत कोड।",
+  "@lockPinWrong": {
+    "description": "Texte UI : lockPinWrong"
+  },
+  "lockUnlockReason": "{app} अनलॉक करें",
+  "@lockUnlockReason": {
+    "description": "Texte UI : lockUnlockReason",
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "lockAppLocked": "ऐप लॉक है",
+  "@lockAppLocked": {
+    "description": "Texte UI : lockAppLocked"
+  },
+  "lockAuthenticating": "प्रमाणीकरण हो रहा है...",
+  "@lockAuthenticating": {
+    "description": "Texte UI : lockAuthenticating"
+  },
+  "lockFingerprint": "फ़िंगरप्रिंट",
+  "@lockFingerprint": {
+    "description": "Texte UI : lockFingerprint"
+  },
+  "lockValidateCode": "कोड कन्फ़र्म करें",
+  "@lockValidateCode": {
+    "description": "Texte UI : lockValidateCode"
+  },
+  "lockDefaultPin": "डिफ़ॉल्ट कोड: {pin}\nसेटिंग्स > सुरक्षा में बदला जा सकता है।",
+  "@lockDefaultPin": {
+    "description": "Texte UI : lockDefaultPin",
+    "placeholders": {
+      "pin": {
+        "type": "String"
+      }
+    }
+  },
+  "ageGateTitle": "सिर्फ़ वयस्कों के लिए कंटेंट",
+  "@ageGateTitle": {
+    "description": "Texte UI : ageGateTitle"
+  },
+  "ageGateBody": "यह ऐप ऐसे स्पष्ट प्रोग्राम दिखाता है जो सिर्फ़ वयस्कों के लिए हैं। जारी रखकर आप घोषणा करते हैं कि आप अपने देश में कानूनी रूप से वयस्क हैं।",
+  "@ageGateBody": {
+    "description": "Texte UI : ageGateBody"
+  },
+  "ageGateEnter": "मैं 18 साल या उससे ऊपर हूँ — प्रवेश करें",
+  "@ageGateEnter": {
+    "description": "Texte UI : ageGateEnter"
+  },
+  "ageGateQuit": "बाहर निकलें",
+  "@ageGateQuit": {
+    "description": "Texte UI : ageGateQuit"
+  },
+  "ageGateLegal": "गलत घोषणा की स्थिति में पूरी ज़िम्मेदारी उपयोगकर्ता की होगी।",
+  "@ageGateLegal": {
+    "description": "Texte UI : ageGateLegal"
+  },
+  "onboardingSkip": "छोड़ें",
+  "@onboardingSkip": {
+    "description": "Texte UI : onboardingSkip"
+  },
+  "onboardingStart": "शुरू करें",
+  "@onboardingStart": {
+    "description": "Texte UI : onboardingStart"
+  },
+  "onboardingNext": "आगे",
+  "@onboardingNext": {
+    "description": "Texte UI : onboardingNext"
+  },
+  "onboardingYourId": "आपकी ID",
+  "@onboardingYourId": {
+    "description": "Texte UI : onboardingYourId"
+  },
+  "onboardingActivateChannels": "मेरे चैनल एक्टिवेट करें",
+  "@onboardingActivateChannels": {
+    "description": "Texte UI : onboardingActivateChannels"
+  },
+  "onboardingCopyId": "ID कॉपी करें",
+  "@onboardingCopyId": {
+    "description": "Texte UI : onboardingCopyId"
+  },
+  "devicePreparing": "तैयारी हो रही है…",
+  "@devicePreparing": {
+    "description": "Texte UI : devicePreparing"
+  },
+  "simpleChooseCountry": "देश चुनें",
+  "@simpleChooseCountry": {
+    "description": "Texte UI : simpleChooseCountry"
+  },
+  "simpleMyAccount": "मेरा अकाउंट",
+  "@simpleMyAccount": {
+    "description": "Texte UI : simpleMyAccount"
+  },
+  "simpleRecentlyWatched": "हाल ही में देखा",
+  "@simpleRecentlyWatched": {
+    "description": "Texte UI : simpleRecentlyWatched"
+  },
+  "simpleMyFavorites": "मेरे पसंदीदा",
+  "@simpleMyFavorites": {
+    "description": "Texte UI : simpleMyFavorites"
+  },
+  "simpleSport": "खेल",
+  "@simpleSport": {
+    "description": "Texte UI : simpleSport"
+  },
+  "simpleEntertainment": "मनोरंजन",
+  "@simpleEntertainment": {
+    "description": "Texte UI : simpleEntertainment"
+  },
+  "simpleInfo": "न्यूज़",
+  "@simpleInfo": {
+    "description": "Texte UI : simpleInfo"
+  },
+  "simpleKids": "बच्चे",
+  "@simpleKids": {
+    "description": "Texte UI : simpleKids"
+  },
+  "simpleGeneral": "सामान्य",
+  "@simpleGeneral": {
+    "description": "Texte UI : simpleGeneral"
+  },
+  "simpleLockedTitle": "फ़िल्में और सीरीज़",
+  "@simpleLockedTitle": {
+    "description": "Texte UI : simpleLockedTitle"
+  },
+  "simpleLockedHint": "अनलॉक करने के लिए टैप करें (फ़िंगरप्रिंट या कोड)",
+  "@simpleLockedHint": {
+    "description": "Texte UI : simpleLockedHint"
+  },
+  "simpleUnlockReason": "फ़िल्में और सीरीज़ अनलॉक करें",
+  "@simpleUnlockReason": {
+    "description": "Texte UI : simpleUnlockReason"
+  },
+  "simpleAccessCode": "एक्सेस कोड",
+  "@simpleAccessCode": {
+    "description": "Texte UI : simpleAccessCode"
+  },
+  "buttonAdd": "जोड़ें",
+  "@buttonAdd": {
+    "description": "Texte UI : buttonAdd"
+  },
+  "moviesTitle": "फ़िल्में",
+  "@moviesTitle": {
+    "description": "Texte UI : moviesTitle"
+  },
+  "moviesTabMovies": "फ़िल्में",
+  "@moviesTabMovies": {
+    "description": "Texte UI : moviesTabMovies"
+  },
+  "moviesTabDownloads": "डाउनलोड",
+  "@moviesTabDownloads": {
+    "description": "Texte UI : moviesTabDownloads"
+  },
+  "moviesReloadTooltip": "कैटलॉग फिर से लोड करें",
+  "@moviesReloadTooltip": {
+    "description": "Texte UI : moviesReloadTooltip"
+  },
+  "moviesEmptyCatalogue": "कोई फ़िल्म उपलब्ध नहीं।\nशायद आपका सर्वर VOD नहीं देता, या आप Xtream से लॉगिन नहीं हैं।",
+  "@moviesEmptyCatalogue": {
+    "description": "Texte UI : moviesEmptyCatalogue"
+  },
+  "moviesEmptyDownloads": "कोई डाउनलोड नहीं।\nऑफ़लाइन देखने के लिए « फ़िल्में » टैब से कोई फ़िल्म डाउनलोड करें।",
+  "@moviesEmptyDownloads": {
+    "description": "Texte UI : moviesEmptyDownloads"
+  },
+  "moviesPlayTooltip": "चलाएँ",
+  "@moviesPlayTooltip": {
+    "description": "Texte UI : moviesPlayTooltip"
+  },
+  "moviesDownloaded": "डाउनलोड हो गया",
+  "@moviesDownloaded": {
+    "description": "Texte UI : moviesDownloaded"
+  },
+  "moviesDownloading": "डाउनलोड हो रहा है…",
+  "@moviesDownloading": {
+    "description": "Texte UI : moviesDownloading"
+  },
+  "moviesDownload": "डाउनलोड करें",
+  "@moviesDownload": {
+    "description": "Texte UI : moviesDownload"
+  },
+  "moviesPlayOfflineTooltip": "ऑफ़लाइन चलाएँ",
+  "@moviesPlayOfflineTooltip": {
+    "description": "Texte UI : moviesPlayOfflineTooltip"
+  },
+  "moviesPauseTooltip": "पॉज़",
+  "@moviesPauseTooltip": {
+    "description": "Texte UI : moviesPauseTooltip"
+  },
+  "moviesResumeTooltip": "जारी रखें",
+  "@moviesResumeTooltip": {
+    "description": "Texte UI : moviesResumeTooltip"
+  },
+  "moviesDeleteTooltip": "हटाएँ",
+  "@moviesDeleteTooltip": {
+    "description": "Texte UI : moviesDeleteTooltip"
+  },
+  "moviesStatusDownloaded": "डाउनलोड हो गया · {size}",
+  "@moviesStatusDownloaded": {
+    "description": "Texte UI : moviesStatusDownloaded",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusDownloading": "डाउनलोड हो रहा है… {size}",
+  "@moviesStatusDownloading": {
+    "description": "Texte UI : moviesStatusDownloading",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusPaused": "पॉज़ · {size}",
+  "@moviesStatusPaused": {
+    "description": "Texte UI : moviesStatusPaused",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusError": "एरर — जारी रखने के लिए दबाएँ",
+  "@moviesStatusError": {
+    "description": "Texte UI : moviesStatusError"
+  },
+  "guideTitle": "TV गाइड",
+  "@guideTitle": {
+    "description": "Texte UI : guideTitle"
+  },
+  "guideGoToNow": "अभी पर जाएँ",
+  "@guideGoToNow": {
+    "description": "Texte UI : guideGoToNow"
+  },
+  "guideNoChannel": "कोई चैनल नहीं",
+  "@guideNoChannel": {
+    "description": "Texte UI : guideNoChannel"
+  },
+  "guideEmptyHint": "गाइड देखने के लिए XMLTV EPG वाली प्लेलिस्ट जोड़ें।",
+  "@guideEmptyHint": {
+    "description": "Texte UI : guideEmptyHint"
+  },
+  "guideSchedule": "समय-सारणी",
+  "@guideSchedule": {
+    "description": "Texte UI : guideSchedule"
+  },
+  "guideCatchupUnavailable": "{channel} के लिए कैच-अप उपलब्ध नहीं",
+  "@guideCatchupUnavailable": {
+    "description": "Texte UI : guideCatchupUnavailable",
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "programsToday": "आज के प्रोग्राम",
+  "@programsToday": {
+    "description": "Texte UI : programsToday"
+  },
+  "programsNoneToday": "आज के लिए कोई प्रोग्राम नहीं",
+  "@programsNoneToday": {
+    "description": "Texte UI : programsNoneToday"
+  },
+  "programsNoneHelp": "इस प्रोवाइडर के XMLTV EPG में यह चैनल नहीं है, या वह अभी सिंक नहीं हुआ है।",
+  "@programsNoneHelp": {
+    "description": "Texte UI : programsNoneHelp"
+  },
+  "programsCatchupUnavailable": "इस चैनल के लिए कैच-अप उपलब्ध नहीं।",
+  "@programsCatchupUnavailable": {
+    "description": "Texte UI : programsCatchupUnavailable"
+  },
+  "programStartsAt": "{title} {time} बजे शुरू होगा।",
+  "@programStartsAt": {
+    "description": "Texte UI : programStartsAt",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "deviceIdLabel": "डिवाइस ID",
+  "@deviceIdLabel": {
+    "description": "Texte UI : deviceIdLabel"
+  },
+  "deviceIdCaption": "यह आपके The Few इंस्टॉलेशन की पहचान है। ऐप के तकनीकी सपोर्ट के लिए यह कोड संभाल कर रखें। चैनलों से जुड़े सवालों के लिए अपने IPTV प्रोवाइडर से संपर्क करें।",
+  "@deviceIdCaption": {
+    "description": "Texte UI : deviceIdCaption"
+  },
+  "profileDiscovery": "खोजें",
+  "@profileDiscovery": {
+    "description": "Texte UI : profileDiscovery"
+  },
+  "profileTvGuide": "TV गाइड",
+  "@profileTvGuide": {
+    "description": "Texte UI : profileTvGuide"
+  },
+  "profileTvGuideSub": "अभी और आगे के प्रोग्राम",
+  "@profileTvGuideSub": {
+    "description": "Texte UI : profileTvGuideSub"
+  },
+  "profileRecordings": "मेरी रिकॉर्डिंग",
+  "@profileRecordings": {
+    "description": "Texte UI : profileRecordings"
+  },
+  "profileRecordingsSub": "आपकी लाइव रिकॉर्डिंग",
+  "@profileRecordingsSub": {
+    "description": "Texte UI : profileRecordingsSub"
+  },
+  "profileAccount": "अकाउंट",
+  "@profileAccount": {
+    "description": "Texte UI : profileAccount"
+  },
+  "profileSettings": "सेटिंग्स",
+  "@profileSettings": {
+    "description": "Texte UI : profileSettings"
+  },
+  "profileSettingsSub": "प्लेबैक, सुरक्षा, भाषा, थीम",
+  "@profileSettingsSub": {
+    "description": "Texte UI : profileSettingsSub"
+  },
+  "profileTheme": "थीम",
+  "@profileTheme": {
+    "description": "Texte UI : bouton choix du thème de couleur"
+  },
+  "profileThemeSub": "अपना रंग चुनें",
+  "@profileThemeSub": {
+    "description": "Texte UI : sous-titre du bouton Thème"
+  },
+  "themeChooseTitle": "अपनी थीम चुनें",
+  "@themeChooseTitle": {
+    "description": "Titre du sélecteur de thème"
+  },
+  "themeChooseSub": "रंग पूरे ऐप में तुरंत बदल जाता है",
+  "@themeChooseSub": {
+    "description": "Sous-titre du sélecteur de thème"
+  },
+  "forceUpdateTitle": "नया वर्ज़न उपलब्ध है",
+  "@forceUpdateTitle": {
+    "description": "Titre ecran mise a jour forcee"
+  },
+  "forceUpdateBody": "यह वर्ज़न अब पुराना हो गया है। ऐप इस्तेमाल करते रहने के लिए नवीनतम वर्ज़न डाउनलोड करें।",
+  "@forceUpdateBody": {
+    "description": "Corps ecran mise a jour forcee"
+  },
+  "forceUpdateDownloaderHint": "TV / बॉक्स पर: DOWNLOADER खोलें और यह कोड टाइप करें",
+  "@forceUpdateDownloaderHint": {
+    "description": "Aide code Downloader"
+  },
+  "forceUpdateDownloadBtn": "अभी डाउनलोड करें",
+  "@forceUpdateDownloadBtn": {
+    "description": "Bouton telecharger"
+  },
+  "forceUpdateRetry": "मैंने अपडेट कर लिया — फिर कोशिश करें",
+  "@forceUpdateRetry": {
+    "description": "Bouton reessayer apres MAJ"
+  },
+  "profileAbout": "ऐप के बारे में",
+  "@profileAbout": {
+    "description": "Texte UI : profileAbout"
+  },
+  "profileAboutSub": "वर्ज़न, टीम, कानूनी जानकारी",
+  "@profileAboutSub": {
+    "description": "Texte UI : profileAboutSub"
+  },
+  "profilePremiumAccount": "प्रीमियम अकाउंट",
+  "@profilePremiumAccount": {
+    "description": "Texte UI : profilePremiumAccount"
+  },
+  "profileCastConnected": "{device} से जुड़ा है",
+  "@profileCastConnected": {
+    "description": "Texte UI : profileCastConnected",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "profileCastTo": "TV पर कास्ट करें",
+  "@profileCastTo": {
+    "description": "Texte UI : profileCastTo"
+  },
+  "profileCast": "कास्ट",
+  "@profileCast": {
+    "description": "Texte UI : profileCast"
+  },
+  "profileDeviceFallback": "डिवाइस",
+  "@profileDeviceFallback": {
+    "description": "Texte UI : profileDeviceFallback"
+  },
+  "supportHowToReach": "आप हमसे कैसे संपर्क करना चाहते हैं?",
+  "@supportHowToReach": {
+    "description": "Texte UI : supportHowToReach"
+  },
+  "supportPickChannel": "अपनी सुविधा का तरीका चुनें। हमारी टीम हफ़्ते के सातों दिन जवाब देती है।",
+  "@supportPickChannel": {
+    "description": "Texte UI : supportPickChannel"
+  },
+  "supportInstantMessage": "इंस्टेंट मैसेज",
+  "@supportInstantMessage": {
+    "description": "Texte UI : supportInstantMessage"
+  },
+  "supportInstantMessageSub": "लिखित बातचीत · औसत जवाब 15 मिनट में।",
+  "@supportInstantMessageSub": {
+    "description": "Texte UI : supportInstantMessageSub"
+  },
+  "supportPhoneCall": "फ़ोन कॉल",
+  "@supportPhoneCall": {
+    "description": "Texte UI : supportPhoneCall"
+  },
+  "supportPhoneCallSub": "किसी सलाहकार से बात करें · {number}",
+  "@supportPhoneCallSub": {
+    "description": "Texte UI : supportPhoneCallSub",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "supportMessageError": "मैसेजिंग नहीं खुल सकी। कॉल करके देखें।",
+  "@supportMessageError": {
+    "description": "Texte UI : supportMessageError"
+  },
+  "supportCallError": "यह डिवाइस कॉल नहीं कर सकता। इसके बजाय मैसेज भेजें।",
+  "@supportCallError": {
+    "description": "Texte UI : supportCallError"
+  },
+  "favoritesEmptyTitle": "अभी कोई पसंदीदा नहीं",
+  "@favoritesEmptyTitle": {
+    "description": "Texte UI : favoritesEmptyTitle"
+  },
+  "favoritesEmptyHint": "किसी चैनल के मेन्यू में ♥ दबाएँ ताकि वह यहाँ रहे।",
+  "@favoritesEmptyHint": {
+    "description": "Texte UI : favoritesEmptyHint"
+  },
+  "focusedResultsCount": "{channels} चैनल · {countries} देश",
+  "@focusedResultsCount": {
+    "description": "Texte UI : focusedResultsCount",
+    "placeholders": {
+      "channels": {
+        "type": "int"
+      },
+      "countries": {
+        "type": "int"
+      }
+    }
+  },
+  "searchResultsCount": "\"{query}\" के लिए {count} नतीजे",
+  "@searchResultsCount": {
+    "description": "Texte UI : searchResultsCount",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "loginInvalidUrl": "अमान्य URL। यह http:// या https:// से शुरू होना चाहिए",
+  "@loginInvalidUrl": {
+    "description": "Texte UI : loginInvalidUrl"
+  },
+  "loginInvalidServer": "अमान्य सर्वर। फ़ॉर्मैट: http://server.com:8080",
+  "@loginInvalidServer": {
+    "description": "Texte UI : loginInvalidServer"
+  },
+  "loginCredsRequired": "यूज़रनेम और पासवर्ड ज़रूरी हैं।",
+  "@loginCredsRequired": {
+    "description": "Texte UI : loginCredsRequired"
+  },
+  "loginServerRequired": "एक सर्वर चुनें।",
+  "@loginServerRequired": {
+    "description": "Texte UI : loginServerRequired"
+  },
+  "loginSourceAdded": "सोर्स जुड़ गया। आपके चैनल आ रहे हैं…",
+  "@loginSourceAdded": {
+    "description": "Texte UI : loginSourceAdded"
+  },
+  "loginConnected": "कनेक्ट हो गए। आपके चैनल आ रहे हैं…",
+  "@loginConnected": {
+    "description": "Texte UI : loginConnected"
+  },
+  "loginMySourcePerso": "मेरा अपना सोर्स",
+  "@loginMySourcePerso": {
+    "description": "Texte UI : loginMySourcePerso"
+  },
+  "loginUrlM3u": "M3U URL",
+  "@loginUrlM3u": {
+    "description": "Texte UI : loginUrlM3u"
+  },
+  "loginServerXtream": "Xtream सर्वर",
+  "@loginServerXtream": {
+    "description": "Texte UI : loginServerXtream"
+  },
+  "loginUsername": "यूज़रनेम",
+  "@loginUsername": {
+    "description": "Texte UI : loginUsername"
+  },
+  "loginPassword": "पासवर्ड",
+  "@loginPassword": {
+    "description": "Texte UI : loginPassword"
+  },
+  "loginNameOptional": "नाम (वैकल्पिक)",
+  "@loginNameOptional": {
+    "description": "Texte UI : loginNameOptional"
+  },
+  "loginNameHint": "डिफ़ॉल्ट: \"मेरा सोर्स\"",
+  "@loginNameHint": {
+    "description": "Texte UI : loginNameHint"
+  },
+  "loginVerifying": "जाँच हो रही है…",
+  "@loginVerifying": {
+    "description": "Texte UI : loginVerifying"
+  },
+  "loginLoadChannels": "मेरे चैनल लोड करें",
+  "@loginLoadChannels": {
+    "description": "Texte UI : loginLoadChannels"
+  },
+  "loginTitle": "लॉगिन",
+  "@loginTitle": {
+    "description": "Texte UI : loginTitle"
+  },
+  "loginXtreamIntro": "अपना सर्वर चुनें और फिर रीसेलर से मिला कोड डालें।\nआपके चैनल कुछ ही सेकंड में लोड हो जाएँगे।",
+  "@loginXtreamIntro": {
+    "description": "Texte UI : loginXtreamIntro"
+  },
+  "loginServer": "सर्वर",
+  "@loginServer": {
+    "description": "Texte UI : loginServer"
+  },
+  "loginConnecting": "सर्वर से कनेक्ट हो रहा है...",
+  "@loginConnecting": {
+    "description": "Texte UI : loginConnecting"
+  },
+  "loginConnectLoad": "लॉगिन करें और लोड करें",
+  "@loginConnectLoad": {
+    "description": "Texte UI : loginConnectLoad"
+  },
+  "loginLoadingServers": "सर्वर लोड हो रहे हैं…",
+  "@loginLoadingServers": {
+    "description": "Texte UI : loginLoadingServers"
+  },
+  "loginServersUnavailable": "सर्वर फ़िलहाल उपलब्ध नहीं हैं।",
+  "@loginServersUnavailable": {
+    "description": "Texte UI : loginServersUnavailable"
+  },
+  "loginAddIntro": "अपना सर्वर चुनें, फिर रीसेलर से मिला कोड (यूज़रनेम + पासवर्ड) डालें। चैनल लोड करने से पहले हम कोड जाँचते हैं।",
+  "@loginAddIntro": {
+    "description": "Texte UI : loginAddIntro"
+  },
+  "loginUsernameHint": "यूज़रनेम",
+  "@loginUsernameHint": {
+    "description": "Texte UI : loginUsernameHint"
+  },
+  "loginPasswordHint": "पासवर्ड",
+  "@loginPasswordHint": {
+    "description": "Texte UI : loginPasswordHint"
+  },
+  "seeAllOf": "सभी {title} देखें",
+  "@seeAllOf": {
+    "description": "Texte UI : seeAllOf",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistActiveBadge": "चालू",
+  "@playlistActiveBadge": {
+    "description": "Badge sur la playlist actuellement active"
+  },
+  "playlistTapToActivate": "यह प्लेलिस्ट चालू करें",
+  "@playlistTapToActivate": {
+    "description": "Action pour activer une playlist"
+  },
+  "playlistNowActive": "« {name} » अब चालू प्लेलिस्ट है",
+  "@playlistNowActive": {
+    "description": "Confirmation de bascule de playlist active",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "subActiveLifetime": "लाइफ़टाइम सब्सक्रिप्शन",
+  "@subActiveLifetime": {
+    "description": "Titre carte abonnement quand le plan est à vie"
+  },
+  "activationCheckButton": "मेरा सब्सक्रिप्शन जाँचें",
+  "@activationCheckButton": {
+    "description": "Bouton pour revérifier l’abonnement et charger la source"
+  },
+  "activationChecking": "जाँच चल रही है…",
+  "@activationChecking": {
+    "description": "Snackbar pendant la vérification d’abonnement"
+  },
+  "activationSuccess": "सब्सक्रिप्शन सत्यापित — आपके चैनल लोड हो गए!",
+  "@activationSuccess": {
+    "description": "Snackbar succès vérification (chaînes chargées)"
+  },
+  "activationNoSourceYet": "अभी कोई चैनल नहीं। अगर आपके रीसेलर ने अभी-अभी एक्टिवेट किया है, तो थोड़ा रुककर फिर कोशिश करें, या ऐप रीस्टार्ट करें।",
+  "@activationNoSourceYet": {
+    "description": "Snackbar : aucune source encore assignée"
+  },
+  "activationActiveNoSource": "सब्सक्रिप्शन चालू ✅ लेकिन आपके MAC पर कोई प्लेलिस्ट असाइन नहीं है। आपके रीसेलर को एक सोर्स (Xtream/M3U) जोड़ना होगा।",
+  "@activationActiveNoSource": {
+    "description": "Message de diagnostic activation"
+  },
+  "activationDeviceKnownNoSub": "सर्वर ने डिवाइस पहचान लिया है, आपके रीसेलर द्वारा एक्टिवेशन का इंतज़ार है।",
+  "@activationDeviceKnownNoSub": {
+    "description": "Message de diagnostic activation"
+  },
+  "activationDeviceUnknown": "सर्वर ने अभी तक डिवाइस नहीं देखा — अपना इंटरनेट कनेक्शन जाँचें।",
+  "@activationDeviceUnknown": {
+    "description": "Message de diagnostic activation"
+  },
+  "emptyPremiumTitle": "प्रीमियम अकाउंट",
+  "@emptyPremiumTitle": {
+    "description": "Ecran vide quand abonnement actif"
+  },
+  "emptyPremiumWaiting": "सब्सक्रिप्शन चालू — आपके चैनलों का इंतज़ार है। आपके रीसेलर को आपका सोर्स (Xtream/M3U) असाइन करना होगा।",
+  "@emptyPremiumWaiting": {
+    "description": "Ecran vide quand abonnement actif"
+  },
+  "activationSourceFailed": "सोर्स मिला लेकिन 0 चैनल लोड हुए। प्रोवाइडर का URL / लॉगिन जाँचें (get.php वाला पूरा M3U URL, या Xtream मोड इस्तेमाल करें)।",
+  "@activationSourceFailed": {
+    "description": "Diagnostic : source assignee mais 0 chaine"
+  },
+  "catFilterAll": "सभी",
+  "@catFilterAll": {
+    "description": "Filtre catégories : tout"
+  },
+  "catFilterTv": "TV",
+  "@catFilterTv": {
+    "description": "Filtre catégories : direct/TV"
+  },
+  "catFilterAdult": "वयस्क",
+  "@catFilterAdult": {
+    "description": "Filtre catégories : adulte"
+  },
+  "catNoneInPlaylist": "आपकी प्लेलिस्ट में कोई कैटेगरी नहीं।",
+  "@catNoneInPlaylist": {
+    "description": "Aucune catégorie dans la playlist"
+  },
+  "catEmptyShelf": "इस सेक्शन में कुछ नहीं।",
+  "@catEmptyShelf": {
+    "description": "Rien dans ce rayon"
+  },
+  "recordingOpenWith": "इससे खोलें…",
+  "@recordingOpenWith": {
+    "description": "Enregistrements : ouvrir avec"
+  },
+  "recordingShare": "शेयर करें",
+  "@recordingShare": {
+    "description": "Enregistrements : partager"
+  },
+  "recordingNoPlayer": "कोई संगत प्लेयर नहीं। यह फ़ाइल चलाने के लिए VLC इंस्टॉल करें।",
+  "@recordingNoPlayer": {
+    "description": "Enregistrements : aucun lecteur compatible"
+  },
+  "activationRestartTitle": "एक्टिवेशन सफल",
+  "@activationRestartTitle": {
+    "description": "Splash activation : titre"
+  },
+  "activationRestartSubtitle": "रीस्टार्ट हो रहा है…",
+  "@activationRestartSubtitle": {
+    "description": "Splash activation : sous-titre"
+  },
+  "orSeparator": "या",
+  "@orSeparator": {
+    "description": "Séparateur « ou »"
+  },
+  "xtreamHaveCode": "मेरे पास Xtream कोड है",
+  "@xtreamHaveCode": {
+    "description": "Bouton : j’ai un code Xtream"
+  },
+  "catFilterMovies": "फ़िल्में",
+  "catFilterSeries": "सीरीज़",
+  "@catFilterMovies": {
+    "description": "Filtre catégories : cinéma"
+  },
+  "@catFilterSeries": {
+    "description": "Filtre catégories : série"
+  },
+  "pricingOffersTitle": "हमारे ऑफ़र",
+  "@pricingOffersTitle": {
+    "description": "Titre bloc offres"
+  },
+  "pricingLifetime": "लाइफ़टाइम",
+  "@pricingLifetime": {
+    "description": "Offre à vie"
+  },
+  "pricingYearly": "1 साल",
+  "@pricingYearly": {
+    "description": "Offre 1 an"
+  },
+  "pricingTrialDays": "{days} दिन का फ़्री ट्रायल",
+  "@pricingTrialDays": {
+    "description": "Essai gratuit en jours",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "simpleSwitchSource": "सोर्स बदलें",
+  "@simpleSwitchSource": {
+    "description": "Bouton : changer de source (trio)"
+  },
+  "homeRecentlyWatched": "हाल ही में देखे गए",
+  "@homeRecentlyWatched": {
+    "description": "Titre du rail des dernières chaînes regardées"
+  },
+  "tvActivationTagline": "पूरा एक्सेस, ज़िंदगी भर। सिर्फ़ एक बार पेमेंट।",
+  "tvLifetime": "लाइफ़टाइम",
+  "tvActivationCodeLabel": "आपका एक्टिवेशन कोड",
+  "tvActivationCodeHelp": "एक्टिवेट करने के लिए यह कोड अपने रीसेलर को दें। री-इंस्टॉल के बाद भी यह वही रहता है।",
+  "tvPaidCheck": "मैंने पेमेंट कर दिया — जाँचें",
+  "tvChecking": "जाँच हो रही है…",
+  "tvAddOwnList": "अपनी खुद की लिस्ट जोड़ें (Xtream)",
+  "tvActivationFooter": "पेमेंट सत्यापित · तुरंत एक्टिवेशन",
+  "tvScanToActivate": "एक्टिवेट करने के लिए मुझे स्कैन करें",
+  "tvScanHelp": "अपने फ़ोन का कैमरा खोलें और इस कोड पर रखें। इससे WhatsApp खुलेगा, जिसमें आपका कोड पहले से तैयार होगा।",
+  "tvNavLive": "लाइव",
+  "tvNavFilms": "फ़िल्में",
+  "tvNavSeries": "सीरीज़",
+  "tvNavGuide": "गाइड",
+  "tvNavSearch": "खोजें",
+  "tvNavSettings": "सेटिंग्स",
+  "tvComingSoon": "जल्द आ रहा है। यह सेक्शन बहुत जल्द उपलब्ध होगा।",
+  "tvEpgNow": "अभी",
+  "@tvEpgNow": {
+    "description": "Étiquette du programme en cours (aperçu Direct)"
+  },
+  "tvEpgNext": "इसके बाद",
+  "@tvEpgNext": {
+    "description": "Étiquette du programme suivant (aperçu Direct)"
+  },
+  "tvHello": "नमस्ते",
+  "tvNoChannels": "अभी कोई चैनल नहीं",
+  "tvNoChannelsHelp": "अपने पैनल में इस डिवाइस को एक्टिवेट करें, फिर इसे एक सोर्स भेजें। चैनल यहाँ अपने-आप दिखने लगेंगे।",
+  "tvContinueWatching": "देखना जारी रखें",
+  "tvNoChannelInCategory": "इस कैटेगरी में कोई चैनल नहीं।",
+  "tvOthers": "अन्य",
+  "tvSearchHint": "खोजने के लिए टाइप करें…",
+  "tvNoResult": "कोई नतीजा नहीं।",
+  "tvDeviceAddress": "इस डिवाइस का पता (MAC)",
+  "tvDeviceAddressHelp": "Zuno एक्टिवेट करने के लिए यह पता अपने रीसेलर को दें।",
+  "tvStatus": "स्थिति",
+  "tvStatusPaid": "सब्सक्रिप्शन चालू",
+  "tvStatusTrial": "ट्रायल — {days} दिन बाकी",
+  "@tvStatusTrial": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "tvStatusTrialExpired": "ट्रायल खत्म — एक्टिवेट करें",
+  "tvStatusFrozen": "अकाउंट फ़्रीज़ है",
+  "tvStatusBanned": "अकाउंट बैन है",
+  "tvStatusUnknown": "एक्टिवेट नहीं है",
+  "tvRefreshStatus": "स्थिति रीफ़्रेश करें",
+  "tvLiveBadge": "लाइव",
+  "tvZapHint": "चैनल बदलने के लिए ऊपर/नीचे",
+  "tvAddListTitle": "मेरी लिस्ट जोड़ें",
+  "tvAddListSubtitle": "Xtream कोड — अपनी खुद की प्लेलिस्ट लाएँ।",
+  "tvFieldServer": "सर्वर",
+  "tvFieldUser": "यूज़रनेम",
+  "tvFieldPass": "पासवर्ड",
+  "tvAddListError": "सर्वर, यूज़रनेम और पासवर्ड भरें।",
+  "tvConnectError": "कनेक्ट नहीं हो सका। जानकारी जाँचें।",
+  "tvConnecting": "कनेक्ट हो रहा है…",
+  "tvAddListValidate": "कन्फ़र्म करें और मेरी लिस्ट लोड करें",
+  "tvSearchingChannels": "आपके चैनल खोजे जा रहे हैं…",
+  "tvRetry": "फिर कोशिश करें",
+  "tvSourceInvalid": "सब्सक्रिप्शन मिला लेकिन अस्वीकार हुआ — पैनल में लॉगिन जानकारी जाँचें।",
+  "tvQuitTitle": "Zuno से बाहर निकलें?",
+  "tvQuitMessage": "चैनल रीफ़्रेश करने के लिए रीस्टार्ट करें, या ऐप से बाहर निकलें।",
+  "tvRestart": "रीस्टार्ट करें",
+  "tvQuit": "बाहर निकलें",
+  "tvStay": "जारी रखें",
+  "tvChooseServer": "अपना सर्वर चुनें",
+  "tvManualServer": "मैन्युअल URL",
+  "tvKeyboardHint": "टिप: आप अपने फ़ोन के रिमोट ऐप के कीबोर्ड से टाइप कर सकते हैं (कॉपी-पेस्ट भी चलता है)।",
+  "tvAddM3uTitle": "M3U लिस्ट जोड़ें",
+  "tvAddM3uSubtitle": "अपनी .m3u फ़ाइल का URL पेस्ट करें (और EPG भी, अगर हो)।",
+  "tvFieldNameOptional": "नाम (वैकल्पिक)",
+  "tvMyListHint": "मेरी लिस्ट",
+  "tvFieldM3uUrl": "M3U URL",
+  "tvFieldEpgUrlOptional": "EPG URL (वैकल्पिक)",
+  "tvAddM3uBusy": "जोड़ा जा रहा है…",
+  "tvAddM3uValidate": "लिस्ट जोड़ें",
+  "tvAddM3uInvalidUrl": "एक मान्य M3U URL डालें (http…)।",
+  "tvAddM3uFailed": "फ़ेल: लिस्ट तक पहुँच नहीं या खाली है।",
+  "tvMyM3uList": "मेरी M3U लिस्ट",
+  "tvBlackBoxTitle": "ब्लैक बॉक्स",
+  "tvBlackBoxSubtitle": "ऐप का तकनीकी लॉग (v{version})। अगर ऐप अचानक बंद हुआ हो, तो उसकी वजह यहाँ मिलेगी।",
+  "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
+  "tvBlackBoxFirstRun": "पहला लॉन्च: कोई पिछला सेशन नहीं।",
+  "tvBlackBoxCleanExit": "पिछला सेशन सामान्य रूप से खत्म हुआ।",
+  "tvBlackBoxBrutal": "अचानक बंद · {reason}",
+  "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
+  "tvBlackBoxUnknownReason": "अज्ञात वजह (Android < 11)",
+  "tvBlackBoxMemory": "मेमोरी {mb} MB",
+  "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
+  "tvBlackBoxWhen": "कब: {when}",
+  "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
+  "tvBlackBoxLastAction": "आख़िरी क्रिया: {action}",
+  "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
+  "tvBlackBoxDetail": "Android विवरण: {detail}",
+  "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
+  "tvRefresh": "रीफ़्रेश",
+  "tvCopy": "कॉपी करें",
+  "tvCopied": "कॉपी हो गया",
+  "tvClear": "मिटाएँ",
+  "tvReading": "पढ़ा जा रहा है…",
+  "tvBlackBoxHelp": "ऊपर/नीचे: स्क्रॉल · CH+/CH−: पेज · कॉपी = क्लिपबोर्ड (इसे WhatsApp पर सपोर्ट को पेस्ट करें)।",
+  "tvNavServer": "सर्वर",
+  "tvLegalTitle": "कानूनी जानकारी और शर्तें",
+  "tvResumeLabel": "जारी रखें",
+  "tvNowPlayingPrefix": "अभी चल रहा है · {title}",
+  "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
+  "tvLiveBadge": "लाइव",
+  "tvPinUpdated": "पैरेंटल कोड अपडेट हो गया ✔",
+  "tvParentalTitle": "पैरेंटल कंट्रोल",
+  "tvKidsMode": "किड्स मोड",
+  "tvParentalCode": "पैरेंटल कोड",
+  "tvCustomPinInPlace": "एक कस्टम कोड सेट है।",
+  "tvChangePin": "PIN कोड बदलें",
+  "tvPinSubtitle": "4 अंकों का पैरेंटल कोड",
+  "tvNewPin": "नया कोड",
+  "tvNewPinSubtitle": "4 अंक चुनें, फिर कन्फ़र्म करें",
+  "tvPinWrong": "गलत कोड, फिर कोशिश करें।",
+  "tvPinMismatch": "दोनों कोड मेल नहीं खाते।",
+  "tvPlayerFatalHint": "OK: फिर कोशिश करें   ·   वापस: बाहर निकलें",
+  "tvRec": "REC",
+  "tvStop": "स्टॉप",
+  "tvGuideBtn": "गाइड",
+  "tvFavoriteBtn": "पसंदीदा",
+  "tvPlaybackFinished": "प्लेबैक खत्म",
+  "tvPlaybackFinishedBody": "अपनी रिकॉर्डिंग पर लौटने के लिए वापस दबाएँ।",
+  "tvNoRecordings": "कोई रिकॉर्डिंग नहीं",
+  "tvNoRecordingsBody": "आपकी रिकॉर्डिंग यहाँ दिखेंगी। कोई चैनल देखते समय रिकॉर्ड करने के लिए REC बटन दबाएँ।",
+  "tvMyRecordings": "मेरी रिकॉर्डिंग",
+  "tvDeleteQuestion": "हटाएँ?",
+  "tvDeleteRecordingConfirm": "« {name} » को हमेशा के लिए हटाएँ?",
+  "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "tvCancel": "रद्द करें",
+  "tvDelete": "हटाएँ",
+  "tvSettingsSources": "मेरे सोर्स (जोड़ें / चालू करें / हटाएँ)",
+  "tvSettingsParental": "पैरेंटल कंट्रोल (किड्स मोड + PIN कोड)",
+  "tvSettingsBlackBox": "ब्लैक बॉक्स (तकनीकी लॉग)",
+  "tvSettingsLegal": "कानूनी जानकारी और उपयोग की शर्तें",
+  "tvUpdateChecking": "अपडेट: जाँच हो रही है…",
+  "tvUpdateUpToDate": "अपडेट: अप-टू-डेट (वर्ज़न {version}) — फिर जाँचने के लिए OK",
+  "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
+  "tvUpdateUpToDateNoVersion": "अपडेट: अप-टू-डेट — फिर जाँचने के लिए OK",
+  "tvUpdateAvailable": "नया वर्ज़न {version} उपलब्ध — इंस्टॉल करने के लिए OK",
+  "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
+  "tvUpdateDownloading": "अपडेट डाउनलोड हो रहा है… {pct} %",
+  "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "tvUpdateFailed": "अपडेट: फ़ेल (नेटवर्क या इंस्टॉलर) — फिर कोशिश के लिए OK",
+  "tvMySources": "मेरे सोर्स",
+  "tvAddXtream": "Xtream जोड़ें",
+  "tvAddM3u": "M3U जोड़ें",
+  "tvDeleteSourceConfirm": "सोर्स « {name} » हटाएँ?",
+  "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "tvActivate": "चालू करें",
+  "tvMyTeams": "मेरी टीमें",
+  "tvAdd": "जोड़ें",
+  "tvPickTeamsTitle": "अपनी पसंदीदा टीमें चुनें",
+  "tvPickTeamsBody": "आपको उनके स्कोर और अगले मैच, स्क्रॉल होता न्यूज़ टिकर, और हर मैच से ~1 घंटा पहले अलार्म मिलेगा।",
+  "tvPickMyTeam": "मेरी टीम चुनें",
+  "tvLastMatch": "पिछला मैच",
+  "tvNextMatch": "अगला मैच",
+  "tvNewsTicker": "न्यूज़",
+  "tvNoData": "कोई डेटा नहीं",
+  "tvNoTeamFound": "कोई टीम नहीं मिली",
+  "tvMyTeam": "मेरी टीम",
+  "tvImpConnecting": "सर्वर से कनेक्ट हो रहा है…",
+  "tvImpCategories": "कैटेगरी पढ़ी जा रही हैं…",
+  "tvImpDownloading": "डाउनलोड हो रहा है… {mb} MB",
+  "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
+  "tvImpDecoding": "{mb} MB का विश्लेषण…",
+  "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
+  "tvImpCategory": "कैटेगरी {i}/{total} · {found} चैनल मिले",
+  "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
+  "tvImpFound": "{count} चैनल मिले",
+  "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
+  "tvImpSaving": "सेव हो रहे हैं {done} / {total} चैनल",
+  "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
+  "tvImpDone": "{count} चैनल तैयार",
+  "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
+  "tvLanguage": "भाषा",
+  "tvLanguageAuto": "अपने-आप (TV की भाषा)",
+  "tvSettingsLanguage": "भाषा: {value}",
+  "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "tvEnterParentalCode": "पैरेंटल कोड डालें",
+  "tvCurrentCode": "वर्तमान कोड",
+  "tvConfirmCode": "कोड की पुष्टि करें",
+  "tvRecordingNotFound": "रिकॉर्डिंग नहीं मिली",
+  "tvPlaybackImpossible": "चलाया नहीं जा सकता",
+  "tvRecordingNotFoundBody": "इस रिकॉर्डिंग की फ़ाइल मौजूद नहीं है या खाली है।",
+  "tvPlaybackImpossibleBody": "यह फ़ाइल डिकोड नहीं हो सकी।",
+  "tvRecordingStarted": "रिकॉर्डिंग चल रही है…",
+  "tvRecordingError": "रिकॉर्डिंग में त्रुटि",
+  "tvRecordingSaved": "रिकॉर्डिंग सहेजी गई ({size})",
+  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "tvRecordingEmpty": "खाली रिकॉर्डिंग",
+  "tvRemovedFromFavorites": "पसंदीदा से हटाया गया",
+  "tvAddedToFavorites": "पसंदीदा में जोड़ा गया ❤"
+}

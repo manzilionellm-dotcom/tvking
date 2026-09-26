@@ -811,5 +811,19 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvEnterParentalCode": "Ange föräldrakoden",
+  "tvCurrentCode": "Nuvarande kod",
+  "tvConfirmCode": "Bekräfta koden",
+  "tvRecordingNotFound": "Inspelningen hittades inte",
+  "tvPlaybackImpossible": "Kan inte spela upp",
+  "tvRecordingNotFoundBody": "Filen för den här inspelningen saknas eller är tom.",
+  "tvPlaybackImpossibleBody": "Den här filen kunde inte avkodas.",
+  "tvRecordingStarted": "Spelar in…",
+  "tvRecordingError": "Inspelningsfel",
+  "tvRecordingSaved": "Inspelning sparad ({size})",
+  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "tvRecordingEmpty": "Tom inspelning",
+  "tvRemovedFromFavorites": "Borttagen från favoriter",
+  "tvAddedToFavorites": "Tillagd i favoriter ❤"
 }

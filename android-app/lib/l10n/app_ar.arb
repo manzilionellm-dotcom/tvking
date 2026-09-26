@@ -811,5 +811,19 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvEnterParentalCode": "أدخل رمز الرقابة الأبوية",
+  "tvCurrentCode": "الرمز الحالي",
+  "tvConfirmCode": "أكّد الرمز",
+  "tvRecordingNotFound": "التسجيل غير موجود",
+  "tvPlaybackImpossible": "تعذّر التشغيل",
+  "tvRecordingNotFoundBody": "ملف هذا التسجيل مفقود أو فارغ.",
+  "tvPlaybackImpossibleBody": "تعذّر فك ترميز هذا الملف.",
+  "tvRecordingStarted": "جارٍ التسجيل…",
+  "tvRecordingError": "خطأ في التسجيل",
+  "tvRecordingSaved": "تم حفظ التسجيل ({size})",
+  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "tvRecordingEmpty": "تسجيل فارغ",
+  "tvRemovedFromFavorites": "أُزيل من المفضلة",
+  "tvAddedToFavorites": "أُضيف إلى المفضلة ❤"
 }

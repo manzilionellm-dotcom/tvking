@@ -811,5 +811,19 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvEnterParentalCode": "Introduce el código parental",
+  "tvCurrentCode": "Código actual",
+  "tvConfirmCode": "Confirma el código",
+  "tvRecordingNotFound": "Grabación no encontrada",
+  "tvPlaybackImpossible": "No se puede reproducir",
+  "tvRecordingNotFoundBody": "El archivo de esta grabación no existe o está vacío.",
+  "tvPlaybackImpossibleBody": "No se pudo decodificar este archivo.",
+  "tvRecordingStarted": "Grabando…",
+  "tvRecordingError": "Error de grabación",
+  "tvRecordingSaved": "Grabación guardada ({size})",
+  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "tvRecordingEmpty": "Grabación vacía",
+  "tvRemovedFromFavorites": "Quitado de favoritos",
+  "tvAddedToFavorites": "Añadido a favoritos ❤"
 }

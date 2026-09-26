@@ -811,5 +811,19 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvEnterParentalCode": "Weka msimbo wa wazazi",
+  "tvCurrentCode": "Msimbo wa sasa",
+  "tvConfirmCode": "Thibitisha msimbo",
+  "tvRecordingNotFound": "Rekodi haipatikani",
+  "tvPlaybackImpossible": "Haiwezi kuchezwa",
+  "tvRecordingNotFoundBody": "Faili ya rekodi hii haipo au ni tupu.",
+  "tvPlaybackImpossibleBody": "Faili hii haikuweza kusomwa.",
+  "tvRecordingStarted": "Inarekodi…",
+  "tvRecordingError": "Hitilafu ya kurekodi",
+  "tvRecordingSaved": "Rekodi imehifadhiwa ({size})",
+  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "tvRecordingEmpty": "Rekodi tupu",
+  "tvRemovedFromFavorites": "Imeondolewa kwenye vipendwa",
+  "tvAddedToFavorites": "Imeongezwa kwenye vipendwa ❤"
 }

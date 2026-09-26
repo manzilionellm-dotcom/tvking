@@ -683,5 +683,19 @@
   "tvSettingsLanguage": "Language: {value}",
   "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
   "tvEpgNow": "Now",
-  "tvEpgNext": "Up next"
+  "tvEpgNext": "Up next",
+  "tvEnterParentalCode": "Enter the parental code",
+  "tvCurrentCode": "Current code",
+  "tvConfirmCode": "Confirm the code",
+  "tvRecordingNotFound": "Recording not found",
+  "tvPlaybackImpossible": "Can't play",
+  "tvRecordingNotFoundBody": "The file for this recording is missing or empty.",
+  "tvPlaybackImpossibleBody": "This file could not be decoded.",
+  "tvRecordingStarted": "Recording…",
+  "tvRecordingError": "Recording error",
+  "tvRecordingSaved": "Recording saved ({size})",
+  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "tvRecordingEmpty": "Empty recording",
+  "tvRemovedFromFavorites": "Removed from favorites",
+  "tvAddedToFavorites": "Added to favorites ❤"
 }

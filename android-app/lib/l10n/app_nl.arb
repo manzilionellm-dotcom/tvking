@@ -1,36 +1,34 @@
 {
-  "@@locale": "fr",
-  "@@x-template": true,
-  "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",
+  "@@locale": "nl",
   "appName": "The Few",
   "@appName": {
     "description": "Nom de la marque — ne pas traduire."
   },
-  "appTagline": "Cinéma sans limites",
+  "appTagline": "Cinema zonder grenzen",
   "@appTagline": {
     "description": "Phrase signature affichée sous le logo."
   },
-  "navHome": "Accueil",
+  "navHome": "Home",
   "navLive": "Live TV",
-  "navSearch": "Recherche",
-  "navAi": "IA",
-  "navFavorites": "Favoris",
-  "navProfile": "Profil",
-  "sectionResume": "Reprendre",
-  "sectionFavorites": "Favoris",
-  "sectionSportsLive": "Sports en direct",
-  "sectionLiveNow": "En direct maintenant",
+  "navSearch": "Zoeken",
+  "navAi": "AI",
+  "navFavorites": "Favorieten",
+  "navProfile": "Profiel",
+  "sectionResume": "Verder kijken",
+  "sectionFavorites": "Favorieten",
+  "sectionSportsLive": "Sport live",
+  "sectionLiveNow": "Nu live",
   "sectionMovies": "Films",
-  "sectionSeries": "Séries",
-  "sectionKids": "Jeunesse",
-  "sectionNews": "Info & Actualités",
-  "sectionMusic": "Musique",
+  "sectionSeries": "Series",
+  "sectionKids": "Kids",
+  "sectionNews": "Nieuws & Actualiteit",
+  "sectionMusic": "Muziek",
   "sectionDocs": "Documentaires",
-  "sectionDiscover": "À découvrir",
-  "sectionLiveOnFavorites": "Live maintenant sur tes favoris",
-  "sectionTonight": "Découvre ce soir",
-  "sectionResumeWhereYouLeftOff": "Reprendre où tu t'es arrêté",
-  "channelCount": "{count, plural, =0{Aucune chaîne} =1{1 chaîne} other{{count} chaînes}}",
+  "sectionDiscover": "Ontdekken",
+  "sectionLiveOnFavorites": "Nu live op je favorieten",
+  "sectionTonight": "Ontdek vanavond",
+  "sectionResumeWhereYouLeftOff": "Verder waar je gebleven was",
+  "channelCount": "{count, plural, =0{Geen zenders} =1{1 zender} other{{count} zenders}}",
   "@channelCount": {
     "placeholders": {
       "count": {
@@ -38,83 +36,83 @@
       }
     }
   },
-  "buttonContinue": "Continuer",
-  "buttonNext": "Suivant",
-  "buttonSkip": "Passer",
-  "buttonStart": "Commencer",
+  "buttonContinue": "Doorgaan",
+  "buttonNext": "Volgende",
+  "buttonSkip": "Overslaan",
+  "buttonStart": "Starten",
   "buttonOk": "OK",
-  "buttonCancel": "Annuler",
-  "buttonSave": "Enregistrer",
-  "buttonDelete": "Supprimer",
-  "buttonRetry": "Réessayer",
-  "buttonResume": "Reprendre",
-  "buttonWatch": "Regarder",
-  "buttonSeeAll": "Tout voir",
-  "buttonSyncNow": "Synchroniser",
-  "playerPause": "Pause",
-  "playerPlay": "Lecture",
+  "buttonCancel": "Annuleren",
+  "buttonSave": "Opslaan",
+  "buttonDelete": "Verwijderen",
+  "buttonRetry": "Opnieuw",
+  "buttonResume": "Verder kijken",
+  "buttonWatch": "Kijken",
+  "buttonSeeAll": "Alles bekijken",
+  "buttonSyncNow": "Synchroniseren",
+  "playerPause": "Pauze",
+  "playerPlay": "Afspelen",
   "playerRec": "REC",
   "playerStop": "STOP",
-  "playerAudioOnly": "Écouteurs",
-  "playerVideo": "Vidéo",
-  "playerUpNextIn": "À suivre dans {seconds}s",
+  "playerAudioOnly": "Alleen audio",
+  "playerVideo": "Video",
+  "playerUpNextIn": "Hierna over {seconds}s",
   "@playerUpNextIn": {
     "placeholders": { "seconds": { "type": "int" } }
   },
-  "playerUpNextCancel": "Annuler",
-  "playerUpNextPlay": "Lire",
-  "playerTracks": "Pistes",
-  "playerSpeed": "Vitesse",
-  "playerRatio": "Format",
-  "playerSettings": "Réglages",
-  "playerRecording": "Enregistrement en cours",
-  "castIdle": "Cast vers une TV",
-  "castSearching": "Recherche sur ton WiFi…",
-  "castDevicesHint": "DLNA · Roku · navigateur web.",
-  "castSendTo": "Envoyer vers…",
-  "castConnected": "Cast en cours sur",
-  "castStop": "Arrêter",
-  "castViaBrowser": "Cast via navigateur",
-  "castViaBrowserSubtitle": "Marche sur N'IMPORTE quelle TV avec un navigateur web. QR code à scanner avec la TV.",
-  "settingsTitle": "Réglages",
-  "settingsAppearance": "Apparence",
-  "settingsLanguage": "Langue",
-  "settingsLanguageSystem": "Système",
-  "settingsPlayer": "Lecteur vidéo",
+  "playerUpNextCancel": "Annuleren",
+  "playerUpNextPlay": "Afspelen",
+  "playerTracks": "Sporen",
+  "playerSpeed": "Snelheid",
+  "playerRatio": "Beeldformaat",
+  "playerSettings": "Instellingen",
+  "playerRecording": "Opname bezig",
+  "castIdle": "Casten naar een tv",
+  "castSearching": "Zoeken op je wifi…",
+  "castDevicesHint": "DLNA · Roku · webbrowser.",
+  "castSendTo": "Sturen naar…",
+  "castConnected": "Wordt gecast naar",
+  "castStop": "Stoppen",
+  "castViaBrowser": "Casten via browser",
+  "castViaBrowserSubtitle": "Werkt op ELKE tv met een webbrowser. Scan de QR-code met de tv.",
+  "settingsTitle": "Instellingen",
+  "settingsAppearance": "Weergave",
+  "settingsLanguage": "Taal",
+  "settingsLanguageSystem": "Systeem",
+  "settingsPlayer": "Videospeler",
   "settingsPlaylists": "Playlists",
-  "settingsRecordings": "Enregistrements",
-  "settingsStorage": "Stockage",
-  "settingsApp": "Application",
-  "settingsAbout": "À propos",
-  "settingsProvisioning": "Provisioning à distance",
-  "settingsClearHistory": "Vider l'historique de visionnage",
+  "settingsRecordings": "Opnames",
+  "settingsStorage": "Opslag",
+  "settingsApp": "App",
+  "settingsAbout": "Over",
+  "settingsProvisioning": "Activering op afstand",
+  "settingsClearHistory": "Kijkgeschiedenis wissen",
   "themeCinema": "Cinema",
   "themeCinemaSubtitle": "Maison Noir",
   "themeDaylight": "Daylight",
-  "themeDaylightSubtitle": "Lumière du jour",
+  "themeDaylightSubtitle": "Daglicht",
   "themeAuto": "Auto",
-  "themeAutoSubtitle": "Suit l'OS",
-  "deviceQuestion": "Tu es sur quoi ?",
-  "deviceHelp": "On adapte l'expérience à ton appareil. Tu pourras changer ce choix dans les Réglages.",
-  "devicePhone": "Téléphone",
-  "devicePhoneSubtitle": "Smartphone, tablette",
-  "devicePhoneDesc": "Interface tactile compacte. Navigation au doigt, mini-player et écran plein écran fluides.",
-  "deviceTv": "Télévision",
+  "themeAutoSubtitle": "Volgt het systeem",
+  "deviceQuestion": "Waar kijk je op?",
+  "deviceHelp": "We passen de ervaring aan je apparaat aan. Je kunt dit later wijzigen in Instellingen.",
+  "devicePhone": "Telefoon",
+  "devicePhoneSubtitle": "Smartphone, tablet",
+  "devicePhoneDesc": "Compacte touch-interface. Vlot navigeren met je vinger, mini-speler en volledig scherm.",
+  "deviceTv": "Televisie",
   "deviceTvSubtitle": "Android TV, Fire TV, Google TV",
-  "deviceTvDesc": "Layout XL pour télécommande. Focus rings visibles à 3 m, tailles cinéma, raccourcis D-pad.",
+  "deviceTvDesc": "XL-layout voor de afstandsbediening. Focusringen zichtbaar op 3 m, bioscoopformaten, D-pad-sneltoetsen.",
   "deviceAuto": "Auto",
-  "deviceAutoSubtitle": "Détection automatique",
-  "deviceAutoDesc": "L'app devine d'après ton écran. Bon choix si tu ne sais pas, ou si tu utilises plusieurs appareils.",
-  "onboardingWelcomeTitle": "Bienvenue sur The Few",
-  "onboardingWelcomeDesc": "Cinéma sans limites. Conçu pour la TV, optimisé pour ton téléphone, beau partout.",
-  "onboardingLoadTitle": "Charge ta playlist",
-  "onboardingLoadDesc": "Colle une URL M3U, ou tes identifiants Xtream. Tes chaînes apparaissent en quelques secondes.",
-  "onboardingVipTitle": "Profite de la signature VIP",
-  "onboardingVipDesc": "Logos haute qualité, navigation Apple TV, recherche instantanée, lecteur 4K/8K.",
-  "emptyNoPlaylist": "Aucune playlist",
-  "emptyAddYourFirst": "Ajoute ta première playlist M3U ou tes identifiants Xtream pour commencer.",
-  "addPlaylist": "Ajouter une playlist",
-  "resumeBannerTitle": "Reprendre {channel}",
+  "deviceAutoSubtitle": "Automatische detectie",
+  "deviceAutoDesc": "De app raadt het op basis van je scherm. Goede keuze als je het niet weet, of als je meerdere apparaten gebruikt.",
+  "onboardingWelcomeTitle": "Welkom bij The Few",
+  "onboardingWelcomeDesc": "Cinema zonder grenzen. Gemaakt voor tv, geoptimaliseerd voor je telefoon, overal mooi.",
+  "onboardingLoadTitle": "Laad je playlist",
+  "onboardingLoadDesc": "Plak een M3U-URL of je Xtream-gegevens. Je zenders verschijnen binnen enkele seconden.",
+  "onboardingVipTitle": "Geniet van de VIP-ervaring",
+  "onboardingVipDesc": "Logo's in hoge kwaliteit, Apple TV-navigatie, direct zoeken, 4K/8K-speler.",
+  "emptyNoPlaylist": "Geen playlist",
+  "emptyAddYourFirst": "Voeg je eerste M3U-playlist of je Xtream-gegevens toe om te beginnen.",
+  "addPlaylist": "Playlist toevoegen",
+  "resumeBannerTitle": "Verder met {channel}",
   "@resumeBannerTitle": {
     "placeholders": {
       "channel": {
@@ -122,7 +120,7 @@
       }
     }
   },
-  "resumeBannerSubtitle": "Tu regardais il y a {minutes} min",
+  "resumeBannerSubtitle": "Je keek {minutes} min geleden",
   "@resumeBannerSubtitle": {
     "placeholders": {
       "minutes": {
@@ -130,40 +128,40 @@
       }
     }
   },
-  "resumeBannerDismiss": "Plus tard",
-  "detailProgram": "Programme",
+  "resumeBannerDismiss": "Later",
+  "detailProgram": "Programma",
   "@detailProgram": {
     "description": "Texte UI : detailProgram"
   },
-  "detailNowPlaying": "En cours",
+  "detailNowPlaying": "Nu bezig",
   "@detailNowPlaying": {
     "description": "Texte UI : detailNowPlaying"
   },
-  "detailUpNext": "Après",
+  "detailUpNext": "Hierna",
   "@detailUpNext": {
     "description": "Texte UI : detailUpNext"
   },
-  "detailDetails": "Détails",
+  "detailDetails": "Details",
   "@detailDetails": {
     "description": "Texte UI : detailDetails"
   },
-  "detailCategory": "Catégorie",
+  "detailCategory": "Categorie",
   "@detailCategory": {
     "description": "Texte UI : detailCategory"
   },
-  "detailCountry": "Pays",
+  "detailCountry": "Land",
   "@detailCountry": {
     "description": "Texte UI : detailCountry"
   },
-  "detailQuality": "Qualité",
+  "detailQuality": "Kwaliteit",
   "@detailQuality": {
     "description": "Texte UI : detailQuality"
   },
-  "detailCatchup": "Catch-up",
+  "detailCatchup": "Terugkijken",
   "@detailCatchup": {
     "description": "Texte UI : detailCatchup"
   },
-  "detailCatchupAvailable": "Disponible · {days} j",
+  "detailCatchupAvailable": "Beschikbaar · {days} d",
   "@detailCatchupAvailable": {
     "description": "Texte UI : detailCatchupAvailable",
     "placeholders": {
@@ -172,11 +170,11 @@
       }
     }
   },
-  "detailCatchupUnavailable": "Indisponible",
+  "detailCatchupUnavailable": "Niet beschikbaar",
   "@detailCatchupUnavailable": {
     "description": "Texte UI : detailCatchupUnavailable"
   },
-  "detailProgramsAndReplay": "Programmes du jour & Replay",
+  "detailProgramsAndReplay": "Programma's van vandaag & Terugkijken",
   "@detailProgramsAndReplay": {
     "description": "Texte UI : detailProgramsAndReplay"
   },
@@ -188,31 +186,31 @@
   "@badgeReplay": {
     "description": "Texte UI : badgeReplay"
   },
-  "badgeSoon": "BIENTÔT",
+  "badgeSoon": "BINNENKORT",
   "@badgeSoon": {
     "description": "Texte UI : badgeSoon"
   },
-  "viewModeList": "Liste",
+  "viewModeList": "Lijst",
   "@viewModeList": {
     "description": "Texte UI : viewModeList"
   },
-  "viewModeGrid": "Grille",
+  "viewModeGrid": "Raster",
   "@viewModeGrid": {
     "description": "Texte UI : viewModeGrid"
   },
-  "sectionFilterHint": "Filtrer dans cette section...",
+  "sectionFilterHint": "Filteren in deze sectie...",
   "@sectionFilterHint": {
     "description": "Texte UI : sectionFilterHint"
   },
-  "filterAll": "Toutes",
+  "filterAll": "Alle",
   "@filterAll": {
     "description": "Texte UI : filterAll"
   },
-  "sectionEmptyNoChannel": "Aucune chaîne dans cette section",
+  "sectionEmptyNoChannel": "Geen zenders in deze sectie",
   "@sectionEmptyNoChannel": {
     "description": "Texte UI : sectionEmptyNoChannel"
   },
-  "searchNoResult": "Aucun résultat pour \"{query}\"",
+  "searchNoResult": "Geen resultaten voor \"{query}\"",
   "@searchNoResult": {
     "description": "Texte UI : searchNoResult",
     "placeholders": {
@@ -221,27 +219,27 @@
       }
     }
   },
-  "sectionEmptyAdjustFilters": "Essaie d'ajuster les filtres ou la recherche.",
+  "sectionEmptyAdjustFilters": "Pas de filters of je zoekopdracht aan.",
   "@sectionEmptyAdjustFilters": {
     "description": "Texte UI : sectionEmptyAdjustFilters"
   },
-  "sectionTop10Today": "Top 10 aujourd'hui",
+  "sectionTop10Today": "Top 10 vandaag",
   "@sectionTop10Today": {
     "description": "Texte UI : sectionTop10Today"
   },
-  "sectionEntertainment": "Divertissement",
+  "sectionEntertainment": "Entertainment",
   "@sectionEntertainment": {
     "description": "Texte UI : sectionEntertainment"
   },
-  "sectionInternational": "International",
+  "sectionInternational": "Internationaal",
   "@sectionInternational": {
     "description": "Texte UI : sectionInternational"
   },
-  "sectionAdult": "Adulte",
+  "sectionAdult": "Volwassenen",
   "@sectionAdult": {
     "description": "Texte UI : sectionAdult"
   },
-  "sectionOthers": "Autres",
+  "sectionOthers": "Overig",
   "@sectionOthers": {
     "description": "Texte UI : sectionOthers"
   },
@@ -249,15 +247,15 @@
   "@catSport": {
     "description": "Texte UI : catSport"
   },
-  "catInfo": "Info",
+  "catInfo": "Nieuws",
   "@catInfo": {
     "description": "Texte UI : catInfo"
   },
-  "catKids": "Enfants",
+  "catKids": "Kids",
   "@catKids": {
     "description": "Texte UI : catKids"
   },
-  "catScience": "Sciences",
+  "catScience": "Wetenschap",
   "@catScience": {
     "description": "Texte UI : catScience"
   },
@@ -265,67 +263,67 @@
   "@catMovies": {
     "description": "Texte UI : catMovies"
   },
-  "catMusic": "Musique",
+  "catMusic": "Muziek",
   "@catMusic": {
     "description": "Texte UI : catMusic"
   },
-  "homeListRefreshed": "Liste actualisée — chaînes rechargées",
+  "homeListRefreshed": "Lijst vernieuwd — zenders opnieuw geladen",
   "@homeListRefreshed": {
     "description": "Texte UI : homeListRefreshed"
   },
-  "homeListUpToDate": "Liste à jour",
+  "homeListUpToDate": "Lijst is up-to-date",
   "@homeListUpToDate": {
     "description": "Texte UI : homeListUpToDate"
   },
-  "tooltipRefreshList": "Actualiser la liste",
+  "tooltipRefreshList": "Lijst vernieuwen",
   "@tooltipRefreshList": {
     "description": "Texte UI : tooltipRefreshList"
   },
-  "tooltipConnectActivate": "Me connecter / Activer",
+  "tooltipConnectActivate": "Inloggen / Activeren",
   "@tooltipConnectActivate": {
     "description": "Texte UI : tooltipConnectActivate"
   },
-  "tooltipSearch": "Recherche",
+  "tooltipSearch": "Zoeken",
   "@tooltipSearch": {
     "description": "Texte UI : tooltipSearch"
   },
-  "tooltipFavorites": "Favoris",
+  "tooltipFavorites": "Favorieten",
   "@tooltipFavorites": {
     "description": "Texte UI : tooltipFavorites"
   },
-  "tooltipProfile": "Profil",
+  "tooltipProfile": "Profiel",
   "@tooltipProfile": {
     "description": "Texte UI : tooltipProfile"
   },
-  "adultAuthCancelled": "Authentification annulée — section Adulte verrouillée",
+  "adultAuthCancelled": "Verificatie geannuleerd — sectie Volwassenen vergrendeld",
   "@adultAuthCancelled": {
     "description": "Texte UI : adultAuthCancelled"
   },
-  "adultAuthReason": "Accède à la section Adulte",
+  "adultAuthReason": "Toegang tot de sectie Volwassenen",
   "@adultAuthReason": {
     "description": "Texte UI : adultAuthReason"
   },
-  "navDirect": "Direct",
+  "navDirect": "Live",
   "@navDirect": {
     "description": "Texte UI : navDirect"
   },
-  "navGuide": "Guide",
+  "navGuide": "Gids",
   "@navGuide": {
     "description": "Texte UI : navGuide"
   },
-  "navRefresh": "Actualiser",
+  "navRefresh": "Vernieuwen",
   "@navRefresh": {
     "description": "Texte UI : navRefresh"
   },
-  "tvFeatured": "À LA UNE",
+  "tvFeatured": "UITGELICHT",
   "@tvFeatured": {
     "description": "Texte UI : tvFeatured"
   },
-  "refreshNoPlaylist": "Aucune playlist actualisée.",
+  "refreshNoPlaylist": "Geen playlist vernieuwd.",
   "@refreshNoPlaylist": {
     "description": "Texte UI : refreshNoPlaylist"
   },
-  "refreshDoneCount": "Actualisé : {count} playlist(s).",
+  "refreshDoneCount": "Vernieuwd: {count} playlist(s).",
   "@refreshDoneCount": {
     "description": "Texte UI : refreshDoneCount",
     "placeholders": {
@@ -334,7 +332,7 @@
       }
     }
   },
-  "errorWithMessage": "Erreur : {error}",
+  "errorWithMessage": "Fout: {error}",
   "@errorWithMessage": {
     "description": "Texte UI : errorWithMessage",
     "placeholders": {
@@ -343,23 +341,23 @@
       }
     }
   },
-  "gridEmptyTitle": "Aucune chaîne ici",
+  "gridEmptyTitle": "Geen zenders hier",
   "@gridEmptyTitle": {
     "description": "Texte UI : gridEmptyTitle"
   },
-  "gridEmptySubtitle": "Ajoute une playlist ou ajuste tes filtres.",
+  "gridEmptySubtitle": "Voeg een playlist toe of pas je filters aan.",
   "@gridEmptySubtitle": {
     "description": "Texte UI : gridEmptySubtitle"
   },
-  "categoriesTitle": "Catégories",
+  "categoriesTitle": "Categorieën",
   "@categoriesTitle": {
     "description": "Texte UI : categoriesTitle"
   },
-  "categoriesEmpty": "Aucune chaîne — ajoute d'abord une playlist.",
+  "categoriesEmpty": "Geen zenders — voeg eerst een playlist toe.",
   "@categoriesEmpty": {
     "description": "Texte UI : categoriesEmpty"
   },
-  "focusedNoChannelFound": "Aucune chaîne {title} trouvée dans tes playlists.",
+  "focusedNoChannelFound": "Geen {title}-zender gevonden in je playlists.",
   "@focusedNoChannelFound": {
     "description": "Texte UI : focusedNoChannelFound",
     "placeholders": {
@@ -368,99 +366,99 @@
       }
     }
   },
-  "searchHint": "Chercher une chaîne, un sport, un film…",
+  "searchHint": "Zoek een zender, sport, film…",
   "@searchHint": {
     "description": "Texte UI : searchHint"
   },
-  "buttonBack": "Retour",
+  "buttonBack": "Terug",
   "@buttonBack": {
     "description": "Texte UI : buttonBack"
   },
-  "searchRecent": "Récent",
+  "searchRecent": "Recent",
   "@searchRecent": {
     "description": "Texte UI : searchRecent"
   },
-  "buttonClear": "Effacer",
+  "buttonClear": "Wissen",
   "@buttonClear": {
     "description": "Texte UI : buttonClear"
   },
-  "searchExploreByCategory": "Explorer par catégorie",
+  "searchExploreByCategory": "Verkennen per categorie",
   "@searchExploreByCategory": {
     "description": "Texte UI : searchExploreByCategory"
   },
-  "searchDiscoveryEmpty": "Charge ta première playlist pour découvrir des chaînes.",
+  "searchDiscoveryEmpty": "Laad je eerste playlist om zenders te ontdekken.",
   "@searchDiscoveryEmpty": {
     "description": "Texte UI : searchDiscoveryEmpty"
   },
-  "searchNoResultHelp": "Vérifie l'orthographe ou essaye un autre mot. Si la chaîne devrait être là, demande à ton revendeur de la rajouter.",
+  "searchNoResultHelp": "Controleer de spelling of probeer een ander woord. Hoort de zender erbij te staan? Vraag je reseller om hem toe te voegen.",
   "@searchNoResultHelp": {
     "description": "Texte UI : searchNoResultHelp"
   },
-  "searchTipsToTry": "PISTES À ESSAYER",
+  "searchTipsToTry": "PROBEER EENS",
   "@searchTipsToTry": {
     "description": "Texte UI : searchTipsToTry"
   },
-  "searchEmptyCatalogTitle": "Aucune chaîne pour l'instant",
+  "searchEmptyCatalogTitle": "Nog geen zenders",
   "@searchEmptyCatalogTitle": {
     "description": "Texte UI : searchEmptyCatalogTitle"
   },
-  "searchEmptyCatalogHelp": "Ton revendeur doit activer ton abonnement avant que tu puisses chercher. Reviens dans quelques minutes.",
+  "searchEmptyCatalogHelp": "Je reseller moet je abonnement activeren voordat je kunt zoeken. Kom over een paar minuten terug.",
   "@searchEmptyCatalogHelp": {
     "description": "Texte UI : searchEmptyCatalogHelp"
   },
-  "navCategories": "Catégories",
+  "navCategories": "Categorieën",
   "@navCategories": {
     "description": "Texte UI : navCategories"
   },
-  "mySource": "Ma source",
+  "mySource": "Mijn bron",
   "@mySource": {
     "description": "Texte UI : mySource"
   },
-  "sourceQuestion": "Comment veux-tu accéder à tes chaînes ?",
+  "sourceQuestion": "Hoe wil je bij je zenders komen?",
   "@sourceQuestion": {
     "description": "Texte UI : sourceQuestion"
   },
-  "sourceLoginCode": "Me connecter avec mon code",
+  "sourceLoginCode": "Inloggen met mijn code",
   "@sourceLoginCode": {
     "description": "Texte UI : sourceLoginCode"
   },
-  "sourceLoginCodeSub": "Saisis ton utilisateur + mot de passe",
+  "sourceLoginCodeSub": "Vul je gebruikersnaam + wachtwoord in",
   "@sourceLoginCodeSub": {
     "description": "Texte UI : sourceLoginCodeSub"
   },
-  "sourceOwn": "J'ai ma propre source",
+  "sourceOwn": "Ik heb mijn eigen bron",
   "@sourceOwn": {
     "description": "Texte UI : sourceOwn"
   },
-  "sourceOwnSub": "Lien M3U / M3U8 ou codes Xtream",
+  "sourceOwnSub": "M3U / M3U8-link of Xtream-codes",
   "@sourceOwnSub": {
     "description": "Texte UI : sourceOwnSub"
   },
-  "sourceActivate": "Activer l'app",
+  "sourceActivate": "App activeren",
   "@sourceActivate": {
     "description": "Texte UI : sourceActivate"
   },
-  "sourceActivateSub": "Contacte-nous (ta MAC est déjà jointe au message)",
+  "sourceActivateSub": "Neem contact op (je MAC zit al in het bericht)",
   "@sourceActivateSub": {
     "description": "Texte UI : sourceActivateSub"
   },
-  "activateAtHomeTitle": "Activer l'app à la maison",
+  "activateAtHomeTitle": "App thuis activeren",
   "@activateAtHomeTitle": {
     "description": "Texte UI : activateAtHomeTitle"
   },
-  "activateAtHomeDesc": "Communique cet identifiant à ton revendeur pour qu'il active tes chaînes à distance.",
+  "activateAtHomeDesc": "Geef deze ID aan je reseller, zodat hij je zenders op afstand kan activeren.",
   "@activateAtHomeDesc": {
     "description": "Texte UI : activateAtHomeDesc"
   },
-  "buttonCopy": "Copier",
+  "buttonCopy": "Kopiëren",
   "@buttonCopy": {
     "description": "Texte UI : buttonCopy"
   },
-  "buttonSend": "Envoyer",
+  "buttonSend": "Versturen",
   "@buttonSend": {
     "description": "Texte UI : buttonSend"
   },
-  "idCopied": "Identifiant copié : {id}",
+  "idCopied": "ID gekopieerd: {id}",
   "@idCopied": {
     "description": "Texte UI : idCopied",
     "placeholders": {
@@ -469,15 +467,15 @@
       }
     }
   },
-  "resumeEyebrow": "REPRENDRE",
+  "resumeEyebrow": "VERDER KIJKEN",
   "@resumeEyebrow": {
     "description": "Texte UI : resumeEyebrow"
   },
-  "resumeAgoNow": "à l'instant",
+  "resumeAgoNow": "zojuist",
   "@resumeAgoNow": {
     "description": "Texte UI : resumeAgoNow"
   },
-  "resumeAgoMinutes": "il y a {minutes} min",
+  "resumeAgoMinutes": "{minutes} min geleden",
   "@resumeAgoMinutes": {
     "description": "Texte UI : resumeAgoMinutes",
     "placeholders": {
@@ -486,7 +484,7 @@
       }
     }
   },
-  "resumeWatchingAgo": "Tu regardais {ago}",
+  "resumeWatchingAgo": "Je keek {ago}",
   "@resumeWatchingAgo": {
     "description": "Texte UI : resumeWatchingAgo",
     "placeholders": {
@@ -495,31 +493,31 @@
       }
     }
   },
-  "activateSubTitle": "Active ton abonnement",
+  "activateSubTitle": "Activeer je abonnement",
   "@activateSubTitle": {
     "description": "Texte UI : activateSubTitle"
   },
-  "activateSubDesc": "Connecte-toi avec ton code (utilisateur + mot de passe), ou donne ta MAC à ton revendeur pour qu'il active à distance.",
+  "activateSubDesc": "Log in met je code (gebruikersnaam + wachtwoord), of geef je MAC aan je reseller om op afstand te activeren.",
   "@activateSubDesc": {
     "description": "Texte UI : activateSubDesc"
   },
-  "freeTrialBadge": "Essai gratuit 7 jours · puis 5 €/an",
+  "freeTrialBadge": "7 dagen gratis · daarna € 5/jaar",
   "@freeTrialBadge": {
     "description": "Texte UI : freeTrialBadge"
   },
-  "activateMySub": "Activer mon abonnement",
+  "activateMySub": "Mijn abonnement activeren",
   "@activateMySub": {
     "description": "Texte UI : activateMySub"
   },
-  "remoteActivationByReseller": "Activation à distance par ton revendeur",
+  "remoteActivationByReseller": "Activering op afstand door je reseller",
   "@remoteActivationByReseller": {
     "description": "Texte UI : remoteActivationByReseller"
   },
-  "recStartFailed": "Enregistrement impossible à démarrer. Réessaie.",
+  "recStartFailed": "Opname kan niet starten. Probeer het opnieuw.",
   "@recStartFailed": {
     "description": "Texte UI : recStartFailed"
   },
-  "startFailedWithError": "Impossible de démarrer : {error}",
+  "startFailedWithError": "Kan niet starten: {error}",
   "@startFailedWithError": {
     "description": "Texte UI : startFailedWithError",
     "placeholders": {
@@ -528,15 +526,15 @@
       }
     }
   },
-  "recInProgress": "● Enregistrement — continue à regarder, le flux est gardé",
+  "recInProgress": "● Opname bezig — kijk gewoon verder, de stream wordt bewaard",
   "@recInProgress": {
     "description": "Texte UI : recInProgress"
   },
-  "recEmpty": "Enregistrement vide — réessaie en laissant tourner quelques secondes.",
+  "recEmpty": "Lege opname — probeer opnieuw en laat het een paar seconden lopen.",
   "@recEmpty": {
     "description": "Texte UI : recEmpty"
   },
-  "recSaved": "Enregistrement sauvegardé ({size}) — Mes enregistrements",
+  "recSaved": "Opname opgeslagen ({size}) — Mijn opnames",
   "@recSaved": {
     "description": "Texte UI : recSaved",
     "placeholders": {
@@ -545,7 +543,7 @@
       }
     }
   },
-  "recStopError": "Erreur arrêt enregistrement : {error}",
+  "recStopError": "Fout bij stoppen van opname: {error}",
   "@recStopError": {
     "description": "Texte UI : recStopError",
     "placeholders": {
@@ -554,15 +552,15 @@
       }
     }
   },
-  "recTapToStop": "REC · appuie pour arrêter",
+  "recTapToStop": "REC · tik om te stoppen",
   "@recTapToStop": {
     "description": "Texte UI : recTapToStop"
   },
-  "pipUnavailable": "Mini-fenêtre indisponible sur cet appareil (requiert Android 8+). Active aussi la permission Picture-in-picture dans : Paramètres → Apps → 7 MOTION → Permissions.",
+  "pipUnavailable": "Mini-venster niet beschikbaar op dit apparaat (vereist Android 8+). Zet ook de toestemming Picture-in-picture aan via: Instellingen → Apps → 7 MOTION → Machtigingen.",
   "@pipUnavailable": {
     "description": "Texte UI : pipUnavailable"
   },
-  "speedToast": "Vitesse : {speed}x",
+  "speedToast": "Snelheid: {speed}x",
   "@speedToast": {
     "description": "Texte UI : speedToast",
     "placeholders": {
@@ -571,59 +569,59 @@
       }
     }
   },
-  "tooltipMiniWindow": "Mini-fenêtre",
+  "tooltipMiniWindow": "Mini-venster",
   "@tooltipMiniWindow": {
     "description": "Texte UI : tooltipMiniWindow"
   },
-  "tooltipCastingManage": "Casting en cours — tap pour gérer",
+  "tooltipCastingManage": "Casten bezig — tik om te beheren",
   "@tooltipCastingManage": {
     "description": "Texte UI : tooltipCastingManage"
   },
-  "tooltipSendToTv": "Envoyer vers une TV",
+  "tooltipSendToTv": "Naar een tv sturen",
   "@tooltipSendToTv": {
     "description": "Texte UI : tooltipSendToTv"
   },
-  "tooltipReloadStream": "Recharger le flux",
+  "tooltipReloadStream": "Stream opnieuw laden",
   "@tooltipReloadStream": {
     "description": "Texte UI : tooltipReloadStream"
   },
-  "seekRewind": "Reculer 2 minutes",
+  "seekRewind": "2 minuten terug",
   "@seekRewind": {
     "description": "Texte UI : seekRewind"
   },
-  "seekForward": "Avancer 2 minutes",
+  "seekForward": "2 minuten vooruit",
   "@seekForward": {
     "description": "Texte UI : seekForward"
   },
-  "playerCantPlay": "Impossible de lire ce flux",
+  "playerCantPlay": "Deze stream kan niet worden afgespeeld",
   "@playerCantPlay": {
     "description": "Texte UI : playerCantPlay"
   },
-  "tooltipRemoveFavorite": "Retirer des favoris",
+  "tooltipRemoveFavorite": "Uit favorieten verwijderen",
   "@tooltipRemoveFavorite": {
     "description": "Texte UI : tooltipRemoveFavorite"
   },
-  "tooltipAddFavorite": "Ajouter aux favoris",
+  "tooltipAddFavorite": "Aan favorieten toevoegen",
   "@tooltipAddFavorite": {
     "description": "Texte UI : tooltipAddFavorite"
   },
-  "playerSettingsTitle": "Réglages du lecteur",
+  "playerSettingsTitle": "Spelerinstellingen",
   "@playerSettingsTitle": {
     "description": "Texte UI : playerSettingsTitle"
   },
-  "playerSpeedSection": "Vitesse de lecture",
+  "playerSpeedSection": "Afspeelsnelheid",
   "@playerSpeedSection": {
     "description": "Texte UI : playerSpeedSection"
   },
-  "playerDisplayMode": "Mode d'affichage",
+  "playerDisplayMode": "Weergavemodus",
   "@playerDisplayMode": {
     "description": "Texte UI : playerDisplayMode"
   },
-  "playerBufferSize": "Taille du buffer",
+  "playerBufferSize": "Buffergrootte",
   "@playerBufferSize": {
     "description": "Texte UI : playerBufferSize"
   },
-  "playerBufferSeconds": "{seconds} secondes",
+  "playerBufferSeconds": "{seconds} seconden",
   "@playerBufferSeconds": {
     "description": "Texte UI : playerBufferSeconds",
     "placeholders": {
@@ -632,35 +630,35 @@
       }
     }
   },
-  "playerBufferHelp": "Plus c'est haut, mieux la lecture résiste aux coupures réseau (mais plus de latence sur le live).",
+  "playerBufferHelp": "Hoe hoger, hoe beter het afspelen bestand is tegen netwerkhaperingen (maar meer vertraging bij live).",
   "@playerBufferHelp": {
     "description": "Texte UI : playerBufferHelp"
   },
-  "playerAntiFreeze": "Anti-coupure",
+  "playerAntiFreeze": "Anti-haperen",
   "@playerAntiFreeze": {
     "description": "Texte UI : playerAntiFreeze"
   },
-  "playerAntiFreezeHelp": "Si la connexion faiblit, le lecteur puise dans le tampon au lieu de couper l'image. Démarrage un peu plus long, mais lecture sans coupure.",
+  "playerAntiFreezeHelp": "Als de verbinding zwakker wordt, put de speler uit de buffer in plaats van het beeld te onderbreken. Iets langere opstarttijd, maar vloeiend beeld.",
   "@playerAntiFreezeHelp": {
     "description": "Texte UI : playerAntiFreezeHelp"
   },
-  "playerHwDecode": "Décodage matériel",
+  "playerHwDecode": "Hardwaredecodering",
   "@playerHwDecode": {
     "description": "Texte UI : playerHwDecode"
   },
-  "playerHwDecodeHelp": "Utilise le GPU pour décoder la vidéo. Indispensable pour 4K / 8K.",
+  "playerHwDecodeHelp": "Gebruikt de GPU om video te decoderen. Onmisbaar voor 4K / 8K.",
   "@playerHwDecodeHelp": {
     "description": "Texte UI : playerHwDecodeHelp"
   },
-  "playerShowStats": "Afficher les statistiques",
+  "playerShowStats": "Statistieken tonen",
   "@playerShowStats": {
     "description": "Texte UI : playerShowStats"
   },
-  "playerShowStatsHelp": "FPS, débit, résolution, codec, frames perdues.",
+  "playerShowStatsHelp": "FPS, bitrate, resolutie, codec, verloren frames.",
   "@playerShowStatsHelp": {
     "description": "Texte UI : playerShowStatsHelp"
   },
-  "tracksTitle": "Pistes",
+  "tracksTitle": "Sporen",
   "@tracksTitle": {
     "description": "Texte UI : tracksTitle"
   },
@@ -668,19 +666,19 @@
   "@tracksAudio": {
     "description": "Texte UI : tracksAudio"
   },
-  "tracksSubtitles": "Sous-titres",
+  "tracksSubtitles": "Ondertitels",
   "@tracksSubtitles": {
     "description": "Texte UI : tracksSubtitles"
   },
-  "tracksNoAudio": "Aucune piste audio détectée.",
+  "tracksNoAudio": "Geen audiospoor gevonden.",
   "@tracksNoAudio": {
     "description": "Texte UI : tracksNoAudio"
   },
-  "tracksNoSubtitles": "Aucun sous-titre. Astuce : sur certains flux, ils sont embarqués mais détectés tardivement.",
+  "tracksNoSubtitles": "Geen ondertitels. Tip: bij sommige streams zitten ze ingebouwd, maar worden ze pas later gedetecteerd.",
   "@tracksNoSubtitles": {
     "description": "Texte UI : tracksNoSubtitles"
   },
-  "castToDevice": "Cast vers {device}",
+  "castToDevice": "Casten naar {device}",
   "@castToDevice": {
     "description": "Texte UI : castToDevice",
     "placeholders": {
@@ -689,7 +687,7 @@
       }
     }
   },
-  "castFailedLocal": "Cast impossible — lecture en local. ({error})",
+  "castFailedLocal": "Casten mislukt — lokaal afspelen. ({error})",
   "@castFailedLocal": {
     "description": "Texte UI : castFailedLocal",
     "placeholders": {
@@ -698,7 +696,7 @@
       }
     }
   },
-  "castConnectedTapChannel": "Connecté à {device}. Tape une chaîne pour l'envoyer.",
+  "castConnectedTapChannel": "Verbonden met {device}. Tik op een zender om die te sturen.",
   "@castConnectedTapChannel": {
     "description": "Texte UI : castConnectedTapChannel",
     "placeholders": {
@@ -707,7 +705,7 @@
       }
     }
   },
-  "castSendingTo": "Envoi vers {device}",
+  "castSendingTo": "Sturen naar {device}",
   "@castSendingTo": {
     "description": "Texte UI : castSendingTo",
     "placeholders": {
@@ -716,67 +714,67 @@
       }
     }
   },
-  "castFailedRetry": "Le cast a échoué. Réessaie.",
+  "castFailedRetry": "Casten is mislukt. Probeer het opnieuw.",
   "@castFailedRetry": {
     "description": "Texte UI : castFailedRetry"
   },
-  "castSessionStopped": "Session de cast arrêtée",
+  "castSessionStopped": "Castsessie gestopt",
   "@castSessionStopped": {
     "description": "Texte UI : castSessionStopped"
   },
-  "castRefresh": "Rafraîchir",
+  "castRefresh": "Vernieuwen",
   "@castRefresh": {
     "description": "Texte UI : castRefresh"
   },
-  "castByQr": "Cast par QR code",
+  "castByQr": "Casten via QR-code",
   "@castByQr": {
     "description": "Texte UI : castByQr"
   },
-  "castByQrSub": "Marche sur TOUTES les TVs avec un navigateur",
+  "castByQrSub": "Werkt op ALLE tv's met een browser",
   "@castByQrSub": {
     "description": "Texte UI : castByQrSub"
   },
-  "castSearchingShort": "Recherche en cours...",
+  "castSearchingShort": "Bezig met zoeken...",
   "@castSearchingShort": {
     "description": "Texte UI : castSearchingShort"
   },
-  "castNoReceiver": "Aucun récepteur. Vérifie que ton TV est sur le même WiFi et que DLNA est activé.",
+  "castNoReceiver": "Geen ontvanger. Controleer of je tv op hetzelfde wifi-netwerk zit en of DLNA aanstaat.",
   "@castNoReceiver": {
     "description": "Texte UI : castNoReceiver"
   },
-  "castInProgress": "EN COURS",
+  "castInProgress": "BEZIG",
   "@castInProgress": {
     "description": "Texte UI : castInProgress"
   },
-  "castConnecting": "Connexion...",
+  "castConnecting": "Verbinden...",
   "@castConnecting": {
     "description": "Texte UI : castConnecting"
   },
-  "castInProgressTitle": "Cast en cours",
+  "castInProgressTitle": "Casten bezig",
   "@castInProgressTitle": {
     "description": "Texte UI : castInProgressTitle"
   },
-  "castStopTooltip": "Arrêter le cast",
+  "castStopTooltip": "Casten stoppen",
   "@castStopTooltip": {
     "description": "Texte UI : castStopTooltip"
   },
-  "castPlayDefault": "Lecture",
+  "castPlayDefault": "Afspelen",
   "@castPlayDefault": {
     "description": "Texte UI : castPlayDefault"
   },
-  "webCastTitle": "Cast via navigateur",
+  "webCastTitle": "Casten via browser",
   "@webCastTitle": {
     "description": "Texte UI : webCastTitle"
   },
-  "webCastDesc": "Marche sur n'importe quelle TV qui a un navigateur web — Google TV, Samsung, LG, Hisense, vieilles smart TVs. Ta TV doit être sur le même WiFi que le téléphone.",
+  "webCastDesc": "Werkt op elke tv met een webbrowser — Google TV, Samsung, LG, Hisense, oudere smart-tv's. Je tv moet op hetzelfde wifi-netwerk zitten als je telefoon.",
   "@webCastDesc": {
     "description": "Texte UI : webCastDesc"
   },
-  "webCastIpError": "Impossible de détecter ton IP WiFi. Vérifie que tu es bien connecté à un WiFi (pas en données mobiles).",
+  "webCastIpError": "Kan je wifi-IP niet vinden. Controleer of je met wifi verbonden bent (niet met mobiele data).",
   "@webCastIpError": {
     "description": "Texte UI : webCastIpError"
   },
-  "urlCopied": "URL copiée : {url}",
+  "urlCopied": "URL gekopieerd: {url}",
   "@urlCopied": {
     "description": "Texte UI : urlCopied",
     "placeholders": {
@@ -785,67 +783,67 @@
       }
     }
   },
-  "webCastTvConnected": "OK, la TV est connectée",
+  "webCastTvConnected": "OK, de tv is verbonden",
   "@webCastTvConnected": {
     "description": "Texte UI : webCastTvConnected"
   },
-  "webCastUrlLabel": "Ou tape cette URL dans le navigateur de la TV :",
+  "webCastUrlLabel": "Of typ deze URL in de browser van de tv:",
   "@webCastUrlLabel": {
     "description": "Texte UI : webCastUrlLabel"
   },
-  "webCastStep1": "Sur ta TV, ouvre son navigateur web",
+  "webCastStep1": "Open de webbrowser op je tv",
   "@webCastStep1": {
     "description": "Texte UI : webCastStep1"
   },
-  "webCastStep2": "Scanne le QR code ci-dessus (ou tape l'URL)",
+  "webCastStep2": "Scan de QR-code hierboven (of typ de URL)",
   "@webCastStep2": {
     "description": "Texte UI : webCastStep2"
   },
-  "webCastStep3": "Garde cet onglet ouvert sur la TV",
+  "webCastStep3": "Laat dit tabblad open op de tv",
   "@webCastStep3": {
     "description": "Texte UI : webCastStep3"
   },
-  "webCastStep4": "Reviens ici, tape une chaîne → elle apparaît sur la TV en 2s",
+  "webCastStep4": "Kom hier terug, tik op een zender → binnen 2 s staat hij op de tv",
   "@webCastStep4": {
     "description": "Texte UI : webCastStep4"
   },
-  "qrCastTitle": "Cast par QR Code",
+  "qrCastTitle": "Casten via QR-code",
   "@qrCastTitle": {
     "description": "Texte UI : qrCastTitle"
   },
-  "qrCastDesc": "Scanne ce code depuis n'importe quel appareil (TV, ordi, tablette, autre téléphone) — la chaîne s'ouvre directement dans le navigateur.",
+  "qrCastDesc": "Scan deze code met elk apparaat (tv, computer, tablet, andere telefoon) — de zender opent direct in de browser.",
   "@qrCastDesc": {
     "description": "Texte UI : qrCastDesc"
   },
-  "qrCastCopied": "Lien copié — colle dans le navigateur ou VLC",
+  "qrCastCopied": "Link gekopieerd — plak hem in de browser of in VLC",
   "@qrCastCopied": {
     "description": "Texte UI : qrCastCopied"
   },
-  "qrCastCopyLink": "Copier le lien",
+  "qrCastCopyLink": "Link kopiëren",
   "@qrCastCopyLink": {
     "description": "Texte UI : qrCastCopyLink"
   },
-  "qrCastTip": "Astuce : ouvre l'appareil photo de ton autre device, pointe vers ce QR — un lien apparaît. Tape dessus, le navigateur lance la chaîne automatiquement.",
+  "qrCastTip": "Tip: open de camera van je andere apparaat en richt op deze QR-code — er verschijnt een link. Tik erop en de browser start de zender automatisch.",
   "@qrCastTip": {
     "description": "Texte UI : qrCastTip"
   },
-  "qrCastDegraded": "Mode dégradé : ouvre dans VLC ou un lecteur natif.",
+  "qrCastDegraded": "Beperkte modus: open in VLC of een andere speler.",
   "@qrCastDegraded": {
     "description": "Texte UI : qrCastDegraded"
   },
-  "playlistsTitle": "Mes playlists",
+  "playlistsTitle": "Mijn playlists",
   "@playlistsTitle": {
     "description": "Texte UI : playlistsTitle"
   },
-  "playlistsAddTooltip": "Ajouter une playlist",
+  "playlistsAddTooltip": "Playlist toevoegen",
   "@playlistsAddTooltip": {
     "description": "Texte UI : playlistsAddTooltip"
   },
-  "playlistsEmptyTitle": "Aucune playlist",
+  "playlistsEmptyTitle": "Geen playlist",
   "@playlistsEmptyTitle": {
     "description": "Texte UI : playlistsEmptyTitle"
   },
-  "playlistsEmptySubtitle": "Ajoute ta première playlist pour commencer.",
+  "playlistsEmptySubtitle": "Voeg je eerste playlist toe om te beginnen.",
   "@playlistsEmptySubtitle": {
     "description": "Texte UI : playlistsEmptySubtitle"
   },
@@ -857,23 +855,23 @@
   "@playlistTypeXtream": {
     "description": "Texte UI : playlistTypeXtream"
   },
-  "playlistNeverSynced": "Jamais synchronisée",
+  "playlistNeverSynced": "Nog nooit gesynchroniseerd",
   "@playlistNeverSynced": {
     "description": "Texte UI : playlistNeverSynced"
   },
-  "playlistResyncTooltip": "Re-synchroniser",
+  "playlistResyncTooltip": "Opnieuw synchroniseren",
   "@playlistResyncTooltip": {
     "description": "Texte UI : playlistResyncTooltip"
   },
-  "playlistDeleteTooltip": "Supprimer",
+  "playlistDeleteTooltip": "Verwijderen",
   "@playlistDeleteTooltip": {
     "description": "Texte UI : playlistDeleteTooltip"
   },
-  "playlistResyncing": "Re-synchronisation en cours...",
+  "playlistResyncing": "Opnieuw synchroniseren...",
   "@playlistResyncing": {
     "description": "Texte UI : playlistResyncing"
   },
-  "playlistUpToDate": "Playlist \"{name}\" à jour",
+  "playlistUpToDate": "Playlist \"{name}\" is up-to-date",
   "@playlistUpToDate": {
     "description": "Texte UI : playlistUpToDate",
     "placeholders": {
@@ -882,15 +880,15 @@
       }
     }
   },
-  "playlistResyncFailed": "Re-synchronisation impossible",
+  "playlistResyncFailed": "Opnieuw synchroniseren mislukt",
   "@playlistResyncFailed": {
     "description": "Texte UI : playlistResyncFailed"
   },
-  "playlistDeleteConfirmTitle": "Supprimer cette playlist ?",
+  "playlistDeleteConfirmTitle": "Deze playlist verwijderen?",
   "@playlistDeleteConfirmTitle": {
     "description": "Texte UI : playlistDeleteConfirmTitle"
   },
-  "playlistDeleteConfirmBody": "Toutes les chaînes liées à \"{name}\" seront retirées de l'app.",
+  "playlistDeleteConfirmBody": "Alle zenders van \"{name}\" worden uit de app verwijderd.",
   "@playlistDeleteConfirmBody": {
     "description": "Texte UI : playlistDeleteConfirmBody",
     "placeholders": {
@@ -899,23 +897,23 @@
       }
     }
   },
-  "recordingsTitle": "Mes enregistrements",
+  "recordingsTitle": "Mijn opnames",
   "@recordingsTitle": {
     "description": "Texte UI : recordingsTitle"
   },
-  "recordingsEmptyTitle": "Aucun enregistrement",
+  "recordingsEmptyTitle": "Geen opnames",
   "@recordingsEmptyTitle": {
     "description": "Texte UI : recordingsEmptyTitle"
   },
-  "recordingsEmptySubtitle": "Pendant la lecture, appuie sur REC pour capturer le flux en direct.",
+  "recordingsEmptySubtitle": "Druk tijdens het kijken op REC om de livestream op te nemen.",
   "@recordingsEmptySubtitle": {
     "description": "Texte UI : recordingsEmptySubtitle"
   },
-  "recordingStopped": "Enregistrement arrêté — exporte-le vers la Galerie",
+  "recordingStopped": "Opname gestopt — exporteer hem naar de Galerij",
   "@recordingStopped": {
     "description": "Texte UI : recordingStopped"
   },
-  "recordingStopError": "Erreur arrêt : {error}",
+  "recordingStopError": "Fout bij stoppen: {error}",
   "@recordingStopError": {
     "description": "Texte UI : recordingStopError",
     "placeholders": {
@@ -924,7 +922,7 @@
       }
     }
   },
-  "recordingExported": "Exporté dans Galerie › Movies sous \"7MOTION_{name}\"",
+  "recordingExported": "Geëxporteerd naar Galerij › Movies als \"7MOTION_{name}\"",
   "@recordingExported": {
     "description": "Texte UI : recordingExported",
     "placeholders": {
@@ -933,7 +931,7 @@
       }
     }
   },
-  "recordingExportFailed": "Export échec : {error}",
+  "recordingExportFailed": "Exporteren mislukt: {error}",
   "@recordingExportFailed": {
     "description": "Texte UI : recordingExportFailed",
     "placeholders": {
@@ -942,19 +940,19 @@
       }
     }
   },
-  "recordingStopTooltip": "Arrêter l'enregistrement",
+  "recordingStopTooltip": "Opname stoppen",
   "@recordingStopTooltip": {
     "description": "Texte UI : recordingStopTooltip"
   },
-  "recordingSaveTooltip": "Sauvegarder dans la Galerie",
+  "recordingSaveTooltip": "Opslaan in de Galerij",
   "@recordingSaveTooltip": {
     "description": "Texte UI : recordingSaveTooltip"
   },
-  "recordingDeleteConfirmTitle": "Supprimer cet enregistrement ?",
+  "recordingDeleteConfirmTitle": "Deze opname verwijderen?",
   "@recordingDeleteConfirmTitle": {
     "description": "Texte UI : recordingDeleteConfirmTitle"
   },
-  "recordingDeleteConfirmBody": "Le fichier \"{name}\" sera effacé.",
+  "recordingDeleteConfirmBody": "Het bestand \"{name}\" wordt gewist.",
   "@recordingDeleteConfirmBody": {
     "description": "Texte UI : recordingDeleteConfirmBody",
     "placeholders": {
@@ -963,19 +961,19 @@
       }
     }
   },
-  "recordingUnreadable": "Lecture impossible : enregistrement illisible ou incomplet.",
+  "recordingUnreadable": "Afspelen niet mogelijk: opname onleesbaar of onvolledig.",
   "@recordingUnreadable": {
     "description": "Texte UI : recordingUnreadable"
   },
-  "recordingEmpty": "Enregistrement vide (0 octet) — rien n'a été capturé.",
+  "recordingEmpty": "Lege opname (0 bytes) — er is niets opgenomen.",
   "@recordingEmpty": {
     "description": "Texte UI : recordingEmpty"
   },
-  "recordingNotFound": "Fichier introuvable — il a peut-être été supprimé.",
+  "recordingNotFound": "Bestand niet gevonden — misschien is het verwijderd.",
   "@recordingNotFound": {
     "description": "Texte UI : recordingNotFound"
   },
-  "recordingPlayError": "Lecture impossible : {error}",
+  "recordingPlayError": "Afspelen niet mogelijk: {error}",
   "@recordingPlayError": {
     "description": "Texte UI : recordingPlayError",
     "placeholders": {
@@ -984,27 +982,27 @@
       }
     }
   },
-  "subAccountSuspended": "Compte suspendu",
+  "subAccountSuspended": "Account geschorst",
   "@subAccountSuspended": {
     "description": "Texte UI : subAccountSuspended"
   },
-  "subAccountFrozen": "Compte temporairement gelé",
+  "subAccountFrozen": "Account tijdelijk bevroren",
   "@subAccountFrozen": {
     "description": "Texte UI : subAccountFrozen"
   },
-  "subUnlockAll": "Débloque tout The Few",
+  "subUnlockAll": "Ontgrendel alles van The Few",
   "@subUnlockAll": {
     "description": "Texte UI : subUnlockAll"
   },
-  "subBannedMsg": "Ton compte a été suspendu par l'administrateur. Si tu penses que c'est une erreur, contacte-nous.",
+  "subBannedMsg": "Je account is geschorst door de beheerder. Denk je dat dit een vergissing is? Neem dan contact met ons op.",
   "@subBannedMsg": {
     "description": "Texte UI : subBannedMsg"
   },
-  "subFrozenMsg": "Ton compte est en pause. Contacte le support pour réactiver l'accès.",
+  "subFrozenMsg": "Je account staat op pauze. Neem contact op met de support om je toegang te heractiveren.",
   "@subFrozenMsg": {
     "description": "Texte UI : subFrozenMsg"
   },
-  "subTrialExpiredMsg": "Ton essai gratuit de {days} jours est terminé. Active ton accès et profite de TOUT, sans aucune limite :",
+  "subTrialExpiredMsg": "Je gratis proefperiode van {days} dagen is voorbij. Activeer je toegang en geniet van ALLES, zonder limiet:",
   "@subTrialExpiredMsg": {
     "description": "Texte UI : subTrialExpiredMsg",
     "placeholders": {
@@ -1013,55 +1011,55 @@
       }
     }
   },
-  "subSubscribePrice": "M'abonner maintenant",
+  "subSubscribePrice": "Nu abonneren",
   "@subSubscribePrice": {
     "description": "Texte UI : subSubscribePrice"
   },
-  "subContactSupport": "Contacter le support",
+  "subContactSupport": "Contact opnemen met support",
   "@subContactSupport": {
     "description": "Texte UI : subContactSupport"
   },
-  "subPullToRefresh": "Tu viens de payer ? Tire vers le bas pour rafraîchir.",
+  "subPullToRefresh": "Net betaald? Trek omlaag om te vernieuwen.",
   "@subPullToRefresh": {
     "description": "Texte UI : subPullToRefresh"
   },
-  "subBenefitChannels": "Des milliers de chaînes, films & séries du monde entier",
+  "subBenefitChannels": "Duizenden zenders, films & series van over de hele wereld",
   "@subBenefitChannels": {
     "description": "Texte UI : subBenefitChannels"
   },
-  "subBenefitSports": "Tout le sport en direct, en HD / 4K, sans coupure",
+  "subBenefitSports": "Alle sport live, in HD / 4K, zonder haperen",
   "@subBenefitSports": {
     "description": "Texte UI : subBenefitSports"
   },
-  "subBenefitCast": "Caster sur n'importe quelle télé (Chromecast & Google TV)",
+  "subBenefitCast": "Casten naar elke tv (Chromecast & Google TV)",
   "@subBenefitCast": {
     "description": "Texte UI : subBenefitCast"
   },
-  "subBenefitRecord": "Enregistrer tes émissions, films et matchs préférés",
+  "subBenefitRecord": "Neem je favoriete programma's, films en wedstrijden op",
   "@subBenefitRecord": {
     "description": "Texte UI : subBenefitRecord"
   },
-  "subBenefitNoAds": "Zéro publicité — lecture fluide, instantanée",
+  "subBenefitNoAds": "Geen reclame — vloeiend en direct afspelen",
   "@subBenefitNoAds": {
     "description": "Texte UI : subBenefitNoAds"
   },
-  "subBenefitDevices": "Sur tous tes appareils : téléphone, tablette, TV",
+  "subBenefitDevices": "Op al je apparaten: telefoon, tablet, tv",
   "@subBenefitDevices": {
     "description": "Texte UI : subBenefitDevices"
   },
-  "subCardBuyExpired": "Acheter sur 7themotion.com",
+  "subCardBuyExpired": "Kopen op 7themotion.com",
   "@subCardBuyExpired": {
     "description": "Texte UI : subCardBuyExpired"
   },
-  "subCardSeeOffers": "Voir les offres sur 7themotion.com",
+  "subCardSeeOffers": "Bekijk de aanbiedingen op 7themotion.com",
   "@subCardSeeOffers": {
     "description": "Texte UI : subCardSeeOffers"
   },
-  "subCardSecurePayment": "Paiement sécurisé sur le site officiel — jamais via Google Play.",
+  "subCardSecurePayment": "Veilig betalen op de officiële website — nooit via Google Play.",
   "@subCardSecurePayment": {
     "description": "Texte UI : subCardSecurePayment"
   },
-  "subCantOpenUrl": "Impossible d'ouvrir {url}",
+  "subCantOpenUrl": "Kan {url} niet openen",
   "@subCantOpenUrl": {
     "description": "Texte UI : subCantOpenUrl",
     "placeholders": {
@@ -1070,11 +1068,11 @@
       }
     }
   },
-  "subActiveTitle": "Abonnement actif",
+  "subActiveTitle": "Abonnement actief",
   "@subActiveTitle": {
     "description": "Texte UI : subActiveTitle"
   },
-  "subActiveUntil": "Abonnement actif · expire le {date}",
+  "subActiveUntil": "Abonnement actief · verloopt op {date}",
   "@subActiveUntil": {
     "description": "Texte UI : subActiveUntil",
     "placeholders": {
@@ -1083,15 +1081,15 @@
       }
     }
   },
-  "subTrialEnded": "Essai gratuit terminé",
+  "subTrialEnded": "Gratis proefperiode voorbij",
   "@subTrialEnded": {
     "description": "Texte UI : subTrialEnded"
   },
-  "subTrialOneDayLeft": "Essai gratuit · 1 jour restant",
+  "subTrialOneDayLeft": "Gratis proefperiode · nog 1 dag",
   "@subTrialOneDayLeft": {
     "description": "Texte UI : subTrialOneDayLeft"
   },
-  "subTrialDaysLeft": "Essai gratuit · {days} jours restants",
+  "subTrialDaysLeft": "Gratis proefperiode · nog {days} dagen",
   "@subTrialDaysLeft": {
     "description": "Texte UI : subTrialDaysLeft",
     "placeholders": {
@@ -1100,15 +1098,15 @@
       }
     }
   },
-  "subLoading": "Chargement…",
+  "subLoading": "Laden…",
   "@subLoading": {
     "description": "Texte UI : subLoading"
   },
-  "subCardSubPaid": "Merci pour ton soutien — toutes les fonctions sont débloquées sur cet appareil et tes autres installations The Few.",
+  "subCardSubPaid": "Bedankt voor je steun — alle functies zijn ontgrendeld op dit apparaat en op je andere The Few-installaties.",
   "@subCardSubPaid": {
     "description": "Texte UI : subCardSubPaid"
   },
-  "subCardSubExpired": "Ton essai gratuit de {days} jours est terminé. Souscris à 5 €/an ou 9,90 € à vie sur 7themotion.com pour continuer.",
+  "subCardSubExpired": "Je gratis proefperiode van {days} dagen is voorbij. Neem een abonnement voor € 5/jaar of € 9,90 levenslang op 7themotion.com om verder te gaan.",
   "@subCardSubExpired": {
     "description": "Texte UI : subCardSubExpired",
     "placeholders": {
@@ -1117,47 +1115,47 @@
       }
     }
   },
-  "subCardSubTrial": "Profite de toutes les fonctions premium pendant ton essai. Ensuite 5 €/an ou 9,90 € à vie sur tous tes appareils.",
+  "subCardSubTrial": "Geniet van alle premiumfuncties tijdens je proefperiode. Daarna € 5/jaar of € 9,90 levenslang op al je apparaten.",
   "@subCardSubTrial": {
     "description": "Texte UI : subCardSubTrial"
   },
-  "subCardSubFrozen": "Ton compte est en pause. Contacte le support pour réactiver.",
+  "subCardSubFrozen": "Je account staat op pauze. Neem contact op met de support om te heractiveren.",
   "@subCardSubFrozen": {
     "description": "Texte UI : subCardSubFrozen"
   },
-  "subCardSubBanned": "Ton compte a été suspendu par l'administrateur.",
+  "subCardSubBanned": "Je account is geschorst door de beheerder.",
   "@subCardSubBanned": {
     "description": "Texte UI : subCardSubBanned"
   },
-  "aboutTitle": "À propos",
+  "aboutTitle": "Over",
   "@aboutTitle": {
     "description": "Texte UI : aboutTitle"
   },
-  "aboutPremiumPlayer": "Lecteur IPTV premium",
+  "aboutPremiumPlayer": "Premium IPTV-speler",
   "@aboutPremiumPlayer": {
     "description": "Texte UI : aboutPremiumPlayer"
   },
-  "aboutUpdateError": "Impossible de contacter le serveur de mises à jour. Vérifie ta connexion.",
+  "aboutUpdateError": "Kan de updateserver niet bereiken. Controleer je verbinding.",
   "@aboutUpdateError": {
     "description": "Texte UI : aboutUpdateError"
   },
-  "aboutMyDevice": "Mon appareil",
+  "aboutMyDevice": "Mijn apparaat",
   "@aboutMyDevice": {
     "description": "Texte UI : aboutMyDevice"
   },
-  "aboutUpdates": "Mises à jour",
+  "aboutUpdates": "Updates",
   "@aboutUpdates": {
     "description": "Texte UI : aboutUpdates"
   },
-  "aboutNewVersion": "Nouvelle version disponible",
+  "aboutNewVersion": "Nieuwe versie beschikbaar",
   "@aboutNewVersion": {
     "description": "Texte UI : aboutNewVersion"
   },
-  "aboutSeeReleaseNotes": "Voir les notes de version",
+  "aboutSeeReleaseNotes": "Releasenotes bekijken",
   "@aboutSeeReleaseNotes": {
     "description": "Texte UI : aboutSeeReleaseNotes"
   },
-  "aboutLatestVersion": "Tu as la dernière version (v{version}).",
+  "aboutLatestVersion": "Je hebt de nieuwste versie (v{version}).",
   "@aboutLatestVersion": {
     "description": "Texte UI : aboutLatestVersion",
     "placeholders": {
@@ -1166,59 +1164,59 @@
       }
     }
   },
-  "aboutChecking": "Vérification...",
+  "aboutChecking": "Controleren...",
   "@aboutChecking": {
     "description": "Texte UI : aboutChecking"
   },
-  "aboutCheckUpdates": "Vérifier les mises à jour",
+  "aboutCheckUpdates": "Controleren op updates",
   "@aboutCheckUpdates": {
     "description": "Texte UI : aboutCheckUpdates"
   },
-  "aboutUsefulLinks": "Liens utiles",
+  "aboutUsefulLinks": "Handige links",
   "@aboutUsefulLinks": {
     "description": "Texte UI : aboutUsefulLinks"
   },
-  "aboutPrivacyPolicy": "Politique de confidentialité",
+  "aboutPrivacyPolicy": "Privacybeleid",
   "@aboutPrivacyPolicy": {
     "description": "Texte UI : aboutPrivacyPolicy"
   },
-  "aboutBuiltWith": "Construit avec",
+  "aboutBuiltWith": "Gebouwd met",
   "@aboutBuiltWith": {
     "description": "Texte UI : aboutBuiltWith"
   },
-  "aboutCreditFlutter": "Framework UI multiplateforme",
+  "aboutCreditFlutter": "Cross-platform UI-framework",
   "@aboutCreditFlutter": {
     "description": "Texte UI : aboutCreditFlutter"
   },
-  "aboutCreditMediaKit": "Moteur vidéo (HLS, MPEG-TS, MP4)",
+  "aboutCreditMediaKit": "Video-engine (HLS, MPEG-TS, MP4)",
   "@aboutCreditMediaKit": {
     "description": "Texte UI : aboutCreditMediaKit"
   },
-  "aboutCreditSqflite": "Stockage local des playlists",
+  "aboutCreditSqflite": "Lokale opslag van playlists",
   "@aboutCreditSqflite": {
     "description": "Texte UI : aboutCreditSqflite"
   },
-  "aboutCreditCache": "Cache disque des logos",
+  "aboutCreditCache": "Schijfcache voor logo's",
   "@aboutCreditCache": {
     "description": "Texte UI : aboutCreditCache"
   },
-  "aboutCreditFonts": "Typographie premium",
+  "aboutCreditFonts": "Premium typografie",
   "@aboutCreditFonts": {
     "description": "Texte UI : aboutCreditFonts"
   },
-  "aboutLegalNotice": "The Few est un lecteur média générique. Aucun contenu n'est inclus avec l'app. Tu es responsable des sources que tu ajoutes et de leur conformité aux lois en vigueur dans ton pays.",
+  "aboutLegalNotice": "The Few is een generieke mediaspeler. De app bevat geen content. Jij bent verantwoordelijk voor de bronnen die je toevoegt en voor het naleven van de wetgeving in jouw land.",
   "@aboutLegalNotice": {
     "description": "Texte UI : aboutLegalNotice"
   },
-  "lockPinTooShort": "Tape au moins 4 chiffres.",
+  "lockPinTooShort": "Voer minstens 4 cijfers in.",
   "@lockPinTooShort": {
     "description": "Texte UI : lockPinTooShort"
   },
-  "lockPinWrong": "Code incorrect.",
+  "lockPinWrong": "Onjuiste code.",
   "@lockPinWrong": {
     "description": "Texte UI : lockPinWrong"
   },
-  "lockUnlockReason": "Déverrouille {app}",
+  "lockUnlockReason": "Ontgrendel {app}",
   "@lockUnlockReason": {
     "description": "Texte UI : lockUnlockReason",
     "placeholders": {
@@ -1227,23 +1225,23 @@
       }
     }
   },
-  "lockAppLocked": "Application verrouillée",
+  "lockAppLocked": "App vergrendeld",
   "@lockAppLocked": {
     "description": "Texte UI : lockAppLocked"
   },
-  "lockAuthenticating": "Authentification...",
+  "lockAuthenticating": "Verifiëren...",
   "@lockAuthenticating": {
     "description": "Texte UI : lockAuthenticating"
   },
-  "lockFingerprint": "Empreinte digitale",
+  "lockFingerprint": "Vingerafdruk",
   "@lockFingerprint": {
     "description": "Texte UI : lockFingerprint"
   },
-  "lockValidateCode": "Valider le code",
+  "lockValidateCode": "Code bevestigen",
   "@lockValidateCode": {
     "description": "Texte UI : lockValidateCode"
   },
-  "lockDefaultPin": "Code par défaut : {pin}\nModifiable dans Réglages > Sécurité.",
+  "lockDefaultPin": "Standaardcode: {pin}\nTe wijzigen via Instellingen > Beveiliging.",
   "@lockDefaultPin": {
     "description": "Texte UI : lockDefaultPin",
     "placeholders": {
@@ -1252,67 +1250,67 @@
       }
     }
   },
-  "ageGateTitle": "Contenu réservé aux adultes",
+  "ageGateTitle": "Alleen voor volwassenen",
   "@ageGateTitle": {
     "description": "Texte UI : ageGateTitle"
   },
-  "ageGateBody": "Cette application diffuse des programmes à caractère explicite réservés aux personnes majeures. En continuant, vous déclarez sur l'honneur avoir atteint l'âge légal de majorité dans votre pays.",
+  "ageGateBody": "Deze app toont expliciete programma's die uitsluitend bedoeld zijn voor meerderjarigen. Door verder te gaan verklaar je naar waarheid dat je de wettelijke meerderjarigheid in jouw land hebt bereikt.",
   "@ageGateBody": {
     "description": "Texte UI : ageGateBody"
   },
-  "ageGateEnter": "J'AI 18 ANS OU PLUS — ENTRER",
+  "ageGateEnter": "IK BEN 18 JAAR OF OUDER — DOORGAAN",
   "@ageGateEnter": {
     "description": "Texte UI : ageGateEnter"
   },
-  "ageGateQuit": "Quitter",
+  "ageGateQuit": "Afsluiten",
   "@ageGateQuit": {
     "description": "Texte UI : ageGateQuit"
   },
-  "ageGateLegal": "En cas de fausse déclaration, la responsabilité incombe exclusivement à l'utilisateur.",
+  "ageGateLegal": "Bij een valse verklaring ligt de verantwoordelijkheid uitsluitend bij de gebruiker.",
   "@ageGateLegal": {
     "description": "Texte UI : ageGateLegal"
   },
-  "onboardingSkip": "Passer",
+  "onboardingSkip": "Overslaan",
   "@onboardingSkip": {
     "description": "Texte UI : onboardingSkip"
   },
-  "onboardingStart": "Commencer",
+  "onboardingStart": "Starten",
   "@onboardingStart": {
     "description": "Texte UI : onboardingStart"
   },
-  "onboardingNext": "Suivant",
+  "onboardingNext": "Volgende",
   "@onboardingNext": {
     "description": "Texte UI : onboardingNext"
   },
-  "onboardingYourId": "TON IDENTIFIANT",
+  "onboardingYourId": "JOUW ID",
   "@onboardingYourId": {
     "description": "Texte UI : onboardingYourId"
   },
-  "onboardingActivateChannels": "Activer mes chaînes",
+  "onboardingActivateChannels": "Mijn zenders activeren",
   "@onboardingActivateChannels": {
     "description": "Texte UI : onboardingActivateChannels"
   },
-  "onboardingCopyId": "Copier l'identifiant",
+  "onboardingCopyId": "ID kopiëren",
   "@onboardingCopyId": {
     "description": "Texte UI : onboardingCopyId"
   },
-  "devicePreparing": "Préparation…",
+  "devicePreparing": "Voorbereiden…",
   "@devicePreparing": {
     "description": "Texte UI : devicePreparing"
   },
-  "simpleChooseCountry": "Choisis un pays",
+  "simpleChooseCountry": "Kies een land",
   "@simpleChooseCountry": {
     "description": "Texte UI : simpleChooseCountry"
   },
-  "simpleMyAccount": "Mon compte",
+  "simpleMyAccount": "Mijn account",
   "@simpleMyAccount": {
     "description": "Texte UI : simpleMyAccount"
   },
-  "simpleRecentlyWatched": "Récemment regardé",
+  "simpleRecentlyWatched": "Recent bekeken",
   "@simpleRecentlyWatched": {
     "description": "Texte UI : simpleRecentlyWatched"
   },
-  "simpleMyFavorites": "Mes favoris",
+  "simpleMyFavorites": "Mijn favorieten",
   "@simpleMyFavorites": {
     "description": "Texte UI : simpleMyFavorites"
   },
@@ -1320,39 +1318,39 @@
   "@simpleSport": {
     "description": "Texte UI : simpleSport"
   },
-  "simpleEntertainment": "Divertissement",
+  "simpleEntertainment": "Entertainment",
   "@simpleEntertainment": {
     "description": "Texte UI : simpleEntertainment"
   },
-  "simpleInfo": "Info",
+  "simpleInfo": "Nieuws",
   "@simpleInfo": {
     "description": "Texte UI : simpleInfo"
   },
-  "simpleKids": "Enfants",
+  "simpleKids": "Kids",
   "@simpleKids": {
     "description": "Texte UI : simpleKids"
   },
-  "simpleGeneral": "Général",
+  "simpleGeneral": "Algemeen",
   "@simpleGeneral": {
     "description": "Texte UI : simpleGeneral"
   },
-  "simpleLockedTitle": "Cinéma & Séries",
+  "simpleLockedTitle": "Films & Series",
   "@simpleLockedTitle": {
     "description": "Texte UI : simpleLockedTitle"
   },
-  "simpleLockedHint": "Touche pour déverrouiller (empreinte ou code)",
+  "simpleLockedHint": "Tik om te ontgrendelen (vingerafdruk of code)",
   "@simpleLockedHint": {
     "description": "Texte UI : simpleLockedHint"
   },
-  "simpleUnlockReason": "Déverrouiller Cinéma & Séries",
+  "simpleUnlockReason": "Films & Series ontgrendelen",
   "@simpleUnlockReason": {
     "description": "Texte UI : simpleUnlockReason"
   },
-  "simpleAccessCode": "Code d'accès",
+  "simpleAccessCode": "Toegangscode",
   "@simpleAccessCode": {
     "description": "Texte UI : simpleAccessCode"
   },
-  "buttonAdd": "Ajouter",
+  "buttonAdd": "Toevoegen",
   "@buttonAdd": {
     "description": "Texte UI : buttonAdd"
   },
@@ -1364,55 +1362,55 @@
   "@moviesTabMovies": {
     "description": "Texte UI : moviesTabMovies"
   },
-  "moviesTabDownloads": "Téléchargés",
+  "moviesTabDownloads": "Gedownload",
   "@moviesTabDownloads": {
     "description": "Texte UI : moviesTabDownloads"
   },
-  "moviesReloadTooltip": "Recharger le catalogue",
+  "moviesReloadTooltip": "Catalogus opnieuw laden",
   "@moviesReloadTooltip": {
     "description": "Texte UI : moviesReloadTooltip"
   },
-  "moviesEmptyCatalogue": "Aucun film disponible.\nTon serveur ne propose peut-être pas de VOD, ou tu n'es pas connecté en Xtream.",
+  "moviesEmptyCatalogue": "Geen films beschikbaar.\nJe server biedt misschien geen VOD, of je bent niet via Xtream verbonden.",
   "@moviesEmptyCatalogue": {
     "description": "Texte UI : moviesEmptyCatalogue"
   },
-  "moviesEmptyDownloads": "Aucun téléchargement.\nTélécharge un film depuis l'onglet « Films » pour le regarder hors-ligne.",
+  "moviesEmptyDownloads": "Geen downloads.\nDownload een film via het tabblad 'Films' om hem offline te kijken.",
   "@moviesEmptyDownloads": {
     "description": "Texte UI : moviesEmptyDownloads"
   },
-  "moviesPlayTooltip": "Lire",
+  "moviesPlayTooltip": "Afspelen",
   "@moviesPlayTooltip": {
     "description": "Texte UI : moviesPlayTooltip"
   },
-  "moviesDownloaded": "Téléchargé",
+  "moviesDownloaded": "Gedownload",
   "@moviesDownloaded": {
     "description": "Texte UI : moviesDownloaded"
   },
-  "moviesDownloading": "Téléchargement…",
+  "moviesDownloading": "Downloaden…",
   "@moviesDownloading": {
     "description": "Texte UI : moviesDownloading"
   },
-  "moviesDownload": "Télécharger",
+  "moviesDownload": "Downloaden",
   "@moviesDownload": {
     "description": "Texte UI : moviesDownload"
   },
-  "moviesPlayOfflineTooltip": "Lire hors-ligne",
+  "moviesPlayOfflineTooltip": "Offline afspelen",
   "@moviesPlayOfflineTooltip": {
     "description": "Texte UI : moviesPlayOfflineTooltip"
   },
-  "moviesPauseTooltip": "Pause",
+  "moviesPauseTooltip": "Pauze",
   "@moviesPauseTooltip": {
     "description": "Texte UI : moviesPauseTooltip"
   },
-  "moviesResumeTooltip": "Reprendre",
+  "moviesResumeTooltip": "Hervatten",
   "@moviesResumeTooltip": {
     "description": "Texte UI : moviesResumeTooltip"
   },
-  "moviesDeleteTooltip": "Supprimer",
+  "moviesDeleteTooltip": "Verwijderen",
   "@moviesDeleteTooltip": {
     "description": "Texte UI : moviesDeleteTooltip"
   },
-  "moviesStatusDownloaded": "Téléchargé · {size}",
+  "moviesStatusDownloaded": "Gedownload · {size}",
   "@moviesStatusDownloaded": {
     "description": "Texte UI : moviesStatusDownloaded",
     "placeholders": {
@@ -1421,7 +1419,7 @@
       }
     }
   },
-  "moviesStatusDownloading": "Téléchargement… {size}",
+  "moviesStatusDownloading": "Downloaden… {size}",
   "@moviesStatusDownloading": {
     "description": "Texte UI : moviesStatusDownloading",
     "placeholders": {
@@ -1430,7 +1428,7 @@
       }
     }
   },
-  "moviesStatusPaused": "En pause · {size}",
+  "moviesStatusPaused": "Gepauzeerd · {size}",
   "@moviesStatusPaused": {
     "description": "Texte UI : moviesStatusPaused",
     "placeholders": {
@@ -1439,31 +1437,31 @@
       }
     }
   },
-  "moviesStatusError": "Erreur — appuie pour reprendre",
+  "moviesStatusError": "Fout — tik om te hervatten",
   "@moviesStatusError": {
     "description": "Texte UI : moviesStatusError"
   },
-  "guideTitle": "Guide TV",
+  "guideTitle": "Tv-gids",
   "@guideTitle": {
     "description": "Texte UI : guideTitle"
   },
-  "guideGoToNow": "Aller à maintenant",
+  "guideGoToNow": "Naar nu",
   "@guideGoToNow": {
     "description": "Texte UI : guideGoToNow"
   },
-  "guideNoChannel": "Aucune chaîne",
+  "guideNoChannel": "Geen zenders",
   "@guideNoChannel": {
     "description": "Texte UI : guideNoChannel"
   },
-  "guideEmptyHint": "Ajoute une playlist avec un EPG XMLTV pour voir le guide.",
+  "guideEmptyHint": "Voeg een playlist met een XMLTV-EPG toe om de gids te zien.",
   "@guideEmptyHint": {
     "description": "Texte UI : guideEmptyHint"
   },
-  "guideSchedule": "Horaires",
+  "guideSchedule": "Programmering",
   "@guideSchedule": {
     "description": "Texte UI : guideSchedule"
   },
-  "guideCatchupUnavailable": "Catch-up indisponible pour {channel}",
+  "guideCatchupUnavailable": "Terugkijken niet beschikbaar voor {channel}",
   "@guideCatchupUnavailable": {
     "description": "Texte UI : guideCatchupUnavailable",
     "placeholders": {
@@ -1472,23 +1470,23 @@
       }
     }
   },
-  "programsToday": "Programmes d'aujourd'hui",
+  "programsToday": "Programma's van vandaag",
   "@programsToday": {
     "description": "Texte UI : programsToday"
   },
-  "programsNoneToday": "Pas de programmes pour aujourd'hui",
+  "programsNoneToday": "Geen programma's voor vandaag",
   "@programsNoneToday": {
     "description": "Texte UI : programsNoneToday"
   },
-  "programsNoneHelp": "L'EPG XMLTV de ce fournisseur n'a pas cette chaîne, ou il n'a pas encore été synchronisé.",
+  "programsNoneHelp": "De XMLTV-EPG van deze aanbieder bevat deze zender niet, of is nog niet gesynchroniseerd.",
   "@programsNoneHelp": {
     "description": "Texte UI : programsNoneHelp"
   },
-  "programsCatchupUnavailable": "Catch-up indisponible pour cette chaîne.",
+  "programsCatchupUnavailable": "Terugkijken niet beschikbaar voor deze zender.",
   "@programsCatchupUnavailable": {
     "description": "Texte UI : programsCatchupUnavailable"
   },
-  "programStartsAt": "{title} commence à {time}.",
+  "programStartsAt": "{title} begint om {time}.",
   "@programStartsAt": {
     "description": "Texte UI : programStartsAt",
     "placeholders": {
@@ -1500,95 +1498,95 @@
       }
     }
   },
-  "deviceIdLabel": "IDENTIFIANT APPAREIL",
+  "deviceIdLabel": "APPARAAT-ID",
   "@deviceIdLabel": {
     "description": "Texte UI : deviceIdLabel"
   },
-  "deviceIdCaption": "Identifie ton installation The Few. Garde ce code pour le support technique de l'app. Pour toute question sur les chaînes, contacte ton fournisseur IPTV.",
+  "deviceIdCaption": "Identificeert je The Few-installatie. Bewaar deze code voor de technische support van de app. Voor vragen over zenders neem je contact op met je IPTV-aanbieder.",
   "@deviceIdCaption": {
     "description": "Texte UI : deviceIdCaption"
   },
-  "profileDiscovery": "Découverte",
+  "profileDiscovery": "Ontdekken",
   "@profileDiscovery": {
     "description": "Texte UI : profileDiscovery"
   },
-  "profileTvGuide": "Guide TV",
+  "profileTvGuide": "Tv-gids",
   "@profileTvGuide": {
     "description": "Texte UI : profileTvGuide"
   },
-  "profileTvGuideSub": "Programme en cours et à venir",
+  "profileTvGuideSub": "Nu en straks op tv",
   "@profileTvGuideSub": {
     "description": "Texte UI : profileTvGuideSub"
   },
-  "profileRecordings": "Mes enregistrements",
+  "profileRecordings": "Mijn opnames",
   "@profileRecordings": {
     "description": "Texte UI : profileRecordings"
   },
-  "profileRecordingsSub": "Tes captures de direct",
+  "profileRecordingsSub": "Je live-opnames",
   "@profileRecordingsSub": {
     "description": "Texte UI : profileRecordingsSub"
   },
-  "profileAccount": "Compte",
+  "profileAccount": "Account",
   "@profileAccount": {
     "description": "Texte UI : profileAccount"
   },
-  "profileSettings": "Réglages",
+  "profileSettings": "Instellingen",
   "@profileSettings": {
     "description": "Texte UI : profileSettings"
   },
-  "profileSettingsSub": "Lecture, sécurité, langue, thème",
+  "profileSettingsSub": "Afspelen, beveiliging, taal, thema",
   "@profileSettingsSub": {
     "description": "Texte UI : profileSettingsSub"
   },
-  "profileTheme": "Thème",
+  "profileTheme": "Thema",
   "@profileTheme": {
     "description": "Texte UI : bouton choix du thème de couleur"
   },
-  "profileThemeSub": "Choisis ta couleur",
+  "profileThemeSub": "Kies je kleur",
   "@profileThemeSub": {
     "description": "Texte UI : sous-titre du bouton Thème"
   },
-  "themeChooseTitle": "Choisis ton thème",
+  "themeChooseTitle": "Kies je thema",
   "@themeChooseTitle": {
     "description": "Titre du sélecteur de thème"
   },
-  "themeChooseSub": "La couleur change instantanément dans toute l'app",
+  "themeChooseSub": "De kleur verandert meteen in de hele app",
   "@themeChooseSub": {
     "description": "Sous-titre du sélecteur de thème"
   },
-  "forceUpdateTitle": "Nouvelle version disponible",
+  "forceUpdateTitle": "Nieuwe versie beschikbaar",
   "@forceUpdateTitle": {
     "description": "Titre ecran mise a jour forcee"
   },
-  "forceUpdateBody": "Cette version n'est plus à jour. Télécharge la dernière version pour continuer à utiliser l'application.",
+  "forceUpdateBody": "Deze versie is verouderd. Download de nieuwste versie om de app te blijven gebruiken.",
   "@forceUpdateBody": {
     "description": "Corps ecran mise a jour forcee"
   },
-  "forceUpdateDownloaderHint": "SUR TV / BOX : OUVRE DOWNLOADER ET TAPE CE CODE",
+  "forceUpdateDownloaderHint": "OP TV / BOX: OPEN DOWNLOADER EN TYP DEZE CODE",
   "@forceUpdateDownloaderHint": {
     "description": "Aide code Downloader"
   },
-  "forceUpdateDownloadBtn": "Télécharger maintenant",
+  "forceUpdateDownloadBtn": "Nu downloaden",
   "@forceUpdateDownloadBtn": {
     "description": "Bouton telecharger"
   },
-  "forceUpdateRetry": "J'ai mis à jour — Réessayer",
+  "forceUpdateRetry": "Ik heb geüpdatet — Opnieuw proberen",
   "@forceUpdateRetry": {
     "description": "Bouton reessayer apres MAJ"
   },
-  "profileAbout": "À propos",
+  "profileAbout": "Over",
   "@profileAbout": {
     "description": "Texte UI : profileAbout"
   },
-  "profileAboutSub": "Version, équipe, mentions légales",
+  "profileAboutSub": "Versie, team, juridische informatie",
   "@profileAboutSub": {
     "description": "Texte UI : profileAboutSub"
   },
-  "profilePremiumAccount": "Compte premium",
+  "profilePremiumAccount": "Premium-account",
   "@profilePremiumAccount": {
     "description": "Texte UI : profilePremiumAccount"
   },
-  "profileCastConnected": "Connecté à {device}",
+  "profileCastConnected": "Verbonden met {device}",
   "@profileCastConnected": {
     "description": "Texte UI : profileCastConnected",
     "placeholders": {
@@ -1597,7 +1595,7 @@
       }
     }
   },
-  "profileCastTo": "Diffuser sur un téléviseur",
+  "profileCastTo": "Casten naar een tv",
   "@profileCastTo": {
     "description": "Texte UI : profileCastTo"
   },
@@ -1605,31 +1603,31 @@
   "@profileCast": {
     "description": "Texte UI : profileCast"
   },
-  "profileDeviceFallback": "appareil",
+  "profileDeviceFallback": "apparaat",
   "@profileDeviceFallback": {
     "description": "Texte UI : profileDeviceFallback"
   },
-  "supportHowToReach": "Comment veux-tu nous joindre ?",
+  "supportHowToReach": "Hoe wil je ons bereiken?",
   "@supportHowToReach": {
     "description": "Texte UI : supportHowToReach"
   },
-  "supportPickChannel": "Choisis le canal qui te convient. Notre équipe répond 7j/7.",
+  "supportPickChannel": "Kies het kanaal dat jou het beste past. Ons team antwoordt 7 dagen per week.",
   "@supportPickChannel": {
     "description": "Texte UI : supportPickChannel"
   },
-  "supportInstantMessage": "Message instantané",
+  "supportInstantMessage": "Direct bericht",
   "@supportInstantMessage": {
     "description": "Texte UI : supportInstantMessage"
   },
-  "supportInstantMessageSub": "Conversation écrite · Réponse moyenne 15 min.",
+  "supportInstantMessageSub": "Chatgesprek · Gemiddelde reactietijd 15 min.",
   "@supportInstantMessageSub": {
     "description": "Texte UI : supportInstantMessageSub"
   },
-  "supportPhoneCall": "Appel téléphonique",
+  "supportPhoneCall": "Telefoongesprek",
   "@supportPhoneCall": {
     "description": "Texte UI : supportPhoneCall"
   },
-  "supportPhoneCallSub": "Parle à un conseiller · {number}",
+  "supportPhoneCallSub": "Praat met een medewerker · {number}",
   "@supportPhoneCallSub": {
     "description": "Texte UI : supportPhoneCallSub",
     "placeholders": {
@@ -1638,23 +1636,23 @@
       }
     }
   },
-  "supportMessageError": "Impossible d'ouvrir la messagerie. Essaie l'appel.",
+  "supportMessageError": "Kan de berichten-app niet openen. Probeer te bellen.",
   "@supportMessageError": {
     "description": "Texte UI : supportMessageError"
   },
-  "supportCallError": "Cet appareil ne peut pas appeler. Utilise le message à la place.",
+  "supportCallError": "Dit apparaat kan niet bellen. Stuur in plaats daarvan een bericht.",
   "@supportCallError": {
     "description": "Texte UI : supportCallError"
   },
-  "favoritesEmptyTitle": "Aucun favori pour l'instant",
+  "favoritesEmptyTitle": "Nog geen favorieten",
   "@favoritesEmptyTitle": {
     "description": "Texte UI : favoritesEmptyTitle"
   },
-  "favoritesEmptyHint": "Appuie sur ♥ dans le menu d'une chaîne pour la garder ici.",
+  "favoritesEmptyHint": "Tik op ♥ in het menu van een zender om hem hier te bewaren.",
   "@favoritesEmptyHint": {
     "description": "Texte UI : favoritesEmptyHint"
   },
-  "focusedResultsCount": "{channels} chaînes · {countries} pays",
+  "focusedResultsCount": "{channels} zenders · {countries} landen",
   "@focusedResultsCount": {
     "description": "Texte UI : focusedResultsCount",
     "placeholders": {
@@ -1666,7 +1664,7 @@
       }
     }
   },
-  "searchResultsCount": "{count} résultats pour \"{query}\"",
+  "searchResultsCount": "{count} resultaten voor \"{query}\"",
   "@searchResultsCount": {
     "description": "Texte UI : searchResultsCount",
     "placeholders": {
@@ -1678,107 +1676,107 @@
       }
     }
   },
-  "loginInvalidUrl": "URL invalide. Elle doit commencer par http:// ou https://",
+  "loginInvalidUrl": "Ongeldige URL. Hij moet beginnen met http:// of https://",
   "@loginInvalidUrl": {
     "description": "Texte UI : loginInvalidUrl"
   },
-  "loginInvalidServer": "Serveur invalide. Format : http://serveur.com:8080",
+  "loginInvalidServer": "Ongeldige server. Formaat: http://server.com:8080",
   "@loginInvalidServer": {
     "description": "Texte UI : loginInvalidServer"
   },
-  "loginCredsRequired": "Utilisateur et mot de passe sont obligatoires.",
+  "loginCredsRequired": "Gebruikersnaam en wachtwoord zijn verplicht.",
   "@loginCredsRequired": {
     "description": "Texte UI : loginCredsRequired"
   },
-  "loginServerRequired": "Choisis un serveur.",
+  "loginServerRequired": "Kies een server.",
   "@loginServerRequired": {
     "description": "Texte UI : loginServerRequired"
   },
-  "loginSourceAdded": "Source ajoutée. Tes chaînes arrivent…",
+  "loginSourceAdded": "Bron toegevoegd. Je zenders komen eraan…",
   "@loginSourceAdded": {
     "description": "Texte UI : loginSourceAdded"
   },
-  "loginConnected": "Connecté. Tes chaînes arrivent…",
+  "loginConnected": "Verbonden. Je zenders komen eraan…",
   "@loginConnected": {
     "description": "Texte UI : loginConnected"
   },
-  "loginMySourcePerso": "Ma source perso",
+  "loginMySourcePerso": "Mijn eigen bron",
   "@loginMySourcePerso": {
     "description": "Texte UI : loginMySourcePerso"
   },
-  "loginUrlM3u": "URL M3U",
+  "loginUrlM3u": "M3U-URL",
   "@loginUrlM3u": {
     "description": "Texte UI : loginUrlM3u"
   },
-  "loginServerXtream": "Serveur Xtream",
+  "loginServerXtream": "Xtream-server",
   "@loginServerXtream": {
     "description": "Texte UI : loginServerXtream"
   },
-  "loginUsername": "Utilisateur",
+  "loginUsername": "Gebruikersnaam",
   "@loginUsername": {
     "description": "Texte UI : loginUsername"
   },
-  "loginPassword": "Mot de passe",
+  "loginPassword": "Wachtwoord",
   "@loginPassword": {
     "description": "Texte UI : loginPassword"
   },
-  "loginNameOptional": "Nom (optionnel)",
+  "loginNameOptional": "Naam (optioneel)",
   "@loginNameOptional": {
     "description": "Texte UI : loginNameOptional"
   },
-  "loginNameHint": "Défaut : \"Ma source\"",
+  "loginNameHint": "Standaard: \"Mijn bron\"",
   "@loginNameHint": {
     "description": "Texte UI : loginNameHint"
   },
-  "loginVerifying": "Vérification…",
+  "loginVerifying": "Controleren…",
   "@loginVerifying": {
     "description": "Texte UI : loginVerifying"
   },
-  "loginLoadChannels": "Charger mes chaînes",
+  "loginLoadChannels": "Mijn zenders laden",
   "@loginLoadChannels": {
     "description": "Texte UI : loginLoadChannels"
   },
-  "loginTitle": "Connexion",
+  "loginTitle": "Inloggen",
   "@loginTitle": {
     "description": "Texte UI : loginTitle"
   },
-  "loginXtreamIntro": "Choisis ton serveur puis saisis le code que t'a donné ton revendeur.\nTes chaînes seront chargées en quelques secondes.",
+  "loginXtreamIntro": "Kies je server en vul de code in die je van je reseller hebt gekregen.\nJe zenders worden binnen enkele seconden geladen.",
   "@loginXtreamIntro": {
     "description": "Texte UI : loginXtreamIntro"
   },
-  "loginServer": "Serveur",
+  "loginServer": "Server",
   "@loginServer": {
     "description": "Texte UI : loginServer"
   },
-  "loginConnecting": "Connexion au serveur...",
+  "loginConnecting": "Verbinden met de server...",
   "@loginConnecting": {
     "description": "Texte UI : loginConnecting"
   },
-  "loginConnectLoad": "Se connecter et charger",
+  "loginConnectLoad": "Inloggen en laden",
   "@loginConnectLoad": {
     "description": "Texte UI : loginConnectLoad"
   },
-  "loginLoadingServers": "Chargement des serveurs…",
+  "loginLoadingServers": "Servers laden…",
   "@loginLoadingServers": {
     "description": "Texte UI : loginLoadingServers"
   },
-  "loginServersUnavailable": "Serveurs indisponibles pour le moment.",
+  "loginServersUnavailable": "Servers zijn momenteel niet beschikbaar.",
   "@loginServersUnavailable": {
     "description": "Texte UI : loginServersUnavailable"
   },
-  "loginAddIntro": "Choisis ton serveur, puis saisis le code que t'a donné ton revendeur (utilisateur + mot de passe). On vérifie le code avant de charger tes chaînes.",
+  "loginAddIntro": "Kies je server en vul de code in die je van je reseller hebt gekregen (gebruikersnaam + wachtwoord). We controleren de code voordat we je zenders laden.",
   "@loginAddIntro": {
     "description": "Texte UI : loginAddIntro"
   },
-  "loginUsernameHint": "identifiant",
+  "loginUsernameHint": "gebruikersnaam",
   "@loginUsernameHint": {
     "description": "Texte UI : loginUsernameHint"
   },
-  "loginPasswordHint": "mot de passe",
+  "loginPasswordHint": "wachtwoord",
   "@loginPasswordHint": {
     "description": "Texte UI : loginPasswordHint"
   },
-  "seeAllOf": "Voir tout {title}",
+  "seeAllOf": "Alles van {title}",
   "@seeAllOf": {
     "description": "Texte UI : seeAllOf",
     "placeholders": {
@@ -1787,15 +1785,15 @@
       }
     }
   },
-  "playlistActiveBadge": "Active",
+  "playlistActiveBadge": "Actief",
   "@playlistActiveBadge": {
     "description": "Badge sur la playlist actuellement active"
   },
-  "playlistTapToActivate": "Activer cette playlist",
+  "playlistTapToActivate": "Deze playlist activeren",
   "@playlistTapToActivate": {
     "description": "Action pour activer une playlist"
   },
-  "playlistNowActive": "« {name} » est maintenant la playlist active",
+  "playlistNowActive": "'{name}' is nu de actieve playlist",
   "@playlistNowActive": {
     "description": "Confirmation de bascule de playlist active",
     "placeholders": {
@@ -1804,51 +1802,51 @@
       }
     }
   },
-  "subActiveLifetime": "Abonnement à vie",
+  "subActiveLifetime": "Levenslang abonnement",
   "@subActiveLifetime": {
     "description": "Titre carte abonnement quand le plan est à vie"
   },
-  "activationCheckButton": "Vérifier mon abonnement",
+  "activationCheckButton": "Mijn abonnement controleren",
   "@activationCheckButton": {
     "description": "Bouton pour revérifier l’abonnement et charger la source"
   },
-  "activationChecking": "Vérification en cours…",
+  "activationChecking": "Bezig met controleren…",
   "@activationChecking": {
     "description": "Snackbar pendant la vérification d’abonnement"
   },
-  "activationSuccess": "Abonnement vérifié — tes chaînes sont chargées !",
+  "activationSuccess": "Abonnement gecontroleerd — je zenders zijn geladen!",
   "@activationSuccess": {
     "description": "Snackbar succès vérification (chaînes chargées)"
   },
-  "activationNoSourceYet": "Pas encore de chaînes. Si ton revendeur vient d'activer, patiente un instant puis réessaie, ou redémarre l'app.",
+  "activationNoSourceYet": "Nog geen zenders. Heeft je reseller net geactiveerd? Wacht dan even en probeer opnieuw, of herstart de app.",
   "@activationNoSourceYet": {
     "description": "Snackbar : aucune source encore assignée"
   },
-  "activationActiveNoSource": "Abonnement actif ✅ mais aucune playlist assignée à ta MAC. Ton revendeur doit ajouter une Source (Xtream/M3U).",
+  "activationActiveNoSource": "Abonnement actief ✅ maar er is geen playlist aan je MAC gekoppeld. Je reseller moet een bron (Xtream/M3U) toevoegen.",
   "@activationActiveNoSource": {
     "description": "Message de diagnostic activation"
   },
-  "activationDeviceKnownNoSub": "Appareil reconnu par le serveur, en attente d'activation par ton revendeur.",
+  "activationDeviceKnownNoSub": "Apparaat herkend door de server, wacht op activering door je reseller.",
   "@activationDeviceKnownNoSub": {
     "description": "Message de diagnostic activation"
   },
-  "activationDeviceUnknown": "Appareil pas encore vu par le serveur — vérifie ta connexion internet.",
+  "activationDeviceUnknown": "Apparaat nog niet gezien door de server — controleer je internetverbinding.",
   "@activationDeviceUnknown": {
     "description": "Message de diagnostic activation"
   },
-  "emptyPremiumTitle": "Compte premium",
+  "emptyPremiumTitle": "Premium-account",
   "@emptyPremiumTitle": {
     "description": "Ecran vide quand abonnement actif"
   },
-  "emptyPremiumWaiting": "Abonnement actif — en attente de tes chaînes. Ton revendeur doit assigner ta source (Xtream/M3U).",
+  "emptyPremiumWaiting": "Abonnement actief — wachten op je zenders. Je reseller moet je bron (Xtream/M3U) toewijzen.",
   "@emptyPremiumWaiting": {
     "description": "Ecran vide quand abonnement actif"
   },
-  "activationSourceFailed": "Source reçue mais 0 chaîne chargée. Vérifie l'URL / les identifiants du provider (URL M3U complète avec get.php, ou utilise le mode Xtream).",
+  "activationSourceFailed": "Bron ontvangen, maar 0 zenders geladen. Controleer de URL / inloggegevens van de aanbieder (volledige M3U-URL met get.php, of gebruik de Xtream-modus).",
   "@activationSourceFailed": {
     "description": "Diagnostic : source assignee mais 0 chaine"
   },
-  "catFilterAll": "Tout",
+  "catFilterAll": "Alles",
   "@catFilterAll": {
     "description": "Filtre catégories : tout"
   },
@@ -1856,67 +1854,67 @@
   "@catFilterTv": {
     "description": "Filtre catégories : direct/TV"
   },
-  "catFilterAdult": "Adulte",
+  "catFilterAdult": "Volwassenen",
   "@catFilterAdult": {
     "description": "Filtre catégories : adulte"
   },
-  "catNoneInPlaylist": "Aucune catégorie dans ta playlist.",
+  "catNoneInPlaylist": "Geen categorieën in je playlist.",
   "@catNoneInPlaylist": {
     "description": "Aucune catégorie dans la playlist"
   },
-  "catEmptyShelf": "Rien dans ce rayon.",
+  "catEmptyShelf": "Niets in deze rij.",
   "@catEmptyShelf": {
     "description": "Rien dans ce rayon"
   },
-  "recordingOpenWith": "Ouvrir avec…",
+  "recordingOpenWith": "Openen met…",
   "@recordingOpenWith": {
     "description": "Enregistrements : ouvrir avec"
   },
-  "recordingShare": "Partager",
+  "recordingShare": "Delen",
   "@recordingShare": {
     "description": "Enregistrements : partager"
   },
-  "recordingNoPlayer": "Aucun lecteur compatible. Installe VLC pour lire ce fichier.",
+  "recordingNoPlayer": "Geen geschikte speler. Installeer VLC om dit bestand af te spelen.",
   "@recordingNoPlayer": {
     "description": "Enregistrements : aucun lecteur compatible"
   },
-  "activationRestartTitle": "Activation réussie",
+  "activationRestartTitle": "Activering gelukt",
   "@activationRestartTitle": {
     "description": "Splash activation : titre"
   },
-  "activationRestartSubtitle": "Redémarrage en cours…",
+  "activationRestartSubtitle": "Opnieuw opstarten…",
   "@activationRestartSubtitle": {
     "description": "Splash activation : sous-titre"
   },
-  "orSeparator": "ou",
+  "orSeparator": "of",
   "@orSeparator": {
     "description": "Séparateur « ou »"
   },
-  "xtreamHaveCode": "J'ai un code Xtream",
+  "xtreamHaveCode": "Ik heb een Xtream-code",
   "@xtreamHaveCode": {
     "description": "Bouton : j’ai un code Xtream"
   },
-  "catFilterMovies": "Cinéma",
-  "catFilterSeries": "Série",
+  "catFilterMovies": "Films",
+  "catFilterSeries": "Series",
   "@catFilterMovies": {
     "description": "Filtre catégories : cinéma"
   },
   "@catFilterSeries": {
     "description": "Filtre catégories : série"
   },
-  "pricingOffersTitle": "Nos offres",
+  "pricingOffersTitle": "Onze aanbiedingen",
   "@pricingOffersTitle": {
     "description": "Titre bloc offres"
   },
-  "pricingLifetime": "À vie",
+  "pricingLifetime": "Levenslang",
   "@pricingLifetime": {
     "description": "Offre à vie"
   },
-  "pricingYearly": "1 an",
+  "pricingYearly": "1 jaar",
   "@pricingYearly": {
     "description": "Offre 1 an"
   },
-  "pricingTrialDays": "Essai gratuit {days} jours",
+  "pricingTrialDays": "{days} dagen gratis proberen",
   "@pricingTrialDays": {
     "description": "Essai gratuit en jours",
     "placeholders": {
@@ -1925,52 +1923,52 @@
       }
     }
   },
-  "simpleSwitchSource": "Changer de source",
+  "simpleSwitchSource": "Andere bron kiezen",
   "@simpleSwitchSource": {
     "description": "Bouton : changer de source (trio)"
   },
-  "homeRecentlyWatched": "Récemment regardées",
+  "homeRecentlyWatched": "Recent bekeken",
   "@homeRecentlyWatched": {
     "description": "Titre du rail des dernières chaînes regardées"
   },
-  "tvActivationTagline": "Accès complet, à vie. Un seul paiement.",
-  "tvLifetime": "À vie",
-  "tvActivationCodeLabel": "Ton code d'activation",
-  "tvActivationCodeHelp": "Donne ce code à ton revendeur pour activer. Il reste le même, même après une réinstallation.",
-  "tvPaidCheck": "J'ai payé — Vérifier",
-  "tvChecking": "Vérification…",
-  "tvAddOwnList": "J'ajoute ma propre liste (Xtream)",
-  "tvActivationFooter": "Paiement vérifié · Activation instantanée",
-  "tvScanToActivate": "Scanne-moi pour activer",
-  "tvScanHelp": "Ouvre l'appareil photo de ton téléphone et vise ce code. Ça ouvre WhatsApp avec ton code déjà prêt.",
-  "tvNavLive": "Direct",
+  "tvActivationTagline": "Volledige toegang, levenslang. Eén betaling.",
+  "tvLifetime": "Levenslang",
+  "tvActivationCodeLabel": "Je activeringscode",
+  "tvActivationCodeHelp": "Geef deze code aan je reseller om te activeren. Hij blijft hetzelfde, ook na een herinstallatie.",
+  "tvPaidCheck": "Ik heb betaald — Controleren",
+  "tvChecking": "Controleren…",
+  "tvAddOwnList": "Ik voeg mijn eigen lijst toe (Xtream)",
+  "tvActivationFooter": "Betaling gecontroleerd · Directe activering",
+  "tvScanToActivate": "Scan mij om te activeren",
+  "tvScanHelp": "Open de camera van je telefoon en richt op deze code. WhatsApp opent met je code al ingevuld.",
+  "tvNavLive": "Live",
   "tvNavFilms": "Films",
-  "tvNavSeries": "Séries",
-  "tvNavGuide": "Guide",
-  "tvNavSearch": "Recherche",
-  "tvNavSettings": "Réglages",
-  "tvComingSoon": "Bientôt disponible. Cette section arrive très vite.",
-  "tvEpgNow": "Maintenant",
+  "tvNavSeries": "Series",
+  "tvNavGuide": "Gids",
+  "tvNavSearch": "Zoeken",
+  "tvNavSettings": "Instellingen",
+  "tvComingSoon": "Binnenkort beschikbaar. Deze sectie komt er heel snel aan.",
+  "tvEpgNow": "Nu",
   "@tvEpgNow": {
     "description": "Étiquette du programme en cours (aperçu Direct)"
   },
-  "tvEpgNext": "À suivre",
+  "tvEpgNext": "Hierna",
   "@tvEpgNext": {
     "description": "Étiquette du programme suivant (aperçu Direct)"
   },
-  "tvHello": "Bonjour",
-  "tvNoChannels": "Aucune chaîne pour l'instant",
-  "tvNoChannelsHelp": "Active cet appareil dans ton panel, puis pousse-lui une source. Les chaînes apparaîtront ici automatiquement.",
-  "tvContinueWatching": "CONTINUER À REGARDER",
-  "tvNoChannelInCategory": "Aucune chaîne dans cette catégorie.",
-  "tvOthers": "Autres",
-  "tvSearchHint": "Tape pour rechercher…",
-  "tvNoResult": "Aucun résultat.",
-  "tvDeviceAddress": "Adresse de cet appareil (MAC)",
-  "tvDeviceAddressHelp": "Donne cette adresse à ton revendeur pour activer Zuno.",
-  "tvStatus": "Statut",
-  "tvStatusPaid": "Abonnement actif",
-  "tvStatusTrial": "Essai — {days} jour(s) restants",
+  "tvHello": "Hallo",
+  "tvNoChannels": "Nog geen zenders",
+  "tvNoChannelsHelp": "Activeer dit apparaat in je panel en stuur er een bron naartoe. De zenders verschijnen hier automatisch.",
+  "tvContinueWatching": "VERDER KIJKEN",
+  "tvNoChannelInCategory": "Geen zenders in deze categorie.",
+  "tvOthers": "Overig",
+  "tvSearchHint": "Typ om te zoeken…",
+  "tvNoResult": "Geen resultaten.",
+  "tvDeviceAddress": "Adres van dit apparaat (MAC)",
+  "tvDeviceAddressHelp": "Geef dit adres aan je reseller om Zuno te activeren.",
+  "tvStatus": "Status",
+  "tvStatusPaid": "Abonnement actief",
+  "tvStatusTrial": "Proefperiode — nog {days} dag(en)",
   "@tvStatusTrial": {
     "placeholders": {
       "days": {
@@ -1978,158 +1976,158 @@
       }
     }
   },
-  "tvStatusTrialExpired": "Essai terminé — à activer",
-  "tvStatusFrozen": "Compte gelé",
-  "tvStatusBanned": "Compte banni",
-  "tvStatusUnknown": "Non activé",
-  "tvRefreshStatus": "Rafraîchir le statut",
-  "tvLiveBadge": "DIRECT",
-  "tvZapHint": "Haut/Bas pour zapper",
-  "tvAddListTitle": "Ajouter ma liste",
-  "tvAddListSubtitle": "Code Xtream — apporte ta propre playlist.",
-  "tvFieldServer": "Serveur",
-  "tvFieldUser": "Identifiant",
-  "tvFieldPass": "Mot de passe",
-  "tvAddListError": "Remplis le serveur, l'identifiant et le mot de passe.",
-  "tvConnectError": "Connexion impossible. Vérifie les infos.",
-  "tvConnecting": "Connexion…",
-  "tvAddListValidate": "Valider et charger ma liste",
-  "tvSearchingChannels": "Recherche de tes chaînes…",
-  "tvRetry": "Réessayer",
-  "tvSourceInvalid": "Abonnement reçu mais refusé — vérifie les identifiants dans le panel.",
-  "tvQuitTitle": "Quitter Zuno ?",
-  "tvQuitMessage": "Redémarre pour rafraîchir tes chaînes, ou quitte l'application.",
-  "tvRestart": "Redémarrer",
-  "tvQuit": "Quitter",
-  "tvStay": "Continuer",
-  "tvChooseServer": "Choisis ton serveur",
-  "tvManualServer": "URL manuelle",
-  "tvKeyboardHint": "Astuce : tu peux taper avec le clavier de l'appli télécommande de ton téléphone (copier-coller possible).",
-  "tvAddM3uTitle": "Ajouter une liste M3U",
-  "tvAddM3uSubtitle": "Colle l'URL de ton fichier .m3u (et l'EPG si tu en as une).",
-  "tvFieldNameOptional": "Nom (optionnel)",
-  "tvMyListHint": "Ma liste",
-  "tvFieldM3uUrl": "URL M3U",
-  "tvFieldEpgUrlOptional": "URL EPG (optionnel)",
-  "tvAddM3uBusy": "Ajout…",
-  "tvAddM3uValidate": "Ajouter la liste",
-  "tvAddM3uInvalidUrl": "Entre une URL M3U valide (http…).",
-  "tvAddM3uFailed": "Échec : liste injoignable ou vide.",
-  "tvMyM3uList": "Ma liste M3U",
-  "tvBlackBoxTitle": "Boîte noire",
-  "tvBlackBoxSubtitle": "Journal technique de l'application (v{version}). En cas de fermeture inattendue, la raison est ici.",
+  "tvStatusTrialExpired": "Proefperiode voorbij — activeren",
+  "tvStatusFrozen": "Account bevroren",
+  "tvStatusBanned": "Account geblokkeerd",
+  "tvStatusUnknown": "Niet geactiveerd",
+  "tvRefreshStatus": "Status vernieuwen",
+  "tvLiveBadge": "LIVE",
+  "tvZapHint": "Omhoog/Omlaag om te zappen",
+  "tvAddListTitle": "Mijn lijst toevoegen",
+  "tvAddListSubtitle": "Xtream-code — gebruik je eigen playlist.",
+  "tvFieldServer": "Server",
+  "tvFieldUser": "Gebruikersnaam",
+  "tvFieldPass": "Wachtwoord",
+  "tvAddListError": "Vul de server, gebruikersnaam en het wachtwoord in.",
+  "tvConnectError": "Verbinden mislukt. Controleer de gegevens.",
+  "tvConnecting": "Verbinden…",
+  "tvAddListValidate": "Bevestigen en mijn lijst laden",
+  "tvSearchingChannels": "Je zenders zoeken…",
+  "tvRetry": "Opnieuw proberen",
+  "tvSourceInvalid": "Abonnement ontvangen maar geweigerd — controleer de inloggegevens in het panel.",
+  "tvQuitTitle": "Zuno afsluiten?",
+  "tvQuitMessage": "Herstart om je zenders te vernieuwen, of sluit de app af.",
+  "tvRestart": "Herstarten",
+  "tvQuit": "Afsluiten",
+  "tvStay": "Doorgaan",
+  "tvChooseServer": "Kies je server",
+  "tvManualServer": "Handmatige URL",
+  "tvKeyboardHint": "Tip: je kunt typen met het toetsenbord van de afstandsbedienings-app op je telefoon (kopiëren en plakken kan ook).",
+  "tvAddM3uTitle": "M3U-lijst toevoegen",
+  "tvAddM3uSubtitle": "Plak de URL van je .m3u-bestand (en de EPG als je die hebt).",
+  "tvFieldNameOptional": "Naam (optioneel)",
+  "tvMyListHint": "Mijn lijst",
+  "tvFieldM3uUrl": "M3U-URL",
+  "tvFieldEpgUrlOptional": "EPG-URL (optioneel)",
+  "tvAddM3uBusy": "Toevoegen…",
+  "tvAddM3uValidate": "Lijst toevoegen",
+  "tvAddM3uInvalidUrl": "Voer een geldige M3U-URL in (http…).",
+  "tvAddM3uFailed": "Mislukt: lijst onbereikbaar of leeg.",
+  "tvMyM3uList": "Mijn M3U-lijst",
+  "tvBlackBoxTitle": "Zwarte doos",
+  "tvBlackBoxSubtitle": "Technisch logboek van de app (v{version}). Bij een onverwachte afsluiting staat de reden hier.",
   "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
-  "tvBlackBoxFirstRun": "Premier lancement : aucune session précédente.",
-  "tvBlackBoxCleanExit": "Dernière session terminée normalement.",
-  "tvBlackBoxBrutal": "FERMETURE BRUTALE · {reason}",
+  "tvBlackBoxFirstRun": "Eerste start: geen vorige sessie.",
+  "tvBlackBoxCleanExit": "Laatste sessie normaal beëindigd.",
+  "tvBlackBoxBrutal": "ONVERWACHTE AFSLUITING · {reason}",
   "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
-  "tvBlackBoxUnknownReason": "raison inconnue (Android < 11)",
-  "tvBlackBoxMemory": "mémoire {mb} Mo",
+  "tvBlackBoxUnknownReason": "onbekende reden (Android < 11)",
+  "tvBlackBoxMemory": "geheugen {mb} MB",
   "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
-  "tvBlackBoxWhen": "Quand : {when}",
+  "tvBlackBoxWhen": "Wanneer: {when}",
   "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
-  "tvBlackBoxLastAction": "Dernière action : {action}",
+  "tvBlackBoxLastAction": "Laatste actie: {action}",
   "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
-  "tvBlackBoxDetail": "Détail Android : {detail}",
+  "tvBlackBoxDetail": "Android-detail: {detail}",
   "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
-  "tvRefresh": "Actualiser",
-  "tvCopy": "Copier",
-  "tvCopied": "Copié",
-  "tvClear": "Effacer",
-  "tvReading": "Lecture…",
-  "tvBlackBoxHelp": "HAUT/BAS : défiler · CH+/CH− : page · Copier = presse-papiers (colle-le dans WhatsApp au support).",
-  "tvNavServer": "Serveur",
-  "tvLegalTitle": "Mentions légales & Conditions",
-  "tvResumeLabel": "REPRENDRE",
-  "tvNowPlayingPrefix": "EN CE MOMENT · {title}",
+  "tvRefresh": "Vernieuwen",
+  "tvCopy": "Kopiëren",
+  "tvCopied": "Gekopieerd",
+  "tvClear": "Wissen",
+  "tvReading": "Lezen…",
+  "tvBlackBoxHelp": "OMHOOG/OMLAAG: scrollen · CH+/CH−: pagina · Kopiëren = klembord (plak het in WhatsApp naar de support).",
+  "tvNavServer": "Server",
+  "tvLegalTitle": "Juridische informatie & Voorwaarden",
+  "tvResumeLabel": "VERDER KIJKEN",
+  "tvNowPlayingPrefix": "NU BEZIG · {title}",
   "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
-  "tvLiveBadge": "EN DIRECT",
-  "tvPinUpdated": "Code parental mis à jour ✔",
-  "tvParentalTitle": "Contrôle parental",
-  "tvKidsMode": "Mode Enfants",
-  "tvParentalCode": "Code parental",
-  "tvCustomPinInPlace": "Un code personnalisé est en place.",
-  "tvChangePin": "Changer le code PIN",
-  "tvPinSubtitle": "Code parental à 4 chiffres",
-  "tvNewPin": "Nouveau code",
-  "tvNewPinSubtitle": "Choisis 4 chiffres, puis confirme",
-  "tvPinWrong": "Code incorrect, réessaie.",
-  "tvPinMismatch": "Les deux codes ne correspondent pas.",
-  "tvPlayerFatalHint": "OK : Réessayer   ·   Retour : Quitter",
+  "tvLiveBadge": "LIVE",
+  "tvPinUpdated": "Ouderlijke code bijgewerkt ✔",
+  "tvParentalTitle": "Ouderlijk toezicht",
+  "tvKidsMode": "Kids-modus",
+  "tvParentalCode": "Ouderlijke code",
+  "tvCustomPinInPlace": "Er is een eigen code ingesteld.",
+  "tvChangePin": "PIN-code wijzigen",
+  "tvPinSubtitle": "Ouderlijke code van 4 cijfers",
+  "tvNewPin": "Nieuwe code",
+  "tvNewPinSubtitle": "Kies 4 cijfers en bevestig",
+  "tvPinWrong": "Onjuiste code, probeer opnieuw.",
+  "tvPinMismatch": "De twee codes komen niet overeen.",
+  "tvPlayerFatalHint": "OK: Opnieuw proberen   ·   Terug: Afsluiten",
   "tvRec": "REC",
   "tvStop": "Stop",
-  "tvGuideBtn": "Guide",
-  "tvFavoriteBtn": "Favori",
-  "tvPlaybackFinished": "Lecture terminée",
-  "tvPlaybackFinishedBody": "Appuie sur Retour pour revenir à tes enregistrements.",
-  "tvNoRecordings": "Aucun enregistrement",
-  "tvNoRecordingsBody": "Tes enregistrements apparaîtront ici. Pendant la lecture d'une chaîne, appuie sur le bouton REC pour enregistrer.",
-  "tvMyRecordings": "Mes enregistrements",
-  "tvDeleteQuestion": "Supprimer ?",
-  "tvDeleteRecordingConfirm": "Supprimer définitivement « {name} » ?",
+  "tvGuideBtn": "Gids",
+  "tvFavoriteBtn": "Favoriet",
+  "tvPlaybackFinished": "Afspelen voltooid",
+  "tvPlaybackFinishedBody": "Druk op Terug om naar je opnames te gaan.",
+  "tvNoRecordings": "Geen opnames",
+  "tvNoRecordingsBody": "Je opnames verschijnen hier. Druk tijdens het kijken van een zender op de REC-knop om op te nemen.",
+  "tvMyRecordings": "Mijn opnames",
+  "tvDeleteQuestion": "Verwijderen?",
+  "tvDeleteRecordingConfirm": "'{name}' definitief verwijderen?",
   "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
-  "tvCancel": "Annuler",
-  "tvDelete": "Supprimer",
-  "tvSettingsSources": "Mes sources (ajouter / activer / supprimer)",
-  "tvSettingsParental": "Contrôle parental (Mode Enfants + code PIN)",
-  "tvSettingsBlackBox": "Boîte noire (journal technique)",
-  "tvSettingsLegal": "Mentions légales & Conditions d'utilisation",
-  "tvUpdateChecking": "Mise à jour : vérification…",
-  "tvUpdateUpToDate": "Mise à jour : à jour (version {version}) — OK pour revérifier",
+  "tvCancel": "Annuleren",
+  "tvDelete": "Verwijderen",
+  "tvSettingsSources": "Mijn bronnen (toevoegen / activeren / verwijderen)",
+  "tvSettingsParental": "Ouderlijk toezicht (Kids-modus + PIN-code)",
+  "tvSettingsBlackBox": "Zwarte doos (technisch logboek)",
+  "tvSettingsLegal": "Juridische informatie & Gebruiksvoorwaarden",
+  "tvUpdateChecking": "Update: controleren…",
+  "tvUpdateUpToDate": "Update: up-to-date (versie {version}) — OK om opnieuw te controleren",
   "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
-  "tvUpdateUpToDateNoVersion": "Mise à jour : à jour — OK pour revérifier",
-  "tvUpdateAvailable": "Nouvelle version {version} disponible — OK pour installer",
+  "tvUpdateUpToDateNoVersion": "Update: up-to-date — OK om opnieuw te controleren",
+  "tvUpdateAvailable": "Nieuwe versie {version} beschikbaar — OK om te installeren",
   "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
-  "tvUpdateDownloading": "Téléchargement de la mise à jour… {pct} %",
+  "tvUpdateDownloading": "Update downloaden… {pct} %",
   "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
-  "tvUpdateFailed": "Mise à jour : échec (réseau ou installateur) — OK pour réessayer",
-  "tvMySources": "Mes sources",
-  "tvAddXtream": "Ajouter Xtream",
-  "tvAddM3u": "Ajouter M3U",
-  "tvDeleteSourceConfirm": "Supprimer la source « {name} » ?",
+  "tvUpdateFailed": "Update: mislukt (netwerk of installatie) — OK om opnieuw te proberen",
+  "tvMySources": "Mijn bronnen",
+  "tvAddXtream": "Xtream toevoegen",
+  "tvAddM3u": "M3U toevoegen",
+  "tvDeleteSourceConfirm": "Bron '{name}' verwijderen?",
   "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
-  "tvActivate": "Activer",
-  "tvMyTeams": "Mes équipes",
-  "tvAdd": "Ajouter",
-  "tvPickTeamsTitle": "Choisis tes équipes préférées",
-  "tvPickTeamsBody": "Tu verras leurs scores et leurs prochains matchs, un bandeau d'actu qui défile, et une alarme ~1 h avant chaque match.",
-  "tvPickMyTeam": "Choisir mon équipe",
-  "tvLastMatch": "Dernier match",
-  "tvNextMatch": "Prochain match",
-  "tvNewsTicker": "ACTU",
-  "tvNoData": "Aucune donnée",
-  "tvNoTeamFound": "Aucune équipe trouvée",
-  "tvMyTeam": "Mon équipe",
-  "tvImpConnecting": "Connexion au serveur…",
-  "tvImpCategories": "Lecture des catégories…",
-  "tvImpDownloading": "Téléchargement… {mb} Mo",
+  "tvActivate": "Activeren",
+  "tvMyTeams": "Mijn teams",
+  "tvAdd": "Toevoegen",
+  "tvPickTeamsTitle": "Kies je favoriete teams",
+  "tvPickTeamsBody": "Je ziet hun scores en volgende wedstrijden, een lopende nieuwsbalk en een alarm ~1 uur voor elke wedstrijd.",
+  "tvPickMyTeam": "Mijn team kiezen",
+  "tvLastMatch": "Laatste wedstrijd",
+  "tvNextMatch": "Volgende wedstrijd",
+  "tvNewsTicker": "NIEUWS",
+  "tvNoData": "Geen gegevens",
+  "tvNoTeamFound": "Geen team gevonden",
+  "tvMyTeam": "Mijn team",
+  "tvImpConnecting": "Verbinden met de server…",
+  "tvImpCategories": "Categorieën lezen…",
+  "tvImpDownloading": "Downloaden… {mb} MB",
   "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
-  "tvImpDecoding": "Analyse de {mb} Mo…",
+  "tvImpDecoding": "{mb} MB verwerken…",
   "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
-  "tvImpCategory": "Catégorie {i}/{total} · {found} chaînes trouvées",
+  "tvImpCategory": "Categorie {i}/{total} · {found} zenders gevonden",
   "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
-  "tvImpFound": "{count} chaînes trouvées",
+  "tvImpFound": "{count} zenders gevonden",
   "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
-  "tvImpSaving": "Enregistrement {done} / {total} chaînes",
+  "tvImpSaving": "Opslaan {done} / {total} zenders",
   "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
-  "tvImpDone": "{count} chaînes prêtes",
+  "tvImpDone": "{count} zenders klaar",
   "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
-  "tvLanguage": "Langue",
-  "tvLanguageAuto": "Automatique (langue de la TV)",
-  "tvSettingsLanguage": "Langue : {value}",
+  "tvLanguage": "Taal",
+  "tvLanguageAuto": "Automatisch (taal van de tv)",
+  "tvSettingsLanguage": "Taal: {value}",
   "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
-  "tvEnterParentalCode": "Entre le code parental",
-  "tvCurrentCode": "Code actuel",
-  "tvConfirmCode": "Confirme le code",
-  "tvRecordingNotFound": "Enregistrement introuvable",
-  "tvPlaybackImpossible": "Lecture impossible",
-  "tvRecordingNotFoundBody": "Le fichier de cet enregistrement est introuvable ou vide.",
-  "tvPlaybackImpossibleBody": "Ce fichier n'a pas pu être décodé.",
-  "tvRecordingStarted": "Enregistrement en cours…",
-  "tvRecordingError": "Erreur enregistrement",
-  "tvRecordingSaved": "Enregistrement sauvegardé ({size})",
+  "tvEnterParentalCode": "Voer de oudercode in",
+  "tvCurrentCode": "Huidige code",
+  "tvConfirmCode": "Bevestig de code",
+  "tvRecordingNotFound": "Opname niet gevonden",
+  "tvPlaybackImpossible": "Kan niet afspelen",
+  "tvRecordingNotFoundBody": "Het bestand van deze opname ontbreekt of is leeg.",
+  "tvPlaybackImpossibleBody": "Dit bestand kon niet worden gedecodeerd.",
+  "tvRecordingStarted": "Bezig met opnemen…",
+  "tvRecordingError": "Opnamefout",
+  "tvRecordingSaved": "Opname opgeslagen ({size})",
   "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
-  "tvRecordingEmpty": "Enregistrement vide",
-  "tvRemovedFromFavorites": "Retiré des favoris",
-  "tvAddedToFavorites": "Ajouté aux favoris ❤"
+  "tvRecordingEmpty": "Lege opname",
+  "tvRemovedFromFavorites": "Verwijderd uit favorieten",
+  "tvAddedToFavorites": "Toegevoegd aan favorieten ❤"
 }

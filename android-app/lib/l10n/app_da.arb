@@ -811,5 +811,19 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tvEnterParentalCode": "Indtast forældrekoden",
+  "tvCurrentCode": "Nuværende kode",
+  "tvConfirmCode": "Bekræft koden",
+  "tvRecordingNotFound": "Optagelse ikke fundet",
+  "tvPlaybackImpossible": "Kan ikke afspille",
+  "tvRecordingNotFoundBody": "Filen til denne optagelse mangler eller er tom.",
+  "tvPlaybackImpossibleBody": "Denne fil kunne ikke afkodes.",
+  "tvRecordingStarted": "Optager…",
+  "tvRecordingError": "Optagefejl",
+  "tvRecordingSaved": "Optagelse gemt ({size})",
+  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "tvRecordingEmpty": "Tom optagelse",
+  "tvRemovedFromFavorites": "Fjernet fra favoritter",
+  "tvAddedToFavorites": "Tilføjet til favoritter ❤"
 }

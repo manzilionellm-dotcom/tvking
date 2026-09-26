@@ -1,0 +1,2133 @@
+{
+  "@@locale": "ru",
+  "appName": "The Few",
+  "@appName": {
+    "description": "Nom de la marque — ne pas traduire."
+  },
+  "appTagline": "Кино без границ",
+  "@appTagline": {
+    "description": "Phrase signature affichée sous le logo."
+  },
+  "navHome": "Главная",
+  "navLive": "Эфир",
+  "navSearch": "Поиск",
+  "navAi": "ИИ",
+  "navFavorites": "Избранное",
+  "navProfile": "Профиль",
+  "sectionResume": "Продолжить",
+  "sectionFavorites": "Избранное",
+  "sectionSportsLive": "Спорт в прямом эфире",
+  "sectionLiveNow": "Сейчас в эфире",
+  "sectionMovies": "Фильмы",
+  "sectionSeries": "Сериалы",
+  "sectionKids": "Детям",
+  "sectionNews": "Новости",
+  "sectionMusic": "Музыка",
+  "sectionDocs": "Документальные",
+  "sectionDiscover": "Открой для себя",
+  "sectionLiveOnFavorites": "Сейчас в эфире в твоём избранном",
+  "sectionTonight": "Что посмотреть вечером",
+  "sectionResumeWhereYouLeftOff": "Продолжи с того места, где остановился",
+  "channelCount": "{count, plural, =0{Нет каналов} one{{count} канал} few{{count} канала} many{{count} каналов} other{{count} канала}}",
+  "@channelCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "buttonContinue": "Продолжить",
+  "buttonNext": "Далее",
+  "buttonSkip": "Пропустить",
+  "buttonStart": "Начать",
+  "buttonOk": "OK",
+  "buttonCancel": "Отмена",
+  "buttonSave": "Сохранить",
+  "buttonDelete": "Удалить",
+  "buttonRetry": "Повторить",
+  "buttonResume": "Продолжить",
+  "buttonWatch": "Смотреть",
+  "buttonSeeAll": "Показать все",
+  "buttonSyncNow": "Синхронизировать",
+  "playerPause": "Пауза",
+  "playerPlay": "Смотреть",
+  "playerRec": "REC",
+  "playerStop": "СТОП",
+  "playerAudioOnly": "Только звук",
+  "playerVideo": "Видео",
+  "playerUpNextIn": "Далее через {seconds} с",
+  "@playerUpNextIn": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "playerUpNextCancel": "Отмена",
+  "playerUpNextPlay": "Смотреть",
+  "playerTracks": "Дорожки",
+  "playerSpeed": "Скорость",
+  "playerRatio": "Формат",
+  "playerSettings": "Настройки",
+  "playerRecording": "Идёт запись",
+  "castIdle": "Транслировать на ТВ",
+  "castSearching": "Поиск в твоей сети Wi-Fi…",
+  "castDevicesHint": "DLNA · Roku · веб-браузер.",
+  "castSendTo": "Отправить на…",
+  "castConnected": "Трансляция на",
+  "castStop": "Остановить",
+  "castViaBrowser": "Трансляция через браузер",
+  "castViaBrowserSubtitle": "Работает на ЛЮБОМ телевизоре с веб-браузером. Отсканируй QR-код на ТВ.",
+  "settingsTitle": "Настройки",
+  "settingsAppearance": "Оформление",
+  "settingsLanguage": "Язык",
+  "settingsLanguageSystem": "Системный",
+  "settingsPlayer": "Видеоплеер",
+  "settingsPlaylists": "Плейлисты",
+  "settingsRecordings": "Записи",
+  "settingsStorage": "Хранилище",
+  "settingsApp": "Приложение",
+  "settingsAbout": "О приложении",
+  "settingsProvisioning": "Удалённая настройка",
+  "settingsClearHistory": "Очистить историю просмотров",
+  "themeCinema": "Кинозал",
+  "themeCinemaSubtitle": "Глубокий чёрный",
+  "themeDaylight": "Дневная",
+  "themeDaylightSubtitle": "Дневной свет",
+  "themeAuto": "Авто",
+  "themeAutoSubtitle": "Как в системе",
+  "deviceQuestion": "На чём ты смотришь?",
+  "deviceHelp": "Мы подстроим интерфейс под твоё устройство. Выбор можно изменить в Настройках.",
+  "devicePhone": "Телефон",
+  "devicePhoneSubtitle": "Смартфон, планшет",
+  "devicePhoneDesc": "Компактный сенсорный интерфейс. Управление пальцем, мини-плеер и плавный полноэкранный режим.",
+  "deviceTv": "Телевизор",
+  "deviceTvSubtitle": "Android TV, Fire TV, Google TV",
+  "deviceTvDesc": "Крупный интерфейс для пульта. Фокус виден с 3 метров, кинематографичные размеры, горячие клавиши D-pad.",
+  "deviceAuto": "Авто",
+  "deviceAutoSubtitle": "Автоопределение",
+  "deviceAutoDesc": "Приложение определит устройство по экрану. Хороший выбор, если не уверен или пользуешься несколькими устройствами.",
+  "onboardingWelcomeTitle": "Добро пожаловать в The Few",
+  "onboardingWelcomeDesc": "Кино без границ. Создано для ТВ, оптимизировано для телефона, красиво везде.",
+  "onboardingLoadTitle": "Загрузи свой плейлист",
+  "onboardingLoadDesc": "Вставь ссылку M3U или данные Xtream. Каналы появятся за несколько секунд.",
+  "onboardingVipTitle": "Оцени VIP-уровень",
+  "onboardingVipDesc": "Логотипы высокого качества, навигация в стиле Apple TV, мгновенный поиск, плеер 4K/8K.",
+  "emptyNoPlaylist": "Нет плейлистов",
+  "emptyAddYourFirst": "Добавь первый плейлист M3U или данные Xtream, чтобы начать.",
+  "addPlaylist": "Добавить плейлист",
+  "resumeBannerTitle": "Продолжить {channel}",
+  "@resumeBannerTitle": {
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "resumeBannerSubtitle": "Ты смотрел {minutes} мин назад",
+  "@resumeBannerSubtitle": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "resumeBannerDismiss": "Позже",
+  "detailProgram": "Программа",
+  "@detailProgram": {
+    "description": "Texte UI : detailProgram"
+  },
+  "detailNowPlaying": "Сейчас",
+  "@detailNowPlaying": {
+    "description": "Texte UI : detailNowPlaying"
+  },
+  "detailUpNext": "Далее",
+  "@detailUpNext": {
+    "description": "Texte UI : detailUpNext"
+  },
+  "detailDetails": "Подробности",
+  "@detailDetails": {
+    "description": "Texte UI : detailDetails"
+  },
+  "detailCategory": "Категория",
+  "@detailCategory": {
+    "description": "Texte UI : detailCategory"
+  },
+  "detailCountry": "Страна",
+  "@detailCountry": {
+    "description": "Texte UI : detailCountry"
+  },
+  "detailQuality": "Качество",
+  "@detailQuality": {
+    "description": "Texte UI : detailQuality"
+  },
+  "detailCatchup": "Архив",
+  "@detailCatchup": {
+    "description": "Texte UI : detailCatchup"
+  },
+  "detailCatchupAvailable": "Доступен · {days} дн.",
+  "@detailCatchupAvailable": {
+    "description": "Texte UI : detailCatchupAvailable",
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "detailCatchupUnavailable": "Недоступен",
+  "@detailCatchupUnavailable": {
+    "description": "Texte UI : detailCatchupUnavailable"
+  },
+  "detailProgramsAndReplay": "Программа дня и архив",
+  "@detailProgramsAndReplay": {
+    "description": "Texte UI : detailProgramsAndReplay"
+  },
+  "badgeLive": "В ЭФИРЕ",
+  "@badgeLive": {
+    "description": "Texte UI : badgeLive"
+  },
+  "badgeReplay": "ПОВТОР",
+  "@badgeReplay": {
+    "description": "Texte UI : badgeReplay"
+  },
+  "badgeSoon": "СКОРО",
+  "@badgeSoon": {
+    "description": "Texte UI : badgeSoon"
+  },
+  "viewModeList": "Список",
+  "@viewModeList": {
+    "description": "Texte UI : viewModeList"
+  },
+  "viewModeGrid": "Сетка",
+  "@viewModeGrid": {
+    "description": "Texte UI : viewModeGrid"
+  },
+  "sectionFilterHint": "Фильтр в этом разделе...",
+  "@sectionFilterHint": {
+    "description": "Texte UI : sectionFilterHint"
+  },
+  "filterAll": "Все",
+  "@filterAll": {
+    "description": "Texte UI : filterAll"
+  },
+  "sectionEmptyNoChannel": "В этом разделе нет каналов",
+  "@sectionEmptyNoChannel": {
+    "description": "Texte UI : sectionEmptyNoChannel"
+  },
+  "searchNoResult": "Ничего не найдено по запросу «{query}»",
+  "@searchNoResult": {
+    "description": "Texte UI : searchNoResult",
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionEmptyAdjustFilters": "Попробуй изменить фильтры или запрос.",
+  "@sectionEmptyAdjustFilters": {
+    "description": "Texte UI : sectionEmptyAdjustFilters"
+  },
+  "sectionTop10Today": "Топ-10 сегодня",
+  "@sectionTop10Today": {
+    "description": "Texte UI : sectionTop10Today"
+  },
+  "sectionEntertainment": "Развлечения",
+  "@sectionEntertainment": {
+    "description": "Texte UI : sectionEntertainment"
+  },
+  "sectionInternational": "Международные",
+  "@sectionInternational": {
+    "description": "Texte UI : sectionInternational"
+  },
+  "sectionAdult": "Для взрослых",
+  "@sectionAdult": {
+    "description": "Texte UI : sectionAdult"
+  },
+  "sectionOthers": "Другое",
+  "@sectionOthers": {
+    "description": "Texte UI : sectionOthers"
+  },
+  "catSport": "Спорт",
+  "@catSport": {
+    "description": "Texte UI : catSport"
+  },
+  "catInfo": "Новости",
+  "@catInfo": {
+    "description": "Texte UI : catInfo"
+  },
+  "catKids": "Детям",
+  "@catKids": {
+    "description": "Texte UI : catKids"
+  },
+  "catScience": "Наука",
+  "@catScience": {
+    "description": "Texte UI : catScience"
+  },
+  "catMovies": "Фильмы",
+  "@catMovies": {
+    "description": "Texte UI : catMovies"
+  },
+  "catMusic": "Музыка",
+  "@catMusic": {
+    "description": "Texte UI : catMusic"
+  },
+  "homeListRefreshed": "Список обновлён — каналы перезагружены",
+  "@homeListRefreshed": {
+    "description": "Texte UI : homeListRefreshed"
+  },
+  "homeListUpToDate": "Список актуален",
+  "@homeListUpToDate": {
+    "description": "Texte UI : homeListUpToDate"
+  },
+  "tooltipRefreshList": "Обновить список",
+  "@tooltipRefreshList": {
+    "description": "Texte UI : tooltipRefreshList"
+  },
+  "tooltipConnectActivate": "Войти / Активировать",
+  "@tooltipConnectActivate": {
+    "description": "Texte UI : tooltipConnectActivate"
+  },
+  "tooltipSearch": "Поиск",
+  "@tooltipSearch": {
+    "description": "Texte UI : tooltipSearch"
+  },
+  "tooltipFavorites": "Избранное",
+  "@tooltipFavorites": {
+    "description": "Texte UI : tooltipFavorites"
+  },
+  "tooltipProfile": "Профиль",
+  "@tooltipProfile": {
+    "description": "Texte UI : tooltipProfile"
+  },
+  "adultAuthCancelled": "Проверка отменена — раздел «Для взрослых» заблокирован",
+  "@adultAuthCancelled": {
+    "description": "Texte UI : adultAuthCancelled"
+  },
+  "adultAuthReason": "Доступ к разделу «Для взрослых»",
+  "@adultAuthReason": {
+    "description": "Texte UI : adultAuthReason"
+  },
+  "navDirect": "Эфир",
+  "@navDirect": {
+    "description": "Texte UI : navDirect"
+  },
+  "navGuide": "Телегид",
+  "@navGuide": {
+    "description": "Texte UI : navGuide"
+  },
+  "navRefresh": "Обновить",
+  "@navRefresh": {
+    "description": "Texte UI : navRefresh"
+  },
+  "tvFeatured": "ГЛАВНОЕ",
+  "@tvFeatured": {
+    "description": "Texte UI : tvFeatured"
+  },
+  "refreshNoPlaylist": "Ни один плейлист не обновлён.",
+  "@refreshNoPlaylist": {
+    "description": "Texte UI : refreshNoPlaylist"
+  },
+  "refreshDoneCount": "Обновлено плейлистов: {count}.",
+  "@refreshDoneCount": {
+    "description": "Texte UI : refreshDoneCount",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "errorWithMessage": "Ошибка: {error}",
+  "@errorWithMessage": {
+    "description": "Texte UI : errorWithMessage",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "gridEmptyTitle": "Здесь нет каналов",
+  "@gridEmptyTitle": {
+    "description": "Texte UI : gridEmptyTitle"
+  },
+  "gridEmptySubtitle": "Добавь плейлист или измени фильтры.",
+  "@gridEmptySubtitle": {
+    "description": "Texte UI : gridEmptySubtitle"
+  },
+  "categoriesTitle": "Категории",
+  "@categoriesTitle": {
+    "description": "Texte UI : categoriesTitle"
+  },
+  "categoriesEmpty": "Нет каналов — сначала добавь плейлист.",
+  "@categoriesEmpty": {
+    "description": "Texte UI : categoriesEmpty"
+  },
+  "focusedNoChannelFound": "Каналы {title} не найдены в твоих плейлистах.",
+  "@focusedNoChannelFound": {
+    "description": "Texte UI : focusedNoChannelFound",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "searchHint": "Найти канал, спорт, фильм…",
+  "@searchHint": {
+    "description": "Texte UI : searchHint"
+  },
+  "buttonBack": "Назад",
+  "@buttonBack": {
+    "description": "Texte UI : buttonBack"
+  },
+  "searchRecent": "Недавние",
+  "@searchRecent": {
+    "description": "Texte UI : searchRecent"
+  },
+  "buttonClear": "Очистить",
+  "@buttonClear": {
+    "description": "Texte UI : buttonClear"
+  },
+  "searchExploreByCategory": "По категориям",
+  "@searchExploreByCategory": {
+    "description": "Texte UI : searchExploreByCategory"
+  },
+  "searchDiscoveryEmpty": "Загрузи первый плейлист, чтобы открыть для себя каналы.",
+  "@searchDiscoveryEmpty": {
+    "description": "Texte UI : searchDiscoveryEmpty"
+  },
+  "searchNoResultHelp": "Проверь написание или попробуй другое слово. Если канал должен быть, попроси своего продавца добавить его.",
+  "@searchNoResultHelp": {
+    "description": "Texte UI : searchNoResultHelp"
+  },
+  "searchTipsToTry": "ПОПРОБУЙ ТАКЖЕ",
+  "@searchTipsToTry": {
+    "description": "Texte UI : searchTipsToTry"
+  },
+  "searchEmptyCatalogTitle": "Пока нет каналов",
+  "@searchEmptyCatalogTitle": {
+    "description": "Texte UI : searchEmptyCatalogTitle"
+  },
+  "searchEmptyCatalogHelp": "Твой продавец должен активировать подписку, прежде чем ты сможешь искать. Загляни через несколько минут.",
+  "@searchEmptyCatalogHelp": {
+    "description": "Texte UI : searchEmptyCatalogHelp"
+  },
+  "navCategories": "Категории",
+  "@navCategories": {
+    "description": "Texte UI : navCategories"
+  },
+  "mySource": "Мой источник",
+  "@mySource": {
+    "description": "Texte UI : mySource"
+  },
+  "sourceQuestion": "Как ты хочешь получить доступ к каналам?",
+  "@sourceQuestion": {
+    "description": "Texte UI : sourceQuestion"
+  },
+  "sourceLoginCode": "Войти по своему коду",
+  "@sourceLoginCode": {
+    "description": "Texte UI : sourceLoginCode"
+  },
+  "sourceLoginCodeSub": "Введи логин и пароль",
+  "@sourceLoginCodeSub": {
+    "description": "Texte UI : sourceLoginCodeSub"
+  },
+  "sourceOwn": "У меня свой источник",
+  "@sourceOwn": {
+    "description": "Texte UI : sourceOwn"
+  },
+  "sourceOwnSub": "Ссылка M3U / M3U8 или коды Xtream",
+  "@sourceOwnSub": {
+    "description": "Texte UI : sourceOwnSub"
+  },
+  "sourceActivate": "Активировать приложение",
+  "@sourceActivate": {
+    "description": "Texte UI : sourceActivate"
+  },
+  "sourceActivateSub": "Свяжись с нами (твой MAC уже вложен в сообщение)",
+  "@sourceActivateSub": {
+    "description": "Texte UI : sourceActivateSub"
+  },
+  "activateAtHomeTitle": "Активировать приложение дома",
+  "@activateAtHomeTitle": {
+    "description": "Texte UI : activateAtHomeTitle"
+  },
+  "activateAtHomeDesc": "Сообщи этот идентификатор своему продавцу, чтобы он удалённо активировал твои каналы.",
+  "@activateAtHomeDesc": {
+    "description": "Texte UI : activateAtHomeDesc"
+  },
+  "buttonCopy": "Копировать",
+  "@buttonCopy": {
+    "description": "Texte UI : buttonCopy"
+  },
+  "buttonSend": "Отправить",
+  "@buttonSend": {
+    "description": "Texte UI : buttonSend"
+  },
+  "idCopied": "Идентификатор скопирован: {id}",
+  "@idCopied": {
+    "description": "Texte UI : idCopied",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "resumeEyebrow": "ПРОДОЛЖИТЬ",
+  "@resumeEyebrow": {
+    "description": "Texte UI : resumeEyebrow"
+  },
+  "resumeAgoNow": "только что",
+  "@resumeAgoNow": {
+    "description": "Texte UI : resumeAgoNow"
+  },
+  "resumeAgoMinutes": "{minutes} мин назад",
+  "@resumeAgoMinutes": {
+    "description": "Texte UI : resumeAgoMinutes",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "resumeWatchingAgo": "Ты смотрел {ago}",
+  "@resumeWatchingAgo": {
+    "description": "Texte UI : resumeWatchingAgo",
+    "placeholders": {
+      "ago": {
+        "type": "String"
+      }
+    }
+  },
+  "activateSubTitle": "Активируй подписку",
+  "@activateSubTitle": {
+    "description": "Texte UI : activateSubTitle"
+  },
+  "activateSubDesc": "Войди по своему коду (логин + пароль) или передай свой MAC продавцу для удалённой активации.",
+  "@activateSubDesc": {
+    "description": "Texte UI : activateSubDesc"
+  },
+  "freeTrialBadge": "7 дней бесплатно · затем 5 €/год",
+  "@freeTrialBadge": {
+    "description": "Texte UI : freeTrialBadge"
+  },
+  "activateMySub": "Активировать подписку",
+  "@activateMySub": {
+    "description": "Texte UI : activateMySub"
+  },
+  "remoteActivationByReseller": "Удалённая активация продавцом",
+  "@remoteActivationByReseller": {
+    "description": "Texte UI : remoteActivationByReseller"
+  },
+  "recStartFailed": "Не удалось начать запись. Попробуй ещё раз.",
+  "@recStartFailed": {
+    "description": "Texte UI : recStartFailed"
+  },
+  "startFailedWithError": "Не удалось запустить: {error}",
+  "@startFailedWithError": {
+    "description": "Texte UI : startFailedWithError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recInProgress": "● Идёт запись — продолжай смотреть, поток сохраняется",
+  "@recInProgress": {
+    "description": "Texte UI : recInProgress"
+  },
+  "recEmpty": "Запись пустая — попробуй ещё раз, дав ей поработать несколько секунд.",
+  "@recEmpty": {
+    "description": "Texte UI : recEmpty"
+  },
+  "recSaved": "Запись сохранена ({size}) — Мои записи",
+  "@recSaved": {
+    "description": "Texte UI : recSaved",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "recStopError": "Ошибка остановки записи: {error}",
+  "@recStopError": {
+    "description": "Texte UI : recStopError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recTapToStop": "REC · нажми, чтобы остановить",
+  "@recTapToStop": {
+    "description": "Texte UI : recTapToStop"
+  },
+  "pipUnavailable": "Мини-окно недоступно на этом устройстве (требуется Android 8+). Также включи разрешение «Картинка в картинке»: Настройки → Приложения → 7 MOTION → Разрешения.",
+  "@pipUnavailable": {
+    "description": "Texte UI : pipUnavailable"
+  },
+  "speedToast": "Скорость: {speed}x",
+  "@speedToast": {
+    "description": "Texte UI : speedToast",
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      }
+    }
+  },
+  "tooltipMiniWindow": "Мини-окно",
+  "@tooltipMiniWindow": {
+    "description": "Texte UI : tooltipMiniWindow"
+  },
+  "tooltipCastingManage": "Идёт трансляция — нажми, чтобы управлять",
+  "@tooltipCastingManage": {
+    "description": "Texte UI : tooltipCastingManage"
+  },
+  "tooltipSendToTv": "Отправить на ТВ",
+  "@tooltipSendToTv": {
+    "description": "Texte UI : tooltipSendToTv"
+  },
+  "tooltipReloadStream": "Перезагрузить поток",
+  "@tooltipReloadStream": {
+    "description": "Texte UI : tooltipReloadStream"
+  },
+  "seekRewind": "Назад на 2 минуты",
+  "@seekRewind": {
+    "description": "Texte UI : seekRewind"
+  },
+  "seekForward": "Вперёд на 2 минуты",
+  "@seekForward": {
+    "description": "Texte UI : seekForward"
+  },
+  "playerCantPlay": "Не удаётся воспроизвести этот поток",
+  "@playerCantPlay": {
+    "description": "Texte UI : playerCantPlay"
+  },
+  "tooltipRemoveFavorite": "Убрать из избранного",
+  "@tooltipRemoveFavorite": {
+    "description": "Texte UI : tooltipRemoveFavorite"
+  },
+  "tooltipAddFavorite": "Добавить в избранное",
+  "@tooltipAddFavorite": {
+    "description": "Texte UI : tooltipAddFavorite"
+  },
+  "playerSettingsTitle": "Настройки плеера",
+  "@playerSettingsTitle": {
+    "description": "Texte UI : playerSettingsTitle"
+  },
+  "playerSpeedSection": "Скорость воспроизведения",
+  "@playerSpeedSection": {
+    "description": "Texte UI : playerSpeedSection"
+  },
+  "playerDisplayMode": "Режим отображения",
+  "@playerDisplayMode": {
+    "description": "Texte UI : playerDisplayMode"
+  },
+  "playerBufferSize": "Размер буфера",
+  "@playerBufferSize": {
+    "description": "Texte UI : playerBufferSize"
+  },
+  "playerBufferSeconds": "{seconds} сек.",
+  "@playerBufferSeconds": {
+    "description": "Texte UI : playerBufferSeconds",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "playerBufferHelp": "Чем больше буфер, тем устойчивее воспроизведение к сбоям сети (но выше задержка в прямом эфире).",
+  "@playerBufferHelp": {
+    "description": "Texte UI : playerBufferHelp"
+  },
+  "playerAntiFreeze": "Защита от зависаний",
+  "@playerAntiFreeze": {
+    "description": "Texte UI : playerAntiFreeze"
+  },
+  "playerAntiFreezeHelp": "Если связь слабеет, плеер берёт данные из буфера, а не прерывает картинку. Запуск чуть дольше, зато без обрывов.",
+  "@playerAntiFreezeHelp": {
+    "description": "Texte UI : playerAntiFreezeHelp"
+  },
+  "playerHwDecode": "Аппаратное декодирование",
+  "@playerHwDecode": {
+    "description": "Texte UI : playerHwDecode"
+  },
+  "playerHwDecodeHelp": "Использует GPU для декодирования видео. Обязательно для 4K / 8K.",
+  "@playerHwDecodeHelp": {
+    "description": "Texte UI : playerHwDecodeHelp"
+  },
+  "playerShowStats": "Показывать статистику",
+  "@playerShowStats": {
+    "description": "Texte UI : playerShowStats"
+  },
+  "playerShowStatsHelp": "FPS, битрейт, разрешение, кодек, потерянные кадры.",
+  "@playerShowStatsHelp": {
+    "description": "Texte UI : playerShowStatsHelp"
+  },
+  "tracksTitle": "Дорожки",
+  "@tracksTitle": {
+    "description": "Texte UI : tracksTitle"
+  },
+  "tracksAudio": "Аудио",
+  "@tracksAudio": {
+    "description": "Texte UI : tracksAudio"
+  },
+  "tracksSubtitles": "Субтитры",
+  "@tracksSubtitles": {
+    "description": "Texte UI : tracksSubtitles"
+  },
+  "tracksNoAudio": "Аудиодорожки не обнаружены.",
+  "@tracksNoAudio": {
+    "description": "Texte UI : tracksNoAudio"
+  },
+  "tracksNoSubtitles": "Нет субтитров. Совет: в некоторых потоках они встроены, но определяются с задержкой.",
+  "@tracksNoSubtitles": {
+    "description": "Texte UI : tracksNoSubtitles"
+  },
+  "castToDevice": "Трансляция на {device}",
+  "@castToDevice": {
+    "description": "Texte UI : castToDevice",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castFailedLocal": "Трансляция не удалась — воспроизведение на этом устройстве. ({error})",
+  "@castFailedLocal": {
+    "description": "Texte UI : castFailedLocal",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "castConnectedTapChannel": "Подключено к {device}. Нажми на канал, чтобы отправить.",
+  "@castConnectedTapChannel": {
+    "description": "Texte UI : castConnectedTapChannel",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castSendingTo": "Отправка на {device}",
+  "@castSendingTo": {
+    "description": "Texte UI : castSendingTo",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "castFailedRetry": "Трансляция не удалась. Попробуй ещё раз.",
+  "@castFailedRetry": {
+    "description": "Texte UI : castFailedRetry"
+  },
+  "castSessionStopped": "Сеанс трансляции завершён",
+  "@castSessionStopped": {
+    "description": "Texte UI : castSessionStopped"
+  },
+  "castRefresh": "Обновить",
+  "@castRefresh": {
+    "description": "Texte UI : castRefresh"
+  },
+  "castByQr": "Трансляция по QR-коду",
+  "@castByQr": {
+    "description": "Texte UI : castByQr"
+  },
+  "castByQrSub": "Работает на ВСЕХ телевизорах с браузером",
+  "@castByQrSub": {
+    "description": "Texte UI : castByQrSub"
+  },
+  "castSearchingShort": "Идёт поиск...",
+  "@castSearchingShort": {
+    "description": "Texte UI : castSearchingShort"
+  },
+  "castNoReceiver": "Приёмники не найдены. Проверь, что ТВ в той же сети Wi-Fi и DLNA включён.",
+  "@castNoReceiver": {
+    "description": "Texte UI : castNoReceiver"
+  },
+  "castInProgress": "ИДЁТ",
+  "@castInProgress": {
+    "description": "Texte UI : castInProgress"
+  },
+  "castConnecting": "Подключение...",
+  "@castConnecting": {
+    "description": "Texte UI : castConnecting"
+  },
+  "castInProgressTitle": "Идёт трансляция",
+  "@castInProgressTitle": {
+    "description": "Texte UI : castInProgressTitle"
+  },
+  "castStopTooltip": "Остановить трансляцию",
+  "@castStopTooltip": {
+    "description": "Texte UI : castStopTooltip"
+  },
+  "castPlayDefault": "Воспроизведение",
+  "@castPlayDefault": {
+    "description": "Texte UI : castPlayDefault"
+  },
+  "webCastTitle": "Трансляция через браузер",
+  "@webCastTitle": {
+    "description": "Texte UI : webCastTitle"
+  },
+  "webCastDesc": "Работает на любом телевизоре с веб-браузером — Google TV, Samsung, LG, Hisense, старые смарт-ТВ. Телевизор должен быть в той же сети Wi-Fi, что и телефон.",
+  "@webCastDesc": {
+    "description": "Texte UI : webCastDesc"
+  },
+  "webCastIpError": "Не удалось определить твой IP в Wi-Fi. Проверь, что ты подключён к Wi-Fi (а не к мобильной сети).",
+  "@webCastIpError": {
+    "description": "Texte UI : webCastIpError"
+  },
+  "urlCopied": "URL скопирован: {url}",
+  "@urlCopied": {
+    "description": "Texte UI : urlCopied",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "webCastTvConnected": "Готово, ТВ подключён",
+  "@webCastTvConnected": {
+    "description": "Texte UI : webCastTvConnected"
+  },
+  "webCastUrlLabel": "Или введи этот URL в браузере телевизора:",
+  "@webCastUrlLabel": {
+    "description": "Texte UI : webCastUrlLabel"
+  },
+  "webCastStep1": "Открой веб-браузер на телевизоре",
+  "@webCastStep1": {
+    "description": "Texte UI : webCastStep1"
+  },
+  "webCastStep2": "Отсканируй QR-код выше (или введи URL)",
+  "@webCastStep2": {
+    "description": "Texte UI : webCastStep2"
+  },
+  "webCastStep3": "Оставь эту вкладку открытой на ТВ",
+  "@webCastStep3": {
+    "description": "Texte UI : webCastStep3"
+  },
+  "webCastStep4": "Вернись сюда, нажми на канал → он появится на ТВ через 2 с",
+  "@webCastStep4": {
+    "description": "Texte UI : webCastStep4"
+  },
+  "qrCastTitle": "Трансляция по QR-коду",
+  "@qrCastTitle": {
+    "description": "Texte UI : qrCastTitle"
+  },
+  "qrCastDesc": "Отсканируй этот код с любого устройства (ТВ, компьютер, планшет, другой телефон) — канал откроется прямо в браузере.",
+  "@qrCastDesc": {
+    "description": "Texte UI : qrCastDesc"
+  },
+  "qrCastCopied": "Ссылка скопирована — вставь в браузер или VLC",
+  "@qrCastCopied": {
+    "description": "Texte UI : qrCastCopied"
+  },
+  "qrCastCopyLink": "Копировать ссылку",
+  "@qrCastCopyLink": {
+    "description": "Texte UI : qrCastCopyLink"
+  },
+  "qrCastTip": "Совет: открой камеру на другом устройстве и наведи на этот QR — появится ссылка. Нажми на неё, и браузер сам запустит канал.",
+  "@qrCastTip": {
+    "description": "Texte UI : qrCastTip"
+  },
+  "qrCastDegraded": "Упрощённый режим: открой в VLC или другом плеере.",
+  "@qrCastDegraded": {
+    "description": "Texte UI : qrCastDegraded"
+  },
+  "playlistsTitle": "Мои плейлисты",
+  "@playlistsTitle": {
+    "description": "Texte UI : playlistsTitle"
+  },
+  "playlistsAddTooltip": "Добавить плейлист",
+  "@playlistsAddTooltip": {
+    "description": "Texte UI : playlistsAddTooltip"
+  },
+  "playlistsEmptyTitle": "Нет плейлистов",
+  "@playlistsEmptyTitle": {
+    "description": "Texte UI : playlistsEmptyTitle"
+  },
+  "playlistsEmptySubtitle": "Добавь первый плейлист, чтобы начать.",
+  "@playlistsEmptySubtitle": {
+    "description": "Texte UI : playlistsEmptySubtitle"
+  },
+  "playlistTypeM3u": "M3U / URL",
+  "@playlistTypeM3u": {
+    "description": "Texte UI : playlistTypeM3u"
+  },
+  "playlistTypeXtream": "Xtream Codes",
+  "@playlistTypeXtream": {
+    "description": "Texte UI : playlistTypeXtream"
+  },
+  "playlistNeverSynced": "Ещё не синхронизирован",
+  "@playlistNeverSynced": {
+    "description": "Texte UI : playlistNeverSynced"
+  },
+  "playlistResyncTooltip": "Синхронизировать заново",
+  "@playlistResyncTooltip": {
+    "description": "Texte UI : playlistResyncTooltip"
+  },
+  "playlistDeleteTooltip": "Удалить",
+  "@playlistDeleteTooltip": {
+    "description": "Texte UI : playlistDeleteTooltip"
+  },
+  "playlistResyncing": "Идёт повторная синхронизация...",
+  "@playlistResyncing": {
+    "description": "Texte UI : playlistResyncing"
+  },
+  "playlistUpToDate": "Плейлист «{name}» обновлён",
+  "@playlistUpToDate": {
+    "description": "Texte UI : playlistUpToDate",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistResyncFailed": "Не удалось синхронизировать",
+  "@playlistResyncFailed": {
+    "description": "Texte UI : playlistResyncFailed"
+  },
+  "playlistDeleteConfirmTitle": "Удалить этот плейлист?",
+  "@playlistDeleteConfirmTitle": {
+    "description": "Texte UI : playlistDeleteConfirmTitle"
+  },
+  "playlistDeleteConfirmBody": "Все каналы из «{name}» будут удалены из приложения.",
+  "@playlistDeleteConfirmBody": {
+    "description": "Texte UI : playlistDeleteConfirmBody",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingsTitle": "Мои записи",
+  "@recordingsTitle": {
+    "description": "Texte UI : recordingsTitle"
+  },
+  "recordingsEmptyTitle": "Нет записей",
+  "@recordingsEmptyTitle": {
+    "description": "Texte UI : recordingsEmptyTitle"
+  },
+  "recordingsEmptySubtitle": "Во время просмотра нажми REC, чтобы записать прямой эфир.",
+  "@recordingsEmptySubtitle": {
+    "description": "Texte UI : recordingsEmptySubtitle"
+  },
+  "recordingStopped": "Запись остановлена — экспортируй её в Галерею",
+  "@recordingStopped": {
+    "description": "Texte UI : recordingStopped"
+  },
+  "recordingStopError": "Ошибка остановки: {error}",
+  "@recordingStopError": {
+    "description": "Texte UI : recordingStopError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingExported": "Экспортировано в Галерея › Movies как «7MOTION_{name}»",
+  "@recordingExported": {
+    "description": "Texte UI : recordingExported",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingExportFailed": "Ошибка экспорта: {error}",
+  "@recordingExportFailed": {
+    "description": "Texte UI : recordingExportFailed",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingStopTooltip": "Остановить запись",
+  "@recordingStopTooltip": {
+    "description": "Texte UI : recordingStopTooltip"
+  },
+  "recordingSaveTooltip": "Сохранить в Галерею",
+  "@recordingSaveTooltip": {
+    "description": "Texte UI : recordingSaveTooltip"
+  },
+  "recordingDeleteConfirmTitle": "Удалить эту запись?",
+  "@recordingDeleteConfirmTitle": {
+    "description": "Texte UI : recordingDeleteConfirmTitle"
+  },
+  "recordingDeleteConfirmBody": "Файл «{name}» будет удалён.",
+  "@recordingDeleteConfirmBody": {
+    "description": "Texte UI : recordingDeleteConfirmBody",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "recordingUnreadable": "Не удаётся воспроизвести: запись повреждена или не завершена.",
+  "@recordingUnreadable": {
+    "description": "Texte UI : recordingUnreadable"
+  },
+  "recordingEmpty": "Запись пустая (0 байт) — ничего не записалось.",
+  "@recordingEmpty": {
+    "description": "Texte UI : recordingEmpty"
+  },
+  "recordingNotFound": "Файл не найден — возможно, он был удалён.",
+  "@recordingNotFound": {
+    "description": "Texte UI : recordingNotFound"
+  },
+  "recordingPlayError": "Не удаётся воспроизвести: {error}",
+  "@recordingPlayError": {
+    "description": "Texte UI : recordingPlayError",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "subAccountSuspended": "Аккаунт заблокирован",
+  "@subAccountSuspended": {
+    "description": "Texte UI : subAccountSuspended"
+  },
+  "subAccountFrozen": "Аккаунт временно заморожен",
+  "@subAccountFrozen": {
+    "description": "Texte UI : subAccountFrozen"
+  },
+  "subUnlockAll": "Открой весь The Few",
+  "@subUnlockAll": {
+    "description": "Texte UI : subUnlockAll"
+  },
+  "subBannedMsg": "Твой аккаунт заблокирован администратором. Если считаешь, что это ошибка, свяжись с нами.",
+  "@subBannedMsg": {
+    "description": "Texte UI : subBannedMsg"
+  },
+  "subFrozenMsg": "Твой аккаунт на паузе. Свяжись с поддержкой, чтобы восстановить доступ.",
+  "@subFrozenMsg": {
+    "description": "Texte UI : subFrozenMsg"
+  },
+  "subTrialExpiredMsg": "Твой бесплатный период ({days} дн.) закончился. Активируй доступ и пользуйся ВСЕМ без ограничений:",
+  "@subTrialExpiredMsg": {
+    "description": "Texte UI : subTrialExpiredMsg",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subSubscribePrice": "Оформить подписку",
+  "@subSubscribePrice": {
+    "description": "Texte UI : subSubscribePrice"
+  },
+  "subContactSupport": "Написать в поддержку",
+  "@subContactSupport": {
+    "description": "Texte UI : subContactSupport"
+  },
+  "subPullToRefresh": "Только что оплатил? Потяни вниз, чтобы обновить.",
+  "@subPullToRefresh": {
+    "description": "Texte UI : subPullToRefresh"
+  },
+  "subBenefitChannels": "Тысячи каналов, фильмов и сериалов со всего мира",
+  "@subBenefitChannels": {
+    "description": "Texte UI : subBenefitChannels"
+  },
+  "subBenefitSports": "Весь спорт в прямом эфире, в HD / 4K, без обрывов",
+  "@subBenefitSports": {
+    "description": "Texte UI : subBenefitSports"
+  },
+  "subBenefitCast": "Трансляция на любой телевизор (Chromecast и Google TV)",
+  "@subBenefitCast": {
+    "description": "Texte UI : subBenefitCast"
+  },
+  "subBenefitRecord": "Запись любимых передач, фильмов и матчей",
+  "@subBenefitRecord": {
+    "description": "Texte UI : subBenefitRecord"
+  },
+  "subBenefitNoAds": "Ноль рекламы — плавное, мгновенное воспроизведение",
+  "@subBenefitNoAds": {
+    "description": "Texte UI : subBenefitNoAds"
+  },
+  "subBenefitDevices": "На всех твоих устройствах: телефон, планшет, ТВ",
+  "@subBenefitDevices": {
+    "description": "Texte UI : subBenefitDevices"
+  },
+  "subCardBuyExpired": "Купить на 7themotion.com",
+  "@subCardBuyExpired": {
+    "description": "Texte UI : subCardBuyExpired"
+  },
+  "subCardSeeOffers": "Смотреть предложения на 7themotion.com",
+  "@subCardSeeOffers": {
+    "description": "Texte UI : subCardSeeOffers"
+  },
+  "subCardSecurePayment": "Безопасная оплата на официальном сайте — никогда через Google Play.",
+  "@subCardSecurePayment": {
+    "description": "Texte UI : subCardSecurePayment"
+  },
+  "subCantOpenUrl": "Не удалось открыть {url}",
+  "@subCantOpenUrl": {
+    "description": "Texte UI : subCantOpenUrl",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "subActiveTitle": "Подписка активна",
+  "@subActiveTitle": {
+    "description": "Texte UI : subActiveTitle"
+  },
+  "subActiveUntil": "Подписка активна · истекает {date}",
+  "@subActiveUntil": {
+    "description": "Texte UI : subActiveUntil",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "subTrialEnded": "Пробный период закончился",
+  "@subTrialEnded": {
+    "description": "Texte UI : subTrialEnded"
+  },
+  "subTrialOneDayLeft": "Пробный период · остался 1 день",
+  "@subTrialOneDayLeft": {
+    "description": "Texte UI : subTrialOneDayLeft"
+  },
+  "subTrialDaysLeft": "Пробный период · осталось дней: {days}",
+  "@subTrialDaysLeft": {
+    "description": "Texte UI : subTrialDaysLeft",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subLoading": "Загрузка…",
+  "@subLoading": {
+    "description": "Texte UI : subLoading"
+  },
+  "subCardSubPaid": "Спасибо за поддержку — все функции открыты на этом устройстве и на других твоих установках The Few.",
+  "@subCardSubPaid": {
+    "description": "Texte UI : subCardSubPaid"
+  },
+  "subCardSubExpired": "Твой бесплатный период ({days} дн.) закончился. Оформи подписку за 5 €/год или 9,90 € навсегда на 7themotion.com, чтобы продолжить.",
+  "@subCardSubExpired": {
+    "description": "Texte UI : subCardSubExpired",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "subCardSubTrial": "Пользуйся всеми премиум-функциями во время пробного периода. Затем 5 €/год или 9,90 € навсегда на всех твоих устройствах.",
+  "@subCardSubTrial": {
+    "description": "Texte UI : subCardSubTrial"
+  },
+  "subCardSubFrozen": "Твой аккаунт на паузе. Свяжись с поддержкой для восстановления.",
+  "@subCardSubFrozen": {
+    "description": "Texte UI : subCardSubFrozen"
+  },
+  "subCardSubBanned": "Твой аккаунт заблокирован администратором.",
+  "@subCardSubBanned": {
+    "description": "Texte UI : subCardSubBanned"
+  },
+  "aboutTitle": "О приложении",
+  "@aboutTitle": {
+    "description": "Texte UI : aboutTitle"
+  },
+  "aboutPremiumPlayer": "Премиум IPTV-плеер",
+  "@aboutPremiumPlayer": {
+    "description": "Texte UI : aboutPremiumPlayer"
+  },
+  "aboutUpdateError": "Не удалось связаться с сервером обновлений. Проверь подключение.",
+  "@aboutUpdateError": {
+    "description": "Texte UI : aboutUpdateError"
+  },
+  "aboutMyDevice": "Моё устройство",
+  "@aboutMyDevice": {
+    "description": "Texte UI : aboutMyDevice"
+  },
+  "aboutUpdates": "Обновления",
+  "@aboutUpdates": {
+    "description": "Texte UI : aboutUpdates"
+  },
+  "aboutNewVersion": "Доступна новая версия",
+  "@aboutNewVersion": {
+    "description": "Texte UI : aboutNewVersion"
+  },
+  "aboutSeeReleaseNotes": "Что нового",
+  "@aboutSeeReleaseNotes": {
+    "description": "Texte UI : aboutSeeReleaseNotes"
+  },
+  "aboutLatestVersion": "У тебя последняя версия (v{version}).",
+  "@aboutLatestVersion": {
+    "description": "Texte UI : aboutLatestVersion",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutChecking": "Проверка...",
+  "@aboutChecking": {
+    "description": "Texte UI : aboutChecking"
+  },
+  "aboutCheckUpdates": "Проверить обновления",
+  "@aboutCheckUpdates": {
+    "description": "Texte UI : aboutCheckUpdates"
+  },
+  "aboutUsefulLinks": "Полезные ссылки",
+  "@aboutUsefulLinks": {
+    "description": "Texte UI : aboutUsefulLinks"
+  },
+  "aboutPrivacyPolicy": "Политика конфиденциальности",
+  "@aboutPrivacyPolicy": {
+    "description": "Texte UI : aboutPrivacyPolicy"
+  },
+  "aboutBuiltWith": "Создано с помощью",
+  "@aboutBuiltWith": {
+    "description": "Texte UI : aboutBuiltWith"
+  },
+  "aboutCreditFlutter": "Кроссплатформенный UI-фреймворк",
+  "@aboutCreditFlutter": {
+    "description": "Texte UI : aboutCreditFlutter"
+  },
+  "aboutCreditMediaKit": "Видеодвижок (HLS, MPEG-TS, MP4)",
+  "@aboutCreditMediaKit": {
+    "description": "Texte UI : aboutCreditMediaKit"
+  },
+  "aboutCreditSqflite": "Локальное хранилище плейлистов",
+  "@aboutCreditSqflite": {
+    "description": "Texte UI : aboutCreditSqflite"
+  },
+  "aboutCreditCache": "Дисковый кэш логотипов",
+  "@aboutCreditCache": {
+    "description": "Texte UI : aboutCreditCache"
+  },
+  "aboutCreditFonts": "Премиум-типографика",
+  "@aboutCreditFonts": {
+    "description": "Texte UI : aboutCreditFonts"
+  },
+  "aboutLegalNotice": "The Few — универсальный медиаплеер. Приложение не содержит никакого контента. Ты сам отвечаешь за добавляемые источники и их соответствие законам твоей страны.",
+  "@aboutLegalNotice": {
+    "description": "Texte UI : aboutLegalNotice"
+  },
+  "lockPinTooShort": "Введи не менее 4 цифр.",
+  "@lockPinTooShort": {
+    "description": "Texte UI : lockPinTooShort"
+  },
+  "lockPinWrong": "Неверный код.",
+  "@lockPinWrong": {
+    "description": "Texte UI : lockPinWrong"
+  },
+  "lockUnlockReason": "Разблокируй {app}",
+  "@lockUnlockReason": {
+    "description": "Texte UI : lockUnlockReason",
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "lockAppLocked": "Приложение заблокировано",
+  "@lockAppLocked": {
+    "description": "Texte UI : lockAppLocked"
+  },
+  "lockAuthenticating": "Проверка...",
+  "@lockAuthenticating": {
+    "description": "Texte UI : lockAuthenticating"
+  },
+  "lockFingerprint": "Отпечаток пальца",
+  "@lockFingerprint": {
+    "description": "Texte UI : lockFingerprint"
+  },
+  "lockValidateCode": "Подтвердить код",
+  "@lockValidateCode": {
+    "description": "Texte UI : lockValidateCode"
+  },
+  "lockDefaultPin": "Код по умолчанию: {pin}\nИзменить можно в Настройки > Безопасность.",
+  "@lockDefaultPin": {
+    "description": "Texte UI : lockDefaultPin",
+    "placeholders": {
+      "pin": {
+        "type": "String"
+      }
+    }
+  },
+  "ageGateTitle": "Контент только для взрослых",
+  "@ageGateTitle": {
+    "description": "Texte UI : ageGateTitle"
+  },
+  "ageGateBody": "Это приложение показывает материалы откровенного характера, предназначенные только для совершеннолетних. Продолжая, вы подтверждаете, что достигли совершеннолетия по законам своей страны.",
+  "@ageGateBody": {
+    "description": "Texte UI : ageGateBody"
+  },
+  "ageGateEnter": "МНЕ ЕСТЬ 18 — ВОЙТИ",
+  "@ageGateEnter": {
+    "description": "Texte UI : ageGateEnter"
+  },
+  "ageGateQuit": "Выйти",
+  "@ageGateQuit": {
+    "description": "Texte UI : ageGateQuit"
+  },
+  "ageGateLegal": "В случае ложного заявления ответственность полностью лежит на пользователе.",
+  "@ageGateLegal": {
+    "description": "Texte UI : ageGateLegal"
+  },
+  "onboardingSkip": "Пропустить",
+  "@onboardingSkip": {
+    "description": "Texte UI : onboardingSkip"
+  },
+  "onboardingStart": "Начать",
+  "@onboardingStart": {
+    "description": "Texte UI : onboardingStart"
+  },
+  "onboardingNext": "Далее",
+  "@onboardingNext": {
+    "description": "Texte UI : onboardingNext"
+  },
+  "onboardingYourId": "ТВОЙ ИДЕНТИФИКАТОР",
+  "@onboardingYourId": {
+    "description": "Texte UI : onboardingYourId"
+  },
+  "onboardingActivateChannels": "Активировать мои каналы",
+  "@onboardingActivateChannels": {
+    "description": "Texte UI : onboardingActivateChannels"
+  },
+  "onboardingCopyId": "Копировать идентификатор",
+  "@onboardingCopyId": {
+    "description": "Texte UI : onboardingCopyId"
+  },
+  "devicePreparing": "Подготовка…",
+  "@devicePreparing": {
+    "description": "Texte UI : devicePreparing"
+  },
+  "simpleChooseCountry": "Выбери страну",
+  "@simpleChooseCountry": {
+    "description": "Texte UI : simpleChooseCountry"
+  },
+  "simpleMyAccount": "Мой аккаунт",
+  "@simpleMyAccount": {
+    "description": "Texte UI : simpleMyAccount"
+  },
+  "simpleRecentlyWatched": "Недавно смотрел",
+  "@simpleRecentlyWatched": {
+    "description": "Texte UI : simpleRecentlyWatched"
+  },
+  "simpleMyFavorites": "Моё избранное",
+  "@simpleMyFavorites": {
+    "description": "Texte UI : simpleMyFavorites"
+  },
+  "simpleSport": "Спорт",
+  "@simpleSport": {
+    "description": "Texte UI : simpleSport"
+  },
+  "simpleEntertainment": "Развлечения",
+  "@simpleEntertainment": {
+    "description": "Texte UI : simpleEntertainment"
+  },
+  "simpleInfo": "Новости",
+  "@simpleInfo": {
+    "description": "Texte UI : simpleInfo"
+  },
+  "simpleKids": "Детям",
+  "@simpleKids": {
+    "description": "Texte UI : simpleKids"
+  },
+  "simpleGeneral": "Общие",
+  "@simpleGeneral": {
+    "description": "Texte UI : simpleGeneral"
+  },
+  "simpleLockedTitle": "Кино и сериалы",
+  "@simpleLockedTitle": {
+    "description": "Texte UI : simpleLockedTitle"
+  },
+  "simpleLockedHint": "Нажми, чтобы разблокировать (отпечаток или код)",
+  "@simpleLockedHint": {
+    "description": "Texte UI : simpleLockedHint"
+  },
+  "simpleUnlockReason": "Разблокировать «Кино и сериалы»",
+  "@simpleUnlockReason": {
+    "description": "Texte UI : simpleUnlockReason"
+  },
+  "simpleAccessCode": "Код доступа",
+  "@simpleAccessCode": {
+    "description": "Texte UI : simpleAccessCode"
+  },
+  "buttonAdd": "Добавить",
+  "@buttonAdd": {
+    "description": "Texte UI : buttonAdd"
+  },
+  "moviesTitle": "Фильмы",
+  "@moviesTitle": {
+    "description": "Texte UI : moviesTitle"
+  },
+  "moviesTabMovies": "Фильмы",
+  "@moviesTabMovies": {
+    "description": "Texte UI : moviesTabMovies"
+  },
+  "moviesTabDownloads": "Загрузки",
+  "@moviesTabDownloads": {
+    "description": "Texte UI : moviesTabDownloads"
+  },
+  "moviesReloadTooltip": "Перезагрузить каталог",
+  "@moviesReloadTooltip": {
+    "description": "Texte UI : moviesReloadTooltip"
+  },
+  "moviesEmptyCatalogue": "Нет доступных фильмов.\nВозможно, твой сервер не предлагает VOD, или ты не подключён через Xtream.",
+  "@moviesEmptyCatalogue": {
+    "description": "Texte UI : moviesEmptyCatalogue"
+  },
+  "moviesEmptyDownloads": "Нет загрузок.\nСкачай фильм во вкладке «Фильмы», чтобы смотреть офлайн.",
+  "@moviesEmptyDownloads": {
+    "description": "Texte UI : moviesEmptyDownloads"
+  },
+  "moviesPlayTooltip": "Смотреть",
+  "@moviesPlayTooltip": {
+    "description": "Texte UI : moviesPlayTooltip"
+  },
+  "moviesDownloaded": "Скачано",
+  "@moviesDownloaded": {
+    "description": "Texte UI : moviesDownloaded"
+  },
+  "moviesDownloading": "Скачивание…",
+  "@moviesDownloading": {
+    "description": "Texte UI : moviesDownloading"
+  },
+  "moviesDownload": "Скачать",
+  "@moviesDownload": {
+    "description": "Texte UI : moviesDownload"
+  },
+  "moviesPlayOfflineTooltip": "Смотреть офлайн",
+  "@moviesPlayOfflineTooltip": {
+    "description": "Texte UI : moviesPlayOfflineTooltip"
+  },
+  "moviesPauseTooltip": "Пауза",
+  "@moviesPauseTooltip": {
+    "description": "Texte UI : moviesPauseTooltip"
+  },
+  "moviesResumeTooltip": "Продолжить",
+  "@moviesResumeTooltip": {
+    "description": "Texte UI : moviesResumeTooltip"
+  },
+  "moviesDeleteTooltip": "Удалить",
+  "@moviesDeleteTooltip": {
+    "description": "Texte UI : moviesDeleteTooltip"
+  },
+  "moviesStatusDownloaded": "Скачано · {size}",
+  "@moviesStatusDownloaded": {
+    "description": "Texte UI : moviesStatusDownloaded",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusDownloading": "Скачивание… {size}",
+  "@moviesStatusDownloading": {
+    "description": "Texte UI : moviesStatusDownloading",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusPaused": "На паузе · {size}",
+  "@moviesStatusPaused": {
+    "description": "Texte UI : moviesStatusPaused",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "moviesStatusError": "Ошибка — нажми, чтобы продолжить",
+  "@moviesStatusError": {
+    "description": "Texte UI : moviesStatusError"
+  },
+  "guideTitle": "Телегид",
+  "@guideTitle": {
+    "description": "Texte UI : guideTitle"
+  },
+  "guideGoToNow": "К текущему времени",
+  "@guideGoToNow": {
+    "description": "Texte UI : guideGoToNow"
+  },
+  "guideNoChannel": "Нет каналов",
+  "@guideNoChannel": {
+    "description": "Texte UI : guideNoChannel"
+  },
+  "guideEmptyHint": "Добавь плейлист с EPG XMLTV, чтобы увидеть телегид.",
+  "@guideEmptyHint": {
+    "description": "Texte UI : guideEmptyHint"
+  },
+  "guideSchedule": "Расписание",
+  "@guideSchedule": {
+    "description": "Texte UI : guideSchedule"
+  },
+  "guideCatchupUnavailable": "Архив недоступен для {channel}",
+  "@guideCatchupUnavailable": {
+    "description": "Texte UI : guideCatchupUnavailable",
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "programsToday": "Программа на сегодня",
+  "@programsToday": {
+    "description": "Texte UI : programsToday"
+  },
+  "programsNoneToday": "На сегодня нет программы",
+  "@programsNoneToday": {
+    "description": "Texte UI : programsNoneToday"
+  },
+  "programsNoneHelp": "В EPG XMLTV этого провайдера нет этого канала, или он ещё не синхронизирован.",
+  "@programsNoneHelp": {
+    "description": "Texte UI : programsNoneHelp"
+  },
+  "programsCatchupUnavailable": "Архив недоступен для этого канала.",
+  "@programsCatchupUnavailable": {
+    "description": "Texte UI : programsCatchupUnavailable"
+  },
+  "programStartsAt": "{title} начнётся в {time}.",
+  "@programStartsAt": {
+    "description": "Texte UI : programStartsAt",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "deviceIdLabel": "ИДЕНТИФИКАТОР УСТРОЙСТВА",
+  "@deviceIdLabel": {
+    "description": "Texte UI : deviceIdLabel"
+  },
+  "deviceIdCaption": "Идентифицирует твою установку The Few. Сохрани этот код для техподдержки приложения. По вопросам о каналах обращайся к своему IPTV-провайдеру.",
+  "@deviceIdCaption": {
+    "description": "Texte UI : deviceIdCaption"
+  },
+  "profileDiscovery": "Обзор",
+  "@profileDiscovery": {
+    "description": "Texte UI : profileDiscovery"
+  },
+  "profileTvGuide": "Телегид",
+  "@profileTvGuide": {
+    "description": "Texte UI : profileTvGuide"
+  },
+  "profileTvGuideSub": "Текущие и ближайшие передачи",
+  "@profileTvGuideSub": {
+    "description": "Texte UI : profileTvGuideSub"
+  },
+  "profileRecordings": "Мои записи",
+  "@profileRecordings": {
+    "description": "Texte UI : profileRecordings"
+  },
+  "profileRecordingsSub": "Твои записи эфира",
+  "@profileRecordingsSub": {
+    "description": "Texte UI : profileRecordingsSub"
+  },
+  "profileAccount": "Аккаунт",
+  "@profileAccount": {
+    "description": "Texte UI : profileAccount"
+  },
+  "profileSettings": "Настройки",
+  "@profileSettings": {
+    "description": "Texte UI : profileSettings"
+  },
+  "profileSettingsSub": "Воспроизведение, безопасность, язык, тема",
+  "@profileSettingsSub": {
+    "description": "Texte UI : profileSettingsSub"
+  },
+  "profileTheme": "Тема",
+  "@profileTheme": {
+    "description": "Texte UI : bouton choix du thème de couleur"
+  },
+  "profileThemeSub": "Выбери свой цвет",
+  "@profileThemeSub": {
+    "description": "Texte UI : sous-titre du bouton Thème"
+  },
+  "themeChooseTitle": "Выбери тему",
+  "@themeChooseTitle": {
+    "description": "Titre du sélecteur de thème"
+  },
+  "themeChooseSub": "Цвет мгновенно меняется во всём приложении",
+  "@themeChooseSub": {
+    "description": "Sous-titre du sélecteur de thème"
+  },
+  "forceUpdateTitle": "Доступна новая версия",
+  "@forceUpdateTitle": {
+    "description": "Titre ecran mise a jour forcee"
+  },
+  "forceUpdateBody": "Эта версия устарела. Скачай последнюю версию, чтобы продолжить пользоваться приложением.",
+  "@forceUpdateBody": {
+    "description": "Corps ecran mise a jour forcee"
+  },
+  "forceUpdateDownloaderHint": "НА ТВ / ПРИСТАВКЕ: ОТКРОЙ DOWNLOADER И ВВЕДИ ЭТОТ КОД",
+  "@forceUpdateDownloaderHint": {
+    "description": "Aide code Downloader"
+  },
+  "forceUpdateDownloadBtn": "Скачать сейчас",
+  "@forceUpdateDownloadBtn": {
+    "description": "Bouton telecharger"
+  },
+  "forceUpdateRetry": "Я обновил — Повторить",
+  "@forceUpdateRetry": {
+    "description": "Bouton reessayer apres MAJ"
+  },
+  "profileAbout": "О приложении",
+  "@profileAbout": {
+    "description": "Texte UI : profileAbout"
+  },
+  "profileAboutSub": "Версия, команда, правовая информация",
+  "@profileAboutSub": {
+    "description": "Texte UI : profileAboutSub"
+  },
+  "profilePremiumAccount": "Премиум-аккаунт",
+  "@profilePremiumAccount": {
+    "description": "Texte UI : profilePremiumAccount"
+  },
+  "profileCastConnected": "Подключено к {device}",
+  "@profileCastConnected": {
+    "description": "Texte UI : profileCastConnected",
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "profileCastTo": "Транслировать на телевизор",
+  "@profileCastTo": {
+    "description": "Texte UI : profileCastTo"
+  },
+  "profileCast": "Трансляция",
+  "@profileCast": {
+    "description": "Texte UI : profileCast"
+  },
+  "profileDeviceFallback": "устройство",
+  "@profileDeviceFallback": {
+    "description": "Texte UI : profileDeviceFallback"
+  },
+  "supportHowToReach": "Как тебе удобнее связаться с нами?",
+  "@supportHowToReach": {
+    "description": "Texte UI : supportHowToReach"
+  },
+  "supportPickChannel": "Выбери удобный способ. Наша команда отвечает 7 дней в неделю.",
+  "@supportPickChannel": {
+    "description": "Texte UI : supportPickChannel"
+  },
+  "supportInstantMessage": "Мгновенное сообщение",
+  "@supportInstantMessage": {
+    "description": "Texte UI : supportInstantMessage"
+  },
+  "supportInstantMessageSub": "Переписка · Среднее время ответа 15 мин.",
+  "@supportInstantMessageSub": {
+    "description": "Texte UI : supportInstantMessageSub"
+  },
+  "supportPhoneCall": "Телефонный звонок",
+  "@supportPhoneCall": {
+    "description": "Texte UI : supportPhoneCall"
+  },
+  "supportPhoneCallSub": "Поговори со специалистом · {number}",
+  "@supportPhoneCallSub": {
+    "description": "Texte UI : supportPhoneCallSub",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "supportMessageError": "Не удалось открыть мессенджер. Попробуй позвонить.",
+  "@supportMessageError": {
+    "description": "Texte UI : supportMessageError"
+  },
+  "supportCallError": "Это устройство не может звонить. Напиши сообщение.",
+  "@supportCallError": {
+    "description": "Texte UI : supportCallError"
+  },
+  "favoritesEmptyTitle": "Пока нет избранного",
+  "@favoritesEmptyTitle": {
+    "description": "Texte UI : favoritesEmptyTitle"
+  },
+  "favoritesEmptyHint": "Нажми ♥ в меню канала, чтобы сохранить его здесь.",
+  "@favoritesEmptyHint": {
+    "description": "Texte UI : favoritesEmptyHint"
+  },
+  "focusedResultsCount": "Каналов: {channels} · стран: {countries}",
+  "@focusedResultsCount": {
+    "description": "Texte UI : focusedResultsCount",
+    "placeholders": {
+      "channels": {
+        "type": "int"
+      },
+      "countries": {
+        "type": "int"
+      }
+    }
+  },
+  "searchResultsCount": "Результатов по запросу «{query}»: {count}",
+  "@searchResultsCount": {
+    "description": "Texte UI : searchResultsCount",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "loginInvalidUrl": "Неверный URL. Он должен начинаться с http:// или https://",
+  "@loginInvalidUrl": {
+    "description": "Texte UI : loginInvalidUrl"
+  },
+  "loginInvalidServer": "Неверный сервер. Формат: http://server.com:8080",
+  "@loginInvalidServer": {
+    "description": "Texte UI : loginInvalidServer"
+  },
+  "loginCredsRequired": "Логин и пароль обязательны.",
+  "@loginCredsRequired": {
+    "description": "Texte UI : loginCredsRequired"
+  },
+  "loginServerRequired": "Выбери сервер.",
+  "@loginServerRequired": {
+    "description": "Texte UI : loginServerRequired"
+  },
+  "loginSourceAdded": "Источник добавлен. Каналы загружаются…",
+  "@loginSourceAdded": {
+    "description": "Texte UI : loginSourceAdded"
+  },
+  "loginConnected": "Подключено. Каналы загружаются…",
+  "@loginConnected": {
+    "description": "Texte UI : loginConnected"
+  },
+  "loginMySourcePerso": "Мой источник",
+  "@loginMySourcePerso": {
+    "description": "Texte UI : loginMySourcePerso"
+  },
+  "loginUrlM3u": "URL M3U",
+  "@loginUrlM3u": {
+    "description": "Texte UI : loginUrlM3u"
+  },
+  "loginServerXtream": "Сервер Xtream",
+  "@loginServerXtream": {
+    "description": "Texte UI : loginServerXtream"
+  },
+  "loginUsername": "Логин",
+  "@loginUsername": {
+    "description": "Texte UI : loginUsername"
+  },
+  "loginPassword": "Пароль",
+  "@loginPassword": {
+    "description": "Texte UI : loginPassword"
+  },
+  "loginNameOptional": "Название (необязательно)",
+  "@loginNameOptional": {
+    "description": "Texte UI : loginNameOptional"
+  },
+  "loginNameHint": "По умолчанию: «Мой источник»",
+  "@loginNameHint": {
+    "description": "Texte UI : loginNameHint"
+  },
+  "loginVerifying": "Проверка…",
+  "@loginVerifying": {
+    "description": "Texte UI : loginVerifying"
+  },
+  "loginLoadChannels": "Загрузить мои каналы",
+  "@loginLoadChannels": {
+    "description": "Texte UI : loginLoadChannels"
+  },
+  "loginTitle": "Вход",
+  "@loginTitle": {
+    "description": "Texte UI : loginTitle"
+  },
+  "loginXtreamIntro": "Выбери сервер и введи код, который дал тебе продавец.\nКаналы загрузятся за несколько секунд.",
+  "@loginXtreamIntro": {
+    "description": "Texte UI : loginXtreamIntro"
+  },
+  "loginServer": "Сервер",
+  "@loginServer": {
+    "description": "Texte UI : loginServer"
+  },
+  "loginConnecting": "Подключение к серверу...",
+  "@loginConnecting": {
+    "description": "Texte UI : loginConnecting"
+  },
+  "loginConnectLoad": "Войти и загрузить",
+  "@loginConnectLoad": {
+    "description": "Texte UI : loginConnectLoad"
+  },
+  "loginLoadingServers": "Загрузка серверов…",
+  "@loginLoadingServers": {
+    "description": "Texte UI : loginLoadingServers"
+  },
+  "loginServersUnavailable": "Серверы пока недоступны.",
+  "@loginServersUnavailable": {
+    "description": "Texte UI : loginServersUnavailable"
+  },
+  "loginAddIntro": "Выбери сервер и введи код, который дал тебе продавец (логин + пароль). Мы проверим код перед загрузкой каналов.",
+  "@loginAddIntro": {
+    "description": "Texte UI : loginAddIntro"
+  },
+  "loginUsernameHint": "логин",
+  "@loginUsernameHint": {
+    "description": "Texte UI : loginUsernameHint"
+  },
+  "loginPasswordHint": "пароль",
+  "@loginPasswordHint": {
+    "description": "Texte UI : loginPasswordHint"
+  },
+  "seeAllOf": "Все: {title}",
+  "@seeAllOf": {
+    "description": "Texte UI : seeAllOf",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistActiveBadge": "Активен",
+  "@playlistActiveBadge": {
+    "description": "Badge sur la playlist actuellement active"
+  },
+  "playlistTapToActivate": "Сделать активным",
+  "@playlistTapToActivate": {
+    "description": "Action pour activer une playlist"
+  },
+  "playlistNowActive": "«{name}» теперь активный плейлист",
+  "@playlistNowActive": {
+    "description": "Confirmation de bascule de playlist active",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "subActiveLifetime": "Бессрочная подписка",
+  "@subActiveLifetime": {
+    "description": "Titre carte abonnement quand le plan est à vie"
+  },
+  "activationCheckButton": "Проверить подписку",
+  "@activationCheckButton": {
+    "description": "Bouton pour revérifier l’abonnement et charger la source"
+  },
+  "activationChecking": "Идёт проверка…",
+  "@activationChecking": {
+    "description": "Snackbar pendant la vérification d’abonnement"
+  },
+  "activationSuccess": "Подписка подтверждена — каналы загружены!",
+  "@activationSuccess": {
+    "description": "Snackbar succès vérification (chaînes chargées)"
+  },
+  "activationNoSourceYet": "Каналов пока нет. Если продавец только что активировал, подожди немного и попробуй снова или перезапусти приложение.",
+  "@activationNoSourceYet": {
+    "description": "Snackbar : aucune source encore assignée"
+  },
+  "activationActiveNoSource": "Подписка активна ✅, но к твоему MAC не привязан плейлист. Продавец должен добавить источник (Xtream/M3U).",
+  "@activationActiveNoSource": {
+    "description": "Message de diagnostic activation"
+  },
+  "activationDeviceKnownNoSub": "Устройство распознано сервером, ожидает активации продавцом.",
+  "@activationDeviceKnownNoSub": {
+    "description": "Message de diagnostic activation"
+  },
+  "activationDeviceUnknown": "Сервер ещё не видел это устройство — проверь подключение к интернету.",
+  "@activationDeviceUnknown": {
+    "description": "Message de diagnostic activation"
+  },
+  "emptyPremiumTitle": "Премиум-аккаунт",
+  "@emptyPremiumTitle": {
+    "description": "Ecran vide quand abonnement actif"
+  },
+  "emptyPremiumWaiting": "Подписка активна — ждём твои каналы. Продавец должен назначить источник (Xtream/M3U).",
+  "@emptyPremiumWaiting": {
+    "description": "Ecran vide quand abonnement actif"
+  },
+  "activationSourceFailed": "Источник получен, но загружено 0 каналов. Проверь URL / данные провайдера (полный URL M3U с get.php или используй режим Xtream).",
+  "@activationSourceFailed": {
+    "description": "Diagnostic : source assignee mais 0 chaine"
+  },
+  "catFilterAll": "Все",
+  "@catFilterAll": {
+    "description": "Filtre catégories : tout"
+  },
+  "catFilterTv": "ТВ",
+  "@catFilterTv": {
+    "description": "Filtre catégories : direct/TV"
+  },
+  "catFilterAdult": "18+",
+  "@catFilterAdult": {
+    "description": "Filtre catégories : adulte"
+  },
+  "catNoneInPlaylist": "В твоём плейлисте нет категорий.",
+  "@catNoneInPlaylist": {
+    "description": "Aucune catégorie dans la playlist"
+  },
+  "catEmptyShelf": "В этом разделе пусто.",
+  "@catEmptyShelf": {
+    "description": "Rien dans ce rayon"
+  },
+  "recordingOpenWith": "Открыть с помощью…",
+  "@recordingOpenWith": {
+    "description": "Enregistrements : ouvrir avec"
+  },
+  "recordingShare": "Поделиться",
+  "@recordingShare": {
+    "description": "Enregistrements : partager"
+  },
+  "recordingNoPlayer": "Нет подходящего плеера. Установи VLC, чтобы открыть этот файл.",
+  "@recordingNoPlayer": {
+    "description": "Enregistrements : aucun lecteur compatible"
+  },
+  "activationRestartTitle": "Активация выполнена",
+  "@activationRestartTitle": {
+    "description": "Splash activation : titre"
+  },
+  "activationRestartSubtitle": "Перезапуск…",
+  "@activationRestartSubtitle": {
+    "description": "Splash activation : sous-titre"
+  },
+  "orSeparator": "или",
+  "@orSeparator": {
+    "description": "Séparateur « ou »"
+  },
+  "xtreamHaveCode": "У меня есть код Xtream",
+  "@xtreamHaveCode": {
+    "description": "Bouton : j’ai un code Xtream"
+  },
+  "catFilterMovies": "Кино",
+  "catFilterSeries": "Сериалы",
+  "@catFilterMovies": {
+    "description": "Filtre catégories : cinéma"
+  },
+  "@catFilterSeries": {
+    "description": "Filtre catégories : série"
+  },
+  "pricingOffersTitle": "Наши предложения",
+  "@pricingOffersTitle": {
+    "description": "Titre bloc offres"
+  },
+  "pricingLifetime": "Навсегда",
+  "@pricingLifetime": {
+    "description": "Offre à vie"
+  },
+  "pricingYearly": "1 год",
+  "@pricingYearly": {
+    "description": "Offre 1 an"
+  },
+  "pricingTrialDays": "Бесплатно {days} дн.",
+  "@pricingTrialDays": {
+    "description": "Essai gratuit en jours",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "simpleSwitchSource": "Сменить источник",
+  "@simpleSwitchSource": {
+    "description": "Bouton : changer de source (trio)"
+  },
+  "homeRecentlyWatched": "Недавно смотрел",
+  "@homeRecentlyWatched": {
+    "description": "Titre du rail des dernières chaînes regardées"
+  },
+  "tvActivationTagline": "Полный доступ навсегда. Один платёж.",
+  "tvLifetime": "Навсегда",
+  "tvActivationCodeLabel": "Твой код активации",
+  "tvActivationCodeHelp": "Передай этот код продавцу для активации. Он не меняется даже после переустановки.",
+  "tvPaidCheck": "Я оплатил — Проверить",
+  "tvChecking": "Проверка…",
+  "tvAddOwnList": "Добавить свой список (Xtream)",
+  "tvActivationFooter": "Оплата проверена · Мгновенная активация",
+  "tvScanToActivate": "Отсканируй меня для активации",
+  "tvScanHelp": "Открой камеру телефона и наведи на этот код. Откроется WhatsApp с уже готовым кодом.",
+  "tvNavLive": "Эфир",
+  "tvNavFilms": "Фильмы",
+  "tvNavSeries": "Сериалы",
+  "tvNavGuide": "Телегид",
+  "tvNavSearch": "Поиск",
+  "tvNavSettings": "Настройки",
+  "tvComingSoon": "Скоро. Этот раздел появится совсем скоро.",
+  "tvEpgNow": "Сейчас",
+  "@tvEpgNow": {
+    "description": "Étiquette du programme en cours (aperçu Direct)"
+  },
+  "tvEpgNext": "Далее",
+  "@tvEpgNext": {
+    "description": "Étiquette du programme suivant (aperçu Direct)"
+  },
+  "tvHello": "Привет",
+  "tvNoChannels": "Пока нет каналов",
+  "tvNoChannelsHelp": "Активируй это устройство в своей панели и отправь ему источник. Каналы появятся здесь автоматически.",
+  "tvContinueWatching": "ПРОДОЛЖИТЬ ПРОСМОТР",
+  "tvNoChannelInCategory": "В этой категории нет каналов.",
+  "tvOthers": "Другое",
+  "tvSearchHint": "Введи запрос…",
+  "tvNoResult": "Ничего не найдено.",
+  "tvDeviceAddress": "Адрес этого устройства (MAC)",
+  "tvDeviceAddressHelp": "Передай этот адрес продавцу, чтобы активировать Zuno.",
+  "tvStatus": "Статус",
+  "tvStatusPaid": "Подписка активна",
+  "tvStatusTrial": "Пробный период — осталось дней: {days}",
+  "@tvStatusTrial": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "tvStatusTrialExpired": "Пробный период закончился — нужна активация",
+  "tvStatusFrozen": "Аккаунт заморожен",
+  "tvStatusBanned": "Аккаунт заблокирован",
+  "tvStatusUnknown": "Не активировано",
+  "tvRefreshStatus": "Обновить статус",
+  "tvLiveBadge": "В ЭФИРЕ",
+  "tvZapHint": "Вверх/Вниз — переключать каналы",
+  "tvAddListTitle": "Добавить мой список",
+  "tvAddListSubtitle": "Код Xtream — подключи свой плейлист.",
+  "tvFieldServer": "Сервер",
+  "tvFieldUser": "Логин",
+  "tvFieldPass": "Пароль",
+  "tvAddListError": "Заполни сервер, логин и пароль.",
+  "tvConnectError": "Не удалось подключиться. Проверь данные.",
+  "tvConnecting": "Подключение…",
+  "tvAddListValidate": "Подтвердить и загрузить список",
+  "tvSearchingChannels": "Ищем твои каналы…",
+  "tvRetry": "Повторить",
+  "tvSourceInvalid": "Подписка получена, но отклонена — проверь данные в панели.",
+  "tvQuitTitle": "Выйти из Zuno?",
+  "tvQuitMessage": "Перезапусти, чтобы обновить каналы, или выйди из приложения.",
+  "tvRestart": "Перезапустить",
+  "tvQuit": "Выйти",
+  "tvStay": "Продолжить",
+  "tvChooseServer": "Выбери сервер",
+  "tvManualServer": "Ввести URL вручную",
+  "tvKeyboardHint": "Совет: можно печатать с клавиатуры приложения-пульта на телефоне (поддерживается вставка).",
+  "tvAddM3uTitle": "Добавить список M3U",
+  "tvAddM3uSubtitle": "Вставь URL своего файла .m3u (и EPG, если есть).",
+  "tvFieldNameOptional": "Название (необязательно)",
+  "tvMyListHint": "Мой список",
+  "tvFieldM3uUrl": "URL M3U",
+  "tvFieldEpgUrlOptional": "URL EPG (необязательно)",
+  "tvAddM3uBusy": "Добавление…",
+  "tvAddM3uValidate": "Добавить список",
+  "tvAddM3uInvalidUrl": "Введи корректный URL M3U (http…).",
+  "tvAddM3uFailed": "Ошибка: список недоступен или пуст.",
+  "tvMyM3uList": "Мой список M3U",
+  "tvBlackBoxTitle": "Чёрный ящик",
+  "tvBlackBoxSubtitle": "Технический журнал приложения (v{version}). Если приложение неожиданно закрылось, причина здесь.",
+  "@tvBlackBoxSubtitle": {"placeholders": {"version": {"type": "String"}}},
+  "tvBlackBoxFirstRun": "Первый запуск: предыдущих сеансов нет.",
+  "tvBlackBoxCleanExit": "Последний сеанс завершён нормально.",
+  "tvBlackBoxBrutal": "АВАРИЙНОЕ ЗАВЕРШЕНИЕ · {reason}",
+  "@tvBlackBoxBrutal": {"placeholders": {"reason": {"type": "String"}}},
+  "tvBlackBoxUnknownReason": "причина неизвестна (Android < 11)",
+  "tvBlackBoxMemory": "память {mb} МБ",
+  "@tvBlackBoxMemory": {"placeholders": {"mb": {"type": "String"}}},
+  "tvBlackBoxWhen": "Когда: {when}",
+  "@tvBlackBoxWhen": {"placeholders": {"when": {"type": "String"}}},
+  "tvBlackBoxLastAction": "Последнее действие: {action}",
+  "@tvBlackBoxLastAction": {"placeholders": {"action": {"type": "String"}}},
+  "tvBlackBoxDetail": "Детали Android: {detail}",
+  "@tvBlackBoxDetail": {"placeholders": {"detail": {"type": "String"}}},
+  "tvRefresh": "Обновить",
+  "tvCopy": "Копировать",
+  "tvCopied": "Скопировано",
+  "tvClear": "Очистить",
+  "tvReading": "Чтение…",
+  "tvBlackBoxHelp": "ВВЕРХ/ВНИЗ: прокрутка · CH+/CH−: страница · Копировать = буфер обмена (вставь в WhatsApp для поддержки).",
+  "tvNavServer": "Сервер",
+  "tvLegalTitle": "Правовая информация и условия",
+  "tvResumeLabel": "ПРОДОЛЖИТЬ",
+  "tvNowPlayingPrefix": "СЕЙЧАС · {title}",
+  "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
+  "tvLiveBadge": "В ЭФИРЕ",
+  "tvPinUpdated": "Родительский код обновлён ✔",
+  "tvParentalTitle": "Родительский контроль",
+  "tvKidsMode": "Детский режим",
+  "tvParentalCode": "Родительский код",
+  "tvCustomPinInPlace": "Установлен собственный код.",
+  "tvChangePin": "Изменить PIN-код",
+  "tvPinSubtitle": "Родительский код из 4 цифр",
+  "tvNewPin": "Новый код",
+  "tvNewPinSubtitle": "Выбери 4 цифры, затем подтверди",
+  "tvPinWrong": "Неверный код, попробуй ещё раз.",
+  "tvPinMismatch": "Коды не совпадают.",
+  "tvPlayerFatalHint": "OK: Повторить   ·   Назад: Выйти",
+  "tvRec": "REC",
+  "tvStop": "Стоп",
+  "tvGuideBtn": "Телегид",
+  "tvFavoriteBtn": "Избранное",
+  "tvPlaybackFinished": "Воспроизведение завершено",
+  "tvPlaybackFinishedBody": "Нажми «Назад», чтобы вернуться к записям.",
+  "tvNoRecordings": "Нет записей",
+  "tvNoRecordingsBody": "Твои записи появятся здесь. Во время просмотра канала нажми кнопку REC, чтобы записать.",
+  "tvMyRecordings": "Мои записи",
+  "tvDeleteQuestion": "Удалить?",
+  "tvDeleteRecordingConfirm": "Удалить «{name}» навсегда?",
+  "@tvDeleteRecordingConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "tvCancel": "Отмена",
+  "tvDelete": "Удалить",
+  "tvSettingsSources": "Мои источники (добавить / активировать / удалить)",
+  "tvSettingsParental": "Родительский контроль (Детский режим + PIN-код)",
+  "tvSettingsBlackBox": "Чёрный ящик (технический журнал)",
+  "tvSettingsLegal": "Правовая информация и условия использования",
+  "tvUpdateChecking": "Обновление: проверка…",
+  "tvUpdateUpToDate": "Обновление: актуальная версия ({version}) — OK, чтобы проверить снова",
+  "@tvUpdateUpToDate": {"placeholders": {"version": {"type": "String"}}},
+  "tvUpdateUpToDateNoVersion": "Обновление: всё актуально — OK, чтобы проверить снова",
+  "tvUpdateAvailable": "Доступна новая версия {version} — OK, чтобы установить",
+  "@tvUpdateAvailable": {"placeholders": {"version": {"type": "String"}}},
+  "tvUpdateDownloading": "Загрузка обновления… {pct} %",
+  "@tvUpdateDownloading": {"placeholders": {"pct": {"type": "String"}}},
+  "tvUpdateFailed": "Обновление: ошибка (сеть или установщик) — OK, чтобы повторить",
+  "tvMySources": "Мои источники",
+  "tvAddXtream": "Добавить Xtream",
+  "tvAddM3u": "Добавить M3U",
+  "tvDeleteSourceConfirm": "Удалить источник «{name}»?",
+  "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "tvActivate": "Активировать",
+  "tvMyTeams": "Мои команды",
+  "tvAdd": "Добавить",
+  "tvPickTeamsTitle": "Выбери любимые команды",
+  "tvPickTeamsBody": "Ты увидишь их результаты и ближайшие матчи, бегущую строку новостей и напоминание примерно за 1 час до каждого матча.",
+  "tvPickMyTeam": "Выбрать мою команду",
+  "tvLastMatch": "Последний матч",
+  "tvNextMatch": "Следующий матч",
+  "tvNewsTicker": "НОВОСТИ",
+  "tvNoData": "Нет данных",
+  "tvNoTeamFound": "Команды не найдены",
+  "tvMyTeam": "Моя команда",
+  "tvImpConnecting": "Подключение к серверу…",
+  "tvImpCategories": "Чтение категорий…",
+  "tvImpDownloading": "Загрузка… {mb} МБ",
+  "@tvImpDownloading": {"placeholders": {"mb": {"type": "String"}}},
+  "tvImpDecoding": "Анализ {mb} МБ…",
+  "@tvImpDecoding": {"placeholders": {"mb": {"type": "String"}}},
+  "tvImpCategory": "Категория {i}/{total} · найдено каналов: {found}",
+  "@tvImpCategory": {"placeholders": {"i": {"type": "String"}, "total": {"type": "String"}, "found": {"type": "String"}}},
+  "tvImpFound": "Найдено каналов: {count}",
+  "@tvImpFound": {"placeholders": {"count": {"type": "String"}}},
+  "tvImpSaving": "Сохранение {done} / {total} каналов",
+  "@tvImpSaving": {"placeholders": {"done": {"type": "String"}, "total": {"type": "String"}}},
+  "tvImpDone": "Готово каналов: {count}",
+  "@tvImpDone": {"placeholders": {"count": {"type": "String"}}},
+  "tvLanguage": "Язык",
+  "tvLanguageAuto": "Автоматически (язык ТВ)",
+  "tvSettingsLanguage": "Язык: {value}",
+  "@tvSettingsLanguage": {"placeholders": {"value": {"type": "String"}}},
+  "tvEnterParentalCode": "Введи родительский код",
+  "tvCurrentCode": "Текущий код",
+  "tvConfirmCode": "Подтверди код",
+  "tvRecordingNotFound": "Запись не найдена",
+  "tvPlaybackImpossible": "Невозможно воспроизвести",
+  "tvRecordingNotFoundBody": "Файл этой записи отсутствует или пуст.",
+  "tvPlaybackImpossibleBody": "Не удалось декодировать этот файл.",
+  "tvRecordingStarted": "Идёт запись…",
+  "tvRecordingError": "Ошибка записи",
+  "tvRecordingSaved": "Запись сохранена ({size})",
+  "@tvRecordingSaved": {"placeholders": {"size": {"type": "String"}}},
+  "tvRecordingEmpty": "Пустая запись",
+  "tvRemovedFromFavorites": "Удалено из избранного",
+  "tvAddedToFavorites": "Добавлено в избранное ❤"
+}
