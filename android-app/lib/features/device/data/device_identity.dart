@@ -21,6 +21,7 @@
 // =========================================================
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/services.dart';
@@ -86,6 +87,23 @@ class DeviceIdentity {
 
   /// Lit l'ANDROID_ID via le channel natif. `null` si indisponible.
   Future<String?> _stableDeviceId() async {
+    // PC (Zuno Windows) : pas d'ANDROID_ID → on prend l'identifiant de la
+    // machine Windows (MachineGuid, fixé à l'installation de Windows) : même
+    // PC = même MAC, même après réinstallation de Zuno (activation gardée).
+    if (Platform.isWindows) {
+      try {
+        final ProcessResult r = await Process.run('reg', <String>[
+          'query',
+          r'HKLM\SOFTWARE\Microsoft\Cryptography',
+          '/v',
+          'MachineGuid',
+        ]);
+        final RegExpMatch? m = RegExp(r'MachineGuid\s+REG_SZ\s+([0-9A-Fa-f-]{36})')
+            .firstMatch('${r.stdout}');
+        if (m != null) return 'win-${m.group(1)!.toLowerCase()}';
+      } catch (_) {}
+      return null;
+    }
     try {
       return await _deviceChannel.invokeMethod<String>('getAndroidId');
     } catch (_) {

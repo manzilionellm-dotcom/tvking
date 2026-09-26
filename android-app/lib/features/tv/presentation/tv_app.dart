@@ -6,6 +6,8 @@
 //  Films / Séries / Recherche viendront se brancher dessus (BUILD_ORDER
 //  5→9), en réutilisant les briques data du mobile.
 // =========================================================
+import 'dart:io' show Platform, exit;
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -338,7 +340,9 @@ class _TvGateState extends State<TvGate> {
         if (action == 'restart') {
           RestartWidget.restart(context);
         } else if (action == 'quit') {
-          await SystemNavigator.pop();
+          if (!Platform.isAndroid) exit(0); // PC : fermer la fenêtre
+          if (!Platform.isAndroid) exit(0); // PC : fermer la fenêtre
+      await SystemNavigator.pop();
         }
       },
       child: home,

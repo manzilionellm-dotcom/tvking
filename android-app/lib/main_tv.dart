@@ -9,6 +9,7 @@
 //  (un workflow CI dédié + manifest Leanback viendront ensuite).
 // =========================================================
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,9 +42,14 @@ import 'features/tv/presentation/tv_app.dart';
 //  dupliqué ici ; on le partage maintenant pour garantir un comportement
 //  IDENTIQUE sur tous les flavors (mobile, Privé, TV).
 // =========================================================
-void main() => runGuarded(_bootstrap);
+void main() => runGuarded(bootstrapZunoTv);
 
-Future<void> _bootstrap() async {
+/// Démarrage de Zuno. Partagé avec la version PC (lib/main_windows.dart),
+/// qui prépare d'abord SQLite / lecteur / fenêtre puis appelle cette même
+/// fonction : MÊME app, même design, mêmes services. [wrap] permet au PC
+/// d'ajouter ses raccourcis clavier (Échap = Retour, F11 = plein écran)
+/// autour de l'app, sans rien changer sur la box.
+Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // RETOUR « UN À UN » : un appui Retour ne recule que d'UN écran (voir
   // tv_back_guard.dart). Inscrit avant runApp → consulté avant le Navigator.
   TvBackGuard.install();
@@ -85,10 +91,13 @@ Future<void> _bootstrap() async {
   // sur des box à RAM limitée (SHIELD incluse). Aucune fonctionnalité TV perdue.
 
   // La TV est TOUJOURS en paysage : on verrouille (pas de portrait).
-  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
+  // (Orientation : Android uniquement — sur PC la fenêtre est libre.)
+  if (Platform.isAndroid) {
+    await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
 
   // Langue de l'app : on charge le choix mémorisé (ou « Système » =>
   // l'app suit la langue de la TV). BLOQUANT et rapide : garantit que le
@@ -180,7 +189,7 @@ Future<void> _bootstrap() async {
     }),
   );
 
-  runApp(const TvApp());
+  runApp(wrap == null ? const TvApp() : wrap(const TvApp()));
 
   // L'app est lancée : si elle tient quelques secondes, on efface l'historique
   // de boucle (un démarrage réussi « pardonne » les crashs précédents).

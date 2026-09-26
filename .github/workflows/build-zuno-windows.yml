@@ -1,0 +1,206 @@
+# ============================================================================
+#  build-zuno-windows.yml — Zuno pour PC (Windows 10/11, 64 bits)
+# ============================================================================
+#  MÊME application que la box (android-app/lib/main_windows.dart →
+#  bootstrapZunoTv) : mêmes écrans, même design, même panel. Seuls changent
+#  la base SQLite (FFI), le lecteur (media_kit/libmpv, décodage matériel) et
+#  la fenêtre (plein écran, Échap = Retour, F11).
+#
+#  Produit :
+#    • Zuno-Setup.exe   — installeur (Inno Setup), recommandé ;
+#    • zuno-windows.zip — version portable (dézipper, lancer tv_king.exe).
+#  Publication (release « zuno-windows », séparée de la TV) : uniquement en
+#  lancement manuel avec publish=true.
+#
+#  Le dossier windows/ n'est pas versionné : il est régénéré par
+#  `flutter create --platforms=windows`, puis personnalisé (nom Zuno,
+#  icône, titre de fenêtre) — comme l'ancien build PC 7 MOTION.
+# ============================================================================
+name: Build Zuno (Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publier sur la release zuno-windows'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-zuno-windows
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: android-app
+
+jobs:
+  build:
+    name: Build Zuno Windows
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: zuno-windows
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Activer le bureau Windows + générer le dossier windows/
+        shell: bash
+        run: |
+          set -e
+          flutter config --enable-windows-desktop
+          flutter create . --platforms=windows --org com.sevenmotion --project-name tv_king
+          rm -f test/widget_test.dart   # test par défaut ajouté par flutter create
+          test -f windows/runner/Runner.rc && test -f windows/runner/main.cpp
+
+      - name: Identité Zuno (nom, titre de fenêtre, icône)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rc = 'windows/runner/Runner.rc'
+          $t = Get-Content $rc -Raw -Encoding UTF8
+          $t = $t -replace '(VALUE\s+"CompanyName",\s*)"[^"]*"',     '$1"Zuno"'
+          $t = $t -replace '(VALUE\s+"ProductName",\s*)"[^"]*"',     '$1"Zuno"'
+          $t = $t -replace '(VALUE\s+"FileDescription",\s*)"[^"]*"', '$1"Zuno"'
+          $t = $t -replace '(VALUE\s+"LegalCopyright",\s*)"[^"]*"',  '$1"Copyright (C) 2026 Zuno. All rights reserved."'
+          Set-Content $rc -Value $t -Encoding UTF8
+          foreach ($k in 'CompanyName','ProductName','FileDescription') {
+            if (-not (Select-String -Path $rc -Pattern "VALUE\s+`"$k`",\s*`"Zuno`"" -Quiet)) { throw "$k non réécrit" }
+          }
+          $main = 'windows/runner/main.cpp'
+          $m = Get-Content $main -Raw -Encoding UTF8
+          $m = $m -replace 'L"tv_king"', 'L"Zuno"'
+          Set-Content $main -Value $m -Encoding UTF8
+          if (-not (Select-String -Path $main -Pattern 'L"Zuno"' -Quiet)) { throw "titre de fenêtre non réécrit" }
+          Copy-Item ci/windows/app_icon.ico windows/runner/resources/app_icon.ico -Force
+          Write-Host "✓ Zuno : Runner.rc, titre, icône"
+
+      # Firebase n'est pas configuré pour Windows (inutile sur PC) : retiré du
+      # build PC + module de remontée de crash remplacé par un stub (même
+      # signature, ne fait rien). La box, elle, garde Firebase.
+      - name: Exclure Firebase (PC)
+        shell: bash
+        run: |
+          set -e
+          python - <<'PYEOF'
+          import re
+          f = "pubspec.yaml"
+          lines = open(f, encoding="utf-8").read().splitlines(keepends=True)
+          out = [l for l in lines if not re.match(r'\s*(firebase_core|firebase_crashlytics)\s*:', l)]
+          open(f, "w", encoding="utf-8").write("".join(out))
+          print("firebase retiré :", len(lines) - len(out), "ligne(s)")
+          PYEOF
+          cat > lib/core/crash/crash_reporting_firebase.dart <<'DARTEOF'
+          // STUB PC — Firebase exclu du build Windows (build-zuno-windows.yml).
+          Future<bool> attachCrashlytics() async => false;
+          DARTEOF
+
+      - name: Flutter pub get + traductions
+        shell: bash
+        run: |
+          set -e
+          flutter pub get
+          flutter gen-l10n
+
+      - name: Numéro de version (celui de la box + n° de build PC)
+        shell: bash
+        run: |
+          set -e
+          VN=$(curl -fsSL "https://github.com/${{ github.repository }}/releases/download/zuno-tv/version.json" 2>/dev/null \
+            | tr -d ' \n' | grep -oE '"versionName":"[^"]*"' | grep -oE '[0-9]+' | head -1 || true)
+          VN=${VN:-88}
+          echo "WIN_VERSION=$VN.0.${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "WIN_BUILD=${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "version PC = $VN.0.${{ github.run_number }}"
+
+      - name: Build Zuno Windows (release, target main_windows)
+        shell: bash
+        env:
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+        run: |
+          set -e
+          flutter build windows --release \
+            --build-name="$WIN_VERSION" --build-number="$WIN_BUILD" \
+            --dart-define=GIT_SHA=${{ github.sha }} \
+            --target=lib/main_windows.dart
+
+      - name: Vérifier le binaire (exe, moteur, lecteur vidéo)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rel = 'build/windows/x64/runner/Release'
+          Get-ChildItem $rel | Select-Object Name, Length | Format-Table -AutoSize
+          foreach ($f in 'tv_king.exe', 'flutter_windows.dll', 'data/app.so') {
+            if (!(Test-Path "$rel/$f")) { throw "manquant : $f" }
+          }
+          $mpv = Get-ChildItem $rel -Filter '*mpv*.dll'
+          if (-not $mpv) { throw "libmpv absente : pas de lecture vidéo sur PC" }
+          $vi = (Get-Item "$rel/tv_king.exe").VersionInfo
+          Write-Host "ProductName=$($vi.ProductName) FileVersion=$($vi.FileVersion)"
+          if (($vi.ProductName -as [string]).Trim() -ne 'Zuno') { throw "ProductName ≠ Zuno" }
+          Write-Host "✓ binaire complet (exe + moteur + libmpv : $($mpv.Name -join ', '))"
+
+      - name: Paquets (zip portable + installeur)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rel = (Resolve-Path 'build/windows/x64/runner/Release').Path
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path "$rel/*" -DestinationPath dist/zuno-windows.zip -Force
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            choco install innosetup -y --no-progress | Out-Null
+          }
+          if (!(Test-Path $iscc)) { throw "Inno Setup introuvable" }
+          & $iscc "/DAppVersion=$env:WIN_VERSION" "/DSourceDir=$rel" "/O$((Resolve-Path dist).Path)" ci/windows/zuno.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC a échoué ($LASTEXITCODE)" }
+          Get-ChildItem dist | Select-Object Name, Length | Format-Table -AutoSize
+          foreach ($f in 'dist/Zuno-Setup.exe', 'dist/zuno-windows.zip') { if (!(Test-Path $f)) { throw "manquant : $f" } }
+          $sha = (Get-FileHash dist/Zuno-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "SETUP_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zuno-windows-${{ github.sha }}
+          path: |
+            android-app/dist/Zuno-Setup.exe
+            android-app/dist/zuno-windows.zip
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publier sur la release zuno-windows
+        if: github.event.inputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          REPO="${{ github.repository }}"
+          NOTES="Zuno pour PC (Windows 10/11, 64 bits) — même app que la box Zuno, reliée au même panel (activation par MAC).
+
+          Installeur : https://github.com/$REPO/releases/download/$RELEASE_TAG/Zuno-Setup.exe
+          Portable   : https://github.com/$REPO/releases/download/$RELEASE_TAG/zuno-windows.zip
+
+          Clavier : flèches = navigation, Entrée = OK, Échap = Retour, F11 = plein écran.
+          Version : $WIN_VERSION · SHA-256 (Setup) : $SETUP_SHA
+          Commit : ${{ github.sha }}"
+          if gh release view "$RELEASE_TAG" -R "$REPO" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" -R "$REPO" --title "Zuno — PC Windows" --notes "$NOTES"
+          else
+            gh release create "$RELEASE_TAG" -R "$REPO" --prerelease --title "Zuno — PC Windows" --notes "$NOTES"
+          fi
+          gh release upload "$RELEASE_TAG" dist/Zuno-Setup.exe dist/zuno-windows.zip --clobber -R "$REPO"
+          echo "✓ https://github.com/$REPO/releases/download/$RELEASE_TAG/Zuno-Setup.exe"

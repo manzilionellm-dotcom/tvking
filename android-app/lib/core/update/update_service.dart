@@ -65,6 +65,8 @@ class UpdateService {
   Future<UpdateInfo?> check() async {
     // Play Store : les MAJ viennent du Store, jamais du sideload GitHub.
     if (kIsPlayBuild) return null;
+    // PC (Zuno Windows) : un .apk ne s'installe pas sur Windows.
+    if (!Platform.isAndroid) return null;
     try {
       final PackageInfo info = await PackageInfo.fromPlatform();
       final int current = int.tryParse(info.buildNumber) ?? 0;

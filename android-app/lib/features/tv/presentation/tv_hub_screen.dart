@@ -18,6 +18,7 @@
 //  ne débloque pas l'accueil sans licence valide. Aucune couleur/taille en dur.
 // =========================================================
 import 'dart:async';
+import 'dart:io' show Platform, exit;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -258,6 +259,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     if (action == 'restart') {
       RestartWidget.restart(context);
     } else if (action == 'quit') {
+      // PC : SystemNavigator.pop ne ferme pas la fenêtre → sortie directe.
+      if (!Platform.isAndroid) exit(0);
       await SystemNavigator.pop();
     }
   }

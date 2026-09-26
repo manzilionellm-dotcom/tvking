@@ -54,6 +54,15 @@ dependencies:
   # lancement de l'app — gain de perf énorme sur grosses listes.
   sqflite: ^2.4.1
 
+  # SQLite pour WINDOWS (Zuno PC, 26/09/2026). `sqflite` seul ne fonctionne
+  # que sur Android/iOS (il s'appuie sur leur SQLite système). Sur Windows,
+  # `sqflite_common_ffi` fournit le moteur SQLite via FFI : au démarrage PC
+  # (lib/main_windows.dart) on appelle `sqfliteFfiInit()` puis
+  # `databaseFactory = databaseFactoryFfi` → tout le code de base existant
+  # fonctionne tel quel. Jamais importé par la TV / le téléphone.
+  # Non épinglé : pub doit résoudre un couple cohérent avec `sqlite3`.
+  sqflite_common_ffi: ^2.3.0
+
   # Manipulation de chemins de fichiers portable Android/iOS.
   path: ^1.9.0
 
@@ -81,6 +90,17 @@ dependencies:
   # screen_brightness compatible et un build.gradle sans bloc kotlin{}.
   media_kit_video: ^1.3.0
   media_kit_libs_android_video: ^1.3.6
+  # Binaires libmpv pour WINDOWS (Zuno PC) : le lecteur natif Media3/
+  # ExoPlayer de la box est Android-uniquement ; sur PC, le même lecteur
+  # (NativeVideoController) passe par media_kit/libmpv, décodage matériel
+  # (D3D11). N'embarque QUE des .dll Windows : aucun impact sur l'APK.
+  media_kit_libs_windows_video: ^1.0.10
+
+  # window_manager — PLEIN ÉCRAN SUR PC (F11 / Alt+Entrée, démarrage plein
+  # écran comme sur une TV). Flutter ne pilote pas seul la fenêtre native
+  # Windows. Implémentation de référence de l'écosystème desktop Flutter ;
+  # ne déclare pas Android → rien n'entre dans l'APK.
+  window_manager: ^0.5.2
 
   # Garde l'écran allumé pendant la lecture (sinon Android
   # éteint l'écran après 30s d'inactivité, même en pleine
