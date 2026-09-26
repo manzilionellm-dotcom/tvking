@@ -52,10 +52,8 @@ defaults:
 jobs:
   build:
     name: Build Zuno Windows
-    # windows-2022 (Visual Studio 2022) ÉPINGLÉ : l'image windows-latest est
-    # passée à « windows-2025-vs2026 » (Visual Studio 2026) que Flutter 3.47
-    # ne sait pas encore piloter (constaté au 1er build : « No
-    # CMAKE_CXX_COMPILER could be found »).
+    # windows-2022 (Visual Studio 2022) : combinaison connue de Flutter.
+    # (windows-latest = windows-2025-vs2026 depuis septembre 2026.)
     runs-on: windows-2022
     timeout-minutes: 60
     env:
@@ -139,16 +137,21 @@ jobs:
           echo "WIN_BUILD=${{ github.run_number }}" >> "$GITHUB_ENV"
           echo "version PC = $VN.0.${{ github.run_number }}"
 
+      # PowerShell (PAS bash) : sous Git Bash, la valeur « /D_SILENCE… » de
+      # CL était convertie en chemin Windows (conversion POSIX de MSYS) →
+      # cl.exe recevait un faux fichier source → CMake : « No
+      # CMAKE_CXX_COMPILER could be found » (builds 1 et 2).
       - name: Build Zuno Windows (release, target main_windows)
-        shell: bash
+        shell: pwsh
         env:
           CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: |
-          set -e
-          flutter build windows --release \
-            --build-name="$WIN_VERSION" --build-number="$WIN_BUILD" \
-            --dart-define=GIT_SHA=${{ github.sha }} \
+          $ErrorActionPreference = 'Stop'
+          flutter build windows --release `
+            --build-name="$env:WIN_VERSION" --build-number="$env:WIN_BUILD" `
+            --dart-define=GIT_SHA=${{ github.sha }} `
             --target=lib/main_windows.dart
+          if ($LASTEXITCODE -ne 0) { throw "flutter build windows a échoué ($LASTEXITCODE)" }
 
       - name: Vérifier le binaire (exe, moteur, lecteur vidéo)
         shell: pwsh
