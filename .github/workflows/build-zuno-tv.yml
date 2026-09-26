@@ -44,7 +44,8 @@
 #       Garde-fou : on ne publie QUE si le certificat de l'APK produit est
 #       exactement celui des box clients (EXPECTED_CERT) et si minSdk = 21.
 #    5. Barrière qualité : `flutter analyze` + `flutter test`.
-#    6. Build release universel ARM (32 + 64 bits : Fire Stick Lite inclus),
+#    6. Build release universel ARM 32/64 bits (Fire Stick Lite inclus) +
+#       x86_64 (box Intel/AMD, émulateurs) ; chaque architecture vérifiée complète,
 #       versionCode = secondes epoch (strictement croissant → la mise à jour
 #       s'installe toujours par-dessus), APP_BUILD_TS pour la « mise à jour
 #       forcée » pilotée par le panel.
@@ -340,7 +341,7 @@ jobs:
           fi
           flutter build apk --release --no-tree-shake-icons \
             --android-skip-build-dependency-validation \
-            --target-platform android-arm,android-arm64 \
+            --target-platform android-arm,android-arm64,android-x64 \
             --build-number="$BUILD_NUMBER" \
             --build-name="$TV_VERSION_NAME" \
             --obfuscate --split-debug-info=build/symbols \
@@ -378,6 +379,17 @@ jobs:
           unzip -p "$APK" 'lib/*/libapp.so' | grep -aq "$WANT" \
             || { echo "❌ backend $WANT introuvable dans l'APK"; exit 1; }
           echo "✓ APK vérifié : com.sevenmotion.tv.seven_tv, Leanback, backend $WANT"
+          # Chaque dossier d'architecture présent dans l'APK DOIT contenir le
+          # moteur (libflutter.so) et le code (libapp.so) : Android choisit le
+          # dossier de SON processeur ; un dossier incomplet = app qui ne démarre
+          # pas (constaté le 26/09/2026 : x86_64 ne contenait que les libs mpv).
+          for ABI in $(unzip -Z1 "$APK" 'lib/*' | cut -d/ -f2 | sort -u); do
+            for LIB in libflutter.so libapp.so; do
+              unzip -Z1 "$APK" "lib/$ABI/$LIB" >/dev/null 2>&1 \
+                || { echo "❌ lib/$ABI/$LIB absent : l'app ne démarrerait pas sur les box $ABI"; exit 1; }
+            done
+            echo "✓ lib/$ABI complet"
+          done
           # Compatibilité toutes box : minSdk 21 (Android 5) réellement dans l'APK.
           MIN_SDK=$(echo "$BADGING" | grep -oE "^sdkVersion:'[0-9]+'" | grep -oE "[0-9]+" || true)
           echo "minSdk de l'APK : ${MIN_SDK:-?}"
