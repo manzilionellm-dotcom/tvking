@@ -20,6 +20,7 @@ import '../core/tv_focusable.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
+import 'tv_recordings_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
 
@@ -298,6 +299,44 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
                     Icon(Icons.playlist_play_rounded, color: fg, size: 26),
                     const SizedBox(width: 12),
                     Text(context.l10n.tvSettingsSources,
+                        style: TextStyle(
+                            fontSize: TvDimens.title,
+                            fontWeight: FontWeight.w700,
+                            color: fg)),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: fg, size: 26),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // ----- Mes enregistrements (vidéos enregistrées avec REC) -----
+          // Demande du propriétaire (26/09/2026) : les enregistrements
+          // existaient mais aucun menu de Zuno n'y menait.
+          TvFocusBuilder(
+            scale: TvFocusScale.large,
+            onSelect: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(child: TvRecordingsScreen()),
+              ),
+            ),
+            builder: (BuildContext context, bool focused) {
+              final Color bg = focused ? TvTokens.accent : TvTokens.sel;
+              final Color fg =
+                  focused ? TvTokens.onAccent : TvTokens.accentBright;
+              return Container(
+                width: 760,
+                decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(TvDimens.cardRadius)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.video_library_rounded, color: fg, size: 26),
+                    const SizedBox(width: 12),
+                    Text(context.l10n.tvMyRecordings,
                         style: TextStyle(
                             fontSize: TvDimens.title,
                             fontWeight: FontWeight.w700,

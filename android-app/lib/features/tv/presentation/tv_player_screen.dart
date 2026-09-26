@@ -26,6 +26,7 @@ import 'package:native_video_player/native_video_player.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../core/tv_activity.dart';
+import '../core/tv_back_guard.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -548,6 +549,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         k == LogicalKeyboardKey.exit) {
       // Retour = quitter le lecteur (convention YouTube/Netflix). La
       // navigation des boutons se fait à Gauche/Droite + OK.
+      // markHandled : le « retour système » du MÊME appui ne doit pas
+      // fermer aussi la liste Direct (retour un à un).
+      TvBackGuard.markHandled();
       Navigator.of(context).maybePop();
       return KeyEventResult.handled;
     }

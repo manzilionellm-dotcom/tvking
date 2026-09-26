@@ -34,6 +34,7 @@ import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_language.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../core/tv_activity.dart';
+import '../core/tv_back_guard.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
 import 'tv_cinema_common.dart';
@@ -471,7 +472,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final LogicalKeyboardKey k = event.logicalKey;
 
     if (_isBack(k)) {
-      if (!repeat) _handleBack();
+      if (!repeat) {
+        // Même appui = un seul pas en arrière (cf. tv_back_guard.dart).
+        TvBackGuard.markHandled();
+        _handleBack();
+      }
       return KeyEventResult.handled;
     }
 

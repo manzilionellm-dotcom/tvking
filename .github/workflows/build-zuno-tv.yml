@@ -81,6 +81,12 @@ on:
         default: 'false'
         type: choice
         options: ['false', 'true']
+      play_aab:
+        description: 'Construire aussi le .aab Google Play (Android TV)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
       backend_url:
         description: 'Worker/panel visé (vide = https://app.7themotion.com)'
         required: false
@@ -408,6 +414,66 @@ jobs:
             echo "::warning title=Signature de contrôle::$CERT (build non publié)."
           fi
 
+      # ------------------------------------------------------------------
+      #  AAB GOOGLE PLAY (Android TV) — sur demande (input play_aab=true).
+      #  Même code, même clé maîtresse (= clé d'importation Play), mêmes
+      #  numéros de version que l'APK. Différences exigées par Google Play :
+      #    • PLAY_BUILD=true → l'updater sideload est coupé (les mises à jour
+      #      viennent du Store, cf. core/update/build_flags.dart) ;
+      #    • permission REQUEST_INSTALL_PACKAGES RETIRÉE du manifeste fusionné
+      #      (permission restreinte sur Google Play), y compris si un plugin
+      #      l'ajoute (tools:node="remove").
+      #  Contrôles : permission absente du bundle + certificat = clé maîtresse.
+      # ------------------------------------------------------------------
+      - name: Build AAB Google Play (Android TV)
+        if: github.event.inputs.play_aab == 'true'
+        run: |
+          set -e
+          python3 - <<'PYEOF'
+          f = "android/app/src/main/AndroidManifest.xml"
+          s = open(f, encoding="utf-8").read()
+          keep = '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>'
+          drop = '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove"/>'
+          if drop not in s:
+              s = s.replace(keep, drop) if keep in s else s.replace("<application", drop + "\n    <application", 1)
+          open(f, "w", encoding="utf-8").write(s)
+          print("REQUEST_INSTALL_PACKAGES retirée pour Google Play")
+          PYEOF
+          flutter build appbundle --release --no-tree-shake-icons \
+            --android-skip-build-dependency-validation \
+            --build-number="$TV_BUILD_NUMBER" \
+            --build-name="$TV_VERSION_NAME" \
+            --obfuscate --split-debug-info=build/symbols-aab \
+            --dart-define=PLAY_BUILD=true \
+            --dart-define=APP_BUILD_TS="$TV_BUILD_NUMBER" \
+            --dart-define=GIT_SHA=${{ github.sha }} \
+            --target=lib/main_tv.dart
+          AAB=build/app/outputs/bundle/release/zuno-tv.aab
+          cp build/app/outputs/bundle/release/app-release.aab "$AAB"
+          ls -lah "$AAB"
+          if unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq "REQUEST_INSTALL_PACKAGES"; then
+            echo "❌ REQUEST_INSTALL_PACKAGES encore présente dans l'AAB (refusé par Google Play)"; exit 1
+          fi
+          AAB_CERT=$(keytool -printcert -jarfile "$AAB" | grep -m1 -oE "SHA256: [0-9A-F:]+" | cut -d' ' -f2 | tr -d ':' | tr 'A-F' 'a-f')
+          echo "certificat de l'AAB : $AAB_CERT"
+          if [ "$AAB_CERT" != "$EXPECTED_CERT" ]; then
+            if [ "$PUBLIER" = "true" ]; then
+              echo "::error title=AAB mal signé::$AAB_CERT ≠ clé maîtresse → non publié"; exit 1
+            fi
+            echo "::warning title=AAB de contrôle::signature $AAB_CERT (build non publié)"
+          fi
+          echo "✓ AAB Google Play prêt : $AAB"
+          echo "AAB_READY=1" >> "$GITHUB_ENV"
+
+      - name: Upload AAB artifact (Google Play)
+        if: env.AAB_READY == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zuno-tv-aab-${{ github.sha }}
+          path: android-app/build/app/outputs/bundle/release/zuno-tv.aab
+          retention-days: 30
+          if-no-files-found: error
+
       - name: Upload APK artifact (Zuno TV)
         uses: actions/upload-artifact@v4
         with:
@@ -462,6 +528,12 @@ jobs:
               --title "Zuno — APK box Android TV" --notes "$NOTES"
           fi
           gh release upload "$RELEASE_TAG" "$APK" version.json --clobber -R "$REPO"
+          # AAB Google Play (si construit) : fichier à déposer dans la Play
+          # Console, JAMAIS installable directement sur une box.
+          if [ "${AAB_READY:-0}" = "1" ]; then
+            gh release upload "$RELEASE_TAG" build/app/outputs/bundle/release/zuno-tv.aab --clobber -R "$REPO"
+            echo "✓ https://github.com/$REPO/releases/download/$RELEASE_TAG/zuno-tv.aab"
+          fi
           echo "✓ https://github.com/$REPO/releases/download/$RELEASE_TAG/$APK_NAME"
 
       - name: Résumé

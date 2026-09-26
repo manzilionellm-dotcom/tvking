@@ -20,6 +20,7 @@ import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
+import 'features/tv/core/tv_back_guard.dart';
 import 'core/notifications/notification_service.dart';
 import 'features/channels/data/recently_watched_repository.dart';
 import 'features/device/data/device_identity.dart';
@@ -43,6 +44,10 @@ import 'features/tv/presentation/tv_app.dart';
 void main() => runGuarded(_bootstrap);
 
 Future<void> _bootstrap() async {
+  // RETOUR « UN À UN » : un appui Retour ne recule que d'UN écran (voir
+  // tv_back_guard.dart). Inscrit avant runApp → consulté avant le Navigator.
+  TvBackGuard.install();
+
   // Flavor explicite (un seul produit pour l'instant : The Few).
   FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
 

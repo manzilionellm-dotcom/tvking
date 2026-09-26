@@ -35,6 +35,7 @@ import 'package:native_video_player/native_video_player.dart';
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../core/tv_back_guard.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 
@@ -398,6 +399,7 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
         k == LogicalKeyboardKey.escape ||
         k == LogicalKeyboardKey.browserBack ||
         k == LogicalKeyboardKey.exit) {
+      TvBackGuard.markHandled(); // un appui = un seul écran (tv_back_guard.dart)
       Navigator.of(context).maybePop();
       return KeyEventResult.handled;
     }
