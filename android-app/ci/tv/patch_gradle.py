@@ -129,7 +129,12 @@ def patch(s: str) -> str:
         s, n = re.subn(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = kBoxMinSdk", s, count=1)
         if n == 0:
             raise SystemExit("❌ minSdk = flutter.minSdkVersion introuvable dans build.gradle.kts")
-        s = "// Compatibilité toutes box (Android 5+) — cf. ci/tv/patch_gradle.py\nval kBoxMinSdk = 21\n\n" + s
+        # Déclaration APRÈS les `import` (Kotlin exige les imports en tête de
+        # script) : juste avant le 1er bloc de code de niveau racine
+        # (`val keystoreProperties…` injecté plus haut, sinon `android {`).
+        decl = "// Compatibilité toutes box (Android 5+) — cf. ci/tv/patch_gradle.py\nval kBoxMinSdk = 21\n\n"
+        anchor = "val keystoreProperties" if "val keystoreProperties" in s else "android {"
+        s = s.replace(anchor, decl + anchor, 1)
     return s
 
 
