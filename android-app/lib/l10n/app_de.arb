@@ -2197,5 +2197,7 @@
   "tvDeviceCard": "Mein Gerät",
   "tvUpdateTitle": "Update",
   "tvSettingsRecordingsHint": "Mit der REC-Taste aufgenommene Videos.",
-  "tvRingHint": "◀ ▶  blättern   ·   OK  öffnen"
+  "tvRingHint": "◀ ▶  blättern   ·   OK  öffnen",
+  "tvCinemaDownloadSeason": "Staffel herunterladen",
+  "tvCinemaSeasonQueue": "{count, plural, =0{Staffel wird geladen} =1{1 Folge in Warteschlange} other{{count} Folgen in Warteschlange}}"
 }

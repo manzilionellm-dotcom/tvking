@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../cinema/data/cinema_downloads.dart';
+import '../../vod/domain/vod_movie.dart';
 import '../../cinema/data/cinema_repository.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_models.dart';
@@ -484,15 +485,41 @@ class _TvSeriesScreenState extends State<TvSeriesScreen> {
                 child: _Header(title: t.name, meta: meta, plot: d.plot ?? t.plot),
               ),
               const SizedBox(height: 18),
-              if (primary != null)
-                CinemaPill(
-                  icon: Icons.play_arrow_rounded,
-                  autofocus: true,
-                  label: resumable
-                      ? context.l10n.tvCinemaResumeEpisode(primary.season.toString(), primary.number.toString())
-                      : context.l10n.tvCinemaPlayEpisode(primary.season.toString(), primary.number.toString()),
-                  onSelect: () => _play(primary),
-                ),
+              Row(
+                children: <Widget>[
+                  if (primary != null)
+                    CinemaPill(
+                      icon: Icons.play_arrow_rounded,
+                      autofocus: true,
+                      label: resumable
+                          ? context.l10n.tvCinemaResumeEpisode(primary.season.toString(), primary.number.toString())
+                          : context.l10n.tvCinemaPlayEpisode(primary.season.toString(), primary.number.toString()),
+                      onSelect: () => _play(primary),
+                    ),
+                  if (primary != null) const SizedBox(width: 12),
+                  // « Télécharger la saison » (façon Netflix) : tous les
+                  // épisodes de la saison affichée, un par un, en file.
+                  if (!_loading && (s?.episodes[_season]?.isNotEmpty ?? false))
+                    ValueListenableBuilder<int>(
+                      valueListenable: CinemaDownloads.queued,
+                      builder: (BuildContext context, int n, _) {
+                        final List<CinemaEpisode> eps = s!.episodes[_season]!;
+                        final bool active = eps.any((CinemaEpisode e) =>
+                            CinemaDownloads.isQueued(VodPlayItem.episode(e, widget.title).id));
+                        return CinemaPill(
+                          icon: active ? Icons.downloading_rounded : Icons.download_rounded,
+                          label: active
+                              ? context.l10n.tvCinemaSeasonQueue(n)
+                              : context.l10n.tvCinemaDownloadSeason,
+                          onSelect: () => unawaited(CinemaDownloads.startSeason(<VodMovie>[
+                            for (final CinemaEpisode e in eps)
+                              VodPlayItem.episode(e, widget.title).toVodMovie(),
+                          ]).then((_) => _refresh())),
+                        );
+                      },
+                    ),
+                ],
+              ),
               const SizedBox(height: 18),
               Expanded(child: _buildEpisodes(context)),
             ],

@@ -1,0 +1,5 @@
+# Déclencheur de publication Zuno PC (build-zuno-windows.yml).
+# Le PC est EXACTEMENT le code de la box ; son build ne se lance qu'au push
+# des fichiers propres au PC. Modifier ce fichier (version de la box visée)
+# republie le PC sur le même code que la box.
+97

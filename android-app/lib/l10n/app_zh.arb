@@ -2197,5 +2197,7 @@
   "tvDeviceCard": "我的设备",
   "tvUpdateTitle": "更新",
   "tvSettingsRecordingsHint": "使用 REC 按钮录制的视频。",
-  "tvRingHint": "◀ ▶  浏览   ·   OK  打开"
+  "tvRingHint": "◀ ▶  浏览   ·   OK  打开",
+  "tvCinemaDownloadSeason": "下载本季",
+  "tvCinemaSeasonQueue": "{count, plural, =0{本季下载中} =1{1 集排队中} other{{count} 集排队中}}"
 }

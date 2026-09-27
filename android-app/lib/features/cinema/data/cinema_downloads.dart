@@ -14,7 +14,10 @@
 //     si l'utilisateur avait lui-même téléchargé l'épisode fini (aucun
 //     téléchargement surprise).
 // =========================================================
+import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -74,6 +77,92 @@ abstract final class CinemaDownloads {
     if (!await _unmeteredNetwork()) return;
     final CinemaDownloadStart r = await start(next);
     BlackBox.instance.info('CINEMA', 'téléchargement intelligent : suivant ${next.id} → ${r.name}');
+  }
+
+  // ---------------------------------------------------------------
+  //  « TÉLÉCHARGER LA SAISON » (façon Netflix, 27/09/2026)
+  //  Un seul appui met tous les épisodes non téléchargés en FILE D'ATTENTE.
+  //  Ils partent UN PAR UN, jamais en parallèle : la plupart des abonnements
+  //  IPTV n'autorisent qu'1 ou 2 connexions simultanées — 10 téléchargements
+  //  en même temps feraient refuser le compte (et couperaient le direct).
+  //  Épisode terminé ou en échec → le suivant démarre ; le client met en
+  //  pause → la file s'arrête (c'est sa décision) ; plus de place → arrêt.
+  //  La file vit tant que l'app est ouverte : après un redémarrage, les
+  //  épisodes déjà commencés se reprennent, les autres se relancent d'un
+  //  appui sur le même bouton (les épisodes finis sont ignorés).
+  // ---------------------------------------------------------------
+
+  static final List<VodMovie> _queue = <VodMovie>[];
+  static String? _current;
+  static StreamSubscription<List<Download>>? _queueSub;
+
+  /// Nombre d'épisodes encore en attente (l'épisode en cours non compris).
+  static final ValueNotifier<int> queued = ValueNotifier<int>(0);
+
+  /// Vrai si [id] est en file d'attente ou en cours dans la file.
+  static bool isQueued(String id) =>
+      _current == id || _queue.any((VodMovie m) => m.id == id);
+
+  /// Met en file tous les épisodes de [episodes] pas encore téléchargés.
+  /// Renvoie le nombre d'épisodes ajoutés (0 = tout est déjà là / en file).
+  static Future<int> startSeason(List<VodMovie> episodes) async {
+    await DownloadsRepository.instance.initialize();
+    int added = 0;
+    for (final VodMovie m in episodes) {
+      final Download? d = DownloadsRepository.instance.byId(m.id);
+      if (d != null && (d.isDone || d.status == DownloadStatus.downloading)) {
+        continue;
+      }
+      if (isQueued(m.id)) continue;
+      _queue.add(m);
+      added++;
+    }
+    queued.value = _queue.length;
+    _queueSub ??= DownloadsRepository.instance.stream.listen(_onDownloads);
+    BlackBox.instance.info('CINEMA', 'saison : $added épisode(s) en file');
+    if (_current == null) await _next();
+    return added;
+  }
+
+  static Future<void> _next() async {
+    while (_queue.isNotEmpty) {
+      final VodMovie m = _queue.removeAt(0);
+      queued.value = _queue.length;
+      final CinemaDownloadStart r = await start(m);
+      if (r == CinemaDownloadStart.noSpace) {
+        _queue.clear();
+        queued.value = 0;
+        _current = null;
+        return;
+      }
+      if (r == CinemaDownloadStart.alreadyThere) continue;
+      _current = m.id;
+      return;
+    }
+    _current = null;
+  }
+
+  static void _onDownloads(List<Download> all) {
+    final String? id = _current;
+    if (id == null) return;
+    Download? d;
+    for (final Download x in all) {
+      if (x.id == id) {
+        d = x;
+        break;
+      }
+    }
+    if (d == null ||
+        d.status == DownloadStatus.done ||
+        d.status == DownloadStatus.error) {
+      _current = null;
+      unawaited(_next()); // terminé, échoué ou supprimé → épisode suivant
+    } else if (d.status == DownloadStatus.paused) {
+      // Pause décidée par le client : on arrête la file.
+      _current = null;
+      _queue.clear();
+      queued.value = 0;
+    }
   }
 
   static Future<bool> _unmeteredNetwork() async {

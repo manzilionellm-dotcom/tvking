@@ -765,5 +765,7 @@
   "tvDeviceCard": "My device",
   "tvUpdateTitle": "Update",
   "tvSettingsRecordingsHint": "Videos recorded with the REC button.",
-  "tvRingHint": "◀ ▶  browse   ·   OK  open"
+  "tvRingHint": "◀ ▶  browse   ·   OK  open",
+  "tvCinemaDownloadSeason": "Download season",
+  "tvCinemaSeasonQueue": "{count, plural, =0{Season downloading} =1{1 episode queued} other{{count} episodes queued}}"
 }

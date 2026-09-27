@@ -2197,5 +2197,7 @@
   "tvDeviceCard": "Il mio dispositivo",
   "tvUpdateTitle": "Aggiornamento",
   "tvSettingsRecordingsHint": "I video registrati con il tasto REC.",
-  "tvRingHint": "◀ ▶  sfoglia   ·   OK  apri"
+  "tvRingHint": "◀ ▶  sfoglia   ·   OK  apri",
+  "tvCinemaDownloadSeason": "Scarica stagione",
+  "tvCinemaSeasonQueue": "{count, plural, =0{Stagione in download} =1{1 episodio in coda} other{{count} episodi in coda}}"
 }

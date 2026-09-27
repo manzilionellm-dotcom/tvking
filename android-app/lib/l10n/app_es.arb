@@ -893,5 +893,7 @@
   "tvDeviceCard": "Mi dispositivo",
   "tvUpdateTitle": "Actualización",
   "tvSettingsRecordingsHint": "Los vídeos grabados con el botón REC.",
-  "tvRingHint": "◀ ▶  explorar   ·   OK  abrir"
+  "tvRingHint": "◀ ▶  explorar   ·   OK  abrir",
+  "tvCinemaDownloadSeason": "Descargar temporada",
+  "tvCinemaSeasonQueue": "{count, plural, =0{Temporada descargando} =1{1 episodio en cola} other{{count} episodios en cola}}"
 }

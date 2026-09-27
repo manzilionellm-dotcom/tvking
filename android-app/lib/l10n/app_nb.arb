@@ -893,5 +893,7 @@
   "tvDeviceCard": "Min enhet",
   "tvUpdateTitle": "Oppdatering",
   "tvSettingsRecordingsHint": "Videoer tatt opp med REC-knappen.",
-  "tvRingHint": "◀ ▶  bla   ·   OK  åpne"
+  "tvRingHint": "◀ ▶  bla   ·   OK  åpne",
+  "tvCinemaDownloadSeason": "Last ned sesong",
+  "tvCinemaSeasonQueue": "{count, plural, =0{Sesong lastes ned} =1{1 episode i kø} other{{count} episoder i kø}}"
 }

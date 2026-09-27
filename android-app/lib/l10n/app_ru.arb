@@ -2197,5 +2197,7 @@
   "tvDeviceCard": "Моё устройство",
   "tvUpdateTitle": "Обновление",
   "tvSettingsRecordingsHint": "Видео, записанные кнопкой REC.",
-  "tvRingHint": "◀ ▶  листать   ·   OK  открыть"
+  "tvRingHint": "◀ ▶  листать   ·   OK  открыть",
+  "tvCinemaDownloadSeason": "Скачать сезон",
+  "tvCinemaSeasonQueue": "{count, plural, =0{Сезон загружается} =1{1 серия в очереди} few{{count} серии в очереди} many{{count} серий в очереди} other{{count} серии в очереди}}"
 }

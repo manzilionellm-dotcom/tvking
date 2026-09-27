@@ -893,5 +893,7 @@
   "tvDeviceCard": "جهازي",
   "tvUpdateTitle": "التحديث",
   "tvSettingsRecordingsHint": "مقاطع الفيديو المسجلة بزر REC.",
-  "tvRingHint": "◀ ▶  تصفّح   ·   OK  فتح"
+  "tvRingHint": "◀ ▶  تصفّح   ·   OK  فتح",
+  "tvCinemaDownloadSeason": "تنزيل الموسم",
+  "tvCinemaSeasonQueue": "{count, plural, =0{جارٍ تنزيل الموسم} =1{حلقة واحدة في الانتظار} other{{count} حلقات في الانتظار}}"
 }
