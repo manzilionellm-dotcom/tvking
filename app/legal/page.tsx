@@ -28,17 +28,17 @@ export default function LegalPage() {
       </section>
 
       <section className="mt-10 space-y-3 text-sm leading-relaxed text-white/60">
-        <h2 className="text-xl font-semibold text-white">Conditions générales d'utilisation</h2>
+        <h2 className="text-xl font-semibold text-white">Conditions générales d’utilisation</h2>
         <p>
-          Zuno est une application lecteur. L'utilisateur est responsable des contenus et
-          sources qu'il configure. Aucun catalogue illicite n'est fourni par l'éditeur.
+          Zuno est une application lecteur. L’utilisateur est responsable des contenus et
+          sources qu’il configure. Aucun catalogue illicite n’est fourni par l’éditeur.
         </p>
         <p>
-          L'accès payant (forfaits Annuel ou À vie) couvre l'usage de l'application et
-          des services d'activation associés, selon les conditions du paiement Stripe.
+          L’accès payant (forfaits Annuel ou À vie) couvre l’usage de l’application et
+          des services d’activation associés, selon les conditions du paiement Stripe.
         </p>
         <p>
-          L'éditeur peut suspendre un accès en cas d'abus, fraude ou violation des présentes.
+          L’éditeur peut suspendre un accès en cas d’abus, fraude ou violation des présentes.
         </p>
       </section>
 
@@ -50,13 +50,13 @@ export default function LegalPage() {
         </p>
         <p>
           Contact privacy : via le support WhatsApp indiqué sur le site. Vous pouvez demander
-          l'accès ou la suppression de vos données de compte.
+          l’accès ou la suppression de vos données de compte.
         </p>
       </section>
 
       <section className="mt-10 space-y-3 text-sm leading-relaxed text-white/60">
         <h2 className="text-xl font-semibold text-white">Hébergement</h2>
-        <p>Site hébergé sur Vercel Inc. Application et API d'activation peuvent utiliser des
+        <p>Site hébergé sur Vercel Inc. Application et API d’activation peuvent utiliser des
           infrastructures Cloudflare / partenaires techniques de 7 Few, LLC.</p>
       </section>
     </div>

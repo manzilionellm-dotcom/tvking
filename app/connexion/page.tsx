@@ -68,7 +68,7 @@ export default function ConnexionPage() {
           <h2 className="text-lg font-semibold text-white">Mon abonnement</h2>
           <p className="mt-2 text-sm text-white/60">Connecté : {session.email}</p>
           <p className="mt-1 text-xs text-white/35">
-            Stub local — aucun abonnement Stripe lié pour l'instant.
+            Stub local — aucun abonnement Stripe lié pour l’instant.
           </p>
           <div className="mt-6 flex flex-col gap-2">
             <Link href="/forfaits" className="rounded-xl bg-[#2563eb] px-4 py-3 text-center text-sm font-semibold text-white">
