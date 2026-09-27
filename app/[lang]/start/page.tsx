@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "../../lib/app-downloads";
 import { fmt } from "../../i18n/messages";
 import { pageI18n } from "../../i18n/server";
 
@@ -12,7 +13,7 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/start">): 
   return {
     title: m.meta.startTitle,
     description: m.meta.startDescription,
-    alternates: { canonical: "https://tvking.vercel.app/start" },
+    alternates: { canonical: `${SITE_URL}/start` },
   };
 }
 

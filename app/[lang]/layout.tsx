@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { SITE_URL } from "../lib/app-downloads";
 import { notFound } from "next/navigation";
 import { Geist, Playfair_Display } from "next/font/google";
 import "../globals.css";
@@ -34,7 +35,7 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
   const { lang } = await params;
   const m = getMessages(isLocale(lang) ? lang : "fr");
   return {
-    metadataBase: new URL("https://tvking.vercel.app"),
+    metadataBase: new URL(SITE_URL),
     title: { default: m.meta.siteTitle, template: "%s | TV King" },
     description: m.meta.siteDescription,
     manifest: "/manifest.webmanifest",
@@ -42,7 +43,7 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
     openGraph: {
       title: m.meta.siteTitle,
       description: m.meta.ogDescription,
-      url: "https://tvking.vercel.app",
+      url: SITE_URL,
       siteName: "TV King",
       locale: lang,
       type: "website",

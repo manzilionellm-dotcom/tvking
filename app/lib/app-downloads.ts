@@ -19,10 +19,12 @@ export const APP_DOWNLOADS = {
 } as const;
 
 /**
- * Adresse publique du site, affichée aux clients (raccourci « /apk » à taper
- * dans Downloader). Passer à "zuno.7themotion.com" dès que le DNS répond.
+ * Adresse publique du site (domaine Zuno), affichée aux clients : raccourci
+ * « /apk » à taper dans Downloader, liens canoniques, sitemap. L'ancienne
+ * adresse tvking.vercel.app continue de fonctionner (même site).
  */
-export const SITE_HOST = "tvking.vercel.app";
+export const SITE_HOST = "zuno.7themotion.com";
+export const SITE_URL = `https://${SITE_HOST}`;
 
 /** Raccourcis courts, faciles à taper sur une télécommande (app Downloader). */
 export const SHORT_LINKS = {
