@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Flutter / admin-panel are out of scope for the Next.js web QA gates.
+    "android-app/**",
   ]),
 ]);
 
