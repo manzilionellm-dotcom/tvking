@@ -5,6 +5,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { getItem } from "../lib/data";
 import { getMini, getMiniServer, setMini, subscribeMini, updateMini } from "../lib/mini";
 import { loadResume, saveResume, withPosition } from "../lib/resume";
+import { useI18n } from "../i18n/provider";
 
 /*
  * Floating mini-player (YouTube convention, cf. the reference screenshot):
@@ -17,6 +18,7 @@ const DURATION = 40; // seconds — same mock duration as the full player
 
 export default function MiniPlayer() {
   const router = useRouter();
+  const { m, fmt, href } = useI18n();
   const mini = useSyncExternalStore(subscribeMini, getMini, getMiniServer);
 
   // Advance the mock playhead one tick at a time while playing.
@@ -51,7 +53,7 @@ export default function MiniPlayer() {
     saveResume(withPosition(loadResume(), item.id, pos, DURATION, Date.now()));
     setMini(null);
     // Catalog items have a /watch page; IPTV channels reopen on the TV page.
-    router.push(getItem(item.id) ? `/watch/${item.id}` : "/tv");
+    router.push(href(getItem(item.id) ? `/watch/${item.id}` : "/tv"));
   };
 
   const btn =
@@ -60,7 +62,7 @@ export default function MiniPlayer() {
   return (
     <div
       role="complementary"
-      aria-label={`Lecture réduite : ${item.title}`}
+      aria-label={fmt(m.player.miniAria, { title: item.title })}
       className="fixed bottom-[1rem] right-[1rem] z-[70] w-[19rem] overflow-hidden rounded-[var(--radius-lg)] shadow-2xl ring-1 ring-[var(--hairline)] max-md:bottom-[6.2rem]"
     >
       {/* "Video" surface — or the écouteurs (audio-only) card. */}
@@ -80,19 +82,19 @@ export default function MiniPlayer() {
               <rect x="17" y="13" width="4" height="7" rx="1.5" />
             </svg>
             <span className="text-[0.85rem] font-semibold uppercase tracking-wider text-[var(--text-medium)]">
-              Audio seulement
+              {m.player.audioOnly}
             </span>
           </div>
         )}
 
         {/* Top row: expand + close (YouTube layout). */}
         <div className="absolute inset-x-[0.5rem] top-[0.5rem] flex justify-end gap-[0.5rem]">
-          <button data-focusable onClick={expand} className={btn} aria-label="Agrandir">
+          <button data-focusable onClick={expand} className={btn} aria-label={m.player.expand}>
             <svg className="h-[1.1rem] w-[1.1rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />
             </svg>
           </button>
-          <button data-focusable onClick={() => setMini(null)} className={btn} aria-label="Fermer la lecture réduite">
+          <button data-focusable onClick={() => setMini(null)} className={btn} aria-label={m.player.closeMini}>
             <svg className="h-[1.1rem] w-[1.1rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="m6 6 12 12M18 6 6 18" />
             </svg>
@@ -106,7 +108,7 @@ export default function MiniPlayer() {
             onClick={() => updateMini({ audioOnly: !audioOnly })}
             className={btn}
             style={audioOnly ? { background: "var(--gold-grad)", color: "#000" } : undefined}
-            aria-label={audioOnly ? "Réafficher la vidéo" : "Écouter sans la vidéo"}
+            aria-label={audioOnly ? m.player.showVideo : m.player.audioOnlyAria}
             aria-pressed={audioOnly}
           >
             <svg className="h-[1.15rem] w-[1.15rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -119,7 +121,7 @@ export default function MiniPlayer() {
             data-focusable
             onClick={() => updateMini({ playing: !playing })}
             className={btn}
-            aria-label={playing ? "Pause" : "Lecture"}
+            aria-label={playing ? m.common.pause : m.common.play}
           >
             {playing ? (
               <svg className="h-[1.15rem] w-[1.15rem]" viewBox="0 0 24 24" fill="currentColor">
@@ -138,7 +140,7 @@ export default function MiniPlayer() {
                 setMini({ item: next, next: null, pos: 0, playing: true, audioOnly })
               }
               className={btn}
-              aria-label={`Suivant : ${next.title}`}
+              aria-label={fmt(m.player.next, { title: next.title })}
             >
               <svg className="h-[1.15rem] w-[1.15rem]" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6 5v14l9-7zM17 5h2v14h-2z" />

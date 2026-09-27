@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useI18n } from "../i18n/provider";
 import type { MediaItem } from "../lib/data";
 import { LevelBadge, LiveBadge } from "./Badge";
 
@@ -11,12 +14,13 @@ const SHAPE = {
 } as const;
 
 export default function MediaCard({ item }: { item: MediaItem }) {
+  const { m, fmt, href } = useI18n();
   const shape = item.shape ?? "16:9";
   const dims = SHAPE[shape];
 
   return (
     <Link
-      href={`/title/${item.id}`}
+      href={href(`/title/${item.id}`)}
       data-focusable
       data-focus-key={`card:${item.id}`}
       className="card focusable group relative block shrink-0 cursor-pointer text-left"
@@ -88,7 +92,7 @@ export default function MediaCard({ item }: { item: MediaItem }) {
           <div className="card-meta mt-[0.2rem] flex items-center gap-[0.5rem] text-[0.85rem] text-[var(--text-medium)] opacity-80">
             {item.level && <LevelBadge level={item.level} />}
             {item.duration && <span>{item.duration}</span>}
-            {item.lessons && <span>{item.lessons} leçons</span>}
+            {item.lessons && <span>{fmt(m.common.lessons, { n: item.lessons })}</span>}
             {item.startsIn && <span>{item.startsIn}</span>}
             {item.league && <span className="truncate">{item.league}</span>}
             {item.instructor && <span className="truncate">{item.instructor}</span>}

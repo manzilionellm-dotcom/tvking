@@ -4,7 +4,7 @@ import { SHORT_LINKS } from "./app/lib/app-downloads";
 const onPages = process.env.GITHUB_PAGES === "true";
 
 const CSP_REPORT_ONLY =
-  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://wa.me; media-src 'self' blob: https: http:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'";
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://wa.me https://app.7themotion.com; media-src 'self' blob: https: http:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,

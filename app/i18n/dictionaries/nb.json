@@ -1,0 +1,479 @@
+{
+  "meta": {
+    "siteTitle": "TV King — Sport, films & formation",
+    "siteDescription": "Lecteur IPTV personnel : vos playlists M3U, films, sport et formation. Aucun contenu n'est fourni avec l'app.",
+    "ogDescription": "Lecteur IPTV personnel. Vos playlists, vos liens.",
+    "filmsTitle": "Films",
+    "filmsDescription": "Films téléchargés sur l'appareil. Lecture instantanée, sans spinner.",
+    "tvTitle": "TV en direct",
+    "tvDescription": "Collez votre playlist M3U. Chaque lien est vérifié avant lecture.",
+    "settingsTitle": "Réglages",
+    "settingsDescription": "Taille du texte, overscan et préférences TV King.",
+    "searchTitle": "Rechercher",
+    "searchDescription": "Recherchez sport, films et formation dans TV King.",
+    "listTitle": "Ma liste",
+    "listDescription": "Vos titres sauvegardés dans TV King.",
+    "sportTitle": "Sport en direct",
+    "sportDescription": "Live, scores, calendrier et replays — classés par discipline.",
+    "formationTitle": "Formation",
+    "formationDescription": "Parcours par niveau, progression et intervenants.",
+    "downloadTitle": "Télécharger l'application",
+    "downloadDescription": "Zuno pour box Android TV, Fire TV, Google TV et PC Windows. Toujours la dernière version.",
+    "startTitle": "TV King — essai de 24 h",
+    "startDescription": "Un seul numéro WhatsApp pour toutes les marques. Ville + appareil. Essai de 24 h, sans carte."
+  },
+  "nav": {
+    "search": "Rechercher",
+    "home": "Accueil",
+    "tv": "TV en direct",
+    "films": "Films",
+    "sport": "Sport",
+    "formation": "Formation",
+    "list": "Ma liste",
+    "settings": "Réglages",
+    "download": "Télécharger",
+    "main": "Navigation principale",
+    "tagline": "Royal"
+  },
+  "common": {
+    "live": "Direct",
+    "upcoming": "À venir",
+    "replay": "Replay",
+    "watchLive": "Regarder en direct",
+    "play": "Lecture",
+    "moreInfo": "Plus d'infos",
+    "slide": "Diapositive {n}",
+    "lessons": "{n} leçons",
+    "with": "avec {name}",
+    "resume": "Reprendre",
+    "remindMe": "🔔 Me rappeler",
+    "addToList": "+ Ma liste",
+    "back": "← Retour",
+    "program": "Programme",
+    "lesson": "Leçon {n}",
+    "minutes": "{n} min",
+    "sameCategory": "Dans la même catégorie",
+    "moreLikeThis": "Plus comme ça",
+    "pause": "Pause"
+  },
+  "levels": {
+    "Débutant": "Débutant",
+    "Intermédiaire": "Intermédiaire",
+    "Avancé": "Avancé"
+  },
+  "synopsis": {
+    "live": "Suivez {title} en direct, score et temps forts à la minute.",
+    "upcoming": "{title} — programmez un rappel pour ne rien manquer du coup d'envoi.",
+    "replay": "Revivez {title} : intégrale et meilleurs moments à la demande.",
+    "course": "{title} — un programme guidé pour progresser pas à pas, à votre rythme."
+  },
+  "consent": {
+    "dialog": "Conditions d'utilisation",
+    "welcome": "Bienvenue sur",
+    "intro": "Avant d'entrer, merci de lire et d'accepter les conditions d'utilisation.",
+    "t1": "TV King ne fournit aucun contenu",
+    "b1": "L'application est un lecteur multimédia. Elle n'héberge, ne diffuse et ne vend aucune chaîne, aucun film, aucun flux. Aucun contenu n'est inclus à l'installation.",
+    "t2": "Vos liens, votre responsabilité",
+    "b2": "Les playlists (M3U) et les liens que vous ajoutez proviennent de vous. Vous déclarez détenir les droits ou autorisations nécessaires pour les contenus auxquels ils mènent, conformément aux lois de votre pays.",
+    "t3": "Chaque lien est vérifié avant lecture",
+    "b3": "Pour une expérience sans souci, chaque lien ajouté est contrôlé (format et disponibilité) avant d'être proposé à la lecture. Un lien invalide est signalé clairement — jamais d'attente sans fin.",
+    "t4": "Lecture instantanée, jamais de roue qui tourne",
+    "b4": "Les films disponibles se préchargent sur l'appareil pour démarrer immédiatement. Si un contenu ne peut pas être lu, l'application l'annonce tout de suite au lieu de faire patienter.",
+    "refused": "Sans acceptation des conditions, TV King ne peut pas être utilisé.",
+    "accept": "J'accepte les conditions",
+    "refuse": "Refuser"
+  },
+  "film": {
+    "downloading": "Téléchargement du film…",
+    "downloadingLabel": "Téléchargement du film",
+    "fromDevice": "Le film sera lu depuis l'appareil : démarrage immédiat, aucune mise en mémoire tampon.",
+    "instantPlay": "Lecture instantanée",
+    "downloaded": "✓ Téléchargé sur l'appareil"
+  },
+  "player": {
+    "nowLive": "● En direct",
+    "playing": "Lecture",
+    "upNext": "À suivre · dans {n}s",
+    "playNow": "Lire maintenant",
+    "cancel": "Annuler",
+    "liveTag": "DIRECT",
+    "rewind": "Reculer de 10 secondes",
+    "forward": "Avancer de 10 secondes",
+    "audioOnlyAria": "Écouter sans la vidéo",
+    "headphones": "Écouteurs",
+    "minimizeAria": "Réduire la vidéo",
+    "minimize": "Réduire",
+    "quit": "✕ Quitter",
+    "miniAria": "Lecture réduite : {title}",
+    "audioOnly": "Audio seulement",
+    "expand": "Agrandir",
+    "closeMini": "Fermer la lecture réduite",
+    "showVideo": "Réafficher la vidéo",
+    "next": "Suivant : {title}"
+  },
+  "whatsapp": {
+    "aria": "Contacter TV King sur WhatsApp",
+    "prefill": "TV King — essai 24 h. Ville + appareil"
+  },
+  "home": {
+    "rows": {
+      "continue": "Reprendre",
+      "live-now": "En direct maintenant",
+      "trending": "Tendances"
+    }
+  },
+  "films": {
+    "title": "Films",
+    "intro": "Chaque film se télécharge sur l'appareil avant lecture : démarrage immédiat, zéro mise en mémoire tampon."
+  },
+  "sport": {
+    "kicker": "Sport",
+    "title": "Le direct, à la minute",
+    "intro": "Live, scores, calendrier et replays — classés par état et par discipline."
+  },
+  "formation": {
+    "kicker": "Formation",
+    "title": "Progresser, à votre rythme"
+  },
+  "list": {
+    "title": "Ma liste"
+  },
+  "search": {
+    "title": "Rechercher",
+    "placeholder": "Dites un titre, une équipe ou un thème…",
+    "suggestions": "Suggestions"
+  },
+  "tv": {
+    "title": "TV en direct",
+    "empty": "Votre télévision, vos chaînes, vos liens.",
+    "count": "{channels} chaînes · {ready} liens vérifiés et prêts",
+    "intro": "TV King ne fournit aucune chaîne : collez votre propre playlist M3U ci-dessous. Chaque lien sera vérifié avant lecture — un lien invalide est signalé, jamais d'attente sans fin.",
+    "noChannels": "Aucune chaîne trouvée dans ce texte. Collez une playlist au format M3U (#EXTM3U / #EXTINF).",
+    "placeholderChannel": "Ma chaîne",
+    "placeholderUrl": "https://exemple.com/flux.m3u8",
+    "aria": "Playlist M3U",
+    "load": "Charger ma playlist",
+    "demo": "Essayer avec la playlist de démonstration",
+    "verified": "✓ Lien vérifié",
+    "ready": "Prêt à lire — démarrage immédiat",
+    "blocked": "Lecture bloquée : corrigez le lien",
+    "replace": "Remplacer la playlist",
+    "defaultGroup": "Chaînes",
+    "reasons": {
+      "Lien vide": "Lien vide",
+      "Adresse illisible": "Adresse illisible",
+      "Protocole non pris en charge": "Protocole non pris en charge",
+      "Hôte manquant": "Hôte manquant"
+    }
+  },
+  "settings": {
+    "title": "Réglages d'affichage",
+    "intro": "Adaptez l'application à votre téléviseur et à votre distance de visionnage.",
+    "textTitle": "Taille du texte",
+    "textDesc": "Le texte est conçu pour être lisible à ~3 m. Agrandissez-le si besoin.",
+    "safeTitle": "Marge de sécurité (overscan)",
+    "safeDesc": "Si les bords de l'image sont rognés par votre TV, augmentez la marge.",
+    "preview": "Aperçu",
+    "safeZone": "Zone de sécurité — tout le contenu reste à l'intérieur",
+    "text": {
+      "compact": [
+        "Compact",
+        "Plus de contenu"
+      ],
+      "standard": [
+        "Standard",
+        "Recommandé"
+      ],
+      "large": [
+        "Grand",
+        "Lecture facile"
+      ],
+      "xlarge": [
+        "Très grand",
+        "Vision réduite"
+      ]
+    },
+    "safe": {
+      "low": [
+        "Faible",
+        "Écran sans surbalayage"
+      ],
+      "standard": [
+        "Standard",
+        "Recommandé (5%)"
+      ],
+      "high": [
+        "Élevée",
+        "Bords rognés"
+      ]
+    }
+  },
+  "download": {
+    "kicker": "Application Zuno",
+    "title": "Télécharger",
+    "intro": "Toujours la dernière version. Aucun contenu n'est fourni avec l'application : elle lit les sources de votre abonnement.",
+    "tvKicker": "Box Android TV · Fire TV · Google TV",
+    "tvTitle": "Sur la TV",
+    "tvBody": "L'application complète : direct, films, séries, enregistrements. Activée par votre revendeur.",
+    "tvButton": "Télécharger pour la box (APK)",
+    "tvStep1": "Sur la box, installez l'application « Downloader ».",
+    "tvStep2": "Tapez l'adresse : {url}",
+    "tvStep3": "Installez, ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
+    "tvNote": "Les mises à jour se font ensuite depuis l'application (Réglages → Mise à jour).",
+    "pcKicker": "Windows 10 / 11 · 64 bits",
+    "pcTitle": "Sur ordinateur",
+    "pcBody": "La même application que sur la TV, en plein écran. Clavier : flèches, Entrée, Échap, F11.",
+    "pcButton": "Télécharger pour Windows",
+    "pcZip": "Version portable (.zip)",
+    "pcStep1": "Lancez Zuno-Setup.exe.",
+    "pcStep2": "Si Windows affiche « Éditeur inconnu » : Informations complémentaires → Exécuter quand même.",
+    "pcStep3": "Ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
+    "playKicker": "Google Play · Android TV",
+    "playTitle": "Google Play",
+    "playBody": "Publication sur le Play Store en préparation. En attendant, utilisez l'APK pour la box."
+  },
+  "start": {
+    "title": "Démarrer sur WhatsApp",
+    "body": "Un seul numéro pour toutes les marques : +44 7307 410512. Indiquez votre ville et votre appareil. Essai de 24 h, sans carte.",
+    "cta": "Écrire à TV King",
+    "prefillLabel": "Message prérempli : {text}",
+    "note": "Le lecteur et les playlists restent sur l'écran d'accueil. Cette page sert uniquement à démarrer l'essai."
+  },
+  "data": {
+    "rows": {
+      "sport-live": "En direct",
+      "sport-upcoming": "À venir",
+      "sport-replay": "Replays & temps forts",
+      "sport-leagues": "Par discipline",
+      "form-continue": "Continuer ma progression",
+      "form-paths": "Parcours recommandés",
+      "form-fitness": "Sport & bien-être",
+      "form-topics": "Par thème",
+      "films-affiche": "À l'affiche",
+      "films-famille": "Comédies & famille"
+    },
+    "badges": {
+      "ÉVÉNEMENT": "ÉVÉNEMENT",
+      "NOUVEAU": "NOUVEAU",
+      "TENDANCE": "TENDANCE"
+    },
+    "items": {
+      "hero-ucl": {
+        "title": "Champions League — Finale en direct",
+        "subtitle": "Le sommet du football européen, ce soir à 21h00"
+      },
+      "hero-masterclass": {
+        "title": "Formation — Maîtriser la prise de parole",
+        "subtitle": "12 leçons avec une oratrice de renommée mondiale"
+      },
+      "hero-marathon": {
+        "title": "Marathon de préparation physique",
+        "subtitle": "Programme guidé 6 semaines, tous niveaux"
+      },
+      "c1": {
+        "title": "Tactique défensive moderne",
+        "subtitle": "Sport · Analyse"
+      },
+      "c2": {
+        "title": "Négociation : les fondamentaux",
+        "subtitle": "Formation · 8 min restantes"
+      },
+      "c3": {
+        "subtitle": "Sport · Replay"
+      },
+      "c4": {
+        "title": "Yoga du matin",
+        "subtitle": "Formation · 14 min"
+      },
+      "c5": {
+        "title": "Grand Prix — Résumé",
+        "subtitle": "Sport · Replay"
+      },
+      "l2": {
+        "title": "Roland-Garros — Demi-finale",
+        "clock": "Set 3"
+      },
+      "l4": {
+        "title": "MotoGP — Course",
+        "clock": "Tour 18/24"
+      },
+      "t1": {
+        "title": "Préparation mentale du champion",
+        "subtitle": "Formation"
+      },
+      "t2": {
+        "title": "Les plus beaux buts de la saison",
+        "subtitle": "Sport · Replay"
+      },
+      "t3": {
+        "subtitle": "Formation"
+      },
+      "t4": {
+        "title": "Analyse : la possession",
+        "subtitle": "Sport · Analyse"
+      },
+      "t5": {
+        "title": "Cuisine du sportif",
+        "subtitle": "Formation"
+      },
+      "sl1": {
+        "league": "Football · Champions League"
+      },
+      "sl2": {
+        "title": "Roland-Garros — Demi",
+        "clock": "Set 3",
+        "league": "Tennis · Grand Chelem"
+      },
+      "sl3": {
+        "league": "Basket · NBA"
+      },
+      "sl4": {
+        "clock": "Tour 18/24",
+        "league": "Moto · MotoGP"
+      },
+      "su1": {
+        "startsIn": "Aujourd'hui 21:00"
+      },
+      "su2": {
+        "title": "Finale 100m",
+        "startsIn": "Demain 20:30",
+        "league": "Athlétisme"
+      },
+      "su3": {
+        "title": "Six Nations — France/Irlande",
+        "startsIn": "Samedi 15:00"
+      },
+      "su4": {
+        "title": "Grand Prix de Monaco",
+        "startsIn": "Dimanche 14:00"
+      },
+      "sr1": {
+        "title": "Les plus beaux buts"
+      },
+      "sr2": {
+        "title": "Game 4 — Intégrale"
+      },
+      "sr3": {
+        "title": "Résumé Grand Prix"
+      },
+      "sr4": {
+        "title": "Top 10 échanges"
+      },
+      "sd2": {
+        "title": "Basket"
+      },
+      "sd6": {
+        "title": "Athlétisme"
+      },
+      "fc1": {
+        "title": "Négociation : les fondamentaux",
+        "duration": "8 min restantes"
+      },
+      "fc2": {
+        "title": "Préparation mentale",
+        "duration": "14 min restantes"
+      },
+      "fc3": {
+        "title": "Yoga du matin",
+        "duration": "6 min restantes"
+      },
+      "fp1": {
+        "title": "Devenir un meilleur orateur"
+      },
+      "fp2": {
+        "title": "Leadership & management"
+      },
+      "fp3": {
+        "title": "Nutrition du sportif"
+      },
+      "fp4": {
+        "title": "Photographie créative"
+      },
+      "fp5": {
+        "title": "Finances personnelles"
+      },
+      "ff2": {
+        "title": "Renforcement complet"
+      },
+      "ff3": {
+        "title": "Étirements & mobilité"
+      },
+      "ff4": {
+        "title": "Course : plan 5 km"
+      },
+      "ft1": {
+        "title": "Communication"
+      },
+      "ft2": {
+        "title": "Business"
+      },
+      "ft3": {
+        "title": "Forme physique"
+      },
+      "ft4": {
+        "title": "Nutrition"
+      },
+      "ft5": {
+        "title": "Créativité"
+      },
+      "ft6": {
+        "title": "Finance"
+      },
+      "mv1": {
+        "title": "La Couronne d'acier",
+        "genre": "Aventure",
+        "description": "Un royaume au bord de la rupture, une héritière que rien ne prédestinait au trône. Une fresque épique au souffle rare."
+      },
+      "mv2": {
+        "title": "Dernier Sprint",
+        "genre": "Drame sportif",
+        "description": "À 34 ans, un sprinteur déchu s'offre une dernière saison pour redevenir champion — et se réconcilier avec son fils."
+      },
+      "mv3": {
+        "title": "Nuit blanche à Dakar",
+        "genre": "Thriller",
+        "description": "Une journaliste remonte la piste d'une disparition en une seule nuit, des toits de la Médina au port de Dakar."
+      },
+      "mv4": {
+        "title": "Le Rire du roi",
+        "genre": "Comédie",
+        "description": "Un humoriste sans succès devient, par erreur, bouffon officiel d'une cour royale très à cheval sur l'étiquette."
+      },
+      "mv5": {
+        "title": "Fréquence 88.0",
+        "genre": "Science-fiction",
+        "description": "Une radio pirate capte un signal venu de trente ans dans le futur. Chaque émission change le présent."
+      },
+      "mv6": {
+        "title": "Papa, coach et champion",
+        "genre": "Comédie familiale",
+        "description": "Muté entraîneur de l'équipe poussins de sa fille, un ancien pro découvre que le plus dur reste les goûters."
+      },
+      "mv7": {
+        "title": "Les Vacances de Sa Majesté",
+        "genre": "Comédie",
+        "description": "Une reine incognito dans un camping familial : protocole, barbecue et quiproquos garantis."
+      },
+      "mv8": {
+        "title": "Mon robot et moi",
+        "genre": "Famille",
+        "description": "Un enfant timide hérite d'un robot de compagnie démodé — et bien plus courageux qu'il n'en a l'air."
+      },
+      "mv9": {
+        "title": "La Grande Traversée",
+        "genre": "Aventure familiale",
+        "description": "Deux cousines traversent le pays à vélo pour livrer une lettre qui n'aurait jamais dû se perdre."
+      }
+    },
+    "suggestions": [
+      "Football",
+      "Basket",
+      "Tennis",
+      "F1",
+      "Leadership",
+      "Yoga",
+      "Nutrition",
+      "HIIT"
+    ]
+  }
+}

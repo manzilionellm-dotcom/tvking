@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { stripLocale } from "../i18n/config";
+import { useI18n } from "../i18n/provider";
 
 /*
  * Left vertical navigation — the convergent TV shell (Netflix/Hulu/Disney+/ESPN).
@@ -10,15 +12,16 @@ import { usePathname } from "next/navigation";
  */
 
 export const NAV = [
-  { href: "/search", label: "Rechercher", icon: "search" },
-  { href: "/", label: "Accueil", icon: "home" },
-  { href: "/tv", label: "TV en direct", icon: "tv" },
-  { href: "/films", label: "Films", icon: "film" },
-  { href: "/sport", label: "Sport", icon: "sport" },
-  { href: "/formation", label: "Formation", icon: "learn" },
-  { href: "/list", label: "Ma liste", icon: "list" },
-  { href: "/reglages", label: "Réglages", icon: "settings" },
-  { href: "/telecharger", label: "Télécharger", icon: "download" },
+  { href: "/search", key: "search", icon: "search" },
+  { href: "/", key: "home", icon: "home" },
+  { href: "/tv", key: "tv", icon: "tv" },
+  { href: "/films", key: "films", icon: "film" },
+  { href: "/sport", key: "sport", icon: "sport" },
+  { href: "/formation", key: "formation", icon: "learn" },
+  { href: "/list", key: "list", icon: "list" },
+  { href: "/reglages", key: "settings", icon: "settings" },
+  { href: "/activer", key: "activate", icon: "key" },
+  { href: "/telecharger", key: "download", icon: "download" },
 ] as const;
 
 export function Icon({ name }: { name: string }) {
@@ -74,6 +77,12 @@ export function Icon({ name }: { name: string }) {
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" strokeLinejoin="round" />
         </svg>
       );
+    case "key":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="8" cy="15" r="4" /><path d="m11 12 9-9m-3 3 3 3m-6 0 2 2" />
+        </svg>
+      );
     case "download":
       return (
         <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -86,7 +95,8 @@ export function Icon({ name }: { name: string }) {
 }
 
 export default function Sidebar() {
-  const pathname = usePathname();
+  const pathname = stripLocale(usePathname());
+  const { m, href } = useI18n();
 
   return (
     <nav
@@ -101,7 +111,7 @@ export default function Sidebar() {
             TV King
           </span>
           <span className="text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-[var(--text-medium)]">
-            Royal
+            {m.nav.tagline}
           </span>
         </span>
       </div>
@@ -111,7 +121,7 @@ export default function Sidebar() {
         return (
           <Link
             key={item.href}
-            href={item.href}
+            href={href(item.href)}
             data-focusable
             data-focus-key={`nav:${item.href}`}
             className={`focusable relative flex items-center gap-[1rem] rounded-[var(--radius)] px-[0.7rem] py-[0.7rem] ${
@@ -127,7 +137,7 @@ export default function Sidebar() {
             )}
             <span className="shrink-0"><Icon name={item.icon} /></span>
             <span className="whitespace-nowrap text-[1.15rem] font-semibold opacity-0 transition-opacity group-hover/nav:opacity-100 group-focus-within/nav:opacity-100">
-              {item.label}
+              {m.nav[item.key]}
             </span>
           </Link>
         );

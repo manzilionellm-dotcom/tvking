@@ -18,6 +18,12 @@ export const APP_DOWNLOADS = {
   pcZip: `${RELEASES}/zuno-windows/zuno-windows.zip`,
 } as const;
 
+/**
+ * Adresse publique du site, affichée aux clients (raccourci « /apk » à taper
+ * dans Downloader). Passer à "zuno.7themotion.com" dès que le DNS répond.
+ */
+export const SITE_HOST = "tvking.vercel.app";
+
 /** Raccourcis courts, faciles à taper sur une télécommande (app Downloader). */
 export const SHORT_LINKS = {
   "/apk": APP_DOWNLOADS.tvApk,

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, NAV } from "./Sidebar";
+import { stripLocale } from "../i18n/config";
+import { useI18n } from "../i18n/provider";
 
 /*
  * Bottom tab bar for phones (<768px), where the 10-foot side rail makes no
@@ -11,11 +13,12 @@ import { Icon, NAV } from "./Sidebar";
  * is dropped on narrow screens.
  */
 export default function MobileNav() {
-  const pathname = usePathname();
+  const pathname = stripLocale(usePathname());
+  const { m, href } = useI18n();
 
   return (
     <nav
-      aria-label="Navigation principale"
+      aria-label={m.nav.main}
       className="no-scrollbar fixed inset-x-0 bottom-0 z-50 flex overflow-x-auto border-t border-[var(--hairline)] bg-[var(--bg)]/95 px-[0.4rem] pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-[0.5rem] backdrop-blur md:hidden"
     >
       {NAV.map((item) => {
@@ -23,12 +26,12 @@ export default function MobileNav() {
         return (
           <Link
             key={item.href}
-            href={item.href}
+            href={href(item.href)}
             className="flex min-w-[4.6rem] flex-1 flex-col items-center gap-[0.25rem] rounded-[var(--radius)] px-[0.4rem] py-[0.35rem]"
             style={active ? { color: "var(--gold-strong)" } : { color: "var(--text-medium)" }}
           >
             <Icon name={item.icon} />
-            <span className="whitespace-nowrap text-[0.72rem] font-semibold">{item.label}</span>
+            <span className="whitespace-nowrap text-[0.72rem] font-semibold">{m.nav[item.key]}</span>
           </Link>
         );
       })}

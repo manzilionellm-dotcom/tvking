@@ -42,9 +42,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Langues : pas de serveur sur Pages → pas de proxy (langue choisie par
+      # le navigateur, cf. scripts/pages-locale-root.mjs) et liens préfixés
+      # par la langue (/tvking/en/films).
+      - run: rm -f proxy.ts
       - run: npx next build
         env:
           GITHUB_PAGES: "true"
+          NEXT_PUBLIC_LOCALE_IN_PATH: "1"
+      - run: node scripts/pages-locale-root.mjs
       - name: Publier out/ sur gh-pages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { MediaItem } from "../lib/data";
 import { LevelBadge, LiveBadge } from "./Badge";
+import { useI18n } from "../i18n/provider";
 
 /*
  * Hero / billboard carousel. Auto-advances slowly (no audio, respects
@@ -12,6 +13,7 @@ import { LevelBadge, LiveBadge } from "./Badge";
  * documented 60–90s attention window.
  */
 export default function Hero({ slides }: { slides: MediaItem[] }) {
+  const { m, fmt } = useI18n();
   const [i, setI] = useState(0);
   const slide = slides[i];
 
@@ -57,13 +59,13 @@ export default function Hero({ slides }: { slides: MediaItem[] }) {
             <svg className="h-[1.3rem] w-[1.3rem]" viewBox="0 0 24 24" fill="currentColor">
               <path d="M8 5v14l11-7z" />
             </svg>
-            {slide.live === "live" ? "Regarder en direct" : "Lecture"}
+            {slide.live === "live" ? m.common.watchLive : m.common.play}
           </button>
           <button
             data-focusable
             className="focusable rounded-[var(--radius)] bg-white/15 px-[1.4rem] py-[0.8rem] text-[1.25rem] font-semibold text-[var(--text-high)]"
           >
-            Plus d&apos;infos
+            {m.common.moreInfo}
           </button>
 
           {/* Slide indicators — focusable for D-pad control. */}
@@ -73,7 +75,7 @@ export default function Hero({ slides }: { slides: MediaItem[] }) {
                 <button
                   key={s.id}
                   data-focusable
-                  aria-label={`Diapositive ${idx + 1}`}
+                  aria-label={fmt(m.common.slide, { n: idx + 1 })}
                   onClick={() => setI(idx)}
                   onFocus={() => setI(idx)}
                   className="focusable h-[0.4rem] rounded-full transition-all"

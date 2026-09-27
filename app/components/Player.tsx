@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import type { MediaItem } from "../lib/data";
 import { setMini } from "../lib/mini";
 import { loadResume, positionOf, saveResume, withPosition } from "../lib/resume";
+import { useI18n } from "../i18n/provider";
 
 /*
  * Mock player. The transport and the "À suivre" (Up Next) panel implement the
@@ -26,7 +27,7 @@ const BACK_KEYS = new Set(["Escape", "Backspace", "GoBack", "BrowserBack", "XF86
 /* The resume store only changes through this player, never underneath it. */
 const noSubscription = () => () => {};
 
-function fmt(s: number) {
+function clock(s: number) {
   const m = Math.floor(s / 60);
   const r = Math.floor(s % 60);
   return `${m}:${r.toString().padStart(2, "0")}`;
@@ -44,6 +45,7 @@ export default function Player({
   onExit?: () => void;
 }) {
   const router = useRouter();
+  const { m, fmt, href } = useI18n();
   const [pos, setPos] = useState(item.progress ? Math.floor(item.progress * DURATION) : 0);
   const [playing, setPlaying] = useState(true);
   const [autoCancelled, setAutoCancelled] = useState(false);
@@ -93,17 +95,17 @@ export default function Player({
     if (pos < DURATION || navigatedRef.current) return;
     if (next && !autoCancelled && !reduceRef.current) {
       navigatedRef.current = true;
-      router.push(`/watch/${next.id}`);
+      router.push(href(`/watch/${next.id}`));
     }
-  }, [pos, next, autoCancelled, router]);
+  }, [pos, next, autoCancelled, router, href]);
 
   const atEnd = pos >= DURATION;
 
   const toggle = useCallback(() => setPlaying((p) => !p), []);
   const exit = useCallback(() => {
     if (onExit) onExit();
-    else router.push(`/title/${item.id}`);
-  }, [onExit, router, item.id]);
+    else router.push(href(`/title/${item.id}`));
+  }, [onExit, router, item.id, href]);
 
   // Minimise to the floating mini-player (YouTube pattern): playback — or
   // audio alone, via the écouteurs button — continues while the user browses.
@@ -178,7 +180,7 @@ export default function Player({
       {/* Title (top) */}
       <div className="absolute left-[var(--safe-x)] top-[var(--safe-y)] right-[var(--safe-x)]">
         <p className="text-[1.05rem] font-semibold uppercase tracking-[0.2em] text-[var(--gold)]">
-          {item.live === "live" ? "● En direct" : "Lecture"}
+          {item.live === "live" ? m.player.nowLive : m.player.playing}
         </p>
         <h1 className="font-display text-[2.6rem] font-extrabold tracking-tight text-white [text-shadow:0_0.2rem_1rem_rgba(0,0,0,0.6)]">{item.title}</h1>
       </div>
@@ -187,7 +189,7 @@ export default function Player({
       {showUpNext && (
         <div className="absolute bottom-[7rem] right-[var(--safe-x)] w-[24rem] rounded-[var(--radius-lg)] bg-[var(--surface-2)]/95 p-[1.2rem] shadow-2xl backdrop-blur">
           <p className="mb-[0.6rem] text-[1rem] font-semibold uppercase tracking-wider text-[var(--text-medium)]">
-            À suivre · dans {countdown}s
+            {fmt(m.player.upNext, { n: countdown })}
           </p>
           <div className="flex gap-[0.9rem]">
             <div
@@ -210,19 +212,19 @@ export default function Player({
           </div>
           <div className="mt-[0.9rem] flex gap-[0.7rem]">
             <Link
-              href={`/watch/${next!.id}`}
+              href={href(`/watch/${next!.id}`)}
               data-focusable
               className="focusable flex-1 rounded-[var(--radius)] px-[1rem] py-[0.6rem] text-center text-[1.1rem] font-bold text-black"
               style={{ background: "var(--gold-grad)" }}
             >
-              Lire maintenant
+              {m.player.playNow}
             </Link>
             <button
               data-focusable
               onClick={() => setAutoCancelled(true)}
               className="focusable rounded-[var(--radius)] bg-white/15 px-[1rem] py-[0.6rem] text-[1.1rem] font-semibold text-[var(--text-high)]"
             >
-              Annuler
+              {m.player.cancel}
             </button>
           </div>
         </div>
@@ -231,12 +233,12 @@ export default function Player({
       {/* Transport bar */}
       <div className="absolute inset-x-0 bottom-0 px-[var(--safe-x)] pb-[var(--safe-y)] pt-[3rem]">
         <div className="mb-[0.8rem] flex items-center gap-[1rem]">
-          <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">{fmt(pos)}</span>
+          <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">{clock(pos)}</span>
           <div className="h-[0.4rem] flex-1 overflow-hidden rounded-full bg-white/20">
             <div className="h-full" style={{ width: `${(pos / DURATION) * 100}%`, background: "var(--gold-grad)" }} />
           </div>
           <span className="text-[1rem] tabular-nums text-[var(--text-medium)]">
-            {item.live === "live" ? "DIRECT" : fmt(DURATION)}
+            {item.live === "live" ? m.player.liveTag : clock(DURATION)}
           </span>
         </div>
 
@@ -245,7 +247,7 @@ export default function Player({
             data-focusable
             onClick={() => setPos((p) => Math.max(0, p - 10))}
             className="focusable rounded-full bg-white/12 px-[1rem] py-[0.6rem] text-[1.1rem] font-semibold text-white"
-            aria-label="Reculer de 10 secondes"
+            aria-label={m.player.rewind}
           >
             ⟲ 10s
           </button>
@@ -255,7 +257,7 @@ export default function Player({
             onClick={toggle}
             className="focusable flex h-[3.4rem] w-[3.4rem] items-center justify-center rounded-full text-black"
             style={{ background: "var(--gold-grad)" }}
-            aria-label={playing && !atEnd ? "Pause" : "Lecture"}
+            aria-label={playing && !atEnd ? m.common.pause : m.common.play}
           >
             {playing && !atEnd ? (
               <svg className="h-[1.5rem] w-[1.5rem]" viewBox="0 0 24 24" fill="currentColor">
@@ -271,7 +273,7 @@ export default function Player({
             data-focusable
             onClick={() => setPos((p) => Math.min(DURATION, p + 10))}
             className="focusable rounded-full bg-white/12 px-[1rem] py-[0.6rem] text-[1.1rem] font-semibold text-white"
-            aria-label="Avancer de 10 secondes"
+            aria-label={m.player.forward}
           >
             10s ⟳
           </button>
@@ -280,27 +282,27 @@ export default function Player({
             data-focusable
             onClick={() => minimize(true)}
             className="focusable ml-auto flex items-center gap-[0.5rem] rounded-[var(--radius)] bg-white/12 px-[1.1rem] py-[0.7rem] text-[1.1rem] font-semibold text-white"
-            aria-label="Écouter sans la vidéo"
+            aria-label={m.player.audioOnlyAria}
           >
             <svg className="h-[1.2rem] w-[1.2rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M4 13a8 8 0 0 1 16 0" strokeLinecap="round" />
               <rect x="3" y="13" width="4" height="7" rx="1.5" />
               <rect x="17" y="13" width="4" height="7" rx="1.5" />
             </svg>
-            Écouteurs
+            {m.player.headphones}
           </button>
           {/* Réduire: YouTube-style floating mini-player, video included. */}
           <button
             data-focusable
             onClick={() => minimize(false)}
             className="focusable flex items-center gap-[0.5rem] rounded-[var(--radius)] bg-white/12 px-[1.1rem] py-[0.7rem] text-[1.1rem] font-semibold text-white"
-            aria-label="Réduire la vidéo"
+            aria-label={m.player.minimizeAria}
           >
             <svg className="h-[1.2rem] w-[1.2rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M10 20H4v-6M20 4l-9 9M4 20l6-6" />
               <rect x="13" y="13" width="8" height="6" rx="1" />
             </svg>
-            Réduire
+            {m.player.minimize}
           </button>
           {onExit ? (
             <button
@@ -308,15 +310,15 @@ export default function Player({
               onClick={exit}
               className="focusable rounded-[var(--radius)] bg-white/12 px-[1.3rem] py-[0.7rem] text-[1.1rem] font-semibold text-white"
             >
-              ✕ Quitter
+              {m.player.quit}
             </button>
           ) : (
             <Link
-              href={`/title/${item.id}`}
+              href={href(`/title/${item.id}`)}
               data-focusable
               className="focusable rounded-[var(--radius)] bg-white/12 px-[1.3rem] py-[0.7rem] text-[1.1rem] font-semibold text-white"
             >
-              ✕ Quitter
+              {m.player.quit}
             </Link>
           )}
         </div>

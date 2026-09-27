@@ -1,13 +1,13 @@
 "use client";
 
+import { useI18n } from "../i18n/provider";
+
 const NUMBER =
   process.env.NEXT_PUBLIC_WHATSAPP_TVKING ||
   process.env.NEXT_PUBLIC_WHATSAPP_PHONE ||
   "447307410512";
 
-const HREF = `https://wa.me/${NUMBER}?text=${encodeURIComponent(
-  "TV King — 24h trial. City + device",
-)}`;
+const waHref = (text: string) => `https://wa.me/${NUMBER}?text=${encodeURIComponent(text)}`;
 
 declare global {
   interface Window {
@@ -30,12 +30,13 @@ function track() {
 }
 
 export default function WhatsAppFab() {
+  const { m } = useI18n();
   return (
     <a
-      href={HREF}
+      href={waHref(m.whatsapp.prefill)}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="Contacter TV King sur WhatsApp"
+      aria-label={m.whatsapp.aria}
       data-cta="fab"
       onClick={track}
       className="fixed bottom-[6.2rem] right-4 z-[60] grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-white shadow-lg md:bottom-6"

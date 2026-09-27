@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { MediaItem } from "../lib/data";
 import { isDownloaded, loadDownloads, saveDownloads, withDownloaded } from "../lib/downloads";
+import { useI18n } from "../i18n/provider";
 
 /*
  * Film playback actions — the zero-attente path.
@@ -23,6 +24,7 @@ const STEP_MS = 70;
 const noSubscription = () => () => {};
 
 export default function FilmActions({ item }: { item: MediaItem }) {
+  const { m, href } = useI18n();
   // Hydration-safe: the server snapshot says "not downloaded" (the static page
   // shows the download starting); the client corrects right after mount.
   const alreadyDone = useSyncExternalStore(
@@ -52,7 +54,7 @@ export default function FilmActions({ item }: { item: MediaItem }) {
       <div className="w-full max-w-[30rem]">
         <div className="mb-[0.5rem] flex items-baseline justify-between">
           <span className="text-[1.15rem] font-semibold text-[var(--text-high)]">
-            Téléchargement du film…
+            {m.film.downloading}
           </span>
           <span className="text-[1.3rem] font-bold tabular-nums text-[var(--gold)]">{progress} %</span>
         </div>
@@ -62,7 +64,7 @@ export default function FilmActions({ item }: { item: MediaItem }) {
           aria-valuenow={progress}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label="Téléchargement du film"
+          aria-label={m.film.downloadingLabel}
           className="h-[0.5rem] w-full overflow-hidden rounded-full bg-white/15"
         >
           <div
@@ -71,7 +73,7 @@ export default function FilmActions({ item }: { item: MediaItem }) {
           />
         </div>
         <p className="mt-[0.5rem] text-[1rem] text-[var(--text-medium)]">
-          Le film sera lu depuis l&apos;appareil : démarrage immédiat, aucune mise en mémoire tampon.
+          {m.film.fromDevice}
         </p>
       </div>
     );
@@ -80,7 +82,7 @@ export default function FilmActions({ item }: { item: MediaItem }) {
   return (
     <div className="flex flex-wrap items-center gap-[1rem]">
       <Link
-        href={`/watch/${item.id}`}
+        href={href(`/watch/${item.id}`)}
         data-focusable
         data-focus-default
         className="focusable flex items-center gap-[0.6rem] rounded-[var(--radius)] px-[1.6rem] py-[0.8rem] text-[1.25rem] font-bold text-black shadow-[0_0.6rem_1.6rem_rgba(227,185,107,0.35)]"
@@ -89,10 +91,10 @@ export default function FilmActions({ item }: { item: MediaItem }) {
         <svg className="h-[1.3rem] w-[1.3rem]" viewBox="0 0 24 24" fill="currentColor">
           <path d="M8 5v14l11-7z" />
         </svg>
-        Lecture instantanée
+        {m.film.instantPlay}
       </Link>
       <span className="inline-flex items-center gap-[0.4rem] rounded-md bg-[var(--sport)]/15 px-[0.8rem] py-[0.35rem] text-[1rem] font-bold text-[var(--sport)]">
-        ✓ Téléchargé sur l&apos;appareil
+        {m.film.downloaded}
       </span>
     </div>
   );

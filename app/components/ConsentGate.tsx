@@ -2,6 +2,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { accept, isAccepted, loadConsent, saveConsent } from "../lib/consent";
+import { useI18n } from "../i18n/provider";
 
 /*
  * Conditions d'utilisation — shown full-screen at first launch (and again if
@@ -10,29 +11,18 @@ import { accept, isAccepted, loadConsent, saveConsent } from "../lib/consent";
  * links / playlists belong to the user, who must hold the rights to them.
  */
 
-const TERMS: { title: string; body: string }[] = [
-  {
-    title: "TV King ne fournit aucun contenu",
-    body: "L'application est un lecteur multimédia. Elle n'héberge, ne diffuse et ne vend aucune chaîne, aucun film, aucun flux. Aucun contenu n'est inclus à l'installation.",
-  },
-  {
-    title: "Vos liens, votre responsabilité",
-    body: "Les playlists (M3U) et les liens que vous ajoutez proviennent de vous. Vous déclarez détenir les droits ou autorisations nécessaires pour les contenus auxquels ils mènent, conformément aux lois de votre pays.",
-  },
-  {
-    title: "Chaque lien est vérifié avant lecture",
-    body: "Pour une expérience sans souci, chaque lien ajouté est contrôlé (format et disponibilité) avant d'être proposé à la lecture. Un lien invalide est signalé clairement — jamais d'attente sans fin.",
-  },
-  {
-    title: "Lecture instantanée, jamais de roue qui tourne",
-    body: "Les films disponibles se préchargent sur l'appareil pour démarrer immédiatement. Si un contenu ne peut pas être lu, l'application l'annonce tout de suite au lieu de faire patienter.",
-  },
-];
 
 /* The consent store only changes through this gate, never underneath it. */
 const noSubscription = () => () => {};
 
 export default function ConsentGate() {
+  const { m } = useI18n();
+  const TERMS = [
+    { title: m.consent.t1, body: m.consent.b1 },
+    { title: m.consent.t2, body: m.consent.b2 },
+    { title: m.consent.t3, body: m.consent.b3 },
+    { title: m.consent.t4, body: m.consent.b4 },
+  ];
   // Hydration-safe read: the server snapshot says "accepted" so the static
   // HTML never flashes the gate; the client corrects right after mount.
   const stored = useSyncExternalStore(
@@ -55,18 +45,18 @@ export default function ConsentGate() {
       data-focus-scope
       role="dialog"
       aria-modal="true"
-      aria-label="Conditions d'utilisation"
+      aria-label={m.consent.dialog}
       className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-[var(--bg)]/97 p-[1.5rem] backdrop-blur-sm"
     >
       <div className="w-full max-w-[46rem] rounded-[var(--radius-lg)] bg-[var(--surface-1)] p-[2rem] shadow-2xl ring-1 ring-[var(--hairline)]">
         <p className="text-[1rem] font-semibold uppercase tracking-[0.25em] text-[var(--gold)]">
-          Bienvenue sur
+          {m.consent.welcome}
         </p>
         <h1 className="font-display text-gold-grad mb-[0.4rem] text-[2.6rem] font-extrabold tracking-tight">
           TV King
         </h1>
         <p className="mb-[1.4rem] text-[1.25rem] text-[var(--text-medium)]">
-          Avant d&apos;entrer, merci de lire et d&apos;accepter les conditions d&apos;utilisation.
+          {m.consent.intro}
         </p>
 
         <ol className="mb-[1.6rem] flex flex-col gap-[1rem]">
@@ -85,7 +75,7 @@ export default function ConsentGate() {
 
         {refused && (
           <p className="mb-[1rem] rounded-[var(--radius)] bg-[var(--live)]/15 px-[1rem] py-[0.7rem] text-[1.1rem] font-semibold text-[var(--live)]">
-            Sans acceptation des conditions, TV King ne peut pas être utilisé.
+            {m.consent.refused}
           </p>
         )}
 
@@ -97,14 +87,14 @@ export default function ConsentGate() {
             className="focusable flex-1 rounded-[var(--radius)] px-[1.6rem] py-[0.9rem] text-[1.25rem] font-bold text-black shadow-[0_0.6rem_1.6rem_rgba(227,185,107,0.35)]"
             style={{ background: "var(--gold-grad)" }}
           >
-            J&apos;accepte les conditions
+            {m.consent.accept}
           </button>
           <button
             data-focusable
             onClick={() => setRefused(true)}
             className="focusable rounded-[var(--radius)] bg-white/10 px-[1.4rem] py-[0.9rem] text-[1.2rem] font-semibold text-[var(--text-medium)]"
           >
-            Refuser
+            {m.consent.refuse}
           </button>
         </div>
       </div>
