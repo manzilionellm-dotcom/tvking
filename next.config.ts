@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { SHORT_LINKS } from "./app/lib/app-downloads";
 
 const onPages = process.env.GITHUB_PAGES === "true";
 
@@ -12,6 +13,18 @@ const nextConfig: NextConfig = {
     basePath: "/tvking",
     images: { unoptimized: true },
   }),
+  // Raccourcis de téléchargement (/apk, /pc) : courts à taper sur une
+  // télécommande (app « Downloader »). Temporaires (307) : la destination
+  // est toujours la dernière version publiée. Absents de l'export statique
+  // (GitHub Pages ne sait pas rediriger).
+  async redirects() {
+    if (onPages) return [];
+    return Object.entries(SHORT_LINKS).map(([source, destination]) => ({
+      source,
+      destination,
+      permanent: false,
+    }));
+  },
   async headers() {
     if (onPages) return [];
     return [

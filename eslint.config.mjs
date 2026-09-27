@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // App Flutter + son panel admin : projets séparés (outils propres).
+    "android-app/**",
   ]),
 ]);
 
