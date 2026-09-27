@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { customersApi, type Customer, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 
-/// Phase 1.A : liste lue de D1 + recherche basique.
-/// Phase 1.B : creation/edition complete + filtres + bulk actions.
 export function CustomersPage({ onLogout }: { onLogout: () => void }) {
   const navigate = useNavigate();
   const [items, setItems] = useState<Customer[]>([]);
@@ -29,13 +27,13 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
 
   return (
     <AppLayout
-      title="Customers"
-      subtitle={`${items.length} clients ${q ? `matching « ${q} »` : ''}`}
+      title="Clients"
+      subtitle={`${items.length} client${items.length !== 1 ? 's' : ''}${q ? ` correspondant à « ${q} »` : ''}`}
       onLogout={onLogout}
       actions={
         <button
           onClick={() => navigate('/activate')}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright"
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black transition duration-150 hover:bg-accent-bright"
         >
           + Activer un client
         </button>
@@ -46,11 +44,11 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Recherche par nom, email, téléphone…"
-        className="mb-4 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
+        className="mb-4 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none transition duration-150 focus:ring-1 focus:ring-accent"
       />
 
       {err && (
-        <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
+        <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
       )}
 
       <div className="overflow-hidden rounded-xl border border-white/5">
@@ -72,12 +70,26 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
               </tr>
             ))}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-ink-tertiary">
-                Aucun client pour l'instant. La migration KV → D1 ajoutera les clients existants.
-              </td></tr>
+              <tr>
+                <td colSpan={4} className="px-4 py-10 text-center">
+                  <p className="text-sm text-ink-secondary">
+                    {q
+                      ? `Aucun client trouvé pour « ${q} ».`
+                      : 'Aucun client pour l\'instant.'}
+                  </p>
+                  {!q && (
+                    <Link
+                      to="/activate"
+                      className="mt-3 inline-flex rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black transition duration-150 hover:bg-accent-bright"
+                    >
+                      Activer un client
+                    </Link>
+                  )}
+                </td>
+              </tr>
             )}
             {items.map((c) => (
-              <tr key={c.id} className="bg-obsidian hover:bg-midnight">
+              <tr key={c.id} className="bg-obsidian transition duration-150 hover:bg-midnight">
                 <td className="px-4 py-3 font-medium">{c.name || '—'}</td>
                 <td className="px-4 py-3 text-ink-secondary">{c.email || '—'}</td>
                 <td className="px-4 py-3 text-ink-secondary">{c.phone || '—'}</td>

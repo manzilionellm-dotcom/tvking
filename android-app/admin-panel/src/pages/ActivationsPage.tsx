@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { licensesApi, type License, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
@@ -31,7 +31,7 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
       actions={
         <button
           onClick={() => navigate('/activate')}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black hover:bg-accent-bright"
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black transition duration-150 hover:bg-accent-bright"
         >
           + Activer un MAC
         </button>
@@ -62,12 +62,20 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
               </tr>
             ))}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-tertiary">
-                Aucune activation. Phase 1.B ajoutera l'action « + Activer un MAC ».
-              </td></tr>
+              <tr>
+                <td colSpan={6} className="px-4 py-10 text-center">
+                  <p className="text-sm text-ink-secondary">Aucune activation — Activer un appareil</p>
+                  <Link
+                    to="/activate"
+                    className="mt-3 inline-flex rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black transition duration-150 hover:bg-accent-bright"
+                  >
+                    Activer un appareil
+                  </Link>
+                </td>
+              </tr>
             )}
             {items.map((l) => (
-              <tr key={l.id} className="bg-obsidian hover:bg-midnight">
+              <tr key={l.id} className="bg-obsidian transition duration-150 hover:bg-midnight">
                 <td className="px-4 py-3 font-medium">{l.customer_name || l.customer_email || '—'}</td>
                 <td className="px-4 py-3">{l.app_name || '—'}</td>
                 <td className="px-4 py-3 font-mono text-xs text-accent">{l.device_mac}</td>

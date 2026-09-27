@@ -49,6 +49,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [warn, setWarn] = useState<string | null>(null);
   const [result, setResult] = useState<ActivateResult | null>(null);
 
   // UN SEUL produit : on filtre les autres applis (NOVA+, Red Room, TV…)
@@ -59,6 +60,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
   useEffect(() => {
     let active = true;
+    const notices: string[] = [];
+
     Promise.all([appsApi.list(), planCostsApi.list()])
       .then(([a, c]) => {
         if (!active) return;
@@ -66,14 +69,30 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         setCosts(c.items);
       })
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
+        if (!active) return;
+        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        notices.push('Impossible de charger les apps / tarifs.');
+        setWarn(notices.join(' '));
       });
+
     meApi.get()
       .then((r) => { if (active) setBalance(r.user.credit_balance ?? null); })
-      .catch(() => {});
+      .catch((e) => {
+        if (!active) return;
+        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        notices.push('Solde crédits indisponible.');
+        setWarn(notices.join(' '));
+      });
+
     serversApi.list()
       .then((r) => { if (active) setServers(r.items); })
-      .catch(() => {});
+      .catch((e) => {
+        if (!active) return;
+        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        notices.push('Serveurs par défaut indisponibles.');
+        setWarn(notices.join(' '));
+      });
+
     return () => { active = false; };
   }, [onLogout]);
 
@@ -145,7 +164,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       if (res.credit_balance !== null) setBalance(res.credit_balance);
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Activation impossible.');
+      setErr(e instanceof ApiError ? e.message : 'Activation impossible. Réessayez.');
     } finally {
       setBusy(false);
     }
@@ -161,7 +180,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   ];
 
   const inputCls =
-    'w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent';
+    'w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none transition duration-150 focus:ring-1 focus:ring-accent';
 
   return (
     <AppLayout
@@ -177,6 +196,12 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         ) : undefined
       }
     >
+      {warn && (
+        <div className="mb-4 rounded-lg border border-champagne/40 bg-champagne/10 px-4 py-3 text-sm text-champagne">
+          {warn}
+        </div>
+      )}
+
       <div className="grid max-w-4xl gap-6 md:grid-cols-2">
         {/* ===== Formulaire ===== */}
         <form onSubmit={submit} className="space-y-4 rounded-xl border border-white/5 bg-midnight p-6">
@@ -228,7 +253,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                     key={p.id}
                     onClick={() => setPlan(p.id)}
                     className={
-                      'flex items-center justify-between rounded-md border px-3 py-2 text-sm transition ' +
+                      'flex items-center justify-between rounded-md border px-3 py-2 text-sm transition duration-150 ' +
                       (selected
                         ? 'border-accent bg-accent/10 text-ink-primary'
                         : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
@@ -255,7 +280,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                     key={t.id}
                     onClick={() => setPlan(t.id)}
                     className={
-                      'flex items-center justify-between rounded-md border px-3 py-2 text-sm transition ' +
+                      'flex items-center justify-between rounded-md border px-3 py-2 text-sm transition duration-150 ' +
                       (selected
                         ? 'border-success bg-success/10 text-ink-primary'
                         : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
@@ -292,7 +317,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
               <div key={i} className="mb-2 rounded-md border border-white/10 bg-slate/30 p-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">Source {i + 1}</span>
-                  <button type="button" onClick={() => removeItem(i)} className="text-xs text-ink-tertiary hover:text-accent-bright">
+                  <button type="button" onClick={() => removeItem(i)} className="text-xs text-ink-tertiary transition duration-150 hover:text-accent-bright">
                     Retirer
                   </button>
                 </div>
@@ -303,7 +328,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                       key={t}
                       onClick={() => patch(i, { type: t })}
                       className={
-                        'rounded-md border px-3 py-2 text-sm transition ' +
+                        'rounded-md border px-3 py-2 text-sm transition duration-150 ' +
                         (it.type === t
                           ? 'border-accent bg-accent/10 text-ink-primary'
                           : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
@@ -347,7 +372,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
             {items.length < MAX_SOURCES && (
               <button type="button" onClick={addItem}
-                className="w-full rounded-md border border-dashed border-white/15 px-3 py-2 text-sm text-ink-secondary transition hover:border-accent/50 hover:text-accent-bright">
+                className="w-full rounded-md border border-dashed border-white/15 px-3 py-2 text-sm text-ink-secondary transition duration-150 hover:border-accent/50 hover:text-accent-bright">
                 {items.length === 0
                   ? '+ Ajouter une source'
                   : `+ Ajouter une source (trio — ${items.length}/${MAX_SOURCES})`}
@@ -363,10 +388,10 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
           <button
             type="submit"
             disabled={busy || mac.trim().length < 8}
-            className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition duration-150 hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy
-              ? 'Activation…'
+              ? (items.length > 0 ? 'Activation + sources…' : 'Activation en cours…')
               : !isReseller
                 /* Owner : activation gratuite et illimitée, jamais de crédit. */
                 ? 'Activer'
@@ -377,12 +402,18 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         </form>
 
         {/* ===== Résultat ===== */}
-        <div className="rounded-xl border border-white/5 bg-obsidian p-6">
-          {!result && (
+        <div className="rounded-xl border border-white/5 bg-obsidian p-6 transition duration-150">
+          {!result && !busy && (
             <p className="text-sm text-ink-tertiary">
               Le résultat de l'activation s'affichera ici. L'appareil est débloqué et
               configuré (licence + sources) à distance dès la prochaine vérification de l'app.
             </p>
+          )}
+          {busy && !result && (
+            <div className="flex items-center gap-3 text-sm text-ink-secondary">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
+              Activation en cours…
+            </div>
           )}
           {result && (
             <div className="space-y-3 text-sm">
