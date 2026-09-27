@@ -2193,5 +2193,9 @@
   "tvDeactivate": "Отключить",
   "tvSourceActive": "активна",
   "tvSourceInactive": "отключена",
-  "tvSourceChannels": "{count, plural, =1{1 канал} few{{count} канала} many{{count} каналов} other{{count} канала}}"
+  "tvSourceChannels": "{count, plural, =1{1 канал} few{{count} канала} many{{count} каналов} other{{count} канала}}",
+  "tvDeviceCard": "Моё устройство",
+  "tvUpdateTitle": "Обновление",
+  "tvSettingsRecordingsHint": "Видео, записанные кнопкой REC.",
+  "tvRingHint": "◀ ▶  листать   ·   OK  открыть"
 }

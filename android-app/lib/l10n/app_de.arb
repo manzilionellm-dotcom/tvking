@@ -2193,5 +2193,9 @@
   "tvDeactivate": "Deaktivieren",
   "tvSourceActive": "aktiv",
   "tvSourceInactive": "deaktiviert",
-  "tvSourceChannels": "{count, plural, =1{1 Sender} other{{count} Sender}}"
+  "tvSourceChannels": "{count, plural, =1{1 Sender} other{{count} Sender}}",
+  "tvDeviceCard": "Mein Gerät",
+  "tvUpdateTitle": "Update",
+  "tvSettingsRecordingsHint": "Mit der REC-Taste aufgenommene Videos.",
+  "tvRingHint": "◀ ▶  blättern   ·   OK  öffnen"
 }

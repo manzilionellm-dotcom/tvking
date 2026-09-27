@@ -2193,5 +2193,9 @@
   "tvDeactivate": "Deactiveren",
   "tvSourceActive": "actief",
   "tvSourceInactive": "gedeactiveerd",
-  "tvSourceChannels": "{count, plural, =1{1 zender} other{{count} zenders}}"
+  "tvSourceChannels": "{count, plural, =1{1 zender} other{{count} zenders}}",
+  "tvDeviceCard": "Mijn apparaat",
+  "tvUpdateTitle": "Update",
+  "tvSettingsRecordingsHint": "Video's opgenomen met de REC-knop.",
+  "tvRingHint": "◀ ▶  bladeren   ·   OK  openen"
 }

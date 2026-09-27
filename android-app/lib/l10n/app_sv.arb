@@ -889,5 +889,9 @@
   "tvDeactivate": "Inaktivera",
   "tvSourceActive": "aktiv",
   "tvSourceInactive": "inaktiverad",
-  "tvSourceChannels": "{count, plural, =1{1 kanal} other{{count} kanaler}}"
+  "tvSourceChannels": "{count, plural, =1{1 kanal} other{{count} kanaler}}",
+  "tvDeviceCard": "Min enhet",
+  "tvUpdateTitle": "Uppdatering",
+  "tvSettingsRecordingsHint": "Videor inspelade med REC-knappen.",
+  "tvRingHint": "◀ ▶  bläddra   ·   OK  öppna"
 }

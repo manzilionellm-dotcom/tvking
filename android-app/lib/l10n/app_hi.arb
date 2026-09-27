@@ -2193,5 +2193,9 @@
   "tvDeactivate": "निष्क्रिय करें",
   "tvSourceActive": "सक्रिय",
   "tvSourceInactive": "निष्क्रिय",
-  "tvSourceChannels": "{count, plural, =1{1 चैनल} other{{count} चैनल}}"
+  "tvSourceChannels": "{count, plural, =1{1 चैनल} other{{count} चैनल}}",
+  "tvDeviceCard": "मेरा डिवाइस",
+  "tvUpdateTitle": "अपडेट",
+  "tvSettingsRecordingsHint": "REC बटन से रिकॉर्ड किए गए वीडियो।",
+  "tvRingHint": "◀ ▶  ब्राउज़ करें   ·   OK  खोलें"
 }

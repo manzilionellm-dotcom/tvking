@@ -889,5 +889,9 @@
   "tvDeactivate": "إيقاف",
   "tvSourceActive": "مفعّل",
   "tvSourceInactive": "معطّل",
-  "tvSourceChannels": "{count, plural, =1{قناة واحدة} other{{count} قناة}}"
+  "tvSourceChannels": "{count, plural, =1{قناة واحدة} other{{count} قناة}}",
+  "tvDeviceCard": "جهازي",
+  "tvUpdateTitle": "التحديث",
+  "tvSettingsRecordingsHint": "مقاطع الفيديو المسجلة بزر REC.",
+  "tvRingHint": "◀ ▶  تصفّح   ·   OK  فتح"
 }

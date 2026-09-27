@@ -2196,5 +2196,9 @@
   "tvSourceActive": "active",
   "tvSourceInactive": "désactivée",
   "tvSourceChannels": "{count, plural, =1{1 chaîne} other{{count} chaînes}}",
-  "@tvSourceChannels": {"placeholders": {"count": {"type": "int"}}}
+  "@tvSourceChannels": {"placeholders": {"count": {"type": "int"}}},
+  "tvDeviceCard": "Mon appareil",
+  "tvUpdateTitle": "Mise à jour",
+  "tvSettingsRecordingsHint": "Les vidéos enregistrées avec le bouton REC.",
+  "tvRingHint": "◀ ▶  parcourir   ·   OK  ouvrir"
 }

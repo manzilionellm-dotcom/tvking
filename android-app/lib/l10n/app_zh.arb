@@ -2193,5 +2193,9 @@
   "tvDeactivate": "停用",
   "tvSourceActive": "已启用",
   "tvSourceInactive": "已停用",
-  "tvSourceChannels": "{count, plural, =1{1 个频道} other{{count} 个频道}}"
+  "tvSourceChannels": "{count, plural, =1{1 个频道} other{{count} 个频道}}",
+  "tvDeviceCard": "我的设备",
+  "tvUpdateTitle": "更新",
+  "tvSettingsRecordingsHint": "使用 REC 按钮录制的视频。",
+  "tvRingHint": "◀ ▶  浏览   ·   OK  打开"
 }

@@ -1,6 +1,6 @@
 # Carrousel 3D Zuno — structure et réglages
 
-> État : **étape 2 / 7 (anneau 3D)**. Le composant n'est branché à aucun
+> État : **étapes 1 à 4 faites**. L'anneau est branché sur les **Réglages** (v94). Le composant n'est branché à aucun
 > écran existant : le design actuel de Zuno n'est pas modifié.
 
 ## Pourquoi Flutter et pas React
@@ -38,12 +38,22 @@ test/features/carousel/
 └── zuno_ring_carousel_test.dart
 ```
 
+## Où il est utilisé
+
+- **Réglages (v94)** : 8 cartes (Mon appareil, Mes sources, Mes
+  enregistrements, Contrôle parental, Mise à jour, Langue, Boîte noire,
+  Mentions légales). ◀ ▶ fait tourner l'anneau, OK ouvre la rubrique. Le
+  titre et la description de la carte au centre s'affichent sous l'anneau.
+- API : `ZunoRingCarousel(items: …)` pour des affiches,
+  `ZunoRingCarousel.builder(itemCount, cardBuilder, …)` pour des cartes
+  libres.
+
 ## Feuille de route
 
 1. ✅ Squelette + structure des fichiers
 2. ✅ Anneau 3D (transforms)
-3. ⏳ Navigation clavier / télécommande / tactile + snap
-4. ⏳ Zoom intelligent + respiration au repos
+3. ✅ Navigation clavier / télécommande / tactile + snap
+4. ✅ Zoom intelligent + respiration au repos
 5. ⏳ Sons synthétisés (tick + sélection)
 6. ⏳ Données de démo + rendu final
 7. ⏳ Ce README complété avec les captures et les réglages validés

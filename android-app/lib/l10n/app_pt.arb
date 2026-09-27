@@ -2193,5 +2193,9 @@
   "tvDeactivate": "Desativar",
   "tvSourceActive": "ativa",
   "tvSourceInactive": "desativada",
-  "tvSourceChannels": "{count, plural, =1{1 canal} other{{count} canais}}"
+  "tvSourceChannels": "{count, plural, =1{1 canal} other{{count} canais}}",
+  "tvDeviceCard": "O meu dispositivo",
+  "tvUpdateTitle": "Atualização",
+  "tvSettingsRecordingsHint": "Os vídeos gravados com o botão REC.",
+  "tvRingHint": "◀ ▶  navegar   ·   OK  abrir"
 }

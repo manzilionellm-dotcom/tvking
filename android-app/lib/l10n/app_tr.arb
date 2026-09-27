@@ -2193,5 +2193,9 @@
   "tvDeactivate": "Devre dışı bırak",
   "tvSourceActive": "etkin",
   "tvSourceInactive": "devre dışı",
-  "tvSourceChannels": "{count, plural, =1{1 kanal} other{{count} kanal}}"
+  "tvSourceChannels": "{count, plural, =1{1 kanal} other{{count} kanal}}",
+  "tvDeviceCard": "Cihazım",
+  "tvUpdateTitle": "Güncelleme",
+  "tvSettingsRecordingsHint": "REC düğmesiyle kaydedilen videolar.",
+  "tvRingHint": "◀ ▶  gez   ·   OK  aç"
 }

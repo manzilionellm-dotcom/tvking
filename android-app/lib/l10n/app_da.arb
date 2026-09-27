@@ -889,5 +889,9 @@
   "tvDeactivate": "Deaktiver",
   "tvSourceActive": "aktiv",
   "tvSourceInactive": "deaktiveret",
-  "tvSourceChannels": "{count, plural, =1{1 kanal} other{{count} kanaler}}"
+  "tvSourceChannels": "{count, plural, =1{1 kanal} other{{count} kanaler}}",
+  "tvDeviceCard": "Min enhed",
+  "tvUpdateTitle": "Opdatering",
+  "tvSettingsRecordingsHint": "Videoer optaget med REC-knappen.",
+  "tvRingHint": "◀ ▶  gennemse   ·   OK  åbn"
 }

@@ -889,5 +889,9 @@
   "tvDeactivate": "Zima",
   "tvSourceActive": "hai",
   "tvSourceInactive": "imezimwa",
-  "tvSourceChannels": "{count, plural, =1{Chaneli 1} other{Chaneli {count}}}"
+  "tvSourceChannels": "{count, plural, =1{Chaneli 1} other{Chaneli {count}}}",
+  "tvDeviceCard": "Kifaa changu",
+  "tvUpdateTitle": "Sasisho",
+  "tvSettingsRecordingsHint": "Video zilizorekodiwa kwa kitufe cha REC.",
+  "tvRingHint": "◀ ▶  vinjari   ·   OK  fungua"
 }
