@@ -26,7 +26,7 @@ export default function SiteHeader() {
           <span className="flex flex-col leading-none">
             <span className="text-[1.15rem] font-bold tracking-tight text-white">Zuno</span>
             <span className="text-[0.65rem] font-medium uppercase tracking-[0.2em] text-white/45">
-              TV King
+              VIP
             </span>
           </span>
         </Link>

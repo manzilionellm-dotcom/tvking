@@ -6,7 +6,7 @@ export default function SiteFooter() {
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:px-6 md:grid-cols-3">
         <div>
           <p className="text-lg font-bold text-white">Zuno</p>
-          <p className="mt-1 text-sm text-white/45">TV King — lecteur multi-appareils</p>
+          <p className="mt-1 text-sm text-white/45">Lecteur multi-appareils</p>
           <p className="mt-4 text-xs leading-relaxed text-white/35">
             7 Few, LLC — 131 Continental Dr Suite 305, Newark, DE 19713, United States
           </p>
