@@ -22,7 +22,7 @@ export default function LegalPage() {
           United States
         </p>
         <p>
-          Marque commerciale : <strong className="text-white/85">Zuno</strong> (sous-titre TV King).
+          Marque commerciale : <strong className="text-white/85">Zuno</strong>.
           Site : zuno.7themotion.com
         </p>
       </section>

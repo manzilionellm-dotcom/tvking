@@ -4,7 +4,7 @@ import type { MetadataRoute } from "next";
 export const dynamic = "force-static";
 
 /*
- * Web app manifest — makes TV King installable on a phone ("Ajouter à
+ * Web app manifest — makes Zuno installable on a phone ("Ajouter à
  * l'écran d'accueil"): it opens plein écran, avec son icône, comme une
  * application native.
  */
@@ -14,8 +14,8 @@ const base = process.env.GITHUB_PAGES === "true" ? "/tvking" : "";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "TV King — IPTV, Films, Sport & Formation",
-    short_name: "TV King",
+    name: "Zuno — TV, Films & Multi-appareils",
+    short_name: "Zuno",
     description:
       "TV en direct (vos playlists M3U, liens vérifiés), films en lecture instantanée, sport et formation.",
     start_url: `${base}/`,

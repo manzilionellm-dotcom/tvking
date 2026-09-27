@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Zuno — TV, films & multi-appareils",
   description:
-    "Zuno (TV King) : TV en direct, films et séries, sur box Android TV, Fire TV, Google TV et Windows. Forfaits simples.",
+    "Zuno : TV en direct, films et séries, sur box Android TV, Fire TV, Google TV et Windows. Forfaits simples.",
 };
 
 const BENEFITS = [
@@ -33,7 +33,7 @@ export default function HomePage() {
         <div className="pointer-events-none absolute -right-24 top-10 h-72 w-72 rounded-full bg-[#3b82f6]/10 blur-3xl" />
         <div className="relative mx-auto max-w-4xl text-center">
           <p className="zuno-fade-in mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#93c5fd]">
-            Zuno · TV King
+            Zuno
           </p>
           <h1 className="zuno-slide-up text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl">
             Votre TV,{" "}
