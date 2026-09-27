@@ -112,7 +112,7 @@ export default function SupportChat() {
             {step === "activate" && (
               <div className="zuno-fade-in flex flex-col gap-3">
                 <p className="text-sm text-white/70">
-                  Entrez l'adresse MAC et votre code d'activation.
+                  Entrez l’adresse MAC et votre code d’activation.
                 </p>
                 <label className="block text-xs font-medium text-white/50">
                   Adresse MAC
@@ -124,7 +124,7 @@ export default function SupportChat() {
                   />
                 </label>
                 <label className="block text-xs font-medium text-white/50">
-                  Code d'activation
+                  Code d’activation
                   <input
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
@@ -156,7 +156,7 @@ export default function SupportChat() {
                 <p className="text-sm text-white/85">{msg}</p>
                 {stub && (
                   <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-200/90">
-                    Mode stub : l'API d'activation n'est pas encore configurée
+                    Mode stub : l’API d’activation n’est pas encore configurée
                     (ACTIVATION_API_URL). Finalisez via WhatsApp.
                   </p>
                 )}
@@ -168,7 +168,7 @@ export default function SupportChat() {
                   Ouvrir WhatsApp
                 </button>
                 <Link href="/telecharger" className="text-center text-xs text-[#60a5fa]">
-                  Télécharger l'app →
+                  Télécharger l’app →
                 </Link>
               </div>
             )}
