@@ -1,479 +1,518 @@
 {
   "meta": {
-    "siteTitle": "TV King — Sport, films & formation",
-    "siteDescription": "Lecteur IPTV personnel : vos playlists M3U, films, sport et formation. Aucun contenu n'est fourni avec l'app.",
-    "ogDescription": "Lecteur IPTV personnel. Vos playlists, vos liens.",
+    "siteTitle": "TV King — Sport, films & cursussen",
+    "siteDescription": "Persoonlijke IPTV-speler: je M3U-playlists, films, sport en cursussen. Er wordt geen content meegeleverd met de app.",
+    "ogDescription": "Persoonlijke IPTV-speler. Jouw playlists, jouw links.",
     "filmsTitle": "Films",
-    "filmsDescription": "Films téléchargés sur l'appareil. Lecture instantanée, sans spinner.",
-    "tvTitle": "TV en direct",
-    "tvDescription": "Collez votre playlist M3U. Chaque lien est vérifié avant lecture.",
-    "settingsTitle": "Réglages",
-    "settingsDescription": "Taille du texte, overscan et préférences TV King.",
-    "searchTitle": "Rechercher",
-    "searchDescription": "Recherchez sport, films et formation dans TV King.",
-    "listTitle": "Ma liste",
-    "listDescription": "Vos titres sauvegardés dans TV King.",
-    "sportTitle": "Sport en direct",
-    "sportDescription": "Live, scores, calendrier et replays — classés par discipline.",
-    "formationTitle": "Formation",
-    "formationDescription": "Parcours par niveau, progression et intervenants.",
-    "downloadTitle": "Télécharger l'application",
-    "downloadDescription": "Zuno pour box Android TV, Fire TV, Google TV et PC Windows. Toujours la dernière version.",
-    "startTitle": "TV King — essai de 24 h",
-    "startDescription": "Un seul numéro WhatsApp pour toutes les marques. Ville + appareil. Essai de 24 h, sans carte."
+    "filmsDescription": "Films die op je apparaat zijn gedownload. Direct afspelen, zonder laadicoontje.",
+    "tvTitle": "Live tv",
+    "tvDescription": "Plak je M3U-playlist. Elke link wordt gecontroleerd vóór het afspelen.",
+    "settingsTitle": "Instellingen",
+    "settingsDescription": "Tekstgrootte, overscan en voorkeuren voor TV King.",
+    "searchTitle": "Zoeken",
+    "searchDescription": "Zoek naar sport, films en cursussen in TV King.",
+    "listTitle": "Mijn lijst",
+    "listDescription": "Je opgeslagen titels in TV King.",
+    "sportTitle": "Live sport",
+    "sportDescription": "Live, uitslagen, programma en replays — gesorteerd per sport.",
+    "formationTitle": "Cursussen",
+    "formationDescription": "Leertrajecten per niveau, voortgang en docenten.",
+    "downloadTitle": "Download de app",
+    "downloadDescription": "Zuno voor Android TV-boxen, Fire TV, Google TV en Windows-pc's. Altijd de nieuwste versie.",
+    "startTitle": "TV King — 24 uur gratis proberen",
+    "startDescription": "Eén WhatsApp-nummer voor alle merken. Stad + apparaat. 24 uur proberen, zonder creditcard.",
+    "activateTitle": "Mijn lijst activeren",
+    "activateDescription": "Voeg je eigen Xtream- of M3U-abonnement toe aan je Zuno-box met het MAC-adres."
   },
   "nav": {
-    "search": "Rechercher",
-    "home": "Accueil",
-    "tv": "TV en direct",
+    "search": "Zoeken",
+    "home": "Home",
+    "tv": "Live tv",
     "films": "Films",
     "sport": "Sport",
-    "formation": "Formation",
-    "list": "Ma liste",
-    "settings": "Réglages",
-    "download": "Télécharger",
-    "main": "Navigation principale",
-    "tagline": "Royal"
+    "formation": "Cursussen",
+    "list": "Mijn lijst",
+    "settings": "Instellingen",
+    "download": "Downloaden",
+    "main": "Hoofdnavigatie",
+    "tagline": "Royal",
+    "activate": "Activeren"
   },
   "common": {
-    "live": "Direct",
-    "upcoming": "À venir",
-    "replay": "Replay",
-    "watchLive": "Regarder en direct",
-    "play": "Lecture",
-    "moreInfo": "Plus d'infos",
-    "slide": "Diapositive {n}",
-    "lessons": "{n} leçons",
-    "with": "avec {name}",
-    "resume": "Reprendre",
-    "remindMe": "🔔 Me rappeler",
-    "addToList": "+ Ma liste",
-    "back": "← Retour",
-    "program": "Programme",
-    "lesson": "Leçon {n}",
+    "live": "Live",
+    "upcoming": "Binnenkort",
+    "replay": "Terugkijken",
+    "watchLive": "Live kijken",
+    "play": "Afspelen",
+    "moreInfo": "Meer info",
+    "slide": "Dia {n}",
+    "lessons": "{n} lessen",
+    "with": "met {name}",
+    "resume": "Verder kijken",
+    "remindMe": "🔔 Herinner me",
+    "addToList": "+ Mijn lijst",
+    "back": "← Terug",
+    "program": "Programma",
+    "lesson": "Les {n}",
     "minutes": "{n} min",
-    "sameCategory": "Dans la même catégorie",
-    "moreLikeThis": "Plus comme ça",
-    "pause": "Pause"
+    "sameCategory": "In dezelfde categorie",
+    "moreLikeThis": "Meer zoals dit",
+    "pause": "Pauze"
   },
   "levels": {
-    "Débutant": "Débutant",
-    "Intermédiaire": "Intermédiaire",
-    "Avancé": "Avancé"
+    "Débutant": "Beginner",
+    "Intermédiaire": "Gemiddeld",
+    "Avancé": "Gevorderd"
   },
   "synopsis": {
-    "live": "Suivez {title} en direct, score et temps forts à la minute.",
-    "upcoming": "{title} — programmez un rappel pour ne rien manquer du coup d'envoi.",
-    "replay": "Revivez {title} : intégrale et meilleurs moments à la demande.",
-    "course": "{title} — un programme guidé pour progresser pas à pas, à votre rythme."
+    "live": "Volg {title} live, met de stand en de hoogtepunten minuut voor minuut.",
+    "upcoming": "{title} — stel een herinnering in en mis de aftrap niet.",
+    "replay": "Beleef {title} opnieuw: de volledige wedstrijd en de mooiste momenten on demand.",
+    "course": "{title} — een begeleid programma om stap voor stap vooruit te gaan, in je eigen tempo."
   },
   "consent": {
-    "dialog": "Conditions d'utilisation",
-    "welcome": "Bienvenue sur",
-    "intro": "Avant d'entrer, merci de lire et d'accepter les conditions d'utilisation.",
-    "t1": "TV King ne fournit aucun contenu",
-    "b1": "L'application est un lecteur multimédia. Elle n'héberge, ne diffuse et ne vend aucune chaîne, aucun film, aucun flux. Aucun contenu n'est inclus à l'installation.",
-    "t2": "Vos liens, votre responsabilité",
-    "b2": "Les playlists (M3U) et les liens que vous ajoutez proviennent de vous. Vous déclarez détenir les droits ou autorisations nécessaires pour les contenus auxquels ils mènent, conformément aux lois de votre pays.",
-    "t3": "Chaque lien est vérifié avant lecture",
-    "b3": "Pour une expérience sans souci, chaque lien ajouté est contrôlé (format et disponibilité) avant d'être proposé à la lecture. Un lien invalide est signalé clairement — jamais d'attente sans fin.",
-    "t4": "Lecture instantanée, jamais de roue qui tourne",
-    "b4": "Les films disponibles se préchargent sur l'appareil pour démarrer immédiatement. Si un contenu ne peut pas être lu, l'application l'annonce tout de suite au lieu de faire patienter.",
-    "refused": "Sans acceptation des conditions, TV King ne peut pas être utilisé.",
-    "accept": "J'accepte les conditions",
-    "refuse": "Refuser"
+    "dialog": "Gebruiksvoorwaarden",
+    "welcome": "Welkom bij",
+    "intro": "Lees en accepteer de gebruiksvoorwaarden voordat je verdergaat.",
+    "t1": "TV King levert geen content",
+    "b1": "De app is een mediaspeler. Hij host, zendt en verkoopt geen zenders, films of streams. Bij de installatie is geen content inbegrepen.",
+    "t2": "Jouw links, jouw verantwoordelijkheid",
+    "b2": "De playlists (M3U) en links die je toevoegt, komen van jou. Je verklaart dat je, in overeenstemming met de wetgeving van je land, over de nodige rechten of toestemmingen beschikt voor de content waar ze naartoe leiden.",
+    "t3": "Elke link wordt gecontroleerd vóór het afspelen",
+    "b3": "Voor een zorgeloze ervaring wordt elke toegevoegde link gecontroleerd (formaat en beschikbaarheid) voordat hij wordt aangeboden om af te spelen. Een ongeldige link wordt duidelijk gemeld — nooit eindeloos wachten.",
+    "t4": "Direct afspelen, nooit een draaiend wieltje",
+    "b4": "Beschikbare films worden vooraf op je apparaat geladen, zodat ze meteen starten. Kan iets niet worden afgespeeld, dan meldt de app dat meteen in plaats van je te laten wachten.",
+    "refused": "Zonder akkoord met de voorwaarden kan TV King niet worden gebruikt.",
+    "accept": "Ik ga akkoord met de voorwaarden",
+    "refuse": "Weigeren"
   },
   "film": {
-    "downloading": "Téléchargement du film…",
-    "downloadingLabel": "Téléchargement du film",
-    "fromDevice": "Le film sera lu depuis l'appareil : démarrage immédiat, aucune mise en mémoire tampon.",
-    "instantPlay": "Lecture instantanée",
-    "downloaded": "✓ Téléchargé sur l'appareil"
+    "downloading": "Film wordt gedownload…",
+    "downloadingLabel": "Film wordt gedownload",
+    "fromDevice": "De film wordt afgespeeld vanaf je apparaat: direct starten, geen buffering.",
+    "instantPlay": "Direct afspelen",
+    "downloaded": "✓ Gedownload op apparaat"
   },
   "player": {
-    "nowLive": "● En direct",
-    "playing": "Lecture",
-    "upNext": "À suivre · dans {n}s",
-    "playNow": "Lire maintenant",
-    "cancel": "Annuler",
-    "liveTag": "DIRECT",
-    "rewind": "Reculer de 10 secondes",
-    "forward": "Avancer de 10 secondes",
-    "audioOnlyAria": "Écouter sans la vidéo",
-    "headphones": "Écouteurs",
-    "minimizeAria": "Réduire la vidéo",
-    "minimize": "Réduire",
-    "quit": "✕ Quitter",
-    "miniAria": "Lecture réduite : {title}",
-    "audioOnly": "Audio seulement",
-    "expand": "Agrandir",
-    "closeMini": "Fermer la lecture réduite",
-    "showVideo": "Réafficher la vidéo",
-    "next": "Suivant : {title}"
+    "nowLive": "● Nu live",
+    "playing": "Speelt af",
+    "upNext": "Hierna · over {n}s",
+    "playNow": "Nu afspelen",
+    "cancel": "Annuleren",
+    "liveTag": "LIVE",
+    "rewind": "10 seconden terug",
+    "forward": "10 seconden vooruit",
+    "audioOnlyAria": "Luisteren zonder video",
+    "headphones": "Koptelefoon",
+    "minimizeAria": "Video verkleinen",
+    "minimize": "Verkleinen",
+    "quit": "✕ Stoppen",
+    "miniAria": "Miniplayer: {title}",
+    "audioOnly": "Alleen audio",
+    "expand": "Vergroten",
+    "closeMini": "Miniplayer sluiten",
+    "showVideo": "Video weer tonen",
+    "next": "Hierna: {title}"
   },
   "whatsapp": {
-    "aria": "Contacter TV King sur WhatsApp",
-    "prefill": "TV King — essai 24 h. Ville + appareil"
+    "aria": "Neem contact op met TV King via WhatsApp",
+    "prefill": "TV King — 24 uur proberen. Stad + apparaat"
   },
   "home": {
     "rows": {
-      "continue": "Reprendre",
-      "live-now": "En direct maintenant",
-      "trending": "Tendances"
+      "continue": "Verder kijken",
+      "live-now": "Nu live",
+      "trending": "Populair"
     }
   },
   "films": {
     "title": "Films",
-    "intro": "Chaque film se télécharge sur l'appareil avant lecture : démarrage immédiat, zéro mise en mémoire tampon."
+    "intro": "Elke film wordt vóór het afspelen op je apparaat gedownload: direct starten, nul buffering."
   },
   "sport": {
     "kicker": "Sport",
-    "title": "Le direct, à la minute",
-    "intro": "Live, scores, calendrier et replays — classés par état et par discipline."
+    "title": "Live, minuut voor minuut",
+    "intro": "Live, uitslagen, programma en replays — gesorteerd op status en per sport."
   },
   "formation": {
-    "kicker": "Formation",
-    "title": "Progresser, à votre rythme"
+    "kicker": "Cursussen",
+    "title": "Groei in je eigen tempo"
   },
   "list": {
-    "title": "Ma liste"
+    "title": "Mijn lijst"
   },
   "search": {
-    "title": "Rechercher",
-    "placeholder": "Dites un titre, une équipe ou un thème…",
-    "suggestions": "Suggestions"
+    "title": "Zoeken",
+    "placeholder": "Zeg een titel, een team of een onderwerp…",
+    "suggestions": "Suggesties"
   },
   "tv": {
-    "title": "TV en direct",
-    "empty": "Votre télévision, vos chaînes, vos liens.",
-    "count": "{channels} chaînes · {ready} liens vérifiés et prêts",
-    "intro": "TV King ne fournit aucune chaîne : collez votre propre playlist M3U ci-dessous. Chaque lien sera vérifié avant lecture — un lien invalide est signalé, jamais d'attente sans fin.",
-    "noChannels": "Aucune chaîne trouvée dans ce texte. Collez une playlist au format M3U (#EXTM3U / #EXTINF).",
-    "placeholderChannel": "Ma chaîne",
-    "placeholderUrl": "https://exemple.com/flux.m3u8",
-    "aria": "Playlist M3U",
-    "load": "Charger ma playlist",
-    "demo": "Essayer avec la playlist de démonstration",
-    "verified": "✓ Lien vérifié",
-    "ready": "Prêt à lire — démarrage immédiat",
-    "blocked": "Lecture bloquée : corrigez le lien",
-    "replace": "Remplacer la playlist",
-    "defaultGroup": "Chaînes",
+    "title": "Live tv",
+    "empty": "Jouw tv, jouw zenders, jouw links.",
+    "count": "{channels} zenders · {ready} links gecontroleerd en klaar",
+    "intro": "TV King levert geen zenders: plak hieronder je eigen M3U-playlist. Elke link wordt gecontroleerd vóór het afspelen — een ongeldige link wordt gemeld, nooit eindeloos wachten.",
+    "noChannels": "Geen zenders gevonden in deze tekst. Plak een playlist in M3U-formaat (#EXTM3U / #EXTINF).",
+    "placeholderChannel": "Mijn zender",
+    "placeholderUrl": "https://example.com/stream.m3u8",
+    "aria": "M3U-playlist",
+    "load": "Mijn playlist laden",
+    "demo": "Probeer het met de demoplaylist",
+    "verified": "✓ Link gecontroleerd",
+    "ready": "Klaar om af te spelen — direct starten",
+    "blocked": "Afspelen geblokkeerd: corrigeer de link",
+    "replace": "Playlist vervangen",
+    "defaultGroup": "Zenders",
     "reasons": {
-      "Lien vide": "Lien vide",
-      "Adresse illisible": "Adresse illisible",
-      "Protocole non pris en charge": "Protocole non pris en charge",
-      "Hôte manquant": "Hôte manquant"
+      "Lien vide": "Lege link",
+      "Adresse illisible": "Onleesbaar adres",
+      "Protocole non pris en charge": "Protocol niet ondersteund",
+      "Hôte manquant": "Host ontbreekt"
     }
   },
   "settings": {
-    "title": "Réglages d'affichage",
-    "intro": "Adaptez l'application à votre téléviseur et à votre distance de visionnage.",
-    "textTitle": "Taille du texte",
-    "textDesc": "Le texte est conçu pour être lisible à ~3 m. Agrandissez-le si besoin.",
-    "safeTitle": "Marge de sécurité (overscan)",
-    "safeDesc": "Si les bords de l'image sont rognés par votre TV, augmentez la marge.",
-    "preview": "Aperçu",
-    "safeZone": "Zone de sécurité — tout le contenu reste à l'intérieur",
+    "title": "Weergave-instellingen",
+    "intro": "Stem de app af op je tv en je kijkafstand.",
+    "textTitle": "Tekstgrootte",
+    "textDesc": "De tekst is ontworpen om leesbaar te zijn op ca. 3 m afstand. Maak hem groter als dat nodig is.",
+    "safeTitle": "Veiligheidsmarge (overscan)",
+    "safeDesc": "Worden de randen van het beeld afgesneden op je tv? Vergroot dan de marge.",
+    "preview": "Voorbeeld",
+    "safeZone": "Veilige zone — alle content blijft erbinnen",
     "text": {
       "compact": [
         "Compact",
-        "Plus de contenu"
+        "Meer content"
       ],
       "standard": [
-        "Standard",
-        "Recommandé"
+        "Standaard",
+        "Aanbevolen"
       ],
       "large": [
-        "Grand",
-        "Lecture facile"
+        "Groot",
+        "Makkelijk leesbaar"
       ],
       "xlarge": [
-        "Très grand",
-        "Vision réduite"
+        "Extra groot",
+        "Voor slechtzienden"
       ]
     },
     "safe": {
       "low": [
-        "Faible",
-        "Écran sans surbalayage"
+        "Laag",
+        "Scherm zonder overscan"
       ],
       "standard": [
-        "Standard",
-        "Recommandé (5%)"
+        "Standaard",
+        "Aanbevolen (5%)"
       ],
       "high": [
-        "Élevée",
-        "Bords rognés"
+        "Hoog",
+        "Afgesneden randen"
       ]
     }
   },
   "download": {
-    "kicker": "Application Zuno",
-    "title": "Télécharger",
-    "intro": "Toujours la dernière version. Aucun contenu n'est fourni avec l'application : elle lit les sources de votre abonnement.",
-    "tvKicker": "Box Android TV · Fire TV · Google TV",
-    "tvTitle": "Sur la TV",
-    "tvBody": "L'application complète : direct, films, séries, enregistrements. Activée par votre revendeur.",
-    "tvButton": "Télécharger pour la box (APK)",
-    "tvStep1": "Sur la box, installez l'application « Downloader ».",
-    "tvStep2": "Tapez l'adresse : {url}",
-    "tvStep3": "Installez, ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
-    "tvNote": "Les mises à jour se font ensuite depuis l'application (Réglages → Mise à jour).",
-    "pcKicker": "Windows 10 / 11 · 64 bits",
-    "pcTitle": "Sur ordinateur",
-    "pcBody": "La même application que sur la TV, en plein écran. Clavier : flèches, Entrée, Échap, F11.",
-    "pcButton": "Télécharger pour Windows",
-    "pcZip": "Version portable (.zip)",
-    "pcStep1": "Lancez Zuno-Setup.exe.",
-    "pcStep2": "Si Windows affiche « Éditeur inconnu » : Informations complémentaires → Exécuter quand même.",
-    "pcStep3": "Ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
+    "kicker": "Zuno-app",
+    "title": "Downloaden",
+    "intro": "Altijd de nieuwste versie. Er wordt geen content meegeleverd met de app: hij speelt de bronnen van je abonnement af.",
+    "tvKicker": "Android TV-box · Fire TV · Google TV",
+    "tvTitle": "Op je tv",
+    "tvBody": "De volledige app: live tv, films, series, opnames. Geactiveerd door je verkoper.",
+    "tvButton": "Downloaden voor de box (APK)",
+    "tvStep1": "Installeer op de box de app ‘Downloader’.",
+    "tvStep2": "Voer het adres in: {url}",
+    "tvStep3": "Installeer en open Zuno en geef het getoonde MAC-adres door aan je verkoper.",
+    "tvNote": "Updates doe je daarna vanuit de app (Instellingen → Update).",
+    "pcKicker": "Windows 10 / 11 · 64-bit",
+    "pcTitle": "Op je computer",
+    "pcBody": "Dezelfde app als op je tv, in volledig scherm. Toetsenbord: pijltjestoetsen, Enter, Esc, F11.",
+    "pcButton": "Downloaden voor Windows",
+    "pcZip": "Draagbare versie (.zip)",
+    "pcStep1": "Start Zuno-Setup.exe.",
+    "pcStep2": "Toont Windows ‘Onbekende uitgever’? Klik op Meer informatie → Toch uitvoeren.",
+    "pcStep3": "Open Zuno en geef het getoonde MAC-adres door aan je verkoper.",
     "playKicker": "Google Play · Android TV",
     "playTitle": "Google Play",
-    "playBody": "Publication sur le Play Store en préparation. En attendant, utilisez l'APK pour la box."
+    "playBody": "De release in de Play Store wordt voorbereid. Gebruik tot die tijd de APK voor de box."
   },
   "start": {
-    "title": "Démarrer sur WhatsApp",
-    "body": "Un seul numéro pour toutes les marques : +44 7307 410512. Indiquez votre ville et votre appareil. Essai de 24 h, sans carte.",
-    "cta": "Écrire à TV King",
-    "prefillLabel": "Message prérempli : {text}",
-    "note": "Le lecteur et les playlists restent sur l'écran d'accueil. Cette page sert uniquement à démarrer l'essai."
+    "title": "Start via WhatsApp",
+    "body": "Eén nummer voor alle merken: +44 7307 410512. Laat ons je stad en je apparaat weten. 24 uur proberen, zonder creditcard.",
+    "cta": "Stuur TV King een bericht",
+    "prefillLabel": "Vooraf ingevuld bericht: {text}",
+    "note": "De speler en de playlists blijven op het startscherm. Deze pagina is alleen bedoeld om je proefperiode te starten."
   },
   "data": {
     "rows": {
-      "sport-live": "En direct",
-      "sport-upcoming": "À venir",
-      "sport-replay": "Replays & temps forts",
-      "sport-leagues": "Par discipline",
-      "form-continue": "Continuer ma progression",
-      "form-paths": "Parcours recommandés",
-      "form-fitness": "Sport & bien-être",
-      "form-topics": "Par thème",
-      "films-affiche": "À l'affiche",
-      "films-famille": "Comédies & famille"
+      "sport-live": "Live",
+      "sport-upcoming": "Binnenkort",
+      "sport-replay": "Replays & hoogtepunten",
+      "sport-leagues": "Per sport",
+      "form-continue": "Ga verder waar je was",
+      "form-paths": "Aanbevolen leertrajecten",
+      "form-fitness": "Sport & welzijn",
+      "form-topics": "Per onderwerp",
+      "films-affiche": "Nu in de bioscoop",
+      "films-famille": "Komedie & familie"
     },
     "badges": {
-      "ÉVÉNEMENT": "ÉVÉNEMENT",
-      "NOUVEAU": "NOUVEAU",
-      "TENDANCE": "TENDANCE"
+      "ÉVÉNEMENT": "EVENT",
+      "NOUVEAU": "NIEUW",
+      "TENDANCE": "POPULAIR"
     },
     "items": {
       "hero-ucl": {
-        "title": "Champions League — Finale en direct",
-        "subtitle": "Le sommet du football européen, ce soir à 21h00"
+        "title": "Champions League — De finale live",
+        "subtitle": "Het hoogtepunt van het Europese voetbal, vanavond om 21.00 uur"
       },
       "hero-masterclass": {
-        "title": "Formation — Maîtriser la prise de parole",
-        "subtitle": "12 leçons avec une oratrice de renommée mondiale"
+        "title": "Cursus — Spreken in het openbaar",
+        "subtitle": "12 lessen met een wereldberoemde spreekster"
       },
       "hero-marathon": {
-        "title": "Marathon de préparation physique",
-        "subtitle": "Programme guidé 6 semaines, tous niveaux"
+        "title": "Fitnessmarathon",
+        "subtitle": "Begeleid programma van 6 weken, alle niveaus"
       },
       "c1": {
-        "title": "Tactique défensive moderne",
+        "title": "Moderne verdedigingstactiek",
         "subtitle": "Sport · Analyse"
       },
       "c2": {
-        "title": "Négociation : les fondamentaux",
-        "subtitle": "Formation · 8 min restantes"
+        "title": "Onderhandelen: de basis",
+        "subtitle": "Cursus · nog 8 min"
       },
       "c3": {
-        "subtitle": "Sport · Replay"
+        "subtitle": "Sport · Terugkijken"
       },
       "c4": {
-        "title": "Yoga du matin",
-        "subtitle": "Formation · 14 min"
+        "title": "Ochtendyoga",
+        "subtitle": "Cursus · 14 min"
       },
       "c5": {
-        "title": "Grand Prix — Résumé",
-        "subtitle": "Sport · Replay"
+        "title": "Grand Prix — Samenvatting",
+        "subtitle": "Sport · Terugkijken"
       },
       "l2": {
-        "title": "Roland-Garros — Demi-finale",
+        "title": "Roland-Garros — Halve finale",
         "clock": "Set 3"
       },
       "l4": {
-        "title": "MotoGP — Course",
-        "clock": "Tour 18/24"
+        "title": "MotoGP — Race",
+        "clock": "Ronde 18/24"
       },
       "t1": {
-        "title": "Préparation mentale du champion",
-        "subtitle": "Formation"
+        "title": "Mentale kracht van een kampioen",
+        "subtitle": "Cursus"
       },
       "t2": {
-        "title": "Les plus beaux buts de la saison",
-        "subtitle": "Sport · Replay"
+        "title": "De mooiste goals van het seizoen",
+        "subtitle": "Sport · Terugkijken"
       },
       "t3": {
-        "subtitle": "Formation"
+        "subtitle": "Cursus"
       },
       "t4": {
-        "title": "Analyse : la possession",
+        "title": "Analyse: balbezit",
         "subtitle": "Sport · Analyse"
       },
       "t5": {
-        "title": "Cuisine du sportif",
-        "subtitle": "Formation"
+        "title": "Koken voor sporters",
+        "subtitle": "Cursus"
       },
       "sl1": {
-        "league": "Football · Champions League"
+        "league": "Voetbal · Champions League"
       },
       "sl2": {
-        "title": "Roland-Garros — Demi",
+        "title": "Roland-Garros — Halve finale",
         "clock": "Set 3",
-        "league": "Tennis · Grand Chelem"
+        "league": "Tennis · Grand Slam"
       },
       "sl3": {
-        "league": "Basket · NBA"
+        "league": "Basketbal · NBA"
       },
       "sl4": {
-        "clock": "Tour 18/24",
-        "league": "Moto · MotoGP"
+        "clock": "Ronde 18/24",
+        "league": "Motorsport · MotoGP"
       },
       "su1": {
-        "startsIn": "Aujourd'hui 21:00"
+        "startsIn": "Vandaag 21:00"
       },
       "su2": {
-        "title": "Finale 100m",
-        "startsIn": "Demain 20:30",
-        "league": "Athlétisme"
+        "title": "Finale 100 m",
+        "startsIn": "Morgen 20:30",
+        "league": "Atletiek"
       },
       "su3": {
-        "title": "Six Nations — France/Irlande",
-        "startsIn": "Samedi 15:00"
+        "title": "Six Nations — Frankrijk-Ierland",
+        "startsIn": "Zaterdag 15:00"
       },
       "su4": {
-        "title": "Grand Prix de Monaco",
-        "startsIn": "Dimanche 14:00"
+        "title": "Grand Prix van Monaco",
+        "startsIn": "Zondag 14:00"
       },
       "sr1": {
-        "title": "Les plus beaux buts"
+        "title": "De mooiste goals"
       },
       "sr2": {
-        "title": "Game 4 — Intégrale"
+        "title": "Game 4 — Volledige wedstrijd"
       },
       "sr3": {
-        "title": "Résumé Grand Prix"
+        "title": "Samenvatting Grand Prix"
       },
       "sr4": {
-        "title": "Top 10 échanges"
+        "title": "Top 10 rally's"
       },
       "sd2": {
-        "title": "Basket"
+        "title": "Basketbal"
       },
       "sd6": {
-        "title": "Athlétisme"
+        "title": "Atletiek"
       },
       "fc1": {
-        "title": "Négociation : les fondamentaux",
-        "duration": "8 min restantes"
+        "title": "Onderhandelen: de basis",
+        "duration": "nog 8 min"
       },
       "fc2": {
-        "title": "Préparation mentale",
-        "duration": "14 min restantes"
+        "title": "Mentale voorbereiding",
+        "duration": "nog 14 min"
       },
       "fc3": {
-        "title": "Yoga du matin",
-        "duration": "6 min restantes"
+        "title": "Ochtendyoga",
+        "duration": "nog 6 min"
       },
       "fp1": {
-        "title": "Devenir un meilleur orateur"
+        "title": "Word een betere spreker"
       },
       "fp2": {
-        "title": "Leadership & management"
+        "title": "Leiderschap & management"
       },
       "fp3": {
-        "title": "Nutrition du sportif"
+        "title": "Sportvoeding"
       },
       "fp4": {
-        "title": "Photographie créative"
+        "title": "Creatieve fotografie"
       },
       "fp5": {
-        "title": "Finances personnelles"
+        "title": "Persoonlijke financiën"
       },
       "ff2": {
-        "title": "Renforcement complet"
+        "title": "Complete krachttraining"
       },
       "ff3": {
-        "title": "Étirements & mobilité"
+        "title": "Stretchen & mobiliteit"
       },
       "ff4": {
-        "title": "Course : plan 5 km"
+        "title": "Hardlopen: schema 5 km"
       },
       "ft1": {
-        "title": "Communication"
+        "title": "Communicatie"
       },
       "ft2": {
         "title": "Business"
       },
       "ft3": {
-        "title": "Forme physique"
+        "title": "Fitness"
       },
       "ft4": {
-        "title": "Nutrition"
+        "title": "Voeding"
       },
       "ft5": {
-        "title": "Créativité"
+        "title": "Creativiteit"
       },
       "ft6": {
-        "title": "Finance"
+        "title": "Financiën"
       },
       "mv1": {
-        "title": "La Couronne d'acier",
-        "genre": "Aventure",
-        "description": "Un royaume au bord de la rupture, une héritière que rien ne prédestinait au trône. Une fresque épique au souffle rare."
+        "title": "De Stalen Kroon",
+        "genre": "Avontuur",
+        "description": "Een koninkrijk op het punt van instorten, een erfgename die nooit voor de troon bestemd leek. Een episch verhaal van zeldzame allure."
       },
       "mv2": {
-        "title": "Dernier Sprint",
-        "genre": "Drame sportif",
-        "description": "À 34 ans, un sprinteur déchu s'offre une dernière saison pour redevenir champion — et se réconcilier avec son fils."
+        "title": "De Laatste Sprint",
+        "genre": "Sportdrama",
+        "description": "Op zijn 34e geeft een gevallen sprinter zichzelf nog één seizoen om weer kampioen te worden — en het goed te maken met zijn zoon."
       },
       "mv3": {
-        "title": "Nuit blanche à Dakar",
+        "title": "Slapeloos in Dakar",
         "genre": "Thriller",
-        "description": "Une journaliste remonte la piste d'une disparition en une seule nuit, des toits de la Médina au port de Dakar."
+        "description": "In één nacht volgt een journaliste het spoor van een verdwijning, van de daken van de Medina tot de haven van Dakar."
       },
       "mv4": {
-        "title": "Le Rire du roi",
-        "genre": "Comédie",
-        "description": "Un humoriste sans succès devient, par erreur, bouffon officiel d'une cour royale très à cheval sur l'étiquette."
+        "title": "De Lach van de Koning",
+        "genre": "Komedie",
+        "description": "Een komiek zonder succes wordt per vergissing officiële hofnar aan een koninklijk hof dat bijzonder streng is in de etiquette."
       },
       "mv5": {
-        "title": "Fréquence 88.0",
-        "genre": "Science-fiction",
-        "description": "Une radio pirate capte un signal venu de trente ans dans le futur. Chaque émission change le présent."
+        "title": "Frequentie 88.0",
+        "genre": "Sciencefiction",
+        "description": "Een piratenzender vangt een signaal op van dertig jaar in de toekomst. Elke uitzending verandert het heden."
       },
       "mv6": {
-        "title": "Papa, coach et champion",
-        "genre": "Comédie familiale",
-        "description": "Muté entraîneur de l'équipe poussins de sa fille, un ancien pro découvre que le plus dur reste les goûters."
+        "title": "Papa, Coach en Kampioen",
+        "genre": "Familiekomedie",
+        "description": "Opeens trainer van het pupillenteam van zijn dochter, ontdekt een oud-prof dat de tussendoortjes nog het lastigst zijn."
       },
       "mv7": {
-        "title": "Les Vacances de Sa Majesté",
-        "genre": "Comédie",
-        "description": "Une reine incognito dans un camping familial : protocole, barbecue et quiproquos garantis."
+        "title": "Majesteit op Vakantie",
+        "genre": "Komedie",
+        "description": "Een koningin incognito op een familiecamping: protocol, barbecues en misverstanden gegarandeerd."
       },
       "mv8": {
-        "title": "Mon robot et moi",
-        "genre": "Famille",
-        "description": "Un enfant timide hérite d'un robot de compagnie démodé — et bien plus courageux qu'il n'en a l'air."
+        "title": "Mijn Robot en Ik",
+        "genre": "Familie",
+        "description": "Een verlegen kind erft een ouderwetse gezelschapsrobot — die veel dapperder is dan hij lijkt."
       },
       "mv9": {
-        "title": "La Grande Traversée",
-        "genre": "Aventure familiale",
-        "description": "Deux cousines traversent le pays à vélo pour livrer une lettre qui n'aurait jamais dû se perdre."
+        "title": "De Grote Oversteek",
+        "genre": "Familieavontuur",
+        "description": "Twee nichten fietsen dwars door het land om een brief te bezorgen die nooit zoek had mogen raken."
       }
     },
     "suggestions": [
-      "Football",
-      "Basket",
+      "Voetbal",
+      "Basketbal",
       "Tennis",
       "F1",
-      "Leadership",
+      "Leiderschap",
       "Yoga",
-      "Nutrition",
+      "Voeding",
       "HIIT"
     ]
+  },
+  "activate": {
+    "kicker": "Mijn account",
+    "title": "Mijn lijst activeren",
+    "intro": "Voeg je eigen abonnement (Xtream of M3U) toe aan je Zuno-box. Het verschijnt vanzelf in de app, zonder iets te hoeven typen met de afstandsbediening.",
+    "macLabel": "MAC-adres van de box",
+    "macHint": "Te vinden in Zuno → Instellingen → Mijn apparaat (bijv. MK:80:78:60:07:4F).",
+    "macCheck": "Mijn lijsten bekijken",
+    "typeLabel": "Type abonnement",
+    "xtream": "Xtream (server + inloggegevens)",
+    "m3u": "M3U-link",
+    "nameLabel": "Naam van de lijst",
+    "namePlaceholder": "Mijn abonnement",
+    "serverLabel": "Serveradres",
+    "serverPlaceholder": "http://example.com:8080",
+    "userLabel": "Gebruikersnaam",
+    "passLabel": "Wachtwoord",
+    "urlLabel": "M3U-link",
+    "urlPlaceholder": "http://example.com/get.php?username=…&password=…&type=m3u_plus",
+    "submit": "Activeren op mijn box",
+    "sending": "Verzenden…",
+    "success": "Klaar! Open Zuno: je lijst verschijnt binnen een minuut (of druk op Herstarten).",
+    "myLists": "Lijsten op deze box",
+    "none": "Nog geen lijsten.",
+    "locked": "Beheerd door je verkoper",
+    "delete": "Verwijderen",
+    "deleted": "Lijst verwijderd.",
+    "privacy": "Het wachtwoord wordt maar één keer naar je box verstuurd en wordt nooit meer getoond.",
+    "errors": {
+      "mac": "Ongeldig MAC-adres. Neem het opnieuw over uit Zuno → Instellingen → Mijn apparaat.",
+      "notEntitled": "Deze box is nog niet geactiveerd. Vraag je verkoper om de activering en probeer het daarna opnieuw.",
+      "fields": "Vul alle velden in. Adressen moeten beginnen met http:// of https://.",
+      "tooMany": "Maximaal aantal lijsten bereikt: verwijder er een om een nieuwe toe te voegen.",
+      "network": "Server niet bereikbaar. Controleer je verbinding en probeer het opnieuw.",
+      "generic": "Kan de lijst niet opslaan. Probeer het zo meteen opnieuw."
+    }
   }
 }
