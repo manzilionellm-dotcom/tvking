@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import AppOnlyNotice from "../components/site/AppOnlyNotice";
 
 const NUMBER =
   process.env.NEXT_PUBLIC_WHATSAPP_TVKING ||
@@ -19,6 +20,7 @@ export default function StartPage() {
     <div className="mx-auto max-w-xl px-5 py-16 text-[var(--fg,#f5f5f5)]">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#888]">TV King</p>
       <h1 className="mt-3 font-[var(--font-display)] text-4xl font-bold">Start on WhatsApp</h1>
+      <div className="mx-auto mt-5 max-w-xl"><AppOnlyNotice variant="banner" /></div>
       <p className="mt-4 text-lg text-[#bbb]">
         One number for every brand: +44 7307 410512. Tell us city + device. 24h trial, no card.
         Keep this chat on TV King — do not mix a USA or Mzansi login in this thread.

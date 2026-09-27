@@ -53,7 +53,7 @@ export default function ActivationForm() {
           className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none transition focus:border-[#3b82f6]/70 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)]"
         />
         <span className="mt-1 block text-xs text-white/35">
-          Code d'activation (annuel ou à vie) reçu après paiement
+          Code d&apos;activation (annuel ou à vie) reçu après paiement
         </span>
       </label>
       <label className="block text-sm font-medium text-white/70">
@@ -98,7 +98,7 @@ export default function ActivationForm() {
         rel="noopener noreferrer"
         className="text-center text-sm text-white/45 hover:text-[#25D366]"
       >
-        Besoin d'aide ? WhatsApp
+        Besoin d&apos;aide ? WhatsApp
       </a>
 
       {result?.ok && (
@@ -106,7 +106,7 @@ export default function ActivationForm() {
           href="/telecharger"
           className="text-center text-sm font-medium text-[#60a5fa]"
         >
-          Ensuite : télécharger l'application →
+          Ensuite : télécharger l&apos;application →
         </Link>
       )}
     </form>

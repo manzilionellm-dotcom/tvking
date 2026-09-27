@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import AppOnlyNotice from "../components/site/AppOnlyNotice";
 
 type Session = { email: string; at: string };
 
@@ -62,6 +63,7 @@ export default function ConnexionPage() {
       <p className="mt-2 text-center text-sm text-white/45">
         Espace compte démo (stub). Auth.js / Clerk pourront remplacer ce flux.
       </p>
+      <div className="mx-auto mt-5 max-w-xl"><AppOnlyNotice variant="banner" /></div>
 
       {session ? (
         <div className="zuno-card mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6">

@@ -1,22 +1,24 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import AppOnlyNotice from "./components/site/AppOnlyNotice";
+import { ZUNO_APP_ONLY_PHRASE } from "./lib/legal-copy";
 
 export const metadata: Metadata = {
-  title: "Zuno — TV, films & multi-appareils",
+  title: "Zuno — Application IPTV multi-appareils",
   description:
-    "Zuno : TV en direct, films et séries, sur box Android TV, Fire TV, Google TV et Windows. Forfaits simples.",
+    "Zuno est une application IPTV — nous ne vendons pas de chaînes. Lecteur pour box Android TV, Fire TV, Google TV et Windows. Vous apportez vos propres sources.",
 };
 
 const BENEFITS = [
   {
-    title: "TV en direct",
-    body: "Retrouvez vos chaînes sur grand écran, avec une interface pensée pour la télécommande.",
+    title: "Lecteur IPTV",
+    body: "Application pensée télécommande et grand écran. Vous branchez vos propres sources — nous ne fournissons aucun contenu.",
     icon: "📺",
   },
   {
-    title: "Films & séries",
-    body: "Parcourez et lancez vos contenus VOD dans une expérience sombre, fluide et premium.",
-    icon: "🎬",
+    title: "Vos sources",
+    body: "M3U / Xtream que VOUS apportez. Zuno n'héberge, ne vend et ne revend pas de chaînes ni de listes.",
+    icon: "🔌",
   },
   {
     title: "Multi-appareils",
@@ -36,31 +38,34 @@ export default function HomePage() {
             Zuno
           </p>
           <h1 className="zuno-slide-up text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl">
-            Votre TV,{" "}
+            L&apos;app IPTV,{" "}
             <span className="bg-gradient-to-r from-[#93c5fd] to-[#3b82f6] bg-clip-text text-transparent">
-              simplement
+              pas les chaînes
             </span>
           </h1>
           <p className="zuno-slide-up mx-auto mt-5 max-w-2xl text-base text-white/60 sm:text-lg" style={{ animationDelay: "80ms" }}>
-            Lecteur premium pour box et PC. Choisissez un forfait, activez votre
-            appareil, téléchargez l&apos;application.
+            Nous vendons uniquement l&apos;application Zuno. Forfait = licence app.
+            Vous utilisez vos propres sources.
           </p>
+          <div className="zuno-slide-up mx-auto mt-6 max-w-2xl" style={{ animationDelay: "100ms" }}>
+            <AppOnlyNotice variant="hero" />
+          </div>
           <div className="zuno-slide-up mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row" style={{ animationDelay: "140ms" }}>
             <Link
               href="/forfaits"
               className="zuno-cta inline-flex min-w-[12rem] items-center justify-center rounded-xl bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] px-6 py-3.5 text-sm font-semibold text-white shadow-[0_0_32px_rgba(59,130,246,0.4)]"
             >
-              Voir les forfaits
+              Voir les forfaits app
             </Link>
             <Link
               href="/telecharger"
               className="inline-flex min-w-[12rem] items-center justify-center rounded-xl border border-white/15 bg-white/5 px-6 py-3.5 text-sm font-semibold text-white/90 transition hover:bg-white/10"
             >
-              Télécharger
+              Télécharger l&apos;app
             </Link>
           </div>
           <p className="mt-6 text-xs text-white/35">
-            Tunnel : Accueil → Forfaits → Paiement → Activer → Télécharger
+            Tunnel : Accueil → Forfaits (licence app) → Paiement → Activer → Télécharger
           </p>
         </div>
       </section>
@@ -81,14 +86,15 @@ export default function HomePage() {
 
       <section className="border-t border-white/5 bg-[#070709] px-4 py-16 sm:px-6">
         <div className="mx-auto flex max-w-4xl flex-col items-center gap-4 text-center">
-          <h2 className="text-2xl font-bold text-white">Prêt à commencer ?</h2>
+          <h2 className="text-2xl font-bold text-white">Prêt à installer Zuno ?</h2>
+          <p className="max-w-xl text-sm text-white/50">{ZUNO_APP_ONLY_PHRASE}</p>
           <p className="text-sm text-white/50">
-            Annuel <strong className="text-white/80">9,99 € / an</strong> · À vie{" "}
+            Licence app : annuel <strong className="text-white/80">9,99 € / an</strong> · À vie{" "}
             <strong className="text-white/80">15 €</strong>
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link href="/forfaits" className="rounded-xl bg-[#2563eb] px-5 py-3 text-sm font-semibold text-white">
-              Choisir un forfait
+              Choisir un forfait app
             </Link>
             <Link href="/activer" className="rounded-xl border border-white/15 px-5 py-3 text-sm font-medium text-white/80">
               Activer mon appareil

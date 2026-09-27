@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import AppOnlyNotice from "../components/site/AppOnlyNotice";
+import { ZUNO_APP_ONLY_PHRASE } from "../lib/legal-copy";
 
 export const metadata: Metadata = {
   title: "Mentions légales",
@@ -9,6 +11,7 @@ export default function LegalPage() {
   return (
     <div className="zuno-page mx-auto max-w-3xl px-4 py-14 sm:px-6">
       <h1 className="text-3xl font-bold text-white">Mentions légales</h1>
+      <div className="mt-6"><AppOnlyNotice variant="hero" /></div>
 
       <section className="mt-10 space-y-4 text-sm leading-relaxed text-white/60">
         <h2 className="text-xl font-semibold text-white">Éditeur</h2>
@@ -30,8 +33,8 @@ export default function LegalPage() {
       <section className="mt-10 space-y-3 text-sm leading-relaxed text-white/60">
         <h2 className="text-xl font-semibold text-white">Conditions générales d’utilisation</h2>
         <p>
-          Zuno est une application lecteur. L’utilisateur est responsable des contenus et
-          sources qu’il configure. Aucun catalogue illicite n’est fourni par l’éditeur.
+          {ZUNO_APP_ONLY_PHRASE}{" "}
+          Zuno est une application IPTV (lecteur). Nous ne vendons pas de chaînes, de contenu TV, de listes M3U ni d’abonnements IPTV. L’utilisateur apporte et est responsable de ses propres sources. Aucun catalogue n’est fourni par l’éditeur.
         </p>
         <p>
           L’accès payant (forfaits Annuel ou À vie) couvre l’usage de l’application et
