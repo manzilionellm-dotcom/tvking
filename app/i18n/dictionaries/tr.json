@@ -1,479 +1,518 @@
 {
   "meta": {
-    "siteTitle": "TV King — Sport, films & formation",
-    "siteDescription": "Lecteur IPTV personnel : vos playlists M3U, films, sport et formation. Aucun contenu n'est fourni avec l'app.",
-    "ogDescription": "Lecteur IPTV personnel. Vos playlists, vos liens.",
-    "filmsTitle": "Films",
-    "filmsDescription": "Films téléchargés sur l'appareil. Lecture instantanée, sans spinner.",
-    "tvTitle": "TV en direct",
-    "tvDescription": "Collez votre playlist M3U. Chaque lien est vérifié avant lecture.",
-    "settingsTitle": "Réglages",
-    "settingsDescription": "Taille du texte, overscan et préférences TV King.",
-    "searchTitle": "Rechercher",
-    "searchDescription": "Recherchez sport, films et formation dans TV King.",
-    "listTitle": "Ma liste",
-    "listDescription": "Vos titres sauvegardés dans TV King.",
-    "sportTitle": "Sport en direct",
-    "sportDescription": "Live, scores, calendrier et replays — classés par discipline.",
-    "formationTitle": "Formation",
-    "formationDescription": "Parcours par niveau, progression et intervenants.",
-    "downloadTitle": "Télécharger l'application",
-    "downloadDescription": "Zuno pour box Android TV, Fire TV, Google TV et PC Windows. Toujours la dernière version.",
-    "startTitle": "TV King — essai de 24 h",
-    "startDescription": "Un seul numéro WhatsApp pour toutes les marques. Ville + appareil. Essai de 24 h, sans carte."
+    "siteTitle": "TV King — Spor, filmler ve eğitim",
+    "siteDescription": "Kişisel IPTV oynatıcı: M3U listelerin, filmler, spor ve eğitim. Uygulamayla birlikte hiçbir içerik sunulmaz.",
+    "ogDescription": "Kişisel IPTV oynatıcı. Senin listelerin, senin bağlantıların.",
+    "filmsTitle": "Filmler",
+    "filmsDescription": "Cihaza indirilmiş filmler. Anında oynatma, beklemek yok.",
+    "tvTitle": "Canlı TV",
+    "tvDescription": "M3U listeni yapıştır. Her bağlantı oynatılmadan önce doğrulanır.",
+    "settingsTitle": "Ayarlar",
+    "settingsDescription": "Metin boyutu, overscan ve TV King tercihleri.",
+    "searchTitle": "Ara",
+    "searchDescription": "TV King'de spor, film ve eğitim içeriklerini ara.",
+    "listTitle": "Listem",
+    "listDescription": "TV King'e kaydettiğin içerikler.",
+    "sportTitle": "Canlı spor",
+    "sportDescription": "Canlı yayınlar, skorlar, fikstür ve tekrarlar — branşlara göre.",
+    "formationTitle": "Eğitim",
+    "formationDescription": "Seviyeye göre programlar, ilerleme takibi ve eğitmenler.",
+    "downloadTitle": "Uygulamayı indir",
+    "downloadDescription": "Android TV, Fire TV, Google TV kutuları ve Windows bilgisayarlar için Zuno. Her zaman en güncel sürüm.",
+    "startTitle": "TV King — 24 saatlik deneme",
+    "startDescription": "Tüm markalar için tek WhatsApp numarası. Şehir + cihaz. 24 saatlik deneme, kart gerekmez.",
+    "activateTitle": "Listemi etkinleştir",
+    "activateDescription": "Kendi Xtream veya M3U aboneliğini, MAC adresini kullanarak Zuno kutuna ekle."
   },
   "nav": {
-    "search": "Rechercher",
-    "home": "Accueil",
-    "tv": "TV en direct",
-    "films": "Films",
-    "sport": "Sport",
-    "formation": "Formation",
-    "list": "Ma liste",
-    "settings": "Réglages",
-    "download": "Télécharger",
-    "main": "Navigation principale",
-    "tagline": "Royal"
+    "search": "Ara",
+    "home": "Ana sayfa",
+    "tv": "Canlı TV",
+    "films": "Filmler",
+    "sport": "Spor",
+    "formation": "Eğitim",
+    "list": "Listem",
+    "settings": "Ayarlar",
+    "download": "İndir",
+    "main": "Ana menü",
+    "tagline": "Kraliyet",
+    "activate": "Etkinleştir"
   },
   "common": {
-    "live": "Direct",
-    "upcoming": "À venir",
-    "replay": "Replay",
-    "watchLive": "Regarder en direct",
-    "play": "Lecture",
-    "moreInfo": "Plus d'infos",
-    "slide": "Diapositive {n}",
-    "lessons": "{n} leçons",
-    "with": "avec {name}",
-    "resume": "Reprendre",
-    "remindMe": "🔔 Me rappeler",
-    "addToList": "+ Ma liste",
-    "back": "← Retour",
-    "program": "Programme",
-    "lesson": "Leçon {n}",
-    "minutes": "{n} min",
-    "sameCategory": "Dans la même catégorie",
-    "moreLikeThis": "Plus comme ça",
-    "pause": "Pause"
+    "live": "Canlı",
+    "upcoming": "Yakında",
+    "replay": "Tekrar",
+    "watchLive": "Canlı izle",
+    "play": "Oynat",
+    "moreInfo": "Daha fazla bilgi",
+    "slide": "Slayt {n}",
+    "lessons": "{n} ders",
+    "with": "{name} ile",
+    "resume": "Devam et",
+    "remindMe": "🔔 Bana hatırlat",
+    "addToList": "+ Listem",
+    "back": "← Geri",
+    "program": "Program",
+    "lesson": "Ders {n}",
+    "minutes": "{n} dk",
+    "sameCategory": "Aynı kategoride",
+    "moreLikeThis": "Benzer içerikler",
+    "pause": "Duraklat"
   },
   "levels": {
-    "Débutant": "Débutant",
-    "Intermédiaire": "Intermédiaire",
-    "Avancé": "Avancé"
+    "Débutant": "Başlangıç",
+    "Intermédiaire": "Orta",
+    "Avancé": "İleri"
   },
   "synopsis": {
-    "live": "Suivez {title} en direct, score et temps forts à la minute.",
-    "upcoming": "{title} — programmez un rappel pour ne rien manquer du coup d'envoi.",
-    "replay": "Revivez {title} : intégrale et meilleurs moments à la demande.",
-    "course": "{title} — un programme guidé pour progresser pas à pas, à votre rythme."
+    "live": "{title} canlı yayında: skor ve önemli anlar dakika dakika.",
+    "upcoming": "{title} — başlama düdüğünü kaçırmamak için hatırlatıcı kur.",
+    "replay": "{title}: tamamını ve en iyi anları dilediğin zaman yeniden izle.",
+    "course": "{title} — kendi hızında, adım adım ilerlemen için rehberli bir program."
   },
   "consent": {
-    "dialog": "Conditions d'utilisation",
-    "welcome": "Bienvenue sur",
-    "intro": "Avant d'entrer, merci de lire et d'accepter les conditions d'utilisation.",
-    "t1": "TV King ne fournit aucun contenu",
-    "b1": "L'application est un lecteur multimédia. Elle n'héberge, ne diffuse et ne vend aucune chaîne, aucun film, aucun flux. Aucun contenu n'est inclus à l'installation.",
-    "t2": "Vos liens, votre responsabilité",
-    "b2": "Les playlists (M3U) et les liens que vous ajoutez proviennent de vous. Vous déclarez détenir les droits ou autorisations nécessaires pour les contenus auxquels ils mènent, conformément aux lois de votre pays.",
-    "t3": "Chaque lien est vérifié avant lecture",
-    "b3": "Pour une expérience sans souci, chaque lien ajouté est contrôlé (format et disponibilité) avant d'être proposé à la lecture. Un lien invalide est signalé clairement — jamais d'attente sans fin.",
-    "t4": "Lecture instantanée, jamais de roue qui tourne",
-    "b4": "Les films disponibles se préchargent sur l'appareil pour démarrer immédiatement. Si un contenu ne peut pas être lu, l'application l'annonce tout de suite au lieu de faire patienter.",
-    "refused": "Sans acceptation des conditions, TV King ne peut pas être utilisé.",
-    "accept": "J'accepte les conditions",
-    "refuse": "Refuser"
+    "dialog": "Kullanım koşulları",
+    "welcome": "Hoş geldin",
+    "intro": "Devam etmeden önce lütfen kullanım koşullarını oku ve kabul et.",
+    "t1": "TV King hiçbir içerik sağlamaz",
+    "b1": "Uygulama bir medya oynatıcıdır. Hiçbir kanal, film veya yayın akışı barındırmaz, yayınlamaz ya da satmaz. Kurulumla birlikte hiçbir içerik gelmez.",
+    "t2": "Bağlantılar senin, sorumluluk da senin",
+    "b2": "Eklediğin oynatma listeleri (M3U) ve bağlantılar sana aittir. Yönlendirdikleri içerikler için, ülkenin yasalarına uygun olarak gerekli haklara veya izinlere sahip olduğunu beyan edersin.",
+    "t3": "Her bağlantı oynatılmadan önce doğrulanır",
+    "b3": "Sorunsuz bir deneyim için eklenen her bağlantı, oynatmaya sunulmadan önce kontrol edilir (biçim ve erişilebilirlik). Geçersiz bir bağlantı açıkça belirtilir — asla bitmeyen bekleme yok.",
+    "t4": "Anında oynatma, dönüp duran simge yok",
+    "b4": "Mevcut filmler hemen başlaması için cihaza önceden yüklenir. Bir içerik oynatılamıyorsa uygulama seni bekletmek yerine bunu hemen bildirir.",
+    "refused": "Koşullar kabul edilmeden TV King kullanılamaz.",
+    "accept": "Koşulları kabul ediyorum",
+    "refuse": "Reddet"
   },
   "film": {
-    "downloading": "Téléchargement du film…",
-    "downloadingLabel": "Téléchargement du film",
-    "fromDevice": "Le film sera lu depuis l'appareil : démarrage immédiat, aucune mise en mémoire tampon.",
-    "instantPlay": "Lecture instantanée",
-    "downloaded": "✓ Téléchargé sur l'appareil"
+    "downloading": "Film indiriliyor…",
+    "downloadingLabel": "Film indiriliyor",
+    "fromDevice": "Film cihazdan oynatılacak: anında başlar, arabelleğe alma yok.",
+    "instantPlay": "Anında oynatma",
+    "downloaded": "✓ Cihaza indirildi"
   },
   "player": {
-    "nowLive": "● En direct",
-    "playing": "Lecture",
-    "upNext": "À suivre · dans {n}s",
-    "playNow": "Lire maintenant",
-    "cancel": "Annuler",
-    "liveTag": "DIRECT",
-    "rewind": "Reculer de 10 secondes",
-    "forward": "Avancer de 10 secondes",
-    "audioOnlyAria": "Écouter sans la vidéo",
-    "headphones": "Écouteurs",
-    "minimizeAria": "Réduire la vidéo",
-    "minimize": "Réduire",
-    "quit": "✕ Quitter",
-    "miniAria": "Lecture réduite : {title}",
-    "audioOnly": "Audio seulement",
-    "expand": "Agrandir",
-    "closeMini": "Fermer la lecture réduite",
-    "showVideo": "Réafficher la vidéo",
-    "next": "Suivant : {title}"
+    "nowLive": "● Şu an canlı",
+    "playing": "Oynatılıyor",
+    "upNext": "Sıradaki · {n} sn sonra",
+    "playNow": "Şimdi oynat",
+    "cancel": "İptal",
+    "liveTag": "CANLI",
+    "rewind": "10 saniye geri sar",
+    "forward": "10 saniye ileri sar",
+    "audioOnlyAria": "Videosuz dinle",
+    "headphones": "Kulaklık",
+    "minimizeAria": "Videoyu küçült",
+    "minimize": "Küçült",
+    "quit": "✕ Çık",
+    "miniAria": "Küçük oynatıcı: {title}",
+    "audioOnly": "Yalnızca ses",
+    "expand": "Büyüt",
+    "closeMini": "Küçük oynatıcıyı kapat",
+    "showVideo": "Videoyu yeniden göster",
+    "next": "Sıradaki: {title}"
   },
   "whatsapp": {
-    "aria": "Contacter TV King sur WhatsApp",
-    "prefill": "TV King — essai 24 h. Ville + appareil"
+    "aria": "WhatsApp'tan TV King'e ulaş",
+    "prefill": "TV King — 24 saatlik deneme. Şehir + cihaz"
   },
   "home": {
     "rows": {
-      "continue": "Reprendre",
-      "live-now": "En direct maintenant",
-      "trending": "Tendances"
+      "continue": "İzlemeye devam et",
+      "live-now": "Şu an canlı",
+      "trending": "Trendler"
     }
   },
   "films": {
-    "title": "Films",
-    "intro": "Chaque film se télécharge sur l'appareil avant lecture : démarrage immédiat, zéro mise en mémoire tampon."
+    "title": "Filmler",
+    "intro": "Her film oynatılmadan önce cihaza indirilir: anında başlar, sıfır arabelleğe alma."
   },
   "sport": {
-    "kicker": "Sport",
-    "title": "Le direct, à la minute",
-    "intro": "Live, scores, calendrier et replays — classés par état et par discipline."
+    "kicker": "Spor",
+    "title": "Canlı yayın, dakika dakika",
+    "intro": "Canlı yayınlar, skorlar, fikstür ve tekrarlar — duruma ve branşa göre."
   },
   "formation": {
-    "kicker": "Formation",
-    "title": "Progresser, à votre rythme"
+    "kicker": "Eğitim",
+    "title": "Kendi hızında ilerle"
   },
   "list": {
-    "title": "Ma liste"
+    "title": "Listem"
   },
   "search": {
-    "title": "Rechercher",
-    "placeholder": "Dites un titre, une équipe ou un thème…",
-    "suggestions": "Suggestions"
+    "title": "Ara",
+    "placeholder": "Bir içerik adı, takım ya da konu söyle…",
+    "suggestions": "Öneriler"
   },
   "tv": {
-    "title": "TV en direct",
-    "empty": "Votre télévision, vos chaînes, vos liens.",
-    "count": "{channels} chaînes · {ready} liens vérifiés et prêts",
-    "intro": "TV King ne fournit aucune chaîne : collez votre propre playlist M3U ci-dessous. Chaque lien sera vérifié avant lecture — un lien invalide est signalé, jamais d'attente sans fin.",
-    "noChannels": "Aucune chaîne trouvée dans ce texte. Collez une playlist au format M3U (#EXTM3U / #EXTINF).",
-    "placeholderChannel": "Ma chaîne",
+    "title": "Canlı TV",
+    "empty": "Senin televizyonun, senin kanalların, senin bağlantıların.",
+    "count": "{channels} kanal · {ready} bağlantı doğrulandı ve hazır",
+    "intro": "TV King hiçbir kanal sağlamaz: kendi M3U listeni aşağıya yapıştır. Her bağlantı oynatılmadan önce doğrulanır — geçersiz bağlantılar belirtilir, asla bitmeyen bekleme yok.",
+    "noChannels": "Bu metinde kanal bulunamadı. M3U biçiminde bir liste yapıştır (#EXTM3U / #EXTINF).",
+    "placeholderChannel": "Kanalım",
     "placeholderUrl": "https://exemple.com/flux.m3u8",
-    "aria": "Playlist M3U",
-    "load": "Charger ma playlist",
-    "demo": "Essayer avec la playlist de démonstration",
-    "verified": "✓ Lien vérifié",
-    "ready": "Prêt à lire — démarrage immédiat",
-    "blocked": "Lecture bloquée : corrigez le lien",
-    "replace": "Remplacer la playlist",
-    "defaultGroup": "Chaînes",
+    "aria": "M3U listesi",
+    "load": "Listemi yükle",
+    "demo": "Demo listeyle dene",
+    "verified": "✓ Bağlantı doğrulandı",
+    "ready": "Oynatmaya hazır — anında başlar",
+    "blocked": "Oynatma engellendi: bağlantıyı düzelt",
+    "replace": "Listeyi değiştir",
+    "defaultGroup": "Kanallar",
     "reasons": {
-      "Lien vide": "Lien vide",
-      "Adresse illisible": "Adresse illisible",
-      "Protocole non pris en charge": "Protocole non pris en charge",
-      "Hôte manquant": "Hôte manquant"
+      "Lien vide": "Boş bağlantı",
+      "Adresse illisible": "Okunamayan adres",
+      "Protocole non pris en charge": "Desteklenmeyen protokol",
+      "Hôte manquant": "Sunucu adı eksik"
     }
   },
   "settings": {
-    "title": "Réglages d'affichage",
-    "intro": "Adaptez l'application à votre téléviseur et à votre distance de visionnage.",
-    "textTitle": "Taille du texte",
-    "textDesc": "Le texte est conçu pour être lisible à ~3 m. Agrandissez-le si besoin.",
-    "safeTitle": "Marge de sécurité (overscan)",
-    "safeDesc": "Si les bords de l'image sont rognés par votre TV, augmentez la marge.",
-    "preview": "Aperçu",
-    "safeZone": "Zone de sécurité — tout le contenu reste à l'intérieur",
+    "title": "Görüntü ayarları",
+    "intro": "Uygulamayı televizyonuna ve izleme mesafene göre ayarla.",
+    "textTitle": "Metin boyutu",
+    "textDesc": "Metinler yaklaşık 3 m mesafeden okunacak şekilde tasarlandı. Gerekirse büyüt.",
+    "safeTitle": "Güvenli kenar boşluğu (overscan)",
+    "safeDesc": "Televizyonun görüntünün kenarlarını kesiyorsa boşluğu artır.",
+    "preview": "Önizleme",
+    "safeZone": "Güvenli alan — tüm içerik bu alanın içinde kalır",
     "text": {
       "compact": [
-        "Compact",
-        "Plus de contenu"
+        "Kompakt",
+        "Daha fazla içerik"
       ],
       "standard": [
-        "Standard",
-        "Recommandé"
+        "Standart",
+        "Önerilen"
       ],
       "large": [
-        "Grand",
-        "Lecture facile"
+        "Büyük",
+        "Kolay okuma"
       ],
       "xlarge": [
-        "Très grand",
-        "Vision réduite"
+        "Çok büyük",
+        "Az gören izleyiciler için"
       ]
     },
     "safe": {
       "low": [
-        "Faible",
-        "Écran sans surbalayage"
+        "Düşük",
+        "Kenarları kesmeyen ekran"
       ],
       "standard": [
-        "Standard",
-        "Recommandé (5%)"
+        "Standart",
+        "Önerilen (%5)"
       ],
       "high": [
-        "Élevée",
-        "Bords rognés"
+        "Yüksek",
+        "Kenarlar kesiliyor"
       ]
     }
   },
   "download": {
-    "kicker": "Application Zuno",
-    "title": "Télécharger",
-    "intro": "Toujours la dernière version. Aucun contenu n'est fourni avec l'application : elle lit les sources de votre abonnement.",
-    "tvKicker": "Box Android TV · Fire TV · Google TV",
-    "tvTitle": "Sur la TV",
-    "tvBody": "L'application complète : direct, films, séries, enregistrements. Activée par votre revendeur.",
-    "tvButton": "Télécharger pour la box (APK)",
-    "tvStep1": "Sur la box, installez l'application « Downloader ».",
-    "tvStep2": "Tapez l'adresse : {url}",
-    "tvStep3": "Installez, ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
-    "tvNote": "Les mises à jour se font ensuite depuis l'application (Réglages → Mise à jour).",
-    "pcKicker": "Windows 10 / 11 · 64 bits",
-    "pcTitle": "Sur ordinateur",
-    "pcBody": "La même application que sur la TV, en plein écran. Clavier : flèches, Entrée, Échap, F11.",
-    "pcButton": "Télécharger pour Windows",
-    "pcZip": "Version portable (.zip)",
-    "pcStep1": "Lancez Zuno-Setup.exe.",
-    "pcStep2": "Si Windows affiche « Éditeur inconnu » : Informations complémentaires → Exécuter quand même.",
-    "pcStep3": "Ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
+    "kicker": "Zuno uygulaması",
+    "title": "İndir",
+    "intro": "Her zaman en güncel sürüm. Uygulamayla birlikte hiçbir içerik sunulmaz: aboneliğindeki kaynakları oynatır.",
+    "tvKicker": "Android TV kutusu · Fire TV · Google TV",
+    "tvTitle": "TV'de",
+    "tvBody": "Eksiksiz uygulama: canlı yayın, filmler, diziler, kayıtlar. Satıcın tarafından etkinleştirilir.",
+    "tvButton": "Kutu için indir (APK)",
+    "tvStep1": "Kutuya “Downloader” uygulamasını yükle.",
+    "tvStep2": "Şu adresi yaz: {url}",
+    "tvStep3": "Kurulumu tamamla, Zuno'yu aç ve ekranda görünen MAC adresini satıcına ilet.",
+    "tvNote": "Güncellemeler daha sonra uygulamanın içinden yapılır (Ayarlar → Güncelleme).",
+    "pcKicker": "Windows 10 / 11 · 64 bit",
+    "pcTitle": "Bilgisayarda",
+    "pcBody": "TV'dekiyle aynı uygulama, tam ekran. Klavye: ok tuşları, Enter, Esc, F11.",
+    "pcButton": "Windows için indir",
+    "pcZip": "Taşınabilir sürüm (.zip)",
+    "pcStep1": "Zuno-Setup.exe dosyasını çalıştır.",
+    "pcStep2": "Windows “Bilinmeyen yayımcı” uyarısı gösterirse: Daha fazla bilgi → Yine de çalıştır.",
+    "pcStep3": "Zuno'yu aç ve ekranda görünen MAC adresini satıcına ilet.",
     "playKicker": "Google Play · Android TV",
     "playTitle": "Google Play",
-    "playBody": "Publication sur le Play Store en préparation. En attendant, utilisez l'APK pour la box."
+    "playBody": "Play Store yayını hazırlanıyor. Bu arada kutu için APK'yı kullanabilirsin."
   },
   "start": {
-    "title": "Démarrer sur WhatsApp",
-    "body": "Un seul numéro pour toutes les marques : +44 7307 410512. Indiquez votre ville et votre appareil. Essai de 24 h, sans carte.",
-    "cta": "Écrire à TV King",
-    "prefillLabel": "Message prérempli : {text}",
-    "note": "Le lecteur et les playlists restent sur l'écran d'accueil. Cette page sert uniquement à démarrer l'essai."
+    "title": "WhatsApp'tan başla",
+    "body": "Tüm markalar için tek numara: +44 7307 410512. Şehrini ve cihazını yaz. 24 saatlik deneme, kart gerekmez.",
+    "cta": "TV King'e yaz",
+    "prefillLabel": "Hazır mesaj: {text}",
+    "note": "Oynatıcı ve listeler ana ekranda kalır. Bu sayfa yalnızca denemeyi başlatmak içindir."
   },
   "data": {
     "rows": {
-      "sport-live": "En direct",
-      "sport-upcoming": "À venir",
-      "sport-replay": "Replays & temps forts",
-      "sport-leagues": "Par discipline",
-      "form-continue": "Continuer ma progression",
-      "form-paths": "Parcours recommandés",
-      "form-fitness": "Sport & bien-être",
-      "form-topics": "Par thème",
-      "films-affiche": "À l'affiche",
-      "films-famille": "Comédies & famille"
+      "sport-live": "Canlı",
+      "sport-upcoming": "Yakında",
+      "sport-replay": "Tekrarlar ve özetler",
+      "sport-leagues": "Branşa göre",
+      "form-continue": "Kaldığın yerden devam et",
+      "form-paths": "Önerilen programlar",
+      "form-fitness": "Spor ve sağlıklı yaşam",
+      "form-topics": "Konuya göre",
+      "films-affiche": "Vizyondakiler",
+      "films-famille": "Komedi ve aile"
     },
     "badges": {
-      "ÉVÉNEMENT": "ÉVÉNEMENT",
-      "NOUVEAU": "NOUVEAU",
-      "TENDANCE": "TENDANCE"
+      "ÉVÉNEMENT": "ETKİNLİK",
+      "NOUVEAU": "YENİ",
+      "TENDANCE": "TREND"
     },
     "items": {
       "hero-ucl": {
-        "title": "Champions League — Finale en direct",
-        "subtitle": "Le sommet du football européen, ce soir à 21h00"
+        "title": "Champions League — Final canlı",
+        "subtitle": "Avrupa futbolunun zirvesi, bu akşam 21:00'de"
       },
       "hero-masterclass": {
-        "title": "Formation — Maîtriser la prise de parole",
-        "subtitle": "12 leçons avec une oratrice de renommée mondiale"
+        "title": "Eğitim — Etkili konuşma sanatı",
+        "subtitle": "Dünyaca ünlü bir hatiple 12 ders"
       },
       "hero-marathon": {
-        "title": "Marathon de préparation physique",
-        "subtitle": "Programme guidé 6 semaines, tous niveaux"
+        "title": "Fiziksel hazırlık maratonu",
+        "subtitle": "6 haftalık rehberli program, her seviyeye uygun"
       },
       "c1": {
-        "title": "Tactique défensive moderne",
-        "subtitle": "Sport · Analyse"
+        "title": "Modern savunma taktikleri",
+        "subtitle": "Spor · Analiz"
       },
       "c2": {
-        "title": "Négociation : les fondamentaux",
-        "subtitle": "Formation · 8 min restantes"
+        "title": "Müzakere: temel ilkeler",
+        "subtitle": "Eğitim · 8 dk kaldı"
       },
       "c3": {
-        "subtitle": "Sport · Replay"
+        "subtitle": "Spor · Tekrar"
       },
       "c4": {
-        "title": "Yoga du matin",
-        "subtitle": "Formation · 14 min"
+        "title": "Sabah yogası",
+        "subtitle": "Eğitim · 14 dk"
       },
       "c5": {
-        "title": "Grand Prix — Résumé",
-        "subtitle": "Sport · Replay"
+        "title": "Grand Prix — Özet",
+        "subtitle": "Spor · Tekrar"
       },
       "l2": {
-        "title": "Roland-Garros — Demi-finale",
-        "clock": "Set 3"
+        "title": "Roland-Garros — Yarı final",
+        "clock": "3. set"
       },
       "l4": {
-        "title": "MotoGP — Course",
-        "clock": "Tour 18/24"
+        "title": "MotoGP — Yarış",
+        "clock": "Tur 18/24"
       },
       "t1": {
-        "title": "Préparation mentale du champion",
-        "subtitle": "Formation"
+        "title": "Şampiyonların zihinsel hazırlığı",
+        "subtitle": "Eğitim"
       },
       "t2": {
-        "title": "Les plus beaux buts de la saison",
-        "subtitle": "Sport · Replay"
+        "title": "Sezonun en güzel golleri",
+        "subtitle": "Spor · Tekrar"
       },
       "t3": {
-        "subtitle": "Formation"
+        "subtitle": "Eğitim"
       },
       "t4": {
-        "title": "Analyse : la possession",
-        "subtitle": "Sport · Analyse"
+        "title": "Analiz: topa sahip olma",
+        "subtitle": "Spor · Analiz"
       },
       "t5": {
-        "title": "Cuisine du sportif",
-        "subtitle": "Formation"
+        "title": "Sporcu mutfağı",
+        "subtitle": "Eğitim"
       },
       "sl1": {
-        "league": "Football · Champions League"
+        "league": "Futbol · Champions League"
       },
       "sl2": {
-        "title": "Roland-Garros — Demi",
-        "clock": "Set 3",
-        "league": "Tennis · Grand Chelem"
+        "title": "Roland-Garros — Yarı final",
+        "clock": "3. set",
+        "league": "Tenis · Grand Slam"
       },
       "sl3": {
-        "league": "Basket · NBA"
+        "league": "Basketbol · NBA"
       },
       "sl4": {
-        "clock": "Tour 18/24",
-        "league": "Moto · MotoGP"
+        "clock": "Tur 18/24",
+        "league": "Motor sporları · MotoGP"
       },
       "su1": {
-        "startsIn": "Aujourd'hui 21:00"
+        "startsIn": "Bugün 21:00"
       },
       "su2": {
-        "title": "Finale 100m",
-        "startsIn": "Demain 20:30",
-        "league": "Athlétisme"
+        "title": "100 m finali",
+        "startsIn": "Yarın 20:30",
+        "league": "Atletizm"
       },
       "su3": {
-        "title": "Six Nations — France/Irlande",
-        "startsIn": "Samedi 15:00"
+        "title": "Altı Uluslar — Fransa/İrlanda",
+        "startsIn": "Cumartesi 15:00"
       },
       "su4": {
-        "title": "Grand Prix de Monaco",
-        "startsIn": "Dimanche 14:00"
+        "title": "Monako Grand Prix'si",
+        "startsIn": "Pazar 14:00"
       },
       "sr1": {
-        "title": "Les plus beaux buts"
+        "title": "En güzel goller"
       },
       "sr2": {
-        "title": "Game 4 — Intégrale"
+        "title": "4. maç — Tamamı"
       },
       "sr3": {
-        "title": "Résumé Grand Prix"
+        "title": "Grand Prix özeti"
       },
       "sr4": {
-        "title": "Top 10 échanges"
+        "title": "En iyi 10 ralli"
       },
       "sd2": {
-        "title": "Basket"
+        "title": "Basketbol"
       },
       "sd6": {
-        "title": "Athlétisme"
+        "title": "Atletizm"
       },
       "fc1": {
-        "title": "Négociation : les fondamentaux",
-        "duration": "8 min restantes"
+        "title": "Müzakere: temel ilkeler",
+        "duration": "8 dk kaldı"
       },
       "fc2": {
-        "title": "Préparation mentale",
-        "duration": "14 min restantes"
+        "title": "Zihinsel hazırlık",
+        "duration": "14 dk kaldı"
       },
       "fc3": {
-        "title": "Yoga du matin",
-        "duration": "6 min restantes"
+        "title": "Sabah yogası",
+        "duration": "6 dk kaldı"
       },
       "fp1": {
-        "title": "Devenir un meilleur orateur"
+        "title": "Daha iyi bir konuşmacı ol"
       },
       "fp2": {
-        "title": "Leadership & management"
+        "title": "Liderlik ve yönetim"
       },
       "fp3": {
-        "title": "Nutrition du sportif"
+        "title": "Sporcu beslenmesi"
       },
       "fp4": {
-        "title": "Photographie créative"
+        "title": "Yaratıcı fotoğrafçılık"
       },
       "fp5": {
-        "title": "Finances personnelles"
+        "title": "Kişisel finans"
       },
       "ff2": {
-        "title": "Renforcement complet"
+        "title": "Tüm vücut güçlendirme"
       },
       "ff3": {
-        "title": "Étirements & mobilité"
+        "title": "Esneme ve mobilite"
       },
       "ff4": {
-        "title": "Course : plan 5 km"
+        "title": "Koşu: 5 km planı"
       },
       "ft1": {
-        "title": "Communication"
+        "title": "İletişim"
       },
       "ft2": {
-        "title": "Business"
+        "title": "İş dünyası"
       },
       "ft3": {
-        "title": "Forme physique"
+        "title": "Fiziksel form"
       },
       "ft4": {
-        "title": "Nutrition"
+        "title": "Beslenme"
       },
       "ft5": {
-        "title": "Créativité"
+        "title": "Yaratıcılık"
       },
       "ft6": {
-        "title": "Finance"
+        "title": "Finans"
       },
       "mv1": {
-        "title": "La Couronne d'acier",
-        "genre": "Aventure",
-        "description": "Un royaume au bord de la rupture, une héritière que rien ne prédestinait au trône. Une fresque épique au souffle rare."
+        "title": "Çelik Taç",
+        "genre": "Macera",
+        "description": "Çöküşün eşiğinde bir krallık ve tahta çıkması hiç beklenmeyen bir varis. Soluk kesen, eşine az rastlanır bir destan."
       },
       "mv2": {
-        "title": "Dernier Sprint",
-        "genre": "Drame sportif",
-        "description": "À 34 ans, un sprinteur déchu s'offre une dernière saison pour redevenir champion — et se réconcilier avec son fils."
+        "title": "Son Sprint",
+        "genre": "Spor draması",
+        "description": "34 yaşındaki gözden düşmüş bir sprinter, yeniden şampiyon olmak — ve oğluyla barışmak — için kendine son bir sezon tanır."
       },
       "mv3": {
-        "title": "Nuit blanche à Dakar",
-        "genre": "Thriller",
-        "description": "Une journaliste remonte la piste d'une disparition en une seule nuit, des toits de la Médina au port de Dakar."
+        "title": "Dakar'da Uykusuz Bir Gece",
+        "genre": "Gerilim",
+        "description": "Bir gazeteci, tek bir gecede, Medina'nın çatılarından Dakar limanına uzanan bir kayboluşun izini sürer."
       },
       "mv4": {
-        "title": "Le Rire du roi",
-        "genre": "Comédie",
-        "description": "Un humoriste sans succès devient, par erreur, bouffon officiel d'une cour royale très à cheval sur l'étiquette."
+        "title": "Kralın Kahkahası",
+        "genre": "Komedi",
+        "description": "Başarısız bir komedyen, bir yanlışlık sonucu, protokole son derece düşkün bir kraliyet sarayının resmi soytarısı olur."
       },
       "mv5": {
-        "title": "Fréquence 88.0",
-        "genre": "Science-fiction",
-        "description": "Une radio pirate capte un signal venu de trente ans dans le futur. Chaque émission change le présent."
+        "title": "Frekans 88.0",
+        "genre": "Bilim kurgu",
+        "description": "Korsan bir radyo, otuz yıl sonrasından gelen bir sinyal yakalar. Her yayın bugünü değiştirir."
       },
       "mv6": {
-        "title": "Papa, coach et champion",
-        "genre": "Comédie familiale",
-        "description": "Muté entraîneur de l'équipe poussins de sa fille, un ancien pro découvre que le plus dur reste les goûters."
+        "title": "Babam: Koç ve Şampiyon",
+        "genre": "Aile komedisi",
+        "description": "Kızının minikler takımına antrenör olarak atanan eski bir profesyonel, işin en zor kısmının maç sonrası ikramlar olduğunu keşfeder."
       },
       "mv7": {
-        "title": "Les Vacances de Sa Majesté",
-        "genre": "Comédie",
-        "description": "Une reine incognito dans un camping familial : protocole, barbecue et quiproquos garantis."
+        "title": "Majestelerinin Tatili",
+        "genre": "Komedi",
+        "description": "Bir aile kampında kimliğini gizleyen bir kraliçe: protokol, mangal ve kahkaha garantili yanlış anlaşılmalar."
       },
       "mv8": {
-        "title": "Mon robot et moi",
-        "genre": "Famille",
-        "description": "Un enfant timide hérite d'un robot de compagnie démodé — et bien plus courageux qu'il n'en a l'air."
+        "title": "Robotum ve Ben",
+        "genre": "Aile",
+        "description": "Utangaç bir çocuk, modası geçmiş bir arkadaş robotu miras alır — üstelik robot göründüğünden çok daha cesurdur."
       },
       "mv9": {
-        "title": "La Grande Traversée",
-        "genre": "Aventure familiale",
-        "description": "Deux cousines traversent le pays à vélo pour livrer une lettre qui n'aurait jamais dû se perdre."
+        "title": "Büyük Yolculuk",
+        "genre": "Aile macerası",
+        "description": "İki kuzen, asla kaybolmaması gereken bir mektubu teslim etmek için ülkeyi bisikletle boydan boya geçer."
       }
     },
     "suggestions": [
-      "Football",
-      "Basket",
-      "Tennis",
+      "Futbol",
+      "Basketbol",
+      "Tenis",
       "F1",
-      "Leadership",
+      "Liderlik",
       "Yoga",
-      "Nutrition",
+      "Beslenme",
       "HIIT"
     ]
+  },
+  "activate": {
+    "kicker": "Hesabım",
+    "title": "Listemi etkinleştir",
+    "intro": "Kendi aboneliğini (Xtream veya M3U) Zuno kutuna ekle. Kumandayla tek bir şey yazmana gerek kalmadan uygulamaya kendiliğinden gelir.",
+    "macLabel": "Kutunun MAC adresi",
+    "macHint": "Zuno → Ayarlar → Cihazım bölümünde görünür (ör. MK:80:78:60:07:4F).",
+    "macCheck": "Listelerimi gör",
+    "typeLabel": "Abonelik türü",
+    "xtream": "Xtream (sunucu + giriş bilgileri)",
+    "m3u": "M3U bağlantısı",
+    "nameLabel": "Liste adı",
+    "namePlaceholder": "Aboneliğim",
+    "serverLabel": "Sunucu adresi",
+    "serverPlaceholder": "http://exemple.com:8080",
+    "userLabel": "Kullanıcı adı",
+    "passLabel": "Şifre",
+    "urlLabel": "M3U bağlantısı",
+    "urlPlaceholder": "http://exemple.com/get.php?username=…&password=…&type=m3u_plus",
+    "submit": "Kutumda etkinleştir",
+    "sending": "Gönderiliyor…",
+    "success": "Tamamdır! Zuno'yu aç: listen bir dakikadan kısa sürede gelir (ya da Yeniden başlat'a bas).",
+    "myLists": "Bu kutudaki listeler",
+    "none": "Henüz liste yok.",
+    "locked": "Satıcın tarafından yönetiliyor",
+    "delete": "Sil",
+    "deleted": "Liste silindi.",
+    "privacy": "Şifre kutuna yalnızca bir kez gönderilir ve bir daha asla gösterilmez.",
+    "errors": {
+      "mac": "Geçersiz MAC adresi. Zuno → Ayarlar → Cihazım bölümünden yeniden kopyala.",
+      "notEntitled": "Bu kutu henüz etkinleştirilmemiş. Satıcından etkinleştirmesini iste, ardından tekrar dene.",
+      "fields": "Tüm alanları doldur. Adresler http:// veya https:// ile başlamalı.",
+      "tooMany": "Liste sınırına ulaşıldı: yenisini eklemek için birini sil.",
+      "network": "Sunucuya ulaşılamıyor. Bağlantını kontrol edip tekrar dene.",
+      "generic": "Liste kaydedilemedi. Birazdan tekrar dene."
+    }
   }
 }

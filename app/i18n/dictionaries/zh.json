@@ -1,479 +1,518 @@
 {
   "meta": {
-    "siteTitle": "TV King — Sport, films & formation",
-    "siteDescription": "Lecteur IPTV personnel : vos playlists M3U, films, sport et formation. Aucun contenu n'est fourni avec l'app.",
-    "ogDescription": "Lecteur IPTV personnel. Vos playlists, vos liens.",
-    "filmsTitle": "Films",
-    "filmsDescription": "Films téléchargés sur l'appareil. Lecture instantanée, sans spinner.",
-    "tvTitle": "TV en direct",
-    "tvDescription": "Collez votre playlist M3U. Chaque lien est vérifié avant lecture.",
-    "settingsTitle": "Réglages",
-    "settingsDescription": "Taille du texte, overscan et préférences TV King.",
-    "searchTitle": "Rechercher",
-    "searchDescription": "Recherchez sport, films et formation dans TV King.",
-    "listTitle": "Ma liste",
-    "listDescription": "Vos titres sauvegardés dans TV King.",
-    "sportTitle": "Sport en direct",
-    "sportDescription": "Live, scores, calendrier et replays — classés par discipline.",
-    "formationTitle": "Formation",
-    "formationDescription": "Parcours par niveau, progression et intervenants.",
-    "downloadTitle": "Télécharger l'application",
-    "downloadDescription": "Zuno pour box Android TV, Fire TV, Google TV et PC Windows. Toujours la dernière version.",
-    "startTitle": "TV King — essai de 24 h",
-    "startDescription": "Un seul numéro WhatsApp pour toutes les marques. Ville + appareil. Essai de 24 h, sans carte."
+    "siteTitle": "TV King — 体育、电影与课程",
+    "siteDescription": "个人 IPTV 播放器：您的 M3U 播放列表、电影、体育与课程。应用本身不提供任何内容。",
+    "ogDescription": "个人 IPTV 播放器。您的播放列表，您的链接。",
+    "filmsTitle": "电影",
+    "filmsDescription": "已下载到设备的电影。即点即播，无需等待加载。",
+    "tvTitle": "电视直播",
+    "tvDescription": "粘贴您的 M3U 播放列表。每个链接在播放前都会经过验证。",
+    "settingsTitle": "设置",
+    "settingsDescription": "文字大小、过扫描及 TV King 偏好设置。",
+    "searchTitle": "搜索",
+    "searchDescription": "在 TV King 中搜索体育、电影与课程。",
+    "listTitle": "我的片单",
+    "listDescription": "您在 TV King 中收藏的内容。",
+    "sportTitle": "体育直播",
+    "sportDescription": "直播、比分、赛程与回放——按运动项目分类。",
+    "formationTitle": "课程",
+    "formationDescription": "分级学习路径、学习进度与讲师介绍。",
+    "downloadTitle": "下载应用",
+    "downloadDescription": "Zuno 适用于 Android TV 盒子、Fire TV、Google TV 及 Windows 电脑。始终为最新版本。",
+    "startTitle": "TV King — 24 小时免费试用",
+    "startDescription": "所有品牌共用一个 WhatsApp 号码。城市 + 设备。24 小时试用，无需银行卡。",
+    "activateTitle": "激活我的列表",
+    "activateDescription": "通过 MAC 地址，将您自己的 Xtream 或 M3U 订阅添加到 Zuno 盒子。"
   },
   "nav": {
-    "search": "Rechercher",
-    "home": "Accueil",
-    "tv": "TV en direct",
-    "films": "Films",
-    "sport": "Sport",
-    "formation": "Formation",
-    "list": "Ma liste",
-    "settings": "Réglages",
-    "download": "Télécharger",
-    "main": "Navigation principale",
-    "tagline": "Royal"
+    "search": "搜索",
+    "home": "首页",
+    "tv": "电视直播",
+    "films": "电影",
+    "sport": "体育",
+    "formation": "课程",
+    "list": "我的片单",
+    "settings": "设置",
+    "download": "下载",
+    "main": "主导航",
+    "tagline": "皇家",
+    "activate": "激活"
   },
   "common": {
-    "live": "Direct",
-    "upcoming": "À venir",
-    "replay": "Replay",
-    "watchLive": "Regarder en direct",
-    "play": "Lecture",
-    "moreInfo": "Plus d'infos",
-    "slide": "Diapositive {n}",
-    "lessons": "{n} leçons",
-    "with": "avec {name}",
-    "resume": "Reprendre",
-    "remindMe": "🔔 Me rappeler",
-    "addToList": "+ Ma liste",
-    "back": "← Retour",
-    "program": "Programme",
-    "lesson": "Leçon {n}",
-    "minutes": "{n} min",
-    "sameCategory": "Dans la même catégorie",
-    "moreLikeThis": "Plus comme ça",
-    "pause": "Pause"
+    "live": "直播",
+    "upcoming": "即将开始",
+    "replay": "回放",
+    "watchLive": "观看直播",
+    "play": "播放",
+    "moreInfo": "更多信息",
+    "slide": "第 {n} 张",
+    "lessons": "{n} 节课",
+    "with": "主讲：{name}",
+    "resume": "继续播放",
+    "remindMe": "🔔 提醒我",
+    "addToList": "+ 我的片单",
+    "back": "← 返回",
+    "program": "课程大纲",
+    "lesson": "第 {n} 课",
+    "minutes": "{n} 分钟",
+    "sameCategory": "同类推荐",
+    "moreLikeThis": "更多类似内容",
+    "pause": "暂停"
   },
   "levels": {
-    "Débutant": "Débutant",
-    "Intermédiaire": "Intermédiaire",
-    "Avancé": "Avancé"
+    "Débutant": "入门",
+    "Intermédiaire": "进阶",
+    "Avancé": "高级"
   },
   "synopsis": {
-    "live": "Suivez {title} en direct, score et temps forts à la minute.",
-    "upcoming": "{title} — programmez un rappel pour ne rien manquer du coup d'envoi.",
-    "replay": "Revivez {title} : intégrale et meilleurs moments à la demande.",
-    "course": "{title} — un programme guidé pour progresser pas à pas, à votre rythme."
+    "live": "{title} 正在直播，比分与精彩瞬间实时更新。",
+    "upcoming": "{title} — 设置提醒，不错过开场的每一秒。",
+    "replay": "重温 {title}：全场回放与精彩集锦，随时点播。",
+    "course": "{title} — 循序渐进的引导式课程，按您自己的节奏学习。"
   },
   "consent": {
-    "dialog": "Conditions d'utilisation",
-    "welcome": "Bienvenue sur",
-    "intro": "Avant d'entrer, merci de lire et d'accepter les conditions d'utilisation.",
-    "t1": "TV King ne fournit aucun contenu",
-    "b1": "L'application est un lecteur multimédia. Elle n'héberge, ne diffuse et ne vend aucune chaîne, aucun film, aucun flux. Aucun contenu n'est inclus à l'installation.",
-    "t2": "Vos liens, votre responsabilité",
-    "b2": "Les playlists (M3U) et les liens que vous ajoutez proviennent de vous. Vous déclarez détenir les droits ou autorisations nécessaires pour les contenus auxquels ils mènent, conformément aux lois de votre pays.",
-    "t3": "Chaque lien est vérifié avant lecture",
-    "b3": "Pour une expérience sans souci, chaque lien ajouté est contrôlé (format et disponibilité) avant d'être proposé à la lecture. Un lien invalide est signalé clairement — jamais d'attente sans fin.",
-    "t4": "Lecture instantanée, jamais de roue qui tourne",
-    "b4": "Les films disponibles se préchargent sur l'appareil pour démarrer immédiatement. Si un contenu ne peut pas être lu, l'application l'annonce tout de suite au lieu de faire patienter.",
-    "refused": "Sans acceptation des conditions, TV King ne peut pas être utilisé.",
-    "accept": "J'accepte les conditions",
-    "refuse": "Refuser"
+    "dialog": "使用条款",
+    "welcome": "欢迎使用",
+    "intro": "开始之前，请阅读并接受使用条款。",
+    "t1": "TV King 不提供任何内容",
+    "b1": "本应用是一款多媒体播放器，不托管、不传播、也不出售任何频道、电影或流媒体。安装后不含任何内容。",
+    "t2": "您的链接，由您负责",
+    "b2": "您添加的播放列表（M3U）和链接均由您自行提供。您声明，根据您所在国家/地区的法律，您对这些链接所指向的内容拥有必要的权利或授权。",
+    "t3": "每个链接在播放前均经过验证",
+    "b3": "为确保顺畅体验，每个添加的链接在可供播放之前都会经过检查（格式与可用性）。无效链接会被清楚标示——绝不会让您无休止地等待。",
+    "t4": "即点即播，告别转圈等待",
+    "b4": "可播放的电影会预先加载到设备上，点开即播。如果某个内容无法播放，应用会立即告知您，而不是让您一直等待。",
+    "refused": "不接受条款将无法使用 TV King。",
+    "accept": "我接受条款",
+    "refuse": "拒绝"
   },
   "film": {
-    "downloading": "Téléchargement du film…",
-    "downloadingLabel": "Téléchargement du film",
-    "fromDevice": "Le film sera lu depuis l'appareil : démarrage immédiat, aucune mise en mémoire tampon.",
-    "instantPlay": "Lecture instantanée",
-    "downloaded": "✓ Téléchargé sur l'appareil"
+    "downloading": "正在下载电影…",
+    "downloadingLabel": "正在下载电影",
+    "fromDevice": "电影将从设备本地播放：立即开始，无需缓冲。",
+    "instantPlay": "即点即播",
+    "downloaded": "✓ 已下载到设备"
   },
   "player": {
-    "nowLive": "● En direct",
-    "playing": "Lecture",
-    "upNext": "À suivre · dans {n}s",
-    "playNow": "Lire maintenant",
-    "cancel": "Annuler",
-    "liveTag": "DIRECT",
-    "rewind": "Reculer de 10 secondes",
-    "forward": "Avancer de 10 secondes",
-    "audioOnlyAria": "Écouter sans la vidéo",
-    "headphones": "Écouteurs",
-    "minimizeAria": "Réduire la vidéo",
-    "minimize": "Réduire",
-    "quit": "✕ Quitter",
-    "miniAria": "Lecture réduite : {title}",
-    "audioOnly": "Audio seulement",
-    "expand": "Agrandir",
-    "closeMini": "Fermer la lecture réduite",
-    "showVideo": "Réafficher la vidéo",
-    "next": "Suivant : {title}"
+    "nowLive": "● 直播中",
+    "playing": "正在播放",
+    "upNext": "即将播放 · {n} 秒后",
+    "playNow": "立即播放",
+    "cancel": "取消",
+    "liveTag": "直播",
+    "rewind": "后退 10 秒",
+    "forward": "快进 10 秒",
+    "audioOnlyAria": "仅收听，不显示视频",
+    "headphones": "耳机",
+    "minimizeAria": "缩小视频",
+    "minimize": "缩小",
+    "quit": "✕ 退出",
+    "miniAria": "小窗播放：{title}",
+    "audioOnly": "仅音频",
+    "expand": "放大",
+    "closeMini": "关闭小窗播放",
+    "showVideo": "重新显示视频",
+    "next": "下一个：{title}"
   },
   "whatsapp": {
-    "aria": "Contacter TV King sur WhatsApp",
-    "prefill": "TV King — essai 24 h. Ville + appareil"
+    "aria": "通过 WhatsApp 联系 TV King",
+    "prefill": "TV King — 24 小时试用。城市 + 设备"
   },
   "home": {
     "rows": {
-      "continue": "Reprendre",
-      "live-now": "En direct maintenant",
-      "trending": "Tendances"
+      "continue": "继续观看",
+      "live-now": "正在直播",
+      "trending": "热门趋势"
     }
   },
   "films": {
-    "title": "Films",
-    "intro": "Chaque film se télécharge sur l'appareil avant lecture : démarrage immédiat, zéro mise en mémoire tampon."
+    "title": "电影",
+    "intro": "每部电影在播放前都会下载到设备上：立即开始，零缓冲。"
   },
   "sport": {
-    "kicker": "Sport",
-    "title": "Le direct, à la minute",
-    "intro": "Live, scores, calendrier et replays — classés par état et par discipline."
+    "kicker": "体育",
+    "title": "直播，分秒不差",
+    "intro": "直播、比分、赛程与回放——按状态和运动项目分类。"
   },
   "formation": {
-    "kicker": "Formation",
-    "title": "Progresser, à votre rythme"
+    "kicker": "课程",
+    "title": "按您自己的节奏进步"
   },
   "list": {
-    "title": "Ma liste"
+    "title": "我的片单"
   },
   "search": {
-    "title": "Rechercher",
-    "placeholder": "Dites un titre, une équipe ou un thème…",
-    "suggestions": "Suggestions"
+    "title": "搜索",
+    "placeholder": "说出片名、球队或主题…",
+    "suggestions": "推荐搜索"
   },
   "tv": {
-    "title": "TV en direct",
-    "empty": "Votre télévision, vos chaînes, vos liens.",
-    "count": "{channels} chaînes · {ready} liens vérifiés et prêts",
-    "intro": "TV King ne fournit aucune chaîne : collez votre propre playlist M3U ci-dessous. Chaque lien sera vérifié avant lecture — un lien invalide est signalé, jamais d'attente sans fin.",
-    "noChannels": "Aucune chaîne trouvée dans ce texte. Collez une playlist au format M3U (#EXTM3U / #EXTINF).",
-    "placeholderChannel": "Ma chaîne",
-    "placeholderUrl": "https://exemple.com/flux.m3u8",
-    "aria": "Playlist M3U",
-    "load": "Charger ma playlist",
-    "demo": "Essayer avec la playlist de démonstration",
-    "verified": "✓ Lien vérifié",
-    "ready": "Prêt à lire — démarrage immédiat",
-    "blocked": "Lecture bloquée : corrigez le lien",
-    "replace": "Remplacer la playlist",
-    "defaultGroup": "Chaînes",
+    "title": "电视直播",
+    "empty": "您的电视，您的频道，您的链接。",
+    "count": "{channels} 个频道 · {ready} 个链接已验证就绪",
+    "intro": "TV King 不提供任何频道：请在下方粘贴您自己的 M3U 播放列表。每个链接在播放前都会经过验证——无效链接会被标示，绝不会让您无休止地等待。",
+    "noChannels": "在此文本中未找到任何频道。请粘贴 M3U 格式的播放列表（#EXTM3U / #EXTINF）。",
+    "placeholderChannel": "我的频道",
+    "placeholderUrl": "https://example.com/stream.m3u8",
+    "aria": "M3U 播放列表",
+    "load": "加载我的播放列表",
+    "demo": "使用演示播放列表试用",
+    "verified": "✓ 链接已验证",
+    "ready": "可以播放 — 立即开始",
+    "blocked": "无法播放：请修正链接",
+    "replace": "替换播放列表",
+    "defaultGroup": "频道",
     "reasons": {
-      "Lien vide": "Lien vide",
-      "Adresse illisible": "Adresse illisible",
-      "Protocole non pris en charge": "Protocole non pris en charge",
-      "Hôte manquant": "Hôte manquant"
+      "Lien vide": "链接为空",
+      "Adresse illisible": "地址无法识别",
+      "Protocole non pris en charge": "不支持的协议",
+      "Hôte manquant": "缺少主机名"
     }
   },
   "settings": {
-    "title": "Réglages d'affichage",
-    "intro": "Adaptez l'application à votre téléviseur et à votre distance de visionnage.",
-    "textTitle": "Taille du texte",
-    "textDesc": "Le texte est conçu pour être lisible à ~3 m. Agrandissez-le si besoin.",
-    "safeTitle": "Marge de sécurité (overscan)",
-    "safeDesc": "Si les bords de l'image sont rognés par votre TV, augmentez la marge.",
-    "preview": "Aperçu",
-    "safeZone": "Zone de sécurité — tout le contenu reste à l'intérieur",
+    "title": "显示设置",
+    "intro": "根据您的电视和观看距离调整应用显示。",
+    "textTitle": "文字大小",
+    "textDesc": "文字按约 3 米的观看距离设计。如有需要，可调大。",
+    "safeTitle": "安全边距（过扫描）",
+    "safeDesc": "如果电视裁切了画面边缘，请增大边距。",
+    "preview": "预览",
+    "safeZone": "安全区域 — 所有内容均保持在此范围内",
     "text": {
       "compact": [
-        "Compact",
-        "Plus de contenu"
+        "紧凑",
+        "显示更多内容"
       ],
       "standard": [
-        "Standard",
-        "Recommandé"
+        "标准",
+        "推荐"
       ],
       "large": [
-        "Grand",
-        "Lecture facile"
+        "大",
+        "易于阅读"
       ],
       "xlarge": [
-        "Très grand",
-        "Vision réduite"
+        "特大",
+        "适合视力不佳者"
       ]
     },
     "safe": {
       "low": [
-        "Faible",
-        "Écran sans surbalayage"
+        "小",
+        "无过扫描的屏幕"
       ],
       "standard": [
-        "Standard",
-        "Recommandé (5%)"
+        "标准",
+        "推荐（5%）"
       ],
       "high": [
-        "Élevée",
-        "Bords rognés"
+        "大",
+        "边缘被裁切"
       ]
     }
   },
   "download": {
-    "kicker": "Application Zuno",
-    "title": "Télécharger",
-    "intro": "Toujours la dernière version. Aucun contenu n'est fourni avec l'application : elle lit les sources de votre abonnement.",
-    "tvKicker": "Box Android TV · Fire TV · Google TV",
-    "tvTitle": "Sur la TV",
-    "tvBody": "L'application complète : direct, films, séries, enregistrements. Activée par votre revendeur.",
-    "tvButton": "Télécharger pour la box (APK)",
-    "tvStep1": "Sur la box, installez l'application « Downloader ».",
-    "tvStep2": "Tapez l'adresse : {url}",
-    "tvStep3": "Installez, ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
-    "tvNote": "Les mises à jour se font ensuite depuis l'application (Réglages → Mise à jour).",
-    "pcKicker": "Windows 10 / 11 · 64 bits",
-    "pcTitle": "Sur ordinateur",
-    "pcBody": "La même application que sur la TV, en plein écran. Clavier : flèches, Entrée, Échap, F11.",
-    "pcButton": "Télécharger pour Windows",
-    "pcZip": "Version portable (.zip)",
-    "pcStep1": "Lancez Zuno-Setup.exe.",
-    "pcStep2": "Si Windows affiche « Éditeur inconnu » : Informations complémentaires → Exécuter quand même.",
-    "pcStep3": "Ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
+    "kicker": "Zuno 应用",
+    "title": "下载",
+    "intro": "始终为最新版本。应用本身不提供任何内容：它播放的是您订阅中的片源。",
+    "tvKicker": "Android TV 盒子 · Fire TV · Google TV",
+    "tvTitle": "电视端",
+    "tvBody": "完整版应用：直播、电影、剧集、录制。由您的经销商激活。",
+    "tvButton": "下载盒子版（APK）",
+    "tvStep1": "在盒子上安装“Downloader”应用。",
+    "tvStep2": "输入地址：{url}",
+    "tvStep3": "安装后打开 Zuno，将显示的 MAC 地址提供给您的经销商。",
+    "tvNote": "之后可直接在应用内更新（设置 → 更新）。",
+    "pcKicker": "Windows 10 / 11 · 64 位",
+    "pcTitle": "电脑端",
+    "pcBody": "与电视端相同的应用，全屏运行。键盘操作：方向键、Enter、Esc、F11。",
+    "pcButton": "下载 Windows 版",
+    "pcZip": "便携版（.zip）",
+    "pcStep1": "运行 Zuno-Setup.exe。",
+    "pcStep2": "如果 Windows 显示“未知发布者”：点击“更多信息”→“仍要运行”。",
+    "pcStep3": "打开 Zuno，将显示的 MAC 地址提供给您的经销商。",
     "playKicker": "Google Play · Android TV",
     "playTitle": "Google Play",
-    "playBody": "Publication sur le Play Store en préparation. En attendant, utilisez l'APK pour la box."
+    "playBody": "正在筹备上架 Play Store。在此之前，请使用盒子版 APK。"
   },
   "start": {
-    "title": "Démarrer sur WhatsApp",
-    "body": "Un seul numéro pour toutes les marques : +44 7307 410512. Indiquez votre ville et votre appareil. Essai de 24 h, sans carte.",
-    "cta": "Écrire à TV King",
-    "prefillLabel": "Message prérempli : {text}",
-    "note": "Le lecteur et les playlists restent sur l'écran d'accueil. Cette page sert uniquement à démarrer l'essai."
+    "title": "通过 WhatsApp 开始",
+    "body": "所有品牌共用一个号码：+44 7307 410512。请告诉我们您所在的城市和设备。24 小时试用，无需银行卡。",
+    "cta": "联系 TV King",
+    "prefillLabel": "预填消息：{text}",
+    "note": "播放器和播放列表仍保留在主屏幕上。本页面仅用于开始试用。"
   },
   "data": {
     "rows": {
-      "sport-live": "En direct",
-      "sport-upcoming": "À venir",
-      "sport-replay": "Replays & temps forts",
-      "sport-leagues": "Par discipline",
-      "form-continue": "Continuer ma progression",
-      "form-paths": "Parcours recommandés",
-      "form-fitness": "Sport & bien-être",
-      "form-topics": "Par thème",
-      "films-affiche": "À l'affiche",
-      "films-famille": "Comédies & famille"
+      "sport-live": "正在直播",
+      "sport-upcoming": "即将开始",
+      "sport-replay": "回放与精彩集锦",
+      "sport-leagues": "按运动项目",
+      "form-continue": "继续学习",
+      "form-paths": "推荐学习路径",
+      "form-fitness": "运动与健康",
+      "form-topics": "按主题",
+      "films-affiche": "热映中",
+      "films-famille": "喜剧与合家欢"
     },
     "badges": {
-      "ÉVÉNEMENT": "ÉVÉNEMENT",
-      "NOUVEAU": "NOUVEAU",
-      "TENDANCE": "TENDANCE"
+      "ÉVÉNEMENT": "重磅",
+      "NOUVEAU": "新上线",
+      "TENDANCE": "热门"
     },
     "items": {
       "hero-ucl": {
-        "title": "Champions League — Finale en direct",
-        "subtitle": "Le sommet du football européen, ce soir à 21h00"
+        "title": "Champions League — 决赛直播",
+        "subtitle": "欧洲足球巅峰对决，今晚 21:00 开赛"
       },
       "hero-masterclass": {
-        "title": "Formation — Maîtriser la prise de parole",
-        "subtitle": "12 leçons avec une oratrice de renommée mondiale"
+        "title": "课程 — 掌握演讲技巧",
+        "subtitle": "世界知名演说家主讲，共 12 节课"
       },
       "hero-marathon": {
-        "title": "Marathon de préparation physique",
-        "subtitle": "Programme guidé 6 semaines, tous niveaux"
+        "title": "体能训练马拉松",
+        "subtitle": "6 周引导式训练计划，适合所有水平"
       },
       "c1": {
-        "title": "Tactique défensive moderne",
-        "subtitle": "Sport · Analyse"
+        "title": "现代防守战术",
+        "subtitle": "体育 · 分析"
       },
       "c2": {
-        "title": "Négociation : les fondamentaux",
-        "subtitle": "Formation · 8 min restantes"
+        "title": "谈判：基础入门",
+        "subtitle": "课程 · 剩余 8 分钟"
       },
       "c3": {
-        "subtitle": "Sport · Replay"
+        "subtitle": "体育 · 回放"
       },
       "c4": {
-        "title": "Yoga du matin",
-        "subtitle": "Formation · 14 min"
+        "title": "晨间瑜伽",
+        "subtitle": "课程 · 14 分钟"
       },
       "c5": {
-        "title": "Grand Prix — Résumé",
-        "subtitle": "Sport · Replay"
+        "title": "大奖赛 — 集锦",
+        "subtitle": "体育 · 回放"
       },
       "l2": {
-        "title": "Roland-Garros — Demi-finale",
-        "clock": "Set 3"
+        "title": "法网 — 半决赛",
+        "clock": "第 3 盘"
       },
       "l4": {
-        "title": "MotoGP — Course",
-        "clock": "Tour 18/24"
+        "title": "MotoGP — 正赛",
+        "clock": "第 18/24 圈"
       },
       "t1": {
-        "title": "Préparation mentale du champion",
-        "subtitle": "Formation"
+        "title": "冠军的心理训练",
+        "subtitle": "课程"
       },
       "t2": {
-        "title": "Les plus beaux buts de la saison",
-        "subtitle": "Sport · Replay"
+        "title": "本赛季最佳进球",
+        "subtitle": "体育 · 回放"
       },
       "t3": {
-        "subtitle": "Formation"
+        "subtitle": "课程"
       },
       "t4": {
-        "title": "Analyse : la possession",
-        "subtitle": "Sport · Analyse"
+        "title": "战术分析：控球",
+        "subtitle": "体育 · 分析"
       },
       "t5": {
-        "title": "Cuisine du sportif",
-        "subtitle": "Formation"
+        "title": "运动员营养厨房",
+        "subtitle": "课程"
       },
       "sl1": {
-        "league": "Football · Champions League"
+        "league": "足球 · Champions League"
       },
       "sl2": {
-        "title": "Roland-Garros — Demi",
-        "clock": "Set 3",
-        "league": "Tennis · Grand Chelem"
+        "title": "法网 — 半决赛",
+        "clock": "第 3 盘",
+        "league": "网球 · 大满贯"
       },
       "sl3": {
-        "league": "Basket · NBA"
+        "league": "篮球 · NBA"
       },
       "sl4": {
-        "clock": "Tour 18/24",
-        "league": "Moto · MotoGP"
+        "clock": "第 18/24 圈",
+        "league": "摩托车 · MotoGP"
       },
       "su1": {
-        "startsIn": "Aujourd'hui 21:00"
+        "startsIn": "今天 21:00"
       },
       "su2": {
-        "title": "Finale 100m",
-        "startsIn": "Demain 20:30",
-        "league": "Athlétisme"
+        "title": "100 米决赛",
+        "startsIn": "明天 20:30",
+        "league": "田径"
       },
       "su3": {
-        "title": "Six Nations — France/Irlande",
-        "startsIn": "Samedi 15:00"
+        "title": "六国赛 — 法国/爱尔兰",
+        "startsIn": "周六 15:00"
       },
       "su4": {
-        "title": "Grand Prix de Monaco",
-        "startsIn": "Dimanche 14:00"
+        "title": "摩纳哥大奖赛",
+        "startsIn": "周日 14:00"
       },
       "sr1": {
-        "title": "Les plus beaux buts"
+        "title": "最佳进球"
       },
       "sr2": {
-        "title": "Game 4 — Intégrale"
+        "title": "第 4 场 — 全场回放"
       },
       "sr3": {
-        "title": "Résumé Grand Prix"
+        "title": "大奖赛集锦"
       },
       "sr4": {
-        "title": "Top 10 échanges"
+        "title": "十佳回合"
       },
       "sd2": {
-        "title": "Basket"
+        "title": "篮球"
       },
       "sd6": {
-        "title": "Athlétisme"
+        "title": "田径"
       },
       "fc1": {
-        "title": "Négociation : les fondamentaux",
-        "duration": "8 min restantes"
+        "title": "谈判：基础入门",
+        "duration": "剩余 8 分钟"
       },
       "fc2": {
-        "title": "Préparation mentale",
-        "duration": "14 min restantes"
+        "title": "心理训练",
+        "duration": "剩余 14 分钟"
       },
       "fc3": {
-        "title": "Yoga du matin",
-        "duration": "6 min restantes"
+        "title": "晨间瑜伽",
+        "duration": "剩余 6 分钟"
       },
       "fp1": {
-        "title": "Devenir un meilleur orateur"
+        "title": "成为更出色的演讲者"
       },
       "fp2": {
-        "title": "Leadership & management"
+        "title": "领导力与管理"
       },
       "fp3": {
-        "title": "Nutrition du sportif"
+        "title": "运动营养"
       },
       "fp4": {
-        "title": "Photographie créative"
+        "title": "创意摄影"
       },
       "fp5": {
-        "title": "Finances personnelles"
+        "title": "个人理财"
       },
       "ff2": {
-        "title": "Renforcement complet"
+        "title": "全身力量训练"
       },
       "ff3": {
-        "title": "Étirements & mobilité"
+        "title": "拉伸与灵活性"
       },
       "ff4": {
-        "title": "Course : plan 5 km"
+        "title": "跑步：5 公里计划"
       },
       "ft1": {
-        "title": "Communication"
+        "title": "沟通"
       },
       "ft2": {
-        "title": "Business"
+        "title": "商业"
       },
       "ft3": {
-        "title": "Forme physique"
+        "title": "体能"
       },
       "ft4": {
-        "title": "Nutrition"
+        "title": "营养"
       },
       "ft5": {
-        "title": "Créativité"
+        "title": "创意"
       },
       "ft6": {
-        "title": "Finance"
+        "title": "财务"
       },
       "mv1": {
-        "title": "La Couronne d'acier",
-        "genre": "Aventure",
-        "description": "Un royaume au bord de la rupture, une héritière que rien ne prédestinait au trône. Une fresque épique au souffle rare."
+        "title": "钢铁王冠",
+        "genre": "冒险",
+        "description": "王国濒临分裂，一位本与王位无缘的女继承人被推上历史舞台。一部气势磅礴的史诗巨制。"
       },
       "mv2": {
-        "title": "Dernier Sprint",
-        "genre": "Drame sportif",
-        "description": "À 34 ans, un sprinteur déchu s'offre une dernière saison pour redevenir champion — et se réconcilier avec son fils."
+        "title": "最后冲刺",
+        "genre": "体育剧情",
+        "description": "34 岁的落魄短跑名将给自己最后一个赛季，誓要重夺冠军——并与儿子和解。"
       },
       "mv3": {
-        "title": "Nuit blanche à Dakar",
-        "genre": "Thriller",
-        "description": "Une journaliste remonte la piste d'une disparition en une seule nuit, des toits de la Médina au port de Dakar."
+        "title": "达喀尔不眠夜",
+        "genre": "惊悚",
+        "description": "一名女记者在一夜之间追查一起失踪案，从麦地那老城的屋顶一路追到达喀尔港。"
       },
       "mv4": {
-        "title": "Le Rire du roi",
-        "genre": "Comédie",
-        "description": "Un humoriste sans succès devient, par erreur, bouffon officiel d'une cour royale très à cheval sur l'étiquette."
+        "title": "御前笑匠",
+        "genre": "喜剧",
+        "description": "一位屡屡碰壁的喜剧演员阴差阳错成了宫廷御用小丑，而这座宫廷偏偏对礼仪一丝不苟。"
       },
       "mv5": {
-        "title": "Fréquence 88.0",
-        "genre": "Science-fiction",
-        "description": "Une radio pirate capte un signal venu de trente ans dans le futur. Chaque émission change le présent."
+        "title": "频率 88.0",
+        "genre": "科幻",
+        "description": "一家海盗电台接收到来自三十年后的信号。每一次播出都在改变现在。"
       },
       "mv6": {
-        "title": "Papa, coach et champion",
-        "genre": "Comédie familiale",
-        "description": "Muté entraîneur de l'équipe poussins de sa fille, un ancien pro découvre que le plus dur reste les goûters."
+        "title": "冠军老爸当教练",
+        "genre": "家庭喜剧",
+        "description": "前职业球员被派去执教女儿所在的少儿队，这才发现最难搞定的是孩子们的点心时间。"
       },
       "mv7": {
-        "title": "Les Vacances de Sa Majesté",
-        "genre": "Comédie",
-        "description": "Une reine incognito dans un camping familial : protocole, barbecue et quiproquos garantis."
+        "title": "女王陛下的假期",
+        "genre": "喜剧",
+        "description": "女王微服入住家庭露营地：礼仪、烧烤和啼笑皆非的误会一样不少。"
       },
       "mv8": {
-        "title": "Mon robot et moi",
-        "genre": "Famille",
-        "description": "Un enfant timide hérite d'un robot de compagnie démodé — et bien plus courageux qu'il n'en a l'air."
+        "title": "我和我的机器人",
+        "genre": "家庭",
+        "description": "一个害羞的孩子继承了一台过时的陪伴机器人——而它远比看上去勇敢得多。"
       },
       "mv9": {
-        "title": "La Grande Traversée",
-        "genre": "Aventure familiale",
-        "description": "Deux cousines traversent le pays à vélo pour livrer une lettre qui n'aurait jamais dû se perdre."
+        "title": "千里骑行",
+        "genre": "家庭冒险",
+        "description": "一对表姐妹骑自行车穿越全国，只为送达一封本不该遗失的信。"
       }
     },
     "suggestions": [
-      "Football",
-      "Basket",
-      "Tennis",
+      "足球",
+      "篮球",
+      "网球",
       "F1",
-      "Leadership",
-      "Yoga",
-      "Nutrition",
+      "领导力",
+      "瑜伽",
+      "营养",
       "HIIT"
     ]
+  },
+  "activate": {
+    "kicker": "个人中心",
+    "title": "激活我的列表",
+    "intro": "将您自己的订阅（Xtream 或 M3U）添加到 Zuno 盒子。它会自动出现在应用中，无需用遥控器输入任何内容。",
+    "macLabel": "盒子的 MAC 地址",
+    "macHint": "可在 Zuno → 设置 → 我的设备 中查看（例如 MK:80:78:60:07:4F）。",
+    "macCheck": "查看我的列表",
+    "typeLabel": "订阅类型",
+    "xtream": "Xtream（服务器 + 账号信息）",
+    "m3u": "M3U 链接",
+    "nameLabel": "列表名称",
+    "namePlaceholder": "我的订阅",
+    "serverLabel": "服务器地址",
+    "serverPlaceholder": "http://example.com:8080",
+    "userLabel": "用户名",
+    "passLabel": "密码",
+    "urlLabel": "M3U 链接",
+    "urlPlaceholder": "http://example.com/get.php?username=…&password=…&type=m3u_plus",
+    "submit": "在我的盒子上激活",
+    "sending": "正在发送…",
+    "success": "完成！打开 Zuno：您的列表将在一分钟内出现（或按“重启”）。",
+    "myLists": "此盒子上的列表",
+    "none": "暂无列表。",
+    "locked": "由您的经销商管理",
+    "delete": "删除",
+    "deleted": "列表已删除。",
+    "privacy": "密码仅会发送到您的盒子一次，之后不会再显示。",
+    "errors": {
+      "mac": "MAC 地址无效。请从 Zuno → 设置 → 我的设备 中重新复制。",
+      "notEntitled": "此盒子尚未激活。请联系经销商激活后再试。",
+      "fields": "请填写所有字段。地址必须以 http:// 或 https:// 开头。",
+      "tooMany": "列表数量已达上限：请先删除一个再添加新的。",
+      "network": "无法连接服务器。请检查网络连接后重试。",
+      "generic": "无法保存列表。请稍后重试。"
+    }
   }
 }

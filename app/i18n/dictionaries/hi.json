@@ -1,479 +1,518 @@
 {
   "meta": {
-    "siteTitle": "TV King — Sport, films & formation",
-    "siteDescription": "Lecteur IPTV personnel : vos playlists M3U, films, sport et formation. Aucun contenu n'est fourni avec l'app.",
-    "ogDescription": "Lecteur IPTV personnel. Vos playlists, vos liens.",
-    "filmsTitle": "Films",
-    "filmsDescription": "Films téléchargés sur l'appareil. Lecture instantanée, sans spinner.",
-    "tvTitle": "TV en direct",
-    "tvDescription": "Collez votre playlist M3U. Chaque lien est vérifié avant lecture.",
-    "settingsTitle": "Réglages",
-    "settingsDescription": "Taille du texte, overscan et préférences TV King.",
-    "searchTitle": "Rechercher",
-    "searchDescription": "Recherchez sport, films et formation dans TV King.",
-    "listTitle": "Ma liste",
-    "listDescription": "Vos titres sauvegardés dans TV King.",
-    "sportTitle": "Sport en direct",
-    "sportDescription": "Live, scores, calendrier et replays — classés par discipline.",
-    "formationTitle": "Formation",
-    "formationDescription": "Parcours par niveau, progression et intervenants.",
-    "downloadTitle": "Télécharger l'application",
-    "downloadDescription": "Zuno pour box Android TV, Fire TV, Google TV et PC Windows. Toujours la dernière version.",
-    "startTitle": "TV King — essai de 24 h",
-    "startDescription": "Un seul numéro WhatsApp pour toutes les marques. Ville + appareil. Essai de 24 h, sans carte."
+    "siteTitle": "TV King — खेल, फ़िल्में और लर्निंग",
+    "siteDescription": "पर्सनल IPTV प्लेयर: आपकी M3U प्लेलिस्ट, फ़िल्में, खेल और लर्निंग। ऐप के साथ कोई भी कंटेंट नहीं दिया जाता।",
+    "ogDescription": "पर्सनल IPTV प्लेयर। आपकी प्लेलिस्ट, आपके लिंक।",
+    "filmsTitle": "फ़िल्में",
+    "filmsDescription": "डिवाइस पर डाउनलोड की गई फ़िल्में। तुरंत प्लेबैक, बिना किसी इंतज़ार के।",
+    "tvTitle": "लाइव टीवी",
+    "tvDescription": "अपनी M3U प्लेलिस्ट पेस्ट करें। चलाने से पहले हर लिंक की जाँच की जाती है।",
+    "settingsTitle": "सेटिंग्स",
+    "settingsDescription": "टेक्स्ट का आकार, ओवरस्कैन और TV King की प्राथमिकताएँ।",
+    "searchTitle": "खोजें",
+    "searchDescription": "TV King में खेल, फ़िल्में और लर्निंग कंटेंट खोजें।",
+    "listTitle": "मेरी लिस्ट",
+    "listDescription": "TV King में आपके सेव किए गए टाइटल।",
+    "sportTitle": "लाइव खेल",
+    "sportDescription": "लाइव, स्कोर, शेड्यूल और रीप्ले — खेल के अनुसार।",
+    "formationTitle": "लर्निंग",
+    "formationDescription": "लेवल के अनुसार कोर्स, आपकी प्रगति और प्रशिक्षक।",
+    "downloadTitle": "ऐप डाउनलोड करें",
+    "downloadDescription": "Android TV बॉक्स, Fire TV, Google TV और Windows PC के लिए Zuno। हमेशा नवीनतम वर्शन।",
+    "startTitle": "TV King — 24 घंटे का ट्रायल",
+    "startDescription": "सभी ब्रांड के लिए एक ही WhatsApp नंबर। शहर + डिवाइस। 24 घंटे का ट्रायल, बिना कार्ड।",
+    "activateTitle": "मेरी लिस्ट एक्टिवेट करें",
+    "activateDescription": "MAC एड्रेस के ज़रिए अपना Xtream या M3U सब्सक्रिप्शन अपने Zuno बॉक्स में जोड़ें।"
   },
   "nav": {
-    "search": "Rechercher",
-    "home": "Accueil",
-    "tv": "TV en direct",
-    "films": "Films",
-    "sport": "Sport",
-    "formation": "Formation",
-    "list": "Ma liste",
-    "settings": "Réglages",
-    "download": "Télécharger",
-    "main": "Navigation principale",
-    "tagline": "Royal"
+    "search": "खोजें",
+    "home": "होम",
+    "tv": "लाइव टीवी",
+    "films": "फ़िल्में",
+    "sport": "खेल",
+    "formation": "लर्निंग",
+    "list": "मेरी लिस्ट",
+    "settings": "सेटिंग्स",
+    "download": "डाउनलोड",
+    "main": "मुख्य नेविगेशन",
+    "tagline": "रॉयल",
+    "activate": "एक्टिवेट करें"
   },
   "common": {
-    "live": "Direct",
-    "upcoming": "À venir",
-    "replay": "Replay",
-    "watchLive": "Regarder en direct",
-    "play": "Lecture",
-    "moreInfo": "Plus d'infos",
-    "slide": "Diapositive {n}",
-    "lessons": "{n} leçons",
-    "with": "avec {name}",
-    "resume": "Reprendre",
-    "remindMe": "🔔 Me rappeler",
-    "addToList": "+ Ma liste",
-    "back": "← Retour",
-    "program": "Programme",
-    "lesson": "Leçon {n}",
-    "minutes": "{n} min",
-    "sameCategory": "Dans la même catégorie",
-    "moreLikeThis": "Plus comme ça",
-    "pause": "Pause"
+    "live": "लाइव",
+    "upcoming": "आगामी",
+    "replay": "रीप्ले",
+    "watchLive": "लाइव देखें",
+    "play": "चलाएँ",
+    "moreInfo": "अधिक जानकारी",
+    "slide": "स्लाइड {n}",
+    "lessons": "{n} पाठ",
+    "with": "{name} के साथ",
+    "resume": "जारी रखें",
+    "remindMe": "🔔 मुझे याद दिलाएँ",
+    "addToList": "+ मेरी लिस्ट",
+    "back": "← वापस",
+    "program": "पाठ्यक्रम",
+    "lesson": "पाठ {n}",
+    "minutes": "{n} मिनट",
+    "sameCategory": "इसी श्रेणी में",
+    "moreLikeThis": "ऐसे और भी",
+    "pause": "रोकें"
   },
   "levels": {
-    "Débutant": "Débutant",
-    "Intermédiaire": "Intermédiaire",
-    "Avancé": "Avancé"
+    "Débutant": "शुरुआती",
+    "Intermédiaire": "मध्यम",
+    "Avancé": "एडवांस्ड"
   },
   "synopsis": {
-    "live": "Suivez {title} en direct, score et temps forts à la minute.",
-    "upcoming": "{title} — programmez un rappel pour ne rien manquer du coup d'envoi.",
-    "replay": "Revivez {title} : intégrale et meilleurs moments à la demande.",
-    "course": "{title} — un programme guidé pour progresser pas à pas, à votre rythme."
+    "live": "{title} लाइव देखें — स्कोर और खास पल, हर मिनट की अपडेट के साथ।",
+    "upcoming": "{title} — रिमाइंडर सेट करें और शुरुआत का एक भी पल न चूकें।",
+    "replay": "{title} फिर से देखें: पूरा मैच और बेहतरीन पल, जब चाहें।",
+    "course": "{title} — एक गाइडेड प्रोग्राम, जिससे आप अपनी रफ़्तार से कदम-दर-कदम आगे बढ़ें।"
   },
   "consent": {
-    "dialog": "Conditions d'utilisation",
-    "welcome": "Bienvenue sur",
-    "intro": "Avant d'entrer, merci de lire et d'accepter les conditions d'utilisation.",
-    "t1": "TV King ne fournit aucun contenu",
-    "b1": "L'application est un lecteur multimédia. Elle n'héberge, ne diffuse et ne vend aucune chaîne, aucun film, aucun flux. Aucun contenu n'est inclus à l'installation.",
-    "t2": "Vos liens, votre responsabilité",
-    "b2": "Les playlists (M3U) et les liens que vous ajoutez proviennent de vous. Vous déclarez détenir les droits ou autorisations nécessaires pour les contenus auxquels ils mènent, conformément aux lois de votre pays.",
-    "t3": "Chaque lien est vérifié avant lecture",
-    "b3": "Pour une expérience sans souci, chaque lien ajouté est contrôlé (format et disponibilité) avant d'être proposé à la lecture. Un lien invalide est signalé clairement — jamais d'attente sans fin.",
-    "t4": "Lecture instantanée, jamais de roue qui tourne",
-    "b4": "Les films disponibles se préchargent sur l'appareil pour démarrer immédiatement. Si un contenu ne peut pas être lu, l'application l'annonce tout de suite au lieu de faire patienter.",
-    "refused": "Sans acceptation des conditions, TV King ne peut pas être utilisé.",
-    "accept": "J'accepte les conditions",
-    "refuse": "Refuser"
+    "dialog": "उपयोग की शर्तें",
+    "welcome": "आपका स्वागत है",
+    "intro": "आगे बढ़ने से पहले, कृपया उपयोग की शर्तें पढ़ें और स्वीकार करें।",
+    "t1": "TV King कोई कंटेंट प्रदान नहीं करता",
+    "b1": "यह ऐप एक मीडिया प्लेयर है। यह कोई भी चैनल, फ़िल्म या स्ट्रीम न होस्ट करता है, न प्रसारित करता है और न ही बेचता है। इंस्टॉल करने पर इसमें कोई कंटेंट शामिल नहीं होता।",
+    "t2": "आपके लिंक, आपकी ज़िम्मेदारी",
+    "b2": "आप जो प्लेलिस्ट (M3U) और लिंक जोड़ते हैं, वे आपकी ओर से आते हैं। आप पुष्टि करते हैं कि आपके देश के कानूनों के अनुसार, जिन कंटेंट तक ये लिंक ले जाते हैं, उनके लिए आपके पास ज़रूरी अधिकार या अनुमतियाँ हैं।",
+    "t3": "चलाने से पहले हर लिंक की जाँच होती है",
+    "b3": "परेशानी-मुक्त अनुभव के लिए, जोड़ा गया हर लिंक चलाने के लिए उपलब्ध कराने से पहले जाँचा जाता है (फ़ॉर्मेट और उपलब्धता)। अमान्य लिंक को साफ़ तौर पर बताया जाता है — कभी भी अंतहीन इंतज़ार नहीं।",
+    "t4": "तुरंत प्लेबैक, कोई घूमता लोडिंग चक्र नहीं",
+    "b4": "उपलब्ध फ़िल्में डिवाइस पर पहले से लोड हो जाती हैं, ताकि तुरंत शुरू हो सकें। अगर कोई कंटेंट नहीं चल सकता, तो ऐप इंतज़ार कराने के बजाय तुरंत बता देता है।",
+    "refused": "शर्तें स्वीकार किए बिना TV King का उपयोग नहीं किया जा सकता।",
+    "accept": "मुझे शर्तें स्वीकार हैं",
+    "refuse": "अस्वीकार करें"
   },
   "film": {
-    "downloading": "Téléchargement du film…",
-    "downloadingLabel": "Téléchargement du film",
-    "fromDevice": "Le film sera lu depuis l'appareil : démarrage immédiat, aucune mise en mémoire tampon.",
-    "instantPlay": "Lecture instantanée",
-    "downloaded": "✓ Téléchargé sur l'appareil"
+    "downloading": "फ़िल्म डाउनलोड हो रही है…",
+    "downloadingLabel": "फ़िल्म डाउनलोड हो रही है",
+    "fromDevice": "फ़िल्म डिवाइस से चलेगी: तुरंत शुरू, कोई बफ़रिंग नहीं।",
+    "instantPlay": "तुरंत प्लेबैक",
+    "downloaded": "✓ डिवाइस पर डाउनलोड हो गई"
   },
   "player": {
-    "nowLive": "● En direct",
-    "playing": "Lecture",
-    "upNext": "À suivre · dans {n}s",
-    "playNow": "Lire maintenant",
-    "cancel": "Annuler",
-    "liveTag": "DIRECT",
-    "rewind": "Reculer de 10 secondes",
-    "forward": "Avancer de 10 secondes",
-    "audioOnlyAria": "Écouter sans la vidéo",
-    "headphones": "Écouteurs",
-    "minimizeAria": "Réduire la vidéo",
-    "minimize": "Réduire",
-    "quit": "✕ Quitter",
-    "miniAria": "Lecture réduite : {title}",
-    "audioOnly": "Audio seulement",
-    "expand": "Agrandir",
-    "closeMini": "Fermer la lecture réduite",
-    "showVideo": "Réafficher la vidéo",
-    "next": "Suivant : {title}"
+    "nowLive": "● लाइव",
+    "playing": "चल रहा है",
+    "upNext": "अगला · {n} सेकंड में",
+    "playNow": "अभी चलाएँ",
+    "cancel": "रद्द करें",
+    "liveTag": "लाइव",
+    "rewind": "10 सेकंड पीछे जाएँ",
+    "forward": "10 सेकंड आगे जाएँ",
+    "audioOnlyAria": "बिना वीडियो के सुनें",
+    "headphones": "हेडफ़ोन",
+    "minimizeAria": "वीडियो छोटा करें",
+    "minimize": "छोटा करें",
+    "quit": "✕ बाहर निकलें",
+    "miniAria": "मिनी प्लेयर: {title}",
+    "audioOnly": "सिर्फ़ ऑडियो",
+    "expand": "बड़ा करें",
+    "closeMini": "मिनी प्लेयर बंद करें",
+    "showVideo": "वीडियो फिर से दिखाएँ",
+    "next": "अगला: {title}"
   },
   "whatsapp": {
-    "aria": "Contacter TV King sur WhatsApp",
-    "prefill": "TV King — essai 24 h. Ville + appareil"
+    "aria": "WhatsApp पर TV King से संपर्क करें",
+    "prefill": "TV King — 24 घंटे का ट्रायल। शहर + डिवाइस"
   },
   "home": {
     "rows": {
-      "continue": "Reprendre",
-      "live-now": "En direct maintenant",
-      "trending": "Tendances"
+      "continue": "देखना जारी रखें",
+      "live-now": "अभी लाइव",
+      "trending": "ट्रेंडिंग"
     }
   },
   "films": {
-    "title": "Films",
-    "intro": "Chaque film se télécharge sur l'appareil avant lecture : démarrage immédiat, zéro mise en mémoire tampon."
+    "title": "फ़िल्में",
+    "intro": "हर फ़िल्म चलाने से पहले डिवाइस पर डाउनलोड होती है: तुरंत शुरू, ज़ीरो बफ़रिंग।"
   },
   "sport": {
-    "kicker": "Sport",
-    "title": "Le direct, à la minute",
-    "intro": "Live, scores, calendrier et replays — classés par état et par discipline."
+    "kicker": "खेल",
+    "title": "लाइव, हर मिनट",
+    "intro": "लाइव, स्कोर, शेड्यूल और रीप्ले — स्टेटस और खेल के अनुसार।"
   },
   "formation": {
-    "kicker": "Formation",
-    "title": "Progresser, à votre rythme"
+    "kicker": "लर्निंग",
+    "title": "अपनी रफ़्तार से आगे बढ़ें"
   },
   "list": {
-    "title": "Ma liste"
+    "title": "मेरी लिस्ट"
   },
   "search": {
-    "title": "Rechercher",
-    "placeholder": "Dites un titre, une équipe ou un thème…",
-    "suggestions": "Suggestions"
+    "title": "खोजें",
+    "placeholder": "कोई टाइटल, टीम या विषय बोलें…",
+    "suggestions": "सुझाव"
   },
   "tv": {
-    "title": "TV en direct",
-    "empty": "Votre télévision, vos chaînes, vos liens.",
-    "count": "{channels} chaînes · {ready} liens vérifiés et prêts",
-    "intro": "TV King ne fournit aucune chaîne : collez votre propre playlist M3U ci-dessous. Chaque lien sera vérifié avant lecture — un lien invalide est signalé, jamais d'attente sans fin.",
-    "noChannels": "Aucune chaîne trouvée dans ce texte. Collez une playlist au format M3U (#EXTM3U / #EXTINF).",
-    "placeholderChannel": "Ma chaîne",
-    "placeholderUrl": "https://exemple.com/flux.m3u8",
-    "aria": "Playlist M3U",
-    "load": "Charger ma playlist",
-    "demo": "Essayer avec la playlist de démonstration",
-    "verified": "✓ Lien vérifié",
-    "ready": "Prêt à lire — démarrage immédiat",
-    "blocked": "Lecture bloquée : corrigez le lien",
-    "replace": "Remplacer la playlist",
-    "defaultGroup": "Chaînes",
+    "title": "लाइव टीवी",
+    "empty": "आपका टीवी, आपके चैनल, आपके लिंक।",
+    "count": "{channels} चैनल · {ready} लिंक जाँचे गए और तैयार",
+    "intro": "TV King कोई चैनल प्रदान नहीं करता: नीचे अपनी M3U प्लेलिस्ट पेस्ट करें। चलाने से पहले हर लिंक की जाँच होगी — अमान्य लिंक के बारे में बताया जाएगा, कभी भी अंतहीन इंतज़ार नहीं।",
+    "noChannels": "इस टेक्स्ट में कोई चैनल नहीं मिला। M3U फ़ॉर्मेट (#EXTM3U / #EXTINF) में प्लेलिस्ट पेस्ट करें।",
+    "placeholderChannel": "मेरा चैनल",
+    "placeholderUrl": "https://example.com/stream.m3u8",
+    "aria": "M3U प्लेलिस्ट",
+    "load": "मेरी प्लेलिस्ट लोड करें",
+    "demo": "डेमो प्लेलिस्ट के साथ आज़माएँ",
+    "verified": "✓ लिंक सत्यापित",
+    "ready": "चलाने के लिए तैयार — तुरंत शुरू",
+    "blocked": "प्लेबैक रुका हुआ है: लिंक ठीक करें",
+    "replace": "प्लेलिस्ट बदलें",
+    "defaultGroup": "चैनल",
     "reasons": {
-      "Lien vide": "Lien vide",
-      "Adresse illisible": "Adresse illisible",
-      "Protocole non pris en charge": "Protocole non pris en charge",
-      "Hôte manquant": "Hôte manquant"
+      "Lien vide": "खाली लिंक",
+      "Adresse illisible": "पता पढ़ा नहीं जा सका",
+      "Protocole non pris en charge": "प्रोटोकॉल समर्थित नहीं है",
+      "Hôte manquant": "होस्ट मौजूद नहीं है"
     }
   },
   "settings": {
-    "title": "Réglages d'affichage",
-    "intro": "Adaptez l'application à votre téléviseur et à votre distance de visionnage.",
-    "textTitle": "Taille du texte",
-    "textDesc": "Le texte est conçu pour être lisible à ~3 m. Agrandissez-le si besoin.",
-    "safeTitle": "Marge de sécurité (overscan)",
-    "safeDesc": "Si les bords de l'image sont rognés par votre TV, augmentez la marge.",
-    "preview": "Aperçu",
-    "safeZone": "Zone de sécurité — tout le contenu reste à l'intérieur",
+    "title": "डिस्प्ले सेटिंग्स",
+    "intro": "ऐप को अपने टीवी और देखने की दूरी के अनुसार सेट करें।",
+    "textTitle": "टेक्स्ट का आकार",
+    "textDesc": "टेक्स्ट को ~3 मीटर की दूरी से पढ़ने के लिए बनाया गया है। ज़रूरत हो तो इसे बड़ा करें।",
+    "safeTitle": "सेफ़्टी मार्जिन (ओवरस्कैन)",
+    "safeDesc": "अगर आपका टीवी तस्वीर के किनारे काट देता है, तो मार्जिन बढ़ाएँ।",
+    "preview": "प्रीव्यू",
+    "safeZone": "सेफ़ ज़ोन — सारा कंटेंट इसके भीतर रहता है",
     "text": {
       "compact": [
-        "Compact",
-        "Plus de contenu"
+        "कॉम्पैक्ट",
+        "ज़्यादा कंटेंट"
       ],
       "standard": [
-        "Standard",
-        "Recommandé"
+        "स्टैंडर्ड",
+        "सुझाया गया"
       ],
       "large": [
-        "Grand",
-        "Lecture facile"
+        "बड़ा",
+        "पढ़ने में आसान"
       ],
       "xlarge": [
-        "Très grand",
-        "Vision réduite"
+        "बहुत बड़ा",
+        "कमज़ोर दृष्टि के लिए"
       ]
     },
     "safe": {
       "low": [
-        "Faible",
-        "Écran sans surbalayage"
+        "कम",
+        "बिना ओवरस्कैन वाली स्क्रीन"
       ],
       "standard": [
-        "Standard",
-        "Recommandé (5%)"
+        "स्टैंडर्ड",
+        "सुझाया गया (5%)"
       ],
       "high": [
-        "Élevée",
-        "Bords rognés"
+        "ज़्यादा",
+        "किनारे कटते हैं"
       ]
     }
   },
   "download": {
-    "kicker": "Application Zuno",
-    "title": "Télécharger",
-    "intro": "Toujours la dernière version. Aucun contenu n'est fourni avec l'application : elle lit les sources de votre abonnement.",
-    "tvKicker": "Box Android TV · Fire TV · Google TV",
-    "tvTitle": "Sur la TV",
-    "tvBody": "L'application complète : direct, films, séries, enregistrements. Activée par votre revendeur.",
-    "tvButton": "Télécharger pour la box (APK)",
-    "tvStep1": "Sur la box, installez l'application « Downloader ».",
-    "tvStep2": "Tapez l'adresse : {url}",
-    "tvStep3": "Installez, ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
-    "tvNote": "Les mises à jour se font ensuite depuis l'application (Réglages → Mise à jour).",
-    "pcKicker": "Windows 10 / 11 · 64 bits",
-    "pcTitle": "Sur ordinateur",
-    "pcBody": "La même application que sur la TV, en plein écran. Clavier : flèches, Entrée, Échap, F11.",
-    "pcButton": "Télécharger pour Windows",
-    "pcZip": "Version portable (.zip)",
-    "pcStep1": "Lancez Zuno-Setup.exe.",
-    "pcStep2": "Si Windows affiche « Éditeur inconnu » : Informations complémentaires → Exécuter quand même.",
-    "pcStep3": "Ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
+    "kicker": "Zuno ऐप",
+    "title": "डाउनलोड करें",
+    "intro": "हमेशा नवीनतम वर्शन। ऐप के साथ कोई कंटेंट नहीं दिया जाता: यह आपके सब्सक्रिप्शन के सोर्स चलाता है।",
+    "tvKicker": "Android TV बॉक्स · Fire TV · Google TV",
+    "tvTitle": "टीवी पर",
+    "tvBody": "पूरा ऐप: लाइव, फ़िल्में, सीरीज़, रिकॉर्डिंग। आपके रीसेलर द्वारा एक्टिवेट किया जाता है।",
+    "tvButton": "बॉक्स के लिए डाउनलोड करें (APK)",
+    "tvStep1": "बॉक्स पर “Downloader” ऐप इंस्टॉल करें।",
+    "tvStep2": "यह पता टाइप करें: {url}",
+    "tvStep3": "इंस्टॉल करें, Zuno खोलें और स्क्रीन पर दिखाया गया MAC एड्रेस अपने रीसेलर को बताएँ।",
+    "tvNote": "इसके बाद अपडेट ऐप के अंदर से ही होते हैं (सेटिंग्स → अपडेट)।",
+    "pcKicker": "Windows 10 / 11 · 64-बिट",
+    "pcTitle": "कंप्यूटर पर",
+    "pcBody": "टीवी वाला ही ऐप, फ़ुल स्क्रीन में। कीबोर्ड: ऐरो कीज़, Enter, Esc, F11।",
+    "pcButton": "Windows के लिए डाउनलोड करें",
+    "pcZip": "पोर्टेबल वर्शन (.zip)",
+    "pcStep1": "Zuno-Setup.exe चलाएँ।",
+    "pcStep2": "अगर Windows “अज्ञात प्रकाशक” दिखाए: अधिक जानकारी → फिर भी चलाएँ।",
+    "pcStep3": "Zuno खोलें और स्क्रीन पर दिखाया गया MAC एड्रेस अपने रीसेलर को बताएँ।",
     "playKicker": "Google Play · Android TV",
     "playTitle": "Google Play",
-    "playBody": "Publication sur le Play Store en préparation. En attendant, utilisez l'APK pour la box."
+    "playBody": "Play Store पर पब्लिश करने की तैयारी चल रही है। तब तक, बॉक्स के लिए APK का उपयोग करें।"
   },
   "start": {
-    "title": "Démarrer sur WhatsApp",
-    "body": "Un seul numéro pour toutes les marques : +44 7307 410512. Indiquez votre ville et votre appareil. Essai de 24 h, sans carte.",
-    "cta": "Écrire à TV King",
-    "prefillLabel": "Message prérempli : {text}",
-    "note": "Le lecteur et les playlists restent sur l'écran d'accueil. Cette page sert uniquement à démarrer l'essai."
+    "title": "WhatsApp पर शुरू करें",
+    "body": "सभी ब्रांड के लिए एक ही नंबर: +44 7307 410512। अपना शहर और डिवाइस बताएँ। 24 घंटे का ट्रायल, बिना कार्ड।",
+    "cta": "TV King को मैसेज करें",
+    "prefillLabel": "पहले से लिखा मैसेज: {text}",
+    "note": "प्लेयर और प्लेलिस्ट होम स्क्रीन पर ही रहते हैं। यह पेज सिर्फ़ ट्रायल शुरू करने के लिए है।"
   },
   "data": {
     "rows": {
-      "sport-live": "En direct",
-      "sport-upcoming": "À venir",
-      "sport-replay": "Replays & temps forts",
-      "sport-leagues": "Par discipline",
-      "form-continue": "Continuer ma progression",
-      "form-paths": "Parcours recommandés",
-      "form-fitness": "Sport & bien-être",
-      "form-topics": "Par thème",
-      "films-affiche": "À l'affiche",
-      "films-famille": "Comédies & famille"
+      "sport-live": "लाइव",
+      "sport-upcoming": "आगामी",
+      "sport-replay": "रीप्ले और हाइलाइट्स",
+      "sport-leagues": "खेल के अनुसार",
+      "form-continue": "अपनी प्रगति जारी रखें",
+      "form-paths": "सुझाए गए कोर्स",
+      "form-fitness": "खेल और वेलनेस",
+      "form-topics": "विषय के अनुसार",
+      "films-affiche": "नई रिलीज़",
+      "films-famille": "कॉमेडी और फ़ैमिली"
     },
     "badges": {
-      "ÉVÉNEMENT": "ÉVÉNEMENT",
-      "NOUVEAU": "NOUVEAU",
-      "TENDANCE": "TENDANCE"
+      "ÉVÉNEMENT": "इवेंट",
+      "NOUVEAU": "नया",
+      "TENDANCE": "ट्रेंडिंग"
     },
     "items": {
       "hero-ucl": {
-        "title": "Champions League — Finale en direct",
-        "subtitle": "Le sommet du football européen, ce soir à 21h00"
+        "title": "Champions League — फ़ाइनल लाइव",
+        "subtitle": "यूरोपीय फ़ुटबॉल का सबसे बड़ा मुक़ाबला, आज रात 21:00 बजे"
       },
       "hero-masterclass": {
-        "title": "Formation — Maîtriser la prise de parole",
-        "subtitle": "12 leçons avec une oratrice de renommée mondiale"
+        "title": "लर्निंग — पब्लिक स्पीकिंग में महारत",
+        "subtitle": "विश्व-प्रसिद्ध वक्ता के साथ 12 पाठ"
       },
       "hero-marathon": {
-        "title": "Marathon de préparation physique",
-        "subtitle": "Programme guidé 6 semaines, tous niveaux"
+        "title": "फ़िटनेस ट्रेनिंग मैराथन",
+        "subtitle": "6 हफ़्ते का गाइडेड प्रोग्राम, हर लेवल के लिए"
       },
       "c1": {
-        "title": "Tactique défensive moderne",
-        "subtitle": "Sport · Analyse"
+        "title": "आधुनिक डिफ़ेंसिव रणनीति",
+        "subtitle": "खेल · विश्लेषण"
       },
       "c2": {
-        "title": "Négociation : les fondamentaux",
-        "subtitle": "Formation · 8 min restantes"
+        "title": "नेगोशिएशन: बुनियादी बातें",
+        "subtitle": "लर्निंग · 8 मिनट बाकी"
       },
       "c3": {
-        "subtitle": "Sport · Replay"
+        "subtitle": "खेल · रीप्ले"
       },
       "c4": {
-        "title": "Yoga du matin",
-        "subtitle": "Formation · 14 min"
+        "title": "सुबह का योग",
+        "subtitle": "लर्निंग · 14 मिनट"
       },
       "c5": {
-        "title": "Grand Prix — Résumé",
-        "subtitle": "Sport · Replay"
+        "title": "ग्रां प्री — हाइलाइट्स",
+        "subtitle": "खेल · रीप्ले"
       },
       "l2": {
-        "title": "Roland-Garros — Demi-finale",
-        "clock": "Set 3"
+        "title": "रोलां गैरो — सेमीफ़ाइनल",
+        "clock": "सेट 3"
       },
       "l4": {
-        "title": "MotoGP — Course",
-        "clock": "Tour 18/24"
+        "title": "MotoGP — रेस",
+        "clock": "लैप 18/24"
       },
       "t1": {
-        "title": "Préparation mentale du champion",
-        "subtitle": "Formation"
+        "title": "चैंपियन की मानसिक तैयारी",
+        "subtitle": "लर्निंग"
       },
       "t2": {
-        "title": "Les plus beaux buts de la saison",
-        "subtitle": "Sport · Replay"
+        "title": "सीज़न के सबसे शानदार गोल",
+        "subtitle": "खेल · रीप्ले"
       },
       "t3": {
-        "subtitle": "Formation"
+        "subtitle": "लर्निंग"
       },
       "t4": {
-        "title": "Analyse : la possession",
-        "subtitle": "Sport · Analyse"
+        "title": "विश्लेषण: बॉल पज़ेशन",
+        "subtitle": "खेल · विश्लेषण"
       },
       "t5": {
-        "title": "Cuisine du sportif",
-        "subtitle": "Formation"
+        "title": "खिलाड़ियों की रसोई",
+        "subtitle": "लर्निंग"
       },
       "sl1": {
-        "league": "Football · Champions League"
+        "league": "फ़ुटबॉल · Champions League"
       },
       "sl2": {
-        "title": "Roland-Garros — Demi",
-        "clock": "Set 3",
-        "league": "Tennis · Grand Chelem"
+        "title": "रोलां गैरो — सेमीफ़ाइनल",
+        "clock": "सेट 3",
+        "league": "टेनिस · ग्रैंड स्लैम"
       },
       "sl3": {
-        "league": "Basket · NBA"
+        "league": "बास्केटबॉल · NBA"
       },
       "sl4": {
-        "clock": "Tour 18/24",
-        "league": "Moto · MotoGP"
+        "clock": "लैप 18/24",
+        "league": "बाइक रेसिंग · MotoGP"
       },
       "su1": {
-        "startsIn": "Aujourd'hui 21:00"
+        "startsIn": "आज 21:00"
       },
       "su2": {
-        "title": "Finale 100m",
-        "startsIn": "Demain 20:30",
-        "league": "Athlétisme"
+        "title": "100 मीटर फ़ाइनल",
+        "startsIn": "कल 20:30",
+        "league": "एथलेटिक्स"
       },
       "su3": {
-        "title": "Six Nations — France/Irlande",
-        "startsIn": "Samedi 15:00"
+        "title": "सिक्स नेशंस — फ़्रांस/आयरलैंड",
+        "startsIn": "शनिवार 15:00"
       },
       "su4": {
-        "title": "Grand Prix de Monaco",
-        "startsIn": "Dimanche 14:00"
+        "title": "मोनाको ग्रां प्री",
+        "startsIn": "रविवार 14:00"
       },
       "sr1": {
-        "title": "Les plus beaux buts"
+        "title": "सबसे शानदार गोल"
       },
       "sr2": {
-        "title": "Game 4 — Intégrale"
+        "title": "गेम 4 — पूरा मैच"
       },
       "sr3": {
-        "title": "Résumé Grand Prix"
+        "title": "ग्रां प्री हाइलाइट्स"
       },
       "sr4": {
-        "title": "Top 10 échanges"
+        "title": "टॉप 10 रैलियाँ"
       },
       "sd2": {
-        "title": "Basket"
+        "title": "बास्केटबॉल"
       },
       "sd6": {
-        "title": "Athlétisme"
+        "title": "एथलेटिक्स"
       },
       "fc1": {
-        "title": "Négociation : les fondamentaux",
-        "duration": "8 min restantes"
+        "title": "नेगोशिएशन: बुनियादी बातें",
+        "duration": "8 मिनट बाकी"
       },
       "fc2": {
-        "title": "Préparation mentale",
-        "duration": "14 min restantes"
+        "title": "मानसिक तैयारी",
+        "duration": "14 मिनट बाकी"
       },
       "fc3": {
-        "title": "Yoga du matin",
-        "duration": "6 min restantes"
+        "title": "सुबह का योग",
+        "duration": "6 मिनट बाकी"
       },
       "fp1": {
-        "title": "Devenir un meilleur orateur"
+        "title": "बेहतर वक्ता बनें"
       },
       "fp2": {
-        "title": "Leadership & management"
+        "title": "लीडरशिप और मैनेजमेंट"
       },
       "fp3": {
-        "title": "Nutrition du sportif"
+        "title": "खिलाड़ियों का पोषण"
       },
       "fp4": {
-        "title": "Photographie créative"
+        "title": "क्रिएटिव फ़ोटोग्राफ़ी"
       },
       "fp5": {
-        "title": "Finances personnelles"
+        "title": "पर्सनल फ़ाइनेंस"
       },
       "ff2": {
-        "title": "Renforcement complet"
+        "title": "फ़ुल-बॉडी स्ट्रेंथ ट्रेनिंग"
       },
       "ff3": {
-        "title": "Étirements & mobilité"
+        "title": "स्ट्रेचिंग और मोबिलिटी"
       },
       "ff4": {
-        "title": "Course : plan 5 km"
+        "title": "रनिंग: 5 किमी प्लान"
       },
       "ft1": {
-        "title": "Communication"
+        "title": "कम्युनिकेशन"
       },
       "ft2": {
-        "title": "Business"
+        "title": "बिज़नेस"
       },
       "ft3": {
-        "title": "Forme physique"
+        "title": "फ़िटनेस"
       },
       "ft4": {
-        "title": "Nutrition"
+        "title": "पोषण"
       },
       "ft5": {
-        "title": "Créativité"
+        "title": "क्रिएटिविटी"
       },
       "ft6": {
-        "title": "Finance"
+        "title": "फ़ाइनेंस"
       },
       "mv1": {
-        "title": "La Couronne d'acier",
-        "genre": "Aventure",
-        "description": "Un royaume au bord de la rupture, une héritière que rien ne prédestinait au trône. Une fresque épique au souffle rare."
+        "title": "फ़ौलादी ताज",
+        "genre": "एडवेंचर",
+        "description": "टूटने की कगार पर खड़ा एक साम्राज्य और एक ऐसी उत्तराधिकारिणी, जिसके गद्दी संभालने की किसी ने कल्पना भी नहीं की थी। भव्यता से भरी एक दुर्लभ महागाथा।"
       },
       "mv2": {
-        "title": "Dernier Sprint",
-        "genre": "Drame sportif",
-        "description": "À 34 ans, un sprinteur déchu s'offre une dernière saison pour redevenir champion — et se réconcilier avec son fils."
+        "title": "आख़िरी स्प्रिंट",
+        "genre": "स्पोर्ट्स ड्रामा",
+        "description": "34 की उम्र में, अपना रुतबा खो चुका एक स्प्रिंटर फिर से चैंपियन बनने के लिए खुद को आख़िरी सीज़न देता है — और अपने बेटे से रिश्ता सुधारने का मौक़ा भी।"
       },
       "mv3": {
-        "title": "Nuit blanche à Dakar",
-        "genre": "Thriller",
-        "description": "Une journaliste remonte la piste d'une disparition en une seule nuit, des toits de la Médina au port de Dakar."
+        "title": "डकार की वह रात",
+        "genre": "थ्रिलर",
+        "description": "एक पत्रकार सिर्फ़ एक रात में एक गुमशुदगी का सुराग़ खोजती है — मदीना की छतों से डकार के बंदरगाह तक।"
       },
       "mv4": {
-        "title": "Le Rire du roi",
-        "genre": "Comédie",
-        "description": "Un humoriste sans succès devient, par erreur, bouffon officiel d'une cour royale très à cheval sur l'étiquette."
+        "title": "राजा की हँसी",
+        "genre": "कॉमेडी",
+        "description": "एक नाकाम कॉमेडियन ग़लती से ऐसे शाही दरबार का आधिकारिक विदूषक बन जाता है, जहाँ शिष्टाचार को लेकर कोई समझौता नहीं होता।"
       },
       "mv5": {
-        "title": "Fréquence 88.0",
-        "genre": "Science-fiction",
-        "description": "Une radio pirate capte un signal venu de trente ans dans le futur. Chaque émission change le présent."
+        "title": "फ़्रीक्वेंसी 88.0",
+        "genre": "साइंस फ़िक्शन",
+        "description": "एक पाइरेट रेडियो को तीस साल आगे के भविष्य से एक सिग्नल मिलता है। हर प्रसारण वर्तमान को बदल देता है।"
       },
       "mv6": {
-        "title": "Papa, coach et champion",
-        "genre": "Comédie familiale",
-        "description": "Muté entraîneur de l'équipe poussins de sa fille, un ancien pro découvre que le plus dur reste les goûters."
+        "title": "पापा, कोच और चैंपियन",
+        "genre": "फ़ैमिली कॉमेडी",
+        "description": "बेटी की नन्ही टीम का कोच बनाए गए एक पूर्व प्रोफ़ेशनल खिलाड़ी को पता चलता है कि सबसे मुश्किल काम तो बच्चों का नाश्ता संभालना है।"
       },
       "mv7": {
-        "title": "Les Vacances de Sa Majesté",
-        "genre": "Comédie",
-        "description": "Une reine incognito dans un camping familial : protocole, barbecue et quiproquos garantis."
+        "title": "महारानी की छुट्टियाँ",
+        "genre": "कॉमेडी",
+        "description": "एक फ़ैमिली कैंपसाइट में भेस बदलकर पहुँची महारानी: प्रोटोकॉल, बारबेक्यू और ग़लतफ़हमियों की भरमार पक्की।"
       },
       "mv8": {
-        "title": "Mon robot et moi",
-        "genre": "Famille",
-        "description": "Un enfant timide hérite d'un robot de compagnie démodé — et bien plus courageux qu'il n'en a l'air."
+        "title": "मेरा रोबोट और मैं",
+        "genre": "फ़ैमिली",
+        "description": "एक शर्मीले बच्चे को विरासत में पुराने ज़माने का एक साथी रोबोट मिलता है — जो दिखने से कहीं ज़्यादा बहादुर है।"
       },
       "mv9": {
-        "title": "La Grande Traversée",
-        "genre": "Aventure familiale",
-        "description": "Deux cousines traversent le pays à vélo pour livrer une lettre qui n'aurait jamais dû se perdre."
+        "title": "लंबा सफ़र",
+        "genre": "फ़ैमिली एडवेंचर",
+        "description": "दो चचेरी बहनें साइकिल से पूरा देश पार करती हैं, ताकि वह चिट्ठी पहुँचा सकें जिसे कभी खोना ही नहीं चाहिए था।"
       }
     },
     "suggestions": [
-      "Football",
-      "Basket",
-      "Tennis",
+      "फ़ुटबॉल",
+      "बास्केटबॉल",
+      "टेनिस",
       "F1",
-      "Leadership",
-      "Yoga",
-      "Nutrition",
+      "लीडरशिप",
+      "योग",
+      "पोषण",
       "HIIT"
     ]
+  },
+  "activate": {
+    "kicker": "मेरा अकाउंट",
+    "title": "मेरी लिस्ट एक्टिवेट करें",
+    "intro": "अपना सब्सक्रिप्शन (Xtream या M3U) अपने Zuno बॉक्स में जोड़ें। यह ऐप में अपने-आप आ जाता है — रिमोट से कुछ भी टाइप करने की ज़रूरत नहीं।",
+    "macLabel": "बॉक्स का MAC एड्रेस",
+    "macHint": "Zuno → सेटिंग्स → मेरा डिवाइस में दिखाया जाता है (उदा. MK:80:78:60:07:4F)।",
+    "macCheck": "मेरी लिस्ट देखें",
+    "typeLabel": "सब्सक्रिप्शन का प्रकार",
+    "xtream": "Xtream (सर्वर + लॉगिन विवरण)",
+    "m3u": "M3U लिंक",
+    "nameLabel": "लिस्ट का नाम",
+    "namePlaceholder": "मेरा सब्सक्रिप्शन",
+    "serverLabel": "सर्वर का पता",
+    "serverPlaceholder": "http://example.com:8080",
+    "userLabel": "यूज़रनेम",
+    "passLabel": "पासवर्ड",
+    "urlLabel": "M3U लिंक",
+    "urlPlaceholder": "http://example.com/get.php?username=…&password=…&type=m3u_plus",
+    "submit": "मेरे बॉक्स पर एक्टिवेट करें",
+    "sending": "भेजा जा रहा है…",
+    "success": "हो गया! Zuno खोलें: आपकी लिस्ट एक मिनट से भी कम समय में आ जाएगी (या रीस्टार्ट दबाएँ)।",
+    "myLists": "इस बॉक्स की लिस्ट",
+    "none": "अभी कोई लिस्ट नहीं है।",
+    "locked": "आपके रीसेलर द्वारा प्रबंधित",
+    "delete": "हटाएँ",
+    "deleted": "लिस्ट हटा दी गई।",
+    "privacy": "पासवर्ड आपके बॉक्स पर सिर्फ़ एक बार भेजा जाता है और फिर कभी नहीं दिखाया जाता।",
+    "errors": {
+      "mac": "अमान्य MAC एड्रेस। इसे Zuno → सेटिंग्स → मेरा डिवाइस से दोबारा कॉपी करें।",
+      "notEntitled": "यह बॉक्स अभी एक्टिवेट नहीं हुआ है। अपने रीसेलर से एक्टिवेशन के लिए कहें, फिर दोबारा कोशिश करें।",
+      "fields": "सभी फ़ील्ड भरें। पते http:// या https:// से शुरू होने चाहिए।",
+      "tooMany": "लिस्ट की सीमा पूरी हो गई है: नई लिस्ट जोड़ने के लिए कोई एक हटाएँ।",
+      "network": "सर्वर से कनेक्ट नहीं हो पा रहा। अपना कनेक्शन जाँचें और दोबारा कोशिश करें।",
+      "generic": "लिस्ट सेव नहीं हो सकी। थोड़ी देर बाद फिर कोशिश करें।"
+    }
   }
 }
