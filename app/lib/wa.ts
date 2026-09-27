@@ -12,9 +12,9 @@ export type WaBranch = "activation" | "revendeur" | "support";
 
 const PREFILLS: Record<WaBranch, string> = {
   activation:
-    "Bonjour Zuno — je souhaite activer mon appareil (MAC / code).",
-  revendeur: "Bonjour Zuno — je souhaite devenir revendeur.",
-  support: "Bonjour Zuno — j'ai besoin d'assistance.",
+    "Bonjour Zuno — je souhaite activer mon appareil (S code + M2). Zuno est une application IPTV — nous ne vendons pas de chaînes.",
+  revendeur: "Bonjour Zuno — je souhaite devenir revendeur (licence app uniquement — pas de chaînes).",
+  support: "Bonjour Zuno — j'ai besoin d'assistance. (App IPTV — nous ne vendons pas de chaînes.)",
 };
 
 export function zunoWaUrl(branch: WaBranch, extra?: string): string {
