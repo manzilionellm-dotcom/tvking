@@ -1,479 +1,518 @@
 {
   "meta": {
-    "siteTitle": "TV King — Sport, films & formation",
-    "siteDescription": "Lecteur IPTV personnel : vos playlists M3U, films, sport et formation. Aucun contenu n'est fourni avec l'app.",
-    "ogDescription": "Lecteur IPTV personnel. Vos playlists, vos liens.",
-    "filmsTitle": "Films",
-    "filmsDescription": "Films téléchargés sur l'appareil. Lecture instantanée, sans spinner.",
-    "tvTitle": "TV en direct",
-    "tvDescription": "Collez votre playlist M3U. Chaque lien est vérifié avant lecture.",
-    "settingsTitle": "Réglages",
-    "settingsDescription": "Taille du texte, overscan et préférences TV King.",
-    "searchTitle": "Rechercher",
-    "searchDescription": "Recherchez sport, films et formation dans TV King.",
-    "listTitle": "Ma liste",
-    "listDescription": "Vos titres sauvegardés dans TV King.",
-    "sportTitle": "Sport en direct",
-    "sportDescription": "Live, scores, calendrier et replays — classés par discipline.",
-    "formationTitle": "Formation",
-    "formationDescription": "Parcours par niveau, progression et intervenants.",
-    "downloadTitle": "Télécharger l'application",
-    "downloadDescription": "Zuno pour box Android TV, Fire TV, Google TV et PC Windows. Toujours la dernière version.",
-    "startTitle": "TV King — essai de 24 h",
-    "startDescription": "Un seul numéro WhatsApp pour toutes les marques. Ville + appareil. Essai de 24 h, sans carte."
+    "siteTitle": "TV King — Michezo, filamu na mafunzo",
+    "siteDescription": "Kicheza IPTV binafsi: orodha zako za M3U, filamu, michezo na mafunzo. Programu haiji na maudhui yoyote.",
+    "ogDescription": "Kicheza IPTV binafsi. Orodha zako, viungo vyako.",
+    "filmsTitle": "Filamu",
+    "filmsDescription": "Filamu zilizopakuliwa kwenye kifaa. Zinacheza papo hapo, bila kusubiri.",
+    "tvTitle": "TV mubashara",
+    "tvDescription": "Bandika orodha yako ya M3U. Kila kiungo kinathibitishwa kabla ya kuchezwa.",
+    "settingsTitle": "Mipangilio",
+    "settingsDescription": "Ukubwa wa maandishi, overscan na mapendeleo ya TV King.",
+    "searchTitle": "Tafuta",
+    "searchDescription": "Tafuta michezo, filamu na mafunzo kwenye TV King.",
+    "listTitle": "Orodha yangu",
+    "listDescription": "Vipindi ulivyohifadhi kwenye TV King.",
+    "sportTitle": "Michezo mubashara",
+    "sportDescription": "Mubashara, matokeo, ratiba na marudio — yamepangwa kwa aina ya mchezo.",
+    "formationTitle": "Mafunzo",
+    "formationDescription": "Njia za kujifunza kwa kila kiwango, maendeleo yako na wakufunzi.",
+    "downloadTitle": "Pakua programu",
+    "downloadDescription": "Zuno kwa visanduku vya Android TV, Fire TV, Google TV na kompyuta za Windows. Toleo jipya zaidi kila wakati.",
+    "startTitle": "TV King — majaribio ya saa 24",
+    "startDescription": "Namba moja ya WhatsApp kwa chapa zote. Mji + kifaa. Majaribio ya saa 24, bila kadi.",
+    "activateTitle": "Washa orodha yangu",
+    "activateDescription": "Ongeza usajili wako wa Xtream au M3U kwenye kisanduku chako cha Zuno kwa kutumia anwani yake ya MAC."
   },
   "nav": {
-    "search": "Rechercher",
-    "home": "Accueil",
-    "tv": "TV en direct",
-    "films": "Films",
-    "sport": "Sport",
-    "formation": "Formation",
-    "list": "Ma liste",
-    "settings": "Réglages",
-    "download": "Télécharger",
-    "main": "Navigation principale",
-    "tagline": "Royal"
+    "search": "Tafuta",
+    "home": "Mwanzo",
+    "tv": "TV mubashara",
+    "films": "Filamu",
+    "sport": "Michezo",
+    "formation": "Mafunzo",
+    "list": "Orodha yangu",
+    "settings": "Mipangilio",
+    "download": "Pakua",
+    "main": "Urambazaji mkuu",
+    "tagline": "Kifalme",
+    "activate": "Washa"
   },
   "common": {
-    "live": "Direct",
-    "upcoming": "À venir",
-    "replay": "Replay",
-    "watchLive": "Regarder en direct",
-    "play": "Lecture",
-    "moreInfo": "Plus d'infos",
-    "slide": "Diapositive {n}",
-    "lessons": "{n} leçons",
-    "with": "avec {name}",
-    "resume": "Reprendre",
-    "remindMe": "🔔 Me rappeler",
-    "addToList": "+ Ma liste",
-    "back": "← Retour",
-    "program": "Programme",
-    "lesson": "Leçon {n}",
-    "minutes": "{n} min",
-    "sameCategory": "Dans la même catégorie",
-    "moreLikeThis": "Plus comme ça",
-    "pause": "Pause"
+    "live": "Mubashara",
+    "upcoming": "Yajayo",
+    "replay": "Marudio",
+    "watchLive": "Tazama mubashara",
+    "play": "Cheza",
+    "moreInfo": "Maelezo zaidi",
+    "slide": "Slaidi {n}",
+    "lessons": "Masomo {n}",
+    "with": "na {name}",
+    "resume": "Endelea",
+    "remindMe": "🔔 Nikumbushe",
+    "addToList": "+ Orodha yangu",
+    "back": "← Rudi",
+    "program": "Mpango",
+    "lesson": "Somo {n}",
+    "minutes": "Dakika {n}",
+    "sameCategory": "Katika kundi hili",
+    "moreLikeThis": "Zaidi kama hii",
+    "pause": "Sitisha"
   },
   "levels": {
-    "Débutant": "Débutant",
-    "Intermédiaire": "Intermédiaire",
-    "Avancé": "Avancé"
+    "Débutant": "Mwanzo",
+    "Intermédiaire": "Kati",
+    "Avancé": "Juu"
   },
   "synopsis": {
-    "live": "Suivez {title} en direct, score et temps forts à la minute.",
-    "upcoming": "{title} — programmez un rappel pour ne rien manquer du coup d'envoi.",
-    "replay": "Revivez {title} : intégrale et meilleurs moments à la demande.",
-    "course": "{title} — un programme guidé pour progresser pas à pas, à votre rythme."
+    "live": "Fuatilia {title} mubashara, matokeo na matukio muhimu dakika kwa dakika.",
+    "upcoming": "{title} — weka kikumbusho usikose mwanzo wa mchezo.",
+    "replay": "Tazama tena {title}: mchezo kamili na matukio bora wakati wowote.",
+    "course": "{title} — mpango wa kukuongoza hatua kwa hatua, kwa kasi yako."
   },
   "consent": {
-    "dialog": "Conditions d'utilisation",
-    "welcome": "Bienvenue sur",
-    "intro": "Avant d'entrer, merci de lire et d'accepter les conditions d'utilisation.",
-    "t1": "TV King ne fournit aucun contenu",
-    "b1": "L'application est un lecteur multimédia. Elle n'héberge, ne diffuse et ne vend aucune chaîne, aucun film, aucun flux. Aucun contenu n'est inclus à l'installation.",
-    "t2": "Vos liens, votre responsabilité",
-    "b2": "Les playlists (M3U) et les liens que vous ajoutez proviennent de vous. Vous déclarez détenir les droits ou autorisations nécessaires pour les contenus auxquels ils mènent, conformément aux lois de votre pays.",
-    "t3": "Chaque lien est vérifié avant lecture",
-    "b3": "Pour une expérience sans souci, chaque lien ajouté est contrôlé (format et disponibilité) avant d'être proposé à la lecture. Un lien invalide est signalé clairement — jamais d'attente sans fin.",
-    "t4": "Lecture instantanée, jamais de roue qui tourne",
-    "b4": "Les films disponibles se préchargent sur l'appareil pour démarrer immédiatement. Si un contenu ne peut pas être lu, l'application l'annonce tout de suite au lieu de faire patienter.",
-    "refused": "Sans acceptation des conditions, TV King ne peut pas être utilisé.",
-    "accept": "J'accepte les conditions",
-    "refuse": "Refuser"
+    "dialog": "Masharti ya matumizi",
+    "welcome": "Karibu",
+    "intro": "Kabla ya kuingia, tafadhali soma na ukubali masharti ya matumizi.",
+    "t1": "TV King haitoi maudhui yoyote",
+    "b1": "Programu hii ni kicheza media. Haihifadhi, haitangazi wala haiuzi chaneli, filamu au mtiririko wowote. Hakuna maudhui yanayokuja pamoja na usakinishaji.",
+    "t2": "Viungo vyako, jukumu lako",
+    "b2": "Orodha za kucheza (M3U) na viungo unavyoongeza vinatoka kwako. Unathibitisha kuwa una haki au ruhusa zinazohitajika kwa maudhui vinayoelekeza, kwa mujibu wa sheria za nchi yako.",
+    "t3": "Kila kiungo kinathibitishwa kabla ya kuchezwa",
+    "b3": "Ili kukupa matumizi yasiyo na usumbufu, kila kiungo kinachoongezwa hukaguliwa (muundo na upatikanaji) kabla ya kuwekwa tayari kuchezwa. Kiungo batili huonyeshwa waziwazi — hakuna kusubiri bila mwisho.",
+    "t4": "Uchezaji wa papo hapo, bila duara linalozunguka",
+    "b4": "Filamu zinazopatikana hupakiwa mapema kwenye kifaa ili zianze mara moja. Ikiwa maudhui hayawezi kuchezwa, programu inakujulisha papo hapo badala ya kukufanya usubiri.",
+    "refused": "Bila kukubali masharti, TV King haiwezi kutumika.",
+    "accept": "Ninakubali masharti",
+    "refuse": "Kataa"
   },
   "film": {
-    "downloading": "Téléchargement du film…",
-    "downloadingLabel": "Téléchargement du film",
-    "fromDevice": "Le film sera lu depuis l'appareil : démarrage immédiat, aucune mise en mémoire tampon.",
-    "instantPlay": "Lecture instantanée",
-    "downloaded": "✓ Téléchargé sur l'appareil"
+    "downloading": "Inapakua filamu…",
+    "downloadingLabel": "Inapakua filamu",
+    "fromDevice": "Filamu itachezwa kutoka kwenye kifaa: inaanza mara moja, bila kuakibisha.",
+    "instantPlay": "Uchezaji wa papo hapo",
+    "downloaded": "✓ Imepakuliwa kwenye kifaa"
   },
   "player": {
-    "nowLive": "● En direct",
-    "playing": "Lecture",
-    "upNext": "À suivre · dans {n}s",
-    "playNow": "Lire maintenant",
-    "cancel": "Annuler",
-    "liveTag": "DIRECT",
-    "rewind": "Reculer de 10 secondes",
-    "forward": "Avancer de 10 secondes",
-    "audioOnlyAria": "Écouter sans la vidéo",
-    "headphones": "Écouteurs",
-    "minimizeAria": "Réduire la vidéo",
-    "minimize": "Réduire",
-    "quit": "✕ Quitter",
-    "miniAria": "Lecture réduite : {title}",
-    "audioOnly": "Audio seulement",
-    "expand": "Agrandir",
-    "closeMini": "Fermer la lecture réduite",
-    "showVideo": "Réafficher la vidéo",
-    "next": "Suivant : {title}"
+    "nowLive": "● Mubashara sasa",
+    "playing": "Inacheza",
+    "upNext": "Inayofuata · baada ya sekunde {n}",
+    "playNow": "Cheza sasa",
+    "cancel": "Ghairi",
+    "liveTag": "MUBASHARA",
+    "rewind": "Rudisha nyuma sekunde 10",
+    "forward": "Songa mbele sekunde 10",
+    "audioOnlyAria": "Sikiliza bila video",
+    "headphones": "Vipokea sauti",
+    "minimizeAria": "Punguza video",
+    "minimize": "Punguza",
+    "quit": "✕ Toka",
+    "miniAria": "Kicheza kidogo: {title}",
+    "audioOnly": "Sauti pekee",
+    "expand": "Panua",
+    "closeMini": "Funga kicheza kidogo",
+    "showVideo": "Onyesha video tena",
+    "next": "Inayofuata: {title}"
   },
   "whatsapp": {
-    "aria": "Contacter TV King sur WhatsApp",
-    "prefill": "TV King — essai 24 h. Ville + appareil"
+    "aria": "Wasiliana na TV King kupitia WhatsApp",
+    "prefill": "TV King — majaribio ya saa 24. Mji + kifaa"
   },
   "home": {
     "rows": {
-      "continue": "Reprendre",
-      "live-now": "En direct maintenant",
-      "trending": "Tendances"
+      "continue": "Endelea kutazama",
+      "live-now": "Mubashara sasa",
+      "trending": "Zinazovuma"
     }
   },
   "films": {
-    "title": "Films",
-    "intro": "Chaque film se télécharge sur l'appareil avant lecture : démarrage immédiat, zéro mise en mémoire tampon."
+    "title": "Filamu",
+    "intro": "Kila filamu inapakuliwa kwenye kifaa kabla ya kuchezwa: inaanza mara moja, bila kuakibisha hata kidogo."
   },
   "sport": {
-    "kicker": "Sport",
-    "title": "Le direct, à la minute",
-    "intro": "Live, scores, calendrier et replays — classés par état et par discipline."
+    "kicker": "Michezo",
+    "title": "Mubashara, dakika kwa dakika",
+    "intro": "Mubashara, matokeo, ratiba na marudio — yamepangwa kwa hali na aina ya mchezo."
   },
   "formation": {
-    "kicker": "Formation",
-    "title": "Progresser, à votre rythme"
+    "kicker": "Mafunzo",
+    "title": "Songa mbele, kwa kasi yako"
   },
   "list": {
-    "title": "Ma liste"
+    "title": "Orodha yangu"
   },
   "search": {
-    "title": "Rechercher",
-    "placeholder": "Dites un titre, une équipe ou un thème…",
-    "suggestions": "Suggestions"
+    "title": "Tafuta",
+    "placeholder": "Taja jina la kipindi, timu au mada…",
+    "suggestions": "Mapendekezo"
   },
   "tv": {
-    "title": "TV en direct",
-    "empty": "Votre télévision, vos chaînes, vos liens.",
-    "count": "{channels} chaînes · {ready} liens vérifiés et prêts",
-    "intro": "TV King ne fournit aucune chaîne : collez votre propre playlist M3U ci-dessous. Chaque lien sera vérifié avant lecture — un lien invalide est signalé, jamais d'attente sans fin.",
-    "noChannels": "Aucune chaîne trouvée dans ce texte. Collez une playlist au format M3U (#EXTM3U / #EXTINF).",
-    "placeholderChannel": "Ma chaîne",
+    "title": "TV mubashara",
+    "empty": "Televisheni yako, chaneli zako, viungo vyako.",
+    "count": "Chaneli {channels} · viungo {ready} vimethibitishwa na viko tayari",
+    "intro": "TV King haitoi chaneli yoyote: bandika orodha yako mwenyewe ya M3U hapa chini. Kila kiungo kitathibitishwa kabla ya kuchezwa — kiungo batili huonyeshwa, hakuna kusubiri bila mwisho.",
+    "noChannels": "Hakuna chaneli iliyopatikana katika maandishi haya. Bandika orodha katika muundo wa M3U (#EXTM3U / #EXTINF).",
+    "placeholderChannel": "Chaneli yangu",
     "placeholderUrl": "https://exemple.com/flux.m3u8",
-    "aria": "Playlist M3U",
-    "load": "Charger ma playlist",
-    "demo": "Essayer avec la playlist de démonstration",
-    "verified": "✓ Lien vérifié",
-    "ready": "Prêt à lire — démarrage immédiat",
-    "blocked": "Lecture bloquée : corrigez le lien",
-    "replace": "Remplacer la playlist",
-    "defaultGroup": "Chaînes",
+    "aria": "Orodha ya M3U",
+    "load": "Pakia orodha yangu",
+    "demo": "Jaribu kwa orodha ya mfano",
+    "verified": "✓ Kiungo kimethibitishwa",
+    "ready": "Tayari kuchezwa — inaanza mara moja",
+    "blocked": "Uchezaji umezuiwa: rekebisha kiungo",
+    "replace": "Badilisha orodha",
+    "defaultGroup": "Chaneli",
     "reasons": {
-      "Lien vide": "Lien vide",
-      "Adresse illisible": "Adresse illisible",
-      "Protocole non pris en charge": "Protocole non pris en charge",
-      "Hôte manquant": "Hôte manquant"
+      "Lien vide": "Kiungo tupu",
+      "Adresse illisible": "Anwani haisomeki",
+      "Protocole non pris en charge": "Itifaki haitumiki",
+      "Hôte manquant": "Jina la seva halipo"
     }
   },
   "settings": {
-    "title": "Réglages d'affichage",
-    "intro": "Adaptez l'application à votre téléviseur et à votre distance de visionnage.",
-    "textTitle": "Taille du texte",
-    "textDesc": "Le texte est conçu pour être lisible à ~3 m. Agrandissez-le si besoin.",
-    "safeTitle": "Marge de sécurité (overscan)",
-    "safeDesc": "Si les bords de l'image sont rognés par votre TV, augmentez la marge.",
-    "preview": "Aperçu",
-    "safeZone": "Zone de sécurité — tout le contenu reste à l'intérieur",
+    "title": "Mipangilio ya onyesho",
+    "intro": "Rekebisha programu ilingane na televisheni yako na umbali unaotazamia.",
+    "textTitle": "Ukubwa wa maandishi",
+    "textDesc": "Maandishi yameundwa kusomeka kutoka umbali wa takriban mita 3. Yaongeze ukubwa ikihitajika.",
+    "safeTitle": "Ukingo salama (overscan)",
+    "safeDesc": "Ikiwa TV yako inakata kingo za picha, ongeza ukingo.",
+    "preview": "Onyesho la awali",
+    "safeZone": "Eneo salama — maudhui yote yanabaki ndani yake",
     "text": {
       "compact": [
-        "Compact",
-        "Plus de contenu"
+        "Kubana",
+        "Maudhui zaidi"
       ],
       "standard": [
-        "Standard",
-        "Recommandé"
+        "Kawaida",
+        "Inapendekezwa"
       ],
       "large": [
-        "Grand",
-        "Lecture facile"
+        "Kubwa",
+        "Rahisi kusoma"
       ],
       "xlarge": [
-        "Très grand",
-        "Vision réduite"
+        "Kubwa sana",
+        "Kwa wasioona vizuri"
       ]
     },
     "safe": {
       "low": [
-        "Faible",
-        "Écran sans surbalayage"
+        "Chini",
+        "Skrini isiyokata kingo"
       ],
       "standard": [
-        "Standard",
-        "Recommandé (5%)"
+        "Kawaida",
+        "Inapendekezwa (5%)"
       ],
       "high": [
-        "Élevée",
-        "Bords rognés"
+        "Juu",
+        "Kingo zinakatwa"
       ]
     }
   },
   "download": {
-    "kicker": "Application Zuno",
-    "title": "Télécharger",
-    "intro": "Toujours la dernière version. Aucun contenu n'est fourni avec l'application : elle lit les sources de votre abonnement.",
-    "tvKicker": "Box Android TV · Fire TV · Google TV",
-    "tvTitle": "Sur la TV",
-    "tvBody": "L'application complète : direct, films, séries, enregistrements. Activée par votre revendeur.",
-    "tvButton": "Télécharger pour la box (APK)",
-    "tvStep1": "Sur la box, installez l'application « Downloader ».",
-    "tvStep2": "Tapez l'adresse : {url}",
-    "tvStep3": "Installez, ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
-    "tvNote": "Les mises à jour se font ensuite depuis l'application (Réglages → Mise à jour).",
-    "pcKicker": "Windows 10 / 11 · 64 bits",
-    "pcTitle": "Sur ordinateur",
-    "pcBody": "La même application que sur la TV, en plein écran. Clavier : flèches, Entrée, Échap, F11.",
-    "pcButton": "Télécharger pour Windows",
-    "pcZip": "Version portable (.zip)",
-    "pcStep1": "Lancez Zuno-Setup.exe.",
-    "pcStep2": "Si Windows affiche « Éditeur inconnu » : Informations complémentaires → Exécuter quand même.",
-    "pcStep3": "Ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
+    "kicker": "Programu ya Zuno",
+    "title": "Pakua",
+    "intro": "Toleo jipya zaidi kila wakati. Programu haiji na maudhui yoyote: inacheza vyanzo vya usajili wako.",
+    "tvKicker": "Kisanduku cha Android TV · Fire TV · Google TV",
+    "tvTitle": "Kwenye TV",
+    "tvBody": "Programu kamili: mubashara, filamu, tamthilia, rekodi. Huwashwa na muuzaji wako.",
+    "tvButton": "Pakua kwa kisanduku (APK)",
+    "tvStep1": "Kwenye kisanduku, sakinisha programu ya “Downloader”.",
+    "tvStep2": "Andika anwani: {url}",
+    "tvStep3": "Sakinisha, fungua Zuno, kisha mpe muuzaji wako anwani ya MAC inayoonyeshwa.",
+    "tvNote": "Masasisho hufanywa baadaye ndani ya programu (Mipangilio → Sasisho).",
+    "pcKicker": "Windows 10 / 11 · biti 64",
+    "pcTitle": "Kwenye kompyuta",
+    "pcBody": "Programu ile ile ya kwenye TV, kwa skrini nzima. Kibodi: vishale, Enter, Esc, F11.",
+    "pcButton": "Pakua kwa Windows",
+    "pcZip": "Toleo linalobebeka (.zip)",
+    "pcStep1": "Endesha Zuno-Setup.exe.",
+    "pcStep2": "Windows ikionyesha “Mchapishaji asiyejulikana”: Maelezo zaidi → Endesha hata hivyo.",
+    "pcStep3": "Fungua Zuno, kisha mpe muuzaji wako anwani ya MAC inayoonyeshwa.",
     "playKicker": "Google Play · Android TV",
     "playTitle": "Google Play",
-    "playBody": "Publication sur le Play Store en préparation. En attendant, utilisez l'APK pour la box."
+    "playBody": "Tunaandaa kuchapisha kwenye Play Store. Kwa sasa, tumia APK ya kisanduku."
   },
   "start": {
-    "title": "Démarrer sur WhatsApp",
-    "body": "Un seul numéro pour toutes les marques : +44 7307 410512. Indiquez votre ville et votre appareil. Essai de 24 h, sans carte.",
-    "cta": "Écrire à TV King",
-    "prefillLabel": "Message prérempli : {text}",
-    "note": "Le lecteur et les playlists restent sur l'écran d'accueil. Cette page sert uniquement à démarrer l'essai."
+    "title": "Anza kupitia WhatsApp",
+    "body": "Namba moja kwa chapa zote: +44 7307 410512. Taja mji wako na kifaa chako. Majaribio ya saa 24, bila kadi.",
+    "cta": "Mwandikie TV King",
+    "prefillLabel": "Ujumbe ulioandaliwa: {text}",
+    "note": "Kicheza na orodha hubaki kwenye skrini ya mwanzo. Ukurasa huu ni wa kuanzisha majaribio tu."
   },
   "data": {
     "rows": {
-      "sport-live": "En direct",
-      "sport-upcoming": "À venir",
-      "sport-replay": "Replays & temps forts",
-      "sport-leagues": "Par discipline",
-      "form-continue": "Continuer ma progression",
-      "form-paths": "Parcours recommandés",
-      "form-fitness": "Sport & bien-être",
-      "form-topics": "Par thème",
-      "films-affiche": "À l'affiche",
-      "films-famille": "Comédies & famille"
+      "sport-live": "Mubashara",
+      "sport-upcoming": "Yajayo",
+      "sport-replay": "Marudio na matukio muhimu",
+      "sport-leagues": "Kwa aina ya mchezo",
+      "form-continue": "Endelea na mafunzo yako",
+      "form-paths": "Njia zinazopendekezwa",
+      "form-fitness": "Michezo na afya",
+      "form-topics": "Kwa mada",
+      "films-affiche": "Zinazoonyeshwa sasa",
+      "films-famille": "Vichekesho na familia"
     },
     "badges": {
-      "ÉVÉNEMENT": "ÉVÉNEMENT",
-      "NOUVEAU": "NOUVEAU",
-      "TENDANCE": "TENDANCE"
+      "ÉVÉNEMENT": "TUKIO",
+      "NOUVEAU": "MPYA",
+      "TENDANCE": "INAVUMA"
     },
     "items": {
       "hero-ucl": {
-        "title": "Champions League — Finale en direct",
-        "subtitle": "Le sommet du football européen, ce soir à 21h00"
+        "title": "Champions League — Fainali mubashara",
+        "subtitle": "Kilele cha soka la Ulaya, leo usiku saa 21:00"
       },
       "hero-masterclass": {
-        "title": "Formation — Maîtriser la prise de parole",
-        "subtitle": "12 leçons avec une oratrice de renommée mondiale"
+        "title": "Mafunzo — Umahiri wa kuzungumza hadharani",
+        "subtitle": "Masomo 12 na mzungumzaji mashuhuri duniani"
       },
       "hero-marathon": {
-        "title": "Marathon de préparation physique",
-        "subtitle": "Programme guidé 6 semaines, tous niveaux"
+        "title": "Marathoni ya utimamu wa mwili",
+        "subtitle": "Mpango wa wiki 6 wenye mwongozo, kwa viwango vyote"
       },
       "c1": {
-        "title": "Tactique défensive moderne",
-        "subtitle": "Sport · Analyse"
+        "title": "Mbinu za kisasa za ulinzi",
+        "subtitle": "Michezo · Uchambuzi"
       },
       "c2": {
-        "title": "Négociation : les fondamentaux",
-        "subtitle": "Formation · 8 min restantes"
+        "title": "Ustadi wa majadiliano: misingi",
+        "subtitle": "Mafunzo · Zimebaki dakika 8"
       },
       "c3": {
-        "subtitle": "Sport · Replay"
+        "subtitle": "Michezo · Marudio"
       },
       "c4": {
-        "title": "Yoga du matin",
-        "subtitle": "Formation · 14 min"
+        "title": "Yoga ya asubuhi",
+        "subtitle": "Mafunzo · Dakika 14"
       },
       "c5": {
-        "title": "Grand Prix — Résumé",
-        "subtitle": "Sport · Replay"
+        "title": "Grand Prix — Muhtasari",
+        "subtitle": "Michezo · Marudio"
       },
       "l2": {
-        "title": "Roland-Garros — Demi-finale",
-        "clock": "Set 3"
+        "title": "Roland-Garros — Nusu fainali",
+        "clock": "Seti ya 3"
       },
       "l4": {
-        "title": "MotoGP — Course",
-        "clock": "Tour 18/24"
+        "title": "MotoGP — Mbio",
+        "clock": "Mzunguko 18/24"
       },
       "t1": {
-        "title": "Préparation mentale du champion",
-        "subtitle": "Formation"
+        "title": "Maandalizi ya kiakili ya bingwa",
+        "subtitle": "Mafunzo"
       },
       "t2": {
-        "title": "Les plus beaux buts de la saison",
-        "subtitle": "Sport · Replay"
+        "title": "Mabao bora ya msimu",
+        "subtitle": "Michezo · Marudio"
       },
       "t3": {
-        "subtitle": "Formation"
+        "subtitle": "Mafunzo"
       },
       "t4": {
-        "title": "Analyse : la possession",
-        "subtitle": "Sport · Analyse"
+        "title": "Uchambuzi: umiliki wa mpira",
+        "subtitle": "Michezo · Uchambuzi"
       },
       "t5": {
-        "title": "Cuisine du sportif",
-        "subtitle": "Formation"
+        "title": "Mapishi ya mwanamichezo",
+        "subtitle": "Mafunzo"
       },
       "sl1": {
-        "league": "Football · Champions League"
+        "league": "Soka · Champions League"
       },
       "sl2": {
-        "title": "Roland-Garros — Demi",
-        "clock": "Set 3",
-        "league": "Tennis · Grand Chelem"
+        "title": "Roland-Garros — Nusu fainali",
+        "clock": "Seti ya 3",
+        "league": "Tenisi · Grand Slam"
       },
       "sl3": {
-        "league": "Basket · NBA"
+        "league": "Mpira wa kikapu · NBA"
       },
       "sl4": {
-        "clock": "Tour 18/24",
-        "league": "Moto · MotoGP"
+        "clock": "Mzunguko 18/24",
+        "league": "Pikipiki · MotoGP"
       },
       "su1": {
-        "startsIn": "Aujourd'hui 21:00"
+        "startsIn": "Leo 21:00"
       },
       "su2": {
-        "title": "Finale 100m",
-        "startsIn": "Demain 20:30",
-        "league": "Athlétisme"
+        "title": "Fainali ya mita 100",
+        "startsIn": "Kesho 20:30",
+        "league": "Riadha"
       },
       "su3": {
-        "title": "Six Nations — France/Irlande",
-        "startsIn": "Samedi 15:00"
+        "title": "Six Nations — Ufaransa/Ayalandi",
+        "startsIn": "Jumamosi 15:00"
       },
       "su4": {
-        "title": "Grand Prix de Monaco",
-        "startsIn": "Dimanche 14:00"
+        "title": "Grand Prix ya Monaco",
+        "startsIn": "Jumapili 14:00"
       },
       "sr1": {
-        "title": "Les plus beaux buts"
+        "title": "Mabao bora"
       },
       "sr2": {
-        "title": "Game 4 — Intégrale"
+        "title": "Mchezo wa 4 — Kamili"
       },
       "sr3": {
-        "title": "Résumé Grand Prix"
+        "title": "Muhtasari wa Grand Prix"
       },
       "sr4": {
-        "title": "Top 10 échanges"
+        "title": "Rali 10 bora"
       },
       "sd2": {
-        "title": "Basket"
+        "title": "Mpira wa kikapu"
       },
       "sd6": {
-        "title": "Athlétisme"
+        "title": "Riadha"
       },
       "fc1": {
-        "title": "Négociation : les fondamentaux",
-        "duration": "8 min restantes"
+        "title": "Ustadi wa majadiliano: misingi",
+        "duration": "Zimebaki dakika 8"
       },
       "fc2": {
-        "title": "Préparation mentale",
-        "duration": "14 min restantes"
+        "title": "Maandalizi ya kiakili",
+        "duration": "Zimebaki dakika 14"
       },
       "fc3": {
-        "title": "Yoga du matin",
-        "duration": "6 min restantes"
+        "title": "Yoga ya asubuhi",
+        "duration": "Zimebaki dakika 6"
       },
       "fp1": {
-        "title": "Devenir un meilleur orateur"
+        "title": "Kuwa mzungumzaji bora"
       },
       "fp2": {
-        "title": "Leadership & management"
+        "title": "Uongozi na usimamizi"
       },
       "fp3": {
-        "title": "Nutrition du sportif"
+        "title": "Lishe ya mwanamichezo"
       },
       "fp4": {
-        "title": "Photographie créative"
+        "title": "Upigaji picha wa kibunifu"
       },
       "fp5": {
-        "title": "Finances personnelles"
+        "title": "Fedha binafsi"
       },
       "ff2": {
-        "title": "Renforcement complet"
+        "title": "Kuimarisha mwili mzima"
       },
       "ff3": {
-        "title": "Étirements & mobilité"
+        "title": "Kunyoosha misuli na unyumbufu"
       },
       "ff4": {
-        "title": "Course : plan 5 km"
+        "title": "Kukimbia: mpango wa km 5"
       },
       "ft1": {
-        "title": "Communication"
+        "title": "Mawasiliano"
       },
       "ft2": {
-        "title": "Business"
+        "title": "Biashara"
       },
       "ft3": {
-        "title": "Forme physique"
+        "title": "Utimamu wa mwili"
       },
       "ft4": {
-        "title": "Nutrition"
+        "title": "Lishe"
       },
       "ft5": {
-        "title": "Créativité"
+        "title": "Ubunifu"
       },
       "ft6": {
-        "title": "Finance"
+        "title": "Fedha"
       },
       "mv1": {
-        "title": "La Couronne d'acier",
-        "genre": "Aventure",
-        "description": "Un royaume au bord de la rupture, une héritière que rien ne prédestinait au trône. Une fresque épique au souffle rare."
+        "title": "Taji la Chuma",
+        "genre": "Matukio",
+        "description": "Ufalme ulio ukingoni mwa kusambaratika, na mrithi ambaye hakuna aliyetarajia angekalia kiti cha enzi. Hadithi kuu ya kusisimua isiyo na kifani."
       },
       "mv2": {
-        "title": "Dernier Sprint",
-        "genre": "Drame sportif",
-        "description": "À 34 ans, un sprinteur déchu s'offre une dernière saison pour redevenir champion — et se réconcilier avec son fils."
+        "title": "Mbio za Mwisho",
+        "genre": "Drama ya michezo",
+        "description": "Akiwa na miaka 34, mwanariadha wa mbio fupi aliyepoteza umaarufu anajipa msimu mmoja wa mwisho ili kuwa bingwa tena — na kupatana na mwanawe."
       },
       "mv3": {
-        "title": "Nuit blanche à Dakar",
-        "genre": "Thriller",
-        "description": "Une journaliste remonte la piste d'une disparition en une seule nuit, des toits de la Médina au port de Dakar."
+        "title": "Usiku wa Kukesha Dakar",
+        "genre": "Taharuki",
+        "description": "Mwandishi wa habari anafuatilia kisa cha kutoweka kwa mtu ndani ya usiku mmoja, kuanzia juu ya paa za Medina hadi bandari ya Dakar."
       },
       "mv4": {
-        "title": "Le Rire du roi",
-        "genre": "Comédie",
-        "description": "Un humoriste sans succès devient, par erreur, bouffon officiel d'une cour royale très à cheval sur l'étiquette."
+        "title": "Kicheko cha Mfalme",
+        "genre": "Vichekesho",
+        "description": "Mchekeshaji asiyefanikiwa anakuwa, kwa bahati mbaya, mchekeshaji rasmi wa kasri la kifalme linalozingatia itifaki kupita kiasi."
       },
       "mv5": {
-        "title": "Fréquence 88.0",
-        "genre": "Science-fiction",
-        "description": "Une radio pirate capte un signal venu de trente ans dans le futur. Chaque émission change le présent."
+        "title": "Masafa 88.0",
+        "genre": "Hadithi za kisayansi",
+        "description": "Redio ya magendo inanasa ishara kutoka miaka thelathini ijayo. Kila kipindi kinabadilisha wakati uliopo."
       },
       "mv6": {
-        "title": "Papa, coach et champion",
-        "genre": "Comédie familiale",
-        "description": "Muté entraîneur de l'équipe poussins de sa fille, un ancien pro découvre que le plus dur reste les goûters."
+        "title": "Baba, Kocha na Bingwa",
+        "genre": "Vichekesho vya familia",
+        "description": "Akiwa kocha wa timu ya watoto wadogo ya binti yake, mchezaji wa zamani wa kulipwa anagundua kuwa kazi ngumu zaidi ni vitafunio."
       },
       "mv7": {
-        "title": "Les Vacances de Sa Majesté",
-        "genre": "Comédie",
-        "description": "Une reine incognito dans un camping familial : protocole, barbecue et quiproquos garantis."
+        "title": "Likizo ya Malkia",
+        "genre": "Vichekesho",
+        "description": "Malkia anayejificha katika kambi ya familia: itifaki, nyama choma na mikanganyiko ya kuchekesha bila shaka."
       },
       "mv8": {
-        "title": "Mon robot et moi",
-        "genre": "Famille",
-        "description": "Un enfant timide hérite d'un robot de compagnie démodé — et bien plus courageux qu'il n'en a l'air."
+        "title": "Roboti Wangu na Mimi",
+        "genre": "Familia",
+        "description": "Mtoto mwenye haya anarithi roboti rafiki wa kizamani — ambaye ni jasiri zaidi kuliko anavyoonekana."
       },
       "mv9": {
-        "title": "La Grande Traversée",
-        "genre": "Aventure familiale",
-        "description": "Deux cousines traversent le pays à vélo pour livrer une lettre qui n'aurait jamais dû se perdre."
+        "title": "Safari Kuu",
+        "genre": "Matukio ya familia",
+        "description": "Binamu wawili wa kike wanavuka nchi kwa baiskeli kupeleka barua ambayo haikupaswa kupotea kamwe."
       }
     },
     "suggestions": [
-      "Football",
-      "Basket",
-      "Tennis",
+      "Soka",
+      "Mpira wa kikapu",
+      "Tenisi",
       "F1",
-      "Leadership",
+      "Uongozi",
       "Yoga",
-      "Nutrition",
+      "Lishe",
       "HIIT"
     ]
+  },
+  "activate": {
+    "kicker": "Akaunti yangu",
+    "title": "Washa orodha yangu",
+    "intro": "Ongeza usajili wako mwenyewe (Xtream au M3U) kwenye kisanduku chako cha Zuno. Unaingia wenyewe kwenye programu, bila kuandika chochote kwa rimoti.",
+    "macLabel": "Anwani ya MAC ya kisanduku",
+    "macHint": "Inaonyeshwa kwenye Zuno → Mipangilio → Kifaa changu (mfano: MK:80:78:60:07:4F).",
+    "macCheck": "Tazama orodha zangu",
+    "typeLabel": "Aina ya usajili",
+    "xtream": "Xtream (seva + taarifa za kuingia)",
+    "m3u": "Kiungo cha M3U",
+    "nameLabel": "Jina la orodha",
+    "namePlaceholder": "Usajili wangu",
+    "serverLabel": "Anwani ya seva",
+    "serverPlaceholder": "http://exemple.com:8080",
+    "userLabel": "Jina la mtumiaji",
+    "passLabel": "Nenosiri",
+    "urlLabel": "Kiungo cha M3U",
+    "urlPlaceholder": "http://exemple.com/get.php?username=…&password=…&type=m3u_plus",
+    "submit": "Washa kwenye kisanduku changu",
+    "sending": "Inatuma…",
+    "success": "Imekamilika! Fungua Zuno: orodha yako itafika ndani ya chini ya dakika moja (au bonyeza Anzisha upya).",
+    "myLists": "Orodha za kisanduku hiki",
+    "none": "Bado hakuna orodha.",
+    "locked": "Inasimamiwa na muuzaji wako",
+    "delete": "Futa",
+    "deleted": "Orodha imefutwa.",
+    "privacy": "Nenosiri linatumwa mara moja tu kwenye kisanduku chako na halionyeshwi tena kamwe.",
+    "errors": {
+      "mac": "Anwani ya MAC si sahihi. Inakili tena kutoka Zuno → Mipangilio → Kifaa changu.",
+      "notEntitled": "Kisanduku hiki bado hakijawashwa. Muombe muuzaji wako akiwashe, kisha ujaribu tena.",
+      "fields": "Jaza sehemu zote. Anwani lazima zianze na http:// au https://.",
+      "tooMany": "Umefikia kikomo cha orodha: futa moja ili kuongeza nyingine.",
+      "network": "Seva haipatikani. Angalia muunganisho wako kisha ujaribu tena.",
+      "generic": "Imeshindikana kuhifadhi orodha. Jaribu tena baada ya muda mfupi."
+    }
   }
 }
