@@ -92,6 +92,14 @@ class CinemaRepository {
     }
   }
 
+  /// PC (Zuno Windows) : un ordinateur a largement la mémoire nécessaire
+  /// (8 Go et plus en général) et le plugin RAM de la box n'y existe pas →
+  /// index de recherche au maximum, sans lecture de RAM.
+  void useDesktopMemory() {
+    _ramTuned = true;
+    _indexMax = 150000;
+  }
+
   /// Moment du dernier chargement des catégories (fraîcheur du catalogue).
   DateTime? _loadedAt;
 
