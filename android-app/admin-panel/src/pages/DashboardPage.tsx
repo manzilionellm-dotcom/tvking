@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
   statsApi, backupApi, type StatsOverview, ApiError,
@@ -66,7 +67,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
           onClick={downloadBackup}
           disabled={backupBusy}
           title="Exporter toute la base en JSON (filet de sécurité)"
-          className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-semibold text-ink-secondary transition hover:border-accent/40 hover:text-ink-primary disabled:opacity-50"
+          className="rounded-md border border-white/10 px-3 py-1.5 text-xs font-semibold text-ink-secondary transition duration-150 hover:border-accent/40 hover:text-ink-primary disabled:opacity-50"
         >
           {backupBusy ? 'Sauvegarde…' : '⬇ Télécharger une sauvegarde'}
         </button>
@@ -124,9 +125,9 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
             to="/activate"
           />
           <NextActionCard
-            title="Pousser une playlist"
-            desc="Assigner / mettre à jour la source Xtream ou M3U d'une MAC."
-            to="/playlists"
+            title="Activer / pousser une source"
+            desc="Assigner ou mettre à jour la source Xtream ou M3U d'une MAC."
+            to="/activate"
           />
         </div>
       </div>
@@ -147,7 +148,7 @@ function KpiCard({
 }) {
   return (
     <div
-      className={`rounded-xl border border-white/5 bg-midnight px-5 py-4 ${
+      className={`rounded-xl border border-white/5 bg-midnight px-5 py-4 transition duration-150 hover:border-white/10 ${
         wide ? 'col-span-2' : ''
       }`}
     >
@@ -189,25 +190,30 @@ function NextActionCard({
   to: string;
   soon?: boolean;
 }) {
-  return (
-    <a
-      href={`#${to}`}
-      onClick={(e) => {
-        if (soon) e.preventDefault();
-      }}
-      className={`block rounded-xl border border-white/5 bg-midnight px-5 py-4 transition hover:border-accent/30 ${
-        soon ? 'cursor-not-allowed opacity-60' : ''
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold tracking-tight">{title}</p>
-        {soon && (
+  const className = `block rounded-xl border border-white/5 bg-midnight px-5 py-4 transition duration-150 hover:border-accent/30 hover:bg-midnight/80 ${
+    soon ? 'cursor-not-allowed opacity-60' : ''
+  }`;
+
+  if (soon) {
+    return (
+      <div className={className}>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold tracking-tight">{title}</p>
           <span className="rounded-sm bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-ink-tertiary">
             bientôt
           </span>
-        )}
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-ink-secondary">{desc}</p>
+      </div>
+    );
+  }
+
+  return (
+    <Link to={to} className={className}>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold tracking-tight">{title}</p>
       </div>
       <p className="mt-2 text-xs leading-relaxed text-ink-secondary">{desc}</p>
-    </a>
+    </Link>
   );
 }
