@@ -5,13 +5,12 @@ import Link from "next/link";
 import { zunoWaUrl } from "../../lib/wa";
 
 export default function ActivationForm() {
-  const [mac, setMac] = useState("");
-  const [code, setCode] = useState("");
+  const [sCode, setSCode] = useState("");
+  const [m2, setM2] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{
     ok: boolean;
     message: string;
-    stub?: boolean;
   } | null>(null);
 
   async function onSubmit(e: FormEvent) {
@@ -22,13 +21,14 @@ export default function ActivationForm() {
       const res = await fetch("/api/activate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mac, code }),
+        body: JSON.stringify({ s: sCode, m2 }),
       });
       const data = await res.json();
       setResult({
-        ok: res.ok,
-        message: data.message || (res.ok ? "OK" : "Erreur"),
-        stub: Boolean(data.stub),
+        ok: res.ok && Boolean(data.ok),
+        message:
+          data.message ||
+          (res.ok ? "Appareil activé." : "Activation impossible."),
       });
     } catch {
       setResult({ ok: false, message: "Erreur réseau." });
@@ -38,29 +38,38 @@ export default function ActivationForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="zuno-card mx-auto flex w-full max-w-md flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-[0_0_60px_rgba(59,130,246,0.08)]">
+    <form
+      onSubmit={onSubmit}
+      className="zuno-card mx-auto flex w-full max-w-md flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-[0_0_60px_rgba(59,130,246,0.08)]"
+    >
       <label className="block text-sm font-medium text-white/70">
-        Adresse MAC
+        S code
         <input
           required
-          value={mac}
-          onChange={(e) => setMac(e.target.value)}
-          placeholder="AA:BB:CC:DD:EE:FF"
+          value={sCode}
+          onChange={(e) => setSCode(e.target.value)}
+          placeholder="Code d'activation reçu après paiement"
+          autoComplete="off"
           className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none transition focus:border-[#3b82f6]/70 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)]"
         />
         <span className="mt-1 block text-xs text-white/35">
-          Affichée dans Zuno → Réglages → Mon appareil
+          Code d&apos;activation (annuel ou à vie) reçu après paiement
         </span>
       </label>
       <label className="block text-sm font-medium text-white/70">
-        Code(s) d&apos;activation
+        M2
         <input
           required
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="Code reçu après paiement"
-          className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none transition focus:border-[#3b82f6]/70 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)]"
+          value={m2}
+          onChange={(e) => setM2(e.target.value)}
+          placeholder="MK:1A:2B:3C:4D:5E"
+          autoComplete="off"
+          spellCheck={false}
+          className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 font-mono text-white outline-none transition focus:border-[#3b82f6]/70 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.2)]"
         />
+        <span className="mt-1 block text-xs text-white/35">
+          Identifiant appareil (M2) — Zuno → Réglages → Mon appareil
+        </span>
       </label>
 
       {result && (
@@ -72,11 +81,6 @@ export default function ActivationForm() {
           }`}
         >
           {result.message}
-          {result.stub && (
-            <p className="mt-1 text-xs text-amber-200/90">
-              Réponse stub (ACTIVATION_API_URL non configurée). Contactez le support pour finaliser.
-            </p>
-          )}
         </div>
       )}
 
@@ -85,7 +89,7 @@ export default function ActivationForm() {
         disabled={busy}
         className="rounded-xl bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] px-4 py-3 font-semibold text-white shadow-[0_0_24px_rgba(59,130,246,0.35)] disabled:opacity-50"
       >
-        {busy ? "Activation…" : "Activer mon appareil"}
+        {busy ? "Activation…" : "Activer maintenant"}
       </button>
 
       <a
@@ -98,7 +102,10 @@ export default function ActivationForm() {
       </a>
 
       {result?.ok && (
-        <Link href="/telecharger" className="text-center text-sm font-medium text-[#60a5fa]">
+        <Link
+          href="/telecharger"
+          className="text-center text-sm font-medium text-[#60a5fa]"
+        >
           Ensuite : télécharger l&apos;application →
         </Link>
       )}

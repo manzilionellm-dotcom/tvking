@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { zunoWaUrl } from "../lib/wa";
+import AppOnlyNotice from "../components/site/AppOnlyNotice";
 
 const PERKS = [
-  { title: "Revendre les forfaits", body: "Proposez Annuel 9,99 € et À vie 15 € à vos clients." },
-  { title: "Activation rapide", body: "Activez les appareils de vos clients via MAC + code." },
+  { title: "Revendre la licence app", body: "Proposez la licence Zuno : Annuel 9,99 € / an et À vie 15 €. Pas de chaînes." },
+  { title: "Activation rapide", body: "Activez les appareils via S code + M2 (comme le panel)." },
   { title: "Suivi", body: "Tableau de stats (aperçu) — volume, activations, statut." },
 ];
 
@@ -16,8 +17,9 @@ export default function RevendeurPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#93c5fd]">Partenaires</p>
         <h1 className="mt-2 text-3xl font-bold text-white sm:text-4xl">Devenir revendeur</h1>
         <p className="mx-auto mt-3 max-w-xl text-white/50">
-          Accès revendeur Zuno : revendez les forfaits, activez les appareils, suivez votre activité.
+          Accès revendeur Zuno : licence application uniquement — nous ne vendons pas de chaînes. Activez les appareils, suivez votre activité.
         </p>
+      <div className="mx-auto mt-5 max-w-xl"><AppOnlyNotice variant="banner" /></div>
       </div>
 
       <div className="mt-10 grid gap-4 md:grid-cols-3">

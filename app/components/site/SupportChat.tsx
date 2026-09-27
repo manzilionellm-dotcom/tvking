@@ -8,36 +8,37 @@ type Step = "closed" | "greet" | "activate" | "done";
 
 export default function SupportChat() {
   const [step, setStep] = useState<Step>("closed");
-  const [mac, setMac] = useState("");
-  const [code, setCode] = useState("");
+  const [sCode, setSCode] = useState("");
+  const [m2, setM2] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [stub, setStub] = useState(false);
+  const [ok, setOk] = useState(false);
 
   useEffect(() => {
     if (step === "closed") {
       setMsg(null);
-      setStub(false);
+      setOk(false);
     }
   }, [step]);
 
   async function submitActivate() {
     setBusy(true);
     setMsg(null);
+    setOk(false);
     try {
       const res = await fetch("/api/activate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mac, code }),
+        body: JSON.stringify({ s: sCode, m2 }),
       });
       const data = await res.json();
-      setStub(Boolean(data.stub));
-      if (!res.ok) {
-        setMsg(data.message || "Activation impossible.");
-        return;
-      }
-      setMsg(data.message || "Demande envoyée.");
-      setStep("done");
+      const success = res.ok && Boolean(data.ok);
+      setOk(success);
+      setMsg(
+        data.message ||
+          (success ? "Appareil activé." : "Activation impossible."),
+      );
+      if (success) setStep("done");
     } catch {
       setMsg("Erreur réseau. Réessayez ou contactez le support.");
     } finally {
@@ -112,27 +113,30 @@ export default function SupportChat() {
             {step === "activate" && (
               <div className="zuno-fade-in flex flex-col gap-3">
                 <p className="text-sm text-white/70">
-                  Entrez l’adresse MAC et votre code d’activation.
+                  Entrez votre S code et votre M2 pour activer instantanément.
                 </p>
                 <label className="block text-xs font-medium text-white/50">
-                  Adresse MAC
+                  S code
                   <input
-                    value={mac}
-                    onChange={(e) => setMac(e.target.value)}
-                    placeholder="AA:BB:CC:DD:EE:FF"
+                    value={sCode}
+                    onChange={(e) => setSCode(e.target.value)}
+                    placeholder="Code d'activation"
                     className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white outline-none focus:border-[#3b82f6]/60"
                   />
                 </label>
                 <label className="block text-xs font-medium text-white/50">
-                  Code d’activation
+                  M2
                   <input
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    placeholder="Votre code"
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white outline-none focus:border-[#3b82f6]/60"
+                    value={m2}
+                    onChange={(e) => setM2(e.target.value)}
+                    placeholder="MK:1A:2B:3C:4D:5E"
+                    spellCheck={false}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 font-mono text-sm text-white outline-none focus:border-[#3b82f6]/60"
                   />
                 </label>
-                {msg && <p className="text-xs text-amber-300/90">{msg}</p>}
+                {msg && !ok && (
+                  <p className="text-xs text-red-300/90">{msg}</p>
+                )}
                 <button
                   type="button"
                   disabled={busy}
@@ -153,13 +157,12 @@ export default function SupportChat() {
 
             {step === "done" && (
               <div className="zuno-fade-in flex flex-col gap-3">
-                <p className="text-sm text-white/85">{msg}</p>
-                {stub && (
-                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-200/90">
-                    Mode stub : l’API d’activation n’est pas encore configurée
-                    (ACTIVATION_API_URL). Finalisez via WhatsApp.
-                  </p>
-                )}
+                <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-200">
+                  {msg || "Appareil activé."}
+                </p>
+                <Link href="/telecharger" className="text-center text-xs text-[#60a5fa]">
+                  Télécharger l’app →
+                </Link>
                 <button
                   type="button"
                   onClick={() => openWa("activation")}
@@ -167,9 +170,6 @@ export default function SupportChat() {
                 >
                   Ouvrir WhatsApp
                 </button>
-                <Link href="/telecharger" className="text-center text-xs text-[#60a5fa]">
-                  Télécharger l’app →
-                </Link>
               </div>
             )}
           </div>

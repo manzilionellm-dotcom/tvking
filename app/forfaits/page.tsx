@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PLANS } from "../lib/plans";
 import BuyButton from "../components/site/BuyButton";
+import AppOnlyNotice from "../components/site/AppOnlyNotice";
 
 export const metadata: Metadata = {
   title: "Forfaits",
-  description: "Forfaits Zuno : Annuel 9,99 € / an ou À vie 15 €.",
+  description: "Licence app Zuno : 9,99 € / an ou 15 € à vie. Nous ne vendons pas de chaînes.",
 };
 
 export default function ForfaitsPage() {
@@ -14,7 +15,8 @@ export default function ForfaitsPage() {
     <div className="zuno-page mx-auto max-w-5xl px-4 py-14 sm:px-6">
       <div className="text-center">
         <h1 className="text-3xl font-bold text-white sm:text-4xl">Forfaits</h1>
-        <p className="mt-3 text-white/50">Deux options claires. Paiement sécurisé via Stripe.</p>
+        <p className="mt-3 text-white/50">Licence application uniquement — pas de chaînes ni de M3U. Paiement sécurisé via Stripe.</p>
+        <div className="mx-auto mt-5 max-w-xl"><AppOnlyNotice variant="banner" /></div>
       </div>
       <div className="mt-10 grid gap-6 md:grid-cols-2">
         {plans.map((plan) => {
