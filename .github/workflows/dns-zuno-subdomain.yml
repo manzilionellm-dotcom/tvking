@@ -10,6 +10,7 @@
 #  la permission « Zone → DNS → Edit », l'étape échoue avec le message de
 #  Cloudflare et RIEN n'est changé : il faut alors ajouter la ligne à la main.
 #
+#  Relancé le 27/09 après ajout de la permission DNS.
 #  Déclenché au push de ce fichier (le lancement manuel exige que le workflow
 #  soit sur la branche par défaut).
 # ============================================================================
