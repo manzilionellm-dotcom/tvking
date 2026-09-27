@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Playfair_Display } from "next/font/google";
 import "./globals.css";
+import "./zuno.css";
 import Preferences from "./components/Preferences";
 import ConsentGate from "./components/ConsentGate";
 import AppChrome from "./components/site/AppChrome";
