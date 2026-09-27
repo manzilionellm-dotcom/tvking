@@ -1,479 +1,518 @@
 {
   "meta": {
-    "siteTitle": "TV King — Sport, films & formation",
-    "siteDescription": "Lecteur IPTV personnel : vos playlists M3U, films, sport et formation. Aucun contenu n'est fourni avec l'app.",
-    "ogDescription": "Lecteur IPTV personnel. Vos playlists, vos liens.",
-    "filmsTitle": "Films",
-    "filmsDescription": "Films téléchargés sur l'appareil. Lecture instantanée, sans spinner.",
-    "tvTitle": "TV en direct",
-    "tvDescription": "Collez votre playlist M3U. Chaque lien est vérifié avant lecture.",
-    "settingsTitle": "Réglages",
-    "settingsDescription": "Taille du texte, overscan et préférences TV King.",
-    "searchTitle": "Rechercher",
-    "searchDescription": "Recherchez sport, films et formation dans TV King.",
-    "listTitle": "Ma liste",
-    "listDescription": "Vos titres sauvegardés dans TV King.",
-    "sportTitle": "Sport en direct",
-    "sportDescription": "Live, scores, calendrier et replays — classés par discipline.",
-    "formationTitle": "Formation",
-    "formationDescription": "Parcours par niveau, progression et intervenants.",
-    "downloadTitle": "Télécharger l'application",
-    "downloadDescription": "Zuno pour box Android TV, Fire TV, Google TV et PC Windows. Toujours la dernière version.",
-    "startTitle": "TV King — essai de 24 h",
-    "startDescription": "Un seul numéro WhatsApp pour toutes les marques. Ville + appareil. Essai de 24 h, sans carte."
+    "siteTitle": "TV King — Sport, film & kurser",
+    "siteDescription": "Personlig IPTV-afspiller: dine M3U-playlister, film, sport og kurser. Appen leveres uden indhold.",
+    "ogDescription": "Personlig IPTV-afspiller. Dine playlister, dine links.",
+    "filmsTitle": "Film",
+    "filmsDescription": "Film downloadet til enheden. Starter med det samme – uden ventetid.",
+    "tvTitle": "Live-tv",
+    "tvDescription": "Indsæt din M3U-playlist. Hvert link tjekkes før afspilning.",
+    "settingsTitle": "Indstillinger",
+    "settingsDescription": "Tekststørrelse, overscan og præferencer for TV King.",
+    "searchTitle": "Søg",
+    "searchDescription": "Søg efter sport, film og kurser i TV King.",
+    "listTitle": "Min liste",
+    "listDescription": "Dine gemte titler i TV King.",
+    "sportTitle": "Live-sport",
+    "sportDescription": "Live, resultater, kampprogram og genudsendelser – sorteret efter sportsgren.",
+    "formationTitle": "Kurser",
+    "formationDescription": "Forløb efter niveau, dine fremskridt og undervisere.",
+    "downloadTitle": "Download appen",
+    "downloadDescription": "Zuno til Android TV-bokse, Fire TV, Google TV og Windows-pc. Altid den nyeste version.",
+    "startTitle": "TV King — 24 timers prøveperiode",
+    "startDescription": "Ét WhatsApp-nummer til alle mærker. By + enhed. 24 timers prøveperiode, uden betalingskort.",
+    "activateTitle": "Aktivér min liste",
+    "activateDescription": "Tilføj dit eget Xtream- eller M3U-abonnement til din Zuno-boks via dens MAC-adresse."
   },
   "nav": {
-    "search": "Rechercher",
-    "home": "Accueil",
-    "tv": "TV en direct",
-    "films": "Films",
+    "search": "Søg",
+    "home": "Hjem",
+    "tv": "Live-tv",
+    "films": "Film",
     "sport": "Sport",
-    "formation": "Formation",
-    "list": "Ma liste",
-    "settings": "Réglages",
-    "download": "Télécharger",
-    "main": "Navigation principale",
-    "tagline": "Royal"
+    "formation": "Kurser",
+    "list": "Min liste",
+    "settings": "Indstillinger",
+    "download": "Download",
+    "main": "Hovednavigation",
+    "tagline": "Kongelig",
+    "activate": "Aktivér"
   },
   "common": {
-    "live": "Direct",
-    "upcoming": "À venir",
-    "replay": "Replay",
-    "watchLive": "Regarder en direct",
-    "play": "Lecture",
-    "moreInfo": "Plus d'infos",
-    "slide": "Diapositive {n}",
-    "lessons": "{n} leçons",
-    "with": "avec {name}",
-    "resume": "Reprendre",
-    "remindMe": "🔔 Me rappeler",
-    "addToList": "+ Ma liste",
-    "back": "← Retour",
-    "program": "Programme",
-    "lesson": "Leçon {n}",
+    "live": "Live",
+    "upcoming": "Kommende",
+    "replay": "Genudsendelse",
+    "watchLive": "Se live",
+    "play": "Afspil",
+    "moreInfo": "Mere info",
+    "slide": "Dias {n}",
+    "lessons": "{n} lektioner",
+    "with": "med {name}",
+    "resume": "Fortsæt",
+    "remindMe": "🔔 Påmind mig",
+    "addToList": "+ Min liste",
+    "back": "← Tilbage",
+    "program": "Program",
+    "lesson": "Lektion {n}",
     "minutes": "{n} min",
-    "sameCategory": "Dans la même catégorie",
-    "moreLikeThis": "Plus comme ça",
+    "sameCategory": "I samme kategori",
+    "moreLikeThis": "Mere som dette",
     "pause": "Pause"
   },
   "levels": {
-    "Débutant": "Débutant",
-    "Intermédiaire": "Intermédiaire",
-    "Avancé": "Avancé"
+    "Débutant": "Begynder",
+    "Intermédiaire": "Øvet",
+    "Avancé": "Avanceret"
   },
   "synopsis": {
-    "live": "Suivez {title} en direct, score et temps forts à la minute.",
-    "upcoming": "{title} — programmez un rappel pour ne rien manquer du coup d'envoi.",
-    "replay": "Revivez {title} : intégrale et meilleurs moments à la demande.",
-    "course": "{title} — un programme guidé pour progresser pas à pas, à votre rythme."
+    "live": "Følg {title} live – stilling og højdepunkter minut for minut.",
+    "upcoming": "{title} – sæt en påmindelse, så du ikke går glip af starten.",
+    "replay": "Genoplev {title}: hele kampen og de bedste øjeblikke, når det passer dig.",
+    "course": "{title} – et guidet forløb, hvor du bliver bedre trin for trin i dit eget tempo."
   },
   "consent": {
-    "dialog": "Conditions d'utilisation",
-    "welcome": "Bienvenue sur",
-    "intro": "Avant d'entrer, merci de lire et d'accepter les conditions d'utilisation.",
-    "t1": "TV King ne fournit aucun contenu",
-    "b1": "L'application est un lecteur multimédia. Elle n'héberge, ne diffuse et ne vend aucune chaîne, aucun film, aucun flux. Aucun contenu n'est inclus à l'installation.",
-    "t2": "Vos liens, votre responsabilité",
-    "b2": "Les playlists (M3U) et les liens que vous ajoutez proviennent de vous. Vous déclarez détenir les droits ou autorisations nécessaires pour les contenus auxquels ils mènent, conformément aux lois de votre pays.",
-    "t3": "Chaque lien est vérifié avant lecture",
-    "b3": "Pour une expérience sans souci, chaque lien ajouté est contrôlé (format et disponibilité) avant d'être proposé à la lecture. Un lien invalide est signalé clairement — jamais d'attente sans fin.",
-    "t4": "Lecture instantanée, jamais de roue qui tourne",
-    "b4": "Les films disponibles se préchargent sur l'appareil pour démarrer immédiatement. Si un contenu ne peut pas être lu, l'application l'annonce tout de suite au lieu de faire patienter.",
-    "refused": "Sans acceptation des conditions, TV King ne peut pas être utilisé.",
-    "accept": "J'accepte les conditions",
-    "refuse": "Refuser"
+    "dialog": "Brugsvilkår",
+    "welcome": "Velkommen til",
+    "intro": "Før du går videre, skal du læse og acceptere brugsvilkårene.",
+    "t1": "TV King leverer intet indhold",
+    "b1": "Appen er en medieafspiller. Den hoster, udsender og sælger ingen kanaler, film eller streams. Der følger intet indhold med ved installationen.",
+    "t2": "Dine links, dit ansvar",
+    "b2": "De playlister (M3U) og links, du tilføjer, kommer fra dig. Du bekræfter, at du har de nødvendige rettigheder eller tilladelser til det indhold, de fører til, i overensstemmelse med lovgivningen i dit land.",
+    "t3": "Hvert link tjekkes før afspilning",
+    "b3": "For en problemfri oplevelse kontrolleres hvert link, du tilføjer (format og tilgængelighed), før det kan afspilles. Et ugyldigt link bliver tydeligt markeret – aldrig endeløs ventetid.",
+    "t4": "Afspilning med det samme – aldrig et snurrende hjul",
+    "b4": "Tilgængelige film forudindlæses på enheden, så de starter med det samme. Hvis noget ikke kan afspilles, siger appen det med det samme i stedet for at lade dig vente.",
+    "refused": "TV King kan ikke bruges, uden at du accepterer vilkårene.",
+    "accept": "Jeg accepterer vilkårene",
+    "refuse": "Afvis"
   },
   "film": {
-    "downloading": "Téléchargement du film…",
-    "downloadingLabel": "Téléchargement du film",
-    "fromDevice": "Le film sera lu depuis l'appareil : démarrage immédiat, aucune mise en mémoire tampon.",
-    "instantPlay": "Lecture instantanée",
-    "downloaded": "✓ Téléchargé sur l'appareil"
+    "downloading": "Downloader filmen…",
+    "downloadingLabel": "Downloader filmen",
+    "fromDevice": "Filmen afspilles fra enheden: den starter med det samme, uden buffering.",
+    "instantPlay": "Afspilning med det samme",
+    "downloaded": "✓ Downloadet til enheden"
   },
   "player": {
-    "nowLive": "● En direct",
-    "playing": "Lecture",
-    "upNext": "À suivre · dans {n}s",
-    "playNow": "Lire maintenant",
-    "cancel": "Annuler",
-    "liveTag": "DIRECT",
-    "rewind": "Reculer de 10 secondes",
-    "forward": "Avancer de 10 secondes",
-    "audioOnlyAria": "Écouter sans la vidéo",
-    "headphones": "Écouteurs",
-    "minimizeAria": "Réduire la vidéo",
-    "minimize": "Réduire",
-    "quit": "✕ Quitter",
-    "miniAria": "Lecture réduite : {title}",
-    "audioOnly": "Audio seulement",
-    "expand": "Agrandir",
-    "closeMini": "Fermer la lecture réduite",
-    "showVideo": "Réafficher la vidéo",
-    "next": "Suivant : {title}"
+    "nowLive": "● Live nu",
+    "playing": "Afspiller",
+    "upNext": "Næste · om {n} s",
+    "playNow": "Afspil nu",
+    "cancel": "Annuller",
+    "liveTag": "LIVE",
+    "rewind": "Spol 10 sekunder tilbage",
+    "forward": "Spol 10 sekunder frem",
+    "audioOnlyAria": "Lyt uden video",
+    "headphones": "Hovedtelefoner",
+    "minimizeAria": "Minimer videoen",
+    "minimize": "Minimer",
+    "quit": "✕ Luk",
+    "miniAria": "Minimeret afspilning: {title}",
+    "audioOnly": "Kun lyd",
+    "expand": "Udvid",
+    "closeMini": "Luk minimeret afspilning",
+    "showVideo": "Vis videoen igen",
+    "next": "Næste: {title}"
   },
   "whatsapp": {
-    "aria": "Contacter TV King sur WhatsApp",
-    "prefill": "TV King — essai 24 h. Ville + appareil"
+    "aria": "Kontakt TV King på WhatsApp",
+    "prefill": "TV King — 24 timers prøve. By + enhed"
   },
   "home": {
     "rows": {
-      "continue": "Reprendre",
-      "live-now": "En direct maintenant",
-      "trending": "Tendances"
+      "continue": "Fortsæt med at se",
+      "live-now": "Live nu",
+      "trending": "Populært lige nu"
     }
   },
   "films": {
-    "title": "Films",
-    "intro": "Chaque film se télécharge sur l'appareil avant lecture : démarrage immédiat, zéro mise en mémoire tampon."
+    "title": "Film",
+    "intro": "Hver film downloades til enheden før afspilning: den starter med det samme, helt uden buffering."
   },
   "sport": {
     "kicker": "Sport",
-    "title": "Le direct, à la minute",
-    "intro": "Live, scores, calendrier et replays — classés par état et par discipline."
+    "title": "Live, minut for minut",
+    "intro": "Live, resultater, kampprogram og genudsendelser – sorteret efter status og sportsgren."
   },
   "formation": {
-    "kicker": "Formation",
-    "title": "Progresser, à votre rythme"
+    "kicker": "Kurser",
+    "title": "Bliv bedre i dit eget tempo"
   },
   "list": {
-    "title": "Ma liste"
+    "title": "Min liste"
   },
   "search": {
-    "title": "Rechercher",
-    "placeholder": "Dites un titre, une équipe ou un thème…",
-    "suggestions": "Suggestions"
+    "title": "Søg",
+    "placeholder": "Sig en titel, et hold eller et emne…",
+    "suggestions": "Forslag"
   },
   "tv": {
-    "title": "TV en direct",
-    "empty": "Votre télévision, vos chaînes, vos liens.",
-    "count": "{channels} chaînes · {ready} liens vérifiés et prêts",
-    "intro": "TV King ne fournit aucune chaîne : collez votre propre playlist M3U ci-dessous. Chaque lien sera vérifié avant lecture — un lien invalide est signalé, jamais d'attente sans fin.",
-    "noChannels": "Aucune chaîne trouvée dans ce texte. Collez une playlist au format M3U (#EXTM3U / #EXTINF).",
-    "placeholderChannel": "Ma chaîne",
+    "title": "Live-tv",
+    "empty": "Dit tv, dine kanaler, dine links.",
+    "count": "{channels} kanaler · {ready} links tjekket og klar",
+    "intro": "TV King leverer ingen kanaler: indsæt din egen M3U-playlist herunder. Hvert link tjekkes før afspilning – et ugyldigt link bliver markeret, aldrig endeløs ventetid.",
+    "noChannels": "Ingen kanaler fundet i teksten. Indsæt en playlist i M3U-format (#EXTM3U / #EXTINF).",
+    "placeholderChannel": "Min kanal",
     "placeholderUrl": "https://exemple.com/flux.m3u8",
-    "aria": "Playlist M3U",
-    "load": "Charger ma playlist",
-    "demo": "Essayer avec la playlist de démonstration",
-    "verified": "✓ Lien vérifié",
-    "ready": "Prêt à lire — démarrage immédiat",
-    "blocked": "Lecture bloquée : corrigez le lien",
-    "replace": "Remplacer la playlist",
-    "defaultGroup": "Chaînes",
+    "aria": "M3U-playlist",
+    "load": "Indlæs min playlist",
+    "demo": "Prøv med demo-playlisten",
+    "verified": "✓ Link tjekket",
+    "ready": "Klar til afspilning – starter med det samme",
+    "blocked": "Afspilning blokeret: ret linket",
+    "replace": "Erstat playlisten",
+    "defaultGroup": "Kanaler",
     "reasons": {
-      "Lien vide": "Lien vide",
-      "Adresse illisible": "Adresse illisible",
-      "Protocole non pris en charge": "Protocole non pris en charge",
-      "Hôte manquant": "Hôte manquant"
+      "Lien vide": "Tomt link",
+      "Adresse illisible": "Ulæselig adresse",
+      "Protocole non pris en charge": "Protokollen understøttes ikke",
+      "Hôte manquant": "Vært mangler"
     }
   },
   "settings": {
-    "title": "Réglages d'affichage",
-    "intro": "Adaptez l'application à votre téléviseur et à votre distance de visionnage.",
-    "textTitle": "Taille du texte",
-    "textDesc": "Le texte est conçu pour être lisible à ~3 m. Agrandissez-le si besoin.",
-    "safeTitle": "Marge de sécurité (overscan)",
-    "safeDesc": "Si les bords de l'image sont rognés par votre TV, augmentez la marge.",
-    "preview": "Aperçu",
-    "safeZone": "Zone de sécurité — tout le contenu reste à l'intérieur",
+    "title": "Skærmindstillinger",
+    "intro": "Tilpas appen til dit tv og din afstand til skærmen.",
+    "textTitle": "Tekststørrelse",
+    "textDesc": "Teksten er lavet til at kunne læses på ~3 m afstand. Gør den større efter behov.",
+    "safeTitle": "Sikkerhedsmargen (overscan)",
+    "safeDesc": "Hvis dit tv skærer billedets kanter af, så øg margenen.",
+    "preview": "Forhåndsvisning",
+    "safeZone": "Sikker zone – alt indhold holdes indenfor",
     "text": {
       "compact": [
-        "Compact",
-        "Plus de contenu"
+        "Kompakt",
+        "Mere indhold"
       ],
       "standard": [
         "Standard",
-        "Recommandé"
+        "Anbefalet"
       ],
       "large": [
-        "Grand",
-        "Lecture facile"
+        "Stor",
+        "Nem at læse"
       ],
       "xlarge": [
-        "Très grand",
-        "Vision réduite"
+        "Meget stor",
+        "Nedsat syn"
       ]
     },
     "safe": {
       "low": [
-        "Faible",
-        "Écran sans surbalayage"
+        "Lav",
+        "Skærm uden overscan"
       ],
       "standard": [
         "Standard",
-        "Recommandé (5%)"
+        "Anbefalet (5 %)"
       ],
       "high": [
-        "Élevée",
-        "Bords rognés"
+        "Høj",
+        "Afskårne kanter"
       ]
     }
   },
   "download": {
-    "kicker": "Application Zuno",
-    "title": "Télécharger",
-    "intro": "Toujours la dernière version. Aucun contenu n'est fourni avec l'application : elle lit les sources de votre abonnement.",
-    "tvKicker": "Box Android TV · Fire TV · Google TV",
-    "tvTitle": "Sur la TV",
-    "tvBody": "L'application complète : direct, films, séries, enregistrements. Activée par votre revendeur.",
-    "tvButton": "Télécharger pour la box (APK)",
-    "tvStep1": "Sur la box, installez l'application « Downloader ».",
-    "tvStep2": "Tapez l'adresse : {url}",
-    "tvStep3": "Installez, ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
-    "tvNote": "Les mises à jour se font ensuite depuis l'application (Réglages → Mise à jour).",
-    "pcKicker": "Windows 10 / 11 · 64 bits",
-    "pcTitle": "Sur ordinateur",
-    "pcBody": "La même application que sur la TV, en plein écran. Clavier : flèches, Entrée, Échap, F11.",
-    "pcButton": "Télécharger pour Windows",
-    "pcZip": "Version portable (.zip)",
-    "pcStep1": "Lancez Zuno-Setup.exe.",
-    "pcStep2": "Si Windows affiche « Éditeur inconnu » : Informations complémentaires → Exécuter quand même.",
-    "pcStep3": "Ouvrez Zuno, donnez l'adresse MAC affichée à votre revendeur.",
+    "kicker": "Zuno-appen",
+    "title": "Download",
+    "intro": "Altid den nyeste version. Appen leveres uden indhold: den afspiller kilderne fra dit abonnement.",
+    "tvKicker": "Android TV-boks · Fire TV · Google TV",
+    "tvTitle": "På tv'et",
+    "tvBody": "Den komplette app: live, film, serier og optagelser. Aktiveres af din forhandler.",
+    "tvButton": "Download til boksen (APK)",
+    "tvStep1": "Installer appen »Downloader« på boksen.",
+    "tvStep2": "Skriv adressen: {url}",
+    "tvStep3": "Installer og åbn Zuno, og giv din forhandler den viste MAC-adresse.",
+    "tvNote": "Derefter opdaterer du direkte fra appen (Indstillinger → Opdatering).",
+    "pcKicker": "Windows 10 / 11 · 64-bit",
+    "pcTitle": "På computeren",
+    "pcBody": "Den samme app som på tv'et, i fuld skærm. Tastatur: piletaster, Enter, Esc, F11.",
+    "pcButton": "Download til Windows",
+    "pcZip": "Bærbar version (.zip)",
+    "pcStep1": "Kør Zuno-Setup.exe.",
+    "pcStep2": "Hvis Windows viser »Ukendt udgiver«: Flere oplysninger → Kør alligevel.",
+    "pcStep3": "Åbn Zuno, og giv din forhandler den viste MAC-adresse.",
     "playKicker": "Google Play · Android TV",
     "playTitle": "Google Play",
-    "playBody": "Publication sur le Play Store en préparation. En attendant, utilisez l'APK pour la box."
+    "playBody": "Udgivelsen i Play Store er på vej. Indtil da kan du bruge APK'en til boksen."
   },
   "start": {
-    "title": "Démarrer sur WhatsApp",
-    "body": "Un seul numéro pour toutes les marques : +44 7307 410512. Indiquez votre ville et votre appareil. Essai de 24 h, sans carte.",
-    "cta": "Écrire à TV King",
-    "prefillLabel": "Message prérempli : {text}",
-    "note": "Le lecteur et les playlists restent sur l'écran d'accueil. Cette page sert uniquement à démarrer l'essai."
+    "title": "Kom i gang på WhatsApp",
+    "body": "Ét nummer til alle mærker: +44 7307 410512. Skriv din by og din enhed. 24 timers prøveperiode, uden betalingskort.",
+    "cta": "Skriv til TV King",
+    "prefillLabel": "Forudfyldt besked: {text}",
+    "note": "Afspilleren og playlisterne forbliver på startskærmen. Denne side bruges kun til at starte prøveperioden."
   },
   "data": {
     "rows": {
-      "sport-live": "En direct",
-      "sport-upcoming": "À venir",
-      "sport-replay": "Replays & temps forts",
-      "sport-leagues": "Par discipline",
-      "form-continue": "Continuer ma progression",
-      "form-paths": "Parcours recommandés",
-      "form-fitness": "Sport & bien-être",
-      "form-topics": "Par thème",
-      "films-affiche": "À l'affiche",
-      "films-famille": "Comédies & famille"
+      "sport-live": "Live",
+      "sport-upcoming": "Kommende",
+      "sport-replay": "Genudsendelser & højdepunkter",
+      "sport-leagues": "Efter sportsgren",
+      "form-continue": "Fortsæt, hvor du slap",
+      "form-paths": "Anbefalede forløb",
+      "form-fitness": "Sport & velvære",
+      "form-topics": "Efter emne",
+      "films-affiche": "Aktuelle film",
+      "films-famille": "Komedier & familie"
     },
     "badges": {
-      "ÉVÉNEMENT": "ÉVÉNEMENT",
-      "NOUVEAU": "NOUVEAU",
-      "TENDANCE": "TENDANCE"
+      "ÉVÉNEMENT": "BEGIVENHED",
+      "NOUVEAU": "NY",
+      "TENDANCE": "POPULÆR"
     },
     "items": {
       "hero-ucl": {
-        "title": "Champions League — Finale en direct",
-        "subtitle": "Le sommet du football européen, ce soir à 21h00"
+        "title": "Champions League — finalen live",
+        "subtitle": "Højdepunktet i europæisk fodbold, i aften kl. 21.00"
       },
       "hero-masterclass": {
-        "title": "Formation — Maîtriser la prise de parole",
-        "subtitle": "12 leçons avec une oratrice de renommée mondiale"
+        "title": "Kursus — Mestr kunsten at tale",
+        "subtitle": "12 lektioner med en verdenskendt taler"
       },
       "hero-marathon": {
-        "title": "Marathon de préparation physique",
-        "subtitle": "Programme guidé 6 semaines, tous niveaux"
+        "title": "Træningsmaraton",
+        "subtitle": "Guidet program over 6 uger, alle niveauer"
       },
       "c1": {
-        "title": "Tactique défensive moderne",
+        "title": "Moderne defensiv taktik",
         "subtitle": "Sport · Analyse"
       },
       "c2": {
-        "title": "Négociation : les fondamentaux",
-        "subtitle": "Formation · 8 min restantes"
+        "title": "Forhandling: det grundlæggende",
+        "subtitle": "Kursus · 8 min tilbage"
       },
       "c3": {
-        "subtitle": "Sport · Replay"
+        "subtitle": "Sport · Genudsendelse"
       },
       "c4": {
-        "title": "Yoga du matin",
-        "subtitle": "Formation · 14 min"
+        "title": "Morgenyoga",
+        "subtitle": "Kursus · 14 min"
       },
       "c5": {
-        "title": "Grand Prix — Résumé",
-        "subtitle": "Sport · Replay"
+        "title": "Grand Prix — sammendrag",
+        "subtitle": "Sport · Genudsendelse"
       },
       "l2": {
-        "title": "Roland-Garros — Demi-finale",
-        "clock": "Set 3"
+        "title": "Roland-Garros — semifinale",
+        "clock": "Sæt 3"
       },
       "l4": {
-        "title": "MotoGP — Course",
-        "clock": "Tour 18/24"
+        "title": "MotoGP — løb",
+        "clock": "Omgang 18/24"
       },
       "t1": {
-        "title": "Préparation mentale du champion",
-        "subtitle": "Formation"
+        "title": "Mentaltræning for mestre",
+        "subtitle": "Kursus"
       },
       "t2": {
-        "title": "Les plus beaux buts de la saison",
-        "subtitle": "Sport · Replay"
+        "title": "Sæsonens flotteste mål",
+        "subtitle": "Sport · Genudsendelse"
       },
       "t3": {
-        "subtitle": "Formation"
+        "subtitle": "Kursus"
       },
       "t4": {
-        "title": "Analyse : la possession",
+        "title": "Analyse: boldbesiddelse",
         "subtitle": "Sport · Analyse"
       },
       "t5": {
-        "title": "Cuisine du sportif",
-        "subtitle": "Formation"
+        "title": "Mad for sportsfolk",
+        "subtitle": "Kursus"
       },
       "sl1": {
-        "league": "Football · Champions League"
+        "league": "Fodbold · Champions League"
       },
       "sl2": {
-        "title": "Roland-Garros — Demi",
-        "clock": "Set 3",
-        "league": "Tennis · Grand Chelem"
+        "title": "Roland-Garros — semi",
+        "clock": "Sæt 3",
+        "league": "Tennis · Grand Slam"
       },
       "sl3": {
-        "league": "Basket · NBA"
+        "league": "Basketball · NBA"
       },
       "sl4": {
-        "clock": "Tour 18/24",
-        "league": "Moto · MotoGP"
+        "clock": "Omgang 18/24",
+        "league": "Motorsport · MotoGP"
       },
       "su1": {
-        "startsIn": "Aujourd'hui 21:00"
+        "startsIn": "I dag 21.00"
       },
       "su2": {
-        "title": "Finale 100m",
-        "startsIn": "Demain 20:30",
-        "league": "Athlétisme"
+        "title": "100 m-finale",
+        "startsIn": "I morgen 20.30",
+        "league": "Atletik"
       },
       "su3": {
-        "title": "Six Nations — France/Irlande",
-        "startsIn": "Samedi 15:00"
+        "title": "Six Nations — Frankrig/Irland",
+        "startsIn": "Lørdag 15.00"
       },
       "su4": {
-        "title": "Grand Prix de Monaco",
-        "startsIn": "Dimanche 14:00"
+        "title": "Monacos Grand Prix",
+        "startsIn": "Søndag 14.00"
       },
       "sr1": {
-        "title": "Les plus beaux buts"
+        "title": "De flotteste mål"
       },
       "sr2": {
-        "title": "Game 4 — Intégrale"
+        "title": "Kamp 4 — hele kampen"
       },
       "sr3": {
-        "title": "Résumé Grand Prix"
+        "title": "Grand Prix-sammendrag"
       },
       "sr4": {
-        "title": "Top 10 échanges"
+        "title": "Top 10 bolddueller"
       },
       "sd2": {
-        "title": "Basket"
+        "title": "Basketball"
       },
       "sd6": {
-        "title": "Athlétisme"
+        "title": "Atletik"
       },
       "fc1": {
-        "title": "Négociation : les fondamentaux",
-        "duration": "8 min restantes"
+        "title": "Forhandling: det grundlæggende",
+        "duration": "8 min tilbage"
       },
       "fc2": {
-        "title": "Préparation mentale",
-        "duration": "14 min restantes"
+        "title": "Mentaltræning",
+        "duration": "14 min tilbage"
       },
       "fc3": {
-        "title": "Yoga du matin",
-        "duration": "6 min restantes"
+        "title": "Morgenyoga",
+        "duration": "6 min tilbage"
       },
       "fp1": {
-        "title": "Devenir un meilleur orateur"
+        "title": "Bliv en bedre taler"
       },
       "fp2": {
-        "title": "Leadership & management"
+        "title": "Ledelse & management"
       },
       "fp3": {
-        "title": "Nutrition du sportif"
+        "title": "Kost for sportsfolk"
       },
       "fp4": {
-        "title": "Photographie créative"
+        "title": "Kreativ fotografering"
       },
       "fp5": {
-        "title": "Finances personnelles"
+        "title": "Privatøkonomi"
       },
       "ff2": {
-        "title": "Renforcement complet"
+        "title": "Styrketræning for hele kroppen"
       },
       "ff3": {
-        "title": "Étirements & mobilité"
+        "title": "Udstrækning & mobilitet"
       },
       "ff4": {
-        "title": "Course : plan 5 km"
+        "title": "Løb: 5 km-plan"
       },
       "ft1": {
-        "title": "Communication"
+        "title": "Kommunikation"
       },
       "ft2": {
         "title": "Business"
       },
       "ft3": {
-        "title": "Forme physique"
+        "title": "Fysisk form"
       },
       "ft4": {
-        "title": "Nutrition"
+        "title": "Kost"
       },
       "ft5": {
-        "title": "Créativité"
+        "title": "Kreativitet"
       },
       "ft6": {
-        "title": "Finance"
+        "title": "Økonomi"
       },
       "mv1": {
-        "title": "La Couronne d'acier",
-        "genre": "Aventure",
-        "description": "Un royaume au bord de la rupture, une héritière que rien ne prédestinait au trône. Une fresque épique au souffle rare."
+        "title": "Stålkronen",
+        "genre": "Eventyr",
+        "description": "Et kongerige på randen af sammenbrud og en arving, som ingen havde forestillet sig på tronen. Et episk storværk med sjælden kraft."
       },
       "mv2": {
-        "title": "Dernier Sprint",
-        "genre": "Drame sportif",
-        "description": "À 34 ans, un sprinteur déchu s'offre une dernière saison pour redevenir champion — et se réconcilier avec son fils."
+        "title": "Sidste sprint",
+        "genre": "Sportsdrama",
+        "description": "Som 34-årig giver en faldet sprinter sig selv én sidste sæson til at blive mester igen – og til at finde tilbage til sin søn."
       },
       "mv3": {
-        "title": "Nuit blanche à Dakar",
+        "title": "Søvnløs i Dakar",
         "genre": "Thriller",
-        "description": "Une journaliste remonte la piste d'une disparition en une seule nuit, des toits de la Médina au port de Dakar."
+        "description": "En journalist følger sporet efter en forsvinding i løbet af én eneste nat – fra medinaens tage til Dakars havn."
       },
       "mv4": {
-        "title": "Le Rire du roi",
-        "genre": "Comédie",
-        "description": "Un humoriste sans succès devient, par erreur, bouffon officiel d'une cour royale très à cheval sur l'étiquette."
+        "title": "Kongens latter",
+        "genre": "Komedie",
+        "description": "En komiker uden succes bliver ved en fejl officiel hofnar ved et kongehof, der tager etiketten meget alvorligt."
       },
       "mv5": {
-        "title": "Fréquence 88.0",
-        "genre": "Science-fiction",
-        "description": "Une radio pirate capte un signal venu de trente ans dans le futur. Chaque émission change le présent."
+        "title": "Frekvens 88.0",
+        "genre": "Science fiction",
+        "description": "En piratradio opfanger et signal fra tredive år ude i fremtiden. Hver udsendelse ændrer nutiden."
       },
       "mv6": {
-        "title": "Papa, coach et champion",
-        "genre": "Comédie familiale",
-        "description": "Muté entraîneur de l'équipe poussins de sa fille, un ancien pro découvre que le plus dur reste les goûters."
+        "title": "Far, træner og mester",
+        "genre": "Familiekomedie",
+        "description": "Da en tidligere profspiller bliver træner for sin datters U9-hold, opdager han, at det sværeste af alt er kageordningen."
       },
       "mv7": {
-        "title": "Les Vacances de Sa Majesté",
-        "genre": "Comédie",
-        "description": "Une reine incognito dans un camping familial : protocole, barbecue et quiproquos garantis."
+        "title": "Hendes Majestæts ferie",
+        "genre": "Komedie",
+        "description": "En dronning inkognito på en familiecamping: protokol, grill og misforståelser i massevis."
       },
       "mv8": {
-        "title": "Mon robot et moi",
-        "genre": "Famille",
-        "description": "Un enfant timide hérite d'un robot de compagnie démodé — et bien plus courageux qu'il n'en a l'air."
+        "title": "Min robot og mig",
+        "genre": "Familie",
+        "description": "Et genert barn arver en gammeldags selskabsrobot – der er langt modigere, end den ser ud til."
       },
       "mv9": {
-        "title": "La Grande Traversée",
-        "genre": "Aventure familiale",
-        "description": "Deux cousines traversent le pays à vélo pour livrer une lettre qui n'aurait jamais dû se perdre."
+        "title": "Den store rejse",
+        "genre": "Familieeventyr",
+        "description": "To kusiner cykler tværs gennem landet for at aflevere et brev, der aldrig burde være blevet væk."
       }
     },
     "suggestions": [
-      "Football",
-      "Basket",
+      "Fodbold",
+      "Basketball",
       "Tennis",
       "F1",
-      "Leadership",
+      "Ledelse",
       "Yoga",
-      "Nutrition",
+      "Kost",
       "HIIT"
     ]
+  },
+  "activate": {
+    "kicker": "Min side",
+    "title": "Aktivér min liste",
+    "intro": "Tilføj dit eget abonnement (Xtream eller M3U) til din Zuno-boks. Det dukker automatisk op i appen – uden at du skal taste noget på fjernbetjeningen.",
+    "macLabel": "Boksens MAC-adresse",
+    "macHint": "Vises i Zuno → Indstillinger → Min enhed (f.eks. MK:80:78:60:07:4F).",
+    "macCheck": "Se mine lister",
+    "typeLabel": "Abonnementstype",
+    "xtream": "Xtream (server + login)",
+    "m3u": "M3U-link",
+    "nameLabel": "Listens navn",
+    "namePlaceholder": "Mit abonnement",
+    "serverLabel": "Serveradresse",
+    "serverPlaceholder": "http://exemple.com:8080",
+    "userLabel": "Brugernavn",
+    "passLabel": "Adgangskode",
+    "urlLabel": "M3U-link",
+    "urlPlaceholder": "http://exemple.com/get.php?username=…&password=…&type=m3u_plus",
+    "submit": "Aktivér på min boks",
+    "sending": "Sender…",
+    "success": "Så er det klaret! Åbn Zuno: din liste dukker op inden for et minut (eller tryk på Genstart).",
+    "myLists": "Lister på denne boks",
+    "none": "Ingen lister endnu.",
+    "locked": "Administreres af din forhandler",
+    "delete": "Slet",
+    "deleted": "Listen er slettet.",
+    "privacy": "Adgangskoden sendes kun én gang til din boks og vises aldrig igen.",
+    "errors": {
+      "mac": "Ugyldig MAC-adresse. Kopiér den fra Zuno → Indstillinger → Min enhed.",
+      "notEntitled": "Denne boks er ikke aktiveret endnu. Bed din forhandler om at aktivere den, og prøv så igen.",
+      "fields": "Udfyld alle felter. Adresserne skal starte med http:// eller https://.",
+      "tooMany": "Du har nået grænsen for lister: slet en for at tilføje en ny.",
+      "network": "Serveren kan ikke nås. Tjek din forbindelse, og prøv igen.",
+      "generic": "Listen kunne ikke gemmes. Prøv igen om lidt."
+    }
   }
 }
