@@ -108,6 +108,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     _dlSub = DownloadsRepository.instance.stream.listen((List<Download> d) {
       if (mounted) setState(() => _downloads = d);
     });
+    // Catalogue de plus de 10 min → relu (nouveaux titres du fournisseur).
+    _repo.refreshIfStale();
     unawaited(_init());
   }
 

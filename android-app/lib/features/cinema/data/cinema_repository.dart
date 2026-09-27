@@ -22,6 +22,7 @@ import 'dart:collection';
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel_genre.dart';
@@ -36,12 +37,75 @@ import 'cinema_parsers.dart';
 /// catégorie par catégorie). Même logique que l'import des chaînes.
 const int kCinemaSingleShotBytes = 12 * 1024 * 1024;
 
-/// Plafond de titres gardés dans l'index (mémoire bornée).
+/// Plafond de titres gardés dans l'index de RECHERCHE sur une petite box
+/// (≤ 1 Go). Relevé selon la RAM réelle de la box, cf. [CinemaRepository.tuneForRam].
+/// Les CATÉGORIES, elles, ne sont jamais plafonnées par l'index : si l'index
+/// est partiel, elles sont lues en entier directement sur le serveur.
 const int kCinemaIndexMax = 40000;
+
+/// Plafond d'UNE catégorie lue sur le serveur (garde-fou mémoire seulement :
+/// aucune catégorie réelle n'approche ce chiffre).
+const int kCinemaCategoryMax = 150000;
+
+/// Au-delà de cet âge, le catalogue en mémoire est relu à l'ouverture de
+/// Films / Séries (nouveaux titres ajoutés par le fournisseur).
+const Duration kCinemaMaxAge = Duration(minutes: 10);
 
 class CinemaRepository {
   CinemaRepository._();
   static final CinemaRepository instance = CinemaRepository._();
+
+  // ---------------- Mémoire de la box ----------------
+
+  /// Plafond EFFECTIF de l'index, adapté à la RAM (voir [tuneForRam]).
+  int _indexMax = kCinemaIndexMax;
+  bool _ramTuned = false;
+  static const MethodChannel _device =
+      MethodChannel('com.manzilionellm.tvking/device');
+
+  /// Adapte le plafond de l'index à la RAM RÉELLE de la box (une fois).
+  /// Ordre de grandeur mesuré côté Dart : ~0,5 Ko par titre en mémoire.
+  ///   ≤ 1 Go → 40 000 titres (~20 Mo) · ≤ 2 Go → 60 000 ·
+  ///   ≤ 3 Go → 100 000 · au-delà → 150 000 (~75 Mo).
+  /// Info indisponible (PC, échec) → défaut prudent de 40 000.
+  Future<void> tuneForRam() async {
+    if (_ramTuned) return;
+    _ramTuned = true;
+    try {
+      final Object? raw = await _device.invokeMethod<Object?>('getMemoryInfo');
+      if (raw is! Map) return;
+      final int mb = (raw['totalMb'] as num?)?.toInt() ?? 0;
+      final bool low = raw['lowRam'] == true;
+      if (low || mb <= 0 || mb <= 1100) {
+        _indexMax = kCinemaIndexMax;
+      } else if (mb <= 2100) {
+        _indexMax = 60000;
+      } else if (mb <= 3100) {
+        _indexMax = 100000;
+      } else {
+        _indexMax = 150000;
+      }
+      BlackBox.instance
+          .info('CINEMA', 'RAM $mb Mo → index jusqu\'à $_indexMax titres');
+    } catch (_) {
+      // Plateforme sans plugin (PC) : défaut prudent.
+    }
+  }
+
+  /// Moment du dernier chargement des catégories (fraîcheur du catalogue).
+  DateTime? _loadedAt;
+
+  /// À appeler à l'ouverture de Films / Séries : si le catalogue en mémoire
+  /// a plus de [kCinemaMaxAge], on le vide → relu depuis le fournisseur
+  /// (les nouveaux films / épisodes apparaissent sans redémarrer).
+  void refreshIfStale() {
+    final DateTime? at = _loadedAt;
+    if (at != null && DateTime.now().difference(at) > kCinemaMaxAge) {
+      BlackBox.instance.info('CINEMA',
+          'catalogue de plus de ${kCinemaMaxAge.inMinutes} min → relu');
+      clear();
+    }
+  }
 
   // ---------------- État ----------------
   String _sourcesSig = '';
@@ -68,6 +132,14 @@ class CinemaRepository {
   int _indexGen = 0;
   List<CinemaTitle> _index = const <CinemaTitle>[];
   bool _indexDone = false;
+
+  /// Vrai seulement si l'index contient TOUT le catalogue : plafond
+  /// [kCinemaIndexMax] non atteint ET aucun compte / aucune catégorie en
+  /// échec. Sinon, les catégories sont lues directement sur le serveur
+  /// (liste complète) — cause du bug « ça ne prend que la moitié » : sur un
+  /// gros catalogue (> 40 000 titres) ou une box lente, l'index était
+  /// partiel et les catégories étaient servies depuis cet index incomplet.
+  bool _indexComplete = false;
   Future<void>? _indexing;
   Map<String, int> _indexCounts = const <String, int>{};
   List<CinemaTitle>? _recent;
@@ -86,7 +158,8 @@ class CinemaRepository {
   /// Comptes Xtream du client. Si la liste change (compte ajouté / retiré /
   /// poussé par le panel), tous les caches sont vidés.
   Future<List<CinemaSource>> sources() async {
-    final List<Playlist> all = await PlaylistRepository.instance.getAllPlaylists();
+    final List<Playlist> all =
+        await PlaylistRepository.instance.getAllPlaylists();
     final List<CinemaSource> out = <CinemaSource>[];
     for (final Playlist p in all) {
       if (p.type != PlaylistType.xtream) continue;
@@ -97,12 +170,16 @@ class CinemaRepository {
       out.add(CinemaSource(
         key: 'p${p.id}',
         playlistId: p.id!,
-        server: server.endsWith('/') ? server.substring(0, server.length - 1) : server,
+        server: server.endsWith('/')
+            ? server.substring(0, server.length - 1)
+            : server,
         username: user,
         password: p.xtreamPassword ?? '',
       ));
     }
-    final String sig = out.map((CinemaSource s) => '${s.key}@${s.server}/${s.username}').join(',');
+    final String sig = out
+        .map((CinemaSource s) => '${s.key}@${s.server}/${s.username}')
+        .join(',');
     if (sig != _sourcesSig) {
       clear();
       _sourcesSig = sig;
@@ -136,8 +213,9 @@ class CinemaRepository {
     final List<CinemaCategory>? cached = _cats[kind];
     if (cached != null) return cached;
 
-    final String action =
-        kind == CinemaKind.movie ? 'get_vod_categories' : 'get_series_categories';
+    final String action = kind == CinemaKind.movie
+        ? 'get_vod_categories'
+        : 'get_series_categories';
     final List<List<({String id, String name})>> perSource =
         await Future.wait(<Future<List<({String id, String name})>>>[
       for (final CinemaSource s in srcs)
@@ -155,15 +233,20 @@ class CinemaRepository {
 
     final LinkedHashMap<String, _CatBuilder> merged =
         LinkedHashMap<String, _CatBuilder>();
-    final Map<String, Map<String, String>> keys = <String, Map<String, String>>{};
+    final Map<String, Map<String, String>> keys =
+        <String, Map<String, String>>{};
     for (int i = 0; i < srcs.length; i++) {
       final CinemaSource s = srcs[i];
-      final Map<String, String> byId = keys.putIfAbsent(s.key, () => <String, String>{});
+      final Map<String, String> byId =
+          keys.putIfAbsent(s.key, () => <String, String>{});
       for (final ({String id, String name}) c in perSource[i]) {
         final String pretty = ChannelClassifier.prettifyCategory(c.name);
         final String key = CinemaLanguage.searchKey(pretty);
         byId[c.id] = key;
-        merged.putIfAbsent(key, () => _CatBuilder(pretty)).parts.add(CategoryRef(s.key, c.id));
+        merged
+            .putIfAbsent(key, () => _CatBuilder(pretty))
+            .parts
+            .add(CategoryRef(s.key, c.id));
       }
     }
     final List<CinemaCategory> out = <CinemaCategory>[
@@ -179,7 +262,9 @@ class CinemaRepository {
     ];
     _cats[kind] = out;
     _catKeys[kind] = keys;
-    BlackBox.instance.info('CINEMA', '${kind.name} : ${out.length} catégories (${srcs.length} compte(s))');
+    _loadedAt ??= DateTime.now();
+    BlackBox.instance.info('CINEMA',
+        '${kind.name} : ${out.length} catégories (${srcs.length} compte(s))');
     return out;
   }
 
@@ -194,18 +279,22 @@ class CinemaRepository {
       return hit;
     }
     List<CinemaTitle> out;
-    if (_indexKind == kind && _indexDone) {
-      out = _index.where((CinemaTitle t) => t.categoryKey == cat.key).toList(growable: false);
+    if (_indexKind == kind && _indexDone && _indexComplete) {
+      out = _index
+          .where((CinemaTitle t) => t.categoryKey == cat.key)
+          .toList(growable: false);
     } else {
-      final String action = kind == CinemaKind.movie ? 'get_vod_streams' : 'get_series';
+      final String action =
+          kind == CinemaKind.movie ? 'get_vod_streams' : 'get_series';
       final List<CinemaTitle> all = <CinemaTitle>[];
       for (final CategoryRef part in cat.parts) {
         final CinemaSource? s = sourceByKey(part.sourceKey);
         if (s == null) continue;
         try {
-          final Uint8List? b = await _client(s).fetchActionBytes(
+          final Uint8List? b = await _fetchWithRetry(
+            s,
             action,
-            extra: <String, String>{'category_id': part.categoryId},
+            <String, String>{'category_id': part.categoryId},
           );
           if (b == null) continue;
           all.addAll(await _mapInIsolate(b, kind, s, cat.key));
@@ -224,7 +313,7 @@ class CinemaRepository {
 
   Future<List<CinemaTitle>> _mapInIsolate(
       Uint8List bytes, CinemaKind kind, CinemaSource s, String fallbackKey,
-      {int max = kCinemaIndexMax}) {
+      {int max = kCinemaCategoryMax}) {
     return compute(
       mapTitlesJob,
       TitlesJob(
@@ -236,6 +325,19 @@ class CinemaRepository {
         max: max,
       ),
     );
+  }
+
+  /// Requête Xtream avec UN nouvel essai après 1,5 s : un serveur IPTV
+  /// chargé coupe souvent une requête sur deux aux heures de pointe ; sans
+  /// ce 2e essai, la catégorie (ou tout un compte) manquait à l'écran.
+  Future<Uint8List?> _fetchWithRetry(
+      CinemaSource s, String action, Map<String, String>? extra) async {
+    try {
+      return await _client(s).fetchActionBytes(action, extra: extra);
+    } catch (_) {
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      return _client(s).fetchActionBytes(action, extra: extra);
+    }
   }
 
   /// Un même titre sur plusieurs comptes → une seule vignette.
@@ -259,6 +361,7 @@ class CinemaRepository {
     _indexKind = kind;
     _index = const <CinemaTitle>[];
     _indexDone = false;
+    _indexComplete = false;
     _indexCounts = const <String, int>{};
     _recent = null;
     final Future<void> f = _buildIndex(kind, ++_indexGen);
@@ -268,13 +371,20 @@ class CinemaRepository {
 
   Future<void> _buildIndex(CinemaKind kind, int gen) async {
     bool stale() => gen != _indexGen || _indexKind != kind;
+    await tuneForRam();
     final List<CinemaCategory> cats = await categories(kind);
-    final String action = kind == CinemaKind.movie ? 'get_vod_streams' : 'get_series';
+    final String action =
+        kind == CinemaKind.movie ? 'get_vod_streams' : 'get_series';
     final List<CinemaTitle> acc = <CinemaTitle>[];
     final Set<String> seen = <String>{};
-    void add(List<CinemaTitle> list) {
+    bool complete = true; // devient faux au 1er trou (plafond ou échec)
+    void add(List<CinemaTitle> list, {bool truncated = false}) {
+      if (truncated) complete = false;
       for (final CinemaTitle t in list) {
-        if (acc.length >= kCinemaIndexMax) return;
+        if (acc.length >= _indexMax) {
+          complete = false;
+          return;
+        }
         if (seen.add('${t.searchKey}|${t.year ?? ''}')) acc.add(t);
       }
     }
@@ -288,38 +398,62 @@ class CinemaRepository {
 
     final Stopwatch sw = Stopwatch()..start();
     for (final CinemaSource s in _sources) {
-      if (stale() || acc.length >= kCinemaIndexMax) break;
+      if (stale()) break;
+      if (acc.length >= _indexMax) {
+        complete = false;
+        break;
+      }
+      // 1) Tout le catalogue d'un bloc (rapide) si la réponse reste légère.
+      //    ÉCHEC (délai dépassé sur box / connexion lente, coupure…) → on NE
+      //    SAUTE PLUS le compte : on passe à l'étape 2. Avant, un seul
+      //    délai dépassé retirait TOUT le compte de l'index.
+      Uint8List? whole;
       try {
-        final Uint8List? whole =
-            await _client(s).fetchActionBytes(action, softMax: kCinemaSingleShotBytes);
-        if (whole != null) {
-          add(await _mapInIsolate(whole, kind, s, '',
-              max: kCinemaIndexMax - acc.length));
+        whole = await _client(s)
+            .fetchActionBytes(action, softMax: kCinemaSingleShotBytes);
+      } catch (e) {
+        BlackBox.instance.warn(
+            'CINEMA', 'index ${s.key} (bloc) : $e → catégorie par catégorie');
+        whole = null;
+      }
+      if (whole != null) {
+        try {
+          final int room = _indexMax - acc.length;
+          final List<CinemaTitle> got =
+              await _mapInIsolate(whole, kind, s, '', max: room);
+          add(got, truncated: got.length >= room);
+          whole = null; // libère le JSON brut au plus vite (mémoire)
           publish();
           continue;
+        } catch (e) {
+          BlackBox.instance.warn('CINEMA', 'index ${s.key} (lecture) : $e');
         }
-        // Trop gros pour un bloc : catégorie par catégorie (léger, progressif).
-        int n = 0;
-        for (final CinemaCategory c in cats) {
-          if (stale() || acc.length >= kCinemaIndexMax) break;
-          for (final CategoryRef part in c.parts) {
-            if (part.sourceKey != s.key) continue;
-            try {
-              final Uint8List? b = await _client(s).fetchActionBytes(
-                action,
-                extra: <String, String>{'category_id': part.categoryId},
-              );
-              if (b != null) add(await _mapInIsolate(b, kind, s, c.key));
-            } catch (e) {
-              BlackBox.instance.warn('CINEMA', 'index « ${c.name} » : $e');
-            }
-          }
-          if (++n % 8 == 0) publish();
-        }
-        publish();
-      } catch (e) {
-        BlackBox.instance.warn('CINEMA', 'index ${s.key} : $e');
       }
+      // 2) Catégorie par catégorie (léger, progressif), avec un 2e essai.
+      int n = 0;
+      for (final CinemaCategory c in cats) {
+        if (stale()) break;
+        if (acc.length >= _indexMax) {
+          complete = false;
+          break;
+        }
+        for (final CategoryRef part in c.parts) {
+          if (part.sourceKey != s.key) continue;
+          try {
+            final Uint8List? b = await _fetchWithRetry(
+              s,
+              action,
+              <String, String>{'category_id': part.categoryId},
+            );
+            if (b != null) add(await _mapInIsolate(b, kind, s, c.key));
+          } catch (e) {
+            complete = false; // cette catégorie devra être relue en direct
+            BlackBox.instance.warn('CINEMA', 'index « ${c.name} » : $e');
+          }
+        }
+        if (++n % 8 == 0) publish();
+      }
+      publish();
     }
     if (stale()) return;
     final Map<String, int> counts = <String, int>{};
@@ -327,18 +461,24 @@ class CinemaRepository {
       counts[t.categoryKey] = (counts[t.categoryKey] ?? 0) + 1;
     }
     _indexCounts = counts;
+    _indexComplete = complete;
     _indexDone = true;
     publish();
-    BlackBox.instance.info('CINEMA',
-        'index ${kind.name} : ${acc.length} titres en ${sw.elapsedMilliseconds} ms');
+    BlackBox.instance.info(
+        'CINEMA',
+        'index ${kind.name} : ${acc.length} titres en ${sw.elapsedMilliseconds} ms'
+            '${complete ? '' : ' (partiel → catégories lues en direct)'}');
   }
 
   /// Nombre de titres d'une catégorie (null tant que l'index n'est pas fini).
+  /// Pas de compteur si l'index est partiel : mieux vaut aucun chiffre
+  /// qu'un chiffre faux (« 0 » sur une catégorie pleine).
   int? countFor(CinemaKind kind, String catKey) =>
-      indexReady(kind) ? (_indexCounts[catKey] ?? 0) : null;
+      indexReady(kind) && _indexComplete ? (_indexCounts[catKey] ?? 0) : null;
 
   /// « Récemment ajoutés » (depuis l'index, du plus récent au plus ancien).
-  List<CinemaTitle> recent(CinemaKind kind, {Set<String>? allowedCats, int max = 80}) {
+  List<CinemaTitle> recent(CinemaKind kind,
+      {Set<String>? allowedCats, int max = 80}) {
     if (_indexKind != kind || _index.isEmpty) return const <CinemaTitle>[];
     final List<CinemaTitle> sorted = _recent ??= (List<CinemaTitle>.of(
         _index.where((CinemaTitle t) => t.addedAt > 0))
@@ -357,7 +497,8 @@ class CinemaRepository {
         .where((String w) => w.isNotEmpty)
         .toList();
     if (words.isEmpty) return const <CinemaTitle>[];
-    Iterable<CinemaTitle> pool = _indexKind == kind ? _index : const <CinemaTitle>[];
+    Iterable<CinemaTitle> pool =
+        _indexKind == kind ? _index : const <CinemaTitle>[];
     if (pool.isEmpty) {
       // Index pas encore là : on cherche dans les catégories déjà ouvertes.
       pool = <CinemaTitle>[
@@ -412,7 +553,9 @@ class CinemaRepository {
     final SeriesDetails? hit = _series[t.id];
     if (hit != null) return hit;
     final CinemaSource? s = sourceByKey(t.sourceKey) ??
-        (await sources()).where((CinemaSource x) => x.key == t.sourceKey).firstOrNull;
+        (await sources())
+            .where((CinemaSource x) => x.key == t.sourceKey)
+            .firstOrNull;
     if (s == null) return null;
     try {
       final Uint8List? b = await _client(s).fetchActionBytes(
@@ -455,7 +598,9 @@ class CinemaRepository {
     _indexGen++;
     _index = const <CinemaTitle>[];
     _indexDone = false;
+    _indexComplete = false;
     _indexing = null;
+    _loadedAt = null;
     _indexCounts = const <String, int>{};
     _recent = null;
     indexVersion.value++;
@@ -484,7 +629,12 @@ class _CatBuilder {
 /// Point d'entrée isolate pour `get_series_info` (réponse parfois lourde :
 /// des centaines d'épisodes avec leurs résumés).
 SeriesDetails _seriesInIsolate(
-    ({TransferableTypedData payload, CinemaSource source, String seriesId, String name}) job) {
+    ({
+      TransferableTypedData payload,
+      CinemaSource source,
+      String seriesId,
+      String name
+    }) job) {
   return parseSeriesInfo(
     decodeJsonBytes(job.payload.materialize().asUint8List()),
     source: job.source,
@@ -499,10 +649,30 @@ SeriesDetails _seriesInIsolate(
 
 /// Mots propres aux catalogues VOD enfants (en plus de ceux du Direct).
 const List<String> _kKidsVodWords = <String>[
-  'kids', 'enfant', 'jeunesse', 'animation', 'anime', 'dessin anime',
-  'dessins animes', 'cartoon', 'famille', 'family', 'disney', 'pixar',
-  'dreamworks', 'infantil', 'kinder', 'bambini', 'cocuk', 'детск',
-  '儿童', '动画', '動畫', 'أطفال', 'كرتون', 'बच्चों',
+  'kids',
+  'enfant',
+  'jeunesse',
+  'animation',
+  'anime',
+  'dessin anime',
+  'dessins animes',
+  'cartoon',
+  'famille',
+  'family',
+  'disney',
+  'pixar',
+  'dreamworks',
+  'infantil',
+  'kinder',
+  'bambini',
+  'cocuk',
+  'детск',
+  '儿童',
+  '动画',
+  '動畫',
+  'أطفال',
+  'كرتون',
+  'बच्चों',
 ];
 
 bool isAdultCategory(String name) =>
@@ -510,7 +680,8 @@ bool isAdultCategory(String name) =>
 
 bool isKidsCategory(String name) {
   if (isAdultCategory(name)) return false;
-  if (ChannelClassifier.classifyGenre('', name) == ChannelGenre.kids) return true;
+  if (ChannelClassifier.classifyGenre('', name) == ChannelGenre.kids)
+    return true;
   final String k = CinemaLanguage.searchKey(name);
   for (final String w in _kKidsVodWords) {
     if (k.contains(w)) return true;
