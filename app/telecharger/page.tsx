@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import {
+  ZUNO_ANDROID_PACKAGE_ID,
+  zunoAndroidDownloadUrl,
+} from "../lib/downloads-public";
 
 export const metadata: Metadata = {
   title: "Télécharger",
@@ -7,35 +11,36 @@ export const metadata: Metadata = {
   alternates: { canonical: "https://zuno.7themotion.com/telecharger" },
 };
 
-const APK =
-  "https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv/zuno-tv.apk";
 const WIN_SETUP =
+  process.env.NEXT_PUBLIC_ZUNO_DOWNLOAD_WINDOWS ||
   "https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-windows/Zuno-Setup.exe";
 const WIN_ZIP =
+  process.env.NEXT_PUBLIC_ZUNO_DOWNLOAD_WINDOWS_ZIP ||
   "https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-windows/zuno-windows.zip";
 
-const CARDS = [
-  {
-    title: "Box Android TV · Fire TV · Google TV",
-    body: "Installez l'APK, ouvrez Zuno, notez l'adresse MAC affichée, puis activez.",
-    primary: { label: "Télécharger pour la box (APK)", href: APK },
-    note: "Astuce box : zuno.7themotion.com/apk",
-  },
-  {
-    title: "Windows 10 / 11 · 64 bits",
-    body: "Lancez Zuno-Setup.exe. Si Windows affiche « Éditeur inconnu » : Informations complémentaires → Exécuter quand même.",
-    primary: { label: "Télécharger pour Windows", href: WIN_SETUP },
-    secondary: { label: "Archive ZIP", href: WIN_ZIP },
-  },
-  {
-    title: "Google Play · Android TV",
-    body: "Publication Play Store en cours.",
-    primary: null,
-    soon: true,
-  },
-];
-
 export default function TelechargerPage() {
+  const android = zunoAndroidDownloadUrl();
+  const CARDS = [
+    {
+      title: "Box Android TV · Fire TV · Google TV",
+      body: "Téléchargez le fichier Zuno (.aab), installez-le sur la box, ouvrez Zuno, notez l'adresse MAC affichée, puis activez.",
+      primary: { label: "Télécharger Zuno (Android)", href: android },
+      note: `Package : ${ZUNO_ANDROID_PACKAGE_ID} · Astuce box : zuno.7themotion.com/apk`,
+    },
+    {
+      title: "Windows 10 / 11 · 64 bits",
+      body: "Lancez Zuno-Setup.exe. Si Windows affiche « Éditeur inconnu » : Informations complémentaires → Exécuter quand même.",
+      primary: { label: "Télécharger pour Windows", href: WIN_SETUP },
+      secondary: { label: "Archive ZIP", href: WIN_ZIP },
+    },
+    {
+      title: "Google Play · Android TV",
+      body: "Publication Play Store en cours.",
+      primary: null as null,
+      soon: true,
+    },
+  ];
+
   return (
     <div className="zuno-page mx-auto max-w-4xl px-4 py-14 sm:px-6">
       <h1 className="text-3xl font-bold text-white sm:text-4xl">Télécharger</h1>

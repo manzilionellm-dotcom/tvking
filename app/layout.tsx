@@ -20,15 +20,15 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   metadataBase: new URL("https://zuno.7themotion.com"),
   title: {
-    default: "Zuno — TV King",
+    default: "Zuno — TV, films & multi-appareils",
     template: "%s | Zuno",
   },
   description:
-    "Zuno (TV King) : TV en direct, films & séries, multi-appareils. Forfaits Annuel 9,99 € ou À vie 15 €.",
+    "Zuno : TV en direct, films & séries, multi-appareils. Forfaits Annuel 9,99 € ou À vie 15 €.",
   manifest: "/manifest.webmanifest",
   icons: { icon: "/icon.svg" },
   openGraph: {
-    title: "Zuno — TV King",
+    title: "Zuno",
     description: "Lecteur premium multi-appareils. Forfaits simples.",
     url: "https://zuno.7themotion.com",
     siteName: "Zuno",

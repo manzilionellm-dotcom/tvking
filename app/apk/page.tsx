@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
+import { zunoAndroidDownloadUrl } from "../lib/downloads-public";
 
-/** Convenience URL used on box browsers: zuno.7themotion.com/apk */
+/** Convenience URL used on box browsers: zuno.7themotion.com/apk → official Zuno Android build */
 export default function ApkRedirect() {
-  redirect(
-    "https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv/zuno-tv.apk",
-  );
+  redirect(zunoAndroidDownloadUrl());
 }
