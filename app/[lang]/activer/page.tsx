@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useI18n } from "../../i18n/provider";
 import {
-  PANEL_API,
   buildBody,
   itemsOf,
   normalizeMac,
@@ -14,7 +13,8 @@ import {
 
 /*
  * « Activer ma liste » : le client entre la MAC de sa box et SON abonnement
- * (Xtream ou M3U). Envoi direct au panel Zuno (cf. lib/self-source.ts) ; la
+ * (Xtream ou M3U). Envoi au panel Zuno via le relais du site
+ * (app/api/self-source/[mac]/route.ts, cf. lib/self-source.ts) ; la
  * box l'installe d'elle-même en moins d'une minute. Aucune donnée n'est
  * stockée par ce site.
  */
@@ -51,7 +51,7 @@ export default function ActivatePage() {
 
   const loadItems = async (mac: string) => {
     try {
-      const r = await fetch(`${PANEL_API}/api/self-source/${encodeURIComponent(mac)}`);
+      const r = await fetch(`/api/self-source/${encodeURIComponent(mac)}`);
       const body = await r.json().catch(() => ({}));
       const out = outcomeOf(r.status, body);
       if (out !== "ok") {
@@ -92,7 +92,7 @@ export default function ActivatePage() {
     setMacInput(mac);
     setBusy(true);
     try {
-      const r = await fetch(`${PANEL_API}/api/self-source/${encodeURIComponent(mac)}`, {
+      const r = await fetch(`/api/self-source/${encodeURIComponent(mac)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -116,7 +116,7 @@ export default function ActivatePage() {
     setBusy(true);
     try {
       const r = await fetch(
-        `${PANEL_API}/api/self-source/${encodeURIComponent(mac)}?id=${encodeURIComponent(id)}`,
+        `/api/self-source/${encodeURIComponent(mac)}?id=${encodeURIComponent(id)}`,
         { method: "DELETE" },
       );
       const res = await r.json().catch(() => ({}));
@@ -131,6 +131,25 @@ export default function ActivatePage() {
     }
     setBusy(false);
   };
+
+  // Export statique GitHub Pages : pas de serveur, donc pas de relais vers le
+  // panel → on renvoie vers « Mon espace » du panel (même fonction).
+  if (process.env.NEXT_PUBLIC_LOCALE_IN_PATH === "1") {
+    return (
+      <div className="pb-[var(--safe-y)] pl-[var(--safe-x)] pr-[var(--safe-x)] pt-[var(--safe-y)]">
+        <h1 className="font-display text-[3rem] font-extrabold tracking-tight text-[var(--text-high)]">{a.title}</h1>
+        <p className="mb-[1.5rem] mt-[0.4rem] max-w-[46rem] text-[1.2rem] text-[var(--text-medium)]">{a.intro}</p>
+        <a
+          href="https://app.7themotion.com/mon-espace"
+          data-focusable
+          className="focusable inline-flex rounded-full px-[1.4rem] py-[0.85rem] text-[1.05rem] font-bold text-black"
+          style={{ background: "var(--gold-grad)" }}
+        >
+          {a.submit}
+        </a>
+      </div>
+    );
+  }
 
   const tab = (k: Kind, text: string) => (
     <button

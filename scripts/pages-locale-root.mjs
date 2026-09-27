@@ -7,7 +7,7 @@
 //  (navigator.languages) et envoient le visiteur vers /tvking/<langue>/… .
 //  Mêmes règles que app/i18n/config.ts (langue inconnue → anglais).
 // ============================================================================
-import { readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const cfg = readFileSync("app/i18n/config.ts", "utf8");
 const list = cfg.match(/export const LOCALES = \[([\s\S]*?)\] as const/)[1];
@@ -31,7 +31,9 @@ const script = `
   var rest = location.pathname.indexOf(base) === 0 ? location.pathname.slice(base.length) : location.pathname;
   var first = rest.split("/")[1];
   if (L.indexOf(first) >= 0) { document.getElementById("nf").style.display = "block"; return; }
-  location.replace(base + "/" + pick() + (rest === "/" ? "/" : rest) + location.search + location.hash);
+  // Pages sert /tvking/en → en.html : jamais de « / » final (sinon 404).
+  var path = rest === "/" ? "" : (rest.slice(-1) === "/" ? rest.slice(0, -1) : rest);
+  location.replace(base + "/" + pick() + path + location.search + location.hash);
 })();`;
 
 const page = (title) => `<!doctype html><html><head><meta charset="utf-8">
@@ -42,4 +44,9 @@ const page = (title) => `<!doctype html><html><head><meta charset="utf-8">
 
 writeFileSync("out/index.html", page("TV King"));
 writeFileSync("out/404.html", page("TV King"));
-console.log(`✓ index.html + 404.html : ${LOCALES.length} langues`);
+// Accueil de chaque langue joignable en « /tvking/de » ET « /tvking/de/ »
+// (l'export écrit de.html ; un dossier de/ existe aussi pour les sous-pages).
+for (const l of LOCALES) {
+  if (existsSync(`out/${l}.html`)) copyFileSync(`out/${l}.html`, `out/${l}/index.html`);
+}
+console.log(`✓ index.html + 404.html + <langue>/index.html : ${LOCALES.length} langues`);

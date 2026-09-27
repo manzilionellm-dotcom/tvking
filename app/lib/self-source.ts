@@ -1,8 +1,10 @@
 /*
  * « Activer ma liste » — le client ajoute SON abonnement Xtream / M3U à SA box.
  *
- * Le site parle directement au panel Zuno (API publique /api/self-source/:mac,
- * déjà en production, ouverte aux autres sites par CORS). Le panel REFUSE toute
+ * Le site parle au panel Zuno (API publique /api/self-source/:mac, déjà en
+ * production) via son relais serveur app/api/self-source/[mac] (les réponses
+ * du panel ne sont pas lisibles directement par un navigateur : pas d'en-tête
+ * CORS sur les réponses). Le panel REFUSE toute
  * MAC sans licence active (« not_entitled ») : impossible d'écrire sur une box
  * qui n'est pas cliente. La box reçoit la liste d'elle-même (vérification du
  * panel chaque minute dans l'app).

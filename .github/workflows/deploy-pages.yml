@@ -45,7 +45,7 @@ jobs:
       # Langues : pas de serveur sur Pages → pas de proxy (langue choisie par
       # le navigateur, cf. scripts/pages-locale-root.mjs) et liens préfixés
       # par la langue (/tvking/en/films).
-      - run: rm -f proxy.ts
+      - run: rm -rf proxy.ts app/api
       - run: npx next build
         env:
           GITHUB_PAGES: "true"
