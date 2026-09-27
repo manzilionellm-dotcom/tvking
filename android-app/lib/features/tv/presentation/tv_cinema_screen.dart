@@ -164,15 +164,17 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final List<String> langs = freq.keys.toList()
       ..sort((String a, String b) => freq[b]!.compareTo(freq[a]!));
 
-    final String appLang = CinemaLanguage.normalizeCode(Localizations.localeOf(context).languageCode);
+    // Par défaut : TOUTES les langues (demande du propriétaire 27/09/2026 :
+    // « j'ai tout mis, mais ça s'arrête sur la Belgique »). Avant, le filtre
+    // se mettait TOUT SEUL sur la langue de la TV → le client croyait voir
+    // tout le catalogue alors qu'il n'en voyait qu'une partie. Le filtre ne
+    // s'applique plus que si le client l'a CHOISI lui-même (ligne Langue).
     final String? saved = (await SharedPreferences.getInstance()).getString(_prefKey);
     String? lang;
-    if (saved == 'all') {
-      lang = null;
-    } else if (saved != null && freq.containsKey(saved)) {
+    if (saved != null && saved != 'all' && freq.containsKey(saved)) {
       lang = saved;
     } else {
-      lang = (freq[appLang] ?? 0) >= 3 ? appLang : null;
+      lang = null;
     }
     if (!mounted) return;
     setState(() {
@@ -208,7 +210,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final List<CinemaCategory> adult = <CinemaCategory>[];
     for (final CinemaCategory c in _cats) {
       if (kids && !c.isKids) continue;
-      if (_lang != null && c.languageKey != _lang) continue;
+      // Filtre de langue : on garde la langue choisie ET les catégories
+      // SANS langue détectée (« NETFLIX », « DISNEY+ », « 4K »…) — elles ne
+      // sont pas étrangères ; avant, elles disparaissaient avec le filtre.
+      if (_lang != null && c.languageKey != null && c.languageKey != _lang) {
+        continue;
+      }
       (c.isAdult ? adult : normal).add(c);
     }
     return <CinemaCategory>[...normal, if (!kids) ...adult];
