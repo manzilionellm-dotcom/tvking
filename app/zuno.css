@@ -1,0 +1,37 @@
+/* ---- Zuno marketing VIP (commerce shell) ---- */
+:root {
+  --zuno-blue: #3b82f6;
+  --zuno-blue-deep: #1d4ed8;
+  --zuno-glow: rgba(59, 130, 246, 0.35);
+}
+
+@keyframes zuno-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes zuno-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes zuno-glow-pulse {
+  0%, 100% { box-shadow: 0 0 24px var(--zuno-glow); }
+  50% { box-shadow: 0 0 36px rgba(59, 130, 246, 0.55); }
+}
+
+.zuno-fade-in { animation: zuno-fade-in 0.45s ease-out both; }
+.zuno-slide-up { animation: zuno-slide-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.zuno-cta:hover { filter: brightness(1.08); }
+.zuno-wa-fab { animation: zuno-glow-pulse 3.5s ease-in-out infinite; }
+.zuno-chat-panel { animation: zuno-slide-up 0.35s ease-out both; }
+.zuno-card { animation: zuno-fade-in 0.5s ease-out both; }
+.zuno-marketing { --bg: #0a0a0c; }
+
+@media (prefers-reduced-motion: reduce) {
+  .zuno-fade-in,
+  .zuno-slide-up,
+  .zuno-wa-fab,
+  .zuno-chat-panel,
+  .zuno-card {
+    animation: none !important;
+  }
+}
