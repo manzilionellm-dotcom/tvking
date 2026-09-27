@@ -1,13 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Playfair_Display } from "next/font/google";
 import "./globals.css";
-import Sidebar from "./components/Sidebar";
-import MobileNav from "./components/MobileNav";
-import SpatialNav from "./components/SpatialNav";
+import "./zuno.css";
 import Preferences from "./components/Preferences";
 import ConsentGate from "./components/ConsentGate";
-import MiniPlayer from "./components/MiniPlayer";
-import WhatsAppFab from "./components/WhatsAppFab";
+import AppChrome from "./components/site/AppChrome";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,20 +18,20 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://tvking.vercel.app"),
+  metadataBase: new URL("https://zuno.7themotion.com"),
   title: {
-    default: "TV King — Sport, films & formation",
-    template: "%s | TV King",
+    default: "Zuno — TV King",
+    template: "%s | Zuno",
   },
   description:
-    "Lecteur IPTV personnel : vos playlists M3U, films, sport et formation. Aucun contenu n'est fourni avec l'app.",
+    "Zuno (TV King) : TV en direct, films & séries, multi-appareils. Forfaits Annuel 9,99 € ou À vie 15 €.",
   manifest: "/manifest.webmanifest",
   icons: { icon: "/icon.svg" },
   openGraph: {
-    title: "TV King — Sport, films & formation",
-    description: "Lecteur IPTV personnel. Vos playlists, vos liens.",
-    url: "https://tvking.vercel.app",
-    siteName: "TV King",
+    title: "Zuno — TV King",
+    description: "Lecteur premium multi-appareils. Forfaits simples.",
+    url: "https://zuno.7themotion.com",
+    siteName: "Zuno",
     locale: "fr_FR",
     type: "website",
   },
@@ -45,7 +42,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   userScalable: true,
-  themeColor: "#121212",
+  themeColor: "#0a0a0c",
 };
 
 export default function RootLayout({
@@ -58,12 +55,7 @@ export default function RootLayout({
       <body className="min-h-full bg-[var(--bg)]">
         <Preferences />
         <ConsentGate />
-        <Sidebar />
-        <MobileNav />
-        <SpatialNav />
-        <main className="min-h-screen pl-[5.5rem] max-md:pb-[5.5rem] max-md:pl-0">{children}</main>
-        <MiniPlayer />
-        <WhatsAppFab />
+        <AppChrome>{children}</AppChrome>
       </body>
     </html>
   );
