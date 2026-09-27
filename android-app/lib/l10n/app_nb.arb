@@ -884,5 +884,10 @@
   "tvCinemaSubtitles": "Teksting",
   "tvCinemaSubtitlesOff": "Av",
   "tvCinemaTrackUnknown": "Spor {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "Oppdaterer…",
+  "tvDeactivate": "Deaktiver",
+  "tvSourceActive": "aktiv",
+  "tvSourceInactive": "deaktivert",
+  "tvSourceChannels": "{count, plural, =1{1 kanal} other{{count} kanaler}}"
 }

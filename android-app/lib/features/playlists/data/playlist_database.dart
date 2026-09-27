@@ -27,7 +27,7 @@ class PlaylistDatabase {
   // v2 ajoute la colonne `epg_url` à la table playlists.
   // v5 ajoute `http_headers` à la table channels (User-Agent/Referer par
   // chaîne, imposés par certains panels IPTV — sinon 403 à la lecture).
-  static const int _kDbVersion = 5;
+  static const int _kDbVersion = 6;
 
   Database? _db;
 
@@ -77,7 +77,8 @@ class PlaylistDatabase {
         created_at INTEGER NOT NULL,
         last_synced_at INTEGER,
         channel_count INTEGER NOT NULL DEFAULT 0,
-        is_active INTEGER NOT NULL DEFAULT 0
+        is_active INTEGER NOT NULL DEFAULT 0,
+        hidden INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute(
@@ -196,6 +197,15 @@ class PlaylistDatabase {
       // JSON. Colonne ajoutée NULL → les chaînes déjà en base la rempliront
       // au prochain rafraîchissement de la playlist.
       await db.execute('ALTER TABLE channels ADD COLUMN http_headers TEXT');
+    }
+    if (oldVersion < 6) {
+      // v6 (27/09/2026) : sources « désactivées » sur la TV. En mode fusion
+      // (toutes les sources ensemble dans Direct), le client peut désormais
+      // couper une source sans la supprimer. DEFAULT 0 = toutes restent
+      // visibles après la mise à jour : rien ne disparaît chez les clients.
+      await db.execute(
+        'ALTER TABLE playlists ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0',
+      );
     }
   }
 }

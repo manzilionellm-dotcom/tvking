@@ -2188,5 +2188,10 @@
   "tvCinemaSubtitles": "Untertitel",
   "tvCinemaSubtitlesOff": "Aus",
   "tvCinemaTrackUnknown": "Spur {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "Aktualisierung…",
+  "tvDeactivate": "Deaktivieren",
+  "tvSourceActive": "aktiv",
+  "tvSourceInactive": "deaktiviert",
+  "tvSourceChannels": "{count, plural, =1{1 Sender} other{{count} Sender}}"
 }

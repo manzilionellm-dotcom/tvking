@@ -1,9 +1,18 @@
 // =========================================================
 //  tv_sources_screen.dart — « Mes sources » (gérer M3U / Xtream)
 // =========================================================
-//  Le client gère SES sources : en ajouter (Xtream ou M3U), en activer une
-//  (= celle dont les chaînes s'affichent), ou en supprimer. Modèle « une source
-//  active à la fois » (activer une autre = désactiver la précédente).
+//  Le client gère SES sources : en ajouter (Xtream ou M3U), les activer /
+//  désactiver, ou les supprimer.
+//
+//  TV = MODE FUSION : PLUSIEURS sources actives EN MÊME TEMPS, sans limite de
+//  nombre — leurs chaînes arrivent ensemble dans Direct (et leurs films /
+//  séries dans Cinéma). « Désactiver » retire une source de l'affichage sans
+//  la supprimer ; « Activer » la remet instantanément (chaînes gardées en base).
+//
+//  IDENTIFICATION (demande du propriétaire 27/09/2026) : chaque ligne affiche
+//  l'identifiant (username) et le serveur de la source — le revendeur voit
+//  d'un coup d'œil QUEL abonnement est installé sur la box. Le mot de passe
+//  n'est JAMAIS affiché.
 // =========================================================
 import 'package:flutter/material.dart';
 
@@ -61,7 +70,8 @@ class TvSourcesScreen extends StatelessWidget {
           child: StreamBuilder<List<Playlist>>(
             stream: PlaylistRepository.instance.playlistsStream,
             initialData: PlaylistRepository.instance.currentPlaylists,
-            builder: (BuildContext context, AsyncSnapshot<List<Playlist>> snap) {
+            builder:
+                (BuildContext context, AsyncSnapshot<List<Playlist>> snap) {
               final List<Playlist> items = snap.data ?? const <Playlist>[];
               if (items.isEmpty) {
                 return Center(
@@ -94,21 +104,29 @@ class _SourceRow extends StatelessWidget {
 
   bool get _xtream => playlist.type == PlaylistType.xtream;
 
+  /// Mode fusion (TV) : « active » = non désactivée. Sinon (historique) :
+  /// la source unique marquée active.
+  bool get _merge => PlaylistRepository.mergeAllPlaylists;
+  bool get _on => _merge ? !playlist.hidden : playlist.isActive;
+
   Future<void> _delete(BuildContext context) async {
     final bool? ok = await showDialog<bool>(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         backgroundColor: TvTokens.card,
-        title: Text(context.l10n.tvDeleteQuestion, style: TextStyle(color: TvTokens.text)),
+        title: Text(context.l10n.tvDeleteQuestion,
+            style: TextStyle(color: TvTokens.text)),
         content: Text(context.l10n.tvDeleteSourceConfirm(playlist.name),
             style: TextStyle(color: TvTokens.muted)),
         actions: <Widget>[
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text(context.l10n.tvCancel, style: TextStyle(color: TvTokens.muted))),
+              child: Text(context.l10n.tvCancel,
+                  style: TextStyle(color: TvTokens.muted))),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text(context.l10n.tvDelete, style: TextStyle(color: TvTokens.live))),
+              child: Text(context.l10n.tvDelete,
+                  style: TextStyle(color: TvTokens.live))),
         ],
       ),
     );
@@ -121,14 +139,15 @@ class _SourceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color badge = _xtream ? TvTokens.accent : const Color(0xFF5AA0E8);
+    final ({String? user, String? host}) ref = playlist.reference;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
       decoration: BoxDecoration(
         color: TvTokens.panel,
         borderRadius: BorderRadius.circular(TvTokens.rCard),
         border: Border.all(
-            color: playlist.isActive ? TvTokens.accent : TvTokens.lineSoft,
-            width: playlist.isActive ? 1.5 : 1),
+            color: _on ? TvTokens.accent : TvTokens.lineSoft,
+            width: _on ? 1.5 : 1),
       ),
       child: Row(
         children: <Widget>[
@@ -158,24 +177,38 @@ class _SourceRow extends StatelessWidget {
                         fontSize: TvDimens.title,
                         fontWeight: FontWeight.w700,
                         color: TvTokens.text)),
-                const SizedBox(height: 2),
+                if (ref.user != null || ref.host != null) ...<Widget>[
+                  const SizedBox(height: 4),
+                  _Reference(user: ref.user, host: ref.host),
+                ],
+                const SizedBox(height: 4),
                 Text(
-                    '${playlist.channelCount} chaînes'
-                    '${playlist.isActive ? '  ·  ✓ active' : ''}',
+                    '${context.l10n.tvSourceChannels(playlist.channelCount)}'
+                    '  ·  '
+                    '${_on ? '✓ ${context.l10n.tvSourceActive}' : context.l10n.tvSourceInactive}',
                     style: TextStyle(
                         fontSize: TvDimens.label,
-                        color: playlist.isActive
-                            ? TvTokens.accent
-                            : TvTokens.muted)),
+                        color: _on ? TvTokens.accent : TvTokens.mutedDim)),
               ],
             ),
           ),
-          if (!playlist.isActive && playlist.id != null) ...<Widget>[
+          if (playlist.id != null && _merge) ...<Widget>[
+            // Bascule indépendante : les autres sources ne bougent pas.
+            _Pill(
+                icon: _on
+                    ? Icons.pause_circle_outline_rounded
+                    : Icons.play_arrow_rounded,
+                label:
+                    _on ? context.l10n.tvDeactivate : context.l10n.tvActivate,
+                onSelect: () => PlaylistRepository.instance
+                    .setPlaylistHidden(playlist.id!, _on)),
+            const SizedBox(width: 10),
+          ] else if (!playlist.isActive && playlist.id != null) ...<Widget>[
             _Pill(
                 icon: Icons.play_arrow_rounded,
                 label: context.l10n.tvActivate,
-                onSelect: () =>
-                    PlaylistRepository.instance.setActivePlaylist(playlist.id!)),
+                onSelect: () => PlaylistRepository.instance
+                    .setActivePlaylist(playlist.id!)),
             const SizedBox(width: 10),
           ],
           _IconBtn(
@@ -183,6 +216,44 @@ class _SourceRow extends StatelessWidget {
               onSelect: () => _delete(context)),
         ],
       ),
+    );
+  }
+}
+
+/// Ligne de référence : 👤 identifiant   ·   🌐 serveur (sobre, lisible à 3 m).
+class _Reference extends StatelessWidget {
+  const _Reference({required this.user, required this.host});
+  final String? user;
+  final String? host;
+
+  @override
+  Widget build(BuildContext context) {
+    final TextStyle st = TextStyle(
+        fontSize: TvDimens.label,
+        fontWeight: FontWeight.w600,
+        color: TvTokens.text);
+    return Row(
+      children: <Widget>[
+        if (user != null) ...<Widget>[
+          const Icon(Icons.person_outline_rounded,
+              size: 18, color: TvTokens.muted),
+          const SizedBox(width: 6),
+          Flexible(
+              child: Text(user!,
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: st)),
+        ],
+        if (user != null && host != null) const SizedBox(width: 16),
+        if (host != null) ...<Widget>[
+          const Icon(Icons.dns_outlined, size: 18, color: TvTokens.muted),
+          const SizedBox(width: 6),
+          Flexible(
+              child: Text(host!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: st.copyWith(
+                      fontWeight: FontWeight.w400, color: TvTokens.muted))),
+        ],
+      ],
     );
   }
 }

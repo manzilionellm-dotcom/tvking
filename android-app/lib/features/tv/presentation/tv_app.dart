@@ -20,8 +20,8 @@ import '../../../core/i18n/locale_repository.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
-import '../../playlists/data/remote_source_repository.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../core/tv_content_refresh.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -134,13 +134,68 @@ class _RestartWidgetState extends State<RestartWidget> {
   void _restart() {
     // Re-synchronise explicitement (au cas où les écrans étaient déjà montés).
     SubscriptionState.instance.syncWithBackend();
-    RemoteSourceRepository.sync();
+    // VRAIE mise à jour : nouvelle source du panel + RE-TÉLÉCHARGEMENT des
+    // chaînes de chaque source + nouveaux films / séries. Avant, Redémarrer
+    // ne relisait que le cache → « le client redémarre et rien n'entre ».
+    unawaited(TvContentRefresh.run(clearCinema: true));
     setState(() => _key = UniqueKey());
   }
 
   @override
-  Widget build(BuildContext context) =>
-      KeyedSubtree(key: _key, child: widget.child);
+  Widget build(BuildContext context) => Stack(
+        children: <Widget>[
+          KeyedSubtree(key: _key, child: widget.child),
+          // Pastille discrète « Mise à jour… » pendant la passe : le client
+          // VOIT que le redémarrage travaille (puis elle disparaît seule).
+          Positioned(
+            top: TvDimens.safeV,
+            right: TvDimens.safeH,
+            child: IgnorePointer(
+              child: ValueListenableBuilder<bool>(
+                valueListenable: TvContentRefresh.running,
+                builder: (BuildContext context, bool on, _) =>
+                    AnimatedOpacity(
+                  opacity: on ? 1 : 0,
+                  duration: const Duration(milliseconds: 250),
+                  child: const _UpdatingPill(),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+}
+
+/// « Mise à jour… » : pastille sombre, liseré or, petit indicateur.
+class _UpdatingPill extends StatelessWidget {
+  const _UpdatingPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: TvTokens.surface3,
+        borderRadius: BorderRadius.circular(TvTokens.rButton),
+        border: Border.all(color: TvTokens.accent.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: TvTokens.accentBright),
+          ),
+          const SizedBox(width: 10),
+          Text(context.l10n.tvUpdatingContent,
+              style: TvTokens.ui(TvDimens.caption,
+                  weight: FontWeight.w600, color: TvTokens.text)),
+        ],
+      ),
+    );
+  }
 }
 
 /// Dialogue Back/Exit : Continuer / Redémarrer / Quitter. Renvoie
@@ -340,7 +395,6 @@ class _TvGateState extends State<TvGate> {
         if (action == 'restart') {
           RestartWidget.restart(context);
         } else if (action == 'quit') {
-          if (!Platform.isAndroid) exit(0); // PC : fermer la fenêtre
           if (!Platform.isAndroid) exit(0); // PC : fermer la fenêtre
       await SystemNavigator.pop();
         }

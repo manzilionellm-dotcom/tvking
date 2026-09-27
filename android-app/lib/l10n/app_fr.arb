@@ -2190,5 +2190,11 @@
   "tvCinemaSubtitles": "Sous-titres",
   "tvCinemaSubtitlesOff": "Désactivés",
   "tvCinemaTrackUnknown": "Piste {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "Mise à jour…",
+  "tvDeactivate": "Désactiver",
+  "tvSourceActive": "active",
+  "tvSourceInactive": "désactivée",
+  "tvSourceChannels": "{count, plural, =1{1 chaîne} other{{count} chaînes}}",
+  "@tvSourceChannels": {"placeholders": {"count": {"type": "int"}}}
 }

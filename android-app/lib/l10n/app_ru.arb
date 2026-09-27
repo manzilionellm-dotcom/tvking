@@ -2188,5 +2188,10 @@
   "tvCinemaSubtitles": "Субтитры",
   "tvCinemaSubtitlesOff": "Выкл.",
   "tvCinemaTrackUnknown": "Дорожка {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "Обновление…",
+  "tvDeactivate": "Отключить",
+  "tvSourceActive": "активна",
+  "tvSourceInactive": "отключена",
+  "tvSourceChannels": "{count, plural, =1{1 канал} few{{count} канала} many{{count} каналов} other{{count} канала}}"
 }

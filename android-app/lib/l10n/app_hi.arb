@@ -2188,5 +2188,10 @@
   "tvCinemaSubtitles": "सबटाइटल",
   "tvCinemaSubtitlesOff": "बंद",
   "tvCinemaTrackUnknown": "ट्रैक {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "अपडेट हो रहा है…",
+  "tvDeactivate": "निष्क्रिय करें",
+  "tvSourceActive": "सक्रिय",
+  "tvSourceInactive": "निष्क्रिय",
+  "tvSourceChannels": "{count, plural, =1{1 चैनल} other{{count} चैनल}}"
 }

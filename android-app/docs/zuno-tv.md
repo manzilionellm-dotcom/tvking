@@ -95,6 +95,31 @@ catalogue VOD exploitable. API : `get_vod_categories`, `get_vod_streams`,
 Code : `lib/features/cinema/` (données, testées dans `test/features/cinema/`)
 et `lib/features/tv/presentation/tv_cinema_*.dart`, `tv_vod_player_screen.dart`.
 
+## 3 quater. Sources, redémarrage, mises à jour automatiques (v93)
+
+- **Mes sources** : chaque ligne affiche l'identifiant (username) et le
+  serveur (hôte:port) de la source. Le mot de passe n'est jamais affiché.
+- **Plusieurs sources actives en même temps**, sans limite côté app. Leurs
+  chaînes sont fusionnées dans Direct, leurs films et séries dans Cinéma.
+  « Désactiver » retire une source sans la supprimer, « Activer » la remet
+  aussitôt (colonne `hidden`, base v6). Le panel, lui, pousse au maximum
+  `MAX_SOURCES_PER_DEVICE` sources par MAC (6 dans le code du dépôt).
+- **Redémarrer** fait une vraie mise à jour (`TvContentRefresh`) :
+  1. nouvelle source du panel ;
+  2. re-téléchargement des chaînes de chaque source active ;
+  3. cache Films / Séries vidé.
+
+  Une pastille « Mise à jour… » s'affiche pendant l'opération.
+- **Automatique** :
+  - panel interrogé chaque minute (source activée à distance → chaînes
+    importées seules) ;
+  - mise à jour complète 2 min après l'ouverture, puis toutes les 6 h ;
+  - jamais pendant Direct ou le lecteur (`TvActivity`).
+- **Mise à jour de l'app** : la nouvelle version est pré-téléchargée en
+  arrière-plan (3 min après l'ouverture, ou dès l'ouverture des Réglages).
+  Le bouton ouvre alors directement l'installateur. Android exige toujours
+  la confirmation « Installer » du client pour une app hors Play Store.
+
 ## 4. Signature (à faire une fois, recommandé)
 
 Poser les secrets GitHub (Settings → Secrets and variables → Actions) :

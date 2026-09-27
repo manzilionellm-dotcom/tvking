@@ -884,5 +884,10 @@
   "tvCinemaSubtitles": "Manukuu",
   "tvCinemaSubtitlesOff": "Zimezimwa",
   "tvCinemaTrackUnknown": "Wimbo {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "Inasasisha…",
+  "tvDeactivate": "Zima",
+  "tvSourceActive": "hai",
+  "tvSourceInactive": "imezimwa",
+  "tvSourceChannels": "{count, plural, =1{Chaneli 1} other{Chaneli {count}}}"
 }

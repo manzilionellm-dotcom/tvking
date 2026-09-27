@@ -58,9 +58,9 @@ void main() {
     test('BOM UTF-8 strippé + header #EXTM3U absent → parse quand même', () {
       final M3uParseResult r = M3uParser.parse(
         '\u{FEFF}${_m3u(<String>[
-          '#EXTINF:-1,Test',
-          'http://h/x.ts',
-        ])}',
+              '#EXTINF:-1,Test',
+              'http://h/x.ts',
+            ])}',
         playlistId: 1,
       );
       expect(r.channels, hasLength(1));

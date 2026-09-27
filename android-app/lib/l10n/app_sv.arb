@@ -884,5 +884,10 @@
   "tvCinemaSubtitles": "Undertexter",
   "tvCinemaSubtitlesOff": "Av",
   "tvCinemaTrackUnknown": "Spår {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "Uppdaterar…",
+  "tvDeactivate": "Inaktivera",
+  "tvSourceActive": "aktiv",
+  "tvSourceInactive": "inaktiverad",
+  "tvSourceChannels": "{count, plural, =1{1 kanal} other{{count} kanaler}}"
 }

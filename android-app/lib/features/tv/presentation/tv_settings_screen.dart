@@ -5,6 +5,8 @@
 //  pour l'activer) + l'état de l'abonnement (lu sur le MÊME worker que le
 //  panel). Un bouton focusable rafraîchit le statut.
 // =========================================================
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -66,6 +68,10 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       _updInfo = u;
       _upd = u == null ? _UpdState.upToDate : _UpdState.available;
     });
+    // Nouvelle version : on commence le téléchargement TOUT DE SUITE, en
+    // arrière-plan (s'il n'est pas déjà fait au démarrage de la box). Quand
+    // le client appuie, l'installateur s'ouvre sans attendre.
+    if (u != null) unawaited(UpdateService.instance.prefetch(u));
   }
 
   Future<void> _onUpdatePressed() async {

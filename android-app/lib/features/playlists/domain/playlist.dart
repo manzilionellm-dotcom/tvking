@@ -34,6 +34,7 @@ class Playlist {
     this.lastSyncedAt,
     this.channelCount = 0,
     this.isActive = false,
+    this.hidden = false,
   });
 
   /// ID auto-incrémenté par SQLite. Null = pas encore enregistrée.
@@ -78,6 +79,36 @@ class Playlist {
   /// par [PlaylistRepository.getAllChannels].
   final bool isActive;
 
+  /// TV (mode fusion) : source DÉSACTIVÉE par le client — ses chaînes
+  /// restent en base mais n'apparaissent plus dans Direct ni dans Films /
+  /// Séries. Plusieurs sources peuvent être actives EN MÊME TEMPS, sans
+  /// limite de nombre : seules celles marquées `hidden` sont écartées.
+  final bool hidden;
+
+  /// Référence lisible de la source, pour que le revendeur sache QUEL
+  /// abonnement est installé : identifiant + serveur (hôte:port).
+  ///  • Xtream : username + hôte du serveur ;
+  ///  • M3U    : paramètre `username=` de l'URL s'il existe + hôte.
+  /// Jamais le mot de passe, jamais l'URL complète (elle le contient souvent).
+  ({String? user, String? host}) get reference {
+    String? host;
+    String? user;
+    final String raw =
+        ((type == PlaylistType.xtream ? xtreamServer : m3uUrl) ?? '').trim();
+    final Uri? uri = Uri.tryParse(raw);
+    if (uri != null && uri.host.isNotEmpty) {
+      host = uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
+    }
+    if (type == PlaylistType.xtream) {
+      final String u = (xtreamUsername ?? '').trim();
+      if (u.isNotEmpty) user = u;
+    } else if (uri != null) {
+      final String u = (uri.queryParameters['username'] ?? '').trim();
+      if (u.isNotEmpty) user = u;
+    }
+    return (user: user, host: host);
+  }
+
   // ---------- Sérialisation SQLite ----------
 
   Map<String, Object?> toMap() {
@@ -94,6 +125,7 @@ class Playlist {
       'last_synced_at': lastSyncedAt,
       'channel_count': channelCount,
       'is_active': isActive ? 1 : 0,
+      'hidden': hidden ? 1 : 0,
     };
   }
 
@@ -114,6 +146,7 @@ class Playlist {
       lastSyncedAt: map['last_synced_at'] as int?,
       channelCount: (map['channel_count'] as int?) ?? 0,
       isActive: (map['is_active'] as int?) == 1,
+      hidden: (map['hidden'] as int?) == 1,
     );
   }
 
@@ -136,6 +169,7 @@ class Playlist {
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
       channelCount: channelCount ?? this.channelCount,
       isActive: isActive ?? this.isActive,
+      hidden: hidden,
     );
   }
 }

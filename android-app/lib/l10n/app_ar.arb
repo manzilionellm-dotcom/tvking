@@ -884,5 +884,10 @@
   "tvCinemaSubtitles": "الترجمة",
   "tvCinemaSubtitlesOff": "إيقاف",
   "tvCinemaTrackUnknown": "المسار {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "جارٍ التحديث…",
+  "tvDeactivate": "إيقاف",
+  "tvSourceActive": "مفعّل",
+  "tvSourceInactive": "معطّل",
+  "tvSourceChannels": "{count, plural, =1{قناة واحدة} other{{count} قناة}}"
 }

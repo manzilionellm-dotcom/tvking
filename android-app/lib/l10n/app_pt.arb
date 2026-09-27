@@ -2188,5 +2188,10 @@
   "tvCinemaSubtitles": "Legendas",
   "tvCinemaSubtitlesOff": "Desativadas",
   "tvCinemaTrackUnknown": "Faixa {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "A atualizar…",
+  "tvDeactivate": "Desativar",
+  "tvSourceActive": "ativa",
+  "tvSourceInactive": "desativada",
+  "tvSourceChannels": "{count, plural, =1{1 canal} other{{count} canais}}"
 }

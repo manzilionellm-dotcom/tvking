@@ -183,7 +183,10 @@ class PlaylistRepository {
       'channels',
       where: 'playlist_id NOT IN (SELECT id FROM playlists)',
     );
-    final List<Channel> all = await _readChannelsBounded(db, null);
+    // Seules les sources NON désactivées (colonne `hidden`) sont fusionnées :
+    // le client peut en activer autant qu'il veut EN MÊME TEMPS.
+    final List<Channel> all =
+        await _readChannelsBounded(db, null, skipHidden: true);
     final Set<String> seen = <String>{};
     final List<Channel> out = <Channel>[];
     for (final Channel c in all) {
@@ -229,15 +232,21 @@ class PlaylistRepository {
   /// Lit les chaînes par lots successifs et borne le total à
   /// [kMaxInMemoryChannels]. Keyset pagination : `local_id > dernier` (O(1) par
   /// lot grâce à l'index PK), l'ORDRE NATIF de la playlist est préservé.
-  Future<List<Channel>> _readChannelsBounded(Database db, int? activeId) async {
+  Future<List<Channel>> _readChannelsBounded(Database db, int? activeId,
+      {bool skipHidden = false}) async {
     final List<Channel> out = <Channel>[];
     int afterLocalId = 0; // local_id (AUTOINCREMENT) démarre à 1
+    // Sous-requête évaluée par SQLite (index PK) : écarte les chaînes des
+    // sources désactivées sans les charger en mémoire.
+    final String hiddenFilter = skipHidden
+        ? ' AND playlist_id NOT IN (SELECT id FROM playlists WHERE hidden = 1)'
+        : '';
     while (out.length < kMaxInMemoryChannels) {
       final List<Map<String, Object?>> rows = await db.query(
         'channels',
         where: activeId != null
             ? 'playlist_id = ? AND local_id > ?'
-            : 'local_id > ?',
+            : 'local_id > ?$hiddenFilter',
         whereArgs: activeId != null
             ? <Object>[activeId, afterLocalId]
             : <Object>[afterLocalId],
@@ -310,6 +319,21 @@ class PlaylistRepository {
       );
     });
     // Re-emit les chaines de la nouvelle playlist active.
+    await _emitCurrentState();
+  }
+
+  /// TV (mode fusion) : active ou désactive UNE source sans toucher aux
+  /// autres — plusieurs sources actives en même temps, sans limite. Ses
+  /// chaînes restent en base : la réactiver est instantané (pas de
+  /// re-téléchargement). Ré-émet l'état pour que Direct se mette à jour.
+  Future<void> setPlaylistHidden(int playlistId, bool hidden) async {
+    final Database db = await PlaylistDatabase.instance.database;
+    await db.update(
+      'playlists',
+      <String, Object?>{'hidden': hidden ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: <Object>[playlistId],
+    );
     await _emitCurrentState();
   }
 
@@ -627,13 +651,25 @@ class PlaylistRepository {
   // passe à la fois.
   bool _refreshingAll = false;
 
-  Future<int> refreshAll() async {
+  ///
+  /// [skipSyncedWithin] : ignore les sources synchronisées il y a moins que
+  /// cette durée (ex. une source que le panel vient de poser à l'instant :
+  /// inutile de la re-télécharger une 2e fois dans la foulée).
+  /// Les sources DÉSACTIVÉES ne sont pas re-téléchargées (économie réseau et
+  /// mémoire) : elles le seront à leur réactivation au prochain passage.
+  Future<int> refreshAll({Duration? skipSyncedWithin}) async {
     if (_refreshingAll) return 0; // une passe déjà en cours → on ne double pas
     _refreshingAll = true;
     try {
       final List<Playlist> all = await getAllPlaylists();
+      final int? freshAfter = skipSyncedWithin == null
+          ? null
+          : DateTime.now().subtract(skipSyncedWithin).millisecondsSinceEpoch;
       int ok = 0;
       for (final Playlist p in all) {
+        if (p.hidden) continue;
+        final int? last = p.lastSyncedAt;
+        if (freshAfter != null && last != null && last > freshAfter) continue;
         try {
           final bool result = await refreshPlaylist(p);
           if (result) ok++;

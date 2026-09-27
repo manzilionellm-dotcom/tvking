@@ -2188,5 +2188,10 @@
   "tvCinemaSubtitles": "字幕",
   "tvCinemaSubtitlesOff": "关闭",
   "tvCinemaTrackUnknown": "音轨 {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "正在更新…",
+  "tvDeactivate": "停用",
+  "tvSourceActive": "已启用",
+  "tvSourceInactive": "已停用",
+  "tvSourceChannels": "{count, plural, =1{1 个频道} other{{count} 个频道}}"
 }

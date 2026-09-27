@@ -884,5 +884,10 @@
   "tvCinemaSubtitles": "Subtítulos",
   "tvCinemaSubtitlesOff": "Desactivados",
   "tvCinemaTrackUnknown": "Pista {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "Actualizando…",
+  "tvDeactivate": "Desactivar",
+  "tvSourceActive": "activa",
+  "tvSourceInactive": "desactivada",
+  "tvSourceChannels": "{count, plural, =1{1 canal} other{{count} canales}}"
 }

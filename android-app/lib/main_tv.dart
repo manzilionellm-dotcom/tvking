@@ -33,6 +33,7 @@ import 'features/security/data/parental_controls.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'features/tv/core/tv_activity.dart';
+import 'features/tv/core/tv_content_refresh.dart';
 import 'features/tv/presentation/tv_app.dart';
 
 // =========================================================
@@ -137,23 +138,42 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   if (!BootGuard.instance.safeMode) {
     unawaited(RemoteSourceRepository.sync());
 
-    // SYNCHRONISATION DES LISTES (façon TiviMate, demande du propriétaire
-    // 25/09/2026). La TV n'actualisait jamais une M3U/Xtream après l'import.
-    //   • 90 s après le démarrage : re-télécharge les listes dont la dernière
-    //     synchro date de plus de 24 h ;
-    //   • puis toutes les 24 h tant que la box reste allumée.
-    // RÈGLE ABSOLUE : jamais pendant que le client est dans Direct ou dans le
-    // lecteur (TvActivity.isBusy) — re-télécharger et re-parser 30 000 chaînes
-    // pendant qu'il zappe figeait l'écran puis Android tuait l'app. On attend
-    // le retour à l'accueil (re-vérification toutes les 60 s, 30 essais max,
-    // sinon on réessaie au prochain tick de 24 h).
-    unawaited(Future<void>.delayed(const Duration(seconds: 90), () {
-      _tvAutoRefresh(onlyStale: true);
+    // MISE À JOUR AUTOMATIQUE (demande du propriétaire 27/09/2026) :
+    //   • 2 minutes après l'ouverture : la box va chercher TOUT ce qui est
+    //     nouveau (source posée dans le panel + nouvelles chaînes chez le
+    //     fournisseur), sans que le client ne fasse rien ;
+    //   • puis toutes les 6 heures tant que la box reste allumée ;
+    //   • le panel (léger : une petite requête) est interrogé CHAQUE MINUTE :
+    //     une source activée à distance par le revendeur entre toute seule,
+    //     sans redémarrage (la box ouvre Direct dès l'arrivée des chaînes) ;
+    //   • 3 minutes après l'ouverture : si une nouvelle version de Zuno
+    //     existe, l'APK est pré-téléchargé en silence → dans Réglages, « Mise
+    //     à jour » ouvre l'installateur immédiatement.
+    // RÈGLE ABSOLUE conservée : jamais de re-téléchargement pendant que le
+    // client est dans Direct ou dans le lecteur (TvActivity.isBusy) — on
+    // attend son retour à l'accueil. Pourquoi pas toutes les 2 minutes pour
+    // les chaînes : re-télécharger 10 000+ chaînes en boucle saturerait la
+    // box et ferait bloquer le compte par le fournisseur IPTV.
+    unawaited(Future<void>.delayed(const Duration(minutes: 2), () {
+      TvContentRefresh.run(waitIdle: true);
     }));
-    Timer.periodic(const Duration(hours: 24), (_) {
-      RemoteSourceRepository.sync();
-      _tvAutoRefresh(onlyStale: false);
+    Timer.periodic(const Duration(hours: 6), (_) {
+      TvContentRefresh.run(waitIdle: true);
     });
+    Timer.periodic(const Duration(minutes: 1), (_) {
+      // Jamais pendant Direct / le lecteur : importer une grosse liste en
+      // plein zapping figeait la box. La vérification reprend dès le retour
+      // à l'accueil (qui, lui, interroge le panel toutes les 20 s).
+      if (!TvActivity.isBusy && !TvContentRefresh.running.value) {
+        RemoteSourceRepository.sync();
+      }
+    });
+    unawaited(Future<void>.delayed(const Duration(minutes: 3), () async {
+      for (int i = 0; i < 30 && TvActivity.isBusy; i++) {
+        await Future<void>.delayed(const Duration(minutes: 1));
+      }
+      await UpdateService.instance.checkAndPrefetch();
+    }));
   } else {
     debugPrint('[main_tv] mode sans échec → ré-import de la source distante sauté.');
   }
@@ -194,24 +214,4 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // L'app est lancée : si elle tient quelques secondes, on efface l'historique
   // de boucle (un démarrage réussi « pardonne » les crashs précédents).
   BootGuard.instance.scheduleStableReset();
-}
-
-/// Actualisation des listes quand la box est AU REPOS (cf. TvActivity).
-/// Best-effort, silencieuse, une seule passe à la fois (mutex du repo).
-Future<void> _tvAutoRefresh({required bool onlyStale}) async {
-  if (BootGuard.instance.safeMode) return;
-  for (int i = 0; i < 30 && TvActivity.isBusy; i++) {
-    await Future<void>.delayed(const Duration(seconds: 60));
-  }
-  if (TvActivity.isBusy) return; // toujours occupé → prochain tick
-  try {
-    if (onlyStale) {
-      await PlaylistRepository.instance
-          .refreshStale(staleness: const Duration(hours: 24));
-    } else {
-      await PlaylistRepository.instance.refreshAll();
-    }
-  } catch (_) {
-    // silencieux : la synchro est un confort, jamais une cause de panne
-  }
 }

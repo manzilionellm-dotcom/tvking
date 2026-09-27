@@ -2188,5 +2188,10 @@
   "tvCinemaSubtitles": "Sottotitoli",
   "tvCinemaSubtitlesOff": "Disattivati",
   "tvCinemaTrackUnknown": "Traccia {n}",
-  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}}
+  "@tvCinemaTrackUnknown": {"placeholders": {"n": {"type": "String"}}},
+  "tvUpdatingContent": "Aggiornamento…",
+  "tvDeactivate": "Disattiva",
+  "tvSourceActive": "attiva",
+  "tvSourceInactive": "disattivata",
+  "tvSourceChannels": "{count, plural, =1{1 canale} other{{count} canali}}"
 }

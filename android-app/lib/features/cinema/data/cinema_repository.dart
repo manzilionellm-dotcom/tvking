@@ -90,6 +90,7 @@ class CinemaRepository {
     final List<CinemaSource> out = <CinemaSource>[];
     for (final Playlist p in all) {
       if (p.type != PlaylistType.xtream) continue;
+      if (p.hidden) continue; // source désactivée par le client
       final String server = (p.xtreamServer ?? '').trim();
       final String user = (p.xtreamUsername ?? '').trim();
       if (server.isEmpty || user.isEmpty || p.id == null) continue;
