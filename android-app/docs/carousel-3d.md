@@ -1,6 +1,6 @@
 # Carrousel 3D Zuno — structure et réglages
 
-> État : **étape 1 / 7 (squelette)**. Le composant n'est branché à aucun
+> État : **étape 2 / 7 (anneau 3D)**. Le composant n'est branché à aucun
 > écran existant : le design actuel de Zuno n'est pas modifié.
 
 ## Pourquoi Flutter et pas React
@@ -30,35 +30,52 @@ lib/features/carousel/
 │   └── carousel_mock_data.dart  # 12 affiches de démo (étape 6)
 └── presentation/
     ├── zuno_ring_carousel.dart  # LE composant principal (unique widget public)
+    ├── carousel_poster_card.dart# rendu d'une affiche (réelle ou générée)
     ├── carousel_controller.dart # ≈ useCarousel : index, position, boucle, snap
     └── carousel_sound.dart      # ≈ useSound : tick + sélection
 test/features/carousel/
-└── carousel_controller_test.dart
+├── carousel_controller_test.dart
+└── zuno_ring_carousel_test.dart
 ```
 
 ## Feuille de route
 
 1. ✅ Squelette + structure des fichiers
-2. ⏳ Anneau 3D (transforms)
+2. ✅ Anneau 3D (transforms)
 3. ⏳ Navigation clavier / télécommande / tactile + snap
 4. ⏳ Zoom intelligent + respiration au repos
 5. ⏳ Sons synthétisés (tick + sélection)
 6. ⏳ Données de démo + rendu final
 7. ⏳ Ce README complété avec les captures et les réglages validés
 
+## Charte « apaiser la vision »
+
+- **Un seul accent** : l'or champagne de Zuno (filet de 28 × 2 px au-dessus du
+  titre). Tout le reste est en neutres chauds.
+- **Grille de 4 px** : marges intérieures de 20 px, espacements de 12 et 8 px.
+- **Titre** : Oswald en capitales, interlettrage +0,6, interligne 1,12,
+  3 lignes au maximum, coupure propre par « … ».
+- **Année** : Inter en chiffres tabulaires, donc de largeur fixe. Les années
+  ne « dansent » pas d'une carte à l'autre.
+- **Voisines** : voile de la couleur du fond plutôt qu'une vraie transparence.
+  Le rendu à l'œil est le même, sans passe GPU supplémentaire.
+- **Profondeur** : ombre portée uniquement sur la carte centrale, et une ombre
+  elliptique au « sol » sous l'anneau.
+- **Bord** : un filet blanc à 5 % détache la carte du fond sans cadre visible.
+
 ## Réglages (`CarouselConfig`)
 
 | Réglage              | Défaut   | Effet                                                   |
 |----------------------|----------|---------------------------------------------------------|
-| `cardAngleDeg`       | 24°      | Angle entre deux cartes ; + grand = anneau plus ouvert  |
-| `ringRadius`         | 560 px   | Profondeur de l'anneau (`translateZ`)                   |
-| `perspectivePx`      | 1100 px  | Distance caméra ; + petit = 3D plus marquée             |
+| `cardAngleDeg`       | 20°      | Angle entre deux cartes ; (visibleSide+1) × angle < 90° |
+| `ringRadius`         | 640 px   | Profondeur de l'anneau (`translateZ`)                   |
+| `perspectivePx`      | 1400 px  | Distance caméra ; + petit = 3D plus marquée             |
 | `cardWidth`          | 220 px   | Largeur de la carte centrale (hauteur = largeur × 3/2)  |
-| `visibleSide`        | 4        | Cartes dessinées de chaque côté (économie GPU)          |
-| `sideScaleStep`      | 0.09     | Réduction de taille par carte d'écart                   |
-| `sideOpacityStep`    | 0.20     | Estompage par carte d'écart (plancher `sideMinOpacity`) |
-| `selectedScale`      | 1.10     | Zoom de la carte sélectionnée                           |
-| `glowBlur` / `glowOpacity` | 36 / 0.55 | Halo autour de la carte sélectionnée             |
+| `visibleSide`        | 3        | Cartes dessinées de chaque côté (économie GPU)          |
+| `sideScaleStep`      | 0.06     | Réduction de taille par carte d'écart                   |
+| `sideOpacityStep`    | 0.22     | Estompage par carte d'écart (plancher `sideMinOpacity` 0.25) |
+| `selectedScale`      | 1.06     | Zoom de la carte sélectionnée (règle premium Zuno)      |
+| `glowBlur` / `glowOpacity` | 32 / 0.35 | Halo autour de la carte sélectionnée             |
 | `snapDuration`       | 380 ms   | Vitesse de l'aimantation                                |
 | `wheelStepThreshold` | 60 px    | Molette : défilement pour avancer d'une carte           |
 | `swipeCardWidthRatio`| 0.35     | Glisser : fraction de carte pour changer                |

@@ -2,6 +2,7 @@
 //  carousel_controller_test.dart — Logique de l'anneau (boucle)
 // =========================================================
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/features/carousel/domain/carousel_config.dart';
 import 'package:tv_king/features/carousel/presentation/carousel_controller.dart';
 
 void main() {
@@ -31,5 +32,9 @@ void main() {
     expect(n, 0);
     c.next();
     expect(n, 1);
+  });
+
+  test('réglages par défaut : aucune carte ne montre son dos', () {
+    expect(const CarouselConfig().isGeometrySafe, isTrue);
   });
 }

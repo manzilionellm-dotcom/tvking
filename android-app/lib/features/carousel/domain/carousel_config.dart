@@ -18,20 +18,20 @@ import 'package:flutter/foundation.dart';
 class CarouselConfig {
   const CarouselConfig({
     // ---- Géométrie de l'anneau ----
-    this.cardAngleDeg = 24,
-    this.ringRadius = 560,
-    this.perspectivePx = 1100,
+    this.cardAngleDeg = 20,
+    this.ringRadius = 640,
+    this.perspectivePx = 1400,
     this.cardWidth = 220,
     this.cardAspect = 2 / 3,
-    this.visibleSide = 4,
+    this.visibleSide = 3,
     // ---- Estompage des voisines ----
-    this.sideScaleStep = 0.09,
-    this.sideOpacityStep = 0.2,
-    this.sideMinOpacity = 0.15,
+    this.sideScaleStep = 0.06,
+    this.sideOpacityStep = 0.22,
+    this.sideMinOpacity = 0.25,
     // ---- Zoom intelligent ----
-    this.selectedScale = 1.10,
-    this.glowBlur = 36,
-    this.glowOpacity = 0.55,
+    this.selectedScale = 1.06,
+    this.glowBlur = 32,
+    this.glowOpacity = 0.35,
     // ---- Mouvement ----
     this.snapDuration = const Duration(milliseconds: 380),
     this.wheelStepThreshold = 60,
@@ -53,6 +53,8 @@ class CarouselConfig {
 
   /// Angle (degrés) entre deux cartes voisines sur l'anneau.
   /// Plus grand = anneau plus « ouvert », moins de cartes visibles.
+  /// CONTRAINTE : (visibleSide + 1) × cardAngleDeg doit rester < 90°, sinon
+  /// la carte du bord pivote au-delà du profil et montre son DOS (inversé).
   final double cardAngleDeg;
 
   /// Rayon de l'anneau (px) = profondeur `translateZ`. Plus grand = cartes
@@ -77,6 +79,9 @@ class CarouselConfig {
   final double sideMinOpacity;
 
   /// Échelle de la carte SÉLECTIONNÉE (1.0 = taille normale) et halo or.
+  /// 1.06 = règle premium de Zuno (TvDimens.focusScaleSmall, réf. Apple TV+) :
+  /// au-delà, la carte « gonfle » et l'effet paraît bon marché. La présence
+  /// vient de l'ombre portée et de la lueur champagne, pas d'un gros zoom.
   final double selectedScale;
   final double glowBlur;
   final double glowOpacity;
@@ -110,4 +115,8 @@ class CarouselConfig {
 
   /// Hauteur de la carte centrale (px logiques).
   double get cardHeight => cardWidth / cardAspect;
+
+  /// Vrai si la géométrie ne montre jamais le dos d'une carte (cf. contrainte
+  /// sur [cardAngleDeg]). Vérifié par un test.
+  bool get isGeometrySafe => (visibleSide + 1) * cardAngleDeg < 90;
 }
