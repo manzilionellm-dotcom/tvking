@@ -28,6 +28,8 @@ import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import io.flutter.plugin.common.BinaryMessenger
@@ -98,6 +100,10 @@ class NativeVideoView(
     private var pendingRetry: Runnable? = null
     private val maxSilentRetries = 8 // au-delà → on prévient Dart (reset complet)
 
+    // Direct : rejoindre le direct après un retard (compteur remis à 0 dès que
+    // la lecture repart).
+    private var behindLiveCount = 0
+
     private val positionPump = object : Runnable {
         override fun run() {
             if (player.isPlaying) {
@@ -138,8 +144,15 @@ class NativeVideoView(
         // sur les box les plus faibles (1 Go) et prioritizeTimeOverSizeThresholds
         // force le tampon en TEMPS : 45 s reste tenable, 60 s risquerait l'OOM
         // sur un flux 4K.
+        //
+        // ANTI-SACCADE (28/09/2026) : APRÈS une coupure (rebuffer), on attend
+        // 5 s de réserve au lieu de 2 s avant de relancer. Avec 2 s, un Internet
+        // faible donnait la boucle « 2 s d'image → coupure → 2 s → coupure… ».
+        // Avec 5 s, une seule pause un peu plus longue puis une lecture stable
+        // (même logique que Netflix / YouTube). Le démarrage d'une chaîne reste
+        // à 1 s : le zapping ne ralentit pas.
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(5_000, 45_000, 1_000, 2_000)
+            .setBufferDurationsMs(5_000, 45_000, 1_000, 5_000)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -223,7 +236,42 @@ class NativeVideoView(
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
 
+        // QUALITÉ ADAPTATIVE façon Netflix (28/09/2026). Quand la source propose
+        // plusieurs qualités (HLS « master » : 480p / 720p / 1080p / 4K…), le
+        // lecteur mesure le débit en continu et choisit la meilleure qualité
+        // QUI TIENT sans coupure :
+        //  - baisse de qualité IMMÉDIATE si le débit chute (avant la coupure) ;
+        //  - remontée seulement après 12 s de réserve (pas de yo-yo) ;
+        //  - marge de sécurité : on n'utilise que 65 % du débit mesuré (le
+        //    Wi-Fi varie d'une seconde à l'autre) ;
+        //  - jamais plus que la définition de l'écran (inutile d'aspirer du 4K
+        //    pour une TV 1080p : autant de débit gardé pour la stabilité).
+        // Une source à UNE seule qualité (cas de beaucoup de flux IPTV .ts) ne
+        // peut pas être « rétrogradée » côté lecteur : c'est alors le tampon
+        // anti-saccade + la reconnexion silencieuse qui la protègent.
+        val trackSelector = DefaultTrackSelector(
+            context,
+            AdaptiveTrackSelection.Factory(
+                12_000, // réserve mini avant de MONTER en qualité
+                25_000, // au-delà de cette réserve on ne BAISSE jamais
+                25_000, // réserve gardée si on jette des segments pour monter
+                0.65f,  // part du débit mesuré réellement utilisée
+            ),
+        ).apply {
+            setParameters(
+                buildUponParameters()
+                    // Changement de qualité autorisé même s'il n'est pas
+                    // « sans couture » : mieux vaut une micro-transition
+                    // qu'une coupure.
+                    .setAllowVideoNonSeamlessAdaptiveness(true)
+                    // Si aucune qualité ne rentre dans les contraintes, on
+                    // prend quand même la plus basse plutôt que rien.
+                    .setExceedVideoConstraintsIfNecessary(true),
+            )
+        }
+
         player = ExoPlayer.Builder(context, renderersFactory)
+            .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLivePlaybackSpeedControl(liveSpeed)
@@ -341,6 +389,7 @@ class NativeVideoView(
             Player.STATE_BUFFERING -> channel.invokeMethod("buffering", true)
             Player.STATE_READY -> {
                 retryCount = 0 // lecture OK → on oublie les erreurs passées
+                behindLiveCount = 0
                 channel.invokeMethod("buffering", false)
             }
             Player.STATE_ENDED -> channel.invokeMethod("ended", null)
@@ -392,6 +441,22 @@ class NativeVideoView(
     }
 
     override fun onPlayerError(error: PlaybackException) {
+        // DIRECT « EN RETARD » (Internet lent pendant un moment) : le lecteur
+        // est sorti de la fenêtre du direct. Ce n'est PAS une panne : on
+        // rejoint le direct TOUT DE SUITE (sans attente ni compteur d'échecs),
+        // comme le recommande Media3. Plafond de 5 d'affilée pour ne jamais
+        // tourner en boucle ; au-delà, on retombe sur la reconnexion normale.
+        if (!vodMode &&
+            error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW &&
+            behindLiveCount < 5
+        ) {
+            behindLiveCount++
+            channel.invokeMethod("buffering", true)
+            player.seekToDefaultPosition()
+            player.prepare()
+            player.playWhenReady = true
+            return
+        }
         // RECONNEXION SILENCIEUSE : on ne montre PAS d'erreur au client tant
         // qu'on n'a pas épuisé les essais. On re-prépare avec un back-off.
         if (retryCount < maxSilentRetries) {
