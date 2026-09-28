@@ -5,8 +5,10 @@ import android.os.Handler
 import android.os.Looper
 import android.view.SurfaceView
 import android.view.View
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
@@ -15,9 +17,17 @@ import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
+import androidx.media3.decoder.ffmpeg.FfmpegLibrary
+import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioRendererEventListener
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import io.flutter.plugin.common.BinaryMessenger
@@ -50,6 +60,17 @@ import io.flutter.plugin.platform.PlatformView
  * par Flutter par-dessus la vidéo, la SurfaceView ne dessine pas le texte),
  * et une reconnexion qui REPREND À LA MÊME SECONDE au lieu de repartir du
  * début. Le direct (vod = false) garde EXACTEMENT son comportement.
+ *
+ * SON « QUALITÉ CINÉMA » (28/09/2026) — correctif du son « vieille radio » :
+ *  1. HE-AAC complet : le décodeur AAC de nombreuses box ignore le SBR (les
+ *     aigus) et la stéréo paramétrique → son étouffé et mono. L'AAC passe donc
+ *     par FFmpeg (décodage de référence), le reste garde le décodeur de la box.
+ *  2. AC-3 / E-AC-3 / DTS : envoyés TELS QUELS (passthrough) à la barre de son /
+ *     l'ampli quand l'HDMI l'accepte ; sinon décodés par la box ou, à défaut,
+ *     par FFmpeg (avant : piste ignorée ou muette).
+ *  3. Vitesse du direct figée à 1,0 : Media3 accélère / ralentit un direct HLS
+ *     de ±3 % pour tenir la latence, ce qui « étire » le son (effet métallique).
+ *  4. Son déclaré « film » au système (post-traitement TV adapté au cinéma).
  *
  * Communication avec Dart via un MethodChannel dédié (`native_video_player/<id>`).
  */
@@ -123,8 +144,61 @@ class NativeVideoView(
             .build()
 
         // Décodage matériel (MediaCodec) avec repli logiciel si l'init échoue.
-        val renderersFactory = DefaultRenderersFactory(context)
+        // + SON : un 2e moteur audio, FFmpeg, placé APRÈS celui de la box. Media3
+        // prend le premier moteur qui sait lire la piste : la box garde tout ce
+        // qu'elle fait bien (dont le passthrough AC-3 vers l'ampli), FFmpeg prend
+        // ce qu'elle ne sait pas lire. On l'ajoute nous-mêmes (et pas par le mode
+        // « extension » qui passe par réflexion) pour que R8 ne le retire jamais
+        // de l'APK minifié.
+        val renderersFactory = object : DefaultRenderersFactory(context) {
+            override fun buildAudioRenderers(
+                context: Context,
+                extensionRendererMode: Int,
+                mediaCodecSelector: MediaCodecSelector,
+                enableDecoderFallback: Boolean,
+                audioSink: AudioSink,
+                eventHandler: Handler,
+                eventListener: AudioRendererEventListener,
+                out: ArrayList<Renderer>,
+            ) {
+                super.buildAudioRenderers(
+                    context, extensionRendererMode, mediaCodecSelector,
+                    enableDecoderFallback, audioSink, eventHandler, eventListener, out,
+                )
+                if (ffmpegReady) {
+                    out.add(FfmpegAudioRenderer(eventHandler, eventListener, audioSink))
+                }
+            }
+        }
             .setEnableDecoderFallback(true)
+            // AAC → on « cache » le décodeur AAC de la box pour que FFmpeg le
+            // lise (HE-AAC complet : aigus + stéréo). Tout le reste (vidéo, AC-3,
+            // DTS…) passe par la liste normale. Si FFmpeg n'a pas pu se charger,
+            // rien ne change : la box garde son décodeur AAC.
+            .setMediaCodecSelector { mimeType, requiresSecure, requiresTunneling ->
+                if (ffmpegAac && mimeType == MimeTypes.AUDIO_AAC) {
+                    emptyList<MediaCodecInfo>()
+                } else {
+                    MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecure, requiresTunneling)
+                }
+            }
+
+        // Direct HLS : Media3 fait varier la vitesse (0,97–1,03) pour tenir la
+        // latence ; l'étirement du son qui en résulte s'entend. On la fige à 1,0
+        // (l'IPTV n'a pas besoin d'une latence au dixième de seconde).
+        val liveSpeed = DefaultLivePlaybackSpeedControl.Builder()
+            .setFallbackMinPlaybackSpeed(1f)
+            .setFallbackMaxPlaybackSpeed(1f)
+            .build()
+
+        // Contenu déclaré « film » : le système applique son profil audio
+        // cinéma (et non « voix » / « inconnu »). handleAudioFocus = false : on
+        // garde le comportement actuel (aperçu + plein écran ne se coupent pas
+        // l'un l'autre).
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
 
         // User-Agent type lecteur connu + redirections cross-protocole : des
         // panels Xtream ne servent le vrai flux qu'aux signatures connues.
@@ -152,6 +226,8 @@ class NativeVideoView(
         player = ExoPlayer.Builder(context, renderersFactory)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setLivePlaybackSpeedControl(liveSpeed)
+            .setAudioAttributes(audioAttributes, false)
             .setHandleAudioBecomingNoisy(true)
             .build()
 
@@ -365,5 +441,25 @@ class NativeVideoView(
         player.removeListener(this)
         player.release()
         channel.setMethodCallHandler(null)
+    }
+
+    companion object {
+        /**
+         * FFmpeg chargé ? (bibliothèque native, UNE fois par processus). Si le
+         * chargement échoue (architecture exotique), on reste sur les décodeurs
+         * de la box, exactement comme avant.
+         */
+        private val ffmpegReady: Boolean by lazy {
+            try {
+                FfmpegLibrary.isAvailable()
+            } catch (t: Throwable) {
+                false
+            }
+        }
+
+        /** FFmpeg sait-il lire l'AAC (HE-AAC compris) ? */
+        private val ffmpegAac: Boolean by lazy {
+            ffmpegReady && FfmpegLibrary.supportsFormat(MimeTypes.AUDIO_AAC)
+        }
     }
 }

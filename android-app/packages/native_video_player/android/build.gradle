@@ -46,4 +46,17 @@ dependencies {
     // de robustesse réseau.
     implementation "androidx.media3:media3-exoplayer:1.5.1"
     implementation "androidx.media3:media3-exoplayer-hls:1.5.1"
+
+    // SON (28/09/2026) — décodeur audio FFmpeg pour Media3.
+    // QUOI : l'extension officielle media3-decoder-ffmpeg, compilée et publiée
+    // sur Maven Central par le projet Jellyfin (Google ne publie pas de binaire).
+    // Décodeurs audio seulement (AAC, HE-AAC, AC-3, E-AC-3, DTS, MP2, MP3,
+    // TrueHD, FLAC, Opus…), ~1,4 Mo par architecture.
+    // POURQUOI : sur les box bon marché, le décodeur AAC du constructeur ignore
+    // souvent la partie « haute fréquence » (SBR) et la stéréo paramétrique (PS)
+    // du HE-AAC, très utilisé par les chaînes IPTV → son étouffé, mono, « vieille
+    // radio ». FFmpeg décode le HE-AAC complet. Il décode aussi AC-3 / DTS / MP2
+    // quand la box n'a pas ces décodeurs (sinon piste muette ou piste de repli).
+    // Version 1.5.0 = même branche que Media3 1.5.1 (Gradle aligne sur 1.5.1).
+    implementation "org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1"
 }
