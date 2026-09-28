@@ -391,6 +391,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       final int sel = _audio.indexWhere((NativeTrack t) => t.selected);
       _trackIdx = sel < 0 ? 0 : sel;
     });
+    _revealTrack();
     _hideTimer?.cancel();
   }
 
@@ -422,6 +423,56 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       if (t.isAudio && t.channels >= 6) '5.1',
     ];
     return parts.join(' · ');
+  }
+
+  /// Libellés d'une liste de pistes, SANS doublon visible : deux pistes qui
+  /// donneraient le même texte (ex. « Español » d'Espagne et d'Amérique
+  /// latine) reçoivent leur région (« Español · Latinoamérica ») ou, à
+  /// défaut, un numéro (« Español · 2 »).
+  List<String> _trackLabels(BuildContext context, List<NativeTrack> list) {
+    final List<String> base = <String>[
+      for (int i = 0; i < list.length; i++) _trackLabel(context, list[i], i + 1),
+    ];
+    final Map<String, int> total = <String, int>{};
+    for (final String s in base) {
+      total[s] = (total[s] ?? 0) + 1;
+    }
+    final Map<String, int> seen = <String, int>{};
+    final List<String> out = <String>[];
+    for (int i = 0; i < list.length; i++) {
+      final String s = base[i];
+      if ((total[s] ?? 0) < 2) {
+        out.add(s);
+        continue;
+      }
+      final int n = (seen[s] ?? 0) + 1;
+      seen[s] = n;
+      final String? region = CinemaLanguage.regionLabel(list[i].language);
+      out.add('$s · ${region ?? n}');
+    }
+    return out;
+  }
+
+  // Panneau audio / sous-titres : une clé par ligne pour faire DÉFILER la
+  // liste jusqu'à la ligne sélectionnée (avant, la sélection sortait de
+  // l'écran et la fin de la liste restait inaccessible).
+  final Map<int, GlobalKey> _trackRowKeys = <int, GlobalKey>{};
+
+  GlobalKey _trackKey(int i) => _trackRowKeys.putIfAbsent(i, GlobalKey.new);
+
+  /// Amène la ligne sélectionnée au milieu du panneau (après le rendu).
+  void _revealTrack() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_tracksOpen) return;
+      final BuildContext? ctx = _trackRowKeys[_trackIdx]?.currentContext;
+      if (ctx == null) return;
+      unawaited(Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.5,
+        duration: TvDimens.focusAnim,
+        curve: Curves.easeOutCubic,
+      ));
+    });
   }
 
   // ---------------------------------------------------------
@@ -495,8 +546,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     if (_tracksOpen) {
       if (k == LogicalKeyboardKey.arrowDown) {
         setState(() => _trackIdx = (_trackIdx + 1).clamp(0, _trackCount - 1));
+        _revealTrack();
       } else if (k == LogicalKeyboardKey.arrowUp) {
         setState(() => _trackIdx = (_trackIdx - 1).clamp(0, _trackCount - 1));
+        _revealTrack();
       } else if (_isOk(k) && !repeat) {
         _chooseTrack(_trackIdx);
       } else if (k == LogicalKeyboardKey.arrowLeft) {
@@ -829,6 +882,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final List<Widget> rows = <Widget>[];
     int idx = 0;
     Widget row(String label, bool selected, int i) => Container(
+          key: _trackKey(i),
           margin: const EdgeInsets.only(bottom: 4),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
@@ -863,14 +917,16 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
               style: TvTokens.ui(12, weight: FontWeight.w700, color: TvTokens.mutedDim, spacing: 2)),
         );
 
+    final List<String> aLabels = _trackLabels(context, a);
+    final List<String> tLabels = _trackLabels(context, t);
     rows.add(header(context.l10n.tvCinemaAudio));
     for (int i = 0; i < a.length; i++) {
-      rows.add(row(_trackLabel(context, a[i], i + 1), a[i].selected, idx++));
+      rows.add(row(aLabels[i], a[i].selected, idx++));
     }
     rows.add(header(context.l10n.tvCinemaSubtitles));
     rows.add(row(context.l10n.tvCinemaSubtitlesOff, !textOn, idx++));
     for (int i = 0; i < t.length; i++) {
-      rows.add(row(_trackLabel(context, t[i], i + 1), t[i].selected, idx++));
+      rows.add(row(tLabels[i], t[i].selected, idx++));
     }
     return Positioned(
       right: 0,

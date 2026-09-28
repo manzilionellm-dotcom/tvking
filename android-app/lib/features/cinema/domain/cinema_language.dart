@@ -133,6 +133,61 @@ abstract final class CinemaLanguage {
     'tel': 'te', 'mal': 'ml', 'ben': 'bn', 'urd': 'ur', 'per': 'fa',
     'fas': 'fa', 'heb': 'he', 'iw': 'he', 'kur': 'ku', 'alb': 'sq',
     'sqi': 'sq', 'swa': 'sw',
+    // Langues des pistes audio / sous-titres des films (menu du lecteur).
+    'cze': 'cs', 'ces': 'cs', 'hun': 'hu', 'slo': 'sk', 'slk': 'sk',
+    'hrv': 'hr', 'srp': 'sr', 'slv': 'sl', 'bul': 'bg', 'ukr': 'uk',
+    'tha': 'th', 'vie': 'vi', 'ind': 'id', 'may': 'ms', 'msa': 'ms',
+    'cat': 'ca', 'baq': 'eu', 'eus': 'eu', 'glg': 'gl', 'est': 'et',
+    'lav': 'lv', 'lit': 'lt', 'ice': 'is', 'isl': 'is', 'fil': 'fil',
+  };
+
+  /// Noms natifs des langues présentes seulement dans les PISTES des films
+  /// (pas dans les catégories). Séparées de [nativeNames] pour ne rien
+  /// changer au filtre de langues du catalogue.
+  static const Map<String, String> _trackOnlyNames = <String, String>{
+    'cs': 'Čeština',
+    'hu': 'Magyar',
+    'sk': 'Slovenčina',
+    'hr': 'Hrvatski',
+    'sr': 'Srpski',
+    'sl': 'Slovenščina',
+    'bg': 'Български',
+    'uk': 'Українська',
+    'th': 'ไทย',
+    'vi': 'Tiếng Việt',
+    'id': 'Bahasa Indonesia',
+    'ms': 'Bahasa Melayu',
+    'fil': 'Filipino',
+    'ca': 'Català',
+    'eu': 'Euskara',
+    'gl': 'Galego',
+    'et': 'Eesti',
+    'lv': 'Latviešu',
+    'lt': 'Lietuvių',
+    'is': 'Íslenska',
+  };
+
+  /// Variantes régionales courantes (« es-419 », « pt-BR », « zh-Hant »…),
+  /// pour distinguer deux pistes de même langue dans le menu du lecteur.
+  static const Map<String, String> _regionNames = <String, String>{
+    '419': 'Latinoamérica',
+    'es': 'España',
+    'mx': 'México',
+    'ar': 'Argentina',
+    'br': 'Brasil',
+    'pt': 'Portugal',
+    'ca': 'Canada',
+    'fr': 'France',
+    'be': 'Belgique',
+    'ch': 'Suisse',
+    'us': 'US',
+    'gb': 'UK',
+    'au': 'Australia',
+    'hans': '简体',
+    'hant': '繁體',
+    'cn': '中国',
+    'tw': '台灣',
+    'hk': '香港',
   };
 
   /// Codes qui sont AUSSI des mots courants (« in », « it », « de », « en »,
@@ -191,7 +246,17 @@ abstract final class CinemaLanguage {
   static String? labelFor(String? code) {
     if (code == null || code.trim().isEmpty) return null;
     final String c = normalizeCode(code);
-    return nativeNames[c] ?? c.toUpperCase();
+    return nativeNames[c] ?? _trackOnlyNames[c] ?? c.toUpperCase();
+  }
+
+  /// Région d'un code langue complet (« es-419 » → « Latinoamérica »,
+  /// « pt-BR » → « Brasil »), sinon `null` (code sans région).
+  static String? regionLabel(String? code) {
+    if (code == null) return null;
+    final List<String> parts = code.trim().split(RegExp(r'[-_]'));
+    if (parts.length < 2 || parts[1].isEmpty) return null;
+    final String r = parts[1].toLowerCase();
+    return _regionNames[r] ?? r.toUpperCase();
   }
 
   /// « fre » → « fr », « en-US » → « en », « zh-Hant » → « zh ».
