@@ -150,3 +150,19 @@ npx wrangler deploy
 
 (ou réactiver `android-app/.github/workflows/deploy-worker.yml` à la racine
 avec `working-directory: android-app/cloudflare`).
+
+## Règle de stabilité : box de test d'abord (29/09/2026)
+
+Incident v99–v101 : des changements du lecteur natif, compilés et testés
+automatiquement, ont bloqué des chaînes sur l'écran de chargement chez les
+clients (retour au lecteur v98 en v102). Désormais, toute modification du
+lecteur (`packages/native_video_player`) ou du réseau suit ce circuit :
+
+1. `build-zuno-tv.yml` → Run workflow avec **test_box = true** : l'APK part
+   sur la release `zuno-tv-test`. Aucune box client n'est mise à jour
+   (elles ne lisent que `zuno-tv/version.json`).
+2. Sur UNE box : Downloader → `zuno.7themotion.com/test` → installer.
+3. Vérifier : 5 chaînes (dont HD/4K), 1 film, 1 épisode, zapping rapide,
+   coupure Wi-Fi de 10 s pendant la lecture.
+4. Seulement si tout est bon : Run workflow avec **publish = true**
+   (test_box = false) → les clients reçoivent la version.

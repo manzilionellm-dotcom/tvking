@@ -19,5 +19,8 @@ describe("liens de téléchargement Zuno", () => {
   it("raccourcis /apk et /pc", () => {
     expect(SHORT_LINKS["/apk"]).toBe(APP_DOWNLOADS.tvApk);
     expect(SHORT_LINKS["/pc"]).toBe(APP_DOWNLOADS.pcSetup);
+    // Box de test : jamais la release lue par les box des clients.
+    expect(SHORT_LINKS["/test"]).toBe(APP_DOWNLOADS.tvApkTest);
+    expect(APP_DOWNLOADS.tvApkTest).toContain("/zuno-tv-test/");
   });
 });

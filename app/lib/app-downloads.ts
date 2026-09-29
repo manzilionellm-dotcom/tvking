@@ -12,6 +12,11 @@ const RELEASES = "https://github.com/manzilionellm-dotcom/tvking/releases/downlo
 export const APP_DOWNLOADS = {
   /** Box Android TV / Fire TV / Google TV (APK, installation par-dessus). */
   tvApk: `${RELEASES}/zuno-tv/zuno-tv.apk`,
+  /**
+   * Box de TEST uniquement (release zuno-tv-test) : une nouvelle version y
+   * est validée sur UNE box avant d'aller chez les clients.
+   */
+  tvApkTest: `${RELEASES}/zuno-tv-test/zuno-tv.apk`,
   /** PC Windows 10/11 64 bits — installateur. */
   pcSetup: `${RELEASES}/zuno-windows/Zuno-Setup.exe`,
   /** PC Windows — version portable (dézipper, lancer tv_king.exe). */
@@ -30,4 +35,5 @@ export const SITE_URL = `https://${SITE_HOST}`;
 export const SHORT_LINKS = {
   "/apk": APP_DOWNLOADS.tvApk,
   "/pc": APP_DOWNLOADS.pcSetup,
+  "/test": APP_DOWNLOADS.tvApkTest,
 } as const;

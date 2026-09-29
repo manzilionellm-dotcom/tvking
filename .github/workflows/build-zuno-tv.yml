@@ -87,6 +87,12 @@ on:
         default: 'false'
         type: choice
         options: ['false', 'true']
+      test_box:
+        description: 'BOX DE TEST seulement (release zuno-tv-test) : AUCUN client mis à jour'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
       backend_url:
         description: 'Worker/panel visé (vide = https://app.7themotion.com)'
         required: false
@@ -98,7 +104,9 @@ permissions:
 
 env:
   # QUI PUBLIE ? Une seule réponse, lue par toutes les étapes concernées.
-  PUBLIER: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.publish == 'true' }}
+  # STABILITÉ (29/09/2026) : test_box=true ne publie JAMAIS pour les clients,
+  # même si publish=true (la version va d'abord sur UNE box de test).
+  PUBLIER: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event.inputs.publish == 'true') && github.event.inputs.test_box != 'true' }}
   RELEASE_TAG: zuno-tv
   # Certificat des box clients « 7 MOTION TV » (seven-tv.apk, depuis l'été 2026).
   EXPECTED_CERT: 5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61
@@ -535,6 +543,42 @@ jobs:
             echo "✓ https://github.com/$REPO/releases/download/$RELEASE_TAG/zuno-tv.aab"
           fi
           echo "✓ https://github.com/$REPO/releases/download/$RELEASE_TAG/$APK_NAME"
+
+      # ------------------------------------------------------------------
+      #  BOX DE TEST (29/09/2026) — règle de stabilité : une nouvelle version
+      #  du lecteur passe D'ABORD sur une seule box. Les box des clients ne
+      #  lisent que la release zuno-tv (version.json) : la release
+      #  zuno-tv-test ne déclenche AUCUNE mise à jour chez eux. Installation
+      #  sur la box de test : zuno.7themotion.com/test dans Downloader.
+      #  Après validation : relancer avec publish=true (test_box=false).
+      # ------------------------------------------------------------------
+      - name: Publier pour la box de test (release zuno-tv-test)
+        if: github.event.inputs.test_box == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST_TAG: zuno-tv-test
+        run: |
+          set -e
+          REPO="${{ github.repository }}"
+          APK="build/app/outputs/flutter-apk/$APK_NAME"
+          # Même clé que les box clients, sinon l'APK de test ne s'installe pas
+          # par-dessus (et la version validée ne passerait pas non plus).
+          [ "${APK_CERT:-}" = "$EXPECTED_CERT" ] \
+            || { echo "::error::signature ${APK_CERT:-?} ≠ clé des box → pas de publication test"; exit 1; }
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          NOTES="Zuno — version de TEST (une seule box, jamais les clients).
+
+          Installation : zuno.7themotion.com/test dans l'app Downloader.
+          versionCode : ${TV_BUILD_NUMBER:-?} · SHA-256 : $SHA
+          Commit : ${{ github.sha }}"
+          if gh release view "$TEST_TAG" -R "$REPO" >/dev/null 2>&1; then
+            gh release edit "$TEST_TAG" -R "$REPO" --title "Zuno — box de TEST" --notes "$NOTES"
+          else
+            gh release create "$TEST_TAG" -R "$REPO" --prerelease \
+              --title "Zuno — box de TEST" --notes "$NOTES"
+          fi
+          gh release upload "$TEST_TAG" "$APK" --clobber -R "$REPO"
+          echo "✓ box de test : https://github.com/$REPO/releases/download/$TEST_TAG/$APK_NAME"
 
       - name: Résumé
         run: |
