@@ -166,3 +166,21 @@ lecteur (`packages/native_video_player`) ou du réseau suit ce circuit :
    coupure Wi-Fi de 10 s pendant la lecture.
 4. Seulement si tout est bon : Run workflow avec **publish = true**
    (test_box = false) → les clients reçoivent la version.
+
+## Secours du direct (29/09/2026)
+
+Cas terrain : le serveur sert encore le Cinéma mais plus le direct.
+`lib/features/player/domain/live_fallback.dart` + `tv_player_screen.dart` :
+
+- Chaîne qui ne démarre pas → le lecteur essaie, 15 s chacun : l'adresse
+  d'origine, les autres formats Xtream du même serveur (`.ts`, `.m3u8`,
+  ancien chemin sans `/live/`), puis la même chaîne dans une autre source
+  active du client (ou une autre qualité : HD ↔ FHD). Le format qui marche
+  est retenu pour ce serveur pendant la session.
+- Téléchargements du Cinéma mis en pause pendant le direct (abonnements à
+  1 connexion), relancés à la sortie du lecteur.
+- Correctif : après une 1re reconnexion ratée, le lecteur ne réessayait
+  plus (roue infinie). Il réessaie désormais jusqu'au budget puis affiche
+  « Réessayer ».
+- Limite : si le fournisseur coupe réellement le direct pour ce compte et
+  qu'aucune autre source ne contient la chaîne, rien ne peut la lire.

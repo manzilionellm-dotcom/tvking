@@ -31,7 +31,10 @@ import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/presentation/channel_programs_screen.dart';
+import '../../cinema/data/cinema_downloads.dart';
 import '../../player/data/local_stream_relay.dart';
+import '../../player/domain/live_fallback.dart';
+import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
@@ -100,7 +103,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Anti-gel : on suit la progression réelle (position qui avance).
   DateTime _lastProgress = DateTime.now();
   Duration _lastPos = Duration.zero;
-  bool _recovering = false;
+  // Anti double déclenchement (erreur native + chien de garde au même moment).
+  DateTime _lastRecoverAt = DateTime.fromMillisecondsSinceEpoch(0);
+  // App au premier plan ? (Home / multitâche → lecture en pause : le chien de
+  // garde ne doit PAS « réparer » une pause voulue, sinon le son repartirait
+  // en arrière-plan.)
+  bool _appActive = true;
   static const Duration _frozen = Duration(seconds: 15);
   static const Duration _watchEvery = Duration(seconds: 4);
   // Reconnexion BORNÉE (P1-6) : on compte les ré-ouvertures sur la MÊME chaîne.
@@ -116,6 +124,22 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // fournisseur (≠ coupure réseau d'un flux qui jouait). Remis à false à chaque
   // ouverture (_open).
   bool _everShownFrame = false;
+
+  // SECOURS DU DIRECT (LiveFallback) : si la chaîne ne démarre pas, on essaie
+  // les autres formats du même serveur puis la même chaîne dans une autre
+  // source. [_playingUrl] = l'adresse réellement ouverte ; [_alts] = la liste
+  // des adresses à essayer (calculée au 1er échec seulement).
+  late String _playingUrl;
+  List<String>? _alts;
+  int _altIdx = 0;
+  bool _altRemembered = false;
+
+  /// Budget de reconnexion : au moins [_kMaxRecover], et assez pour essayer
+  /// chaque adresse de secours une fois (+2 pour les coupures réseau).
+  int get _maxRecover {
+    final int n = (_alts?.length ?? 1) + 2;
+    return n > _kMaxRecover ? n : _kMaxRecover;
+  }
 
   Channel get _current => widget.channels[_index];
 
@@ -141,7 +165,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // Le décodage (MediaCodec matériel + repli logiciel), le tampon réseau et
     // le User-Agent sont gérés côté natif (NativeVideoView.kt). Ici on se
     // contente de piloter l'URL et d'écouter l'état.
-    _controller = NativeVideoController(initialUrl: _current.streamUrl);
+    _playingUrl = LiveFallback.preferred(_current.streamUrl);
+    _controller = NativeVideoController(initialUrl: _playingUrl);
+    // Beaucoup d'abonnements n'autorisent qu'UNE connexion : un
+    // téléchargement de film en cours ferait refuser le direct (« le cinéma
+    // marche mais pas les chaînes »). On le met en pause le temps du direct,
+    // il reprend tout seul en quittant le lecteur.
+    unawaited(CinemaDownloads.pauseForLive());
     _controller.addListener(_onPlayer);
     // Favoris en direct (le ❤ se met à jour tout seul).
     FavoritesRepository.instance.initialize();
@@ -150,8 +180,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     });
     _open(reuse: true); // historique / présence pour la 1re chaîne
     // Chien de garde : aucune progression depuis 15 s → reconnexion.
+    // (Correctif 29/09/2026 : avant, `_recovering` restait vrai après une 1re
+    // tentative ratée → plus AUCUNE reconnexion, roue de chargement à
+    // l'infini. Désormais chaque tentative ratée en relance une autre 15 s
+    // plus tard, jusqu'au budget, puis l'écran « Réessayer ».)
     _watchdog = Timer.periodic(_watchEvery, (_) {
-      if (!_recovering && DateTime.now().difference(_lastProgress) > _frozen) {
+      if (!_appActive) {
+        _lastProgress = DateTime.now(); // pause voulue : pas un gel
+        return;
+      }
+      if (DateTime.now().difference(_lastProgress) > _frozen) {
         _recover();
       }
     });
@@ -169,8 +207,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
+        _appActive = false;
         _controller.pause();
       case AppLifecycleState.resumed:
+        _appActive = true;
+        _lastProgress = DateTime.now();
         _controller.play();
       case AppLifecycleState.inactive:
         break; // transitions brèves (dialogue…) → on ne coupe pas
@@ -191,13 +232,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
     if (_activeRecording != null) {
       final Recording rec = _activeRecording!;
-      LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? _current.streamUrl);
+      LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? _playingUrl);
       RecordingRepository.instance.finishRecording(rec);
     }
     _controller.removeListener(_onPlayer);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
     _controller.dispose();
+    unawaited(CinemaDownloads.resumeAfterLive());
     _focus.dispose();
     super.dispose();
   }
@@ -210,9 +252,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (_controller.position != _lastPos) {
       _lastPos = _controller.position;
       _lastProgress = DateTime.now();
-      _recovering = false;
       _recoverAttempts = 0;
       if (_fatal && mounted) setState(() => _fatal = false);
+      // Une adresse de SECOURS joue : on retient le format pour ce serveur
+      // (les chaînes suivantes s'ouvriront directement comme ça).
+      if (!_altRemembered && _playingUrl != _current.streamUrl) {
+        _altRemembered = true;
+        LiveFallback.remember(_current.streamUrl, _playingUrl);
+        BlackBox.instance.info('PLAYER', 'secours du direct OK (adresse ${_altIdx + 1}/${_alts?.length ?? 1})');
+      }
     }
     // Une vraie image a été dessinée → la source envoie bien de la vidéo.
     if (_controller.firstFrame) _everShownFrame = true;
@@ -234,14 +282,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
     // Nouvelle chaîne → budget de reconnexion neuf, on lève tout état d'erreur.
     _recoverAttempts = 0;
-    _recovering = false;
+    _alts = null;
+    _altIdx = 0;
+    _altRemembered = false;
     if (mounted) setState(() {
       _buffering = true;
       _fatal = false;
     });
     if (!reuse) {
-      // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur.
-      _controller.setUrl(_current.streamUrl);
+      // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur
+      // (dans le format qui a déjà marché sur ce serveur, s'il y en a un).
+      _playingUrl = LiveFallback.preferred(_current.streamUrl);
+      _controller.setUrl(_playingUrl);
     }
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
@@ -263,13 +315,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _recover() {
-    BlackBox.instance.warn('PLAYER', 'reconnexion (tentative ${_recoverAttempts + 1}/$_kMaxRecover)'
+    if (_fatal) return;
+    final DateTime now = DateTime.now();
+    if (now.difference(_lastRecoverAt) < const Duration(seconds: 3)) return;
+    _lastRecoverAt = now;
+    BlackBox.instance.warn('PLAYER', 'reconnexion (tentative ${_recoverAttempts + 1}/$_maxRecover)'
         '${_controller.hasError ? ' après erreur ExoPlayer' : _controller.isEnded ? ' après fin de flux' : ' après gel 15 s'}');
-    if (_recovering || _fatal) return;
     // BORNE (P1-6) : au-delà de _kMaxRecover ré-ouvertures sans reprise, on
     // ARRÊTE la boucle de reconnexion et on bascule en erreur explicite avec
     // « Réessayer » manuel — fini la boucle CPU/réseau infinie sur flux mort.
-    if (_recoverAttempts >= _kMaxRecover) {
+    if (_recoverAttempts >= _maxRecover) {
       if (mounted) setState(() {
         _fatal = true;
         _buffering = false;
@@ -277,11 +332,28 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       return;
     }
     _recoverAttempts++;
-    _recovering = true;
     _lastProgress = DateTime.now();
-    // Ré-ouvre la MÊME source : l'URL locale du relais si on enregistre, sinon
-    // l'URL directe. = reconnexion au direct sans casser l'enregistrement.
-    _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+    // Enregistrement en cours : on ré-ouvre le relais local (on ne change
+    // pas de source au milieu d'un fichier).
+    if (_relayPlayUrl != null) {
+      _controller.setUrl(_relayPlayUrl!);
+      return;
+    }
+    // Chaîne qui JOUAIT puis s'est coupée : 1re tentative sur la même
+    // adresse (simple coupure réseau). Chaîne qui n'a JAMAIS démarré, ou
+    // 2e échec : on passe à l'adresse de secours suivante.
+    if (_everShownFrame && _recoverAttempts == 1) {
+      _controller.setUrl(_playingUrl);
+      return;
+    }
+    final List<String> alts = _alts ??= LiveFallback.candidates(
+        _current, PlaylistRepository.instance.currentChannels);
+    if (alts.length > 1) {
+      _altIdx = (_altIdx + 1) % alts.length;
+      _playingUrl = alts[_altIdx];
+      BlackBox.instance.warn('PLAYER', 'secours du direct : adresse ${_altIdx + 1}/${alts.length}');
+    }
+    _controller.setUrl(_playingUrl);
   }
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
@@ -291,7 +363,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _recoverAttempts = 0;
       _buffering = true;
     });
-    _controller.setUrl(_relayPlayUrl ?? _current.streamUrl);
+    _controller.setUrl(_relayPlayUrl ?? _playingUrl);
     _showOverlayTemporarily();
   }
 
@@ -308,7 +380,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   Future<void> _startRecording() async {
     if (_isRecording) return;
-    final String realUrl = _current.streamUrl;
+    // L'adresse qui JOUE (éventuellement une adresse de secours).
+    final String realUrl = _playingUrl;
     try {
       final String path = await RecordingRepository.instance
           .createFilePath(channelName: _current.cleanName);
@@ -363,14 +436,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _activeRecording = null;
     }
     _relayPlayUrl = null;
-    final String realUrl = rec.streamUrl ?? _current.streamUrl;
+    final String realUrl = rec.streamUrl ?? _playingUrl;
     int bytes = 0;
     try {
       bytes = await LocalStreamRelay.instance.stopRecording(realUrl);
       await RecordingRepository.instance.finishRecording(rec);
     } catch (_) {}
     if (resumeDirect && mounted) {
-      _controller.setUrl(_current.streamUrl);
+      _controller.setUrl(_playingUrl);
     }
     if (mounted) {
       _flash(bytes > 0

@@ -158,11 +158,58 @@ abstract final class CinemaDownloads {
       _current = null;
       unawaited(_next()); // terminé, échoué ou supprimé → épisode suivant
     } else if (d.status == DownloadStatus.paused) {
+      // Pause posée par le DIRECT (voir pauseForLive) : la file attend, elle
+      // reprendra toute seule à la sortie du lecteur.
+      if (_pausedForLive.contains(id)) return;
       // Pause décidée par le client : on arrête la file.
       _current = null;
       _queue.clear();
       queued.value = 0;
     }
+  }
+
+  // ---------------------------------------------------------------
+  //  PRIORITÉ AU DIRECT (29/09/2026)
+  //  Beaucoup d'abonnements n'autorisent qu'UNE connexion à la fois. Un
+  //  film en cours de téléchargement occupe cette connexion → le serveur
+  //  refuse la chaîne en direct (« le cinéma marche, pas les chaînes »).
+  //  Le lecteur du direct met donc les téléchargements EN PAUSE à son
+  //  ouverture et les RELANCE à sa fermeture (reprise HTTP Range : rien
+  //  n'est perdu).
+  // ---------------------------------------------------------------
+
+  /// Téléchargements mis en pause par le direct (à relancer ensuite).
+  static final Set<String> _pausedForLive = <String>{};
+
+  /// Met en pause les téléchargements en cours (ouverture du direct).
+  static Future<void> pauseForLive() async {
+    try {
+      final List<String> active = DownloadsRepository.instance.current
+          .where((Download d) => d.status == DownloadStatus.downloading)
+          .map((Download d) => d.id)
+          .toList();
+      if (active.isEmpty) return;
+      _pausedForLive.addAll(active);
+      for (final String id in active) {
+        await DownloadsRepository.instance.pause(id);
+      }
+      BlackBox.instance.info('CINEMA', '${active.length} téléchargement(s) en pause pendant le direct');
+    } catch (_) {
+      // Jamais bloquant pour le direct.
+    }
+  }
+
+  /// Relance les téléchargements mis en pause par le direct (sortie du lecteur).
+  static Future<void> resumeAfterLive() async {
+    if (_pausedForLive.isEmpty) return;
+    final List<String> ids = _pausedForLive.toList();
+    _pausedForLive.clear();
+    for (final String id in ids) {
+      try {
+        await DownloadsRepository.instance.resume(id);
+      } catch (_) {}
+    }
+    BlackBox.instance.info('CINEMA', '${ids.length} téléchargement(s) relancé(s) après le direct');
   }
 
   static Future<bool> _unmeteredNetwork() async {
