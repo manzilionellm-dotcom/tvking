@@ -34,6 +34,12 @@ Cette branche assemble, dans l'ordre, les chantiers ouverts sur la
    avec `clearVideoFrameMetadataListener` et **le même objet**
    (`frameClock`). Sans ça, le premier APK de la branche image ne
    compilait pas.
+8. Imports en double laissés par la fusion (`Format` et
+   `DecoderReuseEvaluation`, chacun deux fois). Kotlin les refuse
+   (« ambiguous »). Ils sont retirés. Le run
+   https://github.com/manzilionellm-dotcom/tvking/actions/runs/36773748899
+   (commit `a6e25714`, sans le correctif d'écouteur) est **rouge**
+   pour ces deux raisons. Il ne compte pas comme preuve.
 
 Le téléphone et le PC ne sont pas la box. Le `pubspec.yaml` reste
 `0.3.0+11` (téléphone). Le nom visible de l'APK TV est planché à
