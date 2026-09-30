@@ -68,14 +68,22 @@ Les 19 tests du fichier `test/features/cinema/catalog_cache_test.dart` couvrent 
 
 `dart analyze` sur les fichiers touchés : **aucune erreur**. `flutter analyze` sur tout le projet signale encore des infos et avertissements **déjà présents** avant ce travail (const, champs inutilisés ailleurs). On n'en a pas ajouté d'erreur.
 
+Le build automatique de la branche a aussi fini, sur GitHub, pour le commit `7634aaae` :
+
+- les 6 checks de la PR sont verts, dont `flutter analyze + test` (290 tests passés, 1 ignoré, comme en local) ;
+- le job « Build Zuno TV APK » a réussi : https://github.com/manzilionellm-dotcom/tvking/actions/runs/36771504223 ;
+- le journal affiche `PUBLIER: false` et `version visible = 104 (précédente publiée : 102, publication : false)` ;
+- les étapes « Publier sur la release zuno-tv » et « Publier pour la box de test » sont **sautées** ;
+- l'APK existe seulement comme artefact de ce run. Il n'a pas été installé, et `version.json` de la release clients n'a pas été réécrit.
+
 ## Ce qui n'est PAS prouvé
 
 - **Aucun essai sur une box** v102, v103 ou v104. Pas de télécommande, pas d'écran télé, pas de coupure réseau réelle.
 - **Aucun essai avec un vrai portail Xtream.** Les tests utilisent de fausses réponses en mémoire.
 - On n'a **pas ouvert** l'écran Films dans l'application. Le bouton Réessayer et la ligne « Mis à jour il y a … » sont dans le code ; personne ne les a vus sur une télé.
 - Le test « favoris / historique / profils » utilise des **fichiers factices** à côté du dossier cache. Il ne lit pas les vrais favoris d'une box. Le code du cache n'ouvre pas ces réglages, mais ce n'est pas une migration jouée sur un appareil déjà rempli.
-- On n'a **pas** lancé le workflow avec `test_box=true` (pas le droit de démarrer une action à la main). Un push de cette branche lance le build **automatique** de vérification : il ne publie pas (ce n'est pas `main`, et `publish` n'est pas demandé).
-- Rien n'a été publié. La release `zuno-tv` n'a pas été modifiée. Le Worker Cloudflare n'a pas été déployé. Le 4K Player n'a pas été touché. Aucun push vers `main`.
+- On n'a **pas** lancé le workflow à la main avec `test_box=true`. Le run observé est le build automatique du push, pas une installation sur une box de test.
+- Le Worker Cloudflare n'a pas été déployé. Le 4K Player n'a pas été touché. Aucun push vers `main`.
 
 ## Test simple, sur la box (à faire par quelqu'un)
 
