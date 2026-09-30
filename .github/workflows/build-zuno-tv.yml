@@ -336,12 +336,13 @@ jobs:
             | tr -d ' \n' | grep -oE '"versionName":"[^"]*"' | grep -oE '[0-9]+' | head -1 || true)
           PREV_VN=${PREV_VN:-0}
           if [ "$PREV_VN" -lt 88 ]; then PREV_VN=87; fi
-          # Plancher 105 : un build de cette branche affiche 105 même
+          # Plancher 106 : un build de cette branche affiche 106 même
           # s'il n'est pas publié (la release clients reste à 102 tant
           # que PUBLIER n'est pas vrai — version.json n'est pas écrit).
-          # Le versionCode reste les secondes epoch, donc au-dessus du
-          # 1790640358 de la v102 et de tout APK 103 déjà compilé.
-          FLOOR_VN=105
+          # Le versionCode reste les secondes epoch. Il doit dépasser
+          # 1790642483 (dernier APK de test déjà accepté par une box)
+          # et 1790640358 (v102 publiée).
+          FLOOR_VN=106
           if [ "$PUBLIER" = "true" ]; then NEW_VN=$((PREV_VN + 1)); else NEW_VN=$PREV_VN; fi
           if [ "$NEW_VN" -lt "$FLOOR_VN" ]; then NEW_VN=$FLOOR_VN; fi
           echo "version visible = $NEW_VN (précédente publiée : $PREV_VN, publication : $PUBLIER, plancher : $FLOOR_VN)"
@@ -353,11 +354,13 @@ jobs:
         run: |
           set -e
           BUILD_NUMBER=$(date +%s)
-          # La v102 publiée porte le versionCode 1790640358. Un APK
-          # plus petit ne s'installerait pas par-dessus les box déjà là.
-          MIN_CODE=1790640358
+          # Secondes epoch, donc croissant. Plancher = le dernier
+          # versionCode déjà posé sur une box de test (1790642483),
+          # lui-même au-dessus de la v102 (1790640358). Un APK plus
+          # petit est refusé par Android.
+          MIN_CODE=1790642483
           if [ "$BUILD_NUMBER" -le "$MIN_CODE" ]; then
-            echo "::error title=versionCode trop petit::$BUILD_NUMBER n'est pas au-dessus de $MIN_CODE (v102)."
+            echo "::error title=versionCode trop petit::$BUILD_NUMBER n'est pas au-dessus de $MIN_CODE."
             exit 1
           fi
           echo "versionCode = $BUILD_NUMBER · versionName = $TV_VERSION_NAME"
