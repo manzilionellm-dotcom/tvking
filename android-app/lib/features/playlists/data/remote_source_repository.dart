@@ -28,6 +28,7 @@ import 'package:http/http.dart' as http;
 import '../../channels/data/recently_watched_repository.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../device/data/device_identity.dart';
+import '../../device/data/device_secret.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../domain/playlist.dart';
@@ -59,10 +60,15 @@ abstract final class RemoteSourceRepository {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
 
+      // Enregistre le secret de cette box avant de demander les codes.
+      // Si le serveur connaît déjà l'empreinte, la requête suivante
+      // doit présenter le header. Sinon (box pas encore enrôlée côté
+      // serveur), l'ancienne lecture par MAC reste acceptée.
+      await DeviceSecret.instance.enroll(mac);
       final http.Response resp = await http
           .get(
             Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
-            headers: const <String, String>{'Accept': 'application/json'},
+            headers: await DeviceSecret.instance.headers(),
           )
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) {

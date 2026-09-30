@@ -101,6 +101,11 @@ class SubscriptionState extends ChangeNotifier {
   DateTime? get firstLaunchAt => _firstLaunchAt;
   RemoteSubscriptionStatus get remote => _remote;
 
+  /// Dernier motif lisible après une synchro : `offline`, `expired`,
+  /// `frozen`, `banned`, ou null. L'écran d'activation l'affiche au
+  /// lieu d'attendre en silence.
+  String? syncHint;
+
   /// `true` si l'abonnement est À VIE (priorité au serveur). Permet à
   /// la carte d'afficher « Abonnement à vie » plutôt qu'une date.
   bool get isLifetime {
@@ -271,6 +276,17 @@ class SubscriptionState extends ChangeNotifier {
       final RemoteSubscriptionStatus snap =
           await SubscriptionBackend.heartbeat(mac);
       _remote = snap;
+      if (!snap.exists && snap.status == 'unknown') {
+        syncHint = 'offline';
+      } else if (snap.banned) {
+        syncHint = 'banned';
+      } else if (snap.frozen) {
+        syncHint = 'frozen';
+      } else if (snap.expired) {
+        syncHint = 'expired';
+      } else {
+        syncHint = null;
+      }
       // Mémorise les garde-fous serveur pour le mode hors-ligne :
       //  - le verdict de blocage (banni/gelé) → ne pourra plus être esquivé
       //    en passant en mode avion ;
@@ -305,7 +321,9 @@ class SubscriptionState extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
+      syncHint = 'offline';
       if (kDebugMode) debugPrint('[Subscription] syncWithBackend error: $e');
+      notifyListeners();
     }
   }
 
@@ -314,8 +332,24 @@ class SubscriptionState extends ChangeNotifier {
   Future<void> refreshRemote() async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
-      _remote = await SubscriptionBackend.getStatus(mac);
+      final RemoteSubscriptionStatus snap =
+          await SubscriptionBackend.getStatus(mac);
+      _remote = snap;
+      if (!snap.exists && snap.status == 'unknown') {
+        syncHint = 'offline';
+      } else if (snap.banned) {
+        syncHint = 'banned';
+      } else if (snap.frozen) {
+        syncHint = 'frozen';
+      } else if (snap.expired) {
+        syncHint = 'expired';
+      } else {
+        syncHint = null;
+      }
       notifyListeners();
-    } catch (_) {}
+    } catch (_) {
+      syncHint = 'offline';
+      notifyListeners();
+    }
   }
 }

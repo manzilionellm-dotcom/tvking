@@ -24,6 +24,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
@@ -32,19 +33,32 @@ import 'package:path_provider/path_provider.dart';
 
 import '../blackbox/black_box.dart';
 import 'build_flags.dart';
+import 'update_manifest.dart';
 
 class UpdateInfo {
   const UpdateInfo({
     required this.versionCode,
     required this.versionName,
     required this.url,
+    required this.sha256,
+    required this.sizeBytes,
     this.mandatory = false,
   });
 
   final int versionCode;
   final String versionName;
   final String url;
+
+  /// Empreinte SHA-256 hex (64 caractères) annoncée par version.json.
+  final String sha256;
+
+  /// Taille exacte du fichier, en octets.
+  final int sizeBytes;
   final bool mandatory;
+
+  /// Délai maximum d'un téléchargement. Au-delà, on abandonne
+  /// plutôt que de laisser une barre immobile.
+  static const Duration downloadTimeout = Duration(minutes: 3);
 }
 
 class UpdateService {
@@ -76,19 +90,31 @@ class UpdateService {
           .timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) return null;
 
-      final Map<String, dynamic> j = jsonDecode(r.body) as Map<String, dynamic>;
-      final int latest = (j['versionCode'] as num?)?.toInt() ?? 0;
-      BlackBox.instance.info('MAJ', 'installee $current · disponible $latest');
-      if (latest <= current) return null; // deja a jour
-
-      final String url = (j['url'] ?? '').toString();
-      if (url.isEmpty) return null;
+      final Object? decoded = jsonDecode(r.body);
+      final UpdateManifest? manifest =
+          UpdateManifest.tryParse(decoded, currentBuild: current);
+      final int announced = decoded is Map
+          ? ((decoded['versionCode'] as num?)?.toInt() ?? 0)
+          : 0;
+      BlackBox.instance.info('MAJ', 'installee $current · disponible $announced');
+      if (manifest == null) {
+        // Plus récent mais sans empreinte, ou déjà à jour, ou JSON cassé.
+        if (announced > current) {
+          BlackBox.instance.warn(
+            'MAJ',
+            'manifeste sans empreinte ou sans taille — mise à jour refusée',
+          );
+        }
+        return null;
+      }
 
       return UpdateInfo(
-        versionCode: latest,
-        versionName: (j['versionName'] ?? '').toString(),
-        url: url,
-        mandatory: j['mandatory'] == true,
+        versionCode: manifest.versionCode,
+        versionName: manifest.versionName,
+        url: manifest.url,
+        sha256: manifest.sha256,
+        sizeBytes: manifest.sizeBytes,
+        mandatory: manifest.mandatory,
       );
     } catch (e) {
       if (kDebugMode) debugPrint('[Update] check error: $e');
@@ -129,7 +155,11 @@ class UpdateService {
   Future<File?> readyApk(UpdateInfo update) async {
     try {
       final File f = await _apkFile(update.versionCode);
-      if (await f.exists() && await f.length() > 1024 * 1024) return f;
+      // La taille doit être EXACTEMENT celle du manifeste. Un fichier
+      // coupé, même au-dessus de 1 Mo, n'est pas une mise à jour.
+      if (await f.exists() && await f.length() == update.sizeBytes) {
+        return f;
+      }
     } catch (_) {}
     return null;
   }
@@ -164,26 +194,55 @@ class UpdateService {
       progress.value = 0;
 
       client = http.Client();
-      final http.StreamedResponse resp =
-          await client.send(http.Request('GET', Uri.parse(update.url)));
+      final http.StreamedResponse resp = await client
+          .send(http.Request('GET', Uri.parse(update.url)))
+          .timeout(UpdateInfo.downloadTimeout);
       if (resp.statusCode != 200) {
         BlackBox.instance.warn('MAJ', 'telechargement HTTP ${resp.statusCode}');
         return null;
       }
-      final int total = resp.contentLength ?? 0;
+      final int? announcedLength = resp.contentLength;
       int received = 0;
       sink = part.openWrite();
-      await for (final List<int> chunk in resp.stream) {
+      // Empreinte calculée au fil de l'eau : on ne recharge pas
+      // l'APK entier en mémoire (box à peu de RAM).
+      final HashSink hasher = Sha256().newHashSink();
+      final Stopwatch watch = Stopwatch()..start();
+      await for (final List<int> chunk in resp.stream.timeout(
+        UpdateInfo.downloadTimeout,
+      )) {
+        if (watch.elapsed > UpdateInfo.downloadTimeout) {
+          throw TimeoutException('téléchargement trop long');
+        }
         sink.add(chunk);
+        hasher.add(chunk);
         received += chunk.length;
-        if (total > 0) progress.value = received / total;
+        progress.value = received / update.sizeBytes;
       }
       await sink.flush();
       await sink.close();
       sink = null;
-      if (total > 0 && received != total) {
-        BlackBox.instance
-            .warn('MAJ', 'APK incomplet ($received / $total octets)');
+      hasher.close();
+      if (!apkSizeMatches(
+        received: received,
+        expected: update.sizeBytes,
+        contentLength: announcedLength,
+      )) {
+        BlackBox.instance.warn(
+          'MAJ',
+          'APK refusé ($received octets, attendu ${update.sizeBytes})',
+        );
+        try {
+          await part.delete();
+        } catch (_) {}
+        return null;
+      }
+      final Hash hash = await hasher.hash();
+      final String got = hash.bytes
+          .map((int b) => b.toRadixString(16).padLeft(2, '0'))
+          .join();
+      if (got != update.sha256) {
+        BlackBox.instance.warn('MAJ', 'empreinte différente — fichier refusé');
         try {
           await part.delete();
         } catch (_) {}

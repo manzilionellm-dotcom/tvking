@@ -28,6 +28,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
 import '../../device/data/device_identity.dart';
+import 'source_privacy.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
@@ -225,7 +226,12 @@ abstract final class SubscriptionBackend {
         return <String, Object?>{
           'type': xtream ? 'xtream' : 'm3u',
           'name': p.name,
-          'server': xtream ? (p.xtreamServer ?? '') : (p.m3uUrl ?? ''),
+          // Hôte seulement. Une URL M3U contient souvent le mot de
+          // passe dans le lien : on ne l'envoie pas.
+          'server': heartbeatServerField(
+            xtream: xtream,
+            serverOrUrl: xtream ? (p.xtreamServer ?? '') : (p.m3uUrl ?? ''),
+          ),
           'username': xtream ? (p.xtreamUsername ?? '') : '',
           'channels': p.channelCount,
           'active': p.isActive,

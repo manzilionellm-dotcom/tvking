@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
+import '../../subscription/data/activation_hint.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -39,13 +40,19 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
+    SubscriptionState.instance.addListener(_onSub);
     // Activation instantanée : revérifie toutes les 5 s.
     _poll = Timer.periodic(const Duration(seconds: 5),
         (_) => SubscriptionState.instance.syncWithBackend());
   }
 
+  void _onSub() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    SubscriptionState.instance.removeListener(_onSub);
     _poll?.cancel();
     super.dispose();
   }
@@ -137,6 +144,14 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               autofocus: true,
               onSelect: _busy ? null : _check,
             ),
+            if (activationHintFr(SubscriptionState.instance.syncHint) != null) ...<Widget>[
+              const SizedBox(height: 14),
+              Text(
+                activationHintFr(SubscriptionState.instance.syncHint)!,
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(16, color: TvTokens.live),
+              ),
+            ],
             const SizedBox(height: 22),
             // ----- CONNEXION : l'utilisateur apporte sa propre liste -----
             //  Deux entrées de MÊME rang, bien visibles : identifiants Xtream

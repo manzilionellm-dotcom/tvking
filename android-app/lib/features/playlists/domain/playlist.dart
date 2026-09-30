@@ -58,8 +58,9 @@ class Playlist {
   /// Identifiant Xtream.
   final String? xtreamUsername;
 
-  /// Mot de passe Xtream (stocké en clair pour l'instant ;
-  /// Phase 5 on chiffrera avec flutter_secure_storage).
+  /// Mot de passe Xtream. En mémoire il est en clair (il faut le
+  /// donner au fournisseur). Dans SQLite il est chiffré par
+  /// PlaylistSecret ; les anciennes lignes en clair restent lisibles.
   final String? xtreamPassword;
 
   /// URL XMLTV pour l'EPG (optionnel — pour Xtream l'EPG vient

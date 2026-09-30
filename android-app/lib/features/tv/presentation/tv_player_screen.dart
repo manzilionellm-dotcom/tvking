@@ -438,17 +438,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _relayPlayUrl = null;
     final String realUrl = rec.streamUrl ?? _playingUrl;
     int bytes = 0;
+    bool failed = false;
     try {
       bytes = await LocalStreamRelay.instance.stopRecording(realUrl);
       await RecordingRepository.instance.finishRecording(rec);
-    } catch (_) {}
+    } catch (_) {
+      failed = true;
+    }
     if (resumeDirect && mounted) {
       _controller.setUrl(_playingUrl);
     }
     if (mounted) {
-      _flash(bytes > 0
-          ? context.l10n.tvRecordingSaved(_humanSize(bytes))
-          : context.l10n.tvRecordingEmpty);
+      if (failed) {
+        _flash('L\'enregistrement n\'a pas pu être fermé. Le fichier peut être incomplet.');
+      } else {
+        _flash(bytes > 0
+            ? context.l10n.tvRecordingSaved(_humanSize(bytes))
+            : context.l10n.tvRecordingEmpty);
+      }
     }
   }
 
@@ -754,9 +761,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                                 color: TvTokens.text)),
                         const SizedBox(height: 8),
                         Text(
-                            _everShownFrame
-                                ? 'Chaîne indisponible pour le moment.'
-                                : 'Chaîne vide ou bloquée par ta source.',
+                            'Cette chaîne ne répond pas. Haut ou bas : la suivante.',
                             style: TextStyle(
                                 fontSize: TvDimens.body,
                                 color: TvTokens.mutedDim)),

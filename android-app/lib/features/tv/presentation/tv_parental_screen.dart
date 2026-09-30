@@ -40,9 +40,22 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
 
   // ----- Bascule du Mode Enfants -----
   Future<void> _toggleKids(bool wantOn) async {
-    // Activer : libre. Désactiver : code parental obligatoire (sinon un
-    // enfant le couperait lui-même).
-    if (!wantOn) {
+    // Activer : le foyer choisit d'abord un code (plus de 0000).
+    // Désactiver : ce code est obligatoire (sinon un enfant le
+    // couperait lui-même).
+    if (wantOn) {
+      if (!await AppPinSettings.instance.hasCustomPin()) {
+        if (!mounted) return;
+        final String? next = await _pickNewPin(context);
+        if (next == null) return;
+        try {
+          await AppPinSettings.instance.setPin(next);
+        } catch (_) {
+          return;
+        }
+        if (mounted) setState(() => _usingDefaultPin = false);
+      }
+    } else {
       final bool ok = await _askPin(context, context.l10n.tvEnterParentalCode);
       if (!ok) return;
     }
@@ -148,8 +161,8 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                 const SizedBox(height: 10),
                 if (_usingDefaultPin)
                   Text(
-                    'Tu utilises encore le code par défaut 0000. '
-                    'Change-le pour protéger le Mode Enfants.',
+                    'Choisis un code avant d\'activer le Mode Enfants. '
+                    'Le code 0000 n\'est plus accepté.',
                     style: TextStyle(
                         fontSize: TvDimens.label,
                         fontWeight: FontWeight.w600,
@@ -220,8 +233,18 @@ Future<bool> _askPin(BuildContext context, String title) async {
           title: title,
           subtitle: subtitle,
           onComplete: (String pin) async {
+            final int locked = await AppPinSettings.instance.lockRemainingMs();
+            if (locked > 0) {
+              final int minutes = (locked / 60000).ceil().clamp(1, 5);
+              return 'Trop d\'essais. Réessaie dans $minutes min.';
+            }
             final bool good = await AppPinSettings.instance.verify(pin);
-            return good ? null : wrong;
+            if (good) return null;
+            final int after = await AppPinSettings.instance.lockRemainingMs();
+            if (after > 0) {
+              return 'Trop d\'essais. Réessaie dans quelques minutes.';
+            }
+            return wrong;
           },
         ),
       ),

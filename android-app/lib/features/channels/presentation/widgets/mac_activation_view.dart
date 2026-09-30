@@ -29,6 +29,7 @@ import '../../../pricing/presentation/pricing_banner.dart';
 import '../../../playlists/data/playlist_repository.dart';
 import '../../../playlists/data/remote_source_repository.dart';
 import '../../../playlists/presentation/xtream_login_sheet.dart';
+import '../../../subscription/data/activation_hint.dart';
 import '../../../subscription/data/subscription_state.dart';
 
 class MacActivationView extends StatelessWidget {
@@ -220,10 +221,13 @@ class MacActivationView extends StatelessWidget {
   /// `onActivated` est fourni (feuille), on le déclenche pour fermer.
   Future<void> _verify(BuildContext context) async {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final String checking = context.l10n.activationChecking;
+    final String success = context.l10n.activationSuccess;
+    final String noSource = context.l10n.activationNoSourceYet;
     messenger.showSnackBar(
       SnackBar(
         duration: const Duration(seconds: 25),
-        content: Text(context.l10n.activationChecking),
+        content: Text(checking),
       ),
     );
     await SubscriptionState.instance.syncWithBackend();
@@ -237,14 +241,16 @@ class MacActivationView extends StatelessWidget {
       messenger.showSnackBar(
         SnackBar(
           backgroundColor: AppColors.success,
-          content: Text(context.l10n.activationSuccess),
+          content: Text(success),
         ),
       );
     } else {
+      final String? hint =
+          activationHintFr(SubscriptionState.instance.syncHint);
       messenger.showSnackBar(
         SnackBar(
           backgroundColor: AppColors.warning,
-          content: Text(context.l10n.activationNoSourceYet),
+          content: Text(hint ?? noSource),
         ),
       );
     }

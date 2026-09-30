@@ -73,6 +73,24 @@ import { landingHtml } from './landing.js';
 import { portalHtml } from './portal.js';
 // PWA : manifeste, service worker et icônes (le site s'installe comme une app).
 import { PWA_MANIFEST, PWA_SW, PWA_ICON_192, PWA_ICON_512, PWA_APPLE_ICON, OG_IMAGE } from './pwa_assets.js';
+// Décisions d'accès (secret de box) et chiffrement au repos des codes IPTV.
+// Le secret de chiffrement vient de Cloudflare (`SOURCE_ENCRYPTION_KEY`),
+// jamais du dépôt.
+import {
+  secretMatches,
+  hashDeviceSecret,
+  legacyCredentialsAllowed,
+  deviceReadDecision,
+  backupAllowed,
+  enrollDecision,
+  acceptableDeviceSecret,
+} from './device_guard.js';
+import {
+  sealSource,
+  openSource,
+  encryptionKey,
+  redactCredentialUrl,
+} from './source_crypto.js';
 
 // ----- Constantes APK / téléchargement -----
 //
@@ -1585,16 +1603,21 @@ function checkAdmin(request, env) {
 
 // ----- Rate-limit applicatif des endpoints PUBLICS (anti-abus / anti-énumération) -----
 //  Réutilise la table `rate_limits` (MÊME schéma que api_v1.js → coexistence
-//  sans conflit). Clé = bucket + IP appelante (CF-Connecting-IP). FAIL-OPEN :
-//  un incident D1 (ou D1 absent) ne bloque JAMAIS un client légitime — la
-//  sécurité ne doit pas casser le service. Renvoie `true` si AUTORISÉ.
+//  sans conflit). Clé = bucket + IP appelante (CF-Connecting-IP).
+//
+//  mode absent : FAIL-OPEN (booléen). Un incident D1 ne coupe pas le
+//  heartbeat ni les pages publiques.
+//  mode 'strict' : pour les routes qui livrent des codes (device-source,
+//  backup, self-source, device-proof). Renvoie 'ok' | 'limited' |
+//  'unavailable'. Une panne de la base NE livre PAS les codes.
 function clientIp(request) {
   return request.headers.get('CF-Connecting-IP')
     || request.headers.get('X-Forwarded-For')
     || 'unknown';
 }
-async function rateLimitOk(env, request, bucket, maxAttempts, windowMs) {
-  if (!env || !env.DB) return true; // pas de D1 → on ne bloque pas
+async function rateLimitOk(env, request, bucket, maxAttempts, windowMs, mode) {
+  const strict = mode === 'strict';
+  if (!env || !env.DB) return strict ? 'unavailable' : true;
   try {
     await env.DB.prepare(
       'CREATE TABLE IF NOT EXISTS rate_limits (k TEXT PRIMARY KEY, '
@@ -1610,14 +1633,14 @@ async function rateLimitOk(env, request, bucket, maxAttempts, windowMs) {
         'INSERT INTO rate_limits (k, count, window_start) VALUES (?, 1, ?) '
         + 'ON CONFLICT(k) DO UPDATE SET count = 1, window_start = ?',
       ).bind(k, now, now).run();
-      return true;
+      return strict ? 'ok' : true;
     }
-    if (row.count >= maxAttempts) return false;
+    if (row.count >= maxAttempts) return strict ? 'limited' : false;
     await env.DB.prepare('UPDATE rate_limits SET count = count + 1 WHERE k = ?')
       .bind(k).run();
-    return true;
+    return strict ? 'ok' : true;
   } catch (_) {
-    return true; // fail-open
+    return strict ? 'unavailable' : true;
   }
 }
 function tooManyRequests() {
@@ -2526,8 +2549,15 @@ async function handleDeleteClient(env, mac) {
   return new Response(null, { status: 204, headers: JSON_HEADERS });
 }
 
-async function handlePublicConfig(env, mac) {
+async function handlePublicConfig(request, env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const MAC = mac.toUpperCase();
+  // Même verrou que device-source : une fois la box enrôlée, la MAC
+  // affichée à l'écran ne suffit plus. Sans base lisible, pas de codes.
+  const access = await credentialAccess(env, request, MAC);
+  if (access.kind !== 'ok' && access.kind !== 'legacy') {
+    return credentialsDenied(MAC, access.reason);
+  }
   const data = await readClient(env, mac);
   if (!data) return notFound(`Aucun playlist configurée pour ${mac}`);
   // On ne renvoie au client que ce dont il a besoin (pas les
@@ -2617,11 +2647,129 @@ async function handlePublicServers(env) {
   return json({ servers });
 }
 
-// /api/device-source/:mac — public.
+// ----- Secret propre à la box (X-Device-Secret) -----
+//  Créé par l'application, stocké sur l'appareil, enregistré ici sous
+//  forme d'empreinte (jamais le secret en clair). Tant que la box
+//  n'a pas été mise à jour, elle n'a pas ce secret : on garde alors
+//  la lecture de la source SI la licence est lisible. La sauvegarde
+//  cloud, elle, exige le secret tout de suite.
+const DEVICE_SECRET_HEADER = 'X-Device-Secret';
+
+function presentedDeviceSecret(request) {
+  if (!request || !request.headers) return '';
+  return String(request.headers.get(DEVICE_SECRET_HEADER) || '').trim();
+}
+
+async function ensureDeviceSecretsTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS device_secrets (
+       mac TEXT PRIMARY KEY,
+       secret_hash TEXT NOT NULL,
+       android_id TEXT,
+       updated_at INTEGER NOT NULL
+     )`,
+  ).run();
+}
+
+async function readDeviceSecretRow(env, mac) {
+  if (!env || !env.DB) return null;
+  try {
+    await ensureDeviceSecretsTable(env);
+    return await env.DB.prepare(
+      'SELECT secret_hash, android_id FROM device_secrets WHERE mac = ?',
+    ).bind(mac).first();
+  } catch (_) {
+    return null;
+  }
+}
+
+async function knownAndroidId(env, mac) {
+  if (!env || !env.DB) return '';
+  try {
+    const row = await env.DB.prepare(
+      'SELECT android_id FROM devices WHERE mac = ?',
+    ).bind(mac).first();
+    return row && row.android_id ? String(row.android_id).trim() : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+/// { enrolled, ok } — ok seulement si un secret est enregistré ET
+/// le header correspond à son empreinte.
+async function deviceSecretGate(env, request, mac) {
+  const row = await readDeviceSecretRow(env, mac);
+  const enrolled = !!(row && row.secret_hash);
+  const presented = presentedDeviceSecret(request);
+  const ok = enrolled && await secretMatches(presented, row.secret_hash);
+  return { enrolled, ok };
+}
+
+async function readLicenseGate(env, mac) {
+  if (!env || !env.DB) return { hasDb: false, readFailed: false, status: null };
+  try {
+    // Sonde volontaire. d1StatusForMac avale une erreur de lecture
+    // et renvoie null, ce qui voulait dire « box inconnue, on livre
+    // quand même ». Ici, une erreur doit FERMER la livraison.
+    await env.DB.prepare('SELECT id FROM devices WHERE mac = ?').bind(mac).first();
+    const status = await d1StatusForMac(env, mac);
+    return { hasDb: true, readFailed: false, status };
+  } catch (_) {
+    return { hasDb: true, readFailed: true, status: null };
+  }
+}
+
+/// 'ok' | 'legacy' autorisent la livraison des codes.
+/// 'deny' = secret manquant (401). 'blocked' = licence ou base (200 vide).
+async function credentialAccess(env, request, mac) {
+  const gate = await deviceSecretGate(env, request, mac);
+  const lic = await readLicenseGate(env, mac);
+  const legacyOk = legacyCredentialsAllowed(lic);
+  const decision = deviceReadDecision({
+    enrolled: gate.enrolled,
+    secretOk: gate.ok,
+    legacyOk,
+  });
+  if (decision === 'ok' || decision === 'legacy') return { kind: decision };
+  if (decision === 'deny') return { kind: 'deny', reason: 'device_secret_required' };
+  const st = lic.status;
+  let reason = 'status_unavailable';
+  if (st && st.banned) reason = 'banned';
+  else if (st && st.frozen) reason = 'frozen';
+  else if (st && st.expired) reason = 'expired';
+  return { kind: 'blocked', reason };
+}
+
+function credentialsDenied(mac, reason) {
+  const status = reason === 'device_secret_required' ? 401 : 200;
+  return jsonPrivate({
+    mac,
+    source: null,
+    sources: [],
+    blocked: reason,
+  }, status);
+}
+
+async function openSourceList(env, list) {
+  const key = encryptionKey(env);
+  const out = [];
+  for (const item of list || []) {
+    out.push(await openSource(item, key));
+  }
+  return out;
+}
+
+// /api/device-source/:mac
 //
 //  Renvoie la source IPTV (Xtream/M3U) assignée à cet appareil par
 //  son admin/revendeur depuis le panel. L'app la charge automatiquement
 //  au démarrage — le client n'a RIEN à saisir.
+//
+//  Preuve : header `X-Device-Secret` une fois la box enrôlée
+//  (POST /api/device-proof). Sans enrôlement (ancien logiciel), la
+//  lecture reste possible SEULEMENT si la licence se lit et n'est
+//  pas expirée / gelée / bannie. Une panne de base ne livre plus
+//  les mots de passe.
 //
 //  Réponse :
 //    { "mac": "MK:..", "source": null }                 (rien d'assigné)
@@ -2630,35 +2778,16 @@ async function handlePublicServers(env) {
 //
 //  Identifiant = la MAC (même modèle public que /config/:mac et
 //  /api/status/:mac). Lecture en D1 (table device_sources).
-async function handlePublicDeviceSource(env, mac) {
+async function handlePublicDeviceSource(request, env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
 
-  // ===== SÉCURITÉ : verrou licence CÔTÉ SERVEUR =====
-  //  On ne livre la source (= identifiants IPTV : serveur, user, mdp) QUE
-  //  si l'abonnement de cet appareil est jouable. Si la licence est
-  //  EXPIRÉE / GELÉE / BANNIE, on renvoie une source VIDE → un non-payant
-  //  ne peut PAS récupérer les identifiants ni charger les flux, même s'il
-  //  contourne l'écran de paiement de l'app. C'est le serveur qui décide,
-  //  pas l'app (impossible à bidouiller côté client).
-  //  - Appareil inconnu / tout neuf / essai en cours  → null = NON bloqué
-  //    (d1StatusForMac renvoie null ou expired=false) → la source passe.
-  //  - Incident DB (lecture statut impossible)         → fail-open (on ne
-  //    coupe pas un client légitime sur une panne transitoire).
-  if (env.DB) {
-    try {
-      const st = await d1StatusForMac(env, MAC);
-      if (st && (st.expired || st.frozen || st.banned)) {
-        return jsonPrivate({
-          mac: MAC,
-          source: null,
-          sources: [],
-          blocked: st.banned ? 'banned' : st.frozen ? 'frozen' : 'expired',
-        });
-      }
-    } catch (_) {
-      // fail-open : on ne bloque jamais sur un incident de lecture du statut.
-    }
+  // Verrou : secret de box une fois enrôlée, et licence lisible.
+  // Plus de fail-open : si on ne peut pas lire la licence, on ne
+  // renvoie pas les mots de passe (la box garde son cache local).
+  const access = await credentialAccess(env, request, MAC);
+  if (access.kind !== 'ok' && access.kind !== 'legacy') {
+    return credentialsDenied(MAC, access.reason);
   }
 
   // 1) D1 `device_sources` — sources assignées via le portail api_v1
@@ -2683,6 +2812,10 @@ async function handlePublicDeviceSource(env, mac) {
           const { sources_json, updated_at, ...single } = row;
           sources = [single];
         }
+        // Déchiffre au moment de répondre à la box. En base, c'est chiffré
+        // dès que SOURCE_ENCRYPTION_KEY est posée. Les lignes anciennes
+        // en clair passent telles quelles.
+        sources = await openSourceList(env, sources);
         return jsonPrivate({ mac: MAC, source: sources[0] || null, sources });
       }
     } catch (_) {
@@ -2727,7 +2860,10 @@ async function handlePublicDeviceSource(env, mac) {
           updated_at: updatedAt,
         };
       }
-      if (source) return jsonPrivate({ mac: MAC, source });
+      if (source) {
+        const opened = await openSource(source, encryptionKey(env));
+        return jsonPrivate({ mac: MAC, source: opened });
+      }
     }
   } catch (_) {
     // KV indisponible → pas de source.
@@ -2808,7 +2944,10 @@ async function readDeviceSourceItems(env, MAC) {
     if (it.origin === 'self' && !it.id) { it.id = crypto.randomUUID(); needsPersist = true; }
     return it;
   });
-  return { items, needsPersist };
+  const key = encryptionKey(env);
+  const opened = [];
+  for (const it of items) opened.push(await openSource(it, key));
+  return { items: opened, needsPersist };
 }
 
 // Écrit la liste complète : colonnes plates = items[0] (compat app/panel), plus
@@ -2818,9 +2957,12 @@ async function writeDeviceSourceItems(env, MAC, items) {
     await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
     return;
   }
-  const first = items[0];
-  const rowOrigin = items.every((s) => s.origin === 'self') ? 'self' : 'panel';
-  const jsonStr = JSON.stringify(items);
+  const key = encryptionKey(env);
+  const sealed = [];
+  for (const it of items) sealed.push(await sealSource(it, key));
+  const first = sealed[0];
+  const rowOrigin = sealed.every((s) => s.origin === 'self') ? 'self' : 'panel';
+  const jsonStr = JSON.stringify(sealed);
   await env.DB.prepare(
     `INSERT INTO device_sources
        (mac, type, label, server_url, username, password, m3u_url, epg_url, sources_json, origin, updated_at)
@@ -2847,7 +2989,9 @@ function publicItemView(it, idx) {
     label: it.label || 'Ma playlist',
     server_url: it.server_url || null,
     username: it.username || null,
-    m3u_url: it.m3u_url || null,
+    // Le lien M3U contient souvent le mot de passe : on le retire de
+    // la vue « Mon espace » (l'app, elle, passe par device-source).
+    m3u_url: it.m3u_url ? redactCredentialUrl(it.m3u_url) : null,
     epg_url: it.epg_url || null,
     has_password: !!it.password,
   };
@@ -2898,6 +3042,21 @@ async function handleSelfSourceGet(env, mac) {
   });
 }
 
+/// Une box enrôlée n'accepte plus les modifications « Mon espace »
+/// venant de quelqu'un qui n'a que la MAC. Les box pas encore
+/// enrôlées gardent l'ancien comportement (le site /mon-espace).
+async function selfSourceLocked(env, request, mac) {
+  const gate = await deviceSecretGate(env, request, mac);
+  if (gate.enrolled && !gate.ok) {
+    return json({
+      ok: false,
+      error: 'device_secret_required',
+      message: 'Cette box n\'accepte plus les modifications sans son secret.',
+    }, 401);
+  }
+  return null;
+}
+
 // POST /api/self-source/:mac — AJOUTE un item 'self' (ou MODIFIE un item 'self'
 // existant si `id` est fourni). Ne touche JAMAIS un item 'panel'. « Avale
 // toujours » : jamais bloqué par la présence d'une source panel.
@@ -2905,6 +3064,8 @@ async function handleSelfSource(env, mac, request) {
   if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
+  const locked = await selfSourceLocked(env, request, MAC);
+  if (locked) return locked;
 
   let body;
   try { body = await request.json(); } catch (_) { return badRequest('invalid json'); }
@@ -2955,6 +3116,8 @@ async function handleSelfSourceDelete(env, mac, request) {
   if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
+  const locked = await selfSourceLocked(env, request, MAC);
+  if (locked) return locked;
   await ensureDeviceSourcesTable(env);
 
   let delId = null;
@@ -3063,6 +3226,20 @@ async function handlePublicFamilyM3u(env, rawToken) {
 async function handleDeviceBackup(request, env, mac, method) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
+  // Lecture ET écriture exigent le secret de la box. Un inconnu qui
+  // a photographié la MAC ne peut plus lire ni remplacer la sauvegarde.
+  // Les box pas encore mises à jour verront un 401 : leur copie locale
+  // reste en place, la restauration cloud reprend après la mise à jour.
+  const gate = await deviceSecretGate(env, request, MAC);
+  if (!backupAllowed({ enrolled: gate.enrolled, secretOk: gate.ok })) {
+    return jsonPrivate({
+      error: 'device_secret_required',
+      message: 'Cette sauvegarde n\'est lisible que par la box qui l\'a créée.',
+      mac: MAC,
+      data: null,
+      updated_at: 0,
+    }, 401);
+  }
   if (!env.DB) return jsonPrivate({ mac: MAC, data: null, updated_at: 0 });
 
   try {
@@ -3130,6 +3307,66 @@ async function handleDeviceBackup(request, env, mac, method) {
   }
 
   return badRequest('only GET/PUT supported on /api/backup/:mac');
+}
+
+// POST /api/device-proof — la box enregistre (ou retrouve) son secret.
+//  Corps : { mac, androidId, secret }. On ne stocke que l'empreinte.
+//  Quelqu'un qui ne connaît que la MAC affichée à l'écran est refusé
+//  dès qu'un android id a déjà été vu, ou dès qu'un secret existe et
+//  que l'android id ne correspond pas (réinstallation légitime : l'id
+//  Android est stable, le secret local a été effacé).
+async function handleDeviceProof(request, env) {
+  if (!env || !env.DB) {
+    return jsonPrivate({ ok: false, error: 'unavailable' }, 503);
+  }
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return badRequest('invalid JSON body');
+  }
+  const mac = String((body && body.mac) || '').trim().toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const secret = String((body && body.secret) || '').trim();
+  const androidId = String((body && body.androidId) || '').trim().slice(0, 64);
+  if (!acceptableDeviceSecret(secret)) return badRequest('invalid device secret');
+  let row;
+  try {
+    await ensureDeviceSecretsTable(env);
+    row = await env.DB.prepare(
+      'SELECT secret_hash FROM device_secrets WHERE mac = ?',
+    ).bind(mac).first();
+  } catch (_) {
+    return jsonPrivate({ ok: false, error: 'unavailable' }, 503);
+  }
+  const hasSecret = !!(row && row.secret_hash);
+  const presentedMatches = hasSecret && await secretMatches(secret, row.secret_hash);
+  const known = await knownAndroidId(env, mac);
+  const decision = enrollDecision({
+    hasSecret,
+    presentedMatches,
+    knownAndroidId: known,
+    presentedAndroidId: androidId,
+  });
+  if (decision === 'deny') {
+    return jsonPrivate({ ok: false, error: 'forbidden' }, 403);
+  }
+  if (decision === 'idempotent') {
+    return jsonPrivate({ ok: true, mac, enrolled: true });
+  }
+  const hash = await hashDeviceSecret(secret);
+  const now = Date.now();
+  try {
+    await env.DB.prepare(
+      `INSERT INTO device_secrets (mac, secret_hash, android_id, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(mac) DO UPDATE SET
+         secret_hash = excluded.secret_hash,
+         android_id = excluded.android_id,
+         updated_at = excluded.updated_at`,
+    ).bind(mac, hash, androidId, now).run();
+  } catch (_) {
+    return jsonPrivate({ ok: false, error: 'unavailable' }, 503);
+  }
+  return jsonPrivate({ ok: true, mac, enrolled: true });
 }
 
 // /api/ai/search — public POST. Traduit une phrase en LANGAGE NATUREL en
@@ -3445,21 +3682,33 @@ async function handleRequest(request, env, ctx) {
       let rl = null;
       if (seg0 === 'api') {
         if (seg1 === 'ai') rl = ['ai', 30];                        // 30 / min (LLM payant)
+        // Routes à codes : rate-limit STRICT (panne D1 = pas de livraison).
         else if (seg1 === 'device-source' || seg1 === 'backup'
-          || seg1 === 'status' || seg1 === 'history'
-          || seg1 === 'self-source') rl = ['dev', 120]; // anti-énumération MAC
+          || seg1 === 'self-source' || seg1 === 'device-proof') rl = ['dev', 120, 'strict'];
+        else if (seg1 === 'status' || seg1 === 'history') rl = ['dev', 120];
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
           || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
         // L'écran récepteur poll ~40×/min ; on laisse large (TV + téléphone).
         else if (seg1 === 'screen') rl = ['scr', 600];
       } else if (seg0 === 'config') {
-        rl = ['cfg', 120]; // /config/:mac — même protection anti-énumération
+        rl = ['cfg', 120, 'strict']; // /config/:mac livre aussi des codes
       } else if (seg0 === 'cast-proxy' || seg0 === 'cast-sign') {
         rl = ['dev', 240]; // proxy Cast : 1 requête par session de cast, large
       }
-      if (rl && !(await rateLimitOk(env, request, rl[0], rl[1], 60 * 1000))) {
-        return tooManyRequests();
+      if (rl) {
+        if (rl[2] === 'strict') {
+          const gate = await rateLimitOk(env, request, rl[0], rl[1], 60 * 1000, 'strict');
+          if (gate === 'unavailable') {
+            return jsonPrivate({
+              error: 'unavailable',
+              message: 'Service momentanément indisponible.',
+            }, 503);
+          }
+          if (gate !== 'ok') return tooManyRequests();
+        } else if (!(await rateLimitOk(env, request, rl[0], rl[1], 60 * 1000))) {
+          return tooManyRequests();
+        }
       }
     }
 
@@ -3468,7 +3717,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /config/:mac');
       }
-      return handlePublicConfig(env, segments[1]);
+      return handlePublicConfig(request, env, segments[1]);
     }
 
     // /api/heartbeat — public, l'app pingue à chaque démarrage
@@ -3500,7 +3749,7 @@ async function handleRequest(request, env, ctx) {
       if (request.method !== 'GET') {
         return badRequest('only GET supported on /api/device-source/:mac');
       }
-      return await handlePublicDeviceSource(env, segments[2]);
+      return await handlePublicDeviceSource(request, env, segments[2]);
     }
 
     // /api/self-source/:mac — self-service « Mon espace » : le client LIT (GET),
@@ -3554,8 +3803,15 @@ async function handleRequest(request, env, ctx) {
       return await handlePublicFamilyM3u(env, segments[2]);
     }
 
-    // /api/backup/:mac — public, sauvegarde/restauration cloud par MAC
-    // (playlists saisies par l'utilisateur + favoris). GET + PUT.
+    // /api/device-proof — la box enregistre son secret (empreinte seulement).
+    if (segments[0] === 'api' && segments[1] === 'device-proof' && segments.length === 2) {
+      if (request.method !== 'POST') {
+        return badRequest('only POST supported on /api/device-proof');
+      }
+      return await handleDeviceProof(request, env);
+    }
+
+    // /api/backup/:mac — sauvegarde cloud. GET + PUT exigent X-Device-Secret.
     if (segments[0] === 'api' && segments[1] === 'backup' && segments.length === 3) {
       if (request.method !== 'GET' && request.method !== 'PUT') {
         return badRequest('only GET/PUT supported on /api/backup/:mac');

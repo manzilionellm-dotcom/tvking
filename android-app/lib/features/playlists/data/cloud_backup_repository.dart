@@ -20,11 +20,10 @@
 //      typiquement un 1er lancement après réinstallation). On ne
 //      touche jamais à des données déjà présentes.
 //
-//  Remarque vie privée : comme `device-source`, le blob est lisible
-//  par qui connaît la MAC (route publique). Il contient les codes que
-//  l'utilisateur a lui-même saisis — c'est cohérent avec le modèle
-//  existant (la source poussée par le panel l'est déjà). Cf. politique
-//  de confidentialité.
+//  Le blob n'est plus lisible avec la seule MAC affichée à l'écran.
+//  Chaque requête porte le secret de la box (X-Device-Secret). Un
+//  401 veut dire « pas encore enrôlée » : on n'écrase rien, les
+//  listes locales restent.
 // =========================================================
 
 import 'dart:async';
@@ -35,6 +34,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../device/data/device_identity.dart';
+import '../../device/data/device_secret.dart';
 import '../../subscription/data/subscription_backend.dart';
 import '../domain/playlist.dart';
 import 'favorites_repository.dart';
@@ -101,15 +101,22 @@ class CloudBackupRepository {
         'favorites': FavoritesRepository.instance.current.toList(),
       };
 
-      await http
+      await DeviceSecret.instance.enroll(mac);
+      final http.Response putResp = await http
           .put(
             Uri.parse('$kSubscriptionBaseUrl/api/backup/$mac'),
-            headers: const <String, String>{
-              'Content-Type': 'application/json',
-            },
+            headers: await DeviceSecret.instance.headers(jsonBody: true),
             body: jsonEncode(<String, Object?>{'data': data}),
           )
           .timeout(const Duration(seconds: 8));
+      // 401 : le serveur refuse sans secret. On ne réessaie pas sans
+      // header (ce serait redonner la sauvegarde à qui a la MAC).
+      if (putResp.statusCode != 200) {
+        if (kDebugMode) {
+          debugPrint('[Backup] refusé (${putResp.statusCode})');
+        }
+        return;
+      }
       if (kDebugMode) {
         debugPrint('[Backup] upload OK (${playlists.length} playlist(s))');
       }
@@ -128,8 +135,12 @@ class CloudBackupRepository {
       if (existing.isNotEmpty) return;
 
       final String mac = await DeviceIdentity.instance.mac;
+      await DeviceSecret.instance.enroll(mac);
       final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/backup/$mac'))
+          .get(
+            Uri.parse('$kSubscriptionBaseUrl/api/backup/$mac'),
+            headers: await DeviceSecret.instance.headers(),
+          )
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return;
 

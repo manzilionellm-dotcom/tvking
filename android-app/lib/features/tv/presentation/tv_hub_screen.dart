@@ -38,6 +38,7 @@ import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
+import '../core/tv_content_refresh.dart';
 import 'tv_app.dart';
 import 'tv_cinema_screen.dart';
 import 'tv_components.dart';
@@ -66,6 +67,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // Barre du bas : MAC + serveur actif (rafraîchi quand les sources changent).
   String _mac = '…';
   StreamSubscription<List<Channel>>? _srcSub;
+  String? _refreshNotice;
 
   // ----- « Source-push » DIRECT depuis le panel (décision du propriétaire) -----
   // Le revendeur assigne l'abonnement (Xtream/M3U) à la MAC dans le panel et
@@ -103,6 +105,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _hadChannels = PlaylistRepository.instance.currentChannels.isNotEmpty;
     _wasActive = _isActive(SubscriptionState.instance.status);
     SubscriptionState.instance.addListener(_onLicenseChange);
+    _refreshNotice = TvContentRefresh.notice.value;
+    TvContentRefresh.notice.addListener(_onRefreshNotice);
     _srcSub =
         PlaylistRepository.instance.channelsStream.listen(_onChannels);
     _initConnectivity();
@@ -168,7 +172,13 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _srcSub?.cancel();
     _sourcePoll?.cancel();
     SubscriptionState.instance.removeListener(_onLicenseChange);
+    TvContentRefresh.notice.removeListener(_onRefreshNotice);
     super.dispose();
+  }
+
+  void _onRefreshNotice() {
+    if (!mounted) return;
+    setState(() => _refreshNotice = TvContentRefresh.notice.value);
   }
 
   IconData get _netIcon {
@@ -364,6 +374,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
                   ),
                 ),
               ),
+              if (_refreshNotice != null && _refreshNotice!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _refreshNotice!,
+                    textAlign: TextAlign.center,
+                    style: TvTokens.ui(14, color: TvTokens.live),
+                  ),
+                ),
               // ---------- BARRE DU BAS ----------
               Row(
                 children: <Widget>[

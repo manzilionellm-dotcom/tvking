@@ -513,11 +513,14 @@ jobs:
           fi
           SHA=$(sha256sum "$APK" | cut -d' ' -f1)
           VN="$TV_VERSION_NAME"
+          SIZE=$(stat -c%s "$APK")
           cat > version.json <<JSON
           {
             "versionCode": $NEW_VC,
             "versionName": "$VN",
             "url": "https://github.com/$REPO/releases/download/$RELEASE_TAG/$APK_NAME",
+            "sha256": "$SHA",
+            "size": $SIZE,
             "mandatory": false
           }
           JSON
