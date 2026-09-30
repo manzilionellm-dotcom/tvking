@@ -44,7 +44,6 @@ import '../../epg/data/program_reminder_repository.dart';
 import '../../epg/domain/program_reminder.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
-import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
@@ -52,6 +51,7 @@ import '../../box_extras/box_text.dart';
 import '../../security/data/parental_controls.dart';
 import '../../time_picks/data/time_pick_flag.dart';
 import '../../time_picks/data/time_pick_log.dart';
+import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -98,16 +98,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // ----- « Source-push » DIRECT depuis le panel (décision du propriétaire) -----
   // Le revendeur assigne l'abonnement (Xtream/M3U) à la MAC dans le panel et
   // la box doit recevoir les chaînes SANS que le client ne fasse rien :
-  //   • tant qu'on est sur l'accueil, on re-demande la source au panel toutes
-  //     les 20 s (simple GET, dédupliqué côté repo → gratuit s'il n'y a rien
-  //     de neuf) ;
-  //   • dès que la licence passe à « actif » (activation dans le panel), on
-  //     synchronise IMMÉDIATEMENT (sans attendre le tick) ;
+  //   • la veille unique (RemoteActivationWatch) lit le statut toutes
+  //     les quelques secondes et ne télécharge les codes que si le
+  //     panel a changé quelque chose ;
+  //   • dès que la licence passe à « actif », on demande tout de suite
+  //     une lecture (sans attendre le prochain délai) ;
   //   • quand les PREMIÈRES chaînes arrivent (0 → n) alors que l'accueil est
   //     au premier plan, on ouvre Direct tout seul : « le fil entre
   //     directement ». Une seule fois par session d'accueil, jamais si le
   //     client est déjà dans un autre écran.
-  Timer? _sourcePoll;
   bool _hadChannels = false;
   bool _autoOpened = false;
   // Le choix de profil était devant l'accueil au moment où les
@@ -116,7 +115,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
   // l'écran du dessus parte.
   bool _pendingAutoOpen = false;
   bool _wasActive = false;
-  static const Duration _kSourcePollEvery = Duration(seconds: 20);
 
   // Accès CACHÉ au diagnostic : séquence D-pad HAUT-HAUT-BAS-BAS.
   static const List<bool> _diagSeq = <bool>[true, true, false, false];
@@ -173,12 +171,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_maybeOfferProfiles());
     });
-    // Source-push direct : voir le commentaire du champ _sourcePoll.
-    if (!BootGuard.instance.safeMode) {
-      _sourcePoll = Timer.periodic(_kSourcePollEvery, (_) {
-        if (mounted) RemoteSourceRepository.sync();
-      });
-    }
     // Ce qu'on a DÉJÀ en mémoire (le boot a chargé la playlist). Les dépôts
     // finissent de s'ouvrir dans _prepareEngagement, sans bloquer le 1er cadre.
     _channels = PlaylistRepository.instance.currentChannels;
@@ -219,7 +211,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
   void _onLicenseChange() {
     final bool active = _isActive(SubscriptionState.instance.status);
     if (active && !_wasActive && !BootGuard.instance.safeMode) {
-      RemoteSourceRepository.sync();
+      RemoteActivationWatch.instance.nudge();
     }
     _wasActive = active;
     _onChange();
@@ -528,7 +520,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _clock?.cancel();
     _connSub?.cancel();
     _srcSub?.cancel();
-    _sourcePoll?.cancel();
     _shelfDebounce?.cancel();
     _popularDebounce?.cancel();
     _favSub?.cancel();

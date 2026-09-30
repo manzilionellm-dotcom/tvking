@@ -1,0 +1,9 @@
+{
+  "name": "zuno-worker-local",
+  "private": true,
+  "type": "module",
+  "description": "Outils locaux pour lancer le Worker en test. Jamais un déploiement.",
+  "devDependencies": {
+    "wrangler": "4.42.1"
+  }
+}

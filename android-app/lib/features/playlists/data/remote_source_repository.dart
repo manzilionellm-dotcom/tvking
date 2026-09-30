@@ -25,6 +25,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+
 import '../../channels/data/recently_watched_repository.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../device/data/device_identity.dart';
@@ -32,7 +35,11 @@ import '../../device/data/device_secret.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../domain/playlist.dart';
+import '../domain/source_fingerprint.dart';
+import 'favorites_repository.dart';
+import 'playlist_database.dart';
 import 'playlist_repository.dart';
+import 'removed_list_notice.dart';
 
 /// Résultat d'une synchro de source distante — sert à afficher un
 /// message PRÉCIS côté UI au lieu d'un vague « pas de chaînes ».
@@ -52,10 +59,41 @@ enum RemoteSyncResult {
 }
 
 abstract final class RemoteSourceRepository {
+  /// Empreintes déjà vues sur CETTE box (listes venues du panel).
+  static const String rememberedKey = 'zuno.panel_sources.v1';
+
+  static Future<void> _queue = Future<void>.value();
+
+  /// Une seule synchro à la fois. La suivante attend la fin de
+  /// la précédente, sans en lancer une deuxième en parallèle.
+  static Future<T> _serial<T>(Future<T> Function() job) {
+    final Completer<T> done = Completer<T>();
+    _queue = _queue.then((_) async {
+      try {
+        done.complete(await job());
+      } catch (e, st) {
+        if (!done.isCompleted) done.completeError(e, st);
+      }
+    });
+    return done.future;
+  }
+
   /// Récupère la source assignée à cet appareil et la charge si besoin.
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
-  static Future<RemoteSyncResult> sync() async {
+  static Future<RemoteSyncResult> sync() {
+    return _serial(_syncBody);
+  }
+
+  /// Efface tout de suite les listes dont le panel a publié
+  /// l'empreinte (réponse légère de /api/status). N'importe rien.
+  /// Un échec réseau ne doit pas appeler cette méthode.
+  static Future<int> applyRevocations(List<String> revoked) {
+    if (revoked.isEmpty) return Future<int>.value(0);
+    return _serial(() => _wipeFingerprints(revoked.toSet()));
+  }
+
+  static Future<RemoteSyncResult> _syncBody() async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
@@ -78,6 +116,10 @@ abstract final class RemoteSourceRepository {
 
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+
+      // D'abord ce que le panel a RETIRÉ. On ne le fait qu'après
+      // un HTTP 200 : une coupure ne vide pas la box.
+      await _reconcileFromBody(body);
 
       // MULTI-SOURCES (jusqu'à 6 par MAC côté panel, aucune limite ici) : si le
       // serveur renvoie un tableau `sources`, on les charge TOUTES ; sur TV
@@ -205,5 +247,105 @@ abstract final class RemoteSourceRepository {
       }
     }
     return RemoteSyncResult.noSource;
+  }
+
+  /// Compare les listes encore assignées, celles déjà vues, et
+  /// les tombstones. Met à jour la mémoire locale.
+  static Future<void> _reconcileFromBody(Map<String, dynamic> body) async {
+    final List<Map<String, dynamic>> currentMaps = <Map<String, dynamic>>[];
+    final Object? list = body['sources'];
+    if (list is List) {
+      for (final Object? item in list) {
+        if (item is Map<String, dynamic>) currentMaps.add(item);
+      }
+    } else {
+      final Object? src = body['source'];
+      if (src is Map<String, dynamic>) currentMaps.add(src);
+    }
+    final Set<String> current = <String>{};
+    for (final Map<String, dynamic> item in currentMaps) {
+      final String? fp = SourceFingerprint.fromMap(item);
+      if (fp != null) current.add(fp);
+    }
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final Set<String> remembered =
+        (prefs.getStringList(rememberedKey) ?? const <String>[]).toSet();
+    final Set<String> revoked =
+        SourceFingerprint.revokedFromBody(body).toSet();
+    await _wipeFingerprints(fingerprintsToDrop(
+      remembered: remembered,
+      current: current,
+      revoked: revoked,
+    ));
+    await prefs.setStringList(rememberedKey, current.toList());
+  }
+
+  /// Supprime les playlists locales dont l'empreinte est dans [drop].
+  /// Chaînes, favoris, récents, sessions et identifiants (la ligne
+  /// playlist porte le mot de passe et l'URL) partent avec.
+  /// Renvoie le nombre de listes vraiment retirées.
+  static Future<int> _wipeFingerprints(Set<String> drop) async {
+    if (drop.isEmpty) return 0;
+    final List<Playlist> playlists =
+        await PlaylistRepository.instance.getAllPlaylists();
+    int removed = 0;
+    final List<String> channelIds = <String>[];
+    for (final Playlist playlist in playlists) {
+      final int? id = playlist.id;
+      if (id == null) continue;
+      final String? fp = playlist.type == PlaylistType.xtream
+          ? SourceFingerprint.xtream(
+              playlist.xtreamServer, playlist.xtreamUsername)
+          : SourceFingerprint.m3u(playlist.m3uUrl);
+      if (fp == null || !drop.contains(fp)) continue;
+      channelIds.addAll(await _channelIdsOf(id));
+      await PlaylistRepository.instance.deletePlaylist(id);
+      removed++;
+    }
+    if (channelIds.isNotEmpty) {
+      await FavoritesRepository.instance.forgetChannels(channelIds);
+      await RecentlyWatchedRepository.instance.forgetChannels(channelIds);
+      await _forgetSessions(channelIds);
+    }
+    if (removed > 0) {
+      final List<Playlist> left =
+          await PlaylistRepository.instance.getAllPlaylists();
+      RemovedListNotice.instance.signal(
+        removed: removed,
+        noneLeft: left.isEmpty,
+      );
+    }
+    return removed;
+  }
+
+  static Future<List<String>> _channelIdsOf(int playlistId) async {
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> rows = await db.query(
+      'channels',
+      columns: const <String>['external_id'],
+      where: 'playlist_id = ?',
+      whereArgs: <Object>[playlistId],
+    );
+    return rows
+        .map((Map<String, Object?> r) => (r['external_id'] as String?) ?? '')
+        .where((String id) => id.isNotEmpty)
+        .toList();
+  }
+
+  static Future<void> _forgetSessions(List<String> channelIds) async {
+    final Database db = await PlaylistDatabase.instance.database;
+    const int chunk = 400;
+    for (int i = 0; i < channelIds.length; i += chunk) {
+      final List<String> part = channelIds.sublist(
+        i,
+        i + chunk > channelIds.length ? channelIds.length : i + chunk,
+      );
+      final String marks = List<String>.filled(part.length, '?').join(',');
+      await db.delete(
+        'watch_sessions',
+        where: 'channel_id IN ($marks)',
+        whereArgs: part,
+      );
+    }
   }
 }

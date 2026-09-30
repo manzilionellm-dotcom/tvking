@@ -17,6 +17,11 @@
 # Sorties de build (APK, bundle, web, desktop)
 /build/
 
+# Worker local (tests e2e). Jamais les modules ni les secrets d'essai.
+cloudflare/node_modules/
+cloudflare/.dev.vars
+cloudflare/.wrangler/
+
 # Fichiers générés automatiquement par Flutter
 .flutter-plugins
 .flutter-plugins-dependencies

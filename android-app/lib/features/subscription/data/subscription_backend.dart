@@ -28,6 +28,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
 import '../../device/data/device_identity.dart';
+import '../../playlists/domain/source_fingerprint.dart';
 import 'source_privacy.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -71,6 +72,8 @@ class RemoteSubscriptionStatus {
     required this.frozen,
     required this.banned,
     required this.trialUntil,
+    this.sourceRev,
+    this.revoked = const <String>[],
   });
 
   /// `true` si le serveur connaît ce MAC (= il a déjà fait un
@@ -110,6 +113,19 @@ class RemoteSubscriptionStatus {
   /// Timestamp (ms epoch) d'expiration de l'essai.
   final int trialUntil;
 
+  /// Horodatage (ms) de la source poussée par le panel.
+  ///
+  /// `null` = ce Worker ne l'envoie pas encore (ancien déploiement) :
+  /// l'app relit alors la source à son rythme calme. `0` = aucune
+  /// source assignée. Un nombre qui change = le revendeur vient de
+  /// poser ou de modifier la liste : on télécharge les codes, et
+  /// seulement dans ce cas.
+  final int? sourceRev;
+
+  /// Empreintes des listes que le panel a retirées. Vide si le
+  /// Worker ne le dit pas. Jamais de mot de passe dedans.
+  final List<String> revoked;
+
   /// True si le client a le droit d'utiliser l'app.
   bool get canUse => !banned && !frozen && (paid || !expired);
 
@@ -128,6 +144,12 @@ class RemoteSubscriptionStatus {
       frozen: json['frozen'] == true,
       banned: json['banned'] == true,
       trialUntil: (json['trial_until'] as num?)?.toInt() ?? 0,
+      // Absent chez un Worker pas encore mis à jour : on le distingue
+      // d'un vrai « 0 » (aucune source) pour garder l'ancien rythme.
+      sourceRev: json.containsKey('source_rev')
+          ? (json['source_rev'] as num?)?.toInt() ?? 0
+          : null,
+      revoked: SourceFingerprint.revokedFromBody(json),
     );
   }
 
@@ -147,12 +169,31 @@ class RemoteSubscriptionStatus {
   );
 }
 
+/// Résultat d'une lecture réseau. [reached] est faux sur timeout,
+/// DNS, ou HTTP différent de 200 : l'appelant DOIT garder le dernier
+/// statut, il ne le remplace pas par « inconnu ».
+class RemoteStatusRead {
+  const RemoteStatusRead({required this.status, required this.reached});
+
+  final RemoteSubscriptionStatus status;
+  final bool reached;
+
+  static const RemoteStatusRead offline = RemoteStatusRead(
+    status: RemoteSubscriptionStatus.unknown,
+    reached: false,
+  );
+}
+
 abstract final class SubscriptionBackend {
   /// Pingue le serveur : il crée la fiche du MAC s'il ne la connaît
   /// pas (trial 10 j auto), ou rafraîchit son `last_seen_at` sinon.
   /// Renvoie le statut courant. Timeout court (8 s) — pas question
   /// que l'app traîne au boot si le réseau est nase.
-  static Future<RemoteSubscriptionStatus> heartbeat(String mac) async {
+  ///
+  /// Réservé au démarrage, au bouton « Vérifier » et à la présence
+  /// (au plus une fois par minute pendant l'attente). La veille
+  /// rapide passe par [getStatus], qui ne fait PAS d'écriture.
+  static Future<RemoteStatusRead> heartbeat(String mac) async {
     try {
       // Infos appareil → le panel recense chaque Android où l'app tourne
       // (même partagée via WhatsApp), avec son modèle + numéro de build.
@@ -201,14 +242,17 @@ abstract final class SubscriptionBackend {
         if (kDebugMode) {
           debugPrint('[Subscription] heartbeat HTTP ${resp.statusCode}');
         }
-        return RemoteSubscriptionStatus.unknown;
+        return RemoteStatusRead.offline;
       }
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
-      return RemoteSubscriptionStatus.fromJson(body);
+      return RemoteStatusRead(
+        status: RemoteSubscriptionStatus.fromJson(body),
+        reached: true,
+      );
     } catch (e) {
       if (kDebugMode) debugPrint('[Subscription] heartbeat error: $e');
-      return RemoteSubscriptionStatus.unknown;
+      return RemoteStatusRead.offline;
     }
   }
 
@@ -255,7 +299,11 @@ abstract final class SubscriptionBackend {
   /// Lit l'état courant du serveur sans toucher au `last_seen_at`.
   /// Utilisé par le `SubscriptionCard` pour rafraîchir l'UI sans
   /// déclencher un nouveau heartbeat (eg. après un pull-to-refresh).
-  static Future<RemoteSubscriptionStatus> getStatus(String mac) async {
+  /// Lecture LÉGÈRE du statut (pas de `last_seen`, pas d'inventaire).
+  /// C'est elle que la box interroge toutes les quelques secondes en
+  /// attendant l'activation. Timeout 6 s. Un échec renvoie
+  /// [RemoteStatusRead.offline] : l'état déjà connu reste en place.
+  static Future<RemoteStatusRead> getStatus(String mac) async {
     try {
       final http.Response resp = await http
           .get(
@@ -265,13 +313,16 @@ abstract final class SubscriptionBackend {
             },
           )
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return RemoteSubscriptionStatus.unknown;
+      if (resp.statusCode != 200) return RemoteStatusRead.offline;
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
-      return RemoteSubscriptionStatus.fromJson(body);
+      return RemoteStatusRead(
+        status: RemoteSubscriptionStatus.fromJson(body),
+        reached: true,
+      );
     } catch (e) {
       if (kDebugMode) debugPrint('[Subscription] getStatus error: $e');
-      return RemoteSubscriptionStatus.unknown;
+      return RemoteStatusRead.offline;
     }
   }
 

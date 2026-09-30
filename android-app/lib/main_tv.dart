@@ -31,6 +31,7 @@ import 'features/playlists/data/remote_source_repository.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/profiles/data/profile_repository.dart';
 import 'features/security/data/parental_controls.dart';
+import 'features/subscription/data/remote_activation_watch.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
 import 'features/tv/core/tv_activity.dart';
@@ -136,6 +137,13 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   //    MODE SANS ÉCHEC : on SAUTE ce ré-import — c'est l'étape la plus
   //    gourmande (fetch + parse de toute la source) et le suspect n°1 d'un
   //    crash mémoire en boucle. L'app ouvre sur le cache existant.
+  // Veille unique : lecture légère du statut (3 s en attente, 4 s
+  // ensuite). Les codes IPTV ne partent que si le panel a changé
+  // la source. En mode sans échec on lit quand même la licence,
+  // mais on ne retélécharge pas une grosse liste.
+  RemoteActivationWatch.instance.start(
+    allowSourceImport: !BootGuard.instance.safeMode,
+  );
   if (!BootGuard.instance.safeMode) {
     unawaited(RemoteSourceRepository.sync());
 
@@ -144,9 +152,8 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
     //     nouveau (source posée dans le panel + nouvelles chaînes chez le
     //     fournisseur), sans que le client ne fasse rien ;
     //   • puis toutes les 6 heures tant que la box reste allumée ;
-    //   • le panel (léger : une petite requête) est interrogé CHAQUE MINUTE :
-    //     une source activée à distance par le revendeur entre toute seule,
-    //     sans redémarrage (la box ouvre Direct dès l'arrivée des chaînes) ;
+    //   • entre les deux, la veille (quelques secondes) voit une
+    //     activation ou une liste retirée dans le panel ;
     //   • 3 minutes après l'ouverture : si une nouvelle version de Zuno
     //     existe, l'APK est pré-téléchargé en silence → dans Réglages, « Mise
     //     à jour » ouvre l'installateur immédiatement.
@@ -160,14 +167,6 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
     }));
     Timer.periodic(const Duration(hours: 6), (_) {
       TvContentRefresh.run(waitIdle: true);
-    });
-    Timer.periodic(const Duration(minutes: 1), (_) {
-      // Jamais pendant Direct / le lecteur : importer une grosse liste en
-      // plein zapping figeait la box. La vérification reprend dès le retour
-      // à l'accueil (qui, lui, interroge le panel toutes les 20 s).
-      if (!TvActivity.isBusy && !TvContentRefresh.running.value) {
-        RemoteSourceRepository.sync();
-      }
     });
     unawaited(Future<void>.delayed(const Duration(minutes: 3), () async {
       for (int i = 0; i < 30 && TvActivity.isBusy; i++) {

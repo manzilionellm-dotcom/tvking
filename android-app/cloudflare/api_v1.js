@@ -59,6 +59,14 @@
 // =========================================================
 
 import { sealSource, openSource, encryptionKey } from './source_crypto.js';
+import {
+  clearRevocations,
+  droppedFingerprints,
+  readOpenedSources,
+  revokeFingerprints,
+  sourceFingerprint,
+  writeOpenedSources,
+} from './source_revoke.js';
 
 // ---------------------------------------------------------
 //  Helpers reponse
@@ -2386,6 +2394,17 @@ async function handleSourcePut(request, env, mac, actor, user) {
   if (sources.length === 0) {
     return errResp('bad_source', 'at least one source required', 400);
   }
+  // Ce que le PUT va réellement laisser (les listes 'self' du client
+  // sont conservées par upsert). On révoque seulement ce qui part.
+  const prev = await readOpenedSources(env, m);
+  const selfKept = prev.filter((s) => s && s.origin === 'self');
+  const merged = [
+    ...sources.map((s) => ({ ...s, origin: 'panel' })),
+    ...selfKept,
+  ];
+  const gone = droppedFingerprints(prev, merged);
+  await revokeFingerprints(env, m, gone);
+  await clearRevocations(env, m, merged.map(sourceFingerprint).filter(Boolean));
   await upsertDeviceSource(env, m, sources);
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
@@ -2398,10 +2417,44 @@ async function handleSourceDelete(request, env, mac, actor, user) {
   if (denied) return denied;
   await ensureSourcesTable(env);
   const m = decodeMac(mac).trim().toUpperCase();
-  await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
+  // Corps optionnel : retire UNE liste. Sans corps : toutes les listes
+  // posées par le panel. Les listes 'self' (ajoutées par le client
+  // dans Mon espace) ne partent que si on vise leur empreinte.
+  let body = {};
+  const ctype = (request.headers.get('content-type') || '').toLowerCase();
+  if (ctype.includes('json')) {
+    try { body = await request.json(); } catch (_) { body = {}; }
+  }
+  let wantId = null;
+  try { wantId = new URL(request.url).searchParams.get('id'); } catch (_) { wantId = null; }
+  if (!wantId && body && body.id) wantId = String(body.id);
+  const prev = await readOpenedSources(env, m);
+  let remove = [];
+  if (wantId) {
+    remove = prev.filter((s) => s && s.id === wantId);
+  } else if (body && body.server_url && body.username) {
+    const want = sourceFingerprint({
+      type: 'xtream', server_url: body.server_url, username: body.username,
+    });
+    remove = prev.filter((s) => sourceFingerprint(s) === want);
+  } else if (body && body.m3u_url) {
+    const want = sourceFingerprint({ type: 'm3u', m3u_url: body.m3u_url });
+    remove = prev.filter((s) => sourceFingerprint(s) === want);
+  } else {
+    remove = prev.filter((s) => !s || s.origin !== 'self');
+  }
+  // Déjà absente : on répond OK sans toucher au reste (ordre répété).
+  if ((wantId || body.server_url || body.m3u_url) && remove.length === 0) {
+    return jsonResp({ ok: true, mac: m, removed: 0, already: true });
+  }
+  const gone = remove.map(sourceFingerprint).filter(Boolean);
+  const goneSet = new Set(gone);
+  const kept = prev.filter((s) => !goneSet.has(sourceFingerprint(s)));
+  await revokeFingerprints(env, m, gone);
+  await writeOpenedSources(env, m, kept);
   await logAudit(env, request, actor, 'source.clear',
-    { type: 'device_source', id: m }, null, null);
-  return jsonResp({ ok: true, mac: m });
+    { type: 'device_source', id: m }, null, { removed: gone.length });
+  return jsonResp({ ok: true, mac: m, removed: gone.length });
 }
 
 // =========================================================

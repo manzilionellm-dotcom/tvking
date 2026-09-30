@@ -91,6 +91,7 @@ import {
   encryptionKey,
   redactCredentialUrl,
 } from './source_crypto.js';
+import { listRevokedPublic, sourceRevForMac } from './source_revoke.js';
 
 // ----- Constantes APK / téléchargement -----
 //
@@ -2105,6 +2106,9 @@ async function writeIndex(env, list) {
 }
 
 async function readClient(env, mac) {
+  // Le binding KV est optionnel : la vérité est D1. Sans KV, on
+  // ne plante pas le statut public.
+  if (!env || !env.KV_7MOTION) return null;
   const raw = await env.KV_7MOTION.get(`client:${mac}`);
   if (!raw) return null;
   try {
@@ -2115,6 +2119,7 @@ async function readClient(env, mac) {
 }
 
 async function writeClient(env, mac, data) {
+  if (!env || !env.KV_7MOTION) return;
   await env.KV_7MOTION.put(`client:${mac}`, JSON.stringify(data));
   const idx = await readIndex(env);
   if (!idx.includes(mac)) {
@@ -2278,7 +2283,7 @@ async function handleHeartbeat(request, env, ctx) {
     // Enrichissement (modèle, build…) pas nécessaire à la réponse → en fond.
     defer(updateDeviceInfo(env, mac, body));
     const d1 = await d1StatusForMac(env, mac, now);
-    if (d1) return json({ ok: true, created: true, ...d1 });
+    if (d1) return json(await attachSourceMeta(env, mac, { ok: true, created: true, ...d1 }));
   }
 
   // --- Repli KV (si D1 pas branchee) ---
@@ -2290,11 +2295,11 @@ async function handleHeartbeat(request, env, ctx) {
       note: '', last_seen_at: now, first_seen_at: now,
     };
     await writeClient(env, mac, fresh);
-    return json({ ok: true, created: true, ...computeStatus(fresh, now) });
+    return json(await attachSourceMeta(env, mac, { ok: true, created: true, ...computeStatus(fresh, now) }));
   }
   const updated = { ...existing, last_seen_at: now };
   await writeClient(env, mac, updated);
-  return json({ ok: true, created: false, ...computeStatus(updated, now) });
+  return json(await attachSourceMeta(env, mac, { ok: true, created: false, ...computeStatus(updated, now) }));
 }
 
 // =========================================================
@@ -2302,6 +2307,19 @@ async function handleHeartbeat(request, env, ctx) {
 //  après le heartbeat, pour savoir si elle doit afficher
 //  l'écran 'essai expiré' ou 'compte gelé'.
 // =========================================================
+/// Ajoute le numéro de source et les listes retirées (empreintes,
+/// jamais les mots de passe). La box s'en sert pour effacer sans
+/// attendre un heartbeat.
+async function attachSourceMeta(env, mac, payload) {
+  const upper = String(mac || '').toUpperCase();
+  const rev = await sourceRevForMac(env, upper);
+  const revoked = await listRevokedPublic(env, upper);
+  const out = payload && typeof payload === 'object' ? { ...payload } : {};
+  if (rev !== undefined) out.source_rev = rev;
+  out.revoked = revoked;
+  return out;
+}
+
 async function handlePublicStatus(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   // D1 en priorite. Si la MAC n'est pas encore connue (status appele
@@ -2312,10 +2330,10 @@ async function handlePublicStatus(env, mac) {
       await ensureD1Device(env, mac);
       d1 = await d1StatusForMac(env, mac);
     }
-    if (d1) return json(d1);
+    if (d1) return json(await attachSourceMeta(env, mac, d1));
   }
   const data = await readClient(env, mac);
-  return json(computeStatus(data));
+  return json(await attachSourceMeta(env, mac, computeStatus(data)));
 }
 
 // =========================================================
@@ -2556,7 +2574,7 @@ async function handlePublicConfig(request, env, mac) {
   // affichée à l'écran ne suffit plus. Sans base lisible, pas de codes.
   const access = await credentialAccess(env, request, MAC);
   if (access.kind !== 'ok' && access.kind !== 'legacy') {
-    return credentialsDenied(MAC, access.reason);
+    return credentialsDenied(env, MAC, access.reason);
   }
   const data = await readClient(env, mac);
   if (!data) return notFound(`Aucun playlist configurée pour ${mac}`);
@@ -2740,14 +2758,17 @@ async function credentialAccess(env, request, mac) {
   return { kind: 'blocked', reason };
 }
 
-function credentialsDenied(mac, reason) {
+async function credentialsDenied(env, mac, reason) {
   const status = reason === 'device_secret_required' ? 401 : 200;
-  return jsonPrivate({
+  // Même refusée, la box doit pouvoir apprendre qu'une liste a été
+  // retirée. On n'ajoute PAS les mots de passe.
+  const body = await attachSourceMeta(env, mac, {
     mac,
     source: null,
     sources: [],
     blocked: reason,
-  }, status);
+  });
+  return jsonPrivate(body, status);
 }
 
 async function openSourceList(env, list) {
@@ -2787,7 +2808,7 @@ async function handlePublicDeviceSource(request, env, mac) {
   // renvoie pas les mots de passe (la box garde son cache local).
   const access = await credentialAccess(env, request, MAC);
   if (access.kind !== 'ok' && access.kind !== 'legacy') {
-    return credentialsDenied(MAC, access.reason);
+    return credentialsDenied(env, MAC, access.reason);
   }
 
   // 1) D1 `device_sources` — sources assignées via le portail api_v1
@@ -2816,7 +2837,9 @@ async function handlePublicDeviceSource(request, env, mac) {
         // dès que SOURCE_ENCRYPTION_KEY est posée. Les lignes anciennes
         // en clair passent telles quelles.
         sources = await openSourceList(env, sources);
-        return jsonPrivate({ mac: MAC, source: sources[0] || null, sources });
+        return jsonPrivate(await attachSourceMeta(env, MAC, {
+          mac: MAC, source: sources[0] || null, sources,
+        }));
       }
     } catch (_) {
       // Table absente / D1 indisponible → on tente le repli KV ci-dessous.
@@ -2862,14 +2885,18 @@ async function handlePublicDeviceSource(request, env, mac) {
       }
       if (source) {
         const opened = await openSource(source, encryptionKey(env));
-        return jsonPrivate({ mac: MAC, source: opened });
+        return jsonPrivate(await attachSourceMeta(env, MAC, {
+          mac: MAC, source: opened,
+        }));
       }
     }
   } catch (_) {
     // KV indisponible → pas de source.
   }
 
-  return jsonPrivate({ mac: MAC, source: null });
+  return jsonPrivate(await attachSourceMeta(env, MAC, {
+    mac: MAC, source: null,
+  }));
 }
 
 // /api/self-source/:mac — SELF-SERVICE « Mon espace » (façon IBO Player Pro).

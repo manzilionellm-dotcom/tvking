@@ -2,17 +2,17 @@
 //  tv_activation_screen.dart — Licence « The Few » (Maison Noir)
 // =========================================================
 //  Logo hero + tagline sobre + prix en pastille or + code d'activation
-//  (mono) dans une carte + CTA or « J'ai payé — Vérifier ». Poll 5 s :
-//  dès que le revendeur active la MAC, la TV se débloque toute seule.
+//  (mono) dans une carte + CTA or « J'ai payé — Vérifier ».
+//  La veille de l'app lit le statut toute seule (quelques secondes) :
+//  dès que le revendeur active la MAC, la TV se débloque.
 // =========================================================
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/activation_hint.dart';
+import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -32,7 +32,6 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   String _mac = '…';
   bool _busy = false;
   bool _copied = false;
-  Timer? _poll;
 
   @override
   void initState() {
@@ -41,9 +40,8 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
       if (mounted) setState(() => _mac = m);
     });
     SubscriptionState.instance.addListener(_onSub);
-    // Activation instantanée : revérifie toutes les 5 s.
-    _poll = Timer.periodic(const Duration(seconds: 5),
-        (_) => SubscriptionState.instance.syncWithBackend());
+    // La veille unique (RemoteActivationWatch) lit le statut.
+    // Cet écran n'envoie plus de heartbeat toutes les 5 secondes.
   }
 
   void _onSub() {
@@ -53,13 +51,13 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   @override
   void dispose() {
     SubscriptionState.instance.removeListener(_onSub);
-    _poll?.cancel();
     super.dispose();
   }
 
   Future<void> _check() async {
     setState(() => _busy = true);
     await SubscriptionState.instance.syncWithBackend();
+    RemoteActivationWatch.instance.nudge();
     if (mounted) setState(() => _busy = false);
   }
 
