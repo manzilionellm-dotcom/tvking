@@ -34,6 +34,7 @@ import 'package:native_video_player/native_video_player.dart';
 
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
+import '../../device/data/device_secret.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_back_guard.dart';
 import '../../subscription/data/subscription_backend.dart'
@@ -249,10 +250,11 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     }
     _set(_source, _Stat.running, 'GET device-source ($mac)…');
     try {
+      await DeviceSecret.instance.enroll(mac);
       final http.Response r = await http
           .get(
             Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
-            headers: const <String, String>{'Accept': 'application/json'},
+            headers: await DeviceSecret.instance.headers(),
           )
           .timeout(_kCheckTimeout);
       if (r.statusCode != 200) {

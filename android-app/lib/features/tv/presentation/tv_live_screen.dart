@@ -644,20 +644,26 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       //  • en cours / réseau → « Recherche de tes chaînes… »
       //  • source refusée     → identifiants invalides côté panel
       //  • rien d'assigné     → message d'activation habituel
-      final bool searching = _syncing ||
-          _lastSync == null ||
-          _lastSync == RemoteSyncResult.networkError;
+      // Trois phrases, plus une recherche sans fin :
+      // pas de réseau, code pas activé, liste refusée.
+      final bool searching = _syncing || _lastSync == null;
       final String title;
       final String subtitle;
       if (searching) {
         title = context.l10n.tvSearchingChannels;
         subtitle = context.l10n.tvNoChannelsHelp;
+      } else if (_lastSync == RemoteSyncResult.networkError) {
+        title = 'Pas de réseau';
+        subtitle =
+            'La box n\'arrive pas à joindre le serveur. Vérifie la connexion, puis réessaie.';
       } else if (_lastSync == RemoteSyncResult.sourceFailed) {
-        title = context.l10n.tvNoChannels;
-        subtitle = context.l10n.tvSourceInvalid;
+        title = 'Cette liste est refusée';
+        subtitle =
+            'Le fournisseur n\'accepte pas cette liste. Vérifie les identifiants.';
       } else {
-        title = context.l10n.tvNoChannels;
-        subtitle = context.l10n.tvNoChannelsHelp;
+        title = 'Code pas activé';
+        subtitle =
+            'Le code de cette box n\'est pas activé. Active-le dans le panel, puis attends quelques secondes.';
       }
       return Center(
         child: Row(

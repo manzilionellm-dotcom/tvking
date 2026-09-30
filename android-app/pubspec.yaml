@@ -209,6 +209,13 @@ dependencies:
   # le fichier. Plugin officiel de l'écosystème Flutter Community.
   share_plus: ^10.1.4
 
+  # Chiffre les mots de passe Xtream (et les liens M3U) au repos dans
+  # SQLite. AES-GCM, pur Dart, sans code natif : une copie de la seule
+  # base ne montre plus les codes en clair. Les anciennes lignes sans
+  # préfixe restent lisibles (migration douce). La clé est générée sur
+  # l'appareil et rangée à part du fichier .db.
+  cryptography: ^2.7.0
+
   # ----- Rapport de crash (OPTIONNEL, fail-open) -----
   # firebase_core : socle Firebase (initialise l'« app » Firebase à partir
   #   de google-services.json). firebase_crashlytics : remonte les crashes

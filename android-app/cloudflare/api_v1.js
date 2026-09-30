@@ -58,6 +58,8 @@
 //  customers viendront en Phase 3 et 5 respectivement.
 // =========================================================
 
+import { sealSource, openSource, encryptionKey } from './source_crypto.js';
+
 // ---------------------------------------------------------
 //  Helpers reponse
 // ---------------------------------------------------------
@@ -101,8 +103,12 @@ function clientIp(request) {
     || request.headers.get('X-Forwarded-For')
     || 'unknown';
 }
-/// true = tentative AUTORISÉE ; false = bloquée (429).
-async function rateLimitHit(env, request, bucket, maxAttempts, windowMs) {
+/// true = tentative AUTORISÉE ; false = bloquée (429) ;
+/// null = base illisible (l'appelant répond 503, il n'ouvre pas).
+/// `failClosed` : login / inscription. Une panne D1 ne doit pas
+/// autoriser un nombre illimité d'essais.
+async function rateLimitHit(env, request, bucket, maxAttempts, windowMs, failClosed) {
+  if (failClosed && (!env || !env.DB)) return null;
   try {
     await ensureRateLimitTable(env);
     const k = `${bucket}:${clientIp(request)}`;
@@ -122,7 +128,7 @@ async function rateLimitHit(env, request, bucket, maxAttempts, windowMs) {
       .bind(k).run();
     return true;
   } catch (_) {
-    return true; // fail-open
+    return failClosed ? null : true;
   }
 }
 /// Remet le compteur à zéro après une réussite (login OK).
@@ -265,11 +271,31 @@ function genId(prefix) {
 // ---------------------------------------------------------
 //  Auth middleware
 // ---------------------------------------------------------
+//  Le secret d'administration vient UNIQUEMENT de Cloudflare
+//  (`ADMIN_SECRET`). S'il n'est pas posé, on refuse : pas de clé
+//  de secours écrite dans le code, pas de jeton signé avec un
+//  mot de passe connu de tous.
+function adminSecret(env) {
+  const s = env && typeof env.ADMIN_SECRET === 'string' ? env.ADMIN_SECRET.trim() : '';
+  return s;
+}
+
+function adminNotConfigured() {
+  return errResp(
+    'admin_unconfigured',
+    'Le secret d\'administration du Worker n\'est pas configuré. '
+    + 'Pose-le dans Cloudflare, puis réessaie.',
+    503,
+  );
+}
+
 async function requireAuth(request, env) {
+  const secret = adminSecret(env);
+  if (!secret) return { error: adminNotConfigured() };
   const auth = request.headers.get('Authorization') || '';
   const m = auth.match(/^Bearer\s+(.+)$/i);
   if (!m) return { error: errResp('no_auth', 'Missing Authorization header', 401) };
-  const claims = await verifyJwt(m[1], env.ADMIN_SECRET || 'dev-secret');
+  const claims = await verifyJwt(m[1], secret);
   if (!claims) return { error: errResp('bad_token', 'Invalid or expired token', 401) };
   return { user: claims };
 }
@@ -385,9 +411,14 @@ async function bootstrapSuperAdminIfNeeded(env) {
     'SELECT COUNT(*) as n FROM admin_users',
   ).first();
   if (count && count.n > 0) return false;
+  const secret = adminSecret(env);
+  // Pas de compte créé « au cas où » avec un mot de passe écrit dans
+  // le code. Sans secret Cloudflare, le propriétaire doit d'abord le
+  // poser. La table vide reste vide.
+  if (!secret) return false;
   const id = genId('adm');
   const now = Date.now();
-  const pwd = await hashPassword(env.ADMIN_SECRET || 'change-me');
+  const pwd = await hashPassword(secret);
   await env.DB
     .prepare(
       `INSERT INTO admin_users
@@ -824,15 +855,15 @@ async function apiV1Inner(request, env) {
   // retirer.
   if (parts[0] === 'sources' && parts.length === 2) {
     const mac = parts[1];
-    if (request.method === 'GET') return handleSourceGet(env, mac);
+    if (request.method === 'GET') return handleSourceGet(env, mac, a.user);
     // Pousser/retirer une source = capacité 'sources' (niveau standard+).
     // Un revendeur 'basique' ne peut PAS configurer les sources clients.
     if ((request.method === 'PUT' || request.method === 'DELETE')
         && !resellerCan(a.user, 'sources')) {
       return errResp('forbidden', 'Ton niveau ne permet pas de pousser une source.', 403);
     }
-    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor);
-    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor);
+    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor, a.user);
+    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor, a.user);
   }
 
   // /customers
@@ -843,11 +874,11 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 2) {
       const id = parts[1];
-      if (request.method === 'GET') return handleCustomersGet(env, id);
-      if (request.method === 'PATCH') return handleCustomersUpdate(request, env, id, actor);
+      if (request.method === 'GET') return handleCustomersGet(env, id, a.user);
+      if (request.method === 'PATCH') return handleCustomersUpdate(request, env, id, actor, a.user);
     }
     if (parts.length === 3 && parts[2] === 'devices') {
-      return handleCustomerDevices(env, parts[1]);
+      return handleCustomerDevices(env, parts[1], a.user);
     }
   }
 
@@ -904,8 +935,17 @@ async function handleLogin(request, env) {
   if (!email || !password) {
     return errResp('missing_fields', 'email and password required', 400);
   }
+  const secret = adminSecret(env);
+  if (!secret) return adminNotConfigured();
+
   // Anti-brute-force : 10 tentatives / 10 min par IP. Succès = reset.
-  if (!await rateLimitHit(env, request, 'login', 10, 10 * 60 * 1000)) {
+  // Fail-closed : si la base ne répond pas, on ne laisse pas essayer
+  // sans limite.
+  const loginGate = await rateLimitHit(env, request, 'login', 10, 10 * 60 * 1000, true);
+  if (loginGate === null) {
+    return errResp('unavailable', 'Service momentanément indisponible.', 503);
+  }
+  if (!loginGate) {
     return errResp('rate_limited',
       'Trop de tentatives de connexion. Réessaie dans ~10 minutes.', 429);
   }
@@ -925,25 +965,12 @@ async function handleLogin(request, env) {
   if (!row || !row.is_active) {
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
-  let ok = await verifyPassword(password, row.password_hash);
-  // CLÉ MAÎTRE (anti-lock-out) : le PROPRIÉTAIRE peut toujours se
-  // connecter au compte super_admin avec l'ADMIN_SECRET du Worker
-  // (qu'il contrôle via `wrangler secret put ADMIN_SECRET` ou le
-  // dashboard Cloudflare). Utile s'il a oublié son mot de passe ou si
-  // ADMIN_SECRET a changé APRÈS le bootstrap (le hash stocké pointait
-  // alors sur l'ancien secret). On resynchronise le hash sur ce secret,
-  // puis l'admin peut définir un nouveau mot de passe dans « Mon compte ».
-  if (!ok
-      && row.role === 'super_admin'
-      && env.ADMIN_SECRET
-      && password === env.ADMIN_SECRET) {
-    const synced = await hashPassword(env.ADMIN_SECRET);
-    await env.DB
-      .prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?')
-      .bind(synced, row.id)
-      .run();
-    ok = true;
-  }
+  const ok = await verifyPassword(password, row.password_hash);
+  // Plus de « mot de passe maître » permanent : connaître le secret
+  // Cloudflare ne connecte plus au panneau et ne réécrit plus le
+  // hash. Un mot de passe oublié se change dans « Mon compte », ou
+  // en recréant le compte si la table admin est vide (le workflow
+  // set-admin-password ne fait que poser le secret de signature).
   if (!ok) {
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
@@ -955,7 +982,7 @@ async function handleLogin(request, env) {
 
   const token = await signJwt(
     { sub: row.id, email: row.email, role: row.role, name: row.name },
-    env.ADMIN_SECRET || 'dev-secret',
+    secret,
   );
   return jsonResp({
     token,
@@ -2043,13 +2070,29 @@ async function handleCustomersList(request, env, user) {
   return jsonResp({ items: rs.results || [] });
 }
 
-async function handleCustomersGet(env, id) {
-  const row = await env.DB
-    .prepare('SELECT * FROM customers WHERE id = ?')
-    .bind(id)
-    .first();
-  if (!row) return errResp('not_found', 'Customer not found', 404);
-  return jsonResp(row);
+/// null = autorisé. Sinon une réponse 403 / 503 à renvoyer telle quelle.
+/// Un revendeur ne voit que SES clients (même filtre que la liste).
+async function customerForActor(env, id, user) {
+  let row;
+  try {
+    row = await env.DB
+      .prepare('SELECT * FROM customers WHERE id = ?')
+      .bind(id)
+      .first();
+  } catch (_) {
+    return { error: errResp('unavailable', 'Impossible de vérifier ce client.', 503) };
+  }
+  if (!row) return { error: errResp('not_found', 'Customer not found', 404) };
+  if (user && user.role === 'reseller' && row.reseller_id !== user.sub) {
+    return { error: errResp('forbidden', 'Ce client n\'est pas dans ton stock.', 403) };
+  }
+  return { row };
+}
+
+async function handleCustomersGet(env, id, user) {
+  const found = await customerForActor(env, id, user);
+  if (found.error) return found.error;
+  return jsonResp(found.row);
 }
 
 async function handleCustomersCreate(request, env, actor) {
@@ -2080,13 +2123,20 @@ async function handleCustomersCreate(request, env, actor) {
   return jsonResp({ id }, 201);
 }
 
-async function handleCustomersUpdate(request, env, id, actor) {
+async function handleCustomersUpdate(request, env, id, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
-  const before = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first();
-  if (!before) return errResp('not_found', 'Customer not found', 404);
+  const found = await customerForActor(env, id, user);
+  if (found.error) return found.error;
+  const before = found.row;
+  // Un revendeur ne peut pas se réassigner le client d'un autre,
+  // ni changer le propriétaire.
+  if (user && user.role === 'reseller' && body.reseller_id
+      && body.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Tu ne peux pas transférer ce client.', 403);
+  }
   const fields = ['email', 'name', 'phone', 'reseller_id', 'notes'];
   const sets = []; const vals = [];
   for (const f of fields) {
@@ -2100,7 +2150,9 @@ async function handleCustomersUpdate(request, env, id, actor) {
   return jsonResp({ updated: 1 });
 }
 
-async function handleCustomerDevices(env, customerId) {
+async function handleCustomerDevices(env, customerId, user) {
+  const found = await customerForActor(env, customerId, user);
+  if (found.error) return found.error;
   const rs = await env.DB
     .prepare(
       `SELECT id, mac, label, first_seen_at, last_seen_at
@@ -2213,8 +2265,13 @@ async function upsertDeviceSource(env, mac, sources) {
   } catch (_) { /* pas de précédent → rien à préserver */ }
 
   const merged = [...panelItems, ...selfItems];
-  const first = merged[0] || {};
-  const json = JSON.stringify(merged);
+  // Au repos : mot de passe et lien M3U chiffrés si la clé Cloudflare
+  // est posée. Sans clé, on garde le clair (pas de clé inventée).
+  const key = encryptionKey(env);
+  const stored = [];
+  for (const item of merged) stored.push(await sealSource(item, key));
+  const first = stored[0] || {};
+  const json = JSON.stringify(stored);
   await env.DB
     .prepare(
       // Colonnes plates = 1re source PANEL (compat app/panel). origin ligne =
@@ -2245,7 +2302,43 @@ function decodeMac(mac) {
   }
 }
 
-async function handleSourceGet(env, mac) {
+/// null = le revendeur a le droit sur cette MAC (ou ce n'est pas un
+/// revendeur). Sinon 403 / 503. Une MAC absente du stock est refusée :
+/// on ne lit pas « au cas où ».
+async function assertMacAccess(env, user, mac) {
+  if (!user || user.role !== 'reseller') return null;
+  const m = decodeMac(mac).trim().toUpperCase();
+  let dev;
+  try {
+    dev = await env.DB.prepare(
+      'SELECT reseller_id, customer_id FROM devices WHERE mac = ?',
+    ).bind(m).first();
+  } catch (_) {
+    return errResp('unavailable', 'Impossible de vérifier le propriétaire de cette box.', 503);
+  }
+  if (!dev) {
+    return errResp('forbidden', 'Cette box n\'est pas dans ton stock.', 403);
+  }
+  if (dev.reseller_id && dev.reseller_id !== user.sub) {
+    return errResp('forbidden', 'Cette box n\'est pas dans ton stock.', 403);
+  }
+  if (dev.reseller_id === user.sub) return null;
+  if (dev.customer_id) {
+    try {
+      const c = await env.DB.prepare(
+        'SELECT reseller_id FROM customers WHERE id = ?',
+      ).bind(dev.customer_id).first();
+      if (c && c.reseller_id === user.sub) return null;
+    } catch (_) {
+      return errResp('unavailable', 'Impossible de vérifier le propriétaire de cette box.', 503);
+    }
+  }
+  return errResp('forbidden', 'Cette box n\'est pas dans ton stock.', 403);
+}
+
+async function handleSourceGet(env, mac, user) {
+  const denied = await assertMacAccess(env, user, mac);
+  if (denied) return denied;
   await ensureSourcesTable(env);
   const m = decodeMac(mac).trim().toUpperCase();
   const row = await env.DB
@@ -2262,15 +2355,20 @@ async function handleSourceGet(env, mac) {
     const { sources_json, mac: _mac, updated_at, ...single } = row;
     sources = [single];
   }
-  return jsonResp({ mac: m, source: sources[0] || null, sources });
+  const key = encryptionKey(env);
+  const opened = [];
+  for (const item of sources) opened.push(await openSource(item, key));
+  return jsonResp({ mac: m, source: opened[0] || null, sources: opened });
 }
 
-async function handleSourcePut(request, env, mac, actor) {
+async function handleSourcePut(request, env, mac, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
   const m = decodeMac(mac).trim().toUpperCase();
+  const denied = await assertMacAccess(env, user, m);
+  if (denied) return denied;
   if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
@@ -2295,7 +2393,9 @@ async function handleSourcePut(request, env, mac, actor) {
   return jsonResp({ ok: true, mac: m, count: sources.length });
 }
 
-async function handleSourceDelete(request, env, mac, actor) {
+async function handleSourceDelete(request, env, mac, actor, user) {
+  const denied = await assertMacAccess(env, user, mac);
+  if (denied) return denied;
   await ensureSourcesTable(env);
   const m = decodeMac(mac).trim().toUpperCase();
   await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
@@ -2962,7 +3062,11 @@ async function ensureResellerLevel(env) {
 //  lui a pas coché ses droits + donné des crédits. L'admin garde la main.
 async function handleResellerSignup(request, env) {
   // Anti-spam : 5 inscriptions / heure par IP (le lien est public).
-  if (!await rateLimitHit(env, request, 'signup', 5, 60 * 60 * 1000)) {
+  const signupGate = await rateLimitHit(env, request, 'signup', 5, 60 * 60 * 1000, true);
+  if (signupGate === null) {
+    return errResp('unavailable', 'Service momentanément indisponible.', 503);
+  }
+  if (!signupGate) {
     return errResp('rate_limited', 'Trop d\'inscriptions. Réessaie plus tard.', 429);
   }
   await ensureResellerLevel(env);
@@ -3009,7 +3113,11 @@ async function handleResellerLogin(request, env) {
     return errResp('missing_fields', 'email and password required', 400);
   }
   // Anti-brute-force : 10 tentatives / 10 min par IP. Succès = reset.
-  if (!await rateLimitHit(env, request, 'rlogin', 10, 10 * 60 * 1000)) {
+  const rloginGate = await rateLimitHit(env, request, 'rlogin', 10, 10 * 60 * 1000, true);
+  if (rloginGate === null) {
+    return errResp('unavailable', 'Service momentanément indisponible.', 503);
+  }
+  if (!rloginGate) {
     return errResp('rate_limited',
       'Trop de tentatives de connexion. Réessaie dans ~10 minutes.', 429);
   }
@@ -3032,9 +3140,11 @@ async function handleResellerLogin(request, env) {
   await rateLimitReset(env, request, 'rlogin'); // succès → on libère l'IP
   const level = row.level || 'basique';
   const permissions = resellerPerms(row.permissions, level);
+  const resellerSecret = adminSecret(env);
+  if (!resellerSecret) return adminNotConfigured();
   const token = await signJwt(
     { sub: row.id, email: row.email, role: 'reseller', name: row.name, level, permissions },
-    env.ADMIN_SECRET || 'dev-secret',
+    resellerSecret,
   );
   return jsonResp({
     token,

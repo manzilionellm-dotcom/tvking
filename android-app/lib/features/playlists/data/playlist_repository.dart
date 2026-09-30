@@ -36,6 +36,7 @@ import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
 import '../domain/playlist.dart';
+import 'playlist_secret.dart';
 import 'm3u_fetcher.dart';
 import 'import_progress.dart';
 import 'm3u_parser.dart';
@@ -272,7 +273,11 @@ class PlaylistRepository {
     final Database db = await PlaylistDatabase.instance.database;
     final List<Map<String, Object?>> rows =
         await db.query('playlists', orderBy: 'created_at DESC');
-    return rows.map(Playlist.fromMap).toList();
+    final List<Playlist> out = <Playlist>[];
+    for (final Map<String, Object?> row in rows) {
+      out.add(await _playlistFromRow(row));
+    }
+    return out;
   }
 
   /// Phase 1+/Multi-serveurs : retourne la playlist active, ou la 1ere
@@ -286,7 +291,7 @@ class PlaylistRepository {
       where: 'is_active = 1',
       limit: 1,
     );
-    if (active.isNotEmpty) return Playlist.fromMap(active.first);
+    if (active.isNotEmpty) return _playlistFromRow(active.first);
     // 2) Fallback sur la plus ancienne
     final List<Map<String, Object?>> first = await db.query(
       'playlists',
@@ -294,7 +299,17 @@ class PlaylistRepository {
       limit: 1,
     );
     if (first.isEmpty) return null;
-    return Playlist.fromMap(first.first);
+    return _playlistFromRow(first.first);
+  }
+
+  /// Relit une ligne SQLite en déchiffrant le mot de passe. Les
+  /// anciennes lignes en clair passent (voir PlaylistSecret).
+  Future<Playlist> _playlistFromRow(Map<String, Object?> row) async {
+    final Map<String, Object?> next = Map<String, Object?>.from(row);
+    next['xtream_password'] =
+        await PlaylistSecret.open(next['xtream_password'] as String?);
+    next['m3u_url'] = await PlaylistSecret.open(next['m3u_url'] as String?);
+    return Playlist.fromMap(next);
   }
 
   /// Phase 1+/Multi-serveurs : marque [playlistId] comme la playlist
@@ -651,6 +666,10 @@ class PlaylistRepository {
   // passe à la fois.
   bool _refreshingAll = false;
 
+  /// Message à montrer si la dernière actualisation a laissé une
+  /// liste de côté. `null` quand tout a réussi.
+  final ValueNotifier<String?> refreshWarning = ValueNotifier<String?>(null);
+
   ///
   /// [skipSyncedWithin] : ignore les sources synchronisées il y a moins que
   /// cette durée (ex. une source que le panel vient de poser à l'instant :
@@ -666,18 +685,27 @@ class PlaylistRepository {
           ? null
           : DateTime.now().subtract(skipSyncedWithin).millisecondsSinceEpoch;
       int ok = 0;
+      int failed = 0;
       for (final Playlist p in all) {
         if (p.hidden) continue;
         final int? last = p.lastSyncedAt;
         if (freshAfter != null && last != null && last > freshAfter) continue;
         try {
           final bool result = await refreshPlaylist(p);
-          if (result) ok++;
+          if (result) {
+            ok++;
+          } else {
+            failed++;
+          }
         } catch (_) {
-          // Best-effort — si une playlist échoue, on passe à la
-          // suivante (on ne veut pas bloquer les autres).
+          // On n'arrête pas les autres listes, mais on retient l'échec
+          // pour le dire à l'écran (avant, c'était silencieux).
+          failed++;
         }
       }
+      refreshWarning.value = failed > 0
+          ? 'Une liste n\'a pas pu être actualisée. Les autres sont à jour.'
+          : null;
       // Nettoyage : retire toute source qui s'est vidée (code qui n'a
       // plus de chaîne) pour ne pas laisser de playlist morte traîner.
       await pruneEmptyPlaylists();
@@ -834,6 +862,9 @@ class PlaylistRepository {
     if (isFirst) {
       map['is_active'] = 1;
     }
+    map['xtream_password'] =
+        await PlaylistSecret.seal(map['xtream_password'] as String?);
+    map['m3u_url'] = await PlaylistSecret.seal(map['m3u_url'] as String?);
     return db.insert('playlists', map);
   }
 

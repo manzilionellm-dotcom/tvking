@@ -34,6 +34,10 @@ abstract final class TvContentRefresh {
   /// Vrai pendant qu'une passe de mise à jour tourne (affichage discret).
   static final ValueNotifier<bool> running = ValueNotifier<bool>(false);
 
+  /// Phrase à montrer si une liste n'a pas pu être actualisée.
+  /// `null` quand tout va bien.
+  static final ValueNotifier<String?> notice = ValueNotifier<String?>(null);
+
   /// Lance une passe complète.
   ///
   /// [waitIdle] : attendre que le client ait quitté Direct / le lecteur
@@ -62,6 +66,7 @@ abstract final class TvContentRefresh {
       //    l'instant par l'étape 1 n'est pas re-téléchargée une 2e fois.
       final int ok = await PlaylistRepository.instance
           .refreshAll(skipSyncedWithin: const Duration(minutes: 2));
+      notice.value = PlaylistRepository.instance.refreshWarning.value;
       // 3) Nouveaux films / séries (cache mémoire vidé → relu à l'ouverture).
       if (clearCinema) CinemaRepository.instance.clear();
       BlackBox.instance.info('SYNC',

@@ -1,0 +1,77 @@
+# =========================================================
+#  quality-zuno.yml — Tests de la box, sans compiler l'APK
+# =========================================================
+#  GitHub ne lance QUE les workflows du dossier `.github/workflows`
+#  à la RACINE du dépôt. L'ancien fichier
+#  `android-app/.github/workflows/quality.yml` ne partait donc
+#  jamais. Celui-ci est au bon endroit.
+#
+#  Il ne publie rien, ne déploie pas le Worker, n'écrit pas sur
+#  la release zuno-tv.
+# =========================================================
+
+name: Quality Zuno (tests)
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+      - 'feature/**'
+    paths:
+      - 'android-app/lib/**'
+      - 'android-app/test/**'
+      - 'android-app/pubspec.yaml'
+      - 'android-app/pubspec.lock'
+      - 'android-app/analysis_options.yaml'
+      - 'android-app/cloudflare/**'
+      - '.github/workflows/quality-zuno.yml'
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: quality-zuno-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  flutter:
+    name: flutter analyze + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run tests
+        run: flutter test --reporter expanded
+
+  worker:
+    name: tests Worker (sécurité)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Smoke + sécurité
+        run: |
+          node android-app/cloudflare/worker_security.smoke.mjs
+          node android-app/cloudflare/zuno_security.test.mjs

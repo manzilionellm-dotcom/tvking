@@ -264,13 +264,13 @@ class _LockScreenState extends State<LockScreen> {
                   child: Text(context.l10n.lockValidateCode),
                 ),
 
-                // ===== HELPER PIN PAR DEFAUT =====
+                // Plus d'indication du code 0000 : il ne déverrouille plus.
                 if (_isDefaultPin) ...[
                   const SizedBox(height: 16),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text(
-                      context.l10n.lockDefaultPin(AppPinSettings.defaultPin),
+                      'Choisis un code dans Réglages. L\'ancien code par défaut ne fonctionne plus.',
                       textAlign: TextAlign.center,
                       style: AppTextStyles.bodyMedium.copyWith(
                         color: AppColors.textTertiary,
