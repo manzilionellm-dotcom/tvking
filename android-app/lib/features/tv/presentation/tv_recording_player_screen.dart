@@ -29,6 +29,7 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/clear_voice_flag.dart';
+import '../../player/data/image_prefs.dart';
 
 import '../../recordings/domain/recording.dart';
 import '../core/tv_tokens.dart';
@@ -91,6 +92,11 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
     setState(() => _controller = c);
     unawaited(ClearVoiceFlag.load().then((_) {
       if (mounted) c.setClearVoice(ClearVoiceFlag.value);
+    }));
+    unawaited(ImagePrefs.load().then((_) {
+      if (!mounted) return;
+      c.setImageEngine(ImagePrefs.engine.wire);
+      c.setFrameRateMatch(ImagePrefs.frameRateMatch);
     }));
   }
 

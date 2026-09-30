@@ -61,5 +61,15 @@ dependencies {
     // SÉCURITÉ : si FFmpeg bloque une chaîne, NativeVideoView.kt revient au
     // décodeur de la box pour le reste de la session (le son « radio » vaut
     // mieux qu'une roue de chargement infinie, comme en v99–v101).
+    //
+    // VIDÉO : ce même binaire ne contient PAS de décodeur vidéo (vérifié
+    // sur l'AAR 1.5.0+1 : classes ExperimentalFfmpegVideoRenderer, mais le
+    // .so n'a que des décodeurs audio — aac, ac3, eac3, mp3, dca, truehd).
+    // On ne le remplace pas : le son de la v104 en dépend. Le rendu vidéo
+    // FFmpeg n'est construit que si FfmpegLibrary.supportsFormat dit oui
+    // pour H.264, HEVC ou MPEG-2. Licence déclarée par le POM : GPL-3.0
+    // (dépôt jellyfin-androidx-media). FFmpeg lui-même est LGPL-2.1+ tant
+    // que --enable-gpl n'est pas passé ; le script build.sh de Jellyfin
+    // n'active que des décodeurs audio. Détail : android-app/docs/IMAGE.md.
     implementation "org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1"
 }
