@@ -2230,5 +2230,21 @@
   "tvSearchCount": "{count, plural, =1{1 परिणाम} other{{count} परिणाम}}",
   "tvGuideLoading": "गाइड लोड हो रही है…",
   "tvGuideHint": "ऊपर / नीचे: देखें · OK या वापस: बंद करें",
-  "tvNoEpg": "कोई कार्यक्रम नहीं"
-}
+  "tvNoEpg": "कोई कार्यक्रम नहीं",
+  "tvVoiceMic": "माइक",
+  "tvVoiceListening": "अब बोलें…",
+  "tvVoiceUnavailable": "इस बॉक्स में माइक नहीं है। कीबोर्ड का उपयोग करें।",
+  "tvVoiceCancelled": "रद्द। कीबोर्ड से टाइप कर सकते हैं।",
+  "tvVoiceFailed": "समझ नहीं आया। फिर कोशिश करें, या कीबोर्ड से लिखें।",
+  "tvVoiceBusy": "माइक पहले से उपयोग में है। थोड़ी देर बाद कोशिश करें।",
+  "tvVoiceTonightTitle": "आज रात टीवी पर",
+  "tvVoiceTonightEmpty": "गाइड में आज रात के लिए कुछ नहीं है। अपनी सूची में EPG पता जोड़कर फिर कोशिश करें।",
+  "tvVoiceKindChannel": "चैनल",
+  "tvVoiceKindMovie": "फ़िल्म",
+  "tvVoiceKindSeries": "सीरीज़",
+  "tvVoiceRemoteAi": "दूरस्थ आवाज़ सहायता",
+  "tvVoiceRemoteAiOn": "चालू",
+  "tvVoiceRemoteAiOff": "बंद",
+  "tvVoiceRemoteAiHelp": "डिफ़ॉल्ट रूप से बंद। ऐप में कोई कुंजी नहीं। « आज रात » आपकी गाइड से, बॉक्स पर पढ़ा जाता है। सेवा जवाब न दे तो Zuno आपकी सूची में खोजता है।",
+  "tvVoiceCinemaHint": "एक बार फ़िल्में या सीरीज़ खोलें: खोज उन्हें बाद में ढूँढ लेगी, देखते समय नेटवर्क के बिना।",
+  "tvVoiceOnChannel": "{channel} पर"}

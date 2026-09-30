@@ -926,5 +926,21 @@
   "tvSearchCount": "{count, plural, =1{نتيجة واحدة} other{{count} نتائج}}",
   "tvGuideLoading": "جارٍ تحميل الدليل…",
   "tvGuideHint": "أعلى / أسفل: تصفح · موافق أو رجوع: إغلاق",
-  "tvNoEpg": "لا يوجد برنامج معلن"
-}
+  "tvNoEpg": "لا يوجد برنامج معلن",
+  "tvVoiceMic": "ميكروفون",
+  "tvVoiceListening": "تحدّث الآن…",
+  "tvVoiceUnavailable": "لا يوجد ميكروفون على هذا الجهاز. استخدم لوحة المفاتيح.",
+  "tvVoiceCancelled": "أُلغي. يمكنك الكتابة بلوحة المفاتيح.",
+  "tvVoiceFailed": "لم أفهم. أعد المحاولة أو استخدم لوحة المفاتيح.",
+  "tvVoiceBusy": "الميكروفون قيد الاستخدام. أعد المحاولة بعد لحظة.",
+  "tvVoiceTonightTitle": "الليلة على التلفزيون",
+  "tvVoiceTonightEmpty": "دليل البرامج لا يحتوي شيئاً لهذه الليلة. أضف عنوان EPG إلى قائمتك ثم أعد المحاولة.",
+  "tvVoiceKindChannel": "قناة",
+  "tvVoiceKindMovie": "فيلم",
+  "tvVoiceKindSeries": "مسلسل",
+  "tvVoiceRemoteAi": "مساعدة صوتية بعيدة",
+  "tvVoiceRemoteAiOn": "مفعّلة",
+  "tvVoiceRemoteAiOff": "متوقفة",
+  "tvVoiceRemoteAiHelp": "متوقفة افتراضياً. لا يوجد مفتاح في التطبيق. « الليلة » تُقرأ من دليلك على الجهاز. إذا لم يجب الخدمة، يبحث Zuno في قائمتك.",
+  "tvVoiceCinemaHint": "افتح الأفلام أو المسلسلات مرة واحدة: البحث سيجدها بعد ذلك، دون شبكة أثناء المشاهدة.",
+  "tvVoiceOnChannel": "على {channel}"}

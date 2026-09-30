@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Micro NON obligatoire : android:required="false" sur le matériel,
+  et pas de permission RECORD_AUDIO. C'est l'écran de reconnaissance
+  d'Android (ou de la box) qui écoute, avec sa propre permission.
+  Une box sans micro s'installe et se lance comme avant.
+
+  VoiceRelayActivity reçoit la phrase quand le bouton micro de la
+  télécommande envoie ACTION_SEARCH. Elle ne fait qu'enregistrer le
+  texte et rouvrir Zuno. Elle ne lance pas de vidéo.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+
+    <!-- Android 11+ cache les activités des autres applis.
+         Sans ces lignes, on croirait qu'aucune box n'a de micro. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
+    <application>
+        <activity
+            android:name="com.manzilionellm.zuno_voice.VoiceRelayActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.SEARCH" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.searchable"
+                android:resource="@xml/zuno_searchable" />
+        </activity>
+        <meta-data
+            android:name="android.app.default_searchable"
+            android:value="com.manzilionellm.zuno_voice.VoiceRelayActivity" />
+    </application>
+</manifest>

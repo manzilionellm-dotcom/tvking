@@ -25,10 +25,9 @@ import '../core/tv_dimens.dart';
 import '../../carousel/domain/carousel_config.dart';
 import '../../carousel/presentation/zuno_ring_carousel.dart';
 import '../../playlists/data/playlist_repository.dart';
-import '../../box_extras/box_text.dart';
-import '../../box_extras/presentation/tv_extras_screen.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../remote/presentation/tv_remote_screen.dart';
+import '../../voice/data/voice_remote_assist.dart';
 import '../data/startup_preference.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_profiles_screen.dart';
@@ -58,6 +57,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   UpdateInfo? _updInfo;
   int _updPct = 0;
   String _current = '';
+  bool _remoteAi = false;
 
   @override
   void initState() {
@@ -69,6 +69,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       if (mounted) setState(() {});
     });
     ProfileRepository.instance.addListener(_onProfile);
+    unawaited(VoiceRemoteAssist.load().then((bool on) {
+      if (mounted) setState(() => _remoteAi = on);
+    }));
     _checkUpdate();
   }
 
@@ -171,6 +174,12 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _toggleRemoteAi() async {
+    final bool next = !_remoteAi;
+    await VoiceRemoteAssist.setEnabled(next);
+    if (mounted) setState(() => _remoteAi = VoiceRemoteAssist.enabled);
+  }
+
   String _updateLabel(BuildContext context) {
     switch (_upd) {
       case _UpdState.checking:
@@ -264,17 +273,6 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         onSelect: () => open(const TvRemoteScreen()),
       ),
       _SettingEntry(
-        icon: Icons.phone_android_rounded,
-        title: boxText(context, 'En plus', 'Extras'),
-        value: boxText(context, 'Voix', 'Voice'),
-        description: boxText(
-          context,
-          'Recherche à la voix. Elle se coupe sans toucher à la chaîne.',
-          'Voice search. It turns off without touching the channel.',
-        ),
-        onSelect: () => open(const TvExtrasScreen()),
-      ),
-      _SettingEntry(
         icon: Icons.play_circle_outline_rounded,
         title: context.l10n.tvStartupTitle,
         value: StartupPreference.instance.openLastChannel
@@ -328,6 +326,16 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         value: _languageLabel(context),
         description: context.l10n.tvSettingsLanguage(_languageLabel(context)),
         onSelect: _nextLanguage,
+      ),
+      _SettingEntry(
+        icon: Icons.mic_none_rounded,
+        title: context.l10n.tvVoiceRemoteAi,
+        value: _remoteAi
+            ? context.l10n.tvVoiceRemoteAiOn
+            : context.l10n.tvVoiceRemoteAiOff,
+        value2Color: _remoteAi ? TvTokens.accentBright : TvTokens.mutedDim,
+        description: context.l10n.tvVoiceRemoteAiHelp,
+        onSelect: _toggleRemoteAi,
       ),
       _SettingEntry(
         icon: Icons.flight_takeoff_rounded,

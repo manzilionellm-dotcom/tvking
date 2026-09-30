@@ -1,30 +1,57 @@
 // =========================================================
-//  tv_search_screen.dart — Recherche 10-foot (clavier D-pad)
+//  tv_search_screen.dart — Recherche 10-foot + voix
 // =========================================================
-//  Gauche : clavier à l'écran navigable à la télécommande (A-Z, 0-9,
-//  espace, effacer). Droite : résultats en temps réel (chaînes dont le
-//  nom contient la requête). OK sur un résultat → lecteur plein écran.
+//  Gauche : clavier télécommande, et un bouton micro.
+//  Droite : chaînes, films et séries de la playlist, ou le
+//  guide du soir si la phrase est « qu'est-ce qu'il y a ce soir ? ».
+//
+//  Le micro est optionnel. Pas de micro, reconnaissance absente,
+//  phrase incomprise : un message s'affiche et le clavier reste.
+//  Rien de tout ça n'est appelé pendant qu'une chaîne est ouverte
+//  (VoiceHotkey vérifie TvActivity). Ici, ouvrir un résultat est
+//  un choix de la personne (OK), comme avant.
 // =========================================================
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
-import '../../remote/domain/remote_typing_hub.dart';
-import '../core/tv_tokens.dart';
+import '../../channels/data/ai_search_service.dart';
 import '../../channels/domain/channel.dart';
+import '../../cinema/data/cinema_repository.dart';
+import '../../cinema/domain/cinema_models.dart';
+import '../../epg/data/epg_repository.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../playlists/data/playlist_repository.dart';
-import '../../profiles/domain/profile_policies.dart';
+import '../../remote/domain/remote_typing_hub.dart';
 import '../../security/data/parental_controls.dart';
+import '../../voice/data/voice_capture.dart';
+import '../../voice/data/voice_remote_assist.dart';
+import '../../voice/domain/tonight_plan.dart';
+import '../../voice/domain/voice_catalog.dart';
+import '../../voice/domain/voice_query.dart';
+import '../../voice/presentation/voice_navigation.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
-import '../core/tv_search_text.dart';
-import '../../voice_search/presentation/voice_mic_button.dart';
+import '../core/tv_tokens.dart';
+import 'tv_cinema_detail_screen.dart';
 import 'tv_player_screen.dart';
+import 'tv_shell.dart';
 
 class TvSearchScreen extends StatefulWidget {
-  const TvSearchScreen({super.key});
+  const TvSearchScreen({
+    super.key,
+    this.initialQuery = '',
+    this.autoListen = false,
+  });
+
+  /// Phrase déjà reconnue (micro système) à chercher tout de suite.
+  final String initialQuery;
+
+  /// Ouvre le micro dès l'affichage (touche de la télécommande).
+  final bool autoListen;
 
   @override
   State<TvSearchScreen> createState() => _TvSearchScreenState();
@@ -32,64 +59,64 @@ class TvSearchScreen extends StatefulWidget {
 
 class _TvSearchScreenState extends State<TvSearchScreen> {
   StreamSubscription<List<Channel>>? _sub;
-  List<Channel> _all = const <Channel>[];
+  List<Channel> _channels = const <Channel>[];
   String _q = '';
-  List<Channel> _results = const <Channel>[];
+  List<VoiceHit> _hits = const <VoiceHit>[];
+  TonightLineup? _tonight;
+  String? _banner;
+  bool _listening = false;
+  int _gen = 0;
   Timer? _debounce;
-  // Clé de recherche déjà calculée (nom brut + catégorie), par id.
-  // Évite de reparcourir les accents à chaque lettre.
-  final Map<String, String> _haystack = <String, String>{};
-
-  // Borne anti-surcharge : sur un boîtier TV modeste, afficher des centaines de
-  // vignettes (et leurs logos réseau) d'un coup peut faire planter l'app. On
-  // limite à 60 résultats — largement assez pour trouver une chaîne.
-  static const int _maxResults = 60;
-
-  // Le clavier est construit UNE SEULE FOIS. En réutilisant la MÊME instance
-  // dans build(), Flutter NE reconstruit PAS son sous-arbre à chaque frappe →
-  // la touche focus n'est jamais perdue (corrige « impossible d'écrire d'autres
-  // lettres »). Les callbacks sont des méthodes stables de ce State.
-  late final Widget _keyboard =
-      _Keyboard(onType: _type, onBackspace: _backspace, onClear: _clear);
-
-  // UNE SEULE fermeture : en Dart, écrire `_onRemoteQuery` deux fois
-  // peut donner deux objets différents, et le désabonnement raterait.
+  late final VoiceSearchHooks _hooks;
+  // Une seule fermeture : le hub compare l'identité pour se désinscrire.
   late final bool Function(String text) _remoteTyping = _onRemoteQuery;
+
+  // Le clavier est construit UNE SEULE FOIS. Même instance dans build() →
+  // Flutter ne reconstruit pas son sous-arbre à chaque frappe, le focus
+  // reste sur la touche.
+  late final Widget _keyboard = _Keyboard(
+    onType: _type,
+    onBackspace: _backspace,
+    onClear: _clear,
+    onMic: _listen,
+  );
 
   @override
   void initState() {
     super.initState();
+    _q = widget.initialQuery;
+    _hooks = VoiceSearchHooks(onText: _applySpoken, onListen: _listen);
+    VoiceNavigation.attach(_hooks);
     RemoteTypingHub.instance.register(_remoteTyping);
-    _all = PlaylistRepository.instance.currentChannels
-        .where((Channel c) => c.isLive)
-        .toList(growable: false);
-    ParentalControls.instance.kidsMode.addListener(_schedule);
-    _sub =
-        PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
+    _channels = List<Channel>.of(PlaylistRepository.instance.currentChannels);
+    _sub = PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
       if (!mounted) return;
-      _all = ch.where((Channel c) => c.isLive).toList(growable: false);
-      _haystack.clear();
-      _runSearch();
+      _channels = List<Channel>.of(ch);
+      if (_q.trim().isNotEmpty) _schedule();
     });
+    CinemaRepository.instance.indexVersion.addListener(_onIndex);
+    if (_q.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _runSearch());
+    } else if (widget.autoListen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_listen());
+      });
+    }
   }
 
   @override
   void dispose() {
-    ParentalControls.instance.kidsMode.removeListener(_schedule);
+    VoiceNavigation.detach(_hooks);
     RemoteTypingHub.instance.unregister(_remoteTyping);
     _sub?.cancel();
     _debounce?.cancel();
+    CinemaRepository.instance.indexVersion.removeListener(_onIndex);
     super.dispose();
   }
 
-  /// Le téléphone envoie TOUT le texte d'un coup (son clavier), pas
-  /// une lettre comme les touches du clavier à l'écran. On remplace
-  /// donc la recherche. On répond vrai : le texte est pour nous.
-  bool _onRemoteQuery(String text) {
-    if (!mounted) return false;
-    setState(() => _q = text);
+  void _onIndex() {
+    if (!mounted || _q.trim().isEmpty) return;
     _schedule();
-    return true;
   }
 
   void _type(String ch) {
@@ -105,177 +132,305 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
   void _clear() {
     _debounce?.cancel();
+    _gen++;
     setState(() {
       _q = '';
-      _results = const <Channel>[];
+      _hits = const <VoiceHit>[];
+      _tonight = null;
+      _banner = null;
     });
   }
 
-  // Debounce : on ne recalcule/réaffiche la grille (et ses logos) qu'après une
-  // courte pause → frappe fluide et pas de tempête de chargements d'images.
-  void _schedule() {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 250), _runSearch);
+  /// Le téléphone envoie toute la phrase d'un coup. On la cherche
+  /// comme si elle avait été dite. On ne touche pas au lecteur.
+  bool _onRemoteQuery(String text) {
+    if (!mounted) return false;
+    _applySpoken(text);
+    return true;
   }
 
-  /// Nom brut + catégorie, sans accents. On ne touche PAS à cleanName
-  /// ici : le curer toute la playlist sur le fil UI fige la box.
-  String _hay(Channel c) => _haystack.putIfAbsent(
-      c.id, () => tvSearchKey('${c.name}\n${c.category}'));
+  void _applySpoken(String text) {
+    _debounce?.cancel();
+    setState(() {
+      _q = text;
+      _banner = null;
+    });
+    unawaited(_runSearch());
+  }
 
-  void _runSearch() {
-    final String t = tvSearchKey(_q.trim());
-    if (t.isEmpty) {
-      if (mounted) setState(() => _results = const <Channel>[]);
+  void _schedule() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () {
+      unawaited(_runSearch());
+    });
+  }
+
+  Future<void> _listen() async {
+    if (_listening) return;
+    setState(() {
+      _listening = true;
+      _banner = null;
+    });
+    final VoiceListenResult result = await VoiceCapture.listen();
+    if (!mounted) return;
+    setState(() => _listening = false);
+    switch (result.status) {
+      case VoiceListenStatus.ok:
+        _applySpoken(result.text ?? '');
+      case VoiceListenStatus.unavailable:
+        setState(() => _banner = context.l10n.tvVoiceUnavailable);
+      case VoiceListenStatus.cancelled:
+        setState(() => _banner = context.l10n.tvVoiceCancelled);
+      case VoiceListenStatus.busy:
+        setState(() => _banner = context.l10n.tvVoiceBusy);
+      case VoiceListenStatus.empty:
+      case VoiceListenStatus.failed:
+        setState(() => _banner = context.l10n.tvVoiceFailed);
+    }
+  }
+
+  Future<void> _runSearch() async {
+    final int gen = ++_gen;
+    final String raw = _q;
+    final VoiceIntent intent = interpretVoice(raw);
+    if (!mounted || gen != _gen) return;
+    if (intent.kind == VoiceIntentKind.empty) {
+      setState(() {
+        _hits = const <VoiceHit>[];
+        _tonight = null;
+      });
       return;
     }
-    // Mode enfants : on écarte seulement une chaîne confirmée
-    // adulte. Une chaîne normale, même pas encore classée, reste.
-    final bool kids = ParentalControls.instance.kidsMode.value;
-    final List<Channel> r = <Channel>[];
-    for (final Channel c in _all) {
-      if (r.length >= _maxResults) break;
-      if (!_hay(c).contains(t)) continue;
-      if (kids) {
-        final ChannelGenre? g = ChannelPrecompute.cachedGenre(c);
-        if (KidsContentPolicy.hideFromKids(
-          kidsMode: true,
-          cachedIsAdult: g == null ? null : g == ChannelGenre.adult,
-          name: c.name,
-          category: c.category,
-        )) {
-          continue;
-        }
-      }
-      r.add(c);
+    if (intent.kind == VoiceIntentKind.tonight) {
+      await _loadTonight(gen);
+      return;
     }
-    if (mounted) setState(() => _results = r);
+    List<CinemaTitle> movies = const <CinemaTitle>[];
+    List<CinemaTitle> series = const <CinemaTitle>[];
+    try {
+      movies = CinemaRepository.instance.search(
+        CinemaKind.movie,
+        intent.catalogQuery,
+        max: 24,
+      );
+      series = CinemaRepository.instance.search(
+        CinemaKind.series,
+        intent.catalogQuery,
+        max: 24,
+      );
+    } catch (e) {
+      // Index cinéma indisponible : on garde les chaînes.
+      if (kDebugMode) debugPrint('[Voix] cinéma : $e');
+    }
+    final bool kids = ParentalControls.instance.kidsMode.value;
+    final List<VoiceHit> local = searchCatalog(
+      query: intent.catalogQuery,
+      channels: _channels,
+      movies: movies,
+      series: series,
+      hideAdult: kids,
+    );
+    if (!mounted || gen != _gen) return;
+    setState(() {
+      _hits = local;
+      _tonight = null;
+    });
+    await _maybeRemote(gen, intent.catalogQuery, local);
+  }
+
+  /// Aide distante : seulement si le réglage est allumé (défaut : non).
+  /// Échec réseau → on garde [local]. Jamais pour « ce soir ».
+  Future<void> _maybeRemote(int gen, String query, List<VoiceHit> local) async {
+    bool on = false;
+    try {
+      on = await VoiceRemoteAssist.load();
+    } catch (_) {
+      on = false;
+    }
+    if (!on || !mounted || gen != _gen) return;
+    try {
+      final AiSearchFilter? filter = await AiSearchService.search(query)
+          .timeout(const Duration(seconds: 8));
+      if (filter == null || !mounted || gen != _gen) return;
+      final bool kids = ParentalControls.instance.kidsMode.value;
+      final List<VoiceHit> remote = <VoiceHit>[];
+      for (final Channel c in _channels) {
+        if (remote.length >= 24) break;
+        if (kids && c.genre == ChannelGenre.adult) continue;
+        if (!filter.matches(c)) continue;
+        remote.add(VoiceHit.fromChannel(c));
+      }
+      final List<VoiceHit> merged = mergeRemoteChannels(
+        local: local,
+        remoteChannels: remote,
+      );
+      if (!mounted || gen != _gen) return;
+      setState(() => _hits = merged);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Voix] aide distante ignorée : $e');
+    }
+  }
+
+  Future<void> _loadTonight(int gen) async {
+    final DateTime now = DateTime.now();
+    final EveningWindow window = eveningWindow(now);
+    final List<EpgProgram> programs =
+        await EpgRepository.instance.programsOverlapping(
+      window.start.millisecondsSinceEpoch,
+      window.end.millisecondsSinceEpoch,
+    );
+    if (!mounted || gen != _gen) return;
+    // Noms seulement pour les chaînes qui ont un programme ce soir.
+    // cleanName lance le curator : on ne le fait pas sur les 50 000
+    // chaînes, seulement sur celles du guide (quelques dizaines).
+    final Set<String> wanted = <String>{
+      for (final EpgProgram p in programs) p.channelId,
+    };
+    final Map<String, String> names = <String, String>{};
+    final Set<String> known = <String>{};
+    for (final Channel c in _channels) {
+      known.add(c.id);
+      if (wanted.contains(c.id)) names[c.id] = c.cleanName;
+    }
+    final TonightLineup lineup = planTonight(
+      now: now,
+      programs: <TonightProgram>[
+        for (final EpgProgram p in programs)
+          TonightProgram(
+            channelId: p.channelId,
+            title: p.title,
+            startMs: p.startTime,
+            stopMs: p.stopTime,
+            category: p.category,
+          ),
+      ],
+      channelNames: names,
+      knownChannelIds: known,
+    );
+    setState(() {
+      _tonight = lineup;
+      _hits = const <VoiceHit>[];
+    });
+  }
+
+  void _openHit(VoiceHit hit) {
+    final CinemaTitle? cinema = hit.cinema;
+    if (cinema != null) {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => TvShell(
+          applySafeArea: false,
+          child: cinema.kind == CinemaKind.series
+              ? TvSeriesScreen(title: cinema)
+              : TvMovieDetailScreen(title: cinema),
+        ),
+      ));
+      return;
+    }
+    final Channel? channel = hit.channel;
+    if (channel == null || channel.streamUrl.trim().isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => TvPlayerScreen(
+        channels: <Channel>[channel],
+        startIndex: 0,
+      ),
+    ));
+  }
+
+  void _openSlot(TonightSlot slot) {
+    if (!slot.canPlay) return;
+    Channel? channel;
+    for (final Channel c in _channels) {
+      if (c.id == slot.channelId) {
+        channel = c;
+        break;
+      }
+    }
+    if (channel == null || channel.streamUrl.trim().isEmpty) return;
+    final Channel play = channel;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => TvPlayerScreen(channels: <Channel>[play], startIndex: 0),
+    ));
+  }
+
+  bool get _cinemaCold =>
+      !CinemaRepository.instance.indexReady(CinemaKind.movie) &&
+      !CinemaRepository.instance.indexReady(CinemaKind.series);
+
+  String _kindLabel(BuildContext context, VoiceHitKind kind) {
+    switch (kind) {
+      case VoiceHitKind.channel:
+        return context.l10n.tvVoiceKindChannel;
+      case VoiceHitKind.movie:
+        return context.l10n.tvVoiceKindMovie;
+      case VoiceHitKind.series:
+        return context.l10n.tvVoiceKindSeries;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<Channel> res = _results;
+    final TonightLineup? tonight = _tonight;
+    final bool showCinemaHint = tonight == null &&
+        _q.trim().isNotEmpty &&
+        _cinemaCold &&
+        !_hits.any((VoiceHit h) => h.kind != VoiceHitKind.channel);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        // ----- Clavier (instance STABLE → non reconstruite à chaque frappe) -----
         SizedBox(
           width: 380,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              VoiceMicButton(
-                onText: (String text) {
-                  _debounce?.cancel();
-                  setState(() => _q = text);
-                  _runSearch();
-                },
-              ),
-              Expanded(child: _keyboard),
-            ],
-          ),
+          // Défile si l'écran est petit : un clavier trop haut ne doit pas
+          // faire déborder l'écran (bandes jaunes) ni bloquer la recherche.
+          child: SingleChildScrollView(child: _keyboard),
         ),
         const SizedBox(width: TvDimens.gutter),
-        // ----- Requête + résultats -----
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
                   color: TvTokens.card,
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
                 ),
                 child: Text(
-                  _q.isEmpty ? context.l10n.tvSearchHint : _q,
+                  _listening
+                      ? context.l10n.tvVoiceListening
+                      : (_q.isEmpty ? context.l10n.tvSearchHint : _q),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: TvDimens.title,
                     fontWeight: FontWeight.w700,
-                    color: _q.isEmpty ? TvTokens.mutedDim : TvTokens.text,
+                    color: _q.isEmpty && !_listening
+                        ? TvTokens.mutedDim
+                        : TvTokens.text,
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
-              if (res.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Text(context.l10n.tvSearchCount(res.length),
-                      style: TvTokens.ui(TvDimens.label, color: TvTokens.muted)),
+              if (_banner != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Text(
+                  _banner!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
                 ),
-              Expanded(
-                child: res.isEmpty
-                    ? _SearchEmpty(queryEmpty: _q.trim().isEmpty)
-                    : GridView.builder(
-                        addAutomaticKeepAlives: false,
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 230,
-                          mainAxisExtent: 120,
-                          crossAxisSpacing: TvDimens.gutter,
-                          mainAxisSpacing: TvDimens.gutter,
-                        ),
-                        itemCount: res.length,
-                        itemBuilder: (BuildContext context, int i) => Builder(
-                          // Le contexte du Builder EST la vignette (pas toute
-                          // la grille) : ensureVisible la fait défiler.
-                          builder: (BuildContext itemContext) => TvFocusable(
-                          scale: TvFocusScale.small,
-                          onFocusChange: (bool f) {
-                            if (!f) return;
-                            Scrollable.ensureVisible(
-                              itemContext,
-                              alignment: 0.35,
-                              duration: const Duration(milliseconds: 120),
-                            );
-                          },
-                          onSelect: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) =>
-                                  TvPlayerScreen(channels: res, startIndex: i),
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: <Widget>[
-                                Expanded(
-                                  child: (res[i].logoUrl != null &&
-                                          res[i].logoUrl!.isNotEmpty)
-                                      ? CachedNetworkImage(
-                                          imageUrl: res[i].logoUrl!,
-                                          fit: BoxFit.contain,
-                                          memCacheWidth: 200,
-                                          fadeInDuration:
-                                              const Duration(milliseconds: 150),
-                                          placeholder: (_, __) => Opacity(
-                                              opacity: 0.35,
-                                              child: _ini(res[i])),
-                                          errorWidget: (_, __, ___) =>
-                                              _ini(res[i]))
-                                      : _ini(res[i]),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(res[i].cleanName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                        fontSize: TvDimens.caption,
-                                        fontWeight: FontWeight.w600,
-                                        color: TvTokens.text)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-              ),
+              ],
+              const SizedBox(height: 14),
+              Expanded(child: _body(context, tonight)),
+              if (showCinemaHint)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    context.l10n.tvVoiceCinemaHint,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+                  ),
+                ),
             ],
           ),
         ),
@@ -283,40 +438,127 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     );
   }
 
-  Widget _ini(Channel c) => Center(
-        child: Text(c.initials,
-            style: TextStyle(
-                fontSize: TvDimens.title,
-                fontWeight: FontWeight.w800,
-                color: TvTokens.muted)),
+  Widget _body(BuildContext context, TonightLineup? tonight) {
+    if (tonight != null) {
+      if (tonight.isEmpty) {
+        return Center(
+          child: Text(
+            context.l10n.tvVoiceTonightEmpty,
+            textAlign: TextAlign.center,
+            style: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
+          ),
+        );
+      }
+      final DateFormat hm =
+          DateFormat.Hm(Localizations.localeOf(context).toString());
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            context.l10n.tvVoiceTonightTitle,
+            style: TvTokens.ui(TvDimens.title, weight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView.separated(
+              itemCount: tonight.slots.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (BuildContext context, int i) {
+                final TonightSlot slot = tonight.slots[i];
+                final String when =
+                    hm.format(DateTime.fromMillisecondsSinceEpoch(slot.startMs));
+                return _RowTile(
+                  autofocus: i == 0,
+                  title: slot.title,
+                  badge: when,
+                  subtitle: context.l10n.tvVoiceOnChannel(slot.channelName),
+                  onSelect: slot.canPlay ? () => _openSlot(slot) : () {},
+                );
+              },
+            ),
+          ),
+        ],
       );
+    }
+    if (_hits.isEmpty) {
+      return Center(
+        child: Text(
+          _q.trim().isEmpty ? '' : context.l10n.tvNoResult,
+          style: TvTokens.ui(TvDimens.body, color: TvTokens.mutedDim),
+        ),
+      );
+    }
+    return ListView.separated(
+      itemCount: _hits.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (BuildContext context, int i) {
+        final VoiceHit hit = _hits[i];
+        return _RowTile(
+          autofocus: i == 0,
+          title: hit.title,
+          badge: _kindLabel(context, hit.kind),
+          subtitle: hit.subtitle,
+          onSelect: () => _openHit(hit),
+        );
+      },
+    );
+  }
 }
 
-/// Zone de droite vide : aide (rien de tapé) ou « aucun résultat ».
-/// Avant, l'écran restait noir sans rien dire.
-class _SearchEmpty extends StatelessWidget {
-  const _SearchEmpty({required this.queryEmpty});
-  final bool queryEmpty;
+class _RowTile extends StatelessWidget {
+  const _RowTile({
+    required this.title,
+    required this.badge,
+    required this.subtitle,
+    required this.onSelect,
+    this.autofocus = false,
+  });
+
+  final String title;
+  final String badge;
+  final String subtitle;
+  final VoidCallback onSelect;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return TvFocusable(
+      autofocus: autofocus,
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
           children: <Widget>[
-            Icon(
-              queryEmpty ? Icons.keyboard_rounded : Icons.search_off_rounded,
-              size: 52,
-              color: TvTokens.accentBright,
+            SizedBox(
+              width: 120,
+              child: Text(
+                badge,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TvTokens.ui(TvDimens.label,
+                    weight: FontWeight.w700, color: TvTokens.accentBright),
+              ),
             ),
-            const SizedBox(height: 14),
-            Text(
-              queryEmpty ? context.l10n.tvSearchPrompt : context.l10n.tvNoResult,
-              textAlign: TextAlign.center,
-              style: TvTokens.ui(TvDimens.titleS,
-                  weight: FontWeight.w600, color: TvTokens.text),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TvTokens.ui(TvDimens.body, weight: FontWeight.w600),
+                  ),
+                  if (subtitle.trim().isNotEmpty)
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TvTokens.ui(TvDimens.caption, color: TvTokens.muted),
+                    ),
+                ],
+              ),
             ),
           ],
         ),
@@ -325,80 +567,66 @@ class _SearchEmpty extends StatelessWidget {
   }
 }
 
-/// Clavier à l'écran réutilisable (recherche du Cinéma). Rendu IDENTIQUE à
-/// celui de la recherche du Direct (même widget).
+/// Clavier à l'écran réutilisable (recherche du Cinéma). Rendu IDENTIQUE
+/// à celui de la recherche du Direct, plus le micro.
 class TvKeyboard extends StatelessWidget {
-  const TvKeyboard(
-      {super.key,
-      required this.onType,
-      required this.onBackspace,
-      required this.onClear});
+  const TvKeyboard({
+    super.key,
+    required this.onType,
+    required this.onBackspace,
+    required this.onClear,
+  });
+
   final ValueChanged<String> onType;
   final VoidCallback onBackspace;
   final VoidCallback onClear;
 
   @override
-  Widget build(BuildContext context) =>
-      _Keyboard(onType: onType, onBackspace: onBackspace, onClear: onClear);
+  Widget build(BuildContext context) => _Keyboard(
+        onType: onType,
+        onBackspace: onBackspace,
+        onClear: onClear,
+      );
 }
 
 class _Keyboard extends StatelessWidget {
-  const _Keyboard(
-      {required this.onType, required this.onBackspace, required this.onClear});
+  const _Keyboard({
+    required this.onType,
+    required this.onBackspace,
+    required this.onClear,
+    this.onMic,
+  });
+
   final ValueChanged<String> onType;
   final VoidCallback onBackspace;
   final VoidCallback onClear;
+  final VoidCallback? onMic;
 
   static const List<String> _keys = <String>[
-    'A',
-    'B',
-    'C',
-    'D',
-    'E',
-    'F',
-    'G',
-    'H',
-    'I',
-    'J',
-    'K',
-    'L',
-    'M',
-    'N',
-    'O',
-    'P',
-    'Q',
-    'R',
-    'S',
-    'T',
-    'U',
-    'V',
-    'W',
-    'X',
-    'Y',
-    'Z',
-    '0',
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
+    'A', 'B', 'C', 'D', 'E', 'F',
+    'G', 'H', 'I', 'J', 'K', 'L',
+    'M', 'N', 'O', 'P', 'Q', 'R',
+    'S', 'T', 'U', 'V', 'W', 'X',
+    'Y', 'Z', '0', '1', '2', '3',
+    '4', '5', '6', '7', '8', '9',
   ];
 
   @override
   Widget build(BuildContext context) {
+    final VoidCallback? mic = onMic;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(context.l10n.tvNavSearch,
-            style: TextStyle(
+            style: const TextStyle(
                 fontSize: TvDimens.displayS,
                 fontWeight: FontWeight.w800,
                 color: TvTokens.text)),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        if (mic != null) ...<Widget>[
+          _Key(label: context.l10n.tvVoiceMic, wide: true, onTap: mic),
+          const SizedBox(height: 8),
+        ],
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -419,11 +647,13 @@ class _Keyboard extends StatelessWidget {
 }
 
 class _Key extends StatelessWidget {
-  const _Key(
-      {required this.label,
-      required this.onTap,
-      this.wide = false,
-      this.autofocus = false});
+  const _Key({
+    required this.label,
+    required this.onTap,
+    this.wide = false,
+    this.autofocus = false,
+  });
+
   final String label;
   final VoidCallback onTap;
   final bool wide;
@@ -432,7 +662,7 @@ class _Key extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: wide ? 116 : 54,
+      width: wide ? 180 : 54,
       height: 54,
       child: TvFocusBuilder(
         autofocus: autofocus,

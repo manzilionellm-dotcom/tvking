@@ -2230,5 +2230,21 @@
   "tvSearchCount": "{count, plural, =1{1 результат} few{{count} результата} many{{count} результатов} other{{count} результата}}",
   "tvGuideLoading": "Загрузка телегида…",
   "tvGuideHint": "Вверх / Вниз: листать · OK или Назад: закрыть",
-  "tvNoEpg": "Программа не указана"
-}
+  "tvNoEpg": "Программа не указана",
+  "tvVoiceMic": "Микрофон",
+  "tvVoiceListening": "Говори сейчас…",
+  "tvVoiceUnavailable": "На этой приставке нет микрофона. Используй клавиатуру.",
+  "tvVoiceCancelled": "Отменено. Можно набрать на клавиатуре.",
+  "tvVoiceFailed": "Я не расслышал. Повтори или набери на клавиатуре.",
+  "tvVoiceBusy": "Микрофон уже занят. Повтори через мгновение.",
+  "tvVoiceTonightTitle": "Сегодня вечером по телевизору",
+  "tvVoiceTonightEmpty": "В программе передач ничего на этот вечер. Добавь адрес EPG в список и повтори.",
+  "tvVoiceKindChannel": "Канал",
+  "tvVoiceKindMovie": "Фильм",
+  "tvVoiceKindSeries": "Сериал",
+  "tvVoiceRemoteAi": "Удалённая голосовая помощь",
+  "tvVoiceRemoteAiOn": "Включена",
+  "tvVoiceRemoteAiOff": "Выключена",
+  "tvVoiceRemoteAiHelp": "Выключена по умолчанию. В приложении нет ключа. « Сегодня вечером » читается из твоего гида, на приставке. Если служба не отвечает, Zuno ищет в твоём списке.",
+  "tvVoiceCinemaHint": "Открой Фильмы или Сериалы один раз: поиск найдёт их потом, без сети пока ты смотришь.",
+  "tvVoiceOnChannel": "На {channel}"}

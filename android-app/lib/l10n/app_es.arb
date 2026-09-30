@@ -926,5 +926,21 @@
   "tvSearchCount": "{count, plural, =1{1 resultado} other{{count} resultados}}",
   "tvGuideLoading": "Cargando la guía…",
   "tvGuideHint": "Arriba / Abajo: recorrer · OK o Atrás: cerrar",
-  "tvNoEpg": "Sin programa anunciado"
-}
+  "tvNoEpg": "Sin programa anunciado",
+  "tvVoiceMic": "Micro",
+  "tvVoiceListening": "Habla ahora…",
+  "tvVoiceUnavailable": "Esta box no tiene micrófono. Usa el teclado.",
+  "tvVoiceCancelled": "Cancelado. Puedes escribir con el teclado.",
+  "tvVoiceFailed": "No entendí. Inténtalo de nuevo o usa el teclado.",
+  "tvVoiceBusy": "El micrófono ya está en uso. Inténtalo en un momento.",
+  "tvVoiceTonightTitle": "Esta noche en la tele",
+  "tvVoiceTonightEmpty": "La guía no tiene nada para esta noche. Añade una dirección EPG a tu lista e inténtalo de nuevo.",
+  "tvVoiceKindChannel": "Canal",
+  "tvVoiceKindMovie": "Película",
+  "tvVoiceKindSeries": "Serie",
+  "tvVoiceRemoteAi": "Ayuda de voz remota",
+  "tvVoiceRemoteAiOn": "Activada",
+  "tvVoiceRemoteAiOff": "Desactivada",
+  "tvVoiceRemoteAiHelp": "Desactivada por defecto. Ninguna clave en la aplicación. « Esta noche » se lee en tu guía, en la box. Si el servicio no responde, Zuno busca en tu lista.",
+  "tvVoiceCinemaHint": "Abre Películas o Series una vez: la búsqueda las encontrará después, sin red mientras miras.",
+  "tvVoiceOnChannel": "En {channel}"}

@@ -2279,5 +2279,26 @@
   "tvRemoteStart": "Activer",
   "tvRemoteLeft": "Expire dans {time}",
   "@tvRemoteLeft": {"placeholders": {"time": {"type": "String"}}},
-  "tvRemoteUrlHelp": "Si le scan échoue, ouvre cette adresse dans le navigateur du téléphone."
-}
+  "tvRemoteUrlHelp": "Si le scan échoue, ouvre cette adresse dans le navigateur du téléphone.",
+  "tvVoiceMic": "Micro",
+  "tvVoiceListening": "Parle maintenant…",
+  "tvVoiceUnavailable": "Pas de micro sur cette box. Utilise le clavier.",
+  "tvVoiceCancelled": "Annulé. Tu peux taper au clavier.",
+  "tvVoiceFailed": "Je n'ai pas compris. Réessaie, ou tape au clavier.",
+  "tvVoiceBusy": "Le micro est déjà en cours. Réessaie dans un instant.",
+  "tvVoiceTonightTitle": "Ce soir à la télé",
+  "tvVoiceTonightEmpty": "Le guide n'a rien pour ce soir. Ajoute une adresse EPG à ta liste, puis réessaie.",
+  "tvVoiceKindChannel": "Chaîne",
+  "tvVoiceKindMovie": "Film",
+  "tvVoiceKindSeries": "Série",
+  "tvVoiceRemoteAi": "Aide vocale distante",
+  "tvVoiceRemoteAiOn": "Activée",
+  "tvVoiceRemoteAiOff": "Désactivée",
+  "tvVoiceRemoteAiHelp": "Désactivée par défaut. Aucune clé dans l'application. « Ce soir » reste lu dans ton guide, sur la box. Si le service ne répond pas, Zuno cherche dans ta liste.",
+  "tvVoiceCinemaHint": "Ouvre Films ou Séries une fois : la recherche les trouvera ensuite, sans réseau pendant que tu regardes.",
+  "tvVoiceOnChannel": "Sur {channel}",
+  "@tvVoiceOnChannel": {
+    "placeholders": {
+      "channel": {"type": "String"}
+    }
+  }}

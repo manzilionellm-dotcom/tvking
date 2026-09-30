@@ -57,6 +57,7 @@ import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import '../data/home_shelves.dart';
 import '../data/startup_preference.dart';
+import '../../voice/presentation/voice_navigation.dart';
 import 'tv_app.dart';
 import 'tv_cinema_common.dart';
 import 'tv_cinema_screen.dart';
@@ -708,6 +709,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
                           },
                         ),
                         const Spacer(),
+                        _HubSearchButton(
+                          label: context.l10n.tvNavSearch,
+                          onSelect: () => VoiceNavigation.openSearch(),
+                        ),
+                        const SizedBox(width: 16),
                         Icon(_netIcon, size: 22, color: TvTokens.muted),
                         const SizedBox(width: 16),
                         Text(_time,
@@ -796,6 +802,49 @@ class _TvHubScreenState extends State<TvHubScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Bouton « Recherche » de la barre du haut. Le focus initial reste
+/// sur Direct. Le micro de la télécommande ouvre aussi cet écran.
+class _HubSearchButton extends StatelessWidget {
+  const _HubSearchButton({required this.label, required this.onSelect});
+
+  final String label;
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      scale: TvFocusScale.small,
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+        return Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.accent : TvTokens.card,
+            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            border: Border.all(
+              color: focused ? TvTokens.accent : TvTokens.line,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.mic_none_rounded,
+                  size: 22,
+                  color: focused ? TvTokens.onAccent : TvTokens.accent),
+              const SizedBox(width: 8),
+              Text(label,
+                  style: TvTokens.ui(TvDimens.label,
+                      weight: FontWeight.w700, color: fg)),
+            ],
+          ),
+        );
+      },
     );
   }
 }

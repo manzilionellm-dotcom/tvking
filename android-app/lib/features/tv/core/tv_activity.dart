@@ -15,6 +15,14 @@ abstract final class TvActivity {
   /// Vrai tant qu'au moins un écran lourd est ouvert.
   static bool get isBusy => _busy.value > 0;
 
+  /// La recherche vocale s'abonne pour savoir quand la lecture est finie.
+  /// Elle ne change pas le compteur : elle attend, pour ne pas ouvrir
+  /// un écran par-dessus une chaîne.
+  static void addListener(VoidCallback listener) => _busy.addListener(listener);
+
+  static void removeListener(VoidCallback listener) =>
+      _busy.removeListener(listener);
+
   /// À appeler dans `initState` d'un écran lourd…
   static void enter() => _busy.value = _busy.value + 1;
 

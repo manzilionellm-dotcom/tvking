@@ -926,5 +926,21 @@
   "tvSearchCount": "{count, plural, =1{1 resultat} other{{count} resultater}}",
   "tvGuideLoading": "Indlæser guiden…",
   "tvGuideHint": "Op / Ned: bladre · OK eller Tilbage: luk",
-  "tvNoEpg": "Intet program annonceret"
-}
+  "tvNoEpg": "Intet program annonceret",
+  "tvVoiceMic": "Mikrofon",
+  "tvVoiceListening": "Tal nu…",
+  "tvVoiceUnavailable": "Denne boks har ingen mikrofon. Brug tastaturet.",
+  "tvVoiceCancelled": "Annulleret. Du kan skrive på tastaturet.",
+  "tvVoiceFailed": "Jeg fangede det ikke. Prøv igen, eller skriv.",
+  "tvVoiceBusy": "Mikrofonen er allerede i brug. Prøv igen om lidt.",
+  "tvVoiceTonightTitle": "I tv i aften",
+  "tvVoiceTonightEmpty": "Guiden har intet for i aften. Tilføj en EPG-adresse til listen og prøv igen.",
+  "tvVoiceKindChannel": "Kanal",
+  "tvVoiceKindMovie": "Film",
+  "tvVoiceKindSeries": "Serie",
+  "tvVoiceRemoteAi": "Fjernstemmehjælp",
+  "tvVoiceRemoteAiOn": "Til",
+  "tvVoiceRemoteAiOff": "Fra",
+  "tvVoiceRemoteAiHelp": "Fra som standard. Ingen nøgle i appen. »I aften« læses fra din guide, på boksen. Hvis tjenesten ikke svarer, søger Zuno i din liste.",
+  "tvVoiceCinemaHint": "Åbn Film eller Serier én gang: søgningen finder dem bagefter, uden net mens du ser.",
+  "tvVoiceOnChannel": "På {channel}"}

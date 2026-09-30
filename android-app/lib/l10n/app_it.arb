@@ -2230,5 +2230,21 @@
   "tvSearchCount": "{count, plural, =1{1 risultato} other{{count} risultati}}",
   "tvGuideLoading": "Caricamento della guida…",
   "tvGuideHint": "Su / Giù: scorrere · OK o Indietro: chiudi",
-  "tvNoEpg": "Nessun programma annunciato"
-}
+  "tvNoEpg": "Nessun programma annunciato",
+  "tvVoiceMic": "Microfono",
+  "tvVoiceListening": "Parla ora…",
+  "tvVoiceUnavailable": "Questa box non ha un microfono. Usa la tastiera.",
+  "tvVoiceCancelled": "Annullato. Puoi scrivere con la tastiera.",
+  "tvVoiceFailed": "Non ho capito. Riprova, o usa la tastiera.",
+  "tvVoiceBusy": "Il microfono è già in uso. Riprova tra un attimo.",
+  "tvVoiceTonightTitle": "Stasera in TV",
+  "tvVoiceTonightEmpty": "La guida non ha nulla per stasera. Aggiungi un indirizzo EPG alla lista e riprova.",
+  "tvVoiceKindChannel": "Canale",
+  "tvVoiceKindMovie": "Film",
+  "tvVoiceKindSeries": "Serie",
+  "tvVoiceRemoteAi": "Aiuto vocale remoto",
+  "tvVoiceRemoteAiOn": "Attiva",
+  "tvVoiceRemoteAiOff": "Disattivata",
+  "tvVoiceRemoteAiHelp": "Disattivata per default. Nessuna chiave nell'app. « Stasera » si legge nella guida, sulla box. Se il servizio non risponde, Zuno cerca nella tua lista.",
+  "tvVoiceCinemaHint": "Apri Film o Serie una volta: la ricerca li troverà dopo, senza rete mentre guardi.",
+  "tvVoiceOnChannel": "Su {channel}"}

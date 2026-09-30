@@ -43,5 +43,5 @@ lib/
 Chacune a un interrupteur (`BoxFlag`, SharedPreferences). Coupée, elle ne démarre pas. Aucune n'ouvre un flux toute seule.
 
 - **Téléphone (QR).** Vient de `claude/zuno-telecommande`, sans changement de son modèle : jeton de 20 minutes, un seul téléphone, réseau local uniquement. Réglages → Télécommande.
-- **Voix.** `SpeechRecognizer` Android (micro de la télécommande), canal `zuno/voice_search` dans `MainActivity`. Pas de paquet pub. Si le micro manque ou si l'autorisation est refusée, la recherche au clavier reste. Permission `RECORD_AUDIO` : le micro n'est pas exigé pour installer (`android.hardware.microphone` déjà `required=false` dans le manifeste TV).
+- **Voix et « ce soir ».** Viennent de `claude/zuno-voix` (paquet local `zuno_voice`, micro du système). L'aide vocale distante reste désactivée par défaut (`VoiceRemoteAssist`, clé `zuno.voice.remote_ai.v1`). Aucune clé d'API dans le code : si on l'allume, l'appel passe par le service déjà en place. « Ce soir » ne lit que le guide de la box.
 - **Profils.** Viennent de `claude/zuno-profils` (pas une fonction recodée ici). Un seul profil : l'accueil s'ouvre comme avant, sans écran de choix. Favoris, historique, reprise, rappels et code parental sont le tiroir du profil en cours. Le profil 1 garde les clés d'avant.
