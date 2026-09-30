@@ -26,8 +26,7 @@ const String kWhatsAppPhone = '447307410512';
 /// Construit le lien wa.me avec un message pré-rempli (code MAC inclus).
 String tvWhatsAppUrl(String mac) {
   final String code = (mac == '…' || mac.isEmpty) ? '' : mac;
-  final String msg = Uri.encodeComponent(
-      'Bonjour, je souhaite activer Zuno.'
+  final String msg = Uri.encodeComponent('Bonjour, je souhaite activer Zuno.'
       '${code.isEmpty ? '' : ' Mon code : $code'}');
   return 'https://wa.me/$kWhatsAppPhone?text=$msg';
 }
@@ -120,7 +119,8 @@ class TvCard extends StatelessWidget {
           // Filet d'accent or (1px) en haut.
           const SizedBox(
             height: 1,
-            child: DecoratedBox(decoration: BoxDecoration(gradient: TvTokens.accentHairline)),
+            child: DecoratedBox(
+                decoration: BoxDecoration(gradient: TvTokens.accentHairline)),
           ),
           Padding(padding: padding ?? const EdgeInsets.all(24), child: child),
         ],
@@ -136,7 +136,8 @@ class TvSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text.toUpperCase(),
-        style: TvTokens.ui(10.5, weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2.8),
+        style: TvTokens.ui(10.5,
+            weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2.8),
       );
 }
 
@@ -159,10 +160,12 @@ class TvPricePill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Text(label.toUpperCase(),
-              style: TvTokens.ui(15, weight: FontWeight.w600, color: TvTokens.accent, spacing: 2)),
+              style: TvTokens.ui(15,
+                  weight: FontWeight.w600, color: TvTokens.accent, spacing: 2)),
           const SizedBox(width: 12),
           Text(amount,
-              style: TvTokens.display(26, weight: FontWeight.w600, color: TvTokens.accentBright)),
+              style: TvTokens.display(26,
+                  weight: FontWeight.w600, color: TvTokens.accentBright)),
         ],
       ),
     );
@@ -223,10 +226,14 @@ class TvEmptyState extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.footer,
   });
   final IconData icon;
   final String title;
   final String subtitle;
+
+  /// Bouton optionnel sous le texte (Réessayer, par exemple).
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -253,6 +260,10 @@ class TvEmptyState extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TvTokens.ui(16, color: TvTokens.mutedDim)),
           ),
+          if (footer != null) ...<Widget>[
+            const SizedBox(height: 22),
+            footer!,
+          ],
         ],
       ),
     );
