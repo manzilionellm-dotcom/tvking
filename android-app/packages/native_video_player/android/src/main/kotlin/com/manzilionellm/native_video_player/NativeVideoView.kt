@@ -53,6 +53,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
@@ -304,8 +305,19 @@ class NativeVideoView(
     // Trames vraiment envoyées à l'écran. Le compteur est touché sur le
     // fil de lecture, lu sur le fil principal.
     private val renderedFrames = AtomicInteger(0)
+
     @Volatile
     private var lastFrameAtMs: Long = 0L
+
+    /**
+     * Une seule instance : Media3 n'accepte pas null, et
+     * [ExoPlayer.clearVideoFrameMetadataListener] ne retire le
+     * compteur que si on lui rend le même objet.
+     */
+    private val frameClock = VideoFrameMetadataListener { _, _, _, _ ->
+        renderedFrames.incrementAndGet()
+        lastFrameAtMs = SystemClock.elapsedRealtime()
+    }
     private var videoDecoderReady: Boolean = false
     private var decoderReadyAtMs: Long = 0L
     private var contentFps: Float = 0f
@@ -1523,6 +1535,7 @@ class NativeVideoView(
         }
         try {
             player.removeAnalyticsListener(this)
+            player.clearVideoFrameMetadataListener(frameClock)
         } catch (_: RuntimeException) {
             // Déjà détaché : on continue la libération.
         }
@@ -1549,10 +1562,7 @@ class NativeVideoView(
         target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
         target.setVideoSurfaceView(surfaceView)
         target.addAnalyticsListener(this)
-        target.setVideoFrameMetadataListener { _, _, _, _ ->
-            renderedFrames.incrementAndGet()
-            lastFrameAtMs = SystemClock.elapsedRealtime()
-        }
+        target.setVideoFrameMetadataListener(frameClock)
         target.skipSilenceEnabled = false
         target.playWhenReady = true
         ffmpegRendererInstalled = installFfmpegVideo
@@ -1634,7 +1644,7 @@ class NativeVideoView(
         } catch (_: RuntimeException) {
         }
         try {
-            old.setVideoFrameMetadataListener(null)
+            old.clearVideoFrameMetadataListener(frameClock)
         } catch (_: RuntimeException) {
         }
         val next = buildConfiguredPlayer()

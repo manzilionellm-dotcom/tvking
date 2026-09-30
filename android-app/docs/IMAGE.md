@@ -156,9 +156,11 @@ Ce que ces tests vérifient, en clair :
 ## Pas prouvé
 
 - Aucune box (v102, v103, v104 ou autre) n'a lu un flux avec ce code.
-- `NativeVideoView.kt` n'a pas été compilé ici (pas de SDK Android).
-  Le workflow de la branche le compilera. Tant qu'il n'est pas vert,
-  on ne sait pas si l'APK se construit.
+- Le premier build d'APK de la branche (run 36771992519) a échoué à
+  la compilation : Media3 refuse `null` pour l'écouteur de trames.
+  Le correctif appelle `clearVideoFrameMetadataListener` avec le même
+  objet. Ce texte ne dira que l'APK existe quand un build suivant sera
+  vert. Publication toujours coupée (`PUBLIER: false` sur ce run).
 - Aucune image réelle : pas de 1080i, pas de HEVC, pas de HDR, pas de
   comparaison avant / après.
 - Pas de mesure de netteté, de contraste, de cadence, de mémoire, de CPU,
