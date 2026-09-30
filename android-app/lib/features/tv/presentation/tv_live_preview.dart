@@ -39,6 +39,15 @@ class TvLivePreview extends StatefulWidget {
     this.debounce = const Duration(milliseconds: 1500),
   });
 
+  /// Aperçu actuellement à l'écran (un seul). Le plein écran l'appelle
+  /// AVANT de s'ouvrir : on rend le décodeur et la connexion IPTV, sinon
+  /// la chaîne plein écran reste noire ou est refusée (1 seule connexion).
+  static _TvLivePreviewState? _active;
+
+  static Future<void> releaseActive() async {
+    await _active?._releaseNow();
+  }
+
   /// Chaîne à prévisualiser (celle qui a le focus dans la liste).
   final Channel channel;
 
@@ -57,6 +66,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   @override
   void initState() {
     super.initState();
+    TvLivePreview._active = this;
     _schedule();
   }
 
@@ -74,13 +84,32 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     _timer = Timer(widget.debounce, _start);
   }
 
-  /// Retire la vue native de l'arbre → Flutter dispose la PlatformView →
-  /// le natif libère ExoPlayer. Plus aucune fusion de threads.
+  /// Retire la vue native de l'arbre ET rend le décodeur tout de suite.
+  /// (Attendre que Flutter détruise la PlatformView laissait le codec
+  /// occupé : l'image suivante était noire ou verte.)
   void _stop() {
     final NativeVideoController? c = _ctrl;
     if (c == null) return;
-    c.dispose();
-    if (mounted) setState(() => _ctrl = null);
+    _ctrl = null;
+    unawaited(c.releaseNative());
+    if (mounted) setState(() {});
+    // Le notifier est disposé APRÈS la frame : ListenableBuilder retire
+    // son écouteur avant. Le faire avant lève en debug.
+    WidgetsBinding.instance.addPostFrameCallback((_) => c.dispose());
+  }
+
+  /// Variante attendue, appelée avant d'ouvrir le plein écran.
+  Future<void> _releaseNow() async {
+    // Même si l'aperçu n'a pas encore démarré : on annule le délai, sinon
+    // il créerait un 2e lecteur pendant que le plein écran s'ouvre.
+    _timer?.cancel();
+    final NativeVideoController? c = _ctrl;
+    if (c == null) return;
+    _ctrl = null;
+    final Future<void> done = c.releaseNative();
+    if (mounted) setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) => c.dispose());
+    await done;
   }
 
   /// Focus immobile depuis [debounce] : on crée UN lecteur pour cette chaîne.
@@ -95,6 +124,8 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   @override
   void dispose() {
     _timer?.cancel();
+    if (identical(TvLivePreview._active, this)) TvLivePreview._active = null;
+    // Enfants déjà démontés (écouteur retiré) : on peut disposer le notifier.
     _ctrl?.dispose();
     super.dispose();
   }

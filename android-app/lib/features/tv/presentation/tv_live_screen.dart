@@ -427,7 +427,12 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       {required bool fromRail}) async {
     if (index < 0 || index >= list.length) return;
     final String chId = list[index].id;
-    // On coupe l'aperçu AVANT d'ouvrir le plein écran (une seule connexion).
+    // On REND le décodeur de l'aperçu AVANT le plein écran, et on attend.
+    // Un simple setState laissait les deux lecteurs vivants une frame :
+    // sur une box à un seul décodeur l'image restait noire, et un
+    // abonnement « 1 connexion » refusait la chaîne (logo sans fin).
+    await TvLivePreview.releaseActive();
+    if (!mounted) return;
     setState(() => _playerOpen = true);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
