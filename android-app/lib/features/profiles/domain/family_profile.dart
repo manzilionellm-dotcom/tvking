@@ -46,6 +46,11 @@ abstract final class ProfileKeys {
   static String reminders(String id) =>
       isOrigin(id) ? 'notif.reminders.book.v1' : 'notif.reminders.book.v1.$id';
 
+  /// Suggestions selon le jour et l'heure, pour CE profil.
+  /// Clé neuve (pas d'historique à préserver) : même forme pour
+  /// le profil 1, qui s'appelle ici `p1`.
+  static String timePicks(String id) => 'zuno.time_picks.v1.$id';
+
   /// Liste des profils + lequel est actif + choix au démarrage.
   static const String catalog = 'profiles.catalog.v1';
 
@@ -69,6 +74,7 @@ abstract final class ProfileKeys {
       pin(id),
       kidsMode(id),
       reminders(id),
+      timePicks(id),
     ];
   }
 }

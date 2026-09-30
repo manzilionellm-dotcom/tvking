@@ -48,7 +48,10 @@ import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
+import '../../box_extras/box_text.dart';
 import '../../security/data/parental_controls.dart';
+import '../../time_picks/data/time_pick_flag.dart';
+import '../../time_picks/data/time_pick_log.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -128,6 +131,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
   List<String> _recentIds = const <String>[];
   List<String> _trending = const <String>[];
   List<String> _popularIds = const <String>[];
+  List<String> _timePickIds = const <String>[];
+  List<Channel> _timePicks = const <Channel>[];
   Greeting? _greeting;
   HomeShelfModel _shelves = const HomeShelfModel();
   HomeShelfKind? _initialShelf;
@@ -200,6 +205,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     WatchProgressRepository.instance.addListener(_scheduleShelves);
     ProgramReminderRepository.instance.addListener(_scheduleShelves);
     ParentalControls.instance.kidsMode.addListener(_scheduleShelves);
+    TimePickLog.instance.listenable.addListener(_onTimePicks);
+    timePicksFlag.changes.addListener(_onTimeFlag);
     unawaited(_prepareEngagement());
   }
 
@@ -334,6 +341,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _recentIds = RecentlyWatchedRepository.instance.current;
     _favIds = FavoritesRepository.instance.current;
     _rebuildShelves(notify: false);
+    unawaited(_reloadTimePicks());
     final bool resumed = _tryResumeLast();
     if (!resumed && _deferredLiveOpen && !_autoOpened) {
       final ModalRoute<Object?>? route = ModalRoute.of(context);
@@ -405,7 +413,42 @@ class _TvHubScreenState extends State<TvHubScreen> {
         hasPopular: _shelves.popular.isNotEmpty,
       );
     }
+    _timePicks = channelsInIdOrder(_timePickIds, byId, hide: kidsHide);
     if (notify && mounted) setState(() {});
+  }
+
+  void _onTimeFlag() {
+    unawaited(_reloadTimePicks());
+  }
+
+  void _onTimePicks() {
+    if (!mounted) return;
+    if (!timePicksFlag.value) {
+      if (_timePickIds.isEmpty) return;
+      _timePickIds = const <String>[];
+      _rebuildShelves();
+      return;
+    }
+    _timePickIds = TimePickLog.instance.idsNow();
+    _rebuildShelves();
+  }
+
+  /// La rangée n'existe que si l'interrupteur est allumé ET que
+  /// CE créneau a déjà des chaînes. Sinon on laisse la liste vide :
+  /// pas de repli sur « tout ce qui a été regardé ».
+  Future<void> _reloadTimePicks() async {
+    try {
+      await timePicksFlag.load();
+      if (!timePicksFlag.value) {
+        _timePickIds = const <String>[];
+      } else {
+        await TimePickLog.instance.reload();
+        _timePickIds = TimePickLog.instance.idsNow();
+      }
+    } catch (_) {
+      _timePickIds = const <String>[];
+    }
+    if (mounted) _rebuildShelves();
   }
 
   Future<void> _refreshPopular() async {
@@ -496,6 +539,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     WatchProgressRepository.instance.removeListener(_scheduleShelves);
     ProgramReminderRepository.instance.removeListener(_scheduleShelves);
     ParentalControls.instance.kidsMode.removeListener(_scheduleShelves);
+    TimePickLog.instance.listenable.removeListener(_onTimePicks);
+    timePicksFlag.changes.removeListener(_onTimeFlag);
     SubscriptionState.instance.removeListener(_onLicenseChange);
     TvContentRefresh.notice.removeListener(_onRefreshNotice);
     ProfileRepository.instance.removeListener(_onProfileCatalog);
@@ -731,7 +776,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                       style: TvTokens.display(TvDimens.title,
                           color: TvTokens.text),
                     ),
-                    if (!_shelves.hasAny) ...<Widget>[
+                    if (!_shelves.hasAny && _timePicks.isEmpty) ...<Widget>[
                       const SizedBox(height: 4),
                       Text(
                         context.l10n.tvHomeInvite,
@@ -746,7 +791,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                     // les tuiles se font plus petites en bas. Sans historique, les
                     // tuiles restent grandes et centrées (l'accueil d'origine).
                     Expanded(
-                      child: _shelves.hasAny
+                      child: _shelves.hasAny || _timePicks.isNotEmpty
                           ? Column(
                               children: <Widget>[
                                 Expanded(
@@ -756,6 +801,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                     initialShelf: _pendingShelfFocus
                                         ? _initialShelf
                                         : null,
+                                    timePicks: _timePicks,
+                                    timePicksLabel: boxText(
+                                      context,
+                                      'À cette heure',
+                                      'At this hour',
+                                    ),
                                     onPlayChannel: _playShelf,
                                     onPlayContinue: _playContinue,
                                     onPlayReminder: _playReminder,

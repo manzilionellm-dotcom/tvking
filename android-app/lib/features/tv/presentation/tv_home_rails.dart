@@ -39,6 +39,8 @@ class TvHomeRails extends StatelessWidget {
     required this.onPlayContinue,
     required this.onPlayReminder,
     this.initialShelf,
+    this.timePicks = const <Channel>[],
+    this.timePicksLabel = '',
   });
 
   final HomeShelfModel model;
@@ -49,6 +51,12 @@ class TvHomeRails extends StatelessWidget {
 
   /// Rangée qui reçoit le focus au premier affichage (une seule fois).
   final HomeShelfKind? initialShelf;
+
+  /// Suggestions du créneau en cours. Hors du calcul des autres
+  /// rangées : une liste vide ne dessine rien, et ne remplace pas
+  /// « populaire » ni « reprendre ».
+  final List<Channel> timePicks;
+  final String timePicksLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -115,6 +123,18 @@ class TvHomeRails extends StatelessWidget {
           channel: model.popular[i],
           autofocus: initialShelf == HomeShelfKind.popular && i == 0,
           onSelect: () => onPlayChannel(model.popular, i),
+        ),
+      ));
+    }
+    if (timePicks.isNotEmpty) {
+      final bool onlyThis = !model.hasAny;
+      rails.add(_Rail(
+        label: timePicksLabel,
+        count: timePicks.length,
+        itemBuilder: (BuildContext context, int i) => _ChannelCard(
+          channel: timePicks[i],
+          autofocus: onlyThis && initialShelf == null && i == 0,
+          onSelect: () => onPlayChannel(timePicks, i),
         ),
       ));
     }

@@ -41,6 +41,7 @@ import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../missed_show/data/missed_flag.dart';
 import '../../missed_show/domain/missed_summary.dart';
+import '../../time_picks/data/time_pick_log.dart';
 import '../../cinema/data/cinema_downloads.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/domain/live_fallback.dart';
@@ -327,6 +328,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
+    // Compteur local « à cette heure ». N'ouvre rien, n'attend pas.
+    unawaited(TimePickLog.instance.note(_current.id));
     NowPlaying.instance.set(_current.cleanName);
     SubscriptionState.instance.syncWithBackend();
     _showOverlayTemporarily();

@@ -9,6 +9,7 @@
 //  comme si on n'avait rien changé.
 // =========================================================
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BoxFlag {
@@ -23,6 +24,9 @@ class BoxFlag {
   /// Valeur connue. Avant [load], c'est « allumé ».
   bool get value => _value;
 
+  /// Préviens les écrans déjà ouverts (accueil sous Réglages).
+  final ValueNotifier<bool> changes = ValueNotifier<bool>(true);
+
   Future<void> load() async {
     if (_loaded) return;
     try {
@@ -32,11 +36,13 @@ class BoxFlag {
       _value = true;
     }
     _loaded = true;
+    if (changes.value != _value) changes.value = _value;
   }
 
   Future<void> set(bool value) async {
     _value = value;
     _loaded = true;
+    if (changes.value != value) changes.value = value;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool(key, value);

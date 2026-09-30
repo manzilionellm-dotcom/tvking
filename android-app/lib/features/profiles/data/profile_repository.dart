@@ -149,7 +149,9 @@ class ProfileRepository extends ChangeNotifier {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       for (final String key in ProfileKeys.disposableKeys(id)) {
-        if (key == ProfileKeys.pin(id) || key == ProfileKeys.kidsMode(id)) {
+        if (key == ProfileKeys.pin(id) ||
+            key == ProfileKeys.kidsMode(id) ||
+            key == ProfileKeys.timePicks(id)) {
           await prefs.remove(key);
         }
       }

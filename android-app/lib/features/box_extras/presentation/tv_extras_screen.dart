@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 
 import '../../missed_show/data/missed_flag.dart';
+import '../../time_picks/data/time_pick_flag.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
 import '../../tv/core/tv_tokens.dart';
@@ -29,6 +30,9 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     missedShowFlag.load().then((_) {
       if (mounted) setState(() {});
     });
+    timePicksFlag.load().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _toggleMissed() async {
@@ -37,9 +41,16 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _toggleTime() async {
+    await timePicksFlag.load();
+    await timePicksFlag.set(!timePicksFlag.value);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool on = missedShowFlag.value;
+    final bool timeOn = timePicksFlag.value;
     return ListView(
       children: <Widget>[
         Text(
@@ -75,6 +86,22 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
                   'Off. OK to turn on. A channel will not be rewound.',
                 ),
           onSelect: _toggleMissed,
+        ),
+        const SizedBox(height: 4),
+        ExtrasRow(
+          title: boxText(context, 'À cette heure', 'At this hour'),
+          subtitle: timeOn
+              ? boxText(
+                  context,
+                  'Propose les chaînes que tu ouvres souvent à ce moment. OK pour couper. Rien ne se lance tout seul.',
+                  'Suggests channels you often open at this time. OK to turn off. Nothing starts on its own.',
+                )
+              : boxText(
+                  context,
+                  'Coupé. OK pour rallumer. On ne compte plus, et la rangée disparaît.',
+                  'Off. OK to turn on. We stop counting, and the row goes away.',
+                ),
+          onSelect: _toggleTime,
         ),
       ],
     );
