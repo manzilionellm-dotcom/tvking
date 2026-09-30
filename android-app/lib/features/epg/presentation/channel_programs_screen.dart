@@ -5,12 +5,13 @@
 //  donnée. Pour chaque programme :
 //    - Passé   → bouton "Replay" (catch-up)
 //    - En cours → bouton "Lecture" (live)
-//    - Futur   → état "À venir" (Phase 3.2 ajoutera rappels)
+//    - Futur   → poser ou retirer un RAPPEL (accueil + notification)
 // =========================================================
 
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/notifications/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../cast/presentation/cast_button.dart';
@@ -19,7 +20,9 @@ import '../../channels/presentation/widgets/channel_logo.dart';
 import '../../player/presentation/play_channel.dart';
 import '../data/catchup_url_builder.dart';
 import '../data/epg_repository.dart';
+import '../data/program_reminder_repository.dart';
 import '../domain/epg_program.dart';
+import '../domain/program_reminder.dart';
 
 class ChannelProgramsScreen extends StatefulWidget {
   const ChannelProgramsScreen({required this.channel, super.key});
@@ -75,8 +78,7 @@ class _ChannelProgramsScreenState extends State<ChannelProgramsScreen> {
       ),
       body: FutureBuilder<List<EpgProgram>>(
         future: _future,
-        builder: (BuildContext context,
-            AsyncSnapshot<List<EpgProgram>> snap) {
+        builder: (BuildContext context, AsyncSnapshot<List<EpgProgram>> snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -88,8 +90,7 @@ class _ChannelProgramsScreenState extends State<ChannelProgramsScreen> {
             onRefresh: _refresh,
             color: AppColors.accent,
             child: ListView.separated(
-              padding:
-                  const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics()),
               itemCount: programs.length,
@@ -137,16 +138,38 @@ class _ChannelProgramsScreenState extends State<ChannelProgramsScreen> {
 
 enum _ProgramState { past, live, future }
 
-class _ProgramTile extends StatelessWidget {
+class _ProgramTile extends StatefulWidget {
   const _ProgramTile({required this.channel, required this.program});
 
   final Channel channel;
   final EpgProgram program;
 
+  @override
+  State<_ProgramTile> createState() => _ProgramTileState();
+}
+
+class _ProgramTileState extends State<_ProgramTile> {
+  bool _reminded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshReminded();
+  }
+
+  Future<void> _refreshReminded() async {
+    await ProgramReminderRepository.instance.load();
+    if (!mounted) return;
+    setState(() {
+      _reminded = ProgramReminderRepository.instance
+          .contains(widget.channel.id, widget.program.startTime);
+    });
+  }
+
   _ProgramState _stateFor(DateTime now) {
     final int nowMs = now.millisecondsSinceEpoch;
-    if (program.isLiveAt(now)) return _ProgramState.live;
-    if (program.stopTime <= nowMs) return _ProgramState.past;
+    if (widget.program.isLiveAt(now)) return _ProgramState.live;
+    if (widget.program.stopTime <= nowMs) return _ProgramState.past;
     return _ProgramState.future;
   }
 
@@ -161,8 +184,7 @@ class _ProgramTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: () => _onTap(context, state),
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           decoration: BoxDecoration(
             color: state == _ProgramState.live
                 ? AppColors.accentSurface
@@ -184,7 +206,7 @@ class _ProgramTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      program.title,
+                      widget.program.title,
                       style: AppTextStyles.bodyLarge.copyWith(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -198,14 +220,14 @@ class _ProgramTile extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: <Widget>[
-                        Icon(
+                        const Icon(
                           Icons.schedule_rounded,
                           size: 11,
                           color: AppColors.textMuted,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          program.timeRangeShort,
+                          widget.program.timeRangeShort,
                           style: AppTextStyles.bodyMedium.copyWith(
                             fontSize: 11,
                             color: AppColors.textMuted,
@@ -213,7 +235,7 @@ class _ProgramTile extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          '· ${program.durationLabel}',
+                          '· ${widget.program.durationLabel}',
                           style: AppTextStyles.bodyMedium.copyWith(
                             fontSize: 11,
                             color: AppColors.textMuted,
@@ -221,10 +243,10 @@ class _ProgramTile extends StatelessWidget {
                         ),
                       ],
                     ),
-                    if (program.description != null) ...<Widget>[
+                    if (widget.program.description != null) ...<Widget>[
                       const SizedBox(height: 6),
                       Text(
-                        program.description!,
+                        widget.program.description!,
                         style: AppTextStyles.bodyMedium.copyWith(
                           fontSize: 12,
                           color: AppColors.textMuted,
@@ -238,7 +260,7 @@ class _ProgramTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              _ActionIcon(state: state),
+              _ActionIcon(state: state, reminded: _reminded),
             ],
           ),
         ),
@@ -249,40 +271,79 @@ class _ProgramTile extends StatelessWidget {
   void _onTap(BuildContext context, _ProgramState state) {
     switch (state) {
       case _ProgramState.live:
-        playChannel(context, channel);
+        playChannel(context, widget.channel);
       case _ProgramState.past:
-        final String? url =
-            CatchupUrlBuilder.build(channel: channel, program: program);
+        final String? url = CatchupUrlBuilder.build(
+          channel: widget.channel,
+          program: widget.program,
+        );
         if (url != null) {
-          playChannel(context, channel,
-              overrideUrl: url, overrideTitle: program.title);
+          playChannel(context, widget.channel,
+              overrideUrl: url, overrideTitle: widget.program.title);
         } else {
-          ScaffoldMessenger.of(context).clearSnackBars();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              backgroundColor: AppColors.surfaceHigh,
-              behavior: SnackBarBehavior.floating,
-              content: Text(
-                context.l10n.programsCatchupUnavailable,
-                style: AppTextStyles.bodyMedium,
-              ),
-            ),
-          );
+          _snack(context, context.l10n.programsCatchupUnavailable);
         }
       case _ProgramState.future:
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.surfaceHigh,
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              context.l10n.programStartsAt(
-                  program.title, program.timeRangeShort.split(' – ').first),
-              style: AppTextStyles.bodyMedium,
-            ),
-          ),
-        );
+        _toggleReminder();
     }
+  }
+
+  /// Second appui = on retire. On le dit toujours clairement :
+  /// notification posée, seulement l'accueil, ou trop tard.
+  ///
+  /// On lit les textes APRÈS chaque `await`, et seulement si l'écran
+  /// est encore là (`mounted`) : le contexte du State, pas celui du tap.
+  Future<void> _toggleReminder() async {
+    final ProgramReminderRepository repo = ProgramReminderRepository.instance;
+    final String channelId = widget.channel.id;
+    final String channelName = widget.channel.cleanName;
+    final String title = widget.program.title;
+    final int startMs = widget.program.startTime;
+    await repo.load();
+    if (!mounted) return;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (repo.contains(channelId, startMs)) {
+      await repo.remove(channelId, startMs);
+      await NotificationService.instance.cancelProgramReminder(channelId, startMs);
+      if (!mounted) return;
+      setState(() => _reminded = false);
+      _snack(context, context.l10n.tvReminderCleared);
+      return;
+    }
+    if (ProgramReminderLog.isTooLate(startMs, now)) {
+      _snack(context, context.l10n.tvReminderTooLate);
+      return;
+    }
+    await repo.add(ProgramReminder(
+      channelId: channelId,
+      channelName: channelName,
+      title: title,
+      startMs: startMs,
+    ));
+    final bool notified = await NotificationService.instance.scheduleProgramReminder(
+      channelId: channelId,
+      channelName: channelName,
+      title: title,
+      startMs: startMs,
+    );
+    if (!mounted) return;
+    setState(() => _reminded = true);
+    _snack(
+      context,
+      notified ? context.l10n.tvReminderSet(title) : context.l10n.tvReminderSavedOnly(title),
+    );
+  }
+
+  void _snack(BuildContext context, String message) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.surfaceHigh,
+        behavior: SnackBarBehavior.floating,
+        content: Text(message, style: AppTextStyles.bodyMedium),
+      ),
+    );
   }
 }
 
@@ -340,8 +401,9 @@ class _StateBadge extends StatelessWidget {
 }
 
 class _ActionIcon extends StatelessWidget {
-  const _ActionIcon({required this.state});
+  const _ActionIcon({required this.state, required this.reminded});
   final _ProgramState state;
+  final bool reminded;
 
   @override
   Widget build(BuildContext context) {
@@ -353,8 +415,12 @@ class _ActionIcon extends StatelessWidget {
         return Icon(Icons.replay_circle_filled_rounded,
             color: AppColors.accent, size: 28);
       case _ProgramState.future:
-        return Icon(Icons.alarm_add_rounded,
-            color: AppColors.textMuted, size: 22);
+        // Cloche pleine = rappel déjà posé. Un second appui le retire.
+        return Icon(
+          reminded ? Icons.alarm_on_rounded : Icons.alarm_add_rounded,
+          color: reminded ? AppColors.accent : AppColors.textMuted,
+          size: 22,
+        );
     }
   }
 }
