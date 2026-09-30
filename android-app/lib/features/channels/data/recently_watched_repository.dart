@@ -38,6 +38,12 @@ class RecentlyWatchedRepository {
   List<String> _cache = <String>[];
   bool _initialized = false;
 
+  /// Profil autre que Maison. null = table SQLite d'origine.
+  String? _scopeId;
+
+  /// Prévenu pour enregistrer l'historique d'un profil à part.
+  void Function(String profileId, List<String> ids)? onScopeChanged;
+
   List<String> get current => List<String>.unmodifiable(_cache);
 
   Future<void> initialize() async {
@@ -67,11 +73,41 @@ class RecentlyWatchedRepository {
     if (!_controller.isClosed) _controller.add(_cache);
   }
 
+  /// Revient à l'historique SQLite (profil Maison).
+  Future<void> bindHome() async {
+    if (_scopeId == null && _initialized) {
+      if (!_controller.isClosed) _controller.add(List<String>.from(_cache));
+      return;
+    }
+    _scopeId = null;
+    _initialized = false;
+    await initialize();
+  }
+
+  /// Historique d'un autre profil. N'écrit pas dans SQLite.
+  Future<void> bindProfile(String profileId, List<String> ids) async {
+    _scopeId = profileId;
+    _cache = List<String>.from(ids);
+    _initialized = true;
+    if (!_controller.isClosed) _controller.add(List<String>.from(_cache));
+  }
+
   Future<void> record(String channelId) async {
     // Mode incognito (flavor adulte « Privé ») : on n'enregistre AUCUN
     // historique de visionnage → pas de « Continuer à regarder », rien à
     // retrouver pour un tiers. Discrétion totale.
     if (FlavorConfig.current.adultOnly) return;
+    if (_scopeId != null) {
+      _cache.remove(channelId);
+      _cache.insert(0, channelId);
+      if (_cache.length > _kMaxEntries) {
+        _cache = _cache.take(_kMaxEntries).toList();
+      }
+      final List<String> copy = List<String>.from(_cache);
+      if (!_controller.isClosed) _controller.add(copy);
+      onScopeChanged?.call(_scopeId!, copy);
+      return;
+    }
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     final int now = DateTime.now().millisecondsSinceEpoch;

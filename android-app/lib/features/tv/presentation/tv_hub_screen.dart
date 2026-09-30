@@ -42,6 +42,8 @@ import '../../cinema/domain/cinema_models.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/program_reminder_repository.dart';
 import '../../epg/domain/program_reminder.dart';
+import '../../family/data/family_profile_store.dart';
+import '../../family/domain/family_profile.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -275,6 +277,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
     await FavoritesRepository.instance.initialize();
     await ProgramReminderRepository.instance.load();
     await WatchProgressRepository.instance.load();
+    await FamilyProfileStore.instance.load();
+    if (FamilyProfileStore.flag.value) {
+      await FamilyProfileStore.instance.apply();
+    }
     if (!mounted) return;
     _prefsReady = true;
     _recentIds = RecentlyWatchedRepository.instance.current;
@@ -397,11 +403,19 @@ class _TvHubScreenState extends State<TvHubScreen> {
     };
     final Greeting? g = _greeting;
     final String city = g?.city.trim() ?? '';
-    if (g == null || city.isEmpty) return hello;
+    if (g == null || city.isEmpty) return _withProfile(hello);
     final String temp = g.tempC == null ? '' : '${g.tempC!.round()}°';
     final String place = temp.isEmpty ? city : '$temp $city';
     final String emoji = g.emoji;
-    return emoji.isEmpty ? '$hello · $place' : '$hello · $emoji $place';
+    final String line = emoji.isEmpty ? '$hello · $place' : '$hello · $emoji $place';
+    return _withProfile(line);
+  }
+
+  String _withProfile(String hello) {
+    if (!FamilyProfileStore.flag.value) return hello;
+    final FamilyProfile active = FamilyProfileStore.instance.active;
+    if (active.isHome) return hello;
+    return '$hello · ${active.name}';
   }
 
   Future<void> _initConnectivity() async {

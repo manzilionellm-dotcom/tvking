@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../family/presentation/family_screen.dart';
 import '../../phone_remote/presentation/phone_remote_screen.dart';
 import '../../voice_search/data/voice_search.dart';
 import '../../tv/core/tv_dimens.dart';
@@ -90,6 +91,21 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
                   'Mic is off. Keyboard search stays. OK to turn on.',
                 ),
           onSelect: _toggleVoice,
+        ),
+        _Row(
+          title: boxText(context, 'Famille', 'Family'),
+          subtitle: boxText(
+            context,
+            'Accueil, favoris et historique par personne. Mode enfants.',
+            'Home, favorites and history per person. Kids mode.',
+          ),
+          onSelect: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const TvShell(child: FamilyScreen()),
+              ),
+            );
+          },
         ),
       ],
     );

@@ -25,6 +25,13 @@ class FavoritesRepository {
   Set<String> _cache = <String>{};
   bool _initialized = false;
 
+  /// Profil autre que Maison. null = table SQLite d'origine.
+  String? _scopeId;
+
+  /// Prévenu quand les favoris d'un profil (pas Maison) changent,
+  /// pour les écrire à part. Maison ne passe pas par ici.
+  void Function(String profileId, Set<String> ids)? onScopeChanged;
+
   Stream<Set<String>> get favoritesStream => _controller.stream;
   Set<String> get current => _cache;
 
@@ -49,7 +56,37 @@ class FavoritesRepository {
 
   bool isFavorite(String channelId) => _cache.contains(channelId);
 
+  /// Revient aux favoris SQLite (profil Maison, ou fonction coupée).
+  Future<void> bindHome() async {
+    if (_scopeId == null && _initialized) {
+      if (!_controller.isClosed) _controller.add(<String>{..._cache});
+      return;
+    }
+    _scopeId = null;
+    _initialized = false;
+    await initialize();
+  }
+
+  /// Favoris d'un autre profil, déjà lus. N'écrit pas dans SQLite.
+  Future<void> bindProfile(String profileId, Set<String> ids) async {
+    _scopeId = profileId;
+    _cache = <String>{...ids};
+    _initialized = true;
+    if (!_controller.isClosed) _controller.add(<String>{..._cache});
+  }
+
   Future<void> toggle(String channelId) async {
+    if (_scopeId != null) {
+      if (_cache.contains(channelId)) {
+        _cache.remove(channelId);
+      } else {
+        _cache.add(channelId);
+      }
+      final Set<String> copy = <String>{..._cache};
+      if (!_controller.isClosed) _controller.add(copy);
+      onScopeChanged?.call(_scopeId!, copy);
+      return;
+    }
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
 

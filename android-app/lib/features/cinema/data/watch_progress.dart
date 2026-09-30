@@ -261,6 +261,7 @@ class WatchProgressRepository extends ChangeNotifier {
   static final WatchProgressRepository instance = WatchProgressRepository._();
 
   static const String _kKey = 'cinema.progress.v1';
+  String _activeKey = _kKey;
   WatchProgressStore _store = WatchProgressStore();
   bool _loaded = false;
   Timer? _saveTimer;
@@ -268,12 +269,33 @@ class WatchProgressRepository extends ChangeNotifier {
   Future<void> load() async {
     if (_loaded) return;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    _store = WatchProgressStore.decode(prefs.getString(_kKey));
+    _store = WatchProgressStore.decode(prefs.getString(_activeKey));
     _loaded = true;
     notifyListeners();
   }
 
   WatchEntry? get(String id) => _store.get(id);
+
+  /// Profil Maison : la clé d'origine. Un autre profil : une clé
+  /// à part, pour que l'enfant ne voie pas les films des parents.
+  /// On écrit d'abord ce qui est en cours, puis on recharge.
+  Future<void> useProfile(String? profileId) async {
+    final String next = (profileId == null ||
+            profileId.isEmpty ||
+            profileId == 'maison')
+        ? _kKey
+        : '$_kKey.$profileId';
+    if (_loaded && next == _activeKey) return;
+    if (_loaded) {
+      _saveTimer?.cancel();
+      await _save();
+    }
+    _activeKey = next;
+    _store = WatchProgressStore();
+    _loaded = false;
+    await load();
+  }
+
   List<WatchEntry> continueWatching({bool? episodes}) =>
       _store.continueWatching(episodes: episodes);
   WatchEntry? latestForSeries(String seriesId) => _store.latestForSeries(seriesId);
@@ -310,7 +332,7 @@ class WatchProgressRepository extends ChangeNotifier {
   Future<void> _save() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kKey, _store.encode());
+      await prefs.setString(_activeKey, _store.encode());
     } catch (e) {
       if (kDebugMode) debugPrint('[WatchProgress] sauvegarde impossible : $e');
     }
