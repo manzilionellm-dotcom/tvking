@@ -456,7 +456,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       if (cont.isNotEmpty)
         CinemaRailRow(
           icon: Icons.play_circle_outline_rounded,
-          label: context.l10n.tvCinemaContinue,
+          label: context.l10n.sectionResumeWhereYouLeftOff,
           count: cont.length,
           autofocus: _sel.view == _View.continueW,
           selected: _sel.view == _View.continueW,

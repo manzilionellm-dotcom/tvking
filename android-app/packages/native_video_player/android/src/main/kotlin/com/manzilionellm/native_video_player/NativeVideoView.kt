@@ -1,12 +1,18 @@
 package com.manzilionellm.native_video_player
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.graphics.Rect
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.PixelCopy
 import android.view.SurfaceView
 import android.view.View
+import android.widget.FrameLayout
+import android.widget.ImageView
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -41,6 +47,8 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
 import com.manzilionellm.native_video_player.logic.ExclusiveAudio
 import com.manzilionellm.native_video_player.logic.PlaybackSession
+import com.manzilionellm.native_video_player.logic.ReconnectGate
+import com.manzilionellm.native_video_player.logic.ReconnectPlan
 import com.manzilionellm.native_video_player.logic.SpokenCandidate
 import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
 import io.flutter.plugin.common.BinaryMessenger
@@ -72,11 +80,17 @@ import io.flutter.plugin.platform.PlatformView
  *
  * AUTO-RECONNEXION SILENCIEUSE : si le serveur coupe / le réseau hoquette,
  * ExoPlayer ré-essaie d'abord seul (LoadErrorHandlingPolicy), et en cas
- * d'erreur fatale on RE-PREPARE automatiquement avec un back-off (1→2→4→8 s)
- * SANS rien dire à l'UI (juste « buffering »). On ne remonte une vraie erreur
- * à Dart qu'après plusieurs échecs d'affilée (filet de sécurité ultime).
- * Un direct « en retard » (hors fenêtre) rejoint le direct tout de suite :
- * ce n'est pas une panne, et ça ne compte pas dans le budget d'échecs.
+ * d'erreur fatale on RE-PREPARE avec un back-off (1→2→4→8 s, plafond 8 s,
+ * 8 essais). Un second essai n'est pas programmé tant que le premier
+ * attend (deux prepare = deux sons). Le volume reste à 0 jusqu'à la
+ * nouvelle image ou le nouveau « je joue ». Si une image a déjà été
+ * vue, on la garde (petite copie) au lieu d'un panneau opaque : stop()
+ * vide souvent la surface, et le panneau Flutter par-dessus faisait
+ * un écran noir. Sans copie (coupure dans les premières secondes),
+ * on montre le panneau avec le nom de la chaîne. On ne remonte une
+ * vraie erreur à Dart qu'après les 8 essais. Un direct « en retard »
+ * (hors fenêtre) rejoint le direct tout de suite : ce n'est pas une
+ * panne, et ça ne compte pas dans le budget d'échecs.
  *
  * MODE FILM / ÉPISODE (« vod », 26/09/2026) : pour un fichier fini on
  * ajoute ce qu'un lecteur façon Netflix exige — démarrage à une position
@@ -125,6 +139,34 @@ class NativeVideoView(
 ) : PlatformView, MethodChannel.MethodCallHandler, AnalyticsListener {
 
     private val surfaceView = SurfaceView(context)
+
+    /**
+     * Dernière image, posée PAR-DESSUS la surface pendant une coupure.
+     * stop() vide souvent la surface (écran noir). Cette copie, prise
+     * pendant que ça jouait, reste visible jusqu'à la nouvelle trame.
+     * Une seule image, petite (au plus 1280×720, RGB 565) : pas une
+     * file d'images, la box a peu de mémoire.
+     */
+    private val holdView = ImageView(context).apply {
+        visibility = View.GONE
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        isFocusable = false
+        isFocusableInTouchMode = false
+    }
+    private val root = FrameLayout(context).apply {
+        val fill = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        )
+        addView(surfaceView, fill)
+        addView(
+            holdView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+    }
     private val channel = MethodChannel(messenger, "native_video_player/$id")
     private val player: ExoPlayer
     private val handler = Handler(Looper.getMainLooper())
@@ -136,10 +178,16 @@ class NativeVideoView(
     private var lastKnownPos = 0L
     private var lastSentDuration = -1L
 
-    // Reconnexion auto silencieuse.
-    private var retryCount = 0
+    // Reconnexion auto silencieuse. Les délais et le « un seul essai
+    // à la fois » sont dans [reconnect] (testé sans ExoPlayer).
+    private val reconnect = ReconnectGate()
     private var pendingRetry: Runnable? = null
-    private val maxSilentRetries = 8 // au-delà → on prévient Dart (reset complet)
+
+    // Dernière image copiée. null = on n'a encore rien de montrable.
+    private var heldBitmap: Bitmap? = null
+    private var copyInFlight = false
+    private var lastCopyAt = 0L
+    private var sawFrame = false
 
     // Direct sorti de sa fenêtre (Internet trop lent un moment). On rejoint
     // le direct sans compter une « panne », mais pas à l'infini : au-delà on
@@ -192,6 +240,7 @@ class NativeVideoView(
                 val pos = player.currentPosition
                 if (vodMode) lastKnownPos = pos
                 emit("position", pos)
+                maybeCopyFrame()
             }
             sendDurationIfChanged()
             if (!released) handler.postDelayed(this, 500)
@@ -244,7 +293,12 @@ class NativeVideoView(
         // setBackBuffer(0) est le défaut : on ne garde PAS les images déjà
         // jouées (mémoire, et une vieille image ne peut pas rester à l'écran).
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(5_000, 45_000, 1_000, 2_000)
+            .setBufferDurationsMs(
+                5_000,
+                45_000,
+                ReconnectPlan.BUFFER_FOR_PLAYBACK_MS,
+                2_000,
+            )
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(0, false)
             .build()
@@ -481,7 +535,7 @@ class NativeVideoView(
         }
     }
 
-    override fun getView(): View = surfaceView
+    override fun getView(): View = root
 
     // ---- Dart → natif -------------------------------------------------------
 
@@ -500,12 +554,18 @@ class NativeVideoView(
                     return
                 }
                 cancelRetry()
-                // On ne remet le budget de reconnexion silencieuse à zéro QUE
-                // pour une VRAIE nouvelle chaîne (URL différente). Si Dart
-                // ré-ouvre la MÊME URL (recover sur flux gelé), on CONSERVE le
-                // compteur → après maxSilentRetries on remonte enfin l'erreur à
-                // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
-                if (url != currentUrl) retryCount = 0
+                // Budget remis à zéro SEULEMENT pour une autre adresse.
+                // La même adresse (gel, coupure) garde le compteur : après
+                // 8 essais on prévient Dart, on ne boucle pas sans fin.
+                // On annule aussi l'attente en cours : Dart ré-ouvre, le
+                // délai natif ne doit pas préparer une seconde fois.
+                if (url != currentUrl) {
+                    reconnect.onDifferentUrl()
+                    discardHeldFrame()
+                    sawFrame = false
+                } else {
+                    reconnect.onExternalReopen()
+                }
                 behindLiveCount = 0
                 currentUrl = url
                 vodMode = call.argument<Boolean>("vod") ?: false
@@ -619,7 +679,10 @@ class NativeVideoView(
                     result.success(null)
                     return
                 }
-                player.volume = 1f
+                // Pendant une reconnexion le volume reste à 0 : le remettre
+                // ici ferait ressortir l'ancien tampon. La nouvelle session
+                // le remonte toute seule (unmuteIfThisSession).
+                if (!reconnect.holdMute) player.volume = 1f
                 player.play()
                 result.success(null)
             }
@@ -648,9 +711,19 @@ class NativeVideoView(
         when (state) {
             Player.STATE_BUFFERING -> emit("buffering", true)
             Player.STATE_READY -> {
-                retryCount = 0 // lecture OK → on oublie les erreurs passées
+                // On annule une ré-ouverture devenue inutile, MAIS on ne
+                // remet pas le budget à zéro ici : « prêt » arrive parfois
+                // une fraction de seconde avant un nouvel échec. Le budget
+                // repart seulement quand l'image ou le son est vraiment là
+                // (voir onRenderedFirstFrame / onIsPlayingChanged).
+                // On n'annonce pas « plus en tampon » tant que la copie
+                // de la dernière image couvre la surface : sinon Flutter
+                // découvrirait le noir avant la nouvelle trame.
+                cancelRetry()
                 behindLiveCount = 0
-                emit("buffering", false)
+                if (holdView.visibility != View.VISIBLE) {
+                    emit("buffering", false)
+                }
             }
             Player.STATE_ENDED -> emit("ended", null)
             Player.STATE_IDLE -> { /* après erreur : géré par onPlayerError */ }
@@ -660,6 +733,14 @@ class NativeVideoView(
     override fun onIsPlayingChanged(eventTime: AnalyticsListener.EventTime, isPlaying: Boolean) {
         if (!fresh(eventTime)) return
         emit("playing", isPlaying)
+        // Le son de CETTE session seulement. Avant, le volume remontait
+        // juste après prepare() : le tampon HDMI de l'ancienne chaîne
+        // (surtout en AC-3) sortait encore pendant que la nouvelle
+        // démarrait. Ici on attend que le lecteur dise « je joue ».
+        if (isPlaying) {
+            reconnect.onRecovered()
+            unmuteIfThisSession()
+        }
     }
 
     /** Pistes disponibles → Dart, puis choix de la voix (une fois). */
@@ -740,9 +821,21 @@ class NativeVideoView(
         // L'heure de l'événement, pas « maintenant » : une trame déjà
         // décodée avant le zap ne retire pas le logo de la nouvelle chaîne.
         if (!fresh(eventTime)) return
-        retryCount = 0
+        reconnect.onRecovered()
         behindLiveCount = 0
+        sawFrame = true
+        // La nouvelle trame est à l'écran : on retire la copie.
+        hideHeldFrame()
+        emit("holdFrame", false)
+        emit("reconnecting", false)
+        emit("buffering", false)
+        unmuteIfThisSession()
         emit("firstFrame", null)
+        // Une copie tôt : si la coupure arrive dans les secondes qui
+        // suivent, on a déjà une image à montrer.
+        handler.postDelayed({
+            if (!released) maybeCopyFrame(force = true)
+        }, 400)
     }
 
     override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
@@ -766,27 +859,54 @@ class NativeVideoView(
             behindLiveCount < maxBehindLive
         ) {
             behindLiveCount++
-            emit("buffering", true)
+            try {
+                player.volume = 0f
+            } catch (_: RuntimeException) {
+                // Même filet que la reconnexion : pas de second son.
+            }
+            if (sawFrame && heldBitmap != null) {
+                showHeldFrame()
+                emit("holdFrame", true)
+            } else {
+                emit("buffering", true)
+            }
             handler.post {
                 if (released || token != sessions.generation) return@post
                 openCurrent(null)
             }
             return
         }
-        // RECONNEXION SILENCIEUSE : on ne montre PAS d'erreur au client tant
-        // qu'on n'a pas épuisé les essais. On re-prépare avec un back-off.
-        if (retryCount < maxSilentRetries) {
-            retryCount++
-            // Film : on retient la seconde exacte AVANT de re-préparer.
-            // (openCurrent appelle stop(), qui remettrait la position à 0.)
-            if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
-            emit("buffering", true)
-            val delay = (1_000L * (1 shl (retryCount - 1))).coerceAtMost(8_000L)
-            scheduleRetry(delay, token)
-        } else {
-            // Trop d'échecs d'affilée → on laisse Dart faire un reset complet.
-            emit("error", error.message)
+        // RECONNEXION SILENCIEUSE. Délai croissant (1 s, 2 s, 4 s, 8 s).
+        // On ne prépare pas une seconde fois si une attente est déjà là
+        // (deux prepare = deux sons). Le volume tombe à 0 tout de suite :
+        // l'ancienne piste ne continue pas pendant l'attente.
+        val delay = reconnect.onFailure()
+        if (delay == null) {
+            if (!reconnect.retryPending) {
+                emit("reconnecting", false)
+                emit("holdFrame", false)
+                emit("error", error.message)
+            }
+            return
         }
+        try {
+            player.volume = 0f
+        } catch (_: RuntimeException) {
+            // Un volume refusé ne doit pas empêcher la ré-ouverture.
+        }
+        if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+        // Image déjà vue : on la montre (copie) et on NE demande PAS
+        // à Flutter un panneau opaque. Sans copie, le panneau (numéro
+        // de chaîne) vaut mieux qu'une surface vide.
+        if (sawFrame && heldBitmap != null) {
+            showHeldFrame()
+            emit("holdFrame", true)
+        } else {
+            emit("holdFrame", false)
+            emit("buffering", true)
+        }
+        emit("reconnecting", true)
+        scheduleRetry(delay, token)
     }
 
     /**
@@ -829,10 +949,13 @@ class NativeVideoView(
     private fun openCurrent(startPositionMs: Long?) {
         val url = currentUrl ?: return
         if (released) return
+        // Avant stop() : la copie couvre la surface, qui va se vider.
+        if (sawFrame && heldBitmap != null) showHeldFrame()
         if (playerKey >= 0) owners.claim(playerKey)
         silenceForHandoff()
         val token = sessions.generation
         dartEpoch?.let { emit("ack", it) }
+        if (holdView.visibility == View.VISIBLE) emit("holdFrame", true)
         if (released || token != sessions.generation) return
         player.setAudioAttributes(movieAudioAttributes(), true)
         clearVoiceProcessor.enabled = clearVoiceEnabled
@@ -850,15 +973,27 @@ class NativeVideoView(
         } else {
             player.setMediaItem(item)
         }
+        // Volume 0 AVANT prepare. Le remettre juste après laissait
+        // l'ancien tampon HDMI (AC-3) parler avec le nouveau flux.
+        // On ne remonte qu'au « je joue » ou à la nouvelle trame.
+        reconnect.armMute()
+        player.volume = 0f
         player.prepare()
         player.playWhenReady = true
-        player.volume = 1f
     }
 
     private fun scheduleRetry(delayMs: Long, token: Int) {
-        cancelRetry()
+        // On retire l'ancien délai SANS effacer le verrou que
+        // [ReconnectGate.onFailure] vient de poser : le runnable
+        // ci-dessous doit être le seul à pouvoir repartir.
+        cancelRetry(clearGate = false)
         val r = Runnable {
             if (released || token != sessions.generation) return@Runnable
+            // Un seul feu. Un second callback ne prépare pas encore.
+            if (!reconnect.onRetryFired()) return@Runnable
+            // L'attente est finie : l'écran peut à nouveau surveiller
+            // un gel. La copie, elle, reste jusqu'à la nouvelle trame.
+            emit("reconnecting", false)
             // Film : [lastKnownPos] a été figé dans onPlayerError, avant stop().
             openCurrent(if (vodMode) lastKnownPos else null)
         }
@@ -866,9 +1001,95 @@ class NativeVideoView(
         handler.postDelayed(r, delayMs)
     }
 
-    private fun cancelRetry() {
+    /** Remonte le volume une fois, et seulement si CE lecteur a le son. */
+    private fun unmuteIfThisSession() {
+        if (!reconnect.onNewSoundAllowed()) return
+        if (released) return
+        if (playerKey >= 0 && owners.owner != null && owners.owner != playerKey) return
+        try {
+            player.volume = 1f
+        } catch (_: RuntimeException) {
+            // Un volume refusé laisse la chaîne muette plutôt que planter.
+        }
+    }
+
+    private fun showHeldFrame() {
+        val bmp = heldBitmap ?: return
+        if (bmp.isRecycled) return
+        holdView.setImageBitmap(bmp)
+        holdView.visibility = View.VISIBLE
+        holdView.bringToFront()
+    }
+
+    /** Cache la copie sans la jeter : la prochaine coupure la réutilise. */
+    private fun hideHeldFrame() {
+        holdView.visibility = View.GONE
+        holdView.setImageDrawable(null)
+    }
+
+    /** Zap : l'ancienne image ne doit pas rester (mauvaise chaîne). */
+    private fun discardHeldFrame() {
+        hideHeldFrame()
+        val bmp = heldBitmap
+        heldBitmap = null
+        if (bmp != null && !bmp.isRecycled) bmp.recycle()
+    }
+
+    private fun stashFrame(bmp: Bitmap) {
+        val previous = heldBitmap
+        heldBitmap = bmp
+        if (holdView.visibility == View.VISIBLE) {
+            holdView.setImageBitmap(bmp)
+        } else {
+            holdView.setImageDrawable(null)
+        }
+        if (previous != null && previous !== bmp && !previous.isRecycled) {
+            previous.recycle()
+        }
+    }
+
+    /**
+     * Copie une petite image de la surface pendant que ça joue.
+     * On ne copie pas pendant la coupure : on remplacerait la bonne
+     * image par du noir. Au plus une copie à la fois, toutes les 4 s.
+     */
+    private fun maybeCopyFrame(force: Boolean = false) {
+        if (released || copyInFlight || !sawFrame) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - lastCopyAt < 4_000L) return
+        val w = surfaceView.width
+        val h = surfaceView.height
+        if (w < 16 || h < 16) return
+        val rw = minOf(w, 1280)
+        val rh = minOf(h, 720)
+        val left = (w - rw) / 2
+        val top = (h - rh) / 2
+        val rect = Rect(left, top, left + rw, top + rh)
+        val bmp = Bitmap.createBitmap(rw, rh, Bitmap.Config.RGB_565)
+        copyInFlight = true
+        lastCopyAt = now
+        try {
+            PixelCopy.request(surfaceView, rect, bmp, { code ->
+                copyInFlight = false
+                val keep = !released && code == PixelCopy.SUCCESS && sawFrame &&
+                    holdView.visibility != View.VISIBLE
+                if (!keep) {
+                    bmp.recycle()
+                    return@request
+                }
+                stashFrame(bmp)
+            }, handler)
+        } catch (_: RuntimeException) {
+            copyInFlight = false
+            if (!bmp.isRecycled) bmp.recycle()
+        }
+    }
+
+    private fun cancelRetry(clearGate: Boolean = true) {
         pendingRetry?.let { handler.removeCallbacks(it) }
         pendingRetry = null
+        if (clearGate) reconnect.cancelWait()
     }
 
     // ---- son : suivi FFmpeg et repli box -----------------------------------
@@ -1006,6 +1227,7 @@ class NativeVideoView(
         // Annule le filet FFmpeg : plus de re-prepare après la mort du lecteur.
         ffmpegWatchToken++
         cancelRetry()
+        discardHeldFrame()
         handler.removeCallbacksAndMessages(null)
         if (playerKey >= 0) {
             owners.unregister(playerKey)
