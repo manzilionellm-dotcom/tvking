@@ -32,6 +32,13 @@ class FeedbackRepository {
     await _fetch();
   }
 
+  /// Relit l'invitation. Appelé quand le panel vient d'en poser une,
+  /// sans attendre le prochain démarrage de l'app.
+  Future<void> reload() async {
+    _initialized = true;
+    await _fetch();
+  }
+
   Future<void> _fetch() async {
     try {
       final http.Response resp = await http
