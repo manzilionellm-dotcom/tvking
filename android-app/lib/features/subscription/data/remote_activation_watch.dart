@@ -1,30 +1,46 @@
 // =========================================================
 //  remote_activation_watch.dart — Veille unique panel → box
 // =========================================================
-//  Avant : l'écran d'activation envoyait un HEARTBEAT (écriture en
-//  base : présence, inventaire, historique) toutes les 5 secondes,
-//  et l'accueil relisait les codes IPTV toutes les 20 secondes même
-//  quand rien n'avait changé.
+//  Deux chemins, un seul effet :
+//    1. Canal long (GET /api/box/wait). L'ordre du panel arrive
+//       dès qu'il est écrit, souvent en moins d'une seconde en
+//       local. On accuse réception. Un numéro déjà vu n'est pas
+//       rejoué.
+//    2. Si le canal ne peut pas s'ouvrir (ancien Worker, 401,
+//       429, Wi-Fi coupé) : lecture courte de /api/status,
+//       3 s pendant l'attente, 4 s ensuite, jusqu'à 45 s si le
+//       réseau ne répond plus. C'est le rythme de la version 103.
 //
-//  Maintenant, UNE horloge pour toute l'app TV :
-//    • lecture légère GET /api/status (pas d'écriture) ;
-//    • 3 s tant qu'on attend l'activation ou la première source ;
-//    • 4 s une fois les chaînes là ;
-//    • les codes IPTV ne sont téléchargés que si `source_rev` change ;
-//    • le heartbeat (le panel voit la box en ligne) part au plus
-//      une fois par minute, et seulement pendant l'attente ;
-//    • réseau coupé → on ralentit (jusqu'à 45 s) et on GARDE le
-//      dernier statut. Aucune chaîne en cours n'est coupée.
+//  Quand le canal tient, on ne relit le statut qu'en filet
+//  (25 s) pour ne pas doubler le trafic. Une coupure : on
+//  reprend le canal avec le dernier numéro accusé.
 // =========================================================
 
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../about/data/force_update_checker.dart';
+import '../../ads/data/startup_ad_repository.dart';
+import '../../country_home/data/featured_repository.dart';
+import '../../device/data/device_identity.dart';
+import '../../device/data/device_secret.dart';
+import '../../feedback/data/feedback_repository.dart';
+import '../../playlists/data/default_servers.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
+import '../../pricing/data/pricing_repository.dart';
+import '../../simple_home/data/announcement_repository.dart';
+import '../../simple_home/data/home_layout_repository.dart';
+import '../../theme/data/remote_theme_repository.dart';
 import '../../tv/core/tv_activity.dart';
 import '../domain/activation_pace.dart';
+import '../domain/box_signal.dart';
+import 'box_signal_client.dart';
+import 'signal_inbox.dart';
 import 'subscription_backend.dart';
 import 'subscription_state.dart';
 
@@ -37,13 +53,30 @@ class RemoteActivationWatch {
   bool _tickBusy = false;
   bool _nudge = false;
   bool _allowSourceImport = true;
+  bool _channelUp = false;
   int _failures = 0;
+  int _signalFailures = 0;
   int? _lastSourceRev;
+  int _generation = 0;
+  int _boxCursor = 0;
+  int _fleetCursor = 0;
+  http.Client? _signalHttp;
   DateTime _lastHeartbeat = DateTime.fromMillisecondsSinceEpoch(0);
+  String _appVersion = '';
+  bool _versionTried = false;
+  final Set<int> _seenBox = <int>{};
+  final Set<int> _seenFleet = <int>{};
+
+  /// Dernier corps reçu sur le canal (tests : pas de mot de passe).
+  @visibleForTesting
+  String lastSignalBody = '';
 
   /// Présence panel pendant l'attente. Assez lent pour ne pas écrire
   /// en base à chaque lecture de statut.
   static const Duration _heartbeatWhileWaiting = Duration(seconds: 60);
+
+  static const String _kBoxCursor = 'zuno.signal.box_after.v1';
+  static const String _kFleetCursor = 'zuno.signal.fleet_after.v1';
 
   /// À appeler une fois le boot lancé. [allowSourceImport] est faux
   /// en mode sans échec : on lit quand même la licence (la box peut
@@ -55,6 +88,9 @@ class RemoteActivationWatch {
     // Le démarrage vient de faire un heartbeat. On ne le double pas.
     _lastHeartbeat = DateTime.now();
     _arm(ActivationPace.fast);
+    _generation++;
+    final int generation = _generation;
+    unawaited(_signalLoop(generation));
   }
 
   /// « J'ai payé — Vérifier », ou juste après un changement de
@@ -69,12 +105,17 @@ class RemoteActivationWatch {
   @visibleForTesting
   void stopForTesting() {
     _run = false;
+    _generation++;
     _timer?.cancel();
     _timer = null;
     _tickBusy = false;
     _nudge = false;
     _failures = 0;
+    _signalFailures = 0;
+    _channelUp = false;
     _lastSourceRev = null;
+    _signalHttp?.close();
+    _signalHttp = null;
   }
 
   void _arm(Duration delay) {
@@ -87,7 +128,11 @@ class RemoteActivationWatch {
         _arm(Duration.zero);
         return;
       }
-      _arm(ActivationPace.next(waiting: _isWaiting, failures: _failures));
+      _arm(signalPace(
+        channelUp: _channelUp,
+        waiting: _isWaiting,
+        failures: _failures,
+      ));
     });
   }
 
@@ -152,5 +197,206 @@ class RemoteActivationWatch {
     final RemoteSyncResult result = await RemoteSourceRepository.sync();
     if (result == RemoteSyncResult.networkError) return;
     if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
+  }
+
+  Future<void> _signalLoop(int generation) async {
+    final http.Client client = http.Client();
+    _signalHttp = client;
+    try {
+      await _loadCursors();
+      while (_run && generation == _generation) {
+        final String mac = await DeviceIdentity.instance.mac;
+        if (!mac.startsWith('MK:')) {
+          await _pause(const Duration(seconds: 5), generation);
+          continue;
+        }
+        await DeviceSecret.instance.enroll(mac);
+        if (!_run || generation != _generation) return;
+        final BoxWaitResult result = await BoxSignalClient.wait(
+          client: client,
+          mac: mac,
+          after: _boxCursor,
+          fleetAfter: _fleetCursor,
+          version: await _version(),
+          build: '0',
+        );
+        if (!_run || generation != _generation) return;
+        if (result.unauthorized || result.rateLimited) {
+          // Ancien Worker, secret refusé, ou trop d'ouvertures :
+          // la lecture courte continue. On réessaie le canal plus tard.
+          _channelUp = false;
+          await _pause(const Duration(seconds: 30), generation);
+          continue;
+        }
+        if (result.offline) {
+          // Reprise courte : 1 s, puis 2, 4… plafonné à 30 s.
+          // On ne martèle pas le réseau, et un retour de Wi-Fi
+          // n'attend pas le plafond de 45 s de la lecture courte.
+          _channelUp = false;
+          _signalFailures++;
+          final int shift = _signalFailures > 5 ? 5 : _signalFailures;
+          final int seconds = 1 << (shift - 1);
+          await _pause(
+            Duration(seconds: seconds > 30 ? 30 : seconds),
+            generation,
+          );
+          continue;
+        }
+        _channelUp = true;
+        _signalFailures = 0;
+        lastSignalBody = result.raw;
+        if (result.orders.isEmpty) continue;
+        final bool applied = await _applyOrders(result.orders);
+        if (!applied) {
+          await _pause(const Duration(seconds: 2), generation);
+          continue;
+        }
+        final List<int> boxIds = <int>[
+          for (final BoxOrder o in result.orders)
+            if (!o.fleet) o.id,
+        ];
+        final List<int> fleetIds = <int>[
+          for (final BoxOrder o in result.orders)
+            if (o.fleet) o.id,
+        ];
+        final bool acked = await BoxSignalClient.ack(
+          client: client,
+          mac: mac,
+          boxIds: boxIds,
+          fleetIds: fleetIds,
+        );
+        if (!acked) continue;
+        if (boxIds.isNotEmpty) {
+          _boxCursor = boxIds.reduce((int a, int b) => a > b ? a : b);
+        }
+        if (fleetIds.isNotEmpty) {
+          _fleetCursor = fleetIds.reduce((int a, int b) => a > b ? a : b);
+        }
+        await _saveCursors();
+      }
+    } finally {
+      client.close();
+      if (identical(_signalHttp, client)) _signalHttp = null;
+    }
+  }
+
+  Future<void> _pause(Duration delay, int generation) async {
+    final DateTime end = DateTime.now().add(delay);
+    while (_run && generation == _generation && DateTime.now().isBefore(end)) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+  }
+
+  /// Applique les ordres nouveaux. `false` = le statut n'a pas pu
+  /// être lu : on n'accuse pas, on réessaiera les mêmes numéros.
+  Future<bool> _applyOrders(List<BoxOrder> orders) async {
+    final List<Map<String, Object?>> boxMaps = <Map<String, Object?>>[
+      for (final BoxOrder o in orders)
+        if (!o.fleet) <String, Object?>{'id': o.id, 'kind': o.kind},
+    ];
+    final List<Map<String, Object?>> fleetMaps = <Map<String, Object?>>[
+      for (final BoxOrder o in orders)
+        if (o.fleet) <String, Object?>{'id': o.id, 'kind': o.kind},
+    ];
+    final List<Map<String, Object?>> freshBox =
+        freshCommands(boxMaps, _seenBox);
+    final List<Map<String, Object?>> freshFleet =
+        freshCommands(fleetMaps, _seenFleet);
+    final List<String> kinds = <String>[
+      for (final Map<String, Object?> m in freshBox) m['kind']! as String,
+      for (final Map<String, Object?> m in freshFleet) m['kind']! as String,
+    ];
+    final bool needStatus = kinds.any(kindNeedsStatus);
+    if (needStatus) {
+      // Une lecture déjà en vol a pu partir AVANT l'ordre. On la
+      // laisse finir, puis on relit : l'accusé ne part qu'avec
+      // l'état d'après le clic.
+      while (_tickBusy && _run) {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+      }
+      _timer?.cancel();
+      await _tick();
+      if (SubscriptionState.instance.syncHint == 'offline') return false;
+    }
+    for (final String kind in kinds) {
+      await _sideEffect(kind);
+      SignalInbox.instance.note(kind);
+    }
+    for (final Map<String, Object?> m in freshBox) {
+      _seenBox.add(m['id']! as int);
+    }
+    for (final Map<String, Object?> m in freshFleet) {
+      _seenFleet.add(m['id']! as int);
+    }
+    return true;
+  }
+
+  Future<void> _sideEffect(String kind) async {
+    final Set<SignalRefresh> plan = refreshesFor(kind);
+    try {
+      if (plan.contains(SignalRefresh.announcement)) {
+        await AnnouncementRepository.fetchLatest();
+      }
+      if (plan.contains(SignalRefresh.theme)) {
+        await RemoteThemeRepository.fetchAndApply();
+      }
+      if (plan.contains(SignalRefresh.home)) {
+        await HomeLayoutRepository.instance.refresh();
+      }
+      if (plan.contains(SignalRefresh.forceUpdate)) {
+        final bool must = await ForceUpdateChecker.instance.mustUpdate();
+        SignalInbox.instance.setForceBlocked(must);
+      }
+      if (plan.contains(SignalRefresh.featured)) {
+        await FeaturedRepository.instance.refresh();
+      }
+      if (plan.contains(SignalRefresh.ad)) {
+        await StartupAdRepository.instance.fetch();
+      }
+      if (plan.contains(SignalRefresh.pricing)) {
+        await PricingRepository.fetch();
+      }
+      if (plan.contains(SignalRefresh.feedback)) {
+        await FeedbackRepository.instance.reload();
+      }
+      if (plan.contains(SignalRefresh.servers)) {
+        await DefaultServersApi.fetch(forceRefresh: true);
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Signal] effet $kind : $e');
+    }
+  }
+
+  Future<String> _version() async {
+    if (_versionTried) return _appVersion;
+    _versionTried = true;
+    try {
+      final PackageInfo info = await PackageInfo.fromPlatform();
+      _appVersion = info.version;
+    } catch (_) {
+      _appVersion = '';
+    }
+    return _appVersion;
+  }
+
+  Future<void> _loadCursors() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      _boxCursor = prefs.getInt(_kBoxCursor) ?? 0;
+      _fleetCursor = prefs.getInt(_kFleetCursor) ?? 0;
+    } catch (_) {
+      _boxCursor = 0;
+      _fleetCursor = 0;
+    }
+  }
+
+  Future<void> _saveCursors() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kBoxCursor, _boxCursor);
+      await prefs.setInt(_kFleetCursor, _fleetCursor);
+    } catch (_) {
+      // Le numéro reste en mémoire jusqu'au prochain redémarrage.
+    }
   }
 }

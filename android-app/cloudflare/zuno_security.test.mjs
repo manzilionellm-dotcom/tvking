@@ -312,5 +312,34 @@ body = await r.json();
 ok(r.status === 200 && body.source && body.source.password === PLAYLIST_PASS,
   'propriétaire lit toujours la source de la box');
 
+r = await worker.fetch(new Request('https://app.x/api/v1/boxes/live'), env, ctx);
+ok(r.status === 401, 'état en direct sans jeton → 401');
+
+r = await worker.fetch(new Request(`https://app.x/api/box/wait/${MAC}?timeout=200`), env, ctx);
+body = await r.json();
+ok(r.status === 401 && body.error === 'device_secret_required'
+  && !JSON.stringify(body).includes(PLAYLIST_PASS),
+  'attente sans secret de box → 401');
+
+r = await worker.fetch(new Request(`https://app.x/api/box/wait/${MAC}?timeout=200`, {
+  headers: { 'X-Device-Secret': 'pas-le-bon-secret-0123456789abcdef' },
+}), env, ctx);
+ok(r.status === 401, 'attente avec un mauvais secret → 401');
+
+r = await worker.fetch(new Request(`https://app.x/api/box/ack/${MAC}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: '{}',
+}), env, ctx);
+ok(r.status === 401, 'accusé sans secret → 401');
+
+r = await worker.fetch(new Request(`https://app.x/api/box/wait/${MAC}?timeout=200`, {
+  headers: { 'X-Device-Secret': BOX_SECRET },
+}), env, ctx);
+body = await r.json();
+ok(r.status === 200 && body.timeout === true && Array.isArray(body.box)
+  && !JSON.stringify(body).includes(PLAYLIST_PASS),
+  'attente avec le secret, rien en file, pas de mot de passe');
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

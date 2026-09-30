@@ -2,10 +2,11 @@ import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  devicesApi, activateApi, flagEmoji,
+  devicesApi, boxesApi, activateApi, flagEmoji,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
-  type DeviceLicense, type DevicePresence, ApiError,
+  type DeviceLicense, type DevicePresence, type BoxLiveRow, ApiError,
 } from '@/lib/api';
+import { liveSummary } from '@/lib/boxLive';
 import { formatDateTime } from '@/lib/utils';
 
 /// Libellés FR lisibles des plans (clé technique → texte).
@@ -23,6 +24,8 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [activateFor, setActivateFor] = useState<Device | null>(null);
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
   const [detailFor, setDetailFor] = useState<Device | null>(null);
+  // État en direct, rafraîchi sans recharger la page.
+  const [live, setLive] = useState<Record<string, BoxLiveRow>>({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -39,6 +42,26 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     const id = setTimeout(load, 200); // petit debounce sur la recherche
     return () => clearTimeout(id);
   }, [load]);
+
+  // Le tableau des MAC ne clignote pas : seule la colonne « Direct »
+  // bouge, toutes les 2,5 s.
+  useEffect(() => {
+    let stop = false;
+    async function tick() {
+      try {
+        const r = await boxesApi.live();
+        if (stop) return;
+        const next: Record<string, BoxLiveRow> = {};
+        for (const item of r.items) next[item.mac] = item;
+        setLive(next);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) onLogout();
+      }
+    }
+    tick();
+    const id = setInterval(tick, 2500);
+    return () => { stop = true; clearInterval(id); };
+  }, [onLogout]);
 
   async function setBlock(d: Device, status: 'active' | 'frozen' | 'banned') {
     setBusyId(d.id); setErr(null);
@@ -81,6 +104,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
               <th className="px-4 py-3">Client</th>
               <th className="px-4 py-3">Appareil</th>
               <th className="px-4 py-3">Statut</th>
+              <th className="px-4 py-3">Direct</th>
               <th className="px-4 py-3">Dernière vue</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
@@ -88,13 +112,13 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
           <tbody className="divide-y divide-white/5">
             {loading && Array.from({ length: 5 }).map((_, i) => (
               <tr key={i} className="bg-obsidian">
-                <td className="px-4 py-3" colSpan={6}>
+                <td className="px-4 py-3" colSpan={7}>
                   <div className="h-4 w-full animate-pulse rounded bg-white/5" />
                 </td>
               </tr>
             ))}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-tertiary">
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-ink-tertiary">
                 Aucun appareil pour l'instant. Dès qu'une app contacte le serveur,
                 sa MAC apparaît ici automatiquement.
               </td></tr>
@@ -130,6 +154,9 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                     )}
                   </td>
                   <td className="px-4 py-3"><DeviceStatus status={st} /></td>
+                  <td className="px-4 py-3 text-xs text-ink-secondary">
+                    {live[d.mac] ? liveSummary(live[d.mac]) : '…'}
+                  </td>
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
@@ -165,6 +192,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
       {detailFor && (
         <DeviceDetailModal
           device={detailFor}
+          live={live[detailFor.mac]}
           busy={busyId === detailFor.id}
           onClose={() => setDetailFor(null)}
           onActivate={() => { const d = detailFor; setDetailFor(null); setActivateFor(d); }}
@@ -188,9 +216,10 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
 //  client a ajouté lui-même une liste M3U/Xtream depuis l'app (« Mes sources »),
 //  celle-ci reste stockée localement sur sa TV et n'est pas remontée au serveur.
 function DeviceDetailModal({
-  device, busy, onClose, onActivate, onBlock, onRemove,
+  device, live, busy, onClose, onActivate, onBlock, onRemove,
 }: {
   device: Device;
+  live?: BoxLiveRow;
   busy: boolean;
   onClose: () => void;
   onActivate: () => void;
@@ -229,6 +258,12 @@ function DeviceDetailModal({
           </div>
           <DeviceStatus status={st} />
         </div>
+
+        {live && (
+          <p className="mb-4 rounded-lg border border-white/10 bg-obsidian px-3 py-2 text-sm text-ink-secondary">
+            {liveSummary(live)}
+          </p>
+        )}
 
         {/* ----- Abonnement + Présence live (résumé d'un coup d'œil) ----- */}
         <div className="mb-4 grid grid-cols-2 gap-3">
