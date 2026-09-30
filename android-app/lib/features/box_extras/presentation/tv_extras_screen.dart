@@ -150,8 +150,8 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
                 )
               : boxText(
                   context,
-                  'Coupé, c\'est le réglage d\'origine. OK pour adoucir les écarts de volume entre chaînes.',
-                  'Off, which is the original setting. OK to soften volume jumps between channels.',
+                  'Coupé, c\'est le réglage d\'origine. OK pour baisser un peu les voix trop fortes. Le son surround envoyé tel quel à la barre de son ne change pas.',
+                  'Off, which is the original setting. OK to ease voices that are too loud. Surround sent as-is to a soundbar does not change.',
                 ),
           onSelect: _toggleVoice,
         ),
