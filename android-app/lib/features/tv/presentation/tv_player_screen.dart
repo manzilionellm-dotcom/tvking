@@ -9,8 +9,9 @@
 //  la vidéo du chemin texture → l'image passe, comme dans IPTV Smarters & co.
 //
 //  Réglages stabilité (côté natif, cf. NativeVideoView.kt) :
-//    1) décodage vidéo matériel MediaCodec + repli si l'init échoue
-//       (pas de décodeur vidéo FFmpeg : il bloquait des chaînes sur le logo) ;
+//    1) décodage vidéo matériel MediaCodec, repli logiciel si l'image
+//       échoue, FFmpeg vidéo seulement si le .so le déclare (il ne le
+//       fait pas dans cette version : le son FFmpeg, lui, reste) ;
 //    2) tampon INCHANGÉ (min 5 s / max 45 s, démarrage 1 s, reprise 2 s) —
 //       l'allonger a déjà laissé des chaînes sur le chargement ;
 //    3) watchdog 15 s : aucune progression → reconnexion auto (ré-ouvre l'URL).
@@ -30,7 +31,11 @@ import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
+import '../../box_extras/box_text.dart';
 import '../../player/data/clear_voice_flag.dart';
+import '../../player/data/image_prefs.dart';
+import '../../player/domain/image_engine.dart';
+import '../../player/domain/live_bar_slots.dart';
 import '../../player/domain/reconnect_plan.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
@@ -92,7 +97,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // déplacent le surlignage, OK active. Ordre : 0=Retour 1=Préc 2=Lecture/Pause
   // 3=Suiv 4=REC 5=Favori.
   int _btnFocus = -1;
-  static const int _btnCountBase = 3;
+  int _seenReopen = 0;
+  String _shownEngine = 'hardware';
+  String? _engineNote;
   int? get _startBtn => (_missed?.canRewind == true || _catchup) ? 3 : null;
   MissedSummary? _missed;
   bool _catchup = false;
@@ -212,6 +219,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       if (mounted) _controller.setClearVoice(ClearVoiceFlag.value);
     }));
     ClearVoiceFlag.changes.addListener(_onClearVoice);
+    ImagePrefs.changes.addListener(_onImagePrefs);
+    unawaited(ImagePrefs.load().then((_) {
+      if (mounted) _onImagePrefs();
+    }));
     // Beaucoup d'abonnements n'autorisent qu'UNE connexion : un
     // téléchargement de film en cours ferait refuser le direct (« le cinéma
     // marche mais pas les chaînes »). On le met en pause le temps du direct,
@@ -247,6 +258,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   void _onClearVoice() {
     _controller.setClearVoice(ClearVoiceFlag.value);
+  }
+
+  void _onImagePrefs() {
+    _controller.setImageEngine(ImagePrefs.engine.wire);
+    _controller.setFrameRateMatch(ImagePrefs.frameRateMatch);
   }
 
   // Couper le son quand on QUITTE / minimise l'app (Home, multitâche) : pas de
@@ -291,6 +307,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _controller.removeListener(_onPlayer);
     subtitlesFlag.changes.removeListener(_onSubsFlag);
     ClearVoiceFlag.changes.removeListener(_onClearVoice);
+    ImagePrefs.changes.removeListener(_onImagePrefs);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
     _controller.dispose();
@@ -308,6 +325,31 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // croirait que la mauvaise chaîne est prête et lancerait une
     // reconnexion inutile.
     if (_zapHolding) return;
+    if (_controller.reopenCount != _seenReopen) {
+      _seenReopen = _controller.reopenCount;
+      _lastProgress = DateTime.now();
+    }
+    if (_controller.engineExhausted) {
+      if (!_fatal && mounted) {
+        setState(() {
+          _fatal = true;
+          _buffering = false;
+        });
+      }
+      return;
+    }
+    if (_controller.imageEngineWire != _shownEngine && mounted) {
+      setState(() => _shownEngine = _controller.imageEngineWire);
+    }
+    if (_controller.engineRejectedFfmpeg && _engineNote == null && mounted) {
+      setState(() {
+        _engineNote = boxText(
+          context,
+          'FFmpeg vidéo n\'est pas dans cette version. On reste sur le décodeur actuel.',
+          'FFmpeg video is not in this version. Staying on the current decoder.',
+        );
+      });
+    }
     // Progression réelle → « pas gelé ». La lecture est repartie : on remet à
     // zéro le budget de reconnexion (et on lève un éventuel état d'erreur).
     if (_controller.position != _lastPos && !_controller.hasError) {
@@ -676,6 +718,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _cycleSubtitles();
       return;
     }
+    if (i == _engineBtn(context)) {
+      _cycleEngine();
+      return;
+    }
     switch (i) {
       case 0:
         _openGuide();
@@ -689,17 +735,53 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
   }
 
-  int _btnCount(BuildContext context) {
-    int n = _btnCountBase;
-    if (_startBtn != null) n++;
-    if (_subsBtn(context) != null) n++;
-    return n;
-  }
+  bool get _showStart => _startBtn != null;
+
+  int _engineBtn(BuildContext context) => LiveBarSlots.engine(
+        showStart: _showStart,
+        showSubs: _subsBtn(context) != null,
+      );
+
+  int _btnCount(BuildContext context) => LiveBarSlots.count(
+        showStart: _showStart,
+        showSubs: _subsBtn(context) != null,
+      );
 
   int? _subsBtn(BuildContext context) {
     if (!_subsOn || !_subsReady) return null;
     if (_userTextTracks(context).isEmpty) return null;
-    return _startBtn == null ? 3 : 4;
+    return LiveBarSlots.subs(showStart: _showStart, showSubs: true);
+  }
+
+  void _cycleEngine() {
+    final ImageEngine current = ImageEngine.fromWire(_controller.imageEngineWire);
+    final EngineStep step = EngineStep.next(
+      current,
+      ffmpegVideo: _controller.ffmpegVideoReady,
+    );
+    unawaited(ImagePrefs.setEngine(step.engine));
+    _controller.setImageEngine(step.engine.wire);
+    setState(() {
+      _engineNote = step.ffmpegMissing
+          ? boxText(
+              context,
+              'FFmpeg vidéo n\'est pas dans cette version. Retour au décodeur de la box.',
+              'FFmpeg video is not in this version. Back to the box decoder.',
+            )
+          : null;
+    });
+    _showOverlayTemporarily();
+  }
+
+  String _engineLabel() {
+    switch (ImageEngine.fromWire(_controller.imageEngineWire)) {
+      case ImageEngine.software:
+        return 'Logiciel';
+      case ImageEngine.ffmpeg:
+        return 'FFmpeg';
+      case ImageEngine.hardware:
+        return 'Matériel';
+    }
   }
 
   List<NativeTrack> _userTextTracks(BuildContext context) {
@@ -1216,6 +1298,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                         onSubtitles: _subsBtn(context) == null ? null : _cycleSubtitles,
                         subtitlesLabel: _subsLabel(context),
                         subtitlesOn: _userTextTracks(context).any((NativeTrack t) => t.selected),
+                        onEngine: _cycleEngine,
+                        engineLabel: _engineLabel(),
+                        engineFocused: _btnFocus == _engineBtn(context),
+                        engineNote: _engineNote,
                       ),
                     ),
                   ),
@@ -1490,6 +1576,10 @@ class _ControlsBar extends StatelessWidget {
     this.onSubtitles,
     this.subtitlesLabel,
     this.subtitlesOn = false,
+    this.onEngine,
+    this.engineLabel,
+    this.engineFocused = false,
+    this.engineNote,
   });
 
   final Channel channel;
@@ -1512,6 +1602,12 @@ class _ControlsBar extends StatelessWidget {
   final VoidCallback? onSubtitles;
   final String? subtitlesLabel;
   final bool subtitlesOn;
+
+  /// Dernier bouton : moteur d'image (matériel / logiciel / FFmpeg).
+  final VoidCallback? onEngine;
+  final String? engineLabel;
+  final bool engineFocused;
+  final String? engineNote;
 
   @override
   Widget build(BuildContext context) {
@@ -1539,6 +1635,14 @@ class _ControlsBar extends StatelessWidget {
               _channelNumber(),
             ],
           ),
+          if (engineNote != null && engineNote!.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 10),
+            Text(
+              engineNote!,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: TvDimens.label, color: TvTokens.accentBright),
+            ),
+          ],
           const SizedBox(height: 18),
           // ---- Commandes utiles en DIRECT uniquement : Guide, REC, Favori ----
           // (Lecture/pause et avance/retour n'ont aucun sens en live → retirés.)
@@ -1591,6 +1695,15 @@ class _ControlsBar extends StatelessWidget {
                   onTap: onSubtitles!,
                   active: subtitlesOn,
                   focused: focusedIndex == (onStart != null ? 4 : 3),
+                ),
+              ],
+              if (onEngine != null) ...<Widget>[
+                const SizedBox(width: 34),
+                _CtrlButton(
+                  icon: Icons.memory_rounded,
+                  label: engineLabel ?? 'Image',
+                  onTap: onEngine!,
+                  focused: engineFocused,
                 ),
               ],
             ],

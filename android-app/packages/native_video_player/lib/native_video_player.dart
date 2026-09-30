@@ -89,6 +89,17 @@ abstract class NativeVideoBackend {
   /// n'a pas ce traitement : l'implémentation vide est voulue.
   void setClearVoice(bool enabled) {}
 
+  /// Moteur vidéo (`hardware`, `software`, `ffmpeg`). Le PC ignore :
+  /// libmpv a son propre décodeur.
+  void setImageEngine(String engine) {}
+
+  /// Caler la fréquence de l'écran sur le flux. Ignoré hors Android.
+  void setFrameRateMatch(bool enabled) {}
+
+  /// Contraste léger. Ignoré hors Android, et refusé sur la box tant
+  /// que le filtre quitterait la Surface.
+  void setLightContrast(bool enabled) {}
+
   /// Le widget qui affiche la vidéo.
   Widget buildView(BuildContext context);
   void dispose();
@@ -205,6 +216,33 @@ class NativeVideoController extends ChangeNotifier {
   /// Texte du sous-titre à afficher maintenant ('' = rien).
   String cues = '';
 
+  /// Moteur vidéo en cours (`hardware` / `software` / `ffmpeg`).
+  String imageEngineWire = 'hardware';
+
+  /// Le .so sait décoder la vidéo. Faux avec le binaire audio de la v104.
+  bool ffmpegVideoReady = false;
+
+  /// Le matériel accepte un filtre de contraste sans quitter la Surface.
+  /// Faux dans cette version.
+  bool contrastHardware = false;
+
+  /// Dernier appui « FFmpeg » refusé parce que la vidéo n'est pas dans le .so.
+  bool engineRejectedFfmpeg = false;
+
+  /// Plus aucun moteur vidéo n'a donné d'image. L'écran s'arrête
+  /// (pas de reconnexion qui remettrait le même décodeur).
+  bool engineExhausted = false;
+
+  /// Nombre de réouvertures faites par le natif (repli décodeur).
+  /// L'écran remet son délai « image figée » à chaque cran.
+  int reopenCount = 0;
+
+  /// Nom du décodeur vidéo créé (pour l'écran, pas une mesure de qualité).
+  String videoDecoderName = '';
+
+  String _imageEngine = 'hardware';
+  bool _frameRateMatch = false;
+
   // Paramètres du dernier setUrl (rejoués si la vue native arrive après).
   Map<String, dynamic>? _pendingArgs;
 
@@ -215,6 +253,10 @@ class NativeVideoController extends ChangeNotifier {
     final MethodChannel ch = MethodChannel('native_video_player/$viewId');
     _channel = ch;
     ch.setMethodCallHandler(_onNativeCall);
+    // Avant l'URL : le premier décodeur est déjà le bon (pas un
+    // second démarrage si le choix n'est pas le matériel).
+    ch.invokeMethod<void>('setEngine', _imageEngine);
+    ch.invokeMethod<void>('setFrameRateMatch', _frameRateMatch);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;
@@ -262,6 +304,13 @@ class NativeVideoController extends ChangeNotifier {
       if (got == _epoch) _ackedEpoch = got;
       return;
     }
+    // Ces messages décrivent le moteur, pas une image de l'ancienne
+    // chaîne : on les prend même entre deux zap.
+    if (method == 'engine' || method == 'imageCaps' || method == 'contrast') {
+      _readEngine(arguments);
+      if (!_disposed) notifyListeners();
+      return;
+    }
     if (!_acceptEvents) return;
     final _Ev call = _Ev(method, arguments);
     switch (call.method) {
@@ -302,6 +351,16 @@ class NativeVideoController extends ChangeNotifier {
         duration = Duration(milliseconds: call.arguments as int);
       case 'cues':
         cues = (call.arguments as String?) ?? '';
+      case 'reopen':
+        firstFrame = false;
+        isBuffering = true;
+        hasError = false;
+        reopenCount++;
+      case 'engineExhausted':
+        engineExhausted = true;
+        isBuffering = false;
+      case 'videoDecoder':
+        videoDecoderName = (call.arguments as String?) ?? '';
       case 'tracks':
         final List<dynamic> raw = call.arguments as List<dynamic>;
         tracks = <NativeTrack>[
@@ -387,6 +446,8 @@ class NativeVideoController extends ChangeNotifier {
     }
     final String? lang = _preferredAudio ?? appAudioLanguage;
     hasError = false;
+    engineExhausted = false;
+    engineRejectedFfmpeg = false;
     isEnded = false;
     nativeRetrying = false;
     // Reconnexion de la MÊME lecture : on ne remet pas firstFrame à
@@ -465,6 +526,52 @@ class NativeVideoController extends ChangeNotifier {
       return;
     }
     _channel?.invokeMethod<void>('setClearVoice', enabled);
+  }
+
+  /// `hardware`, `software` ou `ffmpeg`. Mémorisé pour la vue pas
+  /// encore créée, envoyé tout de suite si elle l'est.
+  void setImageEngine(String engine) {
+    final String wire = engine.isEmpty ? 'hardware' : engine;
+    _imageEngine = wire;
+    imageEngineWire = wire;
+    if (_backend != null) {
+      _backend!.setImageEngine(wire);
+      return;
+    }
+    _channel?.invokeMethod<void>('setEngine', wire);
+  }
+
+  void setFrameRateMatch(bool enabled) {
+    _frameRateMatch = enabled;
+    if (_backend != null) {
+      _backend!.setFrameRateMatch(enabled);
+      return;
+    }
+    _channel?.invokeMethod<void>('setFrameRateMatch', enabled);
+  }
+
+  void setLightContrast(bool enabled) {
+    if (_backend != null) {
+      _backend!.setLightContrast(enabled);
+      return;
+    }
+    _channel?.invokeMethod<void>('setContrast', enabled);
+  }
+
+  void _readEngine(Object? arguments) {
+    if (arguments is! Map) return;
+    final String? name = arguments['name'] as String? ?? arguments['engine'] as String?;
+    if (name != null && name.isNotEmpty) {
+      imageEngineWire = name;
+      _imageEngine = name;
+    }
+    if (arguments.containsKey('ffmpegVideo')) {
+      ffmpegVideoReady = arguments['ffmpegVideo'] == true;
+    }
+    if (arguments.containsKey('contrastHardware')) {
+      contrastHardware = arguments['contrastHardware'] == true;
+    }
+    engineRejectedFfmpeg = arguments['rejected'] == 'ffmpeg';
   }
 
   /// Coupe les sous-titres.

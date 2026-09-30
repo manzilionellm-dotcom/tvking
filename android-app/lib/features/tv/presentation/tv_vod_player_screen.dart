@@ -28,7 +28,10 @@ import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
+import '../../box_extras/box_text.dart';
 import '../../player/data/clear_voice_flag.dart';
+import '../../player/data/image_prefs.dart';
+import '../../player/domain/image_engine.dart';
 import '../../player/domain/reconnect_plan.dart';
 
 import '../../../core/blackbox/black_box.dart';
@@ -124,6 +127,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       if (mounted) _c.setClearVoice(ClearVoiceFlag.value);
     }));
     ClearVoiceFlag.changes.addListener(_onClearVoice);
+    ImagePrefs.changes.addListener(_onImagePrefs);
+    unawaited(ImagePrefs.load().then((_) {
+      if (mounted) _onImagePrefs();
+    }));
     _next = _computeNext();
     unawaited(_start(_item, widget.startAt, local: widget.localPath));
     _saveTimer = Timer.periodic(const Duration(seconds: 10), (_) => _saveProgress());
@@ -132,6 +139,39 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
 
   void _onClearVoice() {
     _c.setClearVoice(ClearVoiceFlag.value);
+  }
+
+  void _onImagePrefs() {
+    _c.setImageEngine(ImagePrefs.engine.wire);
+    _c.setFrameRateMatch(ImagePrefs.frameRateMatch);
+  }
+
+  void _cycleEngine() {
+    final EngineStep step = EngineStep.next(
+      ImageEngine.fromWire(_c.imageEngineWire),
+      ffmpegVideo: _c.ffmpegVideoReady,
+    );
+    unawaited(ImagePrefs.setEngine(step.engine));
+    _c.setImageEngine(step.engine.wire);
+    _showToast(step.ffmpegMissing
+        ? boxText(
+            context,
+            'FFmpeg vidéo n\'est pas dans cette version.',
+            'FFmpeg video is not in this version.',
+          )
+        : boxText(context, 'Moteur : ${_engineLabel()}', 'Engine: ${_engineLabel()}'));
+    _showOverlay();
+  }
+
+  String _engineLabel() {
+    switch (ImageEngine.fromWire(_c.imageEngineWire)) {
+      case ImageEngine.software:
+        return 'Logiciel';
+      case ImageEngine.ffmpeg:
+        return 'FFmpeg';
+      case ImageEngine.hardware:
+        return 'Matériel';
+    }
   }
 
   @override
@@ -161,6 +201,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _vodTimer?.cancel();
     _c.removeListener(_onPlayer);
     ClearVoiceFlag.changes.removeListener(_onClearVoice);
+    ImagePrefs.changes.removeListener(_onImagePrefs);
     _c.dispose();
     ForegroundPlayback.unlock();
     _focus.dispose();
@@ -242,6 +283,15 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
 
   void _onPlayer() {
     if (!mounted) return;
+    // Moteur épuisé (matériel, logiciel, FFmpeg) : plus de tentative.
+    // Une erreur de flux, elle, attend 1 s, 2 s, 4 s, 8 s et garde
+    // l'image. Le message « lecture impossible » part quand ce budget
+    // est fini, dans [_armVodRetry].
+    if (_c.engineExhausted && !_fatal) {
+      BlackBox.instance.warn('CINEMA', 'lecture impossible ${_item.id}');
+      _fatal = true;
+      _overlay = true;
+    }
     if (_c.isPlaying && _c.firstFrame && !_c.hasError) {
       _vodAttempts = 0;
       if (_vodArmed) {
@@ -446,6 +496,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
             label: context.l10n.tvCinemaNextEpisode,
             run: () => unawaited(_playNext()),
           ),
+        (
+          icon: Icons.memory_rounded,
+          label: _engineLabel(),
+          run: _cycleEngine,
+        ),
       ];
 
   // ---------------------------------------------------------
