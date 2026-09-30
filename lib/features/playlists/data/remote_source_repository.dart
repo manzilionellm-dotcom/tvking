@@ -24,6 +24,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/update/build_flags.dart';
@@ -32,6 +33,7 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../../subscription/data/subscription_state.dart';
+import '../domain/panel_source_decision.dart';
 import '../domain/playlist.dart';
 import 'source_opt_outs.dart';
 import 'import_progress.dart';
@@ -117,8 +119,13 @@ abstract final class RemoteSourceRepository {
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return RemoteSyncResult.networkError;
 
-      final Map<String, dynamic> body =
-          jsonDecode(resp.body) as Map<String, dynamic>;
+      final Object? decoded = jsonDecode(resp.body);
+      if (decoded is! Map) return RemoteSyncResult.networkError;
+      final Map<String, dynamic> body = decoded is Map<String, dynamic>
+          ? decoded
+          : decoded.map(
+              (Object? k, Object? v) => MapEntry<String, dynamic>('$k', v),
+            );
 
       // AVANT le verrou : une MAC tombstonée renvoie blocked + le
       // nouveau numéro. Si on markBlocked d'abord, l'écran reste
@@ -161,6 +168,14 @@ abstract final class RemoteSourceRepository {
       // pendant que la box était éteinte s'applique ici, à son réveil.
       await _applyOrders(mac, body['orders']);
 
+      // Liste vidée AU PANEL : on retire seulement ce que le panel
+      // avait posé (et les cibles d'ordres). Une liste ajoutée à la
+      // main, qui n'est dans aucun des deux, reste.
+      if (panelClearedSources(body)) {
+        await _dropCleared(body['orders']);
+        return RemoteSyncResult.noSource;
+      }
+
       final Object? list = body['sources'];
       if (list is List && list.isNotEmpty) {
         // Même boucle que applySources (règle du labo comprise) : une seule
@@ -197,7 +212,11 @@ abstract final class RemoteSourceRepository {
       final String kind = (o['kind'] as String?) ?? '';
       final Map<String, dynamic> t =
           (o['target'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-      if (id == null) continue;
+      if (id == null || id <= 0) continue;
+      if (!orderLooksValid(o)) {
+        done.add(id);
+        continue;
+      }
       try {
         final Playlist? target = _matchLocal(t);
         if (target != null && target.id != null) {
@@ -551,6 +570,7 @@ abstract final class RemoteSourceRepository {
           }
         }
         await _activateIfAsked(existingXtream, makeActive);
+        await _rememberProvision(ProvisionKey.xtream(server, user));
         return RemoteSyncResult.loaded;
       }
 
@@ -564,6 +584,7 @@ abstract final class RemoteSourceRepository {
           makeActive: makeActive,
         );
         if (kDebugMode) debugPrint('[RemoteSource] Xtream chargé ($server)');
+        await _rememberProvision(ProvisionKey.xtream(server, user));
         return RemoteSyncResult.loaded;
       } catch (e) {
         // Identifiants/serveur invalides, 0 chaîne… → le repo a rejeté.
@@ -591,6 +612,7 @@ abstract final class RemoteSourceRepository {
       }
       if (existingM3u != null) {
         await _activateIfAsked(existingM3u, makeActive);
+        await _rememberProvision(ProvisionKey.m3u(m3u));
         return RemoteSyncResult.loaded;
       }
 
@@ -603,6 +625,7 @@ abstract final class RemoteSourceRepository {
           makeActive: makeActive,
         );
         if (kDebugMode) debugPrint('[RemoteSource] M3U chargé');
+        await _rememberProvision(ProvisionKey.m3u(m3u));
         return RemoteSyncResult.loaded;
       } catch (e) {
         // URL M3U incomplète / provider injoignable / 0 chaîne.
@@ -611,5 +634,65 @@ abstract final class RemoteSourceRepository {
       }
     }
     return RemoteSyncResult.noSource;
+  }
+
+  static const String _kProvisioned = 'panel.provisioned_v1';
+
+  static Future<Set<ProvisionKey>> _loadProvisioned() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String> raw = prefs.getStringList(_kProvisioned) ?? <String>[];
+    return raw.map(ProvisionKey.parse).whereType<ProvisionKey>().toSet();
+  }
+
+  static Future<void> _rememberProvision(ProvisionKey key) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String> raw = prefs.getStringList(_kProvisioned) ?? <String>[];
+    if (raw.contains(key.wire)) return;
+    raw.add(key.wire);
+    await prefs.setStringList(_kProvisioned, raw);
+  }
+
+  static Future<void> _forgetProvision(Set<ProvisionKey> keys) async {
+    if (keys.isEmpty) return;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String> raw = prefs.getStringList(_kProvisioned) ?? <String>[];
+    final Set<String> drop = keys.map((ProvisionKey k) => k.wire).toSet();
+    raw.removeWhere(drop.contains);
+    await prefs.setStringList(_kProvisioned, raw);
+  }
+
+  /// Effacement explicite : retire les listes que le panel avait posées.
+  static Future<void> _dropCleared(Object? rawOrders) async {
+    final List<Map<String, dynamic>> orders = <Map<String, dynamic>>[];
+    if (rawOrders is List) {
+      for (final Object? o in rawOrders) {
+        if (o is Map<String, dynamic>) orders.add(o);
+      }
+    }
+    final Set<ProvisionKey> provisioned = await _loadProvisioned();
+    final Set<ProvisionKey> drop = keysToRemove(
+      explicitClear: true,
+      provisioned: provisioned,
+      orders: orders,
+    );
+    if (drop.isEmpty) return;
+    final List<Playlist> local =
+        await PlaylistRepository.instance.getAllPlaylists();
+    for (final Playlist p in local) {
+      if (p.id == null) continue;
+      final bool hit = drop.any((ProvisionKey k) => _playlistIs(p, k));
+      if (!hit) continue;
+      await PlaylistRepository.instance.deletePlaylist(p.id!);
+    }
+    await _forgetProvision(drop);
+  }
+
+  static bool _playlistIs(Playlist p, ProvisionKey key) {
+    if (key.kind == 'm3u') {
+      return p.type == PlaylistType.m3u && (p.m3uUrl ?? '') == key.m3uUrl;
+    }
+    return p.type == PlaylistType.xtream &&
+        (p.xtreamServer ?? '') == key.server &&
+        (p.xtreamUsername ?? '') == key.username;
   }
 }

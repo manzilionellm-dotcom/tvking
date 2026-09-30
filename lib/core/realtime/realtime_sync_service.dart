@@ -1029,6 +1029,13 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
       // Relève aussi la boîte de messages (un mot déposé pendant l'absence
       // s'affiche au retour à l'écran).
       unawaited(DeviceMessageRepository.fetchAndShow());
+      // Listes, annonces et thème : le socket a pu mourir en arrière-plan.
+      // On relit la source et la config tout de suite, sans attendre le
+      // sondage de 60 s. Mode sans échec : pas de ré-import lourd.
+      if (!BootGuard.instance.safeMode) {
+        unawaited(RemoteSourceRepository.sync());
+      }
+      unawaited(_refreshRemoteConfig());
       // Thème immersif : sur un boîtier TV allumé H24 (pas d'observateur de
       // cycle de vie propre), c'est ici qu'on fait rouler la couleur du jour
       // au retour à l'écran — si la date a changé, l'accent passe à la teinte

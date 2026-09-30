@@ -10,7 +10,9 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.content.pm.ApplicationInfo
 import android.os.Build
+import android.os.Debug
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -132,6 +134,18 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             // lecture réseau sans VPN ». Best-effort : toute erreur → false
             // (le Dart ne bloque jamais une lecture sur un doute natif).
             "isVpnActive" -> result.success(isVpnActive())
+            // Signaux de posture (débogage, émulateur, su). Le Dart les
+            // NOTE. Il ne coupe JAMAIS la lecture : un faux positif sur
+            // `su` ou un téléphone de développement ne doit pas punir
+            // un client. Toute erreur → carte vide, le Dart reste ouvert.
+            "getDevicePosture" -> {
+                val posture = try {
+                    devicePosture()
+                } catch (e: Exception) {
+                    hashMapOf<String, Any>()
+                }
+                result.success(posture)
+            }
             // PASSTHROUGH DOLBY / DTS (19/09/2026) : quels formats compressés
             // la sortie audio ACTUELLE accepte tels quels (HDMI, USB, ARC).
             // Noms au format `audio-spdif` de mpv. Liste vide = on décode
@@ -240,6 +254,61 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             return ArrayList()
         }
         return out
+    }
+
+    // =====================================================================
+    //  Posture de l'appareil — informatif, jamais un mur
+    // =====================================================================
+    //  Débogueur branché, image d'émulateur, options développeur, clés
+    //  de test, binaire `su`. Un faux positif est fréquent (`su` sur un
+    //  téléphone sain, émulateur du support). On renvoie les drapeaux.
+    //  L'application ne s'en sert pas pour refuser la lecture.
+    private fun devicePosture(): HashMap<String, Any> {
+        val ctx = appContext
+        val flags = ctx?.applicationInfo?.flags ?: 0
+        val debuggable = flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        val developer = try {
+            Settings.Global.getInt(
+                ctx?.contentResolver,
+                Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,
+                0,
+            ) == 1
+        } catch (e: Exception) {
+            false
+        }
+        return hashMapOf(
+            "debuggerConnected" to Debug.isDebuggerConnected(),
+            "emulator" to looksLikeEmulator(),
+            "developerOptions" to developer,
+            "testKeys" to (Build.TAGS?.contains("test-keys") == true),
+            "suPresent" to suBinaryPresent(),
+            "releaseBuild" to !debuggable,
+        )
+    }
+
+    private fun looksLikeEmulator(): Boolean {
+        val fp = Build.FINGERPRINT ?: ""
+        val model = Build.MODEL ?: ""
+        val product = Build.PRODUCT ?: ""
+        val hardware = Build.HARDWARE ?: ""
+        return fp.startsWith("generic") ||
+            fp.contains("emulator") ||
+            model.contains("Emulator") ||
+            model.contains("Android SDK built for") ||
+            hardware.contains("goldfish") ||
+            hardware.contains("ranchu") ||
+            product.contains("sdk_gphone") ||
+            product.contains("sdk")
+    }
+
+    private fun suBinaryPresent(): Boolean {
+        val paths = arrayOf(
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/sbin/su",
+            "/system/bin/failsafe/su",
+        )
+        return paths.any { java.io.File(it).exists() }
     }
 
     // =====================================================================

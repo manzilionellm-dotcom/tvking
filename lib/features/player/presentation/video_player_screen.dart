@@ -61,12 +61,17 @@ import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
 import '../../stats/data/engagement_service.dart';
 import '../../vod/data/playback_position_repository.dart';
+import '../../vod/domain/resume_start.dart';
 import '../../vod/data/vod_download_service.dart';
 import '../data/hls_preflight.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/audio_passthrough.dart';
 import '../data/player_settings.dart';
+import '../domain/decoder_fallback.dart';
+import '../domain/image_engine.dart';
+import '../domain/playback_lease.dart';
+import '../domain/reconnect_plan.dart';
 import '../data/stream_blocked_fallback.dart';
 import '../data/line_expiry.dart';
 import '../data/stream_diagnostics.dart';
@@ -152,6 +157,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   /// `_openGeneration` invalide les ouvertures dépassées par un zap.
   Future<void> _openChain = Future<void>.value();
   int _openGeneration = 0;
+
+  /// Un seul lecteur audible (pub de démarrage comprise) et un jeton
+  /// par ouverture : un jeton périmé ne remonte pas le son.
+  final PlaybackSession _audioSession = PlaybackSession();
+  int _audioToken = 0;
+  int? _leaseId;
+  bool _audible = false;
+  static const double _heldVolume = 100;
+
+  /// 1 s, 2 s, 4 s, 8 s. Une attente déjà posée n'en lance pas une seconde.
+  final ReconnectGate _reconnectGate = ReconnectGate();
+  final Set<ImageEngine> _triedEngines = <ImageEngine>{};
+  bool _sawFrame = false;
+  String? _lastOpenedUrl;
 
   /// Pré-attente fournisseur (parité TV, fluidité cinéma ↔ chaîne) : une
   /// seule fois par écran, à la première ouverture — jamais sur les zaps.
@@ -488,6 +507,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     // sera RECRÉÉE avant chaque ouverture suivante (instance jetable —
     // parade au leak de connexions FFmpeg, cf. _recyclePlayer).
     _createPlayer();
+    _leaseId = ExclusiveAudio.shared.register(() {
+      try {
+        unawaited(_player.setVolume(0));
+      } catch (_) {}
+    });
     _initStateAfterPlayer();
     // Après le player : ban / gel / expiration en cours de lecture → coupe.
     _licenseGuard = LicensePlaybackGuard(onRevoked: () {
@@ -637,20 +661,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           _currentChannel.isLive &&
           _playedChannelId == _currentChannel.id;
       if (liveDecoded) {
-        if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) return;
-        _watchdogRecoveries++;
         _sessionStats?.onRecovery(); // S3 : zombie devenu donnée
-        StreamDiagnostics.instance.recordEvent(
-          'player',
-          'Micro-coupure (EOF live) → reprise silencieuse '
-              '#$_watchdogRecoveries',
-          level: 'warn',
-        );
-        _eofReopenTimer?.cancel();
-        _eofReopenTimer = Timer(const Duration(milliseconds: 800), () {
-          if (!mounted || _hasError) return;
-          _openMedia(_effectiveUrl);
-        });
+        if (_reconnectGate.pending) return;
+        if (_scheduleSilentReopen('micro-coupure (EOF live)')) {
+          _watchdogRecoveries = _reconnectGate.attempt;
+        }
         return;
       }
       _maybeStartUpNext();
@@ -695,7 +710,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       // S3 : erreur FATALE classée par famille (réseau / token / source /
       // décodeur) dans les agrégats de session — la famille est la donnée
       // qui permettra (run futur) le retry intelligent par catégorie.
-      _sessionStats?.onError(PlaybackErrorTaxonomy.classify(e));
+      final PlaybackErrorCategory category = PlaybackErrorTaxonomy.classify(e);
+      _sessionStats?.onError(category);
+      if (_offerEngineSwitch(DecoderFallback.fromCategory(category))) {
+        _scheduleSilentReopen('décodeur refusé → moteur suivant');
+        return;
+      }
       // Si la chaîne n'a JAMAIS atteint la lecture, la source n'a peut-être
       // envoyé aucune vidéo décodable (chaîne vide / black.ts d'1 octet /
       // bloquée par le fournisseur) — MAIS ça peut aussi être une signature
@@ -1015,6 +1035,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       // appartiennent à l'ancien flux → nouvelle chaîne = retour en Auto.
       _sessionVideoTrackId = null;
       _sessionVideoTrackApplied = false;
+      _reconnectGate.reset();
+      _triedEngines.clear();
+      _sawFrame = false;
       // Nouvelle SESSION de lecture : le drapeau « a réellement joué »
       // repart à zéro (il ne doit jamais survivre à un zap, même en
       // revenant sur une chaîne qui avait décodé plus tôt).
@@ -1394,6 +1417,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     // FERMETURE ATTENDUE + instance mpv neuve AVANT toute connexion.
     await _recyclePlayer();
     if (!mounted || gen != _openGeneration) return;
+    if (_lastOpenedUrl != null && _lastOpenedUrl != realUrl) {
+      _reconnectGate.reset();
+      _triedEngines.clear();
+      _sawFrame = false;
+    }
+    _lastOpenedUrl = realUrl;
+    _claimExclusiveAudio();
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
     // Instance mpv neuve = repart en Auto → la qualité de session (si
     // choisie) devra être réappliquée quand le track-list arrivera.
@@ -1968,7 +1998,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
     // Décodage hardware si activé.
     // "auto-safe" = tente HW, retombe sur SW si pas dispo (sans bug visuel).
-    final String hwdec = s.hardwareDecode ? 'auto-safe' : 'no';
+    final String hwdec = hwdecFor(s.imageEngine);
 
     // Les properties libmpv ne sont accessibles que via la
     // surface native du player (pas l'API Dart de haut niveau).
@@ -2216,6 +2246,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _vodRelayFallbackTimer?.cancel();
     _eofReopenTimer?.cancel();
     _zapDebounce?.cancel();
+    final int? lease = _leaseId;
+    if (lease != null) {
+      ExclusiveAudio.shared.unregister(lease);
+      _leaseId = null;
+    }
     // Mode « Écouteurs » : on coupe le service audio de fond et on lève le
     // drapeau natif (sinon le son continuerait après la fermeture du
     // lecteur). Idempotent / fail-open.
@@ -2531,6 +2566,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     }
     // S3 : fige le TTFF de la session (seule la 1re frame compte).
     _sessionStats?.onFirstFrame();
+    // Son : seulement si cette ouverture est encore la plus récente.
+    // Une pub ou un zap plus vieux ne peut plus remonter le volume.
+    if (!_audible && _audioSession.isCurrent(_audioToken)) {
+      _audible = true;
+      _reconnectGate.reset();
+      unawaited(_player.setVolume(_heldVolume));
+    }
+    _sawFrame = true;
     if (_playedChannelId != _currentChannel.id) {
       _playedChannelId = _currentChannel.id;
 
@@ -2550,10 +2593,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       // > 95 % = terminé). Sans ça, chaque film redémarrait à 0:00 sur
       // le téléphone (le système existait mais n'était câblé qu'en TV).
       if (!_currentChannel.isLive) {
-        final Duration? resume =
-            PlaybackPositionRepository.instance.positionFor(_currentChannel.id);
-        if (resume != null && resume > const Duration(seconds: 5)) {
-          unawaited(_player.seek(resume));
+        final ResumeStart resume = ResumeStart.decide(
+          saved: PlaybackPositionRepository.instance
+              .positionFor(_currentChannel.id),
+        );
+        if (resume.resumes) {
+          unawaited(_player.seek(resume.at));
         }
       }
 
@@ -2709,6 +2754,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           _errorMessage =
               _blockMessage(context.l10n.playerStreamInterrupted);
         });
+      } else if (_offerEngineSwitch(PictureSignal.blackOrFrozen) &&
+          _scheduleSilentReopen('pas d\'image au démarrage')) {
+        return;
       } else {
         _declareChannelBlocked();
       }
@@ -2757,6 +2805,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       if (++_watchdogGoodTicks >= _kWatchdogGoodTicksToReset) {
         _watchdogGoodTicks = 0;
         _watchdogRecoveries = 0;
+        _reconnectGate.reset();
         // Photo fluidité périodique (~30 s de lecture stable).
         unawaited(_logPlaybackMetrics('lecture stable'));
       }
@@ -2768,12 +2817,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   void _watchdogRecover() {
     _watchdogStaleTicks = 0;
     _watchdogGoodTicks = 0;
-    if (_watchdogRecoveries >= _kWatchdogMaxRecoveries) {
+    if (_reconnectGate.pending) return;
+    if (_reconnectGate.attempt >= ReconnectPlan.maxSilent) {
       // Trop de reconnexions sans lecture saine durable → flux
       // probablement mort. On affiche l'erreur (bouton « réessayer »)
       // et on arrête de marteler le serveur.
       debugPrint(
-          '[Player] watchdog: abandon après $_watchdogRecoveries reconnexions');
+          '[Player] watchdog: abandon après ${_reconnectGate.attempt} '
+          'essais (plafond ${ReconnectPlan.maxSilent}, '
+          'ancien $_kWatchdogMaxRecoveries)');
       // Jamais joué → source vide/bloquée (diagnostic multi-UA avant
       // d'abandonner) ; sinon → vraie coupure réseau (message direct).
       if (_playedChannelId == _currentChannel.id) {
@@ -2789,16 +2841,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       }
       return;
     }
-    _watchdogRecoveries++;
+    final bool switched = _offerEngineSwitch(PictureSignal.blackOrFrozen);
+    if (!_scheduleSilentReopen(
+      switched ? 'image figée → autre moteur' : 'flux gelé',
+    )) {
+      return;
+    }
+    _watchdogRecoveries = _reconnectGate.attempt;
     debugPrint(
         '[Player] watchdog: flux gelé → reconnexion automatique #$_watchdogRecoveries');
     _sessionStats?.onRecovery(); // S3 : zombie devenu donnée
-    StreamDiagnostics.instance.recordEvent(
-      'watchdog',
-      'Flux gelé (position immobile) → reconnexion automatique '
-          '#$_watchdogRecoveries',
-      level: 'warn',
-    );
     if (mounted) {
       setState(() {
         _isBuffering = true;
@@ -2806,18 +2858,57 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         _behindLive = false;
       });
     }
+  }
+
+  /// Coupe les autres lecteurs et se tait jusqu'à la première image
+  /// de CETTE ouverture. Un jeton plus ancien ne pourra plus parler.
+  void _claimExclusiveAudio() {
+    _audioToken = _audioSession.open();
+    _audible = false;
+    final int? id = _leaseId;
+    if (id != null) ExclusiveAudio.shared.claim(id);
+    unawaited(_player.setVolume(0));
+  }
+
+  /// true = une réouverture est armée (1/2/4/8 s). false = une attente
+  /// est déjà en cours, ou le budget silencieux est épuisé.
+  bool _scheduleSilentReopen(String why) {
+    final int? delay = _reconnectGate.arm(maxAttempts: ReconnectPlan.maxSilent);
+    if (delay == null) return false;
+    _eofReopenTimer?.cancel();
     final String url = _effectiveUrl;
-    // H2 : un gel vient souvent d'un upstream SILENCIEUX (ni erreur ni EOF).
-    // Rouvrir mpv sur la MÊME session du relais ne relance pas l'amont
-    // (_ensureUpstream est un no-op tant que upstreamActive). On force donc
-    // une vraie reconnexion amont AVANT de rouvrir — live TS via relais
-    // uniquement (le HLS direct et la VOD ne passent pas par le relais).
-    if (widget.overrideUrl == null &&
-        _currentChannel.isLive &&
-        !HlsPreflight.isHlsUrl(url)) {
-      LocalStreamRelay.instance.forceReconnect(url);
-    }
-    _openMedia(url);
+    StreamDiagnostics.instance.recordEvent(
+      'watchdog',
+      '$why → réouverture dans $delay ms (essai ${_reconnectGate.attempt}/'
+          '${ReconnectPlan.maxSilent})',
+      level: 'warn',
+    );
+    _eofReopenTimer = Timer(Duration(milliseconds: delay), () {
+      if (!_reconnectGate.fire()) return;
+      if (!mounted) return;
+      if (widget.overrideUrl == null &&
+          _currentChannel.isLive &&
+          !HlsPreflight.isHlsUrl(url)) {
+        LocalStreamRelay.instance.forceReconnect(url);
+      }
+      _openMedia(url);
+    });
+    return true;
+  }
+
+  /// Matériel qui n'affiche rien → logiciel, une fois. Le réseau ne
+  /// change pas de moteur. true = on va rouvrir avec l'autre moteur.
+  bool _offerEngineSwitch(PictureSignal signal) {
+    final DecoderDecision decision = DecoderFallback.next(
+      current: PlayerSettings.instance.imageEngine,
+      signal: signal,
+      ffmpegVideoReady: PlayerSettings.ffmpegVideoInBinary,
+      tried: _triedEngines,
+    );
+    if (!decision.reopen) return false;
+    _triedEngines.add(PlayerSettings.instance.imageEngine);
+    unawaited(PlayerSettings.instance.setImageEngine(decision.engine));
+    return true;
   }
 
   Future<void> _openTracks() async {
@@ -3383,7 +3474,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                 //         zap, qui a le sien) -----
                 if (_isBuffering &&
                     !_hasError &&
-                    _playedChannelId == _currentChannel.id)
+                    _playedChannelId == _currentChannel.id &&
+                    ReconnectPlan.coverWithLoader(
+                      hadFrame: _sawFrame,
+                      sameUrl: _lastOpenedUrl == _effectiveUrl,
+                    ))
                   Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

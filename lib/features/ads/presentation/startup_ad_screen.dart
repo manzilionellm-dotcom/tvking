@@ -14,6 +14,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../player/domain/playback_lease.dart';
 import '../data/startup_ad_repository.dart';
 
 class StartupAdScreen extends StatefulWidget {
@@ -39,12 +40,19 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
   Timer? _safetyTimer;
   bool _canSkip = false;
   bool _done = false;
+  int? _leaseId;
 
   @override
   void initState() {
     super.initState();
     _player = Player();
     _controller = VideoController(_player);
+    // La pub et le film ne doivent pas parler en même temps. Quand le
+    // film prend le son, cette pub se tait.
+    _leaseId = ExclusiveAudio.shared.register(() {
+      unawaited(_player.setVolume(0));
+    });
+    ExclusiveAudio.shared.claim(_leaseId!);
     // Lance la vidéo (best-effort).
     unawaited(_player.open(Media(widget.config.url)));
 
@@ -79,6 +87,8 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
     _safetyTimer?.cancel();
     _completedSub?.cancel();
     _errorSub?.cancel();
+    final int? lease = _leaseId;
+    if (lease != null) ExclusiveAudio.shared.unregister(lease);
     _player.dispose();
     super.dispose();
   }
