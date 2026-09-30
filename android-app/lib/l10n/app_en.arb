@@ -604,6 +604,54 @@
   "tvBlackBoxHelp": "UP/DOWN: scroll · CH+/CH−: page · Copy = clipboard (paste it to support on WhatsApp).",
   "tvNavServer": "Server",
   "tvLegalTitle": "Legal notice & Terms",
+  "tvHelloMorning": "Good morning",
+  "tvHelloAfternoon": "Good afternoon",
+  "tvHelloEvening": "Good evening",
+  "tvHomeInvite": "Your channels, films and reminders will show up here.",
+  "tvHomeResume": "Resume",
+  "tvHomeContinue": "Continue watching",
+  "tvHomeFavorites": "Favorites",
+  "tvHomePopular": "Popular now",
+  "tvHomeReminders": "Your reminders",
+  "tvStartupTitle": "On startup",
+  "tvStartupHome": "Home",
+  "tvStartupLast": "Last channel",
+  "tvStartupHelpHome": "The app opens on this home. Press OK to resume the last channel instead. Back always returns here.",
+  "tvStartupHelpLast": "The app resumes the last channel. Back returns home. Press OK to open home on startup again.",
+  "tvReminderSet": "Reminder set: a notification 5 min before \"{title}\", and it stays on home.",
+  "@tvReminderSet": {
+    "placeholders": {
+      "title": {"type": "String"}
+    }
+  },
+  "tvReminderSavedOnly": "\"{title}\" is on home. The TV notification could not be turned on.",
+  "@tvReminderSavedOnly": {
+    "placeholders": {
+      "title": {"type": "String"}
+    }
+  },
+  "tvReminderCleared": "Reminder removed.",
+  "tvReminderTooLate": "Too late for a reminder.",
+  "tvReminderStarted": "Already started",
+  "tvReminderInMinutes": "In {minutes} min",
+  "@tvReminderInMinutes": {
+    "placeholders": {
+      "minutes": {"type": "int"}
+    }
+  },
+  "tvReminderInHours": "In {hours} h",
+  "@tvReminderInHours": {
+    "placeholders": {
+      "hours": {"type": "int"}
+    }
+  },
+  "tvReminderInHoursMinutes": "In {hours} h {minutes}",
+  "@tvReminderInHoursMinutes": {
+    "placeholders": {
+      "hours": {"type": "int"},
+      "minutes": {"type": "int"}
+    }
+  },
   "tvResumeLabel": "RESUME",
   "tvNowPlayingPrefix": "NOW · {title}",
   "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},

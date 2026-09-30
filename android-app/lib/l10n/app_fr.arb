@@ -2040,6 +2040,54 @@
   "tvBlackBoxHelp": "HAUT/BAS : défiler · CH+/CH− : page · Copier = presse-papiers (colle-le dans WhatsApp au support).",
   "tvNavServer": "Serveur",
   "tvLegalTitle": "Mentions légales & Conditions",
+  "tvHelloMorning": "Bonjour",
+  "tvHelloAfternoon": "Bon après-midi",
+  "tvHelloEvening": "Bonsoir",
+  "tvHomeInvite": "Vos chaînes, films et rappels reviendront ici.",
+  "tvHomeResume": "Reprendre",
+  "tvHomeContinue": "Continuer à regarder",
+  "tvHomeFavorites": "Favoris",
+  "tvHomePopular": "Populaire maintenant",
+  "tvHomeReminders": "Vos rappels",
+  "tvStartupTitle": "Au démarrage",
+  "tvStartupHome": "Accueil",
+  "tvStartupLast": "Dernière chaîne",
+  "tvStartupHelpHome": "L'app s'ouvre sur cet accueil. OK pour reprendre la dernière chaîne. Retour vous ramène toujours ici.",
+  "tvStartupHelpLast": "L'app reprend la dernière chaîne. Retour ramène à l'accueil. OK pour revenir à l'accueil au démarrage.",
+  "tvReminderSet": "Rappel posé : notification 5 min avant « {title} », et visible sur l'accueil.",
+  "@tvReminderSet": {
+    "placeholders": {
+      "title": {"type": "String"}
+    }
+  },
+  "tvReminderSavedOnly": "« {title} » est sur l'accueil. La notification du téléviseur n'a pas pu être activée.",
+  "@tvReminderSavedOnly": {
+    "placeholders": {
+      "title": {"type": "String"}
+    }
+  },
+  "tvReminderCleared": "Rappel retiré.",
+  "tvReminderTooLate": "C'est trop tard pour un rappel.",
+  "tvReminderStarted": "C'est commencé",
+  "tvReminderInMinutes": "Dans {minutes} min",
+  "@tvReminderInMinutes": {
+    "placeholders": {
+      "minutes": {"type": "int"}
+    }
+  },
+  "tvReminderInHours": "Dans {hours} h",
+  "@tvReminderInHours": {
+    "placeholders": {
+      "hours": {"type": "int"}
+    }
+  },
+  "tvReminderInHoursMinutes": "Dans {hours} h {minutes}",
+  "@tvReminderInHoursMinutes": {
+    "placeholders": {
+      "hours": {"type": "int"},
+      "minutes": {"type": "int"}
+    }
+  },
   "tvResumeLabel": "REPRENDRE",
   "tvNowPlayingPrefix": "EN CE MOMENT · {title}",
   "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},

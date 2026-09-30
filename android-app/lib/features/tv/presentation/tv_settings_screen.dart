@@ -25,6 +25,7 @@ import '../core/tv_dimens.dart';
 import '../../carousel/domain/carousel_config.dart';
 import '../../carousel/presentation/zuno_ring_carousel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../data/startup_preference.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
@@ -59,7 +60,20 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
+    StartupPreference.instance.load().then((_) {
+      if (mounted) setState(() {});
+    });
     _checkUpdate();
+  }
+
+  Future<void> _toggleStartup() async {
+    final bool next = !StartupPreference.instance.openLastChannel;
+    BlackBox.instance.info(
+      'DEMARRAGE',
+      next ? 'dernière chaîne' : 'accueil',
+    );
+    await StartupPreference.instance.setOpenLastChannel(next);
+    if (mounted) setState(() {});
   }
 
   Future<void> _checkUpdate() async {
@@ -226,6 +240,17 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         description:
             '${context.l10n.tvDeviceAddressHelp}  ·  OK = ${context.l10n.tvRefreshStatus}',
         onSelect: _busy ? () {} : _refresh,
+      ),
+      _SettingEntry(
+        icon: Icons.play_circle_outline_rounded,
+        title: context.l10n.tvStartupTitle,
+        value: StartupPreference.instance.openLastChannel
+            ? context.l10n.tvStartupLast
+            : context.l10n.tvStartupHome,
+        description: StartupPreference.instance.openLastChannel
+            ? context.l10n.tvStartupHelpLast
+            : context.l10n.tvStartupHelpHome,
+        onSelect: _toggleStartup,
       ),
       _SettingEntry(
         icon: Icons.dns_rounded,
