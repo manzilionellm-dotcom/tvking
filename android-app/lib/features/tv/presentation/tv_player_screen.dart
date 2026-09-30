@@ -28,6 +28,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
+import 'package:native_video_player/playback_lease.dart';
+
+import '../../player/data/clear_voice_flag.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -194,12 +197,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     super.initState();
     TvActivity.enter();
     BlackBox.instance.info('SCREEN', 'Lecteur ouvert');
+    // Tant que ce plein écran vit, l'aperçu ne crée pas un second lecteur.
+    ForegroundPlayback.lock();
     WidgetsBinding.instance.addObserver(this);
     // Le décodage (MediaCodec matériel + repli logiciel), le tampon réseau et
     // le User-Agent sont gérés côté natif (NativeVideoView.kt). Ici on se
     // contente de piloter l'URL et d'écouter l'état.
     _playingUrl = LiveFallback.preferred(_current.streamUrl);
     _controller = NativeVideoController(initialUrl: _playingUrl);
+    unawaited(ClearVoiceFlag.load().then((_) {
+      if (mounted) _controller.setClearVoice(ClearVoiceFlag.value);
+    }));
+    ClearVoiceFlag.changes.addListener(_onClearVoice);
     // Beaucoup d'abonnements n'autorisent qu'UNE connexion : un
     // téléchargement de film en cours ferait refuser le direct (« le cinéma
     // marche mais pas les chaînes »). On le met en pause le temps du direct,
@@ -231,6 +240,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // Garde l'app « en ligne » + chaîne à jour pendant le visionnage.
     _presenceTimer = Timer.periodic(const Duration(minutes: 3),
         (_) => SubscriptionState.instance.syncWithBackend());
+  }
+
+  void _onClearVoice() {
+    _controller.setClearVoice(ClearVoiceFlag.value);
   }
 
   // Couper le son quand on QUITTE / minimise l'app (Home, multitâche) : pas de
@@ -273,9 +286,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
     _controller.removeListener(_onPlayer);
     subtitlesFlag.changes.removeListener(_onSubsFlag);
+    ClearVoiceFlag.changes.removeListener(_onClearVoice);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
     _controller.dispose();
+    ForegroundPlayback.unlock();
     unawaited(CinemaDownloads.resumeAfterLive());
     _focus.dispose();
     super.dispose();

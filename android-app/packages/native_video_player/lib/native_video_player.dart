@@ -18,6 +18,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'playback_lease.dart';
+import 'spoken_track.dart';
+
 /// Une piste audio ou de sous-titres proposée par le fichier en cours.
 @immutable
 class NativeTrack {
@@ -29,6 +32,7 @@ class NativeTrack {
     this.language,
     this.label,
     this.channels = 0,
+    this.roleFlags = 0,
   });
 
   /// `true` = piste audio, `false` = sous-titres.
@@ -49,6 +53,9 @@ class NativeTrack {
 
   /// Nombre de canaux audio (2 = stéréo, 6 = 5.1) ; 0 = inconnu.
   final int channels;
+
+  /// Drapeaux de rôle Media3 (commentaire, audiodescription…). 0 = inconnu.
+  final int roleFlags;
 }
 
 /// Moteur de lecture ALTERNATIF, hors Android (Zuno PC / Windows).
@@ -74,6 +81,14 @@ abstract class NativeVideoBackend {
   void selectTrack(NativeTrack track);
   void disableSubtitles();
 
+  /// Coupe le son tout de suite (volume 0 + arrêt). Un autre lecteur
+  /// vient de prendre la place. Ne relance rien.
+  void silence() {}
+
+  /// Compresseur « voix claire ». Désactivé par défaut. Le PC (libmpv)
+  /// n'a pas ce traitement : l'implémentation vide est voulue.
+  void setClearVoice(bool enabled) {}
+
   /// Le widget qui affiche la vidéo.
   Widget buildView(BuildContext context);
   void dispose();
@@ -81,19 +96,40 @@ abstract class NativeVideoBackend {
 
 /// Pilote un lecteur natif et publie son état. Un controller = une vue.
 class NativeVideoController extends ChangeNotifier {
-  NativeVideoController({this.initialUrl}) {
+  NativeVideoController({this.initialUrl, String? preferredAudio}) {
+    if (preferredAudio != null && preferredAudio.isNotEmpty) {
+      _preferredAudio = preferredAudio;
+    }
+    _leaseId = audiblePlayers.register(_silenceFromPeer);
     final NativeVideoBackend Function()? f = backendFactory;
     if (f != null && !Platform.isAndroid) {
       _backend = f()..bind(this);
       final String? url = initialUrl;
-      if (url != null) _backend!.open(<String, dynamic>{'url': url});
+      if (url != null) {
+        audible = true;
+        audiblePlayers.claim(_leaseId);
+        _backend!.open(_openArgs(url));
+      }
     }
   }
 
   /// Fabrique du moteur hors Android (null sur la box : lecteur natif).
   static NativeVideoBackend Function()? backendFactory;
 
+  /// Langue audio de l'application (« fr », « en »…). Lue à chaque
+  /// ouverture si l'appelant n'en passe pas une plus précise (film).
+  static String? appAudioLanguage;
+
+  /// Tous les controllers vivants. Un zap ou une ouverture « prend »
+  /// le son et fait taire les autres avant de démarrer.
+  static final ExclusiveAudio audiblePlayers = ExclusiveAudio();
+
   NativeVideoBackend? _backend;
+
+  late final int _leaseId;
+
+  /// true tant que CE controller a le droit de sortir du son.
+  bool audible = false;
 
   /// URL jouée dès que la vue native est prête (1re chaîne).
   final String? initialUrl;
@@ -118,6 +154,18 @@ class NativeVideoController extends ChangeNotifier {
 
   /// true après [ChangeNotifier.dispose] : on ne le rappelle pas.
   bool _notifierClosed = false;
+
+  /// Langue demandée pour CETTE lecture (film) ou, à défaut, celle de l'app.
+  String? _preferredAudio;
+
+  /// true dès que la personne choisit une piste à la main.
+  /// L'automatisme ne la contredit plus jusqu'au prochain [setUrl].
+  bool _userPickedAudio = false;
+
+  /// true après le premier choix automatique de cette lecture.
+  bool _audioAutoDone = false;
+
+  String? get preferredAudio => _preferredAudio ?? appAudioLanguage;
 
   bool get _acceptEvents => _backend != null || _ackedEpoch == _epoch;
 
@@ -160,9 +208,34 @@ class NativeVideoController extends ChangeNotifier {
     ch.setMethodCallHandler(_onNativeCall);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
+      audible = true;
+      audiblePlayers.claim(_leaseId);
       ch.invokeMethod<void>(
-          'setUrl', _pendingArgs ?? <String, dynamic>{'url': url});
+          'setUrl', _pendingArgs ?? _openArgs(url));
     }
+  }
+
+  /// Arguments d'ouverture. La langue part toujours avec, pour que le
+  /// natif choisisse la voix avant la première image.
+  Map<String, dynamic> _openArgs(String url) {
+    final String? lang = preferredAudio;
+    return <String, dynamic>{
+      'url': url,
+      'epoch': _epoch,
+      if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,
+    };
+  }
+
+  /// Un AUTRE lecteur a pris le son. On se tait tout de suite et on
+  /// invalide la session : un callback tardif ne doit plus passer
+  /// pour « la chaîne en cours ».
+  void _silenceFromPeer() {
+    if (_disposed) return;
+    audible = false;
+    _epoch++;
+    _backend?.silence();
+    _channel?.invokeMethod<void>('silence');
+    if (!_disposed) notifyListeners();
   }
 
   Future<dynamic> _onNativeCall(MethodCall call) async {
@@ -225,10 +298,41 @@ class NativeVideoController extends ChangeNotifier {
                 language: t['language'] as String?,
                 label: t['label'] as String?,
                 channels: (t['channels'] as int?) ?? 0,
+                roleFlags: (t['roleFlags'] as int?) ?? 0,
               ),
         ];
+        _autoAudio();
     }
     if (!_disposed) notifyListeners();
+  }
+
+  /// Premier paquet de pistes : on force la voix de la langue, pas le
+  /// commentaire. Une seule fois, pour ne pas contredire un choix manuel
+  /// ni relancer le décodeur à chaque image.
+  void _autoAudio() {
+    if (_userPickedAudio || _audioAutoDone) return;
+    _audioAutoDone = true;
+    final List<SpokenTrack> audio = <SpokenTrack>[
+      for (final NativeTrack track in tracks)
+        if (track.isAudio)
+          SpokenTrack(
+            group: track.group,
+            index: track.index,
+            language: track.language,
+            label: track.label,
+            channels: track.channels,
+            selected: track.selected,
+            roleFlags: track.roleFlags,
+          ),
+    ];
+    final SpokenTrack? pick = chooseSpokenTrack(audio, preferredAudio);
+    if (pick == null) return;
+    for (final NativeTrack track in tracks) {
+      if (track.isAudio && track.group == pick.group && track.index == pick.index) {
+        _sendTrack(track);
+        return;
+      }
+    }
   }
 
   /// Charge (ou recharge) une URL : zap vers une autre chaîne, ou reconnexion
@@ -247,9 +351,23 @@ class NativeVideoController extends ChangeNotifier {
     String? preferredText,
   }) {
     if (_disposed) return;
+    // On prend le son AVANT d'ouvrir : les autres lecteurs sont coupés
+    // tout de suite (volume 0 + arrêt), puis seulement on charge.
+    audible = true;
+    audiblePlayers.claim(_leaseId);
     // Nouvelle génération : les événements encore en route (ancienne chaîne)
     // seront ignorés jusqu'à l'ack natif de CELLE-CI.
     _epoch++;
+    _userPickedAudio = false;
+    _audioAutoDone = false;
+    // Une langue explicite (film) remplace celle de l'app pour CETTE
+    // lecture. Sans argument, on revient à la langue de l'app.
+    if (preferredAudio != null && preferredAudio.isNotEmpty) {
+      _preferredAudio = preferredAudio;
+    } else {
+      _preferredAudio = null;
+    }
+    final String? lang = _preferredAudio ?? appAudioLanguage;
     hasError = false;
     isEnded = false;
     isBuffering = true;
@@ -264,7 +382,7 @@ class NativeVideoController extends ChangeNotifier {
       'epoch': _epoch,
       if (vod) 'vod': true,
       if (startAt > Duration.zero) 'startMs': startAt.inMilliseconds,
-      if (preferredAudio != null) 'preferredAudio': preferredAudio,
+      if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,
       if (preferredText != null) 'preferredText': preferredText,
     };
     if (_backend != null) {
@@ -293,10 +411,32 @@ class NativeVideoController extends ChangeNotifier {
   }
 
   /// Choisit une piste audio ou de sous-titres (cf. [tracks]).
-  void selectTrack(NativeTrack t) => _backend != null
-      ? _backend!.selectTrack(t)
-      : _channel?.invokeMethod<void>(
-          'selectTrack', <String, dynamic>{'group': t.group, 'index': t.index});
+  ///
+  /// Un choix audio manuel bloque l'automatisme jusqu'au prochain zap.
+  void selectTrack(NativeTrack t) {
+    if (t.isAudio) _userPickedAudio = true;
+    _sendTrack(t);
+  }
+
+  void _sendTrack(NativeTrack t) {
+    if (_backend != null) {
+      _backend!.selectTrack(t);
+      return;
+    }
+    _channel?.invokeMethod<void>(
+        'selectTrack', <String, dynamic>{'group': t.group, 'index': t.index});
+  }
+
+  /// Voix claire (compresseur). Le natif l'applique au prochain décodage
+  /// PCM. Le passthrough (AC-3 vers une barre de son) n'est pas compressé :
+  /// Media3 ne traite pas ces flux en PCM.
+  void setClearVoice(bool enabled) {
+    if (_backend != null) {
+      _backend!.setClearVoice(enabled);
+      return;
+    }
+    _channel?.invokeMethod<void>('setClearVoice', enabled);
+  }
 
   /// Coupe les sous-titres.
   void disableSubtitles() {
@@ -324,6 +464,8 @@ class NativeVideoController extends ChangeNotifier {
     if (_nativeReleased) return;
     _nativeReleased = true;
     _disposed = true;
+    audible = false;
+    audiblePlayers.unregister(_leaseId);
     _backend?.dispose();
     final MethodChannel? ch = _channel;
     _channel = null;
@@ -343,7 +485,9 @@ class NativeVideoController extends ChangeNotifier {
     if (_notifierClosed) return;
     _notifierClosed = true;
     _disposed = true;
+    audible = false;
     if (!_nativeReleased) {
+      audiblePlayers.unregister(_leaseId);
       _nativeReleased = true;
       _backend?.dispose();
       final MethodChannel? ch = _channel;

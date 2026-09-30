@@ -28,6 +28,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:native_video_player/native_video_player.dart';
+import 'package:native_video_player/playback_lease.dart';
 
 import '../../channels/domain/channel.dart';
 import '../core/tv_tokens.dart';
@@ -113,8 +114,10 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   }
 
   /// Focus immobile depuis [debounce] : on crée UN lecteur pour cette chaîne.
+  /// Pas pendant un plein écran : ce second lecteur est la cause du
+  /// double son (l'ancien n'était pas encore libéré).
   void _start() {
-    if (!mounted) return;
+    if (!mounted || ForegroundPlayback.locked) return;
     final String url = widget.channel.streamUrl;
     if (url.isEmpty) return;
     _stop();

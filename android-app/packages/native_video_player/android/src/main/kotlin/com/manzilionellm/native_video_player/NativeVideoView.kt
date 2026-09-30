@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.SurfaceView
 import android.view.View
 import androidx.media3.common.AudioAttributes
@@ -29,6 +30,7 @@ import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -36,6 +38,11 @@ import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.video.VideoRendererEventListener
+import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
+import com.manzilionellm.native_video_player.logic.ExclusiveAudio
+import com.manzilionellm.native_video_player.logic.PlaybackSession
+import com.manzilionellm.native_video_player.logic.SpokenCandidate
+import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -79,6 +86,18 @@ import io.flutter.plugin.platform.PlatformView
  * et une reconnexion qui REPREND À LA MÊME SECONDE au lieu de repartir du
  * début. Le direct (vod = false) garde EXACTEMENT son comportement.
  *
+ * UN SEUL SON (30/09/2026, v104). Cause du « deux chaînes en même temps » :
+ *  1. handleAudioFocus était false : l'aperçu et le plein écran (deux
+ *     ExoPlayer) parlaient ensemble, Android ne coupait ni l'un ni l'autre ;
+ *  2. un zap appelait stop() puis prepare() sans mettre le volume à 0 :
+ *     le tampon AudioTrack (surtout en passthrough AC-3) continuait
+ *     l'ancienne chaîne pendant que la nouvelle démarrait ;
+ *  3. des callbacks tardifs (reconnexion, repli FFmpeg) rappelaient
+ *     prepare()/play() sans jeton : une session déjà quittée repartait.
+ *  Avant de démarrer, on prend le bail [owners] (tous les autres lecteurs
+ *  passent volume 0 + stop), on invalide l'ancienne [sessions], et seulement
+ *  ensuite on prépare. Le focus audio Android est demandé (true).
+ *
  * SON « QUALITÉ CINÉMA » (30/09/2026) — correctif du son « vieille radio »,
  * avec filet de sécurité pour ne JAMAIS laisser une chaîne sur la roue :
  *  1. HE-AAC complet : le décodeur AAC de nombreuses box ignore le SBR (les
@@ -103,7 +122,7 @@ class NativeVideoView(
     context: Context,
     messenger: BinaryMessenger,
     id: Int,
-) : PlatformView, MethodChannel.MethodCallHandler, Player.Listener, AnalyticsListener {
+) : PlatformView, MethodChannel.MethodCallHandler, AnalyticsListener {
 
     private val surfaceView = SurfaceView(context)
     private val channel = MethodChannel(messenger, "native_video_player/$id")
@@ -141,6 +160,30 @@ class NativeVideoView(
     // true après releasePlayer : plus aucun appel ExoPlayer (release deux fois
     // fait planter, et un événement en retard ne doit pas parler à Dart).
     private var released = false
+
+    // Jeton de CETTE vue. Un callback n'agit que s'il porte le dernier.
+    private val sessions = PlaybackSession()
+
+    // Horodatage du dernier silence / zap. Un événement Analytics plus
+    // vieux que ça décrit l'ancienne chaîne : on le jette.
+    private var sessionOpenedAt = 0L
+
+    // Epoch Dart du setUrl en cours (accusé). null = pas un setUrl.
+    private var dartEpoch: Int? = null
+
+    // Langue audio demandée par l'app pour cette lecture.
+    private var prefAudio: String? = null
+
+    // true après le premier choix de piste de cette session.
+    // Un second onTracksChanged (le nôtre, ou un choix manuel) ne reforce pas.
+    private var audioChosenForSession = false
+
+    // Voix claire. Faux par défaut : le processeur reste inactif.
+    private var clearVoiceEnabled = false
+    private val clearVoiceProcessor = ClearVoiceProcessor()
+
+    // Identifiant dans [owners]. -1 tant que le lecteur n'est pas inscrit.
+    private var playerKey: Int = -1
 
     private val positionPump = object : Runnable {
         override fun run() {
@@ -245,9 +288,33 @@ class NativeVideoView(
                     out.add(FfmpegAudioRenderer(eventHandler, eventListener, audioSink))
                 }
             }
+
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): AudioSink {
+                // Tampon de sortie un peu plus grand (craquements), pas le
+                // tampon réseau. Float coupé : certaines box crachent le PCM
+                // flottant. Vitesse AudioTrack coupée : on joue à 1,0.
+                val base = DefaultAudioSink.AudioTrackBufferSizeProvider.DEFAULT
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(false)
+                    .setEnableAudioTrackPlaybackParams(false)
+                    .setAudioProcessors(arrayOf(clearVoiceProcessor))
+                    .setAudioTrackBufferSizeProvider { min, encoding, mode, frame, rate, bitrate, speed ->
+                        val minBytes = base.getBufferSizeInBytes(
+                            min, encoding, mode, frame, rate, bitrate, speed,
+                        )
+                        AudioTrackBuffer.sized(minBytes, frame)
+                    }
+                    .build()
+            }
         }
             .setEnableDecoderFallback(true)
             .setAllowedVideoJoiningTimeMs(0)
+            .setEnableAudioFloatOutput(false)
+            .setEnableAudioTrackPlaybackParams(false)
             // AAC → on « cache » le décodeur AAC de la box pour que FFmpeg le
             // lise (HE-AAC complet : aigus + stéréo). Tout le reste (vidéo, AC-3,
             // DTS…) passe par la liste normale. Si FFmpeg n'a pas pu se charger,
@@ -257,7 +324,7 @@ class NativeVideoView(
             // redemande la liste à chaque sélection de pistes (donc à chaque
             // re-prepare), il n'y a pas de copie figée au moment du build.
             .setMediaCodecSelector { mimeType, requiresSecure, requiresTunneling ->
-                if (!forceBoxAacDecoder && ffmpegAac && mimeType == MimeTypes.AUDIO_AAC) {
+                if (preferFfmpegFor(mimeType)) {
                     emptyList<MediaCodecInfo>()
                 } else {
                     MediaCodecSelector.DEFAULT.getDecoderInfos(
@@ -274,14 +341,13 @@ class NativeVideoView(
             .setFallbackMaxPlaybackSpeed(1f)
             .build()
 
-        // Contenu déclaré « film » : le système applique son profil audio
-        // cinéma (et non « voix » / « inconnu »). handleAudioFocus = false : on
-        // garde le comportement actuel (aperçu + plein écran ne se coupent pas
-        // l'un l'autre).
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(C.USAGE_MEDIA)
-            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-            .build()
+        // « film » par défaut. « voix claire » passe en SPEECH le temps
+        // de la lecture (le téléviseur peut alors appliquer son propre
+        // renfort de dialogue). Le focus audio est VRAI : un second
+        // lecteur, ou une autre app, ne se mélange plus au nôtre.
+        // L'aperçu est coupé explicitement avant le plein écran (bail),
+        // donc il ne reprend pas le focus par-dessus la chaîne.
+        val audioAttributes = movieAudioAttributes()
 
         // User-Agent type lecteur connu + redirections cross-protocole : des
         // panels Xtream ne servent le vrai flux qu'aux signatures connues.
@@ -338,6 +404,15 @@ class NativeVideoView(
                 .setExceedVideoConstraintsIfNecessary(true)
                 .setExceedRendererCapabilitiesIfNecessary(true)
                 .setAllowVideoNonSeamlessAdaptiveness(true)
+                // Un flux qui change de codec vidéo (H.264 → HEVC) ne doit
+                // pas rester figé : on autorise le changement. On ne force
+                // pas un décodeur à la main (en écarter un a déjà laissé
+                // des chaînes sans image).
+                .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                // La voix « principale », pas le commentaire, quand le
+                // flux a mis le drapeau. Sinon le choix fin est dans
+                // [SpokenTrackChoice], au moment où les pistes arrivent.
+                .setPreferredAudioRoleFlags(C.ROLE_FLAG_MAIN)
                 .setTunnelingEnabled(false)
                 .build(),
         )
@@ -347,7 +422,7 @@ class NativeVideoView(
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLivePlaybackSpeedControl(liveSpeed)
-            .setAudioAttributes(audioAttributes, false)
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             // OFF : ne pas demander à la TV de changer de fréquence HDMI
             // (50 Hz ↔ 60 Hz). Sur beaucoup de box ce changement coupe
             // l'image (écran noir de une à plusieurs secondes) et décale
@@ -361,14 +436,49 @@ class NativeVideoView(
         // Toute l'image dans la surface, bandes noires si le format n'est
         // pas 16:9. On ne ROGNE pas (le rognage ressemble à une image cassée).
         player.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+        // On NE retire PAS la surface au zap : la retirer fait un flash
+        // noir. stop() rend le codec ; la surface, elle, reste. Le logo
+        // Flutter couvre l'ancienne image jusqu'à la nouvelle trame.
         player.setVideoSurfaceView(surfaceView)
-        player.addListener(this)
-        // Nom du décodeur audio, erreurs de codec et de sortie son : c'est
-        // ici qu'on sait si FFmpeg est vraiment celui qui joue.
+        // Un seul écouteur (Analytics) : Player.Listener en double enverrait
+        // deux fois la même 1re image, dont parfois celle de la chaîne d'avant.
         player.addAnalyticsListener(this)
+        // Le direct ne doit pas « sauter » les silences : ça coupe le début
+        // des phrases. C'est déjà le défaut ; on le fige.
+        player.skipSilenceEnabled = false
         player.playWhenReady = true
+        playerKey = owners.register { silenceForHandoff() }
 
         handler.postDelayed(positionPump, 500)
+    }
+
+    /** Profil audio : film, ou parole si la voix claire est allumée. */
+    private fun movieAudioAttributes(): AudioAttributes {
+        val type = if (clearVoiceEnabled) {
+            C.AUDIO_CONTENT_TYPE_SPEECH
+        } else {
+            C.AUDIO_CONTENT_TYPE_MOVIE
+        }
+        return AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(type)
+            .build()
+    }
+
+    /**
+     * AAC et MP2 passent par FFmpeg quand il sait les lire. AC-3, E-AC-3
+     * et DTS restent sur le décodeur de la box (passthrough HDMI). Le MP2
+     * des flux MPEG-TS est souvent mal décodé par les puces bon marché
+     * (craquements) ; FFmpeg est le décodeur de référence, avec le même
+     * repli « retour à la box » que l'AAC si ça bloque.
+     */
+    private fun preferFfmpegFor(mimeType: String): Boolean {
+        if (forceBoxAacDecoder || !ffmpegReady) return false
+        return when (mimeType) {
+            MimeTypes.AUDIO_AAC -> ffmpegAac
+            MimeTypes.AUDIO_MPEG_L2 -> ffmpegMp2
+            else -> false
+        }
     }
 
     override fun getView(): View = surfaceView
@@ -378,14 +488,12 @@ class NativeVideoView(
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "setUrl" -> {
-                // Accusé TOUT DE SUITE, avant stop()/prepare(). Le canal est
-                // une file : Dart ignore les événements déjà partis (ancienne
-                // chaîne) tant qu'il n'a pas reçu CET ack. Sans ça, une
-                // position ou une « 1re image » de la chaîne précédente
-                // faisait croire que la nouvelle jouait — ou laissait le
-                // logo devant une image déjà lancée.
+                // L'accusé part APRÈS le silence (volume 0 + stop), dans
+                // [openCurrent]. Les événements déjà dans le canal (ancienne
+                // chaîne) arrivent avant l'ack : Dart les ignore. Un
+                // événement né après le silence porte un horodatage neuf.
                 val epoch = call.argument<Number>("epoch")?.toInt()
-                if (epoch != null) emit("ack", epoch)
+                dartEpoch = epoch
                 val url = call.argument<String>("url")
                 if (url.isNullOrEmpty()) {
                     result.error("no_url", "setUrl appelé sans url", null)
@@ -408,9 +516,10 @@ class NativeVideoView(
                 // va être créé. Le délai de 8 s ne doit pas hériter du « ffmpeg »
                 // de la chaîne précédente.
                 ffmpegAudioActive = false
+                audioChosenForSession = false
                 // Langue audio / sous-titres préférée (langue de l'app) : si le
                 // film propose la piste, ExoPlayer la choisit d'office.
-                val prefAudio = call.argument<String>("preferredAudio")
+                prefAudio = call.argument<String>("preferredAudio")
                 val prefText = call.argument<String>("preferredText")
                 if (prefAudio != null || prefText != null) {
                     val b = player.trackSelectionParameters.buildUpon()
@@ -422,6 +531,35 @@ class NativeVideoView(
                 // 8 s pour que FFmpeg prouve qu'il sait lire CE flux. Sinon on
                 // revient à la box (voir [armFfmpegReadyWatchdog]).
                 armFfmpegReadyWatchdog()
+                result.success(null)
+            }
+            "silence" -> {
+                // Un autre lecteur a pris le son. On se tait et on invalide
+                // la session : un retry déjà posté ne doit pas relancer.
+                silenceForHandoff()
+                result.success(null)
+            }
+            "setClearVoice" -> {
+                val on = call.arguments == true
+                if (on == clearVoiceEnabled) {
+                    result.success(null)
+                    return
+                }
+                clearVoiceEnabled = on
+                clearVoiceProcessor.enabled = on
+                // Le processeur n'est relu qu'à la prochaine configuration
+                // du sink. Si une chaîne joue, on la rouvre (même URL) pour
+                // que le choix prenne effet. Sinon, le prochain zap suffit.
+                if (!released && currentUrl != null &&
+                    player.playbackState != Player.STATE_IDLE
+                ) {
+                    if (vodMode && player.currentPosition > 0) {
+                        lastKnownPos = player.currentPosition
+                    }
+                    openCurrent(if (vodMode) lastKnownPos else null)
+                } else if (!released) {
+                    player.setAudioAttributes(movieAudioAttributes(), true)
+                }
                 result.success(null)
             }
             "dispose" -> {
@@ -441,6 +579,9 @@ class NativeVideoView(
                 result.success(null)
             }
             "selectTrack" -> {
+                // Choix explicite. On ne le réécrase pas au prochain
+                // onTracksChanged de cette session.
+                audioChosenForSession = true
                 // Choix explicite d'une piste audio ou de sous-titres.
                 val group = call.argument<Int>("group") ?: -1
                 val index = call.argument<Int>("index") ?: -1
@@ -472,6 +613,13 @@ class NativeVideoView(
                 result.success(null)
             }
             "play" -> {
+                // Un lecteur déjà coupé par un autre ne reprend pas le son
+                // (sinon le retour au premier plan relancerait l'ancienne chaîne).
+                if (playerKey >= 0 && owners.owner != null && owners.owner != playerKey) {
+                    result.success(null)
+                    return
+                }
+                player.volume = 1f
                 player.play()
                 result.success(null)
             }
@@ -483,10 +631,21 @@ class NativeVideoView(
         }
     }
 
-    // ---- natif → Dart (Player.Listener) ------------------------------------
+    // ---- natif → Dart (AnalyticsListener) ----------------------------------
+    //
+    // Chaque événement porte l'heure à laquelle il a été PRODUIT, pas
+    // l'heure à laquelle on le reçoit. Un zap ou un silence note
+    // [sessionOpenedAt] : tout ce qui est plus vieux est l'ancienne
+    // chaîne (1re image figée, position, « je joue ») et on le jette.
 
-    override fun onPlaybackStateChanged(playbackState: Int) {
-        when (playbackState) {
+    private fun fresh(eventTime: AnalyticsListener.EventTime): Boolean {
+        if (released) return false
+        return eventTime.realtimeMs >= sessionOpenedAt && sessionOpenedAt > 0L
+    }
+
+    override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
+        if (!fresh(eventTime)) return
+        when (state) {
             Player.STATE_BUFFERING -> emit("buffering", true)
             Player.STATE_READY -> {
                 retryCount = 0 // lecture OK → on oublie les erreurs passées
@@ -498,13 +657,16 @@ class NativeVideoView(
         }
     }
 
-    override fun onIsPlayingChanged(isPlaying: Boolean) {
+    override fun onIsPlayingChanged(eventTime: AnalyticsListener.EventTime, isPlaying: Boolean) {
+        if (!fresh(eventTime)) return
         emit("playing", isPlaying)
     }
 
-    /** Pistes disponibles → Dart (menu Audio / Sous-titres). */
-    override fun onTracksChanged(tracks: Tracks) {
+    /** Pistes disponibles → Dart, puis choix de la voix (une fois). */
+    override fun onTracksChanged(eventTime: AnalyticsListener.EventTime, tracks: Tracks) {
+        if (!fresh(eventTime)) return
         val out = ArrayList<Map<String, Any?>>()
+        val audio = ArrayList<SpokenCandidate>()
         tracks.groups.forEachIndexed { gi, g ->
             val type = when (g.type) {
                 C.TRACK_TYPE_AUDIO -> "audio"
@@ -514,6 +676,7 @@ class NativeVideoView(
             for (i in 0 until g.length) {
                 if (!g.isTrackSupported(i)) continue
                 val f = g.getTrackFormat(i)
+                val selected = g.isTrackSelected(i)
                 out.add(
                     mapOf(
                         "type" to type,
@@ -522,28 +685,69 @@ class NativeVideoView(
                         "language" to f.language,
                         "label" to f.label,
                         "channels" to f.channelCount,
-                        "selected" to g.isTrackSelected(i),
+                        "selected" to selected,
+                        "roleFlags" to f.roleFlags,
                     )
                 )
+                if (type == "audio") {
+                    audio.add(
+                        SpokenCandidate(
+                            group = gi,
+                            index = i,
+                            language = f.language,
+                            label = f.label,
+                            channels = f.channelCount,
+                            selected = selected,
+                            roleFlags = f.roleFlags,
+                        )
+                    )
+                }
             }
         }
         emit("tracks", out)
+        if (audioChosenForSession) return
+        val pick = SpokenTrackChoice.pick(audio, prefAudio) ?: return
+        audioChosenForSession = true
+        val token = sessions.generation
+        // Posté : on ne change pas la sélection au milieu du callback.
+        handler.post {
+            if (released || token != sessions.generation) return@post
+            val groups = player.currentTracks.groups
+            if (pick.group < 0 || pick.group >= groups.size) return@post
+            val g = groups[pick.group]
+            if (g.type != C.TRACK_TYPE_AUDIO) return@post
+            if (pick.index < 0 || pick.index >= g.length) return@post
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, pick.index))
+                .build()
+        }
     }
 
     /** Texte des sous-titres courants → Dart (vide = rien à afficher). */
-    override fun onCues(cueGroup: CueGroup) {
+    override fun onCues(eventTime: AnalyticsListener.EventTime, cueGroup: CueGroup) {
+        if (!fresh(eventTime)) return
         val text = cueGroup.cues.mapNotNull { it.text?.toString() }.joinToString("\n")
         emit("cues", text)
     }
 
-    override fun onRenderedFirstFrame() {
+    override fun onRenderedFirstFrame(
+        eventTime: AnalyticsListener.EventTime,
+        output: Any,
+        renderTimeMs: Long,
+    ) {
+        // L'heure de l'événement, pas « maintenant » : une trame déjà
+        // décodée avant le zap ne retire pas le logo de la nouvelle chaîne.
+        if (!fresh(eventTime)) return
         retryCount = 0
         behindLiveCount = 0
         emit("firstFrame", null)
     }
 
-    override fun onPlayerError(error: PlaybackException) {
-        if (released) return
+    override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
+        if (!fresh(eventTime)) return
+        val token = sessions.generation
         // Erreur DU MOTEUR FFmpeg (rendererName « FfmpegAudioRenderer ») :
         // retenter le même moteur reproduirait le blocage v99. On bascule
         // sur le décodeur de la box et on re-prépare tout de suite, SANS
@@ -554,23 +758,18 @@ class NativeVideoView(
             return
         }
         // DIRECT « EN RETARD » : le lecteur est sorti de la fenêtre du
-        // direct. Ce n'est PAS une panne de chaîne (doc Media3) : on rejoint
-        // le direct tout de suite, sans manger le budget de reconnexion.
-        // Plafond : si ça recommence sans jamais redémarrer, on retombe sur
-        // la reconnexion normale (qui, elle, prévient Dart au bout d'un moment).
+        // direct. Ce n'est PAS une panne de chaîne (doc Media3). On rouvre
+        // au bord du direct (stop + nouveau média), pas un seek par-dessus
+        // l'ancien tampon : sinon le son reste en avance sur l'image.
         if (!vodMode &&
             error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW &&
             behindLiveCount < maxBehindLive
         ) {
             behindLiveCount++
             emit("buffering", true)
-            // post : onPlayerError ne doit pas rappeler prepare() dans la
-            // même pile (certaines box renvoient l'erreur tout de suite).
             handler.post {
-                if (released) return@post
-                player.seekToDefaultPosition()
-                player.prepare()
-                player.playWhenReady = true
+                if (released || token != sessions.generation) return@post
+                openCurrent(null)
             }
             return
         }
@@ -583,7 +782,7 @@ class NativeVideoView(
             if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
             emit("buffering", true)
             val delay = (1_000L * (1 shl (retryCount - 1))).coerceAtMost(8_000L)
-            scheduleRetry(delay)
+            scheduleRetry(delay, token)
         } else {
             // Trop d'échecs d'affilée → on laisse Dart faire un reset complet.
             emit("error", error.message)
@@ -591,33 +790,75 @@ class NativeVideoView(
     }
 
     /**
-     * Ouvre [currentUrl] en RENDANT d'abord l'ancien décodeur et l'ancienne
-     * socket. Sans ce stop(), un zap rapide sur une box bas de gamme laisse
-     * l'ancien codec accroché à la surface (image verte, noire ou figée de
-     * la chaîne d'avant) et, si l'abonnement n'autorise qu'une connexion,
-     * la suivante est refusée — elle a l'air « bloquée ».
+     * Coupe CE lecteur sans en démarrer un autre. Volume 0 d'abord :
+     * stop() seul laisse parfois le tampon HDMI (AC-3) sortir encore
+     * l'ancienne chaîne. Le jeton change : les callbacks déjà postés
+     * ne relancent plus cette session.
+     */
+    private fun silenceForHandoff() {
+        if (released) return
+        sessions.open()
+        sessionOpenedAt = SystemClock.elapsedRealtime()
+        audioChosenForSession = false
+        ffmpegWatchToken++
+        cancelRetry()
+        try {
+            player.volume = 0f
+            player.playWhenReady = false
+            player.stop()
+            player.clearMediaItems()
+        } catch (_: RuntimeException) {
+            // Un stop raté ne doit pas empêcher le lecteur suivant de parler.
+        }
+    }
+
+    /**
+     * Ouvre [currentUrl] en rendant d'abord l'ancien décodeur, l'ancienne
+     * socket, ET le son des autres lecteurs (aperçu, sonde, film).
      *
-     * [startPositionMs] > 0 : reprise d'un film à cette seconde. Le direct
-     * passe null et repart du bord du direct, pas d'une image figée.
+     * Ordre, volontaire :
+     *  1. les AUTRES passent volume 0 + stop (un seul AudioTrack parle) ;
+     *  2. nous aussi, volume 0, avant le nouveau prepare ;
+     *  3. accusé Dart (les événements d'avant sont ignorés) ;
+     *  4. nouveau média, puis volume 1.
+     *
+     * On ne détache PAS la surface : la détacher fait un flash noir.
+     * [startPositionMs] > 0 : reprise d'un film. Le direct passe null
+     * et repart du bord du direct, pas d'une image figée.
      */
     private fun openCurrent(startPositionMs: Long?) {
         val url = currentUrl ?: return
         if (released) return
-        player.stop()
-        player.clearMediaItems()
+        if (playerKey >= 0) owners.claim(playerKey)
+        silenceForHandoff()
+        val token = sessions.generation
+        dartEpoch?.let { emit("ack", it) }
+        if (released || token != sessions.generation) return
+        player.setAudioAttributes(movieAudioAttributes(), true)
+        clearVoiceProcessor.enabled = clearVoiceEnabled
+        // L'override audio de la chaîne précédente ne doit pas choisir
+        // une piste au hasard sur la nouvelle.
+        val params = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .setPreferredAudioRoleFlags(C.ROLE_FLAG_MAIN)
+        val lang = prefAudio
+        if (!lang.isNullOrBlank()) params.setPreferredAudioLanguage(lang)
+        player.trackSelectionParameters = params.build()
+        val item = MediaItem.Builder().setUri(url).setTag(token).build()
         if (startPositionMs != null && startPositionMs > 0L) {
-            player.setMediaItem(MediaItem.fromUri(url), startPositionMs)
+            player.setMediaItem(item, startPositionMs)
         } else {
-            player.setMediaItem(MediaItem.fromUri(url))
+            player.setMediaItem(item)
         }
         player.prepare()
         player.playWhenReady = true
+        player.volume = 1f
     }
 
-    private fun scheduleRetry(delayMs: Long) {
+    private fun scheduleRetry(delayMs: Long, token: Int) {
         cancelRetry()
         val r = Runnable {
-            if (released) return@Runnable
+            if (released || token != sessions.generation) return@Runnable
             // Film : [lastKnownPos] a été figé dans onPlayerError, avant stop().
             openCurrent(if (vodMode) lastKnownPos else null)
         }
@@ -659,8 +900,11 @@ class NativeVideoView(
      */
     private fun armFfmpegReadyWatchdog() {
         val token = ++ffmpegWatchToken
+        val session = sessions.generation
         handler.postDelayed({
-            if (token != ffmpegWatchToken || released) return@postDelayed
+            if (token != ffmpegWatchToken || released || session != sessions.generation) {
+                return@postDelayed
+            }
             if (!forceBoxAacDecoder &&
                 ffmpegAudioActive &&
                 player.playbackState != Player.STATE_READY
@@ -692,8 +936,9 @@ class NativeVideoView(
         forceBoxAacDecoder = true
         ffmpegAudioActive = false
         ffmpegWatchToken++
+        val session = sessions.generation
         handler.post {
-            if (released) return@post
+            if (released || session != sessions.generation) return@post
             // Un essai réseau déjà armé ne doit pas lancer un SECOND
             // prepare() par-dessus celui-ci (la chaîne clignoterait).
             // On ne touche pas au compteur : ce n'est pas un échec réseau.
@@ -716,10 +961,12 @@ class NativeVideoView(
         initializedTimestampMs: Long,
         initializationDurationMs: Long,
     ) {
+        if (!fresh(eventTime)) return
         ffmpegAudioActive = decoderName.contains("ffmpeg", ignoreCase = true)
     }
 
     override fun onAudioDecoderReleased(eventTime: AnalyticsListener.EventTime, decoderName: String) {
+        if (!fresh(eventTime)) return
         if (decoderName.contains("ffmpeg", ignoreCase = true)) {
             ffmpegAudioActive = false
         }
@@ -733,12 +980,12 @@ class NativeVideoView(
      * le décodeur de la box, lui, parle le dialecte de l'appareil.
      */
     override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
-        if (ffmpegAudioActive) requestBoxAudioFallback()
+        if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
     }
 
     /** Erreur du décodeur logiciel FFmpeg (DecoderException), même repli. */
     override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
-        if (ffmpegAudioActive) requestBoxAudioFallback()
+        if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
     }
 
     // ---- cycle de vie -------------------------------------------------------
@@ -760,13 +1007,12 @@ class NativeVideoView(
         ffmpegWatchToken++
         cancelRetry()
         handler.removeCallbacksAndMessages(null)
-        try {
-            player.removeAnalyticsListener(this)
-        } catch (_: RuntimeException) {
-            // Déjà détaché : on continue la libération.
+        if (playerKey >= 0) {
+            owners.unregister(playerKey)
+            playerKey = -1
         }
         try {
-            player.removeListener(this)
+            player.removeAnalyticsListener(this)
         } catch (_: RuntimeException) {
             // Déjà détaché : on continue la libération.
         }
@@ -808,6 +1054,17 @@ class NativeVideoView(
         private val ffmpegAac: Boolean by lazy {
             ffmpegReady && FfmpegLibrary.supportsFormat(MimeTypes.AUDIO_AAC)
         }
+
+        /** FFmpeg sait-il lire le MP2 (MPEG-1 Layer II, très courant en IPTV) ? */
+        private val ffmpegMp2: Boolean by lazy {
+            ffmpegReady && FfmpegLibrary.supportsFormat(MimeTypes.AUDIO_MPEG_L2)
+        }
+
+        /**
+         * Tous les lecteurs vivants du processus. [claim] coupe les autres
+         * avant qu'un nouveau ne sorte du son.
+         */
+        val owners: ExclusiveAudio = ExclusiveAudio()
 
         /**
          * Repli session. Une fois vrai, PLUS AUCUNE vue de ce processus ne

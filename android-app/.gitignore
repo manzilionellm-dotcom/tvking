@@ -17,6 +17,10 @@
 # Sorties de build (APK, bundle, web, desktop)
 /build/
 
+# Tests JVM du lecteur (cache Gradle, pas le code).
+packages/native_video_player/logic-test/.gradle/
+packages/native_video_player/logic-test/build/
+
 # Worker local (tests e2e). Jamais les modules ni les secrets d'essai.
 cloudflare/node_modules/
 cloudflare/.dev.vars

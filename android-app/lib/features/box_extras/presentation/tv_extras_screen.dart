@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../missed_show/data/missed_flag.dart';
 import '../../time_picks/data/time_pick_flag.dart';
+import '../../player/data/clear_voice_flag.dart';
 import '../../subtitles/data/subtitle_flag.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
@@ -37,6 +38,9 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     subtitlesFlag.load().then((_) {
       if (mounted) setState(() {});
     });
+    ClearVoiceFlag.load().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _toggleMissed() async {
@@ -57,11 +61,18 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _toggleVoice() async {
+    await ClearVoiceFlag.load();
+    await ClearVoiceFlag.set(!ClearVoiceFlag.value);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool on = missedShowFlag.value;
     final bool timeOn = timePicksFlag.value;
     final bool subsOn = subtitlesFlag.value;
+    final bool voiceOn = ClearVoiceFlag.value;
     return ListView(
       children: <Widget>[
         Text(
@@ -128,6 +139,21 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
                   'Off. OK to turn on. Live does not switch streams.',
                 ),
           onSelect: _toggleSubs,
+        ),
+        ExtrasRow(
+          title: boxText(context, 'Voix claire', 'Clear voice'),
+          subtitle: voiceOn
+              ? boxText(
+                  context,
+                  'Allumé. Les voix fortes sont un peu baissées (mode nuit). OK pour couper. Le son cinéma surround n\'est pas modifié.',
+                  'On. Loud voices are eased a bit (night mode). OK to turn off. Surround passthrough is left as it is.',
+                )
+              : boxText(
+                  context,
+                  'Coupé, c\'est le réglage d\'origine. OK pour baisser un peu les voix trop fortes. Le son surround envoyé tel quel à la barre de son ne change pas.',
+                  'Off, which is the original setting. OK to ease voices that are too loud. Surround sent as-is to a soundbar does not change.',
+                ),
+          onSelect: _toggleVoice,
         ),
       ],
     );
