@@ -1,0 +1,146 @@
+# ============================================================================
+#  publish-zuno-tv-test.yml — Met l'APK EXACT d'un run déjà vert sur la
+#  release « zuno-tv-test » (UNE box de test), sans rien reconstruire.
+#
+#  POURQUOI : relancer build-zuno-tv.yml avec test_box=true refabrique l'APK
+#  (nouveau versionCode = heure du build). Quand on veut tester LE fichier
+#  d'un run précis (déjà vérifié), on le reprend tel quel dans ses Artifacts.
+#
+#  GARDE-FOUS (tous bloquants, le job s'arrête au premier échec) :
+#    - SHA-256 du fichier = celui donné en entrée (c'est bien LE fichier vérifié) ;
+#    - signature = clé des box clients 5145b8e0…9e61 (apksigner) ;
+#    - package com.sevenmotion.tv.seven_tv, versionCode = celui attendu et
+#      au-dessus du plancher (1790642483) et de la v102 clients (1790640358) ;
+#    - n'écrit QUE sur zuno-tv-test (tag en dur) ; zuno-tv (clients) est
+#      relue avant/après et le job échoue si elle a bougé ;
+#    - aucun version.json → aucune box client ne voit cette version ;
+#    - déclenchement MANUEL (workflow_dispatch). Le push ne fait qu'enregistrer
+#      le workflow auprès de GitHub : le job ne tourne pas.
+# ============================================================================
+name: Publish Zuno TV test APK (artefact existant)
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-zuno-tv-test.yml'
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID du run build-zuno-tv dont on publie l''APK'
+        required: true
+        type: string
+      expected_sha256:
+        description: 'SHA-256 attendu de zuno-tv.apk (vérifié avant)'
+        required: true
+        type: string
+      expected_version_code:
+        description: 'versionCode attendu'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # effacer / téléverser les fichiers de zuno-tv-test
+  actions: read     # télécharger l'artefact du run
+
+# Même file d'attente que build-zuno-tv.yml : jamais deux écritures en même temps.
+concurrency:
+  group: publish-zuno-tv
+  cancel-in-progress: false
+
+env:
+  TEST_TAG: zuno-tv-test
+  CLIENT_TAG: zuno-tv
+  EXPECTED_CERT: 5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61
+  EXPECTED_PACKAGE: com.sevenmotion.tv.seven_tv
+  MIN_CODE: '1790642483'
+  CLIENT_CODE: '1790640358'
+
+jobs:
+  publish:
+    name: APK existant → zuno-tv-test
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Télécharger l'APK du run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: zuno-tv-apk-*
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+
+      - name: Vérifier le fichier (SHA-256, signature, version)
+        env:
+          WANT_SHA: ${{ inputs.expected_sha256 }}
+          WANT_CODE: ${{ inputs.expected_version_code }}
+        run: |
+          set -euo pipefail
+          ls -la
+          test -f zuno-tv.apk
+          SHA=$(sha256sum zuno-tv.apk | cut -d' ' -f1)
+          echo "SHA-256 : $SHA"
+          [ "$SHA" = "$WANT_SHA" ] || { echo "::error::SHA-256 différent de celui vérifié ($WANT_SHA)"; exit 1; }
+
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs zuno-tv.apk | tee sig.txt
+          CERT=$(grep -m1 'certificate SHA-256 digest' sig.txt | awk '{print $NF}')
+          [ "$CERT" = "$EXPECTED_CERT" ] || { echo "::error::Signature $CERT ≠ clé des box clients"; exit 1; }
+
+          "$BT/aapt2" dump badging zuno-tv.apk | head -1 | tee badging.txt
+          PKG=$(sed -n "s/.*name='\([^']*\)'.*versionCode.*/\1/p" badging.txt)
+          CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" badging.txt)
+          [ "$PKG" = "$EXPECTED_PACKAGE" ] || { echo "::error::package $PKG"; exit 1; }
+          [ "$CODE" = "$WANT_CODE" ] || { echo "::error::versionCode $CODE ≠ $WANT_CODE"; exit 1; }
+          [ "$CODE" -gt "$MIN_CODE" ] && [ "$CODE" -gt "$CLIENT_CODE" ] || { echo "::error::versionCode $CODE trop petit"; exit 1; }
+          echo "✓ fichier conforme"
+
+      - name: Remplacer le contenu de zuno-tv-test (et SEULEMENT elle)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          R="$GITHUB_REPOSITORY"
+          [ "$TEST_TAG" = "zuno-tv-test" ] || exit 1
+          # Photo de la release clients AVANT (id, nom, taille, empreinte).
+          gh api "repos/$R/releases/tags/$CLIENT_TAG" \
+            --jq '[.updated_at] + [.assets[] | "\(.id) \(.name) \(.size) \(.digest)"] | .[]' > client_avant.txt
+          echo "== zuno-tv AVANT"; cat client_avant.txt
+
+          echo "== zuno-tv-test : fichiers présents"
+          gh api "repos/$R/releases/tags/$TEST_TAG" \
+            --jq '.assets[] | "\(.id) \(.name) \(.size) \(.created_at) \(.digest)"' | tee test_avant.txt
+          while read -r ID NAME _; do
+            [ -n "$ID" ] || continue
+            gh api -X DELETE "repos/$R/releases/assets/$ID" < /dev/null
+            echo "effacé : $ID $NAME"
+          done < test_avant.txt
+
+          gh release upload "$TEST_TAG" zuno-tv.apk -R "$R"
+          CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" badging.txt)
+          VN=$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" badging.txt)
+          SHA=$(sha256sum zuno-tv.apk | cut -d' ' -f1)
+          gh release edit "$TEST_TAG" -R "$R" --notes "Zuno — version de TEST (une seule box, jamais les clients).
+
+          Installation : zuno.7themotion.com/test dans l'app Downloader.
+          versionName : $VN · versionCode : $CODE · SHA-256 : $SHA
+          APK repris tel quel du run $RUN_ID (Artifacts)."
+
+          echo "== zuno-tv-test APRÈS"
+          # L'empreinte en ligne est calculée par GitHub juste après l'envoi.
+          for i in 1 2 3 4 5 6; do
+            gh api "repos/$R/releases/tags/$TEST_TAG" \
+              --jq '.assets[] | "\(.id) \(.name) \(.size) \(.digest)"' > test_apres.txt
+            grep -q "sha256:" test_apres.txt && break
+            sleep 5
+          done
+          cat test_apres.txt
+          [ "$(wc -l < test_apres.txt)" -eq 1 ] || { echo "::error::zuno-tv-test n'a pas un seul fichier"; exit 1; }
+          grep -q " zuno-tv.apk .* sha256:$SHA$" test_apres.txt || { echo "::error::empreinte en ligne différente"; exit 1; }
+
+          # Photo de la release clients APRÈS : doit être identique.
+          gh api "repos/$R/releases/tags/$CLIENT_TAG" \
+            --jq '[.updated_at] + [.assets[] | "\(.id) \(.name) \(.size) \(.digest)"] | .[]' > client_apres.txt
+          echo "== zuno-tv APRÈS"; cat client_apres.txt
+          diff client_avant.txt client_apres.txt && echo "✓ zuno-tv n'a pas bougé"
