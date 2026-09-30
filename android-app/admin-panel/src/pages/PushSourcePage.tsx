@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
   sourcesApi, serversApi,
-  type DefaultServer, type DeviceSourceInput, ApiError,
+  type DefaultServer, type DeviceSourceInput, ApiError, isSessionAuthError,
 } from '@/lib/api';
 
 /// Page « Pousser une playlist » — assigne jusqu'à 3 sources (un TRIO)
@@ -107,7 +107,7 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
         + 'automatiquement (≈ 6 s). Bascule entre elles via l’icône « calques » dans l’app.',
       );
     } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      if (isSessionAuthError(e)) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : "Échec de l'envoi.");
     } finally {
       setBusy(false);

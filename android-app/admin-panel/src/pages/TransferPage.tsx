@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
-import { transferApi, ApiError } from '@/lib/api';
+import { transferApi, ApiError, isSessionAuthError } from '@/lib/api';
 
 // =========================================================
 //  TransferPage — déplacer un abonnement vers un nouvel appareil
@@ -41,7 +41,7 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
       );
       setOldMac(''); setNewMac('');
     } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      if (isSessionAuthError(e)) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : 'Transfert impossible.');
     } finally { setBusy(false); }
   }

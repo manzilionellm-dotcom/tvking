@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { themeApi, ApiError, type ThemeRule } from '@/lib/api';
+import { themeApi, ApiError, isSessionAuthError, type ThemeRule } from '@/lib/api';
 
 const MONTHS_FR = [
   'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -58,7 +58,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
   const [platform, setPlatform] = useState<'mobile' | 'tv'>('mobile');
 
   function fail(e: any) {
-    if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    if (isSessionAuthError(e)) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 
@@ -328,7 +328,7 @@ function ThemeAutomations(
     setLoading(true);
     themeApi.getAutomations(platform)
       .then((r) => setRules(r.rules || []))
-      .catch((e) => { if (e instanceof ApiError && e.status === 401) onLogout(); })
+      .catch((e) => { if (isSessionAuthError(e)) onLogout(); })
       .finally(() => setLoading(false));
     /* eslint-disable-next-line */
   }, [platform]);

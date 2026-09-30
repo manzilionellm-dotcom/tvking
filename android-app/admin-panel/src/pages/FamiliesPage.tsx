@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  familiesApi, m3uLinkUrl, ApiError,
+  familiesApi, m3uLinkUrl, ApiError, isSessionAuthError,
   type Family, type FamilyMember, type FamilySource, type FamilyLink,
 } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
@@ -37,7 +37,7 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
   const [mLabel, setMLabel] = useState('');
 
   function fail(e: unknown) {
-    if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    if (isSessionAuthError(e)) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur.');
   }
 

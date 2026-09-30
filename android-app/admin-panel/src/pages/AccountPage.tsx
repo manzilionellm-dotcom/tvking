@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { meApi, getCurrentUser, isOwnerRole, type MeUser, ApiError } from '@/lib/api';
+import { meApi, getCurrentUser, isOwnerRole, type MeUser, ApiError, isSessionAuthError } from '@/lib/api';
 import { useT, LangSelect } from '@/lib/i18n';
 
 /// Page « Mon compte » — accessible a TOUS (admin + revendeurs).
@@ -12,7 +12,7 @@ export function AccountPage({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     meApi.get()
       .then((r) => setMe(r.user))
-      .catch((e) => { if (e instanceof ApiError && e.status === 401) onLogout(); });
+      .catch((e) => { if (isSessionAuthError(e)) onLogout(); });
   }, [onLogout]);
 
   const owner = isOwnerRole(me?.role);

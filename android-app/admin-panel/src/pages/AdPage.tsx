@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { adApi, ApiError } from '@/lib/api';
+import { adApi, ApiError, isSessionAuthError } from '@/lib/api';
 
 // =========================================================
 //  AdPage — vidéo publicitaire jouée au démarrage de l'app (owner)
@@ -21,7 +21,7 @@ export function AdPage({ onLogout }: { onLogout: () => void }) {
   const [ok, setOk] = useState<string | null>(null);
 
   function fail(e: any) {
-    if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    if (isSessionAuthError(e)) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 
