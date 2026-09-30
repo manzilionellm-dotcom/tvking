@@ -42,6 +42,9 @@ import '../../cinema/data/cinema_downloads.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/domain/live_fallback.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../phone_remote/data/phone_remote_bus.dart';
+import '../../phone_remote/data/phone_remote_session.dart';
+import '../../phone_remote/domain/remote_command.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/domain/recording.dart';
@@ -110,6 +113,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // On suit l'ensemble des IDs favoris en direct (le ❤ du lecteur reflète
   // instantanément l'ajout/retrait, et reste à jour au zap).
   StreamSubscription<Set<String>>? _favSub;
+  StreamSubscription<RemoteCommand>? _remoteSub;
   Set<String> _favIds = FavoritesRepository.instance.current;
   bool get _isFavorite => _favIds.contains(_current.id);
 
@@ -191,6 +195,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _favSub = FavoritesRepository.instance.favoritesStream.listen((Set<String> ids) {
       if (mounted) setState(() => _favIds = ids);
     });
+    unawaited(_bindPhoneRemote());
     _open(reuse: true); // historique / présence pour la 1re chaîne
     // Chien de garde : aucune progression depuis 15 s → reconnexion.
     // (Correctif 29/09/2026 : avant, `_recovering` restait vrai après une 1re
@@ -242,6 +247,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _toastTimer?.cancel();
     _zapSettle?.cancel();
     _favSub?.cancel();
+    _remoteSub?.cancel();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
     if (_activeRecording != null) {
@@ -293,6 +299,40 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (_controller.hasError || _controller.isEnded) {
       _recover();
     }
+  }
+
+  /// Le téléphone n'agit que si l'écran du lecteur est devant,
+  /// et seulement si l'interrupteur est allumé. Une erreur ici
+  /// ne coupe pas la chaîne : on ignore l'ordre.
+  Future<void> _bindPhoneRemote() async {
+    try {
+      await PhoneRemoteSession.flag.load();
+      if (!mounted || !PhoneRemoteSession.flag.value) return;
+      _remoteSub = PhoneRemoteBus.instance.stream.listen((RemoteCommand command) {
+        if (!mounted) return;
+        final ModalRoute<Object?>? route = ModalRoute.of(context);
+        if (route != null && !route.isCurrent) return;
+        try {
+          switch (command) {
+            case RemoteCommand.up:
+              _zap(-1);
+            case RemoteCommand.down:
+              _zap(1);
+            case RemoteCommand.left:
+              _navBtn(-1);
+            case RemoteCommand.right:
+              _navBtn(1);
+            case RemoteCommand.ok:
+              _okPressed();
+            case RemoteCommand.back:
+              TvBackGuard.markHandled();
+              Navigator.of(context).maybePop();
+            case RemoteCommand.playPause:
+              _togglePlayPause();
+          }
+        } catch (_) {}
+      });
+    } catch (_) {}
   }
 
   void _open({bool reuse = false}) {

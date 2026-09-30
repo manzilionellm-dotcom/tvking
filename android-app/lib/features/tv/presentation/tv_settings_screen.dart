@@ -25,6 +25,8 @@ import '../core/tv_dimens.dart';
 import '../../carousel/domain/carousel_config.dart';
 import '../../carousel/presentation/zuno_ring_carousel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../box_extras/box_text.dart';
+import '../../box_extras/presentation/tv_extras_screen.dart';
 import '../data/startup_preference.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_legal_screen.dart';
@@ -240,6 +242,17 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         description:
             '${context.l10n.tvDeviceAddressHelp}  ·  OK = ${context.l10n.tvRefreshStatus}',
         onSelect: _busy ? () {} : _refresh,
+      ),
+      _SettingEntry(
+        icon: Icons.phone_android_rounded,
+        title: boxText(context, 'En plus', 'Extras'),
+        value: boxText(context, 'Téléphone', 'Phone'),
+        description: boxText(
+          context,
+          'Téléphone, voix, famille, guide. Chaque fonction se coupe sans toucher à la chaîne.',
+          'Phone, voice, family, guide. Each feature turns off without touching the channel.',
+        ),
+        onSelect: () => open(const TvExtrasScreen()),
       ),
       _SettingEntry(
         icon: Icons.play_circle_outline_rounded,

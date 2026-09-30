@@ -37,3 +37,9 @@ lib/
 - Une branche par fonctionnalité (`claude/<sujet>` ou `feature/<sujet>`).
 - Commits fréquents, messages clairs.
 - On commit dès qu'une étape compile et tourne.
+
+## Fonctions en plus (branche `claude/zuno-tout`)
+
+Chacune a un interrupteur (`BoxFlag`, SharedPreferences). Coupée, elle ne démarre pas. Aucune n'ouvre un flux toute seule.
+
+- **Téléphone (QR).** Réutilise `qr_flutter` (déjà là pour le cast : dessine un QR). Pas de nouvelle dépendance. Un mini-serveur HTTP local sert une page sans script externe. Le jeton est tiré au démarrage, jamais écrit dans le dépôt.
