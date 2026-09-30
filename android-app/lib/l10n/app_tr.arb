@@ -2199,5 +2199,14 @@
   "tvSettingsRecordingsHint": "REC düğmesiyle kaydedilen videolar.",
   "tvRingHint": "◀ ▶  gez   ·   OK  aç",
   "tvCinemaDownloadSeason": "Sezonu indir",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Sezon indiriliyor} =1{1 bölüm sırada} other{{count} bölüm sırada}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Sezon indiriliyor} =1{1 bölüm sırada} other{{count} bölüm sırada}}",
+  "tvPlayerLoading": "Kanal yükleniyor…",
+  "tvPlayerFatalDown": "Bu kanal şu anda yanıt vermiyor.",
+  "tvPlayerFatalEmpty": "Bu kanal boş veya kaynak tarafından engellenmiş.",
+  "tvPlayerFatalNav": "Yukarı / Aşağı: başka kanal",
+  "tvSearchPrompt": "Adı klavyeyle yaz. Sağ ok: sonuçlar.",
+  "tvSearchCount": "{count, plural, =1{1 sonuç} other{{count} sonuç}}",
+  "tvGuideLoading": "Rehber yükleniyor…",
+  "tvGuideHint": "Yukarı / Aşağı: gez · OK veya Geri: kapat",
+  "tvNoEpg": "Duyurulan program yok"
 }

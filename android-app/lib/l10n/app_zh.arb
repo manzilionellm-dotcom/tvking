@@ -2199,5 +2199,14 @@
   "tvSettingsRecordingsHint": "使用 REC 按钮录制的视频。",
   "tvRingHint": "◀ ▶  浏览   ·   OK  打开",
   "tvCinemaDownloadSeason": "下载本季",
-  "tvCinemaSeasonQueue": "{count, plural, =0{本季下载中} =1{1 集排队中} other{{count} 集排队中}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{本季下载中} =1{1 集排队中} other{{count} 集排队中}}",
+  "tvPlayerLoading": "正在加载频道…",
+  "tvPlayerFatalDown": "此频道暂时无响应。",
+  "tvPlayerFatalEmpty": "此频道没有信号，或被片源拦截。",
+  "tvPlayerFatalNav": "上 / 下：换一个频道",
+  "tvSearchPrompt": "用键盘输入名称。右方向键：查看结果。",
+  "tvSearchCount": "{count, plural, other{{count} 个结果}}",
+  "tvGuideLoading": "正在加载节目单…",
+  "tvGuideHint": "上 / 下：浏览 · OK 或返回：关闭",
+  "tvNoEpg": "暂无节目信息"
 }

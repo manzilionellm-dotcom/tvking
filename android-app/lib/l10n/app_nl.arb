@@ -2199,5 +2199,14 @@
   "tvSettingsRecordingsHint": "Video's opgenomen met de REC-knop.",
   "tvRingHint": "◀ ▶  bladeren   ·   OK  openen",
   "tvCinemaDownloadSeason": "Seizoen downloaden",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Seizoen wordt gedownload} =1{1 aflevering in wachtrij} other{{count} afleveringen in wachtrij}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Seizoen wordt gedownload} =1{1 aflevering in wachtrij} other{{count} afleveringen in wachtrij}}",
+  "tvPlayerLoading": "Zender laden…",
+  "tvPlayerFatalDown": "Deze zender reageert nu niet.",
+  "tvPlayerFatalEmpty": "Deze zender is leeg of geblokkeerd door de bron.",
+  "tvPlayerFatalNav": "Omhoog / Omlaag: andere zender",
+  "tvSearchPrompt": "Typ een naam met het toetsenbord. Pijl rechts: de resultaten.",
+  "tvSearchCount": "{count, plural, =1{1 resultaat} other{{count} resultaten}}",
+  "tvGuideLoading": "Gids laden…",
+  "tvGuideHint": "Omhoog / Omlaag: bladeren · OK of Terug: sluiten",
+  "tvNoEpg": "Geen programma bekend"
 }

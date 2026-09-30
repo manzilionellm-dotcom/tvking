@@ -2199,5 +2199,14 @@
   "tvSettingsRecordingsHint": "Mit der REC-Taste aufgenommene Videos.",
   "tvRingHint": "◀ ▶  blättern   ·   OK  öffnen",
   "tvCinemaDownloadSeason": "Staffel herunterladen",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Staffel wird geladen} =1{1 Folge in Warteschlange} other{{count} Folgen in Warteschlange}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Staffel wird geladen} =1{1 Folge in Warteschlange} other{{count} Folgen in Warteschlange}}",
+  "tvPlayerLoading": "Sender wird geladen…",
+  "tvPlayerFatalDown": "Dieser Sender antwortet gerade nicht.",
+  "tvPlayerFatalEmpty": "Dieser Sender ist leer oder von der Quelle blockiert.",
+  "tvPlayerFatalNav": "Hoch / Runter: anderer Sender",
+  "tvSearchPrompt": "Namen mit der Tastatur eingeben. Pfeil rechts: die Ergebnisse.",
+  "tvSearchCount": "{count, plural, =1{1 Ergebnis} other{{count} Ergebnisse}}",
+  "tvGuideLoading": "TV-Guide wird geladen…",
+  "tvGuideHint": "Hoch / Runter: blättern · OK oder Zurück: schließen",
+  "tvNoEpg": "Kein Programm angekündigt"
 }

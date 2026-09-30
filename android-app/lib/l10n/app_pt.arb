@@ -2199,5 +2199,14 @@
   "tvSettingsRecordingsHint": "Os vídeos gravados com o botão REC.",
   "tvRingHint": "◀ ▶  navegar   ·   OK  abrir",
   "tvCinemaDownloadSeason": "Transferir temporada",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Temporada a transferir} =1{1 episódio na fila} other{{count} episódios na fila}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Temporada a transferir} =1{1 episódio na fila} other{{count} episódios na fila}}",
+  "tvPlayerLoading": "A carregar o canal…",
+  "tvPlayerFatalDown": "Este canal não responde de momento.",
+  "tvPlayerFatalEmpty": "Este canal está vazio ou bloqueado pela fonte.",
+  "tvPlayerFatalNav": "Cima / Baixo: outro canal",
+  "tvSearchPrompt": "Escreve um nome no teclado. Seta direita: os resultados.",
+  "tvSearchCount": "{count, plural, =1{1 resultado} other{{count} resultados}}",
+  "tvGuideLoading": "A carregar o guia…",
+  "tvGuideHint": "Cima / Baixo: percorrer · OK ou Voltar: fechar",
+  "tvNoEpg": "Sem programa anunciado"
 }
