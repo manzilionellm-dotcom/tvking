@@ -62,6 +62,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/i18n/l10n_now.dart';
@@ -70,11 +71,12 @@ import '../../../core/realtime/realtime_sync_service.dart'
     show AdminMessage, RealtimeSyncService;
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
+import '../domain/live_alert_plan.dart';
 import '../domain/sport_models.dart';
 import 'followed_matches_service.dart';
 import 'sports_repository.dart';
 
-class LiveScoresService {
+class LiveScoresService with WidgetsBindingObserver {
   LiveScoresService._();
   static final LiveScoresService instance = LiveScoresService._();
 
@@ -201,6 +203,7 @@ class LiveScoresService {
   void startSentinel() {
     if (_sentinelOn) return;
     _sentinelOn = true;
+    WidgetsBinding.instance.addObserver(this);
     // Les matchs suivis vivent dans les préférences : on les charge
     // d'abord, sinon la première évaluation croirait la liste vide.
     unawaited(FollowedMatchesService.instance.ensureLoaded().then((_) {
@@ -219,6 +222,9 @@ class LiveScoresService {
 
   /// Arrête la veille (tests, ou réglage « alertes de but » coupé).
   void stopSentinel() {
+    if (_sentinelOn) {
+      WidgetsBinding.instance.removeObserver(this);
+    }
     _sentinelOn = false;
     _sentinelTimer?.cancel();
     _sentinelTimer = null;
@@ -253,6 +259,17 @@ class LiveScoresService {
   void _sentinelTick() {
     if (!_sentinelOn) return;
     _armSentinel();
+  }
+
+  /// Retour au premier plan : si l'écran Sport est ouvert, ou si un
+  /// match suivi est dans sa fenêtre, on relit tout de suite. Le
+  /// minuteur Dart était gelé tant que le processus dormait.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final bool screenOpen = _timer != null;
+    final bool window = _sentinelOn && hasAlertWindow(_now());
+    if (screenOpen || window) unawaited(refresh());
   }
 
   /// Tous les matchs qui COMPTENT pour ce client : suivis un par un, et
@@ -409,11 +426,14 @@ class LiveScoresService {
   //      hoquette peuvent faire BAISSER un score. On mémorise alors la
   //      nouvelle valeur sans rien annoncer.
   //
-  //   4. UN CRI À LA FOIS. Deux buts dans la même seconde sur deux
-  //      matchs suivis feraient se chevaucher deux sons. On annonce le
-  //      premier et on note les autres comme vus.
+  //   4. TOUS LES BUTS DU TOUR. Deux buts dans la même photo sont
+  //      tous les deux annoncés. L'identifiant de notification est
+  //      stable par match : un second but REMPLACE le premier, il ne
+  //      s'empile pas. On ne jette plus le second (avant, le total
+  //      était déjà mémorisé et le cri ne revenait jamais).
   final Map<String, int> _lastTotals = <String, int>{};
   bool _goalBaseline = false;
+  final LiveAlertPlan _moments = LiveAlertPlan();
 
   int? _total(SportEvent e) {
     final int? h = int.tryParse(e.homeScore ?? '');
@@ -457,27 +477,66 @@ class LiveScoresService {
   }
 
   void _detectGoals(List<SportEvent> fresh) {
+    // Tous les buts dignes d'un cri, pas seulement le premier du tour.
+    // Un deuxième but dans la même photo remplaçait l'autre pour
+    // toujours : le total était déjà mémorisé, le cri ne revenait pas.
     for (final SportEvent e in _goalsIn(fresh)) {
       if (!_isAlertWorthy(e)) continue;
-      final String body = goalBody(e);
-      unawaited(NotificationService.instance.notifyGoal(
-        // Emplacement STABLE par match : un deuxième but REMPLACE la
-        // notification du premier au lieu d'en empiler une seconde.
-        // Le client veut le score du moment, pas un historique.
-        id: 970000 + (e.id.hashCode.abs() % 1000),
-        title: l10nNow.sportGoalTitle,
-        body: body,
-      ));
-      // BANDEAU DANS L'APP, en plus de la notification système. Deux
-      // raisons : (a) sur Android TV, les notifications système
-      // n'apparaissent PAS à l'écran — elles vont dans un panneau que
-      // personne n'ouvre ; le bandeau, lui, passe au-dessus du lecteur.
-      // (b) sur téléphone, si l'app est au premier plan sur un film, le
-      // bandeau se voit sans quitter le film. On réutilise la bannière
-      // admin (déjà posée dans les deux entrées, au-dessus de tout).
-      unawaited(_showGoalBanner(e, body));
-      return; // un seul cri par tour (garde-fou 4)
+      _announceGoal(e);
     }
+    for (final LiveAlert alert in _moments.consume(fresh)) {
+      if (alert.kind == LiveAlertKind.goal) continue;
+      if (!_isAlertWorthy(alert.event)) continue;
+      if (alert.kind == LiveAlertKind.started) {
+        _announceMoment(
+          alert.event,
+          title: l10nNow.notifMatchStartedTitle,
+          idBase: 971000,
+          bannerKind: 'info',
+        );
+      } else if (alert.kind == LiveAlertKind.ended) {
+        _announceMoment(
+          alert.event,
+          title: l10nNow.notifMatchEndedTitle,
+          idBase: 972000,
+          bannerKind: 'success',
+        );
+      }
+    }
+  }
+
+  void _announceGoal(SportEvent e) {
+    final String body = goalBody(e);
+    unawaited(NotificationService.instance.notifyGoal(
+      // Emplacement STABLE par match : un deuxième but REMPLACE la
+      // notification du premier au lieu d'en empiler une seconde.
+      // Le client veut le score du moment, pas un historique.
+      id: 970000 + (e.id.hashCode.abs() % 1000),
+      title: l10nNow.sportGoalTitle,
+      body: body,
+    ));
+    unawaited(_showGoalBanner(e, body, title: l10nNow.sportGoalTitle));
+  }
+
+  void _announceMoment(
+    SportEvent e, {
+    required String title,
+    required int idBase,
+    required String bannerKind,
+  }) {
+    final String body = goalBody(e);
+    unawaited(NotificationService.instance.showNow(
+      id: idBase + (e.id.hashCode.abs() % 1000),
+      title: title,
+      body: body,
+    ));
+    unawaited(_showGoalBanner(
+      e,
+      body,
+      title: title,
+      kind: bannerKind,
+      bannerPrefix: bannerKind,
+    ));
   }
 
   /// « Real Madrid 2–1 Chelsea · 67' » — le score du moment et, si la
@@ -490,7 +549,13 @@ class LiveScoresService {
     return minute.isEmpty ? score : '$score · $minute';
   }
 
-  Future<void> _showGoalBanner(SportEvent e, String body) async {
+  Future<void> _showGoalBanner(
+    SportEvent e,
+    String body, {
+    String? title,
+    String kind = 'success',
+    String bannerPrefix = 'goal',
+  }) async {
     // Même interrupteur que les alertes de match : quelqu'un qui a coupé
     // « alertes de match » dans les Réglages ne veut pas non plus d'un
     // bandeau qui surgit sur son film.
@@ -500,10 +565,10 @@ class LiveScoresService {
     RealtimeSyncService.instance.showAdminMessage(AdminMessage(
       // Identifiant STABLE par match, comme la notification : un second
       // but remplace le bandeau du premier.
-      id: 'goal:${e.id}',
-      title: l10nNow.sportGoalTitle,
+      id: '$bannerPrefix:${e.id}',
+      title: title ?? l10nNow.sportGoalTitle,
       body: body,
-      kind: 'success',
+      kind: kind,
       durationSec: 8,
       translate: false,
     ));
@@ -531,6 +596,7 @@ class LiveScoresService {
   void debugResetGoals() {
     _lastTotals.clear();
     _goalBaseline = false;
+    _moments.reset();
   }
 
   @visibleForTesting

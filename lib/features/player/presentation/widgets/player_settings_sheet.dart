@@ -11,6 +11,8 @@
 //    - Vitesse de lecture (0.5x à 2x)
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -18,6 +20,7 @@ import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../data/player_settings.dart';
+import '../../domain/image_engine.dart';
 import '../aspect_mode_label.dart';
 
 class PlayerSettingsSheet extends StatefulWidget {
@@ -165,13 +168,44 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
                     ),
                     const SizedBox(height: 14),
 
-                    // ----- Décodage hardware -----
-                    _toggle(
-                      label: context.l10n.playerHwDecode,
-                      sublabel: context.l10n.playerHwDecodeHelp,
-                      value: PlayerSettings.instance.hardwareDecode,
-                      onChanged: (bool v) =>
-                          PlayerSettings.instance.setHardwareDecode(v),
+                    // ----- Moteur image : Matériel, puis Logiciel -----
+                    // FFmpeg vidéo n'est pas un moteur à part ici (libmpv
+                    // est déjà le logiciel). Le cran le saute et le dit.
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        context.l10n.playerImageEngine,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        PlayerSettings.instance.imageEngine ==
+                                ImageEngine.software
+                            ? context.l10n.playerEngineSoftware
+                            : context.l10n.playerEngineHardware,
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
+                      trailing: const Icon(Icons.swap_horiz_rounded,
+                          color: AppColors.textSecondary),
+                      onTap: () {
+                        final EngineStep step = EngineStep.next(
+                          PlayerSettings.instance.imageEngine,
+                          ffmpegVideo: PlayerSettings.ffmpegVideoInBinary,
+                        );
+                        unawaited(
+                          PlayerSettings.instance.setImageEngine(step.engine),
+                        );
+                        setState(() {});
+                        if (step.ffmpegMissing && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(context.l10n.playerFfmpegMissing),
+                            ),
+                          );
+                        }
+                      },
                     ),
                     const SizedBox(height: 14),
 

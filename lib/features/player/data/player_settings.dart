@@ -11,6 +11,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../domain/image_engine.dart';
+
 /// Mode d'affichage de la vidéo dans son conteneur.
 enum AspectRatioMode {
   fit('Contenir', 'fit'),
@@ -47,6 +49,7 @@ class PlayerSettings extends ChangeNotifier {
   static const String _kBufferKey = 'player.buffer_seconds';
   static const String _kAspectKey = 'player.aspect_mode';
   static const String _kHwdecKey = 'player.hardware_decode';
+  static const String _kEngineKey = 'player.image_engine';
   static const String _kPassthroughKey = 'player.dolby_passthrough';
   static const String _kStatsKey = 'player.show_stats';
   static const String _kSpeedKey = 'player.last_speed';
@@ -95,8 +98,12 @@ class PlayerSettings extends ChangeNotifier {
 
   AspectRatioMode _aspectMode = AspectRatioMode.fit;
 
-  /// Force le décodage hardware (recommandé pour 4K/8K).
-  bool _hardwareDecode = true;
+  /// Moteur d'image. Matériel par défaut. Le booléen historique
+  /// `hardware_decode` reste lu pour les réglages déjà enregistrés.
+  ImageEngine _imageEngine = ImageEngine.hardware;
+
+  /// Ce binaire n'a pas de décodeur vidéo FFmpeg séparé de libmpv.
+  static const bool ffmpegVideoInBinary = false;
 
   /// Son Dolby / DTS envoyé TEL QUEL à l'ampli ou à la barre de son
   /// (HDMI, USB) quand la sortie l'accepte — comme la box. Défaut ON :
@@ -147,7 +154,11 @@ class PlayerSettings extends ChangeNotifier {
   // ----- Getters -----
   int get bufferSeconds => _bufferSeconds;
   AspectRatioMode get aspectMode => _aspectMode;
-  bool get hardwareDecode => _hardwareDecode;
+  ImageEngine get imageEngine => _imageEngine;
+
+  /// Vrai seulement pour le moteur matériel (compatibilité des
+  /// appelants qui lisaient l'ancien interrupteur).
+  bool get hardwareDecode => _imageEngine == ImageEngine.hardware;
   bool get dolbyPassthrough => _dolbyPassthrough;
   bool get showStats => _showStats;
   bool get antiFreeze => _antiFreeze;
@@ -197,7 +208,14 @@ class PlayerSettings extends ChangeNotifier {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     _bufferSeconds = prefs.getInt(_kBufferKey) ?? 20;
     _aspectMode = AspectRatioMode.fromCode(prefs.getString(_kAspectKey));
-    _hardwareDecode = prefs.getBool(_kHwdecKey) ?? true;
+    final String? engineWire = prefs.getString(_kEngineKey);
+    if (engineWire != null) {
+      _imageEngine = ImageEngine.fromWire(engineWire);
+    } else {
+      _imageEngine = (prefs.getBool(_kHwdecKey) ?? true)
+          ? ImageEngine.hardware
+          : ImageEngine.software;
+    }
     _dolbyPassthrough = prefs.getBool(_kPassthroughKey) ?? true;
     _showStats = prefs.getBool(_kStatsKey) ?? false;
     _antiFreeze = prefs.getBool(_kAntiFreezeKey) ?? true;
@@ -241,11 +259,18 @@ class PlayerSettings extends ChangeNotifier {
   }
 
   Future<void> setHardwareDecode(bool enabled) async {
-    if (enabled == _hardwareDecode) return;
-    _hardwareDecode = enabled;
+    await setImageEngine(
+      enabled ? ImageEngine.hardware : ImageEngine.software,
+    );
+  }
+
+  Future<void> setImageEngine(ImageEngine engine) async {
+    if (engine == _imageEngine) return;
+    _imageEngine = engine;
     notifyListeners();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kHwdecKey, enabled);
+    await prefs.setString(_kEngineKey, engine.wire);
+    await prefs.setBool(_kHwdecKey, engine == ImageEngine.hardware);
   }
 
   Future<void> setDolbyPassthrough(bool enabled) async {

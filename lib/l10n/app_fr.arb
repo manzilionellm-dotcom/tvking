@@ -678,6 +678,12 @@
     "description": "Texte UI : playerHwDecode"
   },
   "playerHwDecodeHelp": "Utilise le GPU pour décoder la vidéo. Indispensable pour 4K / 8K.",
+  "playerImageEngine": "Moteur image",
+  "playerEngineHardware": "Matériel",
+  "playerEngineSoftware": "Logiciel",
+  "playerFfmpegMissing": "FFmpeg vidéo n'est pas dans cette version. On revient au matériel.",
+  "notifMatchStartedTitle": "Coup d'envoi",
+  "notifMatchEndedTitle": "Fin du match",
   "@playerHwDecodeHelp": {
     "description": "Texte UI : playerHwDecodeHelp"
   },

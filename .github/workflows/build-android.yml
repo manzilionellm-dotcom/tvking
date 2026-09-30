@@ -75,7 +75,19 @@ jobs:
       #  d'avoir compile quoi que ce soit.
       - name: Refuser une publication qui ferait reculer le telephone
         if: github.event_name == 'push'
-        run: ci/guard_no_rollback.sh check app-phone "$GITHUB_SHA"
+        run: |
+          # Le garde-fou compare le commit au tag deployed/app-phone.
+          # Il n'a de sens QUE sur une branche qui publie vraiment
+          # phone-latest. Les autres (dont cette branche de travail)
+          # ne déposent aucun APK : les faire échouer ici bloquerait
+          # un correctif qui ne touche pas les clients.
+          REL=$(ci/release_tag.sh phone "${{ github.ref_name }}")
+          echo "canal téléphone pour cette branche : $REL"
+          if [ "$REL" = "phone-latest" ]; then
+            ci/guard_no_rollback.sh check app-phone "$GITHUB_SHA"
+          else
+            echo "pas de publication phone-latest : garde-fou non appliqué"
+          fi
 
       - name: Setup Java 17 (Temurin)
         uses: actions/setup-java@v4
@@ -1239,12 +1251,15 @@ jobs:
           #  déjà installées, qui l'ignorent, ne cassent pas.
           BUILD_LABEL=$(ci/build_label.sh "$REPO" "$TAG")
           echo ">>> numero lisible publie : $BUILD_LABEL"
+          SHA=$(sha256sum "$APK" | awk '{print $1}')
+          echo ">>> sha256 APK : $SHA"
           cat > version.json <<JSON
           {
             "versionCode": ${{ github.run_number }},
             "versionName": "$VN",
             "buildLabel": "$BUILD_LABEL",
             "url": "https://github.com/$REPO/releases/download/$TAG/7motion.apk",
+            "sha256": "$SHA",
             "mandatory": false
           }
           JSON
@@ -1313,12 +1328,15 @@ jobs:
           #  on republie EXACTEMENT le même, jamais un recalcul — sinon
           #  l'app afficherait un numéro et le serveur en publierait un
           #  autre.
+          SHA=$(sha256sum "$APK" | awk '{print $1}')
+          echo ">>> sha256 APK : $SHA"
           cat > version.json <<JSON
           {
             "versionCode": ${{ github.run_number }},
             "versionName": "$VN",
             "buildLabel": "${BUILD_LABEL:-}",
             "url": "https://github.com/$REPO/releases/download/$TAG/7motion.apk",
+            "sha256": "$SHA",
             "mandatory": false
           }
           JSON

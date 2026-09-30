@@ -93,3 +93,19 @@ bool catalogChanged(List<String> oldIds, List<String> newIds) {
   if (oldIds.length != newIds.length) return true;
   return Object.hashAll(oldIds) != Object.hashAll(newIds);
 }
+
+/// Liste à montrer après un appel réseau.
+///
+/// [incoming] vide ou null = le serveur n'a rien donné (panne ou
+/// réponse vide). On garde la mémoire, puis le disque. On n'écrit
+/// jamais le vide par-dessus un catalogue déjà là.
+List<T> keepPreviousWhenEmpty<T>({
+  required List<T>? incoming,
+  required List<T> previous,
+  required List<T> disk,
+}) {
+  if (incoming != null && incoming.isNotEmpty) return incoming;
+  if (previous.isNotEmpty) return previous;
+  if (disk.isNotEmpty) return disk;
+  return incoming ?? previous;
+}

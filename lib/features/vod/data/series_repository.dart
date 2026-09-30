@@ -156,18 +156,23 @@ class SeriesRepository extends ChangeNotifier {
       }
     }
     _diag('réseau demandé (source $key)…');
+    final List<VodSeries>? diskNow =
+        _cache == null ? await _disk.load(key) : null;
     final List<VodSeries> fresh = await _fetchFromNetwork();
+    final List<VodSeries> kept = keepPreviousWhenEmpty<VodSeries>(
+      incoming: fresh,
+      previous: _cache ?? const <VodSeries>[],
+      disk: diskNow ?? const <VodSeries>[],
+    );
     if (fresh.isNotEmpty) {
       _cache = fresh;
       _diag('réseau OK : ${fresh.length} séries reçues');
       unawaited(_disk.save(fresh, key));
     } else {
-      // Réseau vide / panne : on NE MET PAS en cache le vide (sinon l'écran
-      // resterait vide toute la session) → réessai à la prochaine ouverture.
-      // On conserve un éventuel cache existant (pas de destruction).
+      if (kept.isNotEmpty) _cache = kept;
       _diag(
-          'réseau : 0 série (source sans séries, compte M3U, ou panne) — '
-          'réessai à la prochaine ouverture',
+          'réseau : 0 série — catalogue précédent conservé '
+          '(${_cache?.length ?? 0})',
           level: 'warn');
     }
     return _cache ?? const <VodSeries>[];

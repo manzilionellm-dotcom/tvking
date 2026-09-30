@@ -36,6 +36,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_platform.dart';
 import '../observability/structured_logger.dart';
+import '../security/update_digest.dart';
 import 'build_flags.dart';
 
 class UpdateInfo {
@@ -45,12 +46,18 @@ class UpdateInfo {
     required this.url,
     this.mandatory = false,
     this.buildLabel = '',
+    this.sha256 = '',
   });
 
   final int versionCode;
   final String versionName;
   final String url;
   final bool mandatory;
+
+  /// SHA-256 hex de l'APK, ou vide si le manifeste ne le porte pas.
+  /// Vide = on installe quand même (anciens manifests). Présent et
+  /// faux = on refuse et on efface le fichier.
+  final String sha256;
 
   /// Numéro COURT de la version publiée (« 65 »), à dicter au téléphone.
   /// Vide si le manifeste est ancien et ne le porte pas encore : l'écran
@@ -222,6 +229,7 @@ class UpdateService {
         url: url,
         mandatory: j['mandatory'] == true,
         buildLabel: (j['buildLabel'] ?? '').toString(),
+        sha256: sha256FromManifest(j),
       );
       return UpdateCheckResult(
         UpdateAvailability.available,
@@ -346,6 +354,19 @@ class UpdateService {
       await sink.flush();
       await sink.close();
       sink = null;
+
+      // Empreinte annoncée : on compare avant d'ouvrir l'installateur.
+      // Absente : on ne bloque pas (les manifests déjà en ligne n'ont
+      // pas ce champ). Présente et fausse : on efface et on refuse.
+      if (update.sha256.isNotEmpty) {
+        final bool ok = apkDigestOk(await file.readAsBytes(), update.sha256);
+        if (!ok) {
+          try {
+            await file.delete();
+          } catch (_) {}
+          return false;
+        }
+      }
 
       if (surPc) {
         // ON LANCE L'INSTALLEUR, ET ON SE DÉTACHE DE LUI.

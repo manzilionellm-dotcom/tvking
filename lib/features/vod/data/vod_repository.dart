@@ -197,18 +197,25 @@ class VodRepository extends ChangeNotifier {
       }
     }
     _diag('réseau demandé (source $key)…');
+    final List<VodMovie>? diskNow =
+        _cache == null ? await _disk.load(key) : null;
     final List<VodMovie> fresh = await _fetchFromNetwork();
+    final List<VodMovie> kept = keepPreviousWhenEmpty<VodMovie>(
+      incoming: fresh,
+      previous: _cache ?? const <VodMovie>[],
+      disk: diskNow ?? const <VodMovie>[],
+    );
     if (fresh.isNotEmpty) {
       _cache = fresh;
       _diag('réseau OK : ${fresh.length} films reçus');
       unawaited(_disk.save(fresh, key));
     } else {
-      // Réseau vide / panne : on NE MET PAS en cache le vide (sinon l'écran
-      // resterait vide toute la session) → réessai à la prochaine ouverture.
-      // On conserve un éventuel cache existant (pas de destruction).
+      // Réponse vide ou panne : on ne remplace PAS le catalogue déjà
+      // gardé (mémoire ou disque), et on n'écrit pas le vide.
+      if (kept.isNotEmpty) _cache = kept;
       _diag(
-          'réseau : 0 film (source sans VOD, compte M3U, ou panne) — '
-          'réessai à la prochaine ouverture',
+          'réseau : 0 film — catalogue précédent conservé '
+          '(${_cache?.length ?? 0})',
           level: 'warn');
     }
     return _cache ?? const <VodMovie>[];

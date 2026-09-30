@@ -20,6 +20,7 @@ import 'core/assistance/assistance_overlay.dart';
 import 'core/app/guarded_main.dart';
 import 'core/backend/backend_hosts.dart';
 import 'core/privacy/privacy_shield.dart';
+import 'core/security/device_posture_probe.dart';
 import 'core/profiles/profiles_repository.dart';
 import 'core/profiles/remote_profiles_repository.dart';
 import 'core/realtime/admin_message_banner.dart';
@@ -132,6 +133,10 @@ Future<void> bootApp() async {
   // mémoire en ré-important une grosse source), on saute le ré-import
   // distant plus bas pour casser la boucle.
   await BootGuard.instance.beginBoot();
+
+  // Posture (débogage, émulateur, su) : une note dans la boîte noire.
+  // Jamais un motif pour refuser la lecture.
+  unawaited(DevicePostureProbe.read());
 
   // Rotation auto autorisée sur toutes les orientations supportées.
   // Sans ça, même quand l'utilisateur incline son téléphone en mode
