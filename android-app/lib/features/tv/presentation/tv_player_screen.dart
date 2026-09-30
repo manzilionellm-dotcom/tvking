@@ -31,6 +31,7 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/clear_voice_flag.dart';
+import '../../player/domain/reconnect_plan.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -139,8 +140,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Anti-gel : on suit la progression réelle (position qui avance).
   DateTime _lastProgress = DateTime.now();
   Duration _lastPos = Duration.zero;
-  // Anti double déclenchement (erreur native + chien de garde au même moment).
-  DateTime _lastRecoverAt = DateTime.fromMillisecondsSinceEpoch(0);
   // App au premier plan ? (Home / multitâche → lecture en pause : le chien de
   // garde ne doit PAS « réparer » une pause voulue, sinon le son repartirait
   // en arrière-plan.)
@@ -154,6 +153,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // ou au changement de chaîne.
   int _recoverAttempts = 0;
   static const int _kMaxRecover = 5;
+  // Délai croissant déjà armé : on n'en pose pas un second
+  // (deux setUrl = deux sons, et on annulerait l'attente).
+  Timer? _recoverTimer;
+  bool _recoverArmed = false;
   bool _fatal = false;
   // True dès qu'une vraie image a été affichée pour la chaîne courante. Si on
   // échoue SANS jamais avoir eu d'image → source vide / bloquée par le
@@ -276,6 +279,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _watchdog?.cancel();
     _toastTimer?.cancel();
     _zapSettle?.cancel();
+    _cancelRecover();
     _favSub?.cancel();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
@@ -306,10 +310,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (_zapHolding) return;
     // Progression réelle → « pas gelé ». La lecture est repartie : on remet à
     // zéro le budget de reconnexion (et on lève un éventuel état d'erreur).
-    if (_controller.position != _lastPos) {
+    if (_controller.position != _lastPos && !_controller.hasError) {
       _lastPos = _controller.position;
       _lastProgress = DateTime.now();
       _recoverAttempts = 0;
+      _cancelRecover();
       if (_fatal && mounted) setState(() => _fatal = false);
       // Une adresse de SECOURS joue : on retient le format pour ce serveur
       // (les chaînes suivantes s'ouvriront directement comme ça).
@@ -323,7 +328,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (_controller.firstFrame) _everShownFrame = true;
     // Logo tant qu'on bufferise OU que la 1re trame n'est pas encore dessinée
     // (au zap, firstFrame est remis à false → logo jusqu'à l'image suivante).
-    final bool buffering = _controller.isBuffering || !_controller.firstFrame;
+    // Panneau opaque seulement s'il n'y a pas d'image à garder.
+    // holdFrame = le natif montre la dernière image : un panneau
+    // par-dessus ferait un écran noir le temps de revenir.
+    final bool buffering = !_controller.holdFrame &&
+        (_controller.isBuffering || !_controller.firstFrame);
     if (mounted && buffering != _buffering) {
       setState(() => _buffering = buffering);
     }
@@ -340,6 +349,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
     // Nouvelle chaîne → budget de reconnexion neuf, on lève tout état d'erreur.
     _recoverAttempts = 0;
+    _cancelRecover();
     _alts = null;
     _altIdx = 0;
     _altRemembered = false;
@@ -386,45 +396,76 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // appui simple ne paraît pas lent. Une touche maintenue repart le
     // chrono : un seul flux s'ouvre, sur la chaîne où l'on s'arrête.
     _zapSettle?.cancel();
-    _zapSettle = Timer(const Duration(milliseconds: 180), () {
+    _cancelRecover();
+    // 180 ms : voir [ReconnectPlan.zapSettleMs]. Sous le délai d'une
+    // vraie image, et assez long pour qu'une touche maintenue n'ouvre
+    // qu'UN flux (deux connexions feraient refuser la chaîne).
+    _zapSettle = Timer(const Duration(milliseconds: ReconnectPlan.zapSettleMs), () {
       if (!mounted) return;
       _zapHolding = false;
       _open();
     });
   }
 
+  void _cancelRecover() {
+    _recoverTimer?.cancel();
+    _recoverTimer = null;
+    _recoverArmed = false;
+  }
+
+  void _showFatal() {
+    _cancelRecover();
+    if (!mounted) return;
+    setState(() {
+      _fatal = true;
+      _buffering = false;
+    });
+  }
+
   void _recover() {
-    if (_fatal || _zapHolding) return;
-    final DateTime now = DateTime.now();
-    if (now.difference(_lastRecoverAt) < const Duration(seconds: 3)) return;
-    _lastRecoverAt = now;
-    BlackBox.instance.warn('PLAYER', 'reconnexion (tentative ${_recoverAttempts + 1}/$_maxRecover)'
-        '${_controller.hasError ? ' après erreur ExoPlayer' : _controller.isEnded ? ' après fin de flux' : ' après gel 15 s'}');
-    // BORNE (P1-6) : au-delà de _kMaxRecover ré-ouvertures sans reprise, on
-    // ARRÊTE la boucle de reconnexion et on bascule en erreur explicite avec
-    // « Réessayer » manuel — fini la boucle CPU/réseau infinie sur flux mort.
+    if (_fatal || _zapHolding || _recoverArmed) return;
+    // Le natif attend déjà (1 s, 2 s, 4 s, 8 s). Un setUrl ici
+    // annulerait ce délai et préparerait un second flux.
+    if (ReconnectPlan.letNativeOwnRetry(_controller.nativeRetrying)) return;
+    // BORNE : au-delà, écran « Réessayer ». Plus de boucle infinie.
     if (_recoverAttempts >= _maxRecover) {
-      if (mounted) setState(() {
-        _fatal = true;
-        _buffering = false;
-      });
+      _showFatal();
       return;
     }
-    _recoverAttempts++;
+    final int next = _recoverAttempts + 1;
+    final int delay = ReconnectPlan.delayMs(next);
+    _recoverAttempts = next;
+    _recoverArmed = true;
     _lastProgress = DateTime.now();
-    // Enregistrement en cours : on ré-ouvre le relais local (on ne change
-    // pas de source au milieu d'un fichier).
+    BlackBox.instance.warn(
+      'PLAYER',
+      'reconnexion dans ${delay}ms (tentative $next/$_maxRecover)'
+      '${_controller.hasError ? ' après erreur ExoPlayer' : _controller.isEnded ? ' après fin de flux' : ' après gel 15 s'}',
+    );
+    _recoverTimer = Timer(Duration(milliseconds: delay), () {
+      _recoverTimer = null;
+      _recoverArmed = false;
+      if (!mounted || _fatal || _zapHolding) return;
+      if (ReconnectPlan.letNativeOwnRetry(_controller.nativeRetrying)) return;
+      _reopenAfterFailure();
+    });
+  }
+
+  /// Ouvre à nouveau, après l'attente. Même adresse si l'image avait
+  /// déjà été vue (on garde cette image). Sinon, adresse de secours.
+  void _reopenAfterFailure() {
     if (_relayPlayUrl != null) {
-      _controller.setUrl(_relayPlayUrl!);
+      _controller.setUrl(
+        _relayPlayUrl!,
+        keepPicture: _everShownFrame,
+      );
       return;
     }
-    // Chaîne qui JOUAIT puis s'est coupée : 1re tentative sur la même
-    // adresse (simple coupure réseau). Chaîne qui n'a JAMAIS démarré, ou
-    // 2e échec : on passe à l'adresse de secours suivante.
     if (_everShownFrame && _recoverAttempts == 1) {
-      _controller.setUrl(_playingUrl);
+      _controller.setUrl(_playingUrl, keepPicture: true);
       return;
     }
+    final String before = _playingUrl;
     final List<String> alts = _alts ??= LiveFallback.candidates(
         _current, PlaylistRepository.instance.currentChannels);
     if (alts.length > 1) {
@@ -432,19 +473,30 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _playingUrl = alts[_altIdx];
       BlackBox.instance.warn('PLAYER', 'secours du direct : adresse ${_altIdx + 1}/${alts.length}');
     }
-    _controller.setUrl(_playingUrl);
+    final bool same = _playingUrl == before;
+    _controller.setUrl(
+      _playingUrl,
+      keepPicture: !ReconnectPlan.coverWithLoader(
+        hadFrame: _everShownFrame,
+        sameUrl: same,
+      ),
+    );
   }
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {
     _zapSettle?.cancel();
     _zapHolding = false;
+    _cancelRecover();
     setState(() {
       _fatal = false;
       _recoverAttempts = 0;
-      _buffering = true;
+      _buffering = !_everShownFrame;
     });
-    _controller.setUrl(_relayPlayUrl ?? _playingUrl);
+    _controller.setUrl(
+      _relayPlayUrl ?? _playingUrl,
+      keepPicture: _everShownFrame,
+    );
     _showOverlayTemporarily();
   }
 

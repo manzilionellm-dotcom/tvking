@@ -184,6 +184,15 @@ class NativeVideoController extends ChangeNotifier {
   /// Erreur de lecture remontée par ExoPlayer (l'écran déclenche _recover).
   bool hasError = false;
 
+  /// true : le natif garde la dernière image. L'écran ne pose pas
+  /// de panneau opaque par-dessus (ce panneau faisait un écran noir
+  /// à chaque coupure).
+  bool holdFrame = false;
+
+  /// true : le natif a déjà programmé une ré-ouverture (attente
+  /// croissante). L'écran ne doit pas en lancer une autre.
+  bool nativeRetrying = false;
+
   /// Flux terminé (rare en direct, mais on reconnecte si ça arrive).
   bool isEnded = false;
 
@@ -277,10 +286,18 @@ class NativeVideoController extends ChangeNotifier {
       case 'firstFrame':
         firstFrame = true;
         isBuffering = false;
+        holdFrame = false;
+        nativeRetrying = false;
       case 'ended':
         isEnded = true;
       case 'error':
         hasError = true;
+        nativeRetrying = false;
+      case 'holdFrame':
+        holdFrame = call.arguments == true;
+        if (holdFrame) isBuffering = false;
+      case 'reconnecting':
+        nativeRetrying = call.arguments == true;
       case 'duration':
         duration = Duration(milliseconds: call.arguments as int);
       case 'cues':
@@ -349,6 +366,7 @@ class NativeVideoController extends ChangeNotifier {
     Duration startAt = Duration.zero,
     String? preferredAudio,
     String? preferredText,
+    bool keepPicture = false,
   }) {
     if (_disposed) return;
     // On prend le son AVANT d'ouvrir : les autres lecteurs sont coupés
@@ -370,12 +388,23 @@ class NativeVideoController extends ChangeNotifier {
     final String? lang = _preferredAudio ?? appAudioLanguage;
     hasError = false;
     isEnded = false;
-    isBuffering = true;
-    firstFrame = false;
-    position = startAt;
-    duration = Duration.zero;
-    tracks = const <NativeTrack>[];
-    cues = '';
+    nativeRetrying = false;
+    // Reconnexion de la MÊME lecture : on ne remet pas firstFrame à
+    // false. Sinon l'écran croit qu'il n'y a plus d'image et pose un
+    // panneau opaque (noir) le temps du nouveau flux.
+    final bool keep = keepPicture && (firstFrame || holdFrame);
+    if (keep) {
+      holdFrame = true;
+      isBuffering = false;
+    } else {
+      holdFrame = false;
+      isBuffering = true;
+      firstFrame = false;
+      position = startAt;
+      duration = Duration.zero;
+      tracks = const <NativeTrack>[];
+      cues = '';
+    }
     notifyListeners();
     final Map<String, dynamic> args = <String, dynamic>{
       'url': url,

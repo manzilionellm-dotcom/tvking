@@ -4,7 +4,7 @@
 //  Sous le bonjour, avant les tuiles Direct / Films / Séries :
 //    • Vos rappels     — émissions que VOUS avez cochées
 //    • Reprendre       — dernières chaînes en direct
-//    • Continuer       — films et épisodes entamés
+//    • Reprendre où tu t'es arrêté — films et épisodes, à la minute gardée
 //    • Favoris
 //    • Populaire       — les plus regardées en ce moment, parmi
 //                        les vôtres (jamais une chaîne hors playlist)
@@ -91,7 +91,7 @@ class TvHomeRails extends StatelessWidget {
     }
     if (model.continueWatching.isNotEmpty) {
       rails.add(_Rail(
-        label: context.l10n.tvHomeContinue,
+        label: context.l10n.sectionResumeWhereYouLeftOff,
         count: model.continueWatching.length,
         itemBuilder: (BuildContext context, int i) {
           final WatchEntry e = model.continueWatching[i];
