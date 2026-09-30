@@ -25,7 +25,9 @@ import '../core/tv_dimens.dart';
 import '../../carousel/domain/carousel_config.dart';
 import '../../carousel/presentation/zuno_ring_carousel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../profiles/data/profile_repository.dart';
 import 'tv_black_box_screen.dart';
+import 'tv_profiles_screen.dart';
 import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
 import 'tv_recordings_screen.dart';
@@ -59,7 +61,18 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
     });
+    ProfileRepository.instance.addListener(_onProfile);
     _checkUpdate();
+  }
+
+  @override
+  void dispose() {
+    ProfileRepository.instance.removeListener(_onProfile);
+    super.dispose();
+  }
+
+  void _onProfile() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _checkUpdate() async {
@@ -239,6 +252,14 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         title: context.l10n.tvMyRecordings,
         description: context.l10n.tvSettingsRecordingsHint,
         onSelect: () => open(const TvRecordingsScreen()),
+      ),
+      _SettingEntry(
+        icon: Icons.switch_account_rounded,
+        title: 'Profils',
+        value: ProfileRepository.instance.active.name,
+        description:
+            'Favoris, historique, reprise, rappels et code séparés. Jusqu\'à 4 profils.',
+        onSelect: () => open(const TvProfilesScreen()),
       ),
       _SettingEntry(
         icon: Icons.child_care_rounded,

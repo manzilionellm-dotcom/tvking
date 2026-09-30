@@ -28,11 +28,16 @@
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../profiles/data/active_profile.dart';
+import '../../profiles/domain/family_profile.dart';
+
 class AppPinSettings {
   AppPinSettings._();
   static final AppPinSettings instance = AppPinSettings._();
 
-  static const String _kPinValue = 'security.app_pin_value';
+  /// Clé du profil EN COURS. Le profil 1 garde le nom historique
+  /// `security.app_pin_value` : le code déjà choisi ne bouge pas.
+  String get _kPinValue => ProfileKeys.pin(ActiveProfile.instance.id);
 
   /// PIN par defaut sur une install fraiche ou apres reset.
   /// Documente explicitement pour que l'utilisateur sache quoi

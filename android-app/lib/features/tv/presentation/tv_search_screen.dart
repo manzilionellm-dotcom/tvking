@@ -14,6 +14,8 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../profiles/domain/profile_policies.dart';
+import '../../security/data/parental_controls.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import 'tv_player_screen.dart';
@@ -50,6 +52,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     _all = PlaylistRepository.instance.currentChannels
         .where((Channel c) => c.isLive)
         .toList(growable: false);
+    ParentalControls.instance.kidsMode.addListener(_schedule);
     _sub =
         PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
       if (!mounted) return;
@@ -60,6 +63,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
   @override
   void dispose() {
+    ParentalControls.instance.kidsMode.removeListener(_schedule);
     _sub?.cancel();
     _debounce?.cancel();
     super.dispose();
@@ -93,12 +97,29 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
   void _runSearch() {
     final String t = _q.trim().toLowerCase();
-    final List<Channel> r = t.isEmpty
-        ? const <Channel>[]
-        : _all
-            .where((Channel c) => c.cleanName.toLowerCase().contains(t))
-            .take(_maxResults)
-            .toList(growable: false);
+    final bool kids = ParentalControls.instance.kidsMode.value;
+    final List<Channel> r = <Channel>[];
+    if (t.isNotEmpty) {
+      for (final Channel c in _all) {
+        if (!c.cleanName.toLowerCase().contains(t)) continue;
+        // Mode enfants : on écarte seulement une chaîne confirmée
+        // adulte. Une chaîne normale, même pas encore classée,
+        // reste dans les résultats.
+        if (kids) {
+          final ChannelGenre? g = ChannelPrecompute.cachedGenre(c);
+          if (KidsContentPolicy.hideFromKids(
+            kidsMode: true,
+            cachedIsAdult: g == null ? null : g == ChannelGenre.adult,
+            name: c.name,
+            category: c.category,
+          )) {
+            continue;
+          }
+        }
+        r.add(c);
+        if (r.length >= _maxResults) break;
+      }
+    }
     if (mounted) setState(() => _results = r);
   }
 

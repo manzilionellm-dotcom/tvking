@@ -34,6 +34,8 @@ import '../../device/data/device_identity.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/playlist.dart';
+import '../../profiles/data/profile_repository.dart';
+import '../../profiles/domain/profile_policies.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -43,6 +45,7 @@ import 'tv_cinema_screen.dart';
 import 'tv_components.dart';
 import 'tv_diagnostic_screen.dart';
 import 'tv_live_screen.dart';
+import 'tv_profile_picker.dart';
 import 'tv_settings_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
@@ -82,6 +85,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
   Timer? _sourcePoll;
   bool _hadChannels = false;
   bool _autoOpened = false;
+  // Le choix de profil était devant l'accueil au moment où les
+  // premières chaînes sont arrivées : on ouvrira Direct dès qu'il
+  // se ferme. On ne bloque pas la chaîne, on attend juste que
+  // l'écran du dessus parte.
+  bool _pendingAutoOpen = false;
   bool _wasActive = false;
   static const Duration _kSourcePollEvery = Duration(seconds: 20);
 
@@ -106,6 +114,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _srcSub =
         PlaylistRepository.instance.channelsStream.listen(_onChannels);
     _initConnectivity();
+    ProfileRepository.instance.addListener(_onProfileCatalog);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_maybeOfferProfiles());
+    });
     // Source-push direct : voir le commentaire du champ _sourcePoll.
     if (!BootGuard.instance.safeMode) {
       _sourcePoll = Timer.periodic(_kSourcePollEvery, (_) {
@@ -139,8 +151,48 @@ class _TvHubScreenState extends State<TvHubScreen> {
     if (!firstArrival || _autoOpened || !mounted) return;
     // Uniquement si l'accueil est l'écran du dessus (le client n'est pas dans
     // Réglages/Serveur/lecteur) : on ne vole jamais un écran en cours.
+    // Si le choix de profil est devant, on retient l'ouverture : Direct
+    // partira dès que ce choix se ferme (les chaînes sont déjà là).
+    final ModalRoute<Object?>? route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      _pendingAutoOpen = true;
+      return;
+    }
+    _autoOpened = true;
+    _openTile(_Tile.live);
+  }
+
+  void _onProfileCatalog() {
+    if (!mounted) return;
+    setState(() {});
+    unawaited(_maybeOfferProfiles());
+  }
+
+  /// Choix de profil APRÈS le premier affichage. N'attend pas : si le
+  /// catalogue n'est pas prêt, on réessaiera quand il le sera. S'il n'y
+  /// a qu'un profil, ou si l'option est coupée, on ne montre rien.
+  Future<void> _maybeOfferProfiles() async {
+    if (!mounted || StartupPickerSession.shown) return;
+    if (!ProfileRepository.instance.isReady) return;
+    final bool offer = StartupProfilePolicy.shouldOffer(
+      askOnStartup: ProfileRepository.instance.catalog.askOnStartup,
+      profileCount: ProfileRepository.instance.catalog.profiles.length,
+    );
+    if (!offer) return;
     final ModalRoute<Object?>? route = ModalRoute.of(context);
     if (route != null && !route.isCurrent) return;
+    StartupPickerSession.shown = true;
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => const TvProfilePickerScreen()),
+    );
+    if (!mounted) return;
+    _openLiveIfPending();
+  }
+
+  void _openLiveIfPending() {
+    if (!_pendingAutoOpen || _autoOpened) return;
+    if (PlaylistRepository.instance.currentChannels.isEmpty) return;
+    _pendingAutoOpen = false;
     _autoOpened = true;
     _openTile(_Tile.live);
   }
@@ -168,6 +220,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _srcSub?.cancel();
     _sourcePoll?.cancel();
     SubscriptionState.instance.removeListener(_onLicenseChange);
+    ProfileRepository.instance.removeListener(_onProfileCatalog);
     super.dispose();
   }
 
@@ -336,6 +389,16 @@ class _TvHubScreenState extends State<TvHubScreen> {
               Row(
                 children: <Widget>[
                   const TvLogo(width: 150),
+                  const SizedBox(width: 18),
+                  _ProfileChip(
+                    onSelect: () {
+                      StartupPickerSession.shown = true;
+                      Navigator.of(context)
+                          .push<bool>(MaterialPageRoute<bool>(
+                              builder: (_) => const TvProfilePickerScreen()))
+                          .then((_) => _openLiveIfPending());
+                    },
+                  ),
                   const Spacer(),
                   Icon(_netIcon, size: 22, color: TvTokens.muted),
                   const SizedBox(width: 16),
@@ -389,6 +452,45 @@ class _TvHubScreenState extends State<TvHubScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Pastille du profil en cours, à côté du logo. OK ouvre le choix.
+/// Pas d'autofocus : Direct reste la première tuile, le démarrage
+/// ne change pas de geste.
+class _ProfileChip extends StatelessWidget {
+  const _ProfileChip({required this.onSelect});
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = ProfileRepository.instance.active;
+    return TvFocusBuilder(
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.accent : TvTokens.card.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(ProfileLooks.icon(profile),
+                  size: 22,
+                  color: focused ? TvTokens.onAccent : ProfileLooks.color(profile)),
+              const SizedBox(width: 8),
+              Text(profile.name,
+                  style: TvTokens.ui(TvDimens.label,
+                      weight: FontWeight.w700, color: fg)),
+            ],
+          ),
+        );
+      },
     );
   }
 }

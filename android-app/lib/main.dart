@@ -41,6 +41,7 @@ import 'features/about/data/update_checker.dart';
 import 'features/cast/data/cast_manager.dart';
 import 'features/channels/data/recent_searches_repository.dart';
 import 'features/channels/data/recently_watched_repository.dart';
+import 'features/profiles/data/profile_repository.dart';
 import 'features/channels/data/watch_history_repository.dart';
 import 'features/simple_home/presentation/simple_home_screen.dart';
 import 'features/admin/data/admin_credentials.dart';
@@ -153,6 +154,10 @@ Future<void> bootApp() async {
       unawaited(CloudBackupRepository.instance.restoreIfNeeded());
     });
   }));
+  // Profils : même défaut que la TV (profil 1 = données déjà là).
+  // Sans écran de choix ici : le téléphone n'affiche pas le sélecteur,
+  // mais il lit le même tiroir si un profil a été choisi sur la box.
+  unawaited(ProfileRepository.instance.load());
   unawaited(FavoritesRepository.instance.initialize());
   unawaited(RecentlyWatchedRepository.instance.initialize());
   unawaited(RecentSearchesRepository.instance.initialize());
