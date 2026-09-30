@@ -13,6 +13,7 @@ import {
   legacyCredentialsAllowed,
 } from './device_guard.js';
 import { openString, redactCredentialUrl, sealString } from './source_crypto.js';
+import { sourceFingerprint } from './source_revoke.js';
 import { hashDeviceSecret } from './device_guard.js';
 
 const ctx = { waitUntil() {}, passThroughOnException() {} };
@@ -231,6 +232,14 @@ r = await worker.fetch(new Request(`https://app.x/api/device-source/${MAC}`, {
 body = await r.json();
 ok(r.status === 200 && body.source && body.source.password === PLAYLIST_PASS,
   'device-source avec le secret de la box → codes délivrés');
+ok(sourceFingerprint({ type: 'xtream', server_url: 'http://Exemple.test/', username: 'user' })
+  === 'xtream|http://exemple.test|user',
+  'empreinte xtream identique à la box');
+r = await worker.fetch(new Request(`https://app.x/api/status/${MAC}`), env, ctx);
+body = await r.json();
+ok(r.status === 200 && typeof body.source_rev === 'number' && Array.isArray(body.revoked)
+  && !JSON.stringify(body).includes(PLAYLIST_PASS),
+  'status porte source_rev et revoked, jamais le mot de passe');
 
 r = await worker.fetch(new Request(`https://app.x/api/backup/${MAC}`, { method: 'PUT',
   headers: { 'Content-Type': 'application/json' },

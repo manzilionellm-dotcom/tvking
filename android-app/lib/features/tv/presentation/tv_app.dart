@@ -26,6 +26,7 @@ import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
+import 'removed_list_prompt.dart';
 import 'tv_activation_screen.dart';
 import 'tv_components.dart';
 import 'tv_diagnostic_screen.dart';
@@ -112,7 +113,9 @@ class TvApp extends StatelessWidget {
             ),
           );
         },
-        home: const RestartWidget(child: TvGate()),
+        home: const RestartWidget(
+          child: RemovedListPrompt(child: TvGate()),
+        ),
       ),
     );
   }

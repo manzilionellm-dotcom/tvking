@@ -31,15 +31,29 @@ class PlaylistDatabase {
 
   Database? _db;
 
+  /// Chemin de fichier pour les tests (SQLite réel, sans path_provider).
+  /// `null` en production : la base reste dans le dossier de l'app.
+  @visibleForTesting
+  static String? debugFilePath;
+
   Future<Database> get database async {
     if (_db != null) return _db!;
     _db = await _open();
     return _db!;
   }
 
+  /// Ferme la connexion. Les tests s'en servent entre deux fichiers.
+  @visibleForTesting
+  Future<void> closeForTesting() async {
+    final Database? open = _db;
+    _db = null;
+    if (open != null) await open.close();
+  }
+
   Future<Database> _open() async {
-    final String dirPath = (await getApplicationDocumentsDirectory()).path;
-    final String dbPath = p.join(dirPath, _kDbFileName);
+    final String? forced = debugFilePath;
+    final String dbPath = forced ??
+        p.join((await getApplicationDocumentsDirectory()).path, _kDbFileName);
 
     if (kDebugMode) {
       debugPrint('[DB] Ouverture de la base SQLite : $dbPath');

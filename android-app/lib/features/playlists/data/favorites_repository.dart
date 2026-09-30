@@ -146,6 +146,38 @@ class FavoritesRepository {
     await _reload();
   }
 
+  /// Retire ces chaînes des favoris de TOUS les profils, et de
+  /// l'ancienne table. Les autres chaînes restent.
+  Future<void> forgetChannels(Iterable<String> channelIds) async {
+    final List<String> ids = channelIds
+        .map((String id) => id.trim())
+        .where((String id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (ids.isEmpty) return;
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    const int chunk = 400;
+    for (int i = 0; i < ids.length; i += chunk) {
+      final List<String> part = ids.sublist(
+        i,
+        i + chunk > ids.length ? ids.length : i + chunk,
+      );
+      final String marks = List<String>.filled(part.length, '?').join(',');
+      await db.delete(
+        'favorites',
+        where: 'channel_id IN ($marks)',
+        whereArgs: part,
+      );
+      await db.delete(
+        _kScoped,
+        where: 'channel_id IN ($marks)',
+        whereArgs: part,
+      );
+    }
+    await _reload();
+  }
+
   /// Oublie les favoris d'un profil supprimé. Jamais le profil 1 :
   /// ses lignes restent, comme l'ancienne table.
   Future<void> dropProfile(String profileId) async {

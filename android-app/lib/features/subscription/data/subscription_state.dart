@@ -20,7 +20,16 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../device/data/device_identity.dart';
+import '../domain/activation_pace.dart';
 import 'subscription_backend.dart';
+
+/// Résultat d'une synchro avec le Worker.
+///
+/// [busy] : une lecture est déjà en cours, on n'en lance pas une
+/// deuxième (sinon les timeouts de 6–8 s s'empilent).
+/// [offline] : le réseau n'a pas répondu. Le dernier statut RESTE.
+/// [applied] : le serveur a répondu, l'écran peut se mettre à jour.
+enum RemoteSyncOutcome { applied, offline, busy }
 
 /// Durée de l'essai gratuit en jours.
 const int kTrialDurationDays = 7;
@@ -93,9 +102,13 @@ class SubscriptionState extends ChangeNotifier {
   }
 
   /// Snapshot du serveur (heartbeat + status). Reste `unknown` tant
-  /// que la première sync n'a pas eu lieu OU si le serveur est
-  /// inaccessible (mode dégradé : on retombe sur le trial local).
+  /// que la première sync n'a pas eu lieu. Une coupure APRÈS une
+  /// réponse ne l'efface pas : on garde ce snapshot (voir [_absorb]).
   RemoteSubscriptionStatus _remote = RemoteSubscriptionStatus.unknown;
+
+  /// Une seule lecture réseau à la fois. La veille (toutes les 3 s)
+  /// et le bouton « Vérifier » ne doivent pas s'empiler.
+  bool _netBusy = false;
 
   bool get isLoaded => _loaded;
   DateTime? get firstLaunchAt => _firstLaunchAt;
@@ -256,48 +269,93 @@ class SubscriptionState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Synchronise avec le backend Cloudflare.
+  /// Synchronise avec le backend Cloudflare (HEARTBEAT : écriture).
   ///
   /// Étapes :
   ///   1. POST /api/heartbeat — déclare au serveur "je suis là".
-  ///      Si nouveau, le serveur crée la fiche avec trial 10 j.
+  ///      Si nouveau, le serveur crée la fiche avec trial 7 j.
   ///      Sinon il met juste à jour last_seen_at.
   ///   2. Le résultat du heartbeat contient déjà le statut courant,
   ///      pas besoin d'un GET séparé.
   ///   3. On stocke en `_remote` et on notifie pour rebuild les UI.
   ///
-  /// À appeler au boot (depuis `_AppEntry`) après l'init du
-  /// DeviceIdentity. Si le réseau est down, `_remote` reste
-  /// `unknown` et le calcul retombe sur le trial local — l'app
-  /// reste utilisable hors-ligne.
-  Future<void> syncWithBackend() async {
+  /// À appeler au boot, au bouton « Vérifier », et au plus une fois
+  /// par minute pendant l'attente d'activation. La veille rapide
+  /// (toutes les 3 s) passe par [refreshRemote] : lecture seule.
+  ///
+  /// Si le réseau est down, `_remote` N'EST PAS remplacé : le calcul
+  /// garde le dernier statut (ou le trial local au tout premier boot).
+  /// L'app reste utilisable hors-ligne, une chaîne en cours continue.
+  Future<RemoteSyncOutcome> syncWithBackend() async {
+    if (_netBusy) return RemoteSyncOutcome.busy;
+    _netBusy = true;
     try {
       final String mac = await DeviceIdentity.instance.mac;
-      final RemoteSubscriptionStatus snap =
-          await SubscriptionBackend.heartbeat(mac);
-      _remote = snap;
-      if (!snap.exists && snap.status == 'unknown') {
+      final RemoteStatusRead read = await SubscriptionBackend.heartbeat(mac);
+      return await _absorb(read);
+    } catch (e) {
+      syncHint = 'offline';
+      if (kDebugMode) debugPrint('[Subscription] syncWithBackend error: $e');
+      notifyListeners();
+      return RemoteSyncOutcome.offline;
+    } finally {
+      _netBusy = false;
+    }
+  }
+
+  /// Relit le statut SANS heartbeat (le `last_seen_at` ne bouge pas).
+  /// C'est la veille « le panel vient-il d'activer ? ». Même règle
+  /// qu'au-dessus : un échec réseau ne change pas l'accès déjà ouvert.
+  Future<RemoteSyncOutcome> refreshRemote() async {
+    if (_netBusy) return RemoteSyncOutcome.busy;
+    _netBusy = true;
+    try {
+      final String mac = await DeviceIdentity.instance.mac;
+      final RemoteStatusRead read = await SubscriptionBackend.getStatus(mac);
+      return await _absorb(read);
+    } catch (e) {
+      syncHint = 'offline';
+      if (kDebugMode) debugPrint('[Subscription] refreshRemote error: $e');
+      notifyListeners();
+      return RemoteSyncOutcome.offline;
+    } finally {
+      _netBusy = false;
+    }
+  }
+
+  /// Applique une réponse. Si le serveur n'a pas été joint, on garde
+  /// [_remote] tel quel (voir [keepLastStatusOnFailure]).
+  Future<RemoteSyncOutcome> _absorb(RemoteStatusRead read) async {
+    if (keepLastStatusOnFailure(reached: read.reached)) {
+      if (syncHint != 'offline') {
         syncHint = 'offline';
-      } else if (snap.banned) {
-        syncHint = 'banned';
-      } else if (snap.frozen) {
-        syncHint = 'frozen';
-      } else if (snap.expired) {
-        syncHint = 'expired';
-      } else {
-        syncHint = null;
+        notifyListeners();
       }
-      // Mémorise les garde-fous serveur pour le mode hors-ligne :
-      //  - le verdict de blocage (banni/gelé) → ne pourra plus être esquivé
-      //    en passant en mode avion ;
-      //  - l'échéance absolue de l'essai → insensible à un effacement du
-      //    compteur local ;
-      //  - avance le high-water mark anti-recul d'horloge.
-      if (snap.exists) {
-        final SharedPreferences prefs =
-            await SharedPreferences.getInstance();
-        _blockCache =
-            snap.banned ? 'banned' : (snap.frozen ? 'frozen' : '');
+      return RemoteSyncOutcome.offline;
+    }
+    final RemoteSubscriptionStatus snap = read.status;
+    _remote = snap;
+    if (!snap.exists && snap.status == 'unknown') {
+      syncHint = 'offline';
+    } else if (snap.banned) {
+      syncHint = 'banned';
+    } else if (snap.frozen) {
+      syncHint = 'frozen';
+    } else if (snap.expired) {
+      syncHint = 'expired';
+    } else {
+      syncHint = null;
+    }
+    // Mémorise les garde-fous serveur pour le mode hors-ligne :
+    //  - le verdict de blocage (banni/gelé) → ne pourra plus être esquivé
+    //    en passant en mode avion ;
+    //  - l'échéance absolue de l'essai → insensible à un effacement du
+    //    compteur local ;
+    //  - avance le high-water mark anti-recul d'horloge.
+    if (snap.exists) {
+      try {
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        _blockCache = snap.banned ? 'banned' : (snap.frozen ? 'frozen' : '');
         await prefs.setString(_kBlockKey, _blockCache);
         if (snap.trialUntil > 0) {
           _trialUntilCache = snap.trialUntil;
@@ -308,48 +366,21 @@ class SubscriptionState extends ChangeNotifier {
           _hwmMs = nowMs;
           await prefs.setInt(_kHwmKey, nowMs);
         }
+      } catch (e) {
+        if (kDebugMode) debugPrint('[Subscription] cache local: $e');
       }
-      // Si le serveur dit 'paid', on persiste un fallback local
-      // pour 7 jours (au cas où l'app passe offline ensuite, on
-      // ne bloquera pas le user qui a déjà payé).
-      if (snap.paid) {
-        final DateTime fallback =
-            DateTime.now().add(const Duration(days: 7));
-        if (_paidUntil == null || fallback.isAfter(_paidUntil!)) {
-          await markPaidUntil(fallback);
-        }
-      }
-      notifyListeners();
-    } catch (e) {
-      syncHint = 'offline';
-      if (kDebugMode) debugPrint('[Subscription] syncWithBackend error: $e');
-      notifyListeners();
     }
-  }
-
-  /// Force un re-fetch du statut serveur sans toucher au heartbeat
-  /// (le `last_seen_at` ne bouge pas). Utilisé par le pull-to-refresh.
-  Future<void> refreshRemote() async {
-    try {
-      final String mac = await DeviceIdentity.instance.mac;
-      final RemoteSubscriptionStatus snap =
-          await SubscriptionBackend.getStatus(mac);
-      _remote = snap;
-      if (!snap.exists && snap.status == 'unknown') {
-        syncHint = 'offline';
-      } else if (snap.banned) {
-        syncHint = 'banned';
-      } else if (snap.frozen) {
-        syncHint = 'frozen';
-      } else if (snap.expired) {
-        syncHint = 'expired';
-      } else {
-        syncHint = null;
+    // Si le serveur dit 'paid', on persiste un fallback local
+    // pour 7 jours (au cas où l'app passe offline ensuite, on
+    // ne bloquera pas le user qui a déjà payé).
+    if (snap.paid) {
+      final DateTime fallback = DateTime.now().add(const Duration(days: 7));
+      if (_paidUntil == null || fallback.isAfter(_paidUntil!)) {
+        await markPaidUntil(fallback);
+        return RemoteSyncOutcome.applied;
       }
-      notifyListeners();
-    } catch (_) {
-      syncHint = 'offline';
-      notifyListeners();
     }
+    notifyListeners();
+    return RemoteSyncOutcome.applied;
   }
 }

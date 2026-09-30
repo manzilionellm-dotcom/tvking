@@ -9,6 +9,9 @@
 name: tv_king
 description: "The Few — lecteur multimédia premium (Not For Everyone)."
 publish_to: 'none'
+# L'APK TV n'utilise PAS ce numéro. Le workflow build-zuno-tv.yml
+# passe --build-name (plancher 103) et --build-number (secondes
+# epoch, toujours au-dessus du 1790640358 de la v102).
 version: 0.3.0+11
 
 environment:

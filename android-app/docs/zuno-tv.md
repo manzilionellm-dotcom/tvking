@@ -37,9 +37,18 @@ configurer côté box : tout est automatique au premier démarrage.
 | Historique multi-box | heartbeat `recent[]` / `GET /api/history/:mac` | restauré sur une 2ᵉ box |
 
 Écran d'activation : tant que la box n'est ni activée ni en essai, l'app
-affiche sa MAC (= code d'activation) et interroge le serveur toutes les 5 s
-(`tv_activation_screen.dart`). Dès que l'admin active la MAC dans le panel,
-l'écran bascule seul sur l'accueil.
+affiche sa MAC (= code d'activation). Une seule veille (`RemoteActivationWatch`)
+lit `GET /api/status` toutes les 3 s tant qu'on attend, puis toutes les 4 s.
+Le bouton « J'ai payé » force une lecture immédiate. Dès que l'admin active
+la MAC dans le panel, l'écran bascule seul sur l'accueil.
+
+Retirer une liste (page Sources, ou `DELETE /api/v1/sources/:mac`) pose une
+empreinte côté Worker. La même veille la voit : la box enlève cette liste,
+ses chaînes, les favoris et l'historique liés, et le mot de passe stocké.
+Un message s'affiche par-dessus la lecture ; « Continuer » ramène à
+« Ajouter ma liste » s'il ne reste plus rien. Hors ligne, l'ordre s'applique
+au retour du réseau. Le détail des preuves et la procédure chronomètre sont
+dans `docs/RELEASE-103.md`.
 
 ## 3. Publier une nouvelle version
 
@@ -111,8 +120,8 @@ et `lib/features/tv/presentation/tv_cinema_*.dart`, `tv_vod_player_screen.dart`.
 
   Une pastille « Mise à jour… » s'affiche pendant l'opération.
 - **Automatique** :
-  - panel interrogé chaque minute (source activée à distance → chaînes
-    importées seules) ;
+  - panel lu toutes les 3 s (attente) ou 4 s (déjà en service) : activation
+    ou liste retirée, sans re-télécharger les chaînes si rien n'a changé ;
   - mise à jour complète 2 min après l'ouverture, puis toutes les 6 h ;
   - jamais pendant Direct ou le lecteur (`TvActivity`).
 - **Mise à jour de l'app** : la nouvelle version est pré-téléchargée en
