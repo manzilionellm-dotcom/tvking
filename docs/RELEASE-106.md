@@ -28,6 +28,12 @@ Cette branche assemble, dans l'ordre, les chantiers ouverts sur la
    posé sur la 104, il ne refait pas le son exclusif. Un seul
    conflit, dans `setUrl` : on remet à zéro le moteur d'image et
    le diagnostic son.
+7. Commit `e6f8a3fe` de `claude/zuno-image` (arrivé après la
+   première fusion de `fa0d44f6`). Media3 refuse
+   `setVideoFrameMetadataListener(null)`. On retire le compteur
+   avec `clearVideoFrameMetadataListener` et **le même objet**
+   (`frameClock`). Sans ça, le premier APK de la branche image ne
+   compilait pas.
 
 Le téléphone et le PC ne sont pas la box. Le `pubspec.yaml` reste
 `0.3.0+11` (téléphone). Le nom visible de l'APK TV est planché à
