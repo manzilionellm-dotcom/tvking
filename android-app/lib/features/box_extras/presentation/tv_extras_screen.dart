@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../missed_show/data/missed_flag.dart';
 import '../../time_picks/data/time_pick_flag.dart';
+import '../../subtitles/data/subtitle_flag.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
 import '../../tv/core/tv_tokens.dart';
@@ -33,6 +34,9 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     timePicksFlag.load().then((_) {
       if (mounted) setState(() {});
     });
+    subtitlesFlag.load().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _toggleMissed() async {
@@ -47,10 +51,17 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _toggleSubs() async {
+    await subtitlesFlag.load();
+    await subtitlesFlag.set(!subtitlesFlag.value);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool on = missedShowFlag.value;
     final bool timeOn = timePicksFlag.value;
+    final bool subsOn = subtitlesFlag.value;
     return ListView(
       children: <Widget>[
         Text(
@@ -102,6 +113,21 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
                   'Off. OK to turn on. We stop counting, and the row goes away.',
                 ),
           onSelect: _toggleTime,
+        ),
+        ExtrasRow(
+          title: boxText(context, 'Sous-titres', 'Subtitles'),
+          subtitle: subsOn
+              ? boxText(
+                  context,
+                  'Affiche la piste déjà dans le flux, dans ta langue. OK pour couper. Rien n\'est traduit, rien n\'est téléchargé.',
+                  'Shows the track already in the stream, in your language. OK to turn off. Nothing is translated or downloaded.',
+                )
+              : boxText(
+                  context,
+                  'Coupé. OK pour rallumer. Le direct ne change pas de flux.',
+                  'Off. OK to turn on. Live does not switch streams.',
+                ),
+          onSelect: _toggleSubs,
         ),
       ],
     );

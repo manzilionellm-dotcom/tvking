@@ -41,7 +41,10 @@ import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../missed_show/data/missed_flag.dart';
 import '../../missed_show/domain/missed_summary.dart';
+import '../../subtitles/data/subtitle_flag.dart';
+import '../../subtitles/domain/subtitle_choice.dart';
 import '../../time_picks/data/time_pick_log.dart';
+import '../../cinema/domain/cinema_language.dart';
 import '../../cinema/data/cinema_downloads.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/domain/live_fallback.dart';
@@ -54,6 +57,7 @@ import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_zap.dart';
 import 'tv_channel_guide_screen.dart';
+import 'tv_cinema_common.dart';
 
 class TvPlayerScreen extends StatefulWidget {
   const TvPlayerScreen({
@@ -85,10 +89,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // 3=Suiv 4=REC 5=Favori.
   int _btnFocus = -1;
   static const int _btnCountBase = 3;
-  int get _btnCount => (_missed?.canRewind == true || _catchup) ? 4 : _btnCountBase;
+  int? get _startBtn => (_missed?.canRewind == true || _catchup) ? 3 : null;
   MissedSummary? _missed;
   bool _catchup = false;
   int _missedGen = 0;
+  bool _subsOn = false;
+  bool _subsReady = false;
+  String? _textPref;
+  /// null = pas encore décidé pour cette chaîne.
+  /// -1 = sous-titres coupés. -2 = on n'y touche pas.
+  /// >= 0 = index dans les pistes de la langue.
+  int? _subsWant;
+  List<NativeTrack>? _appliedTracks;
   bool _buffering = true;
   Timer? _hideTimer;
   Timer? _presenceTimer;
@@ -200,6 +212,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       if (mounted) setState(() => _favIds = ids);
     });
     _open(reuse: true); // historique / présence pour la 1re chaîne
+    unawaited(_prepareSubs());
+    subtitlesFlag.changes.addListener(_onSubsFlag);
     // Chien de garde : aucune progression depuis 15 s → reconnexion.
     // (Correctif 29/09/2026 : avant, `_recovering` restait vrai après une 1re
     // tentative ratée → plus AUCUNE reconnexion, roue de chargement à
@@ -258,6 +272,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       RecordingRepository.instance.finishRecording(rec);
     }
     _controller.removeListener(_onPlayer);
+    subtitlesFlag.changes.removeListener(_onSubsFlag);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
     _controller.dispose();
@@ -301,6 +316,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (_controller.hasError || _controller.isEnded) {
       _recover();
     }
+    _offerSubtitles();
   }
 
   void _open({bool reuse = false}) {
@@ -320,8 +336,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur
       // (dans le format qui a déjà marché sur ce serveur, s'il y en a un).
       _playingUrl = LiveFallback.preferred(_current.streamUrl);
+      // Pas de preferredText ici : le direct ne repasse pas par setUrl
+      // pour les sous-titres (ça rouvrirait le flux). On choisit la
+      // piste ensuite, avec selectTrack, si le flux en a déjà une.
       _controller.setUrl(_playingUrl);
       _catchup = false;
+      _subsWant = null;
+      _appliedTracks = null;
       _loadMissed();
     } else if (!_catchup) {
       _loadMissed();
@@ -568,13 +589,26 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       return;
     }
     setState(() {
-      _btnFocus = (_btnFocus < 0 ? 1 : _btnFocus + delta).clamp(0, _btnCount - 1);
+      _btnFocus = (_btnFocus < 0 ? 1 : _btnFocus + delta).clamp(0, _btnCount(context) - 1);
     });
     _showOverlayTemporarily();
   }
 
   // Exécute l'action du bouton surligné.
   void _activateBtn(int i) {
+    if (i == _startBtn) {
+      if (_catchup) {
+        _backToLive();
+      } else {
+        _rewindMissed();
+      }
+      return;
+    }
+    final int? subs = _subsBtn(context);
+    if (subs != null && i == subs) {
+      _cycleSubtitles();
+      return;
+    }
     switch (i) {
       case 0:
         _openGuide();
@@ -585,14 +619,158 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       case 2:
         _toggleFavorite();
         break;
-      case 3:
-        if (_catchup) {
-          _backToLive();
-        } else {
-          _rewindMissed();
-        }
-        break;
     }
+  }
+
+  int _btnCount(BuildContext context) {
+    int n = _btnCountBase;
+    if (_startBtn != null) n++;
+    if (_subsBtn(context) != null) n++;
+    return n;
+  }
+
+  int? _subsBtn(BuildContext context) {
+    if (!_subsOn || !_subsReady) return null;
+    if (_userTextTracks(context).isEmpty) return null;
+    return _startBtn == null ? 3 : 4;
+  }
+
+  List<NativeTrack> _userTextTracks(BuildContext context) {
+    final String user = Localizations.localeOf(context).languageCode;
+    final List<SubtitleCue> cues = <SubtitleCue>[
+      for (final NativeTrack track in _controller.tracks)
+        if (!track.isAudio)
+          SubtitleCue(
+            group: track.group,
+            index: track.index,
+            language: track.language,
+            selected: track.selected,
+          ),
+    ];
+    final List<SubtitleCue> mine = tracksInLanguage(cues, user);
+    final List<NativeTrack> out = <NativeTrack>[];
+    for (final SubtitleCue cue in mine) {
+      for (final NativeTrack track in _controller.tracks) {
+        if (!track.isAudio && track.group == cue.group && track.index == cue.index) {
+          out.add(track);
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  void _onSubsFlag() {
+    _subsOn = subtitlesFlag.value;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _prepareSubs() async {
+    try {
+      await subtitlesFlag.load();
+      _subsOn = subtitlesFlag.value;
+    } catch (_) {
+      _subsOn = true;
+    }
+    try {
+      _textPref = await CinemaTrackPrefs.text();
+    } catch (_) {
+      _textPref = null;
+    }
+    _subsReady = true;
+    if (!mounted) return;
+    _offerSubtitles();
+    setState(() {});
+  }
+
+  /// Choisit une piste DÉJÀ dans le flux. Jamais [setUrl].
+  /// On ne le refait pas à chaque image : seulement quand la
+  /// liste de pistes change.
+  void _offerSubtitles() {
+    if (!_subsReady || !_subsOn || !mounted) return;
+    final List<NativeTrack> tracks = _controller.tracks;
+    if (identical(_appliedTracks, tracks)) return;
+    final List<NativeTrack> texts =
+        tracks.where((NativeTrack t) => !t.isAudio).toList();
+    if (texts.isEmpty) return;
+    final List<NativeTrack> mine = _userTextTracks(context);
+    if (_subsWant == null) {
+      if (_textPref == 'off') {
+        _subsWant = -1;
+      } else {
+        final List<SubtitleCue> cues = <SubtitleCue>[
+          for (final NativeTrack track in texts)
+            SubtitleCue(
+              group: track.group,
+              index: track.index,
+              language: track.language,
+              selected: track.selected,
+            ),
+        ];
+        final SubtitleCue? pick = autoSubtitle(
+          tracks: cues,
+          userLanguage: Localizations.localeOf(context).languageCode,
+          textPref: _textPref,
+          enabled: true,
+        );
+        if (pick == null) {
+          _subsWant = -2;
+        } else {
+          final int at = mine.indexWhere(
+              (NativeTrack t) => t.group == pick.group && t.index == pick.index);
+          _subsWant = at < 0 ? -2 : at;
+        }
+      }
+    }
+    _appliedTracks = tracks;
+    final int? want = _subsWant;
+    if (want == null || want == -2) return;
+    try {
+      if (want < 0) {
+        if (texts.any((NativeTrack t) => t.selected)) {
+          _controller.disableSubtitles();
+        }
+      } else if (want < mine.length && !mine[want].selected) {
+        _controller.selectTrack(mine[want]);
+      }
+    } catch (_) {
+      // Une piste refusée ne doit pas rouvrir la chaîne.
+    }
+  }
+
+  void _cycleSubtitles() {
+    if (!_subsOn) return;
+    final List<NativeTrack> mine = _userTextTracks(context);
+    if (mine.isEmpty) return;
+    final int current = mine.indexWhere((NativeTrack t) => t.selected);
+    final int next = nextSubtitleStep(current, mine.length);
+    _subsWant = next;
+    try {
+      if (next < 0) {
+        _controller.disableSubtitles();
+      } else {
+        _controller.selectTrack(mine[next]);
+      }
+    } catch (_) {}
+    _showOverlayTemporarily();
+  }
+
+  bool _isCaption(LogicalKeyboardKey k) {
+    if (k == LogicalKeyboardKey.keyC) return true;
+    // KEYCODE_CAPTIONS (175), plan Android de Flutter.
+    const int androidPlane = 0x01100000000;
+    const int planeMask = 0x0FF00000000;
+    const int captions = 175;
+    return (k.keyId & planeMask) == androidPlane && (k.keyId & 0xFFFFFFFF) == captions;
+  }
+
+  String _subsLabel(BuildContext context) {
+    final bool en = Localizations.localeOf(context).languageCode == 'en';
+    for (final NativeTrack track in _userTextTracks(context)) {
+      if (!track.selected) continue;
+      return CinemaLanguage.labelFor(track.language) ?? (en ? 'CC' : 'ST');
+    }
+    return en ? 'CC' : 'ST';
   }
 
   /// Le guide dit si on arrive en retard. Une erreur de guide
@@ -871,6 +1049,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _toggleFavorite();
       return KeyEventResult.handled;
     }
+    if (event is KeyDownEvent && _isCaption(k)) {
+      _cycleSubtitles();
+      return KeyEventResult.handled;
+    }
     if (_isOk(k)) {
       _okPressed();
       return KeyEventResult.handled;
@@ -964,6 +1146,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                             ? () => _activateBtn(3)
                             : null,
                         startLabel: _catchup ? 'Direct' : 'Début',
+                        onSubtitles: _subsBtn(context) == null ? null : _cycleSubtitles,
+                        subtitlesLabel: _subsLabel(context),
+                        subtitlesOn: _userTextTracks(context).any((NativeTrack t) => t.selected),
                       ),
                     ),
                   ),
@@ -1235,6 +1420,9 @@ class _ControlsBar extends StatelessWidget {
     required this.onFavorite,
     this.onStart,
     this.startLabel,
+    this.onSubtitles,
+    this.subtitlesLabel,
+    this.subtitlesOn = false,
   });
 
   final Channel channel;
@@ -1252,6 +1440,11 @@ class _ControlsBar extends StatelessWidget {
   /// 4e bouton, seulement si le guide a une vidéo de rattrapage.
   final VoidCallback? onStart;
   final String? startLabel;
+
+  /// Sous-titres déjà dans le flux, dans la langue de l'app.
+  final VoidCallback? onSubtitles;
+  final String? subtitlesLabel;
+  final bool subtitlesOn;
 
   @override
   Widget build(BuildContext context) {
@@ -1321,6 +1514,16 @@ class _ControlsBar extends StatelessWidget {
                   label: startLabel ?? 'Début',
                   onTap: onStart!,
                   focused: focusedIndex == 3,
+                ),
+              ],
+              if (onSubtitles != null) ...<Widget>[
+                const SizedBox(width: 34),
+                _CtrlButton(
+                  icon: Icons.subtitles_rounded,
+                  label: subtitlesLabel ?? 'ST',
+                  onTap: onSubtitles!,
+                  active: subtitlesOn,
+                  focused: focusedIndex == (onStart != null ? 4 : 3),
                 ),
               ],
             ],
