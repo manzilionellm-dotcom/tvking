@@ -26,6 +26,9 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
+import 'package:native_video_player/playback_lease.dart';
+
+import '../../player/data/clear_voice_flag.dart';
 
 import '../../recordings/domain/recording.dart';
 import '../core/tv_tokens.dart';
@@ -54,7 +57,13 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    ForegroundPlayback.lock();
+    ClearVoiceFlag.changes.addListener(_onClearVoice);
     _verifyThenOpen();
+  }
+
+  void _onClearVoice() {
+    _controller?.setClearVoice(ClearVoiceFlag.value);
   }
 
   /// Vérifie que le fichier EXISTE et n'est pas vide AVANT d'ouvrir : on
@@ -80,6 +89,9 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
     final NativeVideoController c =
         NativeVideoController(initialUrl: fileUri)..addListener(_onPlayer);
     setState(() => _controller = c);
+    unawaited(ClearVoiceFlag.load().then((_) {
+      if (mounted) c.setClearVoice(ClearVoiceFlag.value);
+    }));
   }
 
   void _onPlayer() {
@@ -127,8 +139,10 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
 
   @override
   void dispose() {
+    ClearVoiceFlag.changes.removeListener(_onClearVoice);
     _controller?.removeListener(_onPlayer);
     _controller?.dispose();
+    ForegroundPlayback.unlock();
     _focus.dispose();
     super.dispose();
   }

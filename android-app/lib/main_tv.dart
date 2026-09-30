@@ -13,6 +13,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:native_video_player/native_video_player.dart';
 
 import 'core/app/app_platform.dart';
 import 'core/blackbox/black_box.dart';
@@ -46,6 +47,19 @@ import 'features/tv/presentation/tv_app.dart';
 //  IDENTIQUE sur tous les flavors (mobile, Privé, TV).
 // =========================================================
 void main() => runGuarded(bootstrapZunoTv);
+
+/// « fr » / « en » / … pour le choix de piste. Suit le réglage de l'app,
+/// ou la langue de la TV si le réglage est « Système ».
+void _syncPlayerLanguage() {
+  final Locale? forced = LocaleRepository.instance.locale;
+  final String code = (forced != null && forced.languageCode.isNotEmpty)
+      ? forced.languageCode
+      : LocaleRepository.resolve(
+          WidgetsBinding.instance.platformDispatcher.locales,
+          LocaleRepository.supportedLocales,
+        ).languageCode;
+  NativeVideoController.appAudioLanguage = code;
+}
 
 /// Démarrage de Zuno. Partagé avec la version PC (lib/main_windows.dart),
 /// qui prépare d'abord SQLite / lecteur / fenêtre puis appelle cette même
@@ -106,6 +120,11 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // l'app suit la langue de la TV). BLOQUANT et rapide : garantit que le
   // 1er rendu est déjà dans la bonne langue (pas de flash en français).
   await LocaleRepository.instance.initialize();
+  // Langue des pistes audio (direct, aperçu, film). On la relit si
+  // la personne change la langue dans Réglages : le prochain zap
+  // prend la nouvelle, sans rouvrir la chaîne en cours.
+  _syncPlayerLanguage();
+  LocaleRepository.instance.addListener(_syncPlayerLanguage);
 
   // --- Briques PARTAGÉES avec le mobile (non bloquant) ---
   // 1) Identité stable (MAC) → le panel reconnaît l'appareil TV.

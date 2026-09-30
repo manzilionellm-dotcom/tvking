@@ -26,6 +26,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
+import 'package:native_video_player/playback_lease.dart';
+
+import '../../player/data/clear_voice_flag.dart';
 
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
@@ -107,12 +110,21 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     TvActivity.enter();
+    ForegroundPlayback.lock();
     _item = widget.item;
     _c = NativeVideoController()..addListener(_onPlayer);
+    unawaited(ClearVoiceFlag.load().then((_) {
+      if (mounted) _c.setClearVoice(ClearVoiceFlag.value);
+    }));
+    ClearVoiceFlag.changes.addListener(_onClearVoice);
     _next = _computeNext();
     unawaited(_start(_item, widget.startAt, local: widget.localPath));
     _saveTimer = Timer.periodic(const Duration(seconds: 10), (_) => _saveProgress());
     _armHide();
+  }
+
+  void _onClearVoice() {
+    _c.setClearVoice(ClearVoiceFlag.value);
   }
 
   @override
@@ -140,7 +152,9 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _toastTimer?.cancel();
     _saveTimer?.cancel();
     _c.removeListener(_onPlayer);
+    ClearVoiceFlag.changes.removeListener(_onClearVoice);
     _c.dispose();
+    ForegroundPlayback.unlock();
     _focus.dispose();
     super.dispose();
   }

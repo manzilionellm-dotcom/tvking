@@ -138,6 +138,9 @@ class MediaKitVideoBackend implements NativeVideoBackend {
     final String url = (args['url'] as String?) ?? '';
     if (url.isEmpty) return;
     _firstFrame = false;
+    // Un zap remet le volume : silence() l'avait coupé pour qu'un autre
+    // lecteur ne se mélange pas à celui-ci.
+    unawaited(_player.setVolume(100));
     final int startMs = (args['startMs'] as num?)?.toInt() ?? 0;
     final String? prefAudio = args['preferredAudio'] as String?;
     final String? prefText = args['preferredText'] as String?;
@@ -161,6 +164,17 @@ class MediaKitVideoBackend implements NativeVideoBackend {
 
   @override
   void pause() => unawaited(_player.pause());
+
+  @override
+  void silence() {
+    unawaited(_player.setVolume(0));
+    unawaited(_player.pause());
+  }
+
+  /// Le PC (libmpv) n'a pas le compresseur Media3. L'option reste sans effet
+  /// ici : la box Android est le seul endroit où « voix claire » s'applique.
+  @override
+  void setClearVoice(bool enabled) {}
 
   @override
   void seekTo(Duration position) => unawaited(_player.seek(position));
