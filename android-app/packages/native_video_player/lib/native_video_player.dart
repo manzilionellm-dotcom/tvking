@@ -120,6 +120,11 @@ class NativeVideoController extends ChangeNotifier {
   /// ouverture si l'appelant n'en passe pas une plus précise (film).
   static String? appAudioLanguage;
 
+  /// Diagnostic du son envoyé par le lecteur natif à chaque ouverture de
+  /// chaîne (et en cas de coupures) : l'app le range dans sa boîte noire.
+  /// Plusieurs lignes séparées par « \n ». Null = ignoré.
+  static void Function(String diagnostic)? onAudioDiagnostic;
+
   /// Tous les controllers vivants. Un zap ou une ouverture « prend »
   /// le son et fait taire les autres avant de démarrer.
   static final ExclusiveAudio audiblePlayers = ExclusiveAudio();
@@ -302,6 +307,12 @@ class NativeVideoController extends ChangeNotifier {
               ),
         ];
         _autoAudio();
+      case 'audioDiag':
+        // Diagnostic du son (ce qui entre, qui décode, ce qui sort) : ne
+        // change rien à l'état du lecteur, on le passe à l'app (boîte noire).
+        final String line = (call.arguments as String?) ?? '';
+        if (line.isNotEmpty) onAudioDiagnostic?.call(line);
+        return;
     }
     if (!_disposed) notifyListeners();
   }

@@ -24,6 +24,7 @@ import '../../subscription/data/subscription_state.dart';
 import '../core/tv_content_refresh.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_page_transitions.dart';
 import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import 'removed_list_prompt.dart';
@@ -83,6 +84,9 @@ class TvApp extends StatelessWidget {
           // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
           splashFactory: NoSplash.splashFactory,
           hoverColor: Colors.transparent,
+          // Retour sans « flash » : fondu court, sans capture d'écran
+          // (voir tv_page_transitions.dart).
+          pageTransitionsTheme: kTvPageTransitions,
         ),
         // CANEVAS TV FIXE : on rend TOUTE l'app comme un écran logique de
         // largeur `kTvDesignWidth`, puis on met à l'échelle uniforme vers

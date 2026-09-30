@@ -32,6 +32,7 @@ import 'features/playlists/data/remote_source_repository.dart';
 import 'features/recordings/data/recording_repository.dart';
 import 'features/profiles/data/profile_repository.dart';
 import 'features/security/data/parental_controls.dart';
+import 'features/subscription/data/now_playing.dart';
 import 'features/subscription/data/remote_activation_watch.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
@@ -59,6 +60,24 @@ void _syncPlayerLanguage() {
           LocaleRepository.supportedLocales,
         ).languageCode;
   NativeVideoController.appAudioLanguage = code;
+}
+
+/// Diagnostic du son → boîte noire (Réglages → Boîte noire). Une ligne par
+/// constat, étiquette « SON », avec la chaîne en cours quand on la connaît.
+void _wireAudioDiagnostic() {
+  NativeVideoController.onAudioDiagnostic = (String diagnostic) {
+    final String channel = NowPlaying.instance.current;
+    bool first = true;
+    for (final String raw in diagnostic.split('\n')) {
+      final String line = raw.trim();
+      if (line.isEmpty) continue;
+      BlackBox.instance.info(
+        'SON',
+        first && channel.isNotEmpty ? '[$channel] $line' : line,
+      );
+      first = false;
+    }
+  };
 }
 
 /// Démarrage de Zuno. Partagé avec la version PC (lib/main_windows.dart),
@@ -96,6 +115,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // démarrage soit journalisé et que la raison de la DERNIÈRE fermeture soit
   // lue (Android 11+). Best-effort : ne bloque jamais le boot.
   await BlackBox.instance.initialize(flavor: 'Zuno TV');
+  _wireAudioDiagnostic();
   if (BootGuard.instance.safeMode) {
     BlackBox.instance.warn('BOOT', 'MODE SANS ÉCHEC : boucle de redémarrage détectée → ré-imports sautés');
   }

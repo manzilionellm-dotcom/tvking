@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.view.SurfaceView
 import android.view.View
 import androidx.media3.common.AudioAttributes
+import androidx.media3.common.Format
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -17,11 +18,13 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlaybackException
@@ -29,6 +32,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
+import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
@@ -38,6 +42,8 @@ import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.video.VideoRendererEventListener
+import com.manzilionellm.native_video_player.logic.AudioDiagnosis
+import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
 import com.manzilionellm.native_video_player.logic.ExclusiveAudio
 import com.manzilionellm.native_video_player.logic.PlaybackSession
@@ -181,6 +187,25 @@ class NativeVideoView(
     // Voix claire. Faux par défaut : le processeur reste inactif.
     private var clearVoiceEnabled = false
     private val clearVoiceProcessor = ClearVoiceProcessor()
+
+    // ---- DIAGNOSTIC DU SON (boîte noire, 01/10/2026) -----------------------
+    // Pour chaque chaîne : ce qui ENTRE (format du flux), QUI décode (box ou
+    // FFmpeg), ce qui SORT (AudioTrack) et les coupures. Envoyé à Dart
+    // (« audioDiag ») qui le range dans la boîte noire (Réglages → Boîte
+    // noire). Lecture seule : ne change RIEN à la lecture.
+    private var diag = AudioSnapshot()
+    private var diagLastUnderrunSentMs = 0L
+    private var diagCapsSent = false
+
+    /** Ce que la sortie son de la box accepte tel quel (HDMI / barre de son). */
+    private val outputCaps: String = try {
+        val caps = AudioCapabilities.getCapabilities(context)
+        fun yn(enc: Int) = if (caps.supportsEncoding(enc)) "oui" else "non"
+        "Sortie de la box : AC-3 ${yn(C.ENCODING_AC3)}, E-AC-3 ${yn(C.ENCODING_E_AC3)}, " +
+            "DTS ${yn(C.ENCODING_DTS)}, ${caps.maxChannelCount} voies max"
+    } catch (_: Throwable) {
+        "Sortie de la box : inconnue"
+    }
 
     // Identifiant dans [owners]. -1 tant que le lecteur n'est pas inscrit.
     private var playerKey: Int = -1
@@ -517,6 +542,9 @@ class NativeVideoView(
                 // de la chaîne précédente.
                 ffmpegAudioActive = false
                 audioChosenForSession = false
+                // Diagnostic du son : nouvelle chaîne, compteurs à zéro.
+                diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
+                diagLastUnderrunSentMs = 0L
                 // Langue audio / sous-titres préférée (langue de l'app) : si le
                 // film propose la piste, ExoPlayer la choisit d'office.
                 prefAudio = call.argument<String>("preferredAudio")
@@ -963,6 +991,7 @@ class NativeVideoView(
     ) {
         if (!fresh(eventTime)) return
         ffmpegAudioActive = decoderName.contains("ffmpeg", ignoreCase = true)
+        diag = diag.copy(decoder = decoderName)
     }
 
     override fun onAudioDecoderReleased(eventTime: AnalyticsListener.EventTime, decoderName: String) {
@@ -980,12 +1009,90 @@ class NativeVideoView(
      * le décodeur de la box, lui, parle le dialecte de l'appareil.
      */
     override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
+        if (fresh(eventTime)) emit("audioDiag", "Erreur de la sortie son : ${audioSinkError.javaClass.simpleName}")
         if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
     }
 
     /** Erreur du décodeur logiciel FFmpeg (DecoderException), même repli. */
     override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
+        if (fresh(eventTime)) emit("audioDiag", "Erreur du décodeur son : ${audioCodecError.javaClass.simpleName}")
         if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
+    }
+
+    // ---- diagnostic du son (lecture seule) ---------------------------------
+
+    /** Format du flux audio REÇU (avant décodage). */
+    override fun onAudioInputFormatChanged(
+        eventTime: AnalyticsListener.EventTime,
+        format: Format,
+        decoderReuseEvaluation: DecoderReuseEvaluation?,
+    ) {
+        if (!fresh(eventTime)) return
+        fun known(v: Int) = if (v == Format.NO_VALUE || v < 0) 0 else v
+        diag = diag.copy(
+            mime = format.sampleMimeType,
+            codecs = format.codecs,
+            inSampleRate = known(format.sampleRate),
+            inChannels = known(format.channelCount),
+            bitrate = known(format.bitrate),
+        )
+    }
+
+    /** Ce qui part réellement vers la sortie son : on envoie le bilan. */
+    override fun onAudioTrackInitialized(
+        eventTime: AnalyticsListener.EventTime,
+        audioTrackConfig: AudioSink.AudioTrackConfig,
+    ) {
+        if (!fresh(eventTime)) return
+        diag = diag.copy(
+            outSampleRate = audioTrackConfig.sampleRate,
+            outChannels = Integer.bitCount(audioTrackConfig.channelConfig),
+            outEncoding = encodingName(audioTrackConfig.encoding),
+            passthrough = !Util.isEncodingLinearPcm(audioTrackConfig.encoding),
+            clearVoice = clearVoiceEnabled,
+        )
+        sendAudioDiag()
+    }
+
+    /** Coupure de la sortie son (craquement / trou). Bilan au plus toutes les 30 s. */
+    override fun onAudioUnderrun(
+        eventTime: AnalyticsListener.EventTime,
+        bufferSize: Int,
+        bufferSizeMs: Long,
+        elapsedSinceLastFeedMs: Long,
+    ) {
+        if (!fresh(eventTime)) return
+        diag = diag.copy(underruns = diag.underruns + 1)
+        val now = SystemClock.elapsedRealtime()
+        if (now - diagLastUnderrunSentMs >= 30_000L) {
+            diagLastUnderrunSentMs = now
+            sendAudioDiag()
+        }
+    }
+
+    private fun sendAudioDiag() {
+        val text = buildString {
+            append(AudioDiagnosis.describe(diag))
+            for (v in AudioDiagnosis.verdicts(diag)) append("\n→ ").append(v)
+            if (!diagCapsSent) {
+                diagCapsSent = true
+                append("\n").append(outputCaps)
+            }
+        }
+        emit("audioDiag", text)
+    }
+
+    private fun encodingName(encoding: Int): String = when (encoding) {
+        C.ENCODING_PCM_16BIT -> "PCM 16 bits"
+        C.ENCODING_PCM_FLOAT -> "PCM flottant"
+        C.ENCODING_PCM_24BIT -> "PCM 24 bits"
+        C.ENCODING_PCM_32BIT -> "PCM 32 bits"
+        C.ENCODING_AC3 -> "AC-3"
+        C.ENCODING_E_AC3, C.ENCODING_E_AC3_JOC -> "E-AC-3"
+        C.ENCODING_DTS -> "DTS"
+        C.ENCODING_DTS_HD -> "DTS-HD"
+        C.ENCODING_DOLBY_TRUEHD -> "TrueHD"
+        else -> "codage $encoding"
     }
 
     // ---- cycle de vie -------------------------------------------------------
