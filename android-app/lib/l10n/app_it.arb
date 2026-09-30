@@ -2199,5 +2199,14 @@
   "tvSettingsRecordingsHint": "I video registrati con il tasto REC.",
   "tvRingHint": "◀ ▶  sfoglia   ·   OK  apri",
   "tvCinemaDownloadSeason": "Scarica stagione",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Stagione in download} =1{1 episodio in coda} other{{count} episodi in coda}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Stagione in download} =1{1 episodio in coda} other{{count} episodi in coda}}",
+  "tvPlayerLoading": "Caricamento del canale…",
+  "tvPlayerFatalDown": "Questo canale non risponde in questo momento.",
+  "tvPlayerFatalEmpty": "Questo canale è vuoto o bloccato dalla sorgente.",
+  "tvPlayerFatalNav": "Su / Giù: un altro canale",
+  "tvSearchPrompt": "Scrivi un nome con la tastiera. Freccia destra: i risultati.",
+  "tvSearchCount": "{count, plural, =1{1 risultato} other{{count} risultati}}",
+  "tvGuideLoading": "Caricamento della guida…",
+  "tvGuideHint": "Su / Giù: scorrere · OK o Indietro: chiudi",
+  "tvNoEpg": "Nessun programma annunciato"
 }

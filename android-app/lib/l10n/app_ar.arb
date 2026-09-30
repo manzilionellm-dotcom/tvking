@@ -895,5 +895,14 @@
   "tvSettingsRecordingsHint": "مقاطع الفيديو المسجلة بزر REC.",
   "tvRingHint": "◀ ▶  تصفّح   ·   OK  فتح",
   "tvCinemaDownloadSeason": "تنزيل الموسم",
-  "tvCinemaSeasonQueue": "{count, plural, =0{جارٍ تنزيل الموسم} =1{حلقة واحدة في الانتظار} other{{count} حلقات في الانتظار}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{جارٍ تنزيل الموسم} =1{حلقة واحدة في الانتظار} other{{count} حلقات في الانتظار}}",
+  "tvPlayerLoading": "جارٍ تحميل القناة…",
+  "tvPlayerFatalDown": "هذه القناة لا تستجيب حالياً.",
+  "tvPlayerFatalEmpty": "هذه القناة فارغة أو محظورة من المصدر.",
+  "tvPlayerFatalNav": "أعلى / أسفل: قناة أخرى",
+  "tvSearchPrompt": "اكتب اسماً بلوحة المفاتيح. السهم الأيمن: النتائج.",
+  "tvSearchCount": "{count, plural, =1{نتيجة واحدة} other{{count} نتائج}}",
+  "tvGuideLoading": "جارٍ تحميل الدليل…",
+  "tvGuideHint": "أعلى / أسفل: تصفح · موافق أو رجوع: إغلاق",
+  "tvNoEpg": "لا يوجد برنامج معلن"
 }

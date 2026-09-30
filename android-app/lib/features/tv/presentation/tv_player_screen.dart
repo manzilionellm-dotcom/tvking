@@ -14,7 +14,10 @@
 //    3) watchdog 15 s : aucune progression → reconnexion auto (ré-ouvre l'URL).
 //
 //  D-pad : Haut/Bas (ou Ch+/Ch-) = zap, chiffres = n° de chaîne, OK = barre,
-//  Back = quitter. Logo « The Few » affiché à l'ouverture / au zap.
+//  Back = quitter. Pendant le chargement on affiche le NUMÉRO et le NOM
+//  (pas seulement un logo) pour que le zapping reste lisible.
+//  Une touche maintenue ne rouvre le flux qu'une fois, à l'arrêt :
+//  enchaîner 20 setUrl gelait la box.
 // =========================================================
 import 'dart:async';
 
@@ -30,7 +33,8 @@ import '../core/tv_back_guard.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
-import '../../epg/presentation/channel_programs_screen.dart';
+import '../../epg/data/epg_repository.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../cinema/data/cinema_downloads.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/domain/live_fallback.dart';
@@ -41,7 +45,8 @@ import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
-import 'tv_components.dart';
+import '../core/tv_zap.dart';
+import 'tv_channel_guide_screen.dart';
 
 class TvPlayerScreen extends StatefulWidget {
   const TvPlayerScreen({
@@ -79,6 +84,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   Timer? _numTimer;
   Timer? _watchdog;
   Timer? _toastTimer;
+  // Zap maintenu : on change le numéro À L'ÉCRAN tout de suite, et on
+  // n'ouvre le flux qu'une fois la télécommande relâchée (~180 ms sans
+  // nouvel appui). Un seul setUrl au lieu d'un par répétition de touche.
+  Timer? _zapSettle;
+  bool _zapHolding = false;
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
 
   // ----- Enregistrement -----
@@ -227,6 +237,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _numTimer?.cancel();
     _watchdog?.cancel();
     _toastTimer?.cancel();
+    _zapSettle?.cancel();
     _favSub?.cancel();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
@@ -247,6 +258,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Écoute l'état du lecteur natif : progression (anti-gel), buffering (logo),
   // erreurs.
   void _onPlayer() {
+    // Pendant un zap maintenu, le flux encore ouvert n'est PAS la chaîne
+    // affichée. On ignore ses erreurs / sa première image, sinon l'écran
+    // croirait que la mauvaise chaîne est prête et lancerait une
+    // reconnexion inutile.
+    if (_zapHolding) return;
     // Progression réelle → « pas gelé ». La lecture est repartie : on remet à
     // zéro le budget de reconnexion (et on lève un éventuel état d'erreur).
     if (_controller.position != _lastPos) {
@@ -308,14 +324,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
-    // En Dart, `a % n` est TOUJOURS dans [0, n) pour n > 0 → pas de wrap négatif
-    // à corriger (l'ancienne ligne `if (_index < 0)` était du code mort).
-    setState(() => _index = (_index + delta) % n);
-    _open();
+    setState(() {
+      _index = tvNextZapIndex(_index, delta, n);
+      _zapHolding = true;
+    });
+    _showOverlayTemporarily();
+    // 180 ms : sous le délai d'une vraie image (souvent > 0,5 s), donc un
+    // appui simple ne paraît pas lent. Une touche maintenue repart le
+    // chrono : un seul flux s'ouvre, sur la chaîne où l'on s'arrête.
+    _zapSettle?.cancel();
+    _zapSettle = Timer(const Duration(milliseconds: 180), () {
+      if (!mounted) return;
+      _zapHolding = false;
+      _open();
+    });
   }
 
   void _recover() {
-    if (_fatal) return;
+    if (_fatal || _zapHolding) return;
     final DateTime now = DateTime.now();
     if (now.difference(_lastRecoverAt) < const Duration(seconds: 3)) return;
     _lastRecoverAt = now;
@@ -358,6 +384,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {
+    _zapSettle?.cancel();
+    _zapHolding = false;
     setState(() {
       _fatal = false;
       _recoverAttempts = 0;
@@ -539,11 +567,21 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Ouvre le GUIDE de la chaîne en cours : émission actuelle + « à suivre »,
   // avec possibilité de poser une ALARME (rappel) sur un programme.
   void _openGuide() {
-    Navigator.of(context).push(
+    // Si l'utilisateur tient encore Haut/Bas, on ouvre d'abord la chaîne
+    // affichée : le guide et l'image doivent parler de la même chaîne.
+    if (_zapSettle?.isActive ?? false) {
+      _zapSettle!.cancel();
+      _zapHolding = false;
+      _open();
+    }
+    unawaited(Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ChannelProgramsScreen(channel: _current),
+        builder: (_) => TvChannelGuideScreen(channel: _current),
       ),
-    );
+    ).then((_) {
+      // Au retour, le focus clavier était parti avec la route du guide.
+      if (mounted) _focus.requestFocus();
+    }));
     _showOverlayTemporarily();
   }
 
@@ -576,6 +614,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _jumpNumber() {
+    _zapSettle?.cancel();
+    _zapHolding = false;
     final int? n = int.tryParse(_numBuffer);
     _numBuffer = '';
     if (n == null || n <= 0) { setState(() {}); return; }
@@ -604,7 +644,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   // Télécommandes universelles : toutes les variantes mènent à l'action.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    // On prend l'appui ET la répétition (touche maintenue). Le relâchement
+    // (KeyUp) est ignoré. Le flux, lui, n'est ouvert qu'une fois dans _zap.
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
     final LogicalKeyboardKey k = event.logicalKey;
 
     // ÉCRAN D'ERREUR (P1-6) : OK = Réessayer ; le Retour reste géré plus bas
@@ -715,73 +759,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   child: NativeVideoView(controller: _controller),
                 ),
               ),
-              // Écran de marque pendant l'ouverture / le zap / une reconnexion.
-              if (_buffering && !_fatal)
-                const ColoredBox(
-                  color: TvTokens.bg,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        TvLogo(width: 200),
-                        SizedBox(height: 28),
-                        SizedBox(
-                          width: 40, height: 40,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 3, color: TvTokens.accent),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              // Le temps que l'image arrive (ou qu'on lâche Haut/Bas), on dit
+              // QUELLE chaîne est visée. Un logo seul ne permettait pas de
+              // zapper « à l'aveugle » sans se perdre.
+              if (_zapHolding || (_buffering && !_fatal)) _loadingCard(),
               // Écran d'ERREUR (P1-6) : la reconnexion automatique a été épuisée
               // (flux durablement injoignable). On ARRÊTE de boucler et on offre
-              // un « Réessayer » manuel (OK) ou « Quitter » (Retour).
-              if (_fatal)
-                ColoredBox(
-                  color: TvTokens.bg,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Icon(Icons.error_outline_rounded,
-                            color: TvTokens.mutedDim, size: 56),
-                        const SizedBox(height: 16),
-                        Text(_current.cleanName,
-                            style: TextStyle(
-                                fontSize: TvDimens.title,
-                                fontWeight: FontWeight.w800,
-                                color: TvTokens.text)),
-                        const SizedBox(height: 8),
-                        Text(
-                            _everShownFrame
-                                ? 'Chaîne indisponible pour le moment.'
-                                : 'Chaîne vide ou bloquée par ta source.',
-                            style: TextStyle(
-                                fontSize: TvDimens.body,
-                                color: TvTokens.mutedDim)),
-                        const SizedBox(height: 20),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 22, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: TvTokens.sel,
-                            borderRadius:
-                                BorderRadius.circular(TvTokens.rButton),
-                            border: Border.all(
-                                color: TvTokens.accent,
-                                width: TvDimens.focusOutline),
-                          ),
-                          child: Text(context.l10n.tvPlayerFatalHint,
-                              style: TextStyle(
-                                  fontSize: TvDimens.titleS,
-                                  fontWeight: FontWeight.w700,
-                                  color: TvTokens.accentBright)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              // un « Réessayer » manuel (OK), une autre chaîne (Haut/Bas)
+              // ou « Quitter » (Retour). Masqué pendant un zap : l'utilisateur
+              // est déjà en train d'en choisir une autre.
+              if (_fatal && !_zapHolding) _errorCard(),
               // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
               // bas + fondu, masqué automatiquement après 5 s. Contient l'info
               // chaîne + tous les contrôles (dont REC et ❤ en bas).
@@ -889,6 +876,171 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
           ),
         ),
       ),
+      ),
+    );
+  }
+
+  /// Carte de chargement : numéro géant + nom + consigne de zap.
+  /// Lisible à 3 m, et elle suit la chaîne AFFICHÉE même si le flux
+  /// n'est pas encore ouvert (zap maintenu).
+  Widget _loadingCard() {
+    final Channel c = _current;
+    return ColoredBox(
+      color: TvTokens.bg,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 48),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text('${_index + 1}',
+                  style: TvTokens.display(TvDimens.displayL,
+                      color: TvTokens.accentBright)),
+              const SizedBox(height: 8),
+              Text(c.cleanName,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.display(TvDimens.headline, color: TvTokens.text)),
+              if (_isFavorite) ...<Widget>[
+                const SizedBox(height: 8),
+                const Icon(Icons.favorite_rounded,
+                    color: TvTokens.accent, size: 22),
+              ],
+              const SizedBox(height: 22),
+              const SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                    strokeWidth: 3, color: TvTokens.accent),
+              ),
+              const SizedBox(height: 16),
+              Text(context.l10n.tvPlayerLoading,
+                  style: TvTokens.ui(TvDimens.body, color: TvTokens.muted)),
+              const SizedBox(height: 6),
+              Text(context.l10n.tvZapHint,
+                  style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Erreur claire : ce qui s'est passé, et les trois touches utiles.
+  Widget _errorCard() {
+    return ColoredBox(
+      color: TvTokens.bg,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 48),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(Icons.error_outline_rounded,
+                  color: TvTokens.accentBright, size: 56),
+              const SizedBox(height: 12),
+              Text('${_index + 1}',
+                  style: TvTokens.display(TvDimens.displayM,
+                      color: TvTokens.accentBright)),
+              const SizedBox(height: 6),
+              Text(_current.cleanName,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.display(TvDimens.title, color: TvTokens.text)),
+              const SizedBox(height: 10),
+              Text(
+                _everShownFrame
+                    ? context.l10n.tvPlayerFatalDown
+                    : context.l10n.tvPlayerFatalEmpty,
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                decoration: BoxDecoration(
+                  color: TvTokens.sel,
+                  borderRadius: BorderRadius.circular(TvTokens.rButton),
+                  border: Border.all(
+                      color: TvTokens.accent, width: TvDimens.focusOutline),
+                ),
+                child: Text(context.l10n.tvPlayerFatalHint,
+                    style: TvTokens.ui(TvDimens.titleS,
+                        weight: FontWeight.w700, color: TvTokens.accentBright)),
+              ),
+              const SizedBox(height: 10),
+              Text(context.l10n.tvPlayerFatalNav,
+                  style: TvTokens.ui(TvDimens.label, color: TvTokens.muted)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Programme « maintenant » sous le nom, dans la barre du lecteur.
+/// Une requête indexée par chaîne : au zap on ne recharge que celle-ci.
+class _LiveEpgLine extends StatefulWidget {
+  const _LiveEpgLine({required this.channelId});
+  final String channelId;
+
+  @override
+  State<_LiveEpgLine> createState() => _LiveEpgLineState();
+}
+
+class _LiveEpgLineState extends State<_LiveEpgLine> {
+  Timer? _wait;
+  EpgProgram? _shown;
+
+  @override
+  void initState() {
+    super.initState();
+    _load(widget.channelId);
+  }
+
+  @override
+  void didUpdateWidget(covariant _LiveEpgLine old) {
+    super.didUpdateWidget(old);
+    if (old.channelId == widget.channelId) return;
+    // Zap rapide : on efface tout de suite le programme de la chaîne
+    // précédente (sinon il s'affiche sous le mauvais nom), et on ne
+    // requête la base qu'une fois le zapping calmé.
+    _wait?.cancel();
+    _shown = null;
+    final String id = widget.channelId;
+    _wait = Timer(const Duration(milliseconds: 200), () => _load(id));
+  }
+
+  void _load(String id) {
+    // Un guide absent ou une base occupée ne doit pas faire tomber
+    // le lecteur : on cache simplement la ligne.
+    EpgRepository.instance.currentProgram(id).then((EpgProgram? p) {
+      if (!mounted || widget.channelId != id) return;
+      setState(() => _shown = p);
+    }, onError: (Object _) {});
+  }
+
+  @override
+  void dispose() {
+    _wait?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final EpgProgram? p = _shown;
+    if (p == null || p.title.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        '${context.l10n.tvEpgNow}  ·  ${p.title}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TvTokens.ui(TvDimens.label, color: TvTokens.accentBright),
       ),
     );
   }
@@ -1025,6 +1177,8 @@ class _ControlsBar extends StatelessWidget {
                   fontSize: TvDimens.headline,
                   fontWeight: FontWeight.w800,
                   color: TvTokens.text)),
+          // Programme en cours, sous le nom : le guide sans quitter l'image.
+          _LiveEpgLine(channelId: channel.id),
           const SizedBox(height: 6),
           Row(
             children: <Widget>[

@@ -2199,5 +2199,14 @@
   "tvSettingsRecordingsHint": "REC बटन से रिकॉर्ड किए गए वीडियो।",
   "tvRingHint": "◀ ▶  ब्राउज़ करें   ·   OK  खोलें",
   "tvCinemaDownloadSeason": "सीज़न डाउनलोड करें",
-  "tvCinemaSeasonQueue": "{count, plural, =0{सीज़न डाउनलोड हो रहा है} =1{1 एपिसोड कतार में} other{{count} एपिसोड कतार में}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{सीज़न डाउनलोड हो रहा है} =1{1 एपिसोड कतार में} other{{count} एपिसोड कतार में}}",
+  "tvPlayerLoading": "चैनल लोड हो रहा है…",
+  "tvPlayerFatalDown": "यह चैनल अभी जवाब नहीं दे रहा।",
+  "tvPlayerFatalEmpty": "यह चैनल खाली है या स्रोत ने रोक दिया है।",
+  "tvPlayerFatalNav": "ऊपर / नीचे: दूसरा चैनल",
+  "tvSearchPrompt": "कीबोर्ड से नाम लिखें। दायाँ तीर: परिणाम।",
+  "tvSearchCount": "{count, plural, =1{1 परिणाम} other{{count} परिणाम}}",
+  "tvGuideLoading": "गाइड लोड हो रही है…",
+  "tvGuideHint": "ऊपर / नीचे: देखें · OK या वापस: बंद करें",
+  "tvNoEpg": "कोई कार्यक्रम नहीं"
 }

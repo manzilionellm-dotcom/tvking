@@ -895,5 +895,14 @@
   "tvSettingsRecordingsHint": "Videoer tatt opp med REC-knappen.",
   "tvRingHint": "◀ ▶  bla   ·   OK  åpne",
   "tvCinemaDownloadSeason": "Last ned sesong",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Sesong lastes ned} =1{1 episode i kø} other{{count} episoder i kø}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Sesong lastes ned} =1{1 episode i kø} other{{count} episoder i kø}}",
+  "tvPlayerLoading": "Laster kanalen…",
+  "tvPlayerFatalDown": "Kanalen svarer ikke akkurat nå.",
+  "tvPlayerFatalEmpty": "Kanalen er tom eller blokkert av kilden.",
+  "tvPlayerFatalNav": "Opp / Ned: en annen kanal",
+  "tvSearchPrompt": "Skriv et navn med tastaturet. Høyre pil: resultatene.",
+  "tvSearchCount": "{count, plural, =1{1 treff} other{{count} treff}}",
+  "tvGuideLoading": "Laster guiden…",
+  "tvGuideHint": "Opp / Ned: bla · OK eller Tilbake: lukk",
+  "tvNoEpg": "Ingen programannonse"
 }

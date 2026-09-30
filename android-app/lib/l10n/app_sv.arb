@@ -895,5 +895,14 @@
   "tvSettingsRecordingsHint": "Videor inspelade med REC-knappen.",
   "tvRingHint": "◀ ▶  bläddra   ·   OK  öppna",
   "tvCinemaDownloadSeason": "Ladda ner säsong",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Säsong laddas ner} =1{1 avsnitt i kö} other{{count} avsnitt i kö}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Säsong laddas ner} =1{1 avsnitt i kö} other{{count} avsnitt i kö}}",
+  "tvPlayerLoading": "Laddar kanalen…",
+  "tvPlayerFatalDown": "Kanalen svarar inte just nu.",
+  "tvPlayerFatalEmpty": "Kanalen är tom eller blockerad av källan.",
+  "tvPlayerFatalNav": "Upp / Ner: en annan kanal",
+  "tvSearchPrompt": "Skriv ett namn med tangentbordet. Högerpil: resultaten.",
+  "tvSearchCount": "{count, plural, =1{1 träff} other{{count} träffar}}",
+  "tvGuideLoading": "Laddar guiden…",
+  "tvGuideHint": "Upp / Ner: bläddra · OK eller Tillbaka: stäng",
+  "tvNoEpg": "Inget program annonserat"
 }

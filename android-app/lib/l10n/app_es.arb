@@ -895,5 +895,14 @@
   "tvSettingsRecordingsHint": "Los vídeos grabados con el botón REC.",
   "tvRingHint": "◀ ▶  explorar   ·   OK  abrir",
   "tvCinemaDownloadSeason": "Descargar temporada",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Temporada descargando} =1{1 episodio en cola} other{{count} episodios en cola}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Temporada descargando} =1{1 episodio en cola} other{{count} episodios en cola}}",
+  "tvPlayerLoading": "Cargando el canal…",
+  "tvPlayerFatalDown": "Este canal no responde en este momento.",
+  "tvPlayerFatalEmpty": "Este canal está vacío o bloqueado por la fuente.",
+  "tvPlayerFatalNav": "Arriba / Abajo: otro canal",
+  "tvSearchPrompt": "Escribe un nombre con el teclado. Flecha derecha: los resultados.",
+  "tvSearchCount": "{count, plural, =1{1 resultado} other{{count} resultados}}",
+  "tvGuideLoading": "Cargando la guía…",
+  "tvGuideHint": "Arriba / Abajo: recorrer · OK o Atrás: cerrar",
+  "tvNoEpg": "Sin programa anunciado"
 }

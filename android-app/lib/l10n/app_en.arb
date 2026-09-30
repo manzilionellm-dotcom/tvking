@@ -767,5 +767,14 @@
   "tvSettingsRecordingsHint": "Videos recorded with the REC button.",
   "tvRingHint": "◀ ▶  browse   ·   OK  open",
   "tvCinemaDownloadSeason": "Download season",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Season downloading} =1{1 episode queued} other{{count} episodes queued}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Season downloading} =1{1 episode queued} other{{count} episodes queued}}",
+  "tvPlayerLoading": "Loading the channel…",
+  "tvPlayerFatalDown": "This channel isn't responding right now.",
+  "tvPlayerFatalEmpty": "This channel is empty or blocked by the source.",
+  "tvPlayerFatalNav": "Up / Down: another channel",
+  "tvSearchPrompt": "Type a name on the keyboard. Right arrow: the results.",
+  "tvSearchCount": "{count, plural, =1{1 result} other{{count} results}}",
+  "tvGuideLoading": "Loading the guide…",
+  "tvGuideHint": "Up / Down: browse · OK or Back: close",
+  "tvNoEpg": "No programme listed"
 }

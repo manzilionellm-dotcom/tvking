@@ -16,6 +16,7 @@ import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_search_text.dart';
 import 'tv_player_screen.dart';
 
 class TvSearchScreen extends StatefulWidget {
@@ -31,6 +32,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   String _q = '';
   List<Channel> _results = const <Channel>[];
   Timer? _debounce;
+  // Clé de recherche déjà calculée (nom brut + catégorie), par id.
+  // Évite de reparcourir les accents à chaque lettre.
+  final Map<String, String> _haystack = <String, String>{};
 
   // Borne anti-surcharge : sur un boîtier TV modeste, afficher des centaines de
   // vignettes (et leurs logos réseau) d'un coup peut faire planter l'app. On
@@ -54,6 +58,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
       if (!mounted) return;
       _all = ch.where((Channel c) => c.isLive).toList(growable: false);
+      _haystack.clear();
       _runSearch();
     });
   }
@@ -91,14 +96,22 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     _debounce = Timer(const Duration(milliseconds: 250), _runSearch);
   }
 
+  /// Nom brut + catégorie, sans accents. On ne touche PAS à cleanName
+  /// ici : le curer toute la playlist sur le fil UI fige la box.
+  String _hay(Channel c) => _haystack.putIfAbsent(
+      c.id, () => tvSearchKey('${c.name}\n${c.category}'));
+
   void _runSearch() {
-    final String t = _q.trim().toLowerCase();
-    final List<Channel> r = t.isEmpty
-        ? const <Channel>[]
-        : _all
-            .where((Channel c) => c.cleanName.toLowerCase().contains(t))
-            .take(_maxResults)
-            .toList(growable: false);
+    final String t = tvSearchKey(_q.trim());
+    if (t.isEmpty) {
+      if (mounted) setState(() => _results = const <Channel>[]);
+      return;
+    }
+    final List<Channel> r = <Channel>[];
+    for (final Channel c in _all) {
+      if (r.length >= _maxResults) break;
+      if (_hay(c).contains(t)) r.add(c);
+    }
     if (mounted) setState(() => _results = r);
   }
 
@@ -135,14 +148,15 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                 ),
               ),
               const SizedBox(height: 14),
+              if (res.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(context.l10n.tvSearchCount(res.length),
+                      style: TvTokens.ui(TvDimens.label, color: TvTokens.muted)),
+                ),
               Expanded(
                 child: res.isEmpty
-                    ? Center(
-                        child: Text(
-                          _q.trim().isEmpty ? '' : context.l10n.tvNoResult,
-                          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
-                        ),
-                      )
+                    ? _SearchEmpty(queryEmpty: _q.trim().isEmpty)
                     : GridView.builder(
                         addAutomaticKeepAlives: false,
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -152,8 +166,19 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                           mainAxisSpacing: TvDimens.gutter,
                         ),
                         itemCount: res.length,
-                        itemBuilder: (BuildContext context, int i) => TvFocusable(
+                        itemBuilder: (BuildContext context, int i) => Builder(
+                          // Le contexte du Builder EST la vignette (pas toute
+                          // la grille) : ensureVisible la fait défiler.
+                          builder: (BuildContext itemContext) => TvFocusable(
                           scale: TvFocusScale.small,
+                          onFocusChange: (bool f) {
+                            if (!f) return;
+                            Scrollable.ensureVisible(
+                              itemContext,
+                              alignment: 0.35,
+                              duration: const Duration(milliseconds: 120),
+                            );
+                          },
                           onSelect: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) => TvPlayerScreen(channels: res, startIndex: i),
@@ -189,6 +214,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                           ),
                         ),
                       ),
+                    ),
               ),
             ],
           ),
@@ -201,6 +227,39 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         child: Text(c.initials,
             style: TextStyle(fontSize: TvDimens.title, fontWeight: FontWeight.w800, color: TvTokens.muted)),
       );
+}
+
+/// Zone de droite vide : aide (rien de tapé) ou « aucun résultat ».
+/// Avant, l'écran restait noir sans rien dire.
+class _SearchEmpty extends StatelessWidget {
+  const _SearchEmpty({required this.queryEmpty});
+  final bool queryEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              queryEmpty ? Icons.keyboard_rounded : Icons.search_off_rounded,
+              size: 52,
+              color: TvTokens.accentBright,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              queryEmpty ? context.l10n.tvSearchPrompt : context.l10n.tvNoResult,
+              textAlign: TextAlign.center,
+              style: TvTokens.ui(TvDimens.titleS,
+                  weight: FontWeight.w600, color: TvTokens.text),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Clavier à l'écran réutilisable (recherche du Cinéma). Rendu IDENTIQUE à

@@ -895,5 +895,14 @@
   "tvSettingsRecordingsHint": "Videoer optaget med REC-knappen.",
   "tvRingHint": "◀ ▶  gennemse   ·   OK  åbn",
   "tvCinemaDownloadSeason": "Download sæson",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Sæson downloades} =1{1 afsnit i kø} other{{count} afsnit i kø}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Sæson downloades} =1{1 afsnit i kø} other{{count} afsnit i kø}}",
+  "tvPlayerLoading": "Indlæser kanalen…",
+  "tvPlayerFatalDown": "Kanalen svarer ikke lige nu.",
+  "tvPlayerFatalEmpty": "Kanalen er tom eller blokeret af kilden.",
+  "tvPlayerFatalNav": "Op / Ned: en anden kanal",
+  "tvSearchPrompt": "Skriv et navn med tastaturet. Højrepil: resultaterne.",
+  "tvSearchCount": "{count, plural, =1{1 resultat} other{{count} resultater}}",
+  "tvGuideLoading": "Indlæser guiden…",
+  "tvGuideHint": "Op / Ned: bladre · OK eller Tilbage: luk",
+  "tvNoEpg": "Intet program annonceret"
 }
