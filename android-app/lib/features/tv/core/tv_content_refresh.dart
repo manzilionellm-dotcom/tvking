@@ -14,8 +14,9 @@
 //       l'étape qui manquait. Avant, « Redémarrer » ne relisait que le cache
 //       local → une chaîne ajoutée chez le fournisseur n'entrait jamais
 //       avant 24 h ;
-//    3. (redémarrage seulement) vide le cache Films / Séries pour que les
-//       nouveaux titres apparaissent à la prochaine ouverture.
+//    3. (redémarrage seulement) demande un nouveau passage Films / Séries.
+//       La mémoire est vidée, le catalogue DÉJÀ sur la box reste. Il est
+//       remplacé seulement quand le nouveau téléchargement est complet.
 //
 //  [status] permet à l'interface d'afficher « Mise à jour… » pendant la
 //  passe, puis de l'effacer. Une seule passe à la fois (garde interne +
@@ -67,8 +68,13 @@ abstract final class TvContentRefresh {
       final int ok = await PlaylistRepository.instance
           .refreshAll(skipSyncedWithin: const Duration(minutes: 2));
       notice.value = PlaylistRepository.instance.refreshWarning.value;
-      // 3) Nouveaux films / séries (cache mémoire vidé → relu à l'ouverture).
-      if (clearCinema) CinemaRepository.instance.clear();
+      // 3) Nouveaux films / séries. On vide seulement la MÉMOIRE : le
+      //    catalogue déjà sur la box reste affiché, et un passage en
+      //    arrière-plan le remplace quand le nouveau est complet.
+      if (clearCinema) {
+        CinemaRepository.instance.clear();
+        CinemaRepository.instance.requestRefresh();
+      }
       BlackBox.instance.info('SYNC',
           'mise à jour : $ok source(s) actualisée(s) en ${sw.elapsedMilliseconds} ms');
     } catch (e) {
