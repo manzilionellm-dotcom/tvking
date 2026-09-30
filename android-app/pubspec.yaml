@@ -165,6 +165,16 @@ dependencies:
   tvking_device:
     path: packages/tvking_device
 
+  # --- Recherche à la voix (bouton micro de la télécommande) ---
+  # Plugin local, même raison que tvking_device : le build TV régénère
+  # android/ avec `flutter create`, donc le Kotlin doit vivre dans un
+  # plugin pour ne pas être écrasé. Il ouvre la reconnaissance DÉJÀ
+  # fournie par Android (RecognizerIntent). Aucune bibliothèque tierce,
+  # aucune clé. Si la box n'a pas de micro, il répond « unavailable »
+  # et l'écran garde le clavier. Il ne touche pas au lecteur vidéo.
+  zuno_voice:
+    path: packages/zuno_voice
+
   # Récupère l'IP locale du téléphone sur le WiFi (sinon impossible
   # de construire l'URL "http://<mon-ip>:8090/" que la TV doit ouvrir).
   network_info_plus: ^6.1.1

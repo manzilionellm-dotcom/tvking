@@ -2199,5 +2199,22 @@
   "tvSettingsRecordingsHint": "使用 REC 按钮录制的视频。",
   "tvRingHint": "◀ ▶  浏览   ·   OK  打开",
   "tvCinemaDownloadSeason": "下载本季",
-  "tvCinemaSeasonQueue": "{count, plural, =0{本季下载中} =1{1 集排队中} other{{count} 集排队中}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{本季下载中} =1{1 集排队中} other{{count} 集排队中}}",
+  "tvVoiceMic": "麦克风",
+  "tvVoiceListening": "请说话…",
+  "tvVoiceUnavailable": "这台盒子没有麦克风。请用键盘。",
+  "tvVoiceCancelled": "已取消。可以用键盘输入。",
+  "tvVoiceFailed": "没听清。请重试，或用键盘输入。",
+  "tvVoiceBusy": "麦克风正忙。请稍后再试。",
+  "tvVoiceTonightTitle": "今晚电视上",
+  "tvVoiceTonightEmpty": "节目单里没有今晚的内容。请在列表里加上 EPG 地址后再试。",
+  "tvVoiceKindChannel": "频道",
+  "tvVoiceKindMovie": "电影",
+  "tvVoiceKindSeries": "剧集",
+  "tvVoiceRemoteAi": "远程语音帮助",
+  "tvVoiceRemoteAiOn": "已开启",
+  "tvVoiceRemoteAiOff": "已关闭",
+  "tvVoiceRemoteAiHelp": "默认关闭。应用里没有密钥。「今晚」从盒子上的节目单读取。如果服务没有回应，Zuno 会在你的列表里搜索。",
+  "tvVoiceCinemaHint": "先打开一次电影或剧集：之后搜索就能找到它们，观看时不用联网。",
+  "tvVoiceOnChannel": "在 {channel}"
 }

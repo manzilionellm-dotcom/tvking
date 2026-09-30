@@ -1,0 +1,37 @@
+# =========================================================
+#  zuno_voice — micro de la télécommande (plugin local)
+# =========================================================
+#  POURQUOI UN PLUGIN : le build TV régénère `android/` avec
+#  `flutter create`. Un fichier Kotlin posé dans android/app
+#  serait écrasé. Un plugin est recopié par Flutter à chaque build,
+#  comme `tvking_device`.
+#
+#  CE QU'IL FAIT : il demande à Android de reconnaître une phrase
+#  (RecognizerIntent, le même écran que le bouton micro du système)
+#  et il reçoit la phrase déjà reconnue quand la télécommande envoie
+#  ACTION_SEARCH. Il ne décode pas l'audio lui-même et il ne touche
+#  pas au lecteur vidéo.
+#
+#  S'il n'y a pas de micro ou pas d'application de reconnaissance,
+#  il répond « unavailable ». L'app garde le clavier. Aucune clé,
+#  aucun serveur.
+# =========================================================
+name: zuno_voice
+description: "Reconnaissance vocale Android TV (intent système), avec repli si la box n'a pas de micro."
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.manzilionellm.zuno_voice
+        pluginClass: ZunoVoicePlugin

@@ -2199,5 +2199,22 @@
   "tvSettingsRecordingsHint": "I video registrati con il tasto REC.",
   "tvRingHint": "◀ ▶  sfoglia   ·   OK  apri",
   "tvCinemaDownloadSeason": "Scarica stagione",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Stagione in download} =1{1 episodio in coda} other{{count} episodi in coda}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Stagione in download} =1{1 episodio in coda} other{{count} episodi in coda}}",
+  "tvVoiceMic": "Microfono",
+  "tvVoiceListening": "Parla ora…",
+  "tvVoiceUnavailable": "Questa box non ha un microfono. Usa la tastiera.",
+  "tvVoiceCancelled": "Annullato. Puoi scrivere con la tastiera.",
+  "tvVoiceFailed": "Non ho capito. Riprova, o usa la tastiera.",
+  "tvVoiceBusy": "Il microfono è già in uso. Riprova tra un attimo.",
+  "tvVoiceTonightTitle": "Stasera in TV",
+  "tvVoiceTonightEmpty": "La guida non ha nulla per stasera. Aggiungi un indirizzo EPG alla lista e riprova.",
+  "tvVoiceKindChannel": "Canale",
+  "tvVoiceKindMovie": "Film",
+  "tvVoiceKindSeries": "Serie",
+  "tvVoiceRemoteAi": "Aiuto vocale remoto",
+  "tvVoiceRemoteAiOn": "Attiva",
+  "tvVoiceRemoteAiOff": "Disattivata",
+  "tvVoiceRemoteAiHelp": "Disattivata per default. Nessuna chiave nell'app. « Stasera » si legge nella guida, sulla box. Se il servizio non risponde, Zuno cerca nella tua lista.",
+  "tvVoiceCinemaHint": "Apri Film o Serie una volta: la ricerca li troverà dopo, senza rete mentre guardi.",
+  "tvVoiceOnChannel": "Su {channel}"
 }

@@ -895,5 +895,22 @@
   "tvSettingsRecordingsHint": "Videor inspelade med REC-knappen.",
   "tvRingHint": "◀ ▶  bläddra   ·   OK  öppna",
   "tvCinemaDownloadSeason": "Ladda ner säsong",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Säsong laddas ner} =1{1 avsnitt i kö} other{{count} avsnitt i kö}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Säsong laddas ner} =1{1 avsnitt i kö} other{{count} avsnitt i kö}}",
+  "tvVoiceMic": "Mikrofon",
+  "tvVoiceListening": "Prata nu…",
+  "tvVoiceUnavailable": "Den här boxen har ingen mikrofon. Använd tangentbordet.",
+  "tvVoiceCancelled": "Avbrutet. Du kan skriva med tangentbordet.",
+  "tvVoiceFailed": "Jag uppfattade inte. Försök igen, eller skriv.",
+  "tvVoiceBusy": "Mikrofonen används redan. Försök igen om en stund.",
+  "tvVoiceTonightTitle": "På tv i kväll",
+  "tvVoiceTonightEmpty": "Guiden har inget för i kväll. Lägg till en EPG-adress i listan och försök igen.",
+  "tvVoiceKindChannel": "Kanal",
+  "tvVoiceKindMovie": "Film",
+  "tvVoiceKindSeries": "Serie",
+  "tvVoiceRemoteAi": "Fjärrhjälp för röst",
+  "tvVoiceRemoteAiOn": "På",
+  "tvVoiceRemoteAiOff": "Av",
+  "tvVoiceRemoteAiHelp": "Av som standard. Ingen nyckel i appen. ”I kväll” läses från din guide, på boxen. Om tjänsten inte svarar söker Zuno i din lista.",
+  "tvVoiceCinemaHint": "Öppna Filmer eller Serier en gång: sökningen hittar dem sedan, utan nätverk medan du tittar.",
+  "tvVoiceOnChannel": "På {channel}"
 }

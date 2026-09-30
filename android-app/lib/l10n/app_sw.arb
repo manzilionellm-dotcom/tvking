@@ -895,5 +895,22 @@
   "tvSettingsRecordingsHint": "Video zilizorekodiwa kwa kitufe cha REC.",
   "tvRingHint": "◀ ▶  vinjari   ·   OK  fungua",
   "tvCinemaDownloadSeason": "Pakua msimu",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Msimu unapakuliwa} =1{Kipindi 1 kinasubiri} other{Vipindi {count} vinasubiri}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Msimu unapakuliwa} =1{Kipindi 1 kinasubiri} other{Vipindi {count} vinasubiri}}",
+  "tvVoiceMic": "Mikrofoni",
+  "tvVoiceListening": "Zungumza sasa…",
+  "tvVoiceUnavailable": "Kifaa hiki hakina mikrofoni. Tumia kibodi.",
+  "tvVoiceCancelled": "Imefutwa. Unaweza kuandika kwa kibodi.",
+  "tvVoiceFailed": "Sikuelewa. Jaribu tena, au andika.",
+  "tvVoiceBusy": "Mikrofoni inatumika tayari. Jaribu tena baadaye.",
+  "tvVoiceTonightTitle": "Kwenye TV usiku huu",
+  "tvVoiceTonightEmpty": "Mwongozo hauna kitu kwa usiku huu. Ongeza anwani ya EPG kwenye orodha yako kisha ujaribu tena.",
+  "tvVoiceKindChannel": "Kituo",
+  "tvVoiceKindMovie": "Filamu",
+  "tvVoiceKindSeries": "Mfululizo",
+  "tvVoiceRemoteAi": "Msaada wa sauti wa mbali",
+  "tvVoiceRemoteAiOn": "Imewashwa",
+  "tvVoiceRemoteAiOff": "Imezimwa",
+  "tvVoiceRemoteAiHelp": "Imezimwa kwa chaguo-msingi. Hakuna ufunguo kwenye programu. « Usiku huu » husomwa kutoka mwongozo wako, kwenye kifaa. Huduma isipojibu, Zuno hutafuta kwenye orodha yako.",
+  "tvVoiceCinemaHint": "Fungua Filamu au Mifululizo mara moja: utafutaji utazipata baadaye, bila mtandao unapotazama.",
+  "tvVoiceOnChannel": "Kwenye {channel}"
 }

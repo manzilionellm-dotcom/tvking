@@ -2199,5 +2199,22 @@
   "tvSettingsRecordingsHint": "Видео, записанные кнопкой REC.",
   "tvRingHint": "◀ ▶  листать   ·   OK  открыть",
   "tvCinemaDownloadSeason": "Скачать сезон",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Сезон загружается} =1{1 серия в очереди} few{{count} серии в очереди} many{{count} серий в очереди} other{{count} серии в очереди}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Сезон загружается} =1{1 серия в очереди} few{{count} серии в очереди} many{{count} серий в очереди} other{{count} серии в очереди}}",
+  "tvVoiceMic": "Микрофон",
+  "tvVoiceListening": "Говори сейчас…",
+  "tvVoiceUnavailable": "На этой приставке нет микрофона. Используй клавиатуру.",
+  "tvVoiceCancelled": "Отменено. Можно набрать на клавиатуре.",
+  "tvVoiceFailed": "Я не расслышал. Повтори или набери на клавиатуре.",
+  "tvVoiceBusy": "Микрофон уже занят. Повтори через мгновение.",
+  "tvVoiceTonightTitle": "Сегодня вечером по телевизору",
+  "tvVoiceTonightEmpty": "В программе передач ничего на этот вечер. Добавь адрес EPG в список и повтори.",
+  "tvVoiceKindChannel": "Канал",
+  "tvVoiceKindMovie": "Фильм",
+  "tvVoiceKindSeries": "Сериал",
+  "tvVoiceRemoteAi": "Удалённая голосовая помощь",
+  "tvVoiceRemoteAiOn": "Включена",
+  "tvVoiceRemoteAiOff": "Выключена",
+  "tvVoiceRemoteAiHelp": "Выключена по умолчанию. В приложении нет ключа. « Сегодня вечером » читается из твоего гида, на приставке. Если служба не отвечает, Zuno ищет в твоём списке.",
+  "tvVoiceCinemaHint": "Открой Фильмы или Сериалы один раз: поиск найдёт их потом, без сети пока ты смотришь.",
+  "tvVoiceOnChannel": "На {channel}"
 }

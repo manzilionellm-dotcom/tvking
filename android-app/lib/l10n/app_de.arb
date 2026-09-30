@@ -2199,5 +2199,22 @@
   "tvSettingsRecordingsHint": "Mit der REC-Taste aufgenommene Videos.",
   "tvRingHint": "◀ ▶  blättern   ·   OK  öffnen",
   "tvCinemaDownloadSeason": "Staffel herunterladen",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Staffel wird geladen} =1{1 Folge in Warteschlange} other{{count} Folgen in Warteschlange}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Staffel wird geladen} =1{1 Folge in Warteschlange} other{{count} Folgen in Warteschlange}}",
+  "tvVoiceMic": "Mikro",
+  "tvVoiceListening": "Sprich jetzt…",
+  "tvVoiceUnavailable": "Diese Box hat kein Mikrofon. Benutze die Tastatur.",
+  "tvVoiceCancelled": "Abgebrochen. Du kannst mit der Tastatur tippen.",
+  "tvVoiceFailed": "Ich habe das nicht verstanden. Nochmal, oder tippe auf der Tastatur.",
+  "tvVoiceBusy": "Das Mikrofon ist schon aktiv. Gleich noch einmal.",
+  "tvVoiceTonightTitle": "Heute Abend im Fernsehen",
+  "tvVoiceTonightEmpty": "Der Guide hat heute Abend nichts. Füge eine EPG-Adresse zu deiner Liste hinzu und versuche es erneut.",
+  "tvVoiceKindChannel": "Sender",
+  "tvVoiceKindMovie": "Film",
+  "tvVoiceKindSeries": "Serie",
+  "tvVoiceRemoteAi": "Ferngesteuerte Sprachhilfe",
+  "tvVoiceRemoteAiOn": "Aktiv",
+  "tvVoiceRemoteAiOff": "Aus",
+  "tvVoiceRemoteAiHelp": "Standardmäßig aus. Kein Schlüssel in der App. „Heute Abend“ kommt aus deinem Guide, auf der Box. Antwortet der Dienst nicht, sucht Zuno in deiner Liste.",
+  "tvVoiceCinemaHint": "Öffne einmal Filme oder Serien: die Suche findet sie danach, ohne Netz während du schaust.",
+  "tvVoiceOnChannel": "Auf {channel}"
 }

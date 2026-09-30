@@ -767,5 +767,22 @@
   "tvSettingsRecordingsHint": "Videos recorded with the REC button.",
   "tvRingHint": "◀ ▶  browse   ·   OK  open",
   "tvCinemaDownloadSeason": "Download season",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Season downloading} =1{1 episode queued} other{{count} episodes queued}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Season downloading} =1{1 episode queued} other{{count} episodes queued}}",
+  "tvVoiceMic": "Mic",
+  "tvVoiceListening": "Speak now…",
+  "tvVoiceUnavailable": "No microphone on this box. Use the keyboard.",
+  "tvVoiceCancelled": "Cancelled. You can type with the keyboard.",
+  "tvVoiceFailed": "I didn't catch that. Try again, or use the keyboard.",
+  "tvVoiceBusy": "The microphone is already in use. Try again in a moment.",
+  "tvVoiceTonightTitle": "On TV tonight",
+  "tvVoiceTonightEmpty": "The guide has nothing for tonight. Add an EPG address to your list, then try again.",
+  "tvVoiceKindChannel": "Channel",
+  "tvVoiceKindMovie": "Movie",
+  "tvVoiceKindSeries": "Series",
+  "tvVoiceRemoteAi": "Remote voice help",
+  "tvVoiceRemoteAiOn": "On",
+  "tvVoiceRemoteAiOff": "Off",
+  "tvVoiceRemoteAiHelp": "Off by default. No key in the app. “Tonight” is read from your guide, on the box. If the service does not answer, Zuno searches your list.",
+  "tvVoiceCinemaHint": "Open Movies or Series once: search will find them afterwards, without using the network while you watch.",
+  "tvVoiceOnChannel": "On {channel}"
 }

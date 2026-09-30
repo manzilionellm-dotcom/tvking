@@ -895,5 +895,22 @@
   "tvSettingsRecordingsHint": "مقاطع الفيديو المسجلة بزر REC.",
   "tvRingHint": "◀ ▶  تصفّح   ·   OK  فتح",
   "tvCinemaDownloadSeason": "تنزيل الموسم",
-  "tvCinemaSeasonQueue": "{count, plural, =0{جارٍ تنزيل الموسم} =1{حلقة واحدة في الانتظار} other{{count} حلقات في الانتظار}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{جارٍ تنزيل الموسم} =1{حلقة واحدة في الانتظار} other{{count} حلقات في الانتظار}}",
+  "tvVoiceMic": "ميكروفون",
+  "tvVoiceListening": "تحدّث الآن…",
+  "tvVoiceUnavailable": "لا يوجد ميكروفون على هذا الجهاز. استخدم لوحة المفاتيح.",
+  "tvVoiceCancelled": "أُلغي. يمكنك الكتابة بلوحة المفاتيح.",
+  "tvVoiceFailed": "لم أفهم. أعد المحاولة أو استخدم لوحة المفاتيح.",
+  "tvVoiceBusy": "الميكروفون قيد الاستخدام. أعد المحاولة بعد لحظة.",
+  "tvVoiceTonightTitle": "الليلة على التلفزيون",
+  "tvVoiceTonightEmpty": "دليل البرامج لا يحتوي شيئاً لهذه الليلة. أضف عنوان EPG إلى قائمتك ثم أعد المحاولة.",
+  "tvVoiceKindChannel": "قناة",
+  "tvVoiceKindMovie": "فيلم",
+  "tvVoiceKindSeries": "مسلسل",
+  "tvVoiceRemoteAi": "مساعدة صوتية بعيدة",
+  "tvVoiceRemoteAiOn": "مفعّلة",
+  "tvVoiceRemoteAiOff": "متوقفة",
+  "tvVoiceRemoteAiHelp": "متوقفة افتراضياً. لا يوجد مفتاح في التطبيق. « الليلة » تُقرأ من دليلك على الجهاز. إذا لم يجب الخدمة، يبحث Zuno في قائمتك.",
+  "tvVoiceCinemaHint": "افتح الأفلام أو المسلسلات مرة واحدة: البحث سيجدها بعد ذلك، دون شبكة أثناء المشاهدة.",
+  "tvVoiceOnChannel": "على {channel}"
 }

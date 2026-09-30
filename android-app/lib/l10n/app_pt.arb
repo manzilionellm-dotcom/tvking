@@ -2199,5 +2199,22 @@
   "tvSettingsRecordingsHint": "Os vídeos gravados com o botão REC.",
   "tvRingHint": "◀ ▶  navegar   ·   OK  abrir",
   "tvCinemaDownloadSeason": "Transferir temporada",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Temporada a transferir} =1{1 episódio na fila} other{{count} episódios na fila}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Temporada a transferir} =1{1 episódio na fila} other{{count} episódios na fila}}",
+  "tvVoiceMic": "Micro",
+  "tvVoiceListening": "Fala agora…",
+  "tvVoiceUnavailable": "Esta box não tem microfone. Usa o teclado.",
+  "tvVoiceCancelled": "Cancelado. Podes escrever no teclado.",
+  "tvVoiceFailed": "Não percebi. Tenta de novo ou usa o teclado.",
+  "tvVoiceBusy": "O microfone já está em uso. Tenta daqui a pouco.",
+  "tvVoiceTonightTitle": "Esta noite na televisão",
+  "tvVoiceTonightEmpty": "O guia não tem nada para esta noite. Adiciona um endereço EPG à tua lista e tenta de novo.",
+  "tvVoiceKindChannel": "Canal",
+  "tvVoiceKindMovie": "Filme",
+  "tvVoiceKindSeries": "Série",
+  "tvVoiceRemoteAi": "Ajuda de voz remota",
+  "tvVoiceRemoteAiOn": "Ativada",
+  "tvVoiceRemoteAiOff": "Desativada",
+  "tvVoiceRemoteAiHelp": "Desativada por defeito. Nenhuma chave na aplicação. « Esta noite » é lido no teu guia, na box. Se o serviço não responder, o Zuno procura na tua lista.",
+  "tvVoiceCinemaHint": "Abre Filmes ou Séries uma vez: a pesquisa encontra-os depois, sem rede enquanto vês.",
+  "tvVoiceOnChannel": "Em {channel}"
 }

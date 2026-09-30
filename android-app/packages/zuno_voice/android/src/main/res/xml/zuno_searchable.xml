@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Recherche vocale système. Pas de fournisseur de suggestions :
+     on ne met PAS includeInGlobalSearch, qui exigerait un ContentProvider
+     et pourrait faire planter la box au démarrage. -->
+<searchable xmlns:android="http://schemas.android.com/apk/res/android"
+    android:label="@string/zuno_voice_label"
+    android:hint="@string/zuno_voice_hint"
+    android:voiceSearchMode="showVoiceSearchButton|launchRecognizer" />

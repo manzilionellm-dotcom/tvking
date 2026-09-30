@@ -2199,5 +2199,22 @@
   "tvSettingsRecordingsHint": "REC düğmesiyle kaydedilen videolar.",
   "tvRingHint": "◀ ▶  gez   ·   OK  aç",
   "tvCinemaDownloadSeason": "Sezonu indir",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Sezon indiriliyor} =1{1 bölüm sırada} other{{count} bölüm sırada}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Sezon indiriliyor} =1{1 bölüm sırada} other{{count} bölüm sırada}}",
+  "tvVoiceMic": "Mikrofon",
+  "tvVoiceListening": "Şimdi konuş…",
+  "tvVoiceUnavailable": "Bu cihazda mikrofon yok. Klavyeyi kullan.",
+  "tvVoiceCancelled": "İptal edildi. Klavyeyle yazabilirsin.",
+  "tvVoiceFailed": "Anlayamadım. Tekrar dene veya klavyeyle yaz.",
+  "tvVoiceBusy": "Mikrofon zaten kullanımda. Birazdan tekrar dene.",
+  "tvVoiceTonightTitle": "Bu akşam televizyonda",
+  "tvVoiceTonightEmpty": "Rehberde bu akşam için bir şey yok. Listene bir EPG adresi ekle ve yeniden dene.",
+  "tvVoiceKindChannel": "Kanal",
+  "tvVoiceKindMovie": "Film",
+  "tvVoiceKindSeries": "Dizi",
+  "tvVoiceRemoteAi": "Uzaktan ses yardımı",
+  "tvVoiceRemoteAiOn": "Açık",
+  "tvVoiceRemoteAiOff": "Kapalı",
+  "tvVoiceRemoteAiHelp": "Varsayılan olarak kapalı. Uygulamada anahtar yok. « Bu akşam » kutudaki rehberden okunur. Hizmet yanıt vermezse Zuno listenin içinde arar.",
+  "tvVoiceCinemaHint": "Filmler veya Diziler'i bir kez aç: arama onları sonra bulur, sen izlerken ağa gerek kalmaz.",
+  "tvVoiceOnChannel": "{channel} kanalında"
 }

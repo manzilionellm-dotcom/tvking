@@ -2199,5 +2199,22 @@
   "tvSettingsRecordingsHint": "Video's opgenomen met de REC-knop.",
   "tvRingHint": "◀ ▶  bladeren   ·   OK  openen",
   "tvCinemaDownloadSeason": "Seizoen downloaden",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Seizoen wordt gedownload} =1{1 aflevering in wachtrij} other{{count} afleveringen in wachtrij}}"
+  "tvCinemaSeasonQueue": "{count, plural, =0{Seizoen wordt gedownload} =1{1 aflevering in wachtrij} other{{count} afleveringen in wachtrij}}",
+  "tvVoiceMic": "Microfoon",
+  "tvVoiceListening": "Spreek nu…",
+  "tvVoiceUnavailable": "Deze box heeft geen microfoon. Gebruik het toetsenbord.",
+  "tvVoiceCancelled": "Geannuleerd. Je kunt typen met het toetsenbord.",
+  "tvVoiceFailed": "Ik heb het niet verstaan. Probeer opnieuw, of typ.",
+  "tvVoiceBusy": "De microfoon is al bezig. Probeer zo opnieuw.",
+  "tvVoiceTonightTitle": "Vanavond op tv",
+  "tvVoiceTonightEmpty": "De gids heeft vanavond niets. Voeg een EPG-adres toe aan je lijst en probeer opnieuw.",
+  "tvVoiceKindChannel": "Zender",
+  "tvVoiceKindMovie": "Film",
+  "tvVoiceKindSeries": "Serie",
+  "tvVoiceRemoteAi": "Externe spraakhulp",
+  "tvVoiceRemoteAiOn": "Aan",
+  "tvVoiceRemoteAiOff": "Uit",
+  "tvVoiceRemoteAiHelp": "Standaard uit. Geen sleutel in de app. „Vanavond“ komt uit je gids, op de box. Als de dienst niet antwoordt, zoekt Zuno in je lijst.",
+  "tvVoiceCinemaHint": "Open één keer Films of Series: de zoekfunctie vindt ze daarna, zonder netwerk terwijl je kijkt.",
+  "tvVoiceOnChannel": "Op {channel}"
 }
