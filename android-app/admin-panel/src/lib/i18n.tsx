@@ -84,6 +84,17 @@ const STR: Record<string, Record<Lang, string>> = {
   'login.signin': { fr: 'Se connecter', en: 'Sign in', ar: 'تسجيل الدخول' },
   'login.signing': { fr: 'Connexion…', en: 'Signing in…', ar: 'جارٍ الدخول…' },
   'login.fail': { fr: 'Connexion impossible. Réessaie.', en: 'Sign-in failed. Try again.', ar: 'تعذّر تسجيل الدخول. حاول مجددًا.' },
+  'login.sessionExpired': {
+    fr: 'Ta session a expiré. Reconnecte-toi pour continuer.',
+    en: 'Your session has expired. Sign in again to continue.',
+    ar: 'انتهت جلستك. سجّل الدخول من جديد للمتابعة.',
+  },
+  'session.offline': {
+    fr: 'Connexion au serveur impossible. Ta session est conservée, nouvelle tentative…',
+    en: 'Cannot reach the server. Your session is kept, retrying…',
+    ar: 'تعذّر الاتصال بالخادم. جلستك محفوظة، جارٍ إعادة المحاولة…',
+  },
+  'session.retry': { fr: 'Réessayer', en: 'Retry', ar: 'إعادة المحاولة' },
   'login.hintReseller': { fr: "Connecte-toi avec l'email et le mot de passe fournis par ton fournisseur.", en: 'Sign in with the email and password provided by your supplier.', ar: 'سجّل الدخول بالبريد وكلمة المرور المقدّمين من مزوّدك.' },
 
   // --- Dashboard ---

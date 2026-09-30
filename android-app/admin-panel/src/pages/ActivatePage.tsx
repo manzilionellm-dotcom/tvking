@@ -6,7 +6,7 @@ import {
   activateApi, appsApi, planCostsApi, meApi, serversApi, sourcesApi,
   getCurrentUser, isOwnerRole, userCan, DOWNLOAD_URL, DOWNLOADER_CODE,
   type App, type PlanCost, type ActivateResult, type DefaultServer,
-  type DeviceSourceInput, ApiError,
+  type DeviceSourceInput, ApiError, isSessionAuthError,
 } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 
@@ -70,7 +70,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       })
       .catch((e) => {
         if (!active) return;
-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        if (isSessionAuthError(e)) { onLogout(); return; }
         notices.push('Impossible de charger les apps / tarifs.');
         setWarn(notices.join(' '));
       });
@@ -79,7 +79,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       .then((r) => { if (active) setBalance(r.user.credit_balance ?? null); })
       .catch((e) => {
         if (!active) return;
-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        if (isSessionAuthError(e)) { onLogout(); return; }
         notices.push('Solde crédits indisponible.');
         setWarn(notices.join(' '));
       });
@@ -88,7 +88,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       .then((r) => { if (active) setServers(r.items); })
       .catch((e) => {
         if (!active) return;
-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        if (isSessionAuthError(e)) { onLogout(); return; }
         notices.push('Serveurs par défaut indisponibles.');
         setWarn(notices.join(' '));
       });
@@ -163,7 +163,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       setResult(res);
       if (res.credit_balance !== null) setBalance(res.credit_balance);
     } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      if (isSessionAuthError(e)) { onLogout(); return; }
       setErr(e instanceof ApiError ? e.message : 'Activation impossible. Réessayez.');
     } finally {
       setBusy(false);

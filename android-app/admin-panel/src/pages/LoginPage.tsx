@@ -6,7 +6,14 @@ import { useT, LangSelect } from '@/lib/i18n';
 /// Bootstrap : si la base D1 est vide, le Worker cree
 /// automatiquement un compte super_admin avec email='admin' et
 /// password=ADMIN_SECRET du Worker (transition seamless).
-export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
+export function LoginPage({
+  onLoggedIn,
+  sessionExpired = false,
+}: {
+  onLoggedIn: () => void;
+  /// true quand le Worker a rejeté le jeton (expiré ou invalide).
+  sessionExpired?: boolean;
+}) {
   const t = useT();
   // Lien revendeur dedie : si l'URL contient ?revendeur (ou ?reseller),
   // on n'affiche QUE la connexion revendeur (aucun onglet Admin visible).
@@ -72,8 +79,14 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-obsidian px-6">
+      {/* noValidate : l'identifiant admin historique est « admin »,
+          pas une adresse e-mail. type="email" reste posé pour que le
+          navigateur propose d'enregistrer les identifiants, sans
+          bloquer la soumission d'un identifiant sans arobase. */}
       <form
         onSubmit={submit}
+        autoComplete="on"
+        noValidate
         className="w-full max-w-sm space-y-6 rounded-2xl border border-white/5 bg-midnight p-8 shadow-2xl"
       >
         <div className="text-center">
@@ -127,12 +140,32 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
           </div>
         )}
 
+        {sessionExpired && (
+          <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">
+            {t('login.sessionExpired')}
+          </div>
+        )}
+
         <div className="space-y-3">
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label
+              htmlFor="login-username"
+              className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary"
+            >
               {t('login.identifier')}
             </label>
+            {/* Mêmes attributs en mode admin ET revendeur : le
+                gestionnaire de mots de passe du navigateur reconnaît
+                username + current-password et peut préremplir. */}
             <input
+              id="login-username"
+              name="username"
+              type="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              inputMode="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
@@ -154,11 +187,17 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
             </div>
           )}
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label
+              htmlFor="login-password"
+              className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary"
+            >
               {t('login.password')}
             </label>
             <input
+              id="login-password"
+              name="password"
               type="password"
+              autoComplete={mode === 'reseller' && signup ? 'new-password' : 'current-password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"

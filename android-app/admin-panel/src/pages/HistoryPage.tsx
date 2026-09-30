@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { auditApi, type AuditLog, ApiError } from '@/lib/api';
+import { auditApi, type AuditLog, ApiError, isSessionAuthError } from '@/lib/api';
 
 // =========================================================
 //  HistoryPage — historique des modifications (audit log)
@@ -34,7 +34,7 @@ export function HistoryPage({ onLogout }: { onLogout: () => void }) {
     auditApi.list()
       .then((r) => setItems(r.items || []))
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
+        if (isSessionAuthError(e)) onLogout();
         else setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
       .finally(() => setLoading(false));

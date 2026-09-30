@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { pricingApi, ApiError } from '@/lib/api';
+import { pricingApi, ApiError, isSessionAuthError } from '@/lib/api';
 
 // =========================================================
 //  TarifsPage — prix affichés dans l'app + essai + promo (owner)
@@ -42,7 +42,7 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
   }
 
   function fail(e: any) {
-    if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    if (isSessionAuthError(e)) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 

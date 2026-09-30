@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
-import { licensesApi, type License, ApiError } from '@/lib/api';
+import { licensesApi, type License, ApiError, isSessionAuthError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 
 export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
@@ -16,7 +16,7 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
       .then((r) => { if (active) { setItems(r.items); setErr(null); } })
       .catch((e) => {
         if (!active) return;
-        if (e instanceof ApiError && e.status === 401) onLogout();
+        if (isSessionAuthError(e)) onLogout();
         else setErr(e.message);
       })
       .finally(() => { if (active) setLoading(false); });

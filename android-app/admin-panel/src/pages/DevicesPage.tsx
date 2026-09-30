@@ -4,7 +4,7 @@ import { AppLayout } from '@/components/AppLayout';
 import {
   devicesApi, activateApi, flagEmoji,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
-  type DeviceLicense, type DevicePresence, ApiError,
+  type DeviceLicense, type DevicePresence, ApiError, isSessionAuthError,
 } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 
@@ -29,7 +29,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     devicesApi.list(q)
       .then((r) => { setItems(r.items); setErr(null); })
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
+        if (isSessionAuthError(e)) onLogout();
         else setErr(e.message);
       })
       .finally(() => setLoading(false));

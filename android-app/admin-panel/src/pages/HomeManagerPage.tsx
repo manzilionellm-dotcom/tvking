@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
   homeLayoutApi, type HomeSection, type HomeLayoutSnapshot,
-  HOME_RIBBONS, HOME_SECTION_LABELS, ApiError,
+  HOME_RIBBONS, HOME_SECTION_LABELS, ApiError, isSessionAuthError,
 } from '@/lib/api';
 
 /// Page « Accueil » (Centre de contrôle, Module 1/8) — owner uniquement.
@@ -41,7 +41,7 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   function fail(e: any) {
-    if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+    if (isSessionAuthError(e)) { onLogout(); return; }
     setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
   }
 

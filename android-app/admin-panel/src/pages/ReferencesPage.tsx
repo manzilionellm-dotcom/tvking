@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
-import { referencesApi, type ActivationReference, ApiError } from '@/lib/api';
+import { referencesApi, type ActivationReference, ApiError, isSessionAuthError } from '@/lib/api';
 
 // =========================================================
 //  ReferencesPage — carnet MAC ↔ username (support)
@@ -47,7 +47,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
     referencesApi.list()
       .then((r) => setItems(r.items || []))
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
+        if (isSessionAuthError(e)) onLogout();
         else setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
       .finally(() => setLoading(false));
