@@ -24,6 +24,8 @@ import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
 import '../../carousel/domain/carousel_config.dart';
 import '../../carousel/presentation/zuno_ring_carousel.dart';
+import '../../box_extras/box_text.dart';
+import '../../box_extras/presentation/tv_extras_screen.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../remote/presentation/tv_remote_screen.dart';
@@ -271,6 +273,16 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         title: context.l10n.tvRemoteTitle,
         description: context.l10n.tvSettingsRemote,
         onSelect: () => open(const TvRemoteScreen()),
+      ),
+      _SettingEntry(
+        icon: Icons.auto_awesome_rounded,
+        title: boxText(context, 'En plus', 'Extras'),
+        description: boxText(
+          context,
+          'Fonctions que tu peux couper une par une. Aucune ne bloque une chaîne.',
+          'Features you can turn off one by one. None of them blocks a channel.',
+        ),
+        onSelect: () => open(const TvExtrasScreen()),
       ),
       _SettingEntry(
         icon: Icons.play_circle_outline_rounded,

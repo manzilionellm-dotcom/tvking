@@ -9,16 +9,37 @@
 
 import 'package:flutter/material.dart';
 
+import '../../missed_show/data/missed_flag.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
 import '../../tv/core/tv_tokens.dart';
 import '../box_text.dart';
 
-class TvExtrasScreen extends StatelessWidget {
+class TvExtrasScreen extends StatefulWidget {
   const TvExtrasScreen({super.key});
 
   @override
+  State<TvExtrasScreen> createState() => _TvExtrasScreenState();
+}
+
+class _TvExtrasScreenState extends State<TvExtrasScreen> {
+  @override
+  void initState() {
+    super.initState();
+    missedShowFlag.load().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _toggleMissed() async {
+    await missedShowFlag.load();
+    await missedShowFlag.set(!missedShowFlag.value);
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final bool on = missedShowFlag.value;
     return ListView(
       children: <Widget>[
         Text(
@@ -37,6 +58,23 @@ class TvExtrasScreen extends StatelessWidget {
             'Each feature turns off on its own. None of them blocks a channel.',
           ),
           style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+        ),
+        const SizedBox(height: 18),
+        ExtrasRow(
+          autofocus: true,
+          title: boxText(context, 'En retard', 'Running late'),
+          subtitle: on
+              ? boxText(
+                  context,
+                  'Le guide dit ce que tu as raté. OK pour couper. Le direct ne recule pas tout seul.',
+                  'The guide says what you missed. OK to turn off. Live never rewinds on its own.',
+                )
+              : boxText(
+                  context,
+                  'Coupé. OK pour rallumer. Une chaîne ne sera pas rembobinée.',
+                  'Off. OK to turn on. A channel will not be rewound.',
+                ),
+          onSelect: _toggleMissed,
         ),
       ],
     );

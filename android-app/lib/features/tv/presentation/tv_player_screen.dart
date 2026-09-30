@@ -37,7 +37,10 @@ import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
+import '../../epg/data/catchup_url_builder.dart';
 import '../../epg/domain/epg_program.dart';
+import '../../missed_show/data/missed_flag.dart';
+import '../../missed_show/domain/missed_summary.dart';
 import '../../cinema/data/cinema_downloads.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/domain/live_fallback.dart';
@@ -80,7 +83,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // déplacent le surlignage, OK active. Ordre : 0=Retour 1=Préc 2=Lecture/Pause
   // 3=Suiv 4=REC 5=Favori.
   int _btnFocus = -1;
-  static const int _btnCount = 3;
+  static const int _btnCountBase = 3;
+  int get _btnCount => (_missed?.canRewind == true || _catchup) ? 4 : _btnCountBase;
+  MissedSummary? _missed;
+  bool _catchup = false;
+  int _missedGen = 0;
   bool _buffering = true;
   Timer? _hideTimer;
   Timer? _presenceTimer;
@@ -313,6 +320,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       // (dans le format qui a déjà marché sur ce serveur, s'il y en a un).
       _playingUrl = LiveFallback.preferred(_current.streamUrl);
       _controller.setUrl(_playingUrl);
+      _catchup = false;
+      _loadMissed();
+    } else if (!_catchup) {
+      _loadMissed();
     }
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
@@ -571,7 +582,145 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       case 2:
         _toggleFavorite();
         break;
+      case 3:
+        if (_catchup) {
+          _backToLive();
+        } else {
+          _rewindMissed();
+        }
+        break;
     }
+  }
+
+  /// Le guide dit si on arrive en retard. Une erreur de guide
+  /// ne change pas l'image : on cache simplement la carte.
+  void _loadMissed() {
+    final int gen = ++_missedGen;
+    final String id = _current.id;
+    final Channel channel = _current;
+    if (mounted) setState(() => _missed = null);
+    unawaited(() async {
+      try {
+        await missedShowFlag.load();
+        if (!missedShowFlag.value || gen != _missedGen) return;
+        final EpgProgram? program =
+            await EpgRepository.instance.currentProgram(id);
+        if (!mounted || gen != _missedGen || _current.id != id) return;
+        final bool declared = channel.catchupSupported ||
+            (channel.catchupSource != null && channel.catchupSource!.isNotEmpty);
+        final String? url = declared && program != null
+            ? CatchupUrlBuilder.build(channel: channel, program: program)
+            : null;
+        final MissedSummary? summary = missedFromGuide(
+          program: program,
+          now: DateTime.now(),
+          catchupDeclared: declared,
+          rewindUrl: url,
+        );
+        if (!mounted || gen != _missedGen) return;
+        setState(() => _missed = summary);
+      } catch (_) {
+        if (mounted && gen == _missedGen) setState(() => _missed = null);
+      }
+    }());
+  }
+
+  void _rewindMissed() {
+    final String? url = _missed?.rewindUrl;
+    if (url == null || url.isEmpty) return;
+    try {
+      _catchup = true;
+      _playingUrl = url;
+      _controller.setUrl(url);
+      _flash(_missedFlash(context));
+    } catch (_) {
+      _catchup = false;
+    }
+  }
+
+  void _backToLive() {
+    _catchup = false;
+    _playingUrl = LiveFallback.preferred(_current.streamUrl);
+    _controller.setUrl(_playingUrl);
+    _showOverlayTemporarily();
+  }
+
+  String _missedFlash(BuildContext context) {
+    final String code = Localizations.localeOf(context).languageCode;
+    return code == 'en'
+        ? 'From the start of the show. Right, then OK: back to live.'
+        : 'Depuis le début de l\'émission. Droite, puis OK : retour au direct.';
+  }
+
+  /// Carte hors focus : Haut/Bas continuent de zapper.
+  Widget _missedCard() {
+    final MissedSummary missed = _missed!;
+    final bool en = Localizations.localeOf(context).languageCode == 'en';
+    final String lateLine = en
+        ? 'You missed ${missed.missedMinutes} min'
+        : 'Tu as raté ${missed.missedMinutes} min';
+    final String hint = missed.canRewind
+        ? (en
+            ? 'Right, then OK: from the start.'
+            : 'Droite, puis OK : depuis le début.')
+        : (en
+            ? 'The guide has the text, not the video. Live stays as it is.'
+            : 'Le guide a le texte, pas la vidéo. Le direct ne bouge pas.');
+    return Padding(
+      padding: EdgeInsets.only(top: TvDimens.safeV + 8, left: 48, right: 48),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xE6141418),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: TvTokens.line),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  missed.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: TvDimens.titleS,
+                    fontWeight: FontWeight.w800,
+                    color: TvTokens.text,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  lateLine,
+                  style: TextStyle(
+                    fontSize: TvDimens.label,
+                    fontWeight: FontWeight.w700,
+                    color: TvTokens.accentBright,
+                  ),
+                ),
+                if (missed.description != null) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    missed.description!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Text(
+                  hint,
+                  style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // Ouvre le GUIDE de la chaîne en cours : émission actuelle + « à suivre »,
@@ -773,6 +922,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
               // QUELLE chaîne est visée. Un logo seul ne permettait pas de
               // zapper « à l'aveugle » sans se perdre.
               if (_zapHolding || (_buffering && !_fatal)) _loadingCard(),
+              if (_missed != null && !_catchup && !_zapHolding)
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: ExcludeFocus(child: _missedCard()),
+                ),
               // Écran d'ERREUR : la reconnexion automatique a été épuisée.
               // On ARRÊTE de boucler. OK réessaie, Haut/Bas change de chaîne,
               // Retour quitte. Masqué pendant un zap : la personne est déjà
@@ -803,6 +957,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                         onGuide: _openGuide,
                         onRecord: _toggleRecording,
                         onFavorite: _toggleFavorite,
+                        onStart: (_missed?.canRewind == true || _catchup)
+                            ? () => _activateBtn(3)
+                            : null,
+                        startLabel: _catchup ? 'Direct' : 'Début',
                       ),
                     ),
                   ),
@@ -1072,6 +1230,8 @@ class _ControlsBar extends StatelessWidget {
     required this.onGuide,
     required this.onRecord,
     required this.onFavorite,
+    this.onStart,
+    this.startLabel,
   });
 
   final Channel channel;
@@ -1085,6 +1245,10 @@ class _ControlsBar extends StatelessWidget {
   final VoidCallback onGuide;
   final VoidCallback onRecord;
   final VoidCallback onFavorite;
+
+  /// 4e bouton, seulement si le guide a une vidéo de rattrapage.
+  final VoidCallback? onStart;
+  final String? startLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -1147,6 +1311,15 @@ class _ControlsBar extends StatelessWidget {
                 active: isFavorite,
                 focused: focusedIndex == 2,
               ),
+              if (onStart != null) ...<Widget>[
+                const SizedBox(width: 34),
+                _CtrlButton(
+                  icon: Icons.skip_previous_rounded,
+                  label: startLabel ?? 'Début',
+                  onTap: onStart!,
+                  focused: focusedIndex == 3,
+                ),
+              ],
             ],
           ),
         ],
