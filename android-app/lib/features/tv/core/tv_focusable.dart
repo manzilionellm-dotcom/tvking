@@ -22,7 +22,10 @@ import 'tv_dimens.dart';
 import 'tv_tokens.dart';
 
 /// Intensité du grossissement au focus selon la taille de l'élément.
-enum TvFocusScale { small, medium, large }
+/// [none] : listes serrées (chaînes, catégories, guide). Un zoom y
+/// rogne l'anneau doré contre le bord de la ligne ; le fond et le
+/// contour portent alors le focus, sans rien faire bouger.
+enum TvFocusScale { none, small, medium, large }
 
 class TvFocusable extends StatefulWidget {
   const TvFocusable({
@@ -89,6 +92,8 @@ class _TvFocusableState extends State<TvFocusable> {
 
   double get _scaleValue {
     switch (widget.scale) {
+      case TvFocusScale.none:
+        return 1;
       case TvFocusScale.small:
         return TvDimens.focusScaleSmall;
       case TvFocusScale.medium:
@@ -224,6 +229,7 @@ class TvFocusBuilder extends StatefulWidget {
     super.key,
     required this.builder,
     this.onSelect,
+    this.onFocusChange,
     this.focusNode,
     this.autofocus = false,
     this.scale = TvFocusScale.medium,
@@ -232,6 +238,10 @@ class TvFocusBuilder extends StatefulWidget {
 
   final Widget Function(BuildContext context, bool focused) builder;
   final VoidCallback? onSelect;
+
+  /// Prévenu en dehors du build (scroll, aperçu). Ne pas y appeler
+  /// setState du parent depuis le builder : ce serait pendant le build.
+  final ValueChanged<bool>? onFocusChange;
   final FocusNode? focusNode;
   final bool autofocus;
   final TvFocusScale scale;
@@ -253,7 +263,10 @@ class _TvFocusBuilderState extends State<TvFocusBuilder> {
       scale: widget.scale,
       enabled: widget.enabled,
       showOutline: false,
-      onFocusChange: (bool f) => setState(() => _focused = f),
+      onFocusChange: (bool f) {
+        if (_focused != f) setState(() => _focused = f);
+        widget.onFocusChange?.call(f);
+      },
       child: widget.builder(context, _focused && widget.enabled),
     );
   }

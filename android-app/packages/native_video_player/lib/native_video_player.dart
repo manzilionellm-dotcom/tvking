@@ -103,6 +103,24 @@ class NativeVideoController extends ChangeNotifier {
   bool _attached = false;
   bool _disposed = false;
 
+  /// Génération du dernier [setUrl]. Les événements natifs d'une génération
+  /// précédente (zap très rapide) sont ignorés jusqu'à l'accusé `ack`.
+  /// Sans ça, la position de l'ancienne chaîne faisait croire que la nouvelle
+  /// jouait, ou le logo restait devant une image déjà à l'écran.
+  int _epoch = 0;
+
+  /// Dernier ack reçu. Tant qu'il ne rattrape pas [_epoch], on n'applique
+  /// pas les événements. Égal à [_epoch] tout de suite sur PC (pas d'ack natif).
+  int _ackedEpoch = 0;
+
+  /// true une fois le natif libéré : [dispose] ne le libère pas une 2e fois.
+  bool _nativeReleased = false;
+
+  /// true après [ChangeNotifier.dispose] : on ne le rappelle pas.
+  bool _notifierClosed = false;
+
+  bool get _acceptEvents => _backend != null || _ackedEpoch == _epoch;
+
   /// Position de lecture courante (avance → « pas gelé », pour le watchdog).
   Duration position = Duration.zero;
 
@@ -155,6 +173,14 @@ class NativeVideoController extends ChangeNotifier {
   /// Applique un événement d'état (natif Android OU moteur PC).
   void applyBackendEvent(String method, Object? arguments) {
     if (_disposed) return;
+    // Accusé du setUrl en cours. Un ack d'un zap déjà remplacé est ignoré,
+    // sinon les événements de l'ancienne chaîne passeraient.
+    if (method == 'ack') {
+      final int got = arguments is num ? arguments.toInt() : -1;
+      if (got == _epoch) _ackedEpoch = got;
+      return;
+    }
+    if (!_acceptEvents) return;
     final _Ev call = _Ev(method, arguments);
     switch (call.method) {
       case 'buffering':
@@ -162,7 +188,19 @@ class NativeVideoController extends ChangeNotifier {
       case 'playing':
         isPlaying = call.arguments as bool;
       case 'position':
-        position = Duration(milliseconds: call.arguments as int);
+        {
+          // Certaines box ne rappellent pas « firstFrame » quand on réutilise
+          // la même surface (zap). La lecture n'avance que si ExoPlayer joue
+          // vraiment : on retire alors le logo, sinon il masquerait une chaîne
+          // déjà lancée (l'écran a l'air bloqué). On ne le fait pas à 0 ms :
+          // ce n'est pas encore une image.
+          final int ms = call.arguments as int;
+          position = Duration(milliseconds: ms);
+          if (isPlaying && ms > 0 && !firstFrame) {
+            firstFrame = true;
+            isBuffering = false;
+          }
+        }
       case 'firstFrame':
         firstFrame = true;
         isBuffering = false;
@@ -208,6 +246,10 @@ class NativeVideoController extends ChangeNotifier {
     String? preferredAudio,
     String? preferredText,
   }) {
+    if (_disposed) return;
+    // Nouvelle génération : les événements encore en route (ancienne chaîne)
+    // seront ignorés jusqu'à l'ack natif de CELLE-CI.
+    _epoch++;
     hasError = false;
     isEnded = false;
     isBuffering = true;
@@ -216,15 +258,18 @@ class NativeVideoController extends ChangeNotifier {
     duration = Duration.zero;
     tracks = const <NativeTrack>[];
     cues = '';
-    if (!_disposed) notifyListeners();
+    notifyListeners();
     final Map<String, dynamic> args = <String, dynamic>{
       'url': url,
+      'epoch': _epoch,
       if (vod) 'vod': true,
       if (startAt > Duration.zero) 'startMs': startAt.inMilliseconds,
       if (preferredAudio != null) 'preferredAudio': preferredAudio,
       if (preferredText != null) 'preferredText': preferredText,
     };
     if (_backend != null) {
+      // PC : pas d'ack. On accepte les événements tout de suite.
+      _ackedEpoch = _epoch;
       _backend!.open(args);
     } else if (_channel != null) {
       _channel!.invokeMethod<void>('setUrl', args);
@@ -268,12 +313,44 @@ class NativeVideoController extends ChangeNotifier {
 
   void pause() => _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('pause');
 
-  @override
-  void dispose() {
+  /// Libère le décodeur natif et ATTEND qu'il ait rendu la surface.
+  ///
+  /// À appeler avant d'ouvrir un autre lecteur (l'aperçu, puis le plein
+  /// écran). Une box bas de gamme n'a souvent qu'UN décodeur matériel :
+  /// le second reste noir, et un abonnement à 1 connexion refuse la chaîne.
+  /// Le [ChangeNotifier] reste vivant : le widget retire son écouteur avant
+  /// [dispose].
+  Future<void> releaseNative() async {
+    if (_nativeReleased) return;
+    _nativeReleased = true;
     _disposed = true;
     _backend?.dispose();
-    _channel?.invokeMethod<void>('dispose');
-    _channel?.setMethodCallHandler(null);
+    final MethodChannel? ch = _channel;
+    _channel = null;
+    ch?.setMethodCallHandler(null);
+    if (ch == null) return;
+    try {
+      await ch.invokeMethod<void>('dispose');
+    } catch (e) {
+      // La vue a pu partir en même temps : la libération Kotlin est
+      // idempotente, ce n'est pas une panne de lecture.
+      if (kDebugMode) debugPrint('[NativeVideo] libération: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_notifierClosed) return;
+    _notifierClosed = true;
+    _disposed = true;
+    if (!_nativeReleased) {
+      _nativeReleased = true;
+      _backend?.dispose();
+      final MethodChannel? ch = _channel;
+      _channel = null;
+      ch?.setMethodCallHandler(null);
+      ch?.invokeMethod<void>('dispose');
+    }
     super.dispose();
   }
 }

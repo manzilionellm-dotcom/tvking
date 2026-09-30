@@ -2040,6 +2040,54 @@
   "tvBlackBoxHelp": "HAUT/BAS : défiler · CH+/CH− : page · Copier = presse-papiers (colle-le dans WhatsApp au support).",
   "tvNavServer": "Serveur",
   "tvLegalTitle": "Mentions légales & Conditions",
+  "tvHelloMorning": "Bonjour",
+  "tvHelloAfternoon": "Bon après-midi",
+  "tvHelloEvening": "Bonsoir",
+  "tvHomeInvite": "Vos chaînes, films et rappels reviendront ici.",
+  "tvHomeResume": "Reprendre",
+  "tvHomeContinue": "Continuer à regarder",
+  "tvHomeFavorites": "Favoris",
+  "tvHomePopular": "Populaire maintenant",
+  "tvHomeReminders": "Vos rappels",
+  "tvStartupTitle": "Au démarrage",
+  "tvStartupHome": "Accueil",
+  "tvStartupLast": "Dernière chaîne",
+  "tvStartupHelpHome": "L'app s'ouvre sur cet accueil. OK pour reprendre la dernière chaîne. Retour vous ramène toujours ici.",
+  "tvStartupHelpLast": "L'app reprend la dernière chaîne. Retour ramène à l'accueil. OK pour revenir à l'accueil au démarrage.",
+  "tvReminderSet": "Rappel posé : notification 5 min avant « {title} », et visible sur l'accueil.",
+  "@tvReminderSet": {
+    "placeholders": {
+      "title": {"type": "String"}
+    }
+  },
+  "tvReminderSavedOnly": "« {title} » est sur l'accueil. La notification du téléviseur n'a pas pu être activée.",
+  "@tvReminderSavedOnly": {
+    "placeholders": {
+      "title": {"type": "String"}
+    }
+  },
+  "tvReminderCleared": "Rappel retiré.",
+  "tvReminderTooLate": "C'est trop tard pour un rappel.",
+  "tvReminderStarted": "C'est commencé",
+  "tvReminderInMinutes": "Dans {minutes} min",
+  "@tvReminderInMinutes": {
+    "placeholders": {
+      "minutes": {"type": "int"}
+    }
+  },
+  "tvReminderInHours": "Dans {hours} h",
+  "@tvReminderInHours": {
+    "placeholders": {
+      "hours": {"type": "int"}
+    }
+  },
+  "tvReminderInHoursMinutes": "Dans {hours} h {minutes}",
+  "@tvReminderInHoursMinutes": {
+    "placeholders": {
+      "hours": {"type": "int"},
+      "minutes": {"type": "int"}
+    }
+  },
   "tvResumeLabel": "REPRENDRE",
   "tvNowPlayingPrefix": "EN CE MOMENT · {title}",
   "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
@@ -2203,5 +2251,54 @@
   "tvRingHint": "◀ ▶  parcourir   ·   OK  ouvrir",
   "tvCinemaDownloadSeason": "Télécharger la saison",
   "tvCinemaSeasonQueue": "{count, plural, =0{Saison en téléchargement} =1{1 épisode en attente} other{{count} épisodes en attente}}",
-  "@tvCinemaSeasonQueue": {"placeholders": {"count": {"type": "int"}}}
-}
+  "@tvCinemaSeasonQueue": {"placeholders": {"count": {"type": "int"}}},
+  "tvPlayerLoading": "Chargement de la chaîne…",
+  "tvPlayerFatalDown": "Cette chaîne ne répond pas pour le moment.",
+  "tvPlayerFatalEmpty": "Cette chaîne est vide ou bloquée par la source.",
+  "tvPlayerFatalNav": "Haut / Bas : une autre chaîne",
+  "tvSearchPrompt": "Écris un nom avec le clavier. Flèche droite : les résultats.",
+  "tvSearchCount": "{count, plural, =1{1 résultat} other{{count} résultats}}",
+  "tvGuideLoading": "Chargement du guide…",
+  "tvGuideHint": "Haut / Bas : parcourir · OK ou Retour : fermer",
+  "tvNoEpg": "Pas de programme annoncé",
+  "@tvSearchCount": {"placeholders": {"count": {"type": "int"}}},
+  "tvRemoteTitle": "Télécommande",
+  "tvSettingsRemote": "Le téléphone devient la télécommande, sur le même Wi-Fi, sans installer d'application.",
+  "tvRemoteLead": "Scanne le QR avec l'appareil photo du téléphone. Rien à installer.",
+  "tvRemoteWarn": "Toute personne qui voit ce code peut piloter la box jusqu'à expiration. Un seul téléphone. Le code meurt tout seul.",
+  "tvRemoteKeep": "Retour quitte cet écran : le téléphone continue jusqu'à expiration. Couper arrête tout de suite.",
+  "tvRemoteStarting": "Préparation…",
+  "tvRemoteWaiting": "En attente du téléphone…",
+  "tvRemotePaired": "Téléphone connecté",
+  "tvRemoteExpired": "Code expiré",
+  "tvRemoteStopped": "Télécommande coupée",
+  "tvRemoteNoLan": "Pas de réseau local. Mets la box et le téléphone sur le même Wi-Fi.",
+  "tvRemoteError": "La télécommande n'a pas pu démarrer.",
+  "tvRemoteNewCode": "Nouveau code",
+  "tvRemoteStop": "Couper",
+  "tvRemoteStart": "Activer",
+  "tvRemoteLeft": "Expire dans {time}",
+  "@tvRemoteLeft": {"placeholders": {"time": {"type": "String"}}},
+  "tvRemoteUrlHelp": "Si le scan échoue, ouvre cette adresse dans le navigateur du téléphone.",
+  "tvVoiceMic": "Micro",
+  "tvVoiceListening": "Parle maintenant…",
+  "tvVoiceUnavailable": "Pas de micro sur cette box. Utilise le clavier.",
+  "tvVoiceCancelled": "Annulé. Tu peux taper au clavier.",
+  "tvVoiceFailed": "Je n'ai pas compris. Réessaie, ou tape au clavier.",
+  "tvVoiceBusy": "Le micro est déjà en cours. Réessaie dans un instant.",
+  "tvVoiceTonightTitle": "Ce soir à la télé",
+  "tvVoiceTonightEmpty": "Le guide n'a rien pour ce soir. Ajoute une adresse EPG à ta liste, puis réessaie.",
+  "tvVoiceKindChannel": "Chaîne",
+  "tvVoiceKindMovie": "Film",
+  "tvVoiceKindSeries": "Série",
+  "tvVoiceRemoteAi": "Aide vocale distante",
+  "tvVoiceRemoteAiOn": "Activée",
+  "tvVoiceRemoteAiOff": "Désactivée",
+  "tvVoiceRemoteAiHelp": "Désactivée par défaut. Aucune clé dans l'application. « Ce soir » reste lu dans ton guide, sur la box. Si le service ne répond pas, Zuno cherche dans ta liste.",
+  "tvVoiceCinemaHint": "Ouvre Films ou Séries une fois : la recherche les trouvera ensuite, sans réseau pendant que tu regardes.",
+  "tvVoiceOnChannel": "Sur {channel}",
+  "@tvVoiceOnChannel": {
+    "placeholders": {
+      "channel": {"type": "String"}
+    }
+  }}

@@ -32,6 +32,8 @@ import 'tv_diagnostic_screen.dart';
 import 'tv_hub_screen.dart';
 import 'tv_live_screen.dart';
 import 'tv_recordings_screen.dart';
+import '../../voice/presentation/voice_hotkey.dart';
+import '../../voice/presentation/voice_navigation.dart';
 import 'tv_search_screen.dart';
 import 'tv_settings_screen.dart';
 import 'tv_sports_screen.dart';
@@ -63,6 +65,7 @@ class TvApp extends StatelessWidget {
     return ListenableBuilder(
       listenable: LocaleRepository.instance,
       builder: (BuildContext context, _) => MaterialApp(
+        navigatorKey: VoiceNavigation.navigatorKey,
         title: kAppName,
         debugShowCheckedModeBanner: false,
         // --- Internationalisation (16 langues, RTL auto pour l'arabe) ---
@@ -95,14 +98,17 @@ class TvApp extends StatelessWidget {
           }
           const double designW = kTvDesignWidth;
           final double designH = designW * screen.height / screen.width;
-          return MediaQuery(
-            data: mq.copyWith(
-              size: Size(designW, designH),
-              textScaler: TextScaler.noScaling,
-            ),
-            child: FittedBox(
-              fit: BoxFit.fill,
-              child: SizedBox(width: designW, height: designH, child: child),
+          return VoiceHotkey(
+            child: MediaQuery(
+              data: mq.copyWith(
+                size: Size(designW, designH),
+                textScaler: TextScaler.noScaling,
+              ),
+              child: FittedBox(
+                fit: BoxFit.fill,
+                child: SizedBox(
+                    width: designW, height: designH, child: child),
+              ),
             ),
           );
         },

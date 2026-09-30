@@ -29,6 +29,7 @@ import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
 import 'features/recordings/data/recording_repository.dart';
+import 'features/profiles/data/profile_repository.dart';
 import 'features/security/data/parental_controls.dart';
 import 'features/subscription/data/subscription_state.dart';
 import 'features/theme/data/remote_theme_repository.dart';
@@ -188,21 +189,29 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
         .then((_) {}),
   );
 
-  // 6) Favoris : on précharge l'ensemble des chaînes favorites pour que le
-  //    cœur ❤ du lecteur affiche le bon état dès la 1re ouverture.
+  // 6) Profils familiaux. Le défaut SYNCHRONE est le profil 1 (les
+  //    données déjà sur la box). On attend le disque au plus 500 ms :
+  //    s'il tarde, l'app démarre quand même — une chaîne n'est jamais
+  //    bloquée parce qu'aucun profil n'a été choisi. Le choix à l'écran,
+  //    s'il est activé, arrive APRÈS l'accueil (voir TvHubScreen).
+  await ProfileRepository.instance
+      .load()
+      .timeout(const Duration(milliseconds: 500), onTimeout: () {});
+
+  // 7) Favoris du profil en cours : préchargés pour que le cœur ❤
+  //    du lecteur affiche le bon état dès la 1re ouverture.
   unawaited(FavoritesRepository.instance.initialize());
 
-  // 7) Notifications (alarmes « ton équipe joue bientôt ») : init du plugin +
+  // 8) Notifications (alarmes « ton équipe joue bientôt ») : init du plugin +
   //    fuseaux horaires + canal Android. Idempotent, best-effort.
   unawaited(NotificationService.instance.init());
 
-  // 8) Contrôle parental : on charge l'état du Mode Enfants pour que le 1er
-  //    rendu du Direct masque déjà l'Adulte si le parent l'a activé.
+  // 9) Contrôle parental du profil en cours : le 1er rendu du Direct
+  //    masque déjà l'Adulte si ce profil l'a activé (forcé sur Enfants).
   unawaited(ParentalControls.instance.load());
 
-  // 9) Historique multi-box : on initialise l'historique local PUIS on le
-  //    restaure depuis le serveur si la box est neuve (l'historique « suit »
-  //    le client d'une box à l'autre). Best-effort, n'écrase jamais le local.
+  // 10) Historique du profil en cours, puis restauration serveur si ce
+  //     tiroir est vide (la box neuve). N'écrase jamais un historique là.
   unawaited(
     RecentlyWatchedRepository.instance.initialize().then((_) {
       if (!BootGuard.instance.safeMode) RemoteSourceRepository.syncHistory();

@@ -604,6 +604,54 @@
   "tvBlackBoxHelp": "UP/DOWN: scroll · CH+/CH−: page · Copy = clipboard (paste it to support on WhatsApp).",
   "tvNavServer": "Server",
   "tvLegalTitle": "Legal notice & Terms",
+  "tvHelloMorning": "Good morning",
+  "tvHelloAfternoon": "Good afternoon",
+  "tvHelloEvening": "Good evening",
+  "tvHomeInvite": "Your channels, films and reminders will show up here.",
+  "tvHomeResume": "Resume",
+  "tvHomeContinue": "Continue watching",
+  "tvHomeFavorites": "Favorites",
+  "tvHomePopular": "Popular now",
+  "tvHomeReminders": "Your reminders",
+  "tvStartupTitle": "On startup",
+  "tvStartupHome": "Home",
+  "tvStartupLast": "Last channel",
+  "tvStartupHelpHome": "The app opens on this home. Press OK to resume the last channel instead. Back always returns here.",
+  "tvStartupHelpLast": "The app resumes the last channel. Back returns home. Press OK to open home on startup again.",
+  "tvReminderSet": "Reminder set: a notification 5 min before \"{title}\", and it stays on home.",
+  "@tvReminderSet": {
+    "placeholders": {
+      "title": {"type": "String"}
+    }
+  },
+  "tvReminderSavedOnly": "\"{title}\" is on home. The TV notification could not be turned on.",
+  "@tvReminderSavedOnly": {
+    "placeholders": {
+      "title": {"type": "String"}
+    }
+  },
+  "tvReminderCleared": "Reminder removed.",
+  "tvReminderTooLate": "Too late for a reminder.",
+  "tvReminderStarted": "Already started",
+  "tvReminderInMinutes": "In {minutes} min",
+  "@tvReminderInMinutes": {
+    "placeholders": {
+      "minutes": {"type": "int"}
+    }
+  },
+  "tvReminderInHours": "In {hours} h",
+  "@tvReminderInHours": {
+    "placeholders": {
+      "hours": {"type": "int"}
+    }
+  },
+  "tvReminderInHoursMinutes": "In {hours} h {minutes}",
+  "@tvReminderInHoursMinutes": {
+    "placeholders": {
+      "hours": {"type": "int"},
+      "minutes": {"type": "int"}
+    }
+  },
   "tvResumeLabel": "RESUME",
   "tvNowPlayingPrefix": "NOW · {title}",
   "@tvNowPlayingPrefix": {"placeholders": {"title": {"type": "String"}}},
@@ -767,5 +815,48 @@
   "tvSettingsRecordingsHint": "Videos recorded with the REC button.",
   "tvRingHint": "◀ ▶  browse   ·   OK  open",
   "tvCinemaDownloadSeason": "Download season",
-  "tvCinemaSeasonQueue": "{count, plural, =0{Season downloading} =1{1 episode queued} other{{count} episodes queued}}"
-}
+  "tvCinemaSeasonQueue": "{count, plural, =0{Season downloading} =1{1 episode queued} other{{count} episodes queued}}",
+  "tvPlayerLoading": "Loading the channel…",
+  "tvPlayerFatalDown": "This channel isn't responding right now.",
+  "tvPlayerFatalEmpty": "This channel is empty or blocked by the source.",
+  "tvPlayerFatalNav": "Up / Down: another channel",
+  "tvSearchPrompt": "Type a name on the keyboard. Right arrow: the results.",
+  "tvSearchCount": "{count, plural, =1{1 result} other{{count} results}}",
+  "tvGuideLoading": "Loading the guide…",
+  "tvGuideHint": "Up / Down: browse · OK or Back: close",
+  "tvNoEpg": "No programme listed",
+  "tvRemoteTitle": "Remote",
+  "tvSettingsRemote": "The phone becomes the remote, on the same Wi-Fi, with nothing to install.",
+  "tvRemoteLead": "Scan the QR code with the phone camera. Nothing to install.",
+  "tvRemoteWarn": "Anyone who can see this code can control the box until it expires. One phone only. The code dies on its own.",
+  "tvRemoteKeep": "Back leaves this screen: the phone keeps working until the code expires. Stop ends it now.",
+  "tvRemoteStarting": "Starting…",
+  "tvRemoteWaiting": "Waiting for the phone…",
+  "tvRemotePaired": "Phone connected",
+  "tvRemoteExpired": "Code expired",
+  "tvRemoteStopped": "Remote stopped",
+  "tvRemoteNoLan": "No local network. Put the box and the phone on the same Wi-Fi.",
+  "tvRemoteError": "The remote could not start.",
+  "tvRemoteNewCode": "New code",
+  "tvRemoteStop": "Stop",
+  "tvRemoteStart": "Turn on",
+  "tvRemoteLeft": "Expires in {time}",
+  "@tvRemoteLeft": {"placeholders": {"time": {"type": "String"}}},
+  "tvRemoteUrlHelp": "If the scan fails, open this address in the phone browser.",
+  "tvVoiceMic": "Mic",
+  "tvVoiceListening": "Speak now…",
+  "tvVoiceUnavailable": "No microphone on this box. Use the keyboard.",
+  "tvVoiceCancelled": "Cancelled. You can type with the keyboard.",
+  "tvVoiceFailed": "I didn't catch that. Try again, or use the keyboard.",
+  "tvVoiceBusy": "The microphone is already in use. Try again in a moment.",
+  "tvVoiceTonightTitle": "On TV tonight",
+  "tvVoiceTonightEmpty": "The guide has nothing for tonight. Add an EPG address to your list, then try again.",
+  "tvVoiceKindChannel": "Channel",
+  "tvVoiceKindMovie": "Movie",
+  "tvVoiceKindSeries": "Series",
+  "tvVoiceRemoteAi": "Remote voice help",
+  "tvVoiceRemoteAiOn": "On",
+  "tvVoiceRemoteAiOff": "Off",
+  "tvVoiceRemoteAiHelp": "Off by default. No key in the app. “Tonight” is read from your guide, on the box. If the service does not answer, Zuno searches your list.",
+  "tvVoiceCinemaHint": "Open Movies or Series once: search will find them afterwards, without using the network while you watch.",
+  "tvVoiceOnChannel": "On {channel}"}

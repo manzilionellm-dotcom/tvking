@@ -262,6 +262,35 @@ class EpgRepository {
   //  STATS
   // ============================================================
 
+  /// Programmes qui chevauchent [startMs, endMs) (guide « ce soir »).
+  ///
+  /// Plafonné : une grille complète peut faire des centaines de milliers
+  /// de lignes. On n'en ramène qu'un échantillon, trié par heure de début.
+  /// Toute erreur (base absente, disque) renvoie une liste vide : l'assistant
+  /// affiche « rien ce soir » et le lecteur n'est pas concerné.
+  Future<List<EpgProgram>> programsOverlapping(
+    int startMs,
+    int endMs, {
+    int limit = 500,
+  }) async {
+    try {
+      await initialize();
+      final Database db = await PlaylistDatabase.instance.database;
+      final int cap = limit < 1 ? 1 : (limit > 1000 ? 1000 : limit);
+      final List<Map<String, Object?>> rows = await db.query(
+        'epg_programs',
+        where: 'stop_time > ? AND start_time < ?',
+        whereArgs: <Object>[startMs, endMs],
+        orderBy: 'start_time ASC',
+        limit: cap,
+      );
+      return rows.map(EpgProgram.fromMap).toList(growable: false);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[EpgRepository] programmes du soir : $e');
+      return const <EpgProgram>[];
+    }
+  }
+
   /// Nombre total de programmes en base (pour l'écran EPG).
   Future<int> totalCount() async {
     await initialize();

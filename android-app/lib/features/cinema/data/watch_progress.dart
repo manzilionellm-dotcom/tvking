@@ -19,6 +19,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../profiles/data/active_profile.dart';
+import '../../profiles/domain/family_profile.dart';
+
 /// Une position de lecture mémorisée.
 @immutable
 class WatchEntry {
@@ -260,20 +263,78 @@ class WatchProgressRepository extends ChangeNotifier {
   WatchProgressRepository._();
   static final WatchProgressRepository instance = WatchProgressRepository._();
 
-  static const String _kKey = 'cinema.progress.v1';
+  // Le profil 1 continue d'écrire dans `cinema.progress.v1`
+  // (la clé historique). Les autres profils ont la leur.
+  // Voir ProfileKeys.watchProgress.
   WatchProgressStore _store = WatchProgressStore();
+  String _profileId = ProfileIds.origin;
   bool _loaded = false;
+  bool _listening = false;
+  int _adoptGen = 0;
   Timer? _saveTimer;
 
-  Future<void> load() async {
-    if (_loaded) return;
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    _store = WatchProgressStore.decode(prefs.getString(_kKey));
+  /// Charge le tiroir du profil en cours. Idempotent tant que
+  /// le profil ne change pas.
+  Future<void> load() => adopt(ActiveProfile.instance.id);
+
+  /// Passe au tiroir [id] : on écrit d'abord l'ancien (pour ne
+  /// rien perdre), puis on lit le nouveau.
+  Future<void> adopt(String id) async {
+    _listen();
+    if (_loaded && _profileId == id) return;
+    final int gen = ++_adoptGen;
+    _saveTimer?.cancel();
+    // On écrit l'ancien tiroir AVANT de changer d'id, sinon une
+    // sauvegarde en cours copierait les films de l'un chez l'autre.
+    if (_loaded) {
+      await _saveKey(ProfileKeys.watchProgress(_profileId), _store);
+    }
+    if (gen != _adoptGen) return;
+    WatchProgressStore incoming = WatchProgressStore();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      incoming = WatchProgressStore.decode(
+        prefs.getString(ProfileKeys.watchProgress(id)),
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WatchProgress] lecture : $e');
+    }
+    if (gen != _adoptGen) return;
+    // Une position a pu être notée pendant la lecture disque :
+    // on la range dans l'ANCIEN tiroir avant de le remplacer.
+    _saveTimer?.cancel();
+    if (_loaded && _profileId != id) {
+      await _saveKey(ProfileKeys.watchProgress(_profileId), _store);
+    }
+    if (gen != _adoptGen) return;
+    _profileId = id;
+    _store = incoming;
     _loaded = true;
     notifyListeners();
   }
 
+  void _listen() {
+    if (_listening) return;
+    _listening = true;
+    ActiveProfile.instance.listenable.addListener(() {
+      unawaited(adopt(ActiveProfile.instance.id));
+    });
+  }
+
+  /// Oublie la reprise d'un profil supprimé. Jamais le profil 1
+  /// (sa clé est celle d'avant les profils).
+  Future<void> dropProfile(String profileId) async {
+    if (ProfileKeys.disposableKeys(profileId).isEmpty) return;
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove(ProfileKeys.watchProgress(profileId));
+    } catch (e) {
+      if (kDebugMode) debugPrint('[WatchProgress] oubli profil : $e');
+    }
+  }
+
   WatchEntry? get(String id) => _store.get(id);
+
   List<WatchEntry> continueWatching({bool? episodes}) =>
       _store.continueWatching(episodes: episodes);
   WatchEntry? latestForSeries(String seriesId) => _store.latestForSeries(seriesId);
@@ -307,10 +368,12 @@ class WatchProgressRepository extends ChangeNotifier {
     }
   }
 
-  Future<void> _save() async {
+  Future<void> _save() => _saveKey(ProfileKeys.watchProgress(_profileId), _store);
+
+  Future<void> _saveKey(String key, WatchProgressStore store) async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kKey, _store.encode());
+      await prefs.setString(key, store.encode());
     } catch (e) {
       if (kDebugMode) debugPrint('[WatchProgress] sauvegarde impossible : $e');
     }

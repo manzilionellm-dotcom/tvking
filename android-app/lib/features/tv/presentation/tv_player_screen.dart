@@ -9,12 +9,18 @@
 //  la vidéo du chemin texture → l'image passe, comme dans IPTV Smarters & co.
 //
 //  Réglages stabilité (côté natif, cf. NativeVideoView.kt) :
-//    1) décodage matériel MediaCodec + repli logiciel (decoder fallback) ;
-//    2) gros tampon (min 5 s / max 30 s, démarrage 1,5 s) ;
+//    1) décodage vidéo matériel MediaCodec + repli si l'init échoue
+//       (pas de décodeur vidéo FFmpeg : il bloquait des chaînes sur le logo) ;
+//    2) tampon INCHANGÉ (min 5 s / max 45 s, démarrage 1 s, reprise 2 s) —
+//       l'allonger a déjà laissé des chaînes sur le chargement ;
 //    3) watchdog 15 s : aucune progression → reconnexion auto (ré-ouvre l'URL).
+//       Les événements d'un zap précédent sont ignorés (accusé de génération).
 //
 //  D-pad : Haut/Bas (ou Ch+/Ch-) = zap, chiffres = n° de chaîne, OK = barre,
-//  Back = quitter. Logo « The Few » affiché à l'ouverture / au zap.
+//  Back = quitter. Pendant le chargement on affiche le NUMÉRO et le NOM
+//  (pas seulement un logo) pour que le zapping reste lisible.
+//  Une touche maintenue ne rouvre le flux qu'une fois, à l'arrêt :
+//  enchaîner 20 setUrl gelait la box.
 // =========================================================
 import 'dart:async';
 
@@ -30,7 +36,15 @@ import '../core/tv_back_guard.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/domain/channel.dart';
-import '../../epg/presentation/channel_programs_screen.dart';
+import '../../epg/data/epg_repository.dart';
+import '../../epg/data/catchup_url_builder.dart';
+import '../../epg/domain/epg_program.dart';
+import '../../missed_show/data/missed_flag.dart';
+import '../../missed_show/domain/missed_summary.dart';
+import '../../subtitles/data/subtitle_flag.dart';
+import '../../subtitles/domain/subtitle_choice.dart';
+import '../../time_picks/data/time_pick_log.dart';
+import '../../cinema/domain/cinema_language.dart';
 import '../../cinema/data/cinema_downloads.dart';
 import '../../player/data/local_stream_relay.dart';
 import '../../player/domain/live_fallback.dart';
@@ -41,7 +55,9 @@ import '../../recordings/domain/recording.dart';
 import '../../subscription/data/now_playing.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
-import 'tv_components.dart';
+import '../core/tv_zap.dart';
+import 'tv_channel_guide_screen.dart';
+import 'tv_cinema_common.dart';
 
 class TvPlayerScreen extends StatefulWidget {
   const TvPlayerScreen({
@@ -72,13 +88,30 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // déplacent le surlignage, OK active. Ordre : 0=Retour 1=Préc 2=Lecture/Pause
   // 3=Suiv 4=REC 5=Favori.
   int _btnFocus = -1;
-  static const int _btnCount = 3;
+  static const int _btnCountBase = 3;
+  int? get _startBtn => (_missed?.canRewind == true || _catchup) ? 3 : null;
+  MissedSummary? _missed;
+  bool _catchup = false;
+  int _missedGen = 0;
+  bool _subsOn = false;
+  bool _subsReady = false;
+  String? _textPref;
+  /// null = pas encore décidé pour cette chaîne.
+  /// -1 = sous-titres coupés. -2 = on n'y touche pas.
+  /// >= 0 = index dans les pistes de la langue.
+  int? _subsWant;
+  List<NativeTrack>? _appliedTracks;
   bool _buffering = true;
   Timer? _hideTimer;
   Timer? _presenceTimer;
   Timer? _numTimer;
   Timer? _watchdog;
   Timer? _toastTimer;
+  // Zap maintenu : on change le numéro À L'ÉCRAN tout de suite, et on
+  // n'ouvre le flux qu'une fois la télécommande relâchée (~180 ms sans
+  // nouvel appui). Un seul setUrl au lieu d'un par répétition de touche.
+  Timer? _zapSettle;
+  bool _zapHolding = false;
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
 
   // ----- Enregistrement -----
@@ -179,6 +212,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       if (mounted) setState(() => _favIds = ids);
     });
     _open(reuse: true); // historique / présence pour la 1re chaîne
+    unawaited(_prepareSubs());
+    subtitlesFlag.changes.addListener(_onSubsFlag);
     // Chien de garde : aucune progression depuis 15 s → reconnexion.
     // (Correctif 29/09/2026 : avant, `_recovering` restait vrai après une 1re
     // tentative ratée → plus AUCUNE reconnexion, roue de chargement à
@@ -227,6 +262,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _numTimer?.cancel();
     _watchdog?.cancel();
     _toastTimer?.cancel();
+    _zapSettle?.cancel();
     _favSub?.cancel();
     // Si on quitte le lecteur en plein enregistrement : on finalise proprement
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
@@ -236,6 +272,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       RecordingRepository.instance.finishRecording(rec);
     }
     _controller.removeListener(_onPlayer);
+    subtitlesFlag.changes.removeListener(_onSubsFlag);
     NowPlaying.instance.clear();
     SubscriptionState.instance.syncWithBackend(); // on ne regarde plus rien
     _controller.dispose();
@@ -247,6 +284,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Écoute l'état du lecteur natif : progression (anti-gel), buffering (logo),
   // erreurs.
   void _onPlayer() {
+    // Pendant un zap maintenu, le flux encore ouvert n'est PAS la chaîne
+    // affichée. On ignore ses erreurs / sa première image, sinon l'écran
+    // croirait que la mauvaise chaîne est prête et lancerait une
+    // reconnexion inutile.
+    if (_zapHolding) return;
     // Progression réelle → « pas gelé ». La lecture est repartie : on remet à
     // zéro le budget de reconnexion (et on lève un éventuel état d'erreur).
     if (_controller.position != _lastPos) {
@@ -274,6 +316,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (_controller.hasError || _controller.isEnded) {
       _recover();
     }
+    _offerSubtitles();
   }
 
   void _open({bool reuse = false}) {
@@ -293,10 +336,21 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur
       // (dans le format qui a déjà marché sur ce serveur, s'il y en a un).
       _playingUrl = LiveFallback.preferred(_current.streamUrl);
+      // Pas de preferredText ici : le direct ne repasse pas par setUrl
+      // pour les sous-titres (ça rouvrirait le flux). On choisit la
+      // piste ensuite, avec selectTrack, si le flux en a déjà une.
       _controller.setUrl(_playingUrl);
+      _catchup = false;
+      _subsWant = null;
+      _appliedTracks = null;
+      _loadMissed();
+    } else if (!_catchup) {
+      _loadMissed();
     }
     // Historique (reprise « Continuer à regarder », favoris, reco).
     RecentlyWatchedRepository.instance.record(_current.id);
+    // Compteur local « à cette heure ». N'ouvre rien, n'attend pas.
+    unawaited(TimePickLog.instance.note(_current.id));
     NowPlaying.instance.set(_current.cleanName);
     SubscriptionState.instance.syncWithBackend();
     _showOverlayTemporarily();
@@ -308,14 +362,24 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
-    // En Dart, `a % n` est TOUJOURS dans [0, n) pour n > 0 → pas de wrap négatif
-    // à corriger (l'ancienne ligne `if (_index < 0)` était du code mort).
-    setState(() => _index = (_index + delta) % n);
-    _open();
+    setState(() {
+      _index = tvNextZapIndex(_index, delta, n);
+      _zapHolding = true;
+    });
+    _showOverlayTemporarily();
+    // 180 ms : sous le délai d'une vraie image (souvent > 0,5 s), donc un
+    // appui simple ne paraît pas lent. Une touche maintenue repart le
+    // chrono : un seul flux s'ouvre, sur la chaîne où l'on s'arrête.
+    _zapSettle?.cancel();
+    _zapSettle = Timer(const Duration(milliseconds: 180), () {
+      if (!mounted) return;
+      _zapHolding = false;
+      _open();
+    });
   }
 
   void _recover() {
-    if (_fatal) return;
+    if (_fatal || _zapHolding) return;
     final DateTime now = DateTime.now();
     if (now.difference(_lastRecoverAt) < const Duration(seconds: 3)) return;
     _lastRecoverAt = now;
@@ -358,6 +422,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   /// « Réessayer » manuel depuis l'écran d'erreur : on repart d'un budget neuf.
   void _manualRetry() {
+    _zapSettle?.cancel();
+    _zapHolding = false;
     setState(() {
       _fatal = false;
       _recoverAttempts = 0;
@@ -523,13 +589,26 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       return;
     }
     setState(() {
-      _btnFocus = (_btnFocus < 0 ? 1 : _btnFocus + delta).clamp(0, _btnCount - 1);
+      _btnFocus = (_btnFocus < 0 ? 1 : _btnFocus + delta).clamp(0, _btnCount(context) - 1);
     });
     _showOverlayTemporarily();
   }
 
   // Exécute l'action du bouton surligné.
   void _activateBtn(int i) {
+    if (i == _startBtn) {
+      if (_catchup) {
+        _backToLive();
+      } else {
+        _rewindMissed();
+      }
+      return;
+    }
+    final int? subs = _subsBtn(context);
+    if (subs != null && i == subs) {
+      _cycleSubtitles();
+      return;
+    }
     switch (i) {
       case 0:
         _openGuide();
@@ -543,14 +622,306 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
   }
 
+  int _btnCount(BuildContext context) {
+    int n = _btnCountBase;
+    if (_startBtn != null) n++;
+    if (_subsBtn(context) != null) n++;
+    return n;
+  }
+
+  int? _subsBtn(BuildContext context) {
+    if (!_subsOn || !_subsReady) return null;
+    if (_userTextTracks(context).isEmpty) return null;
+    return _startBtn == null ? 3 : 4;
+  }
+
+  List<NativeTrack> _userTextTracks(BuildContext context) {
+    final String user = Localizations.localeOf(context).languageCode;
+    final List<SubtitleCue> cues = <SubtitleCue>[
+      for (final NativeTrack track in _controller.tracks)
+        if (!track.isAudio)
+          SubtitleCue(
+            group: track.group,
+            index: track.index,
+            language: track.language,
+            selected: track.selected,
+          ),
+    ];
+    final List<SubtitleCue> mine = tracksInLanguage(cues, user);
+    final List<NativeTrack> out = <NativeTrack>[];
+    for (final SubtitleCue cue in mine) {
+      for (final NativeTrack track in _controller.tracks) {
+        if (!track.isAudio && track.group == cue.group && track.index == cue.index) {
+          out.add(track);
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  void _onSubsFlag() {
+    _subsOn = subtitlesFlag.value;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _prepareSubs() async {
+    try {
+      await subtitlesFlag.load();
+      _subsOn = subtitlesFlag.value;
+    } catch (_) {
+      _subsOn = true;
+    }
+    try {
+      _textPref = await CinemaTrackPrefs.text();
+    } catch (_) {
+      _textPref = null;
+    }
+    _subsReady = true;
+    if (!mounted) return;
+    _offerSubtitles();
+    setState(() {});
+  }
+
+  /// Choisit une piste DÉJÀ dans le flux. Jamais [setUrl].
+  /// On ne le refait pas à chaque image : seulement quand la
+  /// liste de pistes change.
+  void _offerSubtitles() {
+    if (!_subsReady || !_subsOn || !mounted) return;
+    final List<NativeTrack> tracks = _controller.tracks;
+    if (identical(_appliedTracks, tracks)) return;
+    final List<NativeTrack> texts =
+        tracks.where((NativeTrack t) => !t.isAudio).toList();
+    if (texts.isEmpty) return;
+    final List<NativeTrack> mine = _userTextTracks(context);
+    if (_subsWant == null) {
+      if (_textPref == 'off') {
+        _subsWant = -1;
+      } else {
+        final List<SubtitleCue> cues = <SubtitleCue>[
+          for (final NativeTrack track in texts)
+            SubtitleCue(
+              group: track.group,
+              index: track.index,
+              language: track.language,
+              selected: track.selected,
+            ),
+        ];
+        final SubtitleCue? pick = autoSubtitle(
+          tracks: cues,
+          userLanguage: Localizations.localeOf(context).languageCode,
+          textPref: _textPref,
+          enabled: true,
+        );
+        if (pick == null) {
+          _subsWant = -2;
+        } else {
+          final int at = mine.indexWhere(
+              (NativeTrack t) => t.group == pick.group && t.index == pick.index);
+          _subsWant = at < 0 ? -2 : at;
+        }
+      }
+    }
+    _appliedTracks = tracks;
+    final int? want = _subsWant;
+    if (want == null || want == -2) return;
+    try {
+      if (want < 0) {
+        if (texts.any((NativeTrack t) => t.selected)) {
+          _controller.disableSubtitles();
+        }
+      } else if (want < mine.length && !mine[want].selected) {
+        _controller.selectTrack(mine[want]);
+      }
+    } catch (_) {
+      // Une piste refusée ne doit pas rouvrir la chaîne.
+    }
+  }
+
+  void _cycleSubtitles() {
+    if (!_subsOn) return;
+    final List<NativeTrack> mine = _userTextTracks(context);
+    if (mine.isEmpty) return;
+    final int current = mine.indexWhere((NativeTrack t) => t.selected);
+    final int next = nextSubtitleStep(current, mine.length);
+    _subsWant = next;
+    try {
+      if (next < 0) {
+        _controller.disableSubtitles();
+      } else {
+        _controller.selectTrack(mine[next]);
+      }
+    } catch (_) {}
+    _showOverlayTemporarily();
+  }
+
+  bool _isCaption(LogicalKeyboardKey k) {
+    if (k == LogicalKeyboardKey.keyC) return true;
+    // KEYCODE_CAPTIONS (175), plan Android de Flutter.
+    const int androidPlane = 0x01100000000;
+    const int planeMask = 0x0FF00000000;
+    const int captions = 175;
+    return (k.keyId & planeMask) == androidPlane && (k.keyId & 0xFFFFFFFF) == captions;
+  }
+
+  String _subsLabel(BuildContext context) {
+    final bool en = Localizations.localeOf(context).languageCode == 'en';
+    for (final NativeTrack track in _userTextTracks(context)) {
+      if (!track.selected) continue;
+      return CinemaLanguage.labelFor(track.language) ?? (en ? 'CC' : 'ST');
+    }
+    return en ? 'CC' : 'ST';
+  }
+
+  /// Le guide dit si on arrive en retard. Une erreur de guide
+  /// ne change pas l'image : on cache simplement la carte.
+  void _loadMissed() {
+    final int gen = ++_missedGen;
+    final String id = _current.id;
+    final Channel channel = _current;
+    if (mounted) setState(() => _missed = null);
+    unawaited(() async {
+      try {
+        await missedShowFlag.load();
+        if (!missedShowFlag.value || gen != _missedGen) return;
+        final EpgProgram? program =
+            await EpgRepository.instance.currentProgram(id);
+        if (!mounted || gen != _missedGen || _current.id != id) return;
+        final bool declared = channel.catchupSupported ||
+            (channel.catchupSource != null && channel.catchupSource!.isNotEmpty);
+        final String? url = declared && program != null
+            ? CatchupUrlBuilder.build(channel: channel, program: program)
+            : null;
+        final MissedSummary? summary = missedFromGuide(
+          program: program,
+          now: DateTime.now(),
+          catchupDeclared: declared,
+          rewindUrl: url,
+        );
+        if (!mounted || gen != _missedGen) return;
+        setState(() => _missed = summary);
+      } catch (_) {
+        if (mounted && gen == _missedGen) setState(() => _missed = null);
+      }
+    }());
+  }
+
+  void _rewindMissed() {
+    final String? url = _missed?.rewindUrl;
+    if (url == null || url.isEmpty) return;
+    try {
+      _catchup = true;
+      _playingUrl = url;
+      _controller.setUrl(url);
+      _flash(_missedFlash(context));
+    } catch (_) {
+      _catchup = false;
+    }
+  }
+
+  void _backToLive() {
+    _catchup = false;
+    _playingUrl = LiveFallback.preferred(_current.streamUrl);
+    _controller.setUrl(_playingUrl);
+    _showOverlayTemporarily();
+  }
+
+  String _missedFlash(BuildContext context) {
+    final String code = Localizations.localeOf(context).languageCode;
+    return code == 'en'
+        ? 'From the start of the show. Right, then OK: back to live.'
+        : 'Depuis le début de l\'émission. Droite, puis OK : retour au direct.';
+  }
+
+  /// Carte hors focus : Haut/Bas continuent de zapper.
+  Widget _missedCard() {
+    final MissedSummary missed = _missed!;
+    final bool en = Localizations.localeOf(context).languageCode == 'en';
+    final String lateLine = en
+        ? 'You missed ${missed.missedMinutes} min'
+        : 'Tu as raté ${missed.missedMinutes} min';
+    final String hint = missed.canRewind
+        ? (en
+            ? 'Right, then OK: from the start.'
+            : 'Droite, puis OK : depuis le début.')
+        : (en
+            ? 'The guide has the text, not the video. Live stays as it is.'
+            : 'Le guide a le texte, pas la vidéo. Le direct ne bouge pas.');
+    return Padding(
+      padding: EdgeInsets.only(top: TvDimens.safeV + 8, left: 48, right: 48),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xE6141418),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: TvTokens.line),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  missed.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: TvDimens.titleS,
+                    fontWeight: FontWeight.w800,
+                    color: TvTokens.text,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  lateLine,
+                  style: TextStyle(
+                    fontSize: TvDimens.label,
+                    fontWeight: FontWeight.w700,
+                    color: TvTokens.accentBright,
+                  ),
+                ),
+                if (missed.description != null) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    missed.description!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Text(
+                  hint,
+                  style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // Ouvre le GUIDE de la chaîne en cours : émission actuelle + « à suivre »,
   // avec possibilité de poser une ALARME (rappel) sur un programme.
   void _openGuide() {
-    Navigator.of(context).push(
+    // Si l'utilisateur tient encore Haut/Bas, on ouvre d'abord la chaîne
+    // affichée : le guide et l'image doivent parler de la même chaîne.
+    if (_zapSettle?.isActive ?? false) {
+      _zapSettle!.cancel();
+      _zapHolding = false;
+      _open();
+    }
+    unawaited(Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ChannelProgramsScreen(channel: _current),
+        builder: (_) => TvChannelGuideScreen(channel: _current),
       ),
-    );
+    ).then((_) {
+      // Au retour, le focus clavier était parti avec la route du guide.
+      if (mounted) _focus.requestFocus();
+    }));
     _showOverlayTemporarily();
   }
 
@@ -583,6 +954,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _jumpNumber() {
+    _zapSettle?.cancel();
+    _zapHolding = false;
     final int? n = int.tryParse(_numBuffer);
     _numBuffer = '';
     if (n == null || n <= 0) { setState(() {}); return; }
@@ -611,7 +984,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   // Télécommandes universelles : toutes les variantes mènent à l'action.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    // On prend l'appui ET la répétition (touche maintenue). Le relâchement
+    // (KeyUp) est ignoré. Le flux, lui, n'est ouvert qu'une fois dans _zap.
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
     final LogicalKeyboardKey k = event.logicalKey;
 
     // ÉCRAN D'ERREUR (P1-6) : OK = Réessayer ; le Retour reste géré plus bas
@@ -672,6 +1049,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _toggleFavorite();
       return KeyEventResult.handled;
     }
+    if (event is KeyDownEvent && _isCaption(k)) {
+      _cycleSubtitles();
+      return KeyEventResult.handled;
+    }
     if (_isOk(k)) {
       _okPressed();
       return KeyEventResult.handled;
@@ -722,71 +1103,21 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   child: NativeVideoView(controller: _controller),
                 ),
               ),
-              // Écran de marque pendant l'ouverture / le zap / une reconnexion.
-              if (_buffering && !_fatal)
-                const ColoredBox(
-                  color: TvTokens.bg,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        TvLogo(width: 200),
-                        SizedBox(height: 28),
-                        SizedBox(
-                          width: 40, height: 40,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 3, color: TvTokens.accent),
-                        ),
-                      ],
-                    ),
-                  ),
+              // Le temps que l'image arrive (ou qu'on lâche Haut/Bas), on dit
+              // QUELLE chaîne est visée. Un logo seul ne permettait pas de
+              // zapper « à l'aveugle » sans se perdre.
+              if (_zapHolding || (_buffering && !_fatal)) _loadingCard(),
+              if (_missed != null && !_catchup && !_zapHolding)
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: ExcludeFocus(child: _missedCard()),
                 ),
-              // Écran d'ERREUR (P1-6) : la reconnexion automatique a été épuisée
-              // (flux durablement injoignable). On ARRÊTE de boucler et on offre
-              // un « Réessayer » manuel (OK) ou « Quitter » (Retour).
-              if (_fatal)
-                ColoredBox(
-                  color: TvTokens.bg,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        const Icon(Icons.error_outline_rounded,
-                            color: TvTokens.mutedDim, size: 56),
-                        const SizedBox(height: 16),
-                        Text(_current.cleanName,
-                            style: TextStyle(
-                                fontSize: TvDimens.title,
-                                fontWeight: FontWeight.w800,
-                                color: TvTokens.text)),
-                        const SizedBox(height: 8),
-                        Text(
-                            'Cette chaîne ne répond pas. Haut ou bas : la suivante.',
-                            style: TextStyle(
-                                fontSize: TvDimens.body,
-                                color: TvTokens.mutedDim)),
-                        const SizedBox(height: 20),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 22, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: TvTokens.sel,
-                            borderRadius:
-                                BorderRadius.circular(TvTokens.rButton),
-                            border: Border.all(
-                                color: TvTokens.accent,
-                                width: TvDimens.focusOutline),
-                          ),
-                          child: Text(context.l10n.tvPlayerFatalHint,
-                              style: TextStyle(
-                                  fontSize: TvDimens.titleS,
-                                  fontWeight: FontWeight.w700,
-                                  color: TvTokens.accentBright)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              // Écran d'ERREUR : la reconnexion automatique a été épuisée.
+              // On ARRÊTE de boucler. OK réessaie, Haut/Bas change de chaîne,
+              // Retour quitte. Masqué pendant un zap : la personne est déjà
+              // en train d'en choisir une autre. Le texte (chaîne coupée ou
+              // chaîne vide) reste celui des traductions, lisible à 3 m.
+              if (_fatal && !_zapHolding) _errorCard(),
               // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
               // bas + fondu, masqué automatiquement après 5 s. Contient l'info
               // chaîne + tous les contrôles (dont REC et ❤ en bas).
@@ -811,6 +1142,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                         onGuide: _openGuide,
                         onRecord: _toggleRecording,
                         onFavorite: _toggleFavorite,
+                        onStart: (_missed?.canRewind == true || _catchup)
+                            ? () => _activateBtn(3)
+                            : null,
+                        startLabel: _catchup ? 'Direct' : 'Début',
+                        onSubtitles: _subsBtn(context) == null ? null : _cycleSubtitles,
+                        subtitlesLabel: _subsLabel(context),
+                        subtitlesOn: _userTextTracks(context).any((NativeTrack t) => t.selected),
                       ),
                     ),
                   ),
@@ -897,6 +1235,171 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       ),
     );
   }
+
+  /// Carte de chargement : numéro géant + nom + consigne de zap.
+  /// Lisible à 3 m, et elle suit la chaîne AFFICHÉE même si le flux
+  /// n'est pas encore ouvert (zap maintenu).
+  Widget _loadingCard() {
+    final Channel c = _current;
+    return ColoredBox(
+      color: TvTokens.bg,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 48),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text('${_index + 1}',
+                  style: TvTokens.display(TvDimens.displayL,
+                      color: TvTokens.accentBright)),
+              const SizedBox(height: 8),
+              Text(c.cleanName,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.display(TvDimens.headline, color: TvTokens.text)),
+              if (_isFavorite) ...<Widget>[
+                const SizedBox(height: 8),
+                const Icon(Icons.favorite_rounded,
+                    color: TvTokens.accent, size: 22),
+              ],
+              const SizedBox(height: 22),
+              const SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                    strokeWidth: 3, color: TvTokens.accent),
+              ),
+              const SizedBox(height: 16),
+              Text(context.l10n.tvPlayerLoading,
+                  style: TvTokens.ui(TvDimens.body, color: TvTokens.muted)),
+              const SizedBox(height: 6),
+              Text(context.l10n.tvZapHint,
+                  style: TvTokens.ui(TvDimens.label, color: TvTokens.mutedDim)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Erreur claire : ce qui s'est passé, et les trois touches utiles.
+  Widget _errorCard() {
+    return ColoredBox(
+      color: TvTokens.bg,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 48),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(Icons.error_outline_rounded,
+                  color: TvTokens.accentBright, size: 56),
+              const SizedBox(height: 12),
+              Text('${_index + 1}',
+                  style: TvTokens.display(TvDimens.displayM,
+                      color: TvTokens.accentBright)),
+              const SizedBox(height: 6),
+              Text(_current.cleanName,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TvTokens.display(TvDimens.title, color: TvTokens.text)),
+              const SizedBox(height: 10),
+              Text(
+                _everShownFrame
+                    ? context.l10n.tvPlayerFatalDown
+                    : context.l10n.tvPlayerFatalEmpty,
+                textAlign: TextAlign.center,
+                style: TvTokens.ui(TvDimens.body, color: TvTokens.muted),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                decoration: BoxDecoration(
+                  color: TvTokens.sel,
+                  borderRadius: BorderRadius.circular(TvTokens.rButton),
+                  border: Border.all(
+                      color: TvTokens.accent, width: TvDimens.focusOutline),
+                ),
+                child: Text(context.l10n.tvPlayerFatalHint,
+                    style: TvTokens.ui(TvDimens.titleS,
+                        weight: FontWeight.w700, color: TvTokens.accentBright)),
+              ),
+              const SizedBox(height: 10),
+              Text(context.l10n.tvPlayerFatalNav,
+                  style: TvTokens.ui(TvDimens.label, color: TvTokens.muted)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Programme « maintenant » sous le nom, dans la barre du lecteur.
+/// Une requête indexée par chaîne : au zap on ne recharge que celle-ci.
+class _LiveEpgLine extends StatefulWidget {
+  const _LiveEpgLine({required this.channelId});
+  final String channelId;
+
+  @override
+  State<_LiveEpgLine> createState() => _LiveEpgLineState();
+}
+
+class _LiveEpgLineState extends State<_LiveEpgLine> {
+  Timer? _wait;
+  EpgProgram? _shown;
+
+  @override
+  void initState() {
+    super.initState();
+    _load(widget.channelId);
+  }
+
+  @override
+  void didUpdateWidget(covariant _LiveEpgLine old) {
+    super.didUpdateWidget(old);
+    if (old.channelId == widget.channelId) return;
+    // Zap rapide : on efface tout de suite le programme de la chaîne
+    // précédente (sinon il s'affiche sous le mauvais nom), et on ne
+    // requête la base qu'une fois le zapping calmé.
+    _wait?.cancel();
+    _shown = null;
+    final String id = widget.channelId;
+    _wait = Timer(const Duration(milliseconds: 200), () => _load(id));
+  }
+
+  void _load(String id) {
+    // Un guide absent ou une base occupée ne doit pas faire tomber
+    // le lecteur : on cache simplement la ligne.
+    EpgRepository.instance.currentProgram(id).then((EpgProgram? p) {
+      if (!mounted || widget.channelId != id) return;
+      setState(() => _shown = p);
+    }, onError: (Object _) {});
+  }
+
+  @override
+  void dispose() {
+    _wait?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final EpgProgram? p = _shown;
+    if (p == null || p.title.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        '${context.l10n.tvEpgNow}  ·  ${p.title}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TvTokens.ui(TvDimens.label, color: TvTokens.accentBright),
+      ),
+    );
+  }
 }
 
 /// Panneau de lecture moderne (façon YouTube / Netflix) : dégradé sombre en
@@ -915,6 +1418,11 @@ class _ControlsBar extends StatelessWidget {
     required this.onGuide,
     required this.onRecord,
     required this.onFavorite,
+    this.onStart,
+    this.startLabel,
+    this.onSubtitles,
+    this.subtitlesLabel,
+    this.subtitlesOn = false,
   });
 
   final Channel channel;
@@ -928,6 +1436,15 @@ class _ControlsBar extends StatelessWidget {
   final VoidCallback onGuide;
   final VoidCallback onRecord;
   final VoidCallback onFavorite;
+
+  /// 4e bouton, seulement si le guide a une vidéo de rattrapage.
+  final VoidCallback? onStart;
+  final String? startLabel;
+
+  /// Sous-titres déjà dans le flux, dans la langue de l'app.
+  final VoidCallback? onSubtitles;
+  final String? subtitlesLabel;
+  final bool subtitlesOn;
 
   @override
   Widget build(BuildContext context) {
@@ -990,6 +1507,25 @@ class _ControlsBar extends StatelessWidget {
                 active: isFavorite,
                 focused: focusedIndex == 2,
               ),
+              if (onStart != null) ...<Widget>[
+                const SizedBox(width: 34),
+                _CtrlButton(
+                  icon: Icons.skip_previous_rounded,
+                  label: startLabel ?? 'Début',
+                  onTap: onStart!,
+                  focused: focusedIndex == 3,
+                ),
+              ],
+              if (onSubtitles != null) ...<Widget>[
+                const SizedBox(width: 34),
+                _CtrlButton(
+                  icon: Icons.subtitles_rounded,
+                  label: subtitlesLabel ?? 'ST',
+                  onTap: onSubtitles!,
+                  active: subtitlesOn,
+                  focused: focusedIndex == (onStart != null ? 4 : 3),
+                ),
+              ],
             ],
           ),
         ],
@@ -1030,6 +1566,8 @@ class _ControlsBar extends StatelessWidget {
                   fontSize: TvDimens.headline,
                   fontWeight: FontWeight.w800,
                   color: TvTokens.text)),
+          // Programme en cours, sous le nom : le guide sans quitter l'image.
+          _LiveEpgLine(channelId: channel.id),
           const SizedBox(height: 6),
           Row(
             children: <Widget>[
