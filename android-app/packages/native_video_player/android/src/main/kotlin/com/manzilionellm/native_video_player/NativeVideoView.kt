@@ -241,6 +241,7 @@ class NativeVideoView(
      * Une seule instance : Media3 n'accepte pas null, et
      * [ExoPlayer.clearVideoFrameMetadataListener] ne retire le
      * compteur que si on lui rend le même objet.
+     * Le premier APK (run 36771992519) a échoué sur un null ici.
      */
     private val frameClock = VideoFrameMetadataListener { _, _, _, _ ->
         renderedFrames.incrementAndGet()
