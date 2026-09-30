@@ -17,6 +17,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_search_text.dart';
+import '../../voice_search/presentation/voice_mic_button.dart';
 import 'tv_player_screen.dart';
 
 class TvSearchScreen extends StatefulWidget {
@@ -122,7 +123,22 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         // ----- Clavier (instance STABLE → non reconstruite à chaque frappe) -----
-        SizedBox(width: 380, child: _keyboard),
+        SizedBox(
+          width: 380,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              VoiceMicButton(
+                onText: (String text) {
+                  _debounce?.cancel();
+                  setState(() => _q = text);
+                  _runSearch();
+                },
+              ),
+              Expanded(child: _keyboard),
+            ],
+          ),
+        ),
         const SizedBox(width: TvDimens.gutter),
         // ----- Requête + résultats -----
         Expanded(

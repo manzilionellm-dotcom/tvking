@@ -85,6 +85,7 @@ def patch(s: str) -> str:
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.WAKE_LOCK",
+        "android.permission.RECORD_AUDIO",
     ):
         s = _add_after_manifest_tag(s, f'<uses-permission android:name="{perm}"/>')
     s = _add_application_attr(s, "usesCleartextTraffic", "true")

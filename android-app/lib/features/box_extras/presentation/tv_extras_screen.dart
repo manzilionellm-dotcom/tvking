@@ -8,17 +8,38 @@
 import 'package:flutter/material.dart';
 
 import '../../phone_remote/presentation/phone_remote_screen.dart';
+import '../../voice_search/data/voice_search.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
 import '../../tv/core/tv_tokens.dart';
 import '../../tv/presentation/tv_shell.dart';
 import '../box_text.dart';
 
-class TvExtrasScreen extends StatelessWidget {
+class TvExtrasScreen extends StatefulWidget {
   const TvExtrasScreen({super.key});
 
   @override
+  State<TvExtrasScreen> createState() => _TvExtrasScreenState();
+}
+
+class _TvExtrasScreenState extends State<TvExtrasScreen> {
+  @override
+  void initState() {
+    super.initState();
+    VoiceSearch.flag.load().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _toggleVoice() async {
+    await VoiceSearch.flag.load();
+    await VoiceSearch.flag.set(!VoiceSearch.flag.value);
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final bool voiceOn = VoiceSearch.flag.value;
     return ListView(
       children: <Widget>[
         Text(
@@ -54,6 +75,21 @@ class TvExtrasScreen extends StatelessWidget {
               ),
             );
           },
+        ),
+        _Row(
+          title: boxText(context, 'Voix', 'Voice'),
+          subtitle: voiceOn
+              ? boxText(
+                  context,
+                  'Micro allumé dans la recherche. OK pour couper.',
+                  'Mic is on in search. OK to turn off.',
+                )
+              : boxText(
+                  context,
+                  'Micro coupé. La recherche au clavier reste. OK pour allumer.',
+                  'Mic is off. Keyboard search stays. OK to turn on.',
+                ),
+          onSelect: _toggleVoice,
         ),
       ],
     );

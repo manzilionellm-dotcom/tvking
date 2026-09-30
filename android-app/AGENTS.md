@@ -43,3 +43,4 @@ lib/
 Chacune a un interrupteur (`BoxFlag`, SharedPreferences). Coupée, elle ne démarre pas. Aucune n'ouvre un flux toute seule.
 
 - **Téléphone (QR).** Réutilise `qr_flutter` (déjà là pour le cast : dessine un QR). Pas de nouvelle dépendance. Un mini-serveur HTTP local sert une page sans script externe. Le jeton est tiré au démarrage, jamais écrit dans le dépôt.
+- **Voix.** `SpeechRecognizer` Android (micro de la télécommande), canal `zuno/voice_search` dans `MainActivity`. Pas de paquet pub. Si le micro manque ou si l'autorisation est refusée, la recherche au clavier reste. Permission `RECORD_AUDIO` : le micro n'est pas exigé pour installer (`android.hardware.microphone` déjà `required=false` dans le manifeste TV).
