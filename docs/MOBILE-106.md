@@ -54,7 +54,10 @@ Aucun APK n'a été installé sur un téléphone dans ce travail. À faire à la
 5. Depuis le panel, vider la liste de cet appareil : elle disparaît dans l'app sans attendre une minute, et une liste ajoutée à la main sur le téléphone reste. Déposer une annonce : elle s'affiche, l'app accuse réception.
 6. Suivre un match dans sa fenêtre, laisser l'app ouverte : un but peut mettre jusqu'au cache de 45 s plus le retard de la source (~2 min). Tuer l'app : **aucun** but n'arrive. Ce n'est pas un push.
 
-Le lien du run GitHub Actions de cette branche est ajouté ici dès qu'il a un état réel. Tant qu'il n'est pas vert, ce paragraphe reste vide de lien inventé.
+GitHub Actions, commit `38515374`, état réel **success** (lu après la fin du run, pas pendant) :
+
+- Build Android APK : https://github.com/manzilionellm-dotcom/tvking/actions/runs/36787191768 — `success`. Flutter 3.47.5 / Dart 3.13.4 sur le runner. Porte qualité du même job : **303** signalements d'analyse, puis `flutter test` **+1433 ~36, All tests passed**. APK release obfusqué construit et déposé en artefact du run. Étapes **skipped** : « Publier l'APK téléphone sur son canal direct », « Publish latest », pont `latest → prod`, « Graver la version publiée ». Le journal du garde-fou dit `canal téléphone pour cette branche : latest` puis `pas de publication phone-latest`.
+- Les sept autres checks du même push (qualité, tests, TV, Windows, Tizen) sont aussi `success`. Rien de cela n'est une installation sur un téléphone.
 
 ## Limites
 

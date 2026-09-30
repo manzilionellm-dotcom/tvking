@@ -86,7 +86,7 @@ Anti-tampering « léger » retenu : la posture est une note, et l'empreinte SHA
 - Aucun APK release obfusqué n'a été ouvert dans jadx ici.
 - Aucun téléphone rooté, aucun émulateur, aucun `adb backup` n'a été exécuté ici. `allowBackup=false` est une ligne du workflow, pas une mesure sur un appareil.
 - Le Keystore matériel n'a pas été interrogé sur un vrai téléphone dans ce lot. Le code du plugin est lu, pas exécuté.
-- L'étape GitHub Actions de cette branche (analyze, tests, APK) a son lien dans `docs/MOBILE-106.md` quand le run existe. Ce document ne invente pas un vert.
+- Le build Android du commit `38515374` est vert : https://github.com/manzilionellm-dotcom/tvking/actions/runs/36787191768 (`success`). Dedans : `allowBackup=false` appliqué au manifeste généré, R8 activé, APK obfusqué produit en artefact. Les étapes qui publieraient `phone-latest` ou `latest` sont `skipped`. On n'a pas ouvert cet APK dans jadx, ni tenté un `adb backup` sur un appareil.
 
 ## Ce qu'il ne faut pas attendre
 
