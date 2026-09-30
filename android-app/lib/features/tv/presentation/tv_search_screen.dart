@@ -11,6 +11,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../remote/domain/remote_typing_hub.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -44,9 +45,14 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   late final Widget _keyboard =
       _Keyboard(onType: _type, onBackspace: _backspace, onClear: _clear);
 
+  // UNE SEULE fermeture : en Dart, écrire `_onRemoteQuery` deux fois
+  // peut donner deux objets différents, et le désabonnement raterait.
+  late final bool Function(String text) _remoteTyping = _onRemoteQuery;
+
   @override
   void initState() {
     super.initState();
+    RemoteTypingHub.instance.register(_remoteTyping);
     _all = PlaylistRepository.instance.currentChannels
         .where((Channel c) => c.isLive)
         .toList(growable: false);
@@ -60,9 +66,20 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
   @override
   void dispose() {
+    RemoteTypingHub.instance.unregister(_remoteTyping);
     _sub?.cancel();
     _debounce?.cancel();
     super.dispose();
+  }
+
+  /// Le téléphone envoie TOUT le texte d'un coup (son clavier), pas
+  /// une lettre comme les touches du clavier à l'écran. On remplace
+  /// donc la recherche. On répond vrai : le texte est pour nous.
+  bool _onRemoteQuery(String text) {
+    if (!mounted) return false;
+    setState(() => _q = text);
+    _schedule();
+    return true;
   }
 
   void _type(String ch) {
@@ -118,7 +135,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
             children: <Widget>[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
                   color: TvTokens.card,
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
@@ -140,23 +158,28 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                     ? Center(
                         child: Text(
                           _q.trim().isEmpty ? '' : context.l10n.tvNoResult,
-                          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
+                          style: TextStyle(
+                              fontSize: TvDimens.body,
+                              color: TvTokens.mutedDim),
                         ),
                       )
                     : GridView.builder(
                         addAutomaticKeepAlives: false,
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 230,
                           mainAxisExtent: 120,
                           crossAxisSpacing: TvDimens.gutter,
                           mainAxisSpacing: TvDimens.gutter,
                         ),
                         itemCount: res.length,
-                        itemBuilder: (BuildContext context, int i) => TvFocusable(
+                        itemBuilder: (BuildContext context, int i) =>
+                            TvFocusable(
                           scale: TvFocusScale.small,
                           onSelect: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
-                              builder: (_) => TvPlayerScreen(channels: res, startIndex: i),
+                              builder: (_) =>
+                                  TvPlayerScreen(channels: res, startIndex: i),
                             ),
                           ),
                           child: Padding(
@@ -165,14 +188,19 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: <Widget>[
                                 Expanded(
-                                  child: (res[i].logoUrl != null && res[i].logoUrl!.isNotEmpty)
+                                  child: (res[i].logoUrl != null &&
+                                          res[i].logoUrl!.isNotEmpty)
                                       ? CachedNetworkImage(
                                           imageUrl: res[i].logoUrl!,
                                           fit: BoxFit.contain,
                                           memCacheWidth: 200,
-                                          fadeInDuration: const Duration(milliseconds: 150),
-                                          placeholder: (_, __) => Opacity(opacity: 0.35, child: _ini(res[i])),
-                                          errorWidget: (_, __, ___) => _ini(res[i]))
+                                          fadeInDuration:
+                                              const Duration(milliseconds: 150),
+                                          placeholder: (_, __) => Opacity(
+                                              opacity: 0.35,
+                                              child: _ini(res[i])),
+                                          errorWidget: (_, __, ___) =>
+                                              _ini(res[i]))
                                       : _ini(res[i]),
                                 ),
                                 const SizedBox(height: 6),
@@ -199,14 +227,21 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
   Widget _ini(Channel c) => Center(
         child: Text(c.initials,
-            style: TextStyle(fontSize: TvDimens.title, fontWeight: FontWeight.w800, color: TvTokens.muted)),
+            style: TextStyle(
+                fontSize: TvDimens.title,
+                fontWeight: FontWeight.w800,
+                color: TvTokens.muted)),
       );
 }
 
 /// Clavier à l'écran réutilisable (recherche du Cinéma). Rendu IDENTIQUE à
 /// celui de la recherche du Direct (même widget).
 class TvKeyboard extends StatelessWidget {
-  const TvKeyboard({super.key, required this.onType, required this.onBackspace, required this.onClear});
+  const TvKeyboard(
+      {super.key,
+      required this.onType,
+      required this.onBackspace,
+      required this.onClear});
   final ValueChanged<String> onType;
   final VoidCallback onBackspace;
   final VoidCallback onClear;
@@ -217,18 +252,49 @@ class TvKeyboard extends StatelessWidget {
 }
 
 class _Keyboard extends StatelessWidget {
-  const _Keyboard({required this.onType, required this.onBackspace, required this.onClear});
+  const _Keyboard(
+      {required this.onType, required this.onBackspace, required this.onClear});
   final ValueChanged<String> onType;
   final VoidCallback onBackspace;
   final VoidCallback onClear;
 
   static const List<String> _keys = <String>[
-    'A', 'B', 'C', 'D', 'E', 'F',
-    'G', 'H', 'I', 'J', 'K', 'L',
-    'M', 'N', 'O', 'P', 'Q', 'R',
-    'S', 'T', 'U', 'V', 'W', 'X',
-    'Y', 'Z', '0', '1', '2', '3',
-    '4', '5', '6', '7', '8', '9',
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'I',
+    'J',
+    'K',
+    'L',
+    'M',
+    'N',
+    'O',
+    'P',
+    'Q',
+    'R',
+    'S',
+    'T',
+    'U',
+    'V',
+    'W',
+    'X',
+    'Y',
+    'Z',
+    '0',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
   ];
 
   @override
@@ -237,14 +303,20 @@ class _Keyboard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(context.l10n.tvNavSearch,
-            style: TextStyle(fontSize: TvDimens.displayS, fontWeight: FontWeight.w800, color: TvTokens.text)),
+            style: TextStyle(
+                fontSize: TvDimens.displayS,
+                fontWeight: FontWeight.w800,
+                color: TvTokens.text)),
         const SizedBox(height: 16),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: <Widget>[
             for (int i = 0; i < _keys.length; i++)
-              _Key(label: _keys[i], autofocus: i == 0, onTap: () => onType(_keys[i])),
+              _Key(
+                  label: _keys[i],
+                  autofocus: i == 0,
+                  onTap: () => onType(_keys[i])),
             _Key(label: '␣', wide: true, onTap: () => onType(' ')),
             _Key(label: '⌫', onTap: onBackspace),
             _Key(label: '✕', onTap: onClear),
@@ -256,7 +328,11 @@ class _Keyboard extends StatelessWidget {
 }
 
 class _Key extends StatelessWidget {
-  const _Key({required this.label, required this.onTap, this.wide = false, this.autofocus = false});
+  const _Key(
+      {required this.label,
+      required this.onTap,
+      this.wide = false,
+      this.autofocus = false});
   final String label;
   final VoidCallback onTap;
   final bool wide;

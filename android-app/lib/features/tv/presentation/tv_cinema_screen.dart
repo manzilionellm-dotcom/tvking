@@ -29,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
+import '../../remote/domain/remote_typing_hub.dart';
 import '../../cinema/data/cinema_repository.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_language.dart';
@@ -88,6 +89,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   Timer? _searchDebounce;
   late final Widget _keyboard =
       TvKeyboard(onType: _type, onBackspace: _backspace, onClear: _clearQuery);
+  late final bool Function(String text) _remoteTyping = _onRemoteQuery;
 
   /// Élément focalisé → bandeau du haut (sans reconstruire la grille).
   final ValueNotifier<Object?> _focused = ValueNotifier<Object?>(null);
@@ -102,6 +104,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   void initState() {
     super.initState();
     BlackBox.instance.breadcrumb('Cinéma : ${widget.kind.name}');
+    RemoteTypingHub.instance.register(_remoteTyping);
     WatchProgressRepository.instance.addListener(_onExternal);
     _repo.indexVersion.addListener(_onIndex);
     ParentalControls.instance.kidsMode.addListener(_onExternal);
@@ -115,6 +118,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
 
   @override
   void dispose() {
+    RemoteTypingHub.instance.unregister(_remoteTyping);
     WatchProgressRepository.instance.removeListener(_onExternal);
     _repo.indexVersion.removeListener(_onIndex);
     ParentalControls.instance.kidsMode.removeListener(_onExternal);
@@ -169,7 +173,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     // se mettait TOUT SEUL sur la langue de la TV → le client croyait voir
     // tout le catalogue alors qu'il n'en voyait qu'une partie. Le filtre ne
     // s'applique plus que si le client l'a CHOISI lui-même (ligne Langue).
-    final String? saved = (await SharedPreferences.getInstance()).getString(_prefKey);
+    final String? saved =
+        (await SharedPreferences.getInstance()).getString(_prefKey);
     String? lang;
     if (saved != null && saved != 'all' && freq.containsKey(saved)) {
       lang = saved;
@@ -238,7 +243,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final int i = order.indexOf(_lang);
     final String? next = order[(i + 1) % order.length];
     setState(() => _lang = next);
-    await (await SharedPreferences.getInstance()).setString(_prefKey, next ?? 'all');
+    await (await SharedPreferences.getInstance())
+        .setString(_prefKey, next ?? 'all');
     if (_sel.view == _View.category && !_visibleCats.contains(_sel.cat)) {
       final List<CinemaCategory> vis = _visibleCats;
       if (vis.isNotEmpty) _select(_Sel(_View.category, vis.first));
@@ -293,6 +299,16 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   //  Recherche
   // ---------------------------------------------------------
 
+  /// Texte du téléphone. On ne le prend QUE si la recherche du
+  /// cinéma est affichée : sinon on répond faux, et le texte ne
+  /// change pas le catalogue en train d'être parcouru.
+  bool _onRemoteQuery(String text) {
+    if (!mounted || _sel.view != _View.search) return false;
+    setState(() => _q = text);
+    _scheduleSearch();
+    return true;
+  }
+
   void _type(String ch) {
     setState(() => _q += ch);
     _scheduleSearch();
@@ -331,7 +347,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => TvShell(
         applySafeArea: false,
-        child: _movies ? TvMovieDetailScreen(title: t) : TvSeriesScreen(title: t),
+        child:
+            _movies ? TvMovieDetailScreen(title: t) : TvSeriesScreen(title: t),
       ),
     ));
   }
@@ -350,7 +367,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       d = null;
     }
     if (!mounted) return;
-    await openVod(context, VodPlayItem.entry(e), series: d, seriesTitle: series);
+    await openVod(context, VodPlayItem.entry(e),
+        series: d, seriesTitle: series);
   }
 
   Future<void> _onDownload(Download d) async {
@@ -370,12 +388,18 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
         CinemaSheetAction(Icons.play_arrow_rounded, context.l10n.tvCinemaPlay,
             () => openVod(context, item)),
       if (d.status == DownloadStatus.downloading)
-        CinemaSheetAction(Icons.pause_rounded, context.l10n.tvCinemaPauseDownload,
+        CinemaSheetAction(
+            Icons.pause_rounded,
+            context.l10n.tvCinemaPauseDownload,
             () => DownloadsRepository.instance.pause(d.id)),
       if (d.status == DownloadStatus.paused || d.status == DownloadStatus.error)
-        CinemaSheetAction(Icons.download_rounded, context.l10n.tvCinemaResumeDownload,
+        CinemaSheetAction(
+            Icons.download_rounded,
+            context.l10n.tvCinemaResumeDownload,
             () => DownloadsRepository.instance.resume(d.id)),
-      CinemaSheetAction(Icons.delete_outline_rounded, context.l10n.tvCinemaDeleteDownload,
+      CinemaSheetAction(
+          Icons.delete_outline_rounded,
+          context.l10n.tvCinemaDeleteDownload,
           () => DownloadsRepository.instance.delete(d.id)),
     ]);
   }
@@ -408,7 +432,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     final List<CinemaCategory> vis = _visibleCats;
     final List<WatchEntry> cont = _continue;
     final List<Download> dls = _myDownloads;
-    final List<CinemaTitle> recent = _repo.recent(widget.kind, allowedCats: _allowedKeys);
+    final List<CinemaTitle> recent =
+        _repo.recent(widget.kind, allowedCats: _allowedKeys);
     final String langLabel = _lang == null
         ? context.l10n.tvCinemaAllLanguages
         : (CinemaLanguage.labelFor(_lang) ?? _lang!);
@@ -470,8 +495,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 2, 6, 8),
             child: Text(
-              (_movies ? context.l10n.tvNavFilms : context.l10n.tvNavSeries).toUpperCase(),
-              style: TvTokens.ui(12, weight: FontWeight.w700, color: TvTokens.mutedDim, spacing: 2),
+              (_movies ? context.l10n.tvNavFilms : context.l10n.tvNavSeries)
+                  .toUpperCase(),
+              style: TvTokens.ui(12,
+                  weight: FontWeight.w700,
+                  color: TvTokens.mutedDim,
+                  spacing: 2),
             ),
           ),
           ...fixed,
@@ -547,7 +576,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
           ),
         );
       case _View.recent:
-        return _withHero(context, _titlesGrid(_repo.recent(widget.kind, allowedCats: _allowedKeys)));
+        return _withHero(context,
+            _titlesGrid(_repo.recent(widget.kind, allowedCats: _allowedKeys)));
       case _View.category:
         if (_loadingTitles) return _withHero(context, const CinemaLoading());
         if (_titles.isEmpty) {
@@ -555,7 +585,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
             context,
             Center(
               child: Text(context.l10n.tvCinemaEmptyCategory,
-                  style: const TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+                  style: const TextStyle(
+                      fontSize: TvDimens.body, color: TvTokens.mutedDim)),
             ),
           );
         }
@@ -595,7 +626,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
             title: t.name,
             caption: t.year,
             posterUrl: t.posterUrl,
-            progress: (w != null && w.isResumable && !w.upNext) ? w.fraction : null,
+            progress:
+                (w != null && w.isResumable && !w.upNext) ? w.fraction : null,
             downloaded: _movies && _isDownloaded(t.id),
             onFocused: () => _focused.value = t,
             onSelect: () => _openTitle(t),
@@ -604,11 +636,15 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       );
 
   /// Grille d'affiches 5 colonnes (hauteur calculée → liste paresseuse).
-  Widget _grid({required int count, required Widget Function(int) builder, int columns = 5}) {
+  Widget _grid(
+      {required int count,
+      required Widget Function(int) builder,
+      int columns = 5}) {
     if (count == 0) {
       return Center(
         child: Text(context.l10n.tvCinemaEmptyCategory,
-            style: const TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+            style: const TextStyle(
+                fontSize: TvDimens.body, color: TvTokens.mutedDim)),
       );
     }
     return LayoutBuilder(builder: (BuildContext context, BoxConstraints c) {
@@ -638,7 +674,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
           height: 150,
           child: ValueListenableBuilder<Object?>(
             valueListenable: _focused,
-            builder: (BuildContext context, Object? f, Widget? _) => _Hero(item: f, kind: widget.kind),
+            builder: (BuildContext context, Object? f, Widget? _) =>
+                _Hero(item: f, kind: widget.kind),
           ),
         ),
         const SizedBox(height: 10),
@@ -659,7 +696,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
                   color: TvTokens.card,
                   borderRadius: BorderRadius.circular(TvDimens.cardRadius),
@@ -679,14 +717,19 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(context.l10n.tvCinemaIndexing,
-                      style: const TextStyle(fontSize: TvDimens.caption, color: TvTokens.mutedDim)),
+                      style: const TextStyle(
+                          fontSize: TvDimens.caption,
+                          color: TvTokens.mutedDim)),
                 ),
               const SizedBox(height: 12),
               Expanded(
                 child: _results.isEmpty
                     ? Center(
-                        child: Text(_q.trim().isEmpty ? '' : context.l10n.tvNoResult,
-                            style: const TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim)),
+                        child: Text(
+                            _q.trim().isEmpty ? '' : context.l10n.tvNoResult,
+                            style: const TextStyle(
+                                fontSize: TvDimens.body,
+                                color: TvTokens.mutedDim)),
                       )
                     : _grid(
                         count: _results.length,
@@ -785,12 +828,15 @@ class _HeroState extends State<_Hero> {
       title = it.name;
       if (it.year != null) meta.add(it.year!);
       if (it.rating != null) meta.add('★ ${it.rating!.toStringAsFixed(1)}');
-      plot = it.kind == CinemaKind.movie ? (_plotFor == it.id ? _plot : null) : it.plot;
+      plot = it.kind == CinemaKind.movie
+          ? (_plotFor == it.id ? _plot : null)
+          : it.plot;
     } else if (it is WatchEntry) {
       title = it.title;
       if (it.subtitle != null) meta.add(it.subtitle!);
       if (it.durMs > 0 && !it.upNext) {
-        meta.add(context.l10n.tvCinemaResumeAt(formatClock(Duration(milliseconds: it.posMs))));
+        meta.add(context.l10n
+            .tvCinemaResumeAt(formatClock(Duration(milliseconds: it.posMs))));
       }
     } else if (it is Download) {
       title = it.name;
@@ -807,7 +853,8 @@ class _HeroState extends State<_Hero> {
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(meta.join('  ·  '),
-                style: TvTokens.ui(TvDimens.label, weight: FontWeight.w600, color: TvTokens.accentBright)),
+                style: TvTokens.ui(TvDimens.label,
+                    weight: FontWeight.w600, color: TvTokens.accentBright)),
           ),
         if (plot != null)
           Padding(

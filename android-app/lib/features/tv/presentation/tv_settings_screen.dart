@@ -25,6 +25,7 @@ import '../core/tv_dimens.dart';
 import '../../carousel/domain/carousel_config.dart';
 import '../../carousel/presentation/zuno_ring_carousel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../remote/presentation/tv_remote_screen.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
@@ -226,6 +227,12 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         description:
             '${context.l10n.tvDeviceAddressHelp}  ·  OK = ${context.l10n.tvRefreshStatus}',
         onSelect: _busy ? () {} : _refresh,
+      ),
+      _SettingEntry(
+        icon: Icons.settings_remote_rounded,
+        title: context.l10n.tvRemoteTitle,
+        description: context.l10n.tvSettingsRemote,
+        onSelect: () => open(const TvRemoteScreen()),
       ),
       _SettingEntry(
         icon: Icons.dns_rounded,

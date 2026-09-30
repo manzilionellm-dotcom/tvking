@@ -1,14 +1,22 @@
 package com.manzilionellm.tvking_device
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
+import android.media.AudioManager
 import android.os.StatFs
 import android.os.Build
 import android.os.Debug
 import android.os.Process
+import android.os.SystemClock
 import android.provider.Settings
+import android.view.InputDevice
+import android.view.KeyCharacterMap
+import android.view.KeyEvent
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
@@ -31,6 +39,11 @@ import io.flutter.plugin.common.MethodChannel
  *                       ActivityManager.getHistoricalProcessExitReasons). C'est la
  *                       seule source fiable pour distinguer un kill mémoire (LOW_MEMORY),
  *                       un ANR, un crash natif ou un simple arrêt par l'utilisateur.
+ *   remoteKey        -> envoie UNE touche (liste fermée : D-pad, OK, Retour,
+ *                       Chaîne) à NOTRE activité. Ce n'est pas une injection vers
+ *                       les autres applications.
+ *   remoteVolume     -> monte ou baisse d'UN cran le volume MÉDIA du système
+ *                       (AudioManager). Ne passe pas par le lecteur vidéo.
  *
  * Mêmes clés que la MainActivity du build mobile (android_overlay/), pour que
  * le backend voie des données cohérentes quel que soit le build.
@@ -38,10 +51,25 @@ import io.flutter.plugin.common.MethodChannel
  * S'auto-enregistre via GeneratedPluginRegistrant : TOUJOURS présent, même sur
  * le build TV qui n'applique pas apply_cast_patch.sh.
  */
-class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
 
     private var channel: MethodChannel? = null
     private var appContext: Context? = null
+    private var activity: Activity? = null
+
+    // Touches que la télécommande du téléphone a le droit d'envoyer.
+    // Pas de volume ici : le volume est le cran système (remoteVolume),
+    // pour ne pas le confondre avec le son interne du lecteur.
+    private val allowedRemoteKeys = setOf(
+        KeyEvent.KEYCODE_DPAD_UP,
+        KeyEvent.KEYCODE_DPAD_DOWN,
+        KeyEvent.KEYCODE_DPAD_LEFT,
+        KeyEvent.KEYCODE_DPAD_RIGHT,
+        KeyEvent.KEYCODE_DPAD_CENTER,
+        KeyEvent.KEYCODE_BACK,
+        KeyEvent.KEYCODE_CHANNEL_UP,
+        KeyEvent.KEYCODE_CHANNEL_DOWN,
+    )
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         appContext = binding.applicationContext
@@ -170,7 +198,86 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                     result.success(emptyList<Map<String, Any?>>())
                 }
             }
+            // Télécommande du téléphone : une touche de la liste, vers
+            // CETTE activité seulement (dispatchKeyEvent ne quitte pas l'app).
+            "remoteKey" -> dispatchRemoteKey(call, result)
+            // Volume SYSTÈME (barre Android), +1 ou -1. Jamais une valeur
+            // absolue, pour qu'une requête ne puisse pas coller le son à fond.
+            "remoteVolume" -> adjustRemoteVolume(call, result)
             else -> result.notImplemented()
+        }
+    }
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activity = binding.activity
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {
+        activity = null
+    }
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        activity = binding.activity
+    }
+
+    override fun onDetachedFromActivity() {
+        activity = null
+    }
+
+    private fun dispatchRemoteKey(call: MethodCall, result: MethodChannel.Result) {
+        val code = call.argument<Int>("code")
+        val act = activity
+        if (code == null || act == null || code !in allowedRemoteKeys) {
+            result.success(false)
+            return
+        }
+        act.runOnUiThread {
+            try {
+                val now = SystemClock.uptimeMillis()
+                act.dispatchKeyEvent(keyEvent(now, KeyEvent.ACTION_DOWN, code))
+                act.dispatchKeyEvent(keyEvent(now, KeyEvent.ACTION_UP, code))
+                result.success(true)
+            } catch (e: Exception) {
+                result.success(false)
+            }
+        }
+    }
+
+    private fun keyEvent(now: Long, action: Int, code: Int): KeyEvent {
+        return KeyEvent(
+            now,
+            now,
+            action,
+            code,
+            0,
+            0,
+            KeyCharacterMap.VIRTUAL_KEYBOARD,
+            0,
+            0,
+            InputDevice.SOURCE_DPAD,
+        )
+    }
+
+    private fun adjustRemoteVolume(call: MethodCall, result: MethodChannel.Result) {
+        val dir = call.argument<Int>("dir")
+        if (dir != 1 && dir != -1) {
+            result.success(false)
+            return
+        }
+        val am = appContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        if (am == null) {
+            result.success(false)
+            return
+        }
+        try {
+            am.adjustStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                if (dir == 1) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER,
+                AudioManager.FLAG_SHOW_UI,
+            )
+            result.success(true)
+        } catch (e: Exception) {
+            result.success(false)
         }
     }
 
