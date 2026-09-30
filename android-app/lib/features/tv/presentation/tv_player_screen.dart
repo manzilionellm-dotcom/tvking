@@ -9,9 +9,12 @@
 //  la vidéo du chemin texture → l'image passe, comme dans IPTV Smarters & co.
 //
 //  Réglages stabilité (côté natif, cf. NativeVideoView.kt) :
-//    1) décodage matériel MediaCodec + repli logiciel (decoder fallback) ;
-//    2) gros tampon (min 5 s / max 30 s, démarrage 1,5 s) ;
+//    1) décodage vidéo matériel MediaCodec + repli si l'init échoue
+//       (pas de décodeur vidéo FFmpeg : il bloquait des chaînes sur le logo) ;
+//    2) tampon INCHANGÉ (min 5 s / max 45 s, démarrage 1 s, reprise 2 s) —
+//       l'allonger a déjà laissé des chaînes sur le chargement ;
 //    3) watchdog 15 s : aucune progression → reconnexion auto (ré-ouvre l'URL).
+//       Les événements d'un zap précédent sont ignorés (accusé de génération).
 //
 //  D-pad : Haut/Bas (ou Ch+/Ch-) = zap, chiffres = n° de chaîne, OK = barre,
 //  Back = quitter. Logo « The Few » affiché à l'ouverture / au zap.
