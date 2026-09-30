@@ -52,5 +52,17 @@ void main() {
     expect(LiveBarSlots.engine(showStart: true, showSubs: true), 5);
     expect(LiveBarSlots.count(showStart: false, showSubs: false), 4);
     expect(LiveBarSlots.count(showStart: true, showSubs: true), 6);
+    // « Suivre » s'insère après Favori et décale le reste, pas Guide/REC/Favori.
+    expect(LiveBarSlots.follow(false), isNull);
+    expect(LiveBarSlots.follow(true), 3);
+    expect(LiveBarSlots.start(true, showFollow: true), 4);
+    expect(
+      LiveBarSlots.engine(showStart: true, showSubs: true, showFollow: true),
+      6,
+    );
+    expect(
+      LiveBarSlots.count(showStart: true, showSubs: true, showFollow: true),
+      7,
+    );
   });
 }

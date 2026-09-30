@@ -51,6 +51,11 @@ abstract final class ProfileKeys {
   /// le profil 1, qui s'appelle ici `p1`.
   static String timePicks(String id) => 'zuno.time_picks.v1.$id';
 
+  /// Émissions suivies (temps regardé, habitude, épingle) et
+  /// les rappels déjà montrés. Clé neuve, un tiroir par profil.
+  /// Rien ne quitte la box.
+  static String followed(String id) => 'zuno.followed.v1.$id';
+
   /// Liste des profils + lequel est actif + choix au démarrage.
   static const String catalog = 'profiles.catalog.v1';
 
@@ -75,6 +80,7 @@ abstract final class ProfileKeys {
       kidsMode(id),
       reminders(id),
       timePicks(id),
+      followed(id),
     ];
   }
 }
@@ -148,12 +154,15 @@ class FamilyProfile {
     return FamilyProfile(
       id: id,
       name: name,
-      avatar: avatar < 0 ? 0 : (avatar >= avatarCount ? avatarCount - 1 : avatar),
+      avatar:
+          avatar < 0 ? 0 : (avatar >= avatarCount ? avatarCount - 1 : avatar),
       isKids: raw['isKids'] == true,
       createdAtMs: created < 0 ? 0 : created,
     );
   }
 
   static bool _safeId(String id) =>
-      id.isNotEmpty && id.length <= 40 && RegExp(r'^[A-Za-z0-9_]+$').hasMatch(id);
+      id.isNotEmpty &&
+      id.length <= 40 &&
+      RegExp(r'^[A-Za-z0-9_]+$').hasMatch(id);
 }

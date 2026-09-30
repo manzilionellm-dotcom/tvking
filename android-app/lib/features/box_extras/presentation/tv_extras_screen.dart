@@ -9,6 +9,10 @@
 
 import 'package:flutter/material.dart';
 
+import '../../followed/data/followed_flag.dart';
+import '../../followed/data/followed_lead.dart';
+import '../../followed/domain/show_clock.dart';
+import '../../followed/domain/show_lines.dart';
 import '../../missed_show/data/missed_flag.dart';
 import '../../time_picks/data/time_pick_flag.dart';
 import '../../player/data/clear_voice_flag.dart';
@@ -28,6 +32,8 @@ class TvExtrasScreen extends StatefulWidget {
 }
 
 class _TvExtrasScreenState extends State<TvExtrasScreen> {
+  int _lead = kLeadDefault;
+
   @override
   void initState() {
     super.initState();
@@ -45,6 +51,12 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     });
     ImagePrefs.load().then((_) {
       if (mounted) setState(() {});
+    });
+    followedFlag.load().then((_) {
+      if (mounted) setState(() {});
+    });
+    FollowedLead.load().then((int minutes) {
+      if (mounted) setState(() => _lead = minutes);
     });
   }
 
@@ -88,6 +100,18 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _toggleFollowed() async {
+    await followedFlag.load();
+    await followedFlag.set(!followedFlag.value);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _cycleLead() async {
+    final int next = nextLead(_lead);
+    await FollowedLead.set(next);
+    if (mounted) setState(() => _lead = FollowedLead.value);
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool on = missedShowFlag.value;
@@ -100,6 +124,8 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
       ImageEngine.ffmpeg => 'FFmpeg',
       ImageEngine.hardware => 'Matériel',
     };
+    final bool followOn = followedFlag.value;
+    final String code = Localizations.localeOf(context).languageCode;
     return ListView(
       children: <Widget>[
         Text(
@@ -151,6 +177,18 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
                   'Off. OK to turn on. We stop counting, and the row goes away.',
                 ),
           onSelect: _toggleTime,
+        ),
+        ExtrasRow(
+          title: followedWord(code, 'row'),
+          subtitle: followOn
+              ? followedWord(code, 'setOn')
+              : followedWord(code, 'setOff'),
+          onSelect: _toggleFollowed,
+        ),
+        ExtrasRow(
+          title: leadLine(code, _lead),
+          subtitle: leadHint(code),
+          onSelect: _cycleLead,
         ),
         ExtrasRow(
           title: boxText(context, 'Sous-titres', 'Subtitles'),
@@ -262,7 +300,8 @@ class ExtrasRow extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+                style:
+                    TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
               ),
             ],
           ),
