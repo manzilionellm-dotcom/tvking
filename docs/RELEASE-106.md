@@ -3,8 +3,8 @@
 Compte-rendu du 30 septembre 2026. Rien n'a été publié sur la release
 `zuno-tv`. Le Worker de production n'a pas été déployé. `main` n'a pas
 été poussé. Le lecteur 4K (binaire fermé, release `7motion-tv`) n'a
-pas été modifié. L'APK n'a pas été signé avec la clé des box (elle
-est dans les secrets GitHub ; elle n'est pas sur cette machine).
+pas été modifié. Le workflow a signé l'APK avec le secret GitHub
+(certificat identique à celui des box). Cette machine n'a pas la clé.
 
 Cette branche assemble, dans l'ordre, les chantiers ouverts sur la
 104 :
@@ -94,8 +94,8 @@ Sortie finale (30 septembre 2026), code de sortie **0** :
 ```
 
 **338 tests passés, 2 ignorés, 0 échec.** Les 2 ignorés sont
-`panel_box_e2e_test.dart` et `panel_instant_e2e_test.dart` : ils
-demandent `RUN_E2E` et wrangler. Ils n'ont pas été lancés.
+`panel_box_e2e_test.dart` et `panel_instant_e2e_test.dart` : cette
+commande ne pose pas `RUN_E2E`. Ils ont été lancés à part, section 7.
 
 Mesures écrites par cette suite (mémoire, pas un flux) :
 
@@ -175,38 +175,191 @@ que la note 104. Le warning déjà connu `primary` inutilisé dans
 
 ### 5. Décisions pures du panel (sans Worker, sans navigateur)
 
+Relancées le 30 septembre 2026 sur cette machine. Code de sortie
+**0** pour les quatre.
+
+```
+cd android-app && flutter test --reporter expanded \
+  test/features/subscription/box_signal_test.dart \
+  test/features/subscription/activation_pace_test.dart \
+  test/features/subscription/source_privacy_test.dart
+```
+
+```
+00:00 +11: All tests passed!
+```
+
+**11 tests, 0 échec.** Dedans : « canal ouvert : filet 25 s ; coupé :
+rythme 103 », un ordre ne s'applique qu'une fois, rythme 3 s puis
+4 s avec plafond 45 s, une URL M3U ne part qu'avec l'hôte.
+
 ```
 node android-app/cloudflare/box_signal_pure.test.mjs
+```
+
+16 lignes `PASS` puis `PASS box_signal pur`. Gel, note interne qui
+ne part pas, bannissement, ordre déjà vu, « en ligne » / « hors
+ligne », activation, expiration, reprise, renouvellement.
+
+```
+node android-app/cloudflare/zuno_security.test.mjs
+```
+
+```
+33 passed, 0 failed
+```
+
+Dedans, lus dans la sortie : « ancienne box, licence lisible →
+lecture encore possible », « ancienne box sans secret, licence
+lisible → compatibilité », état en direct sans jeton **401**,
+attente sans secret **401**, mauvais secret **401**, accusé sans
+secret **401**, revendeur sur la MAC d'un autre **403**. C'est un
+Worker en mémoire, pas Cloudflare.
+
+```
 node --experimental-strip-types android-app/admin-panel/src/lib/boxLive.test.ts
 ```
 
-Les deux commandes se terminent par `PASS` (code de sortie 0).
-16 contrôles dans le premier (gel, bannissement, ordre déjà vu,
-expiration), 5 assertions dans le second (texte « en ligne »,
-« en attente »). Ce n'est pas un appel au Worker de production.
+`PASS panel boxLive`. Les deux phrases exigées sont
+`en ligne · v103 · appliqué à 12:03:04 · activation` et
+`hors ligne · en attente : suspension`. Aucun clic dans le
+navigateur.
+
+### 6. Compilation de l'APK (GitHub Actions)
+
+Le run qui compile le code avec `e6f8a3fe` **et** sans imports en
+double est vert. Lu dans le journal, pas supposé.
+
+https://github.com/manzilionellm-dotcom/tvking/actions/runs/36775711972
+
+- Commit `644212c0`, workflow `Build Zuno TV`, événement `push`,
+  conclusion **success** (30 septembre 2026, 21:02 UTC).
+- `version visible = 106 (précédente publiée : 102, publication : false, plancher : 106)`
+- `versionCode = 1790801687 · versionName = 106`
+- `1790801687` est au-dessus de `1790642483`.
+- `PUBLIER: false`. Les étapes « Publier sur la release zuno-tv »
+  et « Publier pour la box de test » sont sautées. L'APK est un
+  artefact du run, pas le lien clients.
+- `SIGNING: release`. Le certificat lu dans l'APK est
+  `5145b8e0…9e61`, le même que `EXPECTED_CERT`. La signature a été
+  faite par le workflow avec le secret GitHub, pas depuis cette
+  machine.
+- `NativeVideoView.kt` est compilé par cette étape (le run d'avant,
+  sans le correctif, s'arrêtait dessus).
+
+Deux runs plus anciens sont **rouges**. Ils ne sont pas une 106
+utilisable :
+
+- https://github.com/manzilionellm-dotcom/tvking/actions/runs/36773748899
+  (`a6e25714`) : `setVideoFrameMetadataListener(null)` et imports
+  `Format` / `DecoderReuseEvaluation` en double.
+- https://github.com/manzilionellm-dotcom/tvking/actions/runs/36774033523
+  (`bd910b51`) : l'écouteur null est corrigé, les imports en double
+  restent. Rouge pour ça.
+
+### 7. Panel ↔ box, bout en bout (wrangler local, pas la production)
+
+Wrangler **4.42.1**, `127.0.0.1:8787`, base D1 locale. Aucun
+`wrangler deploy`. Le secret du test (`e2e-admin-secret-not-production`)
+reste dans `android-app/cloudflare/.dev.vars`, ignoré par git.
+
+Les deux fichiers étaient les 2 ignorés de la section 1. Ici
+`RUN_E2E=true`. Code de sortie **0** pour les deux. Les lignes
+`Connection refused` sont le scénario voulu : sonde Xtream vers
+`127.0.0.1:9`, et le test arrête wrangler pour couper le réseau.
+
+**PR #57, canal instantané**
+(`panel_instant_e2e_test.dart`, 30 septembre 2026, 21:04 UTC) :
+
+```
+00:24 +1: All tests passed!
+```
+
+Le test passe, donc les `expect` tiennent. Ils ne s'impriment pas
+en chiffres à part : **401** (état en direct sans jeton, attente
+sans secret, mauvais secret), **403** (autre revendeur : état,
+effacement, renouvellement), **429** (la 31e attente est refusée),
+`GET /api/status` sans secret de box → **200**, corps avec
+`revoked` et sans le mot de passe de la liste (chemin d'une box
+qui ne présente pas encore de secret). La version `103-test`
+remontée par l'attente apparaît dans l'état en direct.
+
+Délais mesurés, de l'ordre du panel jusqu'à l'accusé sur le client
+de test (sous 8 s exigé, sous 12 s pour le retour réseau) :
+
+```
+MESURE activate_secondes=0.223
+MESURE applique_a_epoch_ms=1790802318124
+MESURE suspend_secondes=0.314
+MESURE resume_secondes=0.434
+MESURE block_secondes=0.319
+MESURE resume_secondes=0.122
+MESURE expire_secondes=0.118
+MESURE renew_secondes=0.131
+MESURE source_secondes=0.242
+MESURE source_clear_secondes=0.427
+MESURE message_secondes=0.329
+MESURE theme_secondes=0.333
+MESURE force_update_secondes=0.115
+MESURE featured_secondes=0.321
+MESURE ad_secondes=0.324
+MESURE pricing_secondes=0.321
+MESURE feedback_secondes=0.118
+MESURE home_secondes=0.346
+MESURE servers_secondes=0.321
+MESURE license_secondes=0.309
+MESURE reprise_secondes=0.213
+MESURE retour_reseau_secondes=2.343
+MESURE transfer_secondes=0.207
+```
+
+Le JSON final du test ne garde qu'une valeur par nom. `resume` y
+vaut **0.122** (la deuxième reprise). La première, **0.434**, est
+la ligne imprimée au-dessus. `reprise`, `retour_reseau` et
+`transfer` sont hors de ce JSON. Activation **0,223 s**, message
+**0,329 s**, effacement de source **0,427 s**, retour après coupure
+**2,343 s**. L'accusé lu dans l'état en direct a
+`applied_at` = 1790802318124.
+
+**Flux 103, effacement de liste**
+(`panel_box_e2e_test.dart`, même machine, 21:05 UTC) :
+
+```
+00:10 +1: All tests passed!
+```
+
+```
+MESURE activation_secondes=0.224
+MESURE effacement_secondes=0.222
+MESURE retour_reseau_secondes=0.202
+```
+
+Activation **0,224 s** (sous 12 s). Effacement de la liste A
+**0,222 s** : chaînes, favoris et mot de passe de A partent ; la
+liste d'une autre chaîne reste. Hors ligne, A est encore là.
+Au retour du réseau, A part en **0,202 s** et B reste. Le test
+exige aussi **401** sans jeton, **403** sans droit « sources »,
+**403** d'un autre revendeur, et un effacement sur une autre MAC
+qui ne vide pas cette box.
 
 ## Pas prouvé — seulement sur une vraie box
 
 - **Pas de box.** Pas d'`adb`, pas d'émulateur, pas de flux IPTV,
-  pas de haut-parleur. Aucun des tests ci-dessus n'a ouvert une
-  chaîne.
-- **Pas d'APK signé.** Pas de keystore. Signature, Leanback,
-  `applicationId` et le `versionCode` réel de l'APK ne sont connus
-  qu'une fois le workflow GitHub terminé. S'il est rouge, on ne
-  pose pas l'APK.
-- `NativeVideoView.kt` (ExoPlayer, surface, FFmpeg, copie d'image,
-  diagnostic son) n'est pas couvert par `logic-test`. Une compilation
-  locale est tentée si le SDK Android s'installe ; le résultat est
-  noté à la fin de ce fichier, ou remplacé par le run GitHub.
-- Le push de `claude/zuno-106` déclenche tout seul
-  `build-zuno-tv.yml` (chemins `android-app/**` et le workflow).
-  `PUBLIER` n'est vrai que sur `main` ou avec `publish=true`.
-  Ce run ne réécrit pas `zuno-tv`. `test_box` n'est pas lancé
-  depuis ici : le déclenchement manuel n'a pas été fait (le push
-  suffit pour la vérification, et il ne publie pas).
-- Le Worker Cloudflare n'est pas déployé. Le code du canal
-  (`box_signal.js`, migration `010_box_commands.sql`) est dans la
-  branche, pas en production.
+  pas de haut-parleur. Aucun test n'a ouvert une chaîne. L'APK vert
+  n'a pas été installé ici.
+- `logic-test` ne compile toujours pas ExoPlayer. La preuve de
+  compilation est le run ci-dessus, pas ces 55 tests.
+- Le Worker Cloudflare de production n'est pas déployé. Les délais
+  de la section 7 sont ceux de wrangler sur cette machine
+  (`127.0.0.1:8787`). Le code du canal (`box_signal.js`, migration
+  `010_box_commands.sql`) est dans la branche, pas en production.
+- Aucun clic dans le navigateur du panel. Le texte « en ligne »
+  est une assertion Node, pas un écran.
+- Aucune APK v102 ni v103 n'a été installée contre ce Worker. La
+  compatibilité prouvée est le chemin de code : licence lisible
+  sans secret (section 5) et `GET /api/status` sans secret qui
+  répond 200 (section 7). La chaîne `103-test` est un paramètre
+  du test, pas une box qui tourne la 103.
 - 1080i, AC-3 vers une barre de son, HE-AAC « vieille radio »,
   fréquence 50/60 Hz : non mesurés.
 - Une box déjà en v102, ou une box qui a déjà un APK de test au
