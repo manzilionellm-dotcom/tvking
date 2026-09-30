@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 
+import '../../profiles/data/profile_repository.dart';
+import '../../profiles/domain/profile_policies.dart';
 import '../../security/data/app_pin_settings.dart';
 import '../../security/data/parental_controls.dart';
 import '../core/tv_dimens.dart';
@@ -33,20 +35,51 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
   @override
   void initState() {
     super.initState();
-    AppPinSettings.instance.isUsingDefault().then((bool v) {
-      if (mounted) setState(() => _usingDefaultPin = v);
-    });
+    ProfileRepository.instance.addListener(_rebuild);
+    ParentalControls.instance.kidsMode.addListener(_rebuild);
+    _refreshPin();
+  }
+
+  @override
+  void dispose() {
+    ProfileRepository.instance.removeListener(_rebuild);
+    ParentalControls.instance.kidsMode.removeListener(_rebuild);
+    super.dispose();
+  }
+
+  void _rebuild() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _refreshPin() async {
+    final bool v = await AppPinSettings.instance.isUsingDefault();
+    if (mounted) setState(() => _usingDefaultPin = v);
   }
 
   // ----- Bascule du Mode Enfants -----
   Future<void> _toggleKids(bool wantOn) async {
+    // Profil Enfants : le mode reste allumé. Pour voir toutes les
+    // chaînes, on CHANGE de profil (avec le code), on ne décoche pas.
+    final bool kidsProfile = ProfileRepository.instance.activeIsKids;
+    if (!wantOn &&
+        !KidsProfilePolicy.canDisableKidsMode(isKidsProfile: kidsProfile)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Le profil Enfants garde le mode enfants. '
+            'Changez de profil avec le code pour voir toutes les chaînes.',
+          ),
+        ),
+      );
+      return;
+    }
     // Activer : le foyer choisit d'abord un code (plus de 0000).
-    // Désactiver : ce code est obligatoire (sinon un enfant le
-    // couperait lui-même).
+    // Désactiver : ce code est obligatoire.
     if (wantOn) {
       if (!await AppPinSettings.instance.hasCustomPin()) {
         if (!mounted) return;
-        final String? next = await _pickNewPin(context);
+        final String? next = await pickNewParentalPin(context);
         if (next == null) return;
         try {
           await AppPinSettings.instance.setPin(next);
@@ -67,7 +100,7 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
   Future<void> _changePin() async {
     final bool ok = await _askPin(context, context.l10n.tvCurrentCode);
     if (!ok || !mounted) return;
-    final String? next = await _pickNewPin(context);
+    final String? next = await pickNewParentalPin(context);
     if (next == null) return;
     try {
       await AppPinSettings.instance.setPin(next);
@@ -86,6 +119,8 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
   @override
   Widget build(BuildContext context) {
     final bool kids = ParentalControls.instance.kidsMode.value;
+    final bool kidsProfile = ProfileRepository.instance.activeIsKids;
+    final String who = ProfileRepository.instance.active.name;
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -97,10 +132,22 @@ class _TvParentalScreenState extends State<TvParentalScreen> {
                   color: TvTokens.text)),
           const SizedBox(height: 6),
           Text(
-            'Le Mode Enfants masque automatiquement toutes les chaînes Adulte. '
-            'Sa désactivation et le changement de code demandent le code parental.',
+            'Code du profil « $who ». Le Mode Enfants masque les chaînes Adulte. '
+            'Le couper et changer le code demandent ce code. '
+            'Un autre profil a le sien.',
             style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
           ),
+          if (kidsProfile) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              'Profil Enfants : le mode reste allumé. Les chaînes non adultes '
+              'restent ouvertes.',
+              style: TextStyle(
+                  fontSize: TvDimens.label,
+                  fontWeight: FontWeight.w600,
+                  color: TvTokens.accentBright),
+            ),
+          ],
           const SizedBox(height: 22),
 
           // ----- Carte Mode Enfants -----
@@ -254,7 +301,8 @@ Future<bool> _askPin(BuildContext context, String title) async {
 }
 
 /// Choisit un NOUVEAU code (saisie + confirmation). Retourne le code, ou null.
-Future<String?> _pickNewPin(BuildContext context) async {
+/// Le code est enregistré par l'appelant, sur le profil EN COURS.
+Future<String?> pickNewParentalPin(BuildContext context) async {
   final String title = context.l10n.tvNewPin;
   final String subtitle = context.l10n.tvNewPinSubtitle;
   String? chosen;

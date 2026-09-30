@@ -21,6 +21,7 @@
 //  continue normalement.
 // =========================================================
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -30,6 +31,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../features/profiles/data/active_profile.dart';
+import '../../features/profiles/domain/family_profile.dart';
+import '../../features/profiles/domain/reminder_book.dart';
 import '../../features/subscription/data/subscription_backend.dart';
 
 class NotificationService {
@@ -40,6 +44,12 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   bool _ready = false;
+
+  // Profil dont les alarmes sont posées en ce moment. Au changement,
+  // on retire les siennes (sans effacer son carnet) et on pose celles
+  // du nouveau. Une chaîne en cours de lecture n'est pas coupée.
+  bool _profileListening = false;
+  String _boundProfile = ProfileIds.origin;
 
   // Canal Android dédié aux rappels (obligatoire depuis Android 8).
   static const String _channelId = 'epg_reminders';
@@ -88,6 +98,7 @@ class NotificationService {
 
   /// Initialise le plugin + les fuseaux horaires. Idempotent.
   Future<void> init() async {
+    _listenProfiles();
     if (_ready) return;
     try {
       tzdata.initializeTimeZones();
@@ -123,9 +134,27 @@ class NotificationService {
       );
 
       _ready = true;
+      // Repose les rappels du profil actif (après un redémarrage
+      // ils ne sont plus dans l'horloge Android). Best-effort.
+      await _rescheduleBook(ActiveProfile.instance.id);
     } catch (e) {
       if (kDebugMode) debugPrint('[Notif] init: $e');
     }
+  }
+
+  void _listenProfiles() {
+    if (_profileListening) return;
+    _profileListening = true;
+    _boundProfile = ActiveProfile.instance.id;
+    ActiveProfile.instance.listenable.addListener(_onActiveProfile);
+  }
+
+  void _onActiveProfile() {
+    final String next = ActiveProfile.instance.id;
+    final String prev = _boundProfile;
+    if (next == prev) return;
+    _boundProfile = next;
+    unawaited(_silenceBook(prev).then((_) => _rescheduleBook(next)));
   }
 
   /// Demande la permission de notifier (Android 13+). Renvoie `true`
@@ -142,13 +171,9 @@ class NotificationService {
     }
   }
 
-  /// ID stable d'un rappel pour un (channel, début) donné → permet de
-  /// l'annuler et d'éviter les doublons si on re-tape le même programme.
-  int _idFor(String channelId, int startMs) =>
-      (channelId.hashCode ^ startMs) & 0x7fffffff;
-
-  /// Programme un rappel `leadMinutes` avant le début du programme.
-  /// Renvoie `false` si le créneau est déjà trop proche/passé.
+  /// Programme un rappel `leadMinutes` avant le début du programme,
+  /// dans le carnet du profil EN COURS. Renvoie `false` si le créneau
+  /// est déjà trop proche/passé. N'empêche jamais de regarder la chaîne.
   Future<bool> scheduleProgramReminder({
     required String channelId,
     required String channelName,
@@ -163,23 +188,43 @@ class NotificationService {
     if (!await isEnabled(prefReminders)) return false;
     await requestPermission();
 
-    final int fireMs = startMs - leadMinutes * 60 * 1000;
-    // Trop tard pour un rappel utile.
+    final String profileId = ActiveProfile.instance.id;
+    final ProgramReminder reminder = ProgramReminder(
+      channelId: channelId,
+      channelName: channelName,
+      title: title,
+      startMs: startMs,
+      leadMinutes: leadMinutes,
+    );
+    final bool ok = await _scheduleOs(reminder, profileId);
+    if (!ok) return false;
+    await _remember(profileId, reminder);
+    return true;
+  }
+
+  /// Pose l'alarme Android. Ne touche pas au carnet (l'appelant décide).
+  Future<bool> _scheduleOs(ProgramReminder reminder, String profileId) async {
+    if (!_ready) return false;
+    final int fireMs = reminder.startMs - reminder.leadMinutes * 60 * 1000;
     if (fireMs <= DateTime.now().millisecondsSinceEpoch + 1000) return false;
 
     final tz.TZDateTime when =
         tz.TZDateTime.fromMillisecondsSinceEpoch(tz.UTC, fireMs);
-
-    final DateTime startLocal = DateTime.fromMillisecondsSinceEpoch(startMs);
+    final DateTime startLocal =
+        DateTime.fromMillisecondsSinceEpoch(reminder.startMs);
     final String hhmm =
         '${startLocal.hour.toString().padLeft(2, '0')}:'
         '${startLocal.minute.toString().padLeft(2, '0')}';
-
+    final int id = reminderNotificationId(
+      profileId: profileId,
+      channelId: reminder.channelId,
+      startMs: reminder.startMs,
+    );
     try {
       await _plugin.zonedSchedule(
-        _idFor(channelId, startMs),
-        title,
-        'Commence à $hhmm sur $channelName',
+        id,
+        reminder.title,
+        'Commence à $hhmm sur ${reminder.channelName}',
         when,
         const NotificationDetails(
           android: AndroidNotificationDetails(
@@ -203,10 +248,82 @@ class NotificationService {
     }
   }
 
-  /// Annule un rappel précédemment posé pour ce programme.
-  Future<void> cancelProgramReminder(String channelId, int startMs) async {
+  Future<void> _remember(String profileId, ProgramReminder reminder) async {
     try {
-      await _plugin.cancel(_idFor(channelId, startMs));
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final ReminderBook book =
+          ReminderBook.decode(prefs.getString(ProfileKeys.reminders(profileId)));
+      final ReminderBook next = book.upsert(
+        reminder,
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      await prefs.setString(ProfileKeys.reminders(profileId), next.encode());
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Notif] carnet : $e');
+    }
+  }
+
+  Future<ReminderBook> _loadBook(String profileId) async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      return ReminderBook.decode(prefs.getString(ProfileKeys.reminders(profileId)));
+    } catch (_) {
+      return const ReminderBook();
+    }
+  }
+
+  /// Retire les alarmes Android de [profileId] sans effacer son carnet.
+  /// On les reposera quand ce profil reviendra.
+  Future<void> _silenceBook(String profileId) async {
+    final ReminderBook book = await _loadBook(profileId);
+    for (final ProgramReminder r in book.items) {
+      try {
+        await _plugin.cancel(reminderNotificationId(
+          profileId: profileId,
+          channelId: r.channelId,
+          startMs: r.startMs,
+        ));
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _rescheduleBook(String profileId) async {
+    if (!_ready) return;
+    if (!await isEnabled(prefReminders)) return;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final ReminderBook book = await _loadBook(profileId);
+    for (final ProgramReminder r in book.pending(now)) {
+      await _scheduleOs(r, profileId);
+    }
+  }
+
+  /// Profil supprimé : on annule ses alarmes ET on efface son carnet.
+  /// Le profil 1 n'est jamais concerné (voir [ProfileKeys.disposableKeys]).
+  Future<void> dropBook(String profileId) async {
+    if (ProfileKeys.disposableKeys(profileId).isEmpty) return;
+    await _silenceBook(profileId);
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.remove(ProfileKeys.reminders(profileId));
+    } catch (_) {}
+  }
+
+  /// Annule un rappel du profil en cours pour ce programme.
+  Future<void> cancelProgramReminder(String channelId, int startMs) async {
+    final String profileId = ActiveProfile.instance.id;
+    try {
+      await _plugin.cancel(reminderNotificationId(
+        profileId: profileId,
+        channelId: channelId,
+        startMs: startMs,
+      ));
+    } catch (_) {}
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String key = ProfileKeys.reminders(profileId);
+      final ReminderBook next =
+          ReminderBook.decode(prefs.getString(key)).remove(channelId, startMs);
+      await prefs.setString(key, next.encode());
     } catch (_) {}
   }
 

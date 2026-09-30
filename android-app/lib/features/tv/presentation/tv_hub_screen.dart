@@ -42,12 +42,12 @@ import '../../cinema/domain/cinema_models.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/program_reminder_repository.dart';
 import '../../epg/domain/program_reminder.dart';
-import '../../family/data/family_profile_store.dart';
-import '../../family/domain/family_profile.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/playlist.dart';
+import '../../profiles/data/profile_repository.dart';
+import '../../profiles/domain/profile_policies.dart';
 import '../../security/data/parental_controls.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_dimens.dart';
@@ -65,6 +65,7 @@ import 'tv_diagnostic_screen.dart';
 import 'tv_home_rails.dart';
 import 'tv_live_screen.dart';
 import 'tv_player_screen.dart';
+import 'tv_profile_picker.dart';
 import 'tv_settings_screen.dart';
 import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
@@ -105,6 +106,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
   Timer? _sourcePoll;
   bool _hadChannels = false;
   bool _autoOpened = false;
+  // Le choix de profil était devant l'accueil au moment où les
+  // premières chaînes sont arrivées : on ouvrira Direct dès qu'il
+  // se ferme. On ne bloque pas la chaîne, on attend juste que
+  // l'écran du dessus parte.
+  bool _pendingAutoOpen = false;
   bool _wasActive = false;
   static const Duration _kSourcePollEvery = Duration(seconds: 20);
 
@@ -157,6 +163,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
     TvContentRefresh.notice.addListener(_onRefreshNotice);
     _srcSub = PlaylistRepository.instance.channelsStream.listen(_onChannels);
     _initConnectivity();
+    ProfileRepository.instance.addListener(_onProfileCatalog);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_maybeOfferProfiles());
+    });
     // Source-push direct : voir le commentaire du champ _sourcePoll.
     if (!BootGuard.instance.safeMode) {
       _sourcePoll = Timer.periodic(_kSourcePollEvery, (_) {
@@ -220,7 +230,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _onChange();
     if (!firstArrival || _autoOpened || !mounted) return;
     final ModalRoute<Object?>? route = ModalRoute.of(context);
-    if (route != null && !route.isCurrent) return;
+    // Le choix de profil est devant : on n'ouvre pas une chaîne
+    // par-dessus. On le fera quand il se ferme.
+    if (route != null && !route.isCurrent) {
+      if (StartupPickerSession.shown) _pendingAutoOpen = true;
+      return;
+    }
     if (!_prefsReady) {
       _deferredLiveOpen = true;
       return;
@@ -230,7 +245,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   /// Ouvre la dernière chaîne si l'option est cochée, sinon le Direct
   /// (comportement historique : « le fil entre directement » à la
-  /// première source). Une seule fois.
+  /// première source). Une seule fois. Ne vole jamais un écran.
   void _openFreshSource() {
     if (_autoOpened || !mounted) return;
     if (_tryResumeLast()) return;
@@ -238,6 +253,42 @@ class _TvHubScreenState extends State<TvHubScreen> {
     if (route != null && !route.isCurrent) return;
     _autoOpened = true;
     _openTile(_Tile.live);
+  }
+
+  void _onProfileCatalog() {
+    if (!mounted) return;
+    setState(() {});
+    unawaited(_maybeOfferProfiles());
+  }
+
+  /// Choix de profil APRÈS le premier affichage. Un seul profil, ou
+  /// l'option coupée : on ne montre rien, l'accueil s'ouvre comme avant.
+  Future<void> _maybeOfferProfiles() async {
+    if (!mounted || StartupPickerSession.shown) return;
+    if (!ProfileRepository.instance.isReady) return;
+    final bool offer = StartupProfilePolicy.shouldOffer(
+      askOnStartup: ProfileRepository.instance.catalog.askOnStartup,
+      profileCount: ProfileRepository.instance.catalog.profiles.length,
+    );
+    if (!offer) return;
+    final ModalRoute<Object?>? route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
+    StartupPickerSession.shown = true;
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => const TvProfilePickerScreen()),
+    );
+    if (!mounted) return;
+    _openLiveIfPending();
+  }
+
+  void _openLiveIfPending() {
+    if (!_pendingAutoOpen || _autoOpened) return;
+    if (!_prefsReady) return;
+    if (PlaylistRepository.instance.currentChannels.isEmpty) return;
+    final ModalRoute<Object?>? route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
+    _pendingAutoOpen = false;
+    _openFreshSource();
   }
 
   /// Vrai si on a vraiment lancé la dernière chaîne.
@@ -277,10 +328,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
     await FavoritesRepository.instance.initialize();
     await ProgramReminderRepository.instance.load();
     await WatchProgressRepository.instance.load();
-    await FamilyProfileStore.instance.load();
-    if (FamilyProfileStore.flag.value) {
-      await FamilyProfileStore.instance.apply();
-    }
     if (!mounted) return;
     _prefsReady = true;
     _recentIds = RecentlyWatchedRepository.instance.current;
@@ -288,9 +335,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _rebuildShelves(notify: false);
     final bool resumed = _tryResumeLast();
     if (!resumed && _deferredLiveOpen && !_autoOpened) {
-      _deferredLiveOpen = false;
-      _openFreshSource();
+      final ModalRoute<Object?>? route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent && StartupPickerSession.shown) {
+        _pendingAutoOpen = true;
+      } else {
+        _deferredLiveOpen = false;
+        _openFreshSource();
+      }
     }
+    if (_pendingAutoOpen) _openLiveIfPending();
     if (mounted) setState(() {});
     _schedulePopular();
     final Greeting? g = await GreetingRepository.instance.fetch();
@@ -403,19 +456,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
     };
     final Greeting? g = _greeting;
     final String city = g?.city.trim() ?? '';
-    if (g == null || city.isEmpty) return _withProfile(hello);
+    if (g == null || city.isEmpty) return hello;
     final String temp = g.tempC == null ? '' : '${g.tempC!.round()}°';
     final String place = temp.isEmpty ? city : '$temp $city';
     final String emoji = g.emoji;
-    final String line = emoji.isEmpty ? '$hello · $place' : '$hello · $emoji $place';
-    return _withProfile(line);
-  }
-
-  String _withProfile(String hello) {
-    if (!FamilyProfileStore.flag.value) return hello;
-    final FamilyProfile active = FamilyProfileStore.instance.active;
-    if (active.isHome) return hello;
-    return '$hello · ${active.name}';
+    return emoji.isEmpty ? '$hello · $place' : '$hello · $emoji $place';
   }
 
   Future<void> _initConnectivity() async {
@@ -452,6 +497,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     ParentalControls.instance.kidsMode.removeListener(_scheduleShelves);
     SubscriptionState.instance.removeListener(_onLicenseChange);
     TvContentRefresh.notice.removeListener(_onRefreshNotice);
+    ProfileRepository.instance.removeListener(_onProfileCatalog);
     super.dispose();
   }
 
@@ -650,6 +696,17 @@ class _TvHubScreenState extends State<TvHubScreen> {
                     Row(
                       children: <Widget>[
                         const TvLogo(width: 150),
+                        const SizedBox(width: 18),
+                        _ProfileChip(
+                          onSelect: () {
+                            StartupPickerSession.shown = true;
+                            Navigator.of(context)
+                                .push<bool>(MaterialPageRoute<bool>(
+                                    builder: (_) =>
+                                        const TvProfilePickerScreen()))
+                                .then((_) => _openLiveIfPending());
+                          },
+                        ),
                         const Spacer(),
                         Icon(_netIcon, size: 22, color: TvTokens.muted),
                         const SizedBox(width: 16),
@@ -739,6 +796,45 @@ class _TvHubScreenState extends State<TvHubScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Pastille du profil en cours, à côté du logo. OK ouvre le choix.
+/// Pas d'autofocus : Direct reste la première tuile, le démarrage
+/// ne change pas de geste.
+class _ProfileChip extends StatelessWidget {
+  const _ProfileChip({required this.onSelect});
+  final VoidCallback onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = ProfileRepository.instance.active;
+    return TvFocusBuilder(
+      onSelect: onSelect,
+      builder: (BuildContext context, bool focused) {
+        final Color fg = focused ? TvTokens.onAccent : TvTokens.text;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: focused ? TvTokens.accent : TvTokens.card.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(TvTokens.rButton),
+            border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(ProfileLooks.icon(profile),
+                  size: 22,
+                  color: focused ? TvTokens.onAccent : ProfileLooks.color(profile)),
+              const SizedBox(width: 8),
+              Text(profile.name,
+                  style: TvTokens.ui(TvDimens.label,
+                      weight: FontWeight.w700, color: fg)),
+            ],
+          ),
+        );
+      },
     );
   }
 }

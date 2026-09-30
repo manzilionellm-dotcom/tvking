@@ -17,21 +17,32 @@
 //  le mode enfants. Cinq erreurs de suite bloquent la saisie
 //  pendant cinq minutes.
 //
-//  Il est stocke dans SharedPreferences (cle
-//  `security.app_pin_value`).
+//  Le code du profil 1 reste dans `security.app_pin_value`.
+//  Chaque autre profil a le sien. Cinq erreurs de suite bloquent
+//  CE profil, pas les autres.
 // =========================================================
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../profiles/data/active_profile.dart';
+import '../../profiles/domain/family_profile.dart';
 import 'pin_attempt_policy.dart';
 
 class AppPinSettings {
   AppPinSettings._();
   static final AppPinSettings instance = AppPinSettings._();
 
-  static const String _kPinValue = 'security.app_pin_value';
-  static const String _kFailures = 'security.app_pin_failures';
-  static const String _kLockedUntil = 'security.app_pin_locked_until';
+  /// Clé du profil EN COURS. Le profil 1 garde le nom historique
+  /// `security.app_pin_value` : le code déjà choisi ne bouge pas.
+  String get _kPinValue => ProfileKeys.pin(ActiveProfile.instance.id);
+
+  String get _kFailures => ProfileKeys.isOrigin(ActiveProfile.instance.id)
+      ? 'security.app_pin_failures'
+      : 'security.app_pin_failures.${ActiveProfile.instance.id}';
+
+  String get _kLockedUntil => ProfileKeys.isOrigin(ActiveProfile.instance.id)
+      ? 'security.app_pin_locked_until'
+      : 'security.app_pin_locked_until.${ActiveProfile.instance.id}';
 
   static const PinAttemptPolicy policy = PinAttemptPolicy();
 

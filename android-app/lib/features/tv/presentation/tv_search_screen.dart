@@ -14,6 +14,8 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../profiles/domain/profile_policies.dart';
+import '../../security/data/parental_controls.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_search_text.dart';
@@ -55,6 +57,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     _all = PlaylistRepository.instance.currentChannels
         .where((Channel c) => c.isLive)
         .toList(growable: false);
+    ParentalControls.instance.kidsMode.addListener(_schedule);
     _sub =
         PlaylistRepository.instance.channelsStream.listen((List<Channel> ch) {
       if (!mounted) return;
@@ -66,6 +69,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
 
   @override
   void dispose() {
+    ParentalControls.instance.kidsMode.removeListener(_schedule);
     _sub?.cancel();
     _debounce?.cancel();
     super.dispose();
@@ -108,10 +112,25 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       if (mounted) setState(() => _results = const <Channel>[]);
       return;
     }
+    // Mode enfants : on écarte seulement une chaîne confirmée
+    // adulte. Une chaîne normale, même pas encore classée, reste.
+    final bool kids = ParentalControls.instance.kidsMode.value;
     final List<Channel> r = <Channel>[];
     for (final Channel c in _all) {
       if (r.length >= _maxResults) break;
-      if (_hay(c).contains(t)) r.add(c);
+      if (!_hay(c).contains(t)) continue;
+      if (kids) {
+        final ChannelGenre? g = ChannelPrecompute.cachedGenre(c);
+        if (KidsContentPolicy.hideFromKids(
+          kidsMode: true,
+          cachedIsAdult: g == null ? null : g == ChannelGenre.adult,
+          name: c.name,
+          category: c.category,
+        )) {
+          continue;
+        }
+      }
+      r.add(c);
     }
     if (mounted) setState(() => _results = r);
   }

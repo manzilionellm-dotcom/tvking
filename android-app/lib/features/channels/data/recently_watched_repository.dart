@@ -1,55 +1,59 @@
 // =========================================================
 //  recently_watched_repository.dart — Historique des visionnages
 // =========================================================
-//  Sert à alimenter la section "Continue Watching" de l'accueil.
+//  Sert à la section « récemment regardées » / « continuer ».
 //
-//  Modèle ultra simple en Phase 1 : on stocke juste les IDs
-//  des chaînes ouvertes + un timestamp. Quand on ouvre une
-//  chaîne via le helper `playChannel`, on enregistre l'event.
+//  Chaque profil a SON historique (50 chaînes max). L'ancienne
+//  table `recently_watched` est copiée UNE FOIS dans le tiroir
+//  du profil 1, puis laissée telle quelle (rien n'est effacé).
 //
-//  Limite : on garde les 50 dernières chaînes uniques. Au-delà
-//  on supprime les plus anciennes. Évite que la table gonfle.
-//
-//  Phase ultérieure (3+) : on stockera aussi la position dans
-//  les programmes catch-up (timestamp dans le replay).
+//  Mode incognito (flavor adulte « Privé ») : on n'enregistre
+//  AUCUN historique, quel que soit le profil.
 // =========================================================
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../../core/flavor/flavor.dart';
+import '../../profiles/data/active_profile.dart';
+import '../../profiles/domain/family_profile.dart';
+import '../../profiles/domain/profile_migration.dart';
 import '../../playlists/data/playlist_database.dart';
 
 class RecentlyWatchedRepository {
   RecentlyWatchedRepository._();
-  static final RecentlyWatchedRepository instance =
-      RecentlyWatchedRepository._();
+  static final RecentlyWatchedRepository instance = RecentlyWatchedRepository._();
 
   static const int _kMaxEntries = 50;
+  static const String _kScoped = 'recently_watched_by_profile';
 
   final StreamController<List<String>> _controller =
       StreamController<List<String>>.broadcast();
 
-  /// Stream émettant la liste des IDs de chaînes, triés du plus
-  /// récemment visionné au plus ancien.
+  /// Stream émettant la liste des IDs de chaînes DU PROFIL EN COURS,
+  /// du plus récemment visionné au plus ancien.
   Stream<List<String>> get stream => _controller.stream;
 
   List<String> _cache = <String>[];
   bool _initialized = false;
-
-  /// Profil autre que Maison. null = table SQLite d'origine.
-  String? _scopeId;
-
-  /// Prévenu pour enregistrer l'historique d'un profil à part.
-  void Function(String profileId, List<String> ids)? onScopeChanged;
+  bool _listening = false;
 
   List<String> get current => List<String>.unmodifiable(_cache);
 
   Future<void> initialize() async {
     if (_initialized) return;
     final Database db = await PlaylistDatabase.instance.database;
+    await _ensureSchema(db);
+    await _migrateLegacyOnce(db);
+    _initialized = true;
+    _listenProfile();
+    await _reload();
+  }
 
+  Future<void> _ensureSchema(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS recently_watched (
         channel_id TEXT PRIMARY KEY,
@@ -57,73 +61,91 @@ class RecentlyWatchedRepository {
       )
     ''');
     await db.execute('''
-      CREATE INDEX IF NOT EXISTS idx_recent_ts
-      ON recently_watched(last_watched_at DESC)
+      CREATE TABLE IF NOT EXISTS $_kScoped (
+        profile_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        last_watched_at INTEGER NOT NULL,
+        PRIMARY KEY (profile_id, channel_id)
+      )
     ''');
-
-    final List<Map<String, Object?>> rows = await db.query(
-      'recently_watched',
-      orderBy: 'last_watched_at DESC',
-      limit: _kMaxEntries,
-    );
-    _cache = rows
-        .map((Map<String, Object?> r) => r['channel_id'] as String)
-        .toList();
-    _initialized = true;
-    if (!_controller.isClosed) _controller.add(_cache);
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_recent_profile_ts
+      ON $_kScoped(profile_id, last_watched_at DESC)
+    ''');
   }
 
-  /// Revient à l'historique SQLite (profil Maison).
-  Future<void> bindHome() async {
-    if (_scopeId == null && _initialized) {
-      if (!_controller.isClosed) _controller.add(List<String>.from(_cache));
+  /// Copie l'historique d'avant les profils dans le tiroir du
+  /// profil 1. `INSERT OR IGNORE` ne remplace pas une ligne
+  /// déjà présente (même règle que [ProfileMigration.mergeHistory]).
+  Future<void> _migrateLegacyOnce(Database db) async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final bool done = prefs.getBool(ProfileKeys.historyMigrated) ?? false;
+      if (!ProfileMigration.shouldCopyLegacy(alreadyMigrated: done)) return;
+      await db.execute('''
+        INSERT OR IGNORE INTO $_kScoped (profile_id, channel_id, last_watched_at)
+        SELECT '${ProfileIds.origin}', channel_id, last_watched_at
+        FROM recently_watched
+      ''');
+      await prefs.setBool(ProfileKeys.historyMigrated, true);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Historique] migration profil : $e');
+    }
+  }
+
+  void _listenProfile() {
+    if (_listening) return;
+    _listening = true;
+    ActiveProfile.instance.listenable.addListener(_onProfile);
+  }
+
+  void _onProfile() {
+    if (_initialized) unawaited(_reload());
+  }
+
+  Future<void> _reload() async {
+    final Database db = await PlaylistDatabase.instance.database;
+    for (int attempt = 0; attempt < 2; attempt++) {
+      final String id = ActiveProfile.instance.id;
+      final List<Map<String, Object?>> rows = await db.query(
+        _kScoped,
+        columns: <String>['channel_id'],
+        where: 'profile_id = ?',
+        whereArgs: <String>[id],
+        orderBy: 'last_watched_at DESC',
+        limit: _kMaxEntries,
+      );
+      if (id != ActiveProfile.instance.id) continue;
+      _cache = rows
+          .map((Map<String, Object?> r) => r['channel_id'] as String)
+          .toList(growable: false);
+      if (!_controller.isClosed) _controller.add(_cache);
       return;
     }
-    _scopeId = null;
-    _initialized = false;
-    await initialize();
-  }
-
-  /// Historique d'un autre profil. N'écrit pas dans SQLite.
-  Future<void> bindProfile(String profileId, List<String> ids) async {
-    _scopeId = profileId;
-    _cache = List<String>.from(ids);
-    _initialized = true;
-    if (!_controller.isClosed) _controller.add(List<String>.from(_cache));
   }
 
   Future<void> record(String channelId) async {
-    // Mode incognito (flavor adulte « Privé ») : on n'enregistre AUCUN
-    // historique de visionnage → pas de « Continuer à regarder », rien à
-    // retrouver pour un tiers. Discrétion totale.
     if (FlavorConfig.current.adultOnly) return;
-    if (_scopeId != null) {
-      _cache.remove(channelId);
-      _cache.insert(0, channelId);
-      if (_cache.length > _kMaxEntries) {
-        _cache = _cache.take(_kMaxEntries).toList();
-      }
-      final List<String> copy = List<String>.from(_cache);
-      if (!_controller.isClosed) _controller.add(copy);
-      onScopeChanged?.call(_scopeId!, copy);
-      return;
-    }
     await initialize();
+    final String profileId = ActiveProfile.instance.id;
     final Database db = await PlaylistDatabase.instance.database;
     final int now = DateTime.now().millisecondsSinceEpoch;
 
     await db.insert(
-      'recently_watched',
+      _kScoped,
       <String, Object?>{
+        'profile_id': profileId,
         'channel_id': channelId,
         'last_watched_at': now,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
 
-    // Nettoyage : on garde max 50 entrées
     final List<Map<String, Object?>> rows = await db.query(
-      'recently_watched',
+      _kScoped,
+      columns: <String>['channel_id'],
+      where: 'profile_id = ?',
+      whereArgs: <String>[profileId],
       orderBy: 'last_watched_at DESC',
     );
     if (rows.length > _kMaxEntries) {
@@ -133,38 +155,25 @@ class RecentlyWatchedRepository {
           .toList();
       if (toDrop.isNotEmpty) {
         await db.delete(
-          'recently_watched',
-          where: 'channel_id IN (${toDrop.map((_) => '?').join(',')})',
-          whereArgs: toDrop,
+          _kScoped,
+          where:
+              'profile_id = ? AND channel_id IN (${toDrop.map((_) => '?').join(',')})',
+          whereArgs: <Object>[profileId, ...toDrop],
         );
       }
     }
-
-    _cache = rows
-        .take(_kMaxEntries)
-        .map((Map<String, Object?> r) => r['channel_id'] as String)
-        .toList();
-    // S'assurer que celui qu'on vient d'enregistrer est tout en haut
-    _cache
-      ..remove(channelId)
-      ..insert(0, channelId);
-    if (_cache.length > _kMaxEntries) {
-      _cache.removeRange(_kMaxEntries, _cache.length);
-    }
-
-    if (!_controller.isClosed) _controller.add(_cache);
+    await _reload();
   }
 
-  /// RESTAURE l'historique depuis le serveur (synchro multi-box) UNIQUEMENT
-  /// si le local est vide (nouvelle box / réinstallation). N'écrase JAMAIS un
-  /// historique local existant — le local reste prioritaire (et c'est lui que
-  /// le heartbeat renvoie au serveur). Ordre décroissant préservé.
+  /// Restaure l'historique serveur UNIQUEMENT si le tiroir du
+  /// profil en cours est vide. N'écrase jamais un historique
+  /// déjà là, et n'écrit pas dans le tiroir d'un autre profil.
   Future<void> seedIfEmpty(List<String> ids) async {
     if (ids.isEmpty) return;
-    // Mode incognito (flavor « Privé ») : aucun historique, jamais.
     if (FlavorConfig.current.adultOnly) return;
     await initialize();
-    if (_cache.isNotEmpty) return; // le local gagne
+    if (_cache.isNotEmpty) return;
+    final String profileId = ActiveProfile.instance.id;
     final Database db = await PlaylistDatabase.instance.database;
     final Batch batch = db.batch();
     int ts = DateTime.now().millisecondsSinceEpoch;
@@ -172,23 +181,45 @@ class RecentlyWatchedRepository {
     for (final String id in ids.take(_kMaxEntries)) {
       if (id.isEmpty) continue;
       batch.insert(
-        'recently_watched',
-        <String, Object?>{'channel_id': id, 'last_watched_at': ts},
+        _kScoped,
+        <String, Object?>{
+          'profile_id': profileId,
+          'channel_id': id,
+          'last_watched_at': ts,
+        },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       kept.add(id);
-      ts -= 1; // garde l'ordre (plus récent en premier)
+      ts -= 1;
     }
     if (kept.isEmpty) return;
     await batch.commit(noResult: true);
-    _cache = kept;
-    if (!_controller.isClosed) _controller.add(_cache);
+    await _reload();
   }
 
+  /// Vide l'historique du profil en cours seulement.
   Future<void> clear() async {
+    await initialize();
+    final String profileId = ActiveProfile.instance.id;
     final Database db = await PlaylistDatabase.instance.database;
-    await db.delete('recently_watched');
-    _cache = <String>[];
-    if (!_controller.isClosed) _controller.add(_cache);
+    await db.delete(
+      _kScoped,
+      where: 'profile_id = ?',
+      whereArgs: <String>[profileId],
+    );
+    await _reload();
+  }
+
+  /// Oublie l'historique d'un profil supprimé. Jamais le profil 1.
+  Future<void> dropProfile(String profileId) async {
+    if (profileId == ProfileIds.origin) return;
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    await db.delete(
+      _kScoped,
+      where: 'profile_id = ?',
+      whereArgs: <String>[profileId],
+    );
+    if (ActiveProfile.instance.id == profileId) await _reload();
   }
 }
