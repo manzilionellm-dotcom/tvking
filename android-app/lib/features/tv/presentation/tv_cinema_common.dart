@@ -21,6 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../cinema/data/watch_progress.dart';
+import '../../cinema/domain/resume_start.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../../vod/data/download_repository.dart';
 import '../../vod/domain/vod_movie.dart';
@@ -165,7 +166,9 @@ Future<void> openVod(
 }) async {
   await WatchProgressRepository.instance.load();
   final WatchEntry? prev = WatchProgressRepository.instance.get(item.id);
-  final Duration startAt = fromStart || prev == null ? Duration.zero : prev.resumeAt;
+  // Même règle pour la rangée « Reprendre », la fiche, et « Depuis le début ».
+  final Duration startAt =
+      ResumeStart.decide(entry: prev, fromStart: fromStart).at;
   final String? local = await offlinePathFor(item.id);
   if (!context.mounted) return;
   await Navigator.of(context).push(
