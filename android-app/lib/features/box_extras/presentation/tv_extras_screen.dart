@@ -7,12 +7,10 @@
 
 import 'package:flutter/material.dart';
 
-import '../../phone_remote/presentation/phone_remote_screen.dart';
 import '../../voice_search/data/voice_search.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
 import '../../tv/core/tv_tokens.dart';
-import '../../tv/presentation/tv_shell.dart';
 import '../box_text.dart';
 
 class TvExtrasScreen extends StatefulWidget {
@@ -62,21 +60,6 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
         const SizedBox(height: 18),
         _Row(
           autofocus: true,
-          title: boxText(context, 'Téléphone', 'Phone'),
-          subtitle: boxText(
-            context,
-            'QR code : le téléphone devient la télécommande.',
-            'QR code: the phone becomes the remote.',
-          ),
-          onSelect: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const TvShell(child: PhoneRemoteScreen()),
-              ),
-            );
-          },
-        ),
-        _Row(
           title: boxText(context, 'Voix', 'Voice'),
           subtitle: voiceOn
               ? boxText(

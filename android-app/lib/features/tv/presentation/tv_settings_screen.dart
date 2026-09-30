@@ -28,6 +28,7 @@ import '../../playlists/data/playlist_repository.dart';
 import '../../box_extras/box_text.dart';
 import '../../box_extras/presentation/tv_extras_screen.dart';
 import '../../profiles/data/profile_repository.dart';
+import '../../remote/presentation/tv_remote_screen.dart';
 import '../data/startup_preference.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_profiles_screen.dart';
@@ -257,13 +258,19 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         onSelect: _busy ? () {} : _refresh,
       ),
       _SettingEntry(
+        icon: Icons.settings_remote_rounded,
+        title: context.l10n.tvRemoteTitle,
+        description: context.l10n.tvSettingsRemote,
+        onSelect: () => open(const TvRemoteScreen()),
+      ),
+      _SettingEntry(
         icon: Icons.phone_android_rounded,
         title: boxText(context, 'En plus', 'Extras'),
-        value: boxText(context, 'Téléphone', 'Phone'),
+        value: boxText(context, 'Voix', 'Voice'),
         description: boxText(
           context,
-          'Téléphone et voix. Chaque fonction se coupe sans toucher à la chaîne.',
-          'Phone and voice. Each feature turns off without touching the channel.',
+          'Recherche à la voix. Elle se coupe sans toucher à la chaîne.',
+          'Voice search. It turns off without touching the channel.',
         ),
         onSelect: () => open(const TvExtrasScreen()),
       ),
