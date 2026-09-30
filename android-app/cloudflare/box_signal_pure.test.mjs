@@ -6,6 +6,7 @@ import {
   isOnline,
   kindForAdminAction,
   kindForBlock,
+  kindForLicensePatch,
   SIGNAL_ONLINE_MS,
 } from './box_signal.js';
 
@@ -37,6 +38,11 @@ const fresh = commandsToApply([
 ], seen);
 ok(fresh.length === 1 && fresh[0].id === 3, 'un ordre déjà vu ne se rejoue pas');
 ok(ADMIN_ACTION_KIND.mark_paid === 'activate', 'marquer payé = activation');
+ok(kindForLicensePatch({ status: 'active', expires_at: Date.now() - 5000 }) === 'expire',
+  'date déjà passée = expiration, même si le statut dit encore actif');
+ok(kindForLicensePatch({ status: 'active' }) === 'resume',
+  'remettre actif, sans date = reprise');
+ok(kindForLicensePatch({ plan: 'yearly' }) === 'renew', 'changement de plan = renouvellement');
 
 console.log(fail ? `${fail} failed` : 'PASS box_signal pur');
 process.exit(fail ? 1 : 0);

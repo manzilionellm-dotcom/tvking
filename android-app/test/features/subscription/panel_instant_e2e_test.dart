@@ -96,7 +96,12 @@ void main() {
       final Map<String, dynamic> oldStatus =
           await _send('GET', '/api/status/$_mac');
       expect(oldStatus['status'], 200, reason: 'ancien statut sans secret');
-      expect(oldStatus['body'].toString().contains('source_rev'), isTrue);
+      // Sur une base neuve, la table des listes n'existe pas encore :
+      // le numéro de source est alors absent (comportement 103).
+      // `revoked` est toujours là, et aucun secret n'est demandé.
+      expect(oldStatus['body'].toString().contains('revoked'), isTrue,
+          reason: oldStatus['body'].toString());
+      expect(oldStatus['body'].toString().contains(_pass), isFalse);
 
       final String resellerA = await _reseller(
         adminToken,
@@ -548,12 +553,20 @@ void main() {
       worker = await _startWorker(persist.path);
       final int mark2 = SignalInbox.instance.appliedKinds.length;
       final Stopwatch back = Stopwatch()..start();
-      final Map<String, dynamic> afterNet = await _send(
-        'PATCH',
-        '/api/v1/devices/$deviceId',
-        token: adminToken,
-        body: <String, dynamic>{'block_status': 'active'},
-      );
+      // La D1 locale peut répondre « database is locked » une fois,
+      // juste après le redémarrage du Worker. On réessaie : c'est
+      // le fichier SQLite de wrangler, pas un refus de l'API.
+      Map<String, dynamic> afterNet = <String, dynamic>{};
+      for (int i = 0; i < 15; i++) {
+        afterNet = await _send(
+          'PATCH',
+          '/api/v1/devices/$deviceId',
+          token: adminToken,
+          body: <String, dynamic>{'block_status': 'active'},
+        );
+        if (afterNet['status'] == 200) break;
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
       expect(afterNet['status'], 200, reason: afterNet['body'].toString());
       await _waitUntil(
         () => SignalInbox.instance.appliedKinds.skip(mark2).contains('resume'),
@@ -581,15 +594,40 @@ void main() {
       expect(enrollFresh['status'], 200, reason: enrollFresh['body'].toString());
       final http.Client client = http.Client();
       try {
-        final Stopwatch transferSw = Stopwatch()..start();
+        // Les messages / thèmes déjà envoyés sont en file pour tout
+        // le parc. On les laisse de côté : on mesure le transfert.
+        final http.Response drained = await client.get(
+          Uri.parse('$_base/api/box/wait/${Uri.encodeComponent(fresh)}?after=0&fleet_after=0&timeout=200'),
+          headers: <String, String>{
+            'Accept': 'application/json',
+            'X-Device-Secret': boxSecret,
+          },
+        );
+        expect(drained.statusCode, 200, reason: drained.body);
+        int fleetAfter = 0;
+        final Object? drainedJson = jsonDecode(drained.body);
+        if (drainedJson is Map<String, dynamic>) {
+          final List<dynamic> fleet =
+              drainedJson['fleet'] as List<dynamic>? ?? <dynamic>[];
+          for (final Object? row in fleet) {
+            if (row is Map && row['id'] is num) {
+              final int id = (row['id'] as num).toInt();
+              if (id > fleetAfter) fleetAfter = id;
+            }
+          }
+        }
         final Future<http.Response> waiting = client.get(
-          Uri.parse('$_base/api/box/wait/$fresh?after=0&fleet_after=0&timeout=8000'),
+          Uri.parse(
+            '$_base/api/box/wait/${Uri.encodeComponent(fresh)}'
+            '?after=0&fleet_after=$fleetAfter&timeout=8000',
+          ),
           headers: <String, String>{
             'Accept': 'application/json',
             'X-Device-Secret': boxSecret,
           },
         );
         await Future<void>.delayed(const Duration(milliseconds: 400));
+        final Stopwatch transferSw = Stopwatch()..start();
         final Map<String, dynamic> moved = await _send(
           'POST',
           '/api/v1/transfer',
@@ -597,13 +635,14 @@ void main() {
           body: <String, dynamic>{'old_mac': _other, 'new_mac': fresh},
         );
         expect(moved['status'], 200, reason: moved['body'].toString());
-        final http.Response got = await waiting.timeout(const Duration(seconds: 10));
+        final http.Response got =
+            await waiting.timeout(const Duration(seconds: 10));
         transferSw.stop();
         final double transferS = transferSw.elapsedMilliseconds / 1000.0;
         // ignore: avoid_print
         print('MESURE transfer_secondes=$transferS');
-        expect(got.statusCode, 200);
-        expect(got.body.contains('transfer'), isTrue);
+        expect(got.statusCode, 200, reason: got.body);
+        expect(got.body.contains('transfer'), isTrue, reason: got.body);
         expect(got.body.contains(_pass), isFalse);
         expect(transferS, lessThan(8));
       } finally {
@@ -730,15 +769,54 @@ Future<void> _stopWorker(Process process) async {
 }
 
 Future<void> _freeDevPort() async {
+  // `ps` tronque la ligne : on lit /proc, sinon le redémarrage
+  // du Worker (coupure réseau) trouve le port encore pris.
   const String script = r'''
-for pid in $(ps -eo pid,args | awk '/[w]rangler dev --port 8787/ {print $1}'); do
-  kill -9 "$pid" 2>/dev/null || true
-done
-for pid in $(ps -eo pid,args | awk '/[w]orkerd serve/ {print $1}'); do
-  kill -9 "$pid" 2>/dev/null || true
-done
+import os, signal
+port = 8787
+skip = {os.getpid(), os.getppid()}
+inodes = set()
+for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+    try:
+        lines = open(path)
+    except FileNotFoundError:
+        continue
+    next(lines, None)
+    for line in lines:
+        parts = line.split()
+        if int(parts[1].split(":")[-1], 16) == port and parts[3] == "0A":
+            inodes.add(parts[9])
+pids = set()
+for pid in os.listdir("/proc"):
+    if not pid.isdigit() or int(pid) in skip:
+        continue
+    fd = f"/proc/{pid}/fd"
+    try:
+        names = os.listdir(fd)
+    except OSError:
+        names = []
+    for name in names:
+        try:
+            target = os.readlink(f"{fd}/{name}")
+        except OSError:
+            continue
+        if target.startswith("socket:[") and target[8:-1] in inodes:
+            pids.add(int(pid))
+    try:
+        args = open(f"/proc/{pid}/cmdline", "rb").read().split(b"\x00")
+    except OSError:
+        continue
+    # Jetons séparés : le texte de CE script contient « 8787 »
+    # mais pas l'option --port, donc il ne se tue pas lui-même.
+    if b"--port" in args and b"8787" in args:
+        pids.add(int(pid))
+for pid in pids:
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
 ''';
-  await Process.run('bash', <String>['-c', script]);
+  await Process.run('python3', <String>['-c', script]);
   for (int i = 0; i < 25; i++) {
     final ProcessResult probe = await Process.run('python3', <String>[
       '-c',

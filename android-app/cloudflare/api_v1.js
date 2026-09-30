@@ -69,6 +69,7 @@ import {
 } from './source_revoke.js';
 import {
   kindForBlock,
+  kindForLicensePatch,
   loadBoxLive,
   signalFleet,
   signalMac,
@@ -3105,17 +3106,6 @@ async function assertLicenseActor(env, user, licenseRow) {
     return errResp('forbidden', 'Cette licence ne vous appartient pas', 403);
   }
   return null;
-}
-
-function kindForLicensePatch(body) {
-  if (body.status === 'expired' || body.status === 'inactive') return 'expire';
-  if (body.status === 'frozen') return 'suspend';
-  if (body.status === 'banned') return 'block';
-  if (body.status === 'active') return 'resume';
-  const exp = Number(body.expires_at);
-  if (Number.isFinite(exp) && exp > 0 && exp <= Date.now()) return 'expire';
-  if (body.expires_at !== undefined || body.plan !== undefined) return 'renew';
-  return 'license';
 }
 
 async function signalLicenseId(env, licenseId, kind) {

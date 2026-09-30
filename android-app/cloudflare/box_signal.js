@@ -66,6 +66,20 @@ export function kindForBlock(status) {
   return 'resume';
 }
 
+/// PATCH d'une licence. Une date déjà passée est une expiration,
+/// même si le statut envoyé est encore « active ».
+export function kindForLicensePatch(body) {
+  const b = body && typeof body === 'object' ? body : {};
+  if (b.status === 'expired' || b.status === 'inactive') return 'expire';
+  if (b.status === 'frozen') return 'suspend';
+  if (b.status === 'banned') return 'block';
+  const exp = Number(b.expires_at);
+  if (Number.isFinite(exp) && exp > 0 && exp <= Date.now()) return 'expire';
+  if (b.expires_at !== undefined || b.plan !== undefined) return 'renew';
+  if (b.status === 'active') return 'resume';
+  return 'license';
+}
+
 /// Durée demandée par la box, bornée. Une valeur absente = 20 s.
 export function clampTimeout(raw) {
   const n = Number(raw);
