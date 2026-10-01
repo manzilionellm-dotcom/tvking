@@ -14,6 +14,8 @@ class AudioFixesTest {
         assertEquals("zuno.audio.fix.ffmpeg", AudioFixes.KEY_FFMPEG)
         assertEquals("zuno.audio.fix.platform", AudioFixes.KEY_PLATFORM)
         assertEquals("zuno.audio.fix.session_fallback", AudioFixes.KEY_SESSION_WIDE)
+        assertEquals("zuno.audio.focus.android", AudioFixes.KEY_ANDROID_FOCUS)
+        assertFalse(AudioFixes.androidFocus)
     }
 
     @Test

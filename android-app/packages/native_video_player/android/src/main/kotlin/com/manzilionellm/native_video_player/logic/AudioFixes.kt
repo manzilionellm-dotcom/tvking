@@ -28,6 +28,17 @@ object AudioFixes {
      */
     const val KEY_SESSION_WIDE: String = "zuno.audio.fix.session_fallback"
 
+    /**
+     * Interrupteur de REPLI du correctif « focus audio » : vrai = Media3 gère
+     * le focus comme avant (et baisse le son à 20 % quand une autre app le
+     * demande). Faux par défaut : Zuno gère le focus lui-même, sans baisse.
+     * Voir [AudioFocusPolicy].
+     */
+    const val KEY_ANDROID_FOCUS: String = "zuno.audio.focus.android"
+
+    @Volatile
+    var androidFocus: Boolean = false
+
     @Volatile
     var probe: Boolean = false
 

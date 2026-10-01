@@ -314,21 +314,37 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _controller.setFrameRateMatch(ImagePrefs.frameRateMatch);
   }
 
-  // Couper le son quand on QUITTE / minimise l'app (Home, multitâche) : pas de
-  // lecture en arrière-plan sur TV. Quitter l'app = quitter, point. On reprend
-  // le direct au retour dans l'app.
+  // Quitter / minimiser l'app (Home, multitâche) : AUCUNE lecture hors de
+  // l'app. Avant, on mettait en pause : le décodeur, la sortie son et le
+  // focus audio restaient vivants pendant que la box faisait autre chose,
+  // et au retour la voix sonnait « dans un trou ». Maintenant on ARRÊTE
+  // (décodeur et sortie son rendus) et on rouvre au retour, comme un zap.
+  // Réglage de repli « Hors app : pause » = ancien comportement.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
+        if (!_appActive) break; // déjà fait (hidden suit paused)
         _appActive = false;
-        _controller.pause();
+        if (NativeVideoController.backgroundPauseOnly) {
+          BlackBox.instance.info('SON', 'app en arrière-plan : pause (réglage de repli)');
+          _controller.pause();
+        } else {
+          BlackBox.instance.info('SON', 'app en arrière-plan : lecture arrêtée, rien ne joue hors de l\'app');
+          _controller.suspendForBackground();
+        }
       case AppLifecycleState.resumed:
+        if (_appActive) break;
         _appActive = true;
         _lastProgress = DateTime.now();
-        _controller.play();
+        if (NativeVideoController.backgroundPauseOnly) {
+          _controller.play();
+        } else {
+          BlackBox.instance.info('SON', 'retour dans l\'app : chaîne rouverte au direct');
+          _controller.resumeFromBackground();
+        }
       case AppLifecycleState.inactive:
         break; // transitions brèves (dialogue…) → on ne coupe pas
     }

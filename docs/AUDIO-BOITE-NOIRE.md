@@ -250,3 +250,25 @@ Une fois vrai, **toutes** les chaînes AAC repassaient par le décodeur de la bo
 - Que le repli process-wide était bien **la** cause entendue : la fiche de la version précédente ne notait pas le repli. La nouvelle version le note : si le son redevient « radio », la fiche doit montrer `repli box : ACTIF` ou `décodé par : box`. Si elle montre `FFmpeg` et `aucun` repli pendant un son mauvais, la cause est ailleurs.
 - La **comparaison PCM** « sortie identique avant / après 50 zaps » demande le vrai lecteur Android : non exécutée ici.
 - Les compteurs vivants sur une vraie box (les événements `onAudioTrackReleased` / `onAudioDecoderReleased` doivent bien arriver à chaque zap).
+
+## Son « dans un trou » (comme la musique pendant un appel) : focus audio et lecture hors de l'app (1er octobre 2026, soir)
+
+**Indice terrain** : après avoir quitté l'app (Home) puis être revenu, la voix change et sonne lointaine, « derrière une porte ». Même symptôme dans 7 MOTION téléphone (lecteur mpv, pas Media3) → la cause est dans ce que les deux ont en commun : le **focus audio Android**.
+
+**Cause** : Media3 avec `handleAudioFocus = true` applique tout seul la « baisse » (`AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK`) demandée par une autre app ou un bip : notre son passe à **20 %** (`AudioFocusManager.VOLUME_MULTIPLIER_DUCK = 0.2`) — en aval des sondes, donc invisible dans « Points de mesure » — et ne remonte que si le système renvoie `AUDIOFOCUS_GAIN`, ce qui n'arrive pas toujours sur ces box. Le son reste à 20 % jusqu'au zap suivant (`openCurrent` redemande le focus). En arrière-plan, l'ancienne **pause** gardait décodeur, AudioTrack et focus vivants pendant que la box faisait autre chose.
+
+**Correctif** (`NativeVideoView.kt`, `logic/AudioFocusPolicy.kt`) :
+- Zuno demande le focus lui-même (`AudioFocusRequest`, `setWillPauseWhenDucked(false)`) et applique `AudioFocusPolicy` : `CAN_DUCK` → **ignoré** (jamais de baisse) ; `LOSS_TRANSIENT` → pause, reprise au `GAIN` ; `LOSS` → pause ; `GAIN` → reprise seulement si c'est nous qui avions mis en pause.
+- Arrière-plan (`suspend`) : **arrêt** (volume 0, `stop()`, `clearMediaItems()`, focus rendu) au lieu d'une pause ; retour (`resume` ou `play`) : réouverture comme un zap (direct au bord du direct, film à sa position).
+- Fiche / boîte noire : chaque événement de focus est écrit (« Focus audio : … »), plus « Session audio Android n°… » et « Lectures audio actives sur la box : N (…) » (`AudioManager.registerAudioPlaybackCallback`, API 26+) qui compte les sons simultanés, les nôtres compris.
+- Interrupteurs de repli : `zuno.audio.focus.android` (« Focus : Android » = Media3 gère, ancien comportement) et `zuno.player.bg_pause_only` (« Hors app : pause » = ancien comportement). Faux par défaut.
+
+### PROUVÉ (tests exécutés, `logic-test`, 104 tests, 0 échec)
+
+- `AudioFocusPolicyTest` : la baisse demandée est ignorée (son entier) ; perte passagère → pause puis reprise au GAIN ; un GAIN sans pause de notre fait ne relance pas ; perte définitive → pause.
+
+### PAS PROUVÉ (seulement sur la box)
+
+- Que le ducking Media3 était bien ce que Lionel entendait : la fiche de la version précédente ne notait pas le focus. La nouvelle note chaque événement : si le son sonne « dans un trou », la boîte noire doit contenir « Focus audio : … » ou « Lectures audio actives … → deux sons en même temps » juste avant.
+- Qu'Android accorde le focus à notre demande sur cette box (sinon la ligne « demande REFUSÉE » apparaît).
+- La réouverture au retour (Home → app) : à vérifier qu'elle ne laisse pas d'écran noir.

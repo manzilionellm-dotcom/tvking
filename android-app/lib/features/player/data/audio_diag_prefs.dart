@@ -22,27 +22,58 @@ class AudioDiagPrefs {
   /// comportement (une panne FFmpeg → la box pour toutes les chaînes).
   static const String sessionWideKey = 'zuno.audio.fix.session_fallback';
 
+  /// Repli « focus audio » : vrai = Media3 gère le focus (baisse à 20 %).
+  static const String androidFocusKey = 'zuno.audio.focus.android';
+
+  /// Repli « arrière-plan » : vrai = pause (ancien), faux = arrêt propre.
+  static const String bgPauseKey = 'zuno.player.bg_pause_only';
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
     var platform = false;
     var sessionWide = false;
+    var androidFocus = false;
+    var bgPause = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
       ffmpeg = prefs.getBool(ffmpegKey) ?? false;
       platform = prefs.getBool(platformKey) ?? false;
       sessionWide = prefs.getBool(sessionWideKey) ?? false;
+      androidFocus = prefs.getBool(androidFocusKey) ?? false;
+      bgPause = prefs.getBool(bgPauseKey) ?? false;
     } catch (_) {
       probe = false;
       ffmpeg = false;
       platform = false;
       sessionWide = false;
+      androidFocus = false;
+      bgPause = false;
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
     NativeVideoController.preferPlatformAac = platform;
     NativeVideoController.sessionWideFallback = sessionWide;
+    NativeVideoController.androidAudioFocus = androidFocus;
+    NativeVideoController.backgroundPauseOnly = bgPause;
+  }
+
+  static Future<void> setAndroidFocus(bool value) async {
+    NativeVideoController.androidAudioFocus = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(androidFocusKey, value);
+    } catch (_) {}
+  }
+
+  static Future<void> setBackgroundPauseOnly(bool value) async {
+    NativeVideoController.backgroundPauseOnly = value;
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(bgPauseKey, value);
+    } catch (_) {}
   }
 
   static Future<void> setSessionWideFallback(bool value) async {

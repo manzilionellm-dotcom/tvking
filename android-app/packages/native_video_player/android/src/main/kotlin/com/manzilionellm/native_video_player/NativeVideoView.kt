@@ -6,6 +6,9 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.media.AudioPlaybackConfiguration
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -54,6 +57,7 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
+import com.manzilionellm.native_video_player.logic.AudioFocusPolicy
 import com.manzilionellm.native_video_player.logic.AudioFixes
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
@@ -254,6 +258,34 @@ class NativeVideoView(
     /** Pourquoi cette chaîne est sur la box (null = FFmpeg). Pour la fiche. */
     private var boxFailure: AacRoute.Failure? = null
 
+    // ---- FOCUS AUDIO géré par Zuno (01/10/2026) ----------------------------
+    // Media3 (handleAudioFocus = true) baissait le son à 20 % dès qu'une
+    // autre app ou un bip demandait le son « avec baisse », et ne le
+    // remontait que si le système renvoyait GAIN, ce qui n'arrive pas
+    // toujours : son « dans un trou » jusqu'au zap suivant. Ici on demande
+    // le focus nous-mêmes et on applique [AudioFocusPolicy] : jamais de
+    // baisse, pause seulement sur une vraie perte. [AudioFixes.androidFocus]
+    // vrai = ancien comportement (Media3 gère).
+    private val audioManager: AudioManager? =
+        context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private var focusRequest: AudioFocusRequest? = null
+    private var focusHeld = false
+    private var pausedByFocus = false
+    private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        handler.post { onAudioFocusChange(change) }
+    }
+
+    /**
+     * Lecture arrêtée parce que l'app est passée en arrière-plan (Home) :
+     * décodeur et AudioTrack rendus, focus abandonné. « play » ou « resume »
+     * rouvre la chaîne au direct (ou le film à sa position).
+     */
+    private var suspended = false
+
+    /** Autres lectures audio actives sur la box (API 26+), pour la fiche. */
+    private var playbackCallback: AudioManager.AudioPlaybackCallback? = null
+    private var lastPlaybackLine: String? = null
+
     /**
      * Vrai dès que le lecteur a été « prêt » une fois dans cette session.
      * Le filet des 8 s ne se déclenche que si FFmpeg n'a JAMAIS rendu la
@@ -433,6 +465,148 @@ class NativeVideoView(
         handler.postDelayed(positionPump, 500)
         handler.postDelayed(pictureWatch, 2_000)
         handler.post { emitImageCaps() }
+        watchOtherPlaybacks()
+    }
+
+    // ---- focus audio : demande, abandon, décision ----------------------------
+
+    /** Demande le focus pour nous (sauf si Media3 le gère : réglage de repli). */
+    private fun requestOwnFocus() {
+        if (AudioFixes.androidFocus) return
+        val am = audioManager ?: return
+        if (focusHeld) return
+        val granted = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val attrs = android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(
+                        if (clearVoiceEnabled) android.media.AudioAttributes.CONTENT_TYPE_SPEECH
+                        else android.media.AudioAttributes.CONTENT_TYPE_MOVIE,
+                    )
+                    .build()
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attrs)
+                    // Pas de pause automatique sur « baisse demandée » : on décide.
+                    .setWillPauseWhenDucked(false)
+                    .setAcceptsDelayedFocusGain(false)
+                    .setOnAudioFocusChangeListener(focusListener, handler)
+                    .build()
+                focusRequest = req
+                am.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
+            }
+        } catch (_: RuntimeException) {
+            AudioManager.AUDIOFOCUS_REQUEST_FAILED
+        }
+        focusHeld = granted == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        pausedByFocus = false
+        if (!focusHeld) emit("audioDiag", "Focus audio : demande REFUSÉE par Android (une autre app le garde).")
+    }
+
+    private fun abandonOwnFocus() {
+        if (!focusHeld) return
+        focusHeld = false
+        pausedByFocus = false
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                focusRequest?.let { am.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(focusListener)
+            }
+        } catch (_: RuntimeException) {
+            // Un abandon raté ne doit pas bloquer la suite.
+        }
+    }
+
+    /** Sur le fil principal. Applique [AudioFocusPolicy] et le dit à la boîte noire. */
+    private fun onAudioFocusChange(change: Int) {
+        if (released) return
+        val d = AudioFocusPolicy.decide(change, pausedByFocus, player.isPlaying)
+        pausedByFocus = d.pausedByFocus
+        emit("audioDiag", d.line)
+        when (d.action) {
+            AudioFocusPolicy.Action.PAUSE -> try { player.pause() } catch (_: RuntimeException) {}
+            AudioFocusPolicy.Action.RESUME -> try {
+                if (!reconnect.holdMute) player.volume = 1f
+                player.play()
+            } catch (_: RuntimeException) {}
+            AudioFocusPolicy.Action.IGNORE, AudioFocusPolicy.Action.NONE -> Unit
+        }
+    }
+
+    /**
+     * Combien de lectures audio tournent sur la box en même temps que nous
+     * (API 26+). Deux sons qui se battent = ce compteur à 2 pendant qu'on joue.
+     * Une ligne par changement, jamais plus.
+     */
+    private fun watchOtherPlaybacks() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val am = audioManager ?: return
+        val cb = object : AudioManager.AudioPlaybackCallback() {
+            override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
+                val list = configs ?: return
+                val types = list.map { c ->
+                    when (c.audioAttributes.contentType) {
+                        android.media.AudioAttributes.CONTENT_TYPE_MOVIE -> "film"
+                        android.media.AudioAttributes.CONTENT_TYPE_SPEECH -> "parole"
+                        android.media.AudioAttributes.CONTENT_TYPE_MUSIC -> "musique"
+                        android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION -> "bip système"
+                        else -> "autre"
+                    }
+                }
+                val line = "Lectures audio actives sur la box : ${list.size}" +
+                    (if (types.isEmpty()) "" else " (${types.joinToString(", ")})") +
+                    (if (list.size > 1) " → deux sons en même temps" else "")
+                if (line != lastPlaybackLine) {
+                    lastPlaybackLine = line
+                    handler.post { if (!released) emit("audioDiag", line) }
+                }
+            }
+        }
+        try {
+            am.registerAudioPlaybackCallback(cb, handler)
+            playbackCallback = cb
+        } catch (_: RuntimeException) {
+            playbackCallback = null
+        }
+    }
+
+    private fun unwatchOtherPlaybacks() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val cb = playbackCallback ?: return
+        playbackCallback = null
+        try {
+            audioManager?.unregisterAudioPlaybackCallback(cb)
+        } catch (_: RuntimeException) {
+        }
+    }
+
+    /**
+     * Arrière-plan (Home, multitâche) : on ARRÊTE, on ne met pas en pause.
+     * Une pause garde le décodeur, l'AudioTrack et le focus vivants pendant
+     * que la box fait autre chose ; au retour, c'est ce qui sonnait faux.
+     */
+    private fun suspendForBackground() {
+        if (released || suspended) return
+        suspended = true
+        if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+        silenceForHandoff()
+        abandonOwnFocus()
+        emit("audioDiag", "Arrière-plan : lecture arrêtée, décodeur et sortie son rendus, focus rendu.")
+    }
+
+    /** Retour au premier plan : on rouvre, comme un zap (direct au bord du direct). */
+    private fun resumeFromBackground() {
+        if (released || !suspended) return
+        suspended = false
+        if (currentUrl == null) return
+        emit("audioDiag", "Retour : chaîne rouverte proprement (nouveau décodeur, nouvelle sortie son).")
+        openCurrent(if (vodMode) lastKnownPos else null)
+        armFfmpegReadyWatchdog()
     }
 
     /**
@@ -663,7 +837,9 @@ class NativeVideoView(
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLivePlaybackSpeedControl(liveSpeed)
-            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            // Focus audio : Zuno le gère lui-même (false), sauf réglage de repli.
+            // Relu à chaque ouverture dans openCurrent.
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ AudioFixes.androidFocus)
             // OFF : ne pas demander à la TV de changer de fréquence HDMI
             // (50 Hz ↔ 60 Hz). Sur beaucoup de box ce changement coupe
             // l'image (écran noir de une à plusieurs secondes) et décale
@@ -863,8 +1039,22 @@ class NativeVideoView(
                     }
                     openCurrent(if (vodMode) lastKnownPos else null)
                 } else if (!released) {
-                    player.setAudioAttributes(movieAudioAttributes(), true)
+                    player.setAudioAttributes(movieAudioAttributes(), AudioFixes.androidFocus)
                 }
+                result.success(null)
+            }
+            "setAndroidFocus" -> {
+                // Repli : vrai = Media3 reprend le focus (avec sa baisse à 20 %).
+                // Pris en compte à la prochaine ouverture.
+                AudioFixes.androidFocus = call.arguments == true
+                result.success(null)
+            }
+            "suspend" -> {
+                suspendForBackground()
+                result.success(null)
+            }
+            "resume" -> {
+                resumeFromBackground()
                 result.success(null)
             }
             "setAudioProbe" -> {
@@ -953,14 +1143,25 @@ class NativeVideoView(
                     result.success(null)
                     return
                 }
+                // Lecture arrêtée pour l'arrière-plan : « play » rouvre
+                // (film : à sa position). Un simple play() sur un lecteur
+                // vidé ne ferait rien.
+                if (suspended) {
+                    resumeFromBackground()
+                    result.success(null)
+                    return
+                }
                 // Pendant une reconnexion le volume reste à 0 : le remettre
                 // ici ferait ressortir l'ancien tampon. La nouvelle session
                 // le remonte toute seule (unmuteIfThisSession).
+                pausedByFocus = false
+                requestOwnFocus()
                 if (!reconnect.holdMute) player.volume = 1f
                 player.play()
                 result.success(null)
             }
             "pause" -> {
+                pausedByFocus = false
                 player.pause()
                 result.success(null)
             }
@@ -1258,6 +1459,7 @@ class NativeVideoView(
      */
     private fun silenceForHandoff() {
         if (released) return
+        pausedByFocus = false
         sessions.open()
         sessionOpenedAt = SystemClock.elapsedRealtime()
         audioChosenForSession = false
@@ -1301,7 +1503,11 @@ class NativeVideoView(
         dartEpoch?.let { emit("ack", it) }
         if (holdView.visibility == View.VISIBLE) emit("holdFrame", true)
         if (released || token != sessions.generation) return
-        player.setAudioAttributes(movieAudioAttributes(), true)
+        // Focus : Zuno (défaut) ou Media3 (repli). Relu à chaque ouverture :
+        // le réglage arrive après la construction du lecteur.
+        player.setAudioAttributes(movieAudioAttributes(), AudioFixes.androidFocus)
+        if (AudioFixes.androidFocus) abandonOwnFocus() else requestOwnFocus()
+        suspended = false
         clearVoiceProcessor.enabled = clearVoiceEnabled
         setProbeEnabled(AudioFixes.probe)
         // Nouvelle ouverture : les pourcentages de la chaîne d'avant
@@ -1654,6 +1860,30 @@ class NativeVideoView(
         PlayerCensus.audioTrackClosed()
     }
 
+    /** Numéro de session audio Android : un numéro qui change = un AudioTrack neuf. */
+    override fun onAudioSessionIdChanged(eventTime: AnalyticsListener.EventTime, audioSessionId: Int) {
+        if (!fresh(eventTime)) return
+        emit("audioDiag", "Session audio Android n°$audioSessionId")
+    }
+
+    /**
+     * Media3 (mode repli) retient la lecture sur une perte de focus passagère.
+     * On le dit, pour que la fiche montre d'où vient un silence.
+     */
+    override fun onPlaybackSuppressionReasonChanged(eventTime: AnalyticsListener.EventTime, reason: Int) {
+        if (!fresh(eventTime)) return
+        if (reason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS) {
+            emit("audioDiag", "Focus audio (Media3) : perte passagère → lecture retenue par Android.")
+        }
+    }
+
+    override fun onPlayWhenReadyChanged(eventTime: AnalyticsListener.EventTime, playWhenReady: Boolean, reason: Int) {
+        if (!fresh(eventTime)) return
+        if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
+            emit("audioDiag", "Focus audio (Media3) : PERDU → lecture mise en pause par Android.")
+        }
+    }
+
     /** Coupure de la sortie son (craquement / trou). Bilan au plus toutes les 30 s. */
     override fun onAudioUnderrun(
         eventTime: AnalyticsListener.EventTime,
@@ -1753,6 +1983,8 @@ class NativeVideoView(
      */
     private fun releasePlayer() {
         if (released) return
+        abandonOwnFocus()
+        unwatchOtherPlaybacks()
         released = true
         // Annule le filet FFmpeg : plus de re-prepare après la mort du lecteur.
         ffmpegWatchToken++

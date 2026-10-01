@@ -180,7 +180,13 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
-        _c.pause();
+        // Même règle que le direct : rien ne joue hors de l'app. Le natif
+        // garde la position ; « OK » au retour rouvre le film à cet endroit.
+        if (NativeVideoController.backgroundPauseOnly) {
+          _c.pause();
+        } else {
+          _c.suspendForBackground();
+        }
         _saveProgress(flush: true);
       case AppLifecycleState.resumed:
       case AppLifecycleState.inactive:

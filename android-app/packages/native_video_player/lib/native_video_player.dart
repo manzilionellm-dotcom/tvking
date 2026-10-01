@@ -154,6 +154,16 @@ class NativeVideoController extends ChangeNotifier {
   /// processus passent à la box après une seule panne).
   static bool sessionWideFallback = false;
 
+  /// Repli du correctif « focus audio » : vrai = Media3 gère le focus
+  /// (et baisse le son à 20 % quand une autre app le demande, le son
+  /// « dans un trou »). Faux par défaut : Zuno gère, sans baisse.
+  static bool androidAudioFocus = false;
+
+  /// Arrière-plan : vrai = ancienne pause (décodeur et sortie son gardés
+  /// vivants hors de l'app). Faux par défaut : arrêt propre, réouverture
+  /// au retour.
+  static bool backgroundPauseOnly = false;
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -164,6 +174,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setKeepFfmpeg', keepFfmpegAudio);
       ch.invokeMethod<void>('setPreferPlatformAac', preferPlatformAac);
       ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
+      ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
     }
   }
 
@@ -300,6 +311,7 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setKeepFfmpeg', keepFfmpegAudio);
     ch.invokeMethod<void>('setPreferPlatformAac', preferPlatformAac);
     ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
+    ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;
@@ -637,6 +649,17 @@ class NativeVideoController extends ChangeNotifier {
   void play() => _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('play');
 
   void pause() => _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('pause');
+
+  /// App en arrière-plan (Home, multitâche) : ARRÊT, pas pause. Le natif
+  /// rend le décodeur, l'AudioTrack et le focus audio. Hors Android, une
+  /// pause suffit.
+  void suspendForBackground() =>
+      _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('suspend');
+
+  /// Retour au premier plan après [suspendForBackground] : la chaîne est
+  /// rouverte au direct (un film, à sa position), comme un zap.
+  void resumeFromBackground() =>
+      _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('resume');
 
   /// Libère le décodeur natif et ATTEND qu'il ait rendu la surface.
   ///

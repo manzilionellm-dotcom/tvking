@@ -88,6 +88,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _ffmpeg = NativeVideoController.keepFfmpegAudio;
     _platform = NativeVideoController.preferPlatformAac;
     _sessionWide = NativeVideoController.sessionWideFallback;
+    _androidFocus = NativeVideoController.androidAudioFocus;
+    _bgPause = NativeVideoController.backgroundPauseOnly;
     _load();
   }
 
@@ -95,6 +97,21 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     final bool next = !_sessionWide;
     setState(() => _sessionWide = next);
     await AudioDiagPrefs.setSessionWideFallback(next);
+  }
+
+  bool _androidFocus = false;
+  bool _bgPause = false;
+
+  Future<void> _toggleAndroidFocus() async {
+    final bool next = !_androidFocus;
+    setState(() => _androidFocus = next);
+    await AudioDiagPrefs.setAndroidFocus(next);
+  }
+
+  Future<void> _toggleBgPause() async {
+    final bool next = !_bgPause;
+    setState(() => _bgPause = next);
+    await AudioDiagPrefs.setBackgroundPauseOnly(next);
   }
 
   Future<void> _load() async {
@@ -185,6 +202,18 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _sessionWide,
               onSelect: _toggleSessionWide,
             ),
+            const SizedBox(width: 12),
+            _Toggle(
+              label: _androidFocus ? 'Focus : Android' : 'Focus : Zuno',
+              on: _androidFocus,
+              onSelect: _toggleAndroidFocus,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
+              label: _bgPause ? 'Hors app : pause' : 'Hors app : arrêt',
+              on: _bgPause,
+              onSelect: _toggleBgPause,
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -197,7 +226,11 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'cette ouverture. Repli : « par chaîne » (défaut) = une panne FFmpeg '
           'n\'envoie à la box que la chaîne concernée ; « session entière » = '
           'ancien comportement, toutes les chaînes passent à la box après une '
-          'seule panne. Coupé, rien ne change.',
+          'seule panne. Focus : « Zuno » (défaut) = jamais de baisse de volume '
+          'quand une autre app ou un bip demande le son (le son « dans un trou ») ; '
+          '« Android » = ancien comportement (baisse à 20 %). Hors app : '
+          '« arrêt » (défaut) = en quittant l\'app le son est coupé et rendu, la '
+          'chaîne est rouverte au retour ; « pause » = ancien comportement.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
         ),
         const SizedBox(height: 14),
