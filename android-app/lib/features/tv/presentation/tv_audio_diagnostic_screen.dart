@@ -33,6 +33,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _probe = false;
   bool _ffmpeg = false;
   bool _platform = false;
+  bool _sessionWide = false;
 
   @override
   void initState() {
@@ -40,7 +41,14 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _probe = NativeVideoController.audioProbeEnabled;
     _ffmpeg = NativeVideoController.keepFfmpegAudio;
     _platform = NativeVideoController.preferPlatformAac;
+    _sessionWide = NativeVideoController.sessionWideFallback;
     _load();
+  }
+
+  Future<void> _toggleSessionWide() async {
+    final bool next = !_sessionWide;
+    setState(() => _sessionWide = next);
+    await AudioDiagPrefs.setSessionWideFallback(next);
   }
 
   Future<void> _load() async {
@@ -125,6 +133,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _platform,
               onSelect: _togglePlatform,
             ),
+            const SizedBox(width: 12),
+            _Toggle(
+              label: _sessionWide ? 'Repli : session entière' : 'Repli : par chaîne',
+              on: _sessionWide,
+              onSelect: _toggleSessionWide,
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -134,7 +148,10 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'FFmpeg : réessaie le décodeur logiciel ; s\'il ne démarre pas en 8 s, '
           'la box reprend. Box AAC : à la prochaine chaîne, l\'AAC passe par le '
           'décodeur de la box (comme ExoPlayer). S\'il échoue, FFmpeg reprend '
-          'cette ouverture. Coupé, rien ne change.',
+          'cette ouverture. Repli : « par chaîne » (défaut) = une panne FFmpeg '
+          'n\'envoie à la box que la chaîne concernée ; « session entière » = '
+          'ancien comportement, toutes les chaînes passent à la box après une '
+          'seule panne. Coupé, rien ne change.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
         ),
         const SizedBox(height: 14),

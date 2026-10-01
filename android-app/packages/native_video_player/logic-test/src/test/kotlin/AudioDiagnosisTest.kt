@@ -279,6 +279,31 @@ class AudioDiagnosisTest {
         assertTrue(dirty.contains("token=[secret]"), dirty)
     }
 
+    /** La fiche nomme le repli box et sa cause, et la ligne « Cycle ». */
+    @Test
+    fun leRapportDitLeRepliBoxEtLeCycle() {
+        val fail = com.manzilionellm.native_video_player.logic.AacRoute.Failure(
+            key = 42, reason = com.manzilionellm.native_video_player.logic.AacRoute.Reason.TIMEOUT, zap = 7,
+        )
+        val cycle = com.manzilionellm.native_video_player.logic.PlayerCensus.Snapshot(
+            zap = 31, seenBefore = 2, playersAlive = 1, audioDecodersAlive = 1, audioTracksAlive = 1,
+            boxFailure = fail, boxCount = 1, sessionWide = false,
+        )
+        val s = AudioSnapshot(
+            mime = "audio/mp4a-latm", codecs = "mp4a.40.2", inSampleRate = 48_000, inChannels = 2,
+            decoder = "OMX.amlogic.aac.decoder", outSampleRate = 48_000, outChannels = 2,
+            outEncoding = "PCM 16 bits", cycle = cycle,
+        )
+        val v = AudioDiagnosis.verdicts(s)
+        assertTrue(v[0].startsWith("REPLI : l'AAC de cette chaîne passe par le décodeur de la box depuis le zap n°7 (délai de 8 s)"), v.toString())
+        val r = AudioDiagnosis.report(s)
+        assertTrue(r.contains("Cycle : zap n°31 · chaîne déjà ouverte avant (3e fois) · lecteurs vivants 1 · décodeurs audio vivants 1 · AudioTrack vivants 1 · repli box : ACTIF pour cette chaîne (délai de 8 s, au zap n°7)"), r)
+        // Deux décodeurs vivants : le chevauchement est dit.
+        val two = s.copy(cycle = cycle.copy(audioDecodersAlive = 2, boxFailure = null))
+        assertTrue(AudioDiagnosis.verdicts(two).any { it.startsWith("CHEVAUCHEMENT") })
+        assertTrue(AudioDiagnosis.report(two).contains("⚠ plus d'un actif"))
+    }
+
     private fun spectrum(clip: Double, band: AudioSpectrum.Band, ratio: Double) = AudioSpectrum.Judgement(
         band = band,
         highRatio = ratio,

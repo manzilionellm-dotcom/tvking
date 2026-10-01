@@ -212,3 +212,41 @@ Pour trancher, Lionel : **allumer Spectre**, rouvrir France 24 (le chiffre du pa
 | FFmpeg ~0,8 % aux quatre sondes, box large (une voie ≥ 40 %) | FFmpeg n'a pas les aigus sur cette chaîne. L'essai box reste coupé par défaut |
 | Mélange bas mais une voie large | `spectre_annulation`. On ne change pas le décodeur |
 | Box à ≤ 24 kHz | la règle déjà sûre `decodeur_sans_sbr` : revenir à FFmpeg |
+
+## Défaut d'état entre deux chaînes : repli AAC par chaîne (1er octobre 2026, soir)
+
+**Indice terrain** : le son « vieille radio / mélangé » n'apparaît pas à la première ouverture ; il apparaît après beaucoup de zapping, au retour sur des chaînes déjà vues.
+
+**Cause trouvée dans le code** (`NativeVideoView.kt`, v103 → v106) : `forceBoxAacDecoder` était un seul booléen pour tout le processus (`companion object`), mis à vrai **pour toujours** par :
+
+1. le filet des 8 s : `ffmpegAudioActive && player.playbackState != STATE_READY` à la 8e seconde après `setUrl` — donc aussi un simple **re-tamponnage réseau** à cet instant, pas seulement « FFmpeg n'a jamais démarré » ;
+2. une erreur du rendu FFmpeg (`ExoPlaybackException` TYPE_RENDERER, ex. paquet TS abîmé après une reconnexion) ;
+3. une erreur de sortie son ou de décodeur pendant que FFmpeg décode.
+
+Une fois vrai, **toutes** les chaînes AAC repassaient par le décodeur de la box : le chemin de la v98, celui qui faisait le son « vieille radio » sur cette box. Les chaînes entendues bonnes au début (FFmpeg) devenaient mauvaises au retour (box). Rien ne le disait dans la fiche. Seul « FFmpeg : réessayer » le défaisait.
+
+**Correctif (le plus petit)** :
+
+- `logic/AacRoute.kt` : la mémoire de repli est **par chaîne** (`url.hashCode()`, 32 entrées max, aucune adresse gardée). Une chaîne où FFmpeg a vraiment échoué reste sur la box sans attendre 8 s au retour ; les autres gardent FFmpeg.
+- Le filet des 8 s ne se déclenche que si le lecteur n'a **jamais** été prêt dans la session (`readyThisSession`), plus sur un re-tamponnage.
+- Chaque repli écrit une ligne « Repli : … » dans la boîte noire, avec la cause (délai de 8 s / erreur du moteur FFmpeg / erreur de la sortie son / erreur du décodeur) et le numéro du zap.
+- **Interrupteur de repli** : `zuno.audio.fix.session_fallback` (Réglages → Diagnostic du son → « Repli : par chaîne / session entière »). Vrai = exactement l'ancien comportement. Faux par défaut.
+- Rien d'autre ne change : chemin audio, FFmpeg par défaut pour l'AAC, sondes et essais coupés par défaut.
+
+**Fiche** : nouvelle ligne `Cycle : zap n°… · chaîne déjà ouverte avant (…e fois) · lecteurs vivants … · décodeurs audio vivants … · AudioTrack vivants … · repli box : …` (`logic/PlayerCensus.kt`, alimenté par `onAudioDecoderInitialized/Released`, `onAudioTrackInitialized/Released`, création / `release()` du lecteur). Plus d'un vivant → « ⚠ plus d'un actif » et verdict `CHEVAUCHEMENT`.
+
+**Cycle de vie vérifié en lecture de code** : une seule vue plein écran = un seul `ExoPlayer`, réutilisé au zap (`stop()` + `clearMediaItems()` + `setMediaItem()` + `prepare()`), libéré une fois (`released`, `release()` idempotent). Le `stop()` rend le décodeur audio et l'AudioTrack (événements Media3 comptés). Pas de cache de lecteurs ni de chaîne préchargée côté Dart. Le second lecteur légitime est la sonde de l'écran Diagnostic réseau. Les reprises (`openCurrent`) sont gardées par le jeton de session ; un seul `prepare()` à la fois (`ReconnectGate.retryPending`).
+
+### PROUVÉ (tests exécutés, `logic-test`, 100 tests, 0 échec)
+
+- `AacRouteTest.cinquanteZapsUnePanneSeuleLaChaineEnPanneVaSurLaBox` : 50 zaps sur 12 chaînes, une panne (délai 8 s) sur la chaîne 7 au zap 20 → au retour, la chaîne 0 reste **FFmpeg**, la chaîne 7 est **box** (cause, zap 20), **2** ouvertures en mode box seulement (les deux retours sur la 7), 1 chaîne mémorisée.
+- `AacRouteTest.modeSessionEntiereReproduitLeDefautDAvant` : même scénario avec l'interrupteur « session entière » → la chaîne 0 passe à la **box** : c'est le défaut observé, reproduit.
+- `PlayerCensusTest.cinquanteZapsEntreFormatsLaissentUnSeulDeChaque` : 50 zaps entre AAC-LC 48 kHz stéréo, MP2 44,1 kHz, AAC 5.1, HE-AAC 24 kHz, retour à la première → lecteurs 1, décodeurs 1, AudioTrack 1, 14e ouverture ; le test **échoue** s'il reste plus d'un vivant.
+- `PlayerCensusTest.unDecodeurNonRenduEstSignale` : une fuite simulée (ancien décodeur non rendu) → « plus d'un actif ».
+- `AudioDiagnosisTest.leRapportDitLeRepliBoxEtLeCycle` : la fiche affiche `REPLI : … depuis le zap n°7 (délai de 8 s)` et la ligne `Cycle`.
+
+### PAS PROUVÉ (seulement sur la box)
+
+- Que le repli process-wide était bien **la** cause entendue : la fiche de la version précédente ne notait pas le repli. La nouvelle version le note : si le son redevient « radio », la fiche doit montrer `repli box : ACTIF` ou `décodé par : box`. Si elle montre `FFmpeg` et `aucun` repli pendant un son mauvais, la cause est ailleurs.
+- La **comparaison PCM** « sortie identique avant / après 50 zaps » demande le vrai lecteur Android : non exécutée ici.
+- Les compteurs vivants sur une vraie box (les événements `onAudioTrackReleased` / `onAudioDecoderReleased` doivent bien arriver à chaque zap).

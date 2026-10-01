@@ -18,23 +18,40 @@ class AudioDiagPrefs {
   static const String ffmpegKey = 'zuno.audio.fix.ffmpeg';
   static const String platformKey = 'zuno.audio.fix.platform';
 
+  /// Repli du correctif « repli AAC par chaîne » : vrai = ancien
+  /// comportement (une panne FFmpeg → la box pour toutes les chaînes).
+  static const String sessionWideKey = 'zuno.audio.fix.session_fallback';
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
     var platform = false;
+    var sessionWide = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
       ffmpeg = prefs.getBool(ffmpegKey) ?? false;
       platform = prefs.getBool(platformKey) ?? false;
+      sessionWide = prefs.getBool(sessionWideKey) ?? false;
     } catch (_) {
       probe = false;
       ffmpeg = false;
       platform = false;
+      sessionWide = false;
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
     NativeVideoController.preferPlatformAac = platform;
+    NativeVideoController.sessionWideFallback = sessionWide;
+  }
+
+  static Future<void> setSessionWideFallback(bool value) async {
+    NativeVideoController.sessionWideFallback = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(sessionWideKey, value);
+    } catch (_) {}
   }
 
   static Future<void> setProbe(bool value) async {

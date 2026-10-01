@@ -148,6 +148,12 @@ class NativeVideoController extends ChangeNotifier {
   /// Faux par défaut : l'AAC reste sur FFmpeg.
   static bool preferPlatformAac = false;
 
+  /// Interrupteur de REPLI du correctif « repli AAC par chaîne ».
+  /// Faux par défaut : une panne FFmpeg n'envoie à la box QUE la chaîne
+  /// concernée. Vrai = ancien comportement (toutes les chaînes du
+  /// processus passent à la box après une seule panne).
+  static bool sessionWideFallback = false;
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -157,6 +163,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setAudioProbe', audioProbeEnabled);
       ch.invokeMethod<void>('setKeepFfmpeg', keepFfmpegAudio);
       ch.invokeMethod<void>('setPreferPlatformAac', preferPlatformAac);
+      ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
     }
   }
 
@@ -292,6 +299,7 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setAudioProbe', audioProbeEnabled);
     ch.invokeMethod<void>('setKeepFfmpeg', keepFfmpegAudio);
     ch.invokeMethod<void>('setPreferPlatformAac', preferPlatformAac);
+    ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;

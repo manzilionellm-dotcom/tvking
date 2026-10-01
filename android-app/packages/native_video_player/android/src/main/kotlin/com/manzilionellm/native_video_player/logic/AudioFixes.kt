@@ -21,6 +21,13 @@ object AudioFixes {
     const val KEY_FFMPEG: String = "zuno.audio.fix.ffmpeg"
     const val KEY_PLATFORM: String = "zuno.audio.fix.platform"
 
+    /**
+     * Interrupteur de REPLI du correctif « repli AAC par chaîne » : vrai =
+     * ancien comportement (une panne FFmpeg → la box pour toutes les
+     * chaînes du processus). Faux par défaut. Voir [AacRoute.sessionWide].
+     */
+    const val KEY_SESSION_WIDE: String = "zuno.audio.fix.session_fallback"
+
     @Volatile
     var probe: Boolean = false
 

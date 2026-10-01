@@ -13,6 +13,7 @@ class AudioFixesTest {
         assertEquals("zuno.audio.diag.probe", AudioFixes.KEY_PROBE)
         assertEquals("zuno.audio.fix.ffmpeg", AudioFixes.KEY_FFMPEG)
         assertEquals("zuno.audio.fix.platform", AudioFixes.KEY_PLATFORM)
+        assertEquals("zuno.audio.fix.session_fallback", AudioFixes.KEY_SESSION_WIDE)
     }
 
     @Test

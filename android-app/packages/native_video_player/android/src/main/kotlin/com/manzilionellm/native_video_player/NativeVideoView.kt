@@ -59,6 +59,7 @@ import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
 import com.manzilionellm.native_video_player.logic.AudioStages
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
+import com.manzilionellm.native_video_player.logic.AacRoute
 import com.manzilionellm.native_video_player.logic.CodecOrder
 import com.manzilionellm.native_video_player.logic.DecoderFallback
 import com.manzilionellm.native_video_player.logic.DisplayModeOption
@@ -69,6 +70,7 @@ import com.manzilionellm.native_video_player.logic.PictureHealth
 import com.manzilionellm.native_video_player.logic.PictureSignal
 import com.manzilionellm.native_video_player.logic.PictureTune
 import com.manzilionellm.native_video_player.logic.PlaybackSession
+import com.manzilionellm.native_video_player.logic.PlayerCensus
 import com.manzilionellm.native_video_player.logic.ReconnectGate
 import com.manzilionellm.native_video_player.logic.ReconnectPlan
 import com.manzilionellm.native_video_player.logic.SpokenCandidate
@@ -239,6 +241,27 @@ class NativeVideoView(
      */
     private var platformAacGaveUp = false
 
+    /**
+     * REPLI AAC → BOX, pour CETTE chaîne seulement (voir [AacRoute]).
+     * Avant (v103–v106) c'était un seul drapeau pour tout le processus :
+     * une panne FFmpeg renvoyait toutes les chaînes AAC à la box, et le
+     * son « vieille radio » revenait sur les chaînes déjà vues. Relu par
+     * le sélecteur de décodeurs depuis le fil de lecture : @Volatile.
+     */
+    @Volatile
+    private var forceBoxAacDecoder: Boolean = false
+
+    /** Pourquoi cette chaîne est sur la box (null = FFmpeg). Pour la fiche. */
+    private var boxFailure: AacRoute.Failure? = null
+
+    /**
+     * Vrai dès que le lecteur a été « prêt » une fois dans cette session.
+     * Le filet des 8 s ne se déclenche que si FFmpeg n'a JAMAIS rendu la
+     * chaîne prête : un simple re-tamponnage réseau à la 8e seconde n'est
+     * pas un échec de FFmpeg (c'était l'ancien déclencheur fantôme).
+     */
+    private var readyThisSession = false
+
     // Jeton du délai de 8 s : l'incrémenter annule le contrôle précédent
     // (zapping, repli, dispose) sans toucher aux autres callbacks du Handler.
     private var ffmpegWatchToken = 0
@@ -400,6 +423,7 @@ class NativeVideoView(
         surfaceView.holder.setFormat(PixelFormat.OPAQUE)
 
         player = buildConfiguredPlayer()
+        PlayerCensus.playerCreated()
         // On NE retire PAS la surface au zap : la retirer fait un flash
         // noir. stop() rend le codec ; la surface, elle, reste. Le logo
         // Flutter couvre l'ancienne image jusqu'à la nouvelle trame.
@@ -741,13 +765,21 @@ class NativeVideoView(
                 triedEngines.clear()
                 videoGaveUp = false
                 restorePreferredEngine()
-                // Réglage optionnel « garder FFmpeg ». Faux par défaut : le
-                // drapeau de repli ne bouge pas. Vrai : on réessaie FFmpeg
-                // sur cette ouverture. Le filet des 8 s reste armé plus bas.
-                forceBoxAacDecoder = AudioFixes.forceBoxAfterOpen(
-                    AudioFixes.keepFfmpeg,
-                    forceBoxAacDecoder,
-                )
+                // Recensement : numéro du zap et « déjà vue ». Aucune URL
+                // gardée, seulement son hachage.
+                val zapNo = PlayerCensus.onZap(AacRoute.key(url))
+                // Repli AAC → box PAR CHAÎNE : seule une chaîne où FFmpeg a
+                // vraiment échoué repasse par la box. « FFmpeg : réessayer »
+                // efface d'abord sa mémoire. Le filet des 8 s reste armé plus bas.
+                boxFailure = AacRoute.decideForOpen(url, AudioFixes.keepFfmpeg)
+                forceBoxAacDecoder = boxFailure != null
+                boxFailure?.let { f ->
+                    emit(
+                        "audioDiag",
+                        "Repli : cette chaîne est jouée par le décodeur AAC de la box " +
+                            "(${f.reason.label} au zap n°${f.zap} ; zap en cours n°$zapNo).",
+                    )
+                }
                 // Nouvel essai : le repli « box échouée → FFmpeg » ne suit
                 // pas la chaîne d'avant.
                 platformAacGaveUp = false
@@ -857,6 +889,13 @@ class NativeVideoView(
                 AudioFixes.preferPlatformAac = call.arguments == true
                 result.success(null)
             }
+            "setSessionWideFallback" -> {
+                // Interrupteur de repli du correctif « repli par chaîne » :
+                // vrai = ancien comportement (une panne → la box partout).
+                // Pris en compte au prochain setUrl. On ne rouvre pas.
+                AacRoute.sessionWide = call.arguments == true
+                result.success(null)
+            }
             "dispose" -> {
                 // Dart demande la libération AVANT de créer le lecteur
                 // suivant (aperçu → plein écran). Idempotent : le dispose()
@@ -956,6 +995,9 @@ class NativeVideoView(
                 // découvrirait le noir avant la nouvelle trame.
                 cancelRetry()
                 behindLiveCount = 0
+                // FFmpeg (ou la box) a rendu cette chaîne prête : le filet
+                // des 8 s n'a plus lieu de basculer le décodeur.
+                readyThisSession = true
                 if (holdView.visibility != View.VISIBLE) {
                     emit("buffering", false)
                 }
@@ -1146,7 +1188,7 @@ class NativeVideoView(
         // entrer dans le back-off de reconnexion (qui, lui, ne change pas).
         // Ça ne compte pas comme une panne de chaîne.
         if (!forceBoxAacDecoder && isFfmpegRendererError(error) && signal != PictureSignal.DECODE) {
-            requestBoxAudioFallback()
+            requestBoxAudioFallback(AacRoute.Reason.RENDERER_ERROR)
             return
         }
         // DIRECT « EN RETARD » : le lecteur est sorti de la fenêtre du
@@ -1220,6 +1262,7 @@ class NativeVideoView(
         sessionOpenedAt = SystemClock.elapsedRealtime()
         audioChosenForSession = false
         videoChosenForSession = false
+        readyThisSession = false
         resetPictureClock()
         ffmpegWatchToken++
         cancelRetry()
@@ -1431,24 +1474,29 @@ class NativeVideoView(
             if (token != ffmpegWatchToken || released || session != sessions.generation) {
                 return@postDelayed
             }
+            // « jamais prêt » et pas « pas prêt à cet instant » : une chaîne
+            // qui a joué puis re-tamponne à la 8e seconde n'a pas un FFmpeg
+            // en panne (c'est ce faux déclencheur qui envoyait tout à la box).
             if (!forceBoxAacDecoder &&
                 !platformAacGaveUp &&
                 ffmpegAudioActive &&
+                !readyThisSession &&
                 player.playbackState != Player.STATE_READY
             ) {
-                requestBoxAudioFallback()
+                requestBoxAudioFallback(AacRoute.Reason.TIMEOUT)
             }
         }, FFMPEG_READY_TIMEOUT_MS)
     }
 
     /**
-     * Repli pour toute la session, puis re-préparation IMMÉDIATE du flux.
+     * Repli pour CETTE chaîne, puis re-préparation IMMÉDIATE du flux.
      *
-     * Le drapeau est posé AVANT le re-prepare, et il est dans le companion
-     * object : la prochaine sélection de pistes (cette vue, ou une autre
-     * ouverte plus tard dans le même processus) relit [forceBoxAacDecoder]
-     * et rend l'AAC au décodeur de la box. On ne recrée pas le lecteur :
-     * les moteurs sont déjà construits, seul le choix de piste change.
+     * Le drapeau est posé AVANT le re-prepare : la prochaine sélection de
+     * pistes relit [forceBoxAacDecoder] et rend l'AAC au décodeur de la
+     * box. [AacRoute] s'en souvient pour cette chaîne (et seulement elle,
+     * sauf [AacRoute.sessionWide]) : au retour dessus, pas de 8 s d'attente.
+     * On ne recrée pas le lecteur : les moteurs sont déjà construits, seul
+     * le choix de piste change. La fiche reçoit une ligne « Repli ».
      *
      * On passe par [openCurrent] : le stop() rend le codec et la socket
      * avant de rouvrir, comme un zap. Sans ça, le second prepare() pouvait
@@ -1458,13 +1506,24 @@ class NativeVideoView(
      * le thread de lecture, et Media3 n'aime pas un prepare() réentrant
      * au milieu de onPlayerError.
      */
-    private fun requestBoxAudioFallback() {
+    private fun requestBoxAudioFallback(reason: AacRoute.Reason) {
         // Déjà revenu de la box vers FFmpeg : ne pas renvoyer vers la box,
         // les deux se relanceraient.
         if (platformAacGaveUp || forceBoxAacDecoder || released) return
+        val url = currentUrl
+        if (url != null) {
+            val zapNo = PlayerCensus.snapshot(AacRoute.key(url), null).zap
+            boxFailure = AacRoute.markFailed(url, reason, zapNo)
+        }
         forceBoxAacDecoder = true
         ffmpegAudioActive = false
         ffmpegWatchToken++
+        emit(
+            "audioDiag",
+            "Repli : ${reason.label} → l'AAC de cette chaîne passe au décodeur de la box " +
+                "(cette chaîne seulement" +
+                (if (AacRoute.sessionWide) ", mode session entière" else "") + ").",
+        )
         val session = sessions.generation
         handler.post {
             if (released || session != sessions.generation) return@post
@@ -1490,12 +1549,16 @@ class NativeVideoView(
         initializedTimestampMs: Long,
         initializationDurationMs: Long,
     ) {
+        // Compté AVANT le filtre de session : un décodeur vivant est vivant,
+        // même s'il appartient à l'ancienne chaîne.
+        PlayerCensus.audioDecoderOpened()
         if (!fresh(eventTime)) return
         ffmpegAudioActive = decoderName.contains("ffmpeg", ignoreCase = true)
         diag = diag.copy(decoder = decoderName)
     }
 
     override fun onAudioDecoderReleased(eventTime: AnalyticsListener.EventTime, decoderName: String) {
+        PlayerCensus.audioDecoderClosed()
         if (!fresh(eventTime)) return
         if (decoderName.contains("ffmpeg", ignoreCase = true)) {
             ffmpegAudioActive = false
@@ -1512,7 +1575,7 @@ class NativeVideoView(
     override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
         if (fresh(eventTime)) emit("audioDiag", "Erreur de la sortie son : ${audioSinkError.javaClass.simpleName}")
         if (!fresh(eventTime)) return
-        if (ffmpegAudioActive) requestBoxAudioFallback()
+        if (ffmpegAudioActive) requestBoxAudioFallback(AacRoute.Reason.SINK_ERROR)
         else requestFfmpegAfterPlatformFailure()
     }
 
@@ -1520,7 +1583,7 @@ class NativeVideoView(
     override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
         if (fresh(eventTime)) emit("audioDiag", "Erreur du décodeur son : ${audioCodecError.javaClass.simpleName}")
         if (!fresh(eventTime)) return
-        if (ffmpegAudioActive) requestBoxAudioFallback()
+        if (ffmpegAudioActive) requestBoxAudioFallback(AacRoute.Reason.CODEC_ERROR)
         else requestFfmpegAfterPlatformFailure()
     }
 
@@ -1571,6 +1634,7 @@ class NativeVideoView(
         eventTime: AnalyticsListener.EventTime,
         audioTrackConfig: AudioSink.AudioTrackConfig,
     ) {
+        PlayerCensus.audioTrackOpened()
         if (!fresh(eventTime)) return
         diag = diag.copy(
             outSampleRate = audioTrackConfig.sampleRate,
@@ -1580,6 +1644,14 @@ class NativeVideoView(
             clearVoice = clearVoiceEnabled,
         )
         sendAudioDiag()
+    }
+
+    /** L'AudioTrack est rendu (stop, zap, libération) : un vivant de moins. */
+    override fun onAudioTrackReleased(
+        eventTime: AnalyticsListener.EventTime,
+        audioTrackConfig: AudioSink.AudioTrackConfig,
+    ) {
+        PlayerCensus.audioTrackClosed()
     }
 
     /** Coupure de la sortie son (craquement / trou). Bilan au plus toutes les 30 s. */
@@ -1637,6 +1709,7 @@ class NativeVideoView(
             clearVoice = clearVoiceEnabled,
             skipSilence = player.skipSilenceEnabled,
             playbackSpeed = player.playbackParameters.speed,
+            cycle = currentUrl?.let { PlayerCensus.snapshot(AacRoute.key(it), boxFailure) },
         )
         diag = live
         val text = buildString {
@@ -1708,6 +1781,7 @@ class NativeVideoView(
             // Une libération ratée ne doit pas tuer l'app : la chaîne
             // suivante doit pouvoir créer SON lecteur.
         }
+        PlayerCensus.playerReleased()
         channel.setMethodCallHandler(null)
     }
 
@@ -1806,6 +1880,7 @@ class NativeVideoView(
         } catch (_: RuntimeException) {
         }
         val next = buildConfiguredPlayer()
+        PlayerCensus.playerCreated()
         player = next
         attachToSurface(next)
         try {
@@ -1814,6 +1889,7 @@ class NativeVideoView(
             old.release()
         } catch (_: RuntimeException) {
         }
+        PlayerCensus.playerReleased()
     }
 
     private fun resetPictureClock() {
@@ -2062,16 +2138,8 @@ class NativeVideoView(
          */
         val owners: ExclusiveAudio = ExclusiveAudio()
 
-        /**
-         * Repli session. Une fois vrai, PLUS AUCUNE vue de ce processus ne
-         * force l'AAC vers FFmpeg : le sélecteur MediaCodec relit ce champ
-         * à chaque piste et rend la liste normale des décodeurs de la box.
-         *
-         * @Volatile : écrit depuis le thread qui constate l'échec, lu depuis
-         * le thread de sélection des décodeurs (pas forcément le même).
-         */
-        @Volatile
-        private var forceBoxAacDecoder: Boolean = false
+        // Le repli AAC → box n'est PLUS un drapeau de processus : il est
+        // par chaîne, dans [AacRoute], et par vue dans `forceBoxAacDecoder`.
     }
 }
 

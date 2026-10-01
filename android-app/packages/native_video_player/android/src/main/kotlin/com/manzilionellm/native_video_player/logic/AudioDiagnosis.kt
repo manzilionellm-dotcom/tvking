@@ -69,6 +69,12 @@ data class AudioSnapshot(
      * décodeur : les règles déjà écrites ne changent pas de chiffre.
      */
     val stages: List<AudioStages.Reading> = emptyList(),
+    /**
+     * Cycle de vie au moment du rapport : numéro du zap, chaîne déjà vue,
+     * lecteurs / décodeurs / AudioTrack vivants, repli box de cette chaîne.
+     * Null = pas encore relevé.
+     */
+    val cycle: PlayerCensus.Snapshot? = null,
 )
 
 object AudioDiagnosis {
@@ -130,6 +136,21 @@ object AudioDiagnosis {
         val out = mutableListOf<String>()
         val aac = isAac(s.mime)
         val boxDecoder = s.decoder != null && !isFfmpeg(s.decoder)
+
+        // 0) REPLI : cette chaîne a été renvoyée au décodeur de la box après
+        //    une panne FFmpeg. C'est le chemin de la v98 (celui du son
+        //    « vieille radio ») : on le dit en premier, avec la cause.
+        val fail = s.cycle?.boxFailure
+        if (fail != null) {
+            out += "REPLI : l'AAC de cette chaîne passe par le décodeur de la box depuis le zap " +
+                "n°${fail.zap} (${fail.reason.label}). C'est le chemin qui faisait le son " +
+                "« vieille radio ». « FFmpeg : réessayer » le remet sur FFmpeg."
+        }
+        val overlap = s.cycle != null && PlayerCensus.overlapping(s.cycle)
+        if (overlap) {
+            out += "CHEVAUCHEMENT : plus d'un lecteur, décodeur ou AudioTrack vivant → deux sons " +
+                "peuvent se mélanger. Voir la ligne « Cycle »."
+        }
 
         // 1) PREUVE « vieille radio » : HE-AAC dont la box n'a pas
         //    reconstruit les aigus (sortie restée à la fréquence du cœur).
@@ -580,6 +601,9 @@ object AudioDiagnosis {
             append(". Pas d'égaliseur, pas de DynamicsProcessing, pas de LoudnessEnhancer.")
             if (!s.routeNote.isNullOrBlank()) {
                 append("\nEssai : ").append(s.routeNote)
+            }
+            if (s.cycle != null) {
+                append("\n").append(PlayerCensus.describe(s.cycle))
             }
             append("\nSpectre > 4 kHz : ")
             append(
