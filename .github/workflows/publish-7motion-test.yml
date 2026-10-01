@@ -1,0 +1,157 @@
+# ============================================================================
+#  publish-7motion-test.yml — Met l'APK téléphone 7 MOTION EXACT d'un run
+#  build-android déjà vert sur la release « 7motion-test », sans le
+#  reconstruire. Les téléphones des clients ne lisent que phone-latest :
+#  7motion-test ne déclenche AUCUNE mise à jour chez eux.
+#
+#  GARDE-FOUS (tous bloquants, le job s'arrête au premier échec) :
+#    - SHA-256 du fichier = celui donné en entrée (c'est LE fichier vérifié) ;
+#    - signature = clé de 7 MOTION en production 5145b8e0…9e61 (apksigner) ;
+#    - package com.manzilionellm.tvking.tv_king, versionCode = celui attendu
+#      et au-dessus de celui de phone-latest (installation par-dessus) ;
+#    - n'écrit QUE sur 7motion-test (tag en dur, prérelease, jamais
+#      « latest ») ; phone-latest est relue avant/après et le job échoue
+#      si elle a bougé ; aucun version.json (pas de mise à jour poussée).
+#    - déclenchement MANUEL. Le push ne fait qu'enregistrer le workflow.
+# ============================================================================
+name: Publish 7 MOTION phone test APK (artefact existant)
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publish-7motion-test.yml'
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID du run build-android dont on publie l''APK'
+        required: true
+        type: string
+      expected_sha256:
+        description: 'SHA-256 attendu de 7motion.apk (vérifié avant)'
+        required: true
+        type: string
+      expected_version_code:
+        description: 'versionCode attendu'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # créer 7motion-test, effacer / téléverser ses fichiers
+  actions: read     # télécharger l'artefact du run
+
+concurrency:
+  group: publish-7motion-test
+  cancel-in-progress: false
+
+env:
+  TEST_TAG: 7motion-test
+  CLIENT_TAG: phone-latest
+  APK_NAME: 7motion.apk
+  EXPECTED_CERT: 5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61
+  EXPECTED_PACKAGE: com.manzilionellm.tvking.tv_king
+
+jobs:
+  publish:
+    name: APK téléphone existant → 7motion-test
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Télécharger l'APK du run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tvking-release-apk-*
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+
+      - name: Vérifier le fichier (SHA-256, signature, version, phone-latest)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WANT_SHA: ${{ inputs.expected_sha256 }}
+          WANT_CODE: ${{ inputs.expected_version_code }}
+        run: |
+          set -euo pipefail
+          ls -la
+          test -f "$APK_NAME"
+          SHA=$(sha256sum "$APK_NAME" | cut -d' ' -f1)
+          echo "SHA-256 : $SHA"
+          [ "$SHA" = "$WANT_SHA" ] || { echo "::error::SHA-256 différent de celui vérifié ($WANT_SHA)"; exit 1; }
+
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs "$APK_NAME" | tee sig.txt
+          CERT=$(grep -m1 'certificate SHA-256 digest' sig.txt | awk '{print $NF}')
+          [ "$CERT" = "$EXPECTED_CERT" ] || { echo "::error::Signature $CERT ≠ clé 7 MOTION production"; exit 1; }
+
+          "$BT/aapt2" dump badging "$APK_NAME" | head -1 | tee badging.txt
+          PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" badging.txt)
+          CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" badging.txt)
+          [ "$PKG" = "$EXPECTED_PACKAGE" ] || { echo "::error::package $PKG"; exit 1; }
+          [ "$CODE" = "$WANT_CODE" ] || { echo "::error::versionCode $CODE ≠ $WANT_CODE"; exit 1; }
+
+          # L'APK des clients : même clé et versionCode plus petit, sinon
+          # l'installation par-dessus échouerait.
+          gh release download "$CLIENT_TAG" -R "$GITHUB_REPOSITORY" -p "$APK_NAME" -O client.apk
+          "$BT/apksigner" verify --print-certs client.apk | tee client_sig.txt
+          CLIENT_CERT=$(grep -m1 'certificate SHA-256 digest' client_sig.txt | awk '{print $NF}')
+          [ "$CLIENT_CERT" = "$CERT" ] || { echo "::error::clé différente de phone-latest ($CLIENT_CERT)"; exit 1; }
+          CLIENT_CODE=$("$BT/aapt2" dump badging client.apk | head -1 | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")
+          echo "phone-latest versionCode = $CLIENT_CODE"
+          [ "$CODE" -gt "$CLIENT_CODE" ] || { echo "::error::versionCode $CODE pas au-dessus de phone-latest ($CLIENT_CODE)"; exit 1; }
+          rm -f client.apk
+          echo "✓ fichier conforme"
+
+      - name: Remplacer le contenu de 7motion-test (et SEULEMENT elle)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          R="$GITHUB_REPOSITORY"
+          [ "$TEST_TAG" = "7motion-test" ] || exit 1
+          gh api "repos/$R/releases/tags/$CLIENT_TAG" \
+            --jq '[.updated_at] + [.assets[] | "\(.id) \(.name) \(.size) \(.digest)"] | .[]' > client_avant.txt
+          echo "== phone-latest AVANT"; cat client_avant.txt
+
+          CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" badging.txt)
+          VN=$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" badging.txt)
+          SHA=$(sha256sum "$APK_NAME" | cut -d' ' -f1)
+          NOTES="7 MOTION téléphone — version de TEST (jamais les clients : ils lisent phone-latest).
+
+          versionName : $VN · versionCode : $CODE · SHA-256 : $SHA
+          Signature : $EXPECTED_CERT
+          APK repris tel quel du run $RUN_ID (Artifacts). S'installe par-dessus l'app des clients.
+          Lien direct : https://github.com/$R/releases/download/$TEST_TAG/$APK_NAME"
+
+          if gh release view "$TEST_TAG" -R "$R" >/dev/null 2>&1; then
+            echo "== 7motion-test : fichiers présents"
+            gh api "repos/$R/releases/tags/$TEST_TAG" \
+              --jq '.assets[] | "\(.id) \(.name) \(.size) \(.created_at) \(.digest)"' | tee test_avant.txt
+            while read -r ID NAME _; do
+              [ -n "$ID" ] || continue
+              gh api -X DELETE "repos/$R/releases/assets/$ID" < /dev/null
+              echo "effacé : $ID $NAME"
+            done < test_avant.txt
+            gh release edit "$TEST_TAG" -R "$R" --prerelease --latest=false --notes "$NOTES"
+          else
+            echo "== 7motion-test n'existe pas : création (prérelease)"
+            gh release create "$TEST_TAG" -R "$R" --prerelease --latest=false \
+              --title "7 MOTION — téléphone de TEST" --notes "$NOTES"
+          fi
+          gh release upload "$TEST_TAG" "$APK_NAME" -R "$R"
+
+          echo "== 7motion-test APRÈS"
+          for i in 1 2 3 4 5 6; do
+            gh api "repos/$R/releases/tags/$TEST_TAG" \
+              --jq '.assets[] | "\(.id) \(.name) \(.size) \(.digest)"' > test_apres.txt
+            grep -q "sha256:" test_apres.txt && break
+            sleep 5
+          done
+          cat test_apres.txt
+          [ "$(wc -l < test_apres.txt)" -eq 1 ] || { echo "::error::7motion-test n'a pas un seul fichier"; exit 1; }
+          grep -q " $APK_NAME .* sha256:$SHA$" test_apres.txt || { echo "::error::empreinte en ligne différente"; exit 1; }
+
+          gh api "repos/$R/releases/tags/$CLIENT_TAG" \
+            --jq '[.updated_at] + [.assets[] | "\(.id) \(.name) \(.size) \(.digest)"] | .[]' > client_apres.txt
+          echo "== phone-latest APRÈS"; cat client_apres.txt
+          diff client_avant.txt client_apres.txt && echo "✓ phone-latest n'a pas bougé"
