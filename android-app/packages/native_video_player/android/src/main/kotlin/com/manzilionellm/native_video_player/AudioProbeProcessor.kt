@@ -29,6 +29,7 @@ class AudioProbeProcessor(
     var enabled: Boolean = false
 
     private var acc: AudioSpectrum.Accum = AudioSpectrum.start(48_000)
+    private var perChannel: List<AudioSpectrum.Accum> = emptyList()
     private var lastBand: AudioSpectrum.Band? = null
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
@@ -39,6 +40,9 @@ class AudioProbeProcessor(
             return AudioProcessor.AudioFormat.NOT_SET
         }
         acc = AudioSpectrum.start(inputAudioFormat.sampleRate)
+        perChannel = List(inputAudioFormat.channelCount.coerceIn(1, 8)) {
+            AudioSpectrum.start(inputAudioFormat.sampleRate)
+        }
         lastBand = null
         // Même format en sortie : Media3 ne rééchantillonne pas à cause de nous.
         return inputAudioFormat
@@ -46,7 +50,9 @@ class AudioProbeProcessor(
 
     override fun onFlush() {
         val rate = if (acc.sampleRate > 0) acc.sampleRate else 48_000
+        val nch = perChannel.size.coerceAtLeast(1)
         acc = AudioSpectrum.start(rate)
+        perChannel = List(nch) { AudioSpectrum.start(rate) }
         lastBand = null
     }
 
@@ -72,7 +78,13 @@ class AudioProbeProcessor(
             }
             val channels = inputAudioFormat.channelCount.coerceAtLeast(1)
             acc = AudioSpectrum.push(acc, pcm, channels)
-            val judged = AudioSpectrum.judge(acc)
+            if (perChannel.size == channels) {
+                perChannel = perChannel.mapIndexed { index, channelAcc ->
+                    AudioSpectrum.pushChannel(channelAcc, pcm, channels, index)
+                }
+            }
+            val ratios = perChannel.map { AudioSpectrum.judge(it).highRatio }
+            val judged = AudioSpectrum.judge(acc).copy(channelHighRatios = ratios)
             publish(judged)
         }
         // Le tampon d'entrée repart inchangé. On ne touche pas un seul échantillon.

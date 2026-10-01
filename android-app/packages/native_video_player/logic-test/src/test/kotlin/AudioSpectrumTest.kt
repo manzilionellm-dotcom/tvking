@@ -1,4 +1,5 @@
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
+import com.manzilionellm.native_video_player.logic.ClearVoiceGain
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -87,6 +88,84 @@ class AudioSpectrumTest {
         val full = measure(tone(48_000, 48_000, 1000.0, 1.0), 48_000)
         println("CLIP sinus pleine échelle=${full.clippedFraction}")
         assertTrue(full.clippedFraction < AudioSpectrum.CLIP_SURE, "plein=${full.clippedFraction}")
+    }
+
+    /**
+     * Chaîne par défaut, rejouée ici : copie PCM (sonde), gain 1
+     * (voix claire coupée ou sous le seuil). Aucun passe-bas.
+     * Le même bruit après un vrai passe-bas tombe en BASSE.
+     */
+    @Test
+    fun chaineParDefautNeCoupePasLesAigus() {
+        val src = noise(48_000, 0.4, seed = 42L)
+        val before = measure(src, 48_000)
+        val copied = src.copyOf()
+        val afterCopy = measure(copied, 48_000)
+        val gain = ClearVoiceGain.target(0.4f)
+        assertEquals(1f, gain)
+        // Même calcul que ClearVoiceProcessor : entier × gain, sans filtre.
+        val gained = ShortArray(src.size) { i ->
+            (src[i].toInt() * gain).toInt().coerceIn(-32768, 32767).toShort()
+        }
+        val afterGain = measure(gained, 48_000)
+        val cut = measure(lowpassTwice(src, 48_000, 3400.0), 48_000)
+        println("CHAINE avant=${before.highRatio} copie=${afterCopy.highRatio} gain=${afterGain.highRatio} passe-bas=${cut.highRatio}")
+        assertEquals(AudioSpectrum.Band.WIDE, before.band)
+        assertEquals(AudioSpectrum.Band.WIDE, afterCopy.band)
+        assertEquals(AudioSpectrum.Band.WIDE, afterGain.band)
+        assertEquals(before.highRatio, afterCopy.highRatio)
+        assertTrue(kotlin.math.abs(before.highRatio - afterGain.highRatio) < 1e-9)
+        assertEquals(AudioSpectrum.Band.LOW, cut.band)
+    }
+
+    /** Harmoniques de voix sous 3,2 kHz : le chiffre « 2 % » n'est pas un filtre. */
+    @Test
+    fun uneVoixSansAigusEstBasseSansQuOnAitFiltre() {
+        val n = 48_000
+        val sr = 48_000
+        val raw = DoubleArray(n)
+        var peak = 0.0
+        val f0 = 140.0
+        for (i in 0 until n) {
+            var s = 0.0
+            var k = 1
+            while (f0 * k < 3200.0) {
+                s += (1.0 / k) * sin(2.0 * PI * f0 * k * i / sr)
+                k++
+            }
+            raw[i] = s
+            if (kotlin.math.abs(s) > peak) peak = kotlin.math.abs(s)
+        }
+        val pcm = ShortArray(n) { i -> toShort(raw[i] / peak * 0.35) }
+        val j = measure(pcm, sr)
+        println("VOIX sous 3,2 kHz ratio=${j.highRatio} bande=${j.band}")
+        assertEquals(AudioSpectrum.Band.LOW, j.band)
+        assertTrue(j.highRatio < 0.05, "voix=${j.highRatio}")
+    }
+
+    @Test
+    fun voiesOpposeesAnnulentLeMelangeMaisPasChaqueVoie() {
+        val mono = noise(24_000, 0.4, seed = 42L)
+        val stereo = ShortArray(mono.size * 2)
+        for (i in mono.indices) {
+            stereo[i * 2] = mono[i]
+            val inv = -mono[i].toInt()
+            stereo[i * 2 + 1] = inv.coerceIn(-32768, 32767).toShort()
+        }
+        var mix = AudioSpectrum.start(48_000)
+        var left = AudioSpectrum.start(48_000)
+        var right = AudioSpectrum.start(48_000)
+        mix = AudioSpectrum.push(mix, stereo, 2)
+        left = AudioSpectrum.pushChannel(left, stereo, 2, 0)
+        right = AudioSpectrum.pushChannel(right, stereo, 2, 1)
+        val mixJ = AudioSpectrum.judge(mix)
+        val leftJ = AudioSpectrum.judge(left)
+        val rightJ = AudioSpectrum.judge(right)
+        println("VOIES mélange=${mixJ.highRatio}/${mixJ.band} G=${leftJ.highRatio} D=${rightJ.highRatio}")
+        assertEquals(AudioSpectrum.Band.WIDE, leftJ.band)
+        assertEquals(AudioSpectrum.Band.WIDE, rightJ.band)
+        val heard = mixJ.copy(channelHighRatios = listOf(leftJ.highRatio, rightJ.highRatio))
+        assertEquals(AudioSpectrum.Band.WIDE, AudioSpectrum.effectiveBand(heard))
     }
 
     private fun measure(pcm: ShortArray, sampleRate: Int): AudioSpectrum.Judgement =

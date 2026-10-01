@@ -1,10 +1,11 @@
 // =========================================================
 //  tv_audio_diagnostic_screen.dart — « Diagnostic du son »
 // =========================================================
-//  Lecture des rapports locaux (une fiche par chaîne) et deux
+//  Lecture des rapports locaux (une fiche par chaîne) et des
 //  interrupteurs COUPÉS par défaut :
 //    • mesurer le spectre (copie le PCM, ne le filtre pas) ;
-//    • réessayer FFmpeg à la prochaine chaîne.
+//    • réessayer FFmpeg à la prochaine chaîne ;
+//    • essayer le décodeur AAC de la box à la prochaine chaîne.
 //  Rien n'est envoyé au panel : le heartbeat n'a pas de champ pour ça.
 //  Style : les mêmes TvTokens / TvDimens que la boîte noire.
 // =========================================================
@@ -31,12 +32,14 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _loading = true;
   bool _probe = false;
   bool _ffmpeg = false;
+  bool _platform = false;
 
   @override
   void initState() {
     super.initState();
     _probe = NativeVideoController.audioProbeEnabled;
     _ffmpeg = NativeVideoController.keepFfmpegAudio;
+    _platform = NativeVideoController.preferPlatformAac;
     _load();
   }
 
@@ -61,6 +64,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     await AudioDiagPrefs.setKeepFfmpeg(next);
   }
 
+  Future<void> _togglePlatform() async {
+    final bool next = !_platform;
+    setState(() => _platform = next);
+    await AudioDiagPrefs.setPreferPlatform(next);
+  }
+
   Future<void> _clear() async {
     await AudioReportStore.instance.clear();
     await _load();
@@ -82,7 +91,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         const SizedBox(height: 6),
         Text(
           'Rapport local, une fiche par chaîne. Rien n\'est envoyé. '
-          'Les deux interrupteurs sont coupés par défaut : le son ne change pas.',
+          'Les interrupteurs sont coupés par défaut : le son ne change pas.',
           style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
         ),
         const SizedBox(height: 16),
@@ -109,10 +118,22 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           ],
         ),
         const SizedBox(height: 8),
+        Row(
+          children: <Widget>[
+            _Toggle(
+              label: _platform ? 'Box AAC : essai' : 'Box AAC : coupé',
+              on: _platform,
+              onSelect: _togglePlatform,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         Text(
           'Spectre : copie le PCM à la prochaine chaîne, sans le modifier. '
-          'FFmpeg : réessaie le décodeur logiciel à la prochaine chaîne ; '
-          's\'il ne démarre pas en 8 s, la box reprend quand même.',
+          'FFmpeg : réessaie le décodeur logiciel ; s\'il ne démarre pas en 8 s, '
+          'la box reprend. Box AAC : à la prochaine chaîne, l\'AAC passe par le '
+          'décodeur de la box (comme ExoPlayer). S\'il échoue, FFmpeg reprend '
+          'cette ouverture. Coupé, rien ne change.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
         ),
         const SizedBox(height: 14),

@@ -131,8 +131,13 @@ class AudioDiagnosisTest {
         val band = AudioDiagnosis.findings(s).first { it.id == "spectre_bas" }
         assertEquals(AudioDiagnosis.Confidence.INCERTAINE, band.confidence)
         assertNull(band.fix.settingKey)
+        val essai = AudioDiagnosis.findings(s).first { it.id == "ffmpeg_essai_box" }
+        assertEquals(AudioDiagnosis.Confidence.INCERTAINE, essai.confidence)
+        assertEquals(AudioFixes.KEY_PLATFORM, essai.fix.settingKey)
         assertTrue(AudioDiagnosis.sureCauses(s).none { it.id == "spectre_bas" })
+        assertTrue(AudioDiagnosis.sureCauses(s).none { it.id == "ffmpeg_essai_box" })
         assertTrue(AudioDiagnosis.report(s).contains("aucune cause sûre"))
+        assertTrue(AudioDiagnosis.report(s).contains("avant Sonic"))
     }
 
     @Test
@@ -205,6 +210,17 @@ class AudioDiagnosisTest {
         assertEquals(AudioDiagnosis.Confidence.HAUTE, big.confidence)
         assertTrue(big.fix.media3.contains("VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF"))
         assertNull(big.fix.settingKey)
+    }
+
+    @Test
+    fun annulationDesVoiesNeProposePasLeDecodeurDeLaBox() {
+        val mix = spectrum(clip = 0.0, band = AudioSpectrum.Band.LOW, ratio = 0.02)
+            .copy(channelHighRatios = listOf(0.80, 0.80))
+        val ids = AudioDiagnosis.findings(basePcm(mix)).map { it.id }
+        assertTrue("spectre_large" in ids, ids.toString())
+        assertTrue("spectre_annulation" in ids, ids.toString())
+        assertTrue("spectre_bas" !in ids, ids.toString())
+        assertTrue("ffmpeg_essai_box" !in ids, ids.toString())
     }
 
     @Test

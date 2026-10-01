@@ -230,6 +230,13 @@ class NativeVideoView(
     @Volatile
     private var ffmpegAudioActive = false
 
+    /**
+     * L'essai « décodeur de la box » a échoué sur CETTE ouverture.
+     * On reste sur FFmpeg jusqu'au prochain setUrl. Faux par défaut :
+     * le chemin v106 ne le consulte que si le réglage est allumé.
+     */
+    private var platformAacGaveUp = false
+
     // Jeton du délai de 8 s : l'incrémenter annule le contrôle précédent
     // (zapping, repli, dispose) sans toucher aux autres callbacks du Handler.
     private var ffmpegWatchToken = 0
@@ -657,9 +664,20 @@ class NativeVideoView(
      * repli « retour à la box » que l'AAC si ça bloque.
      */
     private fun preferFfmpegFor(mimeType: String): Boolean {
-        if (forceBoxAacDecoder || !ffmpegReady) return false
+        if (!ffmpegReady) return false
+        if (mimeType == MimeTypes.AUDIO_AAC) {
+            // Défaut : FFmpeg, comme la v106. Le réglage « décodeur de la box »
+            // est le seul cas où la liste MediaCodec AAC n'est pas vidée.
+            return AudioFixes.ffmpegForAac(
+                preferPlatform = AudioFixes.preferPlatformAac,
+                gaveUpToFfmpeg = platformAacGaveUp,
+                forceBox = forceBoxAacDecoder,
+                ffmpegReady = true,
+                ffmpegSupports = ffmpegAac,
+            )
+        }
+        if (forceBoxAacDecoder) return false
         return when (mimeType) {
-            MimeTypes.AUDIO_AAC -> ffmpegAac
             MimeTypes.AUDIO_MPEG_L2 -> ffmpegMp2
             else -> false
         }
@@ -722,6 +740,9 @@ class NativeVideoView(
                     AudioFixes.keepFfmpeg,
                     forceBoxAacDecoder,
                 )
+                // Nouvel essai : le repli « box échouée → FFmpeg » ne suit
+                // pas la chaîne d'avant.
+                platformAacGaveUp = false
                 // Diagnostic du son : nouvelle chaîne, compteurs à zéro.
                 diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
                 diagLastUnderrunSentMs = 0L
@@ -815,6 +836,11 @@ class NativeVideoView(
                 // Pris en compte au prochain setUrl (forceBoxAfterOpen).
                 // On ne rouvre pas la chaîne tout seul.
                 AudioFixes.keepFfmpeg = call.arguments == true
+                result.success(null)
+            }
+            "setPreferPlatformAac" -> {
+                // Pris en compte au prochain setUrl. On ne rouvre pas.
+                AudioFixes.preferPlatformAac = call.arguments == true
                 result.success(null)
             }
             "dispose" -> {
@@ -1389,6 +1415,7 @@ class NativeVideoView(
                 return@postDelayed
             }
             if (!forceBoxAacDecoder &&
+                !platformAacGaveUp &&
                 ffmpegAudioActive &&
                 player.playbackState != Player.STATE_READY
             ) {
@@ -1415,7 +1442,9 @@ class NativeVideoView(
      * au milieu de onPlayerError.
      */
     private fun requestBoxAudioFallback() {
-        if (forceBoxAacDecoder || released) return
+        // Déjà revenu de la box vers FFmpeg : ne pas renvoyer vers la box,
+        // les deux se relanceraient.
+        if (platformAacGaveUp || forceBoxAacDecoder || released) return
         forceBoxAacDecoder = true
         ffmpegAudioActive = false
         ffmpegWatchToken++
@@ -1465,13 +1494,40 @@ class NativeVideoView(
      */
     override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
         if (fresh(eventTime)) emit("audioDiag", "Erreur de la sortie son : ${audioSinkError.javaClass.simpleName}")
-        if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
+        if (!fresh(eventTime)) return
+        if (ffmpegAudioActive) requestBoxAudioFallback()
+        else requestFfmpegAfterPlatformFailure()
     }
 
     /** Erreur du décodeur logiciel FFmpeg (DecoderException), même repli. */
     override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
         if (fresh(eventTime)) emit("audioDiag", "Erreur du décodeur son : ${audioCodecError.javaClass.simpleName}")
-        if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
+        if (!fresh(eventTime)) return
+        if (ffmpegAudioActive) requestBoxAudioFallback()
+        else requestFfmpegAfterPlatformFailure()
+    }
+
+    /**
+     * L'essai « décodeur de la box » a échoué. On revient à FFmpeg pour
+     * CETTE ouverture. Le réglage reste allumé : la chaîne suivante
+     * réessaiera la box. On ne boucle pas (voir [platformAacGaveUp]).
+     */
+    private fun requestFfmpegAfterPlatformFailure() {
+        if (!AudioFixes.preferPlatformAac || platformAacGaveUp || released) return
+        if (ffmpegAudioActive) return
+        platformAacGaveUp = true
+        ffmpegWatchToken++
+        diag = diag.copy(
+            routeNote = "Le décodeur AAC de la box a échoué. Repli FFmpeg pour cette ouverture.",
+        )
+        val session = sessions.generation
+        handler.post {
+            if (released || session != sessions.generation) return@post
+            cancelRetry()
+            if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+            emit("buffering", true)
+            openCurrent(if (vodMode) lastKnownPos else null)
+        }
     }
 
     // ---- diagnostic du son (lecture seule) ---------------------------------
@@ -1526,8 +1582,14 @@ class NativeVideoView(
     }
 
     private fun sendAudioDiag() {
+        val live = diag.copy(
+            clearVoice = clearVoiceEnabled,
+            skipSilence = player.skipSilenceEnabled,
+            playbackSpeed = player.playbackParameters.speed,
+        )
+        diag = live
         val text = buildString {
-            append(AudioDiagnosis.describe(diag))
+            append(AudioDiagnosis.describe(live))
             for (v in AudioDiagnosis.verdicts(diag)) append("\n→ ").append(v)
             append("\n").append(AudioDiagnosis.report(diag))
             if (!diagCapsSent) {

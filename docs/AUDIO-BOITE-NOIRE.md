@@ -93,6 +93,8 @@ Confiance **HAUTE** = la règle est entière et le test négatif correspondant n
 | HE-AAC box à ≥ 32 kHz **et** spectre LARGE | (la règle ci-dessus ne s'allume pas) | HAUTE que ce n'est pas un passe-bas | Les aigus au-dessus de 4 kHz sont là | Aucun | aucun |
 | Énergie > 4 kHz ≥ 0,40 | `spectre_large` | HAUTE (info) | Pas un son radio par coupure de bande | `AudioSpectrum.judge`. Aucun correctif | aucun |
 | Énergie > 4 kHz ≤ 0,12 | `spectre_bas` | INCERTAINE | Passe-bas **ou** parole naturellement pauvre en aigus | `AudioSpectrum.judge` / `AudioProbeProcessor`. Ne pas filtrer le son, ne pas forcer FFmpeg sur ce seul chiffre | aucun |
+| FFmpeg, AAC, sortie ≥ 32 kHz, spectre bas sur toutes les voies | `ffmpeg_essai_box` | INCERTAINE | Parole, ou FFmpeg sans les aigus que la box aurait | `AudioFixes.ffmpegForAac` : liste MediaCodec AAC normale. Défaut inchangé (FFmpeg) | `zuno.audio.fix.platform` (défaut coupé) |
+| Mélange bas, une voie ≥ 0,40 | `spectre_annulation` | HAUTE (info) | Les aigus s'annulent dans le mélange | `AudioSpectrum.effectiveBand`. Ne pas changer le décodeur | aucun |
 | Entre 0,12 et 0,40 | `spectre_incertain` | INCERTAINE | Les seuils ne sont pas franchis | Ne rien changer | aucun |
 | Pas de PCM | `spectre_absent` | info | Sonde coupée (le défaut) | `AudioProbeProcessor.onConfigure` → `NOT_SET` | `zuno.audio.diag.probe` |
 | 6 voies (ou plus) → 1 ou 2, pas de passthrough | `downmix` | HAUTE comme constat, pas comme cause radio | `DefaultAudioSink` mélange vers l'AudioTrack | `NativeVideoView.buildAudioSink`. **Ne pas** changer le masque | aucun |
@@ -119,3 +121,69 @@ Codecs nommés dans le rapport : AAC-LC (`mp4a.40.2`), HE-AAC/SBR (`mp4a.40.5`),
 - `NativeVideoView.kt` — sonde inactive par défaut dans `setAudioProcessors`, lecture de `AudioFixes` au `setUrl` / `openCurrent`, rapport ajouté au texte déjà envoyé. `preferFfmpegFor` n'est pas modifié.
 
 Pas de publication, pas de push sur `main`, pas de Worker, pas de release `zuno-tv` / `zuno-tv-test`, pas de signature, pas de 4K Player.
+
+## Fiche France 24 (box de Lionel, 1er octobre 2026)
+
+AAC-LC, 48 kHz, 2 voies, décodeur `ffmpegLavc60.3.100-aac`, sortie PCM 16 bits 48 kHz stéréo, énergie > 4 kHz = **2,0 %** (`spectre_bas`). Quatre chaînes sonnent « vieille radio » dans Zuno et bien dans une autre app, même source. Le défaut n'est donc pas « le fournisseur n'a pas d'aigus » au sens où l'autre app les rend. La fiche ne dit pas encore **quelle étape** de Zuno les enlève.
+
+### Ce que la chaîne fait vraiment
+
+Ordre Media3 1.5.1 (`DefaultAudioSink.configure`), PCM :
+
+1. Décodeur. Pour l'AAC, `preferFfmpegFor` vide la liste `MediaCodec` : FFmpeg (`org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1`, lavc 60.3 / FFmpeg 6.0) décode. Une app ExoPlayer par défaut laisse le décodeur de la box. C'est la seule différence de décodeur.
+2. `ToInt16PcmAudioProcessor` si le décodeur sort du flottant. Ici la sortie annoncée est déjà du 16 bits (`enableFloatOutput` faux, `FfmpegAudioRenderer.shouldOutputFloat` préfère le 16 bits).
+3. `ChannelMappingAudioProcessor` (remap, pas un filtre) puis `TrimmingAudioProcessor`.
+4. Processeurs de l'app : `ClearVoiceProcessor` (NOT_SET si coupé, le défaut) puis `AudioProbeProcessor` (NOT_SET si coupé). **La sonde de Lionel est ici** : elle voit le PCM du décodeur, pas la sortie HDMI.
+5. `SilenceSkippingAudioProcessor` : `skipSilenceEnabled = false`, inactif.
+6. `SonicAudioProcessor` : inactif si vitesse 1,0, hauteur 1,0 et même fréquence. La vitesse live est figée à 1,0. Il est **après** la sonde : il n'explique pas un 2 % mesuré par la sonde.
+7. `AudioTrack` PCM. Pas de `DynamicsProcessing`, pas d'`Equalizer`, pas de `LoudnessEnhancer` dans le code. Contenu audio `MOVIE` (ou `SPEECH` seulement si voix claire).
+
+`ClearVoiceGain` sous le seuil 0,40 rend un gain 1 : aucun échantillon ne change. Au-dessus, c'est un gain, pas un passe-bas.
+
+### PROUVÉ (machine, 1er octobre 2026)
+
+Même passe-haut que la sonde.
+
+| Signal | Rapport | Lecture |
+| --- | --- | --- |
+| Bruit blanc 48 kHz, amplitude 0,4 | 0,8190706717706194 | LARGE |
+| Le même, quantifié 16 bits | 0,8190705800818493 | LARGE (la conversion n'enlève rien) |
+| Le même, gain « voix claire » au seuil (gain 1) | identique | LARGE |
+| Le même encodé AAC-LC 128 kb/s puis décodé par FFmpeg 6.1.1 (`pcm_s16le`) | **0,7227955719029436** | LARGE |
+| Le même encodé AAC-LC **64 kb/s** (le codeur coupe la bande) | 0,0016263204915718422 | BASSE — le codeur, pas un filtre Zuno. L'autre app entendrait la même chose |
+| Harmoniques de voix, rien au-dessus de 3,2 kHz (logic-test) | 0,002921714190980977 | BASSE sans aucun filtre |
+| Bruit 48 kHz, copie PCM puis gain 1 (logic-test, même échantillons) | 0,8194908451579801 avant, copie et gain identiques | LARGE. Le passe-bas 3,4 kHz du même bruit : 0,07888762097263485 |
+
+Donc : **la chaîne PCM par défaut (copie, gain 1, entier 16 bits) ne fabrique pas un 2 % à partir d'un large bande.** FFmpeg AAC-LC à 128 kb/s non plus. Un 2 % est le chiffre d'une voix, ou d'un flux déjà coupé avant le décodeur, ou d'un décodeur qui n'a pas reconstruit le SBR. Ces trois-là donnent le même pourcentage. On ne les sépare pas sans un second décodeur sur la même chaîne.
+
+L'encodeur AAC natif de cette machine ne fait pas le HE-AAC (`aac_he` refusé, pas de libfdk). On n'a pas rejoué le `.so` Jellyfin (ARM, lavc 60.3.100) : le FFmpeg du test est 6.1.1.
+
+### PAS PROUVÉ
+
+- Que le `.so` de la box rende un AAC-LC 48 kHz plus sourd que FFmpeg 6.1.1.
+- Que ces quatre flux soient du HE-AAC étiqueté AAC-LC (SBR implicite). Le décodeur de la box (souvent Fraunhofer) le reconstruit ; FFmpeg 6.0 peut le rater quand la config dit 48 kHz. **C'est l'hypothèse, pas une preuve.**
+- Que l'AudioTrack ou la TV n'ajoute pas un second traitement après la sonde. La fiche 2 % est **avant** cet étage.
+- Qu'allumer le décodeur de la box répare France 24. Ça peut aussi rendre « radio » les chaînes que FFmpeg réparait (SBR ignoré par la puce). Le défaut ne change donc pas.
+
+### Essai, coupé par défaut
+
+`zuno.audio.fix.platform` (`AudioFixes.preferPlatformAac`, défaut faux). Allumé : au `setUrl` suivant, `AudioFixes.ffmpegForAac` laisse la liste MediaCodec AAC en place. Le MP2 reste sur FFmpeg. Si la box échoue (`onAudioCodecError` / `onAudioSinkError`), `platformAacGaveUp` revient à FFmpeg pour cette ouverture et ne renvoie pas la balle.
+
+`ffmpegForAac(false, …)` reste vrai : le chemin v106 est inchangé tant que l'interrupteur est coupé.
+
+### Ce que la prochaine fiche doit montrer
+
+Déjà ajouté au rapport :
+
+- le point de mesure (après décodeur, avant Sonic, avant AudioTrack) ;
+- voix claire, silences, vitesse ;
+- le pourcentage **de chaque voie** (un mélange bas + une voie large = annulation, pas un passe-bas).
+
+Pour trancher, Lionel : spectre allumé, ouvrir France 24, noter le pourcentage et les deux voies. Allumer **Box AAC**, zapper, rouvrir, noter le nouveau pourcentage et le nom du décodeur.
+
+| Prochaine fiche | Conclusion |
+| --- | --- |
+| FFmpeg ~2 % et box ~2 %, les deux voies pareilles | le contenu (parole) ou un étage après la sonde. On ne change pas le décodeur |
+| FFmpeg ~2 % et box large (une voie ≥ 40 %) | FFmpeg n'a pas les aigus sur cette chaîne. L'essai box est le correctif, toujours coupé par défaut tant que ce n'est pas revu sur d'autres chaînes |
+| Mélange ~2 % mais une voie large | `spectre_annulation`. Le son n'est pas filtré. On ne change pas le décodeur |
+| Box à ≤ 24 kHz | la règle déjà sûre `decodeur_sans_sbr` : revenir à FFmpeg |

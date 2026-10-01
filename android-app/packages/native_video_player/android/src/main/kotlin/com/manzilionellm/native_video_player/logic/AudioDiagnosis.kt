@@ -57,6 +57,12 @@ data class AudioSnapshot(
     val audioTrackCount: Int = 0,
     /** Plus grand nombre de voies parmi les pistes audio NON choisies. */
     val widerTrackChannels: Int = 0,
+    /** Note de repli (échec du décodeur de la box, retour à FFmpeg). */
+    val routeNote: String? = null,
+    /** Player.skipSilenceEnabled au moment du rapport. */
+    val skipSilence: Boolean = false,
+    /** Vitesse de lecture (1 = temps réel). */
+    val playbackSpeed: Float = 1f,
 )
 
 object AudioDiagnosis {
@@ -433,6 +439,8 @@ object AudioDiagnosis {
         }
 
         spectrumFinding(s)?.let { out += it }
+        cancellationFinding(s)?.let { out += it }
+        ffmpegLowBandFinding(s)?.let { out += it }
         clippingFinding(s)?.let { out += it }
         delayFinding(s.avOffsetMs)?.let { out += it }
 
@@ -540,6 +548,18 @@ object AudioDiagnosis {
             if (s.outSampleRate > 0) append(", ").append(khz(s.outSampleRate))
             if (s.outChannels > 0) append(", ${s.outChannels} voies")
             val spec = s.spectrum
+            append("\nPoint de mesure : PCM 16 bits du décodeur, après conversion entier, ")
+            append("avant Sonic et avant l'AudioTrack.")
+            append("\nEffets dans l'app : voix claire ")
+            append(if (s.clearVoice) "allumée" else "coupée")
+            append(", float coupé, silences ")
+            append(if (s.skipSilence) "sautés" else "non sautés")
+            append(", vitesse ")
+            append(String.format(Locale.FRANCE, "%.2f", s.playbackSpeed))
+            append(". Pas d'égaliseur, pas de DynamicsProcessing, pas de LoudnessEnhancer.")
+            if (!s.routeNote.isNullOrBlank()) {
+                append("\nEssai : ").append(s.routeNote)
+            }
             append("\nSpectre > 4 kHz : ")
             append(
                 when (spec?.band) {
@@ -552,6 +572,14 @@ object AudioDiagnosis {
                     AudioSpectrum.Band.RATE -> "fréquence de sortie trop basse pour mesurer"
                 },
             )
+            if (spec != null && spec.channelHighRatios.isNotEmpty()) {
+                append("\nPar voie : ")
+                spec.channelHighRatios.forEachIndexed { i, r ->
+                    if (i > 0) append(" · ")
+                    append("voie ").append(i + 1).append(' ')
+                    append(String.format(Locale.FRANCE, "%.1f %%", r * 100.0))
+                }
+            }
             if (spec != null && spec.clippedFraction > 0.0) {
                 append("\nSaturation : ")
                 append(String.format(Locale.FRANCE, "%.2f %%", spec.clippedFraction * 100.0))
@@ -604,7 +632,14 @@ object AudioDiagnosis {
     )
 
     private fun spectrumFinding(s: AudioSnapshot): Finding? {
-        val spec = s.spectrum ?: return null
+        val raw = s.spectrum ?: return null
+        val band = AudioSpectrum.effectiveBand(raw)
+        val loudest = raw.channelHighRatios.maxOrNull()
+        val spec = if (band == AudioSpectrum.Band.WIDE && loudest != null && loudest > raw.highRatio) {
+            raw.copy(band = band, highRatio = loudest)
+        } else {
+            raw.copy(band = band)
+        }
         return when (spec.band) {
             AudioSpectrum.Band.WIDE -> Finding(
                 id = "spectre_large",
@@ -656,6 +691,67 @@ object AudioDiagnosis {
             AudioSpectrum.Band.RATE,
             -> null
         }
+    }
+
+    /**
+     * Le mélange des voies est bas, mais une voie est large : les aigus
+     * sont là, ils s'annulent dans le mélange. Ce n'est pas un passe-bas.
+     */
+    private fun cancellationFinding(s: AudioSnapshot): Finding? {
+        val spec = s.spectrum ?: return null
+        if (spec.band != AudioSpectrum.Band.LOW) return null
+        if (AudioSpectrum.effectiveBand(spec) != AudioSpectrum.Band.WIDE) return null
+        return Finding(
+            id = "spectre_annulation",
+            confidence = Confidence.HAUTE,
+            kind = Kind.INFO,
+            symptom = "Mélange des voies bas (${spec.percent()}), mais une voie reste large.",
+            cause = "Les aigus sont présents sur au moins une voie. Le mélange les annule. " +
+                "Ce n'est pas une coupure de bande du décodeur.",
+            fix = Fix(
+                file = FILE_SPECTRUM,
+                symbol = "AudioSpectrum.effectiveBand / pushChannel",
+                media3 = "AudioProcessor (mesure par voie, le son n'est pas modifié)",
+                action = "Ne pas changer le décodeur sur le seul mélange.",
+                settingKey = null,
+            ),
+        )
+    }
+
+    /**
+     * Fiche du type France 24 : FFmpeg, AAC, 48 kHz, énergie haute basse.
+     * Une voix naturelle donne le même chiffre. On ne change PAS le défaut.
+     * L'essai « décodeur de la box » est proposé, coupé.
+     */
+    private fun ffmpegLowBandFinding(s: AudioSnapshot): Finding? {
+        val spec = s.spectrum ?: return null
+        if (AudioSpectrum.effectiveBand(spec) != AudioSpectrum.Band.LOW) return null
+        if (!isFfmpeg(s.decoder) || !isAac(s.mime) || s.passthrough) return null
+        if (s.outSampleRate < 32_000) return null
+        return Finding(
+            id = "ffmpeg_essai_box",
+            confidence = Confidence.INCERTAINE,
+            kind = Kind.CAUSE,
+            symptom = "FFmpeg sort un ${codecName(s)} à ${khz(s.outSampleRate)}, " +
+                "énergie > 4 kHz = ${spec.percent()}.",
+            cause = "Deux lectures possibles, et les tests ne les séparent pas : " +
+                "une voix (France 24) est naturellement pauvre au-dessus de 4 kHz, " +
+                "OU le décodeur FFmpeg n'a pas reconstruit des aigus que le décodeur " +
+                "de la box aurait gardés (SBR mal signalé, vu comme AAC-LC). " +
+                "Un AAC-LC large bande à 128 kb/s décodé par FFmpeg 6.1 reste large " +
+                "(mesure 72 %). On n'accuse donc pas FFmpeg sans l'essai sur la box.",
+            fix = Fix(
+                file = FILE_VIEW,
+                symbol = "AudioFixes.ffmpegForAac / NativeVideoView.preferFfmpegFor",
+                media3 = "MediaCodecSelector : liste normale (décodeur de la box) au lieu de la liste vide",
+                action = "Allumer zuno.audio.fix.platform et rouvrir la chaîne. " +
+                    "Comparer le pourcentage. S'il reste bas, c'est le contenu, pas le décodeur. " +
+                    "S'il devient large, FFmpeg était en cause sur CETTE chaîne. " +
+                    "Le défaut (réglage coupé) reste FFmpeg. Si la box échoue, on revient à FFmpeg " +
+                    "pour cette ouverture.",
+                settingKey = AudioFixes.KEY_PLATFORM,
+            ),
+        )
     }
 
     private fun clippingFinding(s: AudioSnapshot): Finding? {
