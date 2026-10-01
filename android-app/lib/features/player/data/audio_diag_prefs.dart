@@ -28,6 +28,9 @@ class AudioDiagPrefs {
   /// Repli « arrière-plan » : vrai = pause (ancien), faux = arrêt propre.
   static const String bgPauseKey = 'zuno.player.bg_pause_only';
 
+  /// Repli « passage » : vrai = on n'attend pas l'AudioTrack (ancien).
+  static const String immediateHandoffKey = 'zuno.audio.handoff.immediate';
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
@@ -35,6 +38,7 @@ class AudioDiagPrefs {
     var sessionWide = false;
     var androidFocus = false;
     var bgPause = false;
+    var immediate = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -43,6 +47,7 @@ class AudioDiagPrefs {
       sessionWide = prefs.getBool(sessionWideKey) ?? false;
       androidFocus = prefs.getBool(androidFocusKey) ?? false;
       bgPause = prefs.getBool(bgPauseKey) ?? false;
+      immediate = prefs.getBool(immediateHandoffKey) ?? false;
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -50,6 +55,7 @@ class AudioDiagPrefs {
       sessionWide = false;
       androidFocus = false;
       bgPause = false;
+      immediate = false;
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
@@ -57,6 +63,16 @@ class AudioDiagPrefs {
     NativeVideoController.sessionWideFallback = sessionWide;
     NativeVideoController.androidAudioFocus = androidFocus;
     NativeVideoController.backgroundPauseOnly = bgPause;
+    NativeVideoController.immediateHandoff = immediate;
+  }
+
+  static Future<void> setImmediateHandoff(bool value) async {
+    NativeVideoController.immediateHandoff = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(immediateHandoffKey, value);
+    } catch (_) {}
   }
 
   static Future<void> setAndroidFocus(bool value) async {

@@ -56,8 +56,53 @@ object PlayerCensus {
     @Synchronized fun playerReleased() { players = (players - 1).coerceAtLeast(0) }
     @Synchronized fun audioDecoderOpened() { decoders += 1 }
     @Synchronized fun audioDecoderClosed() { decoders = (decoders - 1).coerceAtLeast(0) }
-    @Synchronized fun audioTrackOpened() { tracks += 1 }
-    @Synchronized fun audioTrackClosed() { tracks = (tracks - 1).coerceAtLeast(0) }
+
+    /**
+     * Pistes AudioTrack vivantes dans tout le processus. Lu par le passage
+     * de chaîne : on n'ouvre la suivante que quand ce compteur est à 0.
+     */
+    @Synchronized fun tracksAlive(): Int = tracks
+
+    @Synchronized fun decodersAlive(): Int = decoders
+
+    /**
+     * Prévenu à chaque changement du nombre de pistes. Sert à réveiller
+     * une vue qui attend que l'AudioTrack d'une AUTRE vue (aperçu, sonde)
+     * soit vraiment rendu. L'appel se fait hors du verrou.
+     */
+    private val trackWatchers = ArrayList<(Int) -> Unit>()
+
+    @Synchronized
+    fun watchTracks(watcher: (Int) -> Unit) {
+        trackWatchers.add(watcher)
+    }
+
+    @Synchronized
+    fun unwatchTracks(watcher: (Int) -> Unit) {
+        trackWatchers.remove(watcher)
+    }
+
+    fun audioTrackOpened() {
+        val n: Int
+        val copy: List<(Int) -> Unit>
+        synchronized(this) {
+            tracks += 1
+            n = tracks
+            copy = trackWatchers.toList()
+        }
+        for (w in copy) w(n)
+    }
+
+    fun audioTrackClosed() {
+        val n: Int
+        val copy: List<(Int) -> Unit>
+        synchronized(this) {
+            tracks = (tracks - 1).coerceAtLeast(0)
+            n = tracks
+            copy = trackWatchers.toList()
+        }
+        for (w in copy) w(n)
+    }
 
     @Synchronized
     fun snapshot(urlKey: Int, boxFailure: AacRoute.Failure?): Snapshot = Snapshot(
@@ -79,6 +124,7 @@ object PlayerCensus {
         decoders = 0
         tracks = 0
         seen.clear()
+        trackWatchers.clear()
     }
 
     /** Plus d'un lecteur, décodeur ou AudioTrack vivant : chevauchement ou fuite. */

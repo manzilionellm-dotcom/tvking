@@ -36,8 +36,20 @@ object AudioFixes {
      */
     const val KEY_ANDROID_FOCUS: String = "zuno.audio.focus.android"
 
+    /**
+     * Interrupteur de REPLI du passage « un seul AudioTrack ». Vrai = on
+     * ouvre la chaîne suivante sans attendre que l'AudioTrack précédent
+     * soit rendu (Media3 1.5.1 le rend en retard : deux pistes se
+     * chevauchent). Faux par défaut : on attend.
+     */
+    const val KEY_IMMEDIATE_HANDOFF: String = "zuno.audio.handoff.immediate"
+
     @Volatile
     var androidFocus: Boolean = false
+
+    /** Vrai = ancien passage (on n'attend pas l'AudioTrack). Faux par défaut. */
+    @Volatile
+    var immediateHandoff: Boolean = false
 
     @Volatile
     var probe: Boolean = false

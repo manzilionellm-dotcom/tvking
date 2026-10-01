@@ -90,6 +90,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _sessionWide = NativeVideoController.sessionWideFallback;
     _androidFocus = NativeVideoController.androidAudioFocus;
     _bgPause = NativeVideoController.backgroundPauseOnly;
+    _immediate = NativeVideoController.immediateHandoff;
     _load();
   }
 
@@ -101,6 +102,13 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
 
   bool _androidFocus = false;
   bool _bgPause = false;
+  bool _immediate = false;
+
+  Future<void> _toggleImmediate() async {
+    final bool next = !_immediate;
+    setState(() => _immediate = next);
+    await AudioDiagPrefs.setImmediateHandoff(next);
+  }
 
   Future<void> _toggleAndroidFocus() async {
     final bool next = !_androidFocus;
@@ -217,6 +225,16 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           ],
         ),
         const SizedBox(height: 8),
+        Row(
+          children: <Widget>[
+            _Toggle(
+              label: _immediate ? 'Passage : tout de suite' : 'Passage : attendre',
+              on: _immediate,
+              onSelect: _toggleImmediate,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         Text(
           'Spectre : à la prochaine chaîne, mesure quatre points '
           '(décodeur, voix claire, silence, AudioTrack) sans modifier le son. '
@@ -230,7 +248,11 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'quand une autre app ou un bip demande le son (le son « dans un trou ») ; '
           '« Android » = ancien comportement (baisse à 20 %). Hors app : '
           '« arrêt » (défaut) = en quittant l\'app le son est coupé et rendu, la '
-          'chaîne est rouverte au retour ; « pause » = ancien comportement.',
+          'chaîne est rouverte au retour ; « pause » = ancien comportement. '
+          'Passage : « attendre » (défaut) = on n\'ouvre la chaîne suivante '
+          'que lorsque l\'AudioTrack précédent est vraiment rendu (sinon deux '
+          'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '
+          'ancien comportement.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
         ),
         const SizedBox(height: 14),

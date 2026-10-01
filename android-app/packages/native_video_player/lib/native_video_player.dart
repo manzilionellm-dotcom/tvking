@@ -107,7 +107,11 @@ abstract class NativeVideoBackend {
 
 /// Pilote un lecteur natif et publie son état. Un controller = une vue.
 class NativeVideoController extends ChangeNotifier {
-  NativeVideoController({this.initialUrl, String? preferredAudio}) {
+  NativeVideoController({
+    this.initialUrl,
+    String? preferredAudio,
+    this.openAsVod = false,
+  }) {
     if (preferredAudio != null && preferredAudio.isNotEmpty) {
       _preferredAudio = preferredAudio;
     }
@@ -164,6 +168,11 @@ class NativeVideoController extends ChangeNotifier {
   /// au retour.
   static bool backgroundPauseOnly = false;
 
+  /// Passage d'une chaîne à l'autre : vrai = on n'attend pas que
+  /// l'AudioTrack précédent soit rendu (deux pistes peuvent se
+  /// chevaucher, l'ancien défaut). Faux par défaut : on attend.
+  static bool immediateHandoff = false;
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -175,6 +184,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setPreferPlatformAac', preferPlatformAac);
       ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
       ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
+      ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
     }
   }
 
@@ -191,6 +201,10 @@ class NativeVideoController extends ChangeNotifier {
 
   /// URL jouée dès que la vue native est prête (1re chaîne).
   final String? initialUrl;
+
+  /// Fichier fini (film, enregistrement) : la reprise après coupure ou
+  /// après un retour dans l'app repart de la position, pas du bord du direct.
+  final bool openAsVod;
 
   MethodChannel? _channel;
   String? _pendingUrl;
@@ -312,6 +326,7 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setPreferPlatformAac', preferPlatformAac);
     ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
     ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
+    ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;
@@ -328,6 +343,7 @@ class NativeVideoController extends ChangeNotifier {
     return <String, dynamic>{
       'url': url,
       'epoch': _epoch,
+      if (openAsVod) 'vod': true,
       if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,
     };
   }
