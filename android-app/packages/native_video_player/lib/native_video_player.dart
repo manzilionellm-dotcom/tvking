@@ -136,6 +136,25 @@ class NativeVideoController extends ChangeNotifier {
   /// Plusieurs lignes séparées par « \n ». Null = ignoré.
   static void Function(String diagnostic)? onAudioDiagnostic;
 
+  /// Sonde PCM du diagnostic. Faux par défaut : le processeur natif
+  /// reste inactif (NOT_SET), le son ne change pas.
+  static bool audioProbeEnabled = false;
+
+  /// Réessayer FFmpeg à la prochaine chaîne même après un repli box.
+  /// Faux par défaut : le drapeau de repli n'est pas touché.
+  static bool keepFfmpegAudio = false;
+
+  static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
+
+  /// Pousse les deux réglages vers les vues déjà ouvertes. Sans vue,
+  /// le prochain [_attach] les enverra avant l'URL.
+  static void pushAudioDiagFlags() {
+    for (final MethodChannel ch in List<MethodChannel>.of(_audioFlagChannels)) {
+      ch.invokeMethod<void>('setAudioProbe', audioProbeEnabled);
+      ch.invokeMethod<void>('setKeepFfmpeg', keepFfmpegAudio);
+    }
+  }
+
   /// Tous les controllers vivants. Un zap ou une ouverture « prend »
   /// le son et fait taire les autres avant de démarrer.
   static final ExclusiveAudio audiblePlayers = ExclusiveAudio();
@@ -258,10 +277,15 @@ class NativeVideoController extends ChangeNotifier {
     final MethodChannel ch = MethodChannel('native_video_player/$viewId');
     _channel = ch;
     ch.setMethodCallHandler(_onNativeCall);
+    _audioFlagChannels.add(ch);
     // Avant l'URL : le premier décodeur est déjà le bon (pas un
     // second démarrage si le choix n'est pas le matériel).
     ch.invokeMethod<void>('setEngine', _imageEngine);
     ch.invokeMethod<void>('setFrameRateMatch', _frameRateMatch);
+    // Diagnostic audio. Les deux sont faux par défaut : le natif ne
+    // change ni la sonde (inactive) ni le repli FFmpeg.
+    ch.invokeMethod<void>('setAudioProbe', audioProbeEnabled);
+    ch.invokeMethod<void>('setKeepFfmpeg', keepFfmpegAudio);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;
@@ -616,6 +640,7 @@ class NativeVideoController extends ChangeNotifier {
     _backend?.dispose();
     final MethodChannel? ch = _channel;
     _channel = null;
+    if (ch != null) _audioFlagChannels.remove(ch);
     ch?.setMethodCallHandler(null);
     if (ch == null) return;
     try {
@@ -639,6 +664,7 @@ class NativeVideoController extends ChangeNotifier {
       _backend?.dispose();
       final MethodChannel? ch = _channel;
       _channel = null;
+      if (ch != null) _audioFlagChannels.remove(ch);
       ch?.setMethodCallHandler(null);
       ch?.invokeMethod<void>('dispose');
     }

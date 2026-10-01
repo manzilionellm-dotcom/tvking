@@ -54,6 +54,7 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
+import com.manzilionellm.native_video_player.logic.AudioFixes
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
 import com.manzilionellm.native_video_player.logic.CodecOrder
@@ -257,6 +258,16 @@ class NativeVideoView(
     // Voix claire. Faux par défaut : le processeur reste inactif.
     private var clearVoiceEnabled = false
     private val clearVoiceProcessor = ClearVoiceProcessor()
+
+    // Sonde du diagnostic. Coupée par défaut : onConfigure renvoie NOT_SET,
+    // Media3 ne l'insère pas. Allumée, elle copie le PCM sans le modifier.
+    private val audioProbeProcessor = AudioProbeProcessor { judged ->
+        handler.post {
+            if (released) return@post
+            diag = diag.copy(spectrum = judged)
+            sendAudioDiag()
+        }
+    }
 
     // ---- DIAGNOSTIC DU SON (boîte noire, 01/10/2026) -----------------------
     // Pour chaque chaîne : ce qui ENTRE (format du flux), QUI décode (box ou
@@ -479,7 +490,10 @@ class NativeVideoView(
                 return DefaultAudioSink.Builder(appContext)
                     .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(false)
-                    .setAudioProcessors(arrayOf(clearVoiceProcessor))
+                    // La sonde est dans la liste MAIS inactive tant que le réglage
+                    // est coupé (NOT_SET, comme la voix claire). Le son par
+                    // défaut ne passe pas par elle.
+                    .setAudioProcessors(arrayOf(clearVoiceProcessor, audioProbeProcessor))
                     .setAudioTrackBufferSizeProvider { min, encoding, mode, frame, rate, bitrate, speed ->
                         val minBytes = base.getBufferSizeInBytes(
                             min, encoding, mode, frame, rate, bitrate, speed,
@@ -701,6 +715,13 @@ class NativeVideoView(
                 triedEngines.clear()
                 videoGaveUp = false
                 restorePreferredEngine()
+                // Réglage optionnel « garder FFmpeg ». Faux par défaut : le
+                // drapeau de repli ne bouge pas. Vrai : on réessaie FFmpeg
+                // sur cette ouverture. Le filet des 8 s reste armé plus bas.
+                forceBoxAacDecoder = AudioFixes.forceBoxAfterOpen(
+                    AudioFixes.keepFfmpeg,
+                    forceBoxAacDecoder,
+                )
                 // Diagnostic du son : nouvelle chaîne, compteurs à zéro.
                 diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
                 diagLastUnderrunSentMs = 0L
@@ -783,6 +804,17 @@ class NativeVideoView(
                 } else if (!released) {
                     player.setAudioAttributes(movieAudioAttributes(), true)
                 }
+                result.success(null)
+            }
+            "setAudioProbe" -> {
+                AudioFixes.probe = call.arguments == true
+                audioProbeProcessor.enabled = AudioFixes.probe
+                result.success(null)
+            }
+            "setKeepFfmpeg" -> {
+                // Pris en compte au prochain setUrl (forceBoxAfterOpen).
+                // On ne rouvre pas la chaîne tout seul.
+                AudioFixes.keepFfmpeg = call.arguments == true
                 result.success(null)
             }
             "dispose" -> {
@@ -948,6 +980,17 @@ class NativeVideoView(
                 }
             }
         }
+        var audioCount = 0
+        var wider = 0
+        for (row in out) {
+            if (row["type"] != "audio") continue
+            audioCount++
+            val ch = (row["channels"] as? Int) ?: 0
+            val selected = row["selected"] == true
+            if (!selected && ch > wider) wider = ch
+        }
+        diag = diag.copy(audioTrackCount = audioCount, widerTrackChannels = wider)
+        if (diag.outSampleRate > 0 || diag.decoder != null) sendAudioDiag()
         emit("tracks", out)
         maybeChooseVideo(tracks)
         if (audioChosenForSession) return
@@ -1177,6 +1220,7 @@ class NativeVideoView(
         if (released || token != sessions.generation) return
         player.setAudioAttributes(movieAudioAttributes(), true)
         clearVoiceProcessor.enabled = clearVoiceEnabled
+        audioProbeProcessor.enabled = AudioFixes.probe
         // L'override audio de la chaîne précédente ne doit pas choisir
         // une piste au hasard sur la nouvelle.
         val params = player.trackSelectionParameters.buildUpon()
@@ -1485,12 +1529,15 @@ class NativeVideoView(
         val text = buildString {
             append(AudioDiagnosis.describe(diag))
             for (v in AudioDiagnosis.verdicts(diag)) append("\n→ ").append(v)
+            append("\n").append(AudioDiagnosis.report(diag))
             if (!diagCapsSent) {
                 diagCapsSent = true
                 append("\n").append(outputCaps)
             }
         }
-        emit("audioDiag", text)
+        // Aucune URL de flux ni mot de passe : le rapport n'en a pas,
+        // et on retire quand même un secret si un libellé en portait un.
+        emit("audioDiag", AudioDiagnosis.redact(text))
     }
 
     private fun encodingName(encoding: Int): String = when (encoding) {
