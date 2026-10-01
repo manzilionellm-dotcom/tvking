@@ -22,7 +22,8 @@ import java.nio.ByteBuffer
  */
 @UnstableApi
 class AudioProbeProcessor(
-    private val onJudgement: (AudioSpectrum.Judgement) -> Unit,
+    val stage: String,
+    private val onJudgement: (String, AudioSpectrum.Judgement) -> Unit,
 ) : BaseAudioProcessor() {
 
     @Volatile
@@ -30,7 +31,7 @@ class AudioProbeProcessor(
 
     private var acc: AudioSpectrum.Accum = AudioSpectrum.start(48_000)
     private var perChannel: List<AudioSpectrum.Accum> = emptyList()
-    private var lastBand: AudioSpectrum.Band? = null
+    private var lastKey: String? = null
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (!enabled || inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
@@ -43,7 +44,7 @@ class AudioProbeProcessor(
         perChannel = List(inputAudioFormat.channelCount.coerceIn(1, 8)) {
             AudioSpectrum.start(inputAudioFormat.sampleRate)
         }
-        lastBand = null
+        lastKey = null
         // Même format en sortie : Media3 ne rééchantillonne pas à cause de nous.
         return inputAudioFormat
     }
@@ -53,7 +54,7 @@ class AudioProbeProcessor(
         val nch = perChannel.size.coerceAtLeast(1)
         acc = AudioSpectrum.start(rate)
         perChannel = List(nch) { AudioSpectrum.start(rate) }
-        lastBand = null
+        lastKey = null
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
@@ -93,16 +94,18 @@ class AudioProbeProcessor(
     }
 
     /**
-     * Une fois par classe de bande. On ne renvoie pas un rapport à chaque
-     * tampon (ça noierait la boîte noire) et on ignore la fenêtre trop courte.
+     * Quand la bande ou le pourcentage arrondi change. 2,0 % puis 0,8 %
+     * sont la même classe « basse » : on veut quand même le nouveau chiffre.
+     * On ignore la fenêtre trop courte.
      */
     private fun publish(judged: AudioSpectrum.Judgement) {
         when (judged.band) {
             AudioSpectrum.Band.SHORT, AudioSpectrum.Band.SILENCE -> return
             else -> Unit
         }
-        if (judged.band == lastBand) return
-        lastBand = judged.band
-        onJudgement(judged)
+        val key = judged.band.name + " " + judged.percent()
+        if (key == lastKey) return
+        lastKey = key
+        onJudgement(stage, judged)
     }
 }

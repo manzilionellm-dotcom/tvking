@@ -129,7 +129,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Spectre : copie le PCM à la prochaine chaîne, sans le modifier. '
+          'Spectre : à la prochaine chaîne, mesure quatre points '
+          '(décodeur, voix claire, silence, AudioTrack) sans modifier le son. '
           'FFmpeg : réessaie le décodeur logiciel ; s\'il ne démarre pas en 8 s, '
           'la box reprend. Box AAC : à la prochaine chaîne, l\'AAC passe par le '
           'décodeur de la box (comme ExoPlayer). S\'il échoue, FFmpeg reprend '

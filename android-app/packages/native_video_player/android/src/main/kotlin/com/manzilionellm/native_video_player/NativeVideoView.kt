@@ -56,6 +56,8 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
 import com.manzilionellm.native_video_player.logic.AudioFixes
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
+import com.manzilionellm.native_video_player.logic.AudioSpectrum
+import com.manzilionellm.native_video_player.logic.AudioStages
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
 import com.manzilionellm.native_video_player.logic.CodecOrder
 import com.manzilionellm.native_video_player.logic.DecoderFallback
@@ -266,15 +268,13 @@ class NativeVideoView(
     private var clearVoiceEnabled = false
     private val clearVoiceProcessor = ClearVoiceProcessor()
 
-    // Sonde du diagnostic. Coupée par défaut : onConfigure renvoie NOT_SET,
-    // Media3 ne l'insère pas. Allumée, elle copie le PCM sans le modifier.
-    private val audioProbeProcessor = AudioProbeProcessor { judged ->
-        handler.post {
-            if (released) return@post
-            diag = diag.copy(spectrum = judged)
-            sendAudioDiag()
-        }
-    }
+    // Quatre sondes. Coupées par défaut : onConfigure renvoie NOT_SET,
+    // Media3 ne les insère pas. Allumées, chacune copie le PCM sans le modifier.
+    // L'ordre est celui de [ZunoAudioChain] : décodeur, voix, silence, AudioTrack.
+    private val probeDecoder = AudioProbeProcessor(AudioStages.DECODER, ::onProbe)
+    private val probeVoice = AudioProbeProcessor(AudioStages.VOICE, ::onProbe)
+    private val probeSilence = AudioProbeProcessor(AudioStages.SILENCE, ::onProbe)
+    private val probeSink = AudioProbeProcessor(AudioStages.SINK, ::onProbe)
 
     // ---- DIAGNOSTIC DU SON (boîte noire, 01/10/2026) -----------------------
     // Pour chaque chaîne : ce qui ENTRE (format du flux), QUI décode (box ou
@@ -497,10 +497,18 @@ class NativeVideoView(
                 return DefaultAudioSink.Builder(appContext)
                     .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(false)
-                    // La sonde est dans la liste MAIS inactive tant que le réglage
-                    // est coupé (NOT_SET, comme la voix claire). Le son par
-                    // défaut ne passe pas par elle.
-                    .setAudioProcessors(arrayOf(clearVoiceProcessor, audioProbeProcessor))
+                    // Sondes inactives tant que le réglage est coupé (NOT_SET).
+                    // Voix claire coupée, silences non sautés, vitesse 1 :
+                    // aucun processeur actif. Le son par défaut ne change pas.
+                    .setAudioProcessorChain(
+                        ZunoAudioChain(
+                            probeDecoder,
+                            clearVoiceProcessor,
+                            probeVoice,
+                            probeSilence,
+                            probeSink,
+                        ),
+                    )
                     .setAudioTrackBufferSizeProvider { min, encoding, mode, frame, rate, bitrate, speed ->
                         val minBytes = base.getBufferSizeInBytes(
                             min, encoding, mode, frame, rate, bitrate, speed,
@@ -829,7 +837,13 @@ class NativeVideoView(
             }
             "setAudioProbe" -> {
                 AudioFixes.probe = call.arguments == true
-                audioProbeProcessor.enabled = AudioFixes.probe
+                setProbeEnabled(AudioFixes.probe)
+                // Coupé : on oublie le chiffre du passage précédent. Sinon
+                // la fiche affiche encore 0,8 % alors que l'interrupteur est éteint.
+                if (!AudioFixes.probe && !released) {
+                    diag = diag.copy(spectrum = null, stages = emptyList())
+                    sendAudioDiag()
+                }
                 result.success(null)
             }
             "setKeepFfmpeg" -> {
@@ -1246,7 +1260,10 @@ class NativeVideoView(
         if (released || token != sessions.generation) return
         player.setAudioAttributes(movieAudioAttributes(), true)
         clearVoiceProcessor.enabled = clearVoiceEnabled
-        audioProbeProcessor.enabled = AudioFixes.probe
+        setProbeEnabled(AudioFixes.probe)
+        // Nouvelle ouverture : les pourcentages de la chaîne d'avant
+        // ne doivent pas rester affichés en attendant la fenêtre suivante.
+        diag = diag.copy(spectrum = null, stages = emptyList())
         // L'override audio de la chaîne précédente ne doit pas choisir
         // une piste au hasard sur la nouvelle.
         val params = player.trackSelectionParameters.buildUpon()
@@ -1577,6 +1594,40 @@ class NativeVideoView(
         val now = SystemClock.elapsedRealtime()
         if (now - diagLastUnderrunSentMs >= 30_000L) {
             diagLastUnderrunSentMs = now
+            sendAudioDiag()
+        }
+    }
+
+    /** Les quatre sondes s'allument ensemble. Coupées, chacune renvoie NOT_SET. */
+    private fun setProbeEnabled(on: Boolean) {
+        probeDecoder.enabled = on
+        probeVoice.enabled = on
+        probeSilence.enabled = on
+        probeSink.enabled = on
+    }
+
+    /**
+     * Appelé depuis le fil audio. On ne touche [diag] que sur le fil
+     * principal : le lecteur le lit aussi pour envoyer le rapport.
+     * [spectrum] reste la sonde décodeur, pour les règles déjà écrites.
+     * Les quatre chiffres sont dans [AudioSnapshot.stages].
+     */
+    private fun onProbe(stage: String, judged: AudioSpectrum.Judgement) {
+        handler.post {
+            if (released) return@post
+            val byId = mutableMapOf<String, AudioStages.Reading>()
+            for (existing in diag.stages) byId[existing.id] = existing
+            byId[stage] = AudioStages.Reading(stage, judged)
+            val ordered = ArrayList<AudioStages.Reading>(AudioStages.ORDER.size)
+            for (id in AudioStages.ORDER) {
+                val reading = byId[id] ?: continue
+                ordered.add(reading)
+            }
+            val decoder = ordered.firstOrNull { it.id == AudioStages.DECODER }?.judgement
+            diag = diag.copy(
+                stages = ordered,
+                spectrum = decoder ?: ordered.firstOrNull()?.judgement,
+            )
             sendAudioDiag()
         }
     }

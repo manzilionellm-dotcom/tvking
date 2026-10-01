@@ -63,6 +63,12 @@ data class AudioSnapshot(
     val skipSilence: Boolean = false,
     /** Vitesse de lecture (1 = temps réel). */
     val playbackSpeed: Float = 1f,
+    /**
+     * Spectre à chaque sonde, dans l'ordre [AudioStages.ORDER].
+     * Vide si la sonde est coupée. [spectrum] reprend alors la sonde
+     * décodeur : les règles déjà écrites ne changent pas de chiffre.
+     */
+    val stages: List<AudioStages.Reading> = emptyList(),
 )
 
 object AudioDiagnosis {
@@ -194,6 +200,10 @@ object AudioDiagnosis {
     private const val FILE_SPECTRUM =
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
             "com/manzilionellm/native_video_player/logic/AudioSpectrum.kt"
+
+    private const val FILE_STAGES =
+        "android-app/packages/native_video_player/android/src/main/kotlin/" +
+            "com/manzilionellm/native_video_player/logic/AudioStages.kt"
 
     private const val FILE_CLEAR =
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
@@ -440,6 +450,7 @@ object AudioDiagnosis {
 
         spectrumFinding(s)?.let { out += it }
         cancellationFinding(s)?.let { out += it }
+        out += stageFindings(s)
         ffmpegLowBandFinding(s)?.let { out += it }
         clippingFinding(s)?.let { out += it }
         delayFinding(s.avOffsetMs)?.let { out += it }
@@ -548,8 +559,18 @@ object AudioDiagnosis {
             if (s.outSampleRate > 0) append(", ").append(khz(s.outSampleRate))
             if (s.outChannels > 0) append(", ${s.outChannels} voies")
             val spec = s.spectrum
-            append("\nPoint de mesure : PCM 16 bits du décodeur, après conversion entier, ")
-            append("avant Sonic et avant l'AudioTrack.")
+            if (s.stages.isEmpty()) {
+                append("\nPoint de mesure : PCM 16 bits du décodeur, après conversion entier, ")
+                append("avant Sonic et avant l'AudioTrack.")
+            } else {
+                append("\nPoints de mesure (copie, le son n'est pas modifié) :")
+                for (reading in s.stages) {
+                    append("\n- ").append(stageLine(reading))
+                }
+                append("\nToInt16, le mapping de canaux et le trim sont avant « decodeur ». ")
+                append("Ce ne sont pas des passe-bas. Pas de boucle HDMI : ")
+                append("« audiotrack » est le dernier PCM dans l'app.")
+            }
             append("\nEffets dans l'app : voix claire ")
             append(if (s.clearVoice) "allumée" else "coupée")
             append(", float coupé, silences ")
@@ -630,6 +651,132 @@ object AudioDiagnosis {
         action = action,
         settingKey = AudioFixes.KEY_FFMPEG,
     )
+
+    /** Une ligne de fiche : id, pourcentage, bande, et où se trouve la sonde. */
+    private fun stageLine(reading: AudioStages.Reading): String {
+        val j = reading.judgement
+        val place = when (reading.id) {
+            AudioStages.DECODER ->
+                "PCM 16 bits après ToInt16, mapping et trim, avant la voix claire"
+            AudioStages.VOICE -> "après la voix claire"
+            AudioStages.SILENCE -> "après le saut de silence, avant Sonic"
+            AudioStages.SINK -> "PCM écrit dans l'AudioTrack, après Sonic"
+            else -> reading.id
+        }
+        val band = when (AudioSpectrum.effectiveBand(j)) {
+            AudioSpectrum.Band.WIDE -> "large"
+            AudioSpectrum.Band.LOW -> "basse"
+            AudioSpectrum.Band.MID -> "intermédiaire"
+            AudioSpectrum.Band.SHORT -> "trop court"
+            AudioSpectrum.Band.SILENCE -> "silence"
+            AudioSpectrum.Band.RATE -> "fréquence trop basse"
+        }
+        val channels = if (j.channelHighRatios.isEmpty()) {
+            ""
+        } else {
+            j.channelHighRatios.mapIndexed { i, ratio ->
+                "voie ${i + 1} " + String.format(Locale.FRANCE, "%.1f %%", ratio * 100.0)
+            }.joinToString(", ", prefix = " (", postfix = ")")
+        }
+        return "${reading.id} : ${j.percent()} $band — $place$channels"
+    }
+
+    /**
+     * Compare les sondes entre elles. Une baisse WIDE → LOW/MID entre
+     * deux sondes nomme l'étage. La même bande partout dit que les
+     * processeurs après la sonde décodeur n'ont pas coupé.
+     */
+    private fun stageFindings(s: AudioSnapshot): List<Finding> {
+        val readings = s.stages
+        if (readings.size < 2) return emptyList()
+        val drop = AudioStages.firstDrop(readings)
+        if (drop != null) return listOf(stageDropFinding(readings, drop))
+        if (!AudioStages.sameBand(readings)) return emptyList()
+        return listOf(stagesAgreeFinding(readings))
+    }
+
+    private fun stageDropFinding(
+        readings: List<AudioStages.Reading>,
+        drop: AudioStages.Reading,
+    ): Finding {
+        val index = readings.indexOfFirst { it.id == drop.id }
+        val before = readings[index - 1]
+        val where = when (drop.id) {
+            AudioStages.VOICE -> "entre la sonde décodeur et la sonde voix claire"
+            AudioStages.SILENCE -> "entre la sonde voix claire et la sonde silence"
+            AudioStages.SINK -> "entre la sonde silence et la sonde AudioTrack (Sonic)"
+            else -> "à l'étape ${drop.id}"
+        }
+        val fix = when (drop.id) {
+            AudioStages.VOICE -> Fix(
+                file = FILE_CLEAR,
+                symbol = "ClearVoiceProcessor.queueInput",
+                media3 = "AudioProcessorChain : ClearVoiceProcessor entre decodeur et voix_claire",
+                action = "La baisse est mesurée sur cet étage. « Voix claire » est un gain, " +
+                    "pas un passe-bas : si elle est allumée, la couper (réglage déjà là) et remesurer. " +
+                    "Ce diagnostic ne la coupe pas et ne change pas le décodeur.",
+                settingKey = null,
+            )
+            AudioStages.SILENCE -> Fix(
+                file = FILE_VIEW,
+                symbol = "ZunoAudioChain.applySkipSilenceEnabled",
+                media3 = "SilenceSkippingAudioProcessor (Player.skipSilenceEnabled)",
+                action = "Les silences ne sont pas sautés (skipSilenceEnabled = false). " +
+                    "Si la fiche montre quand même la baisse ici, c'est cet étage. " +
+                    "On ne l'allume pas et on ne change pas le décodeur.",
+                settingKey = null,
+            )
+            else -> Fix(
+                file = FILE_VIEW,
+                symbol = "ZunoAudioChain.applyPlaybackParameters",
+                media3 = "SonicAudioProcessor, avant la sonde audiotrack",
+                action = "La vitesse du direct est déjà figée à 1,0. Sonic ne rééchantillonne " +
+                    "que si la fréquence ou la hauteur change. On ne change pas l'AudioTrack " +
+                    "ni le décodeur : la baisse, si la fiche la montre, est ici.",
+                settingKey = null,
+            )
+        }
+        return Finding(
+            id = "etage_coupe",
+            confidence = Confidence.HAUTE,
+            kind = Kind.CAUSE,
+            symptom = "${before.id} ${before.judgement.percent()} puis ${drop.id} " +
+                "${drop.judgement.percent()} ($where).",
+            cause = "Un large bande est devenu plus étroit sur cet étage seulement. " +
+                "Les copies d'identité ne font pas ça : le test le mesure. " +
+                "Les sondes elles-mêmes copient le PCM, elles ne filtrent pas.",
+            fix = fix,
+        )
+    }
+
+    private fun stagesAgreeFinding(readings: List<AudioStages.Reading>): Finding {
+        val band = AudioSpectrum.effectiveBand(readings.first().judgement)
+        val nums = readings.joinToString(", ") { "${it.id} ${it.judgement.percent()}" }
+        val low = band == AudioSpectrum.Band.LOW
+        return Finding(
+            id = "etages_pareils",
+            confidence = if (band == AudioSpectrum.Band.WIDE) Confidence.HAUTE else Confidence.INCERTAINE,
+            kind = Kind.INFO,
+            symptom = "Même bande à chaque sonde : $nums.",
+            cause = if (low) {
+                "La bande au-dessus de 4 kHz est déjà basse à la sonde décodeur. " +
+                    "Voix claire, silence et Sonic ne l'ont pas baissée ensuite. " +
+                    "ToInt16, le mapping et le trim sont avant cette sonde et ne sont pas des passe-bas. " +
+                    "Reste le contenu (une parole est naturellement basse) ou le PCM écrit par le décodeur."
+            } else {
+                "Aucun processeur après la sonde décodeur n'a changé la bande. " +
+                    "On n'accuse pas la voix claire, le silence, Sonic, ni le mixage entre ces sondes."
+            },
+            fix = Fix(
+                file = FILE_STAGES,
+                symbol = "AudioStages.firstDrop / AudioStages.sameBand",
+                media3 = "AudioProcessorChain (sondes en copie, NOT_SET si coupées)",
+                action = "Ne pas changer le chemin par défaut sur ce seul accord. " +
+                    "L'essai du décodeur de la box reste l'interrupteur zuno.audio.fix.platform, coupé.",
+                settingKey = null,
+            ),
+        )
+    }
 
     private fun spectrumFinding(s: AudioSnapshot): Finding? {
         val raw = s.spectrum ?: return null

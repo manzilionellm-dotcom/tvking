@@ -68,7 +68,7 @@ Aucune box, aucune chaîne IPTV, aucun HDMI n'a été mesuré ici.
 - On n'a pas mesuré le décalage image/son. La règle existe (≥ 200 ms = sûr, ≤ 80 ms = ignoré, entre les deux = incertain) mais le lecteur **n'envoie pas** de chiffre : inventer un écart serait une fausse certitude. `setVideoChangeFrameRateStrategy(OFF)` et `skipSilenceEnabled = false` sont déjà en place et ne sont pas modifiés.
 - On n'a pas prouvé que rallumer FFmpeg répare une chaîne réelle, ni qu'il ne la laisse pas muette. Le filet des 8 s reste justement pour ça.
 - Le downmix 5.1 → stéréo est un **constat** (nombre de voies), pas une preuve que c'est lui qui fait le son radio. Aucun masque de canaux n'est changé.
-- La sonde, une fois allumée, ajoute une copie de tampon PCM. On n'a pas mesuré la latence ajoutée sur une box. Coupée, `onConfigure` renvoie `NOT_SET` : Media3 ne l'insère pas, comme la voix claire coupée.
+- Les sondes, une fois allumées, ajoutent une copie de tampon PCM chacune (quatre copies). On n'a pas mesuré la latence ajoutée sur une box. Coupées, `onConfigure` renvoie `NOT_SET` : Media3 ne les insère pas, comme la voix claire coupée. Voix claire coupée, silences non sautés, Sonic inactif : la chaîne active est vide, le PCM va à l'AudioTrack comme avant.
 
 ### Essai simple sur une box
 
@@ -95,6 +95,8 @@ Confiance **HAUTE** = la règle est entière et le test négatif correspondant n
 | Énergie > 4 kHz ≤ 0,12 | `spectre_bas` | INCERTAINE | Passe-bas **ou** parole naturellement pauvre en aigus | `AudioSpectrum.judge` / `AudioProbeProcessor`. Ne pas filtrer le son, ne pas forcer FFmpeg sur ce seul chiffre | aucun |
 | FFmpeg, AAC, sortie ≥ 32 kHz, spectre bas sur toutes les voies | `ffmpeg_essai_box` | INCERTAINE | Parole, ou FFmpeg sans les aigus que la box aurait | `AudioFixes.ffmpegForAac` : liste MediaCodec AAC normale. Défaut inchangé (FFmpeg) | `zuno.audio.fix.platform` (défaut coupé) |
 | Mélange bas, une voie ≥ 0,40 | `spectre_annulation` | HAUTE (info) | Les aigus s'annulent dans le mélange | `AudioSpectrum.effectiveBand`. Ne pas changer le décodeur | aucun |
+| Sonde décodeur LARGE, une sonde suivante BASSE ou MILIEU | `etage_coupe` | HAUTE | Le processeur entre ces deux sondes a baissé la bande | `AudioStages.firstDrop`. Voix claire : la couper à la main et remesurer. Silence : `skipSilenceEnabled` est déjà faux. AudioTrack : Sonic, vitesse déjà 1,0. On ne change pas le décodeur | aucun |
+| Les sondes disent la même bande basse | `etages_pareils` | INCERTAINE (info) | Le PCM du décodeur est déjà bas. Les processeurs d'après ne l'ont pas baissé | `AudioStages.sameBand`. Ne pas changer le défaut. L'essai box reste `zuno.audio.fix.platform` | aucun |
 | Entre 0,12 et 0,40 | `spectre_incertain` | INCERTAINE | Les seuils ne sont pas franchis | Ne rien changer | aucun |
 | Pas de PCM | `spectre_absent` | info | Sonde coupée (le défaut) | `AudioProbeProcessor.onConfigure` → `NOT_SET` | `zuno.audio.diag.probe` |
 | 6 voies (ou plus) → 1 ou 2, pas de passthrough | `downmix` | HAUTE comme constat, pas comme cause radio | `DefaultAudioSink` mélange vers l'AudioTrack | `NativeVideoView.buildAudioSink`. **Ne pas** changer le masque | aucun |
@@ -118,7 +120,7 @@ Codecs nommés dans le rapport : AAC-LC (`mp4a.40.2`), HE-AAC/SBR (`mp4a.40.5`),
 - `lib/main_tv.dart` — range le texte déjà émis (`audioDiag`) et charge les deux préférences (défaut faux).
 - `lib/features/tv/presentation/tv_settings_screen.dart` — une carte « Diagnostic du son ».
 - `packages/native_video_player/lib/native_video_player.dart` — envoie les deux drapeaux à la vue, avant l'URL.
-- `NativeVideoView.kt` — sonde inactive par défaut dans `setAudioProcessors`, lecture de `AudioFixes` au `setUrl` / `openCurrent`, rapport ajouté au texte déjà envoyé. `preferFfmpegFor` n'est pas modifié.
+- `NativeVideoView.kt` — quatre sondes inactives par défaut dans `ZunoAudioChain` (`setAudioProcessorChain`), lecture de `AudioFixes` au `setUrl` / `openCurrent`, rapport ajouté au texte déjà envoyé. `preferFfmpegFor` n'est pas modifié.
 
 Pas de publication, pas de push sur `main`, pas de Worker, pas de release `zuno-tv` / `zuno-tv-test`, pas de signature, pas de 4K Player.
 
@@ -133,10 +135,17 @@ Ordre Media3 1.5.1 (`DefaultAudioSink.configure`), PCM :
 1. Décodeur. Pour l'AAC, `preferFfmpegFor` vide la liste `MediaCodec` : FFmpeg (`org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1`, lavc 60.3 / FFmpeg 6.0) décode. Une app ExoPlayer par défaut laisse le décodeur de la box. C'est la seule différence de décodeur.
 2. `ToInt16PcmAudioProcessor` si le décodeur sort du flottant. Ici la sortie annoncée est déjà du 16 bits (`enableFloatOutput` faux, `FfmpegAudioRenderer.shouldOutputFloat` préfère le 16 bits).
 3. `ChannelMappingAudioProcessor` (remap, pas un filtre) puis `TrimmingAudioProcessor`.
-4. Processeurs de l'app : `ClearVoiceProcessor` (NOT_SET si coupé, le défaut) puis `AudioProbeProcessor` (NOT_SET si coupé). **La sonde de Lionel est ici** : elle voit le PCM du décodeur, pas la sortie HDMI.
-5. `SilenceSkippingAudioProcessor` : `skipSilenceEnabled = false`, inactif.
-6. `SonicAudioProcessor` : inactif si vitesse 1,0, hauteur 1,0 et même fréquence. La vitesse live est figée à 1,0. Il est **après** la sonde : il n'explique pas un 2 % mesuré par la sonde.
-7. `AudioTrack` PCM. Pas de `DynamicsProcessing`, pas d'`Equalizer`, pas de `LoudnessEnhancer` dans le code. Contenu audio `MOVIE` (ou `SPEECH` seulement si voix claire).
+4. Chaîne de l'app, `ZunoAudioChain` (même ordre que `DefaultAudioProcessorChain`, plus les sondes). Chaque sonde renvoie `NOT_SET` tant que `zuno.audio.diag.probe` est coupé : Media3 ne l'active pas.
+   - sonde `decodeur` — premier PCM que l'app peut mesurer ;
+   - `ClearVoiceProcessor` (`NOT_SET` si coupé, le défaut) ;
+   - sonde `voix_claire` ;
+   - `SilenceSkippingAudioProcessor` (`skipSilenceEnabled = false`, inactif) ;
+   - sonde `silence` ;
+   - `SonicAudioProcessor` (inactif si vitesse 1,0, hauteur 1,0 et même fréquence ; le direct est figé à 1,0) ;
+   - sonde `audiotrack` — dernier PCM avant l'écriture dans l'AudioTrack.
+5. `AudioTrack` PCM. Pas de `DynamicsProcessing`, pas d'`Equalizer`, pas de `LoudnessEnhancer` dans le code. Contenu audio `MOVIE` (ou `SPEECH` seulement si voix claire).
+
+La fiche à 2,0 % a été prise par **une seule** sonde, placée après la voix claire et **avant** Sonic. Sonic n'explique donc pas ce 2,0 %. Avec les quatre sondes, la prochaine fiche dira si le chiffre est déjà là à `decodeur` ou s'il baisse plus loin.
 
 `ClearVoiceGain` sous le seuil 0,40 rend un gain 1 : aucun échantillon ne change. Au-dessus, c'est un gain, pas un passe-bas.
 
@@ -171,19 +180,35 @@ L'encodeur AAC natif de cette machine ne fait pas le HE-AAC (`aac_he` refusé, p
 
 `ffmpegForAac(false, …)` reste vrai : le chemin v106 est inchangé tant que l'interrupteur est coupé.
 
+### Deuxième fiche France 24 (même jour, Spectre coupé à l'affichage)
+
+Même format : AAC-LC 48 kHz 2 voies, `ffmpegLavc60.3.100-aac`, PCM 16 bits 48 kHz 2 voies. Énergie > 4 kHz = **0,8 %** (le passage d'avant affichait 2,0 %). L'interrupteur Spectre était coupé : le 0,8 % est le chiffre **déjà enregistré**, pas une nouvelle fenêtre. France 2, fiche précédente : mêmes caractéristiques, mesure absente. La chaîne sonne bien dans une autre app.
+
+0,8 % et 2,0 % sont tous les deux sous le seuil bas (12 %). L'ancienne sonde ne renvoyait un nouveau texte que quand la **classe** changeait : deux fois « basse », le 0,8 % pouvait rester invisible. Elle publie maintenant dès que le pourcentage arrondi change.
+
+### Ce qui est avant ou entre le décodeur FFmpeg et l'ancienne sonde
+
+Lu dans le code, pas rejoué sur le `.so` de la box.
+
+- Options FFmpeg : `enableFloatOutput` est faux, donc `FfmpegAudioRenderer` demande du PCM 16 bits. Dans `ffmpeg_jni.cc` (Media3 1.5.1), le `SwrContext` de l'AAC garde **la même fréquence et le même nombre de voies** ; il ne fait que passer du flottant planaire au 16 bits entrelacé. Ce n'est pas un passe-bas à 4 kHz dans ce source. Le `.so` Jellyfin (lavc 60.3.100) n'a pas été exécuté ici.
+- `ToInt16PcmAudioProcessor` : no-op si c'est déjà du 16 bits. Il est **avant** la première sonde. On ne peut pas mesurer avant lui sans remplacer `DefaultAudioSink`, ce qui changerait la lecture.
+- `ChannelMappingAudioProcessor` : remap, pas un filtre. `TrimmingAudioProcessor` : enlève le délai d'encodeur, pas un passe-bas.
+- Voix claire : avant l'ancienne sonde. Coupée, `NOT_SET`, absente de la chaîne active. Allumée, c'est un gain. Le test gain 1 ne change pas le rapport.
+- Sonic et le saut de silence sont **après** l'ancienne sonde. Ils n'expliquent ni 2,0 % ni 0,8 %.
+- Pas d'égaliseur, pas de `DynamicsProcessing`, pas de `LoudnessEnhancer`, pas d'effet Android global branché par l'app.
+
+Donc un 0,8 % sur l'ancienne sonde est **déjà dans le PCM 16 bits du décodeur**, après ToInt16 / mapping / trim. Ça ne prouve pas encore si c'est la parole ou FFmpeg. Les quatre sondes servent à le vérifier sur la box : si les quatre pourcentages restent ~0,8 %, les processeurs après la sonde décodeur sont innocents.
+
 ### Ce que la prochaine fiche doit montrer
 
-Déjà ajouté au rapport :
+Le rapport écrit un pourcentage par sonde (`decodeur`, `voix_claire`, `silence`, `audiotrack`), plus les voies de la sonde décodeur. Sans les quatre chiffres, on ne tranche pas.
 
-- le point de mesure (après décodeur, avant Sonic, avant AudioTrack) ;
-- voix claire, silences, vitesse ;
-- le pourcentage **de chaque voie** (un mélange bas + une voie large = annulation, pas un passe-bas).
-
-Pour trancher, Lionel : spectre allumé, ouvrir France 24, noter le pourcentage et les deux voies. Allumer **Box AAC**, zapper, rouvrir, noter le nouveau pourcentage et le nom du décodeur.
+Pour trancher, Lionel : **allumer Spectre**, rouvrir France 24 (le chiffre du passage d'avant est effacé à l'ouverture), lire les quatre pourcentages. Puis, si les quatre sont bas, allumer **Box AAC**, zapper, rouvrir, noter le nouveau décodeur et les quatre pourcentages.
 
 | Prochaine fiche | Conclusion |
 | --- | --- |
-| FFmpeg ~2 % et box ~2 %, les deux voies pareilles | le contenu (parole) ou un étage après la sonde. On ne change pas le décodeur |
-| FFmpeg ~2 % et box large (une voie ≥ 40 %) | FFmpeg n'a pas les aigus sur cette chaîne. L'essai box est le correctif, toujours coupé par défaut tant que ce n'est pas revu sur d'autres chaînes |
-| Mélange ~2 % mais une voie large | `spectre_annulation`. Le son n'est pas filtré. On ne change pas le décodeur |
+| Les quatre sondes ~0,8 %, FFmpeg et box pareils | le contenu (parole), ou un traitement après l'AudioTrack (TV / HAL), qu'on ne mesure pas. On ne change pas le décodeur |
+| `decodeur` large, une sonde plus tard basse | `etage_coupe` : l'étage nommé (voix claire, silence ou Sonic). Le décodeur n'est pas le coupable |
+| FFmpeg ~0,8 % aux quatre sondes, box large (une voie ≥ 40 %) | FFmpeg n'a pas les aigus sur cette chaîne. L'essai box reste coupé par défaut |
+| Mélange bas mais une voie large | `spectre_annulation`. On ne change pas le décodeur |
 | Box à ≤ 24 kHz | la règle déjà sûre `decodeur_sans_sbr` : revenir à FFmpeg |

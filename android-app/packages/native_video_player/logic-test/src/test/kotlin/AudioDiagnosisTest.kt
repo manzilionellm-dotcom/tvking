@@ -2,6 +2,7 @@ import com.manzilionellm.native_video_player.logic.AudioDiagnosis
 import com.manzilionellm.native_video_player.logic.AudioFixes
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
+import com.manzilionellm.native_video_player.logic.AudioStages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -221,6 +222,48 @@ class AudioDiagnosisTest {
         assertTrue("spectre_annulation" in ids, ids.toString())
         assertTrue("spectre_bas" !in ids, ids.toString())
         assertTrue("ffmpeg_essai_box" !in ids, ids.toString())
+    }
+
+    @Test
+    fun quatreSondesBassesNaccusentPasLesProcesseurs() {
+        val low = spectrum(clip = 0.0, band = AudioSpectrum.Band.LOW, ratio = 0.008)
+        val stages = AudioStages.ORDER.map { AudioStages.Reading(it, low) }
+        val s = basePcm(low).copy(stages = stages)
+        val ids = AudioDiagnosis.findings(s).map { it.id }
+        assertTrue("etages_pareils" in ids, ids.toString())
+        assertTrue("etage_coupe" !in ids, ids.toString())
+        val agree = AudioDiagnosis.findings(s).first { it.id == "etages_pareils" }
+        assertEquals(AudioDiagnosis.Kind.INFO, agree.kind)
+        assertEquals(AudioDiagnosis.Confidence.INCERTAINE, agree.confidence)
+        assertTrue(AudioDiagnosis.sureCauses(s).none { it.id == "etages_pareils" })
+        assertTrue(AudioDiagnosis.sureCauses(s).none { it.id == "spectre_bas" })
+        val report = AudioDiagnosis.report(s)
+        assertTrue(report.contains("decodeur : 0,8 %"), report)
+        assertTrue(report.contains("voix_claire : 0,8 %"), report)
+        assertTrue(report.contains("silence : 0,8 %"), report)
+        assertTrue(report.contains("audiotrack : 0,8 %"), report)
+        assertTrue(report.contains("aucune cause sûre"), report)
+    }
+
+    @Test
+    fun uneBaisseEntreSondesNommeLEtage() {
+        val wide = spectrum(clip = 0.0, band = AudioSpectrum.Band.WIDE, ratio = 0.82)
+        val low = spectrum(clip = 0.0, band = AudioSpectrum.Band.LOW, ratio = 0.008)
+        val stages = listOf(
+            AudioStages.Reading(AudioStages.DECODER, wide),
+            AudioStages.Reading(AudioStages.VOICE, low),
+            AudioStages.Reading(AudioStages.SILENCE, low),
+            AudioStages.Reading(AudioStages.SINK, low),
+        )
+        val s = basePcm(wide).copy(stages = stages)
+        val drop = AudioDiagnosis.findings(s).first { it.id == "etage_coupe" }
+        assertEquals(AudioDiagnosis.Confidence.HAUTE, drop.confidence)
+        assertEquals(AudioDiagnosis.Kind.CAUSE, drop.kind)
+        assertTrue(drop.symptom.contains("voix_claire"), drop.symptom)
+        assertTrue(drop.fix.symbol.contains("ClearVoiceProcessor"))
+        assertNull(drop.fix.settingKey)
+        assertTrue(AudioDiagnosis.sureCauses(s).any { it.id == "etage_coupe" })
+        assertTrue(AudioDiagnosis.findings(s).none { it.id == "ffmpeg_essai_box" })
     }
 
     @Test
