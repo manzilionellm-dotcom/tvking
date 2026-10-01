@@ -111,9 +111,45 @@ object AudioSpectrum {
         val peak: Int,
         val frames: Int,
         val sampleRate: Int,
+        /**
+         * Rapport haute / totale de CHAQUE voie, dans l'ordre du PCM.
+         * Vide si on n'a mesuré que le mélange. Une voie large alors que
+         * le mélange est bas = les voies s'annulent, pas un passe-bas.
+         */
+        val channelHighRatios: List<Double> = emptyList(),
     ) {
         fun percent(): String =
             String.format(Locale.FRANCE, "%.1f %%", highRatio * 100.0)
+    }
+
+    /**
+     * Bande à lire. Si une voie est large, le signal a des aigus :
+     * le mélange (qui peut les annuler) ne fait pas un son radio.
+     */
+    fun effectiveBand(j: Judgement): Band {
+        if (j.channelHighRatios.any { it >= WIDE_MIN_RATIO }) return Band.WIDE
+        return j.band
+    }
+
+    /**
+     * Pousse UNE voie d'un tampon entrelacé dans [acc].
+     * [channel] commence à 0. Le mélange des voies n'est pas refait ici.
+     */
+    fun pushChannel(acc: Accum, pcm: ShortArray, channels: Int, channel: Int): Accum {
+        val ch = channels.coerceAtLeast(1)
+        if (channel !in 0 until ch) return acc
+        val n = pcm.size / ch
+        if (n <= 0) return acc
+        val one = ShortArray(n)
+        var j = 0
+        var i = channel
+        val limit = n * ch
+        while (i < limit) {
+            one[j] = pcm[i]
+            j++
+            i += ch
+        }
+        return push(acc, one, 1)
     }
 
     /**

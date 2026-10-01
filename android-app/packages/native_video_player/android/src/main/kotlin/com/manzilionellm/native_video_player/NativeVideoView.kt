@@ -56,6 +56,8 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
 import com.manzilionellm.native_video_player.logic.AudioFixes
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
+import com.manzilionellm.native_video_player.logic.AudioSpectrum
+import com.manzilionellm.native_video_player.logic.AudioStages
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
 import com.manzilionellm.native_video_player.logic.CodecOrder
 import com.manzilionellm.native_video_player.logic.DecoderFallback
@@ -230,6 +232,13 @@ class NativeVideoView(
     @Volatile
     private var ffmpegAudioActive = false
 
+    /**
+     * L'essai « décodeur de la box » a échoué sur CETTE ouverture.
+     * On reste sur FFmpeg jusqu'au prochain setUrl. Faux par défaut :
+     * le chemin v106 ne le consulte que si le réglage est allumé.
+     */
+    private var platformAacGaveUp = false
+
     // Jeton du délai de 8 s : l'incrémenter annule le contrôle précédent
     // (zapping, repli, dispose) sans toucher aux autres callbacks du Handler.
     private var ffmpegWatchToken = 0
@@ -259,15 +268,13 @@ class NativeVideoView(
     private var clearVoiceEnabled = false
     private val clearVoiceProcessor = ClearVoiceProcessor()
 
-    // Sonde du diagnostic. Coupée par défaut : onConfigure renvoie NOT_SET,
-    // Media3 ne l'insère pas. Allumée, elle copie le PCM sans le modifier.
-    private val audioProbeProcessor = AudioProbeProcessor { judged ->
-        handler.post {
-            if (released) return@post
-            diag = diag.copy(spectrum = judged)
-            sendAudioDiag()
-        }
-    }
+    // Quatre sondes. Coupées par défaut : onConfigure renvoie NOT_SET,
+    // Media3 ne les insère pas. Allumées, chacune copie le PCM sans le modifier.
+    // L'ordre est celui de [ZunoAudioChain] : décodeur, voix, silence, AudioTrack.
+    private val probeDecoder = AudioProbeProcessor(AudioStages.DECODER, ::onProbe)
+    private val probeVoice = AudioProbeProcessor(AudioStages.VOICE, ::onProbe)
+    private val probeSilence = AudioProbeProcessor(AudioStages.SILENCE, ::onProbe)
+    private val probeSink = AudioProbeProcessor(AudioStages.SINK, ::onProbe)
 
     // ---- DIAGNOSTIC DU SON (boîte noire, 01/10/2026) -----------------------
     // Pour chaque chaîne : ce qui ENTRE (format du flux), QUI décode (box ou
@@ -490,10 +497,18 @@ class NativeVideoView(
                 return DefaultAudioSink.Builder(appContext)
                     .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(false)
-                    // La sonde est dans la liste MAIS inactive tant que le réglage
-                    // est coupé (NOT_SET, comme la voix claire). Le son par
-                    // défaut ne passe pas par elle.
-                    .setAudioProcessors(arrayOf(clearVoiceProcessor, audioProbeProcessor))
+                    // Sondes inactives tant que le réglage est coupé (NOT_SET).
+                    // Voix claire coupée, silences non sautés, vitesse 1 :
+                    // aucun processeur actif. Le son par défaut ne change pas.
+                    .setAudioProcessorChain(
+                        ZunoAudioChain(
+                            probeDecoder,
+                            clearVoiceProcessor,
+                            probeVoice,
+                            probeSilence,
+                            probeSink,
+                        ),
+                    )
                     .setAudioTrackBufferSizeProvider { min, encoding, mode, frame, rate, bitrate, speed ->
                         val minBytes = base.getBufferSizeInBytes(
                             min, encoding, mode, frame, rate, bitrate, speed,
@@ -657,9 +672,20 @@ class NativeVideoView(
      * repli « retour à la box » que l'AAC si ça bloque.
      */
     private fun preferFfmpegFor(mimeType: String): Boolean {
-        if (forceBoxAacDecoder || !ffmpegReady) return false
+        if (!ffmpegReady) return false
+        if (mimeType == MimeTypes.AUDIO_AAC) {
+            // Défaut : FFmpeg, comme la v106. Le réglage « décodeur de la box »
+            // est le seul cas où la liste MediaCodec AAC n'est pas vidée.
+            return AudioFixes.ffmpegForAac(
+                preferPlatform = AudioFixes.preferPlatformAac,
+                gaveUpToFfmpeg = platformAacGaveUp,
+                forceBox = forceBoxAacDecoder,
+                ffmpegReady = true,
+                ffmpegSupports = ffmpegAac,
+            )
+        }
+        if (forceBoxAacDecoder) return false
         return when (mimeType) {
-            MimeTypes.AUDIO_AAC -> ffmpegAac
             MimeTypes.AUDIO_MPEG_L2 -> ffmpegMp2
             else -> false
         }
@@ -722,6 +748,9 @@ class NativeVideoView(
                     AudioFixes.keepFfmpeg,
                     forceBoxAacDecoder,
                 )
+                // Nouvel essai : le repli « box échouée → FFmpeg » ne suit
+                // pas la chaîne d'avant.
+                platformAacGaveUp = false
                 // Diagnostic du son : nouvelle chaîne, compteurs à zéro.
                 diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
                 diagLastUnderrunSentMs = 0L
@@ -808,13 +837,24 @@ class NativeVideoView(
             }
             "setAudioProbe" -> {
                 AudioFixes.probe = call.arguments == true
-                audioProbeProcessor.enabled = AudioFixes.probe
+                setProbeEnabled(AudioFixes.probe)
+                // Coupé : on oublie le chiffre du passage précédent. Sinon
+                // la fiche affiche encore 0,8 % alors que l'interrupteur est éteint.
+                if (!AudioFixes.probe && !released) {
+                    diag = diag.copy(spectrum = null, stages = emptyList())
+                    sendAudioDiag()
+                }
                 result.success(null)
             }
             "setKeepFfmpeg" -> {
                 // Pris en compte au prochain setUrl (forceBoxAfterOpen).
                 // On ne rouvre pas la chaîne tout seul.
                 AudioFixes.keepFfmpeg = call.arguments == true
+                result.success(null)
+            }
+            "setPreferPlatformAac" -> {
+                // Pris en compte au prochain setUrl. On ne rouvre pas.
+                AudioFixes.preferPlatformAac = call.arguments == true
                 result.success(null)
             }
             "dispose" -> {
@@ -1220,7 +1260,10 @@ class NativeVideoView(
         if (released || token != sessions.generation) return
         player.setAudioAttributes(movieAudioAttributes(), true)
         clearVoiceProcessor.enabled = clearVoiceEnabled
-        audioProbeProcessor.enabled = AudioFixes.probe
+        setProbeEnabled(AudioFixes.probe)
+        // Nouvelle ouverture : les pourcentages de la chaîne d'avant
+        // ne doivent pas rester affichés en attendant la fenêtre suivante.
+        diag = diag.copy(spectrum = null, stages = emptyList())
         // L'override audio de la chaîne précédente ne doit pas choisir
         // une piste au hasard sur la nouvelle.
         val params = player.trackSelectionParameters.buildUpon()
@@ -1389,6 +1432,7 @@ class NativeVideoView(
                 return@postDelayed
             }
             if (!forceBoxAacDecoder &&
+                !platformAacGaveUp &&
                 ffmpegAudioActive &&
                 player.playbackState != Player.STATE_READY
             ) {
@@ -1415,7 +1459,9 @@ class NativeVideoView(
      * au milieu de onPlayerError.
      */
     private fun requestBoxAudioFallback() {
-        if (forceBoxAacDecoder || released) return
+        // Déjà revenu de la box vers FFmpeg : ne pas renvoyer vers la box,
+        // les deux se relanceraient.
+        if (platformAacGaveUp || forceBoxAacDecoder || released) return
         forceBoxAacDecoder = true
         ffmpegAudioActive = false
         ffmpegWatchToken++
@@ -1465,13 +1511,40 @@ class NativeVideoView(
      */
     override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
         if (fresh(eventTime)) emit("audioDiag", "Erreur de la sortie son : ${audioSinkError.javaClass.simpleName}")
-        if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
+        if (!fresh(eventTime)) return
+        if (ffmpegAudioActive) requestBoxAudioFallback()
+        else requestFfmpegAfterPlatformFailure()
     }
 
     /** Erreur du décodeur logiciel FFmpeg (DecoderException), même repli. */
     override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
         if (fresh(eventTime)) emit("audioDiag", "Erreur du décodeur son : ${audioCodecError.javaClass.simpleName}")
-        if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
+        if (!fresh(eventTime)) return
+        if (ffmpegAudioActive) requestBoxAudioFallback()
+        else requestFfmpegAfterPlatformFailure()
+    }
+
+    /**
+     * L'essai « décodeur de la box » a échoué. On revient à FFmpeg pour
+     * CETTE ouverture. Le réglage reste allumé : la chaîne suivante
+     * réessaiera la box. On ne boucle pas (voir [platformAacGaveUp]).
+     */
+    private fun requestFfmpegAfterPlatformFailure() {
+        if (!AudioFixes.preferPlatformAac || platformAacGaveUp || released) return
+        if (ffmpegAudioActive) return
+        platformAacGaveUp = true
+        ffmpegWatchToken++
+        diag = diag.copy(
+            routeNote = "Le décodeur AAC de la box a échoué. Repli FFmpeg pour cette ouverture.",
+        )
+        val session = sessions.generation
+        handler.post {
+            if (released || session != sessions.generation) return@post
+            cancelRetry()
+            if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+            emit("buffering", true)
+            openCurrent(if (vodMode) lastKnownPos else null)
+        }
     }
 
     // ---- diagnostic du son (lecture seule) ---------------------------------
@@ -1525,9 +1598,49 @@ class NativeVideoView(
         }
     }
 
+    /** Les quatre sondes s'allument ensemble. Coupées, chacune renvoie NOT_SET. */
+    private fun setProbeEnabled(on: Boolean) {
+        probeDecoder.enabled = on
+        probeVoice.enabled = on
+        probeSilence.enabled = on
+        probeSink.enabled = on
+    }
+
+    /**
+     * Appelé depuis le fil audio. On ne touche [diag] que sur le fil
+     * principal : le lecteur le lit aussi pour envoyer le rapport.
+     * [spectrum] reste la sonde décodeur, pour les règles déjà écrites.
+     * Les quatre chiffres sont dans [AudioSnapshot.stages].
+     */
+    private fun onProbe(stage: String, judged: AudioSpectrum.Judgement) {
+        handler.post {
+            if (released) return@post
+            val byId = mutableMapOf<String, AudioStages.Reading>()
+            for (existing in diag.stages) byId[existing.id] = existing
+            byId[stage] = AudioStages.Reading(stage, judged)
+            val ordered = ArrayList<AudioStages.Reading>(AudioStages.ORDER.size)
+            for (id in AudioStages.ORDER) {
+                val reading = byId[id] ?: continue
+                ordered.add(reading)
+            }
+            val decoder = ordered.firstOrNull { it.id == AudioStages.DECODER }?.judgement
+            diag = diag.copy(
+                stages = ordered,
+                spectrum = decoder ?: ordered.firstOrNull()?.judgement,
+            )
+            sendAudioDiag()
+        }
+    }
+
     private fun sendAudioDiag() {
+        val live = diag.copy(
+            clearVoice = clearVoiceEnabled,
+            skipSilence = player.skipSilenceEnabled,
+            playbackSpeed = player.playbackParameters.speed,
+        )
+        diag = live
         val text = buildString {
-            append(AudioDiagnosis.describe(diag))
+            append(AudioDiagnosis.describe(live))
             for (v in AudioDiagnosis.verdicts(diag)) append("\n→ ").append(v)
             append("\n").append(AudioDiagnosis.report(diag))
             if (!diagCapsSent) {

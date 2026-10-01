@@ -22,14 +22,16 @@ import java.nio.ByteBuffer
  */
 @UnstableApi
 class AudioProbeProcessor(
-    private val onJudgement: (AudioSpectrum.Judgement) -> Unit,
+    val stage: String,
+    private val onJudgement: (String, AudioSpectrum.Judgement) -> Unit,
 ) : BaseAudioProcessor() {
 
     @Volatile
     var enabled: Boolean = false
 
     private var acc: AudioSpectrum.Accum = AudioSpectrum.start(48_000)
-    private var lastBand: AudioSpectrum.Band? = null
+    private var perChannel: List<AudioSpectrum.Accum> = emptyList()
+    private var lastKey: String? = null
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (!enabled || inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
@@ -39,15 +41,20 @@ class AudioProbeProcessor(
             return AudioProcessor.AudioFormat.NOT_SET
         }
         acc = AudioSpectrum.start(inputAudioFormat.sampleRate)
-        lastBand = null
+        perChannel = List(inputAudioFormat.channelCount.coerceIn(1, 8)) {
+            AudioSpectrum.start(inputAudioFormat.sampleRate)
+        }
+        lastKey = null
         // Même format en sortie : Media3 ne rééchantillonne pas à cause de nous.
         return inputAudioFormat
     }
 
     override fun onFlush() {
         val rate = if (acc.sampleRate > 0) acc.sampleRate else 48_000
+        val nch = perChannel.size.coerceAtLeast(1)
         acc = AudioSpectrum.start(rate)
-        lastBand = null
+        perChannel = List(nch) { AudioSpectrum.start(rate) }
+        lastKey = null
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
@@ -72,7 +79,13 @@ class AudioProbeProcessor(
             }
             val channels = inputAudioFormat.channelCount.coerceAtLeast(1)
             acc = AudioSpectrum.push(acc, pcm, channels)
-            val judged = AudioSpectrum.judge(acc)
+            if (perChannel.size == channels) {
+                perChannel = perChannel.mapIndexed { index, channelAcc ->
+                    AudioSpectrum.pushChannel(channelAcc, pcm, channels, index)
+                }
+            }
+            val ratios = perChannel.map { AudioSpectrum.judge(it).highRatio }
+            val judged = AudioSpectrum.judge(acc).copy(channelHighRatios = ratios)
             publish(judged)
         }
         // Le tampon d'entrée repart inchangé. On ne touche pas un seul échantillon.
@@ -81,16 +94,18 @@ class AudioProbeProcessor(
     }
 
     /**
-     * Une fois par classe de bande. On ne renvoie pas un rapport à chaque
-     * tampon (ça noierait la boîte noire) et on ignore la fenêtre trop courte.
+     * Quand la bande ou le pourcentage arrondi change. 2,0 % puis 0,8 %
+     * sont la même classe « basse » : on veut quand même le nouveau chiffre.
+     * On ignore la fenêtre trop courte.
      */
     private fun publish(judged: AudioSpectrum.Judgement) {
         when (judged.band) {
             AudioSpectrum.Band.SHORT, AudioSpectrum.Band.SILENCE -> return
             else -> Unit
         }
-        if (judged.band == lastBand) return
-        lastBand = judged.band
-        onJudgement(judged)
+        val key = judged.band.name + " " + judged.percent()
+        if (key == lastKey) return
+        lastKey = key
+        onJudgement(stage, judged)
     }
 }

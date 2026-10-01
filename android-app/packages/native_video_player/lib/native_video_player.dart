@@ -144,14 +144,19 @@ class NativeVideoController extends ChangeNotifier {
   /// Faux par défaut : le drapeau de repli n'est pas touché.
   static bool keepFfmpegAudio = false;
 
+  /// Essayer le décodeur AAC de la box à la prochaine chaîne.
+  /// Faux par défaut : l'AAC reste sur FFmpeg.
+  static bool preferPlatformAac = false;
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
-  /// Pousse les deux réglages vers les vues déjà ouvertes. Sans vue,
+  /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
   /// le prochain [_attach] les enverra avant l'URL.
   static void pushAudioDiagFlags() {
     for (final MethodChannel ch in List<MethodChannel>.of(_audioFlagChannels)) {
       ch.invokeMethod<void>('setAudioProbe', audioProbeEnabled);
       ch.invokeMethod<void>('setKeepFfmpeg', keepFfmpegAudio);
+      ch.invokeMethod<void>('setPreferPlatformAac', preferPlatformAac);
     }
   }
 
@@ -282,10 +287,11 @@ class NativeVideoController extends ChangeNotifier {
     // second démarrage si le choix n'est pas le matériel).
     ch.invokeMethod<void>('setEngine', _imageEngine);
     ch.invokeMethod<void>('setFrameRateMatch', _frameRateMatch);
-    // Diagnostic audio. Les deux sont faux par défaut : le natif ne
-    // change ni la sonde (inactive) ni le repli FFmpeg.
+    // Diagnostic audio. Tout est faux par défaut : sonde inactive,
+    // AAC toujours sur FFmpeg, pas d'essai du décodeur de la box.
     ch.invokeMethod<void>('setAudioProbe', audioProbeEnabled);
     ch.invokeMethod<void>('setKeepFfmpeg', keepFfmpegAudio);
+    ch.invokeMethod<void>('setPreferPlatformAac', preferPlatformAac);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;
