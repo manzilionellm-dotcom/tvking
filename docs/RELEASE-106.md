@@ -342,6 +342,76 @@ exige aussi **401** sans jeton, **403** sans droit « sources »,
 **403** d'un autre revendeur, et un effacement sur une autre MAC
 qui ne vide pas cette box.
 
+### 8. Boîte noire audio (1er octobre 2026)
+
+PR #64, commit `724a0a58`, avancé en fast-forward sur
+`claude/zuno-106`. Le parent était déjà `7b904c7d` : aucun conflit.
+Rien d'autre que ce diagnostic. Les deux interrupteurs naissent
+faux (`AudioFixes.probe`, `AudioFixes.keepFfmpeg`, préférences
+absentes). La sonde renvoie `NOT_SET` tant qu'elle est coupée :
+Media3 ne l'insère pas. Le test `defautsCoupes` et
+`leRepliBoxNeBougePasTantQueLeReglageEstCoupe` passent.
+
+`versionName` reste **106**. Le `versionCode` de ce run n'est pas
+1790801687 : le workflow le calcule avec `date +%s`. Le figer
+demanderait de changer ce workflow. Journal du run :
+
+https://github.com/manzilionellm-dotcom/tvking/actions/runs/36830378228
+
+- Commit `724a0a58`, événement `push`, conclusion **success**
+  (1er octobre 2026, 07:36 UTC).
+- `version visible = 106 (précédente publiée : 106, publication : false, plancher : 106)`
+- `versionCode = 1790839729 · versionName = 106`
+- `PUBLIER: false`. Étapes sautées : « Publier sur la release
+  zuno-tv », « Publier pour la box de test », AAB.
+- `SIGNING: release`. `APK_CERT` =
+  `5145b8e0…9e61`, égal à `EXPECTED_CERT`.
+- L'APK est l'artefact du run.
+
+Ce push n'écrit pas sur `zuno-tv`. Un lancement manuel antérieur,
+run
+https://github.com/manzilionellm-dotcom/tvking/actions/runs/36781752568
+(30 septembre, 21:48 UTC, commit `7b904c7d`, `PUBLIER: true`), a
+l'étape « Publier sur la release zuno-tv » en **success**,
+`versionCode = 1790805013`. C'est pour ça que ce journal lit
+« précédente publiée : 106 ». Ce n'est pas le push de la boîte noire.
+
+Commandes locales, même arbre, code de sortie **0** :
+
+```
+flutter test --reporter compact
+00:24 +342 ~2: All other tests passed!
+```
+
+342 passés, 2 ignorés (les e2e panel sans `RUN_E2E`), 0 échec.
+Quatre de plus que les 338 d'avant ce commit (rapport audio).
+
+```
+flutter analyze --no-fatal-infos --no-fatal-warnings
+254 issues found.
+```
+
+**0 error**, **32 warning**, **222 info**.
+
+```
+gradle -p android-app/packages/native_video_player/logic-test test --rerun-tasks
+BUILD SUCCESSFUL
+77 tests, 0 échec, 0 ignoré
+```
+
+AudioDiagnosis 16, AudioFixes 3, AudioSpectrum 8, le reste inchangé
+(55 − 5 anciens AudioDiagnosis + 16 + 3 + 8 = 77).
+
+```
+MESURE zap_20_microsecondes=119
+MESURE budget_app_ms=1180
+MESURE decision_reconnexion_20_microsecondes=41
+MESURE zap_20_microsecondes=57
+MESURE decision_reconnexion_20_microsecondes=6 dernier_delai_ms=8000
+```
+
+La première série est Flutter, la seconde Kotlin.
+
 ## Pas prouvé — seulement sur une vraie box
 
 - **Pas de box.** Pas d'`adb`, pas d'émulateur, pas de flux IPTV,
@@ -363,7 +433,11 @@ qui ne vide pas cette box.
 - 1080i, AC-3 vers une barre de son, HE-AAC « vieille radio »,
   fréquence 50/60 Hz : non mesurés.
 - Une box déjà en v102, ou une box qui a déjà un APK de test au
-  `versionCode` 1790642483, n'a pas installé cet APK.
+  `versionCode` 1790642483, n'a pas installé cet APK. L'APK de la
+  boîte noire (`versionCode` 1790839729) non plus.
+- Le rapport audio n'a pas été lu sur une chaîne réelle. Les
+  interrupteurs coupés sont prouvés par les tests, pas par une
+  oreille.
 
 ## Procédure sur une box de test
 
