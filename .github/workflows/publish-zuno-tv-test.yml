@@ -13,7 +13,8 @@
 #      au-dessus du plancher (1790642483) et de la v102 clients (1790640358) ;
 #    - n'écrit QUE sur zuno-tv-test (tag en dur) ; zuno-tv (clients) est
 #      relue avant/après et le job échoue si elle a bougé ;
-#    - aucun version.json → aucune box client ne voit cette version ;
+#    - le version.json écrit ici est celui de zuno-tv-test (url de test) :
+#      les box clients lisent zuno-tv/version.json, jamais celui-ci ;
 #    - déclenchement MANUEL (workflow_dispatch). Le push ne fait qu'enregistrer
 #      le workflow auprès de GitHub : le job ne tourne pas.
 # ============================================================================
@@ -117,10 +118,25 @@ jobs:
             echo "effacé : $ID $NAME"
           done < test_avant.txt
 
-          gh release upload "$TEST_TAG" zuno-tv.apk -R "$R"
           CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" badging.txt)
           VN=$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" badging.txt)
           SHA=$(sha256sum zuno-tv.apk | cut -d' ' -f1)
+          SIZE=$(stat -c %s zuno-tv.apk)
+          # version.json de TEST : même forme que celui des clients, mais son
+          # « url » pointe sur zuno-tv-test. Seule la box qui lit
+          # zuno-tv-test/version.json le voit ; les clients lisent zuno-tv/.
+          cat > version.json <<EOF
+          {
+            "versionCode": $CODE,
+            "versionName": "$VN",
+            "url": "https://github.com/$R/releases/download/$TEST_TAG/zuno-tv.apk",
+            "sha256": "$SHA",
+            "size": $SIZE,
+            "mandatory": false
+          }
+          EOF
+          cat version.json
+          gh release upload "$TEST_TAG" zuno-tv.apk version.json -R "$R"
           gh release edit "$TEST_TAG" -R "$R" --notes "Zuno — version de TEST (une seule box, jamais les clients).
 
           Installation : zuno.7themotion.com/test dans l'app Downloader.
@@ -136,8 +152,9 @@ jobs:
             sleep 5
           done
           cat test_apres.txt
-          [ "$(wc -l < test_apres.txt)" -eq 1 ] || { echo "::error::zuno-tv-test n'a pas un seul fichier"; exit 1; }
-          grep -q " zuno-tv.apk .* sha256:$SHA$" test_apres.txt || { echo "::error::empreinte en ligne différente"; exit 1; }
+          [ "$(wc -l < test_apres.txt)" -eq 2 ] || { echo "::error::zuno-tv-test doit avoir exactement zuno-tv.apk + version.json"; exit 1; }
+          grep -q " zuno-tv.apk $SIZE sha256:$SHA$" test_apres.txt || { echo "::error::empreinte en ligne différente"; exit 1; }
+          grep -q " version.json " test_apres.txt || { echo "::error::version.json absent"; exit 1; }
 
           # Photo de la release clients APRÈS : doit être identique.
           gh api "repos/$R/releases/tags/$CLIENT_TAG" \
