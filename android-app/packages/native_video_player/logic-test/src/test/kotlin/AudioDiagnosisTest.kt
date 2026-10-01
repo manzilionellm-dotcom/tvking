@@ -300,7 +300,12 @@ class AudioDiagnosisTest {
         assertTrue(r.contains("Cycle : zap n°31 · chaîne déjà ouverte avant (3e fois) · lecteurs vivants 1 · décodeurs audio vivants 1 · AudioTrack vivants 1 · repli box : ACTIF pour cette chaîne (délai de 8 s, au zap n°7)"), r)
         // Deux décodeurs vivants : le chevauchement est dit.
         val two = s.copy(cycle = cycle.copy(audioDecodersAlive = 2, boxFailure = null))
-        assertTrue(AudioDiagnosis.verdicts(two).any { it.startsWith("CHEVAUCHEMENT") })
+        assertTrue(
+            AudioDiagnosis.verdicts(two).any {
+                it.startsWith("CHEVAUCHEMENT : lecteurs vivants 1 · décodeurs audio vivants 2 · AudioTrack vivants 1 (zap n°31)")
+            },
+            AudioDiagnosis.verdicts(two).toString(),
+        )
         assertTrue(AudioDiagnosis.report(two).contains("⚠ plus d'un actif"))
     }
 

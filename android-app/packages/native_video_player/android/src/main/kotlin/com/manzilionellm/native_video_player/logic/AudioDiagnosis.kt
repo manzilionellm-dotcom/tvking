@@ -146,10 +146,12 @@ object AudioDiagnosis {
                 "n°${fail.zap} (${fail.reason.label}). C'est le chemin qui faisait le son " +
                 "« vieille radio ». « FFmpeg : réessayer » le remet sur FFmpeg."
         }
-        val overlap = s.cycle != null && PlayerCensus.overlapping(s.cycle)
-        if (overlap) {
-            out += "CHEVAUCHEMENT : plus d'un lecteur, décodeur ou AudioTrack vivant → deux sons " +
-                "peuvent se mélanger. Voir la ligne « Cycle »."
+        val cycle = s.cycle
+        if (cycle != null && PlayerCensus.overlapping(cycle)) {
+            // Les chiffres tout de suite, en haut de la fiche : lequel est en double.
+            out += "CHEVAUCHEMENT : lecteurs vivants ${cycle.playersAlive} · décodeurs audio vivants " +
+                "${cycle.audioDecodersAlive} · AudioTrack vivants ${cycle.audioTracksAlive} " +
+                "(zap n°${cycle.zap}) → plus d'un actif, deux sons peuvent se mélanger."
         }
 
         // 1) PREUVE « vieille radio » : HE-AAC dont la box n'a pas

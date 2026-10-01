@@ -11,6 +11,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 import '../../../features/player/data/audio_diag_prefs.dart';
@@ -34,6 +35,51 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _ffmpeg = false;
   bool _platform = false;
   bool _sessionWide = false;
+
+  // Défilement à la télécommande, comme la Boîte noire : une fiche fait
+  // vingt lignes et plus, la ligne « Cycle » est en bas. Sans ceci, Bas
+  // ne faisait rien (les fiches ne prennent pas le focus).
+  final ScrollController _scroll = ScrollController();
+  static const double _kRow = 24;
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _scrollBy(double px) {
+    if (!_scroll.hasClients) return;
+    final double target =
+        (_scroll.offset + px).clamp(0.0, _scroll.position.maxScrollExtent);
+    _scroll.animateTo(target,
+        duration: const Duration(milliseconds: 120), curve: Curves.easeOut);
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    final LogicalKeyboardKey k = e.logicalKey;
+    if (k == LogicalKeyboardKey.arrowDown) {
+      _scrollBy(_kRow * 3);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowUp) {
+      if (_scroll.hasClients && _scroll.offset <= 0) {
+        return KeyEventResult.ignored; // remonte le focus vers les boutons
+      }
+      _scrollBy(-_kRow * 3);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.pageDown || k == LogicalKeyboardKey.channelDown) {
+      _scrollBy(_kRow * 15);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.pageUp || k == LogicalKeyboardKey.channelUp) {
+      _scrollBy(-_kRow * 15);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 
   @override
   void initState() {
@@ -170,7 +216,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
                       'l\'interrupteur est allumé.',
                       style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
                     )
-                  : ListView.separated(
+                  : Focus(
+                      onKeyEvent: _onKey,
+                      child: Builder(builder: (BuildContext context) {
+                        final bool focused = Focus.of(context).hasFocus;
+                        return ListView.separated(
+                      controller: _scroll,
                       itemCount: _book.entries.length,
                       separatorBuilder: (BuildContext context, int index) =>
                           const SizedBox(height: 10),
@@ -182,7 +233,10 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
                           decoration: BoxDecoration(
                             color: TvTokens.card,
                             borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-                            border: Border.all(color: TvTokens.lineSoft),
+                            // Cadre doré quand la liste a le focus : Haut/Bas
+                            // défilent, CH+/CH− changent de page.
+                            border: Border.all(
+                                color: focused ? TvTokens.accent : TvTokens.lineSoft),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -208,7 +262,14 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
                           ),
                         );
                       },
+                        );
+                      }),
                     ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'HAUT/BAS : défiler · CH+/CH− : page',
+          style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
         ),
       ],
     );
