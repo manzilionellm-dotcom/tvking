@@ -302,3 +302,29 @@ Lignes de boîte noire ajoutées (les anciennes restent) : `Zap : n°…`, `Zap 
 - Que l'oreille entend la même chose après 50 zaps et après Home. La boîte noire doit montrer, dans l'ordre : `Zap : n°…`, `Zap : on attend…` puis `AudioTrack précédent rendu` (ou `pas rendu à temps`), `AudioTrack rendu. Pistes encore vivantes : 0` puis `1`, `Focus audio : obtenu`, et au retour `Retour : direct rouvert au bord du direct` (ou `film rouvert à … ms`). `Lectures audio actives` ne doit pas rester à 2. `repli box` doit rester `aucun` si FFmpeg n'a pas vraiment échoué.
 - L'écran noir au retour, si aucune image n'avait été copiée.
 - La signature de l'APK de test : elle se fait dans GitHub Actions (`build-zuno-tv.yml`, `test_box=true`, `publish=false`), pas sur cette machine.
+
+## Sonde « Spectre : mesuré » qui restait sans chiffre (2 octobre 2026)
+
+**Terrain** : le réglage affichait « Spectre : mesuré », plusieurs chaînes ont été zappées, et chaque fiche disait « Spectre > 4 kHz : non mesuré », `spectre_absent`, « Pas de mesure PCM », « NOT_SET tant que la sonde est coupée ». Le compteur de lectures était 1 ou 0, jamais 2.
+
+**Deux causes, lues dans Media3 1.5.1** :
+
+1. `BaseAudioProcessor.isActive()` ne change qu'au `onConfigure`. Allumer le réglage sur une chaîne déjà ouverte ne rappelle pas `onConfigure`. La sonde reste hors de la chaîne (NOT_SET) et aucun PCM n'est copié. La fiche disait « sonde coupée » dans tous les cas, donc on ne voyait pas la différence.
+2. `DefaultAudioSink` appelle `flush()` quand l'horloge du direct saute de plus de 200 ms. La sonde remettait son compteur à zéro à chaque flush. La fenêtre (8 192 trames) n'était jamais pleine, donc rien n'était publié. Le son n'était pas modifié : seul le compteur de mesure était jeté.
+
+**Correctif** : allumer Spectre rouvre la chaîne si elle joue déjà (les échantillons ne changent pas). `onFlush` ne jette plus la fenêtre. La fiche dit la raison précise (réglage éteint, pas encore branchée, fenêtre trop courte, pas du PCM 16 bits) au lieu de « Pas de mesure PCM ». Les écritures de fiches sont mises à la file, pour qu'un rapport ancien n'écrase pas le suivant.
+
+**Volume** : pendant les 10 premières secondes de chaque ouverture, une ligne « Seconde N » donne le volume du lecteur, « volume AudioTrack : non lisible » (Android ne le relit pas), le volume musique de la box, le focus, et les lectures Zuno. Un 0 pendant que le son s'entend est expliqué sur la fiche : la fiche a été prise avant le rappel d'Android.
+
+### PROUVÉ (`logic-test`)
+
+- Allumer après la configuration laisse la sonde hors chaîne ; la réouverture la branche.
+- 50 ouvertures avec le réglage allumé avant `configure` laissent la sonde branchée.
+- 20 flush de 1 000 trames sans garder la fenêtre restent sous le seuil ; en la gardant, la fenêtre est atteinte.
+- La fiche ne contient plus « Pas de mesure PCM ».
+- Dix lignes de volume à 1,0, jamais 0,2. Le silence de passage est 0,0.
+
+### PAS PROUVÉ (seulement sur la box)
+
+- Que la prochaine fiche France 24 affiche un pourcentage une seconde après l'ouverture.
+- Que les lignes « Seconde 1 » à « Seconde 10 » montrent un volume lecteur qui reste 1,0.

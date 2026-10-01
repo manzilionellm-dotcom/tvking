@@ -64,6 +64,9 @@ class AudioDiagPrefs {
     NativeVideoController.androidAudioFocus = androidFocus;
     NativeVideoController.backgroundPauseOnly = bgPause;
     NativeVideoController.immediateHandoff = immediate;
+    // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
+    // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
+    NativeVideoController.pushAudioDiagFlags();
   }
 
   static Future<void> setImmediateHandoff(bool value) async {

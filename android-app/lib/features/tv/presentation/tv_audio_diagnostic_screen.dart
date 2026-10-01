@@ -91,6 +91,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _androidFocus = NativeVideoController.androidAudioFocus;
     _bgPause = NativeVideoController.backgroundPauseOnly;
     _immediate = NativeVideoController.immediateHandoff;
+    // Le libellé vient de la mémoire Dart. On le repousse au lecteur
+    // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
+    NativeVideoController.pushAudioDiagFlags();
     _load();
   }
 

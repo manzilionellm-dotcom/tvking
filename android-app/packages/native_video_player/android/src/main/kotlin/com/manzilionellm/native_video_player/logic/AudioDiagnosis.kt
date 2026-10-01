@@ -75,6 +75,26 @@ data class AudioSnapshot(
      * Null = pas encore relevé.
      */
     val cycle: PlayerCensus.Snapshot? = null,
+    /**
+     * Réglage Spectre au moment du rapport. Faux = on ne mesure pas.
+     * Vrai ne veut pas encore dire que Media3 a mis la sonde dans la chaîne.
+     */
+    val probeRequested: Boolean = false,
+    /** Dernier onConfigure a accepté le PCM : la sonde est dans la chaîne. */
+    val probeInChain: Boolean = false,
+    /** Trames vues par la sonde depuis la dernière configuration (pas depuis le dernier flush). */
+    val probeFrames: Int = 0,
+    /** Pourquoi onConfigure a renvoyé NOT_SET. Null si accepté ou pas encore appelé. */
+    val probeReject: String? = null,
+    /**
+     * Lectures audio de NOTRE processus. -1 = Android n'a pas encore
+     * répondu, ou ne sait pas séparer les apps (API < 28).
+     */
+    val zunoPlaybacks: Int = -1,
+    /** Lectures audio de toute la box (toutes les apps). -1 = pas encore comptées. */
+    val boxPlaybacks: Int = -1,
+    /** Le lecteur dit qu'il joue (image et son en cours). */
+    val playerAudible: Boolean = false,
 )
 
 object AudioDiagnosis {
@@ -533,18 +553,23 @@ object AudioDiagnosis {
         }
 
         if (s.spectrum == null && !s.passthrough) {
+            val why = ProbeAttach.absence(
+                requested = s.probeRequested,
+                inChain = s.probeInChain,
+                frames = s.probeFrames,
+                reject = s.probeReject,
+            )
             out += Finding(
                 id = "spectre_absent",
                 confidence = Confidence.INCERTAINE,
                 kind = Kind.INFO,
-                symptom = "Pas de mesure PCM.",
-                cause = "La sonde est coupée par défaut, ou elle n'a pas encore eu une fenêtre assez longue. " +
-                    "On ne conclut pas sur la bande au-dessus de 4 kHz.",
+                symptom = why.symptom,
+                cause = why.cause,
                 fix = Fix(
                     file = FILE_PROBE,
                     symbol = "AudioProbeProcessor.onConfigure",
-                    media3 = "AudioProcessor — NOT_SET tant que la sonde est coupée",
-                    action = "Allumer zuno.audio.diag.probe pour mesurer. Ça ne change pas les échantillons.",
+                    media3 = why.media3,
+                    action = why.action,
                     settingKey = AudioFixes.KEY_PROBE,
                 ),
             )
@@ -607,10 +632,26 @@ object AudioDiagnosis {
             if (s.cycle != null) {
                 append("\n").append(PlayerCensus.describe(s.cycle))
             }
+            append("\n").append(
+                VolumeTrace.playbackNote(
+                    zuno = s.zunoPlaybacks,
+                    box = s.boxPlaybacks,
+                    audible = s.playerAudible,
+                ),
+            )
             append("\nSpectre > 4 kHz : ")
             append(
                 when (spec?.band) {
-                    null -> "non mesuré"
+                    null -> if (s.passthrough) {
+                        "pas de PCM : le son part tel quel vers la TV"
+                    } else {
+                        ProbeAttach.absence(
+                            requested = s.probeRequested,
+                            inChain = s.probeInChain,
+                            frames = s.probeFrames,
+                            reject = s.probeReject,
+                        ).symptom
+                    }
                     AudioSpectrum.Band.WIDE -> "présent (${spec.percent()}) — pas un son radio"
                     AudioSpectrum.Band.LOW -> "bas (${spec.percent()}) — compatible passe-bas, cause non tranchée seule"
                     AudioSpectrum.Band.MID -> "intermédiaire (${spec.percent()}) — ne tranche pas"

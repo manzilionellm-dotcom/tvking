@@ -12,6 +12,7 @@ import android.media.AudioPlaybackConfiguration
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.os.SystemClock
 import android.view.PixelCopy
 import android.view.Surface
@@ -77,6 +78,8 @@ import com.manzilionellm.native_video_player.logic.PictureSignal
 import com.manzilionellm.native_video_player.logic.PictureTune
 import com.manzilionellm.native_video_player.logic.PlaybackSession
 import com.manzilionellm.native_video_player.logic.PlayerCensus
+import com.manzilionellm.native_video_player.logic.ProbeAttach
+import com.manzilionellm.native_video_player.logic.VolumeTrace
 import com.manzilionellm.native_video_player.logic.ReconnectGate
 import com.manzilionellm.native_video_player.logic.ReconnectPlan
 import com.manzilionellm.native_video_player.logic.SpokenCandidate
@@ -365,6 +368,14 @@ class NativeVideoView(
     private var diagLastUnderrunSentMs = 0L
     private var diagCapsSent = false
 
+    // Trace de volume : une ligne par seconde, 10 s après chaque ouverture.
+    // Incrémenté à chaque silence : les lignes de l'ancienne chaîne s'arrêtent.
+    private var volumeTraceToken = 0
+
+    // Dernier compteur Android. -1 = pas encore rappelé.
+    private var lastZunoPlaybacks = -1
+    private var lastBoxPlaybacks = -1
+
     /** Ce que la sortie son de la box accepte tel quel (HDMI / barre de son). */
     private val outputCaps: String = try {
         val caps = AudioCapabilities.getCapabilities(context)
@@ -601,9 +612,20 @@ class NativeVideoView(
                 val line = "Lectures audio actives sur la box : ${list.size}" +
                     (if (types.isEmpty()) "" else " (${types.joinToString(", ")})") +
                     (if (list.size > 1) " → deux sons en même temps" else "")
+                lastBoxPlaybacks = list.size
+                lastZunoPlaybacks = if (Build.VERSION.SDK_INT >= 28) {
+                    list.count { it.clientUid == Process.myUid() }
+                } else {
+                    -1
+                }
                 if (line != lastPlaybackLine) {
                     lastPlaybackLine = line
-                    handler.post { if (!released) emit("audioDiag", line) }
+                    handler.post {
+                        if (released) return@post
+                        emit("audioDiag", line)
+                        // La fiche prend le compteur du moment, pas seulement la ligne.
+                        if (diag.decoder != null || diag.outSampleRate > 0) sendAudioDiag()
+                    }
                 }
             }
         }
@@ -1109,13 +1131,38 @@ class NativeVideoView(
                 result.success(null)
             }
             "setAudioProbe" -> {
-                AudioFixes.probe = call.arguments == true
+                val on = call.arguments == true
+                val turningOn = on && !AudioFixes.probe
+                AudioFixes.probe = on
                 setProbeEnabled(AudioFixes.probe)
                 // Coupé : on oublie le chiffre du passage précédent. Sinon
                 // la fiche affiche encore 0,8 % alors que l'interrupteur est éteint.
                 if (!AudioFixes.probe && !released) {
-                    diag = diag.copy(spectrum = null, stages = emptyList())
+                    diag = diag.copy(
+                        spectrum = null,
+                        stages = emptyList(),
+                        probeRequested = false,
+                        probeInChain = false,
+                        probeFrames = 0,
+                        probeReject = null,
+                    )
                     sendAudioDiag()
+                } else if (ProbeAttach.shouldReopen(turningOn, probeIsPlaying())) {
+                    // Media3 ne rappelle onConfigure que si on reconfigure
+                    // le sink. Allumer le drapeau sur une chaîne déjà ouverte
+                    // laissait la sonde en NOT_SET jusqu'au zap, et parfois
+                    // même après (piste réutilisée, flush sans reconfigure).
+                    emit(
+                        "audioDiag",
+                        "Sonde : allumée. On rouvre la chaîne pour la brancher, sans changer les échantillons.",
+                    )
+                    if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+                    openCurrent(if (vodMode) lastKnownPos else null)
+                } else if (turningOn && !released) {
+                    emit(
+                        "audioDiag",
+                        "Sonde : allumée. Branchée à la prochaine ouverture, sans changer les échantillons.",
+                    )
                 }
                 result.success(null)
             }
@@ -1533,6 +1580,8 @@ class NativeVideoView(
         audioGate.cancel()
         openDeferred = false
         waitToken++
+        // Les « Seconde N » de l'ancienne chaîne ne s'écrivent plus.
+        volumeTraceToken++
         resetPictureClock()
         ffmpegWatchToken++
         cancelRetry()
@@ -1581,6 +1630,7 @@ class NativeVideoView(
         suspended = false
         clearVoiceProcessor.enabled = clearVoiceEnabled
         setProbeEnabled(AudioFixes.probe)
+        emit("audioDiag", ProbeAttach.armingLine(AudioFixes.probe))
         // Nouvelle ouverture : les pourcentages et le décodeur de la
         // chaîne d'avant ne doivent pas rester affichés.
         diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
@@ -1637,6 +1687,63 @@ class NativeVideoView(
         // Perte de focus pendant le zap : on ne repart pas tant que GAIN
         // n'est pas revenu (ou qu'un nouveau zap n'a pas redemandé le focus).
         player.playWhenReady = !pausedByFocus
+        armVolumeTrace()
+    }
+
+    /**
+     * Dix lignes, une par seconde. On veut voir SI le volume baisse
+     * (« son dans un trou ») et QUAND, pas seulement le spectre.
+     * Le jeton annule la série si on zappe avant la fin.
+     */
+    private fun armVolumeTrace() {
+        val token = ++volumeTraceToken
+        val session = sessions.generation
+        for (sec in 1..VolumeTrace.SECONDS) {
+            handler.postDelayed({
+                if (released || token != volumeTraceToken || session != sessions.generation) return@postDelayed
+                val playerVol = try {
+                    player.volume
+                } catch (_: RuntimeException) {
+                    -1f
+                }
+                val stream = try {
+                    val am = audioManager
+                    val cur = am?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: -1
+                    val max = am?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: -1
+                    cur to max
+                } catch (_: RuntimeException) {
+                    -1 to -1
+                }
+                emit(
+                    "audioDiag",
+                    VolumeTrace.line(
+                        VolumeTrace.Sample(
+                            second = sec,
+                            playerVolume = playerVol,
+                            // AudioTrack.setVolume n'a pas de lecture en retour.
+                            trackVolume = null,
+                            streamVolume = stream.first,
+                            streamMax = stream.second,
+                            focusHeld = focusHeld,
+                            media3Focus = AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+                            pausedByFocus = pausedByFocus,
+                            zunoPlaybacks = lastZunoPlaybacks,
+                            boxPlaybacks = lastBoxPlaybacks,
+                        ),
+                    ),
+                )
+            }, sec * 1_000L)
+        }
+    }
+
+    /** Une chaîne est en cours : rouvrir a un sens. Idle = la prochaine ouverture suffit. */
+    private fun probeIsPlaying(): Boolean {
+        if (released || suspended || currentUrl == null) return false
+        return try {
+            player.playbackState != Player.STATE_IDLE
+        } catch (_: RuntimeException) {
+            false
+        }
     }
 
     /** L'attente est finie : on ouvre, si c'est toujours CETTE session. */
@@ -2144,11 +2251,23 @@ class NativeVideoView(
     }
 
     private fun sendAudioDiag() {
+        val audible = try {
+            player.isPlaying
+        } catch (_: RuntimeException) {
+            false
+        }
         val live = diag.copy(
             clearVoice = clearVoiceEnabled,
             skipSilence = player.skipSilenceEnabled,
             playbackSpeed = player.playbackParameters.speed,
             cycle = currentUrl?.let { PlayerCensus.snapshot(AacRoute.key(it), boxFailure) },
+            probeRequested = AudioFixes.probe,
+            probeInChain = probeDecoder.lastAccepted,
+            probeFrames = probeDecoder.usefulFrames,
+            probeReject = if (AudioFixes.probe) probeDecoder.lastReject else null,
+            zunoPlaybacks = lastZunoPlaybacks,
+            boxPlaybacks = lastBoxPlaybacks,
+            playerAudible = audible,
         )
         diag = live
         val text = buildString {
