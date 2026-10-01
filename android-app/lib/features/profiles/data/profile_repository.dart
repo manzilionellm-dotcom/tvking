@@ -151,7 +151,8 @@ class ProfileRepository extends ChangeNotifier {
       for (final String key in ProfileKeys.disposableKeys(id)) {
         if (key == ProfileKeys.pin(id) ||
             key == ProfileKeys.kidsMode(id) ||
-            key == ProfileKeys.timePicks(id)) {
+            key == ProfileKeys.timePicks(id) ||
+            key == ProfileKeys.followed(id)) {
           await prefs.remove(key);
         }
       }

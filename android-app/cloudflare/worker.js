@@ -55,6 +55,12 @@
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1 } from './api_v1.js';
+import {
+  handleBoxAck,
+  handleBoxWait,
+  kindForAdminAction,
+  signalMac,
+} from './box_signal.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
@@ -2501,6 +2507,8 @@ async function handleAdminAction(request, env, mac) {
     }
 
     const fresh = await d1StatusForMac(env, mac, now);
+    const signaled = kindForAdminAction(action);
+    if (signaled) await signalMac(env, mac, signaled);
     return json({ ok: true, mac, action, ...(fresh || {}) });
   }
 
@@ -2559,6 +2567,8 @@ async function handleAdminAction(request, env, mac) {
   }
 
   await writeClient(env, mac, updated);
+  const signaled = kindForAdminAction(action);
+  if (signaled) await signalMac(env, mac, signaled);
   return json({ ok: true, mac, ...updated });
 }
 
@@ -3753,6 +3763,22 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only POST supported on /api/heartbeat');
       }
       return handleHeartbeat(request, env, ctx);
+    }
+
+    // /api/box/wait/:mac — la box attend un ordre du panel (secret requis).
+    if (segments[0] === 'api' && segments[1] === 'box' && segments[2] === 'wait' && segments.length === 4) {
+      if (request.method !== 'GET') {
+        return badRequest('only GET supported on /api/box/wait/:mac');
+      }
+      return handleBoxWait(request, env, segments[3]);
+    }
+
+    // /api/box/ack/:mac — la box confirme qu'elle a appliqué l'ordre.
+    if (segments[0] === 'api' && segments[1] === 'box' && segments[2] === 'ack' && segments.length === 4) {
+      if (request.method !== 'POST') {
+        return badRequest('only POST supported on /api/box/ack/:mac');
+      }
+      return handleBoxAck(request, env, segments[3]);
     }
 
     // /api/status/:mac — public, l'app demande son état trial/freeze

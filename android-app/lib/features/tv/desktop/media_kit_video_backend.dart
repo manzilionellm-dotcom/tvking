@@ -177,6 +177,15 @@ class MediaKitVideoBackend implements NativeVideoBackend {
   void setClearVoice(bool enabled) {}
 
   @override
+  void setImageEngine(String engine) {}
+
+  @override
+  void setFrameRateMatch(bool enabled) {}
+
+  @override
+  void setLightContrast(bool enabled) {}
+
+  @override
   void seekTo(Duration position) => unawaited(_player.seek(position));
 
   @override

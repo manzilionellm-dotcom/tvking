@@ -30,6 +30,10 @@ abstract final class ActivationPace {
   /// 15 lectures légères par minute (plafond Worker : 120).
   static const Duration calm = Duration(seconds: 4);
 
+  /// Canal long ouvert : la box est déjà prévenue dès qu'un ordre
+  /// arrive. On ne relit le statut qu'en filet, toutes les 25 s.
+  static const Duration parked = Duration(seconds: 25);
+
   /// Plafond quand le réseau ne répond plus.
   static const Duration ceiling = Duration(seconds: 45);
 

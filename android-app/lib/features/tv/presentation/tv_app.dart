@@ -20,10 +20,14 @@ import '../../../core/i18n/locale_repository.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../channels/domain/channel.dart';
 import '../../playlists/data/playlist_repository.dart';
+import '../../about/data/force_update_checker.dart';
+import '../../about/presentation/forced_update_screen.dart';
+import '../../subscription/data/signal_inbox.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_content_refresh.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
+import '../core/tv_page_transitions.dart';
 import '../core/tv_tokens.dart';
 import '../data/greeting_repository.dart';
 import 'removed_list_prompt.dart';
@@ -83,6 +87,9 @@ class TvApp extends StatelessWidget {
           // Coupe TOUT effet tactile (hover/splash souris) — D-pad only.
           splashFactory: NoSplash.splashFactory,
           hoverColor: Colors.transparent,
+          // Retour sans « flash » : fondu court, sans capture d'écran
+          // (voir tv_page_transitions.dart).
+          pageTransitionsTheme: kTvPageTransitions,
         ),
         // CANEVAS TV FIXE : on rend TOUTE l'app comme un écran logique de
         // largeur `kTvDesignWidth`, puis on met à l'échelle uniforme vers
@@ -154,6 +161,27 @@ class _RestartWidgetState extends State<RestartWidget> {
   Widget build(BuildContext context) => Stack(
         children: <Widget>[
           KeyedSubtree(key: _key, child: widget.child),
+          // Mise à jour forcée : le panel l'envoie sur le canal.
+          // Tant que la box n'est pas assez récente, cet écran
+          // couvre le reste. Un build local (pas de numéro) ne
+          // se bloque pas.
+          ListenableBuilder(
+            listenable: SignalInbox.instance,
+            builder: (BuildContext context, _) {
+              if (!SignalInbox.instance.forceBlocked) {
+                return const SizedBox.shrink();
+              }
+              return ForcedUpdateScreen(
+                onRetry: () {
+                  unawaited(() async {
+                    final bool still =
+                        await ForceUpdateChecker.instance.mustUpdate();
+                    SignalInbox.instance.setForceBlocked(still);
+                  }());
+                },
+              );
+            },
+          ),
           // Pastille discrète « Mise à jour… » pendant la passe : le client
           // VOIT que le redémarrage travaille (puis elle disparaît seule).
           Positioned(

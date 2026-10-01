@@ -9,9 +9,15 @@
 
 import 'package:flutter/material.dart';
 
+import '../../followed/data/followed_flag.dart';
+import '../../followed/data/followed_lead.dart';
+import '../../followed/domain/show_clock.dart';
+import '../../followed/domain/show_lines.dart';
 import '../../missed_show/data/missed_flag.dart';
 import '../../time_picks/data/time_pick_flag.dart';
 import '../../player/data/clear_voice_flag.dart';
+import '../../player/data/image_prefs.dart';
+import '../../player/domain/image_engine.dart';
 import '../../subtitles/data/subtitle_flag.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_focusable.dart';
@@ -26,6 +32,8 @@ class TvExtrasScreen extends StatefulWidget {
 }
 
 class _TvExtrasScreenState extends State<TvExtrasScreen> {
+  int _lead = kLeadDefault;
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +48,15 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     });
     ClearVoiceFlag.load().then((_) {
       if (mounted) setState(() {});
+    });
+    ImagePrefs.load().then((_) {
+      if (mounted) setState(() {});
+    });
+    followedFlag.load().then((_) {
+      if (mounted) setState(() {});
+    });
+    FollowedLead.load().then((int minutes) {
+      if (mounted) setState(() => _lead = minutes);
     });
   }
 
@@ -61,10 +78,38 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _cycleEngine() async {
+    await ImagePrefs.load();
+    final EngineStep step = EngineStep.next(
+      ImagePrefs.engine,
+      ffmpegVideo: false,
+    );
+    await ImagePrefs.setEngine(step.engine);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleFps() async {
+    await ImagePrefs.load();
+    await ImagePrefs.setFrameRateMatch(!ImagePrefs.frameRateMatch);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _toggleVoice() async {
     await ClearVoiceFlag.load();
     await ClearVoiceFlag.set(!ClearVoiceFlag.value);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleFollowed() async {
+    await followedFlag.load();
+    await followedFlag.set(!followedFlag.value);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _cycleLead() async {
+    final int next = nextLead(_lead);
+    await FollowedLead.set(next);
+    if (mounted) setState(() => _lead = FollowedLead.value);
   }
 
   @override
@@ -73,6 +118,14 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     final bool timeOn = timePicksFlag.value;
     final bool subsOn = subtitlesFlag.value;
     final bool voiceOn = ClearVoiceFlag.value;
+    final bool fpsOn = ImagePrefs.frameRateMatch;
+    final String engine = switch (ImagePrefs.engine) {
+      ImageEngine.software => 'Logiciel',
+      ImageEngine.ffmpeg => 'FFmpeg',
+      ImageEngine.hardware => 'Matériel',
+    };
+    final bool followOn = followedFlag.value;
+    final String code = Localizations.localeOf(context).languageCode;
     return ListView(
       children: <Widget>[
         Text(
@@ -126,6 +179,18 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
           onSelect: _toggleTime,
         ),
         ExtrasRow(
+          title: followedWord(code, 'row'),
+          subtitle: followOn
+              ? followedWord(code, 'setOn')
+              : followedWord(code, 'setOff'),
+          onSelect: _toggleFollowed,
+        ),
+        ExtrasRow(
+          title: leadLine(code, _lead),
+          subtitle: leadHint(code),
+          onSelect: _cycleLead,
+        ),
+        ExtrasRow(
           title: boxText(context, 'Sous-titres', 'Subtitles'),
           subtitle: subsOn
               ? boxText(
@@ -154,6 +219,39 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
                   'Off, which is the original setting. OK to ease voices that are too loud. Surround sent as-is to a soundbar does not change.',
                 ),
           onSelect: _toggleVoice,
+        ),
+        ExtrasRow(
+          title: boxText(context, 'Moteur image', 'Picture engine'),
+          subtitle: boxText(
+            context,
+            'Maintenant : $engine. OK pour changer. Matériel = la box (réglage d\'origine). Logiciel = si l\'image est noire. FFmpeg vidéo n\'est pas dans cette version : OK le saute.',
+            'Now: $engine. OK to change. Hardware = the box (original). Software = if the picture stays black. FFmpeg video is not in this version: OK skips it.',
+          ),
+          onSelect: _cycleEngine,
+        ),
+        ExtrasRow(
+          title: boxText(context, 'Fréquence de l\'écran', 'Screen refresh'),
+          subtitle: fpsOn
+              ? boxText(
+                  context,
+                  'Allumé. L\'écran peut passer en 24, 50 ou 60 Hz selon le flux. OK pour couper. Sur certaines box ça coupe l\'image une seconde : si ça arrive, coupe.',
+                  'On. The screen may switch to 24, 50 or 60 Hz to match the stream. OK to turn off. On some boxes the picture drops for a second: if it does, turn it off.',
+                )
+              : boxText(
+                  context,
+                  'Coupé, c\'est le réglage d\'origine. OK pour caler l\'écran sur 24 / 25 / 30 / 50 / 60 images par seconde. On ne le fait pas tout seul.',
+                  'Off, which is the original setting. OK to match the screen to 24 / 25 / 30 / 50 / 60 frames per second. It never turns on by itself.',
+                ),
+          onSelect: _toggleFps,
+        ),
+        ExtrasRow(
+          title: boxText(context, 'Contraste', 'Contrast'),
+          subtitle: boxText(
+            context,
+            'Pas disponible. Le seul filtre Android quitte l\'image directe et a déjà fait des écrans noirs. On ne l\'allume pas.',
+            'Not available. The only Android filter leaves the direct picture path and has made black screens before. It stays off.',
+          ),
+          onSelect: () {},
         ),
       ],
     );
@@ -202,7 +300,8 @@ class ExtrasRow extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+                style:
+                    TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
               ),
             ],
           ),

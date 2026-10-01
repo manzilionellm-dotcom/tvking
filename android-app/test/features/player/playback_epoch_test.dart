@@ -56,6 +56,38 @@ void main() {
     c.dispose();
   });
 
+  test('un repli décodeur remet le logo sans compter une erreur', () {
+    final NativeVideoController c = NativeVideoController();
+    c.setUrl('http://a.example.invalid/live/u/p/1.ts');
+    c.applyBackendEvent('ack', 1);
+    c.applyBackendEvent('firstFrame', null);
+    expect(c.firstFrame, isTrue);
+    c.applyBackendEvent('reopen', null);
+    expect(c.firstFrame, isFalse, reason: 'le carton de chaîne couvre la surface pendant le changement de moteur');
+    expect(c.isBuffering, isTrue);
+    expect(c.hasError, isFalse);
+    expect(c.reopenCount, 1);
+    c.dispose();
+  });
+
+  test('les infos moteur ne sont pas jetées entre deux zap', () {
+    final NativeVideoController c = NativeVideoController();
+    c.setUrl('http://a.example.invalid/live/u/p/1.ts');
+    c.applyBackendEvent('imageCaps', <String, Object?>{
+      'engine': 'hardware',
+      'ffmpegVideo': false,
+      'contrastHardware': false,
+    });
+    expect(c.ffmpegVideoReady, isFalse);
+    expect(c.contrastHardware, isFalse);
+    expect(c.imageEngineWire, 'hardware');
+    c.applyBackendEvent('ack', 1);
+    c.applyBackendEvent('engineExhausted', 'software');
+    expect(c.engineExhausted, isTrue);
+    expect(c.hasError, isFalse, reason: 'sinon l\'écran rouvrirait le même décodeur en boucle');
+    c.dispose();
+  });
+
   test('une position sans lecture ne retire pas le logo', () {
     final NativeVideoController c = NativeVideoController();
     c.setUrl('http://a.example.invalid/live/u/p/1.ts');

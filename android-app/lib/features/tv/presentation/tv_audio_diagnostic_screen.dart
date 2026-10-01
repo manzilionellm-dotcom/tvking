@@ -1,0 +1,224 @@
+// =========================================================
+//  tv_audio_diagnostic_screen.dart — « Diagnostic du son »
+// =========================================================
+//  Lecture des rapports locaux (une fiche par chaîne) et deux
+//  interrupteurs COUPÉS par défaut :
+//    • mesurer le spectre (copie le PCM, ne le filtre pas) ;
+//    • réessayer FFmpeg à la prochaine chaîne.
+//  Rien n'est envoyé au panel : le heartbeat n'a pas de champ pour ça.
+//  Style : les mêmes TvTokens / TvDimens que la boîte noire.
+// =========================================================
+
+import 'package:flutter/material.dart';
+import 'package:native_video_player/native_video_player.dart';
+
+import '../../../features/player/data/audio_diag_prefs.dart';
+import '../../../features/player/data/audio_report_store.dart';
+import '../../../features/player/domain/audio_report_book.dart';
+import '../core/tv_dimens.dart';
+import '../core/tv_focusable.dart';
+import '../core/tv_tokens.dart';
+
+class TvAudioDiagnosticScreen extends StatefulWidget {
+  const TvAudioDiagnosticScreen({super.key});
+
+  @override
+  State<TvAudioDiagnosticScreen> createState() => _TvAudioDiagnosticScreenState();
+}
+
+class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
+  AudioReportBook _book = AudioReportBook.empty;
+  bool _loading = true;
+  bool _probe = false;
+  bool _ffmpeg = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _probe = NativeVideoController.audioProbeEnabled;
+    _ffmpeg = NativeVideoController.keepFfmpegAudio;
+    _load();
+  }
+
+  Future<void> _load() async {
+    final AudioReportBook book = await AudioReportStore.instance.load();
+    if (!mounted) return;
+    setState(() {
+      _book = book;
+      _loading = false;
+    });
+  }
+
+  Future<void> _toggleProbe() async {
+    final bool next = !_probe;
+    setState(() => _probe = next);
+    await AudioDiagPrefs.setProbe(next);
+  }
+
+  Future<void> _toggleFfmpeg() async {
+    final bool next = !_ffmpeg;
+    setState(() => _ffmpeg = next);
+    await AudioDiagPrefs.setKeepFfmpeg(next);
+  }
+
+  Future<void> _clear() async {
+    await AudioReportStore.instance.clear();
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Diagnostic du son',
+          style: TextStyle(
+            fontSize: TvDimens.displayM,
+            fontWeight: FontWeight.w800,
+            color: TvTokens.text,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Rapport local, une fiche par chaîne. Rien n\'est envoyé. '
+          'Les deux interrupteurs sont coupés par défaut : le son ne change pas.',
+          style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: <Widget>[
+            _Toggle(
+              label: _probe ? 'Spectre : mesuré' : 'Spectre : coupé',
+              on: _probe,
+              autofocus: true,
+              onSelect: _toggleProbe,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
+              label: _ffmpeg ? 'FFmpeg : réessayer' : 'FFmpeg : défaut',
+              on: _ffmpeg,
+              onSelect: _toggleFfmpeg,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
+              label: 'Effacer',
+              on: false,
+              onSelect: _clear,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Spectre : copie le PCM à la prochaine chaîne, sans le modifier. '
+          'FFmpeg : réessaie le décodeur logiciel à la prochaine chaîne ; '
+          's\'il ne démarre pas en 8 s, la box reprend quand même.',
+          style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
+        ),
+        const SizedBox(height: 14),
+        Expanded(
+          child: _loading
+              ? Center(
+                  child: Text(
+                    'Lecture…',
+                    style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
+                  ),
+                )
+              : _book.entries.isEmpty
+                  ? Text(
+                      'Aucun rapport. Ouvre une chaîne : le lecteur note le codec, '
+                      'le décodeur et la sortie. Le spectre n\'est mesuré que si '
+                      'l\'interrupteur est allumé.',
+                      style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+                    )
+                  : ListView.separated(
+                      itemCount: _book.entries.length,
+                      separatorBuilder: (BuildContext context, int index) =>
+                          const SizedBox(height: 10),
+                      itemBuilder: (BuildContext context, int i) {
+                        final AudioReportEntry e = _book.entries[i];
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: TvTokens.card,
+                            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+                            border: Border.all(color: TvTokens.lineSoft),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                e.channel,
+                                style: TextStyle(
+                                  fontSize: TvDimens.title,
+                                  fontWeight: FontWeight.w700,
+                                  color: TvTokens.text,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                e.body,
+                                style: TvTokens.mono(
+                                  TvDimens.caption,
+                                  weight: FontWeight.w400,
+                                  color: TvTokens.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Toggle extends StatelessWidget {
+  const _Toggle({
+    required this.label,
+    required this.on,
+    required this.onSelect,
+    this.autofocus = false,
+  });
+
+  final String label;
+  final bool on;
+  final VoidCallback onSelect;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusBuilder(
+      autofocus: autofocus,
+      scale: TvFocusScale.large,
+      onSelect: () {
+        onSelect();
+      },
+      builder: (BuildContext context, bool focused) {
+        final Color bg = focused
+            ? TvTokens.accent
+            : (on ? TvTokens.sel : TvTokens.card);
+        final Color fg = focused ? TvTokens.onAccent : TvTokens.accentBright;
+        return Container(
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+            border: Border.all(color: focused ? TvTokens.accent : TvTokens.lineSoft),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: TvDimens.body,
+              fontWeight: FontWeight.w700,
+              color: fg,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}

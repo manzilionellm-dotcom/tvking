@@ -50,6 +50,15 @@ class _FakeBackend implements NativeVideoBackend {
   void setClearVoice(bool enabled) {}
 
   @override
+  void setImageEngine(String engine) {}
+
+  @override
+  void setFrameRateMatch(bool enabled) {}
+
+  @override
+  void setLightContrast(bool enabled) {}
+
+  @override
   Widget buildView(BuildContext context) => const SizedBox.shrink();
 
   @override

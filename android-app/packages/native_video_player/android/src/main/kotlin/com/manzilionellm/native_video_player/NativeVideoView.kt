@@ -1,14 +1,24 @@
 package com.manzilionellm.native_video_player
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.graphics.Rect
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.PixelCopy
+import android.view.Surface
 import android.view.SurfaceView
 import android.view.View
+import android.widget.FrameLayout
+import android.widget.ImageView
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -17,10 +27,13 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -29,6 +42,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
+import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
@@ -37,12 +51,30 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
+import com.manzilionellm.native_video_player.logic.AudioDiagnosis
+import com.manzilionellm.native_video_player.logic.AudioFixes
+import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
+import com.manzilionellm.native_video_player.logic.CodecOrder
+import com.manzilionellm.native_video_player.logic.DecoderFallback
+import com.manzilionellm.native_video_player.logic.DisplayModeOption
 import com.manzilionellm.native_video_player.logic.ExclusiveAudio
+import com.manzilionellm.native_video_player.logic.FrameRateMatch
+import com.manzilionellm.native_video_player.logic.NamedCodec
+import com.manzilionellm.native_video_player.logic.PictureHealth
+import com.manzilionellm.native_video_player.logic.PictureSignal
+import com.manzilionellm.native_video_player.logic.PictureTune
 import com.manzilionellm.native_video_player.logic.PlaybackSession
+import com.manzilionellm.native_video_player.logic.ReconnectGate
+import com.manzilionellm.native_video_player.logic.ReconnectPlan
 import com.manzilionellm.native_video_player.logic.SpokenCandidate
 import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
+import com.manzilionellm.native_video_player.logic.VideoCandidate
+import com.manzilionellm.native_video_player.logic.VideoEngine
+import com.manzilionellm.native_video_player.logic.VideoTrackChoice
+import java.util.concurrent.atomic.AtomicInteger
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -67,16 +99,26 @@ import io.flutter.plugin.platform.PlatformView
  * résolution qui fige l'image, qualité HLS qui change sans jeter les images
  * déjà reçues, et libération du codec AVANT la chaîne suivante (sinon image
  * verte / noire / figée, ou chaîne refusée si une seule connexion est permise).
- * Le décodeur VIDÉO FFmpeg n'est jamais construit, même quand le son active
- * l'extension audio : ce chemin a bloqué des chaînes sur le logo.
+ * Le décodeur VIDÉO FFmpeg n'est construit QUE si la bibliothèque native
+ * déclare un décodeur vidéo (H.264, HEVC ou MPEG-2). Le binaire audio
+ * Jellyfin de la v104 n'en a pas : on ne le construit donc pas, le chemin
+ * qui avait bloqué des chaînes sur le logo (v99–v101) reste fermé.
+ * Si MediaCodec échoue ou reste noir, on passe au décodeur logiciel
+ * Android, puis à FFmpeg seulement s'il est vraiment là.
  *
  * AUTO-RECONNEXION SILENCIEUSE : si le serveur coupe / le réseau hoquette,
  * ExoPlayer ré-essaie d'abord seul (LoadErrorHandlingPolicy), et en cas
- * d'erreur fatale on RE-PREPARE automatiquement avec un back-off (1→2→4→8 s)
- * SANS rien dire à l'UI (juste « buffering »). On ne remonte une vraie erreur
- * à Dart qu'après plusieurs échecs d'affilée (filet de sécurité ultime).
- * Un direct « en retard » (hors fenêtre) rejoint le direct tout de suite :
- * ce n'est pas une panne, et ça ne compte pas dans le budget d'échecs.
+ * d'erreur fatale on RE-PREPARE avec un back-off (1→2→4→8 s, plafond 8 s,
+ * 8 essais). Un second essai n'est pas programmé tant que le premier
+ * attend (deux prepare = deux sons). Le volume reste à 0 jusqu'à la
+ * nouvelle image ou le nouveau « je joue ». Si une image a déjà été
+ * vue, on la garde (petite copie) au lieu d'un panneau opaque : stop()
+ * vide souvent la surface, et le panneau Flutter par-dessus faisait
+ * un écran noir. Sans copie (coupure dans les premières secondes),
+ * on montre le panneau avec le nom de la chaîne. On ne remonte une
+ * vraie erreur à Dart qu'après les 8 essais. Un direct « en retard »
+ * (hors fenêtre) rejoint le direct tout de suite : ce n'est pas une
+ * panne, et ça ne compte pas dans le budget d'échecs.
  *
  * MODE FILM / ÉPISODE (« vod », 26/09/2026) : pour un fichier fini on
  * ajoute ce qu'un lecteur façon Netflix exige — démarrage à une position
@@ -124,9 +166,38 @@ class NativeVideoView(
     id: Int,
 ) : PlatformView, MethodChannel.MethodCallHandler, AnalyticsListener {
 
+    private val appContext: Context = context
     private val surfaceView = SurfaceView(context)
+
+    /**
+     * Dernière image, posée PAR-DESSUS la surface pendant une coupure.
+     * stop() vide souvent la surface (écran noir). Cette copie, prise
+     * pendant que ça jouait, reste visible jusqu'à la nouvelle trame.
+     * Une seule image, petite (au plus 1280×720, RGB 565) : pas une
+     * file d'images, la box a peu de mémoire.
+     */
+    private val holdView = ImageView(context).apply {
+        visibility = View.GONE
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        isFocusable = false
+        isFocusableInTouchMode = false
+    }
+    private val root = FrameLayout(context).apply {
+        val fill = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        )
+        addView(surfaceView, fill)
+        addView(
+            holdView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+    }
     private val channel = MethodChannel(messenger, "native_video_player/$id")
-    private val player: ExoPlayer
+    private lateinit var player: ExoPlayer
     private val handler = Handler(Looper.getMainLooper())
 
     private var currentUrl: String? = null
@@ -136,10 +207,16 @@ class NativeVideoView(
     private var lastKnownPos = 0L
     private var lastSentDuration = -1L
 
-    // Reconnexion auto silencieuse.
-    private var retryCount = 0
+    // Reconnexion auto silencieuse. Les délais et le « un seul essai
+    // à la fois » sont dans [reconnect] (testé sans ExoPlayer).
+    private val reconnect = ReconnectGate()
     private var pendingRetry: Runnable? = null
-    private val maxSilentRetries = 8 // au-delà → on prévient Dart (reset complet)
+
+    // Dernière image copiée. null = on n'a encore rien de montrable.
+    private var heldBitmap: Bitmap? = null
+    private var copyInFlight = false
+    private var lastCopyAt = 0L
+    private var sawFrame = false
 
     // Direct sorti de sa fenêtre (Internet trop lent un moment). On rejoint
     // le direct sans compter une « panne », mais pas à l'infini : au-delà on
@@ -182,8 +259,82 @@ class NativeVideoView(
     private var clearVoiceEnabled = false
     private val clearVoiceProcessor = ClearVoiceProcessor()
 
+    // Sonde du diagnostic. Coupée par défaut : onConfigure renvoie NOT_SET,
+    // Media3 ne l'insère pas. Allumée, elle copie le PCM sans le modifier.
+    private val audioProbeProcessor = AudioProbeProcessor { judged ->
+        handler.post {
+            if (released) return@post
+            diag = diag.copy(spectrum = judged)
+            sendAudioDiag()
+        }
+    }
+
+    // ---- DIAGNOSTIC DU SON (boîte noire, 01/10/2026) -----------------------
+    // Pour chaque chaîne : ce qui ENTRE (format du flux), QUI décode (box ou
+    // FFmpeg), ce qui SORT (AudioTrack) et les coupures. Envoyé à Dart
+    // (« audioDiag ») qui le range dans la boîte noire (Réglages → Boîte
+    // noire). Lecture seule : ne change RIEN à la lecture.
+    private var diag = AudioSnapshot()
+    private var diagLastUnderrunSentMs = 0L
+    private var diagCapsSent = false
+
+    /** Ce que la sortie son de la box accepte tel quel (HDMI / barre de son). */
+    private val outputCaps: String = try {
+        val caps = AudioCapabilities.getCapabilities(context)
+        fun yn(enc: Int) = if (caps.supportsEncoding(enc)) "oui" else "non"
+        "Sortie de la box : AC-3 ${yn(C.ENCODING_AC3)}, E-AC-3 ${yn(C.ENCODING_E_AC3)}, " +
+            "DTS ${yn(C.ENCODING_DTS)}, ${caps.maxChannelCount} voies max"
+    } catch (_: Throwable) {
+        "Sortie de la box : inconnue"
+    }
+
     // Identifiant dans [owners]. -1 tant que le lecteur n'est pas inscrit.
     private var playerKey: Int = -1
+
+    // Moteur vidéo. [preferredEngine] est le choix de la personne (matériel
+    // par défaut). [videoEngine] est celui de la chaîne en cours : un repli
+    // ne change pas le choix, la chaîne suivante repart du choix.
+    private var preferredEngine: VideoEngine = VideoEngine.HARDWARE
+    private var videoEngine: VideoEngine = VideoEngine.HARDWARE
+
+    // Vrai seulement pendant la construction d'un lecteur qui doit mettre
+    // FFmpeg vidéo EN PREMIER. Faux au démarrage : même liste qu'en v104.
+    private var installFfmpegVideo: Boolean = false
+    private var ffmpegRendererInstalled: Boolean = false
+
+    // Relu à chaque demande de décodeur. Le logiciel passe devant seulement
+    // quand [videoEngine] est SOFTWARE.
+    @Volatile
+    private var preferSoftwareVideo: Boolean = false
+
+    private val triedEngines = HashSet<VideoEngine>()
+    private var videoGaveUp: Boolean = false
+    private var videoFallbackPosted: Boolean = false
+
+    // Trames vraiment envoyées à l'écran. Le compteur est touché sur le
+    // fil de lecture, lu sur le fil principal.
+    private val renderedFrames = AtomicInteger(0)
+
+    @Volatile
+    private var lastFrameAtMs: Long = 0L
+
+    /**
+     * Une seule instance : Media3 n'accepte pas null, et
+     * [ExoPlayer.clearVideoFrameMetadataListener] ne retire le
+     * compteur que si on lui rend le même objet.
+     */
+    private val frameClock = VideoFrameMetadataListener { _, _, _, _ ->
+        renderedFrames.incrementAndGet()
+        lastFrameAtMs = SystemClock.elapsedRealtime()
+    }
+    private var videoDecoderReady: Boolean = false
+    private var decoderReadyAtMs: Long = 0L
+    private var contentFps: Float = 0f
+    private var frameRateMatchEnabled: Boolean = false
+    private var frameRateModeApplied: Boolean = false
+    private var bytesLoaded: Long = 0L
+    private var bitrateEstimate: Long = 0L
+    private var videoChosenForSession: Boolean = false
 
     private val positionPump = object : Runnable {
         override fun run() {
@@ -192,9 +343,24 @@ class NativeVideoView(
                 val pos = player.currentPosition
                 if (vodMode) lastKnownPos = pos
                 emit("position", pos)
+                maybeCopyFrame()
             }
             sendDurationIfChanged()
             if (!released) handler.postDelayed(this, 500)
+        }
+    }
+
+    /**
+     * Toutes les 2 s : image noire (décodeur prêt, aucune trame) ou image
+     * figée (plus de trame alors que ça joue). Un chargement en cours
+     * ne compte pas. Un seul basculement à la fois.
+     */
+    private val pictureWatch = object : Runnable {
+        override fun run() {
+            if (!released) {
+                considerPictureFallback()
+                handler.postDelayed(this, 2_000)
+            }
         }
     }
 
@@ -226,6 +392,24 @@ class NativeVideoView(
         // Opaque = le décodeur écrit des pixels réels, pas « du vide ».
         surfaceView.holder.setFormat(PixelFormat.OPAQUE)
 
+        player = buildConfiguredPlayer()
+        // On NE retire PAS la surface au zap : la retirer fait un flash
+        // noir. stop() rend le codec ; la surface, elle, reste. Le logo
+        // Flutter couvre l'ancienne image jusqu'à la nouvelle trame.
+        attachToSurface(player)
+        playerKey = owners.register { silenceForHandoff() }
+
+        handler.postDelayed(positionPump, 500)
+        handler.postDelayed(pictureWatch, 2_000)
+        handler.post { emitImageCaps() }
+    }
+
+    /**
+     * Construit un ExoPlayer. Relu quand on passe à FFmpeg vidéo (rare) :
+     * les rendus sont figés à la construction. Le chemin matériel
+     * (installFfmpegVideo = false) est celui de la v104.
+     */
+    private fun buildConfiguredPlayer(): ExoPlayer {
         // Tampons orientés DÉMARRAGE RAPIDE + fluidité. On lance la lecture dès
         // ~1 s de données (bufferForPlayback INCHANGÉ → ouverture/zapping rapide,
         // déjà plus véloce que le mobile), MAIS on approfondit le matelas
@@ -244,7 +428,12 @@ class NativeVideoView(
         // setBackBuffer(0) est le défaut : on ne garde PAS les images déjà
         // jouées (mémoire, et une vieille image ne peut pas rester à l'écran).
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(5_000, 45_000, 1_000, 2_000)
+            .setBufferDurationsMs(
+                5_000,
+                45_000,
+                ReconnectPlan.BUFFER_FOR_PLAYBACK_MS,
+                2_000,
+            )
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(0, false)
             .build()
@@ -269,7 +458,7 @@ class NativeVideoView(
         // ce qu'elle ne sait pas lire. On l'ajoute nous-mêmes (et pas par le mode
         // « extension » qui passerait AUSSI par la vidéo) pour que R8 ne le
         // retire jamais, et pour que la vidéo reste sur MediaCodec.
-        val renderersFactory = object : TvVideoRenderersFactory(context) {
+        val renderersFactory = object : TvVideoRenderersFactory(appContext, installFfmpegVideo) {
             override fun buildAudioRenderers(
                 context: Context,
                 extensionRendererMode: Int,
@@ -298,10 +487,13 @@ class NativeVideoView(
                 // tampon réseau. Float coupé : certaines box crachent le PCM
                 // flottant. Vitesse AudioTrack coupée : on joue à 1,0.
                 val base = DefaultAudioSink.AudioTrackBufferSizeProvider.DEFAULT
-                return DefaultAudioSink.Builder(context)
+                return DefaultAudioSink.Builder(appContext)
                     .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(false)
-                    .setAudioProcessors(arrayOf(clearVoiceProcessor))
+                    // La sonde est dans la liste MAIS inactive tant que le réglage
+                    // est coupé (NOT_SET, comme la voix claire). Le son par
+                    // défaut ne passe pas par elle.
+                    .setAudioProcessors(arrayOf(clearVoiceProcessor, audioProbeProcessor))
                     .setAudioTrackBufferSizeProvider { min, encoding, mode, frame, rate, bitrate, speed ->
                         val minBytes = base.getBufferSizeInBytes(
                             min, encoding, mode, frame, rate, bitrate, speed,
@@ -324,12 +516,22 @@ class NativeVideoView(
             // redemande la liste à chaque sélection de pistes (donc à chaque
             // re-prepare), il n'y a pas de copie figée au moment du build.
             .setMediaCodecSelector { mimeType, requiresSecure, requiresTunneling ->
-                if (preferFfmpegFor(mimeType)) {
+                val all = MediaCodecSelector.DEFAULT.getDecoderInfos(
+                    mimeType, requiresSecure, requiresTunneling,
+                )
+                if (mimeType.startsWith("video/")) {
+                    // Matériel d'abord, sauf repli / option logiciel. On ne
+                    // retire aucun codec : une liste sans logiciel reste
+                    // celle de la box.
+                    val ordered = CodecOrder.order(
+                        all.map { NamedCodec(it.name) },
+                        preferSoftwareVideo,
+                    )
+                    ordered.mapNotNull { want -> all.firstOrNull { it.name == want.name } }
+                } else if (preferFfmpegFor(mimeType)) {
                     emptyList<MediaCodecInfo>()
                 } else {
-                    MediaCodecSelector.DEFAULT.getDecoderInfos(
-                        mimeType, requiresSecure, requiresTunneling,
-                    )
+                    all
                 }
             }
 
@@ -365,7 +567,7 @@ class NativeVideoView(
         // lecteur externe (open_filex) qui, sur cette box, tombait sur la Galerie
         // → FATAL EXCEPTION (gallery3d) qui tuait l'app. Le direct reste 100 %
         // inchangé (http passe toujours par le même httpFactory).
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
 
         // Politique de ré-essai réseau AGRESSIVE : on retente beaucoup avant
         // d'abandonner un chargement (le direct IPTV coupe souvent brièvement).
@@ -389,7 +591,7 @@ class NativeVideoView(
         //     mieux vaut un bref raccord qu'une image qui ne bouge plus.
         // Un flux à UNE piste (.ts) ignore tout ça : une seule qualité.
         val trackSelector = DefaultTrackSelector(
-            context,
+            appContext,
             AdaptiveTrackSelection.Factory(
                 /* minDurationForQualityIncreaseMs = */ 10_000,
                 /* maxDurationForQualityDecreaseMs = */ 25_000,
@@ -417,7 +619,7 @@ class NativeVideoView(
                 .build(),
         )
 
-        player = ExoPlayer.Builder(context, renderersFactory)
+        return ExoPlayer.Builder(appContext, renderersFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
@@ -432,24 +634,6 @@ class NativeVideoView(
             .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
             .setHandleAudioBecomingNoisy(true)
             .build()
-
-        // Toute l'image dans la surface, bandes noires si le format n'est
-        // pas 16:9. On ne ROGNE pas (le rognage ressemble à une image cassée).
-        player.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
-        // On NE retire PAS la surface au zap : la retirer fait un flash
-        // noir. stop() rend le codec ; la surface, elle, reste. Le logo
-        // Flutter couvre l'ancienne image jusqu'à la nouvelle trame.
-        player.setVideoSurfaceView(surfaceView)
-        // Un seul écouteur (Analytics) : Player.Listener en double enverrait
-        // deux fois la même 1re image, dont parfois celle de la chaîne d'avant.
-        player.addAnalyticsListener(this)
-        // Le direct ne doit pas « sauter » les silences : ça coupe le début
-        // des phrases. C'est déjà le défaut ; on le fige.
-        player.skipSilenceEnabled = false
-        player.playWhenReady = true
-        playerKey = owners.register { silenceForHandoff() }
-
-        handler.postDelayed(positionPump, 500)
     }
 
     /** Profil audio : film, ou parole si la voix claire est allumée. */
@@ -481,7 +665,7 @@ class NativeVideoView(
         }
     }
 
-    override fun getView(): View = surfaceView
+    override fun getView(): View = root
 
     // ---- Dart → natif -------------------------------------------------------
 
@@ -500,12 +684,18 @@ class NativeVideoView(
                     return
                 }
                 cancelRetry()
-                // On ne remet le budget de reconnexion silencieuse à zéro QUE
-                // pour une VRAIE nouvelle chaîne (URL différente). Si Dart
-                // ré-ouvre la MÊME URL (recover sur flux gelé), on CONSERVE le
-                // compteur → après maxSilentRetries on remonte enfin l'erreur à
-                // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
-                if (url != currentUrl) retryCount = 0
+                // Budget remis à zéro SEULEMENT pour une autre adresse.
+                // La même adresse (gel, coupure) garde le compteur : après
+                // 8 essais on prévient Dart, on ne boucle pas sans fin.
+                // On annule aussi l'attente en cours : Dart ré-ouvre, le
+                // délai natif ne doit pas préparer une seconde fois.
+                if (url != currentUrl) {
+                    reconnect.onDifferentUrl()
+                    discardHeldFrame()
+                    sawFrame = false
+                } else {
+                    reconnect.onExternalReopen()
+                }
                 behindLiveCount = 0
                 currentUrl = url
                 vodMode = call.argument<Boolean>("vod") ?: false
@@ -517,6 +707,24 @@ class NativeVideoView(
                 // de la chaîne précédente.
                 ffmpegAudioActive = false
                 audioChosenForSession = false
+                videoChosenForSession = false
+                // Nouvelle demande Dart : on repart du moteur choisi, pas
+                // du repli de la chaîne d'avant. Le repli automatique, lui,
+                // n'appelle pas setUrl : il garde le moteur qui vient de
+                // prendre le relais.
+                triedEngines.clear()
+                videoGaveUp = false
+                restorePreferredEngine()
+                // Réglage optionnel « garder FFmpeg ». Faux par défaut : le
+                // drapeau de repli ne bouge pas. Vrai : on réessaie FFmpeg
+                // sur cette ouverture. Le filet des 8 s reste armé plus bas.
+                forceBoxAacDecoder = AudioFixes.forceBoxAfterOpen(
+                    AudioFixes.keepFfmpeg,
+                    forceBoxAacDecoder,
+                )
+                // Diagnostic du son : nouvelle chaîne, compteurs à zéro.
+                diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
+                diagLastUnderrunSentMs = 0L
                 // Langue audio / sous-titres préférée (langue de l'app) : si le
                 // film propose la piste, ExoPlayer la choisit d'office.
                 prefAudio = call.argument<String>("preferredAudio")
@@ -539,6 +747,42 @@ class NativeVideoView(
                 silenceForHandoff()
                 result.success(null)
             }
+            "setEngine" -> {
+                // Choix manuel. « ffmpeg » sans décodeur vidéo ne rouvre
+                // pas la chaîne : on le dit, et on reste où on est.
+                val requested = VideoEngine.fromWire(call.arguments as? String)
+                if (requested == VideoEngine.FFMPEG && !ffmpegVideoReady) {
+                    emitEngine(rejected = "ffmpeg")
+                    result.success(null)
+                    return
+                }
+                preferredEngine = requested
+                triedEngines.clear()
+                videoGaveUp = false
+                applyEngine(requested, reopen = currentUrl != null)
+                result.success(null)
+            }
+            "setFrameRateMatch" -> {
+                frameRateMatchEnabled = call.arguments == true
+                if (!frameRateMatchEnabled) {
+                    clearFrameRateMode()
+                } else if (contentFps > 0f) {
+                    applyFrameRate(contentFps)
+                }
+                result.success(null)
+            }
+            "setContrast" -> {
+                // Le filtre OpenGL quitterait la Surface. On ne l'allume
+                // pas : hardwareAllows reste faux, la fonction testée
+                // renvoie donc faux. LIGHT_CONTRAST n'est pas appliqué.
+                val requested = call.arguments == true
+                val applied = PictureTune.resolve(requested, hardwareAllows = false)
+                emit("contrast", applied)
+                if (requested && !applied) {
+                    emit("contrastReason", "surface")
+                }
+                result.success(applied)
+            }
             "setClearVoice" -> {
                 val on = call.arguments == true
                 if (on == clearVoiceEnabled) {
@@ -560,6 +804,17 @@ class NativeVideoView(
                 } else if (!released) {
                     player.setAudioAttributes(movieAudioAttributes(), true)
                 }
+                result.success(null)
+            }
+            "setAudioProbe" -> {
+                AudioFixes.probe = call.arguments == true
+                audioProbeProcessor.enabled = AudioFixes.probe
+                result.success(null)
+            }
+            "setKeepFfmpeg" -> {
+                // Pris en compte au prochain setUrl (forceBoxAfterOpen).
+                // On ne rouvre pas la chaîne tout seul.
+                AudioFixes.keepFfmpeg = call.arguments == true
                 result.success(null)
             }
             "dispose" -> {
@@ -619,7 +874,10 @@ class NativeVideoView(
                     result.success(null)
                     return
                 }
-                player.volume = 1f
+                // Pendant une reconnexion le volume reste à 0 : le remettre
+                // ici ferait ressortir l'ancien tampon. La nouvelle session
+                // le remonte toute seule (unmuteIfThisSession).
+                if (!reconnect.holdMute) player.volume = 1f
                 player.play()
                 result.success(null)
             }
@@ -648,9 +906,19 @@ class NativeVideoView(
         when (state) {
             Player.STATE_BUFFERING -> emit("buffering", true)
             Player.STATE_READY -> {
-                retryCount = 0 // lecture OK → on oublie les erreurs passées
+                // On annule une ré-ouverture devenue inutile, MAIS on ne
+                // remet pas le budget à zéro ici : « prêt » arrive parfois
+                // une fraction de seconde avant un nouvel échec. Le budget
+                // repart seulement quand l'image ou le son est vraiment là
+                // (voir onRenderedFirstFrame / onIsPlayingChanged).
+                // On n'annonce pas « plus en tampon » tant que la copie
+                // de la dernière image couvre la surface : sinon Flutter
+                // découvrirait le noir avant la nouvelle trame.
+                cancelRetry()
                 behindLiveCount = 0
-                emit("buffering", false)
+                if (holdView.visibility != View.VISIBLE) {
+                    emit("buffering", false)
+                }
             }
             Player.STATE_ENDED -> emit("ended", null)
             Player.STATE_IDLE -> { /* après erreur : géré par onPlayerError */ }
@@ -660,6 +928,14 @@ class NativeVideoView(
     override fun onIsPlayingChanged(eventTime: AnalyticsListener.EventTime, isPlaying: Boolean) {
         if (!fresh(eventTime)) return
         emit("playing", isPlaying)
+        // Le son de CETTE session seulement. Avant, le volume remontait
+        // juste après prepare() : le tampon HDMI de l'ancienne chaîne
+        // (surtout en AC-3) sortait encore pendant que la nouvelle
+        // démarrait. Ici on attend que le lecteur dise « je joue ».
+        if (isPlaying) {
+            reconnect.onRecovered()
+            unmuteIfThisSession()
+        }
     }
 
     /** Pistes disponibles → Dart, puis choix de la voix (une fois). */
@@ -704,7 +980,19 @@ class NativeVideoView(
                 }
             }
         }
+        var audioCount = 0
+        var wider = 0
+        for (row in out) {
+            if (row["type"] != "audio") continue
+            audioCount++
+            val ch = (row["channels"] as? Int) ?: 0
+            val selected = row["selected"] == true
+            if (!selected && ch > wider) wider = ch
+        }
+        diag = diag.copy(audioTrackCount = audioCount, widerTrackChannels = wider)
+        if (diag.outSampleRate > 0 || diag.decoder != null) sendAudioDiag()
         emit("tracks", out)
+        maybeChooseVideo(tracks)
         if (audioChosenForSession) return
         val pick = SpokenTrackChoice.pick(audio, prefAudio) ?: return
         audioChosenForSession = true
@@ -740,20 +1028,84 @@ class NativeVideoView(
         // L'heure de l'événement, pas « maintenant » : une trame déjà
         // décodée avant le zap ne retire pas le logo de la nouvelle chaîne.
         if (!fresh(eventTime)) return
-        retryCount = 0
+        reconnect.onRecovered()
         behindLiveCount = 0
+        sawFrame = true
+        // La nouvelle trame est à l'écran : on retire la copie.
+        hideHeldFrame()
+        emit("holdFrame", false)
+        emit("reconnecting", false)
+        emit("buffering", false)
+        unmuteIfThisSession()
         emit("firstFrame", null)
+        // Une copie tôt : si la coupure arrive dans les secondes qui
+        // suivent, on a déjà une image à montrer.
+        handler.postDelayed({
+            if (!released) maybeCopyFrame(force = true)
+        }, 400)
+    }
+
+    override fun onVideoDecoderInitialized(
+        eventTime: AnalyticsListener.EventTime,
+        decoderName: String,
+        initializedTimestampMs: Long,
+        initializationDurationMs: Long,
+    ) {
+        if (!fresh(eventTime)) return
+        videoDecoderReady = true
+        decoderReadyAtMs = SystemClock.elapsedRealtime()
+        emit("videoDecoder", decoderName)
+    }
+
+    override fun onVideoInputFormatChanged(
+        eventTime: AnalyticsListener.EventTime,
+        format: Format,
+        decoderReuseEvaluation: DecoderReuseEvaluation?,
+    ) {
+        if (!fresh(eventTime)) return
+        val fps = format.frameRate
+        if (fps > 0f) {
+            contentFps = fps
+            applyFrameRate(fps)
+        }
+    }
+
+    override fun onBandwidthEstimate(
+        eventTime: AnalyticsListener.EventTime,
+        totalLoadTimeMs: Int,
+        totalBytesLoaded: Long,
+        bitrateEstimate: Long,
+    ) {
+        if (!fresh(eventTime)) return
+        bytesLoaded = totalBytesLoaded
+        this.bitrateEstimate = bitrateEstimate
+    }
+
+    override fun onVideoCodecError(
+        eventTime: AnalyticsListener.EventTime,
+        videoCodecError: Exception,
+    ) {
+        // Media3 : cet appel n'est PAS un échec de lecture. Le lecteur
+        // peut s'en remettre. Changer de moteur ici couperait une image
+        // qui va revenir. L'échec réel arrive par onPlayerError.
     }
 
     override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
         if (!fresh(eventTime)) return
         val token = sessions.generation
+        val exo = error as? ExoPlaybackException
+        val signal = DecoderFallback.classify(error.errorCode, exo?.rendererName)
+        // Vidéo seulement. Une erreur audio FFmpeg garde son propre repli
+        // (plus bas) et ne doit pas changer le décodeur d'image.
+        if (signal == PictureSignal.DECODE && takeVideoFallback(signal)) {
+            return
+        }
         // Erreur DU MOTEUR FFmpeg (rendererName « FfmpegAudioRenderer ») :
         // retenter le même moteur reproduirait le blocage v99. On bascule
         // sur le décodeur de la box et on re-prépare tout de suite, SANS
         // entrer dans le back-off de reconnexion (qui, lui, ne change pas).
         // Ça ne compte pas comme une panne de chaîne.
-        if (!forceBoxAacDecoder && isFfmpegRendererError(error)) {
+        if (!forceBoxAacDecoder && isFfmpegRendererError(error) && signal != PictureSignal.DECODE) {
             requestBoxAudioFallback()
             return
         }
@@ -766,27 +1118,54 @@ class NativeVideoView(
             behindLiveCount < maxBehindLive
         ) {
             behindLiveCount++
-            emit("buffering", true)
+            try {
+                player.volume = 0f
+            } catch (_: RuntimeException) {
+                // Même filet que la reconnexion : pas de second son.
+            }
+            if (sawFrame && heldBitmap != null) {
+                showHeldFrame()
+                emit("holdFrame", true)
+            } else {
+                emit("buffering", true)
+            }
             handler.post {
                 if (released || token != sessions.generation) return@post
                 openCurrent(null)
             }
             return
         }
-        // RECONNEXION SILENCIEUSE : on ne montre PAS d'erreur au client tant
-        // qu'on n'a pas épuisé les essais. On re-prépare avec un back-off.
-        if (retryCount < maxSilentRetries) {
-            retryCount++
-            // Film : on retient la seconde exacte AVANT de re-préparer.
-            // (openCurrent appelle stop(), qui remettrait la position à 0.)
-            if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
-            emit("buffering", true)
-            val delay = (1_000L * (1 shl (retryCount - 1))).coerceAtMost(8_000L)
-            scheduleRetry(delay, token)
-        } else {
-            // Trop d'échecs d'affilée → on laisse Dart faire un reset complet.
-            emit("error", error.message)
+        // RECONNEXION SILENCIEUSE. Délai croissant (1 s, 2 s, 4 s, 8 s).
+        // On ne prépare pas une seconde fois si une attente est déjà là
+        // (deux prepare = deux sons). Le volume tombe à 0 tout de suite :
+        // l'ancienne piste ne continue pas pendant l'attente.
+        val delay = reconnect.onFailure()
+        if (delay == null) {
+            if (!reconnect.retryPending) {
+                emit("reconnecting", false)
+                emit("holdFrame", false)
+                emit("error", error.message)
+            }
+            return
         }
+        try {
+            player.volume = 0f
+        } catch (_: RuntimeException) {
+            // Un volume refusé ne doit pas empêcher la ré-ouverture.
+        }
+        if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+        // Image déjà vue : on la montre (copie) et on NE demande PAS
+        // à Flutter un panneau opaque. Sans copie, le panneau (numéro
+        // de chaîne) vaut mieux qu'une surface vide.
+        if (sawFrame && heldBitmap != null) {
+            showHeldFrame()
+            emit("holdFrame", true)
+        } else {
+            emit("holdFrame", false)
+            emit("buffering", true)
+        }
+        emit("reconnecting", true)
+        scheduleRetry(delay, token)
     }
 
     /**
@@ -800,6 +1179,8 @@ class NativeVideoView(
         sessions.open()
         sessionOpenedAt = SystemClock.elapsedRealtime()
         audioChosenForSession = false
+        videoChosenForSession = false
+        resetPictureClock()
         ffmpegWatchToken++
         cancelRetry()
         try {
@@ -829,13 +1210,17 @@ class NativeVideoView(
     private fun openCurrent(startPositionMs: Long?) {
         val url = currentUrl ?: return
         if (released) return
+        // Avant stop() : la copie couvre la surface, qui va se vider.
+        if (sawFrame && heldBitmap != null) showHeldFrame()
         if (playerKey >= 0) owners.claim(playerKey)
         silenceForHandoff()
         val token = sessions.generation
         dartEpoch?.let { emit("ack", it) }
+        if (holdView.visibility == View.VISIBLE) emit("holdFrame", true)
         if (released || token != sessions.generation) return
         player.setAudioAttributes(movieAudioAttributes(), true)
         clearVoiceProcessor.enabled = clearVoiceEnabled
+        audioProbeProcessor.enabled = AudioFixes.probe
         // L'override audio de la chaîne précédente ne doit pas choisir
         // une piste au hasard sur la nouvelle.
         val params = player.trackSelectionParameters.buildUpon()
@@ -850,15 +1235,27 @@ class NativeVideoView(
         } else {
             player.setMediaItem(item)
         }
+        // Volume 0 AVANT prepare. Le remettre juste après laissait
+        // l'ancien tampon HDMI (AC-3) parler avec le nouveau flux.
+        // On ne remonte qu'au « je joue » ou à la nouvelle trame.
+        reconnect.armMute()
+        player.volume = 0f
         player.prepare()
         player.playWhenReady = true
-        player.volume = 1f
     }
 
     private fun scheduleRetry(delayMs: Long, token: Int) {
-        cancelRetry()
+        // On retire l'ancien délai SANS effacer le verrou que
+        // [ReconnectGate.onFailure] vient de poser : le runnable
+        // ci-dessous doit être le seul à pouvoir repartir.
+        cancelRetry(clearGate = false)
         val r = Runnable {
             if (released || token != sessions.generation) return@Runnable
+            // Un seul feu. Un second callback ne prépare pas encore.
+            if (!reconnect.onRetryFired()) return@Runnable
+            // L'attente est finie : l'écran peut à nouveau surveiller
+            // un gel. La copie, elle, reste jusqu'à la nouvelle trame.
+            emit("reconnecting", false)
             // Film : [lastKnownPos] a été figé dans onPlayerError, avant stop().
             openCurrent(if (vodMode) lastKnownPos else null)
         }
@@ -866,9 +1263,95 @@ class NativeVideoView(
         handler.postDelayed(r, delayMs)
     }
 
-    private fun cancelRetry() {
+    /** Remonte le volume une fois, et seulement si CE lecteur a le son. */
+    private fun unmuteIfThisSession() {
+        if (!reconnect.onNewSoundAllowed()) return
+        if (released) return
+        if (playerKey >= 0 && owners.owner != null && owners.owner != playerKey) return
+        try {
+            player.volume = 1f
+        } catch (_: RuntimeException) {
+            // Un volume refusé laisse la chaîne muette plutôt que planter.
+        }
+    }
+
+    private fun showHeldFrame() {
+        val bmp = heldBitmap ?: return
+        if (bmp.isRecycled) return
+        holdView.setImageBitmap(bmp)
+        holdView.visibility = View.VISIBLE
+        holdView.bringToFront()
+    }
+
+    /** Cache la copie sans la jeter : la prochaine coupure la réutilise. */
+    private fun hideHeldFrame() {
+        holdView.visibility = View.GONE
+        holdView.setImageDrawable(null)
+    }
+
+    /** Zap : l'ancienne image ne doit pas rester (mauvaise chaîne). */
+    private fun discardHeldFrame() {
+        hideHeldFrame()
+        val bmp = heldBitmap
+        heldBitmap = null
+        if (bmp != null && !bmp.isRecycled) bmp.recycle()
+    }
+
+    private fun stashFrame(bmp: Bitmap) {
+        val previous = heldBitmap
+        heldBitmap = bmp
+        if (holdView.visibility == View.VISIBLE) {
+            holdView.setImageBitmap(bmp)
+        } else {
+            holdView.setImageDrawable(null)
+        }
+        if (previous != null && previous !== bmp && !previous.isRecycled) {
+            previous.recycle()
+        }
+    }
+
+    /**
+     * Copie une petite image de la surface pendant que ça joue.
+     * On ne copie pas pendant la coupure : on remplacerait la bonne
+     * image par du noir. Au plus une copie à la fois, toutes les 4 s.
+     */
+    private fun maybeCopyFrame(force: Boolean = false) {
+        if (released || copyInFlight || !sawFrame) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - lastCopyAt < 4_000L) return
+        val w = surfaceView.width
+        val h = surfaceView.height
+        if (w < 16 || h < 16) return
+        val rw = minOf(w, 1280)
+        val rh = minOf(h, 720)
+        val left = (w - rw) / 2
+        val top = (h - rh) / 2
+        val rect = Rect(left, top, left + rw, top + rh)
+        val bmp = Bitmap.createBitmap(rw, rh, Bitmap.Config.RGB_565)
+        copyInFlight = true
+        lastCopyAt = now
+        try {
+            PixelCopy.request(surfaceView, rect, bmp, { code ->
+                copyInFlight = false
+                val keep = !released && code == PixelCopy.SUCCESS && sawFrame &&
+                    holdView.visibility != View.VISIBLE
+                if (!keep) {
+                    bmp.recycle()
+                    return@request
+                }
+                stashFrame(bmp)
+            }, handler)
+        } catch (_: RuntimeException) {
+            copyInFlight = false
+            if (!bmp.isRecycled) bmp.recycle()
+        }
+    }
+
+    private fun cancelRetry(clearGate: Boolean = true) {
         pendingRetry?.let { handler.removeCallbacks(it) }
         pendingRetry = null
+        if (clearGate) reconnect.cancelWait()
     }
 
     // ---- son : suivi FFmpeg et repli box -----------------------------------
@@ -963,6 +1446,7 @@ class NativeVideoView(
     ) {
         if (!fresh(eventTime)) return
         ffmpegAudioActive = decoderName.contains("ffmpeg", ignoreCase = true)
+        diag = diag.copy(decoder = decoderName)
     }
 
     override fun onAudioDecoderReleased(eventTime: AnalyticsListener.EventTime, decoderName: String) {
@@ -980,12 +1464,93 @@ class NativeVideoView(
      * le décodeur de la box, lui, parle le dialecte de l'appareil.
      */
     override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
+        if (fresh(eventTime)) emit("audioDiag", "Erreur de la sortie son : ${audioSinkError.javaClass.simpleName}")
         if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
     }
 
     /** Erreur du décodeur logiciel FFmpeg (DecoderException), même repli. */
     override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
+        if (fresh(eventTime)) emit("audioDiag", "Erreur du décodeur son : ${audioCodecError.javaClass.simpleName}")
         if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
+    }
+
+    // ---- diagnostic du son (lecture seule) ---------------------------------
+
+    /** Format du flux audio REÇU (avant décodage). */
+    override fun onAudioInputFormatChanged(
+        eventTime: AnalyticsListener.EventTime,
+        format: Format,
+        decoderReuseEvaluation: DecoderReuseEvaluation?,
+    ) {
+        if (!fresh(eventTime)) return
+        fun known(v: Int) = if (v == Format.NO_VALUE || v < 0) 0 else v
+        diag = diag.copy(
+            mime = format.sampleMimeType,
+            codecs = format.codecs,
+            inSampleRate = known(format.sampleRate),
+            inChannels = known(format.channelCount),
+            bitrate = known(format.bitrate),
+        )
+    }
+
+    /** Ce qui part réellement vers la sortie son : on envoie le bilan. */
+    override fun onAudioTrackInitialized(
+        eventTime: AnalyticsListener.EventTime,
+        audioTrackConfig: AudioSink.AudioTrackConfig,
+    ) {
+        if (!fresh(eventTime)) return
+        diag = diag.copy(
+            outSampleRate = audioTrackConfig.sampleRate,
+            outChannels = Integer.bitCount(audioTrackConfig.channelConfig),
+            outEncoding = encodingName(audioTrackConfig.encoding),
+            passthrough = !Util.isEncodingLinearPcm(audioTrackConfig.encoding),
+            clearVoice = clearVoiceEnabled,
+        )
+        sendAudioDiag()
+    }
+
+    /** Coupure de la sortie son (craquement / trou). Bilan au plus toutes les 30 s. */
+    override fun onAudioUnderrun(
+        eventTime: AnalyticsListener.EventTime,
+        bufferSize: Int,
+        bufferSizeMs: Long,
+        elapsedSinceLastFeedMs: Long,
+    ) {
+        if (!fresh(eventTime)) return
+        diag = diag.copy(underruns = diag.underruns + 1)
+        val now = SystemClock.elapsedRealtime()
+        if (now - diagLastUnderrunSentMs >= 30_000L) {
+            diagLastUnderrunSentMs = now
+            sendAudioDiag()
+        }
+    }
+
+    private fun sendAudioDiag() {
+        val text = buildString {
+            append(AudioDiagnosis.describe(diag))
+            for (v in AudioDiagnosis.verdicts(diag)) append("\n→ ").append(v)
+            append("\n").append(AudioDiagnosis.report(diag))
+            if (!diagCapsSent) {
+                diagCapsSent = true
+                append("\n").append(outputCaps)
+            }
+        }
+        // Aucune URL de flux ni mot de passe : le rapport n'en a pas,
+        // et on retire quand même un secret si un libellé en portait un.
+        emit("audioDiag", AudioDiagnosis.redact(text))
+    }
+
+    private fun encodingName(encoding: Int): String = when (encoding) {
+        C.ENCODING_PCM_16BIT -> "PCM 16 bits"
+        C.ENCODING_PCM_FLOAT -> "PCM flottant"
+        C.ENCODING_PCM_24BIT -> "PCM 24 bits"
+        C.ENCODING_PCM_32BIT -> "PCM 32 bits"
+        C.ENCODING_AC3 -> "AC-3"
+        C.ENCODING_E_AC3, C.ENCODING_E_AC3_JOC -> "E-AC-3"
+        C.ENCODING_DTS -> "DTS"
+        C.ENCODING_DTS_HD -> "DTS-HD"
+        C.ENCODING_DOLBY_TRUEHD -> "TrueHD"
+        else -> "codage $encoding"
     }
 
     // ---- cycle de vie -------------------------------------------------------
@@ -1005,7 +1570,9 @@ class NativeVideoView(
         released = true
         // Annule le filet FFmpeg : plus de re-prepare après la mort du lecteur.
         ffmpegWatchToken++
+        clearFrameRateMode()
         cancelRetry()
+        discardHeldFrame()
         handler.removeCallbacksAndMessages(null)
         if (playerKey >= 0) {
             owners.unregister(playerKey)
@@ -1013,6 +1580,7 @@ class NativeVideoView(
         }
         try {
             player.removeAnalyticsListener(this)
+            player.clearVideoFrameMetadataListener(frameClock)
         } catch (_: RuntimeException) {
             // Déjà détaché : on continue la libération.
         }
@@ -1028,6 +1596,305 @@ class NativeVideoView(
             // suivante doit pouvoir créer SON lecteur.
         }
         channel.setMethodCallHandler(null)
+    }
+
+    /**
+     * Branche le lecteur sur la surface SANS la détacher entre deux
+     * chaînes. Toute l'image, bandes noires si ce n'est pas du 16:9 :
+     * on ne rogne pas.
+     */
+    private fun attachToSurface(target: ExoPlayer) {
+        target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+        target.setVideoSurfaceView(surfaceView)
+        target.addAnalyticsListener(this)
+        target.setVideoFrameMetadataListener(frameClock)
+        target.skipSilenceEnabled = false
+        target.playWhenReady = true
+        ffmpegRendererInstalled = installFfmpegVideo
+    }
+
+    private fun emitImageCaps() {
+        emit(
+            "imageCaps",
+            mapOf(
+                "ffmpegVideo" to ffmpegVideoReady,
+                "engine" to videoEngine.wire,
+                "contrastHardware" to false,
+            ),
+        )
+    }
+
+    private fun emitEngine(rejected: String? = null) {
+        val payload = HashMap<String, Any?>()
+        payload["name"] = videoEngine.wire
+        payload["ffmpegVideo"] = ffmpegVideoReady
+        if (rejected != null) payload["rejected"] = rejected
+        emit("engine", payload)
+    }
+
+    /** Revenir au choix de la personne, sans rouvrir (setUrl le fait). */
+    private fun restorePreferredEngine() {
+        if (videoEngine == preferredEngine &&
+            preferSoftwareVideo == (preferredEngine == VideoEngine.SOFTWARE) &&
+            ffmpegRendererInstalled == (preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady)
+        ) {
+            return
+        }
+        videoEngine = preferredEngine
+        preferSoftwareVideo = preferredEngine == VideoEngine.SOFTWARE
+        val wantFfmpeg = preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady
+        if (wantFfmpeg != ffmpegRendererInstalled) {
+            installFfmpegVideo = wantFfmpeg
+            rebuildPlayer()
+        }
+        emitEngine()
+    }
+
+    /**
+     * Change le moteur. [reopen] relance le flux en cours. On prévient
+     * Dart (`reopen`) AVANT, pour que le carton de chaîne couvre la
+     * surface : pas de flash noir.
+     */
+    private fun applyEngine(next: VideoEngine, reopen: Boolean) {
+        if (next == VideoEngine.FFMPEG && !ffmpegVideoReady) {
+            emitEngine(rejected = "ffmpeg")
+            return
+        }
+        val changed = next != videoEngine
+        videoEngine = next
+        preferSoftwareVideo = next == VideoEngine.SOFTWARE
+        val wantFfmpeg = next == VideoEngine.FFMPEG && ffmpegVideoReady
+        if (wantFfmpeg != ffmpegRendererInstalled) {
+            installFfmpegVideo = wantFfmpeg
+            rebuildPlayer()
+        }
+        emitEngine()
+        if (reopen && changed && currentUrl != null && !released) {
+            emit("reopen", null)
+            if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+            openCurrent(if (vodMode) lastKnownPos else null)
+        }
+    }
+
+    /**
+     * Nouveau lecteur, MÊME surface. On ne le fait que pour entrer ou
+     * sortir de FFmpeg vidéo : le matériel et le logiciel partagent
+     * le même lecteur, seul l'ordre des codecs change.
+     */
+    private fun rebuildPlayer() {
+        if (!::player.isInitialized) return
+        val old = player
+        try {
+            old.removeAnalyticsListener(this)
+        } catch (_: RuntimeException) {
+        }
+        try {
+            old.clearVideoFrameMetadataListener(frameClock)
+        } catch (_: RuntimeException) {
+        }
+        val next = buildConfiguredPlayer()
+        player = next
+        attachToSurface(next)
+        try {
+            old.stop()
+            old.clearVideoSurface()
+            old.release()
+        } catch (_: RuntimeException) {
+        }
+    }
+
+    private fun resetPictureClock() {
+        renderedFrames.set(0)
+        lastFrameAtMs = 0L
+        videoDecoderReady = false
+        decoderReadyAtMs = 0L
+    }
+
+    private fun considerPictureFallback() {
+        if (released || videoGaveUp || videoFallbackPosted) return
+        if (!::player.isInitialized) return
+        val now = SystemClock.elapsedRealtime()
+        val ready = player.playbackState == Player.STATE_READY
+        val buffering = player.playbackState == Player.STATE_BUFFERING
+        val frames = renderedFrames.get()
+        val black = PictureHealth.black(
+            decoderReady = videoDecoderReady,
+            framesRendered = frames,
+            playbackReady = ready,
+            buffering = buffering,
+            elapsedMs = if (decoderReadyAtMs == 0L) 0L else now - decoderReadyAtMs,
+        )
+        val frozen = PictureHealth.frozen(
+            framesRendered = frames,
+            playing = player.isPlaying,
+            buffering = buffering,
+            msSinceLastFrame = if (lastFrameAtMs == 0L) 0L else now - lastFrameAtMs,
+        )
+        if (black || frozen) takeVideoFallback(PictureSignal.BLACK_OR_FROZEN)
+    }
+
+    /**
+     * @return true si on a traité l'échec (bascule, ou plus aucun moteur).
+     * Le réseau continue alors son chemin habituel seulement si on
+     * renvoie false.
+     */
+    private fun takeVideoFallback(signal: PictureSignal): Boolean {
+        if (released || videoGaveUp) return videoGaveUp
+        val decision = DecoderFallback.next(
+            videoEngine,
+            signal,
+            ffmpegVideoReady,
+            triedEngines,
+        )
+        if (!decision.reopen) {
+            if (decision.giveUp) {
+                videoGaveUp = true
+                // Pas « error » : Dart rouvrirait l'URL et remettrait le
+                // matériel, donc la même panne en boucle. L'écran montre
+                // l'échec et attend « Réessayer ».
+                emit("engineExhausted", videoEngine.wire)
+            }
+            return decision.giveUp
+        }
+        if (videoFallbackPosted) return true
+        videoFallbackPosted = true
+        triedEngines.add(videoEngine)
+        val session = sessions.generation
+        val next = decision.engine
+        handler.post {
+            videoFallbackPosted = false
+            if (released || session != sessions.generation) return@post
+            cancelRetry()
+            applyEngine(next, reopen = true)
+        }
+        return true
+    }
+
+    /**
+     * Piste vidéo fixe (pas le ladder HLS). Une fois par chaîne.
+     * Le HLS adaptatif reste à Media3 : on ne fige pas un débit.
+     */
+    private fun maybeChooseVideo(tracks: Tracks) {
+        if (videoChosenForSession) return
+        val videos = ArrayList<VideoCandidate>()
+        tracks.groups.forEachIndexed { gi, g ->
+            if (g.type != C.TRACK_TYPE_VIDEO) return@forEachIndexed
+            val adaptive = g.length > 1
+            for (i in 0 until g.length) {
+                if (!g.isTrackSupported(i)) continue
+                val f = g.getTrackFormat(i)
+                videos.add(
+                    VideoCandidate(
+                        group = gi,
+                        index = i,
+                        width = positive(f.width),
+                        height = positive(f.height),
+                        bitrate = positive(f.bitrate),
+                        frameRate = if (f.frameRate > 0f) f.frameRate else 0f,
+                        mime = f.sampleMimeType,
+                        selected = g.isTrackSelected(i),
+                        adaptive = adaptive,
+                    ),
+                )
+            }
+        }
+        if (videos.isEmpty()) return
+        val bandwidth = VideoTrackChoice.bandwidthForChoice(bitrateEstimate, bytesLoaded)
+        val pick = VideoTrackChoice.pick(videos, bandwidth, screenHeightPx())
+        val fixed = videos.count { !it.adaptive }
+        if (pick == null) {
+            if (player.playbackState == Player.STATE_READY || fixed < 2) {
+                videoChosenForSession = true
+            }
+            return
+        }
+        videoChosenForSession = true
+        val token = sessions.generation
+        handler.post {
+            if (released || token != sessions.generation) return@post
+            val groups = player.currentTracks.groups
+            if (pick.group < 0 || pick.group >= groups.size) return@post
+            val g = groups[pick.group]
+            if (g.type != C.TRACK_TYPE_VIDEO) return@post
+            if (pick.index < 0 || pick.index >= g.length) return@post
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
+                .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, pick.index))
+                .build()
+        }
+    }
+
+    private fun positive(value: Int): Int = if (value > 0) value else 0
+
+    private fun screenHeightPx(): Int {
+        val fromView = surfaceView.height
+        if (fromView > 0) return fromView
+        return appContext.resources.displayMetrics.heightPixels
+    }
+
+    @Suppress("DEPRECATION") // defaultDisplay : lu seulement pour la liste des modes
+    private fun applyFrameRate(fps: Float) {
+        if (!frameRateMatchEnabled) return
+        val activity = findActivity(appContext) ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val display = surfaceView.display ?: activity.windowManager.defaultDisplay
+        val modes = display.supportedModes.map { DisplayModeOption(it.modeId, it.refreshRate) }
+        val current = activity.window.attributes.preferredDisplayModeId
+        val pick = FrameRateMatch.pick(true, fps, modes, current) ?: return
+        try {
+            val attrs = activity.window.attributes
+            attrs.preferredDisplayModeId = pick.id
+            activity.window.attributes = attrs
+            frameRateModeApplied = true
+        } catch (_: RuntimeException) {
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                surfaceView.holder.surface.setFrameRate(
+                    fps,
+                    Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE,
+                    Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS,
+                )
+            } catch (_: RuntimeException) {
+                // L'indice de cadence est en plus du mode. S'il échoue,
+                // le mode d'écran, lui, est déjà posé.
+            }
+        }
+    }
+
+    /** Rend la fréquence à la TV. On ne touche à la fenêtre que si ON l'a changée. */
+    private fun clearFrameRateMode() {
+        if (!frameRateModeApplied) return
+        val activity = findActivity(appContext) ?: return
+        try {
+            val attrs = activity.window.attributes
+            attrs.preferredDisplayModeId = 0
+            activity.window.attributes = attrs
+        } catch (_: RuntimeException) {
+            // On note quand même que ce n'est plus notre mode.
+        }
+        frameRateModeApplied = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                surfaceView.holder.surface.setFrameRate(
+                    0f,
+                    Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                    Surface.CHANGE_FRAME_RATE_ALWAYS,
+                )
+            } catch (_: RuntimeException) {
+            }
+        }
+    }
+
+    private fun findActivity(start: Context): Activity? {
+        var current: Context? = start
+        while (current is ContextWrapper) {
+            if (current is Activity) return current
+            current = current.baseContext
+        }
+        return null
     }
 
     companion object {
@@ -1061,6 +1928,22 @@ class NativeVideoView(
         }
 
         /**
+         * Vrai seulement si le .so déclare un décodeur VIDÉO. Le binaire
+         * Jellyfin 1.5.0+1 (son de la v104) n'a pas h264 / hevc / mpeg2 :
+         * cet appel renvoie faux, et on ne construit pas le rendu vidéo.
+         */
+        val ffmpegVideoReady: Boolean by lazy {
+            if (!ffmpegReady) return@lazy false
+            try {
+                FfmpegLibrary.supportsFormat(MimeTypes.VIDEO_H264) ||
+                    FfmpegLibrary.supportsFormat(MimeTypes.VIDEO_H265) ||
+                    FfmpegLibrary.supportsFormat(MimeTypes.VIDEO_MPEG2)
+            } catch (_: Throwable) {
+                false
+            }
+        }
+
+        /**
          * Tous les lecteurs vivants du processus. [claim] coupe les autres
          * avant qu'un nouveau ne sorte du son.
          */
@@ -1082,15 +1965,18 @@ class NativeVideoView(
 /**
  * Fabrique de rendus : identique à Media3, SAUF pour la vidéo.
  *
- * Si le chantier audio active les extensions (décodeur FFmpeg son), Media3
- * les proposerait AUSSI pour la vidéo. Le décodeur vidéo FFmpeg a déjà
- * laissé des chaînes sur l'écran de chargement (v99–v101). Ici, quoi que
- * demande le mode extension, la vidéo reste sur MediaCodec Android
- * (matériel, puis repli logiciel si l'init échoue). L'audio est ajouté
- * à part, dans [NativeVideoView], après les décodeurs de la box.
+ * Par défaut [installFfmpegVideo] est faux : la vidéo reste sur
+ * MediaCodec (matériel, puis le logiciel Android si l'init échoue).
+ * On n'ajoute le rendu FFmpeg QUE si la bibliothèque a dit qu'elle
+ * sait décoder la vidéo. Le mode « extension » de Media3 est forcé
+ * à OFF pour qu'il ne glisse pas FFmpeg tout seul devant l'image.
+ * L'audio FFmpeg est ajouté à part, dans [NativeVideoView].
  */
 @UnstableApi
-private open class TvVideoRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
+private open class TvVideoRenderersFactory(
+    context: Context,
+    private val installFfmpegVideo: Boolean,
+) : DefaultRenderersFactory(context) {
     @Suppress("UNUSED_PARAMETER") // le mode extension est forcé à OFF plus bas
     override fun buildVideoRenderers(
         context: Context,
@@ -1102,6 +1988,16 @@ private open class TvVideoRenderersFactory(context: Context) : DefaultRenderersF
         allowedVideoJoiningTimeMs: Long,
         out: ArrayList<Renderer>,
     ) {
+        if (installFfmpegVideo) {
+            out.add(
+                ExperimentalFfmpegVideoRenderer(
+                    allowedVideoJoiningTimeMs,
+                    eventHandler,
+                    eventListener,
+                    /* maxDroppedFramesToNotify = */ 50,
+                ),
+            )
+        }
         super.buildVideoRenderers(
             context,
             EXTENSION_RENDERER_MODE_OFF,

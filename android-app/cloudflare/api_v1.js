@@ -67,6 +67,13 @@ import {
   sourceFingerprint,
   writeOpenedSources,
 } from './source_revoke.js';
+import {
+  kindForBlock,
+  kindForLicensePatch,
+  loadBoxLive,
+  signalFleet,
+  signalMac,
+} from './box_signal.js';
 
 // ---------------------------------------------------------
 //  Helpers reponse
@@ -606,6 +613,12 @@ async function apiV1Inner(request, env) {
     }
   }
 
+  // /boxes/live — état en direct (en ligne, version, ordre appliqué).
+  // JWT obligatoire. Un revendeur ne voit que ses appareils.
+  if (parts[0] === 'boxes' && parts[1] === 'live' && parts.length === 2 && request.method === 'GET') {
+    return handleBoxesLive(request, env, a.user);
+  }
+
   // /activate — activer un appareil par sa MAC (owner OU revendeur).
   // Cree client+device+licence et debite les credits du revendeur.
   if (parts[0] === 'activate' && parts.length === 1 && request.method === 'POST') {
@@ -913,14 +926,14 @@ async function apiV1Inner(request, env) {
   if (parts[0] === 'licenses') {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleLicensesList(request, env, a.user);
-      if (request.method === 'POST') return handleLicensesCreate(request, env, actor);
+      if (request.method === 'POST') return handleLicensesCreate(request, env, actor, a.user);
     }
     if (parts.length === 2) {
       const id = parts[1];
-      if (request.method === 'PATCH') return handleLicensesUpdate(request, env, id, actor);
+      if (request.method === 'PATCH') return handleLicensesUpdate(request, env, id, actor, a.user);
     }
     if (parts.length === 3 && parts[2] === 'renew') {
-      return handleLicensesRenew(request, env, parts[1], actor);
+      return handleLicensesRenew(request, env, parts[1], actor, a.user);
     }
   }
 
@@ -1311,6 +1324,7 @@ async function handleAnnouncementsUpdate(request, env, id, actor) {
     .bind(active, id).run();
   await logAudit(env, request, actor, 'announcement.toggle',
     { type: 'app_broadcasts', id }, null, { active });
+  await signalFleet(env, 'message');
   return jsonResp({
     ok: true,
     updated: (r.meta && r.meta.changes) || 0,
@@ -1336,6 +1350,7 @@ async function handleAnnouncementsSettingsPut(request, env, actor) {
   await _cfgSet(env, 'announcements_enabled', enabled);
   await logAudit(env, request, actor, 'announcements.settings',
     { type: 'app_config', id: null }, null, { enabled });
+  await signalFleet(env, 'message');
   return jsonResp({ ok: true, enabled: enabled === '1' });
 }
 
@@ -1378,6 +1393,7 @@ async function handleAnnouncementsCreate(request, env, actor) {
   await logAudit(env, request, actor, 'announcement.create',
     { type: 'announcement', id }, null,
     { title, body: msg, kind, country, durationMin });
+  await signalFleet(env, 'message');
   return jsonResp({ ok: true, id }, 201);
 }
 
@@ -1386,6 +1402,7 @@ async function handleAnnouncementsClear(env, actor, request) {
   await env.DB.prepare('DELETE FROM app_broadcasts').run();
   await logAudit(env, request, actor, 'announcement.clear',
     { type: 'announcement', id: null }, null, null);
+  await signalFleet(env, 'message');
   return jsonResp({ ok: true });
 }
 
@@ -1396,6 +1413,7 @@ async function handleAnnouncementsDelete(env, id, actor, request) {
     .bind(id).run();
   await logAudit(env, request, actor, 'announcement.delete',
     { type: 'announcement', id }, null, null);
+  await signalFleet(env, 'message');
   return jsonResp({ ok: true });
 }
 
@@ -1526,6 +1544,7 @@ async function handleHomeLayoutSave(request, env, actor) {
   await logAudit(env, request, actor, 'home_layout.save',
     { type: 'home_layout', id: null }, current.items, items);
   const data = await readHomeLayout(env);
+  await signalFleet(env, 'home');
   return jsonResp({ ok: true, ...data });
 }
 
@@ -1622,12 +1641,14 @@ async function handleForceUpdatePost(request, env, actor, platform) {
     await _cfgSet(env, 'min_build_ts' + s, latest);
     await logAudit(env, request, actor, 'force_update.on',
       { type: 'app_config', id: null }, null, { platform: platform || 'mobile', min_build_ts: latest });
+    await signalFleet(env, 'force_update');
     return jsonResp({ ok: true, minBuildTs: latest });
   }
   if (action === 'disable') {
     await _cfgSet(env, 'min_build_ts' + s, 0);
     await logAudit(env, request, actor, 'force_update.off',
       { type: 'app_config', id: null }, null, { platform: platform || 'mobile' });
+    await signalFleet(env, 'force_update');
     return jsonResp({ ok: true, minBuildTs: 0 });
   }
   return errResp('bad_action', "action doit être 'force' ou 'disable'", 400);
@@ -1696,6 +1717,7 @@ async function handleThemeAutomationsPut(request, env, actor, platform) {
   await _cfgSet(env, 'theme_automations' + _themeSfx(platform), JSON.stringify(clean));
   await logAudit(env, request, actor, 'theme.automations.save',
     { type: 'app_config', id: null }, null, { count: clean.length });
+  await signalFleet(env, 'theme');
   return jsonResp({ ok: true, rules: clean });
 }
 
@@ -1721,6 +1743,7 @@ async function handleThemePut(request, env, actor, platform) {
   await _cfgSet(env, 'theme_bg' + s, bg);
   await logAudit(env, request, actor, 'theme.save',
     { type: 'app_config', id: null }, null, { platform: platform || 'mobile', appName, accent, bg });
+  await signalFleet(env, 'theme');
   return jsonResp({ ok: true, appName, accent, bg });
 }
 
@@ -1756,6 +1779,7 @@ async function handleAdPut(request, env, actor) {
   await _cfgSet(env, 'ad_freq', freq);
   await logAudit(env, request, actor, 'ad.save',
     { type: 'app_config', id: null }, null, { url, enabled, skip, freq });
+  await signalFleet(env, 'ad');
   return jsonResp({ ok: true, enabled: enabled === '1', url, skip, freq });
 }
 
@@ -1804,6 +1828,7 @@ async function handlePricingPut(request, env, actor) {
   await logAudit(env, request, actor, 'pricing.save',
     { type: 'app_config', id: null }, null,
     { lifetime, yearly, currency, trialDays, promoEnabled });
+  await signalFleet(env, 'pricing');
   return jsonResp({
     ok: true, currency, lifetime, yearly, trialDays,
     promoEnabled: promoEnabled === '1', promoMessage,
@@ -1839,6 +1864,7 @@ async function handleGrantTrialAll(request, env, actor) {
   const updated = (res && res.meta && res.meta.changes) || 0;
   await logAudit(env, request, actor, 'licenses.grant_trial_all',
     { type: 'license', id: null }, null, { days, updated, expires_at: newExpiry });
+  await signalFleet(env, 'license');
   return jsonResp({ ok: true, days, updated, expires_at: newExpiry });
 }
 
@@ -1866,6 +1892,7 @@ async function handleFeedbackPromptPut(request, env, actor) {
   await _cfgSet(env, 'feedback_msg', message);
   await logAudit(env, request, actor, 'feedback_prompt.save',
     { type: 'app_config', id: null }, null, { enabled, message });
+  await signalFleet(env, 'feedback');
   return jsonResp({ ok: true, enabled: enabled === '1', message });
 }
 
@@ -1913,6 +1940,7 @@ async function handleFeaturedPost(request, env, actor) {
   await _cfgSet(env, 'featured_note', note);
   await logAudit(env, request, actor, 'featured.set',
     { type: 'app_config', id: null }, null, { name, note });
+  await signalFleet(env, 'featured');
   return jsonResp({ ok: true, name, note });
 }
 
@@ -2005,6 +2033,7 @@ async function handleServersCreate(request, env, actor) {
     .run();
   await logAudit(env, request, actor, 'server.create',
     { type: 'server', id }, null, { label, url: urlVal });
+  await signalFleet(env, 'servers');
   return jsonResp({ id }, 201);
 }
 
@@ -2038,6 +2067,7 @@ async function handleServersUpdate(request, env, id, actor) {
     .run();
   await logAudit(env, request, actor, 'server.update',
     { type: 'server', id }, before, body);
+  await signalFleet(env, 'servers');
   return jsonResp({ updated: 1 });
 }
 
@@ -2051,6 +2081,7 @@ async function handleServersDelete(request, env, id, actor) {
   await env.DB.prepare('DELETE FROM default_servers WHERE id = ?').bind(id).run();
   await logAudit(env, request, actor, 'server.delete',
     { type: 'server', id }, before, null);
+  await signalFleet(env, 'servers');
   return jsonResp({ deleted: 1 });
 }
 
@@ -2409,6 +2440,7 @@ async function handleSourcePut(request, env, mac, actor, user) {
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
     { count: sources.length, types: sources.map((s) => s.type) });
+  await signalMac(env, m, 'source');
   return jsonResp({ ok: true, mac: m, count: sources.length });
 }
 
@@ -2454,6 +2486,7 @@ async function handleSourceDelete(request, env, mac, actor, user) {
   await writeOpenedSources(env, m, kept);
   await logAudit(env, request, actor, 'source.clear',
     { type: 'device_source', id: m }, null, { removed: gone.length });
+  if (gone.length > 0) await signalMac(env, m, 'source_clear');
   return jsonResp({ ok: true, mac: m, removed: gone.length });
 }
 
@@ -2616,6 +2649,7 @@ async function handleFamiliesDelete(env, id, actor) {
   const m = await env.DB.prepare('SELECT mac FROM family_members WHERE family_id = ?').bind(id).all();
   for (const r of (m.results || [])) {
     try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(r.mac).run(); } catch (_) {}
+    await signalMac(env, r.mac, 'source_clear');
   }
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM families WHERE id = ?').bind(id).run();
@@ -2670,6 +2704,7 @@ async function handleFamilyAddMember(request, env, user, actor, familyId) {
 
   await logAudit(env, request, actor, 'family.member.add',
     { type: 'family', id: familyId }, null, { mac, label: body.label || null });
+  await signalMac(env, mac, 'source');
   return jsonResp({ ok: true, family_id: familyId, mac, label: body.label || null }, 201);
 }
 
@@ -2681,6 +2716,7 @@ async function handleFamilyRemoveMember(env, familyId, mac, actor) {
   try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run(); } catch (_) {}
   await logAudit(env, { headers: new Headers() }, actor, 'family.member.remove',
     { type: 'family', id: familyId }, null, { mac: m });
+  await signalMac(env, m, 'source_clear');
   return jsonResp({ ok: true, family_id: familyId, mac: m });
 }
 
@@ -2865,6 +2901,9 @@ async function handleDeviceUpdate(request, env, id, actor, user) {
     .bind(next ?? null, id).run();
   await logAudit(env, request, actor, 'device.block',
     { type: 'device', id }, { block_status: r.dev.block_status }, { block_status: next });
+  if (body.block_status !== undefined) {
+    await signalMac(env, r.dev.mac, kindForBlock(body.block_status));
+  }
   return jsonResp({ updated: 1, block_status: next });
 }
 
@@ -2874,6 +2913,7 @@ async function handleDeviceUpdate(request, env, id, actor, user) {
 async function handleDeviceDelete(env, id, actor, user) {
   const r = await deviceForActor(env, id, user);
   if (r.error) return r.error;
+  await signalMac(env, r.dev.mac, 'device_delete');
   await env.DB.prepare('DELETE FROM devices WHERE id = ?').bind(id).run();
   await logAudit(env, null, actor, 'device.delete',
     { type: 'device', id }, { mac: r.dev.mac }, null);
@@ -2945,7 +2985,7 @@ async function handleLicensesList(request, env, user) {
   return jsonResp({ items: rs.results || [] });
 }
 
-async function handleLicensesCreate(request, env, actor) {
+async function handleLicensesCreate(request, env, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
@@ -2953,6 +2993,14 @@ async function handleLicensesCreate(request, env, actor) {
   if (!body.customer_id || !body.device_id || !body.app_id) {
     return errResp('missing_fields',
       'customer_id, device_id and app_id required', 400);
+  }
+  if (user && user.role === 'reseller') {
+    const dev = await env.DB
+      .prepare('SELECT reseller_id FROM devices WHERE id = ?')
+      .bind(body.device_id).first();
+    if (!dev || dev.reseller_id !== user.sub) {
+      return errResp('forbidden', 'Cet appareil ne vous appartient pas', 403);
+    }
   }
   const id = genId('lic');
   const now = Date.now();
@@ -2989,16 +3037,19 @@ async function handleLicensesCreate(request, env, actor) {
   }
   await logAudit(env, request, actor, 'license.create',
     { type: 'license', id }, null, { ...body, expires_at: expiresAt });
+  await signalDeviceId(env, body.device_id, 'activate');
   return jsonResp({ id, expires_at: expiresAt }, 201);
 }
 
-async function handleLicensesUpdate(request, env, id, actor) {
+async function handleLicensesUpdate(request, env, id, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
   const before = await env.DB.prepare('SELECT * FROM licenses WHERE id = ?').bind(id).first();
   if (!before) return errResp('not_found', 'License not found', 404);
+  const denied = await assertLicenseActor(env, user, before);
+  if (denied) return denied;
   const fields = ['status', 'plan', 'expires_at', 'auto_renew', 'notes'];
   const sets = []; const vals = [];
   for (const f of fields) {
@@ -3012,14 +3063,17 @@ async function handleLicensesUpdate(request, env, id, actor) {
   vals.push(id);
   await env.DB.prepare(`UPDATE licenses SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
   await logAudit(env, request, actor, 'license.update', { type: 'license', id }, before, body);
+  await signalLicenseId(env, id, kindForLicensePatch(body));
   return jsonResp({ updated: 1 });
 }
 
-async function handleLicensesRenew(request, env, id, actor) {
+async function handleLicensesRenew(request, env, id, actor, user) {
   let body = {};
   try { body = await request.json(); } catch (_) {}
   const before = await env.DB.prepare('SELECT * FROM licenses WHERE id = ?').bind(id).first();
   if (!before) return errResp('not_found', 'License not found', 404);
+  const denied = await assertLicenseActor(env, user, before);
+  if (denied) return denied;
   const days = planToDays(body.plan || before.plan || '1y', body.custom_days);
   const now = Date.now();
   // On etend a partir de la date la plus tardive entre maintenant et l'expiry
@@ -3037,7 +3091,65 @@ async function handleLicensesRenew(request, env, id, actor) {
     .run();
   await logAudit(env, request, actor, 'license.renew',
     { type: 'license', id }, before, { plan: body.plan, expires_at: newExpiry });
+  await signalLicenseId(env, id, 'renew');
   return jsonResp({ updated: 1, expires_at: newExpiry });
+}
+
+/// Un revendeur ne touche que les licences de SES appareils.
+async function assertLicenseActor(env, user, licenseRow) {
+  if (!user || user.role !== 'reseller') return null;
+  const dev = await env.DB
+    .prepare('SELECT reseller_id FROM devices WHERE id = ?')
+    .bind(licenseRow.device_id).first();
+  const owner = (dev && dev.reseller_id) || licenseRow.reseller_id;
+  if (owner !== user.sub) {
+    return errResp('forbidden', 'Cette licence ne vous appartient pas', 403);
+  }
+  return null;
+}
+
+async function signalLicenseId(env, licenseId, kind) {
+  try {
+    const row = await env.DB.prepare(
+      `SELECT d.mac AS mac FROM licenses l
+       JOIN devices d ON d.id = l.device_id WHERE l.id = ?`,
+    ).bind(licenseId).first();
+    if (row && row.mac) await signalMac(env, row.mac, kind);
+  } catch (_) { /* l'écriture de la licence a déjà réussi */ }
+}
+
+async function signalDeviceId(env, deviceId, kind) {
+  try {
+    const row = await env.DB.prepare('SELECT mac FROM devices WHERE id = ?')
+      .bind(deviceId).first();
+    if (row && row.mac) await signalMac(env, row.mac, kind);
+  } catch (_) { /* idem */ }
+}
+
+async function handleBoxesLive(request, env, user) {
+  const url = new URL(request.url);
+  const mac = url.searchParams.get('mac') || '';
+  const isReseller = user && user.role === 'reseller';
+  if (mac) {
+    const want = decodeMac(mac).trim().toUpperCase();
+    const dev = await env.DB.prepare(
+      'SELECT id, reseller_id FROM devices WHERE mac = ?',
+    ).bind(want).first();
+    if (!dev) {
+      if (isReseller) {
+        return errResp('forbidden', 'Cet appareil ne vous appartient pas', 403);
+      }
+      return errResp('not_found', 'Device not found', 404);
+    }
+    if (isReseller && dev.reseller_id !== user.sub) {
+      return errResp('forbidden', 'Cet appareil ne vous appartient pas', 403);
+    }
+  }
+  const live = await loadBoxLive(env, {
+    restrictReseller: isReseller ? user.sub : null,
+    mac: mac ? decodeMac(mac) : '',
+  });
+  return jsonResp(live);
 }
 
 // =========================================================
@@ -3627,6 +3739,8 @@ async function handleDeviceTransfer(request, env, user, actor) {
   await logAudit(env, request, actor, 'device.transfer',
     { type: 'device', id: oldDev.id },
     { old_mac: oldMac }, { new_mac: newMac, moved_licenses: licRows.length });
+  await signalMac(env, oldMac, 'transfer');
+  await signalMac(env, newMac, 'transfer');
 
   return jsonResp({
     ok: true,
@@ -3790,6 +3904,7 @@ async function handleActivate(request, env, user, actor) {
   await logAudit(env, request, actor, renewed ? 'activate.renew' : 'activate.create',
     { type: 'license', id: licenseId }, null,
     { mac, plan, app_id: appId, cost, reseller_id: chargeResellerId });
+  await signalMac(env, mac, renewed ? 'renew' : 'activate');
 
   return jsonResp({
     ok: true,

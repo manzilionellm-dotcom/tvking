@@ -4,7 +4,7 @@
 //  Sous le bonjour, avant les tuiles Direct / Films / Séries :
 //    • Vos rappels     — émissions que VOUS avez cochées
 //    • Reprendre       — dernières chaînes en direct
-//    • Continuer       — films et épisodes entamés
+//    • Reprendre où tu t'es arrêté — films et épisodes, à la minute gardée
 //    • Favoris
 //    • Populaire       — les plus regardées en ce moment, parmi
 //                        les vôtres (jamais une chaîne hors playlist)
@@ -25,6 +25,8 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../epg/domain/program_reminder.dart';
+import '../../followed/domain/show_clock.dart';
+import '../../followed/domain/show_lines.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -41,6 +43,10 @@ class TvHomeRails extends StatelessWidget {
     this.initialShelf,
     this.timePicks = const <Channel>[],
     this.timePicksLabel = '',
+    this.shows = const <ShowCue>[],
+    this.showsLabel = '',
+    this.onPlayShow,
+    this.header,
   });
 
   final HomeShelfModel model;
@@ -58,9 +64,38 @@ class TvHomeRails extends StatelessWidget {
   final List<Channel> timePicks;
   final String timePicksLabel;
 
+  /// Émissions suivies : en cours, bientôt, déjà commencées.
+  /// Une liste vide ne dessine rien et ne remplace pas les autres rangées.
+  final List<ShowCue> shows;
+  final String showsLabel;
+  final void Function(ShowCue cue)? onPlayShow;
+
+  /// Bandeau au-dessus des rangées, dans le MÊME défilement,
+  /// pour que Haut/Bas l'atteigne. Pas de focus automatique.
+  final Widget? header;
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> rails = <Widget>[];
+    final String code = Localizations.localeOf(context).languageCode;
+
+    if (shows.isNotEmpty && onPlayShow != null) {
+      rails.add(_Rail(
+        label: showsLabel,
+        count: shows.length,
+        itemBuilder: (BuildContext context, int i) {
+          final ShowCue cue = shows[i];
+          final bool onlyThis = !model.hasAny && timePicks.isEmpty;
+          return _TextCard(
+            autofocus: onlyThis && initialShelf == null && i == 0,
+            icon: Icons.live_tv_rounded,
+            title: cue.title,
+            subtitle: rowSubtitle(code, cue),
+            onSelect: () => onPlayShow!(cue),
+          );
+        },
+      ));
+    }
 
     if (model.reminders.isNotEmpty) {
       rails.add(_Rail(
@@ -91,7 +126,7 @@ class TvHomeRails extends StatelessWidget {
     }
     if (model.continueWatching.isNotEmpty) {
       rails.add(_Rail(
-        label: context.l10n.tvHomeContinue,
+        label: context.l10n.sectionResumeWhereYouLeftOff,
         count: model.continueWatching.length,
         itemBuilder: (BuildContext context, int i) {
           final WatchEntry e = model.continueWatching[i];
@@ -139,14 +174,15 @@ class TvHomeRails extends StatelessWidget {
       ));
     }
 
-    if (rails.isEmpty) return const SizedBox.shrink();
+    if (rails.isEmpty && header == null) return const SizedBox.shrink();
 
     return ListView(
       padding: const EdgeInsets.only(top: 8, bottom: 8),
       children: <Widget>[
+        if (header != null) header!,
         for (int i = 0; i < rails.length; i++) ...<Widget>[
+          if (header != null || i != 0) const SizedBox(height: 14),
           rails[i],
-          if (i != rails.length - 1) const SizedBox(height: 14),
         ],
       ],
     );
