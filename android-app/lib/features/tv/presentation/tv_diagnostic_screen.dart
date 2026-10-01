@@ -31,6 +31,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:native_video_player/native_video_player.dart';
+import 'package:native_video_player/playback_lease.dart';
 
 import '../../channels/domain/channel.dart';
 import '../../device/data/device_identity.dart';
@@ -282,6 +283,16 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
   Future<void> _runPlayer(String? streamUrl) async {
     if (streamUrl == null || streamUrl.isEmpty) {
       _set(_player, _Stat.unknown, 'aucune chaîne chargée → URL INCONNUE');
+      return;
+    }
+    // Le plein écran a déjà un lecteur. Une sonde en plus laisserait deux
+    // AudioTrack : c'est le mélange de sons qu'on chasse. On ne la lance pas.
+    if (ForegroundPlayback.locked) {
+      _set(
+        _player,
+        _Stat.unknown,
+        'plein écran en cours : sonde non lancée (un seul lecteur)',
+      );
       return;
     }
     _set(_player, _Stat.running, 'ouverture sonde ExoPlayer…');

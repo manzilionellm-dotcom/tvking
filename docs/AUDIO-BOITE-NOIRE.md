@@ -272,3 +272,59 @@ Une fois vrai, **toutes** les chaînes AAC repassaient par le décodeur de la bo
 - Que le ducking Media3 était bien ce que Lionel entendait : la fiche de la version précédente ne notait pas le focus. La nouvelle note chaque événement : si le son sonne « dans un trou », la boîte noire doit contenir « Focus audio : … » ou « Lectures audio actives … → deux sons en même temps » juste avant.
 - Qu'Android accorde le focus à notre demande sur cette box (sinon la ligne « demande REFUSÉE » apparaît).
 - La réouverture au retour (Home → app) : à vérifier qu'elle ne laisse pas d'écran noir.
+
+## Un seul AudioTrack au zap et au retour (1er octobre 2026, suite)
+
+**Lu dans Media3 1.5.1** (`DefaultAudioSink.flush`, appelé par `stop()`), pas rejoué sur la box : l'AudioTrack n'est pas rendu dans `stop()`. `releaseAudioTrackAsync` le programme 20 ms plus tard sur un fil unique du processus, et `onAudioTrackReleased` n'est envoyé qu'après `AudioTrack.release()`. Un `prepare()` immédiat laisse donc deux pistes. Après beaucoup de zaps, la file s'allonge. `releasePlayer` retirait en plus l'écouteur **avant** `stop()` : le rendu n'était plus compté, et la fiche pouvait rester sur `CHEVAUCHEMENT`.
+
+**Autre état qui survivait au retour** : `ffmpegAudioActive` n'était remis à faux que dans `setUrl`, pas dans le silence. Au retour (Home), le filet des 8 s voyait encore « FFmpeg actif » et « jamais prêt », et pouvait envoyer **cette** chaîne à la box pour toujours.
+
+**Correctif** (`logic/AudioHandoff.kt`, branché dans `NativeVideoView`) :
+- On n'appelle `prepare()` que lorsque `PlayerCensus.tracksAlive()` vaut 0 (la nôtre ou celle de l'aperçu / de la sonde). Délai max 1,5 s, puis on solde le compteur et on le dit.
+- `dispose` répond à Dart seulement après le rendu (ou le délai) : l'aperçu ne laisse pas une piste vivante quand le plein écran s'ouvre.
+- Le silence remet `ffmpegAudioActive` à faux. Le filet des 8 s ne voit que CETTE ouverture.
+- Perte de focus pendant un zap (lecteur pas encore en lecture) : pause retenue, pas de son à 20 %. Volume de lecture toujours 1. Demande déjà tenue : pas de second appel. API &lt; 26 : mêmes codes.
+- Sonde Diagnostic réseau : pas lancée si `ForegroundPlayback` est verrouillé. L'aperçu était déjà coupé avant le plein écran (`releaseActive` attendu, `_start` refuse si verrouillé).
+- Enregistrement : Home arrête comme le direct ; le fichier est ouvert en « vod » pour reprendre à la position.
+- Interrupteur de repli : `zuno.audio.handoff.immediate` (« Passage : tout de suite »). Faux par défaut.
+
+Lignes de boîte noire ajoutées (les anciennes restent) : `Zap : n°…`, `Zap : on attend…` / `Zap : AudioTrack précédent rendu…`, `AudioTrack rendu. Pistes encore vivantes : N`, `Focus audio : obtenu.` / `abandonné.`, `Libération : …`, `Retour : film rouvert à … ms` ou `Retour : direct rouvert au bord du direct`.
+
+### PROUVÉ (`logic-test`, 113 tests, 0 échec)
+
+- `AudioHandoffTest.cinquanteZapsEtDixRetoursLaissentUnSeulDeChaque` : 50 zaps (AAC-LC 48 kHz, MP2, AAC 5.1, HE-AAC 24 kHz) + 10 sorties/retours. Max 1 piste, max 1 décodeur, 1 lecteur. Volume 1,0 même si une baisse est demandée. Une panne sur la 3e chaîne ne change pas la première.
+- `AudioHandoffTest.lePassageImmediatLaisseDeuxPistesCestLeReglageDeRepli` : l'interrupteur allumé reproduit le chevauchement (2 pistes).
+- `AudioHandoffTest.leFiletDes8sNeVoitPasLeFfmpegDeLaChaineDavant` : drapeau remis à faux → pas de repli ; drapeau vrai et jamais prêt → repli.
+- `AudioFocusPolicyTest` : demande refusée, demande en double, API ancienne = mêmes codes, GAIN qui n'arrive pas après une baisse → volume 1, perte pendant un zap → pause retenue.
+
+### PAS PROUVÉ (seulement sur la box)
+
+- Que l'oreille entend la même chose après 50 zaps et après Home. La boîte noire doit montrer, dans l'ordre : `Zap : n°…`, `Zap : on attend…` puis `AudioTrack précédent rendu` (ou `pas rendu à temps`), `AudioTrack rendu. Pistes encore vivantes : 0` puis `1`, `Focus audio : obtenu`, et au retour `Retour : direct rouvert au bord du direct` (ou `film rouvert à … ms`). `Lectures audio actives` ne doit pas rester à 2. `repli box` doit rester `aucun` si FFmpeg n'a pas vraiment échoué.
+- L'écran noir au retour, si aucune image n'avait été copiée.
+- La signature de l'APK de test : elle se fait dans GitHub Actions (`build-zuno-tv.yml`, `test_box=true`, `publish=false`), pas sur cette machine.
+
+## Sonde « Spectre : mesuré » qui restait sans chiffre (2 octobre 2026)
+
+**Terrain** : le réglage affichait « Spectre : mesuré », plusieurs chaînes ont été zappées, et chaque fiche disait « Spectre > 4 kHz : non mesuré », `spectre_absent`, « Pas de mesure PCM », « NOT_SET tant que la sonde est coupée ». Le compteur de lectures était 1 ou 0, jamais 2.
+
+**Deux causes, lues dans Media3 1.5.1** :
+
+1. `BaseAudioProcessor.isActive()` ne change qu'au `onConfigure`. Allumer le réglage sur une chaîne déjà ouverte ne rappelle pas `onConfigure`. La sonde reste hors de la chaîne (NOT_SET) et aucun PCM n'est copié. La fiche disait « sonde coupée » dans tous les cas, donc on ne voyait pas la différence.
+2. `DefaultAudioSink` appelle `flush()` quand l'horloge du direct saute de plus de 200 ms. La sonde remettait son compteur à zéro à chaque flush. La fenêtre (8 192 trames) n'était jamais pleine, donc rien n'était publié. Le son n'était pas modifié : seul le compteur de mesure était jeté.
+
+**Correctif** : allumer Spectre rouvre la chaîne si elle joue déjà (les échantillons ne changent pas). `onFlush` ne jette plus la fenêtre. La fiche dit la raison précise (réglage éteint, pas encore branchée, fenêtre trop courte, pas du PCM 16 bits) au lieu de « Pas de mesure PCM ». Les écritures de fiches sont mises à la file, pour qu'un rapport ancien n'écrase pas le suivant.
+
+**Volume** : pendant les 10 premières secondes de chaque ouverture, une ligne « Seconde N » donne le volume du lecteur, « volume AudioTrack : non lisible » (Android ne le relit pas), le volume musique de la box, le focus, et les lectures Zuno. Un 0 pendant que le son s'entend est expliqué sur la fiche : la fiche a été prise avant le rappel d'Android.
+
+### PROUVÉ (`logic-test`)
+
+- Allumer après la configuration laisse la sonde hors chaîne ; la réouverture la branche.
+- 50 ouvertures avec le réglage allumé avant `configure` laissent la sonde branchée.
+- 20 flush de 1 000 trames sans garder la fenêtre restent sous le seuil ; en la gardant, la fenêtre est atteinte.
+- La fiche ne contient plus « Pas de mesure PCM ».
+- Dix lignes de volume à 1,0, jamais 0,2. Le silence de passage est 0,0.
+
+### PAS PROUVÉ (seulement sur la box)
+
+- Que la prochaine fiche France 24 affiche un pourcentage une seconde après l'ouverture.
+- Que les lignes « Seconde 1 » à « Seconde 10 » montrent un volume lecteur qui reste 1,0.

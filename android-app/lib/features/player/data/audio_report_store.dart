@@ -43,7 +43,24 @@ class AudioReportStore {
     }
   }
 
+  // Les rapports partent vite (piste créée, puis sonde). Sans file,
+  // le plus ancien peut finir d'écrire APRÈS le plus récent et la
+  // fiche reste sur « pas de mesure » alors que la sonde a parlé.
+  Future<void> _queue = Future<void>.value();
+
   Future<void> record({
+    required String channel,
+    required String body,
+    int? atMs,
+  }) {
+    final Future<void> next = _queue.then((_) {
+      return _write(channel: channel, body: body, atMs: atMs);
+    });
+    _queue = next.then<void>((void _) {}, onError: (Object _, StackTrace __) {});
+    return next;
+  }
+
+  Future<void> _write({
     required String channel,
     required String body,
     int? atMs,

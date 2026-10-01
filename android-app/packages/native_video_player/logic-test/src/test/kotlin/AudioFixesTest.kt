@@ -15,7 +15,9 @@ class AudioFixesTest {
         assertEquals("zuno.audio.fix.platform", AudioFixes.KEY_PLATFORM)
         assertEquals("zuno.audio.fix.session_fallback", AudioFixes.KEY_SESSION_WIDE)
         assertEquals("zuno.audio.focus.android", AudioFixes.KEY_ANDROID_FOCUS)
+        assertEquals("zuno.audio.handoff.immediate", AudioFixes.KEY_IMMEDIATE_HANDOFF)
         assertFalse(AudioFixes.androidFocus)
+        assertFalse(AudioFixes.immediateHandoff)
     }
 
     @Test

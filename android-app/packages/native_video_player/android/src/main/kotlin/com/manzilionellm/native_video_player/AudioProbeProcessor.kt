@@ -4,17 +4,26 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
-import com.manzilionellm.native_video_player.logic.AudioFixes
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
+import com.manzilionellm.native_video_player.logic.ProbeAttach
 import java.nio.ByteBuffer
 
 /**
  * Sonde PCM : elle MESURE le son, elle ne le modifie pas.
  *
- * Coupée par défaut ([AudioFixes.probe] faux, et [enabled] faux).
+ * Coupée par défaut ([enabled] faux).
  * [onConfigure] renvoie alors NOT_SET : Media3 ne l'insère pas dans
  * la chaîne, exactement comme [ClearVoiceProcessor] quand « voix claire »
  * est coupée. Le chemin audio par défaut ne change pas.
+ *
+ * Allumer [enabled] APRÈS un onConfigure ne suffit pas : Media3 ne
+ * rappelle onConfigure qu'à la prochaine configuration du sink. Le
+ * lecteur rouvre la chaîne quand on allume le réglage.
+ *
+ * [onFlush] ne remet pas le compteur à zéro. Media3 flush quand
+ * l'horloge du direct saute : l'ancien compteur n'atteignait jamais
+ * la fenêtre, et la fiche restait sans mesure. Le PCM copié, lui,
+ * ne change pas.
  *
  * Allumée : on copie les échantillons tels quels vers la sortie, et on
  * en garde une statistique (énergie au-dessus de 4 kHz, saturation).
@@ -29,15 +38,33 @@ class AudioProbeProcessor(
     @Volatile
     var enabled: Boolean = false
 
+    /** Dernier onConfigure a accepté le PCM. Faux = NOT_SET, sonde hors chaîne. */
+    @Volatile
+    var lastAccepted: Boolean = false
+
+    /** Pourquoi le dernier onConfigure a refusé. Null si accepté ou jamais appelé. */
+    @Volatile
+    var lastReject: String? = null
+
+    /** Trames vues depuis le dernier onConfigure. Un flush ne les efface pas. */
+    @Volatile
+    var usefulFrames: Int = 0
+
     private var acc: AudioSpectrum.Accum = AudioSpectrum.start(48_000)
     private var perChannel: List<AudioSpectrum.Accum> = emptyList()
     private var lastKey: String? = null
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        if (!enabled || inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
-            return AudioProcessor.AudioFormat.NOT_SET
-        }
-        if (inputAudioFormat.sampleRate < 1 || inputAudioFormat.channelCount < 1) {
+        val decision = ProbeAttach.onConfigure(
+            enabled = enabled,
+            pcm16 = inputAudioFormat.encoding == C.ENCODING_PCM_16BIT,
+            sampleRate = inputAudioFormat.sampleRate,
+            channels = inputAudioFormat.channelCount,
+        )
+        lastAccepted = decision.accept
+        lastReject = decision.reason
+        usefulFrames = 0
+        if (!decision.accept) {
             return AudioProcessor.AudioFormat.NOT_SET
         }
         acc = AudioSpectrum.start(inputAudioFormat.sampleRate)
@@ -50,11 +77,12 @@ class AudioProbeProcessor(
     }
 
     override fun onFlush() {
-        val rate = if (acc.sampleRate > 0) acc.sampleRate else 48_000
-        val nch = perChannel.size.coerceAtLeast(1)
-        acc = AudioSpectrum.start(rate)
-        perChannel = List(nch) { AudioSpectrum.start(rate) }
-        lastKey = null
+        // Volontairement vide. Media3 appelle flush à chaque saut
+        // d'horloge du direct (plus de 200 ms). Remettre [acc] à zéro
+        // ici coupait la fenêtre avant 8 192 trames : la fiche restait
+        // sans chiffre alors que la sonde était branchée.
+        // onConfigure a déjà ouvert une fenêtre neuve si le format change.
+        // Les échantillons écrits dans la sortie ne dépendent pas de ce compteur.
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
@@ -84,6 +112,7 @@ class AudioProbeProcessor(
                     AudioSpectrum.pushChannel(channelAcc, pcm, channels, index)
                 }
             }
+            usefulFrames = acc.frames
             val ratios = perChannel.map { AudioSpectrum.judge(it).highRatio }
             val judged = AudioSpectrum.judge(acc).copy(channelHighRatios = ratios)
             publish(judged)
