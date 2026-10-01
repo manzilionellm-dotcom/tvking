@@ -613,8 +613,12 @@ class NativeVideoView(
                     (if (types.isEmpty()) "" else " (${types.joinToString(", ")})") +
                     (if (list.size > 1) " → deux sons en même temps" else "")
                 lastBoxPlaybacks = list.size
+                // getClientUid existe depuis Android 9, mais le SDK de
+                // compilation du plugin ne l'expose pas toujours. On le
+                // lit par réflexion : -1 = on ne peut pas séparer nos lectures.
+                val mine = Process.myUid()
                 lastZunoPlaybacks = if (Build.VERSION.SDK_INT >= 28) {
-                    list.count { it.clientUid == Process.myUid() }
+                    list.count { playbackClientUid(it) == mine }
                 } else {
                     -1
                 }
@@ -634,6 +638,19 @@ class NativeVideoView(
             playbackCallback = cb
         } catch (_: RuntimeException) {
             playbackCallback = null
+        }
+    }
+
+    /**
+     * UID du client de cette lecture. -1 si Android ne le dit pas
+     * (avant Android 9, ou méthode absente du SDK de compilation).
+     */
+    private fun playbackClientUid(config: AudioPlaybackConfiguration): Int {
+        return try {
+            val method = AudioPlaybackConfiguration::class.java.getMethod("getClientUid")
+            method.invoke(config) as? Int ?: -1
+        } catch (_: Exception) {
+            -1
         }
     }
 
