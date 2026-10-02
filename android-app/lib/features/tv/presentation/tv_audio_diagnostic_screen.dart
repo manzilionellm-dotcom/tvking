@@ -10,9 +10,12 @@
 //  Style : les mêmes TvTokens / TvDimens que la boîte noire.
 // =========================================================
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../features/player/data/audio_diag_prefs.dart';
 import '../../../features/player/data/audio_report_store.dart';
@@ -42,11 +45,6 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   final ScrollController _scroll = ScrollController();
   static const double _kRow = 24;
 
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
 
   void _scrollBy(double px) {
     if (!_scroll.hasClients) return;
@@ -106,6 +104,58 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _androidFocus = false;
   bool _bgPause = false;
   bool _immediate = false;
+  bool _witnessBusy = false;
+  NativeVideoController? _witness;
+
+  @override
+  void dispose() {
+    if (AudioReportStore.channelOverride == 'Son témoin') {
+      AudioReportStore.channelOverride = null;
+    }
+    _witness?.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Joue le fichier embarqué avec le MÊME lecteur que les chaînes.
+  /// 5 s de voix, puis 5 s de bruit, voies ensemble. Spectre s'allume
+  /// pour mesurer : la copie ne modifie pas le son.
+  Future<void> _playWitness() async {
+    if (_witness != null) {
+      final NativeVideoController old = _witness!;
+      if (AudioReportStore.channelOverride == 'Son témoin') {
+        AudioReportStore.channelOverride = null;
+      }
+      if (mounted) setState(() => _witness = null);
+      old.dispose();
+      return;
+    }
+    if (_witnessBusy) return;
+    setState(() => _witnessBusy = true);
+    try {
+      if (!_probe) await _toggleProbe();
+      final ByteData data = await rootBundle.load('assets/audio/son_temoin.m4a');
+      final Directory dir = await getTemporaryDirectory();
+      final File file = File('${dir.path}/son_temoin.m4a');
+      await file.writeAsBytes(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+        flush: true,
+      );
+      AudioReportStore.channelOverride = 'Son témoin';
+      final NativeVideoController player = NativeVideoController();
+      player.setUrl(Uri.file(file.path).toString(), vod: true);
+      if (!mounted) {
+        player.dispose();
+        AudioReportStore.channelOverride = null;
+        return;
+      }
+      setState(() => _witness = player);
+    } catch (_) {
+      AudioReportStore.channelOverride = null;
+    } finally {
+      if (mounted) setState(() => _witnessBusy = false);
+    }
+  }
 
   Future<void> _toggleImmediate() async {
     final bool next = !_immediate;
@@ -235,8 +285,33 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _immediate,
               onSelect: _toggleImmediate,
             ),
+            const SizedBox(width: 12),
+            _Toggle(
+              label: _witness != null
+                  ? 'Témoin : stop'
+                  : (_witnessBusy ? 'Témoin : préparation' : 'Jouer le son témoin'),
+              on: _witness != null,
+              onSelect: _playWitness,
+            ),
           ],
         ),
+        if (_witness != null) ...<Widget>[
+          const SizedBox(height: 8),
+          Text(
+            'Témoin en lecture (10 s) : voix, puis bruit. '
+            'Même lecteur que les chaînes. Bruit sourd → l\'appareil. '
+            'Bruit clair → la chaîne.',
+            style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
+          ),
+          const SizedBox(height: 4),
+          // La Surface doit avoir une taille : le son passe par le même
+          // lecteur que les chaînes, l'image du témoin n'existe pas.
+          SizedBox(
+            height: TvDimens.safeH,
+            width: double.infinity,
+            child: NativeVideoView(controller: _witness!),
+          ),
+        ],
         const SizedBox(height: 8),
         Text(
           'Spectre : à la prochaine chaîne, mesure quatre points '
@@ -255,7 +330,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'Passage : « attendre » (défaut) = on n\'ouvre la chaîne suivante '
           'que lorsque l\'AudioTrack précédent est vraiment rendu (sinon deux '
           'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '
-          'ancien comportement.',
+          'ancien comportement. Son témoin : 10 s (voix puis bruit), '
+          'lu par le même lecteur. Allume la mesure, ne change pas le son. '
+          'Bruit sourd → l\'appareil. Bruit clair → la chaîne.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
         ),
         const SizedBox(height: 14),

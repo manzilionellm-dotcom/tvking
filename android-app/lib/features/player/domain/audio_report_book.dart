@@ -54,12 +54,57 @@ class AudioReportBook {
     final String key = channelKey(channel);
     final String clean = clip(redactAudioText(body).trim());
     if (clean.isEmpty) return this;
+    AudioReportEntry? prev;
+    for (final AudioReportEntry e in entries) {
+      if (e.channel == key) {
+        prev = e;
+        break;
+      }
+    }
+    // Une ligne de journal (Seconde, Zap, Focus…) s'ajoute à la fiche.
+    // Elle ne la remplace pas : sinon la fiche devenait la dernière
+    // seconde, et le rapport complet était réécrit 2 ou 3 fois.
+    final String nextBody;
+    if (prev == null) {
+      nextBody = clean;
+    } else if (_journalOnly(clean)) {
+      nextBody = _appendJournal(prev.body, clean);
+      if (nextBody == prev.body) return this;
+    } else {
+      final String previousSheet = _sheetOf(prev.body);
+      if (previousSheet == clean) return this;
+      final String journal = _journalSuffix(prev.body);
+      nextBody = journal.isEmpty ? clean : clip('$clean\n$journal');
+    }
     final List<AudioReportEntry> next = <AudioReportEntry>[
-      AudioReportEntry(channel: key, body: clean, atMs: atMs),
+      AudioReportEntry(channel: key, body: nextBody, atMs: atMs),
       for (final AudioReportEntry e in entries)
         if (e.channel != key) e,
     ];
     return AudioReportBook(_fit(next));
+  }
+
+  /// Ligne écrite à part du rapport (boîte noire), pas une fiche.
+  static bool isJournalLine(String line) {
+    const List<String> starts = <String>[
+      'Seconde ',
+      'Zap :',
+      'Focus audio',
+      'Repli :',
+      'AudioTrack ',
+      'Session audio',
+      'Annonces :',
+      'Sonde :',
+      'Arrière-plan',
+      'Retour :',
+      'Libération',
+      'Décodeur audio :',
+      'Erreur ',
+    ];
+    for (final String s in starts) {
+      if (line.startsWith(s)) return true;
+    }
+    return false;
   }
 
   int get byteSize {
@@ -80,6 +125,52 @@ class AudioReportBook {
   static String clip(String body) {
     if (body.length <= maxBodyChars) return body;
     return body.substring(0, maxBodyChars);
+  }
+
+  static bool _journalOnly(String body) {
+    final List<String> lines = body
+        .split('\n')
+        .map((String l) => l.trim())
+        .where((String l) => l.isNotEmpty)
+        .toList();
+    if (lines.isEmpty) return false;
+    for (final String line in lines) {
+      if (!isJournalLine(line)) return false;
+    }
+    return true;
+  }
+
+  /// Rapport, sans les lignes de journal collées à la fin.
+  static String _sheetOf(String body) {
+    final List<String> kept = <String>[];
+    for (final String line in body.split('\n')) {
+      if (isJournalLine(line.trim())) break;
+      kept.add(line);
+    }
+    return kept.join('\n').trim();
+  }
+
+  static String _journalSuffix(String body) {
+    final List<String> kept = <String>[];
+    bool seen = false;
+    for (final String line in body.split('\n')) {
+      final String t = line.trim();
+      if (t.isEmpty) continue;
+      if (isJournalLine(t)) seen = true;
+      if (seen) kept.add(t);
+    }
+    return kept.join('\n');
+  }
+
+  static String _appendJournal(String body, String addition) {
+    String current = body;
+    for (final String raw in addition.split('\n')) {
+      final String line = raw.trim();
+      if (line.isEmpty || !isJournalLine(line)) continue;
+      if (current.split('\n').any((String l) => l.trim() == line)) continue;
+      current = '$current\n$line';
+    }
+    return clip(current);
   }
 
   static List<AudioReportEntry> _fit(List<AudioReportEntry> list) {

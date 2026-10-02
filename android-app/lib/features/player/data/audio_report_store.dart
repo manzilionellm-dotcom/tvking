@@ -16,6 +16,10 @@ class AudioReportStore {
   AudioReportStore._();
   static final AudioReportStore instance = AudioReportStore._();
 
+  /// Nom de fiche forcé (son témoin). Null = la chaîne en cours.
+  /// N'est pas envoyé au panel : le heartbeat lit [NowPlaying], pas ceci.
+  static String? channelOverride;
+
   Future<File?> _file() async {
     try {
       final Directory dir = await getApplicationSupportDirectory();

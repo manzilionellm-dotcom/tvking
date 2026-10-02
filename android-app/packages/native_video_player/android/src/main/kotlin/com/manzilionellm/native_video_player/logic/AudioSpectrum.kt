@@ -117,6 +117,18 @@ object AudioSpectrum {
          * le mélange est bas = les voies s'annulent, pas un passe-bas.
          */
         val channelHighRatios: List<Double> = emptyList(),
+        /**
+         * Corrélation gauche/droite de la dernière seconde. Null tant
+         * qu'une seconde n'est pas pleine, ou si on n'a pas mesuré.
+         */
+        val phase: AudioPhase.Reading? = null,
+        /**
+         * Énergie > 4 kHz sur la dernière seconde seulement.
+         * Le [highRatio] du dessus, lui, cumule depuis l'ouverture :
+         * une voix puis un bruit restent moyens. Ce chiffre suit le
+         * son qu'on entend maintenant.
+         */
+        val recentHighRatio: Double? = null,
     ) {
         fun percent(): String =
             String.format(Locale.FRANCE, "%.1f %%", highRatio * 100.0)

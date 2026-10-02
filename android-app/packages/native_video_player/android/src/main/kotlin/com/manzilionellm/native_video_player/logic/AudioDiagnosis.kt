@@ -87,12 +87,15 @@ data class AudioSnapshot(
     /** Pourquoi onConfigure a renvoyé NOT_SET. Null si accepté ou pas encore appelé. */
     val probeReject: String? = null,
     /**
-     * Lectures audio de NOTRE processus. -1 = Android n'a pas encore
-     * répondu, ou ne sait pas séparer les apps (API < 28).
+     * Lectures annoncées, les nôtres, les autres. Le compteur client
+     * d'Android 16 n'est plus pris pour argent comptant.
      */
-    val zunoPlaybacks: Int = -1,
-    /** Lectures audio de toute la box (toutes les apps). -1 = pas encore comptées. */
-    val boxPlaybacks: Int = -1,
+    val playback: AudioRouteState.Owner = AudioRouteState.Owner.unknown(),
+    /**
+     * Ligne « Chemin » (mode, haut-parleur d'appel, Bluetooth, sortie,
+     * flux réel). Null = pas encore lue.
+     */
+    val routeLine: String? = null,
     /** Le lecteur dit qu'il joue (image et son en cours). */
     val playerAudible: Boolean = false,
 )
@@ -552,28 +555,10 @@ object AudioDiagnosis {
             )
         }
 
-        if (s.spectrum == null && !s.passthrough) {
-            val why = ProbeAttach.absence(
-                requested = s.probeRequested,
-                inChain = s.probeInChain,
-                frames = s.probeFrames,
-                reject = s.probeReject,
-            )
-            out += Finding(
-                id = "spectre_absent",
-                confidence = Confidence.INCERTAINE,
-                kind = Kind.INFO,
-                symptom = why.symptom,
-                cause = why.cause,
-                fix = Fix(
-                    file = FILE_PROBE,
-                    symbol = "AudioProbeProcessor.onConfigure",
-                    media3 = why.media3,
-                    action = why.action,
-                    settingKey = AudioFixes.KEY_PROBE,
-                ),
-            )
-        }
+        // spectre_absent n'est plus un bloc : la ligne « Spectre > 4 kHz »
+        // dit déjà pourquoi il n'y a pas de chiffre. Répété 2 ou 3 fois
+        // par chaîne, ce bloc noyait la fiche sans rien décider.
+        out += phaseFindings(s)
         return out
     }
 
@@ -632,13 +617,10 @@ object AudioDiagnosis {
             if (s.cycle != null) {
                 append("\n").append(PlayerCensus.describe(s.cycle))
             }
-            append("\n").append(
-                VolumeTrace.playbackNote(
-                    zuno = s.zunoPlaybacks,
-                    box = s.boxPlaybacks,
-                    audible = s.playerAudible,
-                ),
-            )
+            append("\n").append(VolumeTrace.playbackNote(s.playback, s.playerAudible))
+            if (!s.routeLine.isNullOrBlank()) {
+                append("\n").append(s.routeLine)
+            }
             append("\nSpectre > 4 kHz : ")
             append(
                 when (spec?.band) {
@@ -660,6 +642,19 @@ object AudioDiagnosis {
                     AudioSpectrum.Band.RATE -> "fréquence de sortie trop basse pour mesurer"
                 },
             )
+            val phase = spec?.phase
+            if (phase != null && phase.channels >= 2 && !phase.correlation.isNaN()) {
+                append("\nCorrélation gauche/droite (1 s, copie) : ")
+                append(phase.correlationText())
+                append(" · (G−D)/(G+D) ")
+                append(phase.sideText())
+                if (phase.opposed) append(" → voies opposées (voix centrale annulée)")
+            }
+            val recent = spec?.recentHighRatio
+            if (recent != null) {
+                append("\nDernière seconde > 4 kHz : ")
+                append(String.format(Locale.FRANCE, "%.1f %%", recent * 100.0))
+            }
             if (spec != null && spec.channelHighRatios.isNotEmpty()) {
                 append("\nPar voie : ")
                 spec.channelHighRatios.forEachIndexed { i, r ->
@@ -745,7 +740,67 @@ object AudioDiagnosis {
                 "voie ${i + 1} " + String.format(Locale.FRANCE, "%.1f %%", ratio * 100.0)
             }.joinToString(", ", prefix = " (", postfix = ")")
         }
-        return "${reading.id} : ${j.percent()} $band — $place$channels"
+        val phaseBit = j.phase?.let { p ->
+            if (p.channels < 2 || p.correlation.isNaN()) {
+                ""
+            } else {
+                " · G/D ${p.correlationText()}"
+            }
+        } ?: ""
+        return "${reading.id} : ${j.percent()} $band — $place$channels$phaseBit"
+    }
+
+    /**
+     * G ≈ −D : la voix au centre s'annule. On le dit, on ne change pas
+     * le décodeur. Si seule une sonde plus tard est opposée, l'étage
+     * entre les deux a inversé une voie.
+     */
+    private fun phaseFindings(s: AudioSnapshot): List<Finding> {
+        val decoder = s.stages.firstOrNull { it.id == AudioStages.DECODER }?.judgement?.phase
+            ?: s.spectrum?.phase
+        val sink = s.stages.firstOrNull { it.id == AudioStages.SINK }?.judgement?.phase
+        val out = ArrayList<Finding>(2)
+        if (decoder != null && decoder.opposed) {
+            out += Finding(
+                id = "voies_opposees",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Corrélation gauche/droite ${decoder.correlationText()} sur 1 s, " +
+                    "(G−D)/(G+D) = ${decoder.sideText()}.",
+                cause = "Les deux voies s'opposent déjà au PCM du décodeur : une voix au centre " +
+                    "s'annule, le son tombe « dans un trou ». Ce n'est pas un passe-bas. " +
+                    "Le son témoin (voix puis bruit, voies ensemble) dit si l'appareil fait pareil.",
+                fix = Fix(
+                    file = FILE_PROBE,
+                    symbol = "AudioProbeProcessor / AudioPhase",
+                    media3 = "copie PCM, aucun échantillon modifié",
+                    action = "Ne pas changer le décodeur sur ce seul chiffre. Comparer avec le son témoin " +
+                        "et avec la sonde audiotrack.",
+                    settingKey = null,
+                ),
+            )
+        }
+        if (decoder != null && sink != null && !decoder.correlation.isNaN() && !sink.correlation.isNaN() &&
+            decoder.correlation >= 0.5 && sink.opposed
+        ) {
+            out += Finding(
+                id = "inversion_etage",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Sonde décodeur ${decoder.correlationText()}, sonde audiotrack ${sink.correlationText()}.",
+                cause = "Les voies sont ensemble après le décodeur et opposées juste avant l'AudioTrack. " +
+                    "L'étage entre les deux (voix claire, silence ou Sonic) a inversé ou mélangé une voie. " +
+                    "Les sondes, elles, copient.",
+                fix = Fix(
+                    file = FILE_STAGES,
+                    symbol = "AudioStages / ZunoAudioChain",
+                    media3 = "AudioProcessorChain entre decodeur et audiotrack",
+                    action = "Noter quel étage change la corrélation. Ne pas changer le décodeur.",
+                    settingKey = null,
+                ),
+            )
+        }
+        return out
     }
 
     /**
