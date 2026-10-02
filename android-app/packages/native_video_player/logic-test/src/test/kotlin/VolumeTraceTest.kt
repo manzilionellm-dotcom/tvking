@@ -22,8 +22,8 @@ class VolumeTraceTest {
                     focusHeld = true,
                     media3Focus = false,
                     pausedByFocus = false,
-                    zunoPlaybacks = 1,
-                    boxPlaybacks = 1,
+                    playbacks = PlaybackCount.Count(1, 1, 0, emptyList(), PlaybackCount.Method.ATTRIBUTES),
+                    route = "mode normal, route HDMI, micro 0",
                 ),
             )
         }
@@ -35,7 +35,8 @@ class VolumeTraceTest {
             assertTrue(line.contains("volume AudioTrack non lisible"), line)
             assertTrue(line.contains("volume musique de la box 15/15"), line)
             assertTrue(line.contains("focus tenu par Zuno"), line)
-            assertTrue(line.contains("lectures Zuno 1"), line)
+            assertTrue(line.contains("lectures 1 (nôtre 1, autres 0)"), line)
+            assertTrue(line.contains("système mode normal"), line)
             assertFalse(line.contains("0,2"), line)
         }
     }
@@ -54,8 +55,8 @@ class VolumeTraceTest {
                 focusHeld = true,
                 media3Focus = false,
                 pausedByFocus = false,
-                zunoPlaybacks = 0,
-                boxPlaybacks = 0,
+                playbacks = null,
+                route = null,
             ),
         )
         assertTrue(line.contains("volume lecteur 0,0"))

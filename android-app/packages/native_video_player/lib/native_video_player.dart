@@ -173,6 +173,30 @@ class NativeVideoController extends ChangeNotifier {
   /// chevaucher, l'ancien défaut). Faux par défaut : on attend.
   static bool immediateHandoff = false;
 
+  /// Correctif candidat H1 (02/10/2026) : vrai = avant chaque ouverture, si
+  /// le système Android est en mode « appel / communication » (ou garde le
+  /// haut-parleur d'appel / le Bluetooth SCO allumé), le lecteur le remet à
+  /// normal. Faux par défaut : on ne touche pas au système.
+  static bool forceNormalAudioMode = false;
+
+  /// Essai H2 : type de contenu déclaré au système pour la lecture.
+  /// « film » (défaut v106), « musique » ou « parole ». Certains appareils
+  /// appliquent un traitement « cinéma » au type film.
+  static String audioContentType = contentFilm;
+  static const String contentFilm = 'film';
+  static const String contentMusique = 'musique';
+  static const String contentParole = 'parole';
+
+  /// Son témoin embarqué (H4) : fichier AAC de l'APK, lu par le même
+  /// lecteur, sans réseau. Ce n'est pas une adresse de flux. Les deux
+  /// valeurs doivent rester égales à `WitnessTone` côté Kotlin.
+  static const String witnessAssetUri = 'asset:///zuno_temoin.m4a';
+  static const String witnessLabel = 'Son témoin (fichier intégré, sans réseau)';
+
+  /// Nom à donner aux fiches de diagnostic à la place de la chaîne en
+  /// cours (le son témoin n'est pas une chaîne). Null = la chaîne en cours.
+  static String? audioDiagChannelOverride;
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -185,6 +209,8 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
       ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
       ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+      ch.invokeMethod<void>('setForceNormalMode', forceNormalAudioMode);
+      ch.invokeMethod<void>('setContentType', audioContentType);
     }
   }
 
@@ -327,6 +353,8 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
     ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
     ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+    ch.invokeMethod<void>('setForceNormalMode', forceNormalAudioMode);
+    ch.invokeMethod<void>('setContentType', audioContentType);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;

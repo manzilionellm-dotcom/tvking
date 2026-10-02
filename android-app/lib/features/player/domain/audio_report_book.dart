@@ -108,3 +108,34 @@ String redactAudioText(String raw) {
   );
   return s;
 }
+
+/// Version courte d'une fiche pour la boîte noire : on garde les constats
+/// (reçu / décodé / sortie, verdicts, cycle, système audio, lectures,
+/// spectre, stéréo, causes SÛRES avec symptôme et cause) et on retire les
+/// blocs « [INCERTAINE · INFO] » (hypothèses réécrites à chaque ouverture :
+/// bruit, pas information) et les lignes de mode d'emploi (Correctif /
+/// Media3 / Action / Réglage). La fiche complète reste dans Réglages →
+/// Diagnostic du son. Fonction pure, testée.
+String compactAudioSheet(String sheet) {
+  final List<String> out = <String>[];
+  bool skippingBlock = false;
+  for (final String raw in sheet.split('\n')) {
+    final String line = raw.trim();
+    if (line.isEmpty) continue;
+    if (line.startsWith('[')) {
+      skippingBlock = line.startsWith('[INCERTAINE · INFO]');
+      if (skippingBlock) continue;
+    } else if (line.startsWith('Conclusion :')) {
+      skippingBlock = false;
+    }
+    if (skippingBlock) continue;
+    if (line.startsWith('Correctif :') ||
+        line.startsWith('Media3 :') ||
+        line.startsWith('Action :') ||
+        line.startsWith('Réglage :')) {
+      continue;
+    }
+    out.add(line);
+  }
+  return out.join('\n');
+}

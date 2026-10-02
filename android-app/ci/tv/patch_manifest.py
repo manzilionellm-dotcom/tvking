@@ -88,6 +88,11 @@ def patch(s: str) -> str:
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.WAKE_LOCK",
+        # 02/10/2026 — correctif candidat « Mode : normal forcé » (Diagnostic du
+        # son, coupé par défaut) : remettre AudioManager en mode normal et couper
+        # le haut-parleur d'appel / le SCO demande cette permission « normale »
+        # (aucune demande à l'écran). Sans elle, Android refuse en silence.
+        "android.permission.MODIFY_AUDIO_SETTINGS",
     ):
         s = _add_after_manifest_tag(s, f'<uses-permission android:name="{perm}"/>')
     s = _add_application_attr(s, "usesCleartextTraffic", "true")

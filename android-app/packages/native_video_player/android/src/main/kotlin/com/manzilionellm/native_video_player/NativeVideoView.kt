@@ -6,9 +6,12 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
+import android.media.AudioRecordingConfiguration
+import android.media.audiofx.AudioEffect
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -62,6 +65,10 @@ import com.manzilionellm.native_video_player.logic.AudioGate
 import com.manzilionellm.native_video_player.logic.AudioHandoff
 import com.manzilionellm.native_video_player.logic.AudioFocusPolicy
 import com.manzilionellm.native_video_player.logic.AudioFixes
+import com.manzilionellm.native_video_player.logic.AudioRoute
+import com.manzilionellm.native_video_player.logic.PlaybackCount
+import com.manzilionellm.native_video_player.logic.StereoImage
+import com.manzilionellm.native_video_player.logic.WitnessTone
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
 import com.manzilionellm.native_video_player.logic.AudioStages
@@ -372,9 +379,22 @@ class NativeVideoView(
     // Incrémenté à chaque silence : les lignes de l'ancienne chaîne s'arrêtent.
     private var volumeTraceToken = 0
 
-    // Dernier compteur Android. -1 = pas encore rappelé.
-    private var lastZunoPlaybacks = -1
-    private var lastBoxPlaybacks = -1
+    // Dernier compteur de lectures Android, attribué (la nôtre / les
+    // autres). Null = pas encore rappelé. Voir [PlaybackCount] : l'ancien
+    // « lectures Zuno 0 / box 1 » était faux (UID illisible).
+    private var lastPlaybackCount: PlaybackCount.Count? = null
+
+    /** Numéros de session audio que Media3 nous a annoncés dans ce processus. */
+    private val ourSessionIds = HashSet<Int>()
+
+    // ---- ÉTAT DU SYSTÈME AUDIO (02/10/2026, H1) ----------------------------
+    // Photo prise à chaque ouverture : mode (appel ?), route de sortie,
+    // micro ouvert ? Et ce que « Mode : normal forcé » a corrigé (vide
+    // par défaut : l'interrupteur est coupé).
+    private var lastRoute: AudioRoute.Snapshot? = null
+    private var appliedRepairs: List<AudioRoute.Repair> = emptyList()
+    private var recordingCallback: AudioManager.AudioRecordingCallback? = null
+    private var lastRecordingLine: String? = null
 
     /** Ce que la sortie son de la box accepte tel quel (HDMI / barre de son). */
     private val outputCaps: String = try {
@@ -384,6 +404,30 @@ class NativeVideoView(
             "DTS ${yn(C.ENCODING_DTS)}, ${caps.maxChannelCount} voies max"
     } catch (_: Throwable) {
         "Sortie de la box : inconnue"
+    } + "\n" + installedEffectsLine()
+
+    /**
+     * Effets audio INSTALLÉS sur l'appareil (Dolby, virtualiseur,
+     * égaliseur…). C'est la liste du système, pas ce qui est actif : Android
+     * ne dit pas si un effet global est allumé. Une fois par lecteur. Zuno
+     * n'en crée aucun.
+     */
+    @Suppress("DEPRECATION") // queryEffects : seule liste disponible
+    private fun installedEffectsLine(): String = try {
+        val names = AudioEffect.queryEffects()
+            ?.map { it.name.toString().trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.distinct()
+            ?.sorted()
+            ?: emptyList()
+        if (names.isEmpty()) {
+            "Effets audio installés sur l'appareil : aucun déclaré."
+        } else {
+            "Effets audio installés sur l'appareil (liste du système, pas forcément actifs ; Zuno n'en crée aucun) : " +
+                names.joinToString(", ")
+        }
+    } catch (_: Throwable) {
+        "Effets audio installés sur l'appareil : non lisibles."
     }
 
     // Identifiant dans [owners]. -1 tant que le lecteur n'est pas inscrit.
@@ -503,6 +547,165 @@ class NativeVideoView(
         handler.postDelayed(pictureWatch, 2_000)
         handler.post { emitImageCaps() }
         watchOtherPlaybacks()
+        watchRecordings()
+    }
+
+    // ---- état du système audio (H1) ------------------------------------------
+
+    /** Type de contenu déclaré au système : réglage « Type », ou parole si voix claire. */
+    private fun declaredContentType(): Int =
+        AudioFixes.contentTypeFor(clearVoiceEnabled, AudioFixes.contentType)
+
+    private fun device(info: AudioDeviceInfo?): AudioRoute.Device? {
+        if (info == null) return null
+        val name = try {
+            info.productName?.toString()?.trim() ?: ""
+        } catch (_: RuntimeException) {
+            ""
+        }
+        return AudioRoute.Device(info.type, name)
+    }
+
+    /**
+     * Photo du système audio. Chaque API absente donne null : la fiche
+     * dit « non lisible » au lieu d'un chiffre inventé. Aucune de ces
+     * lectures ne change le son.
+     */
+    @Suppress("DEPRECATION") // isBluetoothA2dpOn / isWiredHeadsetOn : lecture seule
+    private fun routeSnapshot(): AudioRoute.Snapshot? {
+        val am = audioManager ?: return null
+        return try {
+            val sdk = Build.VERSION.SDK_INT
+            val outputs: List<AudioRoute.Device> = if (sdk >= Build.VERSION_CODES.M) {
+                am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).mapNotNull { device(it) }
+            } else {
+                emptyList()
+            }
+            val mediaRoute: List<AudioRoute.Device>? = if (sdk >= Build.VERSION_CODES.TIRAMISU) {
+                val attrs = android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(declaredContentType())
+                    .build()
+                am.getDevicesForAttributes(attrs).mapNotNull { device(it) }
+            } else {
+                null
+            }
+            val comm: AudioRoute.Device? = if (sdk >= Build.VERSION_CODES.S) device(am.communicationDevice) else null
+            val recordings: List<AudioRoute.Recording>? = if (sdk >= Build.VERSION_CODES.N) {
+                am.activeRecordingConfigurations.map { r ->
+                    AudioRoute.Recording(r.clientAudioSource, r.audioDevice?.type)
+                }
+            } else {
+                null
+            }
+            AudioRoute.Snapshot(
+                mode = am.mode,
+                speakerphoneOn = am.isSpeakerphoneOn,
+                scoOn = am.isBluetoothScoOn,
+                a2dpOn = am.isBluetoothA2dpOn,
+                wiredHeadsetOn = am.isWiredHeadsetOn,
+                musicActive = am.isMusicActive,
+                outputs = outputs,
+                mediaRoute = mediaRoute,
+                communicationDevice = comm,
+                recordings = recordings,
+                sdk = sdk,
+            )
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+
+    /**
+     * CORRECTIF CANDIDAT H1, derrière [AudioFixes.forceNormalMode] (coupé
+     * par défaut). Avant une ouverture : si le système est en mode appel,
+     * si le haut-parleur d'appel ou le SCO est allumé, on les remet en
+     * place. Chaque action est journalisée. Une permission refusée est
+     * dite, pas cachée. Interrupteur coupé : on ne touche à rien et on
+     * l'écrit.
+     */
+    @Suppress("DEPRECATION") // setSpeakerphoneOn / stopBluetoothSco : repli < API 31
+    private fun applyModeRepair(before: AudioRoute.Snapshot?): List<AudioRoute.Repair> {
+        val am = audioManager
+        if (before == null || am == null) return emptyList()
+        val plan = AudioRoute.repairPlan(before, AudioFixes.forceNormalMode)
+        if (!AudioFixes.forceNormalMode) {
+            // Une ligne seulement si le système n'est pas sain : sinon ça noierait la boîte noire.
+            if (AudioRoute.isCallMode(before.mode) || before.scoOn || before.speakerphoneOn) {
+                emit("audioDiag", AudioRoute.repairLine(emptyList(), enabled = false, mode = before.mode))
+            }
+            return emptyList()
+        }
+        val done = ArrayList<AudioRoute.Repair>()
+        for (step in plan) {
+            try {
+                when (step) {
+                    AudioRoute.Repair.SET_MODE_NORMAL -> am.mode = AudioManager.MODE_NORMAL
+                    AudioRoute.Repair.SPEAKERPHONE_OFF -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.clearCommunicationDevice()
+                        else am.isSpeakerphoneOn = false
+                    }
+                    AudioRoute.Repair.STOP_SCO -> {
+                        am.stopBluetoothSco()
+                        am.isBluetoothScoOn = false
+                    }
+                    AudioRoute.Repair.CLEAR_COMMUNICATION_DEVICE -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.clearCommunicationDevice()
+                    }
+                }
+                done += step
+            } catch (e: SecurityException) {
+                emit("audioDiag", "Mode système : ${AudioRoute.repairLabel(step)} REFUSÉ par Android (permission) : ${e.javaClass.simpleName}.")
+            } catch (e: RuntimeException) {
+                emit("audioDiag", "Mode système : ${AudioRoute.repairLabel(step)} a échoué : ${e.javaClass.simpleName}.")
+            }
+        }
+        emit("audioDiag", AudioRoute.repairLine(done, enabled = true, mode = before.mode))
+        return done
+    }
+
+    /**
+     * Micros ouverts sur l'appareil (API 24+), une ligne à chaque
+     * changement. Zuno n'ouvre jamais le micro : la reconnaissance vocale
+     * passe par l'écran du système. Un micro ouvert pendant la lecture =
+     * une autre app, et parfois un pré-traitement voix sur toute la sortie.
+     */
+    private fun watchRecordings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val am = audioManager ?: return
+        val cb = object : AudioManager.AudioRecordingCallback() {
+            override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) {
+                val list = configs ?: return
+                val line = if (list.isEmpty()) {
+                    "Micro : plus aucun enregistrement actif sur l'appareil."
+                } else {
+                    "Micro : ${list.size} enregistrement(s) ACTIF(S) sur l'appareil (" +
+                        list.joinToString(", ") { r ->
+                            AudioRoute.sourceLabel(r.clientAudioSource) +
+                                (r.audioDevice?.let { " via " + AudioRoute.deviceLabel(it.type) } ?: "")
+                        } + ") — Zuno n'ouvre jamais le micro : c'est une autre app."
+                }
+                if (line == lastRecordingLine) return
+                lastRecordingLine = line
+                handler.post { if (!released) emit("audioDiag", line) }
+            }
+        }
+        try {
+            am.registerAudioRecordingCallback(cb, handler)
+            recordingCallback = cb
+        } catch (_: RuntimeException) {
+            recordingCallback = null
+        }
+    }
+
+    private fun unwatchRecordings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val cb = recordingCallback ?: return
+        recordingCallback = null
+        try {
+            audioManager?.unregisterAudioRecordingCallback(cb)
+        } catch (_: RuntimeException) {
+        }
     }
 
     // ---- focus audio : demande, abandon, décision ----------------------------
@@ -521,10 +724,7 @@ class NativeVideoView(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val attrs = android.media.AudioAttributes.Builder()
                     .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                    .setContentType(
-                        if (clearVoiceEnabled) android.media.AudioAttributes.CONTENT_TYPE_SPEECH
-                        else android.media.AudioAttributes.CONTENT_TYPE_MOVIE,
-                    )
+                    .setContentType(declaredContentType())
                     .build()
                 val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(attrs)
@@ -590,9 +790,16 @@ class NativeVideoView(
     }
 
     /**
-     * Combien de lectures audio tournent sur la box en même temps que nous
-     * (API 26+). Deux sons qui se battent = ce compteur à 2 pendant qu'on joue.
-     * Une ligne par changement, jamais plus.
+     * Lectures audio actives sur l'appareil (API 26+), attribuées : la
+     * nôtre, les autres. Une ligne par changement, jamais plus.
+     *
+     * Android ne donne pas l'app propriétaire d'une lecture : `getClientUid`
+     * et `getSessionId` sont cachés (@SystemApi) et la réflexion est
+     * refusée sur Android 9+. L'ancien compteur « lectures Zuno 0 / box 1 »
+     * venait de là : le « 1 » était Zuno. [PlaybackCount] essaie l'UID,
+     * puis le numéro de session, puis attribue par les attributs déclarés
+     * (une lecture « média + film » = la nôtre, UNE seule, et seulement si
+     * notre AudioTrack est vivant), et DIT quelle méthode a servi.
      */
     private fun watchOtherPlaybacks() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -600,28 +807,24 @@ class NativeVideoView(
         val cb = object : AudioManager.AudioPlaybackCallback() {
             override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
                 val list = configs ?: return
-                val types = list.map { c ->
-                    when (c.audioAttributes.contentType) {
-                        android.media.AudioAttributes.CONTENT_TYPE_MOVIE -> "film"
-                        android.media.AudioAttributes.CONTENT_TYPE_SPEECH -> "parole"
-                        android.media.AudioAttributes.CONTENT_TYPE_MUSIC -> "musique"
-                        android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION -> "bip système"
-                        else -> "autre"
-                    }
+                val playbacks = list.map { c ->
+                    PlaybackCount.Playback(
+                        contentType = c.audioAttributes.contentType,
+                        usage = c.audioAttributes.usage,
+                        uid = hiddenInt(c, "getClientUid"),
+                        sessionId = hiddenInt(c, "getSessionId"),
+                    )
                 }
-                val line = "Lectures audio actives sur la box : ${list.size}" +
-                    (if (types.isEmpty()) "" else " (${types.joinToString(", ")})") +
-                    (if (list.size > 1) " → deux sons en même temps" else "")
-                lastBoxPlaybacks = list.size
-                // getClientUid existe depuis Android 9, mais le SDK de
-                // compilation du plugin ne l'expose pas toujours. On le
-                // lit par réflexion : -1 = on ne peut pas séparer nos lectures.
-                val mine = Process.myUid()
-                lastZunoPlaybacks = if (Build.VERSION.SDK_INT >= 28) {
-                    list.count { playbackClientUid(it) == mine }
-                } else {
-                    -1
-                }
+                val count = PlaybackCount.count(
+                    list = playbacks,
+                    ourUid = Process.myUid(),
+                    ourSessionIds = synchronized(ourSessionIds) { ourSessionIds.toSet() },
+                    ourContentType = declaredContentType(),
+                    ourUsage = PlaybackCount.USAGE_MEDIA,
+                    ourTrackAlive = audioTracksHere > 0,
+                )
+                val line = PlaybackCount.line(count)
+                lastPlaybackCount = count
                 if (line != lastPlaybackLine) {
                     lastPlaybackLine = line
                     handler.post {
@@ -642,15 +845,16 @@ class NativeVideoView(
     }
 
     /**
-     * UID du client de cette lecture. -1 si Android ne le dit pas
-     * (avant Android 9, ou méthode absente du SDK de compilation).
+     * Méthode cachée d'[AudioPlaybackConfiguration], lue par réflexion.
+     * Null si Android la refuse (le cas normal depuis Android 9) : on ne
+     * fait pas semblant d'avoir la réponse.
      */
-    private fun playbackClientUid(config: AudioPlaybackConfiguration): Int {
+    private fun hiddenInt(config: AudioPlaybackConfiguration, name: String): Int? {
         return try {
-            val method = AudioPlaybackConfiguration::class.java.getMethod("getClientUid")
-            method.invoke(config) as? Int ?: -1
-        } catch (_: Exception) {
-            -1
+            val method = AudioPlaybackConfiguration::class.java.getMethod(name)
+            (method.invoke(config) as? Int)?.takeIf { it >= 0 }
+        } catch (_: Throwable) {
+            null
         }
     }
 
@@ -937,12 +1141,16 @@ class NativeVideoView(
             .build()
     }
 
-    /** Profil audio : film, ou parole si la voix claire est allumée. */
+    /**
+     * Profil audio déclaré au système : « film » (défaut v106), ou le
+     * réglage « Type » (musique / parole, essai H2), ou parole si la voix
+     * claire est allumée. Les constantes Media3 valent celles d'Android.
+     */
     private fun movieAudioAttributes(): AudioAttributes {
-        val type = if (clearVoiceEnabled) {
-            C.AUDIO_CONTENT_TYPE_SPEECH
-        } else {
-            C.AUDIO_CONTENT_TYPE_MOVIE
+        val type = when (declaredContentType()) {
+            PlaybackCount.CONTENT_SPEECH -> C.AUDIO_CONTENT_TYPE_SPEECH
+            PlaybackCount.CONTENT_MUSIC -> C.AUDIO_CONTENT_TYPE_MUSIC
+            else -> C.AUDIO_CONTENT_TYPE_MOVIE
         }
         return AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
@@ -1145,6 +1353,35 @@ class NativeVideoView(
             }
             "resume" -> {
                 resumeFromBackground()
+                result.success(null)
+            }
+            "setForceNormalMode" -> {
+                // Correctif candidat H1 : vrai = avant chaque ouverture, le
+                // mode système « appel » est remis à normal. Pris en compte
+                // à la prochaine ouverture. On ne rouvre pas tout seul.
+                AudioFixes.forceNormalMode = call.arguments == true
+                result.success(null)
+            }
+            "setContentType" -> {
+                // Essai H2 : type déclaré au système. Comme la voix claire,
+                // l'AudioTrack ne relit ses attributs qu'à la prochaine
+                // configuration : on rouvre la chaîne si elle joue.
+                val next = (call.arguments as? String) ?: AudioFixes.CONTENT_FILM
+                if (next == AudioFixes.contentType) {
+                    result.success(null)
+                    return
+                }
+                AudioFixes.contentType = next
+                if (!released && currentUrl != null && player.playbackState != Player.STATE_IDLE) {
+                    emit("audioDiag", "Type déclaré : « $next ». On rouvre la chaîne pour l'appliquer.")
+                    if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+                    openCurrent(if (vodMode) lastKnownPos else null)
+                } else if (!released) {
+                    player.setAudioAttributes(
+                        movieAudioAttributes(),
+                        AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+                    )
+                }
                 result.success(null)
             }
             "setAudioProbe" -> {
@@ -1642,6 +1879,12 @@ class NativeVideoView(
             movieAudioAttributes(),
             AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
         )
+        // H1 : photo du système AVANT le focus, correctif éventuel (interrupteur
+        // coupé par défaut → aucune action), puis photo APRÈS pour la fiche.
+        val before = routeSnapshot()
+        appliedRepairs = applyModeRepair(before)
+        lastRoute = if (appliedRepairs.isEmpty()) before else (routeSnapshot() ?: before)
+        lastRoute?.let { emit("audioDiag", AudioRoute.describe(it)) }
         if (AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus)) abandonOwnFocus()
         else requestOwnFocus()
         suspended = false
@@ -1650,7 +1893,14 @@ class NativeVideoView(
         emit("audioDiag", ProbeAttach.armingLine(AudioFixes.probe))
         // Nouvelle ouverture : les pourcentages et le décodeur de la
         // chaîne d'avant ne doivent pas rester affichés.
-        diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
+        diag = AudioSnapshot(
+            clearVoice = clearVoiceEnabled,
+            route = lastRoute,
+            modeRepair = appliedRepairs,
+            contentType = AudioFixes.contentType,
+            witness = WitnessTone.isWitness(currentUrl),
+        )
+        if (diag.witness) emit("audioDiag", WitnessTone.describe())
         val tick = audioGate.onStopped(PlayerCensus.tracksAlive())
         tick.line?.let { emit("audioDiag", it) }
         if (!tick.prepare) {
@@ -1744,8 +1994,8 @@ class NativeVideoView(
                             focusHeld = focusHeld,
                             media3Focus = AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
                             pausedByFocus = pausedByFocus,
-                            zunoPlaybacks = lastZunoPlaybacks,
-                            boxPlaybacks = lastBoxPlaybacks,
+                            playbacks = lastPlaybackCount,
+                            route = routeSnapshot()?.let { AudioRoute.short(it) },
                         ),
                     ),
                 )
@@ -2195,6 +2445,9 @@ class NativeVideoView(
 
     /** Numéro de session audio Android : un numéro qui change = un AudioTrack neuf. */
     override fun onAudioSessionIdChanged(eventTime: AnalyticsListener.EventTime, audioSessionId: Int) {
+        // Compté avant le filtre de session : sert à reconnaître NOS lectures
+        // dans le compteur Android, même pour l'ancienne chaîne.
+        if (audioSessionId > 0) synchronized(ourSessionIds) { ourSessionIds.add(audioSessionId) }
         if (!fresh(eventTime)) return
         emit("audioDiag", "Session audio Android n°$audioSessionId")
     }
@@ -2247,12 +2500,12 @@ class NativeVideoView(
      * [spectrum] reste la sonde décodeur, pour les règles déjà écrites.
      * Les quatre chiffres sont dans [AudioSnapshot.stages].
      */
-    private fun onProbe(stage: String, judged: AudioSpectrum.Judgement) {
+    private fun onProbe(stage: String, judged: AudioSpectrum.Judgement, stereo: StereoImage.Judgement?) {
         handler.post {
             if (released) return@post
             val byId = mutableMapOf<String, AudioStages.Reading>()
             for (existing in diag.stages) byId[existing.id] = existing
-            byId[stage] = AudioStages.Reading(stage, judged)
+            byId[stage] = AudioStages.Reading(stage, judged, stereo)
             val ordered = ArrayList<AudioStages.Reading>(AudioStages.ORDER.size)
             for (id in AudioStages.ORDER) {
                 val reading = byId[id] ?: continue
@@ -2282,9 +2535,12 @@ class NativeVideoView(
             probeInChain = probeDecoder.lastAccepted,
             probeFrames = probeDecoder.usefulFrames,
             probeReject = if (AudioFixes.probe) probeDecoder.lastReject else null,
-            zunoPlaybacks = lastZunoPlaybacks,
-            boxPlaybacks = lastBoxPlaybacks,
+            playbacks = lastPlaybackCount,
             playerAudible = audible,
+            route = lastRoute,
+            modeRepair = appliedRepairs,
+            contentType = AudioFixes.contentType,
+            witness = WitnessTone.isWitness(currentUrl),
         )
         diag = live
         val text = buildString {
@@ -2352,6 +2608,7 @@ class NativeVideoView(
         waitToken++
         abandonOwnFocus()
         unwatchOtherPlaybacks()
+        unwatchRecordings()
         ffmpegWatchToken++
         clearFrameRateMode()
         cancelRetry()

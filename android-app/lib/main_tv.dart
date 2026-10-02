@@ -65,23 +65,59 @@ void _syncPlayerLanguage() {
   NativeVideoController.appAudioLanguage = code;
 }
 
+/// Dernière fiche écrite dans la boîte noire, par chaîne (texte filtré).
+/// Le lecteur envoie la fiche 2 à 3 fois par ouverture (piste créée, pistes
+/// connues, sonde) : on n'écrit dans la boîte noire que ce qui a changé.
+final Map<String, String> _lastAudioSheetByChannel = <String, String>{};
+
 /// Diagnostic du son → boîte noire (Réglages → Boîte noire). Une ligne par
 /// constat, étiquette « SON », avec la chaîne en cours quand on la connaît.
+///
+/// Deux sortes de messages arrivent :
+///   • une LIGNE (« Zap : n°3. », « Seconde 2 : … », « Système audio : … ») :
+///     écrite telle quelle, horodatée par la boîte noire ;
+///   • une FICHE (plusieurs lignes, commence par « reçu : ») : rangée
+///     entière dans Réglages → Diagnostic du son (une par chaîne), et
+///     recopiée dans la boîte noire SANS les blocs d'hypothèses
+///     « [INCERTAINE · INFO] » ni les lignes Correctif / Media3 / Action,
+///     et seulement si elle a changé depuis la dernière fois pour cette
+///     chaîne. Avant, ces blocs réécrits à chaque ouverture noyaient le
+///     journal (bruit, pas information).
 void _wireAudioDiagnostic() {
   NativeVideoController.onAudioDiagnostic = (String diagnostic) {
-    final String channel = NowPlaying.instance.current;
+    final String channel =
+        NativeVideoController.audioDiagChannelOverride ?? NowPlaying.instance.current;
     final String safe = redactAudioText(diagnostic);
+    final bool isSheet = safe.contains('\n') && safe.trimLeft().startsWith('reçu :');
+    if (!isSheet) {
+      bool first = true;
+      for (final String raw in safe.split('\n')) {
+        final String line = raw.trim();
+        if (line.isEmpty) continue;
+        BlackBox.instance.info(
+          'SON',
+          first && channel.isNotEmpty ? '[$channel] $line' : line,
+        );
+        first = false;
+      }
+      return;
+    }
+    unawaited(AudioReportStore.instance.record(channel: channel, body: safe));
+    final String compact = compactAudioSheet(safe);
+    if (_lastAudioSheetByChannel[channel] == compact) return;
+    // Borne : une entrée par chaîne vue, jamais plus de 64.
+    if (_lastAudioSheetByChannel.length >= 64) _lastAudioSheetByChannel.clear();
+    _lastAudioSheetByChannel[channel] = compact;
     bool first = true;
-    for (final String raw in safe.split('\n')) {
+    for (final String raw in compact.split('\n')) {
       final String line = raw.trim();
       if (line.isEmpty) continue;
       BlackBox.instance.info(
         'SON',
-        first && channel.isNotEmpty ? '[$channel] $line' : line,
+        first && channel.isNotEmpty ? '[$channel] FICHE · $line' : line,
       );
       first = false;
     }
-    unawaited(AudioReportStore.instance.record(channel: channel, body: safe));
   };
 }
 

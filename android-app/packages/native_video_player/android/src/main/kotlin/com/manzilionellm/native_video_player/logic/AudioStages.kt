@@ -28,7 +28,23 @@ object AudioStages {
     data class Reading(
         val id: String,
         val judgement: AudioSpectrum.Judgement,
+        /**
+         * Image stéréo à la même sonde (02/10/2026, H3). Null = pas deux
+         * voies, ou ancienne lecture sans cette mesure.
+         */
+        val stereo: StereoImage.Judgement? = null,
     )
+
+    /**
+     * Première sonde en OPPOSITION DE PHASE alors que la précédente ne
+     * l'était pas : l'étage entre les deux inverse une voie.
+     */
+    fun firstInversion(readings: List<Reading>): Reading? {
+        for (i in 1 until readings.size) {
+            if (StereoImage.inverts(readings[i - 1].stereo, readings[i].stereo)) return readings[i]
+        }
+        return null
+    }
 
     /** Bande qui baisse entre deux étapes (large → bas ou milieu). */
     fun dropped(earlier: AudioSpectrum.Judgement, later: AudioSpectrum.Judgement): Boolean {

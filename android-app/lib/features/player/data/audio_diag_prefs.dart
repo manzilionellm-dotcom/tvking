@@ -31,6 +31,13 @@ class AudioDiagPrefs {
   /// Repli « passage » : vrai = on n'attend pas l'AudioTrack (ancien).
   static const String immediateHandoffKey = 'zuno.audio.handoff.immediate';
 
+  /// Correctif candidat H1 (02/10/2026) : vrai = mode système « appel »
+  /// remis à normal avant chaque ouverture. Faux par défaut.
+  static const String modeNormalKey = 'zuno.audio.fix.mode_normal';
+
+  /// Essai H2 : type déclaré au système (« film » par défaut, « musique », « parole »).
+  static const String contentTypeKey = 'zuno.audio.attr.content';
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
@@ -39,6 +46,8 @@ class AudioDiagPrefs {
     var androidFocus = false;
     var bgPause = false;
     var immediate = false;
+    var modeNormal = false;
+    var content = NativeVideoController.contentFilm;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -48,6 +57,8 @@ class AudioDiagPrefs {
       androidFocus = prefs.getBool(androidFocusKey) ?? false;
       bgPause = prefs.getBool(bgPauseKey) ?? false;
       immediate = prefs.getBool(immediateHandoffKey) ?? false;
+      modeNormal = prefs.getBool(modeNormalKey) ?? false;
+      content = _validContent(prefs.getString(contentTypeKey));
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -56,7 +67,11 @@ class AudioDiagPrefs {
       androidFocus = false;
       bgPause = false;
       immediate = false;
+      modeNormal = false;
+      content = NativeVideoController.contentFilm;
     }
+    NativeVideoController.forceNormalAudioMode = modeNormal;
+    NativeVideoController.audioContentType = content;
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
     NativeVideoController.preferPlatformAac = platform;
@@ -67,6 +82,49 @@ class AudioDiagPrefs {
     // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
     // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
     NativeVideoController.pushAudioDiagFlags();
+  }
+
+  /// Un texte inconnu ou illisible vaut « film » : le défaut v106.
+  static String _validContent(String? raw) {
+    switch (raw) {
+      case NativeVideoController.contentMusique:
+        return NativeVideoController.contentMusique;
+      case NativeVideoController.contentParole:
+        return NativeVideoController.contentParole;
+      default:
+        return NativeVideoController.contentFilm;
+    }
+  }
+
+  static Future<void> setForceNormalMode(bool value) async {
+    NativeVideoController.forceNormalAudioMode = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(modeNormalKey, value);
+    } catch (_) {}
+  }
+
+  static Future<void> setContentType(String value) async {
+    final String clean = _validContent(value);
+    NativeVideoController.audioContentType = clean;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString(contentTypeKey, clean);
+    } catch (_) {}
+  }
+
+  /// Cycle film → musique → parole → film.
+  static String nextContentType(String current) {
+    switch (current) {
+      case NativeVideoController.contentFilm:
+        return NativeVideoController.contentMusique;
+      case NativeVideoController.contentMusique:
+        return NativeVideoController.contentParole;
+      default:
+        return NativeVideoController.contentFilm;
+    }
   }
 
   static Future<void> setImmediateHandoff(bool value) async {

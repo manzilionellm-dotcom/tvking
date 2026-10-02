@@ -328,3 +328,80 @@ Lignes de boîte noire ajoutées (les anciennes restent) : `Zap : n°…`, `Zap 
 
 - Que la prochaine fiche France 24 affiche un pourcentage une seconde après l'ouverture.
 - Que les lignes « Seconde 1 » à « Seconde 10 » montrent un volume lecteur qui reste 1,0.
+
+## Cause commune à deux lecteurs et deux appareils : mesurer le SYSTÈME, pas le décodeur (2 octobre 2026, après-midi)
+
+**Terrain** : le son est mauvais sur la box de test ET sur le téléphone (Samsung SM-S938B, Android 16, « Zuno essai »), dès les premières chaînes, ET dans 7 MOTION (lecteur mpv). Deux décodeurs AAC (FFmpeg, puis `c2.android.aac.decoder`) donnent le même son. Lecteurs 1, décodeurs 1, AudioTrack 1 à chaque zap. Volume lecteur 1,0, focus tenu. Donc : ni le décodeur, ni le zapping, ni le focus, ni un chevauchement. Ce qui reste de commun aux deux lecteurs et aux deux appareils, c'est **Android lui-même** (mode audio, route de sortie, autre app) et **la source**.
+
+Cette version n'ajoute **que des mesures** et des interrupteurs coupés. Le chemin audio par défaut est celui de 78e49b0e / 1f2b4d55.
+
+### Ce qui est mesuré en plus (fiche + boîte noire)
+
+| Ligne | Ce qu'elle dit | API Android | Fichier |
+| --- | --- | --- | --- |
+| `Système audio : mode … · haut-parleur d'appel … · Bluetooth SCO … · route média : … · appareil de communication : … · sorties connues : … · micro : …` | à chaque ouverture : `AudioManager.getMode` (normal / **COMMUNICATION** / appel…), `isSpeakerphoneOn`, `isBluetoothScoOn`, `isBluetoothA2dpOn`, `isWiredHeadsetOn`, `getDevicesForAttributes(USAGE_MEDIA)` (API 33+ : où Android envoie le média — **ÉCOUTEUR du téléphone** = chemin d'appel), `getCommunicationDevice` (API 31+), `getDevices(OUTPUTS)`, `getActiveRecordingConfigurations` (API 24+ : micros ouverts par n'importe quelle app, avec la source) | lecture seule | `logic/AudioRoute.kt`, `NativeVideoView.routeSnapshot` |
+| `Seconde N : … système mode …, route …, micro N` | la même photo, courte, dix fois après chaque ouverture | idem | `logic/VolumeTrace.kt` |
+| `Micro : N enregistrement(s) ACTIF(S) … — Zuno n'ouvre jamais le micro` | à chaque changement, pas seulement à l'ouverture | `registerAudioRecordingCallback` | `NativeVideoView.watchRecordings` |
+| `Lectures audio sur l'appareil : N — la nôtre + M autre(s) (…) [attribution …]` | remplace « lectures Zuno 0 / lectures de la box 1 (film) », qui était **faux** : `getClientUid` est caché, la réflexion est refusée sur Android 9+, le compteur « Zuno » tombait à 0 et le « 1 (film) » était Zuno lui-même. Maintenant : UID si lisible, sinon numéro de session (Media3 nous les annonce), sinon **attribution par les attributs déclarés** (une lecture « média + film » = la nôtre, une seule, seulement si notre AudioTrack est vivant), et la méthode est écrite sur la ligne | `registerAudioPlaybackCallback` | `logic/PlaybackCount.kt` |
+| `… · stéréo : voies IDENTIQUES / voix au centre / large / OPPOSITION DE PHASE, corrélation ±x,xx` sur chaque sonde | H3 : corrélation gauche/droite et énergie (G−D)/(G+D) sur la même fenêtre que le spectre. G ≈ −D = la voix du centre s'annule au mélange (« dans un trou »). Une inversion qui apparaît entre deux sondes nomme l'étage (`etage_inverse`) ; dès la sonde décodeur = `phase_inversee` (flux ou décodeur, à départager avec « Box AAC : essai ») | sonde en copie | `logic/StereoImage.kt`, `AudioProbeProcessor.kt` |
+| `Type déclaré au système : usage média, contenu « film »` | ce que l'AudioTrack porte comme attributs (H2) | — | `AudioFixes.contentTypeFor` |
+| `Effets audio installés sur l'appareil : …` | une fois par lecteur, la liste du système (Dolby, virtualiseur…). Installé ≠ actif : Android ne dit pas si un effet global est allumé. Zuno n'en crée aucun | `AudioEffect.queryEffects` | `NativeVideoView.installedEffectsLine` |
+| `Témoin : …` | H4 : fiche « Son témoin (fichier intégré, sans réseau) » quand on appuie sur **Jouer le son témoin** | — | `logic/WitnessTone.kt` |
+
+Boîte noire : la fiche n'y est plus recopiée 2 à 3 fois par chaîne. Elle est écrite **une fois par changement**, sans les blocs `[INCERTAINE · INFO]` (hypothèses réécrites à chaque ouverture) ni les lignes Correctif / Media3 / Action / Réglage (`compactAudioSheet`, `lib/features/player/domain/audio_report_book.dart`). La fiche complète reste dans Réglages → Diagnostic du son, une par chaîne.
+
+### Interrupteurs nouveaux (Réglages → Diagnostic du son), tous COUPÉS
+
+| Bouton | Clé | Défaut | Allumé |
+| --- | --- | --- | --- |
+| **Mode : laisser / normal forcé** | `zuno.audio.fix.mode_normal` | laisser | avant chaque ouverture, si Android est en mode appel / communication, haut-parleur d'appel ou SCO : `setMode(MODE_NORMAL)`, `clearCommunicationDevice` (ou `setSpeakerphoneOn(false)`), `stopBluetoothSco`. Chaque action est écrite (`Mode système : CORRIGÉ … / REFUSÉ par Android`). Rien à corriger → rien n'est touché. Permission `MODIFY_AUDIO_SETTINGS` ajoutée au manifeste TV (`ci/tv/patch_manifest.py`), permission « normale », sans écran |
+| **Type : film / musique / parole** | `zuno.audio.attr.content` | film | type de contenu déclaré à l'AudioTrack et au focus. La voix claire impose toujours « parole ». Rouvre la chaîne si elle joue |
+| **Jouer le son témoin (10 s)** | — | — | lit `asset:///zuno_temoin.m4a` (plugin, 162 Ko) dans un lecteur natif caché, même code que les chaînes. Sa fiche s'appelle « Son témoin » |
+
+### Son témoin : ce qu'il contient (PROUVÉ hors appareil, 2 octobre 2026)
+
+Fabriqué avec FFmpeg 6.1.1 (`flite` pour la voix, `anoisesrc`, `aevalsrc`), encodé AAC-LC 48 kHz stéréo G = D, 128 kb/s, 10,59 s, 162 034 octets, SHA-256 `a8040eb942b09f3c7cf7f5733362d5232a697b665ae702541f7435ca26cc70cf`. Décodé par FFmpeg 6.1.1 en PCM 16 bits et mesuré avec **le même passe-haut** que la sonde (Butterworth ordre 2, 4 kHz, forme directe I, 512 trames de mise en route) :
+
+| Segment | Rapport > 4 kHz |
+| --- | --- |
+| 0,3–2,8 s bruit blanc | **0,7494** (large) |
+| 2,8–6,1 s voix « Zuno audio test, one, two, three, four » | **0,0020** (une voix est basse : normal, c'est la même zone que France 24) |
+| 6,1–8,6 s balayage 500 Hz → 16 kHz | **0,3920** |
+| 8,6–10,6 s bruit blanc | **0,7453** (large) |
+| cumulé à 2,8 s / à 6,1 s / fichier entier | **0,7494** / **0,5323** / **0,5425** → la sonde décodeur, qui cumule depuis l'ouverture, doit rester **LARGE (≥ 40 %)** du début à la fin |
+
+Corrélation G/D **+0,999995**, énergie (G−D)/(G+D) **2,5 × 10⁻⁶** (voies identiques), pic **15 368** (pas de saturation). La voix est volontairement plus douce que le bruit : le cumul devait rester large.
+
+| Témoin (fiche « Son témoin ») | Chaînes | Conclusion |
+| --- | --- | --- |
+| > 4 kHz ≥ 40 %, voies identiques, **net à l'oreille** | mauvaises | la source ou le réseau. L'app n'est pas en cause |
+| > 4 kHz ≥ 40 %, voies identiques, **mauvais à l'oreille aussi** | mauvaises | l'app transmet les aigus jusqu'à l'AudioTrack et pourtant ça sonne mal : le défaut est APRÈS l'app — lire « Système audio » (mode appel ? route écouteur / SCO ? micro ouvert ?) et les réglages de l'appareil |
+| > 4 kHz < 40 % | — | un étage de l'app coupe même sans réseau : la première sonde basse nomme l'étage |
+| opposition de phase | — | un étage de l'app inverse une voie : la première sonde inversée nomme l'étage |
+
+### PROUVÉ (`logic-test`, gradle 8.14.3, Kotlin 2.0.21 : **138 tests, 0 échec** ; 120 au départ de la branche)
+
+- `AudioRouteTest` : une box saine (mode normal, HDMI, aucun micro) ne donne **aucune** cause ; mode COMMUNICATION + route écouteur → `mode_appel` et `sortie_voix` **HAUTE · CAUSE**, réglage `zuno.audio.fix.mode_normal` ; le plan de réparation est **vide tant que l'interrupteur est coupé** ; le mode sonnerie n'est pas « réparé » ; un micro en `VOICE_COMMUNICATION` → `micro_appel` HAUTE, une reconnaissance vocale → `micro_ouvert` INCERTAINE, toujours « Zuno n'ouvre jamais le micro » ; API absentes (Android 25) → « non lisible », aucune cause inventée ; Bluetooth A2DP → INFO, SCO → CAUSE.
+- `PlaybackCountTest` : le cas exact du téléphone (UID illisible, une lecture « film », notre piste vivante) donne **« la nôtre seulement »** et dit « attribution par les attributs » ; une lecture « musique » en plus → « une autre app joue en même temps » ; sans piste vivante, rien n'est à nous ; UID ou session lisibles → exact ; deux à nous → « chevauchement ».
+- `StereoImageTest` : mono dupliqué → IDENTICAL (+1,00) ; voix + ambiance → CENTERED ; deux sinus sans rapport → WIDE (|r| < 0,3) ; une voie inversée → INVERTED (−1,00) ; mono / fenêtre courte / silence ne jugent pas ; une inversion entre la sonde voix claire et la sonde silence → `etage_inverse` nomme « silence », et la fiche l'écrit ; inversée dès le décodeur → `phase_inversee` ; tout en phase → ni l'un ni l'autre.
+- `WitnessToneTest` : l'URI du témoin n'est pas une adresse `http`, le libellé passe la censure d'URL / secret ; 54,3 % + voies identiques → « l'app décode et transmet les aigus … le défaut est APRÈS l'app » ; 2 % → « un étage de l'app coupe » ; inversé → « un étage de l'app inverse » ; la fiche du témoin ne reçoit pas le constat « source mono dupliquée », une vraie chaîne G = D si.
+- `AudioFixesTest` : les deux clés nouvelles, défauts coupés / « film », « film » pour tout texte inconnu, la voix claire impose « parole », le cycle film → musique → parole → film.
+- `VolumeTraceTest`, `ProbeAttachTest` : les lignes « Seconde N » portent « lectures 1 (nôtre 1, autres 0) » et « système mode normal … » ; un 0 pendant que ça joue reste expliqué.
+- Dart (`flutter test`, exécuté par le CI seulement) : `audio_report_book_test.dart` — la version courte garde `reçu :`, `Système audio`, les blocs `[HAUTE · CAUSE]` avec Symptôme / Cause et la Conclusion, jette `[INCERTAINE · INFO]` et les lignes Correctif / Media3 / Action / Réglage, et est idempotente (dédoublonnage).
+
+### PAS PROUVÉ (seulement sur la box et le téléphone)
+
+- Que le téléphone est bien en mode COMMUNICATION ou sur l'écouteur pendant le mauvais son : **c'est ce que la prochaine fiche doit montrer**, ligne « Système audio ». Si elle dit `mode normal · route média : haut-parleur intégré · micro : aucun`, H1 tombe pour le mode ; restent la route Bluetooth, l'app « Relaxing Sounds » (ligne « Lectures audio … + 1 autre »), les réglages de l'appareil (Dolby Atmos, Adapt Sound) et la source (témoin).
+- Que `getDevicesForAttributes` et `getActiveRecordingConfigurations` répondent sur la box (API inconnue : si < 33, la route dit « non lisible », la fiche le dit).
+- Que « Mode : normal forcé » est accepté par Android 16 sur un Samsung (sinon la ligne « REFUSÉ par Android (permission) » le dira).
+- Que la lecture de `asset:///zuno_temoin.m4a` démarre dans ExoPlayer avec `DefaultDataSource` sur ces deux appareils (lu dans Media3 : `AssetDataSource` est pris pour le schéma `asset`) ; que le lecteur caché 1 × 1 px est bien créé par Flutter.
+- Aucune des mesures PCM n'a été rejouée sur le `.so` Jellyfin (lavc 60.3.100).
+
+### Prochain test (le client), sans rien régler d'abord
+
+1. Fermer « Relaxing Sounds » (Forcer l'arrêt). Installer le build. Réglages → Boîte noire : lire `v106+<versionCode>`.
+2. Réglages → Diagnostic du son → **Jouer le son témoin**. Écouter : bruit « pschh », voix, sifflement grave → aigu, bruit. **Net ou mauvais ?** (un mot).
+3. Ouvrir France 24 une minute. Puis, sans redémarrer, ouvrir YouTube : **net ou mauvais ?** (un mot).
+4. Boîte noire → Copier, coller.
+
+Lecture attendue : ligne « Système audio » de France 24 et du témoin (mode, route, micro), ligne « Lectures audio » (autre app ?), « stéréo » des quatre sondes, fiche « Son témoin ».

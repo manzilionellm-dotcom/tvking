@@ -107,8 +107,8 @@ class ProbeAttachTest {
                 probeInChain = false,
                 probeReject = ProbeAttach.REJECT_OFF,
                 playerAudible = true,
-                zunoPlaybacks = 0,
-                boxPlaybacks = 0,
+                playbacks = PlaybackCount.Count(0, 0, 0, emptyList(), PlaybackCount.Method.NONE),
+                route = null,
             ),
         )
         assertTrue(report.contains("pas branchée"))
@@ -118,12 +118,13 @@ class ProbeAttachTest {
 
     @Test
     fun zeroLecturePendantQueCaJoueNestPasUneAbsenceDeSon() {
-        val note = VolumeTrace.playbackNote(zuno = 0, box = 0, audible = true)
+        val zero = PlaybackCount.Count(0, 0, 0, emptyList(), PlaybackCount.Method.NONE)
+        val note = PlaybackCount.note(zero, audible = true)
         assertTrue(note.contains("0"))
-        assertTrue(note.contains("avant que Android"))
-        val idle = VolumeTrace.playbackNote(zuno = 0, box = 0, audible = false)
-        assertTrue(idle.contains("ne joue pas encore") || idle.contains("avant le démarrage"))
-        val one = VolumeTrace.playbackNote(zuno = 1, box = 1, audible = true)
-        assertTrue(one.contains("1"))
+        assertTrue(note.contains("avant le rappel"))
+        val idle = PlaybackCount.note(null, audible = false)
+        assertTrue(idle.contains("pas encore comptées"))
+        val one = PlaybackCount.Count(1, 1, 0, emptyList(), PlaybackCount.Method.ATTRIBUTES)
+        assertTrue(PlaybackCount.note(one, audible = true).contains("la nôtre seulement"))
     }
 }

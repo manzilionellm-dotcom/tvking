@@ -87,14 +87,24 @@ data class AudioSnapshot(
     /** Pourquoi onConfigure a renvoyé NOT_SET. Null si accepté ou pas encore appelé. */
     val probeReject: String? = null,
     /**
-     * Lectures audio de NOTRE processus. -1 = Android n'a pas encore
-     * répondu, ou ne sait pas séparer les apps (API < 28).
+     * Lectures audio de l'appareil, attribuées (la nôtre / les autres).
+     * Null = Android n'a pas encore rappelé. Remplace l'ancien couple
+     * « lectures Zuno / lectures de la box », faux (voir [PlaybackCount]).
      */
-    val zunoPlaybacks: Int = -1,
-    /** Lectures audio de toute la box (toutes les apps). -1 = pas encore comptées. */
-    val boxPlaybacks: Int = -1,
+    val playbacks: PlaybackCount.Count? = null,
     /** Le lecteur dit qu'il joue (image et son en cours). */
     val playerAudible: Boolean = false,
+    /**
+     * État du système audio à l'ouverture (H1) : mode appel ?, route de
+     * sortie, micro ouvert ? Null = pas encore relevé.
+     */
+    val route: AudioRoute.Snapshot? = null,
+    /** Ce que « Mode : normal forcé » a corrigé avant cette ouverture (vide = rien / coupé). */
+    val modeRepair: List<AudioRoute.Repair> = emptyList(),
+    /** Type de contenu déclaré au système pour cette ouverture (« film », « musique », « parole »). */
+    val contentType: String = "film",
+    /** Cette fiche est celle du son témoin embarqué (H4). */
+    val witness: Boolean = false,
 )
 
 object AudioDiagnosis {
@@ -165,6 +175,23 @@ object AudioDiagnosis {
             out += "REPLI : l'AAC de cette chaîne passe par le décodeur de la box depuis le zap " +
                 "n°${fail.zap} (${fail.reason.label}). C'est le chemin qui faisait le son " +
                 "« vieille radio ». « FFmpeg : réessayer » le remet sur FFmpeg."
+        }
+        // 0 bis) SYSTÈME (H1) : mode appel ou sortie voix. C'est la seule
+        //    cause qui touche tous les lecteurs et tous les zaps à la fois.
+        val route = s.route
+        if (route != null && AudioRoute.isCallMode(route.mode)) {
+            out += "SYSTÈME : Android est en mode ${AudioRoute.modeLabel(route.mode)} → le son passe par " +
+                "le chemin d'appel (bande étroite, écho). Ce n'est pas le décodeur. « Mode : normal forcé » le corrige."
+        }
+        if (route?.mediaRoute?.any { AudioRoute.isCallPath(it.type) } == true) {
+            out += "SYSTÈME : le média sort par une sortie d'appel (écouteur / téléphonie / SCO) → « dans un trou »."
+        }
+        if (route?.scoOn == true) {
+            out += "SYSTÈME : Bluetooth SCO actif (profil appel, bande étroite)."
+        }
+        val stereoInverted = s.stages.any { it.stereo?.verdict == StereoImage.Verdict.INVERTED }
+        if (stereoInverted) {
+            out += "PHASE : les deux voies sont en opposition → la voix du centre s'annule au mélange (« dans un trou »)."
         }
         val cycle = s.cycle
         if (cycle != null && PlayerCensus.overlapping(cycle)) {
@@ -491,9 +518,13 @@ object AudioDiagnosis {
             )
         }
 
+        // H1 — état du système (mode appel, route voix, micro ouvert, SCO).
+        s.route?.let { out += AudioRoute.findings(it) }
+
         spectrumFinding(s)?.let { out += it }
         cancellationFinding(s)?.let { out += it }
         out += stageFindings(s)
+        out += stereoFindings(s)
         ffmpegLowBandFinding(s)?.let { out += it }
         clippingFinding(s)?.let { out += it }
         delayFinding(s.avOffsetMs)?.let { out += it }
@@ -626,19 +657,28 @@ object AudioDiagnosis {
             append(", vitesse ")
             append(String.format(Locale.FRANCE, "%.2f", s.playbackSpeed))
             append(". Pas d'égaliseur, pas de DynamicsProcessing, pas de LoudnessEnhancer.")
+            append("\nType déclaré au système : usage média, contenu « ")
+            append(AudioFixes.contentTypeLabel(s.clearVoice, s.contentType)).append(" ».")
             if (!s.routeNote.isNullOrBlank()) {
                 append("\nEssai : ").append(s.routeNote)
             }
             if (s.cycle != null) {
                 append("\n").append(PlayerCensus.describe(s.cycle))
             }
-            append("\n").append(
-                VolumeTrace.playbackNote(
-                    zuno = s.zunoPlaybacks,
-                    box = s.boxPlaybacks,
-                    audible = s.playerAudible,
-                ),
-            )
+            if (s.route != null) {
+                append("\n").append(AudioRoute.describe(s.route))
+                if (s.modeRepair.isNotEmpty()) {
+                    append("\nMode système corrigé avant l'ouverture : ")
+                    append(s.modeRepair.joinToString(", ") { AudioRoute.repairLabel(it) }).append('.')
+                }
+            } else {
+                append("\nSystème audio : pas encore relevé.")
+            }
+            append("\n").append(PlaybackCount.note(s.playbacks, s.playerAudible))
+            if (s.witness) {
+                append("\n").append(WitnessTone.describe())
+                append("\n").append(WitnessTone.verdict(spec, s.stages.firstOrNull()?.stereo))
+            }
             append("\nSpectre > 4 kHz : ")
             append(
                 when (spec?.band) {
@@ -745,7 +785,83 @@ object AudioDiagnosis {
                 "voie ${i + 1} " + String.format(Locale.FRANCE, "%.1f %%", ratio * 100.0)
             }.joinToString(", ", prefix = " (", postfix = ")")
         }
-        return "${reading.id} : ${j.percent()} $band — $place$channels"
+        val stereo = reading.stereo?.let { " · " + StereoImage.describe(it) } ?: ""
+        return "${reading.id} : ${j.percent()} $band — $place$channels$stereo"
+    }
+
+    /**
+     * H3 — image stéréo aux sondes. Une opposition de phase est une cause
+     * sûre ; si elle apparaît entre deux sondes, l'étage est nommé. Des
+     * voies identiques sur une vraie chaîne sont un constat (source mono
+     * dupliquée), pas un défaut de l'app.
+     */
+    private fun stereoFindings(s: AudioSnapshot): List<Finding> {
+        val readings = s.stages
+        if (readings.isEmpty()) return emptyList()
+        val out = ArrayList<Finding>()
+        val inversion = AudioStages.firstInversion(readings)
+        val first = readings.first().stereo
+        if (inversion != null) {
+            val index = readings.indexOfFirst { it.id == inversion.id }
+            val before = readings[index - 1]
+            out += Finding(
+                id = "etage_inverse",
+                confidence = Confidence.HAUTE,
+                kind = Kind.CAUSE,
+                symptom = "${before.id} corrélation " +
+                    String.format(Locale.FRANCE, "%+.2f", before.stereo?.correlation ?: 0.0) +
+                    " puis ${inversion.id} " +
+                    String.format(Locale.FRANCE, "%+.2f", inversion.stereo?.correlation ?: 0.0) + ".",
+                cause = "L'étage entre ces deux sondes inverse une voie. Le décodeur n'y est pour rien : " +
+                    "la sonde d'avant voyait les deux voies en phase.",
+                fix = Fix(
+                    file = FILE_VIEW,
+                    symbol = "ZunoAudioChain (ordre des processeurs)",
+                    media3 = "AudioProcessorChain : le processeur entre « ${before.id} » et « ${inversion.id} »",
+                    action = "Couper cet étage (voix claire : réglage existant) et remesurer. Ne pas changer le décodeur.",
+                    settingKey = null,
+                ),
+            )
+        } else if (first?.verdict == StereoImage.Verdict.INVERTED) {
+            out += Finding(
+                id = "phase_inversee",
+                confidence = Confidence.HAUTE,
+                kind = Kind.CAUSE,
+                symptom = "Dès la sonde décodeur, corrélation G/D " +
+                    String.format(Locale.FRANCE, "%+.2f", first.correlation) + ".",
+                cause = "Les deux voies sont en opposition de phase AVANT tout étage de l'app : le PCM du " +
+                    "décodeur (ou le flux) les porte ainsi. Au mélange (enceinte mono, barre de son, pièce), " +
+                    "la voix du centre s'annule : « dans un trou », effet karaoké. " +
+                    "ToInt16, le mapping de canaux et le trim sont avant cette sonde.",
+                fix = Fix(
+                    file = FILE_VIEW,
+                    symbol = "NativeVideoView.buildAudioSink / ChannelMappingAudioProcessor (Media3)",
+                    media3 = "DefaultAudioSink — mapping de canaux et conversion planaire → entrelacé (FFmpeg JNI)",
+                    action = "Comparer avec « Box AAC : essai » : si la box sort en phase et FFmpeg en opposition, " +
+                        "le défaut est dans le décodage FFmpeg de cette chaîne. Si les deux sont en opposition, " +
+                        "c'est le flux. Aucune correction appliquée tant que ce n'est pas tranché.",
+                    settingKey = AudioFixes.KEY_PLATFORM,
+                ),
+            )
+        }
+        if (!s.witness && first?.verdict == StereoImage.Verdict.IDENTICAL && s.inChannels >= 2) {
+            out += Finding(
+                id = "voies_identiques",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Deux voies annoncées, mais G = D à la sonde décodeur.",
+                cause = "Le fournisseur envoie un mono dupliqué en stéréo. Pas une inversion, pas un passe-bas : " +
+                    "la stéréo est simplement absente dès la source.",
+                fix = Fix(
+                    file = FILE_SPECTRUM,
+                    symbol = "StereoImage.judge",
+                    media3 = "AudioProcessor (mesure en copie)",
+                    action = "Rien dans l'app. Comparer dans VLC : le même mono s'y entendra.",
+                    settingKey = null,
+                ),
+            )
+        }
+        return out
     }
 
     /**

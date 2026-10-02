@@ -43,4 +43,40 @@ void main() {
     final AudioReportBook book = AudioReportBook.empty.add(channel: 'TF1', body: '   ', atMs: 1);
     expect(book.entries, isEmpty);
   });
+
+  test('la version courte garde les constats et jette les blocs d\'hypothèses', () {
+    const String sheet = 'reçu : AAC-LC 48 kHz 2 voies · décodé par : FFmpeg · sortie : PCM 16 bits 48 kHz 2 voies\n'
+        '→ Rien d\'anormal côté app\n'
+        'Codec : AAC-LC (mp4a.40.2)\n'
+        'Système audio : mode normal · haut-parleur d\'appel non\n'
+        'Spectre > 4 kHz : non mesuré\n'
+        '\n'
+        '[HAUTE · CAUSE] mode_appel\n'
+        'Symptôme : Le système est en mode COMMUNICATION.\n'
+        'Cause : Android envoie tout le média par le chemin voix.\n'
+        'Correctif : NativeVideoView.kt → applyModeRepair\n'
+        'Media3 : AudioManager.setMode\n'
+        'Action : Allumer « Mode : normal forcé ».\n'
+        'Réglage : zuno.audio.fix.mode_normal (défaut coupé, non imposé)\n'
+        '[INCERTAINE · INFO] spectre_absent\n'
+        'Symptôme : Spectre coupé.\n'
+        'Cause : Le réglage était coupé.\n'
+        'Correctif : AudioProbeProcessor.kt\n'
+        'Conclusion : 1 cause(s) sûre(s) — mode_appel.';
+    final String compact = compactAudioSheet(sheet);
+    expect(compact.contains('reçu : AAC-LC'), isTrue);
+    expect(compact.contains('Système audio : mode normal'), isTrue);
+    expect(compact.contains('[HAUTE · CAUSE] mode_appel'), isTrue);
+    expect(compact.contains('Symptôme : Le système est en mode COMMUNICATION.'), isTrue);
+    expect(compact.contains('Cause : Android envoie'), isTrue);
+    expect(compact.contains('Conclusion : 1 cause(s) sûre(s)'), isTrue);
+    expect(compact.contains('spectre_absent'), isFalse);
+    expect(compact.contains('Symptôme : Spectre coupé.'), isFalse);
+    expect(compact.contains('Correctif :'), isFalse);
+    expect(compact.contains('Media3 :'), isFalse);
+    expect(compact.contains('Action :'), isFalse);
+    expect(compact.contains('Réglage :'), isFalse);
+    // Idempotent : la même fiche redonne le même texte (dédoublonnage).
+    expect(compactAudioSheet(sheet), compact);
+  });
 }

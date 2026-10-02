@@ -44,6 +44,61 @@ object AudioFixes {
      */
     const val KEY_IMMEDIATE_HANDOFF: String = "zuno.audio.handoff.immediate"
 
+    /**
+     * CORRECTIF CANDIDAT H1 (02/10/2026) : vrai = avant chaque ouverture,
+     * si le système est en mode « appel / communication », si le
+     * haut-parleur d'appel ou le Bluetooth SCO est allumé, on remet le
+     * mode à normal (voir [AudioRoute.repairPlan]). Faux par défaut : on
+     * ne touche jamais au système tant que le journal ne montre pas
+     * l'anomalie. Réglage « Mode : normal forcé ».
+     */
+    const val KEY_MODE_NORMAL: String = "zuno.audio.fix.mode_normal"
+
+    /**
+     * ESSAI H2 (02/10/2026) : le type de contenu déclaré au système.
+     * « film » (défaut v106, CONTENT_TYPE_MOVIE), « musique » ou « parole ».
+     * Certains appareils appliquent un traitement « cinéma » (virtualisation,
+     * égaliseur) au type film. Réglage « Type : film / musique / parole ».
+     */
+    const val KEY_CONTENT_TYPE: String = "zuno.audio.attr.content"
+
+    const val CONTENT_FILM: String = "film"
+    const val CONTENT_MUSIQUE: String = "musique"
+    const val CONTENT_PAROLE: String = "parole"
+
+    @Volatile
+    var forceNormalMode: Boolean = false
+
+    /** Un des trois libellés ci-dessus. Tout autre texte vaut « film ». */
+    @Volatile
+    var contentType: String = CONTENT_FILM
+
+    /** Valeur suivante dans le cycle film → musique → parole → film. */
+    fun nextContentType(current: String): String = when (current) {
+        CONTENT_FILM -> CONTENT_MUSIQUE
+        CONTENT_MUSIQUE -> CONTENT_PAROLE
+        else -> CONTENT_FILM
+    }
+
+    /**
+     * Type de contenu à déclarer (constantes de [PlaybackCount]). La voix
+     * claire garde son comportement d'avant : elle impose « parole ».
+     * Sinon le réglage décide ; un réglage inconnu vaut « film » (v106).
+     */
+    fun contentTypeFor(clearVoice: Boolean, setting: String): Int {
+        if (clearVoice) return PlaybackCount.CONTENT_SPEECH
+        return when (setting) {
+            CONTENT_MUSIQUE -> PlaybackCount.CONTENT_MUSIC
+            CONTENT_PAROLE -> PlaybackCount.CONTENT_SPEECH
+            else -> PlaybackCount.CONTENT_MOVIE
+        }
+    }
+
+    /** Libellé lisible du type déclaré, pour la fiche. */
+    fun contentTypeLabel(clearVoice: Boolean, setting: String): String =
+        PlaybackCount.contentLabel(contentTypeFor(clearVoice, setting)) +
+            (if (clearVoice) " (imposé par la voix claire)" else "")
+
     @Volatile
     var androidFocus: Boolean = false
 

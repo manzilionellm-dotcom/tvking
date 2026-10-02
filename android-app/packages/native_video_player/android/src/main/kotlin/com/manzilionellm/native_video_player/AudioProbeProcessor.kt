@@ -6,6 +6,7 @@ import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
 import com.manzilionellm.native_video_player.logic.ProbeAttach
+import com.manzilionellm.native_video_player.logic.StereoImage
 import java.nio.ByteBuffer
 
 /**
@@ -26,13 +27,16 @@ import java.nio.ByteBuffer
  * ne change pas.
  *
  * Allumée : on copie les échantillons tels quels vers la sortie, et on
- * en garde une statistique (énergie au-dessus de 4 kHz, saturation).
- * Aucun gain, aucun filtre sur le son qui sort.
+ * en garde deux statistiques : l'énergie au-dessus de 4 kHz et la
+ * saturation ([AudioSpectrum]), et depuis le 02/10/2026 l'image stéréo
+ * (corrélation gauche/droite, [StereoImage]) pour voir une opposition
+ * de phase que la bande seule ne montre pas. Aucun gain, aucun filtre
+ * sur le son qui sort.
  */
 @UnstableApi
 class AudioProbeProcessor(
     val stage: String,
-    private val onJudgement: (String, AudioSpectrum.Judgement) -> Unit,
+    private val onJudgement: (String, AudioSpectrum.Judgement, StereoImage.Judgement?) -> Unit,
 ) : BaseAudioProcessor() {
 
     @Volatile
@@ -52,6 +56,7 @@ class AudioProbeProcessor(
 
     private var acc: AudioSpectrum.Accum = AudioSpectrum.start(48_000)
     private var perChannel: List<AudioSpectrum.Accum> = emptyList()
+    private var stereo: StereoImage.Accum = StereoImage.start(2)
     private var lastKey: String? = null
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
@@ -71,6 +76,7 @@ class AudioProbeProcessor(
         perChannel = List(inputAudioFormat.channelCount.coerceIn(1, 8)) {
             AudioSpectrum.start(inputAudioFormat.sampleRate)
         }
+        stereo = StereoImage.start(inputAudioFormat.channelCount)
         lastKey = null
         // Même format en sortie : Media3 ne rééchantillonne pas à cause de nous.
         return inputAudioFormat
@@ -112,10 +118,13 @@ class AudioProbeProcessor(
                     AudioSpectrum.pushChannel(channelAcc, pcm, channels, index)
                 }
             }
+            // Deux voies seulement : ailleurs push() rend l'accumulateur inchangé.
+            stereo = StereoImage.push(stereo, pcm, channels)
             usefulFrames = acc.frames
             val ratios = perChannel.map { AudioSpectrum.judge(it).highRatio }
             val judged = AudioSpectrum.judge(acc).copy(channelHighRatios = ratios)
-            publish(judged)
+            val image = if (channels == 2) StereoImage.judge(stereo) else null
+            publish(judged, image)
         }
         // Le tampon d'entrée repart inchangé. On ne touche pas un seul échantillon.
         output.put(inputBuffer)
@@ -123,18 +132,18 @@ class AudioProbeProcessor(
     }
 
     /**
-     * Quand la bande ou le pourcentage arrondi change. 2,0 % puis 0,8 %
-     * sont la même classe « basse » : on veut quand même le nouveau chiffre.
-     * On ignore la fenêtre trop courte.
+     * Quand la bande, le pourcentage arrondi ou le verdict stéréo change.
+     * 2,0 % puis 0,8 % sont la même classe « basse » : on veut quand même
+     * le nouveau chiffre. On ignore la fenêtre trop courte.
      */
-    private fun publish(judged: AudioSpectrum.Judgement) {
+    private fun publish(judged: AudioSpectrum.Judgement, image: StereoImage.Judgement?) {
         when (judged.band) {
             AudioSpectrum.Band.SHORT, AudioSpectrum.Band.SILENCE -> return
             else -> Unit
         }
-        val key = judged.band.name + " " + judged.percent()
+        val key = judged.band.name + " " + judged.percent() + " " + (image?.verdict?.name ?: "-")
         if (key == lastKey) return
         lastKey = key
-        onJudgement(stage, judged)
+        onJudgement(stage, judged, image)
     }
 }
