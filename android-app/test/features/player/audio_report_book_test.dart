@@ -79,4 +79,12 @@ void main() {
     // Idempotent : la même fiche redonne le même texte (dédoublonnage).
     expect(compactAudioSheet(sheet), compact);
   });
+
+  test('la clé de dédoublonnage ignore la ligne « Lectures audio »', () {
+    const String a = 'reçu : AAC-LC\nLectures audio sur l\'appareil : 0 — aucune\nSpectre > 4 kHz : non mesuré';
+    const String b = 'reçu : AAC-LC\nLectures audio sur l\'appareil : 1 — la nôtre seulement\nSpectre > 4 kHz : non mesuré';
+    expect(audioSheetDedupKey(a), audioSheetDedupKey(b));
+    expect(audioSheetDedupKey(a).contains('Lectures audio'), isFalse);
+    expect(audioSheetDedupKey(a).contains('Spectre'), isTrue);
+  });
 }

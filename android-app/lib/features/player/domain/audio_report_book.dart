@@ -139,3 +139,14 @@ String compactAudioSheet(String sheet) {
   }
   return out.join('\n');
 }
+
+/// Clé de dédoublonnage d'une fiche courte : la même fiche, à la ligne
+/// « Lectures audio » près. Cette ligne change à chaque rappel d'Android
+/// (0 avant le démarrage, 1 pendant) et faisait écrire la fiche deux fois
+/// par ouverture alors qu'elle est déjà journalisée à part.
+String audioSheetDedupKey(String compact) {
+  return compact
+      .split('\n')
+      .where((String l) => !l.trim().startsWith('Lectures audio'))
+      .join('\n');
+}

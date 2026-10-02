@@ -104,10 +104,11 @@ void _wireAudioDiagnostic() {
     }
     unawaited(AudioReportStore.instance.record(channel: channel, body: safe));
     final String compact = compactAudioSheet(safe);
-    if (_lastAudioSheetByChannel[channel] == compact) return;
+    final String key = audioSheetDedupKey(compact);
+    if (_lastAudioSheetByChannel[channel] == key) return;
     // Borne : une entrée par chaîne vue, jamais plus de 64.
     if (_lastAudioSheetByChannel.length >= 64) _lastAudioSheetByChannel.clear();
-    _lastAudioSheetByChannel[channel] = compact;
+    _lastAudioSheetByChannel[channel] = key;
     bool first = true;
     for (final String raw in compact.split('\n')) {
       final String line = raw.trim();

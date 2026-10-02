@@ -414,3 +414,19 @@ Lecture attendue : ligne « Système audio » de France 24 et du témoin (mode, 
 | `zuno-essai.apk` (package `.essai`, « Zuno essai ») | téléphone | **1790942123** | `ceda9a59c20fe965bf6d49e07065ea64b1eb9095a201580df9fc4e42cb001801` | `5145b8e0…9e61`, v1/v2/v3 |
 
 Vérifié après retéléchargement : `sha256sum`, `aapt2 dump badging` (package, versionCode, label, permission `MODIFY_AUDIO_SETTINGS` présente), apksig (`Verifies: true`), `assets/zuno_temoin.m4a` (162 034 octets) dans les deux APK. La release `zuno-tv` (clients, v106 / 1790805013) et `phone-latest` n'ont pas bougé (`updated_at` et digests identiques avant et après). Le `version.json` de `zuno-tv-test` n'est pas réécrit par `variante=box` (il pointe encore sur 1790890368) : personne ne le lit pour la mise à jour, l'installation se fait par le lien direct.
+
+### Première lecture du journal téléphone (2 octobre 2026, 14:18–14:19, build 1790942123)
+
+PROUVÉ par le journal, sur 7 ouvertures (France Info, BEIN Sports MAX 7/8/9/4, BEIN Sports 3/2/1), Spectre coupé, « Mode : normal forcé » coupé pendant ces ouvertures :
+
+- `Système audio : mode normal · haut-parleur d'appel non · Bluetooth SCO non · … · micro : aucun enregistrement actif` à chaque ouverture et à chaque « Seconde N » → **H1 (mode appel) est écartée sur le téléphone**, le micro aussi.
+- **`route média : Bluetooth A2DP (profil musique) « HUAWEI FreeClip 2 »`** à chaque ouverture : Android envoie le son de Zuno vers des écouteurs Bluetooth Huawei FreeClip 2 (écouteurs ouverts, à clip), pas vers le haut-parleur du téléphone. Sorties connues : écouteur, haut-parleur intégré, **Bluetooth SCO « MANZI »** (un second appareil Bluetooth, profil appel seulement), A2DP « HUAWEI FreeClip 2 », téléphonie.
+- `Lectures audio : 1 — la nôtre seulement` pendant la lecture ; une seule « autre » (bip système, notification) à 14:19:10, app en arrière-plan. Aucune autre app ne joue pendant les chaînes.
+- Cycle : lecteurs 1, décodeurs 1, AudioTrack 1, repli aucun, volume lecteur 1,0, focus tenu. FFmpeg, AAC-LC 48 kHz stéréo, PCM 16 bits 48 kHz stéréo.
+- Le son témoin n'a pas été joué, le Spectre était coupé : pas de mesure PCM ni de stéréo dans ce journal.
+
+HYPOTHÈSE (la plus probable, à vérifier en un geste) : le son du téléphone part dans les FreeClip 2 (connectés, portés ou non). Entendu de loin, le son qui fuit d'écouteurs ouverts est fin, lointain, sans graves : « vieille radio », « dans un trou ». Même route pour 7 MOTION (mpv) : Android route par appareil, pas par app. Ça explique la cause commune aux deux lecteurs **sur le téléphone**. La box n'est pas concernée par cette route : son journal (build 1790942717) doit être lu à part.
+
+Test : couper le Bluetooth du téléphone (ou déconnecter les FreeClip 2), rouvrir une chaîne, écouter. La ligne « Système audio » doit alors dire `route média : haut-parleur intégré`. Net → cause trouvée pour le téléphone, l'app n'est pas modifiée. Toujours mauvais → jouer le son témoin et allumer Spectre.
+
+Correction côté app (commit suivant, pas encore dans un build) : la fiche était encore écrite deux fois par ouverture parce que la ligne « Lectures audio » passe de 0 à 1 entre les deux envois ; la clé de dédoublonnage l'ignore maintenant (`audioSheetDedupKey`).
