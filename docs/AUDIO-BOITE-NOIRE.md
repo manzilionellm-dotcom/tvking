@@ -405,3 +405,12 @@ Corrélation G/D **+0,999995**, énergie (G−D)/(G+D) **2,5 × 10⁻⁶** (voie
 4. Boîte noire → Copier, coller.
 
 Lecture attendue : ligne « Système audio » de France 24 et du témoin (mode, route, micro), ligne « Lectures audio » (autre app ?), « stéréo » des quatre sondes, fiche « Son témoin ».
+
+### Builds de test publiés (2 octobre 2026, commit 0a5e1c5, release `zuno-tv-test` seulement)
+
+| Fichier | Appareil | versionCode (Boîte noire : `v106+…`) | SHA-256 | Signature |
+| --- | --- | --- | --- | --- |
+| `zuno-tv.apk` | box de test | **1790942717** | `ab65e8f89f649399d85b4d454d549cba696f2906460dd1c1c6b39bc3f610f01b` | `5145b8e0…9e61`, v1/v2/v3 |
+| `zuno-essai.apk` (package `.essai`, « Zuno essai ») | téléphone | **1790942123** | `ceda9a59c20fe965bf6d49e07065ea64b1eb9095a201580df9fc4e42cb001801` | `5145b8e0…9e61`, v1/v2/v3 |
+
+Vérifié après retéléchargement : `sha256sum`, `aapt2 dump badging` (package, versionCode, label, permission `MODIFY_AUDIO_SETTINGS` présente), apksig (`Verifies: true`), `assets/zuno_temoin.m4a` (162 034 octets) dans les deux APK. La release `zuno-tv` (clients, v106 / 1790805013) et `phone-latest` n'ont pas bougé (`updated_at` et digests identiques avant et après). Le `version.json` de `zuno-tv-test` n'est pas réécrit par `variante=box` (il pointe encore sur 1790890368) : personne ne le lit pour la mise à jour, l'installation se fait par le lien direct.
