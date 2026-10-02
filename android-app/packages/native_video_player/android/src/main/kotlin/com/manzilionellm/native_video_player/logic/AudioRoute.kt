@@ -331,7 +331,7 @@ object AudioRoute {
                 fix = AudioDiagnosis.Fix(
                     file = FILE_VIEW,
                     symbol = "NativeVideoView.applyModeRepair / routeSnapshot",
-                    media3 = "AudioManager.getDevicesForAttributes(USAGE_MEDIA) (hors Media3)",
+                    media3 = "AudioManager.getAudioDevicesForAttributes(USAGE_MEDIA) (hors Media3)",
                     action = "Allumer « Mode : normal forcé », rouvrir, relire la route. Si elle reste sur " +
                         "l'écouteur, redémarrer l'appareil et fermer l'app qui tient l'appel.",
                     settingKey = AudioFixes.KEY_MODE_NORMAL,
@@ -397,7 +397,7 @@ object AudioRoute {
                 fix = AudioDiagnosis.Fix(
                     file = FILE_ROUTE,
                     symbol = "AudioRoute.findings",
-                    media3 = "AudioManager.getDevicesForAttributes",
+                    media3 = "AudioManager.getAudioDevicesForAttributes",
                     action = "Aucun correctif dans l'app.",
                     settingKey = null,
                 ),

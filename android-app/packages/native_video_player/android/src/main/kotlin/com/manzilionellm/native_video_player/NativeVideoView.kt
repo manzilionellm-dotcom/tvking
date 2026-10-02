@@ -586,7 +586,7 @@ class NativeVideoView(
                     .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
                     .setContentType(declaredContentType())
                     .build()
-                am.getDevicesForAttributes(attrs).mapNotNull { device(it) }
+                am.getAudioDevicesForAttributes(attrs).mapNotNull { device(it) }
             } else {
                 null
             }
