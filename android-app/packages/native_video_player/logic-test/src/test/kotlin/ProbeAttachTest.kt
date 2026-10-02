@@ -107,23 +107,28 @@ class ProbeAttachTest {
                 probeInChain = false,
                 probeReject = ProbeAttach.REJECT_OFF,
                 playerAudible = true,
-                zunoPlaybacks = 0,
-                boxPlaybacks = 0,
+                playback = AudioRouteState.attribute(announced = 0, uidMatches = null, ourTracks = 0),
             ),
         )
         assertTrue(report.contains("pas branchée"))
         assertFalse(report.contains("Pas de mesure PCM"))
+        assertFalse(report.contains("spectre_absent"), report)
         assertTrue(report.contains("alors que le lecteur joue"))
     }
 
     @Test
     fun zeroLecturePendantQueCaJoueNestPasUneAbsenceDeSon() {
-        val note = VolumeTrace.playbackNote(zuno = 0, box = 0, audible = true)
+        val early = AudioRouteState.attribute(announced = 0, uidMatches = null, ourTracks = 0)
+        val note = VolumeTrace.playbackNote(early, audible = true)
         assertTrue(note.contains("0"))
         assertTrue(note.contains("avant que Android"))
-        val idle = VolumeTrace.playbackNote(zuno = 0, box = 0, audible = false)
-        assertTrue(idle.contains("ne joue pas encore") || idle.contains("avant le démarrage"))
-        val one = VolumeTrace.playbackNote(zuno = 1, box = 1, audible = true)
-        assertTrue(one.contains("1"))
+        val idle = VolumeTrace.playbackNote(early, audible = false)
+        assertTrue(idle.contains("avant le démarrage") || idle.contains("n'est pas le nôtre"))
+        val one = VolumeTrace.playbackNote(
+            AudioRouteState.attribute(announced = 1, uidMatches = null, ourTracks = 1),
+            audible = true,
+        )
+        assertTrue(one.contains("c'est cette app"), one)
+        assertFalse(one.contains("lectures Zuno 0"), one)
     }
 }

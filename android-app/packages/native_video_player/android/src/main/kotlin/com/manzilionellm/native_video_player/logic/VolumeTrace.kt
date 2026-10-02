@@ -34,10 +34,10 @@ object VolumeTrace {
         /** Vrai = réglage de repli, Media3 gère le focus (et peut baisser). */
         val media3Focus: Boolean,
         val pausedByFocus: Boolean,
-        /** Lectures de notre processus. -1 = pas séparable ou pas encore compté. */
-        val zunoPlaybacks: Int,
-        /** Lectures de toute la box. -1 = pas encore compté. */
-        val boxPlaybacks: Int,
+        /** Qui joue vraiment. Le compteur client Android 16 n'est plus cru tel quel. */
+        val owner: AudioRouteState.Owner = AudioRouteState.Owner.unknown(),
+        /** Mode, haut-parleur d'appel, Bluetooth, sortie, flux réel. */
+        val path: AudioRouteState.Facts = AudioRouteState.Facts(),
     )
 
     fun line(s: Sample): String {
@@ -62,11 +62,10 @@ object VolumeTrace {
             s.focusHeld -> "tenu par Zuno"
             else -> "pas tenu"
         }
-        val zuno = if (s.zunoPlaybacks < 0) "pas encore comptées" else s.zunoPlaybacks.toString()
-        val box = if (s.boxPlaybacks < 0) "pas encore comptées" else s.boxPlaybacks.toString()
         return "Seconde ${s.second} : volume lecteur $player, " +
             "volume AudioTrack $track, volume musique de la box $stream, " +
-            "focus $focus, lectures Zuno $zuno, lectures de la box $box."
+            "focus $focus. ${AudioRouteState.playbackPhrase(s.owner)} " +
+            AudioRouteState.pathLine(s.path)
     }
 
     /**
@@ -74,28 +73,6 @@ object VolumeTrace {
      * 0 pendant que le son s'entend = la fiche est en avance sur Android,
      * pas la preuve qu'il n'y a pas de lecture.
      */
-    fun playbackNote(zuno: Int, box: Int, audible: Boolean): String {
-        if (zuno < 0 && box < 0) {
-            return "Lectures audio de Zuno : pas encore comptées. " +
-                "Android n'a pas encore rappelé, ou la fiche part avant le démarrage."
-        }
-        if (zuno < 0) {
-            return "Lectures audio de Zuno : Android ne les sépare pas des autres apps " +
-                "(compte de la box : $box). Un 0 ici veut dire qu'aucune lecture n'était " +
-                "encore annoncée au moment de la fiche."
-        }
-        if (zuno == 0 && audible) {
-            return "Lectures audio de Zuno : 0, alors que le lecteur joue. " +
-                "La fiche a été écrite avant que Android compte cette lecture, " +
-                "ou le rappel n'est pas encore arrivé. Ce n'est pas la preuve qu'il n'y a pas de son. " +
-                "Les lignes « Seconde 1 » à « Seconde $SECONDS » de la boîte noire donnent le chiffre pendant que ça joue."
-        }
-        if (zuno == 0) {
-            return "Lectures audio de Zuno : 0. Le lecteur ne joue pas encore, " +
-                "ou la lecture est arrêtée (Home, pause, zap en cours). " +
-                "Si le son s'entend quand même, la fiche a été prise avant le démarrage de l'AudioTrack."
-        }
-        val boxText = if (box < 0) "" else " Lectures de la box : $box."
-        return "Lectures audio de Zuno : $zuno.$boxText"
-    }
+    fun playbackNote(owner: AudioRouteState.Owner, audible: Boolean): String =
+        AudioRouteState.playbackNote(owner, audible)
 }

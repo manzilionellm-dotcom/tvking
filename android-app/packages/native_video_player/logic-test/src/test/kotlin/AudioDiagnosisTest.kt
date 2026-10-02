@@ -1,10 +1,13 @@
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
 import com.manzilionellm.native_video_player.logic.AudioFixes
+import com.manzilionellm.native_video_player.logic.AudioPhase
+import com.manzilionellm.native_video_player.logic.AudioRouteState
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
 import com.manzilionellm.native_video_player.logic.AudioStages
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -307,6 +310,64 @@ class AudioDiagnosisTest {
             AudioDiagnosis.verdicts(two).toString(),
         )
         assertTrue(AudioDiagnosis.report(two).contains("⚠ plus d'un actif"))
+    }
+
+    @Test
+    fun voiesOpposeesSontDitesSansChangerLeDecodeur() {
+        val opposed = AudioPhase.judge(
+            AudioPhase.push(
+                AudioPhase.start(),
+                ShortArray(48_000 * 2) { i ->
+                    val frame = i / 2
+                    val s = (kotlin.math.sin(frame / 18.0) * 8000.0).toInt().toShort()
+                    if (i % 2 == 0) s else (-s.toInt()).toShort()
+                },
+                2,
+            ),
+            2,
+        )
+        assertTrue(opposed.opposed)
+        val j = AudioSpectrum.Judgement(
+            band = AudioSpectrum.Band.LOW,
+            highRatio = 0.02,
+            clippedFraction = 0.0,
+            peak = 8000,
+            frames = 48_000,
+            sampleRate = 48_000,
+            phase = opposed,
+            recentHighRatio = 0.02,
+        )
+        val s = AudioSnapshot(
+            mime = "audio/mp4a-latm", codecs = "mp4a.40.2",
+            inSampleRate = 48_000, inChannels = 2,
+            decoder = "ffmpeg6.0-aac", outSampleRate = 48_000, outChannels = 2,
+            outEncoding = "PCM 16 bits", spectrum = j,
+            routeLine = AudioRouteState.pathLine(
+                AudioRouteState.Facts(mode = AudioRouteState.MODE_NORMAL),
+            ),
+        )
+        val report = AudioDiagnosis.report(s)
+        assertTrue(report.contains("voies opposées"), report)
+        assertTrue(report.contains("Corrélation gauche/droite"), report)
+        assertTrue(report.contains("Dernière seconde"), report)
+        assertTrue(report.contains("Chemin : mode normal"), report)
+        assertFalse(report.contains("spectre_absent"), report)
+        assertTrue(AudioDiagnosis.sureCauses(s).none { it.id == "voies_opposees" })
+        assertTrue(AudioDiagnosis.findings(s).any { it.id == "voies_opposees" })
+    }
+
+    @Test
+    fun laFicheSansSpectreNeRepetePlusLeBlocAbsent() {
+        val report = AudioDiagnosis.report(
+            AudioSnapshot(
+                mime = "audio/mp4a-latm", codecs = "mp4a.40.2",
+                decoder = "ffmpeg6.0-aac", outSampleRate = 48_000, outChannels = 2,
+                outEncoding = "PCM 16 bits",
+            ),
+        )
+        assertFalse(report.contains("spectre_absent"), report)
+        assertTrue(report.contains("Sonde coupée") || report.contains("Spectre > 4 kHz"), report)
+        assertEquals(1, report.split("Conclusion :").size - 1)
     }
 
     private fun spectrum(clip: Double, band: AudioSpectrum.Band, ratio: Double) = AudioSpectrum.Judgement(

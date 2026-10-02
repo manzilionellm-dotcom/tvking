@@ -39,6 +39,26 @@ void main() {
     expect(book.entries.first.body.length, AudioReportBook.maxBodyChars);
   });
 
+  test('la même fiche ne s\'écrit qu\'une fois, le journal s\'ajoute', () {
+    const AudioReportBook book = AudioReportBook.empty;
+    const String sheet = 'reçu : AAC\nCodec : AAC-LC\nConclusion : aucune cause sûre.';
+    final AudioReportBook a = book.add(channel: 'TF1', body: sheet, atMs: 1);
+    final AudioReportBook b = a.add(channel: 'TF1', body: sheet, atMs: 2);
+    expect(b.entries.single.body, sheet);
+    expect(b.entries.single.atMs, 1);
+    final AudioReportBook c = b.add(channel: 'TF1', body: 'Seconde 1 : volume lecteur 1,0', atMs: 3);
+    final AudioReportBook d = c.add(channel: 'TF1', body: 'Seconde 1 : volume lecteur 1,0', atMs: 4);
+    expect(d.entries.single.body, '$sheet\nSeconde 1 : volume lecteur 1,0');
+    final AudioReportBook e = d.add(
+      channel: 'TF1',
+      body: 'reçu : AAC\nCodec : AAC-LC\nSpectre > 4 kHz : bas\nConclusion : aucune cause sûre.',
+      atMs: 5,
+    );
+    expect(e.entries.single.body.contains('Spectre > 4 kHz'), isTrue);
+    expect(e.entries.single.body.contains('Seconde 1'), isTrue);
+    expect('spectre_absent'.allMatches(e.entries.single.body), isEmpty);
+  });
+
   test('un corps vide ne crée pas de fiche', () {
     final AudioReportBook book = AudioReportBook.empty.add(channel: 'TF1', body: '   ', atMs: 1);
     expect(book.entries, isEmpty);

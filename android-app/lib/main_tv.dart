@@ -69,7 +69,10 @@ void _syncPlayerLanguage() {
 /// constat, étiquette « SON », avec la chaîne en cours quand on la connaît.
 void _wireAudioDiagnostic() {
   NativeVideoController.onAudioDiagnostic = (String diagnostic) {
-    final String channel = NowPlaying.instance.current;
+    // « Son témoin » : le nom vient de l'écran Diagnostic, pas du
+    // heartbeat (NowPlaying reste la chaîne, ou vide).
+    final String channel =
+        AudioReportStore.channelOverride ?? NowPlaying.instance.current;
     final String safe = redactAudioText(diagnostic);
     bool first = true;
     for (final String raw in safe.split('\n')) {

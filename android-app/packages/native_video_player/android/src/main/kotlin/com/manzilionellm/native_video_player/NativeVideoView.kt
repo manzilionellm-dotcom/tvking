@@ -62,6 +62,7 @@ import com.manzilionellm.native_video_player.logic.AudioGate
 import com.manzilionellm.native_video_player.logic.AudioHandoff
 import com.manzilionellm.native_video_player.logic.AudioFocusPolicy
 import com.manzilionellm.native_video_player.logic.AudioFixes
+import com.manzilionellm.native_video_player.logic.AudioRouteState
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
 import com.manzilionellm.native_video_player.logic.AudioStages
@@ -372,9 +373,21 @@ class NativeVideoView(
     // Incrémenté à chaque silence : les lignes de l'ancienne chaîne s'arrêtent.
     private var volumeTraceToken = 0
 
-    // Dernier compteur Android. -1 = pas encore rappelé.
-    private var lastZunoPlaybacks = -1
-    private var lastBoxPlaybacks = -1
+    // Dernier compteur Android. Vide tant que le rappel n'est pas arrivé.
+    // getClientUid est bloqué sur Android 16 : on ne s'en sert que s'il
+    // renvoie un vrai uid. Sinon la lecture qui naît avec notre AudioTrack
+    // est la nôtre (voir AudioRouteState).
+    private data class Heard(
+        val usage: Int,
+        val contentType: Int,
+        val deviceType: Int,
+        val deviceName: String,
+        val uid: Int,
+    )
+    private var heard: List<Heard> = emptyList()
+    private var heardReady = false
+    /** Dernière fiche envoyée : on ne la réécrit pas si rien n'a changé. */
+    private var lastDiagText: String? = null
 
     /** Ce que la sortie son de la box accepte tel quel (HDMI / barre de son). */
     private val outputCaps: String = try {
@@ -600,28 +613,21 @@ class NativeVideoView(
         val cb = object : AudioManager.AudioPlaybackCallback() {
             override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
                 val list = configs ?: return
-                val types = list.map { c ->
-                    when (c.audioAttributes.contentType) {
-                        android.media.AudioAttributes.CONTENT_TYPE_MOVIE -> "film"
-                        android.media.AudioAttributes.CONTENT_TYPE_SPEECH -> "parole"
-                        android.media.AudioAttributes.CONTENT_TYPE_MUSIC -> "musique"
-                        android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION -> "bip système"
-                        else -> "autre"
-                    }
+                val next = list.map { c ->
+                    val dev = routedOf(c)
+                    Heard(
+                        usage = c.audioAttributes.usage,
+                        contentType = c.audioAttributes.contentType,
+                        deviceType = dev.first,
+                        deviceName = dev.second,
+                        uid = playbackClientUid(c),
+                    )
                 }
-                val line = "Lectures audio actives sur la box : ${list.size}" +
-                    (if (types.isEmpty()) "" else " (${types.joinToString(", ")})") +
-                    (if (list.size > 1) " → deux sons en même temps" else "")
-                lastBoxPlaybacks = list.size
-                // getClientUid existe depuis Android 9, mais le SDK de
-                // compilation du plugin ne l'expose pas toujours. On le
-                // lit par réflexion : -1 = on ne peut pas séparer nos lectures.
-                val mine = Process.myUid()
-                lastZunoPlaybacks = if (Build.VERSION.SDK_INT >= 28) {
-                    list.count { playbackClientUid(it) == mine }
-                } else {
-                    -1
-                }
+                heard = next
+                heardReady = true
+                val owner = ownerNow()
+                val line = "Annonces : Android en compte ${next.size}. " +
+                    AudioRouteState.playbackPhrase(owner)
                 if (line != lastPlaybackLine) {
                     lastPlaybackLine = line
                     handler.post {
@@ -646,12 +652,91 @@ class NativeVideoView(
      * (avant Android 9, ou méthode absente du SDK de compilation).
      */
     private fun playbackClientUid(config: AudioPlaybackConfiguration): Int {
+        if (Build.VERSION.SDK_INT < 28) return -1
         return try {
             val method = AudioPlaybackConfiguration::class.java.getMethod("getClientUid")
             method.invoke(config) as? Int ?: -1
         } catch (_: Exception) {
+            // Android 16 bloque cette méthode cachée. -1 = on ne s'en sert pas.
             -1
         }
+    }
+
+    /** Sortie réelle de cette lecture. API 31+. (−1, "") si Android ne la dit pas. */
+    private fun routedOf(config: AudioPlaybackConfiguration): Pair<Int, String> {
+        if (Build.VERSION.SDK_INT < 31) return -1 to ""
+        return try {
+            val info = config.audioDeviceInfo ?: return -1 to ""
+            info.type to AudioRouteState.safeName(info.productName?.toString())
+        } catch (_: Throwable) {
+            -1 to ""
+        }
+    }
+
+    /**
+     * Appareils qu'Android choisirait pour un son média « film »
+     * (ou « parole » si voix claire). API 33+. Vide = pas lu.
+     */
+    private fun plannedTypes(): List<Int> {
+        if (Build.VERSION.SDK_INT < 33) return emptyList()
+        val am = audioManager ?: return emptyList()
+        return try {
+            val content = if (clearVoiceEnabled) {
+                android.media.AudioAttributes.CONTENT_TYPE_SPEECH
+            } else {
+                android.media.AudioAttributes.CONTENT_TYPE_MOVIE
+            }
+            val attrs = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .setContentType(content)
+                .build()
+            am.getAudioDevicesForAttributes(attrs).map { it.type }
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
+
+    private fun ownerNow(): AudioRouteState.Owner {
+        val tracks = PlayerCensus.tracksAlive()
+        if (!heardReady) return AudioRouteState.Owner.unknown(tracks)
+        val real = heard.any { it.uid > 0 }
+        val matches = if (real) heard.count { it.uid == Process.myUid() } else null
+        return AudioRouteState.attribute(heard.size, matches, tracks)
+    }
+
+    /** Chiffres du chemin, lus maintenant. Ne change pas le mode Android. */
+    private fun currentFacts(): AudioRouteState.Facts {
+        val am = audioManager
+        val mode = try {
+            am?.mode ?: -1
+        } catch (_: RuntimeException) {
+            -1
+        }
+        val spk = try {
+            am?.isSpeakerphoneOn ?: false
+        } catch (_: RuntimeException) {
+            false
+        }
+        val sco = try {
+            am?.isBluetoothScoOn ?: false
+        } catch (_: RuntimeException) {
+            false
+        }
+        val primary = when {
+            heard.size == 1 -> heard.first()
+            else -> heard.firstOrNull { it.usage == android.media.AudioAttributes.USAGE_MEDIA }
+                ?: heard.firstOrNull()
+        }
+        return AudioRouteState.Facts(
+            mode = mode,
+            speakerphone = spk,
+            bluetoothSco = sco,
+            routedType = primary?.deviceType ?: -1,
+            routedName = primary?.deviceName ?: "",
+            plannedTypes = plannedTypes(),
+            usage = primary?.usage ?: -1,
+            contentType = primary?.contentType ?: -1,
+        )
     }
 
     private fun unwatchOtherPlaybacks() {
@@ -1049,6 +1134,7 @@ class NativeVideoView(
                 // Diagnostic du son : nouvelle chaîne, compteurs à zéro.
                 diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
                 diagLastUnderrunSentMs = 0L
+                lastDiagText = null
                 // Langue audio / sous-titres préférée (langue de l'app) : si le
                 // film propose la piste, ExoPlayer la choisit d'office.
                 prefAudio = call.argument<String>("preferredAudio")
@@ -1744,8 +1830,8 @@ class NativeVideoView(
                             focusHeld = focusHeld,
                             media3Focus = AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
                             pausedByFocus = pausedByFocus,
-                            zunoPlaybacks = lastZunoPlaybacks,
-                            boxPlaybacks = lastBoxPlaybacks,
+                            owner = ownerNow(),
+                            path = currentFacts(),
                         ),
                     ),
                 )
@@ -2282,23 +2368,28 @@ class NativeVideoView(
             probeInChain = probeDecoder.lastAccepted,
             probeFrames = probeDecoder.usefulFrames,
             probeReject = if (AudioFixes.probe) probeDecoder.lastReject else null,
-            zunoPlaybacks = lastZunoPlaybacks,
-            boxPlaybacks = lastBoxPlaybacks,
+            playback = ownerNow(),
+            routeLine = AudioRouteState.pathLine(currentFacts()),
             playerAudible = audible,
         )
         diag = live
-        val text = buildString {
+        // Le corps, sans la ligne « sortie de la box » : elle ne change
+        // pas, et l'ajouter seulement la première fois faisait croire
+        // qu'une deuxième fiche était différente.
+        val body = AudioDiagnosis.redact(buildString {
             append(AudioDiagnosis.describe(live))
             for (v in AudioDiagnosis.verdicts(diag)) append("\n→ ").append(v)
             append("\n").append(AudioDiagnosis.report(diag))
-            if (!diagCapsSent) {
-                diagCapsSent = true
-                append("\n").append(outputCaps)
-            }
+        })
+        if (body == lastDiagText) return
+        lastDiagText = body
+        val text = if (!diagCapsSent) {
+            diagCapsSent = true
+            body + "\n" + outputCaps
+        } else {
+            body
         }
-        // Aucune URL de flux ni mot de passe : le rapport n'en a pas,
-        // et on retire quand même un secret si un libellé en portait un.
-        emit("audioDiag", AudioDiagnosis.redact(text))
+        emit("audioDiag", text)
     }
 
     private fun encodingName(encoding: Int): String = when (encoding) {

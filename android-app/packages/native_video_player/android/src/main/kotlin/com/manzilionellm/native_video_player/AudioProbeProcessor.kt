@@ -4,6 +4,7 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
+import com.manzilionellm.native_video_player.logic.AudioPhase
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
 import com.manzilionellm.native_video_player.logic.ProbeAttach
 import java.nio.ByteBuffer
@@ -26,8 +27,9 @@ import java.nio.ByteBuffer
  * ne change pas.
  *
  * Allumée : on copie les échantillons tels quels vers la sortie, et on
- * en garde une statistique (énergie au-dessus de 4 kHz, saturation).
- * Aucun gain, aucun filtre sur le son qui sort.
+ * en garde une statistique (énergie au-dessus de 4 kHz, saturation,
+ * corrélation gauche/droite sur 1 s). Aucun gain, aucun filtre sur
+ * le son qui sort.
  */
 @UnstableApi
 class AudioProbeProcessor(
@@ -54,6 +56,14 @@ class AudioProbeProcessor(
     private var perChannel: List<AudioSpectrum.Accum> = emptyList()
     private var lastKey: String? = null
 
+    // Dernière seconde, à part du cumul depuis l'ouverture.
+    // Une voix (aigus bas) puis un bruit (aigus hauts) ne se mélangent
+    // pas dans ce chiffre. La corrélation G/D est sur la même seconde.
+    private var phaseAcc: AudioPhase.Accum = AudioPhase.start()
+    private var recentAcc: AudioSpectrum.Accum = AudioSpectrum.start(48_000)
+    private var lastPhase: AudioPhase.Reading? = null
+    private var lastRecent: Double? = null
+
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         val decision = ProbeAttach.onConfigure(
             enabled = enabled,
@@ -71,6 +81,10 @@ class AudioProbeProcessor(
         perChannel = List(inputAudioFormat.channelCount.coerceIn(1, 8)) {
             AudioSpectrum.start(inputAudioFormat.sampleRate)
         }
+        phaseAcc = AudioPhase.start()
+        recentAcc = AudioSpectrum.start(inputAudioFormat.sampleRate)
+        lastPhase = null
+        lastRecent = null
         lastKey = null
         // Même format en sortie : Media3 ne rééchantillonne pas à cause de nous.
         return inputAudioFormat
@@ -113,8 +127,30 @@ class AudioProbeProcessor(
                 }
             }
             usefulFrames = acc.frames
+            val rate = inputAudioFormat.sampleRate
+            phaseAcc = AudioPhase.push(phaseAcc, pcm, channels)
+            recentAcc = AudioSpectrum.push(recentAcc, pcm, channels)
+            // Une seconde pleine : on retient le chiffre, puis on ouvre
+            // la seconde suivante. Le cumul depuis l'ouverture, lui, reste.
+            if (AudioPhase.ready(phaseAcc, rate)) {
+                lastPhase = AudioPhase.judge(phaseAcc, channels)
+                val recent = AudioSpectrum.judge(recentAcc)
+                lastRecent = when (recent.band) {
+                    AudioSpectrum.Band.SHORT,
+                    AudioSpectrum.Band.SILENCE,
+                    AudioSpectrum.Band.RATE,
+                    -> null
+                    else -> recent.highRatio
+                }
+                phaseAcc = AudioPhase.start()
+                recentAcc = AudioSpectrum.start(rate)
+            }
             val ratios = perChannel.map { AudioSpectrum.judge(it).highRatio }
-            val judged = AudioSpectrum.judge(acc).copy(channelHighRatios = ratios)
+            val judged = AudioSpectrum.judge(acc).copy(
+                channelHighRatios = ratios,
+                phase = lastPhase,
+                recentHighRatio = lastRecent,
+            )
             publish(judged)
         }
         // Le tampon d'entrée repart inchangé. On ne touche pas un seul échantillon.
@@ -132,7 +168,24 @@ class AudioProbeProcessor(
             AudioSpectrum.Band.SHORT, AudioSpectrum.Band.SILENCE -> return
             else -> Unit
         }
-        val key = judged.band.name + " " + judged.percent()
+        // Classe, pas le centième : sinon une fiche par seconde.
+        val phaseKey = judged.phase?.let { p ->
+            when {
+                p.channels < 2 || p.correlation.isNaN() -> "mono"
+                p.opposed -> "oppose"
+                p.correlation >= 0.5 -> "ensemble"
+                p.correlation <= -0.3 -> "contra"
+                else -> "mixte"
+            }
+        } ?: "-"
+        val recentKey = judged.recentHighRatio?.let { r ->
+            when {
+                r >= AudioSpectrum.WIDE_MIN_RATIO -> "large"
+                r <= AudioSpectrum.LOW_MAX_RATIO -> "basse"
+                else -> "milieu"
+            }
+        } ?: "-"
+        val key = judged.band.name + " " + judged.percent() + " " + phaseKey + " " + recentKey
         if (key == lastKey) return
         lastKey = key
         onJudgement(stage, judged)

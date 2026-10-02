@@ -308,3 +308,8 @@ flutter:
     # le fond : remplace ce fichier par ta propre image 1920×1080, rien d'autre.
     - assets/branding/tv_hub_background.jpg
     - assets/branding/zuno_logo.png
+    # Son témoin du diagnostic (10 s, AAC-LC 48 kHz stéréo). Généré par
+    # ci/audio/make_witness.py : 5 s de voix synthétique, 5 s de bruit.
+    # Aucune chaîne, aucune adresse. Sert à entendre si le chemin de
+    # sortie de l'appareil est sourd, sans réseau.
+    - assets/audio/son_temoin.m4a

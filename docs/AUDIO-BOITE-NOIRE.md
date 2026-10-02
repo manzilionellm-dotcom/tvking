@@ -328,3 +328,28 @@ Lignes de boîte noire ajoutées (les anciennes restent) : `Zap : n°…`, `Zap 
 
 - Que la prochaine fiche France 24 affiche un pourcentage une seconde après l'ouverture.
 - Que les lignes « Seconde 1 » à « Seconde 10 » montrent un volume lecteur qui reste 1,0.
+
+## Mesures du chemin, de la phase, et son témoin (2 octobre 2026)
+
+Le décodeur est écarté (FFmpeg et le décodeur Samsung donnent le même son, les quatre sondes le même pourcentage). On ne change pas le son. On mesure trois choses que la fiche ne disait pas.
+
+1. **Chemin Android** (ligne « Chemin » et « Seconde N ») : mode (normal / communication / appel), haut-parleur d'appel, Bluetooth d'appel, sortie réelle, appareils prévus pour un son « film », type de flux réel. Un mode communication ou un Bluetooth d'appel est marqué « chemin d'appel ».
+2. **Corrélation gauche/droite** sur 1 s, et (G−D)/(G+D), copiés sans modifier le son. Voies opposées = voix au centre annulée. « Dernière seconde > 4 kHz » suit le son du moment (le pourcentage cumulé, lui, mélange toute l'ouverture).
+3. **Son témoin** : bouton « Jouer le son témoin » dans Diagnostic du son. Fichier embarqué, 10 s, AAC-LC 48 kHz stéréo, même lecteur. 5 s de voix synthétique, 5 s de bruit, voies ensemble. Bruit sourd → l'appareil. Bruit clair → la chaîne.
+
+Le compteur « lectures Zuno 0, lectures de la box 1 (film) » est retiré : sur Android 16 `getClientUid` ne répond pas, et ce « 1 (film) » était l'AudioTrack de Zuno. La fiche dit « c'est cette app » ou « une autre application joue en même temps ». Le bloc `spectre_absent` n'est plus répété. Une fiche identique n'est plus réécrite.
+
+Aucun interrupteur nouveau : ces mesures ne changent pas le chemin audio. Le bouton témoin allume Spectre (copie seulement) s'il était coupé.
+
+### PROUVÉ (machine, logic-test : 133 tests, 0 échec)
+
+- Voies identiques : corrélation > 0,95, pas opposées. Voies inversées : corrélation < −0,95, opposées.
+- Annonce 1 + notre AudioTrack vivant + compteur client illisible → cette app 1, autres apps 0. Pas la phrase « lectures Zuno 0 ».
+- Annonce 2 + un AudioTrack → autres apps 1.
+- Mode communication → la ligne contient « chemin d'appel ». Mode normal + HDMI → non.
+- Le témoin AAC, redécodé : moitié voix ≤ 12 % au-dessus de 4 kHz, moitié bruit ≥ 40 %.
+
+### PAS PROUVÉ (seulement sur l'appareil)
+
+- Le mode réel, la sortie réelle et la corrélation d'une chaîne de Lionel.
+- Que le témoin sonne clair ou sourd dans ses haut-parleurs.

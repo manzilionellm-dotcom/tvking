@@ -22,8 +22,8 @@ class VolumeTraceTest {
                     focusHeld = true,
                     media3Focus = false,
                     pausedByFocus = false,
-                    zunoPlaybacks = 1,
-                    boxPlaybacks = 1,
+                    owner = AudioRouteState.attribute(announced = 1, uidMatches = null, ourTracks = 1),
+                    path = AudioRouteState.Facts(mode = AudioRouteState.MODE_NORMAL),
                 ),
             )
         }
@@ -35,7 +35,9 @@ class VolumeTraceTest {
             assertTrue(line.contains("volume AudioTrack non lisible"), line)
             assertTrue(line.contains("volume musique de la box 15/15"), line)
             assertTrue(line.contains("focus tenu par Zuno"), line)
-            assertTrue(line.contains("lectures Zuno 1"), line)
+            assertTrue(line.contains("lectures de cette app 1"), line)
+            assertTrue(line.contains("autres apps 0"), line)
+            assertFalse(line.contains("lectures Zuno 0"), line)
             assertFalse(line.contains("0,2"), line)
         }
     }
@@ -54,8 +56,7 @@ class VolumeTraceTest {
                 focusHeld = true,
                 media3Focus = false,
                 pausedByFocus = false,
-                zunoPlaybacks = 0,
-                boxPlaybacks = 0,
+                owner = AudioRouteState.attribute(announced = 0, uidMatches = null, ourTracks = 0),
             ),
         )
         assertTrue(line.contains("volume lecteur 0,0"))
