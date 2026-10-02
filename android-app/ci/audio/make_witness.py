@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Génère assets/audio/son_temoin.m4a
+# Ce script ne part pas dans l'APK : le lecteur embarque le fichier déjà généré.
 #
 # 10 secondes, AAC-LC, 48 kHz, stéréo, deux voies identiques (pas d'opposition) :
 #   0–5 s  voix synthétique (harmoniques sous 3,2 kHz) → aigus bas
