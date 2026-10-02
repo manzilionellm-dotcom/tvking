@@ -36,10 +36,13 @@
 #       alignement sur la politique Flutter ; on autorise leur fusion dans un
 #       APK minSdk 21 (`tools:overrideLibrary`), sinon le build échoue.
 # =========================================================
+import os
 import re
 import sys
 
-APP_LABEL = "Zuno"
+# Variante « essai téléphone » : le workflow passe ZUNO_APP_LABEL="Zuno essai"
+# pour distinguer l'icône de la vraie app. Sans variable : « Zuno ».
+APP_LABEL = os.environ.get("ZUNO_APP_LABEL") or "Zuno"
 
 # Plugins dont le build.gradle annonce minSdk 24 (namespaces Android).
 OVERRIDE_LIBRARIES = (

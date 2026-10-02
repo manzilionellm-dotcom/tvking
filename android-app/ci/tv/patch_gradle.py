@@ -38,10 +38,15 @@
 #       --android-skip-build-dependency-validation, et le manifeste déclare
 #       tools:overrideLibrary pour les 4 plugins qui annoncent 24.
 # =========================================================
+import os
 import re
 import sys
 
-TV_APPLICATION_ID = "com.sevenmotion.tv.seven_tv"
+# Variante « essai téléphone » (workflow, input variante=telephone) : le
+# workflow passe ZUNO_APP_ID=com.sevenmotion.tv.seven_tv.essai pour que
+# l'APK s'installe À CÔTÉ d'un Zuno déjà présent (autre signature, autre
+# origine) au lieu d'être refusé. Sans variable : identité historique.
+TV_APPLICATION_ID = os.environ.get("ZUNO_APP_ID") or "com.sevenmotion.tv.seven_tv"
 
 LOADER = (
     "import java.util.Properties\n"
