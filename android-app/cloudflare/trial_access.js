@@ -23,10 +23,21 @@
 //    - une licence à durée échue bloque vraiment ;
 //    - « à vie » activé une seconde fois ne redébite pas
 //      (voir handleActivate).
+//
+//  Ajout de jours (panel, POST /api/v1/trial-extend) :
+//    on ne supprime rien. Une colonne extended_until et une table
+//    trial_extensions (qui / quand / combien) s'ajoutent.
+//    La fin devient max(fin actuelle, maintenant) + N jours,
+//    interrupteur coupé ou allumé. Une licence payée encore valide
+//    continue de primer.
 // =========================================================
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const TRIAL_DAYS = 7;
+
+/// Plafond d'un ajout de jours depuis le panel. Un entier au-dessus
+/// est refusé (pas de « 99999 jours » par erreur de frappe).
+export const MAX_EXTEND_DAYS = 365;
 
 /// true seulement si l'opérateur a ALLUMÉ l'interrupteur.
 export function trialEnforcementOn(env) {
@@ -50,16 +61,94 @@ let _anchorReady = false;
 
 export async function ensureTrialAnchorTable(env) {
   if (_anchorReady || !env || !env.DB) return;
+  // extended_until : date de fin posée par « Ajouter des jours ».
+  // Colonne ajoutée, jamais supprimée. Une table déjà créée sans elle
+  // reçoit l'ALTER juste après (échec ignoré si la colonne existe).
   await env.DB.prepare(
     'CREATE TABLE IF NOT EXISTS trial_anchors ('
-    + 'mac TEXT PRIMARY KEY, android_id TEXT, started_at INTEGER NOT NULL)',
+    + 'mac TEXT PRIMARY KEY, android_id TEXT, started_at INTEGER NOT NULL, '
+    + 'extended_until INTEGER)',
   ).run();
+  try {
+    await env.DB.prepare(
+      'ALTER TABLE trial_anchors ADD COLUMN extended_until INTEGER',
+    ).run();
+  } catch (_) { /* colonne déjà présente */ }
   try {
     await env.DB.prepare(
       'CREATE INDEX IF NOT EXISTS idx_trial_anchors_android ON trial_anchors(android_id)',
     ).run();
   } catch (_) { /* index déjà là */ }
+  // Journal : qui a ajouté combien de jours, et quand. On n'efface pas.
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS trial_extensions ('
+    + 'id TEXT PRIMARY KEY, mac TEXT NOT NULL, days INTEGER NOT NULL, '
+    + 'previous_until INTEGER, new_until INTEGER NOT NULL, '
+    + 'actor_type TEXT, actor_id TEXT, created_at INTEGER NOT NULL)',
+  ).run();
   _anchorReady = true;
+}
+
+/// Fin d'essai la plus tardive entre le calcul habituel et un ajout
+/// de jours. Sans ajout, on rend exactement `computedUntil`.
+export function combineTrialUntil(computedUntil, extendedUntil) {
+  const base = Number(computedUntil);
+  const ext = Number(extendedUntil);
+  const hasBase = Number.isFinite(base) && base > 0;
+  const hasExt = Number.isFinite(ext) && ext > 0;
+  if (hasBase && hasExt) return Math.max(base, ext);
+  if (hasExt) return ext;
+  return hasBase ? base : 0;
+}
+
+/// « Ajouter N jours » : entier de 1 à MAX_EXTEND_DAYS. 0, négatif,
+/// décimal, texte ou valeur énorme → erreur, rien n'est écrit.
+export function parseExtendDays(value) {
+  let n;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || !Number.isInteger(value)) {
+      return { error: 'Le nombre de jours doit être un entier.' };
+    }
+    n = value;
+  } else if (typeof value === 'string') {
+    const s = value.trim();
+    if (!/^[0-9]+$/.test(s)) {
+      return { error: 'Le nombre de jours doit être un entier.' };
+    }
+    n = Number(s);
+  } else {
+    return { error: 'Le nombre de jours doit être un entier.' };
+  }
+  if (n < 1) return { error: 'Indique au moins 1 jour.' };
+  if (n > MAX_EXTEND_DAYS) {
+    return { error: `Maximum ${MAX_EXTEND_DAYS} jours à la fois.` };
+  }
+  return { days: n };
+}
+
+/// Nouvelle fin = max(fin actuelle, maintenant) + N jours.
+/// Si la fin actuelle est déjà passée (ou absente), on part de maintenant.
+export function nextTrialEnd(currentUntil, now, days) {
+  const cur = Number(currentUntil);
+  const base = Number.isFinite(cur) && cur > now ? cur : now;
+  return base + days * DAY_MS;
+}
+
+/// Lit la fin prolongée, ou 0 s'il n'y en a pas. N'échoue jamais :
+/// un souci de table ne doit pas bloquer un client déjà activé.
+export async function readExtendedUntil(env, mac) {
+  if (!env || !env.DB || !mac) return 0;
+  try {
+    await ensureTrialAnchorTable(env);
+    const row = await env.DB
+      .prepare('SELECT extended_until FROM trial_anchors WHERE mac = ?')
+      .bind(mac)
+      .first();
+    const n = row && Number(row.extended_until);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch (_) {
+    return 0;
+  }
 }
 
 /// Mémorise le début d'essai et ne le recule JAMAIS vers le futur.
@@ -203,7 +292,18 @@ function dateLabel(ms) {
 /// Pastille du panel pour UN appareil. Même règle que l'app :
 /// interrupteur allumé → 7 jours depuis l'ancre ; coupé → durée du
 /// panel depuis first_seen (comportement actuel).
-export function describeAccess({ now, startedAt, trialDays, license, blockStatus }) {
+function trialLabelFromUntil(until, now) {
+  const left = Math.max(0, Math.ceil((until - now) / DAY_MS));
+  const j = left > 1 ? 'jours restants' : 'jour restant';
+  return {
+    access: 'trial',
+    label: `Essai en cours · ${left} ${j}`,
+    days_left: left,
+    ends_at: until,
+  };
+}
+
+export function describeAccess({ now, startedAt, trialDays, license, blockStatus, extendedUntil }) {
   if (blockStatus === 'banned') {
     return { access: 'banned', label: 'Banni', days_left: 0, ends_at: null };
   }
@@ -228,6 +328,8 @@ export function describeAccess({ now, startedAt, trialDays, license, blockStatus
       };
     }
     if (!lifetime && license.expires_at != null && Number(license.expires_at) <= now) {
+      const ext = Number(extendedUntil);
+      if (Number.isFinite(ext) && ext > now) return trialLabelFromUntil(ext, now);
       const ends = Number(license.expires_at);
       return {
         access: 'expired',
@@ -239,15 +341,9 @@ export function describeAccess({ now, startedAt, trialDays, license, blockStatus
   }
   const days = Number.isFinite(Number(trialDays)) ? Number(trialDays) : TRIAL_DAYS;
   const win = trialWindow(startedAt, now, days);
-  if (win.expired) {
-    return { access: 'expired', label: 'Essai expiré', days_left: 0, ends_at: win.trialUntil };
+  const until = combineTrialUntil(win.trialUntil, extendedUntil);
+  if (now >= until) {
+    return { access: 'expired', label: 'Essai expiré', days_left: 0, ends_at: until };
   }
-  const left = win.daysLeft;
-  const j = left > 1 ? 'jours restants' : 'jour restant';
-  return {
-    access: 'trial',
-    label: `Essai en cours · ${left} ${j}`,
-    days_left: left,
-    ends_at: win.trialUntil,
-  };
+  return trialLabelFromUntil(until, now);
 }

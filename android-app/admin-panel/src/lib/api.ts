@@ -516,6 +516,14 @@ export interface DeviceSource extends DeviceSourceInput {
   updated_at?: number;
 }
 
+export interface TrialExtendResult {
+  ok: boolean;
+  mac: string;
+  days: number;
+  previous_until: number | null;
+  trial_until: number;
+}
+
 export const activateApi = {
   // Active une MAC (owner ou revendeur). Cree/renouvelle la licence et
   // debite les credits du revendeur selon le cout du plan. Si `source`
@@ -532,6 +540,14 @@ export const activateApi = {
     source?: DeviceSourceInput;
   }) =>
     request<ActivateResult>('/api/v1/activate', { method: 'POST', body: payload }),
+
+  // Prolonge l'essai d'une MAC déjà connue de N jours.
+  // Réservé à l'administrateur (le Worker refuse un revendeur).
+  extendTrial: (mac: string, days: number) =>
+    request<TrialExtendResult>('/api/v1/trial-extend', {
+      method: 'POST',
+      body: { mac, days },
+    }),
 };
 
 // Source assignée par MAC (gérée indépendamment de l'activation).

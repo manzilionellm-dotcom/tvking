@@ -4,6 +4,11 @@ import {
   configuredTrialDays,
   TRIAL_DAYS,
   ensureTrialAnchorTable,
+  trialWindow,
+  rememberTrialStart,
+  parseExtendDays,
+  nextTrialEnd,
+  readExtendedUntil,
 } from './trial_access.js';
 
 // =========================================================
@@ -440,6 +445,20 @@ async function requireAuth(request, env) {
   return { user };
 }
 
+/// Comparaison en temps constant. Secret vide = refus (instance
+/// sans protection ne doit pas accepter n'importe quel en-tête).
+function adminSecretMatches(request, env) {
+  const provided = request.headers.get('X-Admin-Secret') || '';
+  const expected = env.ADMIN_SECRET || '';
+  if (!expected || typeof provided !== 'string') return false;
+  if (provided.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 // ---------------------------------------------------------
 //  Bootstrap : creation auto du super_admin si table vide
 // ---------------------------------------------------------
@@ -718,6 +737,14 @@ async function apiV1Inner(request, env) {
     }
   }
 
+  // Ajout de jours d'essai. Le secret admin (en-tête) suffit, comme
+  // les routes /admin/*. Sinon on tombe sur le JWT plus bas.
+  if (parts[0] === 'trial-extend' && parts.length === 1 && request.method === 'POST') {
+    if (adminSecretMatches(request, env)) {
+      return handleTrialExtend(request, env, { type: 'admin', id: 'admin_secret' });
+    }
+  }
+
   // --- Tout le reste requiert un JWT ---
   const a = await requireAuth(request, env);
   if (a.error) return a.error;
@@ -816,15 +843,31 @@ async function apiV1Inner(request, env) {
     return handleDeviceTransfer(request, env, a.user, actor);
   }
 
-  // /families — OFFRE FAMILLE : UNE ligne Xtream (multi-connexions) +
-  // plusieurs appareils. On crée la famille (nom + source), puis on ajoute
-  // des appareils ; chacun reçoit la MÊME source + une licence active.
-  // Le nombre d'écrans simultanés = max_connections de la ligne (fournisseur).
+  // Ajouter des jours d'essai à UNE MAC déjà connue. Réservé à
+  // l'administrateur (JWT super_admin, signé avec ADMIN_SECRET).
+  if (parts[0] === 'trial-extend' && parts.length === 1 && request.method === 'POST') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Seul l’administrateur peut ajouter des jours d’essai.', 403);
+    }
+    return handleTrialExtend(request, env, actor);
+  }
+
+  // /families — lecture des familles DÉJÀ créées. On ne crée plus de
+  // clone : POST (nouvelle famille, nouveau membre, nouveau lien) est
+  // refusé. Les lignes, colonnes et licences existantes restent.
+  // GET et DELETE continuent de fonctionner.
   if (parts[0] === 'families') {
     if (!resellerCan(a.user, 'activate')) {
       return errResp('forbidden', 'Ton compte n\'a pas le droit de gérer des familles.', 403);
     }
     await ensureFamiliesTables(env);
+    if (request.method === 'POST') {
+      return errResp(
+        'family_clone_disabled',
+        'Le clonage familial n’est plus proposé. Les appareils déjà activés en famille continuent de fonctionner.',
+        403,
+      );
+    }
     if (parts.length === 1) {
       if (request.method === 'GET') return handleFamiliesList(env, a.user);
       if (request.method === 'POST') return handleFamiliesCreate(request, env, actor, a.user);
@@ -3125,13 +3168,22 @@ async function annotateDeviceAccess(env, rows) {
   const enforced = trialEnforcementOn(env);
   const trialDays = enforced ? TRIAL_DAYS : await configuredTrialDays(env);
   const anchors = {};
-  if (enforced) {
-    try {
-      await ensureTrialAnchorTable(env);
-      const a = await env.DB.prepare('SELECT mac, started_at FROM trial_anchors').all();
-      for (const row of (a && a.results) || []) anchors[row.mac] = row.started_at;
-    } catch (_) { /* pas d'ancre : on tombera sur first_seen */ }
-  }
+  // Ancres et jours d'essai ajoutés : seulement pour les MAC de la page.
+  const extensions = {};
+  try {
+    await ensureTrialAnchorTable(env);
+    const macs = rows.map((r) => r.mac).filter(Boolean);
+    if (macs.length) {
+      const marks = macs.map(() => '?').join(',');
+      const a = await env.DB.prepare(
+        `SELECT mac, started_at, extended_until FROM trial_anchors WHERE mac IN (${marks})`,
+      ).bind(...macs).all();
+      for (const row of (a && a.results) || []) {
+        anchors[row.mac] = row.started_at;
+        if (Number(row.extended_until) > 0) extensions[row.mac] = Number(row.extended_until);
+      }
+    }
+  } catch (_) { /* pas d'ancre : on tombera sur first_seen */ }
   const now = Date.now();
   return rows.map((r) => {
     const license = r.lic_status
@@ -3148,6 +3200,7 @@ async function annotateDeviceAccess(env, rows) {
       trialDays,
       license,
       blockStatus: r.block_status,
+      extendedUntil: extensions[r.mac] || 0,
     });
     return {
       ...r,
@@ -4133,6 +4186,97 @@ async function handleDeviceTransfer(request, env, user, actor) {
     old_mac: oldMac,
     new_mac: newMac,
     moved_licenses: licRows.length,
+  });
+}
+
+// ----- Ajouter des jours d'essai à UNE MAC déjà connue -----
+//  POST /api/v1/trial-extend { mac, days }
+//  Secret admin (X-Admin-Secret) ou JWT super_admin.
+//  Fin = max(fin d'essai actuelle, maintenant) + N jours.
+//  Refuse une MAC invalide, inconnue, ou un nombre de jours
+//  qui n'est pas un entier de 1 à 365. N'efface aucune donnée.
+async function trialDeadlineForDevice(env, dev, now) {
+  let trialStart = dev.first_seen_at || now;
+  let trialDays = await configuredTrialDays(env);
+  if (trialEnforcementOn(env)) {
+    trialStart = await rememberTrialStart(
+      env, dev.mac, dev.android_id || '', trialStart,
+    );
+    trialDays = TRIAL_DAYS;
+  }
+  const win = trialWindow(trialStart, now, trialDays);
+  const ext = await readExtendedUntil(env, dev.mac);
+  return ext > win.trialUntil ? ext : win.trialUntil;
+}
+
+async function handleTrialExtend(request, env, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const mac = String(body.mac || '').trim().toUpperCase();
+  if (!/^MK(?::[0-9A-F]{2}){5}$/.test(mac)) {
+    return errResp('bad_mac', 'MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX', 400);
+  }
+  const parsed = parseExtendDays(body.days);
+  if (parsed.error) return errResp('bad_days', parsed.error, 400);
+
+  let dev = null;
+  try {
+    dev = await env.DB.prepare(
+      'SELECT id, mac, first_seen_at, android_id, block_status FROM devices WHERE mac = ?',
+    ).bind(mac).first();
+  } catch (_) {
+    try {
+      dev = await env.DB.prepare(
+        'SELECT id, mac, first_seen_at, block_status FROM devices WHERE mac = ?',
+      ).bind(mac).first();
+    } catch (_) { dev = null; }
+  }
+  if (!dev) {
+    return errResp(
+      'unknown_mac',
+      'MAC inconnue. L’appareil doit déjà s’être connecté.',
+      404,
+    );
+  }
+  dev.mac = mac;
+
+  const now = Date.now();
+  const previous = await trialDeadlineForDevice(env, dev, now);
+  const trialUntil = nextTrialEnd(previous, now, parsed.days);
+
+  await ensureTrialAnchorTable(env);
+  const existing = await env.DB
+    .prepare('SELECT mac FROM trial_anchors WHERE mac = ?')
+    .bind(mac).first();
+  if (existing) {
+    await env.DB.prepare(
+      'UPDATE trial_anchors SET extended_until = ? WHERE mac = ?',
+    ).bind(trialUntil, mac).run();
+  } else {
+    await env.DB.prepare(
+      'INSERT INTO trial_anchors (mac, android_id, started_at, extended_until) VALUES (?, ?, ?, ?)',
+    ).bind(mac, dev.android_id || null, dev.first_seen_at || now, trialUntil).run();
+  }
+  await env.DB.prepare(
+    `INSERT INTO trial_extensions
+      (id, mac, days, previous_until, new_until, actor_type, actor_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    genId('tx'), mac, parsed.days, previous || null, trialUntil,
+    actor && actor.type, actor && actor.id, now,
+  ).run();
+  await logAudit(env, request, actor, 'trial.extend',
+    { type: 'device', id: dev.id }, null,
+    { mac, days: parsed.days, previous_until: previous, trial_until: trialUntil });
+
+  return jsonResp({
+    ok: true,
+    mac,
+    days: parsed.days,
+    previous_until: previous,
+    trial_until: trialUntil,
   });
 }
 
