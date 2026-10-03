@@ -89,6 +89,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _androidFocus = NativeVideoController.androidAudioFocus;
     _bgPause = NativeVideoController.backgroundPauseOnly;
     _immediate = NativeVideoController.immediateHandoff;
+    _normalize = NativeVideoController.normalizeAudioMode;
     // Le libellé vient de la mémoire Dart. On le repousse au lecteur
     // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
     NativeVideoController.pushAudioDiagFlags();
@@ -104,6 +105,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _androidFocus = false;
   bool _bgPause = false;
   bool _immediate = false;
+  bool _normalize = false;
   bool _witnessBusy = false;
   NativeVideoController? _witness;
 
@@ -155,6 +157,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     } finally {
       if (mounted) setState(() => _witnessBusy = false);
     }
+  }
+
+  Future<void> _toggleNormalize() async {
+    final bool next = !_normalize;
+    setState(() => _normalize = next);
+    await AudioDiagPrefs.setNormalizeMode(next);
   }
 
   Future<void> _toggleImmediate() async {
@@ -287,6 +295,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             ),
             const SizedBox(width: 12),
             _Toggle(
+              label: _normalize ? 'Mode : forcer normal' : 'Mode : inchangé',
+              on: _normalize,
+              onSelect: _toggleNormalize,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
               label: _witness != null
                   ? 'Témoin : stop'
                   : (_witnessBusy ? 'Témoin : préparation' : 'Jouer le son témoin'),
@@ -330,7 +344,11 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'Passage : « attendre » (défaut) = on n\'ouvre la chaîne suivante '
           'que lorsque l\'AudioTrack précédent est vraiment rendu (sinon deux '
           'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '
-          'ancien comportement. Son témoin : 10 s (voix puis bruit), '
+          'ancien comportement. Mode : « inchangé » (défaut) = on ne touche '
+          'pas au mode Android ; « forcer normal » = avant la prochaine '
+          'chaîne, on demande le mode normal et on coupe le haut-parleur '
+          'd\'appel (un vrai appel, une sonnerie ou un renvoi ne sont pas '
+          'coupés ; le Bluetooth d\'appel n\'est pas coupé). Son témoin : 10 s (voix puis bruit), '
           'lu par le même lecteur. Allume la mesure, ne change pas le son. '
           'Bruit sourd → l\'appareil. Bruit clair → la chaîne.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),

@@ -23,6 +23,9 @@ sourceSets {
         kotlin.exclude("**/NativeVideoView.kt")
         kotlin.exclude("**/NativeVideoViewFactory.kt")
         kotlin.exclude("**/NativeVideoPlayerPlugin.kt")
+        // Parle à AudioManager : le test n'a pas le SDK Android.
+        // La décision (écrire ou pas) est dans AudioModeGuard.kt.
+        kotlin.exclude("**/AudioModeApplier.kt")
         kotlin.exclude("**/ClearVoiceProcessor.kt")
         kotlin.exclude("**/AudioProbeProcessor.kt")
         kotlin.exclude("**/ZunoAudioChain.kt")

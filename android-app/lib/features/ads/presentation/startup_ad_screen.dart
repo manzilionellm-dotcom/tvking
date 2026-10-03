@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../player/data/audio_mode_guard.dart';
 import '../data/startup_ad_repository.dart';
 
 class StartupAdScreen extends StatefulWidget {
@@ -44,8 +45,13 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
     super.initState();
     _player = Player();
     _controller = VideoController(_player);
-    // Lance la vidéo (best-effort).
-    unawaited(_player.open(Media(widget.config.url)));
+    // Lance la vidéo (best-effort). Interrupteur coupé : même appel
+    // qu'avant, on ne passe pas par la garde du mode.
+    if (AudioModeGuardClient.enabled) {
+      unawaited(_openGuarded());
+    } else {
+      unawaited(_player.open(Media(widget.config.url)));
+    }
 
     // Révèle « Passer » après le délai configuré.
     _skipTimer = Timer(Duration(seconds: widget.config.skip), () {
@@ -70,6 +76,12 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
     if (_done) return;
     _done = true;
     widget.onDone();
+  }
+
+  Future<void> _openGuarded() async {
+    await AudioModeGuardClient.applyIfEnabled();
+    if (!mounted) return;
+    await _player.open(Media(widget.config.url));
   }
 
   @override

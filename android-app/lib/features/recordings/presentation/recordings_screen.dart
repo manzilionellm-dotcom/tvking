@@ -27,6 +27,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../player/data/audio_mode_guard.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/gallery_exporter.dart';
@@ -571,6 +572,9 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
               : context.l10n.recordingNotFound);
         }
         return;
+      }
+      if (AudioModeGuardClient.enabled) {
+        await AudioModeGuardClient.applyIfEnabled();
       }
       await _player.open(Media(widget.recording.filePath));
     } catch (e) {

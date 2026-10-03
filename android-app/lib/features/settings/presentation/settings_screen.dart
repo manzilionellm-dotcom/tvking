@@ -9,6 +9,7 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
@@ -20,6 +21,7 @@ import '../../about/presentation/about_screen.dart';
 import '../../cast/presentation/cast_diagnostics_screen.dart';
 import 'notifications_settings_screen.dart';
 import '../../channels/data/recently_watched_repository.dart';
+import '../../player/data/audio_diag_prefs.dart';
 import '../../player/data/player_settings.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../playlists/presentation/playlists_screen.dart';
@@ -116,6 +118,7 @@ class SettingsScreen extends StatelessWidget {
                       value: s.warnOnCellular,
                       onChanged: s.setWarnOnCellular,
                     ),
+                    const _AudioModeGuardTile(),
                     _ActionTile(
                       icon: Icons.badge_outlined,
                       title: 'Signature de lecture (User-Agent)',
@@ -474,6 +477,42 @@ class _ActionTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Interrupteur du mode Android. Coupé par défaut : le son ne change pas.
+/// Allumé : la prochaine lecture (mpv) demande le mode normal.
+class _AudioModeGuardTile extends StatefulWidget {
+  const _AudioModeGuardTile();
+
+  @override
+  State<_AudioModeGuardTile> createState() => _AudioModeGuardTileState();
+}
+
+class _AudioModeGuardTileState extends State<_AudioModeGuardTile> {
+  bool _on = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _on = NativeVideoController.normalizeAudioMode;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SwitchTile(
+      icon: Icons.hearing_outlined,
+      title: 'Mode audio : forcer normal',
+      subtitle: _on
+          ? 'Allumé. À la prochaine lecture, on demande le mode normal '
+              'et on coupe le haut-parleur d\'appel. Un vrai appel n\'est pas coupé.'
+          : 'Coupé (défaut). Le mode Android n\'est pas modifié. Le son reste comme avant.',
+      value: _on,
+      onChanged: (bool value) async {
+        setState(() => _on = value);
+        await AudioDiagPrefs.setNormalizeMode(value);
+      },
     );
   }
 }
