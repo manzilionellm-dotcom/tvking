@@ -1,4 +1,5 @@
 import com.manzilionellm.native_video_player.logic.AudioFixes
+import com.manzilionellm.native_video_player.logic.AudioRouteState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -16,8 +17,29 @@ class AudioFixesTest {
         assertEquals("zuno.audio.fix.session_fallback", AudioFixes.KEY_SESSION_WIDE)
         assertEquals("zuno.audio.focus.android", AudioFixes.KEY_ANDROID_FOCUS)
         assertEquals("zuno.audio.handoff.immediate", AudioFixes.KEY_IMMEDIATE_HANDOFF)
+        assertEquals("zuno.audio.ref.content_unknown", AudioFixes.KEY_REFERENCE_UNKNOWN)
         assertFalse(AudioFixes.androidFocus)
         assertFalse(AudioFixes.immediateHandoff)
+        assertFalse(AudioFixes.referenceUnknownContent)
+    }
+
+    @Test
+    fun leTypeAnnonceResteFilmSaufEssai() {
+        // Défaut : film. L'essai coupé ne change rien.
+        assertEquals(
+            AudioRouteState.CONTENT_MOVIE,
+            AudioFixes.announcedContentType(clearVoice = false, referenceUnknown = false),
+        )
+        // Essai allumé : inconnu, le défaut de Media3.
+        assertEquals(
+            AudioRouteState.CONTENT_UNKNOWN,
+            AudioFixes.announcedContentType(clearVoice = false, referenceUnknown = true),
+        )
+        // Voix claire gagne sur l'essai : on reste en parole.
+        assertEquals(
+            AudioRouteState.CONTENT_SPEECH,
+            AudioFixes.announcedContentType(clearVoice = true, referenceUnknown = true),
+        )
     }
 
     @Test

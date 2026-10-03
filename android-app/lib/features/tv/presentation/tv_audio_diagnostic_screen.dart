@@ -89,6 +89,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _androidFocus = NativeVideoController.androidAudioFocus;
     _bgPause = NativeVideoController.backgroundPauseOnly;
     _immediate = NativeVideoController.immediateHandoff;
+    _referenceUnknown = NativeVideoController.referenceUnknownContent;
     // Le libellé vient de la mémoire Dart. On le repousse au lecteur
     // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
     NativeVideoController.pushAudioDiagFlags();
@@ -104,6 +105,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _androidFocus = false;
   bool _bgPause = false;
   bool _immediate = false;
+  bool _referenceUnknown = false;
   bool _witnessBusy = false;
   NativeVideoController? _witness;
 
@@ -161,6 +163,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     final bool next = !_immediate;
     setState(() => _immediate = next);
     await AudioDiagPrefs.setImmediateHandoff(next);
+  }
+
+  Future<void> _toggleReferenceUnknown() async {
+    final bool next = !_referenceUnknown;
+    setState(() => _referenceUnknown = next);
+    await AudioDiagPrefs.setReferenceUnknownContent(next);
   }
 
   Future<void> _toggleAndroidFocus() async {
@@ -287,6 +295,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             ),
             const SizedBox(width: 12),
             _Toggle(
+              label: _referenceUnknown ? 'Contenu : inconnu' : 'Contenu : film',
+              on: _referenceUnknown,
+              onSelect: _toggleReferenceUnknown,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
               label: _witness != null
                   ? 'Témoin : stop'
                   : (_witnessBusy ? 'Témoin : préparation' : 'Jouer le son témoin'),
@@ -330,7 +344,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'Passage : « attendre » (défaut) = on n\'ouvre la chaîne suivante '
           'que lorsque l\'AudioTrack précédent est vraiment rendu (sinon deux '
           'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '
-          'ancien comportement. Son témoin : 10 s (voix puis bruit), '
+          'ancien comportement. Contenu : « film » (défaut) = ce que Zuno '
+          'annonce à Android aujourd\'hui ; « inconnu » = ce que Media3 '
+          'annonce quand on ne précise rien. Le son numérique ne change pas, '
+          'seul le traitement éventuel de l\'appareil peut changer. '
+          'La voix claire, si elle est allumée, reste « parole ». '
+          'Son témoin : 10 s (voix puis bruit), '
           'lu par le même lecteur. Allume la mesure, ne change pas le son. '
           'Bruit sourd → l\'appareil. Bruit clair → la chaîne.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),

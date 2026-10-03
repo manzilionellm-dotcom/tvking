@@ -173,6 +173,11 @@ class NativeVideoController extends ChangeNotifier {
   /// chevaucher, l'ancien défaut). Faux par défaut : on attend.
   static bool immediateHandoff = false;
 
+  /// Essai « type de contenu inconnu ». Faux par défaut : Android
+  /// reçoit « film », comme avant. Vrai : « inconnu », le défaut de
+  /// Media3. Le son PCM ne change pas, seule l'étiquette change.
+  static bool referenceUnknownContent = false;
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -185,6 +190,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
       ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
       ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+      ch.invokeMethod<void>('setReferenceUnknownContent', referenceUnknownContent);
     }
   }
 
@@ -327,6 +333,7 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
     ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
     ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+    ch.invokeMethod<void>('setReferenceUnknownContent', referenceUnknownContent);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;
