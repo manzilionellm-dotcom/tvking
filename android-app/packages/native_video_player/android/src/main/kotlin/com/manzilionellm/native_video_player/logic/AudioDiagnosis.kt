@@ -298,6 +298,10 @@ object AudioDiagnosis {
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
             "com/manzilionellm/native_video_player/logic/AudioSpectrum.kt"
 
+    private const val FILE_QUALITY =
+        "android-app/packages/native_video_player/android/src/main/kotlin/" +
+            "com/manzilionellm/native_video_player/logic/AudioQuality.kt"
+
     private const val FILE_STAGES =
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
             "com/manzilionellm/native_video_player/logic/AudioStages.kt"
@@ -671,6 +675,7 @@ object AudioDiagnosis {
         out += formatFindings(s)
         out += phaseFindings(s)
         out += sourceFindings(s)
+        out += qualityFindings(s)
         return out
     }
 
@@ -1018,6 +1023,27 @@ object AudioDiagnosis {
                 append(String.format(Locale.FRANCE, "%.2f %%", spec.clippedFraction * 100.0))
                 append(" des échantillons au plafond")
             }
+            val forme = spec?.quality
+            if (forme != null && forme.profil != AudioQuality.Profil.COURT) {
+                append("\nForme (copie, le son n'est pas modifié) : grave/milieu ")
+                append(forme.ratioText(forme.graveRatio))
+                append(" · aigu/milieu ")
+                append(forme.ratioText(forme.aiguRatio))
+                append(" · ")
+                append(forme.profilText())
+                if (!forme.echo.isNaN() && forme.profil != AudioQuality.Profil.SILENCE) {
+                    append("\nÉcho 18–40 ms (copie) : ")
+                    append(forme.echoText())
+                    if (!forme.echoMs.isNaN() && forme.echoNet) {
+                        append(" · retard ")
+                        append(String.format(Locale.FRANCE, "%.0f ms", forme.echoMs))
+                    }
+                }
+                if (forme.chuteDb != null && !forme.chuteDb.isNaN()) {
+                    append("\nChute entre secondes actives : ")
+                    append(String.format(Locale.FRANCE, "%.1f dB", forme.chuteDb))
+                }
+            }
         }
         val lines = findings(s).joinToString("\n") { f ->
             val tag = if (f.confidence == Confidence.HAUTE) "HAUTE" else "INCERTAINE"
@@ -1090,6 +1116,19 @@ object AudioDiagnosis {
                 "voie ${i + 1} " + String.format(Locale.FRANCE, "%.1f %%", ratio * 100.0)
             }.joinToString(", ", prefix = " (", postfix = ")")
         }
+        val formeBit = j.quality?.let { q ->
+            if (q.profil == AudioQuality.Profil.COURT || q.profil == AudioQuality.Profil.SILENCE) {
+                ""
+            } else {
+                " · forme " + when (q.profil) {
+                    AudioQuality.Profil.LARGE -> "large"
+                    AudioQuality.Profil.TELEPHONE -> "téléphone"
+                    AudioQuality.Profil.SOURD -> "sourd"
+                    AudioQuality.Profil.MAIGRE -> "maigre"
+                    else -> q.profil.name.lowercase()
+                }
+            }
+        } ?: ""
         val phaseBit = j.phase?.let { p ->
             if (p.channels < 2 || p.correlation.isNaN()) {
                 ""
@@ -1097,7 +1136,7 @@ object AudioDiagnosis {
                 " · G/D ${p.correlationText()}"
             }
         } ?: ""
-        return "${reading.id} : ${j.percent()} $band — $place$channels$phaseBit"
+        return "${reading.id} : ${j.percent()} $band — $place$channels$phaseBit$formeBit"
     }
 
     /**
@@ -1147,6 +1186,126 @@ object AudioDiagnosis {
                     symbol = "AudioStages / ZunoAudioChain",
                     media3 = "AudioProcessorChain entre decodeur et audiotrack",
                     action = "Noter quel étage change la corrélation. Ne pas changer le décodeur.",
+                    settingKey = null,
+                ),
+            )
+        }
+        return out
+    }
+
+    /**
+     * Forme du PCM copié. On dit ce que les seuils du banc ont séparé
+     * sur des signaux connus. On ne nomme pas le coupable sur l'appareil,
+     * et on ne change pas le décodeur : ce ne sont pas des causes sûres.
+     */
+    private fun qualityFindings(s: AudioSnapshot): List<Finding> {
+        val q = s.stages.firstOrNull { it.id == AudioStages.DECODER }?.judgement?.quality
+            ?: s.spectrum?.quality
+            ?: return emptyList()
+        val out = ArrayList<Finding>(4)
+        if (q.profil == AudioQuality.Profil.TELEPHONE) {
+            out += Finding(
+                id = "profil_telephone",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "grave/milieu ${q.ratioText(q.graveRatio)} (seuil " +
+                    "${String.format(Locale.FRANCE, "%.2f", AudioQuality.GRAVE_BAS)}), " +
+                    "aigu/milieu ${q.ratioText(q.aiguRatio)} (seuil " +
+                    "${String.format(Locale.FRANCE, "%.3f", AudioQuality.AIGU_BAS)}).",
+                cause = "Les deux bandes sont coupées ensemble : la forme du PCM copié est celle " +
+                    "d'un passe-bande 300–3400 Hz. Le pourcentage au-dessus de 4 kHz ne le voit pas " +
+                    "(sur les témoins, le téléphone reste autour de 1 %, comme une parole). " +
+                    "Une parole seulement sourde garde le grave : ce n'est pas ce cas. " +
+                    "On ne sait pas qui a filtré (le flux, un traitement, l'appareil).",
+                fix = Fix(
+                    file = FILE_QUALITY,
+                    symbol = "AudioQuality.measure",
+                    media3 = "copie PCM dans AudioProbeProcessor, aucun échantillon modifié",
+                    action = "Ne pas changer le décodeur. Comparer la forme de la sonde décodeur " +
+                        "et de la sonde audiotrack, puis le son témoin.",
+                    settingKey = null,
+                ),
+            )
+        }
+        if (q.profil == AudioQuality.Profil.MAIGRE) {
+            out += Finding(
+                id = "profil_maigre",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "grave/milieu ${q.ratioText(q.graveRatio)}, aigu/milieu ${q.ratioText(q.aiguRatio)}.",
+                cause = "Le grave est coupé et l'aigu est là. C'est un passe-haut, pas la forme " +
+                    "téléphone (qui coupe les deux). Le son peut sembler « dans un trou » " +
+                    "sans être une bande 300–3400 Hz.",
+                fix = Fix(
+                    file = FILE_QUALITY,
+                    symbol = "AudioQuality.measure",
+                    media3 = "copie PCM, aucun échantillon modifié",
+                    action = "Ne pas changer le décodeur sur ce seul chiffre.",
+                    settingKey = null,
+                ),
+            )
+        }
+        if (q.echoNet) {
+            val retard = if (q.echoMs.isNaN()) "" else " (vers ${q.echoMs.toInt()} ms)"
+            out += Finding(
+                id = "echo_double",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Score d'écho ${q.echoText()}$retard, seuil ${AudioQuality.ECHO_MIN.toInt()}.",
+                cause = "Un second exemplaire du même son, décalé de 18 à 40 ms, est dans le PCM copié. " +
+                    "Deux paroles différentes ne font pas ce score (mesuré 12 sur le banc ; " +
+                    "une copie à 30 ms de parole à syllabes fait 28, le témoin long fait 173, seuil 18). " +
+                    "La fondamentale de la voix est retirée du calcul : un pic à 8 ms n'est pas un écho.",
+                fix = Fix(
+                    file = FILE_QUALITY,
+                    symbol = "AudioQuality.measure / echoScore",
+                    media3 = "copie PCM, aucun échantillon modifié",
+                    action = "Ne pas filtrer. Regarder « lectures vivantes » : deux lectures décalées " +
+                        "donnent ce score. On ne change pas le décodeur.",
+                    settingKey = null,
+                ),
+            )
+        }
+        val ecart = q.chuteDb
+        if (ecart != null && q.chuteNette) {
+            out += Finding(
+                id = "chute_niveau",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Écart ${String.format(Locale.FRANCE, "%.1f dB", ecart)} entre les secondes " +
+                    "où il y a du son (seuil ${AudioQuality.CHUTE_DB.toInt()} dB).",
+                cause = "Le niveau fort a baissé et est resté bas. Une pause (seconde presque muette) " +
+                    "est ignorée : sur le banc, 2 s de silence au milieu d'une parole restent à 0,6 dB, " +
+                    "un gain × 0,2 pendant 2,5 s fait 14 dB. Ce n'est pas le volume du lecteur, " +
+                    "déjà noté à part.",
+                fix = Fix(
+                    file = FILE_QUALITY,
+                    symbol = "AudioQuality.chuteDb",
+                    media3 = "copie PCM, aucun échantillon modifié",
+                    action = "Lire la ligne de volume. Si elle reste 1,0, la baisse est dans le PCM, " +
+                        "pas dans le focus. Ne pas changer le décodeur.",
+                    settingKey = null,
+                ),
+            )
+        }
+        val sink = s.stages.firstOrNull { it.id == AudioStages.SINK }?.judgement?.quality
+        if (sink != null && q.profil != sink.profil &&
+            q.profil != AudioQuality.Profil.COURT && q.profil != AudioQuality.Profil.SILENCE &&
+            sink.profil != AudioQuality.Profil.COURT && sink.profil != AudioQuality.Profil.SILENCE &&
+            sink.profil != AudioQuality.Profil.RATE && q.profil != AudioQuality.Profil.RATE
+        ) {
+            out += Finding(
+                id = "forme_etage",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Sonde décodeur : ${q.profilText()}. Sonde audiotrack : ${sink.profilText()}.",
+                cause = "La forme n'est pas la même au début et à la fin de la chaîne de l'app. " +
+                    "Les sondes copient : l'étage entre les deux a changé le grave ou l'aigu.",
+                fix = Fix(
+                    file = FILE_STAGES,
+                    symbol = "AudioStages / ZunoAudioChain",
+                    media3 = "AudioProcessorChain entre decodeur et audiotrack",
+                    action = "Noter quel étage change la forme. Ne pas changer le décodeur.",
                     settingKey = null,
                 ),
             )
