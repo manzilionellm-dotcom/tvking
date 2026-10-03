@@ -32,6 +32,13 @@ object PlayerCensus {
         val boxCount: Int,
         /** Ancien mode « une panne → la box pour tout le monde ». */
         val sessionWide: Boolean,
+        /**
+         * Lecteurs inscrits dans le registre du processus
+         * ([com.manzilionellm.native_video_player.NativeVideoView] compagnon).
+         * −1 = pas demandé (les tests d'avant). Plus d'un = un aperçu, une
+         * sonde ou un témoin est encore inscrit en plus du plein écran.
+         */
+        val nativeOwners: Int = -1,
     )
 
     private var zaps: Int = 0
@@ -105,7 +112,7 @@ object PlayerCensus {
     }
 
     @Synchronized
-    fun snapshot(urlKey: Int, boxFailure: AacRoute.Failure?): Snapshot = Snapshot(
+    fun snapshot(urlKey: Int, boxFailure: AacRoute.Failure?, nativeOwners: Int = -1): Snapshot = Snapshot(
         zap = zaps,
         seenBefore = seenBefore(urlKey),
         playersAlive = players,
@@ -114,6 +121,7 @@ object PlayerCensus {
         boxFailure = boxFailure,
         boxCount = AacRoute.count(),
         sessionWide = AacRoute.sessionWide,
+        nativeOwners = nativeOwners,
     )
 
     /** Remise à zéro (tests seulement : le processus de l'app ne redémarre pas). */
@@ -155,6 +163,10 @@ object PlayerCensus {
             append(" · mode session entière (ancien comportement)")
         } else if (s.boxCount in 1 until Int.MAX_VALUE) {
             append(" · ").append(s.boxCount).append(" chaîne(s) sur la box dans ce processus")
+        }
+        if (s.nativeOwners >= 0) {
+            append(" · registre natif ").append(s.nativeOwners)
+            if (s.nativeOwners > 1) append(" ⚠ plusieurs lecteurs inscrits")
         }
     }
 }

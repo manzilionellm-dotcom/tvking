@@ -30,6 +30,7 @@ import 'package:native_video_player/playback_lease.dart';
 
 import '../../box_extras/box_text.dart';
 import '../../player/data/clear_voice_flag.dart';
+import '../../player/domain/audio_sources.dart';
 import '../../player/data/image_prefs.dart';
 import '../../player/domain/image_engine.dart';
 import '../../player/domain/reconnect_plan.dart';
@@ -122,7 +123,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     TvActivity.enter();
     ForegroundPlayback.lock();
     _item = widget.item;
-    _c = NativeVideoController()..addListener(_onPlayer);
+    _c = NativeVideoController(sourceId: AudioSources.film)
+      ..addListener(_onPlayer);
     unawaited(ClearVoiceFlag.load().then((_) {
       if (mounted) _c.setClearVoice(ClearVoiceFlag.value);
     }));

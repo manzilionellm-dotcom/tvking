@@ -28,6 +28,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../domain/audio_sources.dart';
+
 /// État du PiP côté natif. Stream pour permettre aux widgets de
 /// rebuild quand on entre / sort du PiP.
 class PipService extends ChangeNotifier {
@@ -46,6 +48,11 @@ class PipService extends ChangeNotifier {
   bool _isInPipMode = false;
   bool _isSupported = false;
   bool _supportChecked = false;
+
+  /// Service de premier plan du mode Écouteurs. Il ne décode pas :
+  /// il empêche Android de tuer le processus (WakeLock). Le son,
+  /// c'est le lecteur téléphone qui le sort.
+  int? _backgroundSource;
 
   /// True quand la fenêtre est actuellement en PiP. Lu par le
   /// VideoPlayerScreen pour cacher les overlays et fitter la vidéo.
@@ -145,6 +152,8 @@ class PipService extends ChangeNotifier {
         'startBackgroundAudio',
         <String, Object>{'title': title},
       );
+      _backgroundSource ??= AudioSources.acquire(AudioSources.serviceFond);
+      AudioSources.setPresence(_backgroundSource!, AudioPresence.lock);
     } catch (e) {
       if (kDebugMode) debugPrint('[PiP] startBackgroundAudio failed: $e');
     }
@@ -153,6 +162,9 @@ class PipService extends ChangeNotifier {
   /// Arrête le service audio de fond (retire la notification + libère
   /// les locks). Idempotent.
   Future<void> stopBackgroundAudio() async {
+    final int? src = _backgroundSource;
+    _backgroundSource = null;
+    if (src != null) AudioSources.release(src);
     try {
       await _channel.invokeMethod<void>('stopBackgroundAudio');
     } catch (e) {

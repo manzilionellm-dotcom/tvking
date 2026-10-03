@@ -29,6 +29,7 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/clear_voice_flag.dart';
+import '../../player/domain/audio_sources.dart';
 import '../../player/data/image_prefs.dart';
 
 import '../../recordings/domain/recording.dart';
@@ -94,6 +95,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
     final NativeVideoController c = NativeVideoController(
       initialUrl: fileUri,
       openAsVod: true,
+      sourceId: AudioSources.enregistrementTv,
     )..addListener(_onPlayer);
     setState(() => _controller = c);
     unawaited(ClearVoiceFlag.load().then((_) {

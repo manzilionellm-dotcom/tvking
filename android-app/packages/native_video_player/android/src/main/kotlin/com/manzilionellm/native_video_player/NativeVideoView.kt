@@ -2681,7 +2681,9 @@ class NativeVideoView(
             },
             playbackSpeed = speed,
             formatMeter = meter,
-            cycle = currentUrl?.let { PlayerCensus.snapshot(AacRoute.key(it), boxFailure) },
+            cycle = currentUrl?.let {
+                PlayerCensus.snapshot(AacRoute.key(it), boxFailure, owners.registeredCount)
+            },
             probeRequested = AudioFixes.probe,
             probeInChain = !stockChainInstalled && probeDecoder.lastAccepted,
             probeFrames = if (stockChainInstalled) 0 else probeDecoder.usefulFrames,

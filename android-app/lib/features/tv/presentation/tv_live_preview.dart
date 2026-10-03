@@ -31,6 +31,7 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/image_prefs.dart';
+import '../../player/domain/audio_sources.dart';
 import '../../channels/domain/channel.dart';
 import '../core/tv_tokens.dart';
 
@@ -122,7 +123,13 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     final String url = widget.channel.streamUrl;
     if (url.isEmpty) return;
     _stop();
-    final NativeVideoController created = NativeVideoController(initialUrl: url);
+    // Pas d'observateur de Home ici : si l'utilisateur quitte l'app
+    // depuis la grille, ce lecteur reste compté « son ». On ne le
+    // coupe pas dans cette version (le défaut ne change pas).
+    final NativeVideoController created = NativeVideoController(
+      initialUrl: url,
+      sourceId: AudioSources.apercu,
+    );
     setState(() => _ctrl = created);
     unawaited(ImagePrefs.load().then((_) {
       created.setImageEngine(ImagePrefs.engine.wire);

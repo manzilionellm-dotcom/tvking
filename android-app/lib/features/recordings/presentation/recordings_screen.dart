@@ -28,6 +28,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../player/data/audio_mode_guard.dart';
+import '../../player/domain/audio_sources.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/gallery_exporter.dart';
@@ -539,6 +540,7 @@ class _RecordingPlayer extends StatefulWidget {
 class _RecordingPlayerState extends State<_RecordingPlayer> {
   late final Player _player;
   late final VideoController _controller;
+  int? _audioSource;
 
   /// Message d'erreur lisible (null = lecture OK). Évite l'écran NOIR
   /// muet quand le fichier est vide, manquant ou illisible.
@@ -549,6 +551,7 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
   void initState() {
     super.initState();
     _player = Player();
+    _audioSource = AudioSources.acquire(AudioSources.enregistrementTel);
     _controller = VideoController(_player);
     _errSub = _player.stream.error.listen((String e) {
       if (mounted && _errorMsg == null) {
@@ -577,6 +580,10 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
         await AudioModeGuardClient.applyIfEnabled();
       }
       await _player.open(Media(widget.recording.filePath));
+      final int? src = _audioSource;
+      if (src != null) {
+        AudioSources.setPresence(src, AudioPresence.sound);
+      }
     } catch (e) {
       if (mounted) setState(() => _errorMsg = context.l10n.recordingPlayError('$e'));
     }
@@ -585,6 +592,9 @@ class _RecordingPlayerState extends State<_RecordingPlayer> {
   @override
   void dispose() {
     _errSub?.cancel();
+    final int? src = _audioSource;
+    _audioSource = null;
+    if (src != null) AudioSources.release(src);
     _player.dispose();
     super.dispose();
   }
