@@ -7,7 +7,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/// Date lisible en heure de Paris (voir robust.ts : secondes ou ms,
+/// MAC d'appareil telle que le serveur l'attend : MK:XX:XX:XX:XX:XX.
+export function normalizeMac(raw: string): string {
+  return raw.trim().toUpperCase();
+}
+
+export function isValidMac(raw: string): boolean {
+  return /^MK(?::[0-9A-F]{2}){5}$/i.test(normalizeMac(raw));
+}
+
+/// Date lisible en heure de Paris (robust.ts : secondes ou ms,
 /// fuseau fixe, valeur vide → « — »).
 export { formatDateTime } from './robust';
 

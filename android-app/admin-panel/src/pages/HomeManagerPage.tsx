@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { confirmAction } from '@/components/confirm';
 import {
   homeLayoutApi, type HomeSection, type HomeLayoutSnapshot,
   HOME_RIBBONS, HOME_SECTION_LABELS, ApiError,
@@ -95,7 +96,13 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
   }
 
   async function restore(id: number) {
-    if (!window.confirm('Restaurer cette version de l\'accueil ?')) return;
+    const ok = await confirmAction({
+      title: 'Restaurer cette version ?',
+      message: 'L’accueil publié sera remplacé par cette version archivée.',
+      confirmLabel: 'Restaurer',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true); setErr(null); setOk(null);
     try {
       await homeLayoutApi.restore(id);

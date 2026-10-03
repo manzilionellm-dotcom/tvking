@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { confirmAction } from '@/components/confirm';
 import { forceUpdateApi, ApiError } from '@/lib/api';
 
 /// Page « Mise à jour forcée » (owner uniquement) — un bouton qui oblige
@@ -40,11 +41,13 @@ export function ForceUpdatePage({ onLogout }: { onLogout: () => void }) {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [platform]);
 
   async function doForce() {
-    if (!window.confirm(
-      'Forcer la mise à jour ?\n\nTous les utilisateurs sur une version '
-      + 'plus ancienne que la dernière verront un écran les obligeant à '
-      + 'télécharger la nouvelle version. Les utilisateurs déjà à jour ne '
-      + 'sont pas affectés.')) return;
+    const ok = await confirmAction({
+      title: 'Forcer la mise à jour ?',
+      message: 'Tous les utilisateurs sur une version plus ancienne que la dernière verront un écran les obligeant à télécharger la nouvelle version. Les utilisateurs déjà à jour ne sont pas affectés.',
+      confirmLabel: 'Forcer la mise à jour',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true); setErr(null); setOk(null);
     try {
       const r = await forceUpdateApi.force(platform);

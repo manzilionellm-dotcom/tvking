@@ -1,42 +1,38 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
+import { confirmAction } from '@/components/confirm';
+import { Alert, StatusBadge } from '@/components/ui';
 import {
-  activateApi, appsApi, planCostsApi, meApi, serversApi, sourcesApi,
-  getCurrentUser, isOwnerRole, userCan, DOWNLOAD_URL, DOWNLOADER_CODE,
-  type App, type PlanCost, type ActivateResult, type DefaultServer,
-  type DeviceSourceInput, ApiError,
+  activateApi, appsApi, planCostsApi, meApi, devicesApi,
+  getCurrentUser, isOwnerRole, DOWNLOAD_URL, DOWNLOADER_CODE,
+  type App, type PlanCost, type ActivateResult, type Device,
+  type DeviceLicense, ApiError,
 } from '@/lib/api';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
 import { createSingleFlight } from '@/lib/robust';
 
-/// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
-/// tout »). Une MAC → on pose la licence ET on pousse un TRIO de sources
-/// (0 à 3). Le client est débloqué et configuré automatiquement à
-/// distance. La page « Pousser une playlist » est fusionnée ici.
+// Écran ACTIVATION — durée, activation, désactivation, expiration.
+// N'envoie jamais de liste de chaînes. Le lien se gère sur /chaines.
+// « Désactiver » gèle la box (appel déjà existant). Ça ne touche pas
+// au lien, et ça n'efface pas la date de fin.
 
-type SrcDraft = {
-  type: 'xtream' | 'm3u';
-  serverChoice: string;
-  serverUrl: string;
-  xtUser: string;
-  xtPass: string;
-  m3uUrl: string;
+const PLAN_FR: Record<string, string> = {
+  monthly: '1 mois', quarterly: '3 mois', biannual: '6 mois',
+  yearly: '1 an', lifetime: 'À vie',
+  trial_24h: 'Test 24 h', trial_48h: 'Test 48 h', trial_7d: 'Test 7 jours',
 };
-const blankSrc = (): SrcDraft => ({
-  type: 'xtream', serverChoice: 'custom', serverUrl: '',
-  xtUser: '', xtPass: '', m3uUrl: '',
-});
-const MAX_SOURCES = 3;
+
+type BoxState = {
+  device: Device;
+  license: DeviceLicense | null;
+};
 
 export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const user = getCurrentUser();
   const isReseller = !isOwnerRole(user?.role);
-  // Pousser des sources = capacité 'sources' (revendeur standard+ ou admin).
-  const canPushSources = userCan(user, 'sources');
 
-  // MAC pré-remplie si on arrive depuis la fiche appareil (?mac=…).
   const [sp] = useSearchParams();
   const [mac, setMac] = useState(sp.get('mac') || 'MK:');
   const [plan, setPlan] = useState(isReseller ? 'yearly' : 'monthly');
@@ -44,9 +40,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [apps, setApps] = useState<App[]>([]);
   const [costs, setCosts] = useState<PlanCost[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
-  const [servers, setServers] = useState<DefaultServer[]>([]);
-  // TRIO : 0 à 3 sources poussées avec l'activation (optionnel).
-  const [items, setItems] = useState<SrcDraft[]>([]);
+  const [box, setBox] = useState<BoxState | null>(null);
+  const [looking, setLooking] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -54,11 +49,10 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [result, setResult] = useState<ActivateResult | null>(null);
   const flight = useRef(createSingleFlight());
 
-  // UN SEUL produit : on filtre les autres applis (NOVA+, Red Room, TV…)
-  // — le client n'a qu'une app. On prend la 1re « vraie » appli.
   const primaryApp =
     apps.find((a) => !/red\s*room|nova|\btv\b/i.test(a.name)) ?? apps[0];
   const appId = primaryApp?.id ?? 'app_7motion';
+  const macOk = isValidMac(mac);
 
   useEffect(() => {
     let active = true;
@@ -86,44 +80,34 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         setWarn(notices.join(' '));
       });
 
-    serversApi.list()
-      .then((r) => { if (active) setServers(r.items); })
-      .catch((e) => {
-        if (!active) return;
-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-        notices.push('Serveurs par défaut indisponibles.');
-        setWarn(notices.join(' '));
-      });
-
     return () => { active = false; };
   }, [onLogout]);
 
-  // ----- helpers TRIO -----
-  function patch(i: number, p: Partial<SrcDraft>) {
-    setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...p } : it)));
-  }
-  function addItem() {
-    if (items.length < MAX_SOURCES) {
-      const s = blankSrc();
-      if (servers[0]) { s.serverChoice = servers[0].id; s.serverUrl = servers[0].url; }
-      setItems((prev) => [...prev, s]);
-    }
-  }
-  function removeItem(i: number) {
-    setItems((prev) => prev.filter((_, idx) => idx !== i));
-  }
-  function buildSource(it: SrcDraft): DeviceSourceInput | null {
-    if (it.type === 'xtream') {
-      if (!it.serverUrl.trim() || !it.xtUser.trim() || !it.xtPass.trim()) return null;
-      const chosen = servers.find((s) => s.id === it.serverChoice);
-      return {
-        type: 'xtream', label: chosen?.label ?? null,
-        server_url: it.serverUrl.trim(), username: it.xtUser.trim(), password: it.xtPass.trim(),
-      };
-    }
-    if (!it.m3uUrl.trim()) return null;
-    return { type: 'm3u', m3u_url: it.m3uUrl.trim() };
-  }
+  useEffect(() => {
+    if (!macOk) { setBox(null); return; }
+    let cancel = false;
+    const m = normalizeMac(mac);
+    const timer = setTimeout(() => {
+      setLooking(true);
+      devicesApi.list(m)
+        .then(async (r) => {
+          const found = r.items.find((d) => d.mac.toUpperCase() === m);
+          if (!found) {
+            if (!cancel) setBox(null);
+            return;
+          }
+          const ov = await devicesApi.overview(found.id);
+          if (!cancel) setBox({ device: found, license: ov.license });
+        })
+        .catch((e) => {
+          if (cancel) return;
+          if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+          setBox(null);
+        })
+        .finally(() => { if (!cancel) setLooking(false); });
+    }, 400);
+    return () => { cancel = true; clearTimeout(timer); };
+  }, [mac, macOk, onLogout, result]);
 
   const costFor = (p: string): number | null => {
     if (p.startsWith('trial')) return 0;
@@ -137,41 +121,54 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
       setBusy(true);
       setErr(null);
       setResult(null);
-      const m = mac.trim().toUpperCase();
-      if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+      const m = normalizeMac(mac);
+      if (!isValidMac(m)) {
         setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
         setBusy(false);
         return;
       }
-      // Construit le trio (chaque bloc ajouté doit être complet).
-      const sources: DeviceSourceInput[] = [];
-      for (let i = 0; i < items.length; i++) {
-        const s = buildSource(items[i]);
-        if (!s) {
-          setErr(`Source ${i + 1} incomplète (serveur/identifiant/mot de passe ou URL M3U).`);
-          setBusy(false);
-          return;
-        }
-        sources.push(s);
-      }
       try {
-        // 1) Licence (débloque l'app). 2) Trio de sources (auto-chargé).
+        // Licence seulement. Pas de lien dans cet appel.
         const res = await activateApi.activate({
           mac: m, plan, app_id: appId,
           customer_name: customerName.trim() || undefined,
         });
-        if (sources.length > 0) {
-          await sourcesApi.setMany(m, sources);
-        }
         setResult(res);
         if (res.credit_balance !== null) setBalance(res.credit_balance);
-      } catch (err: any) {
-        if (err instanceof ApiError && err.status === 401) { onLogout(); return; }
-        setErr(err instanceof ApiError ? err.message : 'Activation impossible. Réessayez.');
+      } catch (e: unknown) {
+        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+        setErr(e instanceof ApiError ? e.message : 'Activation impossible. Réessayez.');
       } finally {
         setBusy(false);
       }
     });
+  }
+
+  async function setFrozen(frozen: boolean) {
+    if (!box) return;
+    const ok = await confirmAction({
+      title: frozen ? 'Désactiver cette application ?' : 'Réactiver cette application ?',
+      message: frozen
+        ? 'La box sera bloquée tout de suite. La date de fin reste en mémoire, et la liste de chaînes n’est pas modifiée.'
+        : 'La box pourra de nouveau ouvrir l’application, si la durée n’est pas terminée. La liste de chaînes n’est pas modifiée.',
+      confirmLabel: frozen ? 'Désactiver' : 'Réactiver',
+      danger: frozen,
+    });
+    if (!ok) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await devicesApi.setBlock(box.device.id, frozen ? 'frozen' : 'active');
+      setBox({
+        ...box,
+        device: { ...box.device, block_status: frozen ? 'frozen' : 'active' },
+      });
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+      setErr(e instanceof ApiError ? e.message : 'Action impossible.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   const PLANS = isReseller
@@ -184,69 +181,107 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   ];
 
   const inputCls =
-    'w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none transition duration-150 focus:ring-1 focus:ring-accent';
+    'w-full rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40';
+
+  const license = box?.license ?? null;
+  const blocked = box?.device.block_status === 'frozen' || box?.device.block_status === 'banned';
+  const licenseStatus = !license
+    ? 'offline'
+    : license.expires_at != null && license.expires_at <= Date.now()
+      ? 'expired'
+      : (license.status || 'active');
+  const shownStatus = box?.device.block_status === 'banned'
+    ? 'banned'
+    : box?.device.block_status === 'frozen'
+      ? 'frozen'
+      : licenseStatus === 'offline'
+        ? 'offline'
+        : licenseStatus;
 
   return (
     <AppLayout
-      title="Activer un appareil"
-      subtitle="Une MAC → licence + sources, tout d'un coup. Le client est configuré automatiquement."
+      title="Activer l'application"
+      subtitle="Durée, activation et désactivation. Ça ne change pas la liste de chaînes."
       onLogout={onLogout}
       actions={
         isReseller && balance !== null ? (
           <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-2 text-sm">
-            <span className="text-ink-tertiary">Crédits&nbsp;: </span>
+            <span className="text-ink-secondary">Crédits&nbsp;: </span>
             <span className="font-semibold text-accent-bright">{balance}</span>
           </div>
         ) : undefined
       }
     >
-      {warn && (
-        <div className="mb-4 rounded-lg border border-champagne/40 bg-champagne/10 px-4 py-3 text-sm text-champagne">
-          {warn}
-        </div>
-      )}
+      {warn && <Alert>{warn}</Alert>}
 
-      <div className="grid max-w-4xl gap-6 md:grid-cols-2">
-        {/* ===== Formulaire ===== */}
-        <form onSubmit={submit} className="space-y-4 rounded-xl border border-white/5 bg-midnight p-6">
+      <div className="grid max-w-5xl gap-6 lg:grid-cols-2">
+        <form onSubmit={submit} className="space-y-4 rounded-xl border border-white/10 bg-midnight p-6">
+          <h2 className="text-base font-semibold">Activation</h2>
+          <p className="text-sm leading-relaxed text-ink-secondary">
+            Le lien de la liste de chaînes est sur un autre écran :{' '}
+            <Link to={macOk ? `/chaines?mac=${encodeURIComponent(normalizeMac(mac))}` : '/chaines'} className="font-medium text-accent-bright underline-offset-2 hover:underline">
+              Liste de chaînes
+            </Link>.
+          </p>
+
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Adresse MAC de l'appareil
+            <label htmlFor="act-mac" className="mb-1.5 block text-xs font-medium text-ink-secondary">
+              Adresse MAC de la box
             </label>
             <input
+              id="act-mac"
               value={mac}
               onChange={(e) => setMac(e.target.value)}
               autoFocus
-              placeholder="MK:1A:2B:3C:4D:5E"
+              autoComplete="off"
+              placeholder="MK:XX:XX:XX:XX:XX"
               className={inputCls + ' font-mono'}
             />
           </div>
 
-          {/* Téléchargement à donner au client : le lien propre OU le code
-              Downloader officiel (TV / Fire TV). Domaine app.7themotion.com. */}
           <div>
-            <p className="mb-1 text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <p className="mb-1 text-xs font-medium text-ink-secondary">
               Lien de téléchargement (à donner au client)
             </p>
             <CopyLink url={DOWNLOAD_URL} />
-            <div className="mt-2 flex items-center gap-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2">
-              <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">
-                Code Downloader
-              </span>
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2">
+              <span className="text-xs text-ink-secondary">Code Downloader</span>
               <span className="font-mono text-base font-bold tracking-wider text-accent-bright">
                 {DOWNLOADER_CODE}
               </span>
-              <span className="text-[11px] text-ink-tertiary">
-                (TV / Fire TV → app « Downloader »)
-              </span>
+              <span className="text-xs text-ink-secondary">TV / Fire TV, application Downloader</span>
             </div>
           </div>
 
-          {/* Plan */}
-          <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Plan
-            </label>
+          <div className="rounded-lg border border-white/10 bg-obsidian px-4 py-3">
+            <p className="text-xs font-medium text-ink-secondary">État de cette box</p>
+            {looking && <p className="mt-2 text-sm text-ink-secondary">Recherche…</p>}
+            {!looking && !macOk && (
+              <p className="mt-2 text-sm text-ink-secondary">Entre une MAC complète.</p>
+            )}
+            {!looking && macOk && !box && (
+              <p className="mt-2 text-sm text-ink-secondary">Cette box n’est pas encore activée.</p>
+            )}
+            {!looking && box && (
+              <div className="mt-2 space-y-2 text-sm">
+                <StatusBadge
+                  status={shownStatus === 'offline' ? 'offline' : shownStatus}
+                  label={shownStatus === 'offline' ? 'Pas activée' : undefined}
+                />
+                <p className="text-ink-secondary">
+                  Durée : {license ? (PLAN_FR[license.plan || ''] || license.plan || '—') : '—'}
+                </p>
+                <p className="text-ink-secondary">
+                  Expire le : {license
+                    ? (license.expires_at ? formatDateTime(license.expires_at) : 'À vie')
+                    : '—'}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <fieldset>
+            <legend className="mb-1.5 block text-xs font-medium text-ink-secondary">Durée</legend>
             <div className="grid grid-cols-2 gap-2">
               {PLANS.map((p) => {
                 const c = costFor(p.id);
@@ -257,25 +292,22 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                     key={p.id}
                     onClick={() => setPlan(p.id)}
                     className={
-                      'flex items-center justify-between rounded-md border px-3 py-2 text-sm transition duration-150 ' +
+                      'flex items-center justify-between rounded-md border px-3 py-2 text-sm ' +
                       (selected
                         ? 'border-accent bg-accent/10 text-ink-primary'
-                        : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
+                        : 'border-white/10 bg-slate text-ink-secondary hover:border-white/20')
                     }
                   >
                     <span>{p.label}</span>
-                    {/* Le coût en crédits ne concerne QUE les revendeurs.
-                        L'owner (super admin) active gratuitement et sans
-                        limite → on ne lui montre aucun crédit. */}
-                    {isReseller && c !== null && <span className="text-[11px] text-ink-tertiary">{c} cr.</span>}
+                    {isReseller && c !== null && <span className="text-xs text-ink-secondary">{c} cr.</span>}
                   </button>
                 );
               })}
             </div>
-            <div className="mt-2 text-[10px] uppercase tracking-widest text-ink-tertiary">
-              {isReseller ? 'Essai gratuit · 0 crédit' : 'Essai gratuit'}
-            </div>
-            <div className="mt-1 grid grid-cols-3 gap-2">
+            <p className="mb-1 mt-3 text-xs font-medium text-ink-secondary">
+              {isReseller ? 'Essai gratuit, 0 crédit' : 'Essai gratuit'}
+            </p>
+            <div className="grid grid-cols-3 gap-2">
               {TRIALS.map((t) => {
                 const selected = plan === t.id;
                 return (
@@ -284,25 +316,25 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                     key={t.id}
                     onClick={() => setPlan(t.id)}
                     className={
-                      'flex items-center justify-between rounded-md border px-3 py-2 text-sm transition duration-150 ' +
+                      'rounded-md border px-3 py-2 text-sm ' +
                       (selected
                         ? 'border-success bg-success/10 text-ink-primary'
-                        : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
+                        : 'border-white/10 bg-slate text-ink-secondary hover:border-white/20')
                     }
                   >
-                    <span>{t.label}</span>
-                    <span className="text-[11px] text-success">gratuit</span>
+                    {t.label}
                   </button>
                 );
               })}
             </div>
-          </div>
+          </fieldset>
 
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label htmlFor="act-name" className="mb-1.5 block text-xs font-medium text-ink-secondary">
               Nom du client (optionnel)
             </label>
             <input
+              id="act-name"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
               placeholder="Ex. Salon de Karim"
@@ -310,128 +342,67 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             />
           </div>
 
-          {/* ===== TRIO de sources (0 à 3) — masqué si niveau insuffisant ===== */}
-          {canPushSources && (
-          <div className="rounded-lg border border-white/5 bg-slate/40 p-3">
-            <label className="mb-2 block text-[10px] uppercase tracking-widest text-ink-tertiary">
-              Sources du client — chargées automatiquement (jusqu'à 3)
-            </label>
-
-            {items.map((it, i) => (
-              <div key={i} className="mb-2 rounded-md border border-white/10 bg-slate/30 p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-widest text-ink-tertiary">Source {i + 1}</span>
-                  <button type="button" onClick={() => removeItem(i)} className="text-xs text-ink-tertiary transition duration-150 hover:text-accent-bright">
-                    Retirer
-                  </button>
-                </div>
-                <div className="mb-2 grid grid-cols-2 gap-2">
-                  {(['xtream', 'm3u'] as const).map((t) => (
-                    <button
-                      type="button"
-                      key={t}
-                      onClick={() => patch(i, { type: t })}
-                      className={
-                        'rounded-md border px-3 py-2 text-sm transition duration-150 ' +
-                        (it.type === t
-                          ? 'border-accent bg-accent/10 text-ink-primary'
-                          : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
-                      }
-                    >
-                      {t === 'xtream' ? 'Xtream Codes' : 'M3U'}
-                    </button>
-                  ))}
-                </div>
-                {it.type === 'xtream' && (
-                  <div className="space-y-2">
-                    {servers.length > 0 && (
-                      <select
-                        value={it.serverChoice}
-                        onChange={(e) => {
-                          const s = servers.find((x) => x.id === e.target.value);
-                          patch(i, { serverChoice: e.target.value, serverUrl: s ? s.url : it.serverUrl });
-                        }}
-                        className={inputCls}
-                      >
-                        {servers.map((s) => (<option key={s.id} value={s.id}>{s.label}</option>))}
-                        <option value="custom">URL manuelle…</option>
-                      </select>
-                    )}
-                    {(it.serverChoice === 'custom' || servers.length === 0) && (
-                      <input value={it.serverUrl} onChange={(e) => patch(i, { serverUrl: e.target.value })}
-                        placeholder="http://serveur.com:8080" className={inputCls + ' font-mono'} />
-                    )}
-                    <input value={it.xtUser} onChange={(e) => patch(i, { xtUser: e.target.value })}
-                      placeholder="Utilisateur" className={inputCls} />
-                    <input value={it.xtPass} onChange={(e) => patch(i, { xtPass: e.target.value })}
-                      placeholder="Mot de passe" className={inputCls} />
-                  </div>
-                )}
-                {it.type === 'm3u' && (
-                  <input value={it.m3uUrl} onChange={(e) => patch(i, { m3uUrl: e.target.value })}
-                    placeholder="http://serveur.com/get.php?username=…&type=m3u_plus" className={inputCls + ' font-mono'} />
-                )}
-              </div>
-            ))}
-
-            {items.length < MAX_SOURCES && (
-              <button type="button" onClick={addItem}
-                className="w-full rounded-md border border-dashed border-white/15 px-3 py-2 text-sm text-ink-secondary transition duration-150 hover:border-accent/50 hover:text-accent-bright">
-                {items.length === 0
-                  ? '+ Ajouter une source'
-                  : `+ Ajouter une source (trio — ${items.length}/${MAX_SOURCES})`}
-              </button>
-            )}
-          </div>
-          )}
-
-          {err && (
-            <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-accent-bright">{err}</div>
-          )}
+          {err && <Alert>{err}</Alert>}
 
           <button
             type="submit"
-            disabled={busy || mac.trim().length < 8}
-            className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition duration-150 hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={busy || !macOk}
+            className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-obsidian hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy
-              ? (items.length > 0 ? 'Activation + sources…' : 'Activation en cours…')
+              ? 'Activation en cours…'
               : !isReseller
-                /* Owner : activation gratuite et illimitée, jamais de crédit. */
-                ? 'Activer'
+                ? 'Activer l’application'
                 : costFor(plan) === 0
-                  ? 'Activer (gratuit)'
-                  : `Activer (${costFor(plan) ?? '?'} crédits)`}
+                  ? 'Activer l’application (gratuit)'
+                  : `Activer l’application (${costFor(plan) ?? '?'} crédits)`}
           </button>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setFrozen(true)}
+              disabled={busy || !box || blocked}
+              className="rounded-md border border-white/15 px-4 py-2.5 text-sm font-medium text-ink-primary hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Désactiver l’application
+            </button>
+            {box?.device.block_status === 'frozen' && (
+              <button
+                type="button"
+                onClick={() => setFrozen(false)}
+                disabled={busy}
+                className="rounded-md border border-white/15 px-4 py-2.5 text-sm font-medium text-ink-primary hover:bg-white/5 disabled:opacity-40"
+              >
+                Réactiver l’application
+              </button>
+            )}
+          </div>
+          <p className="text-xs leading-relaxed text-ink-secondary">
+            Désactiver bloque la box. Ça ne retire pas le lien des chaînes, et ça n’efface pas la date de fin.
+          </p>
         </form>
 
-        {/* ===== Résultat ===== */}
-        <div className="rounded-xl border border-white/5 bg-obsidian p-6 transition duration-150">
+        <div className="rounded-xl border border-white/10 bg-obsidian p-6">
+          <h2 className="text-base font-semibold">Résultat</h2>
           {!result && !busy && (
-            <p className="text-sm text-ink-tertiary">
-              Le résultat de l'activation s'affichera ici. L'appareil est débloqué et
-              configuré (licence + sources) à distance dès la prochaine vérification de l'app.
+            <p className="mt-3 text-sm leading-relaxed text-ink-secondary">
+              Après activation, la date de fin s’affiche ici. La liste de chaînes n’est pas envoyée.
             </p>
           )}
           {busy && !result && (
-            <div className="flex items-center gap-3 text-sm text-ink-secondary">
-              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent/30 border-t-accent" />
-              Activation en cours…
-            </div>
+            <p className="mt-3 text-sm text-ink-secondary" role="status">Activation en cours…</p>
           )}
           {result && (
-            <div className="space-y-3 text-sm">
-              <div className="inline-flex rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
-                {result.renewed ? 'Licence renouvelée' : 'Appareil activé'}
-              </div>
+            <div className="mt-3 space-y-3 text-sm">
+              <StatusBadge status="active" label={result.renewed ? 'Durée prolongée' : 'Application activée'} />
               <Row k="MAC" v={result.mac} mono />
-              <Row k="Plan" v={result.plan} />
+              <Row k="Durée" v={PLAN_FR[result.plan] || result.plan} />
               <Row k="Expire le" v={result.expires_at ? formatDateTime(result.expires_at) : 'À vie'} />
               <Row k="Crédits débités" v={String(result.credits_charged)} />
               {result.credit_balance !== null && (
                 <Row k="Solde restant" v={String(result.credit_balance)} />
               )}
-              {items.length > 0 && <Row k="Sources poussées" v={String(items.length)} />}
             </div>
           )}
         </div>
@@ -442,8 +413,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
 function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return (
-    <div className="flex items-center justify-between border-b border-white/5 pb-2">
-      <span className="text-ink-tertiary">{k}</span>
+    <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-2">
+      <span className="text-ink-secondary">{k}</span>
       <span className={mono ? 'font-mono text-accent' : 'text-ink-primary'}>{v}</span>
     </div>
   );
