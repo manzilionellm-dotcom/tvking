@@ -49,7 +49,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('liste retirée, plus rien : message puis Ajouter ma liste',
+  testWidgets('liste retirée, plus rien : message puis Ajouter ma source',
       (WidgetTester tester) async {
     await pump(tester);
     expect(find.text('lecteur'), findsOneWidget);
@@ -68,7 +68,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
-    expect(find.text('Ajouter ma liste'), findsOneWidget);
+    expect(find.text('Ajouter ma source'), findsOneWidget);
     expect(find.text('lecteur'), findsNothing);
   });
 
@@ -83,7 +83,7 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(find.text('accueil'), findsOneWidget);
-    expect(find.text('Ajouter ma liste'), findsNothing);
+    expect(find.text('Ajouter ma source'), findsNothing);
     expect(find.text('lecteur'), findsNothing);
   });
 }
