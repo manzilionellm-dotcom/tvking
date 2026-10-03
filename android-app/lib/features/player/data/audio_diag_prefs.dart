@@ -4,12 +4,15 @@
 //  • sonde PCM (mesure seulement, ne filtre pas le son)
 //  • réessayer FFmpeg à la prochaine chaîne
 //  • essayer le décodeur AAC de la box à la prochaine chaîne
-//  Une préférence absente ou illisible reste FAUSSE : on ne change
-//  pas le chemin audio tout seul.
+//  • essai d'attributs (film / musique / parole / défaut Media3)
+//  Une préférence absente ou illisible reste FAUSSE, ou « off » pour
+//  les attributs : on ne change pas le chemin audio tout seul.
 // =========================================================
 
 import 'package:native_video_player/native_video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../domain/audio_attribute_trial.dart';
 
 class AudioDiagPrefs {
   AudioDiagPrefs._();
@@ -31,6 +34,9 @@ class AudioDiagPrefs {
   /// Repli « passage » : vrai = on n'attend pas l'AudioTrack (ancien).
   static const String immediateHandoffKey = 'zuno.audio.handoff.immediate';
 
+  /// Essai d'attributs. Absent ou illisible = « off » (son d'aujourd'hui).
+  static const String profileKey = AudioAttributeTrial.key;
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
@@ -39,6 +45,7 @@ class AudioDiagPrefs {
     var androidFocus = false;
     var bgPause = false;
     var immediate = false;
+    var profile = AudioAttributeTrial.off;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -48,6 +55,7 @@ class AudioDiagPrefs {
       androidFocus = prefs.getBool(androidFocusKey) ?? false;
       bgPause = prefs.getBool(bgPauseKey) ?? false;
       immediate = prefs.getBool(immediateHandoffKey) ?? false;
+      profile = AudioAttributeTrial.parse(prefs.getString(profileKey));
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -56,6 +64,7 @@ class AudioDiagPrefs {
       androidFocus = false;
       bgPause = false;
       immediate = false;
+      profile = AudioAttributeTrial.off;
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
@@ -64,9 +73,20 @@ class AudioDiagPrefs {
     NativeVideoController.androidAudioFocus = androidFocus;
     NativeVideoController.backgroundPauseOnly = bgPause;
     NativeVideoController.immediateHandoff = immediate;
+    NativeVideoController.audioAttributeTrial = profile;
     // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
     // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
     NativeVideoController.pushAudioDiagFlags();
+  }
+
+  static Future<void> setAudioProfile(String value) async {
+    final String wire = AudioAttributeTrial.parse(value);
+    NativeVideoController.audioAttributeTrial = wire;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString(profileKey, wire);
+    } catch (_) {}
   }
 
   static Future<void> setImmediateHandoff(bool value) async {
