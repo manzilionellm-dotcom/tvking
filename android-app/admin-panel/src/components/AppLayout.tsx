@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { useT } from '@/lib/i18n';
 
@@ -25,6 +25,16 @@ export function AppLayout({
   const [navOpen, setNavOpen] = useState(false);
   const t = useT();
 
+  // Échap ferme le tiroir mobile (le clic sur le fond le fermait déjà).
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNavOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navOpen]);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-obsidian text-ink-primary">
       {/* ===== Sidebar fixe (desktop) ===== */}
@@ -47,7 +57,7 @@ export function AppLayout({
 
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* ===== Topbar ===== */}
-        <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-white/5 px-4 md:px-8">
+        <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/5 px-4 py-2 md:flex-nowrap md:px-8">
           <div className="flex min-w-0 items-center gap-3">
             {/* Hamburger (mobile only) */}
             <button
@@ -73,7 +83,7 @@ export function AppLayout({
           </div>
           {/* Actions de page + bouton DÉCONNEXION (visible partout, y
               compris mobile, sans avoir à ouvrir le menu latéral). */}
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
             {actions}
             <button
               onClick={onLogout}

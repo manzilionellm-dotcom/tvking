@@ -75,6 +75,8 @@ export function AdPage({ onLogout }: { onLogout: () => void }) {
               <span className="text-sm">Activer la pub au démarrage</span>
               <button
                 type="button"
+                aria-pressed={enabled}
+                aria-label="Activer la pub au démarrage"
                 onClick={() => setEnabled((v) => !v)}
                 className={'relative h-6 w-11 rounded-full transition ' + (enabled ? 'bg-accent' : 'bg-white/15')}
               >
@@ -100,10 +102,11 @@ export function AdPage({ onLogout }: { onLogout: () => void }) {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+                <label htmlFor="ad-skip" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
                   « Passer » après (sec.)
                 </label>
                 <input
+                  id="ad-skip"
                   type="number" min={0} max={60}
                   value={skip}
                   onChange={(e) => setSkip(Math.max(0, Math.min(60, parseInt(e.target.value || '0', 10))))}
@@ -111,10 +114,11 @@ export function AdPage({ onLogout }: { onLogout: () => void }) {
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+                <label htmlFor="ad-freq" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
                   Fréquence
                 </label>
                 <select
+                  id="ad-freq"
                   value={freq}
                   onChange={(e) => setFreq(e.target.value === 'daily' ? 'daily' : 'always')}
                   className={inputCls}

@@ -27,3 +27,8 @@ html, body, #root {
 
 /* Selection couleur ember */
 ::selection { background: rgba(214, 58, 48, 0.28); }
+
+/* Le rouge #D63A30 (text-accent) tombe sous 4,5:1 en petit texte sur fond
+   sombre. On garde ce rouge pour les fonds de boutons (texte noir dessus)
+   et on éclaircit seulement la couleur du texte. */
+.text-accent { color: #FF5A4A; }
