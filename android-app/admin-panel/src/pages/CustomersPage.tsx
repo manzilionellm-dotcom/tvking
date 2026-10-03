@@ -1,34 +1,54 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
-import { customersApi, type Customer, ApiError } from '@/lib/api';
+import { ListPager } from '@/components/ListPager';
+import { customersApi, type Customer, ApiError, isAbortError } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
+import { LIST_PAGE_SIZE, createAbortBag, createGeneration, readListPage } from '@/lib/robust';
 
 export function CustomersPage({ onLogout }: { onLogout: () => void }) {
   const navigate = useNavigate();
   const [items, setItems] = useState<Customer[]>([]);
   const [q, setQ] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const gen = useRef(createGeneration());
+  const aborts = useRef(createAbortBag());
 
-  useEffect(() => {
-    let active = true;
+  const load = useCallback(() => {
+    const id = gen.current.next();
+    const signal = aborts.current.next();
     setLoading(true);
-    customersApi.list(q)
-      .then((r) => { if (active) { setItems(r.items); setErr(null); } })
-      .catch((e) => {
-        if (!active) return;
-        if (e instanceof ApiError && e.status === 401) onLogout();
-        else setErr(e.message);
+    customersApi.list(q, { limit: LIST_PAGE_SIZE, offset }, signal)
+      .then((r) => {
+        if (!gen.current.isCurrent(id)) return;
+        const page = readListPage<Customer>(r);
+        setItems(page.items);
+        setTotal(page.total);
+        setTruncated(page.truncated);
+        setErr(null);
       })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [q, onLogout]);
+      .catch((e) => {
+        if (isAbortError(e) || !gen.current.isCurrent(id)) return;
+        if (e instanceof ApiError && e.status === 401) onLogout();
+        else setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
+      })
+      .finally(() => { if (gen.current.isCurrent(id)) setLoading(false); });
+  }, [q, offset, onLogout]);
+
+  // Debounce : chaque lettre ne doit pas frapper l'API.
+  useEffect(() => {
+    const t = setTimeout(load, 200);
+    return () => { clearTimeout(t); aborts.current.abort(); };
+  }, [load]);
 
   return (
     <AppLayout
       title="Clients"
-      subtitle={`${items.length} client${items.length !== 1 ? 's' : ''}${q ? ` correspondant à « ${q} »` : ''}`}
+      subtitle={`${total} client${total !== 1 ? 's' : ''}${q ? ` correspondant à « ${q} »` : ''}`}
       onLogout={onLogout}
       actions={
         <button
@@ -42,7 +62,7 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
       <input
         type="search"
         value={q}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => { setQ(e.target.value); setOffset(0); }}
         placeholder="Recherche par nom, email, téléphone…"
         className="mb-4 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none transition duration-150 focus:ring-1 focus:ring-accent"
       />
@@ -99,6 +119,14 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
           </tbody>
         </table>
       </div>
+      <ListPager
+        total={total}
+        offset={offset}
+        count={items.length}
+        limit={LIST_PAGE_SIZE}
+        truncated={truncated}
+        onOffset={setOffset}
+      />
     </AppLayout>
   );
 }

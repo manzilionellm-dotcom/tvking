@@ -6,6 +6,7 @@ import {
   getCurrentUser, isOwnerRole,
 } from '@/lib/api';
 import { formatMoney } from '@/lib/utils';
+import { serializeBackup } from '@/lib/robust';
 import { useT } from '@/lib/i18n';
 
 /// Dashboard : cards de KPI lues en direct depuis /api/v1/stats/overview.
@@ -22,7 +23,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
     setBackupBusy(true);
     try {
       const dump = await backupApi.get();
-      const blob = new Blob([JSON.stringify(dump, null, 2)], {
+      const blob = new Blob([serializeBackup(dump)], {
         type: 'application/json',
       });
       const url = URL.createObjectURL(blob);

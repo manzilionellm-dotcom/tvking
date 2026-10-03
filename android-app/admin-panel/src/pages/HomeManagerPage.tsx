@@ -4,6 +4,7 @@ import {
   homeLayoutApi, type HomeSection, type HomeLayoutSnapshot,
   HOME_RIBBONS, HOME_SECTION_LABELS, ApiError,
 } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
 
 /// Page « Accueil » (Centre de contrôle, Module 1/8) — owner uniquement.
 /// Pilote en TEMPS RÉEL l'accueil de l'app, sans mise à jour de store :
@@ -247,7 +248,7 @@ export function HomeManagerPage({ onLogout }: { onLogout: () => void }) {
                   <div className="min-w-0">
                     <div className="truncate text-xs text-ink-secondary">{h.label}</div>
                     <div className="text-[10px] text-ink-tertiary">
-                      {new Date(h.created_at).toLocaleString()}
+                      {formatDateTime(h.created_at)}
                     </div>
                   </div>
                   <button
