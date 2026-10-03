@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { onlineApi, type OnlineSnapshot, flagEmoji, ApiError } from '@/lib/api';
+import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
 
 /// Page « En ligne » (owner) — qui utilise l'app en ce moment, depuis où.
 /// Données issues de la présence (heartbeat) : IP + pays fournis par
@@ -19,23 +20,32 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  function load() {
-    onlineApi.get()
-      .then(setData)
-      .catch((e: any) => {
-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-        setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
-      })
-      .finally(() => setLoading(false));
-  }
-
-  // Rafraîchissement auto toutes les 30 s.
+  // Rafraîchissement toutes les 2 s. Une réponse lente ne réécrit pas
+  // un état plus récent déjà affiché.
   useEffect(() => {
+    let seq = 0;
+    let applied = 0;
+    let alive = true;
+    function load() {
+      const my = ++seq;
+      onlineApi.get()
+        .then((d) => {
+          if (!alive || !shouldApplyPollResult(my, applied)) return;
+          applied = my;
+          setData(d);
+          setErr(null);
+        })
+        .catch((e: any) => {
+          if (!alive || !shouldApplyPollResult(my, applied)) return;
+          if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+          setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
+        })
+        .finally(() => { if (alive && my === seq) setLoading(false); });
+    }
     load();
-    const t = setInterval(load, 30000);
-    return () => clearInterval(t);
-    /* eslint-disable-next-line */
-  }, []);
+    const t = setInterval(load, PANEL_POLL_MS);
+    return () => { alive = false; clearInterval(t); };
+  }, [onLogout]);
 
   const byCountry = data
     ? Object.entries(data.byCountry).sort((a, b) => b[1] - a[1])
@@ -44,7 +54,7 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="En ligne"
-      subtitle="Qui utilise l'app en ce moment, et depuis quel pays (mise à jour auto)"
+      subtitle="Qui utilise l'app en ce moment, et depuis quel pays (rafraîchi toutes les 2 s)"
       onLogout={onLogout}
     >
       {err && (
