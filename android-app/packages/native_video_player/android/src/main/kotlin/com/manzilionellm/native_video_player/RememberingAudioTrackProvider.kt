@@ -144,7 +144,8 @@ object AudioTrackReadout {
     private fun encodingName(encoding: Int): String = when (encoding) {
         AudioFormat.ENCODING_PCM_16BIT -> "PCM 16 bits"
         AudioFormat.ENCODING_PCM_FLOAT -> "PCM flottant"
-        AudioFormat.ENCODING_PCM_24BIT -> "PCM 24 bits"
+        // Android nomme ce codage PACKED (valeur 21). Media3 l'appelle ENCODING_PCM_24BIT.
+        AudioFormat.ENCODING_PCM_24BIT_PACKED -> "PCM 24 bits"
         AudioFormat.ENCODING_PCM_32BIT -> "PCM 32 bits"
         AudioFormat.ENCODING_AC3 -> "AC-3"
         AudioFormat.ENCODING_E_AC3 -> "E-AC-3"
