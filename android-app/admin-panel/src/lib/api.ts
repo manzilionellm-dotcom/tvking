@@ -302,6 +302,11 @@ export interface Device {
   android_release?: string | null;
   app_build?: number | null;
   platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
+  // Pastille d'accès calculée par le serveur (essai / expiré / activé).
+  access?: 'trial' | 'expired' | 'activated' | 'lifetime' | 'frozen' | 'banned' | string;
+  access_label?: string;
+  access_days_left?: number | null;
+  access_ends_at?: number | null;
 }
 // Abonnement (licence) d'un appareil, vue panel.
 export interface DeviceLicense {
@@ -340,7 +345,7 @@ export interface DeviceOverview {
 }
 export const devicesApi = {
   list: (q?: string) =>
-    request<{ items: Device[] }>(
+    request<{ items: Device[]; trial_enforced?: boolean }>(
       `/api/v1/devices${q ? `?q=${encodeURIComponent(q)}` : ''}`,
     ),
   // Fiche 360° d'un appareil (abonnement + présence live + M-Trio) en 1 appel.
@@ -866,6 +871,15 @@ export interface PricingConfig {
   trialDays: number;    // ex. 7
   promoEnabled: boolean;
   promoMessage: string;
+  // Écran « essai terminé ». Vides = texte intégré de l'app.
+  blockTitleFr?: string;
+  blockBodyFr?: string;
+  blockTitleEn?: string;
+  blockBodyEn?: string;
+  // Lien https. Vide = pas de nouveau lien (WhatsApp / site déjà connus).
+  payUrl?: string;
+  // Lecture seule : variable d'environnement du Worker.
+  trialEnforced?: boolean;
 }
 export const pricingApi = {
   get: () => request<PricingConfig>('/api/v1/pricing'),

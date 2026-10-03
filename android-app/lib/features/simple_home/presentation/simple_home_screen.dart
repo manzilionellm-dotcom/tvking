@@ -35,6 +35,7 @@ import '../../channels/domain/channel.dart';
 import '../../channels/presentation/favorites_screen.dart';
 import '../../channels/presentation/search_screen.dart';
 import '../../channels/presentation/widgets/mac_activation_view.dart';
+import '../../subscription/presentation/trial_block_screen.dart';
 import '../../channels/presentation/widgets/resume_banner.dart';
 import '../../feedback/presentation/feedback_sheet.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
@@ -165,6 +166,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
               return Column(
                 children: <Widget>[
                   _buildHeader(),
+                  const TrialDaysHint(),
                   // Bandeau « message à tous » (annonce admin). Auto-géré :
                   // ne prend aucune place s'il n'y a rien à montrer.
                   const AnnouncementBanner(),
@@ -208,6 +210,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
             ),
           ),
           const SizedBox(height: 30),
+          const TrialDaysHint(),
           const MacActivationView(),
           const SizedBox(height: 14),
           const LegalDisclaimer.compact(),
