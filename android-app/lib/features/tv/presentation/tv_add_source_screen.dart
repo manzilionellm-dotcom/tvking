@@ -145,7 +145,10 @@ class _TvAddSourceScreenState extends State<TvAddSourceScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Text('Ajouter ma source',
+              // Titre traduit (16 langues) : « Ajouter ma liste ». Le texte en
+              // dur « Ajouter ma source » cassait la traduction et le test
+              // removed_list_prompt_test (retour après une liste retirée).
+              Text(context.l10n.tvAddListTitle,
                   style: TvTokens.display(34, color: TvTokens.text)),
               const SizedBox(height: 6),
               Text(
