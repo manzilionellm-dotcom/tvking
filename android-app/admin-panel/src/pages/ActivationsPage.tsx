@@ -1,32 +1,48 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
-import { licensesApi, type License, ApiError } from '@/lib/api';
-import { formatDateTime } from '@/lib/utils';
+import { ListPager } from '@/components/ListPager';
+import { licensesApi, type License, ApiError, isAbortError } from '@/lib/api';
+import { LIST_PAGE_SIZE, createAbortBag, createGeneration, expiryPhrase, readListPage } from '@/lib/robust';
 
 export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
   const navigate = useNavigate();
   const [items, setItems] = useState<License[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const gen = useRef(createGeneration());
+  const aborts = useRef(createAbortBag());
 
-  useEffect(() => {
-    let active = true;
-    licensesApi.list()
-      .then((r) => { if (active) { setItems(r.items); setErr(null); } })
-      .catch((e) => {
-        if (!active) return;
-        if (e instanceof ApiError && e.status === 401) onLogout();
-        else setErr(e.message);
+  const load = useCallback(() => {
+    const id = gen.current.next();
+    const signal = aborts.current.next();
+    setLoading(true);
+    licensesApi.list({ limit: LIST_PAGE_SIZE, offset }, signal)
+      .then((r) => {
+        if (!gen.current.isCurrent(id)) return;
+        const page = readListPage<License>(r);
+        setItems(page.items);
+        setTotal(page.total);
+        setTruncated(page.truncated);
+        setErr(null);
       })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [onLogout]);
+      .catch((e) => {
+        if (isAbortError(e) || !gen.current.isCurrent(id)) return;
+        if (e instanceof ApiError && e.status === 401) onLogout();
+        else setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
+      })
+      .finally(() => { if (gen.current.isCurrent(id)) setLoading(false); });
+  }, [offset, onLogout]);
+
+  useEffect(() => { load(); }, [load]);
 
   return (
     <AppLayout
       title="Activations"
-      subtitle="Licences actives, expirées et gelées sur toutes les apps."
+      subtitle={`${total} licence(s) — statut recalculé à la date du jour (heure de Paris).`}
       onLogout={onLogout}
       actions={
         <button
@@ -85,12 +101,20 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
                     {l.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(l.expires_at)}</td>
+                <td className="px-4 py-3 text-ink-tertiary">{expiryPhrase(l.expires_at)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <ListPager
+        total={total}
+        offset={offset}
+        count={items.length}
+        limit={LIST_PAGE_SIZE}
+        truncated={truncated}
+        onOffset={setOffset}
+      />
     </AppLayout>
   );
 }

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
@@ -9,6 +9,7 @@ import {
   type DeviceSourceInput, ApiError,
 } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
+import { createSingleFlight } from '@/lib/robust';
 
 /// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
 /// tout »). Une MAC → on pose la licence ET on pousse un TRIO de sources
@@ -51,6 +52,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [warn, setWarn] = useState<string | null>(null);
   const [result, setResult] = useState<ActivateResult | null>(null);
+  const flight = useRef(createSingleFlight());
 
   // UN SEUL produit : on filtre les autres applis (NOVA+, Red Room, TV…)
   // — le client n'a qu'une app. On prend la 1re « vraie » appli.
@@ -131,43 +133,45 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
-    setErr(null);
-    setResult(null);
-    const m = mac.trim().toUpperCase();
-    if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
-      setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
-      setBusy(false);
-      return;
-    }
-    // Construit le trio (chaque bloc ajouté doit être complet).
-    const sources: DeviceSourceInput[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const s = buildSource(items[i]);
-      if (!s) {
-        setErr(`Source ${i + 1} incomplète (serveur/identifiant/mot de passe ou URL M3U).`);
+    await flight.current.run(async () => {
+      setBusy(true);
+      setErr(null);
+      setResult(null);
+      const m = mac.trim().toUpperCase();
+      if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
+        setErr('MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX');
         setBusy(false);
         return;
       }
-      sources.push(s);
-    }
-    try {
-      // 1) Licence (débloque l'app). 2) Trio de sources (auto-chargé).
-      const res = await activateApi.activate({
-        mac: m, plan, app_id: appId,
-        customer_name: customerName.trim() || undefined,
-      });
-      if (sources.length > 0) {
-        await sourcesApi.setMany(m, sources);
+      // Construit le trio (chaque bloc ajouté doit être complet).
+      const sources: DeviceSourceInput[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const s = buildSource(items[i]);
+        if (!s) {
+          setErr(`Source ${i + 1} incomplète (serveur/identifiant/mot de passe ou URL M3U).`);
+          setBusy(false);
+          return;
+        }
+        sources.push(s);
       }
-      setResult(res);
-      if (res.credit_balance !== null) setBalance(res.credit_balance);
-    } catch (e: any) {
-      if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Activation impossible. Réessayez.');
-    } finally {
-      setBusy(false);
-    }
+      try {
+        // 1) Licence (débloque l'app). 2) Trio de sources (auto-chargé).
+        const res = await activateApi.activate({
+          mac: m, plan, app_id: appId,
+          customer_name: customerName.trim() || undefined,
+        });
+        if (sources.length > 0) {
+          await sourcesApi.setMany(m, sources);
+        }
+        setResult(res);
+        if (res.credit_balance !== null) setBalance(res.credit_balance);
+      } catch (err: any) {
+        if (err instanceof ApiError && err.status === 401) { onLogout(); return; }
+        setErr(err instanceof ApiError ? err.message : 'Activation impossible. Réessayez.');
+      } finally {
+        setBusy(false);
+      }
+    });
   }
 
   const PLANS = isReseller

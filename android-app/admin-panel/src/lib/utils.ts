@@ -7,21 +7,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/// Convertit des millisecondes Unix en string locale "12 mai 2026, 14:32".
-export function formatDateTime(ms: number | null | undefined): string {
-  if (!ms) return '—';
-  try {
-    return new Date(ms).toLocaleString('fr-FR', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return '—';
-  }
-}
+/// Date lisible en heure de Paris (voir robust.ts : secondes ou ms,
+/// fuseau fixe, valeur vide → « — »).
+export { formatDateTime } from './robust';
 
 /// Formate un montant en cents → "12,99 €". Devise par defaut EUR.
 export function formatMoney(cents: number, currency = 'EUR'): string {
