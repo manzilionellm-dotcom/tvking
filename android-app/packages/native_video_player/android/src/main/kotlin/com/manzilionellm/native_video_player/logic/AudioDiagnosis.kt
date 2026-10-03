@@ -98,6 +98,11 @@ data class AudioSnapshot(
     val routeLine: String? = null,
     /** Le lecteur dit qu'il joue (image et son en cours). */
     val playerAudible: Boolean = false,
+    /**
+     * Essai « chaîne Media3 par défaut ». Faux = lecteur Zuno, son habituel.
+     * Vrai = DefaultRenderersFactory, aucun étage Zuno.
+     */
+    val stockChain: Boolean = false,
 )
 
 object AudioDiagnosis {
@@ -611,6 +616,7 @@ object AudioDiagnosis {
             append(", vitesse ")
             append(String.format(Locale.FRANCE, "%.2f", s.playbackSpeed))
             append(". Pas d'égaliseur, pas de DynamicsProcessing, pas de LoudnessEnhancer.")
+            append("\n").append(Media3Chain.ficheLine(s.stockChain))
             if (!s.routeNote.isNullOrBlank()) {
                 append("\nEssai : ").append(s.routeNote)
             }

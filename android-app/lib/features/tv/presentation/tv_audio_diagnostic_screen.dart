@@ -5,7 +5,8 @@
 //  interrupteurs COUPÉS par défaut :
 //    • mesurer le spectre (copie le PCM, ne le filtre pas) ;
 //    • réessayer FFmpeg à la prochaine chaîne ;
-//    • essayer le décodeur AAC de la box à la prochaine chaîne.
+//    • essayer le décodeur AAC de la box à la prochaine chaîne ;
+//    • essayer la chaîne Media3 d'origine (coupé : son habituel).
 //  Rien n'est envoyé au panel : le heartbeat n'a pas de champ pour ça.
 //  Style : les mêmes TvTokens / TvDimens que la boîte noire.
 // =========================================================
@@ -89,6 +90,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _androidFocus = NativeVideoController.androidAudioFocus;
     _bgPause = NativeVideoController.backgroundPauseOnly;
     _immediate = NativeVideoController.immediateHandoff;
+    _pureChain = NativeVideoController.pureMedia3Chain;
     // Le libellé vient de la mémoire Dart. On le repousse au lecteur
     // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
     NativeVideoController.pushAudioDiagFlags();
@@ -104,6 +106,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _androidFocus = false;
   bool _bgPause = false;
   bool _immediate = false;
+  bool _pureChain = false;
   bool _witnessBusy = false;
   NativeVideoController? _witness;
 
@@ -194,6 +197,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     final bool next = !_ffmpeg;
     setState(() => _ffmpeg = next);
     await AudioDiagPrefs.setKeepFfmpeg(next);
+  }
+
+  Future<void> _togglePureChain() async {
+    final bool next = !_pureChain;
+    setState(() => _pureChain = next);
+    await AudioDiagPrefs.setPureMedia3Chain(next);
   }
 
   Future<void> _togglePlatform() async {
@@ -287,6 +296,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             ),
             const SizedBox(width: 12),
             _Toggle(
+              label: _pureChain ? 'Chaîne Media3 : essai' : 'Chaîne Media3 : Zuno',
+              on: _pureChain,
+              onSelect: _togglePureChain,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
               label: _witness != null
                   ? 'Témoin : stop'
                   : (_witnessBusy ? 'Témoin : préparation' : 'Jouer le son témoin'),
@@ -330,7 +345,11 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'Passage : « attendre » (défaut) = on n\'ouvre la chaîne suivante '
           'que lorsque l\'AudioTrack précédent est vraiment rendu (sinon deux '
           'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '
-          'ancien comportement. Son témoin : 10 s (voix puis bruit), '
+          'ancien comportement. Chaîne Media3 : « Zuno » (défaut) = le lecteur '
+          'habituel ; « essai » = fabrique Media3 d\'origine, décodeur de la '
+          'box, aucun étage Zuno, tampon d\'origine. La vitesse reste à 1. '
+          'Recouper pour retrouver le son habituel. Le MP2 peut rester muet '
+          'pendant l\'essai (plus de FFmpeg). Son témoin : 10 s (voix puis bruit), '
           'lu par le même lecteur. Allume la mesure, ne change pas le son. '
           'Bruit sourd → l\'appareil. Bruit clair → la chaîne.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),

@@ -34,6 +34,13 @@ object ProbeAttach {
     const val REJECT_BAD_FORMAT: String =
         "fréquence ou nombre de voies illisible"
 
+    /**
+     * L'essai « chaîne Media3 par défaut » ne contient pas les sondes.
+     * On le dit tel quel : ce n'est pas un NOT_SET de sonde coupée.
+     */
+    const val REJECT_STOCK: String =
+        "essai chaîne Media3 par défaut : aucune sonde Zuno n'est branchée"
+
     data class Decision(val accept: Boolean, val reason: String?)
 
     data class Absence(
@@ -87,6 +94,16 @@ object ProbeAttach {
         }
 
     fun absence(requested: Boolean, inChain: Boolean, frames: Int, reject: String?): Absence {
+        if (reject == REJECT_STOCK) {
+            return Absence(
+                symptom = "Sonde non branchée : l'essai « chaîne Media3 par défaut » retire les sondes.",
+                cause = "Le lecteur est un DefaultRenderersFactory sans étage Zuno. " +
+                    "On ne copie pas le PCM dans ce mode, et on ne le filtre pas non plus.",
+                media3 = "DefaultAudioSink.DefaultAudioProcessorChain (silence + Sonic, inactifs à vitesse 1)",
+                action = "Recouper l'essai pour revenir aux quatre sondes. " +
+                    "Tant que l'essai est coupé, le son habituel ne change pas.",
+            )
+        }
         if (!requested) {
             return Absence(
                 symptom = "Sonde coupée : le réglage Spectre est éteint.",
