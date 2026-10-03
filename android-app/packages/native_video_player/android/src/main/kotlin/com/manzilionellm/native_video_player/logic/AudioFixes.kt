@@ -44,12 +44,26 @@ object AudioFixes {
      */
     const val KEY_IMMEDIATE_HANDOFF: String = "zuno.audio.handoff.immediate"
 
+    /**
+     * Essai « Type : film / musique / parole ». [AudioContentChoice.OFF]
+     * par défaut : le lecteur dit « film » (ou « parole » si la voix
+     * claire est allumée), comme avant. Voir [AudioContentChoice].
+     */
+    const val KEY_CONTENT_TYPE: String = AudioContentChoice.KEY
+
     @Volatile
     var androidFocus: Boolean = false
 
     /** Vrai = ancien passage (on n'attend pas l'AudioTrack). Faux par défaut. */
     @Volatile
     var immediateHandoff: Boolean = false
+
+    /**
+     * Type déclaré à Android pour l'essai. [AudioContentChoice.OFF]
+     * par défaut : aucun remplacement.
+     */
+    @Volatile
+    var contentChoice: Int = AudioContentChoice.OFF
 
     @Volatile
     var probe: Boolean = false

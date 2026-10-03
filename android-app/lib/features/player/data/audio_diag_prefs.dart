@@ -31,6 +31,51 @@ class AudioDiagPrefs {
   /// Repli « passage » : vrai = on n'attend pas l'AudioTrack (ancien).
   static const String immediateHandoffKey = 'zuno.audio.handoff.immediate';
 
+  /// Essai du mot dit à Android. Absent, illisible, ou `off` = coupé.
+  /// `movie` / `music` / `speech` = film / musique / parole.
+  static const String contentTypeKey = 'zuno.audio.diag.content_type';
+
+  /// Valeur mémorisée. Tout le reste retombe sur `off`.
+  static String normalizeContentType(String? raw) {
+    switch (raw) {
+      case 'movie':
+      case 'music':
+      case 'speech':
+        return raw!;
+      default:
+        return 'off';
+    }
+  }
+
+  /// Même tour que le bouton : coupé, film, musique, parole, coupé.
+  static String nextContentType(String current) {
+    switch (normalizeContentType(current)) {
+      case 'off':
+        return 'movie';
+      case 'movie':
+        return 'music';
+      case 'music':
+        return 'speech';
+      case 'speech':
+        return 'off';
+      default:
+        return 'off';
+    }
+  }
+
+  static String contentTypeLabel(String raw) {
+    switch (normalizeContentType(raw)) {
+      case 'movie':
+        return 'Type : film';
+      case 'music':
+        return 'Type : musique';
+      case 'speech':
+        return 'Type : parole';
+      default:
+        return 'Type : coupé';
+    }
+  }
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
@@ -39,6 +84,7 @@ class AudioDiagPrefs {
     var androidFocus = false;
     var bgPause = false;
     var immediate = false;
+    var contentType = 'off';
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -48,6 +94,7 @@ class AudioDiagPrefs {
       androidFocus = prefs.getBool(androidFocusKey) ?? false;
       bgPause = prefs.getBool(bgPauseKey) ?? false;
       immediate = prefs.getBool(immediateHandoffKey) ?? false;
+      contentType = normalizeContentType(prefs.getString(contentTypeKey));
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -56,6 +103,7 @@ class AudioDiagPrefs {
       androidFocus = false;
       bgPause = false;
       immediate = false;
+      contentType = 'off';
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
@@ -64,6 +112,7 @@ class AudioDiagPrefs {
     NativeVideoController.androidAudioFocus = androidFocus;
     NativeVideoController.backgroundPauseOnly = bgPause;
     NativeVideoController.immediateHandoff = immediate;
+    NativeVideoController.audioContentType = contentType;
     // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
     // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
     NativeVideoController.pushAudioDiagFlags();
@@ -128,6 +177,16 @@ class AudioDiagPrefs {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool(platformKey, value);
+    } catch (_) {}
+  }
+
+  static Future<void> setContentType(String value) async {
+    final String safe = normalizeContentType(value);
+    NativeVideoController.audioContentType = safe;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString(contentTypeKey, safe);
     } catch (_) {}
   }
 }

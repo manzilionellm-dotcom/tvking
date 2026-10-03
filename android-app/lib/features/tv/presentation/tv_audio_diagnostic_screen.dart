@@ -89,6 +89,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _androidFocus = NativeVideoController.androidAudioFocus;
     _bgPause = NativeVideoController.backgroundPauseOnly;
     _immediate = NativeVideoController.immediateHandoff;
+    _contentType = AudioDiagPrefs.normalizeContentType(
+      NativeVideoController.audioContentType,
+    );
     // Le libellé vient de la mémoire Dart. On le repousse au lecteur
     // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
     NativeVideoController.pushAudioDiagFlags();
@@ -105,6 +108,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _bgPause = false;
   bool _immediate = false;
   bool _witnessBusy = false;
+  String _contentType = 'off';
   NativeVideoController? _witness;
 
   @override
@@ -155,6 +159,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     } finally {
       if (mounted) setState(() => _witnessBusy = false);
     }
+  }
+
+  Future<void> _cycleContentType() async {
+    final String next = AudioDiagPrefs.nextContentType(_contentType);
+    setState(() => _contentType = next);
+    await AudioDiagPrefs.setContentType(next);
   }
 
   Future<void> _toggleImmediate() async {
@@ -287,6 +297,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             ),
             const SizedBox(width: 12),
             _Toggle(
+              label: AudioDiagPrefs.contentTypeLabel(_contentType),
+              on: _contentType != 'off',
+              onSelect: _cycleContentType,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
               label: _witness != null
                   ? 'Témoin : stop'
                   : (_witnessBusy ? 'Témoin : préparation' : 'Jouer le son témoin'),
@@ -332,7 +348,11 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '
           'ancien comportement. Son témoin : 10 s (voix puis bruit), '
           'lu par le même lecteur. Allume la mesure, ne change pas le son. '
-          'Bruit sourd → l\'appareil. Bruit clair → la chaîne.',
+          'Bruit sourd → l\'appareil. Bruit clair → la chaîne. '
+          'Type : « coupé » (défaut) = on dit « film » à Android, ou « parole » '
+          'si la voix claire est allumée. « film », « musique » ou « parole » = '
+          'essai : le mot change, les échantillons non. Rouvre la chaîne. '
+          'À réécouter sur l\'appareil.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
         ),
         const SizedBox(height: 14),
