@@ -31,6 +31,9 @@ class AudioDiagPrefs {
   /// Repli « passage » : vrai = on n'attend pas l'AudioTrack (ancien).
   static const String immediateHandoffKey = 'zuno.audio.handoff.immediate';
 
+  /// Essai « type de contenu inconnu » (défaut Media3). Faux = film.
+  static const String referenceUnknownKey = 'zuno.audio.ref.content_unknown';
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
@@ -39,6 +42,7 @@ class AudioDiagPrefs {
     var androidFocus = false;
     var bgPause = false;
     var immediate = false;
+    var referenceUnknown = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -48,6 +52,7 @@ class AudioDiagPrefs {
       androidFocus = prefs.getBool(androidFocusKey) ?? false;
       bgPause = prefs.getBool(bgPauseKey) ?? false;
       immediate = prefs.getBool(immediateHandoffKey) ?? false;
+      referenceUnknown = prefs.getBool(referenceUnknownKey) ?? false;
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -56,6 +61,7 @@ class AudioDiagPrefs {
       androidFocus = false;
       bgPause = false;
       immediate = false;
+      referenceUnknown = false;
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
@@ -64,6 +70,7 @@ class AudioDiagPrefs {
     NativeVideoController.androidAudioFocus = androidFocus;
     NativeVideoController.backgroundPauseOnly = bgPause;
     NativeVideoController.immediateHandoff = immediate;
+    NativeVideoController.referenceUnknownContent = referenceUnknown;
     // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
     // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
     NativeVideoController.pushAudioDiagFlags();
@@ -119,6 +126,15 @@ class AudioDiagPrefs {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool(ffmpegKey, value);
+    } catch (_) {}
+  }
+
+  static Future<void> setReferenceUnknownContent(bool value) async {
+    NativeVideoController.referenceUnknownContent = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(referenceUnknownKey, value);
     } catch (_) {}
   }
 

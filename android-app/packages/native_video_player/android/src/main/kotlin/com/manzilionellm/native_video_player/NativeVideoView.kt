@@ -534,10 +534,7 @@ class NativeVideoView(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val attrs = android.media.AudioAttributes.Builder()
                     .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                    .setContentType(
-                        if (clearVoiceEnabled) android.media.AudioAttributes.CONTENT_TYPE_SPEECH
-                        else android.media.AudioAttributes.CONTENT_TYPE_MOVIE,
-                    )
+                    .setContentType(platformContentType())
                     .build()
                 val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(attrs)
@@ -681,11 +678,7 @@ class NativeVideoView(
         if (Build.VERSION.SDK_INT < 33) return emptyList()
         val am = audioManager ?: return emptyList()
         return try {
-            val content = if (clearVoiceEnabled) {
-                android.media.AudioAttributes.CONTENT_TYPE_SPEECH
-            } else {
-                android.media.AudioAttributes.CONTENT_TYPE_MOVIE
-            }
+            val content = platformContentType()
             val attrs = android.media.AudioAttributes.Builder()
                 .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
                 .setContentType(content)
@@ -1022,17 +1015,38 @@ class NativeVideoView(
             .build()
     }
 
-    /** Profil audio : film, ou parole si la voix claire est allumée. */
+    /**
+     * Profil audio annoncé à Android.
+     * Défaut : film. Voix claire : parole. Essai « contenu inconnu »
+     * (coupé par défaut) : le type que Media3 met quand on ne précise rien.
+     * L'usage reste média. Le PCM n'est pas modifié.
+     */
     private fun movieAudioAttributes(): AudioAttributes {
-        val type = if (clearVoiceEnabled) {
-            C.AUDIO_CONTENT_TYPE_SPEECH
-        } else {
-            C.AUDIO_CONTENT_TYPE_MOVIE
+        val type = when (announcedContent()) {
+            AudioRouteState.CONTENT_SPEECH -> C.AUDIO_CONTENT_TYPE_SPEECH
+            AudioRouteState.CONTENT_UNKNOWN -> C.AUDIO_CONTENT_TYPE_UNKNOWN
+            else -> C.AUDIO_CONTENT_TYPE_MOVIE
         }
         return AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(type)
             .build()
+    }
+
+    /** Même choix que [movieAudioAttributes], en constantes du SDK Android. */
+    private fun platformContentType(): Int {
+        return when (announcedContent()) {
+            AudioRouteState.CONTENT_SPEECH -> android.media.AudioAttributes.CONTENT_TYPE_SPEECH
+            AudioRouteState.CONTENT_UNKNOWN -> android.media.AudioAttributes.CONTENT_TYPE_UNKNOWN
+            else -> android.media.AudioAttributes.CONTENT_TYPE_MOVIE
+        }
+    }
+
+    private fun announcedContent(): Int {
+        return AudioFixes.announcedContentType(
+            clearVoice = clearVoiceEnabled,
+            referenceUnknown = AudioFixes.referenceUnknownContent,
+        )
     }
 
     /**
@@ -1223,6 +1237,29 @@ class NativeVideoView(
                 // Repli : vrai = Media3 reprend le focus (avec sa baisse à 20 %).
                 // Pris en compte à la prochaine ouverture.
                 AudioFixes.androidFocus = call.arguments == true
+                result.success(null)
+            }
+            "setReferenceUnknownContent" -> {
+                // Essai coupé par défaut. Allumé : on annonce « inconnu »
+                // au lieu de « film ». La voix claire reste « parole ».
+                // On repose les attributs tout de suite : Media3 recrée
+                // l'AudioTrack si le type a changé. Le flux n'est pas rouvert.
+                AudioFixes.referenceUnknownContent = call.arguments == true
+                if (!released) {
+                    try {
+                        player.setAudioAttributes(
+                            movieAudioAttributes(),
+                            AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+                        )
+                    } catch (_: RuntimeException) {
+                    }
+                    val word = when (announcedContent()) {
+                        AudioRouteState.CONTENT_SPEECH -> "parole (voix claire)"
+                        AudioRouteState.CONTENT_UNKNOWN -> "inconnu (essai)"
+                        else -> "film (défaut)"
+                    }
+                    emit("audioDiag", "Type de contenu annoncé : $word.")
+                }
                 result.success(null)
             }
             "suspend" -> {
