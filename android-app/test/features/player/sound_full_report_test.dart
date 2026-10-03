@@ -354,6 +354,44 @@ void main() {
       expect(music.verdict, isNot(SoundVerdict.callPath));
     },
   );
+
+  test('les angles tiennent dans le même texte, sans doubler Chemin', () {
+    const String sheet = '''
+Chemin : mode normal, haut-parleur d'appel coupé, Bluetooth appel coupé.
+Garde mode : coupée. Mode lu « normal ». Aucune écriture.
+Attributs : essai coupé, usage média, contenu film.
+Chaîne : Zuno (défaut). FFmpeg pour l'AAC.
+Effets système (lecture seule, aucun effet créé par l'app) :
+Tampon : underruns AudioTrack 0 · rappel Media3 0
+Format : 16 bits · piste 48 kHz · mélangeur 48 kHz
+Corrélation gauche/droite (1 s, copie) : +0,92
+Signalisation : AAC-LC (AOT 2), 48 kHz.
+Sources : plein écran 1 (son) · Sons en même temps : 1.
+Forme (copie, le son n'est pas modifié) : grave/milieu 1,70, aigu/milieu 0,20, profil large
+Écho 18–40 ms (copie) : 4
+Chute entre secondes actives : 0,6 dB
+''';
+    final SoundFullReport r = SoundFullReport.build(
+      _facts(channel: sheet, witness: _wideWitness),
+    );
+    expect(r.text, contains('Angles :'));
+    expect(r.text, contains('Garde mode : coupée'));
+    expect(r.text, contains('Attributs : essai coupé'));
+    expect(r.text, contains('Chemin : déjà dans Système'));
+    expect(r.text, contains('Effets système (lecture seule'));
+    expect(r.text, contains('Tampon : underruns AudioTrack 0'));
+    expect(r.text, contains('Format : 16 bits'));
+    expect(r.text, contains('Corrélation gauche/droite (1 s, copie) : +0,92'));
+    expect(r.text, contains('Signalisation : AAC-LC'));
+    expect(r.text, contains('Sources : plein écran'));
+    expect(r.text, contains('Forme (copie, le son n\'est pas modifié)'));
+    expect(r.text, contains('Écho 18–40 ms'));
+    expect(r.text, contains('Chute entre secondes actives'));
+    expect(
+      'Chemin : mode normal'.allMatches(r.text).length,
+      1,
+    );
+  });
 }
 
 const String _normalPath =

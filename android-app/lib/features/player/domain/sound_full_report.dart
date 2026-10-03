@@ -662,6 +662,11 @@ String _render({
     b.writeln(line);
   }
   b.writeln('');
+  b.writeln('Angles :');
+  for (final String line in _angleLines(channel, witness)) {
+    b.writeln(line);
+  }
+  b.writeln('');
   b.writeln(_channelHeading(facts));
   final Set<String> shown = <String>{};
   for (final String line in _detailLines(channel.lines)) {
@@ -759,6 +764,72 @@ const List<String> _systemPrefixes = <String>[
   'Effets dans l\'app',
   'Focus audio',
 ];
+
+/// Une ligne par angle, tirée de la fiche. « Chemin » n'est pas
+/// recopié : il est déjà dans Système, et le recopier le doublerait.
+List<String> _angleLines(_Read channel, _Read witness) {
+  String first(List<String> prefixes) {
+    for (final String prefix in prefixes) {
+      for (final String line in channel.lines) {
+        if (line.startsWith(prefix)) return line;
+      }
+      for (final String line in witness.lines) {
+        if (line.startsWith(prefix)) return line;
+      }
+    }
+    return '';
+  }
+
+  String one(String label, List<String> prefixes, String missing) {
+    final String hit = first(prefixes);
+    if (hit.isEmpty) return '$label : $missing';
+    return hit;
+  }
+
+  final bool chemin = channel.hasChemin || witness.hasChemin;
+  return <String>[
+    one(
+      'Mode',
+      <String>['Garde mode'],
+      chemin
+          ? 'pas de ligne Garde mode (interrupteur coupé). Le mode lu est dans Chemin, section Système.'
+          : 'pas encore lu.',
+    ),
+    one('Attributs', <String>['Attributs :'], 'pas encore lu.'),
+    chemin
+        ? 'Chemin : déjà dans Système (mode, haut-parleur, Bluetooth, sortie).'
+        : 'Chemin : pas encore lu.',
+    one(
+      'Effets',
+      <String>['Effets système'],
+      'pas encore lu.',
+    ),
+    one('Tampon', <String>['Tampon :'], 'pas encore lu.'),
+    one('Format', <String>['Format :'], 'pas encore lu.'),
+    one(
+      'Phase',
+      <String>['Corrélation gauche/droite', 'Par voie :'],
+      'pas encore lue (allumer Spectre).',
+    ),
+    one(
+      'Flux',
+      <String>['Signalisation :'],
+      'pas encore lu.',
+    ),
+    one('État', <String>['Sources :'], 'pas encore lu.'),
+    one(
+      'Forme',
+      <String>['Forme (copie'],
+      'pas encore lue (allumer Spectre, attendre une seconde).',
+    ),
+    one('Écho', <String>['Écho '], 'pas encore lu.'),
+    one(
+      'Chute',
+      <String>['Chute entre secondes'],
+      'pas encore lue (il faut plusieurs secondes).',
+    ),
+  ];
+}
 
 List<String> _systemLines(_Read channel, _Read witness) {
   String pick(String prefix, String missing) {

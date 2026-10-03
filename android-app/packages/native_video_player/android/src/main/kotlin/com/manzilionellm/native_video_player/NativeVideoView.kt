@@ -1134,12 +1134,11 @@ class NativeVideoView(
         if (AudioProfile.current != AudioProfile.OFF) {
             return AudioProfile.resolve(AudioProfile.current, clearVoiceEnabled)
         }
-        val wire = when (announcedContent()) {
-            AudioRouteState.CONTENT_UNKNOWN -> AudioProfile.MEDIA3
-            AudioRouteState.CONTENT_SPEECH -> AudioProfile.SPEECH
-            else -> AudioProfile.OFF
+        // Voix claire : parole, comme avant. L'essai « inconnu » ne la remplace pas.
+        if (clearVoiceEnabled || !AudioFixes.referenceUnknownContent) {
+            return AudioProfile.resolve(AudioProfile.OFF, clearVoiceEnabled)
         }
-        return AudioProfile.resolve(wire, clearVoiceEnabled)
+        return AudioProfile.resolve(AudioProfile.MEDIA3, clearVoice = false)
     }
 
     /**
