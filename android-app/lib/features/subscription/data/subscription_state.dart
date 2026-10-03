@@ -71,6 +71,16 @@ class SubscriptionState extends ChangeNotifier {
   static const String _kBlockKey = 'subscription.block';
   static const String _kTrialUntilKey = 'subscription.trial_until_ms';
   static const String _kHwmKey = 'subscription.hwm_ms';
+  static const String _kEnforcedKey = 'subscription.trial_enforced';
+  static const String _kTitleFrKey = 'subscription.block_title_fr';
+  static const String _kBodyFrKey = 'subscription.block_body_fr';
+  static const String _kTitleEnKey = 'subscription.block_title_en';
+  static const String _kBodyEnKey = 'subscription.block_body_en';
+  static const String _kPayUrlKey = 'subscription.pay_url';
+
+  /// Sentinelle « à vie » pour le mode hors-ligne : on ne bloque pas
+  /// un client déjà activé à vie parce que le téléphone a été débranché.
+  static const int _kLifetimeMs = 4102444800000;
 
   /// Millisecondes dans un jour (évite un magic number répété).
   static const int _kDayMs = 24 * 60 * 60 * 1000;
@@ -83,6 +93,12 @@ class SubscriptionState extends ChangeNotifier {
   String _blockCache = '';
   int _trialUntilCache = 0;
   int _hwmMs = 0;
+  bool _trialEnforcedCache = false;
+  String _titleFr = '';
+  String _bodyFr = '';
+  String _titleEn = '';
+  String _bodyEn = '';
+  String _payUrl = '';
 
   /// « Maintenant » anti-recul : on ne fait jamais confiance à une horloge
   /// revenue en arrière par rapport au plus grand instant déjà observé.
@@ -100,6 +116,20 @@ class SubscriptionState extends ChangeNotifier {
   bool get isLoaded => _loaded;
   DateTime? get firstLaunchAt => _firstLaunchAt;
   RemoteSubscriptionStatus get remote => _remote;
+
+  /// Vrai si le serveur a allumé l'essai de 7 jours (réponse fraîche
+  /// ou dernier verdict mis en cache). Faux = écran et règles actuels.
+  bool get trialEnforced => _remote.trialEnforced || _trialEnforcedCache;
+
+  String get blockTitleFr =>
+      _remote.blockTitleFr.isNotEmpty ? _remote.blockTitleFr : _titleFr;
+  String get blockBodyFr =>
+      _remote.blockBodyFr.isNotEmpty ? _remote.blockBodyFr : _bodyFr;
+  String get blockTitleEn =>
+      _remote.blockTitleEn.isNotEmpty ? _remote.blockTitleEn : _titleEn;
+  String get blockBodyEn =>
+      _remote.blockBodyEn.isNotEmpty ? _remote.blockBodyEn : _bodyEn;
+  String get payUrl => _remote.payUrl.isNotEmpty ? _remote.payUrl : _payUrl;
 
   /// `true` si l'abonnement est À VIE (priorité au serveur). Permet à
   /// la carte d'afficher « Abonnement à vie » plutôt qu'une date.
@@ -144,6 +174,24 @@ class SubscriptionState extends ChangeNotifier {
 
     // ----- Fallback local (offline ou 1er boot avant heartbeat) -----
     final int nowMs = _effectiveNowMs;
+
+    // Interrupteur allumé : on ne fabrique PAS un essai tout neuf avec
+    // l'horloge du téléphone. On rejoue le dernier verdict du serveur.
+    if (_trialEnforcedCache) {
+      if (_blockCache == 'banned') return SubscriptionStatus.banned;
+      if (_blockCache == 'frozen') return SubscriptionStatus.frozen;
+      if (_paidUntil != null && _paidUntil!.millisecondsSinceEpoch > nowMs) {
+        return SubscriptionStatus.paid;
+      }
+      if (_blockCache == 'expired') return SubscriptionStatus.trialExpired;
+      if (_trialUntilCache > 0 && nowMs < _trialUntilCache) {
+        return SubscriptionStatus.trialActive;
+      }
+      if (_trialUntilCache > 0 || _blockCache == 'expired') {
+        return SubscriptionStatus.trialExpired;
+      }
+      return SubscriptionStatus.unknown;
+    }
 
     // 1) Blocage admin mis en cache : un compte banni/gelé ne doit PAS
     //    pouvoir esquiver le blocage simplement en passant hors-ligne.
@@ -216,6 +264,12 @@ class SubscriptionState extends ChangeNotifier {
       _blockCache = prefs.getString(_kBlockKey) ?? '';
       _trialUntilCache = prefs.getInt(_kTrialUntilKey) ?? 0;
       _hwmMs = prefs.getInt(_kHwmKey) ?? 0;
+      _trialEnforcedCache = prefs.getBool(_kEnforcedKey) ?? false;
+      _titleFr = prefs.getString(_kTitleFrKey) ?? '';
+      _bodyFr = prefs.getString(_kBodyFrKey) ?? '';
+      _titleEn = prefs.getString(_kTitleEnKey) ?? '';
+      _bodyEn = prefs.getString(_kBodyEnKey) ?? '';
+      _payUrl = prefs.getString(_kPayUrlKey) ?? '';
       // Avance le high-water mark si l'horloge a légitimement progressé.
       final int nowMs = DateTime.now().millisecondsSinceEpoch;
       if (nowMs > _hwmMs) {
@@ -251,6 +305,68 @@ class SubscriptionState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Mémorise le verdict du serveur pour le hors-ligne.
+  ///
+  /// Interrupteur allumé : on garde l'échéance ABSOLUE du serveur, le
+  /// blocage « expiré », et la date de fin payée (à vie = très loin).
+  /// Reculer l'horloge du téléphone ne rallonge rien : le high-water
+  /// mark et l'échéance serveur restent. Interrupteur coupé : on
+  /// n'écrit pas ces drapeaux (l'app continue comme avant).
+  Future<void> _rememberServerVerdict(RemoteSubscriptionStatus snap) async {
+    if (!snap.exists) return;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    _trialEnforcedCache = snap.trialEnforced;
+    await prefs.setBool(_kEnforcedKey, snap.trialEnforced);
+    if (!snap.trialEnforced) return;
+
+    _titleFr = snap.blockTitleFr;
+    _bodyFr = snap.blockBodyFr;
+    _titleEn = snap.blockTitleEn;
+    _bodyEn = snap.blockBodyEn;
+    _payUrl = snap.payUrl;
+    await prefs.setString(_kTitleFrKey, _titleFr);
+    await prefs.setString(_kBodyFrKey, _bodyFr);
+    await prefs.setString(_kTitleEnKey, _titleEn);
+    await prefs.setString(_kBodyEnKey, _bodyEn);
+    await prefs.setString(_kPayUrlKey, _payUrl);
+
+    if (snap.banned) {
+      _blockCache = 'banned';
+    } else if (snap.frozen) {
+      _blockCache = 'frozen';
+    } else if (snap.paid) {
+      _blockCache = '';
+    } else if (snap.expired) {
+      _blockCache = 'expired';
+    } else {
+      _blockCache = '';
+    }
+    await prefs.setString(_kBlockKey, _blockCache);
+
+    if (snap.paid) {
+      final int until = snap.isLifetime
+          ? _kLifetimeMs
+          : (snap.paidUntil > 0
+              ? snap.paidUntil
+              : DateTime.now().millisecondsSinceEpoch + 365 * _kDayMs);
+      await markPaidUntil(DateTime.fromMillisecondsSinceEpoch(until));
+    }
+
+    if (!snap.paid && snap.trialUntil > 0 && !snap.expired) {
+      _trialUntilCache = snap.trialUntil;
+      await prefs.setInt(_kTrialUntilKey, snap.trialUntil);
+    } else if (snap.expired) {
+      _trialUntilCache = 0;
+      await prefs.setInt(_kTrialUntilKey, 0);
+    }
+
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs > _hwmMs) {
+      _hwmMs = nowMs;
+      await prefs.setInt(_kHwmKey, nowMs);
+    }
+  }
+
   /// Synchronise avec le backend Cloudflare.
   ///
   /// Étapes :
@@ -271,13 +387,14 @@ class SubscriptionState extends ChangeNotifier {
       final RemoteSubscriptionStatus snap =
           await SubscriptionBackend.heartbeat(mac);
       _remote = snap;
+      await _rememberServerVerdict(snap);
       // Mémorise les garde-fous serveur pour le mode hors-ligne :
       //  - le verdict de blocage (banni/gelé) → ne pourra plus être esquivé
       //    en passant en mode avion ;
       //  - l'échéance absolue de l'essai → insensible à un effacement du
       //    compteur local ;
       //  - avance le high-water mark anti-recul d'horloge.
-      if (snap.exists) {
+      if (snap.exists && !snap.trialEnforced) {
         final SharedPreferences prefs =
             await SharedPreferences.getInstance();
         _blockCache =
@@ -293,10 +410,12 @@ class SubscriptionState extends ChangeNotifier {
           await prefs.setInt(_kHwmKey, nowMs);
         }
       }
-      // Si le serveur dit 'paid', on persiste un fallback local
-      // pour 7 jours (au cas où l'app passe offline ensuite, on
-      // ne bloquera pas le user qui a déjà payé).
-      if (snap.paid) {
+      // Si le serveur dit 'paid' SANS le verrou 7 jours, on persiste un
+      // fallback local de 7 jours (comportement actuel : ne pas bloquer
+      // un client déjà payé pendant une coupure). Avec le verrou, la
+      // date exacte (ou « à vie ») est enregistrée dans
+      // _rememberServerVerdict — on ne la raccourcit pas à 7 jours.
+      if (snap.paid && !snap.trialEnforced) {
         final DateTime fallback =
             DateTime.now().add(const Duration(days: 7));
         if (_paidUntil == null || fallback.isAfter(_paidUntil!)) {
@@ -314,7 +433,10 @@ class SubscriptionState extends ChangeNotifier {
   Future<void> refreshRemote() async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
-      _remote = await SubscriptionBackend.getStatus(mac);
+      final RemoteSubscriptionStatus snap =
+          await SubscriptionBackend.getStatus(mac);
+      _remote = snap;
+      await _rememberServerVerdict(snap);
       notifyListeners();
     } catch (_) {}
   }

@@ -1,3 +1,11 @@
+import {
+  trialEnforcementOn,
+  describeAccess,
+  configuredTrialDays,
+  TRIAL_DAYS,
+  ensureTrialAnchorTable,
+} from './trial_access.js';
+
 // =========================================================
 //  api_v1.js — App Licensing Platform REST API v1
 // =========================================================
@@ -1730,6 +1738,17 @@ async function handleAdPut(request, env, actor) {
 //  Pilote les prix affichés dans l'app : à vie / 1 an (en €, chaîne avec
 //  virgule décimale "9,9"), durée de l'essai gratuit, et un message
 //  promo/bonus optionnel ("achète 1 = 1 offert pour ta famille", etc.).
+function cleanHttpsUrl(v) {
+  const s = (v == null ? '' : String(v)).trim().slice(0, 500);
+  if (!s) return '';
+  if (!/^https:\/\//i.test(s)) return '';
+  return s;
+}
+
+function cleanBlockText(v, max) {
+  return (v == null ? '' : String(v)).replace(/[\u0000-\u001F]/g, '').trim().slice(0, max);
+}
+
 async function handlePricingGet(env) {
   await ensureAppConfigTable(env);
   const td = parseInt(await _cfgGetStr(env, 'trial_days'), 10);
@@ -1740,6 +1759,17 @@ async function handlePricingGet(env) {
     trialDays: Number.isFinite(td) && td >= 0 ? td : 7,
     promoEnabled: (await _cfgGetStr(env, 'promo_enabled')) === '1',
     promoMessage: await _cfgGetStr(env, 'promo_msg'),
+    // Textes de l'écran « essai terminé ». Vides = l'app utilise son
+    // texte intégré. Le lien de paiement vide = on ne invente rien,
+    // l'app garde WhatsApp / le site déjà dans le projet.
+    blockTitleFr: await _cfgGetStr(env, 'trial_block_title_fr'),
+    blockBodyFr: await _cfgGetStr(env, 'trial_block_body_fr'),
+    blockTitleEn: await _cfgGetStr(env, 'trial_block_title_en'),
+    blockBodyEn: await _cfgGetStr(env, 'trial_block_body_en'),
+    payUrl: await _cfgGetStr(env, 'trial_pay_url'),
+    // Lecture seule : l'interrupteur est une variable d'environnement,
+    // pas un bouton du panel (pour ne pas bloquer les clients par erreur).
+    trialEnforced: trialEnforcementOn(env),
   });
 }
 
@@ -1766,12 +1796,41 @@ async function handlePricingPut(request, env, actor) {
   await _cfgSet(env, 'trial_days', String(trialDays));
   await _cfgSet(env, 'promo_msg', promoMessage);
   await _cfgSet(env, 'promo_enabled', promoEnabled);
+  // Textes d'écran : seulement si le panel les envoie. Un vieux client
+  // du panel qui ne connaît pas ces champs ne les efface pas.
+  let blockTitleFr = await _cfgGetStr(env, 'trial_block_title_fr');
+  let blockBodyFr = await _cfgGetStr(env, 'trial_block_body_fr');
+  let blockTitleEn = await _cfgGetStr(env, 'trial_block_title_en');
+  let blockBodyEn = await _cfgGetStr(env, 'trial_block_body_en');
+  let payUrl = await _cfgGetStr(env, 'trial_pay_url');
+  if (body.blockTitleFr !== undefined) {
+    blockTitleFr = cleanBlockText(body.blockTitleFr, 120);
+    await _cfgSet(env, 'trial_block_title_fr', blockTitleFr);
+  }
+  if (body.blockBodyFr !== undefined) {
+    blockBodyFr = cleanBlockText(body.blockBodyFr, 500);
+    await _cfgSet(env, 'trial_block_body_fr', blockBodyFr);
+  }
+  if (body.blockTitleEn !== undefined) {
+    blockTitleEn = cleanBlockText(body.blockTitleEn, 120);
+    await _cfgSet(env, 'trial_block_title_en', blockTitleEn);
+  }
+  if (body.blockBodyEn !== undefined) {
+    blockBodyEn = cleanBlockText(body.blockBodyEn, 500);
+    await _cfgSet(env, 'trial_block_body_en', blockBodyEn);
+  }
+  if (body.payUrl !== undefined) {
+    payUrl = cleanHttpsUrl(body.payUrl);
+    await _cfgSet(env, 'trial_pay_url', payUrl);
+  }
   await logAudit(env, request, actor, 'pricing.save',
     { type: 'app_config', id: null }, null,
     { lifetime, yearly, currency, trialDays, promoEnabled });
   return jsonResp({
     ok: true, currency, lifetime, yearly, trialDays,
     promoEnabled: promoEnabled === '1', promoMessage,
+    blockTitleFr, blockBodyFr, blockTitleEn, blockBodyEn, payUrl,
+    trialEnforced: trialEnforcementOn(env),
   });
 }
 
@@ -2549,8 +2608,60 @@ async function handleDevicesList(request, env, user) {
   }
   if (where.length) sql += ' WHERE ' + where.join(' AND ');
   sql += ` ORDER BY d.last_seen_at DESC LIMIT 200`;
+  // Pastilles d'accès (essai / expiré / activé). Sous-requêtes bornées
+  // par LIMIT 200 appareils : une licence « la plus forte » par ligne.
+  sql = sql.replace('SELECT d.*,',
+    `SELECT d.*,
+            (SELECT l.status FROM licenses l WHERE l.device_id = d.id
+               ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_status,
+            (SELECT l.plan FROM licenses l WHERE l.device_id = d.id
+               ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_plan,
+            (SELECT l.expires_at FROM licenses l WHERE l.device_id = d.id
+               ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_expires,`);
   const rs = await env.DB.prepare(sql).bind(...binds).all();
-  return jsonResp({ items: rs.results || [] });
+  const items = await annotateDeviceAccess(env, rs.results || []);
+  return jsonResp({ items, trial_enforced: trialEnforcementOn(env) });
+}
+
+/// Ajoute access / access_label à chaque appareil. Interrupteur allumé :
+/// 7 jours depuis l'ancre. Coupé : durée du panel depuis first_seen
+/// (ce que l'app fait aujourd'hui).
+async function annotateDeviceAccess(env, rows) {
+  const enforced = trialEnforcementOn(env);
+  const trialDays = enforced ? TRIAL_DAYS : await configuredTrialDays(env);
+  const anchors = {};
+  if (enforced) {
+    try {
+      await ensureTrialAnchorTable(env);
+      const a = await env.DB.prepare('SELECT mac, started_at FROM trial_anchors').all();
+      for (const row of (a && a.results) || []) anchors[row.mac] = row.started_at;
+    } catch (_) { /* pas d'ancre : on tombera sur first_seen */ }
+  }
+  const now = Date.now();
+  return rows.map((r) => {
+    const license = r.lic_status
+      ? { status: r.lic_status, plan: r.lic_plan, expires_at: r.lic_expires }
+      : null;
+    const seen = r.first_seen_at || now;
+    const anchored = anchors[r.mac];
+    const started = enforced
+      ? Math.min(seen, Number(anchored) > 0 ? Number(anchored) : seen)
+      : seen;
+    const access = describeAccess({
+      now,
+      startedAt: started,
+      trialDays,
+      license,
+      blockStatus: r.block_status,
+    });
+    return {
+      ...r,
+      access: access.access,
+      access_label: access.label,
+      access_days_left: access.days_left,
+      access_ends_at: access.ends_at,
+    };
+  });
 }
 
 // =========================================================
@@ -3523,6 +3634,15 @@ async function handleActivate(request, env, user, actor) {
   const now = Date.now();
   const days = planToDays(plan, body.custom_days);
 
+  // Source invalide : refus AVANT tout débit, pour ne pas encaisser
+  // un crédit puis renvoyer une erreur.
+  let pendingSource = null;
+  if (body.source) {
+    const norm = normalizeSource(body.source);
+    if (norm.error) return errResp('bad_source', norm.error, 400);
+    pendingSource = norm.source;
+  }
+
   // 1) Device par MAC (find-or-create).
   const device = await env.DB
     .prepare('SELECT id, customer_id, reseller_id FROM devices WHERE mac = ?')
@@ -3557,6 +3677,61 @@ async function handleActivate(request, env, user, actor) {
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
       ).bind(deviceId, customerId, mac, body.label || null, chargeResellerId, now, now),
     ]);
+  }
+
+  // Interrupteur ALLUMÉ : une licence À VIE déjà active ne se paie
+  // pas une deuxième fois, et le débit est conditionnel (solde réel)
+  // AVANT d'écrire la licence. Coupé : on garde l'ancien débit
+  // (une seconde activation à vie redébiterait).
+  const enforceCredits = trialEnforcementOn(env);
+  if (enforceCredits) {
+    const early = await env.DB
+      .prepare('SELECT id, expires_at, status FROM licenses WHERE device_id = ? AND app_id = ?')
+      .bind(deviceId, appId)
+      .first();
+    const alreadyLife = early
+      && early.status === 'active'
+      && (early.expires_at === null || early.expires_at === undefined);
+    if (alreadyLife) {
+      return jsonResp({
+        ok: true,
+        already_lifetime: true,
+        license_id: early.id,
+        device_id: deviceId,
+        customer_id: customerId,
+        mac,
+        plan: 'lifetime',
+        expires_at: null,
+        credits_charged: 0,
+        credit_balance: resellerRow ? resellerRow.credit_balance : null,
+        renewed: false,
+      }, 200);
+    }
+  }
+
+  // Débit AVANT la licence quand l'interrupteur est allumé : si le solde
+  // ne suffit plus (course entre deux activations), on n'écrit PAS de
+  // licence gratuite.
+  let debitedEarly = false;
+  let balanceAfter = null;
+  if (enforceCredits && chargeResellerId && cost > 0) {
+    // RETURNING : une ligne = le débit a eu lieu. Zéro ligne = solde
+    // insuffisant (y compris si une autre activation vient de passer).
+    const row = await env.DB.prepare(
+      'UPDATE resellers SET credit_balance = credit_balance - ? '
+      + 'WHERE id = ? AND credit_balance >= ? RETURNING credit_balance',
+    ).bind(cost, chargeResellerId, cost).first();
+    if (!row) {
+      const fresh = await env.DB
+        .prepare('SELECT credit_balance FROM resellers WHERE id = ?')
+        .bind(chargeResellerId)
+        .first();
+      const bal = fresh ? fresh.credit_balance : 0;
+      return errResp('insufficient_credits',
+        `Credits insuffisants (besoin ${cost}, solde ${bal})`, 402);
+    }
+    debitedEarly = true;
+    balanceAfter = row.credit_balance;
   }
 
   // 2) Licence (device, app) : renouvelle si elle existe, sinon cree.
@@ -3595,15 +3770,27 @@ async function handleActivate(request, env, user, actor) {
   // 2c) Source IPTV (Xtream/M3U) optionnelle : si le panel a joint un
   // objet `source`, on l'assigne à la MAC. L'app la récupèrera via
   // GET /api/device-source/:mac et la chargera automatiquement.
-  if (body.source) {
-    const norm = normalizeSource(body.source);
-    if (norm.error) return errResp('bad_source', norm.error, 400);
-    await upsertDeviceSource(env, mac, norm.source);
+  if (pendingSource) {
+    await upsertDeviceSource(env, mac, pendingSource);
   }
 
   // 3) Debit credits (revendeur) + ecriture au ledger, atomiquement.
-  let balanceAfter = null;
-  if (chargeResellerId && cost > 0) {
+  // Interrupteur allumé : le solde a DÉJÀ été décrémenté (debitedEarly).
+  // On n'écrit que le journal. On ne débite pas une seconde fois.
+  if (debitedEarly) {
+    const fresh = await env.DB
+      .prepare('SELECT credit_balance FROM resellers WHERE id = ?')
+      .bind(chargeResellerId)
+      .first();
+    balanceAfter = fresh ? fresh.credit_balance : balanceAfter;
+    await env.DB.prepare(
+      `INSERT INTO credit_ledger
+        (id, reseller_id, delta, reason, balance_after, ref_license_id,
+         ref_device_mac, actor_type, actor_id, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(genId('cl'), chargeResellerId, -cost, renewed ? 'renew' : 'activation',
+           balanceAfter, licenseId, mac, actor.type, actor.id, plan, now).run();
+  } else if (!enforceCredits && chargeResellerId && cost > 0) {
     balanceAfter = resellerRow.credit_balance - cost;
     await env.DB.batch([
       env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(balanceAfter, chargeResellerId),
