@@ -59,6 +59,26 @@ void main() {
     expect('spectre_absent'.allMatches(e.entries.single.body), isEmpty);
   });
 
+  test('le bloc effets reste dans la fiche, le journal se colle après', () {
+    const AudioReportBook book = AudioReportBook.empty;
+    const String sheet = 'Codec : AAC-LC\n'
+        'Effets système (lecture seule, aucun effet créé par l\'app) :\n'
+        'Session de Zuno n°7. On n\'en crée pas.\n'
+        'Catalogue queryEffects : 1 moteur(s) installé(s).\n'
+        'Conclusion : aucune cause sûre.';
+    final AudioReportBook a = book.add(channel: 'France 24', body: sheet, atMs: 1);
+    final AudioReportBook b = a.add(
+      channel: 'France 24',
+      body: 'Session audio Android n°7',
+      atMs: 2,
+    );
+    expect(b.entries.single.body.contains('Effets système'), isTrue);
+    expect(b.entries.single.body.contains('Session de Zuno n°7'), isTrue);
+    expect(b.entries.single.body.contains('Session audio Android n°7'), isTrue);
+    expect(b.entries.single.body.indexOf('Effets système'),
+        lessThan(b.entries.single.body.indexOf('Session audio')));
+  });
+
   test('un corps vide ne crée pas de fiche', () {
     final AudioReportBook book = AudioReportBook.empty.add(channel: 'TF1', body: '   ', atMs: 1);
     expect(book.entries, isEmpty);
