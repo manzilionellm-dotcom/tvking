@@ -98,6 +98,19 @@ data class AudioSnapshot(
     val routeLine: String? = null,
     /** Le lecteur dit qu'il joue (image et son en cours). */
     val playerAudible: Boolean = false,
+    /**
+     * Octets de signalisation AAC (AudioSpecificConfig ou en-tête ADTS),
+     * lus sans décoder. Null = le format n'est pas encore arrivé.
+     * N'influence pas le décodeur.
+     */
+    val source: AacSource.Reading? = null,
+    /**
+     * Sauts d'horloge INTERNES du direct (pas un zap, pas une recherche).
+     * Comptés seulement. Le son n'est pas ralenti ni recalé pour ça.
+     */
+    val ptsJumps: Int = 0,
+    /** Plus grand saut, en valeur absolue, millisecondes. */
+    val ptsMaxAbsMs: Long = 0,
 )
 
 object AudioDiagnosis {
@@ -193,8 +206,17 @@ object AudioDiagnosis {
             out += "À surveiller : $profile décodé par la box (certaines box perdent les aigus)."
         }
         // 4) Défauts de la SOURCE (le fournisseur), pas de l'app.
+        //    Un HE-AAC v2 implicite est MONO dans l'en-tête et stéréo après
+        //    le décodeur. On ne l'appelle pas « mono d'origine » dans ce cas.
         if (s.inChannels == 1) {
-            out += "SOURCE : le flux est MONO à l'origine (le fournisseur l'envoie ainsi)."
+            val ps = s.source?.implicitCandidate == true || s.source?.explicitPs == true || s.source?.explicitSbr == true
+            out += when {
+                ps && s.outChannels >= 2 ->
+                    "SOURCE : l'en-tête est mono, la sortie est stéréo → stéréo paramétrique reconstruite."
+                ps ->
+                    "SOURCE : l'en-tête est mono. Ça peut être un vrai mono, ou un HE-AAC v2 dont la stéréo n'a pas été refaite."
+                else -> "SOURCE : le flux est MONO à l'origine (le fournisseur l'envoie ainsi)."
+            }
         }
         if (s.bitrate in 1 until LOW_BITRATE) {
             out += "SOURCE : débit audio faible (${s.bitrate / 1000} kb/s) → qualité limitée par le fournisseur."
@@ -419,21 +441,48 @@ object AudioDiagnosis {
                 ),
             )
         } else if (s.inChannels == 1) {
-            out += Finding(
-                id = "source_mono",
-                confidence = Confidence.HAUTE,
-                kind = Kind.CAUSE,
-                symptom = "Le flux en cours est mono.",
-                cause = "La piste choisie est mono à l'origine. Le lecteur ne l'a pas réduite " +
-                    "(aucune autre piste plus large n'est annoncée).",
-                fix = Fix(
-                    file = FILE_SPOKEN,
-                    symbol = "SpokenTrackChoice.pick",
-                    media3 = "TrackSelectionParameters.setPreferredAudioLanguage",
-                    action = "Rien à changer dans le décodeur. Le fournisseur envoie cette piste en mono.",
-                    settingKey = null,
-                ),
-            )
+            val ps = s.source?.implicitCandidate == true || s.source?.explicitPs == true ||
+                s.source?.explicitSbr == true
+            if (ps && s.outChannels >= 2) {
+                out += Finding(
+                    id = "stereo_parametrique",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "L'en-tête AAC est mono, la sortie a ${s.outChannels} voies.",
+                    cause = "C'est la signature d'une stéréo paramétrique reconstruite (HE-AAC v2). " +
+                        "Le lecteur n'a pas réduit la stéréo. On ne change pas le décodeur.",
+                    fix = Fix(
+                        file = FILE_SPOKEN,
+                        symbol = "AacSource.read",
+                        media3 = "Format.initializationData (AudioSpecificConfig), lu, pas modifié",
+                        action = "Rien à changer. La sortie stéréo dit que la reconstruction a eu lieu.",
+                        settingKey = null,
+                    ),
+                )
+            } else {
+                out += Finding(
+                    id = "source_mono",
+                    confidence = if (ps) Confidence.INCERTAINE else Confidence.HAUTE,
+                    kind = Kind.CAUSE,
+                    symptom = "Le flux en cours est mono.",
+                    cause = if (ps) {
+                        "L'en-tête est mono, et la sortie aussi. Ça peut être un vrai mono, " +
+                            "ou un HE-AAC v2 dont la stéréo paramétrique n'a pas été refaite. " +
+                            "On ne tranche pas sur ce seul chiffre."
+                    } else {
+                        "La piste choisie est mono à l'origine. Le lecteur ne l'a pas réduite " +
+                            "(aucune autre piste plus large n'est annoncée)."
+                    },
+                    fix = Fix(
+                        file = FILE_SPOKEN,
+                        symbol = "SpokenTrackChoice.pick",
+                        media3 = "TrackSelectionParameters.setPreferredAudioLanguage",
+                        action = "Rien à changer dans le décodeur. Si l'en-tête est un HE-AAC v2 implicite " +
+                            "(LC, ≤ 24 kHz, mono), comparer le nombre de voies en sortie.",
+                        settingKey = null,
+                    ),
+                )
+            }
         }
 
         if (s.bitrate in 1 until LOW_BITRATE) {
@@ -559,6 +608,167 @@ object AudioDiagnosis {
         // dit déjà pourquoi il n'y a pas de chiffre. Répété 2 ou 3 fois
         // par chaîne, ce bloc noyait la fiche sans rien décider.
         out += phaseFindings(s)
+        out += sourceFindings(s)
+        return out
+    }
+
+    /**
+     * Ce que les octets du flux disent, en plus du nom `mp4a.40.x`.
+     * Aucune de ces lignes ne change le décodeur. Elles servent à
+     * trancher, sur l'appareil, entre « parole », « débit trop bas »
+     * et « HE-AAC mal étiqueté ».
+     */
+    private fun sourceFindings(s: AudioSnapshot): List<Finding> {
+        val out = ArrayList<Finding>(4)
+        val src = s.source
+        if (src != null && src.bytes > 0) {
+            when {
+                src.sbrForbidden -> out += Finding(
+                    id = "sbr_absent_ecrit",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "L'extension AAC dit que le SBR n'est pas là (${src.container}, AOT ${src.audioObjectType}).",
+                    cause = "Le décodeur a l'ordre de ne pas chercher le SBR, même si des trames en contiennent. " +
+                        "Ce n'est pas le cas d'un HE-AAC implicite (là, le bit n'est pas écrit).",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "AacSource.read / onAudioInputFormatChanged",
+                        media3 = "Format.initializationData, lecture seule",
+                        action = "Ne pas réécrire l'ASC et ne pas changer le décodeur.",
+                        settingKey = null,
+                    ),
+                )
+                src.explicitSbr -> out += Finding(
+                    id = "sbr_explicite",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "${src.profile}, cœur ${khz(src.headerHz)}" +
+                        (if (src.extensionHz > 0) ", extension ${khz(src.extensionHz)}" else "") + ".",
+                    cause = "Le SBR est écrit dans les octets, pas seulement deviné. " +
+                        "Si la sortie reste à la fréquence du cœur (≤ 24 kHz), le décodeur ne l'a pas appliqué. " +
+                        "Si la sortie est à la fréquence d'extension, il l'a appliqué. " +
+                        "Un pourcentage bas au-dessus de 4 kHz ne contredit pas ça : une musique HE-AAC " +
+                        "bien décodée peut rester sous 12 %.",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "AacSource.read",
+                        media3 = "Format.initializationData (AudioSpecificConfig)",
+                        action = "Comparer la fréquence de sortie à la fréquence d'extension. Ne rien forcer.",
+                        settingKey = null,
+                    ),
+                )
+                src.implicitCandidate -> out += Finding(
+                    id = "sbr_implicite",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "En-tête ${src.profile} à ${khz(src.headerHz)}, ${src.channels} voie(s), transport ${src.container}.",
+                    cause = "C'est la forme d'un HE-AAC implicite : l'ADTS ne peut pas écrire le type 5, " +
+                        "et un ASC de 2 octets non plus. Le SBR, s'il est dans les trames, doit être cherché " +
+                        "parce que la fréquence est ≤ 24 kHz. " +
+                        "Sortie ≥ 32 kHz (et 2 voies si l'en-tête est mono) : il a été fait. " +
+                        "Sortie restée à ${khz(src.headerHz)} : il n'a pas été fait, ou il n'y en avait pas.",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "onAudioInputFormatChanged / onAudioTrackInitialized",
+                        media3 = "Format.sampleRate comparé à AudioTrackConfig.sampleRate",
+                        action = "Lire les deux fréquences sur la fiche. Ne pas changer le décodeur par défaut.",
+                        settingKey = null,
+                    ),
+                )
+                src.audioObjectType == 2 && src.headerHz > AacSource.IMPLICIT_MAX_HZ -> out += Finding(
+                    id = "sbr_non_demande",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "AAC-LC annoncé à ${khz(src.headerHz)}, sans SBR dans les octets.",
+                    cause = "Ni FFmpeg ni le décodeur de la box ne sont obligés de chercher un SBR : " +
+                        "la fréquence dépasse 24 kHz. Un HE-AAC dual-rate (cœur 22 ou 24 kHz) ne s'annonce pas ainsi. " +
+                        "Si les deux décodeurs sonnent pareil, le son est déjà dans les octets " +
+                        "(débit bas, ou transcodage qui a jeté les aigus) ou c'est la parole. " +
+                        "Le pourcentage au-dessus de 4 kHz ne sépare pas ces deux-là.",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "AacSource.read",
+                        media3 = "Format.initializationData + Format.bitrate",
+                        action = "Lire le débit annoncé et, s'il est là, le débit mesuré. " +
+                            "Ne pas changer le décodeur : il n'inventera pas des aigus absents du flux.",
+                        settingKey = null,
+                    ),
+                )
+            }
+            if (src.container == "LOAS/LATM") {
+                out += Finding(
+                    id = "transport_latm",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "Les octets commencent par le sync LOAS.",
+                    cause = "Le décodeur AAC brut refuse un LOAS non démultiplexé (erreur, pas un son sourd). " +
+                        "Media3 retire le LATM avant le décodeur. Si le son joue, ce transport a été retiré.",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "AacSource.read",
+                        media3 = "Extracteur TS / MP4, avant MediaCodec ou FfmpegAudioRenderer",
+                        action = "Ne pas envoyer le LOAS tel quel au décodeur AAC. Le chemin actuel ne le fait pas.",
+                        settingKey = null,
+                    ),
+                )
+            }
+            val measured = src.measuredBps
+            if (measured in 1 until AacSource.THIN_BPS && s.bitrate <= 0) {
+                out += Finding(
+                    id = "debit_mesure_bas",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.CAUSE,
+                    symptom = "Débit mesuré sur l'en-tête : ${measured / 1000} kb/s (rien n'était annoncé).",
+                    cause = "Le codeur a peu de bits. Sur un son large bande, 32 kb/s coupe autour de 2 kHz " +
+                        "(essai : énergie > 4 kHz à 1,1 %). Une parole seule donne le même pourcentage " +
+                        "même à 128 kb/s. Le débit, lui, sépare les deux. On ne ré-encode pas.",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "AacSource.bitrateOfFrame",
+                        media3 = "en-tête ADTS (frame_length), pas Format.bitrate qui vaut souvent 0 en .ts",
+                        action = "Ne pas ré-encoder ni gonfler le débit dans le lecteur.",
+                        settingKey = null,
+                    ),
+                )
+            }
+        }
+        if (s.audioTrackCount >= 2) {
+            out += Finding(
+                id = "plusieurs_pistes",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "${s.audioTrackCount} pistes audio annoncées.",
+                cause = "Le lecteur n'en joue qu'une (langue, rôle « principale »). " +
+                    "Deux sons mélangés dans la piste choisie ne se comptent pas ici. " +
+                    "Un commentaire audio est souvent une autre piste, plus comprimée.",
+                fix = Fix(
+                    file = FILE_VIEW,
+                    symbol = "NativeVideoView.onTracksChanged / SpokenTrackChoice.pick",
+                    media3 = "Tracks.Group, une piste sélectionnée",
+                    action = "Noter le nombre. Ne pas mixer les pistes. Le choix de langue reste celui déjà en place.",
+                    settingKey = null,
+                ),
+            )
+        }
+        if (s.ptsJumps > 0) {
+            out += Finding(
+                id = "sauts_horloge",
+                confidence = Confidence.INCERTAINE,
+                kind = Kind.CAUSE,
+                symptom = "${s.ptsJumps} saut(s) d'horloge du direct, le plus grand ${s.ptsMaxAbsMs} ms.",
+                cause = "L'horloge du flux a sauté (ce n'est pas un zap). " +
+                    "Au-dessus d'environ 200 ms, Media3 vide le tampon audio. " +
+                    "En dessous, deux morceaux peuvent se chevaucher une fraction de seconde : " +
+                    "un son « en guerre », pas un passe-bas. On ne recale pas l'horloge tout seul.",
+                fix = Fix(
+                    file = FILE_VIEW,
+                    symbol = "NativeVideoView.onPositionDiscontinuity",
+                    media3 = "AnalyticsListener.onPositionDiscontinuity, raison INTERNAL",
+                    action = "Compter seulement. Ne pas chercher, ne pas changer la vitesse (elle reste 1,0).",
+                    settingKey = null,
+                ),
+            )
+        }
         return out
     }
 
@@ -579,6 +789,18 @@ object AudioDiagnosis {
             append(", ")
             append(if (s.inChannels > 0) "${s.inChannels} voies" else "voies inconnues")
             if (s.bitrate > 0) append(", ${s.bitrate / 1000} kb/s")
+            val src = s.source
+            if (src != null) {
+                append("\n").append(AacSource.describe(src))
+            }
+            if (s.audioTrackCount >= 2) {
+                append("\nPistes audio annoncées : ").append(s.audioTrackCount)
+                append(". Une seule est jouée.")
+            }
+            if (s.ptsJumps > 0) {
+                append("\nHorloge du direct : ").append(s.ptsJumps)
+                append(" saut(s), le plus grand ").append(s.ptsMaxAbsMs).append(" ms.")
+            }
             append("\nDécodeur : ")
             append(
                 when {
