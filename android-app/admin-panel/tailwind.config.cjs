@@ -36,6 +36,10 @@ module.exports = {
           DEFAULT: '#E8D9C0',
           deep: '#B39B7C',
         },
+        // Statuts — mêmes teintes que AppColors (succès, attention, info).
+        success: '#5FA975',
+        warning: '#D69847',
+        info: '#6A8DB0',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

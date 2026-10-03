@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { confirmAction } from '@/components/confirm';
 import { pricingApi, ApiError } from '@/lib/api';
 
 // =========================================================
@@ -33,7 +34,13 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
     if (ans == null) return;
     const days = parseInt(ans, 10);
     if (!Number.isFinite(days) || days <= 0) { setErr('Nombre de jours invalide.'); return; }
-    if (!window.confirm(`Confirmer : ${days} jours pour TOUS les appareils actifs ?`)) return;
+    const ok = await confirmAction({
+      title: 'Appliquer ces jours à tout le monde ?',
+      message: `Confirmer : ${days} jours pour tous les appareils actifs.`,
+      confirmLabel: 'Appliquer',
+      danger: true,
+    });
+    if (!ok) return;
     setGrantBusy(true); setErr(null); setOk(null);
     try {
       const r = await pricingApi.grantTrialAll(days);

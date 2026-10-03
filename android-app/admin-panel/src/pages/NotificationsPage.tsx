@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { confirmAction } from '@/components/confirm';
 import {
   announcementsApi, type Announcement, ApiError,
   COUNTRIES, flagEmoji,
@@ -126,8 +127,13 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
   }
 
   async function clearAll() {
-    if (!window.confirm('Retirer TOUTES les annonces ? Les apps n\'en '
-      + 'afficheront plus aucune.')) return;
+    const ok = await confirmAction({
+      title: 'Retirer toutes les annonces ?',
+      message: 'Les applications n’afficheront plus aucune annonce.',
+      confirmLabel: 'Tout retirer',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setErr(null);
     setOk(null);
