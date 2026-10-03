@@ -17,6 +17,7 @@ import 'package:native_video_player/native_video_player.dart';
 
 import 'core/app/app_platform.dart';
 import 'core/blackbox/black_box.dart';
+import 'core/blackbox/black_box_upload.dart';
 import 'core/update/update_service.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
@@ -116,6 +117,9 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // lue (Android 11+). Best-effort : ne bloque jamais le boot.
   await BlackBox.instance.initialize(flavor: 'Zuno TV');
   _wireAudioDiagnostic();
+  // Le journal part vers le panel (même Worker, même MAC). L'envoi
+  // est coupé par l'interrupteur « En plus ». Rien ici ne touche au son.
+  BlackBoxUpload.instance.start();
   if (BootGuard.instance.safeMode) {
     BlackBox.instance.warn('BOOT', 'MODE SANS ÉCHEC : boucle de redémarrage détectée → ré-imports sautés');
   }

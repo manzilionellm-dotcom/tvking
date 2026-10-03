@@ -60,6 +60,11 @@
 
 import { sealSource, openSource, encryptionKey } from './source_crypto.js';
 import {
+  isBlackboxMac,
+  markBlackBoxAsked,
+  readBlackBox,
+} from './blackbox_journal.js';
+import {
   clearRevocations,
   droppedFingerprints,
   readOpenedSources,
@@ -854,6 +859,26 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 1 && request.method === 'GET') {
       return handleFeedbackList(env);
+    }
+  }
+
+  // /blackbox/:mac — journal technique de la box (boîte noire).
+  // Même MAC que l'activation. Lecture seule + « demander un envoi ».
+  // Le texte stocké est déjà filtré (pas de lien, pas de mot de passe).
+  if (parts[0] === 'blackbox' && parts.length >= 2 && parts.length <= 3) {
+    const mac = decodeMac(parts[1]).trim().toUpperCase();
+    if (!isBlackboxMac(mac)) {
+      return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
+    }
+    const denied = await assertMacAccess(env, a.user, mac);
+    if (denied) return denied;
+    if (parts.length === 2 && request.method === 'GET') {
+      const row = await readBlackBox(env, mac);
+      return jsonResp({ mac, text: row.body, updated_at: row.updated_at });
+    }
+    if (parts.length === 3 && parts[2] === 'ask' && request.method === 'POST') {
+      const requestedAt = await markBlackBoxAsked(env, mac, Date.now());
+      return jsonResp({ ok: true, requested_at: requestedAt });
     }
   }
 

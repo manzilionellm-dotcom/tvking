@@ -12,7 +12,7 @@ import { useT } from '@/lib/i18n';
 
 // `cap` (optionnel) = capacité requise pour voir l'entrée (revendeur).
 // Sans `cap`, l'entrée est toujours visible. L'admin voit tout.
-type NavItem = { key: string; to: string; cap?: string };
+type NavItem = { key: string; to: string; cap?: string; anyCap?: string[] };
 // Une section = un titre traduit (`titleKey`) + ses entrées. Le menu est
 // REGROUPÉ par section pour séparer clairement l'ACTIVATION (abonnement,
 // appareils, revendeurs…) des CHAÎNES & SOURCES (serveurs IPTV) — demande
@@ -28,6 +28,7 @@ const OWNER_NAV: NavSection[] = [
       { key: 'nav.activations', to: '/activations' },
       { key: 'nav.customers',   to: '/customers' },
       { key: 'nav.devices',     to: '/devices' },
+      { key: 'nav.blackbox',    to: '/blackbox' },
       { key: 'nav.resellers',   to: '/resellers' },
       { key: 'nav.families',    to: '/families' },
       { key: 'nav.transfer',    to: '/transfer' },
@@ -76,6 +77,7 @@ const RESELLER_NAV: NavSection[] = [
       { key: 'nav.transfer',      to: '/transfer',    cap: 'activate' },
       { key: 'nav.myResellers',   to: '/resellers',   cap: 'resellers' },
       { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },
+      { key: 'nav.blackbox',      to: '/blackbox',    anyCap: ['activate', 'devices'] },
       { key: 'nav.myActivations', to: '/activations', cap: 'activations' },
       { key: 'nav.references',    to: '/references',  cap: 'activations' },
     ],
@@ -101,7 +103,12 @@ export function Sidebar({
   const sections = (owner ? OWNER_NAV : RESELLER_NAV)
     .map((sec) => ({
       ...sec,
-      items: sec.items.filter((it) => !it.cap || userCan(user, it.cap)),
+      items: sec.items.filter((it) => {
+        if (it.anyCap && it.anyCap.length) {
+          return it.anyCap.some((c) => userCan(user, c));
+        }
+        return !it.cap || userCan(user, it.cap);
+      }),
     }))
     .filter((sec) => sec.items.length > 0);
 

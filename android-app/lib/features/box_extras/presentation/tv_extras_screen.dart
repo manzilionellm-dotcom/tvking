@@ -9,6 +9,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/blackbox/black_box_upload_flag.dart';
 import '../../missed_show/data/missed_flag.dart';
 import '../../time_picks/data/time_pick_flag.dart';
 import '../../player/data/clear_voice_flag.dart';
@@ -36,6 +37,9 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
       if (mounted) setState(() {});
     });
     subtitlesFlag.load().then((_) {
+      if (mounted) setState(() {});
+    });
+    blackBoxUploadFlag.load().then((_) {
       if (mounted) setState(() {});
     });
     ClearVoiceFlag.load().then((_) {
@@ -67,12 +71,19 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _toggleBlackBox() async {
+    await blackBoxUploadFlag.load();
+    await blackBoxUploadFlag.set(!blackBoxUploadFlag.value);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool on = missedShowFlag.value;
     final bool timeOn = timePicksFlag.value;
     final bool subsOn = subtitlesFlag.value;
     final bool voiceOn = ClearVoiceFlag.value;
+    final bool boxOn = blackBoxUploadFlag.value;
     return ListView(
       children: <Widget>[
         Text(
@@ -154,6 +165,21 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
                   'Off, which is the original setting. OK to ease voices that are too loud. Surround sent as-is to a soundbar does not change.',
                 ),
           onSelect: _toggleVoice,
+        ),
+        ExtrasRow(
+          title: boxText(context, 'Journal au support', 'Log to support'),
+          subtitle: boxOn
+              ? boxText(
+                  context,
+                  'Le journal de la Boîte noire peut partir au support, sans adresse de flux ni mot de passe. OK pour couper.',
+                  'The Black box log may be sent to support, with no stream address and no password. OK to turn off.',
+                )
+              : boxText(
+                  context,
+                  'Coupé. Le journal reste sur la box. OK pour le renvoyer au support.',
+                  'Off. The log stays on the box. OK to send it to support again.',
+                ),
+          onSelect: _toggleBlackBox,
         ),
       ],
     );

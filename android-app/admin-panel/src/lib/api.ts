@@ -338,6 +338,24 @@ export interface DeviceOverview {
   sources: DeviceSource[];
   localSources?: DeviceLocalSource[];
 }
+export interface BlackBoxJournal {
+  mac: string;
+  text: string;
+  updated_at: number;
+}
+
+/// Journal technique d'une box (boîte noire), déjà filtré côté app
+/// et côté Worker. `ask` demande à la box d'en renvoyer un.
+export const blackboxApi = {
+  get: (mac: string) =>
+    request<BlackBoxJournal>(`/api/v1/blackbox/${encodeURIComponent(mac)}`),
+  ask: (mac: string) =>
+    request<{ ok: boolean; requested_at: number }>(
+      `/api/v1/blackbox/${encodeURIComponent(mac)}/ask`,
+      { method: 'POST' },
+    ),
+};
+
 export const devicesApi = {
   list: (q?: string) =>
     request<{ items: Device[] }>(

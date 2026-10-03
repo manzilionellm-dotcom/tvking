@@ -601,7 +601,7 @@
   "tvCopied": "Copied",
   "tvClear": "Clear",
   "tvReading": "Reading…",
-  "tvBlackBoxHelp": "UP/DOWN: scroll · CH+/CH−: page · Copy = clipboard (paste it to support on WhatsApp).",
+  "tvBlackBoxHelp": "UP/DOWN: scroll · CH+/CH−: page · Copy = clipboard (paste it to support on WhatsApp). This log may be sent to support. You can turn sending off in Settings → Extras.",
   "tvNavServer": "Server",
   "tvLegalTitle": "Legal notice & Terms",
   "tvHelloMorning": "Good morning",

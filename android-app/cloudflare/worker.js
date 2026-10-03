@@ -55,6 +55,8 @@
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1 } from './api_v1.js';
+// Journal boîte noire : même MAC, même base D1. Filtré avant écriture.
+import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
@@ -1455,6 +1457,10 @@ lors des connexions, utilisés pour la sécurité, la présence « en ligne » e
 messages ciblés par pays. L'IP n'est pas revendue.</li>
 <li><strong>Modèle et version d'appareil</strong> : pour le support et les
 statistiques techniques.</li>
+<li><strong>Journal technique</strong> (boîte noire) : si vous ne l'avez pas
+coupé dans les réglages, l'application envoie au support les dernières lignes
+du journal (pannes, son, mémoire). Les adresses de flux, les mots de passe et
+les identifiants en sont retirés avant l'envoi.</li>
 <li><strong>Vos sources IPTV</strong> (URL M3U / identifiants Xtream) : stockées
 <strong>localement sur votre appareil</strong> ; une copie peut être sauvegardée,
 liée à votre identifiant d'appareil, pour vous permettre de la retrouver après
@@ -2303,6 +2309,35 @@ async function handleHeartbeat(request, env, ctx) {
 }
 
 // =========================================================
+//  BOÎTE NOIRE — l'app envoie son journal (POST /api/blackbox)
+// =========================================================
+//  Même contrat que le heartbeat : public, l'identifiant est la
+//  MAC. On ne renvoie PAS le texte (il peut être long). Le panel
+//  le lit par /api/v1/blackbox, avec le jeton du revendeur.
+//  Le filtre est refait ici : la base ne stocke pas de secret.
+// =========================================================
+async function handleBlackboxPost(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return badRequest('invalid JSON body');
+  }
+  const mac = String(body?.mac || '').trim().toUpperCase();
+  if (!MAC_RX.test(mac)) {
+    return badRequest('invalid mac, expected MK:XX:XX:XX:XX:XX');
+  }
+  if (typeof body?.text !== 'string') return badRequest('text required');
+  if (!env.DB) {
+    return json({ error: 'no_db', message: 'Base indisponible.' }, 503);
+  }
+  const saved = await saveBlackBox(env, mac, body.text, Date.now());
+  if (saved.error === 'empty') return json({ ok: true, skipped: true });
+  if (saved.error) return json({ error: 'store_failed' }, 500);
+  return json({ ok: true, updated_at: saved.updated_at });
+}
+
+// =========================================================
 //  STATUS PUBLIC — appelé par l'app à chaque démarrage juste
 //  après le heartbeat, pour savoir si elle doit afficher
 //  l'écran 'essai expiré' ou 'compte gelé'.
@@ -2317,6 +2352,9 @@ async function attachSourceMeta(env, mac, payload) {
   const out = payload && typeof payload === 'object' ? { ...payload } : {};
   if (rev !== undefined) out.source_rev = rev;
   out.revoked = revoked;
+  // Le panel a-t-il demandé le journal ? La box le voit dans le
+  // statut qu'elle lit déjà (pas une nouvelle veille). 0 = personne.
+  out.blackbox_pull = await blackboxRequestedAt(env, upper);
   return out;
 }
 
@@ -3715,7 +3753,8 @@ async function handleRequest(request, env, ctx) {
         else if (seg1 === 'status' || seg1 === 'history') rl = ['dev', 120];
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
-          || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
+          || seg1 === 'feedback' || seg1 === 'm3u'
+          || seg1 === 'blackbox') rl = ['pub', 240];
         // L'écran récepteur poll ~40×/min ; on laisse large (TV + téléphone).
         else if (seg1 === 'screen') rl = ['scr', 600];
       } else if (seg0 === 'config') {
@@ -3745,6 +3784,15 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /config/:mac');
       }
       return handlePublicConfig(request, env, segments[1]);
+    }
+
+    // /api/blackbox — public, l'app envoie son journal (filtré).
+    // Lecture : /api/v1/blackbox/:mac (jeton panel), pas ici.
+    if (segments[0] === 'api' && segments[1] === 'blackbox') {
+      if (request.method !== 'POST' || segments.length !== 2) {
+        return badRequest('only POST supported on /api/blackbox');
+      }
+      return handleBlackboxPost(request, env);
     }
 
     // /api/heartbeat — public, l'app pingue à chaque démarrage

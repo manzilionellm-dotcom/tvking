@@ -185,6 +185,20 @@ class RemoteStatusRead {
 }
 
 abstract final class SubscriptionBackend {
+  /// Corps JSON déjà décodé d'un heartbeat ou d'un statut réussi.
+  /// La boîte noire s'en sert pour voir `blackbox_pull` (le panel
+  /// demande le journal) sans ouvrir une deuxième veille.
+  /// Reste null si personne n'écoute : le heartbeat ne change pas.
+  static void Function(Map<String, dynamic> body)? onStatusBody;
+
+  static void _notifyStatus(Map<String, dynamic> body) {
+    try {
+      onStatusBody?.call(body);
+    } catch (_) {
+      // Un auditeur ne doit jamais faire échouer le statut.
+    }
+  }
+
   /// Pingue le serveur : il crée la fiche du MAC s'il ne la connaît
   /// pas (trial 10 j auto), ou rafraîchit son `last_seen_at` sinon.
   /// Renvoie le statut courant. Timeout court (8 s) — pas question
@@ -246,6 +260,7 @@ abstract final class SubscriptionBackend {
       }
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+      _notifyStatus(body);
       return RemoteStatusRead(
         status: RemoteSubscriptionStatus.fromJson(body),
         reached: true,
@@ -316,6 +331,7 @@ abstract final class SubscriptionBackend {
       if (resp.statusCode != 200) return RemoteStatusRead.offline;
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+      _notifyStatus(body);
       return RemoteStatusRead(
         status: RemoteSubscriptionStatus.fromJson(body),
         reached: true,

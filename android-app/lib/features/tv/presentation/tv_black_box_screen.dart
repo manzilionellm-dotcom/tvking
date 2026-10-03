@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import '../../../core/i18n/l10n_extension.dart';
 
 import '../../../core/blackbox/black_box.dart';
+import '../../../core/blackbox/black_box_upload.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -39,6 +40,9 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
   void initState() {
     super.initState();
     BlackBox.instance.info('SCREEN', 'Boîte noire ouverte');
+    // À la demande : on renvoie le journal tout de suite (s'il est
+    // autorisé). L'écran, lui, ne change pas de mise en page.
+    BlackBoxUpload.instance.nudge();
     _load();
   }
 

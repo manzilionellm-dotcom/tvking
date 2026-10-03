@@ -2035,7 +2035,7 @@
   "tvCopied": "已复制",
   "tvClear": "清除",
   "tvReading": "读取中…",
-  "tvBlackBoxHelp": "上/下：滚动 · CH+/CH−：翻页 · 复制 = 剪贴板（可粘贴到 WhatsApp 发给客服）。",
+  "tvBlackBoxHelp": "上/下：滚动 · CH+/CH−：翻页 · 复制 = 剪贴板（可粘贴到 WhatsApp 发给客服）。 此日志可能会发送给支持人员。可在设置中关闭发送。",
   "tvNavServer": "服务器",
   "tvLegalTitle": "法律声明与使用条款",
     "tvHelloMorning": "早上好",
