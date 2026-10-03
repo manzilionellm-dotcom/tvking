@@ -1287,6 +1287,24 @@ class NativeVideoView(
                 AudioFixes.immediateHandoff = call.arguments == true
                 result.success(null)
             }
+            "setNormalizeMode" -> {
+                // Coupé : les prochaines ouvertures ne touchent plus au mode.
+                // On ne rouvre pas (on ne remet pas un mode communication).
+                // Allumé pendant qu'une chaîne joue : on rouvre, pour que
+                // la nouvelle piste naisse après le mode normal.
+                val on = call.arguments == true
+                val turningOn = on && !AudioFixes.normalizeMode
+                AudioFixes.normalizeMode = on
+                if (turningOn && probeIsPlaying()) {
+                    emit(
+                        "audioDiag",
+                        "Garde mode : allumée. On rouvre la chaîne pour recréer la sortie son.",
+                    )
+                    if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+                    openCurrent(if (vodMode) lastKnownPos else null)
+                }
+                result.success(null)
+            }
             "setSessionWideFallback" -> {
                 // Interrupteur de repli du correctif « repli par chaîne » :
                 // vrai = ancien comportement (une panne → la box partout).
@@ -1728,6 +1746,14 @@ class NativeVideoView(
             movieAudioAttributes(),
             AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
         )
+        // Garde du mode : coupée, on lit seulement (aucune écriture).
+        // Allumée, on demande le mode normal AVANT de créer l'AudioTrack,
+        // parce que certaines puces choisissent le traitement au moment
+        // où la piste naît. On ne remet pas l'ancien mode en quittant :
+        // ce serait remettre le mode communication qui fuit.
+        for (line in AudioModeApplier.describeAndMaybeApply(audioManager, AudioFixes.normalizeMode)) {
+            emit("audioDiag", line)
+        }
         if (AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus)) abandonOwnFocus()
         else requestOwnFocus()
         suspended = false

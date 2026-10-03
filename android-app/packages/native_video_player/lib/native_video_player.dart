@@ -173,6 +173,11 @@ class NativeVideoController extends ChangeNotifier {
   /// chevaucher, l'ancien défaut). Faux par défaut : on attend.
   static bool immediateHandoff = false;
 
+  /// Garde du mode Android. Faux par défaut : on ne change pas le
+  /// mode (normal / communication / appel) ni le haut-parleur d'appel.
+  /// Vrai : avant la lecture, on demande le mode normal.
+  static bool normalizeAudioMode = false;
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -185,6 +190,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
       ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
       ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+      ch.invokeMethod<void>('setNormalizeMode', normalizeAudioMode);
     }
   }
 
@@ -327,6 +333,7 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
     ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
     ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+    ch.invokeMethod<void>('setNormalizeMode', normalizeAudioMode);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;

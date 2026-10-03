@@ -48,6 +48,7 @@ import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
+import '../data/audio_mode_guard.dart';
 import '../data/player_settings.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
@@ -563,6 +564,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _openMedia(String realUrl) async {
+    // Interrupteur coupé : on n'appelle pas Android. Le son ne change pas.
+    if (AudioModeGuardClient.enabled) {
+      await AudioModeGuardClient.applyIfEnabled();
+    }
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
     if (widget.overrideUrl != null) {
       _player.open(Media(realUrl));
