@@ -1,6 +1,8 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { confirmAction } from '@/components/confirm';
 import { pricingApi, ApiError } from '@/lib/api';
+import { createSingleFlight } from '@/lib/robust';
 
 // =========================================================
 //  TarifsPage — prix affichés dans l'app + essai + promo (owner)
@@ -23,8 +25,10 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [grantBusy, setGrantBusy] = useState(false);
+  const grantFlight = useRef(createSingleFlight());
 
   async function grantTrialAll() {
+    await grantFlight.current.run(async () => {
     const ans = window.prompt(
       'Donner combien de jours à TOUS les appareils actifs ? '
       + 'Passé ce délai, le paiement revient automatiquement.',
@@ -33,12 +37,19 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
     if (ans == null) return;
     const days = parseInt(ans, 10);
     if (!Number.isFinite(days) || days <= 0) { setErr('Nombre de jours invalide.'); return; }
-    if (!window.confirm(`Confirmer : ${days} jours pour TOUS les appareils actifs ?`)) return;
+    const ok = await confirmAction({
+      title: 'Appliquer ces jours à tout le monde ?',
+      message: `Confirmer : ${days} jours pour tous les appareils actifs.`,
+      confirmLabel: 'Appliquer',
+      danger: true,
+    });
+    if (!ok) return;
     setGrantBusy(true); setErr(null); setOk(null);
     try {
       const r = await pricingApi.grantTrialAll(days);
       setOk(`✅ ${r.updated} appareil(s) mis à ${r.days} jours. Le paiement reviendra ensuite.`);
     } catch (e) { fail(e); } finally { setGrantBusy(false); }
+    });
   }
 
   function fail(e: any) {
@@ -134,10 +145,11 @@ export function TarifsPage({ onLogout }: { onLogout: () => void }) {
                   />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+                  <label htmlFor="price-trial" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
                     Essai gratuit (jours)
                   </label>
                   <input
+                    id="price-trial"
                     type="number"
                     min={0}
                     max={365}

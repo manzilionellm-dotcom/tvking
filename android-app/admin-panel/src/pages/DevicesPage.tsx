@@ -1,12 +1,23 @@
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { ListPager } from '@/components/ListPager';
+import { confirmAction } from '@/components/confirm';
 import {
-  devicesApi, activateApi, flagEmoji,
+  Alert, EmptyState, LoadingRows, SearchField, SortTh, StatusBadge,
+  TableFrame, useClientTable,
+} from '@/components/ui';
+import {
+  devicesApi, activateApi, sourcesApi, flagEmoji, isAbortError,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
+import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
 import { formatDateTime } from '@/lib/utils';
+import {
+  LIST_PAGE_SIZE, createAbortBag, createGeneration, createSingleFlight,
+  expiryPhrase, readListPage,
+} from '@/lib/robust';
 
 /// Libellés FR lisibles des plans (clé technique → texte).
 const PLAN_LABELS: Record<string, string> = {
@@ -17,30 +28,81 @@ const PLAN_LABELS: Record<string, string> = {
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Device[]>([]);
   const [q, setQ] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [activateFor, setActivateFor] = useState<Device | null>(null);
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
   const [detailFor, setDetailFor] = useState<Device | null>(null);
+  // Une frappe rapide lançait plusieurs requêtes : la plus lente
+  // (souvent l'ancienne recherche) écrasait la plus récente.
+  const gen = useRef(createGeneration());
+  const aborts = useRef(createAbortBag());
+  const appliedSeq = useRef(0);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    devicesApi.list(q)
-      .then((r) => { setItems(r.items); setErr(null); })
-      .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) onLogout();
-        else setErr(e.message);
+  const load = useCallback((opts?: { silent?: boolean }) => {
+    const id = gen.current.next();
+    const signal = aborts.current.next();
+    if (!opts?.silent) setLoading(true);
+    devicesApi.list(q, { limit: LIST_PAGE_SIZE, offset }, signal)
+      .then((r) => {
+        if (!gen.current.isCurrent(id) || !shouldApplyPollResult(id, appliedSeq.current)) return;
+        appliedSeq.current = id;
+        const page = readListPage<Device>(r);
+        setItems(page.items);
+        setTotal(page.total);
+        setTruncated(page.truncated);
+        setDetailFor((cur) => {
+          if (!cur) return cur;
+          return page.items.find((d) => d.id === cur.id) ?? cur;
+        });
+        setErr(null);
       })
-      .finally(() => setLoading(false));
-  }, [q, onLogout]);
+      .catch((e) => {
+        if (isAbortError(e) || !gen.current.isCurrent(id)) return;
+        if (!shouldApplyPollResult(id, appliedSeq.current)) return;
+        if (e instanceof ApiError && e.status === 401) onLogout();
+        else setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
+      })
+      .finally(() => { if (gen.current.isCurrent(id)) setLoading(false); });
+  }, [q, offset, onLogout]);
 
   useEffect(() => {
-    const id = setTimeout(load, 200); // petit debounce sur la recherche
-    return () => clearTimeout(id);
+    const id = setTimeout(() => load(), 200); // petit debounce sur la recherche
+    return () => { clearTimeout(id); aborts.current.abort(); };
   }, [load]);
 
+  // Dernière vue / statut : au plus 2 s après un heartbeat déjà commis.
+  useEffect(() => {
+    const t = setInterval(() => load({ silent: true }), PANEL_POLL_MS);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const table = useClientTable(items, {
+    query: q,
+    valueOf: (d, key) => {
+      if (key === 'mac') return d.mac;
+      if (key === 'client') return d.customer_name || d.customer_email || '';
+      if (key === 'device') return d.device_model || d.platform || '';
+      if (key === 'status') return d.block_status || 'active';
+      if (key === 'seen') return d.last_seen_at || 0;
+      return '';
+    },
+  });
+
   async function setBlock(d: Device, status: 'active' | 'frozen' | 'banned') {
+    if (status === 'banned') {
+      const ok = await confirmAction({
+        title: 'Bannir cet appareil ?',
+        message: `La MAC ${d.mac} sera bloquée. L'application ne pourra plus s'en servir tant que tu ne la réactives pas.`,
+        confirmLabel: 'Bannir',
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setBusyId(d.id); setErr(null);
     try { await devicesApi.setBlock(d.id, status); load(); }
     catch (e: any) { setErr(e instanceof ApiError ? e.message : 'Échec.'); }
@@ -48,7 +110,13 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   }
 
   async function remove(d: Device) {
-    if (!window.confirm(`Supprimer définitivement la MAC ${d.mac} ?\n(Si l'app reste installée, elle réapparaîtra avec un nouvel essai. Pour stopper un abuseur, utilise plutôt « Bannir ».)`)) return;
+    const ok = await confirmAction({
+      title: 'Supprimer cet appareil ?',
+      message: `Supprimer définitivement la MAC ${d.mac} ?\nSi l'application reste installée, elle réapparaîtra avec un nouvel essai. Pour stopper un abus, utilise plutôt « Bannir ».`,
+      confirmLabel: 'Supprimer',
+      danger: true,
+    });
+    if (!ok) return;
     setBusyId(d.id); setErr(null);
     try { await devicesApi.remove(d.id); load(); }
     catch (e: any) { setErr(e instanceof ApiError ? e.message : 'Échec.'); }
@@ -58,48 +126,42 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="Appareils"
-      subtitle={`${items.length} appareil(s)`}
+      subtitle={loading && items.length === 0
+        ? 'Chargement…'
+        : `${total} appareil(s)`}
       onLogout={onLogout}
     >
-      <input
-        type="search"
+      <SearchField
+        label="Rechercher un appareil"
         value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Recherche par MAC, label, client…"
-        className="mb-4 w-full max-w-md rounded-md border border-white/5 bg-midnight px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
+        onChange={(value) => { setQ(value); setOffset(0); }}
+        placeholder="MAC, nom, client…"
       />
 
-      {err && (
-        <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
-      )}
+      {err && <Alert>{err}</Alert>}
 
-      <div className="overflow-x-auto rounded-xl border border-white/5">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-midnight">
-            <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
-              <th className="px-4 py-3">MAC</th>
-              <th className="px-4 py-3">Client</th>
-              <th className="px-4 py-3">Appareil</th>
-              <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Dernière vue</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+      <TableFrame label="Liste des appareils" busy={loading}>
+          <thead className="bg-midnight text-left">
+            <tr>
+              <SortTh label="MAC" column="mac" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Client" column="client" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Appareil" column="device" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Statut" column="status" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Dernière vue" column="seen" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <th scope="col" className="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-widest text-ink-secondary">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {loading && Array.from({ length: 5 }).map((_, i) => (
-              <tr key={i} className="bg-obsidian">
-                <td className="px-4 py-3" colSpan={6}>
-                  <div className="h-4 w-full animate-pulse rounded bg-white/5" />
-                </td>
-              </tr>
-            ))}
-            {!loading && items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-tertiary">
-                Aucun appareil pour l'instant. Dès qu'une app contacte le serveur,
-                sa MAC apparaît ici automatiquement.
+            {loading && <LoadingRows cols={6} />}
+            {!loading && table.total === 0 && (
+              <tr><td colSpan={6}>
+                <EmptyState
+                  title={q ? `Aucun appareil pour « ${q} ».` : 'Aucun appareil pour l’instant.'}
+                  hint={q ? 'Essaie une autre MAC ou un autre nom.' : 'Dès qu’une application contacte le serveur, sa MAC apparaît ici.'}
+                />
               </td></tr>
             )}
-            {items.map((d) => {
+            {!loading && table.rows.map((d) => {
               const st = d.block_status || 'active';
               const busy = busyId === d.id;
               return (
@@ -129,7 +191,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                       <span className="text-ink-tertiary">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3"><DeviceStatus status={st} /></td>
+                  <td className="px-4 py-3"><StatusBadge status={st} /></td>
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
@@ -151,8 +213,15 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
               );
             })}
           </tbody>
-        </table>
-      </div>
+      </TableFrame>
+      <ListPager
+        total={total}
+        offset={offset}
+        count={items.length}
+        limit={LIST_PAGE_SIZE}
+        truncated={truncated}
+        onOffset={setOffset}
+      />
 
       {activateFor && (
         <ActivatePlanModal
@@ -201,16 +270,54 @@ function DeviceDetailModal({
   const [ov, setOv] = useState<DeviceOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const pollSeq = useRef(0);
+  const appliedSeq = useRef(0);
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    devicesApi.overview(device.id)
-      .then((r) => { if (alive) { setOv(r); setErr(null); } })
-      .catch((e) => { if (alive) setErr(e instanceof ApiError ? e.message : 'Échec.'); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    pollSeq.current = 0;
+    appliedSeq.current = 0;
+    const pull = (first: boolean) => {
+      const my = ++pollSeq.current;
+      if (first) setLoading(true);
+      devicesApi.overview(device.id)
+        .then((r) => {
+          if (!alive || !shouldApplyPollResult(my, appliedSeq.current)) return;
+          appliedSeq.current = my;
+          setOv(r);
+          setErr(null);
+        })
+        .catch((e) => {
+          if (!alive || !shouldApplyPollResult(my, appliedSeq.current)) return;
+          setErr(e instanceof ApiError ? e.message : 'Échec.');
+        })
+        .finally(() => { if (alive && first) setLoading(false); });
+    };
+    pull(true);
+    const t = setInterval(() => pull(false), PANEL_POLL_MS);
+    return () => { alive = false; clearInterval(t); };
   }, [device.id]);
+
+  async function clearPushed() {
+    if (!window.confirm(
+      'Effacer les listes poussées sur le serveur pour cette MAC ? Elles ne seront plus renvoyées à l\'app.',
+    )) return;
+    setClearing(true);
+    setErr(null);
+    try {
+      await sourcesApi.clear(device.mac);
+      const my = ++pollSeq.current;
+      const r = await devicesApi.overview(device.id);
+      if (!shouldApplyPollResult(my, appliedSeq.current)) return;
+      appliedSeq.current = my;
+      setOv(r);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Échec.');
+    } finally {
+      setClearing(false);
+    }
+  }
 
   const st = device.block_status || 'active';
   const sources = ov?.sources ?? [];
@@ -227,7 +334,7 @@ function DeviceDetailModal({
             <h2 className="text-lg font-semibold tracking-tight">Centre de contrôle appareil</h2>
             <p className="mt-0.5 font-mono text-xs text-accent">{device.mac}</p>
           </div>
-          <DeviceStatus status={st} />
+          <StatusBadge status={st} />
         </div>
 
         {/* ----- Abonnement + Présence live (résumé d'un coup d'œil) ----- */}
@@ -301,7 +408,8 @@ function DeviceDetailModal({
           <div className="mb-2 text-[10px] uppercase tracking-widest text-ink-tertiary">Actions</div>
           <div className="flex flex-wrap gap-1.5">
             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
-            <ActionBtn busy={busy} onClick={() => navigate(`/activate?mac=${macUrl}`)} title="Pousser ou modifier le M-Trio de sources">Pousser une source</ActionBtn>
+            <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
+            <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire les listes poussées. L'app déjà ouverte garde sa copie locale jusqu'à sa prochaine vérification.">Effacer les listes</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
             {st !== 'frozen' && (
               <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
@@ -328,26 +436,21 @@ function DeviceDetailModal({
 function SubscriptionBox({ loading, license }: { loading: boolean; license: DeviceLicense | null }) {
   if (loading) return <div className="h-16 animate-pulse rounded-lg bg-white/5" />;
   const ok = license && license.status === 'active';
-  const lifetime = license && license.expires_at == null && ok;
-  let detail = 'Aucun abonnement';
-  if (license) {
-    const plan = license.plan ? (PLAN_LABELS[license.plan] || license.plan) : '';
-    if (lifetime) {
-      detail = `${plan || 'À vie'} · illimité`;
-    } else if (license.expires_at != null) {
-      const days = Math.ceil((license.expires_at - Date.now()) / 86400000);
-      detail = days >= 0
-        ? `${plan} · ${days} j restant${days > 1 ? 's' : ''}`
-        : `${plan} · expiré depuis ${-days} j`;
-    } else {
-      detail = plan || license.status;
-    }
-  }
+  const phrase = license ? expiryPhrase(license.expires_at) : 'Aucun abonnement';
+  const plan = license?.plan ? (PLAN_LABELS[license.plan] || license.plan) : '';
+  const lifetime = phrase === 'À vie';
+  const detail = license ? (plan && phrase !== 'À vie' ? `${plan} · ${phrase}` : phrase) : 'Aucun abonnement';
   return (
     <div className="rounded-lg border border-white/5 bg-obsidian px-3 py-2.5">
       <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Abonnement</div>
-      <div className={'mt-0.5 text-sm font-semibold ' + (ok ? 'text-success' : 'text-warning')}>
-        {ok ? (lifetime ? 'À vie' : 'Actif') : (license ? 'Expiré' : '—')}
+      <div className="mt-1">
+        {ok ? (
+          lifetime
+            ? <StatusBadge status="active" label="À vie" />
+            : <StatusBadge status="active" />
+        ) : (
+          license ? <StatusBadge status="expired" /> : <span className="text-sm text-ink-tertiary">—</span>
+        )}
       </div>
       <div className="mt-0.5 truncate text-[11px] text-ink-tertiary" title={detail}>{detail}</div>
     </div>
@@ -362,9 +465,8 @@ function PresenceBox({ loading, presence }: { loading: boolean; presence: Device
   return (
     <div className="rounded-lg border border-white/5 bg-obsidian px-3 py-2.5">
       <div className="text-[10px] uppercase tracking-widest text-ink-tertiary">Présence</div>
-      <div className={'mt-0.5 flex items-center gap-1.5 text-sm font-semibold ' + (online ? 'text-success' : 'text-ink-tertiary')}>
-        <span className={'h-2 w-2 rounded-full ' + (online ? 'bg-success' : 'bg-white/20')} />
-        {online ? 'En ligne' : 'Hors ligne'}
+      <div className="mt-1">
+        <StatusBadge status={online ? 'online' : 'offline'} />
       </div>
       <div className="mt-0.5 truncate text-[11px] text-ink-tertiary" title={presence?.channel || ''}>
         {presence?.channel ? `▶ ${presence.channel}` : (presence ? `${flag} ${presence.ip || '—'}`.trim() : '—')}
@@ -481,6 +583,9 @@ function ActivatePlanModal({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // Verrou synchrone : deux clics avant le re-render partaient deux fois
+  // et débitaient deux fois les crédits.
+  const flight = useRef(createSingleFlight());
 
   const PLANS = [
     { id: 'monthly', label: '1 mois' },
@@ -491,14 +596,16 @@ function ActivatePlanModal({
   ];
 
   async function go() {
-    setBusy(true); setErr(null);
-    try {
-      await activateApi.activate({ mac: device.mac, plan });
-      setDone(true);
-      setTimeout(onDone, 900);
-    } catch (e: any) {
-      setErr(e instanceof ApiError ? e.message : 'Échec.');
-    } finally { setBusy(false); }
+    await flight.current.run(async () => {
+      setBusy(true); setErr(null);
+      try {
+        await activateApi.activate({ mac: device.mac, plan });
+        setDone(true);
+        setTimeout(onDone, 900);
+      } catch (e: any) {
+        setErr(e instanceof ApiError ? e.message : 'Échec.');
+      } finally { setBusy(false); }
+    });
   }
 
   return (
@@ -559,16 +666,6 @@ function PlatformChip({ device }: { device: Device }) {
       {isTv ? '📺 TV' : '📱 Mobile'}
     </span>
   );
-}
-
-function DeviceStatus({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    active: { label: 'Actif', cls: 'bg-success/15 text-success' },
-    frozen: { label: 'Gelé', cls: 'bg-warning/15 text-warning' },
-    banned: { label: 'Banni', cls: 'bg-accent/15 text-accent-bright' },
-  };
-  const s = map[status] || map.active;
-  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${s.cls}`}>{s.label}</span>;
 }
 
 function ActionBtn({

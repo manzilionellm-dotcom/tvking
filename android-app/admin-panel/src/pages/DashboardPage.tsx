@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { Alert } from '@/components/ui';
 import {
   statsApi, backupApi, type StatsOverview, ApiError,
   getCurrentUser, isOwnerRole,
 } from '@/lib/api';
 import { formatMoney } from '@/lib/utils';
+import { serializeBackup } from '@/lib/robust';
 import { useT } from '@/lib/i18n';
 
 /// Dashboard : cards de KPI lues en direct depuis /api/v1/stats/overview.
@@ -22,7 +24,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
     setBackupBusy(true);
     try {
       const dump = await backupApi.get();
-      const blob = new Blob([JSON.stringify(dump, null, 2)], {
+      const blob = new Blob([serializeBackup(dump)], {
         type: 'application/json',
       });
       const url = URL.createObjectURL(blob);
@@ -74,11 +76,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
       ) : undefined}
     >
       {loading && <SkeletonCards />}
-      {err && (
-        <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent-bright">
-          {err}
-        </div>
-      )}
+      {err && <Alert>{err}</Alert>}
       {stats && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
           <KpiCard label={t('dash.clients')}  value={stats.customers} />
@@ -110,8 +108,8 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
       )}
 
       <div className="mt-10">
-        <h2 className="mb-3 text-[10px] uppercase tracking-widest text-ink-tertiary">
-          Prochaines actions
+        <h2 className="mb-3 text-sm font-semibold text-ink-primary">
+          Raccourcis
         </h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <NextActionCard
@@ -120,14 +118,14 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
             to="/apps"
           />
           <NextActionCard
-            title="Activer un client"
-            desc="Tape le MAC, choisis l'app et la durée."
+            title="Activer l'application"
+            desc="Choisis la durée. Ça n'ajoute pas de liste de chaînes."
             to="/activate"
           />
           <NextActionCard
-            title="Activer / pousser une source"
-            desc="Assigner ou mettre à jour la source Xtream ou M3U d'une MAC."
-            to="/activate"
+            title="Liste de chaînes"
+            desc="Ajoute ou change le lien, sans toucher à l'activation."
+            to="/chaines"
           />
         </div>
       </div>
