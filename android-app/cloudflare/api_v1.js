@@ -57,10 +57,14 @@
 //  Phase 1.A se limite au super_admin role. Resellers et
 //  customers viendront en Phase 3 et 5 respectivement.
 // =========================================================
+import { openSource, openSourceList, sealSource } from './secret_box.js';
 
 // ---------------------------------------------------------
 //  Helpers reponse
 // ---------------------------------------------------------
+//  Le `*` ci-dessous est retiré par applyCors : seule une origine
+//  de panel connue (ou PANEL_ORIGINS) reçoit Access-Control-Allow-Origin.
+//  Sans origine (app native, curl), on n'envoie pas le header.
 
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -70,7 +74,37 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Methods':
     'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
 };
+
+const PANEL_ORIGINS = new Set([
+  'https://tvking-admin.pages.dev',
+  'https://admin.7themotion.com',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+]);
+
+function originAllowed(origin, env) {
+  if (!origin) return false;
+  if (PANEL_ORIGINS.has(origin)) return true;
+  const extra = String((env && env.PANEL_ORIGINS) || '');
+  return extra.split(',').map((s) => s.trim()).filter(Boolean).includes(origin);
+}
+
+function applyCors(request, env, res) {
+  const headers = new Headers(res.headers);
+  headers.delete('access-control-allow-origin');
+  const origin = request.headers.get('Origin');
+  if (originAllowed(origin, env)) {
+    headers.set('Access-Control-Allow-Origin', origin);
+    headers.set('Vary', 'Origin');
+  }
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
+}
 
 function jsonResp(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -185,12 +219,45 @@ async function signJwt(payload, secret, expMinutes = 60 * 24 * 7) {
   return `${h}.${p}.${sig}`;
 }
 
+/// Comparaison indépendante du contenu (la longueur d'une signature
+/// HS256 est fixe ; on ne sort pas dès le premier octet différent).
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const len = Math.max(a.length, b.length);
+  let diff = a.length === b.length ? 0 : 1;
+  for (let i = 0; i < len; i++) {
+    const ca = i < a.length ? a.charCodeAt(i) : 0;
+    const cb = i < b.length ? b.charCodeAt(i) : 0;
+    diff |= ca ^ cb;
+  }
+  return diff === 0;
+}
+
+/// Secret de signature. Refuse le vide et les valeurs de repli qui
+/// étaient écrites en dur (`dev-secret`, `change-me`).
+function authSecret(env) {
+  const s = String((env && env.ADMIN_SECRET) || '').trim();
+  if (!s || s === 'dev-secret' || s === 'change-me') return null;
+  return s;
+}
+
+async function ensurePasswordChangedColumn(env, table) {
+  if (table !== 'admin_users' && table !== 'resellers') return;
+  try {
+    await env.DB.prepare(
+      `ALTER TABLE ${table} ADD COLUMN password_changed_at INTEGER`,
+    ).run();
+  } catch (_) { /* colonne déjà présente */ }
+}
+
 async function verifyJwt(token, secret) {
   try {
     const [h, p, s] = token.split('.');
     if (!h || !p || !s) return null;
+    const header = JSON.parse(new TextDecoder().decode(b64urlDecode(h)));
+    if (!header || header.alg !== 'HS256') return null;
     const expectedSig = b64url(await hmacSha256(secret, `${h}.${p}`));
-    if (s !== expectedSig) return null;
+    if (!safeEqual(s, expectedSig)) return null;
     const claims = JSON.parse(
       new TextDecoder().decode(b64urlDecode(p)),
     );
@@ -265,13 +332,87 @@ function genId(prefix) {
 // ---------------------------------------------------------
 //  Auth middleware
 // ---------------------------------------------------------
+/// Hash factice (PBKDF2 réel) pour que « utilisateur inconnu » coûte
+/// le même temps que « mauvais mot de passe ». Ce n'est pas un secret.
+const DUMMY_PASSWORD_HASH =
+  'pbkdf2$100000$kFBE63yLabFQ6rL-K2epjA$UPY1WDxzSdMhJRQS8N2InJq65Q00rcYjO2bGkl9xRzM';
+
+/// true si le jeton a été émis avant le dernier changement de mot de passe.
+function tokenStale(row, claims) {
+  const changed = Number(row && row.password_changed_at) || 0;
+  if (!changed || !claims || !claims.iat) return false;
+  // Écriture en secondes. Un résidu en millisecondes (> 1e12) est compris.
+  if (changed > 1e12) return changed > claims.iat * 1000;
+  return claims.iat < changed;
+}
+
+async function readAdminActor(env, id) {
+  try {
+    return await env.DB.prepare(
+      'SELECT id, email, name, role, is_active, password_changed_at FROM admin_users WHERE id = ?',
+    ).bind(id).first();
+  } catch (_) {
+    return await env.DB.prepare(
+      'SELECT id, email, name, role, is_active FROM admin_users WHERE id = ?',
+    ).bind(id).first();
+  }
+}
+
+async function readResellerActor(env, id) {
+  try {
+    return await env.DB.prepare(
+      'SELECT id, email, name, status, level, permissions, password_changed_at FROM resellers WHERE id = ?',
+    ).bind(id).first();
+  } catch (_) {
+    return await env.DB.prepare(
+      'SELECT id, email, name, status, level, permissions FROM resellers WHERE id = ?',
+    ).bind(id).first();
+  }
+}
+
+/// Recharge le rôle, le statut et les droits depuis la base. Le JWT
+/// ne fait pas foi tout seul : un compte suspendu ou un mot de passe
+/// changé perd l'accès sans attendre les 7 jours du jeton.
+async function hydrateActor(env, claims) {
+  if (!claims || !claims.sub) return null;
+  if (claims.role === 'reseller') {
+    const row = await readResellerActor(env, claims.sub);
+    if (!row || row.status !== 'active') return null;
+    if (tokenStale(row, claims)) return null;
+    const level = row.level || 'basique';
+    return {
+      sub: row.id,
+      email: row.email,
+      role: 'reseller',
+      name: row.name,
+      level,
+      permissions: resellerPerms(row.permissions, level),
+    };
+  }
+  const row = await readAdminActor(env, claims.sub);
+  if (!row || !row.is_active) return null;
+  if (tokenStale(row, claims)) return null;
+  return {
+    sub: row.id,
+    email: row.email,
+    role: row.role,
+    name: row.name,
+  };
+}
+
 async function requireAuth(request, env) {
+  const secret = authSecret(env);
+  if (!secret) {
+    return { error: errResp('auth_unconfigured', 'Authentification indisponible.', 503) };
+  }
   const auth = request.headers.get('Authorization') || '';
   const m = auth.match(/^Bearer\s+(.+)$/i);
   if (!m) return { error: errResp('no_auth', 'Missing Authorization header', 401) };
-  const claims = await verifyJwt(m[1], env.ADMIN_SECRET || 'dev-secret');
+  const claims = await verifyJwt(m[1], secret);
   if (!claims) return { error: errResp('bad_token', 'Invalid or expired token', 401) };
-  return { user: claims };
+  const user = await hydrateActor(env, claims);
+  if (!user) return { error: errResp('bad_token', 'Invalid or expired token', 401) };
+  return { user };
 }
 
 // ---------------------------------------------------------
@@ -366,6 +507,8 @@ async function handleAuditLogsList(env) {
 }
 
 async function bootstrapSuperAdminIfNeeded(env) {
+  const secret = authSecret(env);
+  if (!secret) return false;
   // Filet de sécurité : si la migration schema.sql n'a jamais tourné sur
   // la base D1, la table `admin_users` n'existe pas → le SELECT plante →
   // login impossible. On la crée à l'identique du schéma au besoin.
@@ -387,7 +530,7 @@ async function bootstrapSuperAdminIfNeeded(env) {
   if (count && count.n > 0) return false;
   const id = genId('adm');
   const now = Date.now();
-  const pwd = await hashPassword(env.ADMIN_SECRET || 'change-me');
+  const pwd = await hashPassword(secret);
   await env.DB
     .prepare(
       `INSERT INTO admin_users
@@ -444,14 +587,19 @@ async function logAudit(env, request, actor, action, target, before, after) {
 // "Connexion impossible" au lieu du vrai message. Avec ce filet, on voit
 // l'erreur réelle (ex. "no such table: admin_users") et on peut la régler.
 export async function apiV1(request, env) {
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: JSON_HEADERS });
-  }
+  let res;
   try {
-    return await apiV1Inner(request, env);
-  } catch (e) {
-    return errResp('internal_error', (e && e.message) || String(e), 500);
+    if (request.method === 'OPTIONS') {
+      res = new Response(null, { status: 204, headers: JSON_HEADERS });
+    } else {
+      res = await apiV1Inner(request, env);
+    }
+  } catch (_) {
+    // Message générique : le détail reste dans les journaux Worker,
+    // jamais dans la réponse (un SELECT raté ne doit pas exposer le SQL).
+    res = errResp('internal_error', 'Erreur interne.', 500);
   }
+  return applyCors(request, env, res);
 }
 
 async function apiV1Inner(request, env) {
@@ -602,27 +750,27 @@ async function apiV1Inner(request, env) {
     if (parts.length === 2) {
       const fid = parts[1];
       if (request.method === 'GET') return handleFamiliesGet(env, fid, a.user);
-      if (request.method === 'DELETE') return handleFamiliesDelete(env, fid, actor);
+      if (request.method === 'DELETE') return handleFamiliesDelete(env, fid, actor, a.user);
     }
     if (parts.length === 3 && parts[2] === 'members' && request.method === 'POST') {
       return handleFamilyAddMember(request, env, a.user, actor, parts[1]);
     }
     if (parts.length === 4 && parts[2] === 'members' && request.method === 'DELETE') {
-      return handleFamilyRemoveMember(env, parts[1], decodeMac(parts[3]), actor);
+      return handleFamilyRemoveMember(env, parts[1], decodeMac(parts[3]), actor, a.user);
     }
     // Liens M3U distribuables (une source → plusieurs liens séparés).
     if (parts.length === 3 && parts[2] === 'links' && request.method === 'POST') {
       return handleFamilyCreateLink(request, env, a.user, actor, parts[1]);
     }
     if (parts.length === 4 && parts[2] === 'links' && request.method === 'DELETE') {
-      return handleFamilyDeleteLink(env, parts[1], parts[3], actor);
+      return handleFamilyDeleteLink(env, parts[1], parts[3], actor, a.user);
     }
   }
 
   // /apps
   if (parts[0] === 'apps') {
     if (parts.length === 1) {
-      if (request.method === 'GET') return handleAppsList(env);
+      if (request.method === 'GET') return handleAppsList(env, a.user);
       if (request.method === 'POST') {
         if (a.user.role !== 'super_admin') {
           return errResp('forbidden', 'Only super_admin can create apps', 403);
@@ -824,30 +972,30 @@ async function apiV1Inner(request, env) {
   // retirer.
   if (parts[0] === 'sources' && parts.length === 2) {
     const mac = parts[1];
-    if (request.method === 'GET') return handleSourceGet(env, mac);
+    if (request.method === 'GET') return handleSourceGet(env, mac, a.user);
     // Pousser/retirer une source = capacité 'sources' (niveau standard+).
     // Un revendeur 'basique' ne peut PAS configurer les sources clients.
     if ((request.method === 'PUT' || request.method === 'DELETE')
         && !resellerCan(a.user, 'sources')) {
       return errResp('forbidden', 'Ton niveau ne permet pas de pousser une source.', 403);
     }
-    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor);
-    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor);
+    if (request.method === 'PUT') return handleSourcePut(request, env, mac, actor, a.user);
+    if (request.method === 'DELETE') return handleSourceDelete(request, env, mac, actor, a.user);
   }
 
   // /customers
   if (parts[0] === 'customers') {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleCustomersList(request, env, a.user);
-      if (request.method === 'POST') return handleCustomersCreate(request, env, actor);
+      if (request.method === 'POST') return handleCustomersCreate(request, env, actor, a.user);
     }
     if (parts.length === 2) {
       const id = parts[1];
-      if (request.method === 'GET') return handleCustomersGet(env, id);
-      if (request.method === 'PATCH') return handleCustomersUpdate(request, env, id, actor);
+      if (request.method === 'GET') return handleCustomersGet(env, id, a.user);
+      if (request.method === 'PATCH') return handleCustomersUpdate(request, env, id, actor, a.user);
     }
     if (parts.length === 3 && parts[2] === 'devices') {
-      return handleCustomerDevices(env, parts[1]);
+      return handleCustomerDevices(env, parts[1], a.user);
     }
   }
 
@@ -855,7 +1003,10 @@ async function apiV1Inner(request, env) {
   if (parts[0] === 'devices') {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleDevicesList(request, env, a.user);
-      if (request.method === 'POST') return handleDevicesCreate(request, env, actor);
+      if (request.method === 'POST') {
+        if (isReseller) return errResp('forbidden', 'Passe par l\'activation.', 403);
+        return handleDevicesCreate(request, env, actor);
+      }
     }
     if (parts.length === 2) {
       const did = parts[1];
@@ -874,13 +1025,20 @@ async function apiV1Inner(request, env) {
   if (parts[0] === 'licenses') {
     if (parts.length === 1) {
       if (request.method === 'GET') return handleLicensesList(request, env, a.user);
-      if (request.method === 'POST') return handleLicensesCreate(request, env, actor);
+      if (request.method === 'POST') {
+        if (isReseller) return errResp('forbidden', 'Passe par l\'activation.', 403);
+        return handleLicensesCreate(request, env, actor);
+      }
     }
     if (parts.length === 2) {
       const id = parts[1];
-      if (request.method === 'PATCH') return handleLicensesUpdate(request, env, id, actor);
+      if (request.method === 'PATCH') {
+        if (isReseller) return errResp('forbidden', 'Owner only', 403);
+        return handleLicensesUpdate(request, env, id, actor);
+      }
     }
     if (parts.length === 3 && parts[2] === 'renew') {
+      if (isReseller) return errResp('forbidden', 'Owner only', 403);
       return handleLicensesRenew(request, env, parts[1], actor);
     }
   }
@@ -909,6 +1067,10 @@ async function handleLogin(request, env) {
     return errResp('rate_limited',
       'Trop de tentatives de connexion. Réessaie dans ~10 minutes.', 429);
   }
+  const secret = authSecret(env);
+  if (!secret) {
+    return errResp('auth_unconfigured', 'Authentification indisponible.', 503);
+  }
 
   // Bootstrap : si pas d'admin en base, on en cree un avec
   // ADMIN_SECRET comme mot de passe (transition seamless depuis
@@ -923,6 +1085,7 @@ async function handleLogin(request, env) {
     .first();
 
   if (!row || !row.is_active) {
+    await verifyPassword(password, DUMMY_PASSWORD_HASH);
     return errResp('bad_credentials', 'Invalid credentials', 401);
   }
   let ok = await verifyPassword(password, row.password_hash);
@@ -935,12 +1098,13 @@ async function handleLogin(request, env) {
   // puis l'admin peut définir un nouveau mot de passe dans « Mon compte ».
   if (!ok
       && row.role === 'super_admin'
-      && env.ADMIN_SECRET
-      && password === env.ADMIN_SECRET) {
-    const synced = await hashPassword(env.ADMIN_SECRET);
+      && safeEqual(password, secret)) {
+    const synced = await hashPassword(secret);
+    const changed = Math.floor(Date.now() / 1000);
+    await ensurePasswordChangedColumn(env, 'admin_users');
     await env.DB
-      .prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?')
-      .bind(synced, row.id)
+      .prepare('UPDATE admin_users SET password_hash = ?, password_changed_at = ? WHERE id = ?')
+      .bind(synced, changed, row.id)
       .run();
     ok = true;
   }
@@ -955,7 +1119,7 @@ async function handleLogin(request, env) {
 
   const token = await signJwt(
     { sub: row.id, email: row.email, role: row.role, name: row.name },
-    env.ADMIN_SECRET || 'dev-secret',
+    secret,
   );
   return jsonResp({
     token,
@@ -966,6 +1130,17 @@ async function handleLogin(request, env) {
 // =========================================================
 //  STATS / DASHBOARD
 // =========================================================
+
+/// Retire les colonnes qui sont des secrets (hash, mot de passe, jeton).
+function redactSecrets(row) {
+  if (!row || typeof row !== 'object') return row;
+  const out = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (/password|secret|token|m3u_url/i.test(key)) continue;
+    out[key] = value;
+  }
+  return out;
+}
 
 // Export JSON de toute la base (sauvegarde téléchargeable depuis le
 // panel). Filet de sécurité : si la D1 est perdue, on peut restaurer.
@@ -986,7 +1161,7 @@ async function handleBackup(env) {
     if (!/^[a-z_]+$/.test(tbl)) continue;
     try {
       const rs = await env.DB.prepare('SELECT * FROM ' + tbl).all();
-      dump[tbl] = (rs && rs.results) || [];
+      dump[tbl] = ((rs && rs.results) || []).map(redactSecrets);
     } catch (_) {
       dump[tbl] = []; // table absente sur cette base → on ignore
     }
@@ -995,7 +1170,7 @@ async function handleBackup(env) {
     const rs = await env.DB
       .prepare('SELECT id, email, name, role, status, created_at FROM admin_users')
       .all();
-    dump.admin_users = (rs && rs.results) || [];
+    dump.admin_users = ((rs && rs.results) || []).map(redactSecrets);
   } catch (_) {
     dump.admin_users = [];
   }
@@ -1094,7 +1269,7 @@ async function ensureDefewTvApp(env) {
   }
 }
 
-async function handleAppsList(env) {
+async function handleAppsList(env, user) {
   await ensureDefewTvApp(env);
   const rs = await env.DB
     .prepare(
@@ -1104,7 +1279,14 @@ async function handleAppsList(env) {
        FROM apps ORDER BY name ASC`,
     )
     .all();
-  return jsonResp({ items: rs.results || [] });
+  const items = (rs.results || []).map((row) => {
+    if (user && user.role === 'reseller') {
+      const { default_iptv_server, ...rest } = row;
+      return rest;
+    }
+    return row;
+  });
+  return jsonResp({ items });
 }
 
 async function handleAppsGet(env, id) {
@@ -2043,16 +2225,31 @@ async function handleCustomersList(request, env, user) {
   return jsonResp({ items: rs.results || [] });
 }
 
-async function handleCustomersGet(env, id) {
+async function handleCustomersGet(env, id, user) {
   const row = await env.DB
     .prepare('SELECT * FROM customers WHERE id = ?')
     .bind(id)
     .first();
-  if (!row) return errResp('not_found', 'Customer not found', 404);
-  return jsonResp(row);
+  const gate = customerForActor(row, user);
+  if (gate.error) return gate.error;
+  return jsonResp(customerView(gate.row));
 }
 
-async function handleCustomersCreate(request, env, actor) {
+function customerView(row) {
+  if (!row) return row;
+  const { password_hash, ...rest } = row;
+  return rest;
+}
+
+function customerForActor(row, user) {
+  if (!row) return { error: errResp('not_found', 'Customer not found', 404) };
+  if (user && user.role === 'reseller' && row.reseller_id !== user.sub) {
+    return { error: errResp('forbidden', 'Ce client ne vous appartient pas', 403) };
+  }
+  return { row };
+}
+
+async function handleCustomersCreate(request, env, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
@@ -2070,24 +2267,28 @@ async function handleCustomersCreate(request, env, actor) {
       body.email || null,
       body.name || null,
       body.phone || null,
-      body.reseller_id || null,
+      user && user.role === 'reseller' ? user.sub : (body.reseller_id || null),
       body.notes || null,
       now,
       now,
     )
     .run();
-  await logAudit(env, request, actor, 'customer.create', { type: 'customer', id }, null, body);
+  await logAudit(env, request, actor, 'customer.create', { type: 'customer', id }, null, {
+    email: body.email || null, name: body.name || null,
+  });
   return jsonResp({ id }, 201);
 }
 
-async function handleCustomersUpdate(request, env, id, actor) {
+async function handleCustomersUpdate(request, env, id, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
   const before = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first();
-  if (!before) return errResp('not_found', 'Customer not found', 404);
-  const fields = ['email', 'name', 'phone', 'reseller_id', 'notes'];
+  const gate = customerForActor(before, user);
+  if (gate.error) return gate.error;
+  const fields = ['email', 'name', 'phone', 'notes'];
+  if (user && user.role !== 'reseller') fields.push('reseller_id');
   const sets = []; const vals = [];
   for (const f of fields) {
     if (body[f] !== undefined) { sets.push(`${f} = ?`); vals.push(body[f]); }
@@ -2096,11 +2297,20 @@ async function handleCustomersUpdate(request, env, id, actor) {
   sets.push('updated_at = ?'); vals.push(Date.now());
   vals.push(id);
   await env.DB.prepare(`UPDATE customers SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
-  await logAudit(env, request, actor, 'customer.update', { type: 'customer', id }, before, body);
+  await logAudit(env, request, actor, 'customer.update', { type: 'customer', id },
+    customerView(before), redactSecrets(body));
   return jsonResp({ updated: 1 });
 }
 
-async function handleCustomerDevices(env, customerId) {
+async function handleCustomerDevices(env, customerId, user) {
+  if (user && user.role === 'reseller') {
+    const parent = await env.DB
+      .prepare('SELECT reseller_id FROM customers WHERE id = ?')
+      .bind(customerId)
+      .first();
+    const gate = customerForActor(parent, user);
+    if (gate.error) return gate.error;
+  }
   const rs = await env.DB
     .prepare(
       `SELECT id, mac, label, first_seen_at, last_seen_at
@@ -2165,6 +2375,7 @@ function normalizeSource(raw) {
   const type = (raw.type || '').trim().toLowerCase();
   const label = (raw.label || '').trim() || null;
   const epg = (raw.epg_url || '').trim() || null;
+  if (epg && !isHttpUrl(epg)) return { error: 'epg_url must start with http(s)://' };
   if (type === 'xtream') {
     const server = (raw.server_url || '').trim();
     const user = (raw.username || '').trim();
@@ -2172,11 +2383,13 @@ function normalizeSource(raw) {
     if (!server || !user || !pass) {
       return { error: 'xtream requires server_url, username, password' };
     }
+    if (!isHttpUrl(server)) return { error: 'server_url must start with http(s)://' };
     return { source: { type, label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
   }
   if (type === 'm3u') {
     const m3u = (raw.m3u_url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
+    if (!isHttpUrl(m3u)) return { error: 'm3u_url must start with http(s)://' };
     return { source: { type, label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
   }
   return { error: "type must be 'xtream' or 'm3u'" };
@@ -2206,7 +2419,10 @@ async function upsertDeviceSource(env, mac, sources) {
     }
   } catch (_) { /* pas de précédent → rien à préserver */ }
 
-  const merged = [...panelItems, ...selfItems];
+  const merged = [];
+  for (const item of [...panelItems, ...selfItems]) {
+    merged.push(await sealSource(env, item));
+  }
   const first = merged[0] || {};
   const json = JSON.stringify(merged);
   await env.DB
@@ -2239,9 +2455,32 @@ function decodeMac(mac) {
   }
 }
 
-async function handleSourceGet(env, mac) {
-  await ensureSourcesTable(env);
+function isHttpUrl(value) {
+  return typeof value === 'string' && /^https?:\/\//i.test(value) && !/[\s<>]/.test(value);
+}
+
+/// Un revendeur ne touche que les MAC de SES appareils. L'owner (et le
+/// support) gardent l'accès global. Pas d'appareil en base → refus :
+/// on n'écrit pas une source sur une MAC qui n'est pas la sienne.
+async function sourceMacForActor(env, mac, user) {
   const m = decodeMac(mac).trim().toUpperCase();
+  if (user && user.role === 'reseller') {
+    const dev = await env.DB
+      .prepare('SELECT reseller_id FROM devices WHERE mac = ?')
+      .bind(m)
+      .first();
+    if (!dev || dev.reseller_id !== user.sub) {
+      return { error: errResp('forbidden', 'Cet appareil ne vous appartient pas', 403) };
+    }
+  }
+  return { mac: m };
+}
+
+async function handleSourceGet(env, mac, user) {
+  const gate = await sourceMacForActor(env, mac, user);
+  if (gate.error) return gate.error;
+  const m = gate.mac;
+  await ensureSourcesTable(env);
   const row = await env.DB
     .prepare('SELECT * FROM device_sources WHERE mac = ?')
     .bind(m)
@@ -2256,15 +2495,18 @@ async function handleSourceGet(env, mac) {
     const { sources_json, mac: _mac, updated_at, ...single } = row;
     sources = [single];
   }
+  sources = await openSourceList(env, sources);
   return jsonResp({ mac: m, source: sources[0] || null, sources });
 }
 
-async function handleSourcePut(request, env, mac, actor) {
+async function handleSourcePut(request, env, mac, actor, user) {
   let body;
   try { body = await request.json(); } catch (_) {
     return errResp('bad_json', 'Invalid JSON body', 400);
   }
-  const m = decodeMac(mac).trim().toUpperCase();
+  const gate = await sourceMacForActor(env, mac, user);
+  if (gate.error) return gate.error;
+  const m = gate.mac;
   if (!/^MK(?::[0-9A-F]{2}){5}$/i.test(m)) {
     return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
   }
@@ -2288,9 +2530,11 @@ async function handleSourcePut(request, env, mac, actor) {
   return jsonResp({ ok: true, mac: m, count: sources.length });
 }
 
-async function handleSourceDelete(request, env, mac, actor) {
+async function handleSourceDelete(request, env, mac, actor, user) {
+  const gate = await sourceMacForActor(env, mac, user);
+  if (gate.error) return gate.error;
+  const m = gate.mac;
   await ensureSourcesTable(env);
-  const m = decodeMac(mac).trim().toUpperCase();
   await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
   await logAudit(env, request, actor, 'source.clear',
     { type: 'device_source', id: m }, null, null);
@@ -2337,9 +2581,10 @@ async function ensureFamiliesTables(env) {
 }
 
 // La source renvoyée aux LISTES masque le mot de passe (le détail le montre).
-function _familyRowToJson(row, { hidePassword = true } = {}) {
+async function _familyRowToJson(env, row, { hidePassword = true } = {}) {
   let source = null;
   try { source = row.source_json ? JSON.parse(row.source_json) : null; } catch (_) { source = null; }
+  if (source) source = await openSource(env, source);
   if (source && hidePassword && source.password) {
     source = { ...source, password: '••••••' };
   }
@@ -2369,10 +2614,10 @@ async function handleFamiliesList(env, user) {
     for (const r of (c.results || [])) counts[r.family_id] = r.n;
   } catch (_) {/* table vide */}
   return jsonResp({
-    items: list.map((row) => ({
-      ..._familyRowToJson(row),
+    items: await Promise.all(list.map(async (row) => ({
+      ...await _familyRowToJson(env, row),
       member_count: counts[row.id] || 0,
-    })),
+    }))),
   });
 }
 
@@ -2389,14 +2634,15 @@ async function handleFamiliesCreate(request, env, actor, user) {
   const id = genId('fam');
   const resellerId = user.role === 'reseller' ? user.sub : (body.reseller_id || null);
   await ensureFamiliesTables(env);
+  const sealed = await sealSource(env, norm.source);
   await env.DB.prepare(
     `INSERT INTO families (id, name, source_json, reseller_id, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-  ).bind(id, name, JSON.stringify(norm.source), resellerId, now, now).run();
+  ).bind(id, name, JSON.stringify(sealed), resellerId, now, now).run();
   await logAudit(env, request, actor, 'family.create',
     { type: 'family', id }, null, { name });
-  return jsonResp({ ok: true, family: _familyRowToJson(
-    { id, name, source_json: JSON.stringify(norm.source), reseller_id: resellerId, created_at: now, updated_at: now },
+  return jsonResp({ ok: true, family: await _familyRowToJson(env,
+    { id, name, source_json: JSON.stringify(sealed), reseller_id: resellerId, created_at: now, updated_at: now },
     { hidePassword: false }), member_count: 0 }, 201);
 }
 
@@ -2413,7 +2659,7 @@ async function handleFamiliesGet(env, id, user) {
     'SELECT id, token, label, created_at FROM family_links WHERE family_id = ? ORDER BY created_at ASC',
   ).bind(id).all();
   return jsonResp({
-    family: _familyRowToJson(row, { hidePassword: false }),
+    family: await _familyRowToJson(env, row, { hidePassword: false }),
     members: (m.results || []),
     links: (l.results || []),
   });
@@ -2441,7 +2687,18 @@ async function handleFamilyCreateLink(request, env, user, actor, familyId) {
   return jsonResp({ ok: true, id, token, label: (body.label || '').trim() || null, created_at: now }, 201);
 }
 
-async function handleFamilyDeleteLink(env, familyId, linkId, actor) {
+async function assertFamilyAccess(env, id, user) {
+  const row = await env.DB.prepare('SELECT * FROM families WHERE id = ?').bind(id).first();
+  if (!row) return { error: errResp('not_found', 'Family not found', 404) };
+  if (user && user.role === 'reseller' && row.reseller_id !== user.sub) {
+    return { error: errResp('forbidden', 'Not your family', 403) };
+  }
+  return { row };
+}
+
+async function handleFamilyDeleteLink(env, familyId, linkId, actor, user) {
+  const gate = await assertFamilyAccess(env, familyId, user);
+  if (gate.error) return gate.error;
   await env.DB.prepare('DELETE FROM family_links WHERE id = ? AND family_id = ?')
     .bind(linkId, familyId).run();
   await logAudit(env, { headers: new Headers() }, actor, 'family.link.delete',
@@ -2449,9 +2706,9 @@ async function handleFamilyDeleteLink(env, familyId, linkId, actor) {
   return jsonResp({ ok: true, id: linkId });
 }
 
-async function handleFamiliesDelete(env, id, actor) {
-  const row = await env.DB.prepare('SELECT id FROM families WHERE id = ?').bind(id).first();
-  if (!row) return errResp('not_found', 'Family not found', 404);
+async function handleFamiliesDelete(env, id, actor, user) {
+  const gate = await assertFamilyAccess(env, id, user);
+  if (gate.error) return gate.error;
   // On retire la source poussée à chaque membre (ils perdent l'accès famille).
   const m = await env.DB.prepare('SELECT mac FROM family_members WHERE family_id = ?').bind(id).all();
   for (const r of (m.results || [])) {
@@ -2478,6 +2735,7 @@ async function handleFamilyAddMember(request, env, user, actor, familyId) {
   }
   let source;
   try { source = JSON.parse(fam.source_json); } catch (_) { source = null; }
+  if (source) source = await openSource(env, source);
   if (!source) return errResp('bad_source', 'Family has no valid source', 400);
 
   // 1) Active la licence de l'appareil (réutilise handleActivate : crée
@@ -2513,7 +2771,9 @@ async function handleFamilyAddMember(request, env, user, actor, familyId) {
   return jsonResp({ ok: true, family_id: familyId, mac, label: body.label || null }, 201);
 }
 
-async function handleFamilyRemoveMember(env, familyId, mac, actor) {
+async function handleFamilyRemoveMember(env, familyId, mac, actor, user) {
+  const gate = await assertFamilyAccess(env, familyId, user);
+  if (gate.error) return gate.error;
   const m = (mac || '').trim().toUpperCase();
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ? AND mac = ?')
     .bind(familyId, m).run();
@@ -2626,6 +2886,7 @@ async function handleDeviceOverview(env, id, user) {
       const { sources_json, mac: _m, updated_at, ...single } = row;
       sources = [single];
     }
+    sources = await openSourceList(env, sources);
   } catch (_) { /* table device_sources absente : on ignore */ }
 
   // --- Inventaire RÉEL sur l'appareil (remonté par le heartbeat) : toutes les
@@ -3006,12 +3267,19 @@ async function handleResellerLogin(request, env) {
     return errResp('rate_limited',
       'Trop de tentatives de connexion. Réessaie dans ~10 minutes.', 429);
   }
+  const secret = authSecret(env);
+  if (!secret) {
+    return errResp('auth_unconfigured', 'Authentification indisponible.', 503);
+  }
   await ensureResellerLevel(env);
   const row = await env.DB
     .prepare('SELECT id, email, password_hash, name, status, level, permissions, credit_balance FROM resellers WHERE email = ?')
     .bind(email)
     .first();
-  if (!row) return errResp('bad_credentials', 'Invalid credentials', 401);
+  if (!row) {
+    await verifyPassword(password, DUMMY_PASSWORD_HASH);
+    return errResp('bad_credentials', 'Invalid credentials', 401);
+  }
   // Vérifie d'abord le mot de passe (évite de révéler le statut d'un
   // compte sur une mauvaise saisie), puis distingue pending/suspended.
   const ok = await verifyPassword(password, row.password_hash);
@@ -3027,7 +3295,7 @@ async function handleResellerLogin(request, env) {
   const permissions = resellerPerms(row.permissions, level);
   const token = await signJwt(
     { sub: row.id, email: row.email, role: 'reseller', name: row.name, level, permissions },
-    env.ADMIN_SECRET || 'dev-secret',
+    secret,
   );
   return jsonResp({
     token,
@@ -3078,8 +3346,11 @@ async function handleChangeOwnPassword(request, env, user, actor) {
   const ok = await verifyPassword(current, row.password_hash);
   if (!ok) return errResp('bad_current', 'Mot de passe actuel incorrect', 401);
   const hash = await hashPassword(next);
-  await env.DB.prepare(`UPDATE ${table} SET password_hash = ? WHERE id = ?`)
-    .bind(hash, user.sub).run();
+  const changed = Math.floor(Date.now() / 1000);
+  await ensurePasswordChangedColumn(env, table);
+  await env.DB.prepare(
+    `UPDATE ${table} SET password_hash = ?, password_changed_at = ? WHERE id = ?`,
+  ).bind(hash, changed, user.sub).run();
   await logAudit(env, request, actor, 'password.change_self',
     { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub }, null, null);
   return jsonResp({ ok: true });
