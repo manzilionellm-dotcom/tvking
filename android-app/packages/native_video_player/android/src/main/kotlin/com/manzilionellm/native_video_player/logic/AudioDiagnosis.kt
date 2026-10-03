@@ -239,9 +239,9 @@ object AudioDiagnosis {
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
             "com/manzilionellm/native_video_player/NativeVideoView.kt"
 
-    private const val FILE_PROBE =
+    private const val FILE_PHASE =
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
-            "com/manzilionellm/native_video_player/AudioProbeProcessor.kt"
+            "com/manzilionellm/native_video_player/logic/AudioPhase.kt"
 
     private const val FILE_SPECTRUM =
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
@@ -647,8 +647,14 @@ object AudioDiagnosis {
                 append("\nCorrélation gauche/droite (1 s, copie) : ")
                 append(phase.correlationText())
                 append(" · (G−D)/(G+D) ")
-                append(phase.sideText())
-                if (phase.opposed) append(" → voies opposées (voix centrale annulée)")
+                append(phase.levelText())
+                append(" · mélange mono ")
+                append(phase.monoKeptText())
+                if (phase.cancelled) {
+                    append(" → voies opposées (voix centrale annulée)")
+                } else if (phase.opposed) {
+                    append(" → corrélation négative, pas une annulation")
+                }
             }
             val recent = spec?.recentHighRatio
             if (recent != null) {
@@ -760,22 +766,44 @@ object AudioDiagnosis {
             ?: s.spectrum?.phase
         val sink = s.stages.firstOrNull { it.id == AudioStages.SINK }?.judgement?.phase
         val out = ArrayList<Finding>(2)
-        if (decoder != null && decoder.opposed) {
+        if (decoder != null && decoder.cancelled) {
             out += Finding(
                 id = "voies_opposees",
                 confidence = Confidence.HAUTE,
                 kind = Kind.INFO,
                 symptom = "Corrélation gauche/droite ${decoder.correlationText()} sur 1 s, " +
-                    "(G−D)/(G+D) = ${decoder.sideText()}.",
-                cause = "Les deux voies s'opposent déjà au PCM du décodeur : une voix au centre " +
-                    "s'annule, le son tombe « dans un trou ». Ce n'est pas un passe-bas. " +
-                    "Le son témoin (voix puis bruit, voies ensemble) dit si l'appareil fait pareil.",
+                    "(G−D)/(G+D) = ${decoder.levelText()}, mélange mono ${decoder.monoKeptText()}.",
+                cause = "G et D s'opposent déjà dans le PCM du décodeur. Un mélange mono (G+D)/2 " +
+                    "(haut-parleur unique, Bluetooth d'appel) ne garde que ${decoder.monoKeptText()} " +
+                    "de la voie la plus forte : la voix du centre disparaît. Un casque stéréo garde " +
+                    "chaque voie, la voix reste. Ce n'est pas un passe-bas. Aucun étage de Zuno " +
+                    "n'inverse une voie quand les interrupteurs sont coupés.",
                 fix = Fix(
-                    file = FILE_PROBE,
-                    symbol = "AudioProbeProcessor / AudioPhase",
+                    file = FILE_PHASE,
+                    symbol = "AudioPhase.judge / AudioChannels.fold",
+                    media3 = "copie PCM, aucun échantillon modifié ; pas de ChannelMixingAudioProcessor",
+                    action = "Ne pas inverser une voie et ne pas changer le décodeur sur ce seul chiffre. " +
+                        "Comparer la sonde décodeur, la sonde audiotrack et le son témoin (voies ensemble).",
+                    settingKey = null,
+                ),
+            )
+        } else if (decoder != null && decoder.opposed) {
+            out += Finding(
+                id = "voies_negatives",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Corrélation gauche/droite ${decoder.correlationText()}, " +
+                    "(G−D)/(G+D) = ${decoder.levelText()}, mélange mono ${decoder.monoKeptText()}, " +
+                    "${decoder.channels} voies.",
+                cause = "La corrélation est très négative, mais la voix n'est pas annulée. " +
+                    "Soit une voie inverse est trop faible et le mélange mono garde encore du son, " +
+                    "soit il y a plus de deux voies : la sonde ne compare que les deux premières, " +
+                    "et une voix au centre peut être encore là.",
+                fix = Fix(
+                    file = FILE_PHASE,
+                    symbol = "AudioPhase.judge",
                     media3 = "copie PCM, aucun échantillon modifié",
-                    action = "Ne pas changer le décodeur sur ce seul chiffre. Comparer avec le son témoin " +
-                        "et avec la sonde audiotrack.",
+                    action = "Ne pas inverser une voie. Ne pas changer le décodeur.",
                     settingKey = null,
                 ),
             )

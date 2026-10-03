@@ -1,3 +1,4 @@
+import com.manzilionellm.native_video_player.logic.AudioChannels
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
 import com.manzilionellm.native_video_player.logic.AudioFixes
 import com.manzilionellm.native_video_player.logic.AudioPhase
@@ -349,11 +350,53 @@ class AudioDiagnosisTest {
         val report = AudioDiagnosis.report(s)
         assertTrue(report.contains("voies opposées"), report)
         assertTrue(report.contains("Corrélation gauche/droite"), report)
+        assertTrue(report.contains("mélange mono"), report)
         assertTrue(report.contains("Dernière seconde"), report)
         assertTrue(report.contains("Chemin : mode normal"), report)
         assertFalse(report.contains("spectre_absent"), report)
         assertTrue(AudioDiagnosis.sureCauses(s).none { it.id == "voies_opposees" })
-        assertTrue(AudioDiagnosis.findings(s).any { it.id == "voies_opposees" })
+        val finding = AudioDiagnosis.findings(s).first { it.id == "voies_opposees" }
+        assertNull(finding.fix.settingKey)
+        assertEquals(AudioDiagnosis.Kind.INFO, finding.kind)
+    }
+
+    @Test
+    fun voieInverseFaibleNestPasDiteAnnulee() {
+        val weak = AudioPhase.judge(
+            AudioPhase.push(
+                AudioPhase.start(),
+                AudioChannels.stereo(
+                    48_000,
+                    gain = 0.55,
+                    left = AudioChannels::voice,
+                    right = { -0.25 * AudioChannels.voice(it) },
+                ),
+                2,
+            ),
+            2,
+        )
+        assertTrue(weak.opposed)
+        assertFalse(weak.cancelled)
+        val j = AudioSpectrum.Judgement(
+            band = AudioSpectrum.Band.LOW,
+            highRatio = 0.02,
+            clippedFraction = 0.0,
+            peak = 8000,
+            frames = 48_000,
+            sampleRate = 48_000,
+            phase = weak,
+        )
+        val s = AudioSnapshot(
+            mime = "audio/mp4a-latm", codecs = "mp4a.40.2",
+            inSampleRate = 48_000, inChannels = 2,
+            decoder = "c2.android.aac.decoder", outSampleRate = 48_000, outChannels = 2,
+            outEncoding = "PCM 16 bits", spectrum = j,
+        )
+        val report = AudioDiagnosis.report(s)
+        assertFalse(report.contains("voix centrale annulée"), report)
+        assertTrue(report.contains("pas une annulation"), report)
+        assertTrue(AudioDiagnosis.findings(s).any { it.id == "voies_negatives" && it.fix.settingKey == null })
+        assertTrue(AudioDiagnosis.sureCauses(s).none { it.id == "voies_negatives" })
     }
 
     @Test
