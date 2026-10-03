@@ -360,7 +360,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         icon: Icons.graphic_eq_rounded,
         title: 'Diagnostic du son',
         description:
-            'Rapport local par chaîne. Rien n\'est envoyé. Les correctifs restent coupés.',
+            'Bouton « Rapport son complet ». Rien n\'est envoyé. Les correctifs restent coupés.',
         onSelect: () => open(const TvAudioDiagnosticScreen()),
       ),
       _SettingEntry(

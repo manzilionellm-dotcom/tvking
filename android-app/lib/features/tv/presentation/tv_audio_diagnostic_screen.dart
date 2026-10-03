@@ -20,6 +20,9 @@ import 'package:path_provider/path_provider.dart';
 import '../../../features/player/data/audio_diag_prefs.dart';
 import '../../../features/player/data/audio_report_store.dart';
 import '../../../features/player/domain/audio_report_book.dart';
+import '../../../features/player/domain/sound_full_report.dart';
+import '../../../features/player/domain/sound_report_parts.dart';
+import '../../../features/subscription/data/now_playing.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -28,7 +31,8 @@ class TvAudioDiagnosticScreen extends StatefulWidget {
   const TvAudioDiagnosticScreen({super.key});
 
   @override
-  State<TvAudioDiagnosticScreen> createState() => _TvAudioDiagnosticScreenState();
+  State<TvAudioDiagnosticScreen> createState() =>
+      _TvAudioDiagnosticScreenState();
 }
 
 class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
@@ -45,17 +49,22 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   final ScrollController _scroll = ScrollController();
   static const double _kRow = 24;
 
-
   void _scrollBy(double px) {
     if (!_scroll.hasClients) return;
-    final double target =
-        (_scroll.offset + px).clamp(0.0, _scroll.position.maxScrollExtent);
-    _scroll.animateTo(target,
-        duration: const Duration(milliseconds: 120), curve: Curves.easeOut);
+    final double target = (_scroll.offset + px).clamp(
+      0.0,
+      _scroll.position.maxScrollExtent,
+    );
+    _scroll.animateTo(
+      target,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+    );
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent)
+      return KeyEventResult.ignored;
     final LogicalKeyboardKey k = e.logicalKey;
     if (k == LogicalKeyboardKey.arrowDown) {
       _scrollBy(_kRow * 3);
@@ -68,7 +77,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
       _scrollBy(-_kRow * 3);
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.pageDown || k == LogicalKeyboardKey.channelDown) {
+    if (k == LogicalKeyboardKey.pageDown ||
+        k == LogicalKeyboardKey.channelDown) {
       _scrollBy(_kRow * 15);
       return KeyEventResult.handled;
     }
@@ -92,6 +102,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     // Le libellé vient de la mémoire Dart. On le repousse au lecteur
     // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
     NativeVideoController.pushAudioDiagFlags();
+    installSoundReportParts();
     _load();
   }
 
@@ -107,12 +118,31 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _witnessBusy = false;
   NativeVideoController? _witness;
 
+  // Rapport complet. Le geste est demandé : il ne change pas les
+  // interrupteurs enregistrés. Le spectre, s'il était coupé, est
+  // allumé seulement le temps de la mesure, puis remis comme avant.
+  bool _reportBusy = false;
+  bool _probeHeld = false;
+  bool _listening = false;
+  bool _copied = false;
+  int _runGen = 0;
+  String _step = '';
+  String? _reportText;
+  SoundReportFacts? _facts;
+  SoundReportCapture? _capture;
+  void Function(String)? _prevDiag;
+  SoundEar? _ear;
+  SoundYes? _bluetoothAnswer;
+  SoundYes? _otherApp;
+
   @override
   void dispose() {
-    if (AudioReportStore.channelOverride == 'Son témoin') {
-      AudioReportStore.channelOverride = null;
-    }
-    _witness?.dispose();
+    _runGen++;
+    _unlisten();
+    _releaseProbe();
+    // _dropWitness avant le dispose du State : le finally du rapport
+    // peut encore tourner, il retrouvera un lecteur déjà lâché.
+    _dropWitness(notify: false);
     _scroll.dispose();
     super.dispose();
   }
@@ -120,41 +150,262 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   /// Joue le fichier embarqué avec le MÊME lecteur que les chaînes.
   /// 5 s de voix, puis 5 s de bruit, voies ensemble. Spectre s'allume
   /// pour mesurer : la copie ne modifie pas le son.
+  /// Le bouton du rapport complet ne passe pas par ici : il ne doit
+  /// pas laisser l'interrupteur allumé.
   Future<void> _playWitness() async {
+    if (_reportBusy) return;
     if (_witness != null) {
-      final NativeVideoController old = _witness!;
-      if (AudioReportStore.channelOverride == 'Son témoin') {
-        AudioReportStore.channelOverride = null;
-      }
-      if (mounted) setState(() => _witness = null);
-      old.dispose();
+      _dropWitness();
       return;
     }
     if (_witnessBusy) return;
     setState(() => _witnessBusy = true);
     try {
       if (!_probe) await _toggleProbe();
-      final ByteData data = await rootBundle.load('assets/audio/son_temoin.m4a');
-      final Directory dir = await getTemporaryDirectory();
-      final File file = File('${dir.path}/son_temoin.m4a');
-      await file.writeAsBytes(
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-        flush: true,
-      );
-      AudioReportStore.channelOverride = 'Son témoin';
-      final NativeVideoController player = NativeVideoController();
-      player.setUrl(Uri.file(file.path).toString(), vod: true);
-      if (!mounted) {
-        player.dispose();
-        AudioReportStore.channelOverride = null;
-        return;
-      }
-      setState(() => _witness = player);
+      await _beginWitness();
     } catch (_) {
       AudioReportStore.channelOverride = null;
     } finally {
       if (mounted) setState(() => _witnessBusy = false);
     }
+  }
+
+  /// Fichier témoin, 10 secondes, même lecteur que les chaînes.
+  /// L'appelant a déjà décidé si le spectre est allumé.
+  Future<void> _beginWitness() async {
+    _dropWitness(notify: false);
+    final ByteData data = await rootBundle.load('assets/audio/son_temoin.m4a');
+    final Directory dir = await getTemporaryDirectory();
+    final File file = File('${dir.path}/son_temoin.m4a');
+    await file.writeAsBytes(
+      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      flush: true,
+    );
+    AudioReportStore.channelOverride = 'Son témoin';
+    final NativeVideoController player = NativeVideoController();
+    try {
+      player.setUrl(Uri.file(file.path).toString(), vod: true);
+    } catch (_) {
+      AudioReportStore.channelOverride = null;
+      player.dispose();
+      rethrow;
+    }
+    if (!mounted) {
+      player.dispose();
+      AudioReportStore.channelOverride = null;
+      return;
+    }
+    setState(() => _witness = player);
+  }
+
+  void _dropWitness({bool notify = true}) {
+    final NativeVideoController? old = _witness;
+    if (AudioReportStore.channelOverride == 'Son témoin') {
+      AudioReportStore.channelOverride = null;
+    }
+    _witness = null;
+    old?.dispose();
+    if (notify && mounted) setState(() {});
+  }
+
+  SoundAnswers _answers() =>
+      SoundAnswers(ear: _ear, bluetooth: _bluetoothAnswer, otherApp: _otherApp);
+
+  void _refreshReport() {
+    final SoundReportFacts? facts = _facts;
+    if (facts == null) return;
+    final SoundReportFacts next = facts.copyWith(answers: _answers());
+    _facts = next;
+    _reportText = SoundFullReport.build(next).text;
+    _copied = false;
+  }
+
+  void _listen(SoundReportCapture capture) {
+    if (_listening) return;
+    _capture = capture;
+    _prevDiag = NativeVideoController.onAudioDiagnostic;
+    _listening = true;
+    NativeVideoController.onAudioDiagnostic = (String diagnostic) {
+      _prevDiag?.call(diagnostic);
+      _capture?.add(
+        diagnostic,
+        witness: AudioReportStore.channelOverride == 'Son témoin',
+      );
+    };
+  }
+
+  void _unlisten() {
+    if (!_listening) return;
+    NativeVideoController.onAudioDiagnostic = _prevDiag;
+    _prevDiag = null;
+    _capture = null;
+    _listening = false;
+  }
+
+  /// Mesure seulement. On ne touche pas à la préférence enregistrée :
+  /// à la fin, l'interrupteur revient où la personne l'avait laissé.
+  void _armProbe() {
+    if (NativeVideoController.audioProbeEnabled) return;
+    _probeHeld = true;
+    NativeVideoController.audioProbeEnabled = true;
+    NativeVideoController.pushAudioDiagFlags();
+  }
+
+  void _releaseProbe() {
+    if (!_probeHeld) return;
+    _probeHeld = false;
+    NativeVideoController.audioProbeEnabled = _probe;
+    NativeVideoController.pushAudioDiagFlags();
+  }
+
+  Future<void> _wait(Duration total, int gen) async {
+    int left = total.inMilliseconds;
+    while (left > 0) {
+      if (!mounted || gen != _runGen) return;
+      final int slice = left < 200 ? left : 200;
+      await Future<void>.delayed(Duration(milliseconds: slice));
+      left -= slice;
+    }
+  }
+
+  String _latestChannelName(AudioReportBook book) {
+    for (final AudioReportEntry e in book.entries) {
+      if (e.channel == 'Son témoin') continue;
+      return e.channel;
+    }
+    return '';
+  }
+
+  AudioReportEntry? _entry(AudioReportBook book, String name) {
+    if (name.isEmpty) return null;
+    final String key = AudioReportBook.channelKey(name);
+    for (final AudioReportEntry e in book.entries) {
+      if (e.channel == key || e.channel == name) return e;
+    }
+    return null;
+  }
+
+  /// Un geste : système, 10 s de la chaîne si elle joue encore,
+  /// puis 10 s de son témoin. Rien n'est envoyé. Les interrupteurs
+  /// enregistrés ne bougent pas.
+  Future<void> _runFullReport() async {
+    if (_reportBusy) return;
+    final int gen = ++_runGen;
+    setState(() {
+      _reportBusy = true;
+      _copied = false;
+      _step = 'Système…';
+    });
+    final SoundReportCapture capture = SoundReportCapture();
+    String name = '';
+    var live = false;
+    try {
+      installSoundReportParts();
+      final AudioReportBook book = await AudioReportStore.instance.load();
+      if (!mounted || gen != _runGen) return;
+      final String now = NowPlaying.instance.current.trim();
+      live = now.isNotEmpty;
+      name = live ? now : _latestChannelName(book);
+      final AudioReportEntry? seed = _entry(book, name);
+      if (seed != null) capture.seedChannel(seed.body);
+      _listen(capture);
+      _armProbe();
+      final SoundReportPlan plan = SoundReportPlan.forCapture(
+        channelLive: live,
+      );
+      if (plan.channelListen > Duration.zero) {
+        if (mounted) setState(() => _step = 'Chaîne, 10 secondes…');
+        await _wait(plan.channelListen, gen);
+      }
+      if (!mounted || gen != _runGen) return;
+      if (mounted) setState(() => _step = 'Son témoin…');
+      await _beginWitness();
+      if (!mounted || gen != _runGen) return;
+      await _wait(plan.witnessPlay, gen);
+      // Le dernier chiffre part souvent à la fin du fichier. On reste
+      // sur « Son témoin » pendant ce court instant, pour ne pas coller
+      // cette fiche sur la chaîne. 10 + 10 + 0,4 s, sous les 30 s.
+      await _wait(const Duration(milliseconds: 400), gen);
+      if (capture.witnessBody.trim().isEmpty) {
+        final AudioReportBook after = await AudioReportStore.instance.load();
+        final AudioReportEntry? w = _entry(after, 'Son témoin');
+        if (w != null) capture.seedWitness(w.body);
+      }
+    } catch (_) {
+      // Le texte dira ce qui manque. On ne laisse pas l'écran bloqué.
+    } finally {
+      _dropWitness(notify: false);
+      _unlisten();
+      _releaseProbe();
+      if (mounted && gen == _runGen) {
+        final SoundReportFacts facts = SoundReportFacts(
+          channelName: name,
+          channelBody: capture.channelBody,
+          witnessBody: capture.witnessBody,
+          answers: _answers(),
+          channelWasLive: live,
+          extraLines: List<String>.of(capture.loose),
+        );
+        final SoundFullReport report = SoundFullReport.build(facts);
+        setState(() {
+          _facts = facts;
+          _reportText = report.text;
+          _reportBusy = false;
+          _step = '';
+        });
+      }
+    }
+  }
+
+  Future<void> _copyReport() async {
+    final String? text = _reportText;
+    if (text == null || text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    setState(() => _copied = true);
+  }
+
+  /// Une fiche. Le rapport complet est la première : texte sélectionnable,
+  /// pour le téléphone. À la télé, le bouton « Copier » fait le geste.
+  Widget _sheet({
+    required bool focused,
+    required String title,
+    required String body,
+    bool emphasize = false,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: TvTokens.card,
+        borderRadius: BorderRadius.circular(TvDimens.cardRadius),
+        border: Border.all(
+          color: focused || emphasize ? TvTokens.accent : TvTokens.lineSoft,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: TvDimens.title,
+              fontWeight: FontWeight.w700,
+              color: TvTokens.text,
+            ),
+          ),
+          const SizedBox(height: 6),
+          SelectableText(
+            body,
+            style: TvTokens.mono(
+              TvDimens.caption,
+              weight: FontWeight.w400,
+              color: emphasize ? TvTokens.text : TvTokens.muted,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _toggleImmediate() async {
@@ -222,9 +473,95 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Rapport local, une fiche par chaîne. Rien n\'est envoyé. '
-          'Les interrupteurs sont coupés par défaut : le son ne change pas.',
+          'Un bouton « Rapport son complet » : état du système, '
+          '10 secondes de la chaîne si elle joue encore, puis le son témoin. '
+          'Un seul texte à copier. Rien n\'est envoyé. '
+          'Les interrupteurs restent coupés : le son ne change pas.',
           style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          children: <Widget>[
+            _Toggle(
+              label: _reportBusy
+                  ? (_step.isEmpty ? 'Rapport…' : _step)
+                  : 'Rapport son complet',
+              on: _reportText != null,
+              autofocus: true,
+              onSelect: _runFullReport,
+            ),
+            _Toggle(
+              label: _copied ? 'Copié' : 'Copier le rapport',
+              on: _copied,
+              onSelect: _copyReport,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'En un mot, avant ou après. Ça ajuste le texte, ça ne relance pas le son.',
+          style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: <Widget>[
+            _Toggle(
+              label: 'Son clair',
+              on: _ear == SoundEar.clair,
+              onSelect: () => setState(() {
+                _ear = _ear == SoundEar.clair ? null : SoundEar.clair;
+                _refreshReport();
+              }),
+            ),
+            _Toggle(
+              label: 'Son sourd',
+              on: _ear == SoundEar.sourd,
+              onSelect: () => setState(() {
+                _ear = _ear == SoundEar.sourd ? null : SoundEar.sourd;
+                _refreshReport();
+              }),
+            ),
+            _Toggle(
+              label: 'Bluetooth oui',
+              on: _bluetoothAnswer == SoundYes.oui,
+              onSelect: () => setState(() {
+                _bluetoothAnswer = _bluetoothAnswer == SoundYes.oui
+                    ? null
+                    : SoundYes.oui;
+                _refreshReport();
+              }),
+            ),
+            _Toggle(
+              label: 'Bluetooth non',
+              on: _bluetoothAnswer == SoundYes.non,
+              onSelect: () => setState(() {
+                _bluetoothAnswer = _bluetoothAnswer == SoundYes.non
+                    ? null
+                    : SoundYes.non;
+                _refreshReport();
+              }),
+            ),
+            _Toggle(
+              label: 'Autre app oui',
+              on: _otherApp == SoundYes.oui,
+              onSelect: () => setState(() {
+                _otherApp = _otherApp == SoundYes.oui ? null : SoundYes.oui;
+                _refreshReport();
+              }),
+            ),
+            _Toggle(
+              label: 'Autre app non',
+              on: _otherApp == SoundYes.non,
+              onSelect: () => setState(() {
+                _otherApp = _otherApp == SoundYes.non ? null : SoundYes.non;
+                _refreshReport();
+              }),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Row(
@@ -232,7 +569,6 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             _Toggle(
               label: _probe ? 'Spectre : mesuré' : 'Spectre : coupé',
               on: _probe,
-              autofocus: true,
               onSelect: _toggleProbe,
             ),
             const SizedBox(width: 12),
@@ -242,11 +578,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               onSelect: _toggleFfmpeg,
             ),
             const SizedBox(width: 12),
-            _Toggle(
-              label: 'Effacer',
-              on: false,
-              onSelect: _clear,
-            ),
+            _Toggle(label: 'Effacer', on: false, onSelect: _clear),
           ],
         ),
         const SizedBox(height: 8),
@@ -259,7 +591,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             ),
             const SizedBox(width: 12),
             _Toggle(
-              label: _sessionWide ? 'Repli : session entière' : 'Repli : par chaîne',
+              label: _sessionWide
+                  ? 'Repli : session entière'
+                  : 'Repli : par chaîne',
               on: _sessionWide,
               onSelect: _toggleSessionWide,
             ),
@@ -281,7 +615,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         Row(
           children: <Widget>[
             _Toggle(
-              label: _immediate ? 'Passage : tout de suite' : 'Passage : attendre',
+              label: _immediate
+                  ? 'Passage : tout de suite'
+                  : 'Passage : attendre',
               on: _immediate,
               onSelect: _toggleImmediate,
             ),
@@ -289,7 +625,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             _Toggle(
               label: _witness != null
                   ? 'Témoin : stop'
-                  : (_witnessBusy ? 'Témoin : préparation' : 'Jouer le son témoin'),
+                  : (_witnessBusy
+                        ? 'Témoin : préparation'
+                        : 'Jouer le son témoin'),
               on: _witness != null,
               onSelect: _playWitness,
             ),
@@ -301,7 +639,10 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             'Témoin en lecture (10 s) : voix, puis bruit. '
             'Même lecteur que les chaînes. Bruit sourd → l\'appareil. '
             'Bruit clair → la chaîne.',
-            style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
+            style: TextStyle(
+              fontSize: TvDimens.label,
+              color: TvTokens.mutedDim,
+            ),
           ),
           const SizedBox(height: 4),
           // La Surface doit avoir une taille : le son passe par le même
@@ -341,65 +682,56 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               ? Center(
                   child: Text(
                     'Lecture…',
-                    style: TextStyle(fontSize: TvDimens.body, color: TvTokens.mutedDim),
+                    style: TextStyle(
+                      fontSize: TvDimens.body,
+                      color: TvTokens.mutedDim,
+                    ),
                   ),
                 )
-              : _book.entries.isEmpty
-                  ? Text(
-                      'Aucun rapport. Ouvre une chaîne : le lecteur note le codec, '
-                      'le décodeur et la sortie. Le spectre n\'est mesuré que si '
-                      'l\'interrupteur est allumé.',
-                      style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
-                    )
-                  : Focus(
-                      onKeyEvent: _onKey,
-                      child: Builder(builder: (BuildContext context) {
-                        final bool focused = Focus.of(context).hasFocus;
-                        return ListView.separated(
-                      controller: _scroll,
-                      itemCount: _book.entries.length,
-                      separatorBuilder: (BuildContext context, int index) =>
-                          const SizedBox(height: 10),
-                      itemBuilder: (BuildContext context, int i) {
-                        final AudioReportEntry e = _book.entries[i];
-                        return Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: TvTokens.card,
-                            borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-                            // Cadre doré quand la liste a le focus : Haut/Bas
-                            // défilent, CH+/CH− changent de page.
-                            border: Border.all(
-                                color: focused ? TvTokens.accent : TvTokens.lineSoft),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                e.channel,
-                                style: TextStyle(
-                                  fontSize: TvDimens.title,
-                                  fontWeight: FontWeight.w700,
-                                  color: TvTokens.text,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                e.body,
-                                style: TvTokens.mono(
-                                  TvDimens.caption,
-                                  weight: FontWeight.w400,
-                                  color: TvTokens.muted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                        );
-                      }),
-                    ),
+              : _book.entries.isEmpty && _reportText == null
+              ? Text(
+                  'Aucun rapport. Ouvre une chaîne : le lecteur note le codec, '
+                  'le décodeur et la sortie. Le spectre n\'est mesuré que si '
+                  'l\'interrupteur est allumé. '
+                  '« Rapport son complet » joue le témoin même sans chaîne.',
+                  style: TextStyle(
+                    fontSize: TvDimens.body,
+                    color: TvTokens.muted,
+                  ),
+                )
+              : Focus(
+                  onKeyEvent: _onKey,
+                  child: Builder(
+                    builder: (BuildContext context) {
+                      final bool focused = Focus.of(context).hasFocus;
+                      final bool hasReport = _reportText != null;
+                      final int ficheCount = _book.entries.length;
+                      return ListView.separated(
+                        controller: _scroll,
+                        itemCount: ficheCount + (hasReport ? 1 : 0),
+                        separatorBuilder: (BuildContext context, int index) =>
+                            const SizedBox(height: 10),
+                        itemBuilder: (BuildContext context, int i) {
+                          if (hasReport && i == 0) {
+                            return _sheet(
+                              focused: focused,
+                              title: 'Rapport à copier',
+                              body: _reportText!,
+                              emphasize: true,
+                            );
+                          }
+                          final AudioReportEntry e =
+                              _book.entries[hasReport ? i - 1 : i];
+                          return _sheet(
+                            focused: focused,
+                            title: e.channel,
+                            body: e.body,
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
         ),
         const SizedBox(height: 6),
         Text(
@@ -441,7 +773,9 @@ class _Toggle extends StatelessWidget {
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(TvDimens.cardRadius),
-            border: Border.all(color: focused ? TvTokens.accent : TvTokens.lineSoft),
+            border: Border.all(
+              color: focused ? TvTokens.accent : TvTokens.lineSoft,
+            ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           child: Text(
