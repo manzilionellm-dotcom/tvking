@@ -32,12 +32,12 @@ const MODULES: Mod[] = [
     desc: 'Oblige tous les utilisateurs à installer la dernière version.' },
   { n: 2, emoji: '🖼️', title: 'Bannières', status: 'soon', phase: 'Phase 2',
     desc: 'Carrousel image / vidéo, dates de diffusion, bouton et lien.' },
-  { n: 3, emoji: '🎨', title: 'Thèmes dynamiques', status: 'soon', phase: 'Phase 3',
-    desc: 'Couleurs, logos, presets (Gold, Platinum, World Cup, Noël…).' },
+  { n: 3, emoji: '🎨', title: 'Thèmes dynamiques', status: 'active', to: '/theme',
+    desc: 'Nom, couleurs et presets (Gold, Platinum, World Cup, Noël) — en direct.' },
   { n: 6, emoji: '⭐', title: 'Favori du jour', status: 'active', to: '/featured',
     desc: 'Mets une chaîne en avant chaque jour (HERO de l\'accueil).' },
-  { n: 7, emoji: '⚙️', title: 'Automatisation', status: 'soon', phase: 'Phase 5',
-    desc: '« Si Coupe du Monde → Sport #1 », « si décembre → thème Noël ».' },
+  { n: 7, emoji: '⚙️', title: 'Automatisation', status: 'active', to: '/theme',
+    desc: 'Le thème bascule seul aux dates prévues (ex. décembre → Noël).' },
   { n: 9, emoji: '🧪', title: 'A/B Testing', status: 'soon', phase: 'Phase 5',
     desc: 'Tester accueils, couleurs, bannières — mesurer clics / conversion.' },
 ];
@@ -70,7 +70,7 @@ function Card({ m }: { m: Mod }) {
       className={`flex h-full flex-col gap-2 rounded-xl border bg-midnight p-4 transition ${
         m.to
           ? 'border-white/5 hover:border-accent/40 hover:bg-white/[0.03]'
-          : 'border-white/5 opacity-80'
+          : 'border-white/5'
       }`}
     >
       <div className="flex items-start justify-between gap-2">
