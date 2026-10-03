@@ -9,7 +9,6 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { CustomersPage } from '@/pages/CustomersPage';
 import { DevicesPage } from '@/pages/DevicesPage';
 import { AppsPage } from '@/pages/AppsPage';
-import { ServersPage } from '@/pages/ServersPage';
 import { ActivationsPage } from '@/pages/ActivationsPage';
 import { ResellersPage } from '@/pages/ResellersPage';
 import { ActivatePage } from '@/pages/ActivatePage';
@@ -113,7 +112,8 @@ export default function App() {
       <Route path="/devices"     element={<DevicesPage     onLogout={handleLogout} />} />
       <Route path="/blackbox"   element={<BlackBoxPage    onLogout={handleLogout} />} />
       <Route path="/apps"        element={<AppsPage        onLogout={handleLogout} />} />
-      <Route path="/servers"     element={<ServersPage     onLogout={handleLogout} />} />
+      {/* Ancienne page « Serveurs » : plus de catalogue à l'écran. */}
+      <Route path="/servers"     element={<Navigate to="/" replace />} />
       <Route path="/activations" element={<ActivationsPage onLogout={handleLogout} />} />
       {/* Revendeurs : owner ET revendeurs (qui gerent leurs sous-revendeurs).
           Les permissions/scoping sont appliques cote API. */}

@@ -1,8 +1,10 @@
 // =========================================================
-//  tv_add_m3u_screen.dart — Ajouter une liste M3U (URL)
+//  tv_add_m3u_screen.dart — Ajouter une liste par son adresse
 // =========================================================
-//  Le client colle l'URL de son fichier .m3u (+ URL EPG optionnelle). On
-//  télécharge/parse via PlaylistRepository.addM3uPlaylist, puis on revient.
+//  Le client colle l'adresse de son fichier .m3u / .m3u8, ou un lien
+//  de lecteur get.php (+ adresse EPG optionnelle pour une liste M3U).
+//  La vérification est la même que l'écran « Ajouter ma source » :
+//  n'importe quel fournisseur, message en français si ça ne va pas.
 // =========================================================
 import 'package:flutter/material.dart';
 
@@ -10,6 +12,7 @@ import '../../../core/i18n/l10n_extension.dart';
 
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/import_progress.dart';
+import '../../playlists/domain/open_source_input.dart';
 import 'tv_import_progress_label.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_tokens.dart';
@@ -38,22 +41,36 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
   }
 
   Future<void> _submit() async {
-    final String url = _urlC.text.trim();
-    if (url.isEmpty || !(url.startsWith('http://') || url.startsWith('https://'))) {
-      setState(() => _error = context.l10n.tvAddM3uInvalidUrl);
+    // M3U, M3U8, ou get.php : la même vérification, sans domaine imposé.
+    final OpenSourceParse parsed = OpenSourceInput.playlistLink(_urlC.text);
+    if (!parsed.isValid || parsed.draft == null) {
+      setState(() => _error = parsed.error ?? context.l10n.tvAddM3uInvalidUrl);
       return;
     }
+    final OpenSourceDraft draft = parsed.draft!;
     setState(() {
       _busy = true;
       _error = null;
     });
     ImportProgressBus.clear();
+    final String name = _nameC.text.trim().isEmpty
+        ? context.l10n.tvMyM3uList
+        : _nameC.text.trim();
     try {
-      await PlaylistRepository.instance.addM3uPlaylist(
-        name: _nameC.text.trim().isEmpty ? context.l10n.tvMyM3uList : _nameC.text.trim(),
-        url: url,
-        epgUrl: _epgC.text.trim().isEmpty ? null : _epgC.text.trim(),
-      );
+      if (draft.kind == OpenSourceKind.xtream) {
+        await PlaylistRepository.instance.addXtreamPlaylist(
+          name: name,
+          serverUrl: draft.serverUrl!,
+          username: draft.username!,
+          password: draft.password!,
+        );
+      } else {
+        await PlaylistRepository.instance.addM3uPlaylist(
+          name: name,
+          url: draft.m3uUrl!,
+          epgUrl: _epgC.text.trim().isEmpty ? null : _epgC.text.trim(),
+        );
+      }
       if (mounted) Navigator.of(context).maybePop();
     } catch (e) {
       if (mounted) {
@@ -79,7 +96,9 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
                     fontWeight: FontWeight.w800,
                     color: TvTokens.text)),
             const SizedBox(height: 6),
-            Text(context.l10n.tvAddM3uSubtitle,
+            Text(
+                'Adresse .m3u, .m3u8, ou lien de lecteur get.php. '
+                'Avec ou sans identifiants.',
                 style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted)),
             const SizedBox(height: 22),
             _Field(controller: _nameC, label: context.l10n.tvFieldNameOptional, hint: context.l10n.tvMyListHint),
@@ -87,12 +106,12 @@ class _TvAddM3uScreenState extends State<TvAddM3uScreen> {
             _Field(
                 controller: _urlC,
                 label: context.l10n.tvFieldM3uUrl,
-                hint: 'http://serveur.com/playlist.m3u'),
+                hint: 'http://exemple.test/liste.m3u'),
             const SizedBox(height: 14),
             _Field(
                 controller: _epgC,
                 label: context.l10n.tvFieldEpgUrlOptional,
-                hint: 'http://serveur.com/xmltv.php'),
+                hint: 'http://exemple.test/xmltv.php'),
             if (_error != null) ...<Widget>[
               const SizedBox(height: 14),
               Text(_error!,

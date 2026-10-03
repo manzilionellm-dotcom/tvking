@@ -47,10 +47,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   /// pas connu a la compilation. La perf reste OK : 5 elements
   /// crees a chaque acces du getter, negligeable.
   ///
-  /// La slide 'Apporte ton fournisseur — nous ne vendons aucun flux'
-  /// a ete retiree (post virage utilisateur vers la posture
-  /// revendeur : le serveur est hardcode dans FlavorConfig et
-  /// l'utilisateur ne voit que le formulaire identifiant/code).
+  /// Plus de slide « choisis ton serveur ». La personne ajoute
+  /// sa source (M3U, Xtream ou lien lecteur), ou envoie son code.
   static List<_OnboardingPage> get _pages {
     final String appName = FlavorConfig.current.appName;
     return <_OnboardingPage>[
@@ -64,7 +62,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         icon: Icons.cloud_upload_outlined,
         title: 'Charge tes chaînes',
         description:
-            'Choisis ton serveur et saisis ton code Xtream (utilisateur + mot de passe). Tes chaînes apparaissent en quelques secondes.',
+            'Ajoute ta source : adresse M3U, identifiants Xtream, ou lien lecteur. N\'importe quel fournisseur.',
       ),
       const _OnboardingPage(
         icon: Icons.fingerprint_rounded,

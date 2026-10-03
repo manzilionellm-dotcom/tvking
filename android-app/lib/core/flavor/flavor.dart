@@ -74,11 +74,10 @@ class FlavorConfig {
   /// SharedPreferences). Un refus = sortie de l'app.
   final bool requireAgeGate;
 
-  // NB (P1-10 / AGENTS.md règle n°2) : il N'Y A PLUS d'URL de serveur IPTV
-  // en dur ici. Les URLs des serveurs « par défaut » vivent UNIQUEMENT côté
-  // backend (variable `DEFAULT_SERVERS` / table D1 `default_servers`,
-  // récupérées via `GET /api/servers`). Aucune URL de flux ni host revendeur
-  // n'est commité dans l'app (dépôt public) — évite la fuite + le HTTP clair.
+  // NB (AGENTS.md règle n°2) : aucune URL de flux IPTV en dur. La personne
+  // saisit la sienne (M3U, Xtream ou lien lecteur). L'ancien catalogue
+  // GET /api/servers n'est plus affiché ; il reste côté Worker pour les
+  // box déjà installées.
 
   /// Configuration actuelle. Doit être posée par `main()` AVANT
   /// le premier `runApp(...)`. Si on lit sans avoir set, on a un
@@ -128,8 +127,7 @@ class FlavorConfig {
     adultOnly: false,
     biometricMandatory: false,
     requireAgeGate: false,
-    // Serveurs IPTV « par défaut » : fournis par le backend (GET /api/servers),
-    // jamais en dur ici. Les identifiants individuels sont saisis au login.
+    // Pas de serveur en dur : la personne saisit sa propre source.
   );
 
   /// Privé — édition 18+ « by invitation only ». MÊME app que The Few

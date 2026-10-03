@@ -21,6 +21,7 @@ import '../../../../core/i18n/l10n_extension.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../data/playlist_repository.dart';
+import '../../domain/open_source_input.dart';
 
 class XtreamLoginForm extends StatefulWidget {
   const XtreamLoginForm({
@@ -58,31 +59,22 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
     super.dispose();
   }
 
-  /// Normalise l'URL serveur : si l'utilisateur n'a pas mis de schéma,
-  /// on préfixe `http://` (la majorité des panels Xtream sont en http).
-  String _normalizeServer(String raw) {
-    final String s = raw.trim();
-    if (s.isEmpty) return s;
-    if (s.startsWith('http://') || s.startsWith('https://')) return s;
-    return 'http://$s';
-  }
-
   Future<void> _submit() async {
     // On capture le messenger AVANT le `await` (le contexte peut être
     // démonté si le parent — une feuille — se ferme via onConnected).
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    final String server = _normalizeServer(_serverCtrl.text);
-    final String user = _userCtrl.text.trim();
-    final String pass = _passCtrl.text.trim();
-
-    if (server.isEmpty) {
-      setState(() => _error = context.l10n.loginServerRequired);
+    // N'importe quel hôte. Un get.php collé dans le champ serveur
+    // est compris (origine + identifiants).
+    final OpenSourceParse parsed = OpenSourceInput.xtream(
+      server: _serverCtrl.text,
+      username: _userCtrl.text,
+      password: _passCtrl.text,
+    );
+    if (!parsed.isValid || parsed.draft == null) {
+      setState(() => _error = parsed.error ?? OpenSourceInput.errNeedXtream);
       return;
     }
-    if (user.isEmpty || pass.isEmpty) {
-      setState(() => _error = context.l10n.loginCredsRequired);
-      return;
-    }
+    final OpenSourceDraft draft = parsed.draft!;
     setState(() {
       _busy = true;
       _error = null;
@@ -90,9 +82,9 @@ class _XtreamLoginFormState extends State<XtreamLoginForm> {
     try {
       await PlaylistRepository.instance.addXtreamPlaylist(
         name: 'Mon abonnement',
-        serverUrl: server,
-        username: user,
-        password: pass,
+        serverUrl: draft.serverUrl!,
+        username: draft.username!,
+        password: draft.password!,
       );
       if (!mounted) return;
       messenger.showSnackBar(

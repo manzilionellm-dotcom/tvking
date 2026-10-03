@@ -94,6 +94,7 @@ import {
   redactCredentialUrl,
 } from './source_crypto.js';
 import { listRevokedPublic, sourceRevForMac } from './source_revoke.js';
+import { buildOpenSource } from './open_source.js';
 
 // ----- Constantes APK / téléchargement -----
 //
@@ -2625,12 +2626,13 @@ async function handlePublicConfig(request, env, mac) {
   });
 }
 
-// /api/servers — public.
+// /api/servers — public, CONSERVÉ pour les applications déjà installées.
 //
-//  Liste des serveurs IPTV par défaut proposés dans l'app
-//  (« Serveur 1 », « Serveur 2 »…). Le client ne saisit JAMAIS d'URL :
-//  il choisit un serveur dans cette liste et ne tape que son code
-//  Xtream (utilisateur + mot de passe).
+//  L'interface neuve ne montre plus « Serveur 1 », « Serveur 2 ».
+//  La personne ajoute sa propre source. Cette route reste pour qu'une
+//  box qui n'a pas encore la mise à jour puisse encore lire l'adresse
+//  d'un serveur déjà enregistré, sans rien ressaisir. On ne supprime
+//  pas la table.
 //
 //  ⚠️ Conformité AGENTS.md règle n°2 : aucune URL de flux IPTV n'est
 //  écrite en dur dans le code de PRODUCTION de l'app (lib/). Les URLs
@@ -2646,14 +2648,11 @@ async function handlePublicConfig(request, env, mac) {
 //  `/get.php` ni identifiants — l'app les ajoute à partir du code que
 //  le client saisit.
 //
-//  Source de vérité :
-//    1. Table D1 `default_servers` — éditée depuis le PANEL ADMIN
-//       (ajouter / changer / supprimer des serveurs « Serveur 1, 2,
-//       3… »). C'est la source normale.
-//    2. Repli sur la variable d'environnement `DEFAULT_SERVERS` si la
-//       base D1 est absente, vide, ou en erreur (ex. migration pas
-//       encore jouée) — ça garantit que l'app a toujours au moins le
-//       serveur par défaut.
+//  Lecture seule pour les anciennes applications :
+//    1. Table D1 `default_servers` si elle contient encore des lignes.
+//       Le panel ne propose plus cet écran.
+//    2. Repli `DEFAULT_SERVERS` si la table est vide ou absente.
+//       Ça ne sert qu'aux box pas encore mises à jour.
 async function handlePublicServers(env) {
   // --- 1. D1 (panel admin) ---
   if (env.DB) {
@@ -3063,26 +3062,11 @@ function publicItemView(it, idx) {
 }
 
 // Valide + construit un item à partir du corps de requête (POST).
+// Délégué à open_source.js : n'importe quel hôte http(s), pas de
+// catalogue. Un lien get.php (type « player ») devient un compte
+// Xtream si le nom et le mot de passe sont dans l'adresse.
 function buildSourceFromBody(body) {
-  const type = String(body.type || '').trim().toLowerCase();
-  const label = (String(body.label || '').trim() || 'Ma playlist').slice(0, 80);
-  const epgRaw = String(body.epg_url || '').trim();
-  const epg = epgRaw && /^https?:\/\//i.test(epgRaw) ? epgRaw.slice(0, 2048) : null;
-  if (type === 'xtream') {
-    const server = String(body.server_url || '').trim().slice(0, 2048);
-    const user = String(body.username || '').trim().slice(0, 256);
-    const pass = String(body.password || '').trim().slice(0, 256);
-    if (!server || !user || !pass) return { error: 'xtream requires server_url, username, password' };
-    if (!/^https?:\/\//i.test(server)) return { error: 'server_url must start with http(s)://' };
-    return { source: { type: 'xtream', label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
-  }
-  if (type === 'm3u') {
-    const m3u = String(body.m3u_url || '').trim().slice(0, 2048);
-    if (!m3u) return { error: 'm3u requires m3u_url' };
-    if (!/^https?:\/\//i.test(m3u)) return { error: 'm3u_url must start with http(s)://' };
-    return { source: { type: 'm3u', label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
-  }
-  return { error: "type must be 'xtream' or 'm3u'" };
+  return buildOpenSource(body);
 }
 
 // GET /api/self-source/:mac — liste des playlists de « Mon espace ».

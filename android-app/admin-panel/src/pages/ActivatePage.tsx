@@ -3,11 +3,12 @@ import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { CopyLink } from '@/components/CopyLink';
 import {
-  activateApi, appsApi, planCostsApi, meApi, serversApi, sourcesApi,
+  activateApi, appsApi, planCostsApi, meApi, sourcesApi,
   getCurrentUser, isOwnerRole, userCan, DOWNLOAD_URL, DOWNLOADER_CODE,
-  type App, type PlanCost, type ActivateResult, type DefaultServer,
+  type App, type PlanCost, type ActivateResult,
   type DeviceSourceInput, ApiError,
 } from '@/lib/api';
+import { buildPushedSource, type OpenPanelKind } from '@/lib/openSource';
 import { formatDateTime } from '@/lib/utils';
 
 /// Page ACTIVATION — TOUT-EN-UN (demande client : « un seul qui regroupe
@@ -16,15 +17,14 @@ import { formatDateTime } from '@/lib/utils';
 /// distance. La page « Pousser une playlist » est fusionnée ici.
 
 type SrcDraft = {
-  type: 'xtream' | 'm3u';
-  serverChoice: string;
+  type: OpenPanelKind;
   serverUrl: string;
   xtUser: string;
   xtPass: string;
   m3uUrl: string;
 };
 const blankSrc = (): SrcDraft => ({
-  type: 'xtream', serverChoice: 'custom', serverUrl: '',
+  type: 'xtream', serverUrl: '',
   xtUser: '', xtPass: '', m3uUrl: '',
 });
 const MAX_SOURCES = 6; // aligné sur MAX_SOURCES_PER_DEVICE du Worker (api_v1.js)
@@ -43,8 +43,8 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const [apps, setApps] = useState<App[]>([]);
   const [costs, setCosts] = useState<PlanCost[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
-  const [servers, setServers] = useState<DefaultServer[]>([]);
   // TRIO : 0 à 6 sources poussées avec l'activation (optionnel).
+  // Plus de menu « Serveur 1 » : on écrit l'adresse.
   const [items, setItems] = useState<SrcDraft[]>([]);
 
   const [busy, setBusy] = useState(false);
@@ -71,9 +71,6 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     meApi.get()
       .then((r) => { if (active) setBalance(r.user.credit_balance ?? null); })
       .catch(() => {});
-    serversApi.list()
-      .then((r) => { if (active) setServers(r.items); })
-      .catch(() => {});
     return () => { active = false; };
   }, [onLogout]);
 
@@ -83,25 +80,22 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   }
   function addItem() {
     if (items.length < MAX_SOURCES) {
-      const s = blankSrc();
-      if (servers[0]) { s.serverChoice = servers[0].id; s.serverUrl = servers[0].url; }
-      setItems((prev) => [...prev, s]);
+      setItems((prev) => [...prev, blankSrc()]);
     }
   }
   function removeItem(i: number) {
     setItems((prev) => prev.filter((_, idx) => idx !== i));
   }
-  function buildSource(it: SrcDraft): DeviceSourceInput | null {
-    if (it.type === 'xtream') {
-      if (!it.serverUrl.trim() || !it.xtUser.trim() || !it.xtPass.trim()) return null;
-      const chosen = servers.find((s) => s.id === it.serverChoice);
-      return {
-        type: 'xtream', label: chosen?.label ?? null,
-        server_url: it.serverUrl.trim(), username: it.xtUser.trim(), password: it.xtPass.trim(),
-      };
-    }
-    if (!it.m3uUrl.trim()) return null;
-    return { type: 'm3u', m3u_url: it.m3uUrl.trim() };
+  function buildSource(it: SrcDraft): DeviceSourceInput | { error: string } | null {
+    const built = buildPushedSource({
+      type: it.type,
+      serverUrl: it.serverUrl,
+      username: it.xtUser,
+      password: it.xtPass,
+      link: it.m3uUrl,
+    });
+    if ('error' in built) return built;
+    return built.source;
   }
 
   const costFor = (p: string): number | null => {
@@ -125,8 +119,10 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     const sources: DeviceSourceInput[] = [];
     for (let i = 0; i < items.length; i++) {
       const s = buildSource(items[i]);
-      if (!s) {
-        setErr(`Source ${i + 1} incomplète (serveur/identifiant/mot de passe ou URL M3U).`);
+      if (!s || 'error' in s) {
+        setErr(s && 'error' in s
+          ? `Source ${i + 1} : ${s.error}`
+          : `Source ${i + 1} incomplète.`);
         setBusy(false);
         return;
       }
@@ -296,8 +292,12 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                     Retirer
                   </button>
                 </div>
-                <div className="mb-2 grid grid-cols-2 gap-2">
-                  {(['xtream', 'm3u'] as const).map((t) => (
+                <div className="mb-2 grid grid-cols-3 gap-2">
+                  {([
+                    ['xtream', 'Xtream Codes'],
+                    ['m3u', 'M3U'],
+                    ['player', 'Lien lecteur'],
+                  ] as const).map(([t, label]) => (
                     <button
                       type="button"
                       key={t}
@@ -309,38 +309,26 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
                           : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
                       }
                     >
-                      {t === 'xtream' ? 'Xtream Codes' : 'M3U'}
+                      {label}
                     </button>
                   ))}
                 </div>
                 {it.type === 'xtream' && (
                   <div className="space-y-2">
-                    {servers.length > 0 && (
-                      <select
-                        value={it.serverChoice}
-                        onChange={(e) => {
-                          const s = servers.find((x) => x.id === e.target.value);
-                          patch(i, { serverChoice: e.target.value, serverUrl: s ? s.url : it.serverUrl });
-                        }}
-                        className={inputCls}
-                      >
-                        {servers.map((s) => (<option key={s.id} value={s.id}>{s.label}</option>))}
-                        <option value="custom">URL manuelle…</option>
-                      </select>
-                    )}
-                    {(it.serverChoice === 'custom' || servers.length === 0) && (
-                      <input value={it.serverUrl} onChange={(e) => patch(i, { serverUrl: e.target.value })}
-                        placeholder="http://serveur.com:8080" className={inputCls + ' font-mono'} />
-                    )}
+                    <input value={it.serverUrl} onChange={(e) => patch(i, { serverUrl: e.target.value })}
+                      placeholder="http://exemple.test:8080" className={inputCls + ' font-mono'} />
                     <input value={it.xtUser} onChange={(e) => patch(i, { xtUser: e.target.value })}
                       placeholder="Utilisateur" className={inputCls} />
                     <input value={it.xtPass} onChange={(e) => patch(i, { xtPass: e.target.value })}
                       placeholder="Mot de passe" className={inputCls} />
                   </div>
                 )}
-                {it.type === 'm3u' && (
+                {it.type !== 'xtream' && (
                   <input value={it.m3uUrl} onChange={(e) => patch(i, { m3uUrl: e.target.value })}
-                    placeholder="http://serveur.com/get.php?username=…&type=m3u_plus" className={inputCls + ' font-mono'} />
+                    placeholder={it.type === 'player'
+                      ? 'http://exemple.test:8080/get.php?username=…&password=…'
+                      : 'http://exemple.test/liste.m3u'}
+                    className={inputCls + ' font-mono'} />
                 )}
               </div>
             ))}

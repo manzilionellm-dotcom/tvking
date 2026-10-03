@@ -1,14 +1,10 @@
 // =========================================================
 //  m3u_login_sheet.dart — Source perso : M3U OU Xtream
 // =========================================================
-//  Pour les clients qui apportent LEUR PROPRE source (pas le serveur
-//  prédéfini du revendeur). Deux modes au choix via un sélecteur :
-//    - M3U    : on colle une URL M3U / M3U8.
-//    - Xtream : on saisit le serveur (URL complète) + utilisateur +
-//               mot de passe (Xtream Codes d'un fournisseur tiers).
-//
-//  Le parseur sous-jacent est adaptatif (accepte tous les formats
-//  M3U ; vérifie les identifiants Xtream avant de charger).
+//  La personne apporte SA source, sans liste de serveurs :
+//    - M3U    : adresse .m3u / .m3u8, avec ou sans identifiants ;
+//    - Xtream : adresse du serveur + nom + mot de passe ;
+//    - Lecteur : lien get.php (de n'importe quel fournisseur).
 // =========================================================
 
 import 'package:flutter/material.dart';
@@ -17,6 +13,7 @@ import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../data/playlist_repository.dart';
+import '../domain/open_source_input.dart';
 
 Future<void> showM3uLoginSheet(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -64,33 +61,31 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
         _nameCtrl.text.trim().isEmpty ? context.l10n.mySource : _nameCtrl.text.trim();
     setState(() => _error = null);
 
-    if (_mode == 'm3u') {
-      final String url = _urlCtrl.text.trim();
-      if (url.isEmpty ||
-          (!url.startsWith('http://') && !url.startsWith('https://'))) {
-        setState(() => _error = context.l10n.loginInvalidUrl);
-        return;
-      }
-      await _run(() =>
-          PlaylistRepository.instance.addM3uPlaylist(name: name, url: url));
-    } else {
-      final String server = _serverCtrl.text.trim();
-      final String user = _userCtrl.text.trim();
-      final String pass = _passCtrl.text.trim();
-      if (server.isEmpty ||
-          (!server.startsWith('http://') && !server.startsWith('https://'))) {
-        setState(() => _error = context.l10n.loginInvalidServer);
-        return;
-      }
-      if (user.isEmpty || pass.isEmpty) {
-        setState(() => _error = context.l10n.loginCredsRequired);
-        return;
-      }
+    final OpenSourceParse parsed = switch (_mode) {
+      'xtream' => OpenSourceInput.xtream(
+          server: _serverCtrl.text,
+          username: _userCtrl.text,
+          password: _passCtrl.text,
+        ),
+      'player' => OpenSourceInput.playerLink(_urlCtrl.text),
+      _ => OpenSourceInput.playlistLink(_urlCtrl.text),
+    };
+    if (!parsed.isValid || parsed.draft == null) {
+      setState(() => _error = parsed.error ?? OpenSourceInput.errNeedUrl);
+      return;
+    }
+    final OpenSourceDraft draft = parsed.draft!;
+    if (draft.kind == OpenSourceKind.xtream) {
       await _run(() => PlaylistRepository.instance.addXtreamPlaylist(
             name: name,
-            serverUrl: server,
-            username: user,
-            password: pass,
+            serverUrl: draft.serverUrl!,
+            username: draft.username!,
+            password: draft.password!,
+          ));
+    } else {
+      await _run(() => PlaylistRepository.instance.addM3uPlaylist(
+            name: name,
+            url: draft.m3uUrl!,
           ));
     }
   }
@@ -172,18 +167,24 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                     _modeButton('M3U', 'm3u'),
                     const SizedBox(width: 10),
                     _modeButton('Xtream', 'xtream'),
+                    const SizedBox(width: 10),
+                    _modeButton(OpenSourceInput.playerLabel, 'player'),
                   ],
                 ),
                 const SizedBox(height: 16),
 
-                if (_mode == 'm3u') ...<Widget>[
-                  _label(context.l10n.loginUrlM3u),
+                if (_mode == 'm3u' || _mode == 'player') ...<Widget>[
+                  _label(_mode == 'player'
+                      ? OpenSourceInput.playerLabel
+                      : context.l10n.loginUrlM3u),
                   TextField(
                     controller: _urlCtrl,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
-                    decoration: const InputDecoration(
-                      hintText: 'http://serveur.com/get.php?username=…',
+                    decoration: InputDecoration(
+                      hintText: _mode == 'player'
+                          ? 'http://exemple.test:8080/get.php?username=…&password=…'
+                          : 'http://exemple.test/liste.m3u',
                     ),
                   ),
                 ] else ...<Widget>[
@@ -193,7 +194,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
                     keyboardType: TextInputType.url,
                     autocorrect: false,
                     decoration: const InputDecoration(
-                      hintText: 'http://serveur.com:8080',
+                      hintText: 'http://exemple.test:8080',
                     ),
                   ),
                   const SizedBox(height: 12),

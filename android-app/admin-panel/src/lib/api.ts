@@ -229,10 +229,11 @@ export const appsApi = {
 };
 
 // =========================================================
-//  SERVEURS PAR DÉFAUT (proposés dans l'app cliente)
+//  Ancien catalogue de serveurs — PLUS AFFICHÉ
 // =========================================================
-//  Le client ne saisit jamais d'URL : il choisit « Serveur 1 / 2 / 3… »
-//  et tape son code Xtream. On gère ici les URLs (cachées côté app).
+//  L'écran « Serveurs » a disparu. Ces appels restent pour ne pas
+//  casser un outil qui lirait encore la table : les adresses déjà
+//  enregistrées ne sont pas effacées. L'interface ne les liste plus.
 export interface DefaultServer {
   id: string;
   label: string;

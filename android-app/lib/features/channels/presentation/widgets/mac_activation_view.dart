@@ -1,11 +1,12 @@
 // =========================================================
 //  mac_activation_view.dart — Activation par code MAC
 // =========================================================
-//  Le SEUL mode d'ajout de source côté client (demande explicite) :
-//  le client NE saisit RIEN (ni M3U, ni serveur, ni identifiant). Il
-//  voit uniquement son CODE (MAC), il l'envoie au revendeur, et le
-//  revendeur lie ce code à un abonnement côté serveur. L'app récupère
-//  ensuite la source automatiquement (RemoteSourceRepository).
+//  Deux chemins, sans liste « Serveur 1 / Serveur 2 » :
+//    • le code MAC, envoyé au revendeur, qui peut encore pousser
+//      une source déjà payée (les abonnés déjà configurés ne
+//      ressaisissent rien) ;
+//    • la personne ajoute ELLE-MÊME sa source : Xtream, lien M3U
+//      ou lien lecteur, chez n'importe quel fournisseur.
 //
 //  Ce widget est réutilisé à deux endroits :
 //    1. l'écran d'accueil VIDE (affiché directement, « ouvert ») ;
@@ -28,6 +29,8 @@ import '../../../device/data/device_identity.dart';
 import '../../../pricing/presentation/pricing_banner.dart';
 import '../../../playlists/data/playlist_repository.dart';
 import '../../../playlists/data/remote_source_repository.dart';
+import '../../../playlists/domain/open_source_input.dart';
+import '../../../playlists/presentation/m3u_login_sheet.dart';
 import '../../../playlists/presentation/xtream_login_sheet.dart';
 import '../../../subscription/data/activation_hint.dart';
 import '../../../subscription/data/subscription_state.dart';
@@ -191,15 +194,29 @@ class MacActivationView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 18),
-            // Saisie directe d'un code Xtream (serveur choisi en ligne +
-            // identifiant + mot de passe). PAS de M3U, PAS d'URL serveur à
-            // taper — c'est l'app qui fournit le serveur.
+            // La personne écrit sa source. Pas de catalogue caché.
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: () => showXtreamLoginSheet(context),
                 icon: const Icon(Icons.vpn_key_rounded, size: 18),
                 label: Text(context.l10n.xtreamHaveCode),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.accent,
+                  side: BorderSide(
+                      color: AppColors.accent.withValues(alpha: 0.6)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => showM3uLoginSheet(context),
+                icon: const Icon(Icons.link_rounded, size: 18),
+                label: Text(
+                    '${context.l10n.playlistTypeM3u} · ${OpenSourceInput.playerLabel}'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.accent,
                   side: BorderSide(

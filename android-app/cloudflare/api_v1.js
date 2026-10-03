@@ -1249,14 +1249,11 @@ async function handleAppsUpdate(request, env, id, actor) {
 }
 
 // =========================================================
-//  DEFAULT SERVERS HANDLERS
+//  DEFAULT SERVERS HANDLERS — conservés, plus montrés
 // =========================================================
-//  Serveurs IPTV par défaut proposés dans l'app cliente. Les URLs
-//  sont gérées ICI (panel admin) et lues par l'app via la route
-//  publique GET /api/servers (cf. worker.js). Le client choisit un
-//  serveur (« Serveur 1 », « Serveur 2 »…) et ne saisit que son code
-//  Xtream — l'URL reste cachée. Conforme AGENTS.md règle n°2 :
-//  aucune URL de flux IPTV n'est en dur dans l'app.
+//  L'écran du panel ne liste plus « Serveur 1, Serveur 2 ». La table
+//  et ces routes restent pour qu'une box déjà installée, ou un serveur
+//  déjà enregistré, continue de résoudre son adresse. On n'efface rien.
 
 /// Crée la table si besoin (idempotent). On la crée à la volée pour
 /// que la fonctionnalité marche même si la migration SQL n'a pas

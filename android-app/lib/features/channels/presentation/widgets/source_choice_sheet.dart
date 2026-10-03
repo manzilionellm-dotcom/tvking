@@ -47,10 +47,9 @@ class _SourceChoiceSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // TÉLÉPHONE : activation par code MAC UNIQUEMENT (ni M3U, ni serveur,
-    // ni identifiant) — demande explicite et répétée du client. La TV
-    // garde ses options d'ajout (elle a son propre écran dédié,
-    // TvAddSourceScreen) : on n'y touche pas.
+    // TÉLÉPHONE : le code MAC (le revendeur peut encore pousser une
+    // source) ET la saisie libre (Xtream, M3U, lien lecteur). Pas de
+    // liste « Serveur 1 ». La TV a son écran dédié, TvAddSourceScreen.
     final bool isTv = DeviceClassRepository.instance.isTvFor(context);
     if (!isTv) {
       return SafeArea(

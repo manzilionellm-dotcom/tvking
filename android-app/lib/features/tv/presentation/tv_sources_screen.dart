@@ -19,16 +19,26 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/domain/open_source_input.dart';
 import '../../playlists/domain/playlist.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
-import 'tv_add_m3u_screen.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_shell.dart';
 
 class TvSourcesScreen extends StatelessWidget {
   const TvSourcesScreen({super.key});
+
+  void _open(BuildContext context, OpenEntryMode mode) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvShell(
+          child: TvAddSourceScreen(initialMode: mode),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,21 +57,19 @@ class TvSourcesScreen extends StatelessWidget {
               icon: Icons.add_rounded,
               label: context.l10n.tvAddXtream,
               autofocus: true,
-              onSelect: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const TvShell(child: TvAddSourceScreen()),
-                ),
-              ),
+              onSelect: () => _open(context, OpenEntryMode.xtream),
             ),
             const SizedBox(width: 12),
             _Pill(
               icon: Icons.playlist_add_rounded,
               label: context.l10n.tvAddM3u,
-              onSelect: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const TvShell(child: TvAddM3uScreen()),
-                ),
-              ),
+              onSelect: () => _open(context, OpenEntryMode.m3u),
+            ),
+            const SizedBox(width: 12),
+            _Pill(
+              icon: Icons.play_circle_outline_rounded,
+              label: OpenSourceInput.playerLabel,
+              onSelect: () => _open(context, OpenEntryMode.player),
             ),
           ],
         ),
@@ -76,7 +84,7 @@ class TvSourcesScreen extends StatelessWidget {
               if (items.isEmpty) {
                 return Center(
                   child: Text(
-                    'Aucune source pour le moment.\nAjoute ta liste Xtream ou M3U ci-dessus.',
+                    'Aucune source pour le moment.\nAjoute un lien M3U, un compte Xtream ou un lien lecteur.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: TvDimens.body, color: TvTokens.mutedDim),

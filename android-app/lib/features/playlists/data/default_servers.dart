@@ -1,23 +1,16 @@
 // =========================================================
-//  default_servers.dart — Serveurs IPTV par défaut (côté serveur)
+//  default_servers.dart — Ancien catalogue, plus affiché
 // =========================================================
-//  L'app NE contient AUCUNE URL de flux IPTV en dur : c'est la
-//  règle n°2 non-négociable d'AGENTS.md. À la place, on récupère
-//  la liste des serveurs proposés (« Serveur 1 », « Serveur 2 »…)
-//  depuis le Worker Cloudflare via `GET /api/servers`.
+//  Avant, l'écran de connexion montrait « Serveur 1 », « Serveur 2 »
+//  et cachait l'adresse (GET /api/servers). Cet écran n'existe plus :
+//  la personne saisit sa propre source (voir open_source_input.dart).
 //
-//  Conséquence : le client ne tape jamais d'URL. Il choisit un
-//  serveur dans la liste et saisit seulement son code Xtream
-//  (utilisateur + mot de passe). L'URL réelle reste cachée côté
-//  serveur et peut être changée sans re-publier l'app (il suffit
-//  de modifier la variable `DEFAULT_SERVERS` du Worker).
+//  On GARDE ce fichier pour une migration douce. Une application déjà
+//  installée, ou une liste enregistrée avec l'identifiant d'un serveur
+//  connu, peut encore retrouver l'adresse via [urlForRegisteredServer]
+//  ou via le cache disque. Rien n'est montré dans l'interface.
 //
-//  Robustesse :
-//    - On met en cache la dernière liste valide dans
-//      SharedPreferences. Si le Worker est injoignable au prochain
-//      démarrage (WiFi en creux), on ressert la liste connue plutôt
-//      que de laisser le client sans aucun serveur.
-//    - Timeout court (8 s) pour ne pas figer l'écran de connexion.
+//  Aucune URL de flux n'est écrite en dur ici (règle n°2 d'AGENTS.md).
 // =========================================================
 
 import 'dart:convert';
@@ -43,8 +36,8 @@ class DefaultServer {
   /// Identifiant stable (ex. `srv1`). Sert de clé de sélection.
   final String id;
 
-  /// Libellé affiché au client (ex. « Serveur 1 »). C'est la SEULE
-  /// chose visible — l'URL reste cachée.
+  /// Ancien libellé (« Serveur 1 »). Plus montré. Gardé pour reconnaître
+  /// une ligne déjà enregistrée.
   final String label;
 
   /// Base du serveur Xtream (ex. `http://exemple:8080`). Caché.
@@ -63,6 +56,20 @@ class DefaultServer {
         'label': label,
         'url': url,
       };
+}
+
+/// Adresse d'un serveur DÉJÀ enregistré, retrouvée par son identifiant.
+/// Sert uniquement en interne : on ne construit pas un menu avec.
+/// Inconnu ou adresse vide → null (on n'invente pas de serveur).
+String? urlForRegisteredServer(Iterable<DefaultServer> known, String id) {
+  final String key = id.trim();
+  if (key.isEmpty) return null;
+  for (final DefaultServer server in known) {
+    if (server.id == key && server.url.trim().isNotEmpty) {
+      return server.url.trim();
+    }
+  }
+  return null;
 }
 
 abstract final class DefaultServersApi {

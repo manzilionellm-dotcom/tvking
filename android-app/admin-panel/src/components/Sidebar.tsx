@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { getCurrentUser, isOwnerRole, userCan } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { hideServerCatalog } from '@/lib/openSource';
 
 // =========================================================
 //  Sidebar — navigation principale du panel (multilangue)
@@ -14,10 +15,9 @@ import { useT } from '@/lib/i18n';
 // Sans `cap`, l'entrée est toujours visible. L'admin voit tout.
 type NavItem = { key: string; to: string; cap?: string; anyCap?: string[] };
 // Une section = un titre traduit (`titleKey`) + ses entrées. Le menu est
-// REGROUPÉ par section pour séparer clairement l'ACTIVATION (abonnement,
-// appareils, revendeurs…) des CHAÎNES & SOURCES (serveurs IPTV) — demande
-// produit « bien séparer activation et chaînes ». Présentation uniquement :
-// aucune logique d'activation/abonnement n'est touchée ici.
+// REGROUPÉ par section. L'ancien menu « Serveurs » (catalogue
+// « Serveur 1, Serveur 2 » avec adresse cachée) n'est plus affiché :
+// la personne ajoute sa source dans l'application.
 type NavSection = { titleKey: string; items: NavItem[] };
 
 const OWNER_NAV: NavSection[] = [
@@ -34,12 +34,6 @@ const OWNER_NAV: NavSection[] = [
       { key: 'nav.transfer',    to: '/transfer' },
       { key: 'nav.pricing',     to: '/tarifs' },
       { key: 'nav.references',  to: '/references' },
-    ],
-  },
-  {
-    titleKey: 'navsec.channels',
-    items: [
-      { key: 'nav.servers',     to: '/servers' },
     ],
   },
   {
@@ -103,12 +97,12 @@ export function Sidebar({
   const sections = (owner ? OWNER_NAV : RESELLER_NAV)
     .map((sec) => ({
       ...sec,
-      items: sec.items.filter((it) => {
+      items: hideServerCatalog(sec.items.filter((it) => {
         if (it.anyCap && it.anyCap.length) {
           return it.anyCap.some((c) => userCan(user, c));
         }
         return !it.cap || userCan(user, it.cap);
-      }),
+      })),
     }))
     .filter((sec) => sec.items.length > 0);
 

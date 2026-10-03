@@ -14,9 +14,9 @@ import '../../device/data/device_identity.dart';
 import '../../subscription/data/activation_hint.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../playlists/domain/open_source_input.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
-import 'tv_add_m3u_screen.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
 import 'tv_shell.dart';
@@ -151,45 +151,51 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
               ),
             ],
             const SizedBox(height: 22),
-            // ----- CONNEXION : l'utilisateur apporte sa propre liste -----
-            //  Deux entrées de MÊME rang, bien visibles : identifiants Xtream
-            //  (serveur du panel + code) OU une URL M3U. C'est le point
-            //  d'entrée « lecteur » : The Few ne vend pas de chaînes, le
-            //  client branche la sienne. La licence (code MAC ci-dessus +
-            //  « J'ai payé ») reste le verrou de monétisation piloté par le
-            //  panel : sans essai ni abonnement valide, l'accueil ne s'ouvre
-            //  pas, même après avoir saisi une source.
+            // ----- CONNEXION : l'utilisateur apporte sa propre source -----
+            //  Trois entrées, sans liste de serveurs : Xtream (adresse +
+            //  nom + mot de passe), lien M3U/M3U8, ou lien lecteur get.php.
+            //  N'importe quel fournisseur. La licence (code MAC + « J'ai
+            //  payé ») reste le verrou : sans essai ni abonnement valide,
+            //  l'accueil ne s'ouvre pas, même après avoir saisi une source.
             Text(context.l10n.sourceOwnSub.toUpperCase(),
                 style: TvTokens.ui(11,
                     weight: FontWeight.w600, color: TvTokens.mutedDim, spacing: 2)),
             const SizedBox(height: 12),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: _ConnectButton(
-                    icon: Icons.vpn_key_rounded,
-                    label: context.l10n.playlistTypeXtream,
-                    onSelect: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const TvShell(child: TvAddSourceScreen()),
-                      ),
-                    ),
+            SizedBox(width: double.infinity, child: _ConnectButton(
+              icon: Icons.vpn_key_rounded,
+              label: context.l10n.playlistTypeXtream,
+              onSelect: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TvShell(
+                    child: TvAddSourceScreen(initialMode: OpenEntryMode.xtream),
                   ),
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: _ConnectButton(
-                    icon: Icons.link_rounded,
-                    label: context.l10n.playlistTypeM3u,
-                    onSelect: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const TvShell(child: TvAddM3uScreen()),
-                      ),
-                    ),
+              ),
+            )),
+            const SizedBox(height: 10),
+            SizedBox(width: double.infinity, child: _ConnectButton(
+              icon: Icons.link_rounded,
+              label: context.l10n.playlistTypeM3u,
+              onSelect: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TvShell(
+                    child: TvAddSourceScreen(initialMode: OpenEntryMode.m3u),
                   ),
                 ),
-              ],
-            ),
+              ),
+            )),
+            const SizedBox(height: 10),
+            SizedBox(width: double.infinity, child: _ConnectButton(
+              icon: Icons.play_circle_outline_rounded,
+              label: OpenSourceInput.playerLabel,
+              onSelect: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TvShell(
+                    child: TvAddSourceScreen(initialMode: OpenEntryMode.player),
+                  ),
+                ),
+              ),
+            )),
             const SizedBox(height: 18),
             Text(context.l10n.tvActivationFooter,
                 style: TvTokens.ui(13, color: TvTokens.mutedDim, spacing: 0.5)),

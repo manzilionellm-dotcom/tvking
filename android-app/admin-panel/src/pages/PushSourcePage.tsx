@@ -1,9 +1,10 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  sourcesApi, serversApi,
-  type DefaultServer, type DeviceSourceInput, ApiError,
+  sourcesApi,
+  type DeviceSourceInput, ApiError,
 } from '@/lib/api';
+import { buildPushedSource, type OpenPanelKind } from '@/lib/openSource';
 
 /// Page « Pousser une playlist » — assigne jusqu'à 6 sources (un TRIO)
 /// IPTV à une MAC, en une seule fois. Le client les charge TOUTES
@@ -13,8 +14,7 @@ import {
 /// Au submit → PUT /api/v1/sources/:mac { sources: [...] }.
 
 type SrcDraft = {
-  type: 'xtream' | 'm3u';
-  serverChoice: string;
+  type: OpenPanelKind;
   serverUrl: string;
   xtUser: string;
   xtPass: string;
@@ -22,7 +22,7 @@ type SrcDraft = {
 };
 
 const blank = (): SrcDraft => ({
-  type: 'xtream', serverChoice: 'custom', serverUrl: '',
+  type: 'xtream', serverUrl: '',
   xtUser: '', xtPass: '', m3uUrl: '',
 });
 
@@ -31,29 +31,11 @@ const MAX_SOURCES = 6; // aligné sur MAX_SOURCES_PER_DEVICE du Worker (api_v1.j
 export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
   const [mac, setMac] = useState('MK:');
   const [items, setItems] = useState<SrcDraft[]>([blank()]);
-  const [servers, setServers] = useState<DefaultServer[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    serversApi.list()
-      .then((r) => {
-        if (!active) return;
-        setServers(r.items);
-        if (r.items[0]) {
-          // Pré-remplit le 1er bloc avec le 1er serveur prédéfini.
-          setItems((prev) => {
-            const next = [...prev];
-            next[0] = { ...next[0], serverChoice: r.items[0].id, serverUrl: r.items[0].url };
-            return next;
-          });
-        }
-      })
-      .catch(() => {});
-    return () => { active = false; };
-  }, []);
+  // Plus de catalogue : on n'interroge plus la liste des serveurs.
 
   function patch(i: number, p: Partial<SrcDraft>) {
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...p } : it)));
@@ -65,20 +47,16 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
     setItems((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  function buildSource(it: SrcDraft): DeviceSourceInput | null {
-    if (it.type === 'xtream') {
-      if (!it.serverUrl.trim() || !it.xtUser.trim() || !it.xtPass.trim()) return null;
-      const chosen = servers.find((s) => s.id === it.serverChoice);
-      return {
-        type: 'xtream',
-        label: chosen?.label ?? null,
-        server_url: it.serverUrl.trim(),
-        username: it.xtUser.trim(),
-        password: it.xtPass.trim(),
-      };
-    }
-    if (!it.m3uUrl.trim()) return null;
-    return { type: 'm3u', m3u_url: it.m3uUrl.trim() };
+  function buildSource(it: SrcDraft): DeviceSourceInput | { error: string } | null {
+    const built = buildPushedSource({
+      type: it.type,
+      serverUrl: it.serverUrl,
+      username: it.xtUser,
+      password: it.xtPass,
+      link: it.m3uUrl,
+    });
+    if ('error' in built) return built;
+    return built.source;
   }
 
   async function submit(e: FormEvent) {
@@ -93,8 +71,8 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
     const sources: DeviceSourceInput[] = [];
     for (let i = 0; i < items.length; i++) {
       const s = buildSource(items[i]);
-      if (!s) {
-        setErr(`Source ${i + 1} incomplète (serveur/identifiant/mot de passe ou URL M3U).`);
+      if (!s || 'error' in s) {
+        setErr(s && 'error' in s ? `Source ${i + 1} : ${s.error}` : `Source ${i + 1} incomplète.`);
         setBusy(false);
         return;
       }
@@ -159,8 +137,12 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
               )}
             </div>
 
-            <div className="mb-2 grid grid-cols-2 gap-2">
-              {(['xtream', 'm3u'] as const).map((t) => (
+            <div className="mb-2 grid grid-cols-3 gap-2">
+              {([
+                ['xtream', 'Xtream Codes'],
+                ['m3u', 'M3U'],
+                ['player', 'Lien lecteur'],
+              ] as const).map(([t, label]) => (
                 <button
                   type="button"
                   key={t}
@@ -172,36 +154,19 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
                       : 'border-white/5 bg-slate text-ink-secondary hover:border-white/20')
                   }
                 >
-                  {t === 'xtream' ? 'Xtream Codes' : 'M3U'}
+                  {label}
                 </button>
               ))}
             </div>
 
             {it.type === 'xtream' && (
               <div className="space-y-2">
-                {servers.length > 0 && (
-                  <select
-                    value={it.serverChoice}
-                    onChange={(e) => {
-                      const s = servers.find((x) => x.id === e.target.value);
-                      patch(i, { serverChoice: e.target.value, serverUrl: s ? s.url : it.serverUrl });
-                    }}
-                    className={inputCls}
-                  >
-                    {servers.map((s) => (
-                      <option key={s.id} value={s.id}>{s.label}</option>
-                    ))}
-                    <option value="custom">URL manuelle…</option>
-                  </select>
-                )}
-                {(it.serverChoice === 'custom' || servers.length === 0) && (
-                  <input
-                    value={it.serverUrl}
-                    onChange={(e) => patch(i, { serverUrl: e.target.value })}
-                    placeholder="http://serveur.com:8080"
-                    className={inputCls + ' font-mono'}
-                  />
-                )}
+                <input
+                  value={it.serverUrl}
+                  onChange={(e) => patch(i, { serverUrl: e.target.value })}
+                  placeholder="http://exemple.test:8080"
+                  className={inputCls + ' font-mono'}
+                />
                 <input
                   value={it.xtUser}
                   onChange={(e) => patch(i, { xtUser: e.target.value })}
@@ -217,11 +182,13 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
               </div>
             )}
 
-            {it.type === 'm3u' && (
+            {it.type !== 'xtream' && (
               <input
                 value={it.m3uUrl}
                 onChange={(e) => patch(i, { m3uUrl: e.target.value })}
-                placeholder="http://serveur.com/get.php?username=…&type=m3u_plus"
+                placeholder={it.type === 'player'
+                  ? 'http://exemple.test:8080/get.php?username=…&password=…'
+                  : 'http://exemple.test/liste.m3u'}
                 className={inputCls + ' font-mono'}
               />
             )}
