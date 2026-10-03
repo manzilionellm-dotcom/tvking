@@ -52,6 +52,7 @@ import 'features/onboarding/data/onboarding_state.dart';
 // Phase 1+/2026-06-01 : DevicePicker + Onboarding supprimes du
 // flow. Imports retires (les fichiers existent toujours dans
 // features/onboarding/presentation/ pour eventuelle reprise).
+import 'features/player/data/audio_sources_bind.dart';
 import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/cloud_backup_repository.dart';
@@ -85,6 +86,8 @@ void main() {
 /// partir d'ici.
 Future<void> bootApp() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Compteurs de sources (téléphone, pub, services). Ne coupe rien.
+  bindAudioSources();
 
   // libmpv natif — AVANT runApp pour ne pas crasher au premier lecteur.
   // GARDÉ : sur un appareil exotique où la lib native manque/échoue

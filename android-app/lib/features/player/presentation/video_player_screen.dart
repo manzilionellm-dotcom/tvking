@@ -49,6 +49,7 @@ import '../../recordings/domain/recording.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
+import '../domain/audio_sources.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
 import 'widgets/player_tracks_sheet.dart';
@@ -102,6 +103,10 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late final Player _player;
   late final VideoController _videoController;
+
+  /// Compteur seulement. Ce lecteur n'écoute pas le Home : le jeton
+  /// reste « son » tant que libmpv joue. On ne le met pas en pause ici.
+  int? _audioSource;
 
   bool _overlayVisible = true;
   Timer? _hideOverlayTimer;
@@ -281,6 +286,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         logLevel: MPVLogLevel.warn,
       ),
     );
+    _audioSource = AudioSources.acquire(AudioSources.telephone);
     _videoController = VideoController(_player);
 
     // Applique les options libmpv pour hardware decoding + cache
@@ -300,6 +306,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // une piste française si elle existe (cf. _maybeAutoSubtitle).
     _subs.add(_player.stream.tracks.listen(_maybeAutoSubtitle));
     _subs.add(_player.stream.playing.listen((bool p) {
+      final int? src = _audioSource;
+      if (src != null) {
+        AudioSources.setPresence(
+          src,
+          p ? AudioPresence.sound : AudioPresence.open,
+        );
+      }
       if (mounted) {
         setState(() {
           _isPlaying = p;
@@ -1040,6 +1053,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       RecordingRepository.instance.finishRecording(rec);
     }
     _zapPageController?.dispose();
+    final int? src = _audioSource;
+    _audioSource = null;
+    if (src != null) AudioSources.release(src);
     _player.dispose();
     WakelockPlus.disable();
     // À la sortie du lecteur, on dit au natif "plus de playback"

@@ -20,6 +20,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../features/player/data/audio_diag_prefs.dart';
 import '../../../features/player/data/audio_report_store.dart';
 import '../../../features/player/domain/audio_report_book.dart';
+import '../../../features/player/domain/audio_sources.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
@@ -142,7 +143,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         flush: true,
       );
       AudioReportStore.channelOverride = 'Son témoin';
-      final NativeVideoController player = NativeVideoController();
+      final NativeVideoController player = NativeVideoController(
+        sourceId: AudioSources.temoin,
+      );
       player.setUrl(Uri.file(file.path).toString(), vod: true);
       if (!mounted) {
         player.dispose();

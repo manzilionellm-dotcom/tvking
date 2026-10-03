@@ -34,6 +34,7 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
 import '../../channels/domain/channel.dart';
+import '../../player/domain/audio_sources.dart';
 import '../../device/data/device_identity.dart';
 import '../../device/data/device_secret.dart';
 import '../../playlists/data/playlist_repository.dart';
@@ -297,8 +298,10 @@ class _TvDiagnosticScreenState extends State<TvDiagnosticScreen> {
     }
     _set(_player, _Stat.running, 'ouverture sonde ExoPlayer…');
     final Completer<_Stat> c = Completer<_Stat>();
-    final NativeVideoController ctrl =
-        NativeVideoController(initialUrl: streamUrl);
+    final NativeVideoController ctrl = NativeVideoController(
+      initialUrl: streamUrl,
+      sourceId: AudioSources.sonde,
+    );
     void listener() {
       if (c.isCompleted) return;
       if (ctrl.firstFrame) {
