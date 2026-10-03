@@ -103,3 +103,5 @@ La fiche doit montrer `Type déclaré : …` et, sur la ligne Chemin, `flux musi
 `AudioContentChoiceTest` : coupé + voix claire coupée = film ; coupé + voix claire = parole ; l'essai « musique » gagne même si la voix claire est allumée ; le bouton fait le tour ; la ligne ne contient pas `http`.
 
 Commande : `gradle test --offline -q` dans `android-app/packages/native_video_player/logic-test`.
+
+Exécuté le 3 octobre 2026 : code de sortie **0**, **138** tests, 0 échec. Le premier passage hors ligne a échoué, le cache Gradle de cette machine était vide. Après un téléchargement des outils, la même commande hors ligne a réussi.
