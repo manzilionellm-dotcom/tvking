@@ -44,12 +44,26 @@ object AudioFixes {
      */
     const val KEY_IMMEDIATE_HANDOFF: String = "zuno.audio.handoff.immediate"
 
+    /**
+     * Garde « mode appel ». Vrai = si Android est en chemin d'appel, on
+     * demande le retour à normal ([AudioModeGuard]). Faux par défaut :
+     * personne n'appelle setMode, le son ne change pas.
+     */
+    const val KEY_RESTORE_NORMAL: String = AudioModeGuard.KEY
+
     @Volatile
     var androidFocus: Boolean = false
 
     /** Vrai = ancien passage (on n'attend pas l'AudioTrack). Faux par défaut. */
     @Volatile
     var immediateHandoff: Boolean = false
+
+    /**
+     * Vrai = la garde peut demander MODE_NORMAL. Faux par défaut :
+     * [AudioModeGuard.plan] répond LEAVE, setMode n'est pas appelé.
+     */
+    @Volatile
+    var restoreNormalMode: Boolean = false
 
     @Volatile
     var probe: Boolean = false

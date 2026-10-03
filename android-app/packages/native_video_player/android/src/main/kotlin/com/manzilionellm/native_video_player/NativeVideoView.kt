@@ -62,6 +62,7 @@ import com.manzilionellm.native_video_player.logic.AudioGate
 import com.manzilionellm.native_video_player.logic.AudioHandoff
 import com.manzilionellm.native_video_player.logic.AudioFocusPolicy
 import com.manzilionellm.native_video_player.logic.AudioFixes
+import com.manzilionellm.native_video_player.logic.AudioModeGuard
 import com.manzilionellm.native_video_player.logic.AudioRouteState
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
@@ -704,6 +705,51 @@ class NativeVideoView(
         return AudioRouteState.attribute(heard.size, matches, tracks)
     }
 
+    /**
+     * Dernière phrase de la garde, pour ne pas la répéter chaque seconde.
+     * Remise à zéro à chaque ouverture.
+     */
+    private var lastModeGuardLine: String? = null
+
+    /**
+     * Interrupteur allumé ET mode d'appel : demande MODE_NORMAL une fois,
+     * puis le dit. Coupé : retour immédiat, setMode n'est pas appelé.
+     * La lecture du mode (currentFacts) reste à part : elle ne change rien.
+     */
+    private fun applyModeGuard() {
+        if (!AudioFixes.restoreNormalMode || released) return
+        val am = audioManager ?: return
+        val before = try {
+            am.mode
+        } catch (_: RuntimeException) {
+            return
+        }
+        if (AudioModeGuard.plan(enabled = true, mode = before).action !=
+            AudioModeGuard.Action.SET_NORMAL
+        ) {
+            return
+        }
+        var threw = false
+        try {
+            am.setMode(AudioManager.MODE_NORMAL)
+        } catch (_: RuntimeException) {
+            threw = true
+        }
+        val after = if (threw) {
+            before
+        } else {
+            try {
+                am.mode
+            } catch (_: RuntimeException) {
+                -1
+            }
+        }
+        val line = AudioModeGuard.resultLine(before, after, threw)
+        if (line == lastModeGuardLine) return
+        lastModeGuardLine = line
+        emit("audioDiag", line)
+    }
+
     /** Chiffres du chemin, lus maintenant. Ne change pas le mode Android. */
     private fun currentFacts(): AudioRouteState.Facts {
         val am = audioManager
@@ -1287,6 +1333,17 @@ class NativeVideoView(
                 AudioFixes.immediateHandoff = call.arguments == true
                 result.success(null)
             }
+            "setRestoreNormalMode" -> {
+                // Garde mode appel. Faux (le défaut) : on ne touche pas au mode.
+                // Vrai : si le mode lu est un appel, on demande le retour à normal.
+                val on = call.arguments == true
+                AudioFixes.restoreNormalMode = on
+                if (on && !released) {
+                    lastModeGuardLine = null
+                    applyModeGuard()
+                }
+                result.success(null)
+            }
             "setSessionWideFallback" -> {
                 // Interrupteur de repli du correctif « repli par chaîne » :
                 // vrai = ancien comportement (une panne → la box partout).
@@ -1787,6 +1844,10 @@ class NativeVideoView(
         reconnect.armMute()
         player.volume = AudioHandoff.VOLUME_SILENT
         player.prepare()
+        // Garde mode appel, seulement si l'interrupteur est allumé.
+        // Coupé : applyModeGuard sort tout de suite, setMode n'est pas appelé.
+        lastModeGuardLine = null
+        applyModeGuard()
         // Perte de focus pendant le zap : on ne repart pas tant que GAIN
         // n'est pas revenu (ou qu'un nouveau zap n'a pas redemandé le focus).
         player.playWhenReady = !pausedByFocus
@@ -1804,6 +1865,10 @@ class NativeVideoView(
         for (sec in 1..VolumeTrace.SECONDS) {
             handler.postDelayed({
                 if (released || token != volumeTraceToken || session != sessions.generation) return@postDelayed
+                // Si le mode d'appel revient pendant les 10 premières secondes
+                // et que l'interrupteur est allumé, on redemande normal.
+                // Coupé : aucun appel.
+                applyModeGuard()
                 val playerVol = try {
                     player.volume
                 } catch (_: RuntimeException) {

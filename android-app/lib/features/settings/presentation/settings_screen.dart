@@ -8,7 +8,10 @@
 //    - À propos (version, GitHub, mises à jour)
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:native_video_player/native_video_player.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
@@ -20,6 +23,7 @@ import '../../about/presentation/about_screen.dart';
 import '../../cast/presentation/cast_diagnostics_screen.dart';
 import 'notifications_settings_screen.dart';
 import '../../channels/data/recently_watched_repository.dart';
+import '../../player/data/audio_diag_prefs.dart';
 import '../../player/data/player_settings.dart';
 import '../../channels/presentation/widgets/source_choice_sheet.dart';
 import '../../playlists/presentation/playlists_screen.dart';
@@ -129,6 +133,7 @@ class SettingsScreen extends StatelessWidget {
                 );
               },
             ),
+            const _CallModeSwitch(),
 
             // NOTE: la section "Mes playlists / Ajouter M3U" a été
             // retirée. Le client ne gère plus ses playlists lui-même —
@@ -474,6 +479,66 @@ class _ActionTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Interrupteur téléphone. Coupé par défaut. Allumé : on demande à
+/// Android de quitter le mode appel, et on affiche la phrase lue.
+/// Le son du lecteur n'est pas filtré.
+class _CallModeSwitch extends StatefulWidget {
+  const _CallModeSwitch();
+
+  @override
+  State<_CallModeSwitch> createState() => _CallModeSwitchState();
+}
+
+class _CallModeSwitchState extends State<_CallModeSwitch> {
+  bool _on = false;
+  String? _note;
+
+  @override
+  void initState() {
+    super.initState();
+    _on = NativeVideoController.restoreNormalMode;
+  }
+
+  Future<void> _toggle(bool value) async {
+    setState(() {
+      _on = value;
+      _note = value ? 'Lecture du mode…' : 'Coupé. Le mode Android n\'est pas modifié.';
+    });
+    await AudioDiagPrefs.setRestoreNormalMode(value);
+    if (!value || !mounted) return;
+    final String? line = await AudioModeGuardClient.ask();
+    if (!mounted) return;
+    setState(() => _note = line ?? 'Demande non faite.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        _SwitchTile(
+          icon: Icons.hearing_outlined,
+          title: 'Mode appel : remettre normal',
+          subtitle:
+              'Coupé par défaut. Allumé, si Android est resté en mode appel, '
+              'on lui demande de revenir à normal. Le son n\'est pas filtré.',
+          value: _on,
+          onChanged: (bool v) {
+            unawaited(_toggle(v));
+          },
+        ),
+        if (_note != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 8, right: 8, bottom: 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(_note!, style: AppTextStyles.bodyMedium),
+            ),
+          ),
+      ],
     );
   }
 }

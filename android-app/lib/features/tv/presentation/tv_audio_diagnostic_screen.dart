@@ -89,6 +89,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _androidFocus = NativeVideoController.androidAudioFocus;
     _bgPause = NativeVideoController.backgroundPauseOnly;
     _immediate = NativeVideoController.immediateHandoff;
+    _modeGuard = NativeVideoController.restoreNormalMode;
     // Le libellé vient de la mémoire Dart. On le repousse au lecteur
     // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
     NativeVideoController.pushAudioDiagFlags();
@@ -104,6 +105,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _androidFocus = false;
   bool _bgPause = false;
   bool _immediate = false;
+  bool _modeGuard = false;
+  String? _modeNote;
   bool _witnessBusy = false;
   NativeVideoController? _witness;
 
@@ -155,6 +158,21 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     } finally {
       if (mounted) setState(() => _witnessBusy = false);
     }
+  }
+
+  Future<void> _toggleModeGuard() async {
+    final bool next = !_modeGuard;
+    setState(() {
+      _modeGuard = next;
+      _modeNote = next
+          ? 'Lecture du mode…'
+          : 'Coupé. Le mode Android n\'est pas modifié.';
+    });
+    await AudioDiagPrefs.setRestoreNormalMode(next);
+    if (!next || !mounted) return;
+    final String? line = await AudioModeGuardClient.ask();
+    if (!mounted) return;
+    setState(() => _modeNote = line ?? 'Demande non faite.');
   }
 
   Future<void> _toggleImmediate() async {
@@ -293,8 +311,21 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _witness != null,
               onSelect: _playWitness,
             ),
+            const SizedBox(width: 12),
+            _Toggle(
+              label: _modeGuard ? 'Mode appel : normal' : 'Mode appel : coupé',
+              on: _modeGuard,
+              onSelect: _toggleModeGuard,
+            ),
           ],
         ),
+        if (_modeNote != null) ...<Widget>[
+          const SizedBox(height: 8),
+          Text(
+            _modeNote!,
+            style: TextStyle(fontSize: TvDimens.label, color: TvTokens.muted),
+          ),
+        ],
         if (_witness != null) ...<Widget>[
           const SizedBox(height: 8),
           Text(
@@ -330,7 +361,11 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'Passage : « attendre » (défaut) = on n\'ouvre la chaîne suivante '
           'que lorsque l\'AudioTrack précédent est vraiment rendu (sinon deux '
           'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '
-          'ancien comportement. Son témoin : 10 s (voix puis bruit), '
+          'ancien comportement. Mode appel : « coupé » (défaut) = on ne touche '
+          'pas au mode Android. « normal » = si le mode lu est un appel, on '
+          'demande le retour à normal. Ça ne filtre pas le son. Si la phrase '
+          'dit « toujours communication », une autre application tient le mode. '
+          'Son témoin : 10 s (voix puis bruit), '
           'lu par le même lecteur. Allume la mesure, ne change pas le son. '
           'Bruit sourd → l\'appareil. Bruit clair → la chaîne.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
