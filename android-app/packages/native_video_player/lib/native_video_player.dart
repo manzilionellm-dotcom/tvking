@@ -178,6 +178,12 @@ class NativeVideoController extends ChangeNotifier {
   /// Vrai : avant la lecture, on demande le mode normal.
   static bool normalizeAudioMode = false;
 
+  /// Essai d'attributs AudioTrack. « off » = le son d'aujourd'hui
+  /// (contenu film, ou parole si la voix claire est allumée).
+  /// « film » / « musique » / « parole » / « media3 » sont des essais.
+  /// Un mot inconnu est traité comme « off » par le natif.
+  static String audioAttributeTrial = 'off';
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -191,6 +197,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
       ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
       ch.invokeMethod<void>('setNormalizeMode', normalizeAudioMode);
+      ch.invokeMethod<void>('setAudioProfile', audioAttributeTrial);
     }
   }
 
@@ -334,6 +341,7 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
     ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
     ch.invokeMethod<void>('setNormalizeMode', normalizeAudioMode);
+    ch.invokeMethod<void>('setAudioProfile', audioAttributeTrial);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;

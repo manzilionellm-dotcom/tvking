@@ -62,6 +62,7 @@ import com.manzilionellm.native_video_player.logic.AudioGate
 import com.manzilionellm.native_video_player.logic.AudioHandoff
 import com.manzilionellm.native_video_player.logic.AudioFocusPolicy
 import com.manzilionellm.native_video_player.logic.AudioFixes
+import com.manzilionellm.native_video_player.logic.AudioProfile
 import com.manzilionellm.native_video_player.logic.AudioRouteState
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
@@ -277,6 +278,12 @@ class NativeVideoView(
     private var focusRequest: AudioFocusRequest? = null
     private var focusHeld = false
     private var pausedByFocus = false
+    /**
+     * Vrai seulement quand l'essai d'attributs change pendant une lecture :
+     * on rend le focus pour le redemander avec le nouveau contenu.
+     * Reste faux tant que l'essai est coupé ou inchangé.
+     */
+    private var renewFocus = false
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         handler.post { onAudioFocusChange(change) }
     }
@@ -526,19 +533,22 @@ class NativeVideoView(
      * mêmes codes (1 accordé, 0 refusé). La décision est [AudioFocusPolicy.onRequest].
      */
     private fun requestOwnFocus() {
-        if (AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus)) return
+        if (AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus)) {
+            renewFocus = false
+            return
+        }
+        // Essai d'attributs : on rend le focus pour le redemander avec
+        // le nouveau contenu. Coupé, renewFocus reste faux : rien ne change.
+        if (renewFocus) {
+            renewFocus = false
+            if (focusHeld) abandonOwnFocus()
+        }
         val am = audioManager ?: return
         // Déjà tenu : aucun second appel Android.
         if (!AudioFocusPolicy.onRequest(focusHeld, AudioFocusPolicy.REQUEST_GRANTED).asked) return
         val code = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val attrs = android.media.AudioAttributes.Builder()
-                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                    .setContentType(
-                        if (clearVoiceEnabled) android.media.AudioAttributes.CONTENT_TYPE_SPEECH
-                        else android.media.AudioAttributes.CONTENT_TYPE_MOVIE,
-                    )
-                    .build()
+                val attrs = platformAudioAttributes()
                 val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(attrs)
                     // Pas de pause automatique sur « baisse demandée » : on décide.
@@ -681,16 +691,7 @@ class NativeVideoView(
         if (Build.VERSION.SDK_INT < 33) return emptyList()
         val am = audioManager ?: return emptyList()
         return try {
-            val content = if (clearVoiceEnabled) {
-                android.media.AudioAttributes.CONTENT_TYPE_SPEECH
-            } else {
-                android.media.AudioAttributes.CONTENT_TYPE_MOVIE
-            }
-            val attrs = android.media.AudioAttributes.Builder()
-                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                .setContentType(content)
-                .build()
-            am.getAudioDevicesForAttributes(attrs).map { it.type }
+            am.getAudioDevicesForAttributes(platformAudioAttributes()).map { it.type }
         } catch (_: Throwable) {
             emptyList()
         }
@@ -924,9 +925,11 @@ class NativeVideoView(
             .setFallbackMaxPlaybackSpeed(1f)
             .build()
 
-        // « film » par défaut. « voix claire » passe en SPEECH le temps
+        // « film » par défaut. « voix claire » passe en parole le temps
         // de la lecture (le téléviseur peut alors appliquer son propre
-        // renfort de dialogue). Le focus audio est VRAI : un second
+        // renfort de dialogue). L'essai Diagnostic (musique, parole,
+        // défaut Media3) ne s'applique que s'il est allumé : coupé, on
+        // reste ici. Le focus audio est géré par Zuno : un second
         // lecteur, ou une autre app, ne se mélange plus au nôtre.
         // L'aperçu est coupé explicitement avant le plein écran (bail),
         // donc il ne reprend pas le focus par-dessus la chaîne.
@@ -1022,16 +1025,30 @@ class NativeVideoView(
             .build()
     }
 
-    /** Profil audio : film, ou parole si la voix claire est allumée. */
+    /**
+     * Attributs Media3. Essai coupé : film, ou parole si la voix claire
+     * est allumée — exactement le chemin d'aujourd'hui. On ne pose ni
+     * drapeau, ni politique de capture, ni spatialisation : Media3 met
+     * alors ses défauts (drapeaux 0, capture tous, spatialisation auto).
+     */
     private fun movieAudioAttributes(): AudioAttributes {
-        val type = if (clearVoiceEnabled) {
-            C.AUDIO_CONTENT_TYPE_SPEECH
-        } else {
-            C.AUDIO_CONTENT_TYPE_MOVIE
-        }
+        val choice = AudioProfile.resolve(AudioProfile.current, clearVoiceEnabled)
         return AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
-            .setContentType(type)
+            .setContentType(choice.contentType)
+            .build()
+    }
+
+    /**
+     * Les mêmes chiffres, pour la demande de focus et pour « appareils
+     * prévus ». Le focus et l'AudioTrack doivent annoncer le même contenu,
+     * sinon l'essai ne départage rien.
+     */
+    private fun platformAudioAttributes(): android.media.AudioAttributes {
+        val choice = AudioProfile.resolve(AudioProfile.current, clearVoiceEnabled)
+        return android.media.AudioAttributes.Builder()
+            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+            .setContentType(choice.contentType)
             .build()
     }
 
@@ -1223,6 +1240,32 @@ class NativeVideoView(
                 // Repli : vrai = Media3 reprend le focus (avec sa baisse à 20 %).
                 // Pris en compte à la prochaine ouverture.
                 AudioFixes.androidFocus = call.arguments == true
+                result.success(null)
+            }
+            "setAudioProfile" -> {
+                // Essai film / musique / parole / défaut Media3. « off » ou
+                // un mot inconnu = le son d'aujourd'hui. On rouvre seulement
+                // si une lecture est en cours ET que le mot change : Media3
+                // ne relit le contenu qu'en recréant l'AudioTrack.
+                val next = AudioProfile.parse(call.arguments as? String)
+                val prev = AudioProfile.current
+                AudioProfile.current = next
+                if (!released && AudioProfile.shouldReopen(prev, next, probeIsPlaying())) {
+                    renewFocus = true
+                    if (vodMode && player.currentPosition > 0) {
+                        lastKnownPos = player.currentPosition
+                    }
+                    openCurrent(if (vodMode) lastKnownPos else null)
+                } else if (!released) {
+                    try {
+                        player.setAudioAttributes(
+                            movieAudioAttributes(),
+                            AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+                        )
+                    } catch (_: RuntimeException) {
+                    }
+                    if (diag.decoder != null || diag.outSampleRate > 0) sendAudioDiag()
+                }
                 result.success(null)
             }
             "suspend" -> {
@@ -2396,6 +2439,9 @@ class NativeVideoView(
             probeReject = if (AudioFixes.probe) probeDecoder.lastReject else null,
             playback = ownerNow(),
             routeLine = AudioRouteState.pathLine(currentFacts()),
+            attributeLine = AudioProfile.line(
+                AudioProfile.resolve(AudioProfile.current, clearVoiceEnabled),
+            ),
             playerAudible = audible,
         )
         diag = live
