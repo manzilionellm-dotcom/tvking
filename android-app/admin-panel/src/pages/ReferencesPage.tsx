@@ -106,7 +106,7 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-white/5">
+      <div className="overflow-x-auto rounded-xl border border-white/5">
         <table className="w-full text-sm">
           <thead className="bg-midnight">
             <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">

@@ -49,7 +49,7 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
           onClick={() => navigate('/activate')}
           className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-black transition duration-150 hover:bg-accent-bright"
         >
-          + Activer un MAC
+          + Activer une MAC
         </button>
       }
     >
@@ -57,13 +57,13 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
         <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-white/5">
+      <div className="overflow-x-auto rounded-xl border border-white/5">
         <table className="w-full text-sm">
           <thead className="bg-midnight">
             <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
               <th className="px-4 py-3">Client</th>
               <th className="px-4 py-3">App</th>
-              <th className="px-4 py-3">Device MAC</th>
+              <th className="px-4 py-3">MAC</th>
               <th className="px-4 py-3">Plan</th>
               <th className="px-4 py-3">Statut</th>
               <th className="px-4 py-3">Expire le</th>
@@ -98,7 +98,7 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
                 <td className="px-4 py-3 text-ink-secondary uppercase tracking-wider text-[10px]">{l.plan}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded-sm px-2 py-0.5 text-[9px] uppercase tracking-widest ${statusClass(l.status)}`}>
-                    {l.status}
+                    {statusLabel(l.status)}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-ink-tertiary">{expiryPhrase(l.expires_at)}</td>
@@ -117,6 +117,17 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
       />
     </AppLayout>
   );
+}
+
+function statusLabel(s: string): string {
+  switch (s) {
+    case 'active':  return 'Actif';
+    case 'expired': return 'Expiré';
+    case 'frozen':  return 'Gelé';
+    case 'banned':  return 'Banni';
+    case 'pending': return 'En attente';
+    default:        return s;
+  }
 }
 
 function statusClass(s: string): string {

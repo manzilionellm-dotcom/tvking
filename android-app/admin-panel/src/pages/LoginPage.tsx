@@ -49,6 +49,16 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
     setBusy(true);
     setErr(null);
     setOkMsg(null);
+    if (!email.trim()) {
+      setErr('Indique un identifiant.');
+      setBusy(false);
+      return;
+    }
+    if (mode === 'reseller' && signup && password.length < 4) {
+      setErr('Le mot de passe doit faire au moins 4 caractères.');
+      setBusy(false);
+      return;
+    }
     try {
       // Auto-inscription revendeur : crée un compte 'pending' (pas de login).
       if (mode === 'reseller' && signup) {
@@ -82,7 +92,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
       >
         <div className="text-center">
           <div className="mx-auto mb-4 h-12 w-12 rounded-xl bg-accent/15 ring-1 ring-accent/40 grid place-items-center">
-            <span className="text-accent font-bold text-base tracking-tight">TF</span>
+            <span className="text-accent-bright font-bold text-base tracking-tight">TF</span>
           </div>
           <h1 className="text-xl font-semibold tracking-tight">{t('brand')}</h1>
           <p className="mt-1 text-xs uppercase tracking-widest text-ink-tertiary">
@@ -115,7 +125,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
                   <span
                     className={
                       'text-sm font-semibold ' +
-                      (active ? 'text-accent' : 'text-ink-primary')
+                      (active ? 'text-accent-bright' : 'text-ink-primary')
                     }
                   >
                     {m === 'admin' ? t('login.tabAdmin') : t('login.tabReseller')}
@@ -133,23 +143,26 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
         <div className="space-y-3">
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label htmlFor="login-id" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               {t('login.identifier')}
             </label>
             <input
+              id="login-id"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
+              autoComplete="username"
               className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
               placeholder={mode === 'reseller' ? 'ton-identifiant' : 'admin'}
             />
           </div>
           {mode === 'reseller' && signup && (
             <div>
-              <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+              <label htmlFor="login-name" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
                 Nom (optionnel)
               </label>
               <input
+                id="login-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
@@ -158,13 +171,15 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
             </div>
           )}
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label htmlFor="login-password" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               {t('login.password')}
             </label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete={signup ? 'new-password' : 'current-password'}
               className="w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none ring-accent focus:ring-1"
               placeholder="••••••••"
             />
@@ -184,7 +199,7 @@ export function LoginPage({ onLoggedIn }: { onLoggedIn: () => void }) {
 
         <button
           type="submit"
-          disabled={busy || !password}
+          disabled={busy || !password || !email.trim()}
           className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent-bright"
         >
           {busy

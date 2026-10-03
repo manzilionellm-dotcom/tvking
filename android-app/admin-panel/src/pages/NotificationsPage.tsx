@@ -227,10 +227,11 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
 
           {/* Ciblage par pays */}
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label htmlFor="ann-country" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               Cible (pays)
             </label>
             <select
+              id="ann-country"
               value={country}
               onChange={(e) => setCountry(e.target.value)}
               className={inputCls}
@@ -249,10 +250,11 @@ export function NotificationsPage({ onLogout }: { onLogout: () => void }) {
 
           {/* Durée d'affichage (disparition auto) */}
           <div>
-            <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
+            <label htmlFor="ann-duration" className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
               Durée d'affichage
             </label>
             <select
+              id="ann-duration"
               value={durationMin}
               onChange={(e) => setDurationMin(parseInt(e.target.value, 10))}
               className={inputCls}

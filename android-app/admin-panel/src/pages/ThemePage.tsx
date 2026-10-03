@@ -226,6 +226,7 @@ export function ThemePage({ onLogout }: { onLogout: () => void }) {
               <div className="flex items-center gap-2">
                 <input
                   type="color"
+                  aria-label="Couleur personnalisée"
                   value={effAccent}
                   onChange={(e) => setAccent(e.target.value.toUpperCase())}
                   className="h-9 w-12 cursor-pointer rounded border border-white/10 bg-transparent"
@@ -514,7 +515,7 @@ function PhonePreview({
             </div>
             <div
               className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-              style={{ background: `${accent}22`, color: accent }}
+              style={{ background: `${accent}22`, color: text }}
             >
               {cat.c}
             </div>
@@ -540,7 +541,7 @@ function PhonePreview({
             />
             <span
               className="text-[8px]"
-              style={{ color: it.on ? accent : textDim }}
+              style={{ color: it.on ? text : textDim }}
             >
               {it.label}
             </span>
