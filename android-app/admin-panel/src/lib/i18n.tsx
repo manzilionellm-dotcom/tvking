@@ -71,6 +71,10 @@ const STR: Record<string, Record<Lang, string>> = {
   'common.cancel': { fr: 'Annuler', en: 'Cancel', ar: 'إلغاء' },
   'common.close': { fr: 'Fermer', en: 'Close', ar: 'إغلاق' },
   'common.language': { fr: 'Langue', en: 'Language', ar: 'اللغة' },
+  'a11y.skip': { fr: 'Aller au contenu', en: 'Skip to content', ar: 'تخطي إلى المحتوى' },
+  'a11y.openMenu': { fr: 'Ouvrir le menu', en: 'Open menu', ar: 'فتح القائمة' },
+  'a11y.closeMenu': { fr: 'Fermer le menu', en: 'Close menu', ar: 'إغلاق القائمة' },
+  'a11y.nav': { fr: 'Navigation principale', en: 'Main navigation', ar: 'التنقل الرئيسي' },
 
   // --- Connexion ---
   'login.subtitleAdmin': { fr: 'Super Admin', en: 'Super Admin', ar: 'المشرف العام' },
@@ -156,12 +160,12 @@ export function useT(): (k: string) => string { return useContext(Ctx).t; }
 
 /// Petit selecteur de langue reutilisable (login, mon compte…).
 export function LangSelect({ className }: { className?: string }) {
-  const { lang, setLang } = useI18n();
+  const { lang, setLang, t } = useI18n();
   return (
     <select
       value={lang}
       onChange={(e) => setLang(e.target.value as Lang)}
-      aria-label="Language"
+      aria-label={t('common.language')}
       className={
         className ||
         'rounded-md border border-white/10 bg-slate px-2 py-1.5 text-xs text-ink-secondary outline-none focus:ring-1 focus:ring-accent'

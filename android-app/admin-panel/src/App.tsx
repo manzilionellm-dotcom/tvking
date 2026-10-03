@@ -73,10 +73,13 @@ export default function App() {
 
   if (status === 'bootstrapping') {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-obsidian">
-        <div className="text-xs uppercase tracking-widest text-ink-tertiary">
-          Chargement…
-        </div>
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex h-screen w-screen flex-col items-center justify-center gap-3 bg-obsidian"
+      >
+        <div className="h-9 w-9 animate-pulse rounded-lg bg-accent/20 ring-1 ring-accent/40" />
+        <p className="text-sm text-ink-secondary">Chargement du panneau…</p>
       </div>
     );
   }

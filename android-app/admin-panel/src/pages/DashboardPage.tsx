@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { Alert } from '@/components/ui';
 import {
   statsApi, backupApi, type StatsOverview, ApiError,
   getCurrentUser, isOwnerRole,
@@ -74,11 +75,7 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
       ) : undefined}
     >
       {loading && <SkeletonCards />}
-      {err && (
-        <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent-bright">
-          {err}
-        </div>
-      )}
+      {err && <Alert>{err}</Alert>}
       {stats && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
           <KpiCard label={t('dash.clients')}  value={stats.customers} />
@@ -110,8 +107,8 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
       )}
 
       <div className="mt-10">
-        <h2 className="mb-3 text-[10px] uppercase tracking-widest text-ink-tertiary">
-          Prochaines actions
+        <h2 className="mb-3 text-sm font-semibold text-ink-primary">
+          Raccourcis
         </h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <NextActionCard

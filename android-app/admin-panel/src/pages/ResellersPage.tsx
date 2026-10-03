@@ -1,5 +1,10 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { confirmAction } from '@/components/confirm';
+import {
+  Alert, EmptyState, LoadingRows, Pager, SearchField, SortTh, StatusBadge,
+  TableFrame, useClientTable,
+} from '@/components/ui';
 import {
   resellersApi, creditsApi, type Reseller, ApiError, RESELLER_CAPS,
 } from '@/lib/api';
@@ -43,6 +48,35 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
 
   useEffect(reload, [onLogout]);
 
+  const table = useClientTable(items, {
+    textOf: (r) => [r.name, r.email, r.status].filter(Boolean).join(' '),
+    valueOf: (r, key) => {
+      if (key === 'name') return r.name || r.email || '';
+      if (key === 'status') return r.status || '';
+      if (key === 'credits') return r.credit_balance ?? 0;
+      if (key === 'devices') return r.devices ?? 0;
+      if (key === 'licenses') return r.licenses ?? 0;
+      return '';
+    },
+  });
+
+  async function setStatus(r: Reseller) {
+    const next = r.status === 'active' ? 'suspended' : 'active';
+    if (next === 'suspended') {
+      const ok = await confirmAction({
+        title: 'Suspendre ce revendeur ?',
+        message: `${r.name || r.email} ne pourra plus se connecter ni activer d'appareils, jusqu'à ce que tu le réactives.`,
+        confirmLabel: 'Suspendre',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    resellersApi
+      .update(r.id, { status: next })
+      .then(reload)
+      .catch((e) => setErr(e.message));
+  }
+
   return (
     <AppLayout
       title="Revendeurs"
@@ -66,37 +100,38 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
         </div>
       }
     >
-      {err && (
-        <div className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">{err}</div>
-      )}
+      {err && <Alert>{err}</Alert>}
 
-      <div className="overflow-hidden rounded-xl border border-white/5">
-        <table className="w-full text-sm">
-          <thead className="bg-midnight">
-            <tr className="text-left text-[10px] uppercase tracking-widest text-ink-tertiary">
-              <th className="px-4 py-3">Revendeur</th>
-              <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Droits (coche)</th>
-              <th className="px-4 py-3 text-right">Crédits</th>
-              <th className="px-4 py-3 text-right">Appareils</th>
-              <th className="px-4 py-3 text-right">Licences</th>
-              <th className="px-4 py-3" />
+      <SearchField
+        label="Rechercher un revendeur"
+        value={table.query}
+        onChange={table.setQuery}
+        placeholder="Nom ou e-mail…"
+      />
+
+      <TableFrame label="Liste des revendeurs" busy={loading}>
+          <thead className="bg-midnight text-left">
+            <tr>
+              <SortTh label="Revendeur" column="name" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Statut" column="status" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <th scope="col" className="px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-ink-secondary">Droits</th>
+              <SortTh label="Crédits" column="credits" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} align="right" />
+              <SortTh label="Appareils" column="devices" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} align="right" />
+              <SortTh label="Licences" column="licenses" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} align="right" />
+              <th scope="col" className="px-4 py-3"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {loading && Array.from({ length: 4 }).map((_, i) => (
-              <tr key={i} className="bg-obsidian">
-                <td className="px-4 py-3" colSpan={7}>
-                  <div className="h-4 w-full animate-pulse rounded bg-white/5" />
-                </td>
-              </tr>
-            ))}
-            {!loading && items.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-ink-tertiary">
-                Aucun revendeur. Crée le premier pour lui donner des crédits.
+            {loading && <LoadingRows cols={7} />}
+            {!loading && table.total === 0 && (
+              <tr><td colSpan={7}>
+                <EmptyState
+                  title={table.query ? `Aucun revendeur pour « ${table.query} ».` : 'Aucun revendeur pour l’instant.'}
+                  hint={table.query ? 'Vérifie le nom ou l’e-mail.' : 'Crée le premier revendeur, puis donne-lui des crédits.'}
+                />
               </td></tr>
             )}
-            {items.map((r) => (
+            {!loading && table.rows.map((r) => (
               <tr key={r.id} className="bg-obsidian hover:bg-midnight">
                 <td className="px-4 py-3">
                   <div className="font-medium">{r.name || r.email}</div>
@@ -120,12 +155,8 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
                       + Crédits
                     </button>
                     <button
-                      onClick={() =>
-                        resellersApi
-                          .update(r.id, { status: r.status === 'active' ? 'suspended' : 'active' })
-                          .then(reload)
-                          .catch((e) => setErr(e.message))
-                      }
+                      type="button"
+                      onClick={() => setStatus(r)}
                       className="rounded-md border border-white/10 px-2.5 py-1 text-xs hover:border-white/30"
                     >
                       {r.status === 'active'
@@ -145,8 +176,15 @@ export function ResellersPage({ onLogout }: { onLogout: () => void }) {
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+      </TableFrame>
+      <Pager
+        page={table.page}
+        pages={table.pages}
+        start={table.start}
+        end={table.end}
+        total={table.total}
+        onPage={table.setPage}
+      />
 
       {showCreate && (
         <CreateResellerModal
@@ -210,20 +248,6 @@ function PermsCell({
         );
       })}
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { cls: string; label: string }> = {
-    active: { cls: 'bg-success/15 text-success', label: 'Actif' },
-    pending: { cls: 'bg-accent/15 text-accent-bright', label: 'En attente' },
-    suspended: { cls: 'bg-warning/15 text-warning', label: 'Suspendu' },
-  };
-  const s = map[status] || map.suspended;
-  return (
-    <span className={'rounded-full px-2 py-0.5 text-[11px] font-medium ' + s.cls}>
-      {s.label}
-    </span>
   );
 }
 
