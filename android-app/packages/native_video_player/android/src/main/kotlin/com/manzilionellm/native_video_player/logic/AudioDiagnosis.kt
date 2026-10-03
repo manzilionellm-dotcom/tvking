@@ -122,6 +122,11 @@ data class AudioSnapshot(
      * (les rapports d'avant cette mesure).
      */
     val effects: AudioSystemEffects.Sheet? = null,
+    /**
+     * Tampon, fréquence réelle, rythme, écrêtage. Null tant que la fiche
+     * n'a pas encore lu l'AudioTrack. La lecture ne change pas le son.
+     */
+    val formatMeter: AudioFormatMeter.Reading? = null,
 )
 
 object AudioDiagnosis {
@@ -236,8 +241,21 @@ object AudioDiagnosis {
             out += "SOURCE : son échantillonné à ${khz(s.inSampleRate)} → aigus absents dès l'origine."
         }
         // 5) Craquements / coupures : sortie son affamée.
-        if (s.underruns > 0) {
-            out += "SORTIE : ${s.underruns} coupure(s) du son → box trop chargée ou flux qui arrive par à-coups."
+        //    getUnderrunCount et le rappel Media3 ne comptent pas toujours
+        //    la même chose : on prend le plus grand, et on cite les deux
+        //    s'ils divergent.
+        val cuts = AudioFormatMeter.underrunCount(s.underruns, s.formatMeter?.trackUnderruns)
+        if (cuts > 0) {
+            val track = s.formatMeter?.trackUnderruns
+            val both = if (track != null && track != s.underruns) {
+                " (AudioTrack $track, rappel Media3 ${s.underruns})"
+            } else {
+                ""
+            }
+            out += "SORTIE : $cuts coupure(s) du son$both → box trop chargée ou flux qui arrive par à-coups."
+        }
+        s.formatMeter?.let { meter ->
+            for (notice in AudioFormatMeter.notices(meter)) out += notice
         }
         // 6) Informations utiles (pas des défauts).
         if (s.passthrough) {
@@ -565,12 +583,19 @@ object AudioDiagnosis {
         clippingFinding(s)?.let { out += it }
         delayFinding(s.avOffsetMs)?.let { out += it }
 
-        if (s.underruns > 0) {
+        val cuts = AudioFormatMeter.underrunCount(s.underruns, s.formatMeter?.trackUnderruns)
+        if (cuts > 0) {
+            val track = s.formatMeter?.trackUnderruns
+            val both = if (track != null && track != s.underruns) {
+                " AudioTrack $track, rappel Media3 ${s.underruns}."
+            } else {
+                ""
+            }
             out += Finding(
                 id = "coupures",
                 confidence = Confidence.HAUTE,
                 kind = Kind.CAUSE,
-                symptom = "${s.underruns} coupure(s) de la sortie son.",
+                symptom = "$cuts coupure(s) de la sortie son.$both",
                 cause = "L'AudioTrack a été affamé (box chargée ou flux en à-coups). Ce n'est pas un passe-bas.",
                 fix = Fix(
                     file = FILE_VIEW,
@@ -643,6 +668,7 @@ object AudioDiagnosis {
                 ),
             )
         }
+        out += formatFindings(s)
         out += phaseFindings(s)
         out += sourceFindings(s)
         return out
@@ -808,6 +834,62 @@ object AudioDiagnosis {
         return out
     }
 
+    /**
+     * Fréquences différentes ou rythme qui bouge. INFO : la simulation
+     * montre que ça ne coupe pas les aigus. On le nomme, on ne change
+     * pas le lecteur pour autant.
+     */
+    private fun formatFindings(s: AudioSnapshot): List<Finding> {
+        val meter = s.formatMeter ?: return emptyList()
+        val out = ArrayList<Finding>(2)
+        when (AudioFormatMeter.resample(meter.trackHz, meter.deviceHz)) {
+            AudioFormatMeter.Resample.DEVICE_HIGHER,
+            AudioFormatMeter.Resample.DEVICE_LOWER,
+            -> out += Finding(
+                id = "reechantillonnage_android",
+                confidence = Confidence.INCERTAINE,
+                kind = Kind.INFO,
+                symptom = "Piste ${khz(meter.trackHz)}, mélangeur ${khz(meter.deviceHz ?: 0)}.",
+                cause = "AudioFlinger convertit la fréquence après le dernier PCM de l'app. " +
+                    "Un écart 48 kHz vers 44,1 kHz ne suffit pas, dans la simulation, à faire " +
+                    "un son « vieille radio » (l'énergie au-dessus de 4 kHz reste large). " +
+                    "On ne sait pas si CETTE conversion, sur CET appareil, colore le son.",
+                fix = Fix(
+                    file = FILE_VIEW,
+                    symbol = "NativeVideoView.buildAudioSink",
+                    media3 = "DefaultAudioSink : la piste est à la fréquence du PCM, pas à celle du mélangeur",
+                    action = "Ne pas forcer la fréquence de sortie. Aucun interrupteur : " +
+                        "changer la fréquence changerait le son par défaut.",
+                    settingKey = null,
+                ),
+            )
+            AudioFormatMeter.Resample.SAME,
+            AudioFormatMeter.Resample.UNKNOWN,
+            -> Unit
+        }
+        if (AudioFormatMeter.rhythmMoved(meter)) {
+            out += Finding(
+                id = "rythme_ajuste",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Vitesse ${String.format(Locale.FRANCE, "%.2f", meter.speed)}, " +
+                    "Sonic ${if (meter.sonicActive == true) "actif" else "pas actif à 1,00"}.",
+                cause = "Le rythme n'est pas resté à 1. Un petit écart change la hauteur, " +
+                    "il n'enlève pas la bande au-dessus de 4 kHz. Le direct est pourtant " +
+                    "figé à 1 dans le code : si la fiche le montre, quelque chose l'a bougé.",
+                fix = Fix(
+                    file = FILE_VIEW,
+                    symbol = "NativeVideoView.buildConfiguredPlayer / ZunoAudioChain.applyPlaybackParameters",
+                    media3 = "DefaultLivePlaybackSpeedControl min = max = 1, SonicAudioProcessor",
+                    action = "Ne pas réactiver la vitesse variable du direct (0,97–1,03). " +
+                        "Elle est déjà coupée. Aucun nouvel interrupteur.",
+                    settingKey = null,
+                ),
+            )
+        }
+        return out
+    }
+
     /** Causes sûres seulement : celles qu'on a le droit de nommer sans réserve. */
     fun sureCauses(s: AudioSnapshot): List<Finding> =
         findings(s).filter { it.kind == Kind.CAUSE && it.confidence == Confidence.HAUTE }
@@ -869,6 +951,7 @@ object AudioDiagnosis {
             append(", vitesse ")
             append(String.format(Locale.FRANCE, "%.2f", s.playbackSpeed))
             append(". L'app n'a branché ni égaliseur, ni DynamicsProcessing, ni LoudnessEnhancer.")
+            append("\n").append(AudioFormatMeter.block(s.formatMeter, s.underruns))
             if (!s.routeNote.isNullOrBlank()) {
                 append("\nEssai : ").append(s.routeNote)
             }

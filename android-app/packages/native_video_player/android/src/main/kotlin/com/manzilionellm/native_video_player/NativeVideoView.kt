@@ -19,6 +19,7 @@ import android.view.Surface
 import android.view.SurfaceView
 import android.view.View
 import android.widget.FrameLayout
+import kotlin.math.abs
 import android.widget.ImageView
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -58,6 +59,7 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
+import com.manzilionellm.native_video_player.logic.AudioFormatMeter
 import com.manzilionellm.native_video_player.logic.AudioGate
 import com.manzilionellm.native_video_player.logic.AudioHandoff
 import com.manzilionellm.native_video_player.logic.AudioFocusPolicy
@@ -369,6 +371,12 @@ class NativeVideoView(
     private val probeSilence = AudioProbeProcessor(AudioStages.SILENCE, ::onProbe)
     private val probeSink = AudioProbeProcessor(AudioStages.SINK, ::onProbe)
 
+    // Dernière chaîne et dernière piste, pour lire Sonic et l'AudioTrack.
+    // Recréées à chaque lecteur. Le fournisseur est celui de Media3 :
+    // il ne change pas la construction de la piste.
+    private var audioChain: ZunoAudioChain? = null
+    private var trackMemory = RememberingAudioTrackProvider()
+
     // ---- DIAGNOSTIC DU SON (boîte noire, 01/10/2026) -----------------------
     // Pour chaque chaîne : ce qui ENTRE (format du flux), QUI décode (box ou
     // FFmpeg), ce qui SORT (AudioTrack) et les coupures. Envoyé à Dart
@@ -376,6 +384,14 @@ class NativeVideoView(
     // noire). Lecture seule : ne change RIEN à la lecture.
     private var diag = AudioSnapshot()
     private var diagLastUnderrunSentMs = 0L
+
+    // Vitesse vue depuis l'ouverture, et latences pour la dérive.
+    // Remis à zéro avec la fiche. On ne corrige pas le rythme.
+    private var speedMin = 1f
+    private var speedMax = 1f
+    private var speedMoves = 0
+    private var speedWasOff = false
+    private val latencySamples = ArrayDeque<Int>()
     private var diagCapsSent = false
 
     // Trace de volume : une ligne par seconde, 10 s après chaque ouverture.
@@ -912,21 +928,26 @@ class NativeVideoView(
                 // tampon réseau. Float coupé : certaines box crachent le PCM
                 // flottant. Vitesse AudioTrack coupée : on joue à 1,0.
                 val base = DefaultAudioSink.AudioTrackBufferSizeProvider.DEFAULT
+                val chain = ZunoAudioChain(
+                    probeDecoder,
+                    clearVoiceProcessor,
+                    probeVoice,
+                    probeSilence,
+                    probeSink,
+                )
+                val memory = RememberingAudioTrackProvider()
+                audioChain = chain
+                trackMemory = memory
                 return DefaultAudioSink.Builder(appContext)
                     .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(false)
                     // Sondes inactives tant que le réglage est coupé (NOT_SET).
                     // Voix claire coupée, silences non sautés, vitesse 1 :
                     // aucun processeur actif. Le son par défaut ne change pas.
-                    .setAudioProcessorChain(
-                        ZunoAudioChain(
-                            probeDecoder,
-                            clearVoiceProcessor,
-                            probeVoice,
-                            probeSilence,
-                            probeSink,
-                        ),
-                    )
+                    // Le fournisseur retient la piste pour les compteurs.
+                    // Il délègue la construction au défaut Media3.
+                    .setAudioProcessorChain(chain)
+                    .setAudioTrackProvider(memory)
                     .setAudioTrackBufferSizeProvider { min, encoding, mode, frame, rate, bitrate, speed ->
                         val minBytes = base.getBufferSizeInBytes(
                             min, encoding, mode, frame, rate, bitrate, speed,
@@ -1201,6 +1222,7 @@ class NativeVideoView(
                 platformAacGaveUp = false
                 // Diagnostic du son : nouvelle chaîne, compteurs à zéro.
                 diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
+                resetFormatHistory()
                 diagLastUnderrunSentMs = 0L
                 lastDiagText = null
                 // Langue audio / sous-titres préférée (langue de l'app) : si le
@@ -1857,6 +1879,7 @@ class NativeVideoView(
         // Nouvelle ouverture : les pourcentages et le décodeur de la
         // chaîne d'avant ne doivent pas rester affichés.
         diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
+        resetFormatHistory()
         val tick = audioGate.onStopped(PlayerCensus.tracksAlive())
         tick.line?.let { emit("audioDiag", it) }
         if (!tick.prepare) {
@@ -1911,6 +1934,85 @@ class NativeVideoView(
         // n'est pas revenu (ou qu'un nouveau zap n'a pas redemandé le focus).
         player.playWhenReady = !pausedByFocus
         armVolumeTrace()
+        armFormatPoll()
+    }
+
+    /** Oublie les vitesses et les latences de la chaîne d'avant. */
+    private fun resetFormatHistory() {
+        speedMin = 1f
+        speedMax = 1f
+        speedMoves = 0
+        speedWasOff = false
+        latencySamples.clear()
+    }
+
+    /**
+     * Une fois la vitesse a quitté 1, on compte UN écart, pas une ligne
+     * par seconde. Revenir à 1 réarme le compteur.
+     */
+    private fun noteSpeed(speed: Float) {
+        if (speed < speedMin) speedMin = speed
+        if (speed > speedMax) speedMax = speed
+        val off = abs(speed - 1f) > AudioFormatMeter.SPEED_EPSILON
+        if (off && !speedWasOff) speedMoves++
+        speedWasOff = off
+    }
+
+    /**
+     * Soixante secondes, une lecture toutes les 5 s. Le texte est quantifié
+     * (latence au pas de 10 ms) : une fiche identique n'est pas réécrite.
+     */
+    private fun armFormatPoll() {
+        val token = volumeTraceToken
+        val session = sessions.generation
+        for (step in 1..12) {
+            handler.postDelayed({
+                if (released || token != volumeTraceToken || session != sessions.generation) return@postDelayed
+                sendAudioDiag()
+            }, step * 5_000L)
+        }
+    }
+
+    /** Compteurs lus sur l'AudioTrack et sur Sonic. Aucun setter. */
+    private fun currentFormatReading(speed: Float, pitch: Float): AudioFormatMeter.Reading {
+        noteSpeed(speed)
+        val chain = audioChain
+        val readout = AudioTrackReadout.read(trackMemory.current(), audioManager)
+        val latency = readout.latencyMs
+        if (latency != null) {
+            latencySamples.addLast(latency)
+            while (latencySamples.size > AudioFormatMeter.LATENCY_KEEP) {
+                latencySamples.removeFirst()
+            }
+        }
+        val sinkClip = diag.stages.firstOrNull { it.id == AudioStages.SINK }?.judgement?.clippedFraction
+        val clip = AudioFormatMeter.clip(
+            sinkClip,
+            diag.spectrum?.clippedFraction,
+            AudioFixes.probe,
+        )
+        return AudioFormatMeter.Reading(
+            trackUnderruns = readout.underruns,
+            latencyMs = readout.latencyMs,
+            bufferMs = readout.bufferMs,
+            trackHz = if (readout.sampleRate > 0) readout.sampleRate else diag.outSampleRate,
+            deviceHz = readout.deviceHz,
+            deviceFrames = readout.deviceFrames,
+            encoding = readout.encoding ?: diag.outEncoding,
+            speed = speed,
+            pitch = pitch,
+            speedMin = speedMin,
+            speedMax = speedMax,
+            speedMoves = speedMoves,
+            sonicActive = chain?.sonicActive(),
+            sonicSpeed = chain?.sonicSpeed(),
+            sonicPitch = chain?.sonicPitch(),
+            trackParamsEnabled = false,
+            trackPlaybackSpeed = readout.playbackSpeed,
+            clippedFraction = clip.fraction,
+            clipSource = clip.source,
+            latencySeries = latencySamples.toList(),
+        )
     }
 
     /**
@@ -2524,10 +2626,27 @@ class NativeVideoView(
         } catch (_: RuntimeException) {
             false
         }
+        val params = try {
+            player.playbackParameters
+        } catch (_: RuntimeException) {
+            null
+        }
+        val speed = params?.speed ?: 1f
+        val pitch = params?.pitch ?: 1f
+        val meter = try {
+            currentFormatReading(speed, pitch)
+        } catch (_: RuntimeException) {
+            null
+        }
         val live = diag.copy(
             clearVoice = clearVoiceEnabled,
-            skipSilence = player.skipSilenceEnabled,
-            playbackSpeed = player.playbackParameters.speed,
+            skipSilence = try {
+                player.skipSilenceEnabled
+            } catch (_: RuntimeException) {
+                false
+            },
+            playbackSpeed = speed,
+            formatMeter = meter,
             cycle = currentUrl?.let { PlayerCensus.snapshot(AacRoute.key(it), boxFailure) },
             probeRequested = AudioFixes.probe,
             probeInChain = probeDecoder.lastAccepted,
