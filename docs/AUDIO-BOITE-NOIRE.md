@@ -353,3 +353,65 @@ Aucun interrupteur nouveau : ces mesures ne changent pas le chemin audio. Le bou
 
 - Le mode réel, la sortie réelle et la corrélation d'une chaîne de Lionel.
 - Que le témoin sonne clair ou sourd dans ses haut-parleurs.
+
+## Phase et voies (3 octobre 2026)
+
+Le son « dans un trou » peut être une voix au centre dont la droite est l'inverse de la gauche. Un haut-parleur qui additionne les deux voies l'efface. Un casque stéréo la garde, dans chaque oreille.
+
+Le son joué ne change pas. Aucun interrupteur nouveau. La sonde reste coupée par défaut (`zuno.audio.diag.probe`). Quand elle est allumée, la fiche ajoute le niveau (G−D)/(G+D) et la part gardée par un mélange mono. On n'inverse aucune voie.
+
+### PROUVÉ (machine, `gradle test --offline -q` dans `logic-test`, 3 octobre 2026)
+
+Code de sortie 0. **150** tests, **0** échec.
+
+Voix synthétique, 48 kHz, 1 seconde, fondamentale 140 Hz, harmoniques jusqu'à 3,2 kHz. PCM 16 bits entrelacé.
+
+| Signal | Corrélation | (G−D)/(G+D) | Mélange mono (G+D)/2 | Lecture |
+| --- | --- | --- | --- | --- |
+| Voix dupliquée, D = G | +1,00 | 0,00 | 100 % | ensemble, voix gardée |
+| Voix opposée, D = −G | −1,00 | infini | 0 % | annulée |
+| Droite inverse mais faible, D = −0,25 G | −1,00 | 1,67 | 14 % | corrélation négative, voix encore là |
+| Deux sinus, corrélation voulue −0,50 | −0,50 | 1,73 | 25 % | pas une opposition (seuil −0,70) |
+| Silence | illisible | 0,00 (0/0) | illisible | pas une opposition |
+| Continu G = 8000, D = −8000 | illisible | infini | 0 % | pas une voix : on ne dit pas « annulée » |
+| Droite muette | illisible | 1,00 | 25 % | voix plus faible, pas effacée |
+| Même voix opposée, gain ×8, écrêtée (75,0 % des échantillons au plafond) | −1,00 | infini | 0 % | toujours annulée |
+| Même voix dupliquée, gain ×8, écrêtée | +1,00 | 0,00 | 100 % | pas opposée |
+| Gain 0,45 sur les deux voies (comme une voix claire) | +1,00 ou −1,00 selon le signal | inchangé | inchangé | un gain commun ne crée pas l'opposition |
+| Échange des voies (carte 1, 0) | +1,00 si elles étaient égales | 0,00 | 100 % | échanger n'inverse pas |
+| Inversion manuelle de la droite | −1,00 | infini | 0 % | ça, le mapping de l'app ne le fait pas |
+| Plans FFmpeg relus comme de l'entrelacé | +1,00 | 0,03 | 100 % | fausse lecture : l'opposition disparaît |
+| Les mêmes plans, entrelacés pour de vrai | −1,00 | infini | 0 % | la sonde a raison seulement si le tampon est entrelacé |
+| 6 voies, G = −D, voix au centre | −1,00 sur G et D | infini | 0 % sur G et D | on ne dit pas « annulée » : le centre est encore là |
+| Repli « gauche seule » (coefficient 1 et 0) sur une voix opposée | — | — | 100 % | jeter la droite n'efface pas la voix |
+
+Un casque stéréo ne fait pas (G+D)/2 : chaque oreille garde l'énergie de sa voie. Un Bluetooth d'appel, ou un haut-parleur unique, fait 0,5 et 0,5 : la voix opposée tombe à zéro. C'est le coefficient de `ChannelMixingMatrix.create(2, 1)` dans Media3 1.5.1. Zuno ne branche pas cette matrice.
+
+La chaîne de l'app, relue par un test qui ouvre les fichiers :
+
+- `ZunoAudioChain.kt` lignes 32-39 : sonde décodeur, voix claire, sonde voix, silence, sonde silence, Sonic, sonde AudioTrack. Pas de mélange.
+- `AudioProbeProcessor.kt` ligne 157 : `output.put(inputBuffer)`, copie sans modification. La sonde lit G puis D (`AudioPhase.kt` lignes 143-154).
+- `NativeVideoView.kt` ligne 864 : sortie flottante coupée. Pas de `ChannelMixingAudioProcessor`.
+- `ClearVoiceProcessor.kt` : un seul gain pour tous les échantillons, et `NOT_SET` tant que le réglage est coupé.
+- `AudioPhase.kt` ligne 190 : « annulée » seulement en stéréo, corrélation ≤ −0,70, et mélange mono ≤ 5 %.
+- `AudioDiagnosis.kt` lignes 771-799 : la fiche le dit en INFO. Pas une cause sûre, pas de réglage, on ne change pas le décodeur.
+
+Lu dans Media3 1.5.1, pas exécuté sur le téléphone ni sur la box :
+
+- `ChannelMappingAudioProcessor` recopie des indices. Pas de signe moins. Carte vide → processeur absent. FFmpeg rend null (`DecoderAudioRenderer.getChannelMapping`). Pour l'AAC, `c2` ne pose une carte que pour jeter des voies en trop, dans l'ordre, ou pour le Vorbis.
+- `ffmpeg_jni.cc` : le `SwrContext` a la même disposition en entrée et en sortie, format `AV_SAMPLE_FMT_S16` (entrelacé). Le planaire du décodeur AAC n'arrive pas à la sonde. Le `.so` Jellyfin n'a pas été lancé ici.
+- Le même fichier passe à `swr_convert` une taille en octets là où la fonction attend un nombre d'échantillons, puis avance du tampon entier. Ça peut glisser du silence entre des paquets. Ce n'est pas une inversion de voie, et `c2.android.aac.decoder` n'utilise pas ce fichier. Ça n'explique donc pas un son pareil avec les deux décodeurs.
+
+### PAS PROUVÉ
+
+- La corrélation réelle d'une chaîne de Lionel, sur la box ou sur le SM-S938B.
+- Que ce téléphone additionne le son en mono. Le calcul dit ce qu'un mélange ferait. Il ne dit pas quel chemin Android a pris.
+- Que le `.so` de la box fait exactement le `swr` lu ci-dessus.
+
+### HYPOTHÈSE
+
+Confiance haute sur le mécanisme, basse sur « c'est ça que Lionel entend », tant qu'une fiche ne montre pas le chiffre.
+
+- Fiche sonde allumée, corrélation −1,00 et mélange mono 0 % déjà à `decodeur`, avec FFmpeg et avec `c2` : l'opposition est dans le flux, ou dans les deux décodeurs. Un mélange mono efface la voix. Un casque la garde. On n'inverse rien tout seul.
+- Corrélation proche de +1 : ce n'est pas une opposition de phase. On ne touche pas au son.
+- Le cas décrit (AAC-LC, 48 kHz, 2 voies) n'est pas du 5.1. La limite « voix au centre » ne le concerne pas.
