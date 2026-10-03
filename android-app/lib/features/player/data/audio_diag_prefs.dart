@@ -4,6 +4,7 @@
 //  • sonde PCM (mesure seulement, ne filtre pas le son)
 //  • réessayer FFmpeg à la prochaine chaîne
 //  • essayer le décodeur AAC de la box à la prochaine chaîne
+//  • essayer la chaîne Media3 d'origine (aucun étage Zuno)
 //  Une préférence absente ou illisible reste FAUSSE : on ne change
 //  pas le chemin audio tout seul.
 // =========================================================
@@ -31,6 +32,9 @@ class AudioDiagPrefs {
   /// Repli « passage » : vrai = on n'attend pas l'AudioTrack (ancien).
   static const String immediateHandoffKey = 'zuno.audio.handoff.immediate';
 
+  /// Essai « chaîne Media3 par défaut ». Faux : son habituel.
+  static const String pureMedia3ChainKey = 'zuno.audio.chain.stock';
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
@@ -39,6 +43,7 @@ class AudioDiagPrefs {
     var androidFocus = false;
     var bgPause = false;
     var immediate = false;
+    var pureChain = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -48,6 +53,7 @@ class AudioDiagPrefs {
       androidFocus = prefs.getBool(androidFocusKey) ?? false;
       bgPause = prefs.getBool(bgPauseKey) ?? false;
       immediate = prefs.getBool(immediateHandoffKey) ?? false;
+      pureChain = prefs.getBool(pureMedia3ChainKey) ?? false;
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -56,6 +62,7 @@ class AudioDiagPrefs {
       androidFocus = false;
       bgPause = false;
       immediate = false;
+      pureChain = false;
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
@@ -64,6 +71,7 @@ class AudioDiagPrefs {
     NativeVideoController.androidAudioFocus = androidFocus;
     NativeVideoController.backgroundPauseOnly = bgPause;
     NativeVideoController.immediateHandoff = immediate;
+    NativeVideoController.pureMedia3Chain = pureChain;
     // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
     // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
     NativeVideoController.pushAudioDiagFlags();
@@ -119,6 +127,15 @@ class AudioDiagPrefs {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool(ffmpegKey, value);
+    } catch (_) {}
+  }
+
+  static Future<void> setPureMedia3Chain(bool value) async {
+    NativeVideoController.pureMedia3Chain = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(pureMedia3ChainKey, value);
     } catch (_) {}
   }
 
