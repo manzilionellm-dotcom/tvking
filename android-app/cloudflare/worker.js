@@ -64,6 +64,15 @@ import {
   markSourcesCleared,
   clearSourceTombstone,
 } from './linkage.js';
+import {
+  trialEnforcementOn,
+  trialWindow,
+  TRIAL_DAYS as ENFORCED_TRIAL_DAYS,
+  rememberTrialStart,
+  loadBlockCopy,
+  shapeEnforcedStatus,
+  configuredTrialDays,
+} from './trial_access.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
@@ -260,16 +269,42 @@ function computeStatus(client, now = Date.now()) {
 // table absente → AUCUN changement de comportement tant que le panel ne fixe
 // pas la valeur. C'est ce qui rend l'essai réglable sans rebuild de l'app.
 async function getTrialDays(env) {
-  if (!env.DB) return TRIAL_DAYS;
+  // Même lecture que le panel (app_config.trial_days). Partagée avec
+  // trial_access.js pour que le panel et l'app voient la même durée
+  // TANT QUE l'interrupteur TRIAL_ENFORCEMENT est coupé.
+  return configuredTrialDays(env);
+}
+
+/// Note l'ancre d'essai (première apparition) sans changer la réponse
+/// tant que l'interrupteur est coupé. Best-effort.
+async function touchTrialAnchor(env, mac, androidId) {
+  if (!env.DB || !mac) return;
   try {
-    const r = await env.DB
-      .prepare("SELECT value FROM app_config WHERE key = 'trial_days'")
+    const dev = await env.DB
+      .prepare('SELECT first_seen_at FROM devices WHERE mac = ?')
+      .bind(mac)
       .first();
-    const td = parseInt(r && r.value, 10);
-    return Number.isFinite(td) && td >= 0 ? td : TRIAL_DAYS;
-  } catch (_) {
-    return TRIAL_DAYS;
-  }
+    if (!dev) return;
+    let aid = androidId || '';
+    if (!aid) {
+      try {
+        const row = await env.DB
+          .prepare('SELECT android_id FROM devices WHERE mac = ?')
+          .bind(mac)
+          .first();
+        aid = (row && row.android_id) || '';
+      } catch (_) { /* colonne pas encore créée */ }
+    }
+    await rememberTrialStart(env, mac, aid, dev.first_seen_at);
+  } catch (_) { /* l'ancre ne doit jamais casser un heartbeat */ }
+}
+
+/// Si l'interrupteur est allumé, fige le statut (essai 7 j, horloge
+/// serveur, message d'écran). Sinon renvoie l'objet TEL QUEL.
+async function finishStatus(env, base, now) {
+  if (!base || !trialEnforcementOn(env)) return base;
+  const copy = await loadBlockCopy(env);
+  return shapeEnforcedStatus(base, now, copy);
 }
 
 async function d1StatusForMac(env, mac, now = Date.now()) {
@@ -290,7 +325,7 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
   // (app affiche "compte gele"). Voir endpoint PATCH /devices/:id.
   if (dev.block_status === 'banned' || dev.block_status === 'frozen') {
     const banned = dev.block_status === 'banned';
-    return {
+    return finishStatus(env, {
       exists: true,
       status: dev.block_status,
       paid: false,
@@ -302,7 +337,7 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
       frozen: !banned,
       banned,
       source: 'd1-block',
-    };
+    }, now);
   }
 
   // Meilleure licence pour ce device : lifetime d'abord, sinon expiry max.
@@ -328,7 +363,7 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     const revoked = !banned && !frozen && lstatus !== 'active';
     const active = lstatus === 'active' && !dateExpired;
     const expired = dateExpired || revoked;
-    return {
+    return finishStatus(env, {
       exists: true,
       status: banned ? 'banned' : frozen ? 'frozen' : revoked ? 'inactive' : 'active',
       paid: active,            // licence active = debloque l'app
@@ -344,28 +379,46 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
       frozen,
       banned,
       source: 'd1',
-    };
+    }, now);
   }
 
-  // --- Cas 2 : device connu mais PAS de licence → ESSAI (durée réglable) ---
-  // L'essai court depuis first_seen_at. Après la durée configurée (panel),
-  // expired=true → l'app bloque → le client doit venir te voir pour être activé.
-  const trialDays = await getTrialDays(env);
-  const trialUntil = (dev.first_seen_at || now) + trialDays * DAY_MS;
-  const expired = trialUntil <= now;
-  return {
+  // --- Cas 2 : device connu mais PAS de licence → ESSAI ---
+  // Interrupteur COUPÉ : durée du panel (trial_days, repli 7) depuis
+  // first_seen_at — comportement actuel, inchangé.
+  // Interrupteur ALLUMÉ : 7 jours EXACTS depuis l'ancre serveur
+  // (première apparition, pas l'horloge du téléphone).
+  let trialStart = dev.first_seen_at || now;
+  let trialDays = await getTrialDays(env);
+  if (trialEnforcementOn(env)) {
+    let aid = '';
+    try {
+      const row = await env.DB
+        .prepare('SELECT android_id FROM devices WHERE mac = ?')
+        .bind(mac)
+        .first();
+      aid = (row && row.android_id) || '';
+    } catch (_) { /* colonne absente */ }
+    trialStart = await rememberTrialStart(env, mac, aid, trialStart);
+    trialDays = ENFORCED_TRIAL_DAYS;
+  }
+  const win = trialWindow(trialStart, now, trialDays);
+  const base = {
     exists: true,
     status: 'active',
     paid: false,
-    plan: expired ? 'expired' : 'trial',
+    plan: win.expired ? 'expired' : 'trial',
     paid_until: null,
-    trial_until: trialUntil,
-    days_left: Math.max(0, Math.ceil((trialUntil - now) / DAY_MS)),
-    expired,
+    trial_until: win.trialUntil,
+    days_left: win.daysLeft,
+    expired: win.expired,
     frozen: false,
     banned: false,
     source: 'd1-trial',
   };
+  // Champ utile au panel / à l'app seulement quand le verrou est allumé.
+  // Interrupteur coupé : on ne l'ajoute pas (réponse identique à avant).
+  if (trialEnforcementOn(env)) base.trial_started_at = win.start;
+  return finishStatus(env, base, now);
 }
 
 // Présence « en ligne » : table séparée (on ne touche PAS au schéma
@@ -2304,6 +2357,12 @@ async function handleHeartbeat(request, env, _ctx) {
     await ensureScaleSchema(env);
     const created = await ensureD1Device(env, mac, now);
     await updateDeviceInfo(env, mac, body);
+    // Ancre d'essai : on l'écrit toujours (même interrupteur coupé) pour
+    // qu'une réinstallation ne puisse pas, plus tard, relancer les 7 jours.
+    // L'horloge envoyée par le téléphone (body.now, body.device_time…)
+    // est IGNORÉE : seul Date.now() du Worker compte.
+    const hintedId = body && body.androidId ? String(body.androidId) : '';
+    await touchTrialAnchor(env, mac, hintedId);
     const d1 = await d1StatusForMac(env, mac, now);
     if (d1) return json({ ok: true, created: !!created, ...d1 });
   }
@@ -2337,6 +2396,7 @@ async function handlePublicStatus(env, mac) {
     let d1 = await d1StatusForMac(env, mac);
     if (!d1) {
       await ensureD1Device(env, mac);
+      await touchTrialAnchor(env, mac, '');
       d1 = await d1StatusForMac(env, mac);
     }
     if (d1) return json(d1);

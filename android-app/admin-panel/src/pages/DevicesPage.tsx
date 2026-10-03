@@ -27,6 +27,7 @@ const PLAN_LABELS: Record<string, string> = {
 
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   const [items, setItems] = useState<Device[]>([]);
+  const [trialEnforced, setTrialEnforced] = useState(false);
   const [q, setQ] = useState('');
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
@@ -55,6 +56,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         setItems(page.items);
         setTotal(page.total);
         setTruncated(page.truncated);
+        setTrialEnforced(!!r.trial_enforced);
         setDetailFor((cur) => {
           if (!cur) return cur;
           return page.items.find((d) => d.id === cur.id) ?? cur;
@@ -88,6 +90,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
       if (key === 'client') return d.customer_name || d.customer_email || '';
       if (key === 'device') return d.device_model || d.platform || '';
       if (key === 'status') return d.block_status || 'active';
+      if (key === 'access') return d.access_label || '';
       if (key === 'seen') return d.last_seen_at || 0;
       return '';
     },
@@ -112,7 +115,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   async function remove(d: Device) {
     const ok = await confirmAction({
       title: 'Supprimer cet appareil ?',
-      message: `Supprimer définitivement la MAC ${d.mac} ?\nSi l'application reste installée, elle réapparaîtra avec un nouvel essai. Pour stopper un abus, utilise plutôt « Bannir ».`,
+      message: `Supprimer définitivement la MAC ${d.mac} ?\nInterrupteur coupé : l'application peut réapparaître avec un nouvel essai. Interrupteur allumé : l'essai déjà commencé ne repart pas. Pour stopper un abus, utilise plutôt « Bannir ».`,
       confirmLabel: 'Supprimer',
       danger: true,
     });
@@ -138,6 +141,12 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
         placeholder="MAC, nom, client…"
       />
 
+      <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${trialEnforced ? 'border-success/30 bg-success/10 text-success' : 'border-white/10 bg-midnight text-ink-secondary'}`}>
+        {trialEnforced
+          ? 'Essai 7 jours : ALLUMÉ. Sans activation, l’appareil se bloque au bout de 7 jours exactement. Les clients déjà activés restent ouverts.'
+          : 'Essai 7 jours : coupé (TRIAL_ENFORCEMENT). Les clients actuels ne changent pas. Les pastilles montrent l’état d’aujourd’hui.'}
+      </div>
+
       {err && <Alert>{err}</Alert>}
 
       <TableFrame label="Liste des appareils" busy={loading}>
@@ -147,14 +156,15 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
               <SortTh label="Client" column="client" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
               <SortTh label="Appareil" column="device" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
               <SortTh label="Statut" column="status" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
+              <SortTh label="Accès" column="access" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
               <SortTh label="Dernière vue" column="seen" sortKey={table.sortKey} dir={table.dir} onSort={table.toggleSort} />
               <th scope="col" className="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-widest text-ink-secondary">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {loading && <LoadingRows cols={6} />}
+            {loading && <LoadingRows cols={7} />}
             {!loading && table.total === 0 && (
-              <tr><td colSpan={6}>
+              <tr><td colSpan={7}>
                 <EmptyState
                   title={q ? `Aucun appareil pour « ${q} ».` : 'Aucun appareil pour l’instant.'}
                   hint={q ? 'Essaie une autre MAC ou un autre nom.' : 'Dès qu’une application contacte le serveur, sa MAC apparaît ici.'}
@@ -192,6 +202,7 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                     )}
                   </td>
                   <td className="px-4 py-3"><StatusBadge status={st} /></td>
+                  <td className="px-4 py-3 text-xs text-ink-secondary">{d.access_label || '—'}</td>
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
@@ -354,6 +365,7 @@ function DeviceDetailModal({
           <InfoRow label="Étiquette" value={device.label || '—'} />
           <InfoRow label="Dernière vue" value={formatDateTime(device.last_seen_at)} />
           <InfoRow label="Première vue" value={formatDateTime(device.first_seen_at)} />
+          <InfoRow label="Accès" value={device.access_label || '—'} />
         </div>
 
         {/* ----- M-Trio : les sources poussées ----- */}

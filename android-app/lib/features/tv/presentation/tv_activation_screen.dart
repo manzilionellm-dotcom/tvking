@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../../subscription/data/trial_block_copy.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_add_source_screen.dart';
@@ -41,11 +42,17 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
     // Activation instantanée : revérifie toutes les 5 s.
     _poll = Timer.periodic(const Duration(seconds: 5),
         (_) => SubscriptionState.instance.syncWithBackend());
+    SubscriptionState.instance.addListener(_onSub);
+  }
+
+  void _onSub() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _poll?.cancel();
+    SubscriptionState.instance.removeListener(_onSub);
     super.dispose();
   }
 
@@ -93,17 +100,52 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   }
 
   Widget _activationColumn(BuildContext context) {
+    final SubscriptionState sub = SubscriptionState.instance;
+    final bool locked =
+        sub.trialEnforced && sub.status == SubscriptionStatus.trialExpired;
+    final bool inTrial =
+        sub.trialEnforced && sub.status == SubscriptionStatus.trialActive;
+    final String lang = Localizations.localeOf(context).languageCode;
+    final TrialBlockText copy = resolveTrialBlock(
+      languageCode: lang,
+      titleFr: sub.blockTitleFr,
+      bodyFr: sub.blockBodyFr,
+      titleEn: sub.blockTitleEn,
+      bodyEn: sub.blockBodyEn,
+      payUrl: sub.payUrl,
+      daysLeft: sub.trialDaysRemaining,
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
             const TvLogo(width: 240),
             const SizedBox(height: 26),
-            Text(context.l10n.tvActivationTagline,
+            if (inTrial)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(copy.daysLabel,
+                    style: TvTokens.ui(16, color: TvTokens.mutedDim)),
+              ),
+            Text(
+                locked ? copy.title : context.l10n.tvActivationTagline,
                 textAlign: TextAlign.center,
-                style: TvTokens.ui(19, color: TvTokens.muted)),
+                style: TvTokens.ui(locked ? 26 : 19,
+                    weight: locked ? FontWeight.w800 : FontWeight.w500,
+                    color: locked ? TvTokens.text : TvTokens.muted)),
+            if (locked) ...<Widget>[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: 520,
+                child: Text(copy.body,
+                    textAlign: TextAlign.center,
+                    style: TvTokens.ui(18, color: TvTokens.muted)),
+              ),
+            ],
             const SizedBox(height: 22),
-            TvPricePill(label: context.l10n.tvLifetime, amount: '9,99 \$'),
-            const SizedBox(height: 38),
+            if (!locked)
+              TvPricePill(label: context.l10n.tvLifetime, amount: '9,99 \$'),
+            if (!locked) const SizedBox(height: 38),
+            if (locked) const SizedBox(height: 8),
 
             // ----- Carte code d'activation -----
             TvCard(
