@@ -513,28 +513,39 @@ async function main() {
       'le lien de A est intact');
   }
 
-  // --- Famille : un autre revendeur ne supprime pas le lien ---
+  // --- Famille déjà en base : on n'en crée plus, un autre ne la supprime pas ---
   {
     const a = await makeReseller(env, admin, ['activate'], 2);
     const b = await makeReseller(env, admin, ['activate'], 2);
-    const created = await api(env, 'POST', '/api/v1/families', {
+    const refused = await api(env, 'POST', '/api/v1/families', {
       token: a.token,
       body: {
         name: 'Foyer test',
         source: { type: 'm3u', m3u_url: fakeM3u() },
       },
     });
-    check(created.status === 201 && created.json && created.json.family, 'famille créée');
-    const fid = created.json && created.json.family && created.json.family.id;
-    const bye = await api(env, 'DELETE', `/api/v1/families/${fid}`, { token: b.token });
-    check(bye.status === 403, 'un autre revendeur ne supprime pas la famille');
-    const still = await api(env, 'GET', `/api/v1/families/${fid}`, { token: a.token });
-    check(still.status === 200, 'la famille de A existe encore');
+    check(
+      refused.status === 403 && refused.json && refused.json.error === 'family_clone_disabled',
+      'on ne crée plus de famille',
+    );
     const badFam = await api(env, 'POST', '/api/v1/families', {
       token: a.token,
       body: { name: 'Mauvais lien', source: { type: 'm3u', m3u_url: 'pas-une-url' } },
     });
-    check(badFam.status === 400, 'famille avec lien invalide refusée');
+    check(
+      badFam.status === 403 && badFam.json && badFam.json.error === 'family_clone_disabled',
+      'un lien invalide ne crée pas non plus de famille',
+    );
+    const fid = 'fam_deja';
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO families (id, name, source_json, reseller_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(fid, 'Foyer déjà là', '{}', a.id, now, now);
+    const bye = await api(env, 'DELETE', `/api/v1/families/${fid}`, { token: b.token });
+    check(bye.status === 403, 'un autre revendeur ne supprime pas la famille');
+    const still = await api(env, 'GET', `/api/v1/families/${fid}`, { token: a.token });
+    check(still.status === 200, 'la famille de A existe encore');
   }
 
   // Sans SECRETS_KEY : on ne casse pas les lignes déjà en clair.

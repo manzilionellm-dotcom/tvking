@@ -1,0 +1,13 @@
+{
+  "name": "activation-pro",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Activation pro : durées, crédits, jours d'essai. Worker local, rien n'est déployé.",
+  "type": "module",
+  "scripts": {
+    "e2e": "node run.mjs"
+  },
+  "devDependencies": {
+    "miniflare": "3.20240806.1"
+  }
+}

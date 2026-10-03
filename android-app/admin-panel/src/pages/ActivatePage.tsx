@@ -1,33 +1,29 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
-import { CopyLink } from '@/components/CopyLink';
-import { confirmAction } from '@/components/confirm';
-import { Alert, StatusBadge } from '@/components/ui';
+import { Alert } from '@/components/ui';
 import {
-  activateApi, appsApi, planCostsApi, meApi, devicesApi,
-  getCurrentUser, isOwnerRole, DOWNLOAD_URL, DOWNLOADER_CODE,
-  type App, type PlanCost, type ActivateResult, type Device,
-  type DeviceLicense, ApiError,
+  activateApi, planCostsApi, meApi,
+  getCurrentUser, isOwnerRole,
+  DOWNLOAD_URL, DOWNLOADER_CODE, DOWNLOAD_URL_TV, DOWNLOADER_CODE_TV,
+  type PlanCost, type ActivateResult, type TrialExtendResult, ApiError,
 } from '@/lib/api';
 import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
 import { createSingleFlight } from '@/lib/robust';
 
-// Écran ACTIVATION — durée, activation, désactivation, expiration.
-// N'envoie jamais de liste de chaînes. Le lien se gère sur /chaines.
-// « Désactiver » gèle la box (appel déjà existant). Ça ne touche pas
-// au lien, et ça n'efface pas la date de fin.
+// Écran d'activation — volontairement court.
+// MAC, nom (optionnel), deux durées (1 an / à vie), bouton Activer,
+// et un petit bloc pour ajouter des jours d'essai.
+// Le lien de chaînes est sur l'autre écran (/chaines). Cet appel
+// n'envoie jamais de liste. Un seul appareil à la fois.
 
-const PLAN_FR: Record<string, string> = {
-  monthly: '1 mois', quarterly: '3 mois', biannual: '6 mois',
-  yearly: '1 an', lifetime: 'À vie',
-  trial_24h: 'Test 24 h', trial_48h: 'Test 48 h', trial_7d: 'Test 7 jours',
-};
+const QUICK_DAYS = [3, 7, 14, 30];
+const MAX_DAYS = 365;
 
-type BoxState = {
-  device: Device;
-  license: DeviceLicense | null;
-};
+const PLANS = [
+  { id: 'yearly', label: 'Activation 1 an' },
+  { id: 'lifetime', label: 'Activation à vie' },
+];
 
 export function ActivatePage({ onLogout }: { onLogout: () => void }) {
   const user = getCurrentUser();
@@ -35,82 +31,39 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
   const [sp] = useSearchParams();
   const [mac, setMac] = useState(sp.get('mac') || 'MK:');
-  const [plan, setPlan] = useState(isReseller ? 'yearly' : 'monthly');
+  const [plan, setPlan] = useState('yearly');
   const [customerName, setCustomerName] = useState('');
-  const [apps, setApps] = useState<App[]>([]);
   const [costs, setCosts] = useState<PlanCost[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
-  const [box, setBox] = useState<BoxState | null>(null);
-  const [looking, setLooking] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [warn, setWarn] = useState<string | null>(null);
   const [result, setResult] = useState<ActivateResult | null>(null);
   const flight = useRef(createSingleFlight());
 
-  const primaryApp =
-    apps.find((a) => !/red\s*room|nova|\btv\b/i.test(a.name)) ?? apps[0];
-  const appId = primaryApp?.id ?? 'app_7motion';
+  const [daysChoice, setDaysChoice] = useState('7');
+  const [daysBusy, setDaysBusy] = useState(false);
+  const [daysErr, setDaysErr] = useState<string | null>(null);
+  const [daysOk, setDaysOk] = useState<TrialExtendResult | null>(null);
+
   const macOk = isValidMac(mac);
 
   useEffect(() => {
     let active = true;
-    const notices: string[] = [];
-
-    Promise.all([appsApi.list(), planCostsApi.list()])
-      .then(([a, c]) => {
-        if (!active) return;
-        setApps(a.items);
-        setCosts(c.items);
-      })
+    planCostsApi.list()
+      .then((c) => { if (active) setCosts(c.items); })
       .catch((e) => {
-        if (!active) return;
-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-        notices.push('Impossible de charger les apps / tarifs.');
-        setWarn(notices.join(' '));
+        if (e instanceof ApiError && e.status === 401) onLogout();
       });
-
     meApi.get()
       .then((r) => { if (active) setBalance(r.user.credit_balance ?? null); })
       .catch((e) => {
-        if (!active) return;
-        if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-        notices.push('Solde crédits indisponible.');
-        setWarn(notices.join(' '));
+        if (e instanceof ApiError && e.status === 401) onLogout();
       });
-
     return () => { active = false; };
   }, [onLogout]);
 
-  useEffect(() => {
-    if (!macOk) { setBox(null); return; }
-    let cancel = false;
-    const m = normalizeMac(mac);
-    const timer = setTimeout(() => {
-      setLooking(true);
-      devicesApi.list(m)
-        .then(async (r) => {
-          const found = r.items.find((d) => d.mac.toUpperCase() === m);
-          if (!found) {
-            if (!cancel) setBox(null);
-            return;
-          }
-          const ov = await devicesApi.overview(found.id);
-          if (!cancel) setBox({ device: found, license: ov.license });
-        })
-        .catch((e) => {
-          if (cancel) return;
-          if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-          setBox(null);
-        })
-        .finally(() => { if (!cancel) setLooking(false); });
-    }, 400);
-    return () => { cancel = true; clearTimeout(timer); };
-  }, [mac, macOk, onLogout, result]);
-
   const costFor = (p: string): number | null => {
-    if (p.startsWith('trial')) return 0;
     const row = costs.find((c) => c.plan === p);
     return row ? row.credits : null;
   };
@@ -128,9 +81,11 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
         return;
       }
       try {
-        // Licence seulement. Pas de lien dans cet appel.
+        // Licence seulement. Le lien se pose sur /chaines.
         const res = await activateApi.activate({
-          mac: m, plan, app_id: appId,
+          mac: m,
+          plan,
+          app_id: 'app_7motion',
           customer_name: customerName.trim() || undefined,
         });
         setResult(res);
@@ -144,278 +99,220 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
     });
   }
 
-  async function setFrozen(frozen: boolean) {
-    if (!box) return;
-    const ok = await confirmAction({
-      title: frozen ? 'Désactiver cette application ?' : 'Réactiver cette application ?',
-      message: frozen
-        ? 'La box sera bloquée tout de suite. La date de fin reste en mémoire, et la liste de chaînes n’est pas modifiée.'
-        : 'La box pourra de nouveau ouvrir l’application, si la durée n’est pas terminée. La liste de chaînes n’est pas modifiée.',
-      confirmLabel: frozen ? 'Désactiver' : 'Réactiver',
-      danger: frozen,
-    });
-    if (!ok) return;
-    setBusy(true);
-    setErr(null);
+  function parsedDays(): number | null {
+    const s = daysChoice.trim();
+    if (!/^[0-9]+$/.test(s)) return null;
+    const n = Number(s);
+    if (!Number.isInteger(n) || n < 1 || n > MAX_DAYS) return null;
+    return n;
+  }
+
+  async function addDays() {
+    setDaysErr(null);
+    setDaysOk(null);
+    const m = normalizeMac(mac);
+    if (!isValidMac(m)) {
+      setDaysErr('Indique d’abord une MAC valide, en haut.');
+      return;
+    }
+    const n = parsedDays();
+    if (n == null) {
+      setDaysErr(`Jours : un entier de 1 à ${MAX_DAYS}.`);
+      return;
+    }
+    setDaysBusy(true);
     try {
-      await devicesApi.setBlock(box.device.id, frozen ? 'frozen' : 'active');
-      setBox({
-        ...box,
-        device: { ...box.device, block_status: frozen ? 'frozen' : 'active' },
-      });
+      const res = await activateApi.extendTrial(m, n);
+      setDaysOk(res);
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
-      setErr(e instanceof ApiError ? e.message : 'Action impossible.');
+      setDaysErr(e instanceof ApiError ? e.message : 'Ajout impossible.');
     } finally {
-      setBusy(false);
+      setDaysBusy(false);
     }
   }
 
-  const PLANS = isReseller
-    ? [{ id: 'yearly', label: '1 an' }, { id: 'lifetime', label: 'À vie' }]
-    : [{ id: 'monthly', label: '1 mois' }, { id: 'yearly', label: '1 an' }, { id: 'lifetime', label: 'À vie' }];
-  const TRIALS = [
-    { id: 'trial_24h', label: 'Test 24 h' },
-    { id: 'trial_48h', label: 'Test 48 h' },
-    { id: 'trial_7d', label: 'Test 7 jours' },
-  ];
-
   const inputCls =
-    'w-full rounded-md border border-white/10 bg-slate px-3 py-2.5 text-sm outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40';
+    'w-full rounded-lg border border-white/10 bg-slate px-3 py-3 text-base outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/40';
 
-  const license = box?.license ?? null;
-  const blocked = box?.device.block_status === 'frozen' || box?.device.block_status === 'banned';
-  const licenseStatus = !license
-    ? 'offline'
-    : license.expires_at != null && license.expires_at <= Date.now()
-      ? 'expired'
-      : (license.status || 'active');
-  const shownStatus = box?.device.block_status === 'banned'
-    ? 'banned'
-    : box?.device.block_status === 'frozen'
-      ? 'frozen'
-      : licenseStatus === 'offline'
-        ? 'offline'
-        : licenseStatus;
+  const credit = costFor(plan);
 
   return (
     <AppLayout
-      title="Activer l'application"
-      subtitle="Durée, activation et désactivation. Ça ne change pas la liste de chaînes."
+      title="Activation"
       onLogout={onLogout}
       actions={
         isReseller && balance !== null ? (
-          <div className="rounded-lg border border-accent/30 bg-accent/10 px-4 py-2 text-sm">
-            <span className="text-ink-secondary">Crédits&nbsp;: </span>
-            <span className="font-semibold text-accent-bright">{balance}</span>
+          <div className="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-ink-secondary">
+            {balance} crédit{balance > 1 ? 's' : ''}
           </div>
         ) : undefined
       }
     >
-      {warn && <Alert>{warn}</Alert>}
-
-      <div className="grid max-w-5xl gap-6 lg:grid-cols-2">
-        <form onSubmit={submit} className="space-y-4 rounded-xl border border-white/10 bg-midnight p-6">
-          <h2 className="text-base font-semibold">Activation</h2>
-          <p className="text-sm leading-relaxed text-ink-secondary">
-            Le lien de la liste de chaînes est sur un autre écran :{' '}
-            <Link to={macOk ? `/chaines?mac=${encodeURIComponent(normalizeMac(mac))}` : '/chaines'} className="font-medium text-accent-bright underline-offset-2 hover:underline">
-              Liste de chaînes
-            </Link>.
-          </p>
-
-          <div>
-            <label htmlFor="act-mac" className="mb-1.5 block text-xs font-medium text-ink-secondary">
-              Adresse MAC de la box
-            </label>
-            <input
-              id="act-mac"
-              value={mac}
-              onChange={(e) => setMac(e.target.value)}
-              autoFocus
-              autoComplete="off"
-              placeholder="MK:XX:XX:XX:XX:XX"
-              className={inputCls + ' font-mono'}
-            />
-          </div>
-
-          <div>
-            <p className="mb-1 text-xs font-medium text-ink-secondary">
-              Lien de téléchargement (à donner au client)
-            </p>
-            <CopyLink url={DOWNLOAD_URL} />
-            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2">
-              <span className="text-xs text-ink-secondary">Code Downloader</span>
-              <span className="font-mono text-base font-bold tracking-wider text-accent-bright">
-                {DOWNLOADER_CODE}
-              </span>
-              <span className="text-xs text-ink-secondary">TV / Fire TV, application Downloader</span>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-white/10 bg-obsidian px-4 py-3">
-            <p className="text-xs font-medium text-ink-secondary">État de cette box</p>
-            {looking && <p className="mt-2 text-sm text-ink-secondary">Recherche…</p>}
-            {!looking && !macOk && (
-              <p className="mt-2 text-sm text-ink-secondary">Entre une MAC complète.</p>
-            )}
-            {!looking && macOk && !box && (
-              <p className="mt-2 text-sm text-ink-secondary">Cette box n’est pas encore activée.</p>
-            )}
-            {!looking && box && (
-              <div className="mt-2 space-y-2 text-sm">
-                <StatusBadge
-                  status={shownStatus === 'offline' ? 'offline' : shownStatus}
-                  label={shownStatus === 'offline' ? 'Pas activée' : undefined}
-                />
-                <p className="text-ink-secondary">
-                  Durée : {license ? (PLAN_FR[license.plan || ''] || license.plan || '—') : '—'}
-                </p>
-                <p className="text-ink-secondary">
-                  Expire le : {license
-                    ? (license.expires_at ? formatDateTime(license.expires_at) : 'À vie')
-                    : '—'}
-                </p>
-              </div>
-            )}
-          </div>
-
-          <fieldset>
-            <legend className="mb-1.5 block text-xs font-medium text-ink-secondary">Durée</legend>
-            <div className="grid grid-cols-2 gap-2">
-              {PLANS.map((p) => {
-                const c = costFor(p.id);
-                const selected = plan === p.id;
-                return (
-                  <button
-                    type="button"
-                    key={p.id}
-                    onClick={() => setPlan(p.id)}
-                    className={
-                      'flex items-center justify-between rounded-md border px-3 py-2 text-sm ' +
-                      (selected
-                        ? 'border-accent bg-accent/10 text-ink-primary'
-                        : 'border-white/10 bg-slate text-ink-secondary hover:border-white/20')
-                    }
-                  >
-                    <span>{p.label}</span>
-                    {isReseller && c !== null && <span className="text-xs text-ink-secondary">{c} cr.</span>}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mb-1 mt-3 text-xs font-medium text-ink-secondary">
-              {isReseller ? 'Essai gratuit, 0 crédit' : 'Essai gratuit'}
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              {TRIALS.map((t) => {
-                const selected = plan === t.id;
-                return (
-                  <button
-                    type="button"
-                    key={t.id}
-                    onClick={() => setPlan(t.id)}
-                    className={
-                      'rounded-md border px-3 py-2 text-sm ' +
-                      (selected
-                        ? 'border-success bg-success/10 text-ink-primary'
-                        : 'border-white/10 bg-slate text-ink-secondary hover:border-white/20')
-                    }
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          <div>
-            <label htmlFor="act-name" className="mb-1.5 block text-xs font-medium text-ink-secondary">
-              Nom du client (optionnel)
-            </label>
-            <input
-              id="act-name"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Ex. Salon de Karim"
-              className={inputCls}
-            />
-          </div>
-
-          {err && <Alert>{err}</Alert>}
-
-          <button
-            type="submit"
-            disabled={busy || !macOk}
-            className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-obsidian hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+      <form onSubmit={submit} className="mx-auto w-full max-w-md space-y-5">
+        <p className="text-sm leading-relaxed text-ink-secondary">
+          La liste de chaînes est sur un autre écran :{' '}
+          <Link
+            to={macOk ? `/chaines?mac=${encodeURIComponent(normalizeMac(mac))}` : '/chaines'}
+            className="font-medium text-accent-bright underline-offset-2 hover:underline"
           >
-            {busy
-              ? 'Activation en cours…'
-              : !isReseller
-                ? 'Activer l’application'
-                : costFor(plan) === 0
-                  ? 'Activer l’application (gratuit)'
-                  : `Activer l’application (${costFor(plan) ?? '?'} crédits)`}
-          </button>
+            Liste de chaînes
+          </Link>.
+        </p>
+        <div>
+          <label htmlFor="act-mac" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-secondary">
+            Adresse MAC
+          </label>
+          <input
+            id="act-mac"
+            value={mac}
+            onChange={(e) => setMac(e.target.value)}
+            autoFocus
+            autoComplete="off"
+            inputMode="text"
+            placeholder="MK:XX:XX:XX:XX:XX"
+            className={inputCls + ' font-mono'}
+          />
+        </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => setFrozen(true)}
-              disabled={busy || !box || blocked}
-              className="rounded-md border border-white/15 px-4 py-2.5 text-sm font-medium text-ink-primary hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Désactiver l’application
-            </button>
-            {box?.device.block_status === 'frozen' && (
+        <div>
+          <label htmlFor="act-name" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-secondary">
+            Nom du client <span className="normal-case tracking-normal text-ink-tertiary">(optionnel)</span>
+          </label>
+          <input
+            id="act-name"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            placeholder="Ex. Salon de Karim"
+            className={inputCls}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="group" aria-label="Durée">
+          {PLANS.map((p) => {
+            const selected = plan === p.id;
+            const c = costFor(p.id);
+            return (
               <button
                 type="button"
-                onClick={() => setFrozen(false)}
-                disabled={busy}
-                className="rounded-md border border-white/15 px-4 py-2.5 text-sm font-medium text-ink-primary hover:bg-white/5 disabled:opacity-40"
+                key={p.id}
+                onClick={() => setPlan(p.id)}
+                className={
+                  'rounded-xl border px-4 py-5 text-left transition ' +
+                  (selected
+                    ? 'border-accent bg-accent/15 text-ink-primary'
+                    : 'border-white/10 bg-midnight text-ink-secondary hover:border-white/25')
+                }
               >
-                Réactiver l’application
+                <span className="block text-lg font-semibold leading-tight">{p.label}</span>
+                {isReseller && c !== null && (
+                  <span className="mt-1 block text-xs text-ink-tertiary">
+                    {c} crédit{c > 1 ? 's' : ''}
+                  </span>
+                )}
               </button>
-            )}
-          </div>
-          <p className="text-xs leading-relaxed text-ink-secondary">
-            Désactiver bloque la box. Ça ne retire pas le lien des chaînes, et ça n’efface pas la date de fin.
-          </p>
-        </form>
-
-        <div className="rounded-xl border border-white/10 bg-obsidian p-6">
-          <h2 className="text-base font-semibold">Résultat</h2>
-          {!result && !busy && (
-            <p className="mt-3 text-sm leading-relaxed text-ink-secondary">
-              Après activation, la date de fin s’affiche ici. La liste de chaînes n’est pas envoyée.
-            </p>
-          )}
-          {busy && !result && (
-            <p className="mt-3 text-sm text-ink-secondary" role="status">Activation en cours…</p>
-          )}
-          {result && (
-            <div className="mt-3 space-y-3 text-sm">
-              <StatusBadge status="active" label={result.renewed ? 'Durée prolongée' : 'Application activée'} />
-              <Row k="MAC" v={result.mac} mono />
-              <Row k="Durée" v={PLAN_FR[result.plan] || result.plan} />
-              <Row k="Expire le" v={result.expires_at ? formatDateTime(result.expires_at) : 'À vie'} />
-              <Row k="Crédits débités" v={String(result.credits_charged)} />
-              {result.credit_balance !== null && (
-                <Row k="Solde restant" v={String(result.credit_balance)} />
-              )}
-            </div>
-          )}
+            );
+          })}
         </div>
-      </div>
+
+        {err && <Alert>{err}</Alert>}
+        {result && (
+          <p className="text-sm text-ink-primary" role="status">
+            {result.plan === 'lifetime' || result.expires_at == null
+              ? 'Activé à vie.'
+              : `Activé jusqu’au ${formatDateTime(result.expires_at)}.`}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={busy || !macOk}
+          className="w-full rounded-xl bg-accent px-4 py-3.5 text-base font-semibold text-obsidian hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy
+            ? 'Activation…'
+            : isReseller && credit !== null
+              ? `Activer · ${credit} crédit${credit > 1 ? 's' : ''}`
+              : 'Activer'}
+        </button>
+
+        {!isReseller && (
+          <div className="space-y-3 rounded-xl border border-white/10 bg-midnight/60 p-4">
+            <p className="text-sm font-medium text-ink-primary">Ajouter des jours d’essai</p>
+            <div className="flex flex-wrap gap-2">
+              {QUICK_DAYS.map((d) => {
+                const on = daysChoice === String(d);
+                return (
+                  <button
+                    type="button"
+                    key={d}
+                    onClick={() => setDaysChoice(String(d))}
+                    className={
+                      'rounded-lg border px-3 py-2 text-sm ' +
+                      (on
+                        ? 'border-accent bg-accent/15 text-ink-primary'
+                        : 'border-white/10 text-ink-secondary')
+                    }
+                  >
+                    {d} j
+                  </button>
+                );
+              })}
+            </div>
+            <label className="block text-xs text-ink-tertiary" htmlFor="act-days">
+              Nombre de jours
+            </label>
+            <input
+              id="act-days"
+              value={daysChoice}
+              onChange={(e) => setDaysChoice(e.target.value)}
+              inputMode="numeric"
+              className={inputCls + ' font-mono'}
+            />
+            {daysErr && <Alert>{daysErr}</Alert>}
+            {daysOk && (
+              <p className="text-sm text-ink-primary" role="status">
+                Essai jusqu’au {formatDateTime(daysOk.trial_until)}.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={addDays}
+              disabled={daysBusy || !macOk}
+              className="w-full rounded-lg border border-white/15 px-4 py-2.5 text-sm font-semibold text-ink-primary hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {daysBusy ? 'Ajout…' : 'Ajouter les jours'}
+            </button>
+          </div>
+        )}
+
+        <div className="space-y-1 pt-2 text-xs leading-relaxed text-ink-tertiary">
+          <CopyLine label="Mobile" url={DOWNLOAD_URL} code={DOWNLOADER_CODE} />
+          <CopyLine label="TV" url={DOWNLOAD_URL_TV} code={DOWNLOADER_CODE_TV} />
+        </div>
+      </form>
     </AppLayout>
   );
 }
 
-function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+function CopyLine({ label, url, code }: { label: string; url: string; code: string }) {
+  const [copied, setCopied] = useState<'url' | 'code' | null>(null);
+  async function copy(text: string, which: 'url' | 'code') {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(which);
+      setTimeout(() => setCopied(null), 1200);
+    } catch { /* copie manuelle possible */ }
+  }
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-2">
-      <span className="text-ink-secondary">{k}</span>
-      <span className={mono ? 'font-mono text-accent' : 'text-ink-primary'}>{v}</span>
-    </div>
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span>{label}</span>
+      <button type="button" onClick={() => copy(url, 'url')} className="truncate font-mono text-ink-secondary underline-offset-2 hover:underline">
+        {copied === 'url' ? 'Copié' : url}
+      </button>
+      <button type="button" onClick={() => copy(code, 'code')} className="font-mono text-ink-secondary">
+        {copied === 'code' ? 'Copié' : code}
+      </button>
+    </p>
   );
 }

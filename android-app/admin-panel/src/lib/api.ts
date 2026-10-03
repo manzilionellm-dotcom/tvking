@@ -318,6 +318,11 @@ export interface Device {
   android_release?: string | null;
   app_build?: number | null;
   platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
+  // Pastille d'accès calculée par le serveur (essai / expiré / activé).
+  access?: 'trial' | 'expired' | 'activated' | 'lifetime' | 'frozen' | 'banned' | string;
+  access_label?: string;
+  access_days_left?: number | null;
+  access_ends_at?: number | null;
 }
 // Abonnement (licence) d'un appareil, vue panel.
 export interface DeviceLicense {
@@ -356,7 +361,10 @@ export interface DeviceOverview {
 }
 export const devicesApi = {
   list: (q?: string, page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
-    request<{ items: Device[] }>(listQuery('/api/v1/devices', q, page), { signal }),
+    request<{ items: Device[]; trial_enforced?: boolean }>(
+      listQuery('/api/v1/devices', q, page),
+      { signal },
+    ),
   // Fiche 360° d'un appareil (abonnement + présence live + M-Trio) en 1 appel.
   overview: (id: string) =>
     request<DeviceOverview>(`/api/v1/devices/${encodeURIComponent(id)}/overview`),
@@ -510,10 +518,19 @@ export interface DeviceSource extends DeviceSourceInput {
   updated_at?: number;
 }
 
+export interface TrialExtendResult {
+  ok: boolean;
+  mac: string;
+  days: number;
+  previous_until: number | null;
+  trial_until: number;
+}
+
 export const activateApi = {
-  // Active une MAC (owner ou revendeur). Cree/renouvelle la licence et
-  // debite les credits du revendeur selon le cout du plan. Si `source`
-  // est fourni, on l'assigne a la MAC (l'app la chargera automatiquement).
+  // Active une MAC (owner ou revendeur). Crée ou renouvelle la licence
+  // et débite les crédits du revendeur selon le coût du plan.
+  // Le lien de chaînes n'est pas accepté ici : le Worker répond 400.
+  // Il se pose avec PUT /api/v1/sources/:mac.
   activate: (payload: {
     mac: string;
     plan: string;
@@ -526,6 +543,14 @@ export const activateApi = {
     source?: DeviceSourceInput;
   }) =>
     request<ActivateResult>('/api/v1/activate', { method: 'POST', body: payload }),
+
+  // Prolonge l'essai d'une MAC déjà connue de N jours.
+  // Réservé à l'administrateur (le Worker refuse un revendeur).
+  extendTrial: (mac: string, days: number) =>
+    request<TrialExtendResult>('/api/v1/trial-extend', {
+      method: 'POST',
+      body: { mac, days },
+    }),
 };
 
 // Source assignée par MAC (gérée indépendamment de l'activation).
@@ -885,6 +910,15 @@ export interface PricingConfig {
   trialDays: number;    // ex. 7
   promoEnabled: boolean;
   promoMessage: string;
+  // Écran « essai terminé ». Vides = texte intégré de l'app.
+  blockTitleFr?: string;
+  blockBodyFr?: string;
+  blockTitleEn?: string;
+  blockBodyEn?: string;
+  // Lien https. Vide = pas de nouveau lien (WhatsApp / site déjà connus).
+  payUrl?: string;
+  // Lecture seule : variable d'environnement du Worker.
+  trialEnforced?: boolean;
 }
 export const pricingApi = {
   get: () => request<PricingConfig>('/api/v1/pricing'),

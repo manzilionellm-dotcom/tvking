@@ -1,3 +1,16 @@
+import {
+  trialEnforcementOn,
+  describeAccess,
+  configuredTrialDays,
+  TRIAL_DAYS,
+  ensureTrialAnchorTable,
+  trialWindow,
+  rememberTrialStart,
+  parseExtendDays,
+  nextTrialEnd,
+  readExtendedUntil,
+} from './trial_access.js';
+
 // =========================================================
 //  api_v1.js — App Licensing Platform REST API v1
 // =========================================================
@@ -432,6 +445,20 @@ async function requireAuth(request, env) {
   return { user };
 }
 
+/// Comparaison en temps constant. Secret vide = refus (instance
+/// sans protection ne doit pas accepter n'importe quel en-tête).
+function adminSecretMatches(request, env) {
+  const provided = request.headers.get('X-Admin-Secret') || '';
+  const expected = env.ADMIN_SECRET || '';
+  if (!expected || typeof provided !== 'string') return false;
+  if (provided.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 // ---------------------------------------------------------
 //  Bootstrap : creation auto du super_admin si table vide
 // ---------------------------------------------------------
@@ -710,6 +737,14 @@ async function apiV1Inner(request, env) {
     }
   }
 
+  // Ajout de jours d'essai. Le secret admin (en-tête) suffit, comme
+  // les routes /admin/*. Sinon on tombe sur le JWT plus bas.
+  if (parts[0] === 'trial-extend' && parts.length === 1 && request.method === 'POST') {
+    if (adminSecretMatches(request, env)) {
+      return handleTrialExtend(request, env, { type: 'admin', id: 'admin_secret' });
+    }
+  }
+
   // --- Tout le reste requiert un JWT ---
   const a = await requireAuth(request, env);
   if (a.error) return a.error;
@@ -808,15 +843,31 @@ async function apiV1Inner(request, env) {
     return handleDeviceTransfer(request, env, a.user, actor);
   }
 
-  // /families — OFFRE FAMILLE : UNE ligne Xtream (multi-connexions) +
-  // plusieurs appareils. On crée la famille (nom + source), puis on ajoute
-  // des appareils ; chacun reçoit la MÊME source + une licence active.
-  // Le nombre d'écrans simultanés = max_connections de la ligne (fournisseur).
+  // Ajouter des jours d'essai à UNE MAC déjà connue. Réservé à
+  // l'administrateur (JWT super_admin, signé avec ADMIN_SECRET).
+  if (parts[0] === 'trial-extend' && parts.length === 1 && request.method === 'POST') {
+    if (a.user.role !== 'super_admin') {
+      return errResp('forbidden', 'Seul l’administrateur peut ajouter des jours d’essai.', 403);
+    }
+    return handleTrialExtend(request, env, actor);
+  }
+
+  // /families — lecture des familles DÉJÀ créées. On ne crée plus de
+  // clone : POST (nouvelle famille, nouveau membre, nouveau lien) est
+  // refusé. Les lignes, colonnes et licences existantes restent.
+  // GET et DELETE continuent de fonctionner.
   if (parts[0] === 'families') {
     if (!resellerCan(a.user, 'activate')) {
       return errResp('forbidden', 'Ton compte n\'a pas le droit de gérer des familles.', 403);
     }
     await ensureFamiliesTables(env);
+    if (request.method === 'POST') {
+      return errResp(
+        'family_clone_disabled',
+        'Le clonage familial n’est plus proposé. Les appareils déjà activés en famille continuent de fonctionner.',
+        403,
+      );
+    }
     if (parts.length === 1) {
       if (request.method === 'GET') return handleFamiliesList(env, a.user);
       if (request.method === 'POST') return handleFamiliesCreate(request, env, actor, a.user);
@@ -1994,6 +2045,17 @@ async function handleAdPut(request, env, actor) {
 //  Pilote les prix affichés dans l'app : à vie / 1 an (en €, chaîne avec
 //  virgule décimale "9,9"), durée de l'essai gratuit, et un message
 //  promo/bonus optionnel ("achète 1 = 1 offert pour ta famille", etc.).
+function cleanHttpsUrl(v) {
+  const s = (v == null ? '' : String(v)).trim().slice(0, 500);
+  if (!s) return '';
+  if (!/^https:\/\//i.test(s)) return '';
+  return s;
+}
+
+function cleanBlockText(v, max) {
+  return (v == null ? '' : String(v)).replace(/[\u0000-\u001F]/g, '').trim().slice(0, max);
+}
+
 async function handlePricingGet(env) {
   await ensureAppConfigTable(env);
   const td = parseInt(await _cfgGetStr(env, 'trial_days'), 10);
@@ -2004,6 +2066,17 @@ async function handlePricingGet(env) {
     trialDays: Number.isFinite(td) && td >= 0 ? td : 7,
     promoEnabled: (await _cfgGetStr(env, 'promo_enabled')) === '1',
     promoMessage: await _cfgGetStr(env, 'promo_msg'),
+    // Textes de l'écran « essai terminé ». Vides = l'app utilise son
+    // texte intégré. Le lien de paiement vide = on ne invente rien,
+    // l'app garde WhatsApp / le site déjà dans le projet.
+    blockTitleFr: await _cfgGetStr(env, 'trial_block_title_fr'),
+    blockBodyFr: await _cfgGetStr(env, 'trial_block_body_fr'),
+    blockTitleEn: await _cfgGetStr(env, 'trial_block_title_en'),
+    blockBodyEn: await _cfgGetStr(env, 'trial_block_body_en'),
+    payUrl: await _cfgGetStr(env, 'trial_pay_url'),
+    // Lecture seule : l'interrupteur est une variable d'environnement,
+    // pas un bouton du panel (pour ne pas bloquer les clients par erreur).
+    trialEnforced: trialEnforcementOn(env),
   });
 }
 
@@ -2030,12 +2103,41 @@ async function handlePricingPut(request, env, actor) {
   await _cfgSet(env, 'trial_days', String(trialDays));
   await _cfgSet(env, 'promo_msg', promoMessage);
   await _cfgSet(env, 'promo_enabled', promoEnabled);
+  // Textes d'écran : seulement si le panel les envoie. Un vieux client
+  // du panel qui ne connaît pas ces champs ne les efface pas.
+  let blockTitleFr = await _cfgGetStr(env, 'trial_block_title_fr');
+  let blockBodyFr = await _cfgGetStr(env, 'trial_block_body_fr');
+  let blockTitleEn = await _cfgGetStr(env, 'trial_block_title_en');
+  let blockBodyEn = await _cfgGetStr(env, 'trial_block_body_en');
+  let payUrl = await _cfgGetStr(env, 'trial_pay_url');
+  if (body.blockTitleFr !== undefined) {
+    blockTitleFr = cleanBlockText(body.blockTitleFr, 120);
+    await _cfgSet(env, 'trial_block_title_fr', blockTitleFr);
+  }
+  if (body.blockBodyFr !== undefined) {
+    blockBodyFr = cleanBlockText(body.blockBodyFr, 500);
+    await _cfgSet(env, 'trial_block_body_fr', blockBodyFr);
+  }
+  if (body.blockTitleEn !== undefined) {
+    blockTitleEn = cleanBlockText(body.blockTitleEn, 120);
+    await _cfgSet(env, 'trial_block_title_en', blockTitleEn);
+  }
+  if (body.blockBodyEn !== undefined) {
+    blockBodyEn = cleanBlockText(body.blockBodyEn, 500);
+    await _cfgSet(env, 'trial_block_body_en', blockBodyEn);
+  }
+  if (body.payUrl !== undefined) {
+    payUrl = cleanHttpsUrl(body.payUrl);
+    await _cfgSet(env, 'trial_pay_url', payUrl);
+  }
   await logAudit(env, request, actor, 'pricing.save',
     { type: 'app_config', id: null }, null,
     { lifetime, yearly, currency, trialDays, promoEnabled });
   return jsonResp({
     ok: true, currency, lifetime, yearly, trialDays,
     promoEnabled: promoEnabled === '1', promoMessage,
+    blockTitleFr, blockBodyFr, blockTitleEn, blockBodyEn, payUrl,
+    trialEnforced: trialEnforcementOn(env),
   });
 }
 
@@ -3031,19 +3133,81 @@ async function handleDevicesList(request, env, user) {
     env,
     `SELECT COUNT(*) as n ${from}${whereSql}`,
     binds,
-    `SELECT d.*, c.name as customer_name, c.email as customer_email
+    `SELECT d.*, c.name as customer_name, c.email as customer_email,
+            (SELECT l.status FROM licenses l WHERE l.device_id = d.id
+               ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_status,
+            (SELECT l.plan FROM licenses l WHERE l.device_id = d.id
+               ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_plan,
+            (SELECT l.expires_at FROM licenses l WHERE l.device_id = d.id
+               ORDER BY (l.expires_at IS NULL) DESC, l.expires_at DESC LIMIT 1) AS lic_expires
        ${from}${whereSql}
       ORDER BY d.last_seen_at DESC LIMIT ? OFFSET ?`,
     binds,
     limit,
     offset,
   );
-  page.items = page.items.map((row) => ({
+  const stamped = page.items.map((row) => ({
     ...row,
     first_seen_at: epochMs(row.first_seen_at),
     last_seen_at: epochMs(row.last_seen_at),
   }));
+  page.items = await annotateDeviceAccess(env, stamped);
+  page.trial_enforced = trialEnforcementOn(env);
   return jsonResp(page);
+}
+
+/// Ajoute access / access_label à chaque appareil. Interrupteur allumé :
+/// 7 jours depuis l'ancre. Coupé : durée du panel depuis first_seen
+/// (ce que l'app fait aujourd'hui). La liste reste paginée : on n'annote
+/// que la page renvoyée, pas toute la table. Un ajout de jours
+/// (extended_until) est lu même interrupteur coupé.
+async function annotateDeviceAccess(env, rows) {
+  const enforced = trialEnforcementOn(env);
+  const trialDays = enforced ? TRIAL_DAYS : await configuredTrialDays(env);
+  const anchors = {};
+  const extensions = {};
+  if (rows.length) {
+    try {
+      await ensureTrialAnchorTable(env);
+      const macs = rows.map((r) => r.mac).filter(Boolean);
+      if (macs.length) {
+        const marks = macs.map(() => '?').join(',');
+        const a = await env.DB.prepare(
+          `SELECT mac, started_at, extended_until FROM trial_anchors WHERE mac IN (${marks})`,
+        ).bind(...macs).all();
+        for (const row of (a && a.results) || []) {
+          anchors[row.mac] = row.started_at;
+          if (Number(row.extended_until) > 0) extensions[row.mac] = Number(row.extended_until);
+        }
+      }
+    } catch (_) { /* pas d'ancre : on tombera sur first_seen */ }
+  }
+  const now = Date.now();
+  return rows.map((r) => {
+    const license = r.lic_status
+      ? { status: r.lic_status, plan: r.lic_plan, expires_at: r.lic_expires }
+      : null;
+    const seen = r.first_seen_at || now;
+    const anchored = anchors[r.mac];
+    const started = enforced
+      ? Math.min(seen, Number(anchored) > 0 ? Number(anchored) : seen)
+      : seen;
+    const access = describeAccess({
+      now,
+      startedAt: started,
+      trialDays,
+      license,
+      blockStatus: r.block_status,
+      extendedUntil: extensions[r.mac] || 0,
+    });
+    return {
+      ...r,
+      access: access.access,
+      access_label: access.label,
+      access_days_left: access.days_left,
+      access_ends_at: access.ends_at,
+    };
+  });
 }
 
 // =========================================================
@@ -4023,6 +4187,97 @@ async function handleDeviceTransfer(request, env, user, actor) {
   });
 }
 
+// ----- Ajouter des jours d'essai à UNE MAC déjà connue -----
+//  POST /api/v1/trial-extend { mac, days }
+//  Secret admin (X-Admin-Secret) ou JWT super_admin.
+//  Fin = max(fin d'essai actuelle, maintenant) + N jours.
+//  Refuse une MAC invalide, inconnue, ou un nombre de jours
+//  qui n'est pas un entier de 1 à 365. N'efface aucune donnée.
+async function trialDeadlineForDevice(env, dev, now) {
+  let trialStart = dev.first_seen_at || now;
+  let trialDays = await configuredTrialDays(env);
+  if (trialEnforcementOn(env)) {
+    trialStart = await rememberTrialStart(
+      env, dev.mac, dev.android_id || '', trialStart,
+    );
+    trialDays = TRIAL_DAYS;
+  }
+  const win = trialWindow(trialStart, now, trialDays);
+  const ext = await readExtendedUntil(env, dev.mac);
+  return ext > win.trialUntil ? ext : win.trialUntil;
+}
+
+async function handleTrialExtend(request, env, actor) {
+  let body;
+  try { body = await request.json(); } catch (_) {
+    return errResp('bad_json', 'Invalid JSON body', 400);
+  }
+  const mac = String(body.mac || '').trim().toUpperCase();
+  if (!/^MK(?::[0-9A-F]{2}){5}$/.test(mac)) {
+    return errResp('bad_mac', 'MAC invalide. Format attendu : MK:XX:XX:XX:XX:XX', 400);
+  }
+  const parsed = parseExtendDays(body.days);
+  if (parsed.error) return errResp('bad_days', parsed.error, 400);
+
+  let dev = null;
+  try {
+    dev = await env.DB.prepare(
+      'SELECT id, mac, first_seen_at, android_id, block_status FROM devices WHERE mac = ?',
+    ).bind(mac).first();
+  } catch (_) {
+    try {
+      dev = await env.DB.prepare(
+        'SELECT id, mac, first_seen_at, block_status FROM devices WHERE mac = ?',
+      ).bind(mac).first();
+    } catch (_) { dev = null; }
+  }
+  if (!dev) {
+    return errResp(
+      'unknown_mac',
+      'MAC inconnue. L’appareil doit déjà s’être connecté.',
+      404,
+    );
+  }
+  dev.mac = mac;
+
+  const now = Date.now();
+  const previous = await trialDeadlineForDevice(env, dev, now);
+  const trialUntil = nextTrialEnd(previous, now, parsed.days);
+
+  await ensureTrialAnchorTable(env);
+  const existing = await env.DB
+    .prepare('SELECT mac FROM trial_anchors WHERE mac = ?')
+    .bind(mac).first();
+  if (existing) {
+    await env.DB.prepare(
+      'UPDATE trial_anchors SET extended_until = ? WHERE mac = ?',
+    ).bind(trialUntil, mac).run();
+  } else {
+    await env.DB.prepare(
+      'INSERT INTO trial_anchors (mac, android_id, started_at, extended_until) VALUES (?, ?, ?, ?)',
+    ).bind(mac, dev.android_id || null, dev.first_seen_at || now, trialUntil).run();
+  }
+  await env.DB.prepare(
+    `INSERT INTO trial_extensions
+      (id, mac, days, previous_until, new_until, actor_type, actor_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    genId('tx'), mac, parsed.days, previous || null, trialUntil,
+    actor && actor.type, actor && actor.id, now,
+  ).run();
+  await logAudit(env, request, actor, 'trial.extend',
+    { type: 'device', id: dev.id }, null,
+    { mac, days: parsed.days, previous_until: previous, trial_until: trialUntil });
+
+  return jsonResp({
+    ok: true,
+    mac,
+    days: parsed.days,
+    previous_until: previous,
+    trial_until: trialUntil,
+  });
+}
+
 // ----- ACTIVATION par MAC (owner ou revendeur autonome) -----
 //  Trouve-ou-cree le client + le device (cle = MAC), cree OU renouvelle
 //  la licence pour l'app, et DEBITE les credits du revendeur selon le
@@ -4177,6 +4432,61 @@ async function handleActivate(request, env, user, actor) {
     ]);
   }
 
+  // Interrupteur ALLUMÉ : une licence À VIE déjà active ne se paie
+  // pas une deuxième fois, et le débit est conditionnel (solde réel)
+  // AVANT d'écrire la licence. Coupé : on garde l'ancien débit
+  // (une seconde activation à vie redébiterait).
+  const enforceCredits = trialEnforcementOn(env);
+  if (enforceCredits) {
+    const early = await env.DB
+      .prepare('SELECT id, expires_at, status FROM licenses WHERE device_id = ? AND app_id = ?')
+      .bind(deviceId, appId)
+      .first();
+    const alreadyLife = early
+      && early.status === 'active'
+      && (early.expires_at === null || early.expires_at === undefined);
+    if (alreadyLife) {
+      return jsonResp({
+        ok: true,
+        already_lifetime: true,
+        license_id: early.id,
+        device_id: deviceId,
+        customer_id: customerId,
+        mac,
+        plan: 'lifetime',
+        expires_at: null,
+        credits_charged: 0,
+        credit_balance: resellerRow ? resellerRow.credit_balance : null,
+        renewed: false,
+      }, 200);
+    }
+  }
+
+  // Débit AVANT la licence quand l'interrupteur est allumé : si le solde
+  // ne suffit plus (course entre deux activations), on n'écrit PAS de
+  // licence gratuite.
+  let debitedEarly = false;
+  let balanceAfter = null;
+  if (enforceCredits && chargeResellerId && cost > 0) {
+    // RETURNING : une ligne = le débit a eu lieu. Zéro ligne = solde
+    // insuffisant (y compris si une autre activation vient de passer).
+    const row = await env.DB.prepare(
+      'UPDATE resellers SET credit_balance = credit_balance - ? '
+      + 'WHERE id = ? AND credit_balance >= ? RETURNING credit_balance',
+    ).bind(cost, chargeResellerId, cost).first();
+    if (!row) {
+      const fresh = await env.DB
+        .prepare('SELECT credit_balance FROM resellers WHERE id = ?')
+        .bind(chargeResellerId)
+        .first();
+      const bal = fresh ? fresh.credit_balance : 0;
+      return errResp('insufficient_credits',
+        `Credits insuffisants (besoin ${cost}, solde ${bal})`, 402);
+    }
+    debitedEarly = true;
+    balanceAfter = row.credit_balance;
+  }
+
   // 2) Licence (device, app) : renouvelle si elle existe, sinon cree.
   const existing = await env.DB
     .prepare('SELECT id, expires_at FROM licenses WHERE device_id = ? AND app_id = ?')
@@ -4213,8 +4523,22 @@ async function handleActivate(request, env, user, actor) {
   // Le lien M3U n'est PAS écrit ici. Voir PUT /api/v1/sources/:mac.
 
   // 3) Debit credits (revendeur) + ecriture au ledger, atomiquement.
-  let balanceAfter = null;
-  if (chargeResellerId && cost > 0) {
+  // Interrupteur allumé : le solde a DÉJÀ été décrémenté (debitedEarly).
+  // On n'écrit que le journal. On ne débite pas une seconde fois.
+  if (debitedEarly) {
+    const fresh = await env.DB
+      .prepare('SELECT credit_balance FROM resellers WHERE id = ?')
+      .bind(chargeResellerId)
+      .first();
+    balanceAfter = fresh ? fresh.credit_balance : balanceAfter;
+    await env.DB.prepare(
+      `INSERT INTO credit_ledger
+        (id, reseller_id, delta, reason, balance_after, ref_license_id,
+         ref_device_mac, actor_type, actor_id, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(genId('cl'), chargeResellerId, -cost, renewed ? 'renew' : 'activation',
+           balanceAfter, licenseId, mac, actor.type, actor.id, plan, now).run();
+  } else if (!enforceCredits && chargeResellerId && cost > 0) {
     balanceAfter = resellerRow.credit_balance - cost;
     await env.DB.batch([
       env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(balanceAfter, chargeResellerId),
