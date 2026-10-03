@@ -120,11 +120,21 @@ class _MoviesScreenState extends State<MoviesScreen> {
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(32),
-              child: Text(
-                context.l10n.moviesEmptyCatalogue,
-                textAlign: TextAlign.center,
-                style: AppTextStyles.bodyMedium
-                    .copyWith(color: AppColors.textSecondary),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    context.l10n.moviesEmptyCatalogue,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: _reloadCatalogue,
+                    child: Text(context.l10n.moviesRetry),
+                  ),
+                ],
               ),
             ),
           );
@@ -265,8 +275,8 @@ class _MovieRow extends StatelessWidget {
 
   Widget _posterFallback() => ColoredBox(
         color: AppColors.surfaceHigh,
-        child: Icon(Icons.movie_outlined,
-            color: AppColors.textTertiary, size: 22),
+        child:
+            Icon(Icons.movie_outlined, color: AppColors.textTertiary, size: 22),
       );
 }
 
@@ -364,8 +374,7 @@ class _DownloadRow extends StatelessWidget {
                   value: d.totalBytes > 0 ? d.progress : null,
                   minHeight: 5,
                   backgroundColor: Colors.white.withValues(alpha: 0.1),
-                  valueColor:
-                      AlwaysStoppedAnimation<Color>(AppColors.accent),
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
                 ),
               ),
             const SizedBox(height: 4),

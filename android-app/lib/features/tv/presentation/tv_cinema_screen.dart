@@ -30,6 +30,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../remote/domain/remote_typing_hub.dart';
+import '../../cinema/data/catalog_cache_policy.dart';
 import '../../cinema/data/cinema_repository.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_language.dart';
@@ -37,6 +38,7 @@ import '../../cinema/domain/cinema_models.dart';
 import '../../security/data/parental_controls.dart';
 import '../../vod/data/download_repository.dart';
 import '../core/tv_dimens.dart';
+import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_cinema_common.dart';
 import 'tv_cinema_detail_screen.dart';
@@ -67,7 +69,12 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   final CinemaRepository _repo = CinemaRepository.instance;
 
   bool _loadingCats = true;
-  bool _noSource = false;
+
+  /// Pas de compte Xtream : le message « ajoute ton abonnement ».
+  bool _accountsMissing = false;
+
+  /// Compte présent, mais ni cache ni réponse du serveur.
+  bool _catalogMissing = false;
   List<CinemaCategory> _cats = const <CinemaCategory>[];
 
   /// Langue choisie (null = toutes) + langues proposées (par fréquence).
@@ -79,6 +86,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
 
   List<CinemaTitle> _titles = const <CinemaTitle>[];
   bool _loadingTitles = false;
+
+  /// La catégorie affichée n'a pas pu être lue (ni cache, ni serveur).
+  bool _titlesFailed = false;
   int _loadGen = 0;
 
   bool _adultUnlocked = false;
@@ -137,7 +147,15 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
 
   void _onIndex() {
     if (!mounted) return;
+    final List<CinemaCategory>? fresh = _repo.peekCategories(widget.kind);
+    if (fresh != null && fresh.isNotEmpty) {
+      _cats = fresh;
+      _catalogMissing = false;
+    }
     if (_sel.view == _View.search) _runSearch();
+    if (_sel.view == _View.category && _sel.cat != null) {
+      unawaited(_loadCategory(_sel.cat!, keepVisible: _titles.isNotEmpty));
+    }
     setState(() {});
   }
 
@@ -149,7 +167,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
     if (srcs.isEmpty) {
       if (mounted) {
         setState(() {
-          _noSource = true;
+          _accountsMissing = true;
+          _catalogMissing = false;
           _loadingCats = false;
         });
       }
@@ -187,7 +206,8 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       _langOptions = langs;
       _lang = lang;
       _loadingCats = false;
-      _noSource = cats.isEmpty;
+      _accountsMissing = false;
+      _catalogMissing = cats.isEmpty;
     });
     final List<WatchEntry> cont = _continue;
     final List<CinemaCategory> vis = _visibleCats;
@@ -279,20 +299,79 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       _focused.value = null;
     });
     if (s.view == _View.category && cat != null) {
-      final int gen = ++_loadGen;
-      setState(() {
-        _loadingTitles = true;
-        _titles = const <CinemaTitle>[];
-      });
-      final List<CinemaTitle> t = await _repo.titles(widget.kind, cat);
-      if (!mounted || gen != _loadGen) return;
-      setState(() {
-        _titles = t;
-        _loadingTitles = false;
-      });
+      await _loadCategory(cat);
     } else if (s.view == _View.search) {
       _runSearch();
     }
+  }
+
+  /// Charge les affiches d'une catégorie.
+  ///
+  /// [keepVisible] : un rafraîchissement est arrivé alors que la grille
+  /// est déjà là. On ne la remplace pas par un spinner, et on ne la vide
+  /// pas si le serveur échoue.
+  Future<void> _loadCategory(CinemaCategory cat,
+      {bool keepVisible = false}) async {
+    final int gen = ++_loadGen;
+    if (!keepVisible) {
+      setState(() {
+        _loadingTitles = true;
+        _titlesFailed = false;
+        _titles = const <CinemaTitle>[];
+      });
+    }
+    final CinemaTitleLoad load = await _repo.loadTitles(widget.kind, cat);
+    if (!mounted || gen != _loadGen) return;
+    setState(() {
+      _titles = load.titles;
+      _titlesFailed = load.failed && load.titles.isEmpty;
+      _loadingTitles = false;
+    });
+  }
+
+  Future<void> _retryCatalog() async {
+    setState(() {
+      _loadingCats = true;
+      _catalogMissing = false;
+    });
+    _repo.dropKindMemory(widget.kind);
+    _repo.requestRefresh();
+    await _init();
+  }
+
+  Future<void> _retryCategory() async {
+    final CinemaCategory? cat = _sel.cat;
+    if (cat == null) return;
+    final int gen = ++_loadGen;
+    setState(() {
+      _loadingTitles = true;
+      _titlesFailed = false;
+    });
+    final CinemaTitleLoad load =
+        await _repo.loadTitles(widget.kind, cat, forceNetwork: true);
+    if (!mounted || gen != _loadGen) return;
+    setState(() {
+      _titles = load.titles;
+      _titlesFailed = load.failed && load.titles.isEmpty;
+      _loadingTitles = false;
+    });
+  }
+
+  String? _updatedLabel(BuildContext context) {
+    final CatalogAge? age = _repo.catalogAgeAt(widget.kind, DateTime.now());
+    if (age == null) return null;
+    final String when;
+    switch (age.unit) {
+      case CatalogAgeUnit.justNow:
+        when = context.l10n.tvCinemaAgeJustNow;
+      case CatalogAgeUnit.minutes:
+        when = context.l10n.tvCinemaAgeMinutes(age.amount);
+      case CatalogAgeUnit.hours:
+        when = context.l10n.tvCinemaAgeHours(age.amount);
+      case CatalogAgeUnit.days:
+        when = context.l10n.tvCinemaAgeDays(age.amount);
+    }
+    return context.l10n.tvCinemaUpdated(when);
   }
 
   // ---------------------------------------------------------
@@ -411,13 +490,14 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loadingCats) return const CinemaLoading();
-    if (_noSource) {
+    if (_accountsMissing) {
       return TvEmptyState(
         icon: _movies ? Icons.movie_rounded : Icons.video_library_rounded,
         title: context.l10n.tvCinemaNoSource,
         subtitle: context.l10n.tvCinemaNoSourceBody,
       );
     }
+    if (_catalogMissing) return _unavailable(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -456,7 +536,7 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       if (cont.isNotEmpty)
         CinemaRailRow(
           icon: Icons.play_circle_outline_rounded,
-          label: context.l10n.tvCinemaContinue,
+          label: context.l10n.sectionResumeWhereYouLeftOff,
           count: cont.length,
           autofocus: _sel.view == _View.continueW,
           selected: _sel.view == _View.continueW,
@@ -526,6 +606,16 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
               },
             ),
           ),
+          if (_updatedLabel(context) case final String label)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TvTokens.ui(TvDimens.caption, color: TvTokens.mutedDim),
+              ),
+            ),
         ],
       ),
     );
@@ -580,6 +670,9 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
             _titlesGrid(_repo.recent(widget.kind, allowedCats: _allowedKeys)));
       case _View.category:
         if (_loadingTitles) return _withHero(context, const CinemaLoading());
+        if (_titlesFailed && _titles.isEmpty) {
+          return _withHero(context, _failedCategory(context));
+        }
         if (_titles.isEmpty) {
           return _withHero(
             context,
@@ -592,6 +685,53 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
         }
         return _withHero(context, _titlesGrid(_titles));
     }
+  }
+
+  Widget _unavailable(BuildContext context) {
+    return TvEmptyState(
+      icon: _movies ? Icons.movie_rounded : Icons.video_library_rounded,
+      title: context.l10n.tvCinemaOfflineTitle,
+      subtitle: context.l10n.tvCinemaOfflineBody,
+      footer: _retryButton(context, () => unawaited(_retryCatalog())),
+    );
+  }
+
+  Widget _failedCategory(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            context.l10n.tvCinemaCategoryFailed,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontSize: TvDimens.body, color: TvTokens.mutedDim),
+          ),
+          const SizedBox(height: 18),
+          _retryButton(context, () => unawaited(_retryCategory())),
+        ],
+      ),
+    );
+  }
+
+  Widget _retryButton(BuildContext context, VoidCallback onSelect) {
+    return TvFocusable(
+      autofocus: true,
+      onSelect: onSelect,
+      borderRadius: BorderRadius.circular(TvTokens.rButton),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+        decoration: BoxDecoration(
+          color: TvTokens.card,
+          borderRadius: BorderRadius.circular(TvTokens.rButton),
+          border: Border.all(color: TvTokens.line),
+        ),
+        child: Text(
+          context.l10n.tvCinemaRetry,
+          style: TvTokens.ui(TvDimens.body, weight: FontWeight.w600),
+        ),
+      ),
+    );
   }
 
   bool _isDownloaded(String id) {

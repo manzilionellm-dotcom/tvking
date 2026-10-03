@@ -29,6 +29,7 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/clear_voice_flag.dart';
+import '../../player/data/image_prefs.dart';
 
 import '../../recordings/domain/recording.dart';
 import '../core/tv_tokens.dart';
@@ -43,7 +44,8 @@ class TvRecordingPlayerScreen extends StatefulWidget {
       _TvRecordingPlayerScreenState();
 }
 
-class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
+class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen>
+    with WidgetsBindingObserver {
   NativeVideoController? _controller;
   final FocusNode _focus = FocusNode();
 
@@ -57,6 +59,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     ForegroundPlayback.lock();
     ClearVoiceFlag.changes.addListener(_onClearVoice);
     _verifyThenOpen();
@@ -86,11 +89,20 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
     }
     // `file://` explicite → DefaultDataSource (natif) ouvre le fichier local.
     final String fileUri = Uri.file(widget.recording.filePath).toString();
-    final NativeVideoController c =
-        NativeVideoController(initialUrl: fileUri)..addListener(_onPlayer);
+    // vod : un fichier fini. Au retour dans l'app on reprend la position,
+    // pas le « bord du direct » (qui remettrait le fichier au début).
+    final NativeVideoController c = NativeVideoController(
+      initialUrl: fileUri,
+      openAsVod: true,
+    )..addListener(_onPlayer);
     setState(() => _controller = c);
     unawaited(ClearVoiceFlag.load().then((_) {
       if (mounted) c.setClearVoice(ClearVoiceFlag.value);
+    }));
+    unawaited(ImagePrefs.load().then((_) {
+      if (!mounted) return;
+      c.setImageEngine(ImagePrefs.engine.wire);
+      c.setFrameRateMatch(ImagePrefs.frameRateMatch);
     }));
   }
 
@@ -109,6 +121,28 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
         _error = true;
         _buffering = false;
       });
+    }
+  }
+
+  // Home : même arrêt que le direct. « OK » rappelle play(), qui rouvre
+  // le fichier à la position (vod). Pas de reprise automatique : pas de
+  // son surprise en revenant sur l'écran.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final NativeVideoController? c = _controller;
+    if (c == null) return;
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        if (NativeVideoController.backgroundPauseOnly) {
+          c.pause();
+        } else {
+          c.suspendForBackground();
+        }
+      case AppLifecycleState.resumed:
+      case AppLifecycleState.inactive:
+        break;
     }
   }
 
@@ -139,6 +173,7 @@ class _TvRecordingPlayerScreenState extends State<TvRecordingPlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     ClearVoiceFlag.changes.removeListener(_onClearVoice);
     _controller?.removeListener(_onPlayer);
     _controller?.dispose();

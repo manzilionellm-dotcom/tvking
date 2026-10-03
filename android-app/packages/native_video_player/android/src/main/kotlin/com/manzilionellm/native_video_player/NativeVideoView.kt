@@ -1,15 +1,29 @@
 package com.manzilionellm.native_video_player
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.graphics.Rect
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.media.AudioPlaybackConfiguration
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.os.SystemClock
+import android.view.PixelCopy
+import android.view.Surface
 import android.view.SurfaceView
 import android.view.View
+import android.widget.FrameLayout
+import android.widget.ImageView
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.Format
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -21,8 +35,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -41,14 +57,42 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
+import com.manzilionellm.native_video_player.logic.AppForeground
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
+import com.manzilionellm.native_video_player.logic.BackgroundGate
+import com.manzilionellm.native_video_player.logic.AudioGate
+import com.manzilionellm.native_video_player.logic.AudioHandoff
+import com.manzilionellm.native_video_player.logic.AudioFocusPolicy
+import com.manzilionellm.native_video_player.logic.AudioFixes
+import com.manzilionellm.native_video_player.logic.AudioRouteState
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
+import com.manzilionellm.native_video_player.logic.AudioSpectrum
+import com.manzilionellm.native_video_player.logic.AudioStages
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
+import com.manzilionellm.native_video_player.logic.AacRoute
+import com.manzilionellm.native_video_player.logic.CodecOrder
+import com.manzilionellm.native_video_player.logic.DecoderFallback
+import com.manzilionellm.native_video_player.logic.DisplayModeOption
 import com.manzilionellm.native_video_player.logic.ExclusiveAudio
+import com.manzilionellm.native_video_player.logic.FrameRateMatch
+import com.manzilionellm.native_video_player.logic.NamedCodec
+import com.manzilionellm.native_video_player.logic.PictureHealth
+import com.manzilionellm.native_video_player.logic.PictureSignal
+import com.manzilionellm.native_video_player.logic.PictureTune
 import com.manzilionellm.native_video_player.logic.PlaybackSession
+import com.manzilionellm.native_video_player.logic.PlayerCensus
+import com.manzilionellm.native_video_player.logic.ProbeAttach
+import com.manzilionellm.native_video_player.logic.VolumeTrace
+import com.manzilionellm.native_video_player.logic.ReconnectGate
+import com.manzilionellm.native_video_player.logic.ReconnectPlan
 import com.manzilionellm.native_video_player.logic.SpokenCandidate
 import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
+import com.manzilionellm.native_video_player.logic.VideoCandidate
+import com.manzilionellm.native_video_player.logic.VideoEngine
+import com.manzilionellm.native_video_player.logic.VideoTrackChoice
+import java.util.concurrent.atomic.AtomicInteger
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -73,16 +117,26 @@ import io.flutter.plugin.platform.PlatformView
  * résolution qui fige l'image, qualité HLS qui change sans jeter les images
  * déjà reçues, et libération du codec AVANT la chaîne suivante (sinon image
  * verte / noire / figée, ou chaîne refusée si une seule connexion est permise).
- * Le décodeur VIDÉO FFmpeg n'est jamais construit, même quand le son active
- * l'extension audio : ce chemin a bloqué des chaînes sur le logo.
+ * Le décodeur VIDÉO FFmpeg n'est construit QUE si la bibliothèque native
+ * déclare un décodeur vidéo (H.264, HEVC ou MPEG-2). Le binaire audio
+ * Jellyfin de la v104 n'en a pas : on ne le construit donc pas, le chemin
+ * qui avait bloqué des chaînes sur le logo (v99–v101) reste fermé.
+ * Si MediaCodec échoue ou reste noir, on passe au décodeur logiciel
+ * Android, puis à FFmpeg seulement s'il est vraiment là.
  *
  * AUTO-RECONNEXION SILENCIEUSE : si le serveur coupe / le réseau hoquette,
  * ExoPlayer ré-essaie d'abord seul (LoadErrorHandlingPolicy), et en cas
- * d'erreur fatale on RE-PREPARE automatiquement avec un back-off (1→2→4→8 s)
- * SANS rien dire à l'UI (juste « buffering »). On ne remonte une vraie erreur
- * à Dart qu'après plusieurs échecs d'affilée (filet de sécurité ultime).
- * Un direct « en retard » (hors fenêtre) rejoint le direct tout de suite :
- * ce n'est pas une panne, et ça ne compte pas dans le budget d'échecs.
+ * d'erreur fatale on RE-PREPARE avec un back-off (1→2→4→8 s, plafond 8 s,
+ * 8 essais). Un second essai n'est pas programmé tant que le premier
+ * attend (deux prepare = deux sons). Le volume reste à 0 jusqu'à la
+ * nouvelle image ou le nouveau « je joue ». Si une image a déjà été
+ * vue, on la garde (petite copie) au lieu d'un panneau opaque : stop()
+ * vide souvent la surface, et le panneau Flutter par-dessus faisait
+ * un écran noir. Sans copie (coupure dans les premières secondes),
+ * on montre le panneau avec le nom de la chaîne. On ne remonte une
+ * vraie erreur à Dart qu'après les 8 essais. Un direct « en retard »
+ * (hors fenêtre) rejoint le direct tout de suite : ce n'est pas une
+ * panne, et ça ne compte pas dans le budget d'échecs.
  *
  * MODE FILM / ÉPISODE (« vod », 26/09/2026) : pour un fichier fini on
  * ajoute ce qu'un lecteur façon Netflix exige — démarrage à une position
@@ -130,9 +184,38 @@ class NativeVideoView(
     id: Int,
 ) : PlatformView, MethodChannel.MethodCallHandler, AnalyticsListener {
 
+    private val appContext: Context = context
     private val surfaceView = SurfaceView(context)
+
+    /**
+     * Dernière image, posée PAR-DESSUS la surface pendant une coupure.
+     * stop() vide souvent la surface (écran noir). Cette copie, prise
+     * pendant que ça jouait, reste visible jusqu'à la nouvelle trame.
+     * Une seule image, petite (au plus 1280×720, RGB 565) : pas une
+     * file d'images, la box a peu de mémoire.
+     */
+    private val holdView = ImageView(context).apply {
+        visibility = View.GONE
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        isFocusable = false
+        isFocusableInTouchMode = false
+    }
+    private val root = FrameLayout(context).apply {
+        val fill = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        )
+        addView(surfaceView, fill)
+        addView(
+            holdView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+    }
     private val channel = MethodChannel(messenger, "native_video_player/$id")
-    private val player: ExoPlayer
+    private lateinit var player: ExoPlayer
     private val handler = Handler(Looper.getMainLooper())
 
     private var currentUrl: String? = null
@@ -142,10 +225,16 @@ class NativeVideoView(
     private var lastKnownPos = 0L
     private var lastSentDuration = -1L
 
-    // Reconnexion auto silencieuse.
-    private var retryCount = 0
+    // Reconnexion auto silencieuse. Les délais et le « un seul essai
+    // à la fois » sont dans [reconnect] (testé sans ExoPlayer).
+    private val reconnect = ReconnectGate()
     private var pendingRetry: Runnable? = null
-    private val maxSilentRetries = 8 // au-delà → on prévient Dart (reset complet)
+
+    // Dernière image copiée. null = on n'a encore rien de montrable.
+    private var heldBitmap: Bitmap? = null
+    private var copyInFlight = false
+    private var lastCopyAt = 0L
+    private var sawFrame = false
 
     // Direct sorti de sa fenêtre (Internet trop lent un moment). On rejoint
     // le direct sans compter une « panne », mais pas à l'infini : au-delà on
@@ -159,9 +248,88 @@ class NativeVideoView(
     @Volatile
     private var ffmpegAudioActive = false
 
+    /**
+     * L'essai « décodeur de la box » a échoué sur CETTE ouverture.
+     * On reste sur FFmpeg jusqu'au prochain setUrl. Faux par défaut :
+     * le chemin v106 ne le consulte que si le réglage est allumé.
+     */
+    private var platformAacGaveUp = false
+
+    /**
+     * REPLI AAC → BOX, pour CETTE chaîne seulement (voir [AacRoute]).
+     * Avant (v103–v106) c'était un seul drapeau pour tout le processus :
+     * une panne FFmpeg renvoyait toutes les chaînes AAC à la box, et le
+     * son « vieille radio » revenait sur les chaînes déjà vues. Relu par
+     * le sélecteur de décodeurs depuis le fil de lecture : @Volatile.
+     */
+    @Volatile
+    private var forceBoxAacDecoder: Boolean = false
+
+    /** Pourquoi cette chaîne est sur la box (null = FFmpeg). Pour la fiche. */
+    private var boxFailure: AacRoute.Failure? = null
+
+    // ---- FOCUS AUDIO géré par Zuno (01/10/2026) ----------------------------
+    // Media3 (handleAudioFocus = true) baissait le son à 20 % dès qu'une
+    // autre app ou un bip demandait le son « avec baisse », et ne le
+    // remontait que si le système renvoyait GAIN, ce qui n'arrive pas
+    // toujours : son « dans un trou » jusqu'au zap suivant. Ici on demande
+    // le focus nous-mêmes et on applique [AudioFocusPolicy] : jamais de
+    // baisse, pause seulement sur une vraie perte. [AudioFixes.androidFocus]
+    // vrai = ancien comportement (Media3 gère).
+    private val audioManager: AudioManager? =
+        context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private var focusRequest: AudioFocusRequest? = null
+    private var focusHeld = false
+    private var pausedByFocus = false
+    private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        handler.post { onAudioFocusChange(change) }
+    }
+
+    /**
+     * Lecture arrêtée parce que l'app est passée en arrière-plan (Home) :
+     * décodeur et AudioTrack rendus, focus abandonné. « play » ou « resume »
+     * rouvre la chaîne au direct (ou le film à sa position).
+     */
+    private var suspended = false
+
+    /** Autres lectures audio actives sur la box (API 26+), pour la fiche. */
+    private var playbackCallback: AudioManager.AudioPlaybackCallback? = null
+    private var lastPlaybackLine: String? = null
+
+    /**
+     * Vrai dès que le lecteur a été « prêt » une fois dans cette session.
+     * Le filet des 8 s ne se déclenche que si FFmpeg n'a JAMAIS rendu la
+     * chaîne prête : un simple re-tamponnage réseau à la 8e seconde n'est
+     * pas un échec de FFmpeg (c'était l'ancien déclencheur fantôme).
+     */
+    private var readyThisSession = false
+
     // Jeton du délai de 8 s : l'incrémenter annule le contrôle précédent
     // (zapping, repli, dispose) sans toucher aux autres callbacks du Handler.
     private var ffmpegWatchToken = 0
+
+    // ---- UN SEUL AudioTrack (01/10/2026) -----------------------------------
+    // Media3 1.5.1 rend l'AudioTrack APRÈS stop(), sur un fil, et
+    // onAudioTrackReleased n'arrive qu'ensuite. [audioGate] retient le
+    // prepare() tant qu'une piste est encore comptée. Les compteurs « ici »
+    // sont ceux de CETTE vue. [owedTrackReleases] : on a déjà compté le
+    // rendu (délai dépassé) ; le callback en retard ne doit pas décompter
+    // la piste suivante.
+    private val audioGate = AudioGate { AudioFixes.immediateHandoff }
+    private var audioTracksHere = 0
+    private var audioDecodersHere = 0
+    private var owedTrackReleases = 0
+    private var owedDecoderReleases = 0
+    private var openDeferred = false
+    private var deferredStartMs: Long? = null
+    private var deferredToken = 0
+    // Zap et libération ont chacun leur jeton : un silence (autre lecteur)
+    // pendant le dispose ne doit pas annuler l'attente de la piste.
+    private var waitToken = 0
+    private var disposeWaitToken = 0
+    private var disposeStarted = false
+    private var disposeResult: MethodChannel.Result? = null
+    private val trackWatcher: (Int) -> Unit = { alive -> onGlobalTracks(alive) }
 
     // true après releasePlayer : plus aucun appel ExoPlayer (release deux fois
     // fait planter, et un événement en retard ne doit pas parler à Dart).
@@ -188,6 +356,14 @@ class NativeVideoView(
     private var clearVoiceEnabled = false
     private val clearVoiceProcessor = ClearVoiceProcessor()
 
+    // Quatre sondes. Coupées par défaut : onConfigure renvoie NOT_SET,
+    // Media3 ne les insère pas. Allumées, chacune copie le PCM sans le modifier.
+    // L'ordre est celui de [ZunoAudioChain] : décodeur, voix, silence, AudioTrack.
+    private val probeDecoder = AudioProbeProcessor(AudioStages.DECODER, ::onProbe)
+    private val probeVoice = AudioProbeProcessor(AudioStages.VOICE, ::onProbe)
+    private val probeSilence = AudioProbeProcessor(AudioStages.SILENCE, ::onProbe)
+    private val probeSink = AudioProbeProcessor(AudioStages.SINK, ::onProbe)
+
     // ---- DIAGNOSTIC DU SON (boîte noire, 01/10/2026) -----------------------
     // Pour chaque chaîne : ce qui ENTRE (format du flux), QUI décode (box ou
     // FFmpeg), ce qui SORT (AudioTrack) et les coupures. Envoyé à Dart
@@ -196,6 +372,26 @@ class NativeVideoView(
     private var diag = AudioSnapshot()
     private var diagLastUnderrunSentMs = 0L
     private var diagCapsSent = false
+
+    // Trace de volume : une ligne par seconde, 10 s après chaque ouverture.
+    // Incrémenté à chaque silence : les lignes de l'ancienne chaîne s'arrêtent.
+    private var volumeTraceToken = 0
+
+    // Dernier compteur Android. Vide tant que le rappel n'est pas arrivé.
+    // getClientUid est bloqué sur Android 16 : on ne s'en sert que s'il
+    // renvoie un vrai uid. Sinon la lecture qui naît avec notre AudioTrack
+    // est la nôtre (voir AudioRouteState).
+    private data class Heard(
+        val usage: Int,
+        val contentType: Int,
+        val deviceType: Int,
+        val deviceName: String,
+        val uid: Int,
+    )
+    private var heard: List<Heard> = emptyList()
+    private var heardReady = false
+    /** Dernière fiche envoyée : on ne la réécrit pas si rien n'a changé. */
+    private var lastDiagText: String? = null
 
     /** Ce que la sortie son de la box accepte tel quel (HDMI / barre de son). */
     private val outputCaps: String = try {
@@ -210,6 +406,55 @@ class NativeVideoView(
     // Identifiant dans [owners]. -1 tant que le lecteur n'est pas inscrit.
     private var playerKey: Int = -1
 
+    // Identifiant dans [AppForeground]. -1 tant que l'activité ne nous
+    // prévient pas (Home / retour).
+    private var foregroundId: Int = -1
+
+    // Moteur vidéo. [preferredEngine] est le choix de la personne (matériel
+    // par défaut). [videoEngine] est celui de la chaîne en cours : un repli
+    // ne change pas le choix, la chaîne suivante repart du choix.
+    private var preferredEngine: VideoEngine = VideoEngine.HARDWARE
+    private var videoEngine: VideoEngine = VideoEngine.HARDWARE
+
+    // Vrai seulement pendant la construction d'un lecteur qui doit mettre
+    // FFmpeg vidéo EN PREMIER. Faux au démarrage : même liste qu'en v104.
+    private var installFfmpegVideo: Boolean = false
+    private var ffmpegRendererInstalled: Boolean = false
+
+    // Relu à chaque demande de décodeur. Le logiciel passe devant seulement
+    // quand [videoEngine] est SOFTWARE.
+    @Volatile
+    private var preferSoftwareVideo: Boolean = false
+
+    private val triedEngines = HashSet<VideoEngine>()
+    private var videoGaveUp: Boolean = false
+    private var videoFallbackPosted: Boolean = false
+
+    // Trames vraiment envoyées à l'écran. Le compteur est touché sur le
+    // fil de lecture, lu sur le fil principal.
+    private val renderedFrames = AtomicInteger(0)
+
+    @Volatile
+    private var lastFrameAtMs: Long = 0L
+
+    /**
+     * Une seule instance : Media3 n'accepte pas null, et
+     * [ExoPlayer.clearVideoFrameMetadataListener] ne retire le
+     * compteur que si on lui rend le même objet.
+     */
+    private val frameClock = VideoFrameMetadataListener { _, _, _, _ ->
+        renderedFrames.incrementAndGet()
+        lastFrameAtMs = SystemClock.elapsedRealtime()
+    }
+    private var videoDecoderReady: Boolean = false
+    private var decoderReadyAtMs: Long = 0L
+    private var contentFps: Float = 0f
+    private var frameRateMatchEnabled: Boolean = false
+    private var frameRateModeApplied: Boolean = false
+    private var bytesLoaded: Long = 0L
+    private var bitrateEstimate: Long = 0L
+    private var videoChosenForSession: Boolean = false
+
     private val positionPump = object : Runnable {
         override fun run() {
             if (released) return
@@ -217,9 +462,24 @@ class NativeVideoView(
                 val pos = player.currentPosition
                 if (vodMode) lastKnownPos = pos
                 emit("position", pos)
+                maybeCopyFrame()
             }
             sendDurationIfChanged()
             if (!released) handler.postDelayed(this, 500)
+        }
+    }
+
+    /**
+     * Toutes les 2 s : image noire (décodeur prêt, aucune trame) ou image
+     * figée (plus de trame alors que ça joue). Un chargement en cours
+     * ne compte pas. Un seul basculement à la fois.
+     */
+    private val pictureWatch = object : Runnable {
+        override fun run() {
+            if (!released) {
+                considerPictureFallback()
+                handler.postDelayed(this, 2_000)
+            }
         }
     }
 
@@ -251,6 +511,325 @@ class NativeVideoView(
         // Opaque = le décodeur écrit des pixels réels, pas « du vide ».
         surfaceView.holder.setFormat(PixelFormat.OPAQUE)
 
+        player = buildConfiguredPlayer()
+        PlayerCensus.playerCreated()
+        PlayerCensus.watchTracks(trackWatcher)
+        // On NE retire PAS la surface au zap : la retirer fait un flash
+        // noir. stop() rend le codec ; la surface, elle, reste. Le logo
+        // Flutter couvre l'ancienne image jusqu'à la nouvelle trame.
+        attachToSurface(player)
+        playerKey = owners.register { silenceForHandoff() }
+
+        handler.postDelayed(positionPump, 500)
+        handler.postDelayed(pictureWatch, 2_000)
+        handler.post { emitImageCaps() }
+        watchOtherPlaybacks()
+        // Home : l'activité coupe CE lecteur dans onPause, sans attendre
+        // Flutter. On se retire à la destruction.
+        foregroundId = AppForeground.watch(
+            onBackground = { inBackground -> emit("appBackground", inBackground) },
+            stop = { suspendForBackground() },
+            resume = { resumeAfterForeground() },
+        )
+    }
+
+    // ---- focus audio : demande, abandon, décision ----------------------------
+
+    /**
+     * Demande le focus pour nous (sauf si Media3 le gère : réglage de repli).
+     * Déjà tenu : on ne redemande pas. API < 26 : l'ancienne méthode, les
+     * mêmes codes (1 accordé, 0 refusé). La décision est [AudioFocusPolicy.onRequest].
+     */
+    private fun requestOwnFocus() {
+        if (AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus)) return
+        val am = audioManager ?: return
+        // Déjà tenu : aucun second appel Android.
+        if (!AudioFocusPolicy.onRequest(focusHeld, AudioFocusPolicy.REQUEST_GRANTED).asked) return
+        val code = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val attrs = android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(
+                        if (clearVoiceEnabled) android.media.AudioAttributes.CONTENT_TYPE_SPEECH
+                        else android.media.AudioAttributes.CONTENT_TYPE_MOVIE,
+                    )
+                    .build()
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attrs)
+                    // Pas de pause automatique sur « baisse demandée » : on décide.
+                    .setWillPauseWhenDucked(false)
+                    .setAcceptsDelayedFocusGain(false)
+                    .setOnAudioFocusChangeListener(focusListener, handler)
+                    .build()
+                focusRequest = req
+                am.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
+            }
+        } catch (_: RuntimeException) {
+            AudioFocusPolicy.REQUEST_FAILED
+        }
+        val plan = AudioFocusPolicy.onRequest(alreadyHeld = false, systemCode = code)
+        focusHeld = plan.held
+        // Accordé : on n'est plus en pause à cause d'une perte. Refusé :
+        // on ne baisse pas le volume, on le dit, et la lecture part quand
+        // même à plein volume (une chaîne muette serait pire).
+        if (plan.held) pausedByFocus = false
+        plan.line?.let { emit("audioDiag", it) }
+    }
+
+    private fun abandonOwnFocus() {
+        if (!focusHeld) return
+        focusHeld = false
+        pausedByFocus = false
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                focusRequest?.let { am.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(focusListener)
+            }
+        } catch (_: RuntimeException) {
+            // Un abandon raté ne doit pas bloquer la suite.
+        }
+        emit("audioDiag", "Focus audio : abandonné.")
+    }
+
+    /** Sur le fil principal. Applique [AudioFocusPolicy] et le dit à la boîte noire. */
+    private fun onAudioFocusChange(change: Int) {
+        if (released) return
+        val d = AudioFocusPolicy.decide(change, pausedByFocus, player.isPlaying)
+        pausedByFocus = d.pausedByFocus
+        emit("audioDiag", d.line)
+        when (d.action) {
+            AudioFocusPolicy.Action.PAUSE -> try { player.pause() } catch (_: RuntimeException) {}
+            AudioFocusPolicy.Action.RESUME -> try {
+                // Dehors : un GAIN ne doit pas relancer le flux.
+                if (refuseReopen()) return
+                // Jamais 0,2 : le volume de lecture est 1, le silence de
+                // passage (holdMute) reste 0 jusqu'à la nouvelle image.
+                if (!reconnect.holdMute) {
+                    player.volume = AudioHandoff.outputVolume(handoffMute = false, duckRequested = false)
+                }
+                player.play()
+            } catch (_: RuntimeException) {}
+            AudioFocusPolicy.Action.IGNORE, AudioFocusPolicy.Action.NONE -> Unit
+        }
+    }
+
+    /**
+     * Combien de lectures audio tournent sur la box en même temps que nous
+     * (API 26+). Deux sons qui se battent = ce compteur à 2 pendant qu'on joue.
+     * Une ligne par changement, jamais plus.
+     */
+    private fun watchOtherPlaybacks() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val am = audioManager ?: return
+        val cb = object : AudioManager.AudioPlaybackCallback() {
+            override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
+                val list = configs ?: return
+                val next = list.map { c ->
+                    val dev = routedOf(c)
+                    Heard(
+                        usage = c.audioAttributes.usage,
+                        contentType = c.audioAttributes.contentType,
+                        deviceType = dev.first,
+                        deviceName = dev.second,
+                        uid = playbackClientUid(c),
+                    )
+                }
+                heard = next
+                heardReady = true
+                val owner = ownerNow()
+                val line = "Annonces : Android en compte ${next.size}. " +
+                    AudioRouteState.playbackPhrase(owner)
+                if (line != lastPlaybackLine) {
+                    lastPlaybackLine = line
+                    handler.post {
+                        if (released) return@post
+                        emit("audioDiag", line)
+                        // La fiche prend le compteur du moment, pas seulement la ligne.
+                        if (diag.decoder != null || diag.outSampleRate > 0) sendAudioDiag()
+                    }
+                }
+            }
+        }
+        try {
+            am.registerAudioPlaybackCallback(cb, handler)
+            playbackCallback = cb
+        } catch (_: RuntimeException) {
+            playbackCallback = null
+        }
+    }
+
+    /**
+     * UID du client de cette lecture. -1 si Android ne le dit pas
+     * (avant Android 9, ou méthode absente du SDK de compilation).
+     */
+    private fun playbackClientUid(config: AudioPlaybackConfiguration): Int {
+        if (Build.VERSION.SDK_INT < 28) return -1
+        return try {
+            val method = AudioPlaybackConfiguration::class.java.getMethod("getClientUid")
+            method.invoke(config) as? Int ?: -1
+        } catch (_: Exception) {
+            // Android 16 bloque cette méthode cachée. -1 = on ne s'en sert pas.
+            -1
+        }
+    }
+
+    /** Sortie réelle de cette lecture. API 31+. (−1, "") si Android ne la dit pas. */
+    private fun routedOf(config: AudioPlaybackConfiguration): Pair<Int, String> {
+        if (Build.VERSION.SDK_INT < 31) return -1 to ""
+        return try {
+            val info = config.audioDeviceInfo ?: return -1 to ""
+            info.type to AudioRouteState.safeName(info.productName?.toString())
+        } catch (_: Throwable) {
+            -1 to ""
+        }
+    }
+
+    /**
+     * Appareils qu'Android choisirait pour un son média « film »
+     * (ou « parole » si voix claire). API 33+. Vide = pas lu.
+     */
+    private fun plannedTypes(): List<Int> {
+        if (Build.VERSION.SDK_INT < 33) return emptyList()
+        val am = audioManager ?: return emptyList()
+        return try {
+            val content = if (clearVoiceEnabled) {
+                android.media.AudioAttributes.CONTENT_TYPE_SPEECH
+            } else {
+                android.media.AudioAttributes.CONTENT_TYPE_MOVIE
+            }
+            val attrs = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .setContentType(content)
+                .build()
+            am.getAudioDevicesForAttributes(attrs).map { it.type }
+        } catch (_: Throwable) {
+            emptyList()
+        }
+    }
+
+    private fun ownerNow(): AudioRouteState.Owner {
+        val tracks = PlayerCensus.tracksAlive()
+        if (!heardReady) return AudioRouteState.Owner.unknown(tracks)
+        val real = heard.any { it.uid > 0 }
+        val matches = if (real) heard.count { it.uid == Process.myUid() } else null
+        return AudioRouteState.attribute(heard.size, matches, tracks)
+    }
+
+    /** Chiffres du chemin, lus maintenant. Ne change pas le mode Android. */
+    private fun currentFacts(): AudioRouteState.Facts {
+        val am = audioManager
+        val mode = try {
+            am?.mode ?: -1
+        } catch (_: RuntimeException) {
+            -1
+        }
+        val spk = try {
+            am?.isSpeakerphoneOn ?: false
+        } catch (_: RuntimeException) {
+            false
+        }
+        val sco = try {
+            am?.isBluetoothScoOn ?: false
+        } catch (_: RuntimeException) {
+            false
+        }
+        val primary = when {
+            heard.size == 1 -> heard.first()
+            else -> heard.firstOrNull { it.usage == android.media.AudioAttributes.USAGE_MEDIA }
+                ?: heard.firstOrNull()
+        }
+        return AudioRouteState.Facts(
+            mode = mode,
+            speakerphone = spk,
+            bluetoothSco = sco,
+            routedType = primary?.deviceType ?: -1,
+            routedName = primary?.deviceName ?: "",
+            plannedTypes = plannedTypes(),
+            usage = primary?.usage ?: -1,
+            contentType = primary?.contentType ?: -1,
+        )
+    }
+
+    private fun unwatchOtherPlaybacks() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val cb = playbackCallback ?: return
+        playbackCallback = null
+        try {
+            audioManager?.unregisterAudioPlaybackCallback(cb)
+        } catch (_: RuntimeException) {
+        }
+    }
+
+    /**
+     * Vrai = l'app est en arrière-plan et le nouveau comportement est actif.
+     * Écrit une seule ligne [SON] pour tout le séjour dehors.
+     */
+    private fun refuseReopen(): Boolean {
+        if (AppForeground.allowsReopen()) return false
+        AppForeground.noteRefuse()?.let { emit("audioDiag", it) }
+        return true
+    }
+
+    /**
+     * Arrière-plan (Home, multitâche) : on ARRÊTE, on ne met pas en pause.
+     * Une pause garde le décodeur, l'AudioTrack et le focus vivants pendant
+     * que la box fait autre chose ; au retour, c'est ce qui sonnait faux.
+     */
+    private fun suspendForBackground() {
+        if (released || suspended) return
+        suspended = true
+        if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+        silenceForHandoff()
+        abandonOwnFocus()
+        // Repli Flutter : la phrase d'avant. Nouveau chemin : la ligne [SON]
+        // demandée quand l'arrêt part de l'activité (onPause / onStop).
+        emit(
+            "audioDiag",
+            if (AppForeground.flutterOnly) {
+                "Arrière-plan : lecture arrêtée, décodeur et sortie son rendus, focus rendu."
+            } else {
+                BackgroundGate.STOP_LINE
+            },
+        )
+    }
+
+    /**
+     * Retour au premier plan. Le direct repart seul, un seul lecteur.
+     * Film, enregistrement et son témoin : on ne relance pas tout seul
+     * (le bouton OK appelle « play », qui rouvre à la position).
+     */
+    private fun resumeAfterForeground() {
+        if (vodMode) return
+        if (playerKey >= 0 && owners.owner != null && owners.owner != playerKey) return
+        resumeFromBackground()
+    }
+
+    /** Retour au premier plan : on rouvre, comme un zap (direct au bord du direct). */
+    private fun resumeFromBackground() {
+        if (released || !suspended) return
+        suspended = false
+        if (currentUrl == null) return
+        // Ligne d'avant, gardée. La suivante précise film (position) ou direct.
+        emit("audioDiag", "Retour : chaîne rouverte proprement (nouveau décodeur, nouvelle sortie son).")
+        val plan = AudioHandoff.resume(vodMode, lastKnownPos)
+        emit("audioDiag", plan.line)
+        if (holdView.visibility != View.VISIBLE) emit("buffering", true)
+        openCurrent(plan.startPositionMs)
+        armFfmpegReadyWatchdog()
+    }
+
+    /**
+     * Construit un ExoPlayer. Relu quand on passe à FFmpeg vidéo (rare) :
+     * les rendus sont figés à la construction. Le chemin matériel
+     * (installFfmpegVideo = false) est celui de la v104.
+     */
+    private fun buildConfiguredPlayer(): ExoPlayer {
         // Tampons orientés DÉMARRAGE RAPIDE + fluidité. On lance la lecture dès
         // ~1 s de données (bufferForPlayback INCHANGÉ → ouverture/zapping rapide,
         // déjà plus véloce que le mobile), MAIS on approfondit le matelas
@@ -269,7 +848,12 @@ class NativeVideoView(
         // setBackBuffer(0) est le défaut : on ne garde PAS les images déjà
         // jouées (mémoire, et une vieille image ne peut pas rester à l'écran).
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(5_000, 45_000, 1_000, 2_000)
+            .setBufferDurationsMs(
+                5_000,
+                45_000,
+                ReconnectPlan.BUFFER_FOR_PLAYBACK_MS,
+                2_000,
+            )
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(0, false)
             .build()
@@ -294,7 +878,7 @@ class NativeVideoView(
         // ce qu'elle ne sait pas lire. On l'ajoute nous-mêmes (et pas par le mode
         // « extension » qui passerait AUSSI par la vidéo) pour que R8 ne le
         // retire jamais, et pour que la vidéo reste sur MediaCodec.
-        val renderersFactory = object : TvVideoRenderersFactory(context) {
+        val renderersFactory = object : TvVideoRenderersFactory(appContext, installFfmpegVideo) {
             override fun buildAudioRenderers(
                 context: Context,
                 extensionRendererMode: Int,
@@ -323,10 +907,21 @@ class NativeVideoView(
                 // tampon réseau. Float coupé : certaines box crachent le PCM
                 // flottant. Vitesse AudioTrack coupée : on joue à 1,0.
                 val base = DefaultAudioSink.AudioTrackBufferSizeProvider.DEFAULT
-                return DefaultAudioSink.Builder(context)
+                return DefaultAudioSink.Builder(appContext)
                     .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(false)
-                    .setAudioProcessors(arrayOf(clearVoiceProcessor))
+                    // Sondes inactives tant que le réglage est coupé (NOT_SET).
+                    // Voix claire coupée, silences non sautés, vitesse 1 :
+                    // aucun processeur actif. Le son par défaut ne change pas.
+                    .setAudioProcessorChain(
+                        ZunoAudioChain(
+                            probeDecoder,
+                            clearVoiceProcessor,
+                            probeVoice,
+                            probeSilence,
+                            probeSink,
+                        ),
+                    )
                     .setAudioTrackBufferSizeProvider { min, encoding, mode, frame, rate, bitrate, speed ->
                         val minBytes = base.getBufferSizeInBytes(
                             min, encoding, mode, frame, rate, bitrate, speed,
@@ -349,12 +944,22 @@ class NativeVideoView(
             // redemande la liste à chaque sélection de pistes (donc à chaque
             // re-prepare), il n'y a pas de copie figée au moment du build.
             .setMediaCodecSelector { mimeType, requiresSecure, requiresTunneling ->
-                if (preferFfmpegFor(mimeType)) {
+                val all = MediaCodecSelector.DEFAULT.getDecoderInfos(
+                    mimeType, requiresSecure, requiresTunneling,
+                )
+                if (mimeType.startsWith("video/")) {
+                    // Matériel d'abord, sauf repli / option logiciel. On ne
+                    // retire aucun codec : une liste sans logiciel reste
+                    // celle de la box.
+                    val ordered = CodecOrder.order(
+                        all.map { NamedCodec(it.name) },
+                        preferSoftwareVideo,
+                    )
+                    ordered.mapNotNull { want -> all.firstOrNull { it.name == want.name } }
+                } else if (preferFfmpegFor(mimeType)) {
                     emptyList<MediaCodecInfo>()
                 } else {
-                    MediaCodecSelector.DEFAULT.getDecoderInfos(
-                        mimeType, requiresSecure, requiresTunneling,
-                    )
+                    all
                 }
             }
 
@@ -390,7 +995,7 @@ class NativeVideoView(
         // lecteur externe (open_filex) qui, sur cette box, tombait sur la Galerie
         // → FATAL EXCEPTION (gallery3d) qui tuait l'app. Le direct reste 100 %
         // inchangé (http passe toujours par le même httpFactory).
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
 
         // Politique de ré-essai réseau AGRESSIVE : on retente beaucoup avant
         // d'abandonner un chargement (le direct IPTV coupe souvent brièvement).
@@ -414,7 +1019,7 @@ class NativeVideoView(
         //     mieux vaut un bref raccord qu'une image qui ne bouge plus.
         // Un flux à UNE piste (.ts) ignore tout ça : une seule qualité.
         val trackSelector = DefaultTrackSelector(
-            context,
+            appContext,
             AdaptiveTrackSelection.Factory(
                 /* minDurationForQualityIncreaseMs = */ 10_000,
                 /* maxDurationForQualityDecreaseMs = */ 25_000,
@@ -442,12 +1047,17 @@ class NativeVideoView(
                 .build(),
         )
 
-        player = ExoPlayer.Builder(context, renderersFactory)
+        return ExoPlayer.Builder(appContext, renderersFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLivePlaybackSpeedControl(liveSpeed)
-            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            // Focus audio : Zuno le gère lui-même (false), sauf réglage de repli.
+            // Relu à chaque ouverture dans openCurrent.
+            .setAudioAttributes(
+                audioAttributes,
+                /* handleAudioFocus = */ AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+            )
             // OFF : ne pas demander à la TV de changer de fréquence HDMI
             // (50 Hz ↔ 60 Hz). Sur beaucoup de box ce changement coupe
             // l'image (écran noir de une à plusieurs secondes) et décale
@@ -457,24 +1067,6 @@ class NativeVideoView(
             .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
             .setHandleAudioBecomingNoisy(true)
             .build()
-
-        // Toute l'image dans la surface, bandes noires si le format n'est
-        // pas 16:9. On ne ROGNE pas (le rognage ressemble à une image cassée).
-        player.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
-        // On NE retire PAS la surface au zap : la retirer fait un flash
-        // noir. stop() rend le codec ; la surface, elle, reste. Le logo
-        // Flutter couvre l'ancienne image jusqu'à la nouvelle trame.
-        player.setVideoSurfaceView(surfaceView)
-        // Un seul écouteur (Analytics) : Player.Listener en double enverrait
-        // deux fois la même 1re image, dont parfois celle de la chaîne d'avant.
-        player.addAnalyticsListener(this)
-        // Le direct ne doit pas « sauter » les silences : ça coupe le début
-        // des phrases. C'est déjà le défaut ; on le fige.
-        player.skipSilenceEnabled = false
-        player.playWhenReady = true
-        playerKey = owners.register { silenceForHandoff() }
-
-        handler.postDelayed(positionPump, 500)
     }
 
     /** Profil audio : film, ou parole si la voix claire est allumée. */
@@ -498,15 +1090,26 @@ class NativeVideoView(
      * repli « retour à la box » que l'AAC si ça bloque.
      */
     private fun preferFfmpegFor(mimeType: String): Boolean {
-        if (forceBoxAacDecoder || !ffmpegReady) return false
+        if (!ffmpegReady) return false
+        if (mimeType == MimeTypes.AUDIO_AAC) {
+            // Défaut : FFmpeg, comme la v106. Le réglage « décodeur de la box »
+            // est le seul cas où la liste MediaCodec AAC n'est pas vidée.
+            return AudioFixes.ffmpegForAac(
+                preferPlatform = AudioFixes.preferPlatformAac,
+                gaveUpToFfmpeg = platformAacGaveUp,
+                forceBox = forceBoxAacDecoder,
+                ffmpegReady = true,
+                ffmpegSupports = ffmpegAac,
+            )
+        }
+        if (forceBoxAacDecoder) return false
         return when (mimeType) {
-            MimeTypes.AUDIO_AAC -> ffmpegAac
             MimeTypes.AUDIO_MPEG_L2 -> ffmpegMp2
             else -> false
         }
     }
 
-    override fun getView(): View = surfaceView
+    override fun getView(): View = root
 
     // ---- Dart → natif -------------------------------------------------------
 
@@ -524,13 +1127,32 @@ class NativeVideoView(
                     result.error("no_url", "setUrl appelé sans url", null)
                     return
                 }
+                // Dehors : on garde l'adresse pour le retour, sans prepare.
+                // Un essai déjà armé est annulé, sinon il rouvrirait le flux.
+                if (!AppForeground.allowsReopen()) {
+                    cancelRetry()
+                    currentUrl = url
+                    vodMode = call.argument<Boolean>("vod") ?: false
+                    val startMs = (call.argument<Number>("startMs"))?.toLong() ?: 0L
+                    lastKnownPos = startMs
+                    suspended = true
+                    refuseReopen()
+                    result.success(null)
+                    return
+                }
                 cancelRetry()
-                // On ne remet le budget de reconnexion silencieuse à zéro QUE
-                // pour une VRAIE nouvelle chaîne (URL différente). Si Dart
-                // ré-ouvre la MÊME URL (recover sur flux gelé), on CONSERVE le
-                // compteur → après maxSilentRetries on remonte enfin l'erreur à
-                // Dart au lieu de relancer 8 essais à l'infini (boucle CPU/réseau).
-                if (url != currentUrl) retryCount = 0
+                // Budget remis à zéro SEULEMENT pour une autre adresse.
+                // La même adresse (gel, coupure) garde le compteur : après
+                // 8 essais on prévient Dart, on ne boucle pas sans fin.
+                // On annule aussi l'attente en cours : Dart ré-ouvre, le
+                // délai natif ne doit pas préparer une seconde fois.
+                if (url != currentUrl) {
+                    reconnect.onDifferentUrl()
+                    discardHeldFrame()
+                    sawFrame = false
+                } else {
+                    reconnect.onExternalReopen()
+                }
                 behindLiveCount = 0
                 currentUrl = url
                 vodMode = call.argument<Boolean>("vod") ?: false
@@ -542,9 +1164,37 @@ class NativeVideoView(
                 // de la chaîne précédente.
                 ffmpegAudioActive = false
                 audioChosenForSession = false
+                videoChosenForSession = false
+                // Nouvelle demande Dart : on repart du moteur choisi, pas
+                // du repli de la chaîne d'avant. Le repli automatique, lui,
+                // n'appelle pas setUrl : il garde le moteur qui vient de
+                // prendre le relais.
+                triedEngines.clear()
+                videoGaveUp = false
+                restorePreferredEngine()
+                // Recensement : numéro du zap et « déjà vue ». Aucune URL
+                // gardée, seulement son hachage.
+                val zapNo = PlayerCensus.onZap(AacRoute.key(url))
+                emit("audioDiag", "Zap : n°$zapNo.")
+                // Repli AAC → box PAR CHAÎNE : seule une chaîne où FFmpeg a
+                // vraiment échoué repasse par la box. « FFmpeg : réessayer »
+                // efface d'abord sa mémoire. Le filet des 8 s reste armé plus bas.
+                boxFailure = AacRoute.decideForOpen(url, AudioFixes.keepFfmpeg)
+                forceBoxAacDecoder = boxFailure != null
+                boxFailure?.let { f ->
+                    emit(
+                        "audioDiag",
+                        "Repli : cette chaîne est jouée par le décodeur AAC de la box " +
+                            "(${f.reason.label} au zap n°${f.zap} ; zap en cours n°$zapNo).",
+                    )
+                }
+                // Nouvel essai : le repli « box échouée → FFmpeg » ne suit
+                // pas la chaîne d'avant.
+                platformAacGaveUp = false
                 // Diagnostic du son : nouvelle chaîne, compteurs à zéro.
                 diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
                 diagLastUnderrunSentMs = 0L
+                lastDiagText = null
                 // Langue audio / sous-titres préférée (langue de l'app) : si le
                 // film propose la piste, ExoPlayer la choisit d'office.
                 prefAudio = call.argument<String>("preferredAudio")
@@ -567,6 +1217,42 @@ class NativeVideoView(
                 silenceForHandoff()
                 result.success(null)
             }
+            "setEngine" -> {
+                // Choix manuel. « ffmpeg » sans décodeur vidéo ne rouvre
+                // pas la chaîne : on le dit, et on reste où on est.
+                val requested = VideoEngine.fromWire(call.arguments as? String)
+                if (requested == VideoEngine.FFMPEG && !ffmpegVideoReady) {
+                    emitEngine(rejected = "ffmpeg")
+                    result.success(null)
+                    return
+                }
+                preferredEngine = requested
+                triedEngines.clear()
+                videoGaveUp = false
+                applyEngine(requested, reopen = currentUrl != null)
+                result.success(null)
+            }
+            "setFrameRateMatch" -> {
+                frameRateMatchEnabled = call.arguments == true
+                if (!frameRateMatchEnabled) {
+                    clearFrameRateMode()
+                } else if (contentFps > 0f) {
+                    applyFrameRate(contentFps)
+                }
+                result.success(null)
+            }
+            "setContrast" -> {
+                // Le filtre OpenGL quitterait la Surface. On ne l'allume
+                // pas : hardwareAllows reste faux, la fonction testée
+                // renvoie donc faux. LIGHT_CONTRAST n'est pas appliqué.
+                val requested = call.arguments == true
+                val applied = PictureTune.resolve(requested, hardwareAllows = false)
+                emit("contrast", applied)
+                if (requested && !applied) {
+                    emit("contrastReason", "surface")
+                }
+                result.success(applied)
+            }
             "setClearVoice" -> {
                 val on = call.arguments == true
                 if (on == clearVoiceEnabled) {
@@ -586,16 +1272,109 @@ class NativeVideoView(
                     }
                     openCurrent(if (vodMode) lastKnownPos else null)
                 } else if (!released) {
-                    player.setAudioAttributes(movieAudioAttributes(), true)
+                    player.setAudioAttributes(
+                        movieAudioAttributes(),
+                        AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+                    )
                 }
                 result.success(null)
             }
-            "dispose" -> {
-                // Dart demande la libération AVANT de créer le lecteur
-                // suivant (aperçu → plein écran). Idempotent : le dispose()
-                // de la PlatformView rappellera la même méthode sans crasher.
-                releasePlayer()
+            "setAndroidFocus" -> {
+                // Repli : vrai = Media3 reprend le focus (avec sa baisse à 20 %).
+                // Pris en compte à la prochaine ouverture.
+                AudioFixes.androidFocus = call.arguments == true
                 result.success(null)
+            }
+            "suspend" -> {
+                // Flutter « paused » en retard, alors qu'on est déjà revenu :
+                // ne pas recouper une chaîne que l'activité vient de rouvrir.
+                // Repli (flutterOnly) : ce message reste le seul arrêt.
+                if (!AppForeground.flutterOnly && AppForeground.allowsReopen()) {
+                    result.success(null)
+                    return
+                }
+                suspendForBackground()
+                result.success(null)
+            }
+            "resume" -> {
+                if (refuseReopen()) {
+                    result.success(null)
+                    return
+                }
+                resumeFromBackground()
+                result.success(null)
+            }
+            "setAudioProbe" -> {
+                val on = call.arguments == true
+                val turningOn = on && !AudioFixes.probe
+                AudioFixes.probe = on
+                setProbeEnabled(AudioFixes.probe)
+                // Coupé : on oublie le chiffre du passage précédent. Sinon
+                // la fiche affiche encore 0,8 % alors que l'interrupteur est éteint.
+                if (!AudioFixes.probe && !released) {
+                    diag = diag.copy(
+                        spectrum = null,
+                        stages = emptyList(),
+                        probeRequested = false,
+                        probeInChain = false,
+                        probeFrames = 0,
+                        probeReject = null,
+                    )
+                    sendAudioDiag()
+                } else if (ProbeAttach.shouldReopen(turningOn, probeIsPlaying())) {
+                    // Media3 ne rappelle onConfigure que si on reconfigure
+                    // le sink. Allumer le drapeau sur une chaîne déjà ouverte
+                    // laissait la sonde en NOT_SET jusqu'au zap, et parfois
+                    // même après (piste réutilisée, flush sans reconfigure).
+                    emit(
+                        "audioDiag",
+                        "Sonde : allumée. On rouvre la chaîne pour la brancher, sans changer les échantillons.",
+                    )
+                    if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+                    openCurrent(if (vodMode) lastKnownPos else null)
+                } else if (turningOn && !released) {
+                    emit(
+                        "audioDiag",
+                        "Sonde : allumée. Branchée à la prochaine ouverture, sans changer les échantillons.",
+                    )
+                }
+                result.success(null)
+            }
+            "setKeepFfmpeg" -> {
+                // Pris en compte au prochain setUrl (forceBoxAfterOpen).
+                // On ne rouvre pas la chaîne tout seul.
+                AudioFixes.keepFfmpeg = call.arguments == true
+                result.success(null)
+            }
+            "setPreferPlatformAac" -> {
+                // Pris en compte au prochain setUrl. On ne rouvre pas.
+                AudioFixes.preferPlatformAac = call.arguments == true
+                result.success(null)
+            }
+            "setImmediateHandoff" -> {
+                // Repli du passage « un seul AudioTrack » : vrai = on n'attend
+                // pas le rendu (ancien comportement, deux pistes possibles).
+                // Pris en compte au prochain zap. On ne rouvre pas.
+                AudioFixes.immediateHandoff = call.arguments == true
+                result.success(null)
+            }
+            "setBackgroundFlutterOnly" -> {
+                // Vrai = ancien chemin (Flutter seul). Faux = arrêt dans onPause.
+                AppForeground.flutterOnly = call.arguments == true
+                result.success(null)
+            }
+            "setSessionWideFallback" -> {
+                // Interrupteur de repli du correctif « repli par chaîne » :
+                // vrai = ancien comportement (une panne → la box partout).
+                // Pris en compte au prochain setUrl. On ne rouvre pas.
+                AacRoute.sessionWide = call.arguments == true
+                result.success(null)
+            }
+            "dispose" -> {
+                // Dart attend la réponse : on ne la donne qu'une fois
+                // l'AudioTrack vraiment rendu (ou le délai dépassé). Sinon
+                // le plein écran en créerait un second par-dessus.
+                beginDispose(result)
             }
             "seekTo" -> {
                 val ms = (call.argument<Number>("ms"))?.toLong() ?: 0L
@@ -641,17 +1420,37 @@ class NativeVideoView(
                 result.success(null)
             }
             "play" -> {
+                if (refuseReopen()) {
+                    result.success(null)
+                    return
+                }
                 // Un lecteur déjà coupé par un autre ne reprend pas le son
                 // (sinon le retour au premier plan relancerait l'ancienne chaîne).
                 if (playerKey >= 0 && owners.owner != null && owners.owner != playerKey) {
                     result.success(null)
                     return
                 }
-                player.volume = 1f
+                // Lecture arrêtée pour l'arrière-plan : « play » rouvre
+                // (film : à sa position). Un simple play() sur un lecteur
+                // vidé ne ferait rien.
+                if (suspended) {
+                    resumeFromBackground()
+                    result.success(null)
+                    return
+                }
+                // Pendant une reconnexion le volume reste à 0 : le remettre
+                // ici ferait ressortir l'ancien tampon. La nouvelle session
+                // le remonte toute seule (unmuteIfThisSession).
+                pausedByFocus = false
+                requestOwnFocus()
+                if (!reconnect.holdMute && !pausedByFocus) {
+                    player.volume = AudioHandoff.VOLUME_FULL
+                }
                 player.play()
                 result.success(null)
             }
             "pause" -> {
+                pausedByFocus = false
                 player.pause()
                 result.success(null)
             }
@@ -676,9 +1475,22 @@ class NativeVideoView(
         when (state) {
             Player.STATE_BUFFERING -> emit("buffering", true)
             Player.STATE_READY -> {
-                retryCount = 0 // lecture OK → on oublie les erreurs passées
+                // On annule une ré-ouverture devenue inutile, MAIS on ne
+                // remet pas le budget à zéro ici : « prêt » arrive parfois
+                // une fraction de seconde avant un nouvel échec. Le budget
+                // repart seulement quand l'image ou le son est vraiment là
+                // (voir onRenderedFirstFrame / onIsPlayingChanged).
+                // On n'annonce pas « plus en tampon » tant que la copie
+                // de la dernière image couvre la surface : sinon Flutter
+                // découvrirait le noir avant la nouvelle trame.
+                cancelRetry()
                 behindLiveCount = 0
-                emit("buffering", false)
+                // FFmpeg (ou la box) a rendu cette chaîne prête : le filet
+                // des 8 s n'a plus lieu de basculer le décodeur.
+                readyThisSession = true
+                if (holdView.visibility != View.VISIBLE) {
+                    emit("buffering", false)
+                }
             }
             Player.STATE_ENDED -> emit("ended", null)
             Player.STATE_IDLE -> { /* après erreur : géré par onPlayerError */ }
@@ -688,6 +1500,14 @@ class NativeVideoView(
     override fun onIsPlayingChanged(eventTime: AnalyticsListener.EventTime, isPlaying: Boolean) {
         if (!fresh(eventTime)) return
         emit("playing", isPlaying)
+        // Le son de CETTE session seulement. Avant, le volume remontait
+        // juste après prepare() : le tampon HDMI de l'ancienne chaîne
+        // (surtout en AC-3) sortait encore pendant que la nouvelle
+        // démarrait. Ici on attend que le lecteur dise « je joue ».
+        if (isPlaying) {
+            reconnect.onRecovered()
+            unmuteIfThisSession()
+        }
     }
 
     /** Pistes disponibles → Dart, puis choix de la voix (une fois). */
@@ -732,7 +1552,19 @@ class NativeVideoView(
                 }
             }
         }
+        var audioCount = 0
+        var wider = 0
+        for (row in out) {
+            if (row["type"] != "audio") continue
+            audioCount++
+            val ch = (row["channels"] as? Int) ?: 0
+            val selected = row["selected"] == true
+            if (!selected && ch > wider) wider = ch
+        }
+        diag = diag.copy(audioTrackCount = audioCount, widerTrackChannels = wider)
+        if (diag.outSampleRate > 0 || diag.decoder != null) sendAudioDiag()
         emit("tracks", out)
+        maybeChooseVideo(tracks)
         if (audioChosenForSession) return
         val pick = SpokenTrackChoice.pick(audio, prefAudio) ?: return
         audioChosenForSession = true
@@ -768,21 +1600,87 @@ class NativeVideoView(
         // L'heure de l'événement, pas « maintenant » : une trame déjà
         // décodée avant le zap ne retire pas le logo de la nouvelle chaîne.
         if (!fresh(eventTime)) return
-        retryCount = 0
+        reconnect.onRecovered()
         behindLiveCount = 0
+        sawFrame = true
+        // La nouvelle trame est à l'écran : on retire la copie.
+        hideHeldFrame()
+        emit("holdFrame", false)
+        emit("reconnecting", false)
+        emit("buffering", false)
+        unmuteIfThisSession()
         emit("firstFrame", null)
+        // Une copie tôt : si la coupure arrive dans les secondes qui
+        // suivent, on a déjà une image à montrer.
+        handler.postDelayed({
+            if (!released) maybeCopyFrame(force = true)
+        }, 400)
+    }
+
+    override fun onVideoDecoderInitialized(
+        eventTime: AnalyticsListener.EventTime,
+        decoderName: String,
+        initializedTimestampMs: Long,
+        initializationDurationMs: Long,
+    ) {
+        if (!fresh(eventTime)) return
+        videoDecoderReady = true
+        decoderReadyAtMs = SystemClock.elapsedRealtime()
+        emit("videoDecoder", decoderName)
+    }
+
+    override fun onVideoInputFormatChanged(
+        eventTime: AnalyticsListener.EventTime,
+        format: Format,
+        decoderReuseEvaluation: DecoderReuseEvaluation?,
+    ) {
+        if (!fresh(eventTime)) return
+        val fps = format.frameRate
+        if (fps > 0f) {
+            contentFps = fps
+            applyFrameRate(fps)
+        }
+    }
+
+    override fun onBandwidthEstimate(
+        eventTime: AnalyticsListener.EventTime,
+        totalLoadTimeMs: Int,
+        totalBytesLoaded: Long,
+        bitrateEstimate: Long,
+    ) {
+        if (!fresh(eventTime)) return
+        bytesLoaded = totalBytesLoaded
+        this.bitrateEstimate = bitrateEstimate
+    }
+
+    override fun onVideoCodecError(
+        eventTime: AnalyticsListener.EventTime,
+        videoCodecError: Exception,
+    ) {
+        // Media3 : cet appel n'est PAS un échec de lecture. Le lecteur
+        // peut s'en remettre. Changer de moteur ici couperait une image
+        // qui va revenir. L'échec réel arrive par onPlayerError.
     }
 
     override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
         if (!fresh(eventTime)) return
+        // Surface déjà partie : une erreur ne doit pas repréparer le flux.
+        if (refuseReopen()) return
         val token = sessions.generation
+        val exo = error as? ExoPlaybackException
+        val signal = DecoderFallback.classify(error.errorCode, exo?.rendererName)
+        // Vidéo seulement. Une erreur audio FFmpeg garde son propre repli
+        // (plus bas) et ne doit pas changer le décodeur d'image.
+        if (signal == PictureSignal.DECODE && takeVideoFallback(signal)) {
+            return
+        }
         // Erreur DU MOTEUR FFmpeg (rendererName « FfmpegAudioRenderer ») :
         // retenter le même moteur reproduirait le blocage v99. On bascule
         // sur le décodeur de la box et on re-prépare tout de suite, SANS
         // entrer dans le back-off de reconnexion (qui, lui, ne change pas).
         // Ça ne compte pas comme une panne de chaîne.
-        if (!forceBoxAacDecoder && isFfmpegRendererError(error)) {
-            requestBoxAudioFallback()
+        if (!forceBoxAacDecoder && isFfmpegRendererError(error) && signal != PictureSignal.DECODE) {
+            requestBoxAudioFallback(AacRoute.Reason.RENDERER_ERROR)
             return
         }
         // DIRECT « EN RETARD » : le lecteur est sorti de la fenêtre du
@@ -794,27 +1692,54 @@ class NativeVideoView(
             behindLiveCount < maxBehindLive
         ) {
             behindLiveCount++
-            emit("buffering", true)
+            try {
+                player.volume = 0f
+            } catch (_: RuntimeException) {
+                // Même filet que la reconnexion : pas de second son.
+            }
+            if (sawFrame && heldBitmap != null) {
+                showHeldFrame()
+                emit("holdFrame", true)
+            } else {
+                emit("buffering", true)
+            }
             handler.post {
                 if (released || token != sessions.generation) return@post
                 openCurrent(null)
             }
             return
         }
-        // RECONNEXION SILENCIEUSE : on ne montre PAS d'erreur au client tant
-        // qu'on n'a pas épuisé les essais. On re-prépare avec un back-off.
-        if (retryCount < maxSilentRetries) {
-            retryCount++
-            // Film : on retient la seconde exacte AVANT de re-préparer.
-            // (openCurrent appelle stop(), qui remettrait la position à 0.)
-            if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
-            emit("buffering", true)
-            val delay = (1_000L * (1 shl (retryCount - 1))).coerceAtMost(8_000L)
-            scheduleRetry(delay, token)
-        } else {
-            // Trop d'échecs d'affilée → on laisse Dart faire un reset complet.
-            emit("error", error.message)
+        // RECONNEXION SILENCIEUSE. Délai croissant (1 s, 2 s, 4 s, 8 s).
+        // On ne prépare pas une seconde fois si une attente est déjà là
+        // (deux prepare = deux sons). Le volume tombe à 0 tout de suite :
+        // l'ancienne piste ne continue pas pendant l'attente.
+        val delay = reconnect.onFailure()
+        if (delay == null) {
+            if (!reconnect.retryPending) {
+                emit("reconnecting", false)
+                emit("holdFrame", false)
+                emit("error", error.message)
+            }
+            return
         }
+        try {
+            player.volume = 0f
+        } catch (_: RuntimeException) {
+            // Un volume refusé ne doit pas empêcher la ré-ouverture.
+        }
+        if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+        // Image déjà vue : on la montre (copie) et on NE demande PAS
+        // à Flutter un panneau opaque. Sans copie, le panneau (numéro
+        // de chaîne) vaut mieux qu'une surface vide.
+        if (sawFrame && heldBitmap != null) {
+            showHeldFrame()
+            emit("holdFrame", true)
+        } else {
+            emit("holdFrame", false)
+            emit("buffering", true)
+        }
+        emit("reconnecting", true)
+        scheduleRetry(delay, token)
     }
 
     /**
@@ -825,9 +1750,24 @@ class NativeVideoView(
      */
     private fun silenceForHandoff() {
         if (released) return
+        pausedByFocus = false
         sessions.open()
         sessionOpenedAt = SystemClock.elapsedRealtime()
         audioChosenForSession = false
+        videoChosenForSession = false
+        readyThisSession = false
+        // Le drapeau « FFmpeg décode » est celui de CETTE ouverture.
+        // Le laisser vrai au retour d'arrière-plan faisait tomber le filet
+        // des 8 s sur un direct lent, et la chaîne passait à la box.
+        ffmpegAudioActive = false
+        // Une attente d'AudioTrack de la session d'avant ne doit pas
+        // ouvrir par-dessus celle-ci.
+        audioGate.cancel()
+        openDeferred = false
+        waitToken++
+        // Les « Seconde N » de l'ancienne chaîne ne s'écrivent plus.
+        volumeTraceToken++
+        resetPictureClock()
         ffmpegWatchToken++
         cancelRetry()
         try {
@@ -855,15 +1795,61 @@ class NativeVideoView(
      * et repart du bord du direct, pas d'une image figée.
      */
     private fun openCurrent(startPositionMs: Long?) {
-        val url = currentUrl ?: return
-        if (released) return
+        if (currentUrl == null || released) return
+        // Dehors : pas de nouveau décodeur, pas de nouvel AudioTrack.
+        if (refuseReopen()) return
+        // Avant stop() : la copie couvre la surface, qui va se vider.
+        if (sawFrame && heldBitmap != null) showHeldFrame()
         if (playerKey >= 0) owners.claim(playerKey)
         silenceForHandoff()
         val token = sessions.generation
         dartEpoch?.let { emit("ack", it) }
-        if (released || token != sessions.generation) return
-        player.setAudioAttributes(movieAudioAttributes(), true)
+        if (holdView.visibility == View.VISIBLE) emit("holdFrame", true)
+        if (released || token != sessions.generation || disposeStarted) return
+        // Focus : Zuno (défaut) ou Media3 (repli). Relu à chaque ouverture :
+        // le réglage arrive après la construction du lecteur.
+        player.setAudioAttributes(
+            movieAudioAttributes(),
+            AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+        )
+        if (AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus)) abandonOwnFocus()
+        else requestOwnFocus()
+        suspended = false
         clearVoiceProcessor.enabled = clearVoiceEnabled
+        setProbeEnabled(AudioFixes.probe)
+        emit("audioDiag", ProbeAttach.armingLine(AudioFixes.probe))
+        // Nouvelle ouverture : les pourcentages et le décodeur de la
+        // chaîne d'avant ne doivent pas rester affichés.
+        diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
+        val tick = audioGate.onStopped(PlayerCensus.tracksAlive())
+        tick.line?.let { emit("audioDiag", it) }
+        if (!tick.prepare) {
+            // stop() a programmé le rendu. On n'appelle pas prepare() tant
+            // que la piste (la nôtre ou celle d'une autre vue) est vivante.
+            openDeferred = true
+            deferredStartMs = startPositionMs
+            deferredToken = token
+            val ticket = ++waitToken
+            handler.postDelayed({
+                if (ticket != waitToken || released || !openDeferred) return@postDelayed
+                val late = audioGate.onTimeout(PlayerCensus.tracksAlive())
+                if (!late.prepare) return@postDelayed
+                late.line?.let { emit("audioDiag", it) }
+                forceCloseOurAudio(
+                    "Zap : événement AudioTrack manquant, compté rendu pour ne pas laisser le compteur collé.",
+                )
+                finishDeferredOpen()
+            }, AudioHandoff.WAIT_MS)
+            return
+        }
+        prepareCurrent(startPositionMs)
+    }
+
+    /** prepare() de [currentUrl]. Appelé seulement quand aucune piste ne vit. */
+    private fun prepareCurrent(startPositionMs: Long?) {
+        val url = currentUrl ?: return
+        if (released || disposeStarted) return
+        val token = sessions.generation
         // L'override audio de la chaîne précédente ne doit pas choisir
         // une piste au hasard sur la nouvelle.
         val params = player.trackSelectionParameters.buildUpon()
@@ -878,15 +1864,188 @@ class NativeVideoView(
         } else {
             player.setMediaItem(item)
         }
+        // Volume 0 AVANT prepare. Le remettre juste après laissait
+        // l'ancien tampon HDMI (AC-3) parler avec le nouveau flux.
+        // On ne remonte qu'au « je joue » ou à la nouvelle trame.
+        // Ce 0 n'est pas la baisse à 20 % : c'est le silence de passage.
+        reconnect.armMute()
+        player.volume = AudioHandoff.VOLUME_SILENT
         player.prepare()
-        player.playWhenReady = true
-        player.volume = 1f
+        // Perte de focus pendant le zap : on ne repart pas tant que GAIN
+        // n'est pas revenu (ou qu'un nouveau zap n'a pas redemandé le focus).
+        player.playWhenReady = !pausedByFocus
+        armVolumeTrace()
+    }
+
+    /**
+     * Dix lignes, une par seconde. On veut voir SI le volume baisse
+     * (« son dans un trou ») et QUAND, pas seulement le spectre.
+     * Le jeton annule la série si on zappe avant la fin.
+     */
+    private fun armVolumeTrace() {
+        val token = ++volumeTraceToken
+        val session = sessions.generation
+        for (sec in 1..VolumeTrace.SECONDS) {
+            handler.postDelayed({
+                if (released || token != volumeTraceToken || session != sessions.generation) return@postDelayed
+                val playerVol = try {
+                    player.volume
+                } catch (_: RuntimeException) {
+                    -1f
+                }
+                val stream = try {
+                    val am = audioManager
+                    val cur = am?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: -1
+                    val max = am?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: -1
+                    cur to max
+                } catch (_: RuntimeException) {
+                    -1 to -1
+                }
+                emit(
+                    "audioDiag",
+                    VolumeTrace.line(
+                        VolumeTrace.Sample(
+                            second = sec,
+                            playerVolume = playerVol,
+                            // AudioTrack.setVolume n'a pas de lecture en retour.
+                            trackVolume = null,
+                            streamVolume = stream.first,
+                            streamMax = stream.second,
+                            focusHeld = focusHeld,
+                            media3Focus = AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+                            pausedByFocus = pausedByFocus,
+                            owner = ownerNow(),
+                            path = currentFacts(),
+                        ),
+                    ),
+                )
+            }, sec * 1_000L)
+        }
+    }
+
+    /** Une chaîne est en cours : rouvrir a un sens. Idle = la prochaine ouverture suffit. */
+    private fun probeIsPlaying(): Boolean {
+        if (released || suspended || currentUrl == null) return false
+        return try {
+            player.playbackState != Player.STATE_IDLE
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
+
+    /** L'attente est finie : on ouvre, si c'est toujours CETTE session. */
+    private fun finishDeferredOpen() {
+        if (released || !openDeferred) return
+        val token = deferredToken
+        val start = deferredStartMs
+        openDeferred = false
+        if (token != sessions.generation) return
+        prepareCurrent(start)
+    }
+
+    /**
+     * Le nombre de pistes du processus a bougé (la nôtre ou une autre vue).
+     * Si on attendait et qu'il n'en reste plus, on ouvre.
+     */
+    private fun onGlobalTracks(alive: Int) {
+        if (released || disposeStarted || !openDeferred) return
+        val tick = audioGate.onTracksAlive(alive)
+        if (!tick.prepare) return
+        waitToken++
+        tick.line?.let { emit("audioDiag", it) }
+        val token = deferredToken
+        val start = deferredStartMs
+        openDeferred = false
+        // Posté : on est souvent DANS le callback AudioTrack de Media3.
+        // prepare() réentrant au milieu de ce callback est refusé.
+        handler.post {
+            if (released || token != sessions.generation) return@post
+            prepareCurrent(start)
+        }
+    }
+
+    /**
+     * On a déjà compté le rendu (délai dépassé, ou lecteur qu'on va
+     * détruire). Le callback Media3 en retard ne doit pas décompter la
+     * piste d'après : il est « dû ».
+     */
+    private fun forceCloseOurAudio(line: String) {
+        val had = audioTracksHere > 0 || audioDecodersHere > 0
+        owedTrackReleases += audioTracksHere
+        owedDecoderReleases += audioDecodersHere
+        while (audioTracksHere > 0) {
+            audioTracksHere--
+            PlayerCensus.audioTrackClosed()
+        }
+        while (audioDecodersHere > 0) {
+            audioDecodersHere--
+            PlayerCensus.audioDecoderClosed()
+        }
+        if (had) emit("audioDiag", line)
+    }
+
+    private fun noteTrackOpened() {
+        audioTracksHere++
+        PlayerCensus.audioTrackOpened()
+        if (audioTracksHere > 1) {
+            emit(
+                "audioDiag",
+                "AudioTrack : une piste de plus sans rendu de la précédente.",
+            )
+        }
+    }
+
+    private fun noteTrackClosed() {
+        if (owedTrackReleases > 0) {
+            owedTrackReleases--
+            return
+        }
+        if (audioTracksHere <= 0) return
+        audioTracksHere--
+        PlayerCensus.audioTrackClosed()
+        if (disposeStarted && audioTracksHere == 0 && !released) {
+            handler.post { if (!released && disposeStarted) finishDispose() }
+        }
+    }
+
+    private fun noteDecoderOpened() {
+        audioDecodersHere++
+        PlayerCensus.audioDecoderOpened()
+        if (audioDecodersHere > 1) {
+            emit(
+                "audioDiag",
+                "Décodeur audio : un de plus sans rendu du précédent.",
+            )
+        }
+    }
+
+    private fun noteDecoderClosed() {
+        if (owedDecoderReleases > 0) {
+            owedDecoderReleases--
+            return
+        }
+        if (audioDecodersHere <= 0) return
+        audioDecodersHere--
+        PlayerCensus.audioDecoderClosed()
     }
 
     private fun scheduleRetry(delayMs: Long, token: Int) {
-        cancelRetry()
+        // On retire l'ancien délai SANS effacer le verrou que
+        // [ReconnectGate.onFailure] vient de poser : le runnable
+        // ci-dessous doit être le seul à pouvoir repartir.
+        cancelRetry(clearGate = false)
         val r = Runnable {
             if (released || token != sessions.generation) return@Runnable
+            // Parti pendant l'attente : on n'ouvre pas dans le dos de l'utilisateur.
+            if (!AppForeground.allowsReopen()) {
+                refuseReopen()
+                return@Runnable
+            }
+            // Un seul feu. Un second callback ne prépare pas encore.
+            if (!reconnect.onRetryFired()) return@Runnable
+            // L'attente est finie : l'écran peut à nouveau surveiller
+            // un gel. La copie, elle, reste jusqu'à la nouvelle trame.
+            emit("reconnecting", false)
             // Film : [lastKnownPos] a été figé dans onPlayerError, avant stop().
             openCurrent(if (vodMode) lastKnownPos else null)
         }
@@ -894,9 +2053,97 @@ class NativeVideoView(
         handler.postDelayed(r, delayMs)
     }
 
-    private fun cancelRetry() {
+    /** Remonte le volume une fois, et seulement si CE lecteur a le son. */
+    private fun unmuteIfThisSession() {
+        if (!reconnect.onNewSoundAllowed()) return
+        if (released) return
+        if (playerKey >= 0 && owners.owner != null && owners.owner != playerKey) return
+        // Perte de focus pendant le zap : on ne remonte pas. Le GAIN le fera.
+        if (pausedByFocus) return
+        try {
+            player.volume = AudioHandoff.VOLUME_FULL
+        } catch (_: RuntimeException) {
+            // Un volume refusé laisse la chaîne muette plutôt que planter.
+        }
+    }
+
+    private fun showHeldFrame() {
+        val bmp = heldBitmap ?: return
+        if (bmp.isRecycled) return
+        holdView.setImageBitmap(bmp)
+        holdView.visibility = View.VISIBLE
+        holdView.bringToFront()
+    }
+
+    /** Cache la copie sans la jeter : la prochaine coupure la réutilise. */
+    private fun hideHeldFrame() {
+        holdView.visibility = View.GONE
+        holdView.setImageDrawable(null)
+    }
+
+    /** Zap : l'ancienne image ne doit pas rester (mauvaise chaîne). */
+    private fun discardHeldFrame() {
+        hideHeldFrame()
+        val bmp = heldBitmap
+        heldBitmap = null
+        if (bmp != null && !bmp.isRecycled) bmp.recycle()
+    }
+
+    private fun stashFrame(bmp: Bitmap) {
+        val previous = heldBitmap
+        heldBitmap = bmp
+        if (holdView.visibility == View.VISIBLE) {
+            holdView.setImageBitmap(bmp)
+        } else {
+            holdView.setImageDrawable(null)
+        }
+        if (previous != null && previous !== bmp && !previous.isRecycled) {
+            previous.recycle()
+        }
+    }
+
+    /**
+     * Copie une petite image de la surface pendant que ça joue.
+     * On ne copie pas pendant la coupure : on remplacerait la bonne
+     * image par du noir. Au plus une copie à la fois, toutes les 4 s.
+     */
+    private fun maybeCopyFrame(force: Boolean = false) {
+        if (released || copyInFlight || !sawFrame) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - lastCopyAt < 4_000L) return
+        val w = surfaceView.width
+        val h = surfaceView.height
+        if (w < 16 || h < 16) return
+        val rw = minOf(w, 1280)
+        val rh = minOf(h, 720)
+        val left = (w - rw) / 2
+        val top = (h - rh) / 2
+        val rect = Rect(left, top, left + rw, top + rh)
+        val bmp = Bitmap.createBitmap(rw, rh, Bitmap.Config.RGB_565)
+        copyInFlight = true
+        lastCopyAt = now
+        try {
+            PixelCopy.request(surfaceView, rect, bmp, { code ->
+                copyInFlight = false
+                val keep = !released && code == PixelCopy.SUCCESS && sawFrame &&
+                    holdView.visibility != View.VISIBLE
+                if (!keep) {
+                    bmp.recycle()
+                    return@request
+                }
+                stashFrame(bmp)
+            }, handler)
+        } catch (_: RuntimeException) {
+            copyInFlight = false
+            if (!bmp.isRecycled) bmp.recycle()
+        }
+    }
+
+    private fun cancelRetry(clearGate: Boolean = true) {
         pendingRetry?.let { handler.removeCallbacks(it) }
         pendingRetry = null
+        if (clearGate) reconnect.cancelWait()
     }
 
     // ---- son : suivi FFmpeg et repli box -----------------------------------
@@ -933,23 +2180,31 @@ class NativeVideoView(
             if (token != ffmpegWatchToken || released || session != sessions.generation) {
                 return@postDelayed
             }
-            if (!forceBoxAacDecoder &&
-                ffmpegAudioActive &&
-                player.playbackState != Player.STATE_READY
+            // « jamais prêt » et pas « pas prêt à cet instant » : une chaîne
+            // qui a joué puis re-tamponne à la 8e seconde n'a pas un FFmpeg
+            // en panne (c'est ce faux déclencheur qui envoyait tout à la box).
+            if (AudioHandoff.watchdogShouldFallback(
+                    ffmpegActiveThisSession = ffmpegAudioActive,
+                    readyThisSession = readyThisSession,
+                    forceBox = forceBoxAacDecoder,
+                    platformGaveUp = platformAacGaveUp,
+                    playbackReady = player.playbackState == Player.STATE_READY,
+                )
             ) {
-                requestBoxAudioFallback()
+                requestBoxAudioFallback(AacRoute.Reason.TIMEOUT)
             }
         }, FFMPEG_READY_TIMEOUT_MS)
     }
 
     /**
-     * Repli pour toute la session, puis re-préparation IMMÉDIATE du flux.
+     * Repli pour CETTE chaîne, puis re-préparation IMMÉDIATE du flux.
      *
-     * Le drapeau est posé AVANT le re-prepare, et il est dans le companion
-     * object : la prochaine sélection de pistes (cette vue, ou une autre
-     * ouverte plus tard dans le même processus) relit [forceBoxAacDecoder]
-     * et rend l'AAC au décodeur de la box. On ne recrée pas le lecteur :
-     * les moteurs sont déjà construits, seul le choix de piste change.
+     * Le drapeau est posé AVANT le re-prepare : la prochaine sélection de
+     * pistes relit [forceBoxAacDecoder] et rend l'AAC au décodeur de la
+     * box. [AacRoute] s'en souvient pour cette chaîne (et seulement elle,
+     * sauf [AacRoute.sessionWide]) : au retour dessus, pas de 8 s d'attente.
+     * On ne recrée pas le lecteur : les moteurs sont déjà construits, seul
+     * le choix de piste change. La fiche reçoit une ligne « Repli ».
      *
      * On passe par [openCurrent] : le stop() rend le codec et la socket
      * avant de rouvrir, comme un zap. Sans ça, le second prepare() pouvait
@@ -959,11 +2214,28 @@ class NativeVideoView(
      * le thread de lecture, et Media3 n'aime pas un prepare() réentrant
      * au milieu de onPlayerError.
      */
-    private fun requestBoxAudioFallback() {
-        if (forceBoxAacDecoder || released) return
+    private fun requestBoxAudioFallback(reason: AacRoute.Reason) {
+        if (!AppForeground.allowsReopen()) {
+            refuseReopen()
+            return
+        }
+        // Déjà revenu de la box vers FFmpeg : ne pas renvoyer vers la box,
+        // les deux se relanceraient.
+        if (platformAacGaveUp || forceBoxAacDecoder || released) return
+        val url = currentUrl
+        if (url != null) {
+            val zapNo = PlayerCensus.snapshot(AacRoute.key(url), null).zap
+            boxFailure = AacRoute.markFailed(url, reason, zapNo)
+        }
         forceBoxAacDecoder = true
         ffmpegAudioActive = false
         ffmpegWatchToken++
+        emit(
+            "audioDiag",
+            "Repli : ${reason.label} → l'AAC de cette chaîne passe au décodeur de la box " +
+                "(cette chaîne seulement" +
+                (if (AacRoute.sessionWide) ", mode session entière" else "") + ").",
+        )
         val session = sessions.generation
         handler.post {
             if (released || session != sessions.generation) return@post
@@ -989,12 +2261,16 @@ class NativeVideoView(
         initializedTimestampMs: Long,
         initializationDurationMs: Long,
     ) {
+        // Compté AVANT le filtre de session : un décodeur vivant est vivant,
+        // même s'il appartient à l'ancienne chaîne.
+        noteDecoderOpened()
         if (!fresh(eventTime)) return
         ffmpegAudioActive = decoderName.contains("ffmpeg", ignoreCase = true)
         diag = diag.copy(decoder = decoderName)
     }
 
     override fun onAudioDecoderReleased(eventTime: AnalyticsListener.EventTime, decoderName: String) {
+        noteDecoderClosed()
         if (!fresh(eventTime)) return
         if (decoderName.contains("ffmpeg", ignoreCase = true)) {
             ffmpegAudioActive = false
@@ -1010,13 +2286,44 @@ class NativeVideoView(
      */
     override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
         if (fresh(eventTime)) emit("audioDiag", "Erreur de la sortie son : ${audioSinkError.javaClass.simpleName}")
-        if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
+        if (!fresh(eventTime)) return
+        if (ffmpegAudioActive) requestBoxAudioFallback(AacRoute.Reason.SINK_ERROR)
+        else requestFfmpegAfterPlatformFailure()
     }
 
     /** Erreur du décodeur logiciel FFmpeg (DecoderException), même repli. */
     override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
         if (fresh(eventTime)) emit("audioDiag", "Erreur du décodeur son : ${audioCodecError.javaClass.simpleName}")
-        if (fresh(eventTime) && ffmpegAudioActive) requestBoxAudioFallback()
+        if (!fresh(eventTime)) return
+        if (ffmpegAudioActive) requestBoxAudioFallback(AacRoute.Reason.CODEC_ERROR)
+        else requestFfmpegAfterPlatformFailure()
+    }
+
+    /**
+     * L'essai « décodeur de la box » a échoué. On revient à FFmpeg pour
+     * CETTE ouverture. Le réglage reste allumé : la chaîne suivante
+     * réessaiera la box. On ne boucle pas (voir [platformAacGaveUp]).
+     */
+    private fun requestFfmpegAfterPlatformFailure() {
+        if (!AppForeground.allowsReopen()) {
+            refuseReopen()
+            return
+        }
+        if (!AudioFixes.preferPlatformAac || platformAacGaveUp || released) return
+        if (ffmpegAudioActive) return
+        platformAacGaveUp = true
+        ffmpegWatchToken++
+        diag = diag.copy(
+            routeNote = "Le décodeur AAC de la box a échoué. Repli FFmpeg pour cette ouverture.",
+        )
+        val session = sessions.generation
+        handler.post {
+            if (released || session != sessions.generation) return@post
+            cancelRetry()
+            if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+            emit("buffering", true)
+            openCurrent(if (vodMode) lastKnownPos else null)
+        }
     }
 
     // ---- diagnostic du son (lecture seule) ---------------------------------
@@ -1043,6 +2350,7 @@ class NativeVideoView(
         eventTime: AnalyticsListener.EventTime,
         audioTrackConfig: AudioSink.AudioTrackConfig,
     ) {
+        noteTrackOpened()
         if (!fresh(eventTime)) return
         diag = diag.copy(
             outSampleRate = audioTrackConfig.sampleRate,
@@ -1052,6 +2360,44 @@ class NativeVideoView(
             clearVoice = clearVoiceEnabled,
         )
         sendAudioDiag()
+    }
+
+    /** L'AudioTrack est rendu (stop, zap, libération) : un vivant de moins. */
+    override fun onAudioTrackReleased(
+        eventTime: AnalyticsListener.EventTime,
+        audioTrackConfig: AudioSink.AudioTrackConfig,
+    ) {
+        noteTrackClosed()
+        if (!released) {
+            emit(
+                "audioDiag",
+                "AudioTrack rendu. Pistes encore vivantes : ${PlayerCensus.tracksAlive()}.",
+            )
+        }
+    }
+
+    /** Numéro de session audio Android : un numéro qui change = un AudioTrack neuf. */
+    override fun onAudioSessionIdChanged(eventTime: AnalyticsListener.EventTime, audioSessionId: Int) {
+        if (!fresh(eventTime)) return
+        emit("audioDiag", "Session audio Android n°$audioSessionId")
+    }
+
+    /**
+     * Media3 (mode repli) retient la lecture sur une perte de focus passagère.
+     * On le dit, pour que la fiche montre d'où vient un silence.
+     */
+    override fun onPlaybackSuppressionReasonChanged(eventTime: AnalyticsListener.EventTime, reason: Int) {
+        if (!fresh(eventTime)) return
+        if (reason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS) {
+            emit("audioDiag", "Focus audio (Media3) : perte passagère → lecture retenue par Android.")
+        }
+    }
+
+    override fun onPlayWhenReadyChanged(eventTime: AnalyticsListener.EventTime, playWhenReady: Boolean, reason: Int) {
+        if (!fresh(eventTime)) return
+        if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
+            emit("audioDiag", "Focus audio (Media3) : PERDU → lecture mise en pause par Android.")
+        }
     }
 
     /** Coupure de la sortie son (craquement / trou). Bilan au plus toutes les 30 s. */
@@ -1070,14 +2416,75 @@ class NativeVideoView(
         }
     }
 
-    private fun sendAudioDiag() {
-        val text = buildString {
-            append(AudioDiagnosis.describe(diag))
-            for (v in AudioDiagnosis.verdicts(diag)) append("\n→ ").append(v)
-            if (!diagCapsSent) {
-                diagCapsSent = true
-                append("\n").append(outputCaps)
+    /** Les quatre sondes s'allument ensemble. Coupées, chacune renvoie NOT_SET. */
+    private fun setProbeEnabled(on: Boolean) {
+        probeDecoder.enabled = on
+        probeVoice.enabled = on
+        probeSilence.enabled = on
+        probeSink.enabled = on
+    }
+
+    /**
+     * Appelé depuis le fil audio. On ne touche [diag] que sur le fil
+     * principal : le lecteur le lit aussi pour envoyer le rapport.
+     * [spectrum] reste la sonde décodeur, pour les règles déjà écrites.
+     * Les quatre chiffres sont dans [AudioSnapshot.stages].
+     */
+    private fun onProbe(stage: String, judged: AudioSpectrum.Judgement) {
+        handler.post {
+            if (released) return@post
+            val byId = mutableMapOf<String, AudioStages.Reading>()
+            for (existing in diag.stages) byId[existing.id] = existing
+            byId[stage] = AudioStages.Reading(stage, judged)
+            val ordered = ArrayList<AudioStages.Reading>(AudioStages.ORDER.size)
+            for (id in AudioStages.ORDER) {
+                val reading = byId[id] ?: continue
+                ordered.add(reading)
             }
+            val decoder = ordered.firstOrNull { it.id == AudioStages.DECODER }?.judgement
+            diag = diag.copy(
+                stages = ordered,
+                spectrum = decoder ?: ordered.firstOrNull()?.judgement,
+            )
+            sendAudioDiag()
+        }
+    }
+
+    private fun sendAudioDiag() {
+        val audible = try {
+            player.isPlaying
+        } catch (_: RuntimeException) {
+            false
+        }
+        val live = diag.copy(
+            clearVoice = clearVoiceEnabled,
+            skipSilence = player.skipSilenceEnabled,
+            playbackSpeed = player.playbackParameters.speed,
+            cycle = currentUrl?.let { PlayerCensus.snapshot(AacRoute.key(it), boxFailure) },
+            probeRequested = AudioFixes.probe,
+            probeInChain = probeDecoder.lastAccepted,
+            probeFrames = probeDecoder.usefulFrames,
+            probeReject = if (AudioFixes.probe) probeDecoder.lastReject else null,
+            playback = ownerNow(),
+            routeLine = AudioRouteState.pathLine(currentFacts()),
+            playerAudible = audible,
+        )
+        diag = live
+        // Le corps, sans la ligne « sortie de la box » : elle ne change
+        // pas, et l'ajouter seulement la première fois faisait croire
+        // qu'une deuxième fiche était différente.
+        val body = AudioDiagnosis.redact(buildString {
+            append(AudioDiagnosis.describe(live))
+            for (v in AudioDiagnosis.verdicts(diag)) append("\n→ ").append(v)
+            append("\n").append(AudioDiagnosis.report(diag))
+        })
+        if (body == lastDiagText) return
+        lastDiagText = body
+        val text = if (!diagCapsSent) {
+            diagCapsSent = true
+            body + "\n" + outputCaps
+        } else {
+            body
         }
         emit("audioDiag", text)
     }
@@ -1098,7 +2505,7 @@ class NativeVideoView(
     // ---- cycle de vie -------------------------------------------------------
 
     override fun dispose() {
-        releasePlayer()
+        beginDispose(null)
     }
 
     /**
@@ -1106,20 +2513,85 @@ class NativeVideoView(
      * quand la vue part, ET par le message « dispose » de Dart (aperçu qui
      * doit rendre le décodeur avant le plein écran). Le second appel ne
      * fait rien : release() deux fois plante ExoPlayer.
+     *
+     * On ne retire PAS l'écouteur avant le rendu de l'AudioTrack : Media3
+     * 1.5.1 l'envoie après stop(), et le retirer avant faisait croire à
+     * la fiche qu'une piste restait vivante pour toujours. Dart n'est
+     * prévenu qu'à [finishDispose], donc le lecteur suivant n'est pas
+     * créé par-dessus.
      */
     private fun releasePlayer() {
-        if (released) return
-        released = true
-        // Annule le filet FFmpeg : plus de re-prepare après la mort du lecteur.
+        beginDispose(null)
+    }
+
+    private fun beginDispose(result: MethodChannel.Result?) {
+        if (released) {
+            result?.success(null)
+            return
+        }
+        if (disposeStarted) {
+            if (result != null) disposeResult = result
+            return
+        }
+        disposeStarted = true
+        disposeResult = result
+        audioGate.cancel()
+        openDeferred = false
+        waitToken++
+        abandonOwnFocus()
+        unwatchOtherPlaybacks()
         ffmpegWatchToken++
+        clearFrameRateMode()
         cancelRetry()
+        discardHeldFrame()
+        try {
+            player.volume = AudioHandoff.VOLUME_SILENT
+            player.playWhenReady = false
+            // stop() programme le rendu. L'écouteur reste : on compte
+            // onAudioTrackReleased. On ne détache la surface qu'à la fin.
+            player.stop()
+            player.clearMediaItems()
+        } catch (_: RuntimeException) {
+            // Un stop raté ne doit pas empêcher la destruction.
+        }
+        if (audioTracksHere == 0) {
+            emit("audioDiag", "Libération : aucun AudioTrack vivant, lecteur détruit.")
+            finishDispose()
+            return
+        }
+        emit("audioDiag", "Libération : on attend que l'AudioTrack soit vraiment rendu.")
+        val ticket = ++disposeWaitToken
+        handler.postDelayed({
+            if (ticket != disposeWaitToken || released) return@postDelayed
+            forceCloseOurAudio(
+                "Libération : AudioTrack pas rendu à temps, compté rendu pour ne pas bloquer la chaîne suivante.",
+            )
+            finishDispose()
+        }, AudioHandoff.WAIT_MS)
+    }
+
+    private fun finishDispose() {
+        if (released) return
+        disposeWaitToken++
+        PlayerCensus.unwatchTracks(trackWatcher)
+        if (audioDecodersHere > 0 || audioTracksHere > 0) {
+            forceCloseOurAudio(
+                "Libération : décodeur ou AudioTrack encore compté, soldé avant destruction du lecteur.",
+            )
+        }
+        released = true
         handler.removeCallbacksAndMessages(null)
+        if (foregroundId >= 0) {
+            AppForeground.unwatch(foregroundId)
+            foregroundId = -1
+        }
         if (playerKey >= 0) {
             owners.unregister(playerKey)
             playerKey = -1
         }
         try {
             player.removeAnalyticsListener(this)
+            player.clearVideoFrameMetadataListener(frameClock)
         } catch (_: RuntimeException) {
             // Déjà détaché : on continue la libération.
         }
@@ -1127,14 +2599,331 @@ class NativeVideoView(
             // stop() avant la surface : le codec arrête d'écrire, puis on
             // détache. L'ordre inverse laisse parfois une image verte et
             // un décodeur qui ne se rend jamais (chaîne suivante noire).
-            player.stop()
             player.clearVideoSurface()
             player.release()
         } catch (_: RuntimeException) {
             // Une libération ratée ne doit pas tuer l'app : la chaîne
             // suivante doit pouvoir créer SON lecteur.
         }
+        PlayerCensus.playerReleased()
         channel.setMethodCallHandler(null)
+        val pending = disposeResult
+        disposeResult = null
+        try {
+            pending?.success(null)
+        } catch (_: RuntimeException) {
+            // Réponse déjà envoyée : on ne plante pas la destruction.
+        }
+    }
+
+    /**
+     * Branche le lecteur sur la surface SANS la détacher entre deux
+     * chaînes. Toute l'image, bandes noires si ce n'est pas du 16:9 :
+     * on ne rogne pas.
+     */
+    private fun attachToSurface(target: ExoPlayer) {
+        target.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+        target.setVideoSurfaceView(surfaceView)
+        target.addAnalyticsListener(this)
+        target.setVideoFrameMetadataListener(frameClock)
+        target.skipSilenceEnabled = false
+        target.playWhenReady = true
+        ffmpegRendererInstalled = installFfmpegVideo
+    }
+
+    private fun emitImageCaps() {
+        emit(
+            "imageCaps",
+            mapOf(
+                "ffmpegVideo" to ffmpegVideoReady,
+                "engine" to videoEngine.wire,
+                "contrastHardware" to false,
+            ),
+        )
+    }
+
+    private fun emitEngine(rejected: String? = null) {
+        val payload = HashMap<String, Any?>()
+        payload["name"] = videoEngine.wire
+        payload["ffmpegVideo"] = ffmpegVideoReady
+        if (rejected != null) payload["rejected"] = rejected
+        emit("engine", payload)
+    }
+
+    /** Revenir au choix de la personne, sans rouvrir (setUrl le fait). */
+    private fun restorePreferredEngine() {
+        if (videoEngine == preferredEngine &&
+            preferSoftwareVideo == (preferredEngine == VideoEngine.SOFTWARE) &&
+            ffmpegRendererInstalled == (preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady)
+        ) {
+            return
+        }
+        videoEngine = preferredEngine
+        preferSoftwareVideo = preferredEngine == VideoEngine.SOFTWARE
+        val wantFfmpeg = preferredEngine == VideoEngine.FFMPEG && ffmpegVideoReady
+        if (wantFfmpeg != ffmpegRendererInstalled) {
+            installFfmpegVideo = wantFfmpeg
+            rebuildPlayer()
+        }
+        emitEngine()
+    }
+
+    /**
+     * Change le moteur. [reopen] relance le flux en cours. On prévient
+     * Dart (`reopen`) AVANT, pour que le carton de chaîne couvre la
+     * surface : pas de flash noir.
+     */
+    private fun applyEngine(next: VideoEngine, reopen: Boolean) {
+        if (next == VideoEngine.FFMPEG && !ffmpegVideoReady) {
+            emitEngine(rejected = "ffmpeg")
+            return
+        }
+        val changed = next != videoEngine
+        videoEngine = next
+        preferSoftwareVideo = next == VideoEngine.SOFTWARE
+        val wantFfmpeg = next == VideoEngine.FFMPEG && ffmpegVideoReady
+        if (wantFfmpeg != ffmpegRendererInstalled) {
+            installFfmpegVideo = wantFfmpeg
+            rebuildPlayer()
+        }
+        emitEngine()
+        if (reopen && changed && currentUrl != null && !released) {
+            emit("reopen", null)
+            if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+            openCurrent(if (vodMode) lastKnownPos else null)
+        }
+    }
+
+    /**
+     * Nouveau lecteur, MÊME surface. On ne le fait que pour entrer ou
+     * sortir de FFmpeg vidéo : le matériel et le logiciel partagent
+     * le même lecteur, seul l'ordre des codecs change.
+     */
+    private fun rebuildPlayer() {
+        if (!::player.isInitialized) return
+        val old = player
+        val next = buildConfiguredPlayer()
+        PlayerCensus.playerCreated()
+        player = next
+        attachToSurface(next)
+        // L'ancien lecteur va perdre son écouteur : son onAudioTrackReleased
+        // n'arriverait plus. On solde le compteur maintenant. Un callback
+        // en retard est ignoré (piste « due »).
+        forceCloseOurAudio(
+            "Moteur vidéo : AudioTrack de l'ancien lecteur compté rendu.",
+        )
+        try {
+            old.removeAnalyticsListener(this)
+            old.clearVideoFrameMetadataListener(frameClock)
+        } catch (_: RuntimeException) {
+        }
+        try {
+            old.stop()
+            old.clearVideoSurface()
+            old.release()
+        } catch (_: RuntimeException) {
+        }
+        PlayerCensus.playerReleased()
+    }
+
+    private fun resetPictureClock() {
+        renderedFrames.set(0)
+        lastFrameAtMs = 0L
+        videoDecoderReady = false
+        decoderReadyAtMs = 0L
+    }
+
+    private fun considerPictureFallback() {
+        if (released || videoGaveUp || videoFallbackPosted) return
+        if (!::player.isInitialized) return
+        // Dehors, l'image est partie : ce n'est pas un décodeur à changer.
+        if (!AppForeground.allowsReopen()) return
+        val now = SystemClock.elapsedRealtime()
+        val ready = player.playbackState == Player.STATE_READY
+        val buffering = player.playbackState == Player.STATE_BUFFERING
+        val frames = renderedFrames.get()
+        val black = PictureHealth.black(
+            decoderReady = videoDecoderReady,
+            framesRendered = frames,
+            playbackReady = ready,
+            buffering = buffering,
+            elapsedMs = if (decoderReadyAtMs == 0L) 0L else now - decoderReadyAtMs,
+        )
+        val frozen = PictureHealth.frozen(
+            framesRendered = frames,
+            playing = player.isPlaying,
+            buffering = buffering,
+            msSinceLastFrame = if (lastFrameAtMs == 0L) 0L else now - lastFrameAtMs,
+        )
+        if (black || frozen) takeVideoFallback(PictureSignal.BLACK_OR_FROZEN)
+    }
+
+    /**
+     * @return true si on a traité l'échec (bascule, ou plus aucun moteur).
+     * Le réseau continue alors son chemin habituel seulement si on
+     * renvoie false.
+     */
+    private fun takeVideoFallback(signal: PictureSignal): Boolean {
+        if (!AppForeground.allowsReopen()) {
+            refuseReopen()
+            return true
+        }
+        if (released || videoGaveUp) return videoGaveUp
+        val decision = DecoderFallback.next(
+            videoEngine,
+            signal,
+            ffmpegVideoReady,
+            triedEngines,
+        )
+        if (!decision.reopen) {
+            if (decision.giveUp) {
+                videoGaveUp = true
+                // Pas « error » : Dart rouvrirait l'URL et remettrait le
+                // matériel, donc la même panne en boucle. L'écran montre
+                // l'échec et attend « Réessayer ».
+                emit("engineExhausted", videoEngine.wire)
+            }
+            return decision.giveUp
+        }
+        if (videoFallbackPosted) return true
+        videoFallbackPosted = true
+        triedEngines.add(videoEngine)
+        val session = sessions.generation
+        val next = decision.engine
+        handler.post {
+            videoFallbackPosted = false
+            if (released || session != sessions.generation) return@post
+            cancelRetry()
+            applyEngine(next, reopen = true)
+        }
+        return true
+    }
+
+    /**
+     * Piste vidéo fixe (pas le ladder HLS). Une fois par chaîne.
+     * Le HLS adaptatif reste à Media3 : on ne fige pas un débit.
+     */
+    private fun maybeChooseVideo(tracks: Tracks) {
+        if (videoChosenForSession) return
+        val videos = ArrayList<VideoCandidate>()
+        tracks.groups.forEachIndexed { gi, g ->
+            if (g.type != C.TRACK_TYPE_VIDEO) return@forEachIndexed
+            val adaptive = g.length > 1
+            for (i in 0 until g.length) {
+                if (!g.isTrackSupported(i)) continue
+                val f = g.getTrackFormat(i)
+                videos.add(
+                    VideoCandidate(
+                        group = gi,
+                        index = i,
+                        width = positive(f.width),
+                        height = positive(f.height),
+                        bitrate = positive(f.bitrate),
+                        frameRate = if (f.frameRate > 0f) f.frameRate else 0f,
+                        mime = f.sampleMimeType,
+                        selected = g.isTrackSelected(i),
+                        adaptive = adaptive,
+                    ),
+                )
+            }
+        }
+        if (videos.isEmpty()) return
+        val bandwidth = VideoTrackChoice.bandwidthForChoice(bitrateEstimate, bytesLoaded)
+        val pick = VideoTrackChoice.pick(videos, bandwidth, screenHeightPx())
+        val fixed = videos.count { !it.adaptive }
+        if (pick == null) {
+            if (player.playbackState == Player.STATE_READY || fixed < 2) {
+                videoChosenForSession = true
+            }
+            return
+        }
+        videoChosenForSession = true
+        val token = sessions.generation
+        handler.post {
+            if (released || token != sessions.generation) return@post
+            val groups = player.currentTracks.groups
+            if (pick.group < 0 || pick.group >= groups.size) return@post
+            val g = groups[pick.group]
+            if (g.type != C.TRACK_TYPE_VIDEO) return@post
+            if (pick.index < 0 || pick.index >= g.length) return@post
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
+                .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, pick.index))
+                .build()
+        }
+    }
+
+    private fun positive(value: Int): Int = if (value > 0) value else 0
+
+    private fun screenHeightPx(): Int {
+        val fromView = surfaceView.height
+        if (fromView > 0) return fromView
+        return appContext.resources.displayMetrics.heightPixels
+    }
+
+    @Suppress("DEPRECATION") // defaultDisplay : lu seulement pour la liste des modes
+    private fun applyFrameRate(fps: Float) {
+        if (!frameRateMatchEnabled) return
+        val activity = findActivity(appContext) ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val display = surfaceView.display ?: activity.windowManager.defaultDisplay
+        val modes = display.supportedModes.map { DisplayModeOption(it.modeId, it.refreshRate) }
+        val current = activity.window.attributes.preferredDisplayModeId
+        val pick = FrameRateMatch.pick(true, fps, modes, current) ?: return
+        try {
+            val attrs = activity.window.attributes
+            attrs.preferredDisplayModeId = pick.id
+            activity.window.attributes = attrs
+            frameRateModeApplied = true
+        } catch (_: RuntimeException) {
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                surfaceView.holder.surface.setFrameRate(
+                    fps,
+                    Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE,
+                    Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS,
+                )
+            } catch (_: RuntimeException) {
+                // L'indice de cadence est en plus du mode. S'il échoue,
+                // le mode d'écran, lui, est déjà posé.
+            }
+        }
+    }
+
+    /** Rend la fréquence à la TV. On ne touche à la fenêtre que si ON l'a changée. */
+    private fun clearFrameRateMode() {
+        if (!frameRateModeApplied) return
+        val activity = findActivity(appContext) ?: return
+        try {
+            val attrs = activity.window.attributes
+            attrs.preferredDisplayModeId = 0
+            activity.window.attributes = attrs
+        } catch (_: RuntimeException) {
+            // On note quand même que ce n'est plus notre mode.
+        }
+        frameRateModeApplied = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                surfaceView.holder.surface.setFrameRate(
+                    0f,
+                    Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                    Surface.CHANGE_FRAME_RATE_ALWAYS,
+                )
+            } catch (_: RuntimeException) {
+            }
+        }
+    }
+
+    private fun findActivity(start: Context): Activity? {
+        var current: Context? = start
+        while (current is ContextWrapper) {
+            if (current is Activity) return current
+            current = current.baseContext
+        }
+        return null
     }
 
     companion object {
@@ -1168,36 +2957,47 @@ class NativeVideoView(
         }
 
         /**
+         * Vrai seulement si le .so déclare un décodeur VIDÉO. Le binaire
+         * Jellyfin 1.5.0+1 (son de la v104) n'a pas h264 / hevc / mpeg2 :
+         * cet appel renvoie faux, et on ne construit pas le rendu vidéo.
+         */
+        val ffmpegVideoReady: Boolean by lazy {
+            if (!ffmpegReady) return@lazy false
+            try {
+                FfmpegLibrary.supportsFormat(MimeTypes.VIDEO_H264) ||
+                    FfmpegLibrary.supportsFormat(MimeTypes.VIDEO_H265) ||
+                    FfmpegLibrary.supportsFormat(MimeTypes.VIDEO_MPEG2)
+            } catch (_: Throwable) {
+                false
+            }
+        }
+
+        /**
          * Tous les lecteurs vivants du processus. [claim] coupe les autres
          * avant qu'un nouveau ne sorte du son.
          */
         val owners: ExclusiveAudio = ExclusiveAudio()
 
-        /**
-         * Repli session. Une fois vrai, PLUS AUCUNE vue de ce processus ne
-         * force l'AAC vers FFmpeg : le sélecteur MediaCodec relit ce champ
-         * à chaque piste et rend la liste normale des décodeurs de la box.
-         *
-         * @Volatile : écrit depuis le thread qui constate l'échec, lu depuis
-         * le thread de sélection des décodeurs (pas forcément le même).
-         */
-        @Volatile
-        private var forceBoxAacDecoder: Boolean = false
+        // Le repli AAC → box n'est PLUS un drapeau de processus : il est
+        // par chaîne, dans [AacRoute], et par vue dans `forceBoxAacDecoder`.
     }
 }
 
 /**
  * Fabrique de rendus : identique à Media3, SAUF pour la vidéo.
  *
- * Si le chantier audio active les extensions (décodeur FFmpeg son), Media3
- * les proposerait AUSSI pour la vidéo. Le décodeur vidéo FFmpeg a déjà
- * laissé des chaînes sur l'écran de chargement (v99–v101). Ici, quoi que
- * demande le mode extension, la vidéo reste sur MediaCodec Android
- * (matériel, puis repli logiciel si l'init échoue). L'audio est ajouté
- * à part, dans [NativeVideoView], après les décodeurs de la box.
+ * Par défaut [installFfmpegVideo] est faux : la vidéo reste sur
+ * MediaCodec (matériel, puis le logiciel Android si l'init échoue).
+ * On n'ajoute le rendu FFmpeg QUE si la bibliothèque a dit qu'elle
+ * sait décoder la vidéo. Le mode « extension » de Media3 est forcé
+ * à OFF pour qu'il ne glisse pas FFmpeg tout seul devant l'image.
+ * L'audio FFmpeg est ajouté à part, dans [NativeVideoView].
  */
 @UnstableApi
-private open class TvVideoRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
+private open class TvVideoRenderersFactory(
+    context: Context,
+    private val installFfmpegVideo: Boolean,
+) : DefaultRenderersFactory(context) {
     @Suppress("UNUSED_PARAMETER") // le mode extension est forcé à OFF plus bas
     override fun buildVideoRenderers(
         context: Context,
@@ -1209,6 +3009,16 @@ private open class TvVideoRenderersFactory(context: Context) : DefaultRenderersF
         allowedVideoJoiningTimeMs: Long,
         out: ArrayList<Renderer>,
     ) {
+        if (installFfmpegVideo) {
+            out.add(
+                ExperimentalFfmpegVideoRenderer(
+                    allowedVideoJoiningTimeMs,
+                    eventHandler,
+                    eventListener,
+                    /* maxDroppedFramesToNotify = */ 50,
+                ),
+            )
+        }
         super.buildVideoRenderers(
             context,
             EXTENSION_RENDERER_MODE_OFF,

@@ -40,8 +40,18 @@ import '../../channels/domain/channel.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../../device/data/device_identity.dart';
+import '../../epg/data/catchup_url_builder.dart';
+import '../../epg/data/epg_repository.dart';
 import '../../epg/data/program_reminder_repository.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../epg/domain/program_reminder.dart';
+import '../../followed/data/followed_flag.dart';
+import '../../followed/data/followed_lead.dart';
+import '../../followed/data/followed_log.dart';
+import '../../followed/domain/show_clock.dart';
+import '../../followed/domain/show_lines.dart';
+import '../../followed/domain/show_taste.dart';
+import '../../followed/presentation/show_banner.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
@@ -136,6 +146,14 @@ class _TvHubScreenState extends State<TvHubScreen> {
   List<String> _popularIds = const <String>[];
   List<String> _timePickIds = const <String>[];
   List<Channel> _timePicks = const <Channel>[];
+  List<ShowCue> _showCards = const <ShowCue>[];
+  ShowCue? _banner;
+  bool _bannerRewind = false;
+  List<GuideSlot> _guide = const <GuideSlot>[];
+  int _guideAtMs = 0;
+  int _showGen = 0;
+  bool _showsOn = true;
+  int _leadMin = kLeadDefault;
   Greeting? _greeting;
   HomeShelfModel _shelves = const HomeShelfModel();
   HomeShelfKind? _initialShelf;
@@ -157,7 +175,16 @@ class _TvHubScreenState extends State<TvHubScreen> {
   void initState() {
     super.initState();
     _clock = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
+      if (!mounted) return;
+      _now = DateTime.now();
+      // Le texte « dans 4 minutes » se met à jour sans relire
+      // le guide. La lecture du guide, elle, attend une minute.
+      _replanShows();
+      setState(() {});
+      final int nowMs = _now.millisecondsSinceEpoch;
+      if (_guideAtMs == 0 || nowMs - _guideAtMs >= 60000) {
+        unawaited(_reloadGuide());
+      }
     });
     DeviceIdentity.instance.mac.then((String m) {
       if (mounted) setState(() => _mac = m);
@@ -212,6 +239,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     ParentalControls.instance.kidsMode.addListener(_scheduleShelves);
     TimePickLog.instance.listenable.addListener(_onTimePicks);
     timePicksFlag.changes.addListener(_onTimeFlag);
+    FollowedLog.instance.listenable.addListener(_onFollowed);
+    followedFlag.changes.addListener(_onFollowedFlag);
     unawaited(_prepareEngagement());
   }
 
@@ -355,6 +384,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _favIds = FavoritesRepository.instance.current;
     _rebuildShelves(notify: false);
     unawaited(_reloadTimePicks());
+    unawaited(_reloadGuide());
     final bool resumed = _tryResumeLast();
     if (!resumed && _deferredLiveOpen && !_autoOpened) {
       final ModalRoute<Object?>? route = ModalRoute.of(context);
@@ -477,6 +507,223 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _rebuildShelves();
   }
 
+  void _onFollowedFlag() {
+    unawaited(_reloadGuide());
+  }
+
+  Set<String> _followedNow = <String>{};
+
+  /// Le carnet a changé. On recalcule avec le guide DÉJÀ lu.
+  /// S'il y a une émission suivie de plus, on relit le guide
+  /// (une épingle ne doit pas attendre une minute).
+  void _onFollowed() {
+    if (!mounted) return;
+    final Set<String> keys = followedKeys(FollowedLog.instance.book, _favIds);
+    final bool changed =
+        keys.length != _followedNow.length || !keys.containsAll(_followedNow);
+    _followedNow = keys;
+    if (changed) {
+      _guideAtMs = 0;
+      unawaited(_reloadGuide());
+      return;
+    }
+    _replanShows();
+    setState(() {});
+  }
+
+  void _replanShows() {
+    if (!_showsOn) {
+      _showCards = const <ShowCue>[];
+      _banner = null;
+      _bannerRewind = false;
+      return;
+    }
+    final int now = _now.millisecondsSinceEpoch;
+    final ShowPlan plan = planShows(
+      nowMs: now,
+      leadMinutes: _leadMin,
+      programs: _guide,
+      followed: followedKeys(FollowedLog.instance.book, _favIds),
+      seen: FollowedLog.instance.seen,
+    );
+    _showCards = plan.row;
+    if (_banner != null && cueStillCurrent(_banner!, now)) {
+      _banner = _freshMinutes(_banner!, now);
+    } else if (plan.banner != null) {
+      final ShowCue next = plan.banner!;
+      if (_banner == null || _banner!.alertKey != next.alertKey) {
+        _banner = next;
+        unawaited(FollowedLog.instance.markSeen(next.alertKey, nowMs: now));
+      }
+    } else {
+      _banner = null;
+    }
+    _bannerRewind = _rewindReady(_banner);
+  }
+
+  ShowCue _freshMinutes(ShowCue cue, int now) {
+    switch (cue.moment) {
+      case ShowMoment.soon:
+        final int delta = cue.startMs - now;
+        final int minutes = delta <= 0 ? 1 : (delta / 60000).ceil();
+        return cue.withMinutes(minutes);
+      case ShowMoment.started:
+      case ShowMoment.onAir:
+        final int minutes = (now - cue.startMs) ~/ 60000;
+        return cue.withMinutes(minutes < 1 ? 1 : minutes);
+      case ShowMoment.finished:
+        final int minutes = (now - cue.stopMs) ~/ 60000;
+        return cue.withMinutes(minutes < 0 ? 0 : minutes);
+    }
+  }
+
+  bool _rewindReady(ShowCue? cue) {
+    if (cue == null || !cue.canRewind) return false;
+    final Channel? channel = indexChannelsById(_channels)[cue.channelId];
+    if (channel == null) return false;
+    final String? url = CatchupUrlBuilder.build(
+      channel: channel,
+      program: EpgProgram(
+        channelId: cue.channelId,
+        startTime: cue.startMs,
+        stopTime: cue.stopMs,
+        title: cue.title,
+      ),
+    );
+    return url != null && url.isNotEmpty;
+  }
+
+  /// Lit le guide au plus une fois par minute, et seulement
+  /// s'il y a déjà une émission suivie. Guide vide ou base
+  /// en erreur : liste vide, l'accueil continue.
+  Future<void> _reloadGuide() async {
+    final int gen = ++_showGen;
+    try {
+      await followedFlag.load();
+      _showsOn = followedFlag.value;
+      _leadMin = await FollowedLead.load();
+      if (!_showsOn) {
+        _guide = const <GuideSlot>[];
+        if (gen == _showGen && mounted) {
+          _replanShows();
+          setState(() {});
+        }
+        return;
+      }
+      await FollowedLog.instance.reload();
+      if (gen != _showGen || !mounted) return;
+      final Set<String> keys = followedKeys(FollowedLog.instance.book, _favIds);
+      if (keys.isEmpty) {
+        _guide = const <GuideSlot>[];
+        _guideAtMs = DateTime.now().millisecondsSinceEpoch;
+        _replanShows();
+        if (mounted) setState(() {});
+        return;
+      }
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      final int from = now - 2 * 60 * 60 * 1000;
+      final int to = now + kReplayHorizonMs;
+      final List<EpgProgram> found = <EpgProgram>[];
+      final Set<String> seenProg = <String>{};
+      void take(List<EpgProgram> list) {
+        for (final EpgProgram program in list) {
+          final String id =
+              '${program.channelId}@${program.startTime}@${program.title}';
+          if (seenProg.add(id)) found.add(program);
+        }
+      }
+
+      try {
+        take(await EpgRepository.instance.programsOverlapping(
+          from,
+          to,
+          limit: 800,
+        ));
+      } catch (_) {}
+      for (final String id
+          in followedChannelIds(FollowedLog.instance.book, _favIds)) {
+        if (gen != _showGen) return;
+        try {
+          take(await EpgRepository.instance.programsBetween(id, from, to));
+        } catch (_) {}
+      }
+      if (gen != _showGen || !mounted) return;
+      final bool kids = ParentalControls.instance.kidsMode.value;
+      final Map<String, Channel> byId = indexChannelsById(_channels);
+      final List<GuideSlot> slots = <GuideSlot>[];
+      for (final EpgProgram program in found) {
+        final Channel? channel = byId[program.channelId];
+        if (channel == null) continue;
+        if (kids &&
+            (hiddenForKids(channel) || roughLooksAdult(program.title))) {
+          continue;
+        }
+        final bool declared = channel.catchupSupported ||
+            (channel.catchupSource != null &&
+                channel.catchupSource!.isNotEmpty);
+        slots.add(GuideSlot(
+          channelId: channel.id,
+          channelName: channel.cleanName,
+          title: program.title,
+          startMs: program.startTime,
+          stopMs: program.stopTime,
+          catchupDeclared: declared,
+        ));
+      }
+      _guide = slots;
+      _guideAtMs = now;
+      _replanShows();
+      if (mounted) setState(() {});
+    } catch (_) {
+      if (gen != _showGen || !mounted) return;
+      _guide = const <GuideSlot>[];
+      _replanShows();
+      setState(() {});
+    }
+  }
+
+  void _openShow(ShowCue cue, {bool fromStart = false, bool replay = false}) {
+    final Map<String, Channel> byId = indexChannelsById(_channels);
+    final String id =
+        replay ? (cue.replayChannelId ?? cue.channelId) : cue.channelId;
+    final Channel? target = byId[id];
+    unawaited(FollowedLog.instance.markSeen(cue.alertKey));
+    setState(() => _banner = null);
+    if (target == null || !mounted) return;
+    String? url;
+    if (fromStart) {
+      final Channel? origin = byId[cue.channelId];
+      if (origin != null) {
+        url = CatchupUrlBuilder.build(
+          channel: origin,
+          program: EpgProgram(
+            channelId: cue.channelId,
+            startTime: cue.startMs,
+            stopTime: cue.stopMs,
+            title: cue.title,
+          ),
+        );
+      }
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvPlayerScreen(
+          channels: <Channel>[target],
+          startIndex: 0,
+          startAtUrl: (url != null && url.isNotEmpty) ? url : null,
+        ),
+      ),
+    );
+  }
+
+  void _dismissBanner() {
+    final ShowCue? cue = _banner;
+    if (cue != null) {
+      unawaited(FollowedLog.instance.markSeen(cue.alertKey));
+    }
+    setState(() => _banner = null);
+  }
+
   void _playShelf(List<Channel> shelf, int index) {
     if (index < 0 || index >= shelf.length) return;
     Navigator.of(context).push(
@@ -564,12 +811,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _trendSub?.cancel();
     _recentSub?.cancel();
     _popularGen++; // une réponse tardive ne touche plus cet écran
+    _showGen++;
     TrendingRepository.instance.stop();
     WatchProgressRepository.instance.removeListener(_scheduleShelves);
     ProgramReminderRepository.instance.removeListener(_scheduleShelves);
     ParentalControls.instance.kidsMode.removeListener(_scheduleShelves);
     TimePickLog.instance.listenable.removeListener(_onTimePicks);
     timePicksFlag.changes.removeListener(_onTimeFlag);
+    FollowedLog.instance.listenable.removeListener(_onFollowed);
+    followedFlag.changes.removeListener(_onFollowedFlag);
     SubscriptionState.instance.removeListener(_onLicenseChange);
     TvContentRefresh.notice.removeListener(_onRefreshNotice);
     ProfileRepository.instance.removeListener(_onProfileCatalog);
@@ -739,6 +989,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final String date = DateFormat('EEE d MMM', localeName).format(_now);
     final ({String label, Color color}) lic = _license(context);
     final String src = _activeSource;
+    final bool hasPersonal = _shelves.hasAny ||
+        _timePicks.isNotEmpty ||
+        _showCards.isNotEmpty ||
+        _banner != null;
+    final String lang = Localizations.localeOf(context).languageCode;
 
     return PopScope(
       canPop: false,
@@ -805,7 +1060,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                       style: TvTokens.display(TvDimens.title,
                           color: TvTokens.text),
                     ),
-                    if (!_shelves.hasAny && _timePicks.isEmpty) ...<Widget>[
+                    if (!hasPersonal) ...<Widget>[
                       const SizedBox(height: 4),
                       Text(
                         context.l10n.tvHomeInvite,
@@ -820,7 +1075,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                     // les tuiles se font plus petites en bas. Sans historique, les
                     // tuiles restent grandes et centrées (l'accueil d'origine).
                     Expanded(
-                      child: _shelves.hasAny || _timePicks.isNotEmpty
+                      child: hasPersonal
                           ? Column(
                               children: <Widget>[
                                 Expanded(
@@ -836,6 +1091,27 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                       'À cette heure',
                                       'At this hour',
                                     ),
+                                    shows: _showCards,
+                                    showsLabel: followedWord(lang, 'row'),
+                                    onPlayShow: _openShow,
+                                    header: _banner == null
+                                        ? null
+                                        : ShowBanner(
+                                            cue: _banner!,
+                                            languageCode: lang,
+                                            canRewind: _bannerRewind,
+                                            onWatch: () => _openShow(_banner!),
+                                            onLive: () => _openShow(_banner!),
+                                            onRewind: () => _openShow(
+                                              _banner!,
+                                              fromStart: true,
+                                            ),
+                                            onReplay: () => _openShow(
+                                              _banner!,
+                                              replay: true,
+                                            ),
+                                            onLater: _dismissBanner,
+                                          ),
                                     onPlayChannel: _playShelf,
                                     onPlayContinue: _playContinue,
                                     onPlayReminder: _playReminder,
@@ -883,7 +1159,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
                         Text('${context.l10n.tvActivationCodeLabel} : ',
                             style: TvTokens.ui(14, color: TvTokens.mutedDim)),
                         Text(_mac,
-                            style: TvTokens.mono(16, color: TvTokens.accentBright)),
+                            style: TvTokens.mono(16,
+                                color: TvTokens.accentBright)),
                         const Spacer(),
                         if (lic.label.isNotEmpty)
                           Text(lic.label,
@@ -967,16 +1244,21 @@ class _ProfileChip extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: focused ? TvTokens.accent : TvTokens.card.withValues(alpha: 0.85),
+            color: focused
+                ? TvTokens.accent
+                : TvTokens.card.withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(TvTokens.rButton),
-            border: Border.all(color: focused ? TvTokens.accent : TvTokens.line),
+            border:
+                Border.all(color: focused ? TvTokens.accent : TvTokens.line),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Icon(ProfileLooks.icon(profile),
                   size: 22,
-                  color: focused ? TvTokens.onAccent : ProfileLooks.color(profile)),
+                  color: focused
+                      ? TvTokens.onAccent
+                      : ProfileLooks.color(profile)),
               const SizedBox(width: 8),
               Text(profile.name,
                   style: TvTokens.ui(TvDimens.label,

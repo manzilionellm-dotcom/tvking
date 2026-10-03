@@ -302,6 +302,7 @@ export interface Device {
   android_build?: string | null;
   android_release?: string | null;
   app_build?: number | null;
+  app_version?: string | null;
   platform?: string | null;   // 'tv' (DeFew TV) | 'mobile' (The Few)
 }
 // Abonnement (licence) d'un appareil, vue panel.
@@ -373,6 +374,34 @@ export const devicesApi = {
     ),
   remove: (id: string) =>
     request<{ deleted: number }>(`/api/v1/devices/${id}`, { method: 'DELETE' }),
+};
+
+export interface BoxLiveOrder {
+  id: number;
+  kind: string;
+  created_at?: number;
+  applied_at?: number;
+}
+export interface BoxLiveRow {
+  id: string;
+  mac: string;
+  label?: string | null;
+  online: boolean;
+  last_seen_at: number;
+  app_version?: string;
+  app_build?: number;
+  block_status?: string | null;
+  pending: BoxLiveOrder[];
+  last_applied: BoxLiveOrder | null;
+  fleet_pending: BoxLiveOrder[];
+  fleet_last_applied: BoxLiveOrder | null;
+}
+/// État en direct, sans recharger la page. Le JWT du panel est exigé.
+export const boxesApi = {
+  live: (mac?: string) =>
+    request<{ now: number; items: BoxLiveRow[] }>(
+      `/api/v1/boxes/live${mac ? `?mac=${encodeURIComponent(mac)}` : ''}`,
+    ),
 };
 
 export interface License {

@@ -12,6 +12,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../cinema/data/catalog_cache_policy.dart';
+import '../../cinema/data/cinema_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
 import '../../playlists/data/xtream_client.dart';
@@ -31,13 +33,14 @@ class VodRepository {
         await PlaylistRepository.instance.getAllPlaylists();
     Playlist? xt;
     for (final Playlist p in playlists) {
-      if (p.type == PlaylistType.xtream &&
-          (p.xtreamServer ?? '').isNotEmpty) {
+      if (p.type == PlaylistType.xtream && (p.xtreamServer ?? '').isNotEmpty) {
         xt = p;
         break;
       }
     }
     if (xt == null) {
+      final List<VodMovie> saved = await _savedMovies();
+      if (saved.isNotEmpty) return saved;
       _cache = const <VodMovie>[];
       return _cache!;
     }
@@ -49,15 +52,34 @@ class VodRepository {
     );
     try {
       final List<VodMovie> movies = await client.fetchVodMovies();
-      _cache = movies;
-      return movies;
+      // Une réponse vide n'efface pas ce qu'on a déjà (mémoire ou disque).
+      final List<VodMovie> chosen = keepPreviousWhenEmpty<VodMovie>(
+        incoming: movies,
+        previous: _cache ?? const <VodMovie>[],
+        disk: movies.isNotEmpty ? const <VodMovie>[] : await _savedMovies(),
+      );
+      if (chosen.isNotEmpty) _cache = chosen;
+      return chosen;
     } catch (e) {
       if (kDebugMode) debugPrint('[VOD] fetch error: $e');
-      // Serveur sans VOD ou erreur → liste vide (cache court pour
-      // permettre un retry rapide via forceRefresh).
-      return const <VodMovie>[];
+      final List<VodMovie> chosen = keepPreviousWhenEmpty<VodMovie>(
+        incoming: null,
+        previous: _cache ?? const <VodMovie>[],
+        disk: await _savedMovies(),
+      );
+      if (chosen.isNotEmpty) _cache = chosen;
+      return chosen;
     } finally {
       client.dispose();
+    }
+  }
+
+  Future<List<VodMovie>> _savedMovies() async {
+    try {
+      return await CinemaRepository.instance.cachedVodMovies();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[VOD] cache disque illisible : $e');
+      return const <VodMovie>[];
     }
   }
 

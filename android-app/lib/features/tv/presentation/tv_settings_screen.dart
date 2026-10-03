@@ -31,6 +31,7 @@ import '../../profiles/data/profile_repository.dart';
 import '../../remote/presentation/tv_remote_screen.dart';
 import '../../voice/data/voice_remote_assist.dart';
 import '../data/startup_preference.dart';
+import 'tv_audio_diagnostic_screen.dart';
 import 'tv_black_box_screen.dart';
 import 'tv_profiles_screen.dart';
 import 'tv_legal_screen.dart';
@@ -354,6 +355,13 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         title: context.l10n.tvBlackBoxTitle,
         description: context.l10n.tvSettingsBlackBox,
         onSelect: () => open(const TvBlackBoxScreen()),
+      ),
+      _SettingEntry(
+        icon: Icons.graphic_eq_rounded,
+        title: 'Diagnostic du son',
+        description:
+            'Rapport local par chaîne. Rien n\'est envoyé. Les correctifs restent coupés.',
+        onSelect: () => open(const TvAudioDiagnosticScreen()),
       ),
       _SettingEntry(
         icon: Icons.gavel_rounded,

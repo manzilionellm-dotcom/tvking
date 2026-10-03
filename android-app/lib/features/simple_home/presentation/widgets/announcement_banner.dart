@@ -24,6 +24,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../subscription/data/signal_inbox.dart';
 import '../../data/announcement_repository.dart';
 
 /// Style visuel résolu depuis la catégorie d'une annonce.
@@ -67,7 +68,20 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
   @override
   void initState() {
     super.initState();
+    SignalInbox.instance.addListener(_onSignal);
     _load();
+  }
+
+  @override
+  void dispose() {
+    SignalInbox.instance.removeListener(_onSignal);
+    super.dispose();
+  }
+
+  /// Un message du panel vient d'arriver : on relit le bandeau
+  /// sans rouvrir l'écran.
+  void _onSignal() {
+    if (SignalInbox.instance.lastKind == 'message') _load();
   }
 
   Future<void> _load() async {

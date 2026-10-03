@@ -98,6 +98,12 @@ on:
         required: false
         default: ''
         type: string
+      variante:
+        description: 'telephone = « Zuno essai » (package .essai, fichier zuno-essai.apk) — EXIGE test_box=true'
+        required: false
+        default: 'box'
+        type: choice
+        options: ['box', 'telephone']
 
 permissions:
   contents: write   # publier l'APK + version.json sur la release
@@ -110,7 +116,15 @@ env:
   RELEASE_TAG: zuno-tv
   # Certificat des box clients « 7 MOTION TV » (seven-tv.apk, depuis l'été 2026).
   EXPECTED_CERT: 5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61
-  APK_NAME: zuno-tv.apk
+  # VARIANTE « essai téléphone » (02/10/2026) : même code, même clé, mais
+  # package com.sevenmotion.tv.seven_tv.essai, nom « Zuno essai » et fichier
+  # zuno-essai.apk → s'installe à côté d'un Zuno déjà présent sur un
+  # téléphone. Elle ne va QUE sur zuno-tv-test (garde-fou plus bas) et ne
+  # remplace jamais zuno-tv.apk ni version.json.
+  ESSAI: ${{ github.event.inputs.variante == 'telephone' }}
+  APK_NAME: ${{ github.event.inputs.variante == 'telephone' && 'zuno-essai.apk' || 'zuno-tv.apk' }}
+  ZUNO_APP_ID: ${{ github.event.inputs.variante == 'telephone' && 'com.sevenmotion.tv.seven_tv.essai' || 'com.sevenmotion.tv.seven_tv' }}
+  ZUNO_APP_LABEL: ${{ github.event.inputs.variante == 'telephone' && 'Zuno essai' || 'Zuno' }}
 
 # Une seule publication à la fois sur ce canal : deux runs simultanés
 # écriraient l'APK de l'un et le version.json de l'autre. On fait la queue,
@@ -129,6 +143,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      # La variante « essai » n'existe que pour la box/le téléphone de test :
+      # sans test_box=true, on s'arrête avant de construire quoi que ce soit.
+      - name: Garde-fou variante essai
+        if: env.ESSAI == 'true'
+        working-directory: .
+        run: |
+          [ "${{ github.event.inputs.test_box }}" = "true" ] \
+            || { echo "::error::variante=telephone exige test_box=true (jamais pour les clients)"; exit 1; }
+          echo "variante essai : $ZUNO_APP_ID · $ZUNO_APP_LABEL · $APK_NAME"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -336,12 +360,12 @@ jobs:
             | tr -d ' \n' | grep -oE '"versionName":"[^"]*"' | grep -oE '[0-9]+' | head -1 || true)
           PREV_VN=${PREV_VN:-0}
           if [ "$PREV_VN" -lt 88 ]; then PREV_VN=87; fi
-          # Plancher 105 : un build de cette branche affiche 105 même
-          # s'il n'est pas publié (la release clients reste à 102 tant
-          # que PUBLIER n'est pas vrai — version.json n'est pas écrit).
-          # Le versionCode reste les secondes epoch, donc au-dessus du
-          # 1790640358 de la v102 et de tout APK 103 déjà compilé.
-          FLOOR_VN=105
+          # Plancher : la branche connexion affichait au moins 105, la
+          # branche arrêt-hors-app au moins 106. On garde le plus haut
+          # (106) : un build non publié reste au-dessus des deux, et le
+          # versionCode (secondes epoch) dépasse 1790642483 et 1790640358.
+          # version.json n'est écrit que si PUBLIER est vrai.
+          FLOOR_VN=106
           if [ "$PUBLIER" = "true" ]; then NEW_VN=$((PREV_VN + 1)); else NEW_VN=$PREV_VN; fi
           if [ "$NEW_VN" -lt "$FLOOR_VN" ]; then NEW_VN=$FLOOR_VN; fi
           echo "version visible = $NEW_VN (précédente publiée : $PREV_VN, publication : $PUBLIER, plancher : $FLOOR_VN)"
@@ -353,11 +377,13 @@ jobs:
         run: |
           set -e
           BUILD_NUMBER=$(date +%s)
-          # La v102 publiée porte le versionCode 1790640358. Un APK
-          # plus petit ne s'installerait pas par-dessus les box déjà là.
-          MIN_CODE=1790640358
+          # Secondes epoch, donc croissant. Plancher = le dernier
+          # versionCode déjà posé sur une box de test (1790642483),
+          # lui-même au-dessus de la v102 (1790640358). Un APK plus
+          # petit est refusé par Android.
+          MIN_CODE=1790642483
           if [ "$BUILD_NUMBER" -le "$MIN_CODE" ]; then
-            echo "::error title=versionCode trop petit::$BUILD_NUMBER n'est pas au-dessus de $MIN_CODE (v102)."
+            echo "::error title=versionCode trop petit::$BUILD_NUMBER n'est pas au-dessus de $MIN_CODE."
             exit 1
           fi
           echo "versionCode = $BUILD_NUMBER · versionName = $TV_VERSION_NAME"
@@ -390,8 +416,10 @@ jobs:
           AAPT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/aapt
           BADGING=$("$AAPT" dump badging "$APK")
           echo "$BADGING" | grep -E "^package:|^application:|application-label:|leanback" || true
-          echo "$BADGING" | grep -q "name='com.sevenmotion.tv.seven_tv'" \
-            || { echo "❌ applicationId inattendu"; exit 1; }
+          echo "$BADGING" | grep -q "name='$ZUNO_APP_ID'" \
+            || { echo "❌ applicationId inattendu (attendu $ZUNO_APP_ID)"; exit 1; }
+          echo "$BADGING" | grep -q "application-label:'$ZUNO_APP_LABEL'" \
+            || { echo "❌ nom affiché inattendu (attendu $ZUNO_APP_LABEL)"; exit 1; }
           # aapt ne recrache pas le nom brut de la catégorie : une activité
           # portant LEANBACK_LAUNCHER apparaît comme « leanback-launchable-activity ».
           echo "$BADGING" | grep -q "^leanback-launchable-activity:" \
@@ -406,7 +434,7 @@ jobs:
           WANT="${WANT:-https://app.7themotion.com}"
           unzip -p "$APK" 'lib/*/libapp.so' | grep -aq "$WANT" \
             || { echo "❌ backend $WANT introuvable dans l'APK"; exit 1; }
-          echo "✓ APK vérifié : com.sevenmotion.tv.seven_tv, Leanback, backend $WANT"
+          echo "✓ APK vérifié : $ZUNO_APP_ID ($ZUNO_APP_LABEL), Leanback, backend $WANT"
           # Chaque dossier d'architecture présent dans l'APK DOIT contenir le
           # moteur (libflutter.so) et le code (libapp.so) : Android choisit le
           # dossier de SON processeur ; un dossier incomplet = app qui ne démarre
@@ -500,7 +528,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zuno-tv-apk-${{ github.sha }}
-          path: android-app/build/app/outputs/flutter-apk/zuno-tv.apk
+          path: android-app/build/app/outputs/flutter-apk/${{ env.APK_NAME }}
           retention-days: 30
           if-no-files-found: error
 
@@ -583,6 +611,26 @@ jobs:
           [ "${APK_CERT:-}" = "$EXPECTED_CERT" ] \
             || { echo "::error::signature ${APK_CERT:-?} ≠ clé des box → pas de publication test"; exit 1; }
           SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          if [ "$ESSAI" = "true" ]; then
+            # Variante essai : on AJOUTE zuno-essai.apk à la release de test,
+            # sans toucher zuno-tv.apk, version.json ni les notes (qui
+            # décrivent le build de la box).
+            [ "$APK_NAME" = "zuno-essai.apk" ] || { echo "::error::nom de fichier essai inattendu : $APK_NAME"; exit 1; }
+            gh release view "$TEST_TAG" -R "$REPO" >/dev/null
+            gh api "repos/$REPO/releases/tags/$TEST_TAG" \
+              --jq '.assets[] | "\(.name) \(.size) \(.digest)"' > test_avant.txt
+            gh release upload "$TEST_TAG" "$APK" --clobber -R "$REPO"
+            gh api "repos/$REPO/releases/tags/$TEST_TAG" \
+              --jq '.assets[] | "\(.name) \(.size) \(.digest)"' > test_apres.txt
+            echo "== zuno-tv-test avant"; cat test_avant.txt
+            echo "== zuno-tv-test après"; cat test_apres.txt
+            # Seul zuno-essai.apk a le droit de changer.
+            diff <(grep -v '^zuno-essai.apk ' test_avant.txt) <(grep -v '^zuno-essai.apk ' test_apres.txt) \
+              || { echo "::error::un autre fichier de zuno-tv-test a changé"; exit 1; }
+            echo "✓ essai téléphone : https://github.com/$REPO/releases/download/$TEST_TAG/$APK_NAME"
+            echo "   package $ZUNO_APP_ID · versionCode ${TV_BUILD_NUMBER:-?} · SHA-256 $SHA"
+            exit 0
+          fi
           NOTES="Zuno — version de TEST (une seule box, jamais les clients).
 
           Installation : zuno.7themotion.com/test dans l'app Downloader.
@@ -601,7 +649,7 @@ jobs:
         run: |
           {
             echo "## Zuno TV"
-            echo "- applicationId : \`com.sevenmotion.tv.seven_tv\`"
+            echo "- applicationId : \`$ZUNO_APP_ID\` · nom : \`$ZUNO_APP_LABEL\`"
             echo "- version visible : \`${TV_VERSION_NAME:-?}\` · versionCode : \`${TV_BUILD_NUMBER:-?}\` · signature : \`${SIGNING:-?}\`"
             echo "- backend : \`${{ github.event.inputs.backend_url || 'https://app.7themotion.com' }}\`"
             if [ "$PUBLIER" = "true" ]; then

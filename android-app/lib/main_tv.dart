@@ -18,6 +18,9 @@ import 'package:native_video_player/native_video_player.dart';
 import 'core/app/app_platform.dart';
 import 'core/blackbox/black_box.dart';
 import 'core/blackbox/black_box_upload.dart';
+import 'features/player/data/audio_diag_prefs.dart';
+import 'features/player/data/audio_report_store.dart';
+import 'features/player/domain/audio_report_book.dart';
 import 'core/update/update_service.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
@@ -67,9 +70,13 @@ void _syncPlayerLanguage() {
 /// constat, étiquette « SON », avec la chaîne en cours quand on la connaît.
 void _wireAudioDiagnostic() {
   NativeVideoController.onAudioDiagnostic = (String diagnostic) {
-    final String channel = NowPlaying.instance.current;
+    // « Son témoin » : le nom vient de l'écran Diagnostic, pas du
+    // heartbeat (NowPlaying reste la chaîne, ou vide).
+    final String channel =
+        AudioReportStore.channelOverride ?? NowPlaying.instance.current;
+    final String safe = redactAudioText(diagnostic);
     bool first = true;
-    for (final String raw in diagnostic.split('\n')) {
+    for (final String raw in safe.split('\n')) {
       final String line = raw.trim();
       if (line.isEmpty) continue;
       BlackBox.instance.info(
@@ -78,6 +85,7 @@ void _wireAudioDiagnostic() {
       );
       first = false;
     }
+    unawaited(AudioReportStore.instance.record(channel: channel, body: safe));
   };
 }
 
@@ -120,6 +128,8 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // Le journal part vers le panel (même Worker, même MAC). L'envoi
   // est coupé par l'interrupteur « En plus ». Rien ici ne touche au son.
   BlackBoxUpload.instance.start();
+  // Réglages du diagnostic son. Défaut faux : ne change pas le lecteur.
+  await AudioDiagPrefs.load();
   if (BootGuard.instance.safeMode) {
     BlackBox.instance.warn('BOOT', 'MODE SANS ÉCHEC : boucle de redémarrage détectée → ré-imports sautés');
   }

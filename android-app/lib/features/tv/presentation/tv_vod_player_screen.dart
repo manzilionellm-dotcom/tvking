@@ -28,7 +28,11 @@ import 'package:flutter/services.dart';
 import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
+import '../../box_extras/box_text.dart';
 import '../../player/data/clear_voice_flag.dart';
+import '../../player/data/image_prefs.dart';
+import '../../player/domain/image_engine.dart';
+import '../../player/domain/reconnect_plan.dart';
 
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
@@ -105,6 +109,12 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   bool _fatal = false;
   DateTime _lastBack = DateTime.fromMillisecondsSinceEpoch(0);
 
+  // Coupure réseau d'un film : on ré-ouvre à la même seconde, avec
+  // une attente croissante. Pas d'écran d'erreur au premier hoquet.
+  Timer? _vodTimer;
+  bool _vodArmed = false;
+  int _vodAttempts = 0;
+
   @override
   void initState() {
     super.initState();
@@ -117,6 +127,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       if (mounted) _c.setClearVoice(ClearVoiceFlag.value);
     }));
     ClearVoiceFlag.changes.addListener(_onClearVoice);
+    ImagePrefs.changes.addListener(_onImagePrefs);
+    unawaited(ImagePrefs.load().then((_) {
+      if (mounted) _onImagePrefs();
+    }));
     _next = _computeNext();
     unawaited(_start(_item, widget.startAt, local: widget.localPath));
     _saveTimer = Timer.periodic(const Duration(seconds: 10), (_) => _saveProgress());
@@ -127,13 +141,52 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _c.setClearVoice(ClearVoiceFlag.value);
   }
 
+  void _onImagePrefs() {
+    _c.setImageEngine(ImagePrefs.engine.wire);
+    _c.setFrameRateMatch(ImagePrefs.frameRateMatch);
+  }
+
+  void _cycleEngine() {
+    final EngineStep step = EngineStep.next(
+      ImageEngine.fromWire(_c.imageEngineWire),
+      ffmpegVideo: _c.ffmpegVideoReady,
+    );
+    unawaited(ImagePrefs.setEngine(step.engine));
+    _c.setImageEngine(step.engine.wire);
+    _showToast(step.ffmpegMissing
+        ? boxText(
+            context,
+            'FFmpeg vidéo n\'est pas dans cette version.',
+            'FFmpeg video is not in this version.',
+          )
+        : boxText(context, 'Moteur : ${_engineLabel()}', 'Engine: ${_engineLabel()}'));
+    _showOverlay();
+  }
+
+  String _engineLabel() {
+    switch (ImageEngine.fromWire(_c.imageEngineWire)) {
+      case ImageEngine.software:
+        return 'Logiciel';
+      case ImageEngine.ffmpeg:
+        return 'FFmpeg';
+      case ImageEngine.hardware:
+        return 'Matériel';
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
-        _c.pause();
+        // Même règle que le direct : rien ne joue hors de l'app. Le natif
+        // garde la position ; « OK » au retour rouvre le film à cet endroit.
+        if (NativeVideoController.backgroundPauseOnly) {
+          _c.pause();
+        } else {
+          _c.suspendForBackground();
+        }
         _saveProgress(flush: true);
       case AppLifecycleState.resumed:
       case AppLifecycleState.inactive:
@@ -151,8 +204,10 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     _countdownTimer?.cancel();
     _toastTimer?.cancel();
     _saveTimer?.cancel();
+    _vodTimer?.cancel();
     _c.removeListener(_onPlayer);
     ClearVoiceFlag.changes.removeListener(_onClearVoice);
+    ImagePrefs.changes.removeListener(_onImagePrefs);
     _c.dispose();
     ForegroundPlayback.unlock();
     _focus.dispose();
@@ -163,7 +218,12 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   //  Démarrage / enchaînement
   // ---------------------------------------------------------
 
-  Future<void> _start(VodPlayItem item, Duration startAt, {String? local}) async {
+  Future<void> _start(
+    VodPlayItem item,
+    Duration startAt, {
+    String? local,
+    bool keepPicture = false,
+  }) async {
     final String? audioPref = await CinemaTrackPrefs.audio();
     final String? textPref = await CinemaTrackPrefs.text();
     if (!mounted) return;
@@ -177,6 +237,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       startAt: startAt,
       preferredAudio: audioPref ?? appLang,
       preferredText: (textPref == null || textPref == 'off') ? null : textPref,
+      keepPicture: keepPicture,
     );
     if (startAt > const Duration(seconds: 10)) {
       _showToast(context.l10n.tvCinemaResumedAt(formatClock(startAt)));
@@ -198,6 +259,9 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     if (n == null || st == null) return;
     _saveProgress(flush: true);
     _countdownTimer?.cancel();
+    _vodTimer?.cancel();
+    _vodTimer = null;
+    _vodArmed = false;
     final VodPlayItem ni = VodPlayItem.episode(n, st);
     final WatchEntry? prev = WatchProgressRepository.instance.get(ni.id);
     final String? local = await offlinePathFor(ni.id);
@@ -210,6 +274,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       _finishHandled = false;
       _endHandled = false;
       _fatal = false;
+      _vodAttempts = 0;
+      _vodArmed = false;
       _zone = _Zone.timeline;
       _tracksOpen = false;
     });
@@ -223,10 +289,26 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
 
   void _onPlayer() {
     if (!mounted) return;
-    if (_c.hasError && !_fatal) {
+    // Moteur épuisé (matériel, logiciel, FFmpeg) : plus de tentative.
+    // Une erreur de flux, elle, attend 1 s, 2 s, 4 s, 8 s et garde
+    // l'image. Le message « lecture impossible » part quand ce budget
+    // est fini, dans [_armVodRetry].
+    if (_c.engineExhausted && !_fatal) {
       BlackBox.instance.warn('CINEMA', 'lecture impossible ${_item.id}');
       _fatal = true;
       _overlay = true;
+    }
+    if (_c.isPlaying && _c.firstFrame && !_c.hasError) {
+      _vodAttempts = 0;
+      if (_vodArmed) {
+        _vodTimer?.cancel();
+        _vodTimer = null;
+        _vodArmed = false;
+      }
+    }
+    if (_c.hasError && !_fatal && !_vodArmed &&
+        !ReconnectPlan.letNativeOwnRetry(_c.nativeRetrying)) {
+      _armVodRetry();
     }
     final Duration d = _c.duration;
     final Duration p = _c.position;
@@ -248,6 +330,39 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       }
     }
     setState(() {});
+  }
+
+  /// Même seconde, attente 1 s puis 2 s, 4 s, 8 s. L'image reste.
+  void _armVodRetry() {
+    if (_vodAttempts >= ReconnectPlan.maxSilent) {
+      BlackBox.instance.warn('CINEMA', 'lecture impossible ${_item.id}');
+      _fatal = true;
+      _overlay = true;
+      return;
+    }
+    _vodAttempts++;
+    final int delay = ReconnectPlan.delayMs(_vodAttempts);
+    final Duration at = _c.position > const Duration(seconds: 1)
+        ? _c.position
+        : widget.startAt;
+    _vodArmed = true;
+    _saveProgress();
+    BlackBox.instance.warn(
+      'CINEMA',
+      'reconnexion dans ${delay}ms (tentative $_vodAttempts) ${_item.id}',
+    );
+    _vodTimer = Timer(Duration(milliseconds: delay), () {
+      _vodTimer = null;
+      _vodArmed = false;
+      if (!mounted || _fatal) return;
+      if (ReconnectPlan.letNativeOwnRetry(_c.nativeRetrying)) return;
+      unawaited(_start(
+        _item,
+        at,
+        local: widget.localPath,
+        keepPicture: _c.firstFrame || _c.holdFrame,
+      ));
+    });
   }
 
   void _openNextCard(Duration left) {
@@ -387,6 +502,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
             label: context.l10n.tvCinemaNextEpisode,
             run: () => unawaited(_playNext()),
           ),
+        (
+          icon: Icons.memory_rounded,
+          label: _engineLabel(),
+          run: _cycleEngine,
+        ),
       ];
 
   // ---------------------------------------------------------
@@ -551,7 +671,16 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
           _fatal = false;
           _endHandled = false;
         });
-        unawaited(_start(_item, _c.position, local: null));
+        _vodAttempts = 0;
+        final Duration at = _c.position > const Duration(seconds: 1)
+            ? _c.position
+            : widget.startAt;
+        unawaited(_start(
+          _item,
+          at,
+          local: widget.localPath,
+          keepPicture: _c.firstFrame || _c.holdFrame,
+        ));
       }
       return KeyEventResult.handled;
     }
@@ -686,7 +815,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
                       child: NativeVideoView(controller: _c),
                     ),
                   ),
-                  if (!_c.firstFrame && !_fatal) _buildLoading(),
+                  if (!_c.firstFrame && !_fatal && !_c.holdFrame) _buildLoading(),
                   if (_c.cues.isNotEmpty) _buildSubtitles(),
                   if (_overlay || _fatal) _buildOverlay(context),
                   if (_toast != null) _buildToast(),
