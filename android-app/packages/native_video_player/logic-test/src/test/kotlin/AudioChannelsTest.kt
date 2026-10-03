@@ -92,7 +92,9 @@ class AudioChannelsTest {
         println(line("silence", reading, pcm))
         assertTrue(reading.correlation.isNaN())
         assertTrue(reading.monoKept.isNaN())
-        assertTrue(reading.level().isNaN())
+        // Les deux énergies sont nulles : (G−D)/(G+D) vaut 0/0, on écrit 0.
+        // On ne conclut pas : la corrélation reste illisible, pas « opposé ».
+        assertEquals(0.0, reading.level(), 0.0)
         assertFalse(reading.opposed)
         assertFalse(reading.cancelled)
         assertTrue(AudioChannels.monoKept(pcm).isNaN())
