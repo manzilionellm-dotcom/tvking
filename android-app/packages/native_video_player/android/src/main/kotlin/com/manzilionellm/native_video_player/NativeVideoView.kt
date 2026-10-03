@@ -63,6 +63,7 @@ import com.manzilionellm.native_video_player.logic.AudioHandoff
 import com.manzilionellm.native_video_player.logic.AudioFocusPolicy
 import com.manzilionellm.native_video_player.logic.AudioFixes
 import com.manzilionellm.native_video_player.logic.AudioRouteState
+import com.manzilionellm.native_video_player.logic.AudioSystemEffects
 import com.manzilionellm.native_video_player.logic.AudioSnapshot
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
 import com.manzilionellm.native_video_player.logic.AudioStages
@@ -383,6 +384,9 @@ class NativeVideoView(
         val deviceType: Int,
         val deviceName: String,
         val uid: Int,
+        /** Bits AudioAttributes. Le second booléen dit si les bits cachés ont été lus. */
+        val flags: Int = 0,
+        val flagsComplete: Boolean = false,
     )
     private var heard: List<Heard> = emptyList()
     private var heardReady = false
@@ -615,12 +619,15 @@ class NativeVideoView(
                 val list = configs ?: return
                 val next = list.map { c ->
                     val dev = routedOf(c)
+                    val bits = SystemEffectsRead.flagsOf(c)
                     Heard(
                         usage = c.audioAttributes.usage,
                         contentType = c.audioAttributes.contentType,
                         deviceType = dev.first,
                         deviceName = dev.second,
                         uid = playbackClientUid(c),
+                        flags = bits.first,
+                        flagsComplete = bits.second,
                     )
                 }
                 heard = next
@@ -702,6 +709,49 @@ class NativeVideoView(
         val real = heard.any { it.uid > 0 }
         val matches = if (real) heard.count { it.uid == Process.myUid() } else null
         return AudioRouteState.attribute(heard.size, matches, tracks)
+    }
+
+    /**
+     * Fiche des effets système. Lecture seule : [SystemEffectsRead] ne
+     * crée aucun effet. La session vient du lecteur s'il l'a déjà dite.
+     */
+    private fun readSystemEffects(): AudioSystemEffects.Sheet {
+        // 0 = piste pas encore créée (AUDIO_SESSION_ID_GENERATE). Ce n'est
+        // pas la preuve que le son passe par le mixage global des effets.
+        val fromPlayer = try {
+            player.audioSessionId
+        } catch (_: RuntimeException) {
+            -1
+        }
+        val session = when {
+            zunoSessionId > 0 -> zunoSessionId
+            fromPlayer > 0 -> fromPlayer
+            else -> -1
+        }
+        val facts = currentFacts()
+        val tracks = PlayerCensus.tracksAlive()
+        val plays = heard.map { h ->
+            val ours = when {
+                h.uid > 0 -> h.uid == Process.myUid()
+                heard.size == 1 && tracks > 0 -> true
+                else -> null
+            }
+            AudioSystemEffects.Play(
+                usage = h.usage,
+                contentType = h.contentType,
+                flags = h.flags,
+                flagsComplete = h.flagsComplete,
+                deviceType = h.deviceType,
+                deviceName = h.deviceName,
+                ours = ours,
+            )
+        }
+        return SystemEffectsRead.sheet(
+            am = audioManager,
+            sessionId = session,
+            mode = facts.mode,
+            plays = plays,
+        )
     }
 
     /** Chiffres du chemin, lus maintenant. Ne change pas le mode Android. */
@@ -2279,10 +2329,15 @@ class NativeVideoView(
         }
     }
 
+    /** Numéro de session de la piste en cours. −1 tant qu'Android ne l'a pas dit. */
+    private var zunoSessionId: Int = -1
+
     /** Numéro de session audio Android : un numéro qui change = un AudioTrack neuf. */
     override fun onAudioSessionIdChanged(eventTime: AnalyticsListener.EventTime, audioSessionId: Int) {
         if (!fresh(eventTime)) return
+        zunoSessionId = audioSessionId
         emit("audioDiag", "Session audio Android n°$audioSessionId")
+        if (diag.decoder != null || diag.outSampleRate > 0) sendAudioDiag()
     }
 
     /**
@@ -2371,6 +2426,7 @@ class NativeVideoView(
             playback = ownerNow(),
             routeLine = AudioRouteState.pathLine(currentFacts()),
             playerAudible = audible,
+            effects = readSystemEffects(),
         )
         diag = live
         // Le corps, sans la ligne « sortie de la box » : elle ne change
