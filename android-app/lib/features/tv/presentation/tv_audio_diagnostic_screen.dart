@@ -24,7 +24,9 @@ import '../../../features/player/domain/audio_attribute_trial.dart';
 import '../../../features/player/data/audio_report_store.dart';
 import '../../../features/player/domain/audio_report_book.dart';
 import '../../../features/player/domain/audio_sources.dart';
+import '../../../features/player/data/sound_report_mailer.dart';
 import '../../../features/player/domain/sound_full_report.dart';
+import '../../../features/player/domain/sound_report_mail.dart';
 import '../../../features/player/domain/sound_report_parts.dart';
 import '../../../features/subscription/data/now_playing.dart';
 import '../core/tv_dimens.dart';
@@ -138,6 +140,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _probeHeld = false;
   bool _listening = false;
   bool _copied = false;
+  bool _mailBusy = false;
+  bool _offerSave = false;
+  String? _mailNote;
   int _runGen = 0;
   String _step = '';
   String? _reportText;
@@ -245,6 +250,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _facts = next;
     _reportText = SoundFullReport.build(next).text;
     _copied = false;
+    _mailNote = null;
+    _offerSave = false;
   }
 
   void _listen(SoundReportCapture capture) {
@@ -321,6 +328,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     setState(() {
       _reportBusy = true;
       _copied = false;
+      _mailNote = null;
+      _offerSave = false;
       _step = 'Système…';
     });
     final SoundReportCapture capture = SoundReportCapture();
@@ -379,6 +388,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           _reportText = report.text;
           _reportBusy = false;
           _step = '';
+          _mailNote = null;
+          _offerSave = false;
         });
       }
     }
@@ -390,6 +401,68 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     setState(() => _copied = true);
+  }
+
+  /// Ouvre l'application e-mail avec le MÊME texte que « Copier ».
+  /// Ne change aucun interrupteur. Si l'appareil n'a pas d'e-mail,
+  /// on copie et on propose d'enregistrer le fichier. On ne plante pas.
+  Future<void> _sendByEmail() async {
+    if (_mailBusy || _reportBusy) return;
+    final String? text = _reportText;
+    if (text == null || text.trim().isEmpty) {
+      setState(() {
+        _mailNote = SoundReportMail.emptyMessage;
+        _offerSave = false;
+      });
+      return;
+    }
+    setState(() => _mailBusy = true);
+    try {
+      final String version = await SoundReportMailer.versionLabel();
+      final SoundReportMailOutcome outcome = await SoundReportMailer.open(
+        report: text,
+        version: version,
+      );
+      if (!mounted) return;
+      final bool failed = outcome.status != SoundReportMailStatus.opened &&
+          outcome.status != SoundReportMailStatus.empty;
+      if (failed) {
+        try {
+          await Clipboard.setData(ClipboardData(text: text));
+        } catch (_) {}
+      }
+      if (!mounted) return;
+      setState(() {
+        _mailNote = outcome.message;
+        _offerSave = failed;
+        if (failed) _copied = true;
+        _mailBusy = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      try {
+        await Clipboard.setData(ClipboardData(text: text));
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() {
+        _mailNote = SoundReportMail.errorMessage;
+        _offerSave = true;
+        _copied = true;
+        _mailBusy = false;
+      });
+    }
+  }
+
+  Future<void> _saveReportFile() async {
+    final String? text = _reportText;
+    if (text == null || text.isEmpty) return;
+    final String? path = await SoundReportMailer.saveToDocuments(text);
+    if (!mounted) return;
+    setState(() {
+      _mailNote = path == null
+          ? SoundReportMail.saveFailedMessage
+          : '${SoundReportMail.savedPrefix}$path';
+    });
   }
 
   /// Une fiche. Le rapport complet est la première : texte sélectionnable,
@@ -514,7 +587,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         Text(
           'Un bouton « Rapport son complet » : état du système, '
           '10 secondes de la chaîne si elle joue encore, puis le son témoin. '
-          'Un seul texte à copier. Rien n\'est envoyé. '
+          'Un seul texte à copier, ou à ouvrir dans l\'application e-mail. '
+          'Rien ne part tout seul. '
           'Les interrupteurs restent coupés : le son ne change pas.',
           style: TextStyle(fontSize: TvDimens.body, color: TvTokens.muted),
         ),
@@ -536,8 +610,30 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
               on: _copied,
               onSelect: _copyReport,
             ),
+            _Toggle(
+              label: _mailBusy ? 'E-mail…' : 'Envoyer par e-mail',
+              on: false,
+              onSelect: _sendByEmail,
+            ),
+            if (_offerSave)
+              _Toggle(
+                label: 'Enregistrer le fichier',
+                on: false,
+                onSelect: _saveReportFile,
+              ),
           ],
         ),
+        if (_mailNote != null) ...<Widget>[
+          const SizedBox(height: 8),
+          Text(
+            _mailNote!,
+            style: const TextStyle(
+              fontSize: TvDimens.body,
+              fontWeight: FontWeight.w700,
+              color: TvTokens.text,
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         Text(
           'En un mot, avant ou après. Ça ajuste le texte, ça ne relance pas le son.',

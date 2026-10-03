@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pas de permission nouvelle. On ne fait qu'interroger les
+  applications qui savent ouvrir un mailto, puis leur passer
+  un texte ou un fichier déjà dans le cache de Zuno.
+
+  Android 11+ cache les activités des autres applications.
+  Sans <queries>, on croirait qu'aucune box n'a d'e-mail,
+  même quand Gmail est installé.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="message/rfc822" />
+        </intent>
+    </queries>
+
+    <application>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.zuno.soundreport"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/zuno_mail_paths" />
+        </provider>
+    </application>
+</manifest>

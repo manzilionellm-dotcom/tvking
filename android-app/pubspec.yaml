@@ -178,6 +178,14 @@ dependencies:
   zuno_voice:
     path: packages/zuno_voice
 
+  # --- Rapport son : ouvrir l'application e-mail d'Android ---
+  # Le build TV régénère android/ : le Kotlin (ACTION_SENDTO / FileProvider)
+  # vit dans un plugin, sinon il disparaît. Aucun serveur de courrier,
+  # aucun mot de passe. Si la box n'a pas d'application e-mail, l'écran
+  # copie le rapport au lieu de planter.
+  zuno_mail:
+    path: packages/zuno_mail
+
   # Récupère l'IP locale du téléphone sur le WiFi (sinon impossible
   # de construire l'URL "http://<mon-ip>:8090/" que la TV doit ouvrir).
   network_info_plus: ^6.1.1

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Un seul dossier : le cache sound-report, écrit par Dart. -->
+<paths>
+    <cache-path name="sound_report" path="sound-report/" />
+</paths>
