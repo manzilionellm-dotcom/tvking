@@ -49,6 +49,13 @@ object AudioPhase {
         val channels: Int,
         /** Deux voies, assez de son, corrélation très négative. */
         val opposed: Boolean,
+        /**
+         * Niveau RMS(G−D) / RMS(G+D). Ce n'est pas [sideToMid] :
+         * [sideToMid] est un rapport d'énergies (carrés). Le niveau
+         * est la racine de ce rapport. 0 = les deux voies disent la
+         * même chose. Grand = elles s'opposent.
+         */
+        val levelRatio: Double = Double.NaN,
     ) {
         fun correlationText(): String = when {
             correlation.isNaN() -> "illisible"
@@ -59,6 +66,12 @@ object AudioPhase {
             sideToMid.isNaN() -> "illisible"
             sideToMid.isInfinite() -> "infini"
             else -> String.format(Locale.FRANCE, "%.2f", sideToMid)
+        }
+
+        fun levelText(): String = when {
+            levelRatio.isNaN() -> "illisible"
+            levelRatio.isInfinite() -> "infini"
+            else -> String.format(Locale.FRANCE, "%.2f", levelRatio)
         }
     }
 
@@ -128,8 +141,15 @@ object AudioPhase {
             acc.sumMid <= 1e-6 -> Double.POSITIVE_INFINITY
             else -> acc.sumSide / acc.sumMid
         }
+        // Rapport des niveaux, pas des énergies : racine du rapport
+        // des sommes de carrés. Même silence et même infini que [side].
+        val level = when {
+            side.isNaN() -> Double.NaN
+            side.isInfinite() -> Double.POSITIVE_INFINITY
+            else -> sqrt(side)
+        }
         val opposed = !corr.isNaN() && corr <= INVERT_MAX &&
             (side.isInfinite() || side >= SIDE_MIN)
-        return Reading(corr, side, acc.frames, ch, opposed)
+        return Reading(corr, side, acc.frames, ch, opposed, level)
     }
 }

@@ -111,11 +111,19 @@ class NativeVideoController extends ChangeNotifier {
     this.initialUrl,
     String? preferredAudio,
     this.openAsVod = false,
+    this.sourceId = 'autre',
   }) {
     if (preferredAudio != null && preferredAudio.isNotEmpty) {
       _preferredAudio = preferredAudio;
     }
     _leaseId = audiblePlayers.register(_silenceFromPeer);
+    // Jeton négatif : le compteur de l'app utilise les positifs pour
+    // les lecteurs qui ne passent pas par ce plugin (téléphone, pub).
+    // On ne joue rien ici. Si l'app n'a pas branché le rappel, rien
+    // ne se passe : le son est exactement celui d'avant.
+    _sourceToken = -(++_nextSourceToken);
+    _tell('open');
+    if (initialUrl != null && initialUrl!.isNotEmpty) _tell('audible');
     final NativeVideoBackend Function()? f = backendFactory;
     if (f != null && !Platform.isAndroid) {
       _backend = f()..bind(this);
@@ -173,6 +181,28 @@ class NativeVideoController extends ChangeNotifier {
   /// chevaucher, l'ancien défaut). Faux par défaut : on attend.
   static bool immediateHandoff = false;
 
+  /// Garde du mode Android. Faux par défaut : on ne change pas le
+  /// mode (normal / communication / appel) ni le haut-parleur d'appel.
+  /// Vrai : avant la lecture, on demande le mode normal.
+  static bool normalizeAudioMode = false;
+
+  /// Essai d'attributs AudioTrack. « off » = le son d'aujourd'hui
+  /// (contenu film, ou parole si la voix claire est allumée).
+  /// « film » / « musique » / « parole » / « media3 » sont des essais.
+  /// Un mot inconnu est traité comme « off » par le natif.
+  static String audioAttributeTrial = 'off';
+
+  /// Essai « chaîne Media3 par défaut ». Faux : le lecteur Zuno, son
+  /// habituel. Vrai : fabrique Media3 nue, aucun étage Zuno entre le
+  /// décodeur et l'AudioTrack. On ne l'allume pas tout seul.
+  static bool pureMedia3Chain = false;
+
+  /// Essai « type de contenu inconnu ». Faux par défaut : Android
+  /// reçoit « film », comme avant. Vrai : « inconnu », le défaut de
+  /// Media3. Le son PCM ne change pas, seule l'étiquette change.
+  /// Ignoré si [audioAttributeTrial] n'est pas « off ».
+  static bool referenceUnknownContent = false;
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -185,12 +215,23 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
       ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
       ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+      ch.invokeMethod<void>('setNormalizeMode', normalizeAudioMode);
+      ch.invokeMethod<void>('setAudioProfile', audioAttributeTrial);
+      ch.invokeMethod<void>('setPureMedia3Chain', pureMedia3Chain);
+      ch.invokeMethod<void>('setReferenceUnknownContent', referenceUnknownContent);
     }
   }
 
   /// Tous les controllers vivants. Un zap ou une ouverture « prend »
   /// le son et fait taire les autres avant de démarrer.
   static final ExclusiveAudio audiblePlayers = ExclusiveAudio();
+
+  /// Compteur lu par l'app (fiche Diagnostic). Null = pas de compteur.
+  /// Événements : open, close, audible, silent, retain, zap.
+  /// Le rappel ne doit pas ouvrir de flux ni changer le volume.
+  static void Function(int token, String source, String event)? sourceHook;
+
+  static int _nextSourceToken = 0;
 
   NativeVideoBackend? _backend;
 
@@ -205,6 +246,24 @@ class NativeVideoController extends ChangeNotifier {
   /// Fichier fini (film, enregistrement) : la reprise après coupure ou
   /// après un retour dans l'app repart de la position, pas du bord du direct.
   final bool openAsVod;
+
+  /// Nom de la source pour la fiche (« plein_ecran », « apercu »…).
+  /// N'influence pas le décodeur. Défaut « autre ».
+  final String sourceId;
+
+  int _sourceToken = 0;
+  bool _sourceEnded = false;
+
+  void _tell(String event) {
+    if (_sourceEnded && event != 'close') return;
+    sourceHook?.call(_sourceToken, sourceId, event);
+  }
+
+  void _endSource() {
+    if (_sourceEnded) return;
+    _sourceEnded = true;
+    _tell('close');
+  }
 
   MethodChannel? _channel;
   String? _pendingUrl;
@@ -327,6 +386,10 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
     ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
     ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+    ch.invokeMethod<void>('setNormalizeMode', normalizeAudioMode);
+    ch.invokeMethod<void>('setAudioProfile', audioAttributeTrial);
+    ch.invokeMethod<void>('setPureMedia3Chain', pureMedia3Chain);
+    ch.invokeMethod<void>('setReferenceUnknownContent', referenceUnknownContent);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;
@@ -354,6 +417,7 @@ class NativeVideoController extends ChangeNotifier {
   void _silenceFromPeer() {
     if (_disposed) return;
     audible = false;
+    _tell('silent');
     _epoch++;
     _backend?.silence();
     _channel?.invokeMethod<void>('silence');
@@ -509,6 +573,8 @@ class NativeVideoController extends ChangeNotifier {
     // tout de suite (volume 0 + arrêt), puis seulement on charge.
     audible = true;
     audiblePlayers.claim(_leaseId);
+    _tell('zap');
+    _tell('audible');
     // Nouvelle génération : les événements encore en route (ancienne chaîne)
     // seront ignorés jusqu'à l'ack natif de CELLE-CI.
     _epoch++;
@@ -662,20 +728,32 @@ class NativeVideoController extends ChangeNotifier {
     _channel?.invokeMethod<void>('disableText');
   }
 
-  void play() => _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('play');
+  void play() {
+    _tell('audible');
+    _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('play');
+  }
 
-  void pause() => _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('pause');
+  void pause() {
+    // La pause GARDE la piste (réglage « Hors app : pause »). On le
+    // compte à part : ce n'est pas un arrêt.
+    _tell('retain');
+    _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('pause');
+  }
 
   /// App en arrière-plan (Home, multitâche) : ARRÊT, pas pause. Le natif
   /// rend le décodeur, l'AudioTrack et le focus audio. Hors Android, une
   /// pause suffit.
-  void suspendForBackground() =>
-      _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('suspend');
+  void suspendForBackground() {
+    _tell('silent');
+    _backend != null ? _backend!.pause() : _channel?.invokeMethod<void>('suspend');
+  }
 
   /// Retour au premier plan après [suspendForBackground] : la chaîne est
   /// rouverte au direct (un film, à sa position), comme un zap.
-  void resumeFromBackground() =>
-      _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('resume');
+  void resumeFromBackground() {
+    _tell('audible');
+    _backend != null ? _backend!.play() : _channel?.invokeMethod<void>('resume');
+  }
 
   /// Libère le décodeur natif et ATTEND qu'il ait rendu la surface.
   ///
@@ -690,6 +768,7 @@ class NativeVideoController extends ChangeNotifier {
     _disposed = true;
     audible = false;
     audiblePlayers.unregister(_leaseId);
+    _endSource();
     _backend?.dispose();
     final MethodChannel? ch = _channel;
     _channel = null;
@@ -713,6 +792,7 @@ class NativeVideoController extends ChangeNotifier {
     audible = false;
     if (!_nativeReleased) {
       audiblePlayers.unregister(_leaseId);
+      _endSource();
       _nativeReleased = true;
       _backend?.dispose();
       final MethodChannel? ch = _channel;

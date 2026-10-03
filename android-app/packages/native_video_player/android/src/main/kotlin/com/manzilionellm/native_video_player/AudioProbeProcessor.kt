@@ -5,8 +5,10 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import com.manzilionellm.native_video_player.logic.AudioPhase
+import com.manzilionellm.native_video_player.logic.AudioQuality
 import com.manzilionellm.native_video_player.logic.AudioSpectrum
 import com.manzilionellm.native_video_player.logic.ProbeAttach
+import java.util.ArrayDeque
 import java.nio.ByteBuffer
 
 /**
@@ -28,8 +30,10 @@ import java.nio.ByteBuffer
  *
  * Allumée : on copie les échantillons tels quels vers la sortie, et on
  * en garde une statistique (énergie au-dessus de 4 kHz, saturation,
- * corrélation gauche/droite sur 1 s). Aucun gain, aucun filtre sur
- * le son qui sort.
+ * corrélation gauche/droite sur 1 s, forme grave/aigu, écho, chute).
+ * Aucun gain, aucun filtre sur le son qui sort. La forme n'est calculée
+ * qu'une fois par seconde pleine : le fil audio ne fait pas une
+ * transformée à chaque tampon.
  */
 @UnstableApi
 class AudioProbeProcessor(
@@ -64,6 +68,14 @@ class AudioProbeProcessor(
     private var lastPhase: AudioPhase.Reading? = null
     private var lastRecent: Double? = null
 
+    // Une seconde de PCM copié, pour la forme (grave/aigu, écho).
+    // On ne la remplit que si la sonde est allumée. Coupée, ce
+    // tableau reste vide et [measure] n'est pas appelé.
+    private var second: ShortArray = ShortArray(0)
+    private var secondFill: Int = 0
+    private var lastQuality: AudioQuality.Reading? = null
+    private val niveaux = ArrayDeque<Double>()
+
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         val decision = ProbeAttach.onConfigure(
             enabled = enabled,
@@ -85,6 +97,12 @@ class AudioProbeProcessor(
         recentAcc = AudioSpectrum.start(inputAudioFormat.sampleRate)
         lastPhase = null
         lastRecent = null
+        lastQuality = null
+        niveaux.clear()
+        val frames = inputAudioFormat.sampleRate.coerceIn(8_000, 48_000)
+        val ch = inputAudioFormat.channelCount.coerceIn(1, 8)
+        second = ShortArray(frames * ch)
+        secondFill = 0
         lastKey = null
         // Même format en sortie : Media3 ne rééchantillonne pas à cause de nous.
         return inputAudioFormat
@@ -145,17 +163,46 @@ class AudioProbeProcessor(
                 phaseAcc = AudioPhase.start()
                 recentAcc = AudioSpectrum.start(rate)
             }
+            pushSecond(pcm, channels, rate)
             val ratios = perChannel.map { AudioSpectrum.judge(it).highRatio }
             val judged = AudioSpectrum.judge(acc).copy(
                 channelHighRatios = ratios,
                 phase = lastPhase,
                 recentHighRatio = lastRecent,
+                quality = lastQuality,
             )
             publish(judged)
         }
         // Le tampon d'entrée repart inchangé. On ne touche pas un seul échantillon.
         output.put(inputBuffer)
         output.flip()
+    }
+
+    /**
+     * Empile une seconde, puis mesure la forme une fois. Le tampon
+     * [pcm] est une copie déjà lue : on ne réécrit pas la sortie.
+     * Huit niveaux forts au plus : assez pour voir une baisse tenue,
+     * pas une historique sans fin.
+     */
+    private fun pushSecond(pcm: ShortArray, channels: Int, sampleRate: Int) {
+        if (second.isEmpty()) return
+        var offset = 0
+        while (offset < pcm.size) {
+            val space = second.size - secondFill
+            if (space <= 0) break
+            val n = minOf(space, pcm.size - offset)
+            pcm.copyInto(second, secondFill, offset, offset + n)
+            secondFill += n
+            offset += n
+            if (secondFill >= second.size) {
+                val mesure = AudioQuality.measure(second, sampleRate, channels)
+                niveaux.addLast(mesure.fortDb)
+                while (niveaux.size > 8) niveaux.removeFirst()
+                val chute = if (niveaux.size >= 4) AudioQuality.chuteDb(niveaux.toList()) else null
+                lastQuality = mesure.copy(chuteDb = chute)
+                secondFill = 0
+            }
+        }
     }
 
     /**
@@ -185,7 +232,10 @@ class AudioProbeProcessor(
                 else -> "milieu"
             }
         } ?: "-"
-        val key = judged.band.name + " " + judged.percent() + " " + phaseKey + " " + recentKey
+        val formeKey = judged.quality?.let { q ->
+            q.profil.name + (if (q.echoNet) "E" else "") + (if (q.chuteNette) "C" else "")
+        } ?: "-"
+        val key = judged.band.name + " " + judged.percent() + " " + phaseKey + " " + recentKey + " " + formeKey
         if (key == lastKey) return
         lastKey = key
         onJudgement(stage, judged)

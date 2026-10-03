@@ -4,12 +4,16 @@
 //  • sonde PCM (mesure seulement, ne filtre pas le son)
 //  • réessayer FFmpeg à la prochaine chaîne
 //  • essayer le décodeur AAC de la box à la prochaine chaîne
-//  Une préférence absente ou illisible reste FAUSSE : on ne change
-//  pas le chemin audio tout seul.
+//  • essai d'attributs (film / musique / parole / défaut Media3)
+//  • essayer la chaîne Media3 d'origine (aucun étage Zuno)
+//  Une préférence absente ou illisible reste FAUSSE, ou « off » pour
+//  les attributs : on ne change pas le chemin audio tout seul.
 // =========================================================
 
 import 'package:native_video_player/native_video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../domain/audio_attribute_trial.dart';
 
 class AudioDiagPrefs {
   AudioDiagPrefs._();
@@ -31,6 +35,19 @@ class AudioDiagPrefs {
   /// Repli « passage » : vrai = on n'attend pas l'AudioTrack (ancien).
   static const String immediateHandoffKey = 'zuno.audio.handoff.immediate';
 
+  /// Garde du mode Android. Faux = on ne change pas le mode.
+  /// Vrai = avant la lecture, mode normal et haut-parleur d'appel coupé.
+  static const String normalizeModeKey = 'zuno.audio.mode.normal';
+
+  /// Essai d'attributs. Absent ou illisible = « off » (son d'aujourd'hui).
+  static const String profileKey = AudioAttributeTrial.key;
+
+  /// Essai « chaîne Media3 par défaut ». Faux : son habituel.
+  static const String pureMedia3ChainKey = 'zuno.audio.chain.stock';
+
+  /// Essai « type de contenu inconnu » (défaut Media3). Faux = film.
+  static const String referenceUnknownKey = 'zuno.audio.ref.content_unknown';
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
@@ -39,6 +56,10 @@ class AudioDiagPrefs {
     var androidFocus = false;
     var bgPause = false;
     var immediate = false;
+    var normalize = false;
+    var profile = AudioAttributeTrial.off;
+    var pureChain = false;
+    var referenceUnknown = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -48,6 +69,10 @@ class AudioDiagPrefs {
       androidFocus = prefs.getBool(androidFocusKey) ?? false;
       bgPause = prefs.getBool(bgPauseKey) ?? false;
       immediate = prefs.getBool(immediateHandoffKey) ?? false;
+      normalize = prefs.getBool(normalizeModeKey) ?? false;
+      profile = AudioAttributeTrial.parse(prefs.getString(profileKey));
+      pureChain = prefs.getBool(pureMedia3ChainKey) ?? false;
+      referenceUnknown = prefs.getBool(referenceUnknownKey) ?? false;
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -56,6 +81,10 @@ class AudioDiagPrefs {
       androidFocus = false;
       bgPause = false;
       immediate = false;
+      normalize = false;
+      profile = AudioAttributeTrial.off;
+      pureChain = false;
+      referenceUnknown = false;
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
@@ -64,9 +93,32 @@ class AudioDiagPrefs {
     NativeVideoController.androidAudioFocus = androidFocus;
     NativeVideoController.backgroundPauseOnly = bgPause;
     NativeVideoController.immediateHandoff = immediate;
+    NativeVideoController.normalizeAudioMode = normalize;
+    NativeVideoController.audioAttributeTrial = profile;
+    NativeVideoController.pureMedia3Chain = pureChain;
+    NativeVideoController.referenceUnknownContent = referenceUnknown;
     // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
     // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
     NativeVideoController.pushAudioDiagFlags();
+  }
+
+  static Future<void> setNormalizeMode(bool value) async {
+    NativeVideoController.normalizeAudioMode = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(normalizeModeKey, value);
+    } catch (_) {}
+  }
+
+  static Future<void> setAudioProfile(String value) async {
+    final String wire = AudioAttributeTrial.parse(value);
+    NativeVideoController.audioAttributeTrial = wire;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString(profileKey, wire);
+    } catch (_) {}
   }
 
   static Future<void> setImmediateHandoff(bool value) async {
@@ -119,6 +171,24 @@ class AudioDiagPrefs {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool(ffmpegKey, value);
+    } catch (_) {}
+  }
+
+  static Future<void> setPureMedia3Chain(bool value) async {
+    NativeVideoController.pureMedia3Chain = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(pureMedia3ChainKey, value);
+    } catch (_) {}
+  }
+
+  static Future<void> setReferenceUnknownContent(bool value) async {
+    NativeVideoController.referenceUnknownContent = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(referenceUnknownKey, value);
     } catch (_) {}
   }
 

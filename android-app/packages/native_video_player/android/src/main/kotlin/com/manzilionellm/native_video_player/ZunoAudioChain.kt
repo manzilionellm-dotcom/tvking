@@ -29,6 +29,17 @@ class ZunoAudioChain(
 
     private val silence = SilenceSkippingAudioProcessor()
     private val sonic = SonicAudioProcessor()
+
+    /**
+     * Dernière vitesse et hauteur remises à Sonic. 1 et 1 au départ :
+     * tant que le direct reste figé, Sonic ne se met pas en route.
+     * Lecture seule, pour la fiche.
+     */
+    @Volatile
+    private var appliedSpeed: Float = 1f
+
+    @Volatile
+    private var appliedPitch: Float = 1f
     private val processors = arrayOf<AudioProcessor>(
         probeDecoder,
         clearVoice,
@@ -42,10 +53,23 @@ class ZunoAudioChain(
     override fun getAudioProcessors(): Array<AudioProcessor> = processors
 
     override fun applyPlaybackParameters(playbackParameters: PlaybackParameters): PlaybackParameters {
+        appliedSpeed = playbackParameters.speed
+        appliedPitch = playbackParameters.pitch
         sonic.setSpeed(playbackParameters.speed)
         sonic.setPitch(playbackParameters.pitch)
         return playbackParameters
     }
+
+    /** Sonic est-il dans la chaîne active ? Null si onConfigure n'a pas encore répondu. */
+    fun sonicActive(): Boolean? = try {
+        sonic.isActive
+    } catch (_: RuntimeException) {
+        null
+    }
+
+    fun sonicSpeed(): Float = appliedSpeed
+
+    fun sonicPitch(): Float = appliedPitch
 
     override fun applySkipSilenceEnabled(skipSilenceEnabled: Boolean): Boolean {
         silence.setEnabled(skipSilenceEnabled)

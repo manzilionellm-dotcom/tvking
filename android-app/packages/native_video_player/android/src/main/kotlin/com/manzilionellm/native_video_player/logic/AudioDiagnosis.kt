@@ -96,8 +96,42 @@ data class AudioSnapshot(
      * flux réel). Null = pas encore lue.
      */
     val routeLine: String? = null,
+    /**
+     * Ligne « Attributs » : le contenu envoyé à l'AudioTrack (film,
+     * musique, parole, ou le défaut Media3). Null = pas encore posée.
+     * Ce n'est pas une cause : l'essai est coupé par défaut.
+     */
+    val attributeLine: String? = null,
     /** Le lecteur dit qu'il joue (image et son en cours). */
     val playerAudible: Boolean = false,
+    /**
+     * Octets de signalisation AAC (AudioSpecificConfig ou en-tête ADTS),
+     * lus sans décoder. Null = le format n'est pas encore arrivé.
+     * N'influence pas le décodeur.
+     */
+    val source: AacSource.Reading? = null,
+    /**
+     * Sauts d'horloge INTERNES du direct (pas un zap, pas une recherche).
+     * Comptés seulement. Le son n'est pas ralenti ni recalé pour ça.
+     */
+    val ptsJumps: Int = 0,
+    /** Plus grand saut, en valeur absolue, millisecondes. */
+    val ptsMaxAbsMs: Long = 0,
+    /**
+     * Effets du système, lus sans en créer. Null = pas encore relevé
+     * (les rapports d'avant cette mesure).
+     */
+    val effects: AudioSystemEffects.Sheet? = null,
+    /**
+     * Tampon, fréquence réelle, rythme, écrêtage. Null tant que la fiche
+     * n'a pas encore lu l'AudioTrack. La lecture ne change pas le son.
+     */
+    val formatMeter: AudioFormatMeter.Reading? = null,
+    /**
+     * Essai « chaîne Media3 par défaut ». Faux = lecteur Zuno, son habituel.
+     * Vrai = DefaultRenderersFactory, aucun étage Zuno.
+     */
+    val stockChain: Boolean = false,
 )
 
 object AudioDiagnosis {
@@ -193,8 +227,17 @@ object AudioDiagnosis {
             out += "À surveiller : $profile décodé par la box (certaines box perdent les aigus)."
         }
         // 4) Défauts de la SOURCE (le fournisseur), pas de l'app.
+        //    Un HE-AAC v2 implicite est MONO dans l'en-tête et stéréo après
+        //    le décodeur. On ne l'appelle pas « mono d'origine » dans ce cas.
         if (s.inChannels == 1) {
-            out += "SOURCE : le flux est MONO à l'origine (le fournisseur l'envoie ainsi)."
+            val ps = s.source?.implicitCandidate == true || s.source?.explicitPs == true || s.source?.explicitSbr == true
+            out += when {
+                ps && s.outChannels >= 2 ->
+                    "SOURCE : l'en-tête est mono, la sortie est stéréo → stéréo paramétrique reconstruite."
+                ps ->
+                    "SOURCE : l'en-tête est mono. Ça peut être un vrai mono, ou un HE-AAC v2 dont la stéréo n'a pas été refaite."
+                else -> "SOURCE : le flux est MONO à l'origine (le fournisseur l'envoie ainsi)."
+            }
         }
         if (s.bitrate in 1 until LOW_BITRATE) {
             out += "SOURCE : débit audio faible (${s.bitrate / 1000} kb/s) → qualité limitée par le fournisseur."
@@ -203,8 +246,21 @@ object AudioDiagnosis {
             out += "SOURCE : son échantillonné à ${khz(s.inSampleRate)} → aigus absents dès l'origine."
         }
         // 5) Craquements / coupures : sortie son affamée.
-        if (s.underruns > 0) {
-            out += "SORTIE : ${s.underruns} coupure(s) du son → box trop chargée ou flux qui arrive par à-coups."
+        //    getUnderrunCount et le rappel Media3 ne comptent pas toujours
+        //    la même chose : on prend le plus grand, et on cite les deux
+        //    s'ils divergent.
+        val cuts = AudioFormatMeter.underrunCount(s.underruns, s.formatMeter?.trackUnderruns)
+        if (cuts > 0) {
+            val track = s.formatMeter?.trackUnderruns
+            val both = if (track != null && track != s.underruns) {
+                " (AudioTrack $track, rappel Media3 ${s.underruns})"
+            } else {
+                ""
+            }
+            out += "SORTIE : $cuts coupure(s) du son$both → box trop chargée ou flux qui arrive par à-coups."
+        }
+        s.formatMeter?.let { meter ->
+            for (notice in AudioFormatMeter.notices(meter)) out += notice
         }
         // 6) Informations utiles (pas des défauts).
         if (s.passthrough) {
@@ -247,6 +303,10 @@ object AudioDiagnosis {
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
             "com/manzilionellm/native_video_player/logic/AudioSpectrum.kt"
 
+    private const val FILE_QUALITY =
+        "android-app/packages/native_video_player/android/src/main/kotlin/" +
+            "com/manzilionellm/native_video_player/logic/AudioQuality.kt"
+
     private const val FILE_STAGES =
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
             "com/manzilionellm/native_video_player/logic/AudioStages.kt"
@@ -262,6 +322,10 @@ object AudioDiagnosis {
     private const val FILE_SPOKEN =
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
             "com/manzilionellm/native_video_player/logic/SpokenTrackChoice.kt"
+
+    private const val FILE_EFFECTS =
+        "android-app/packages/native_video_player/android/src/main/kotlin/" +
+            "com/manzilionellm/native_video_player/logic/AudioSystemEffects.kt"
 
     enum class Confidence { HAUTE, INCERTAINE }
 
@@ -419,21 +483,48 @@ object AudioDiagnosis {
                 ),
             )
         } else if (s.inChannels == 1) {
-            out += Finding(
-                id = "source_mono",
-                confidence = Confidence.HAUTE,
-                kind = Kind.CAUSE,
-                symptom = "Le flux en cours est mono.",
-                cause = "La piste choisie est mono à l'origine. Le lecteur ne l'a pas réduite " +
-                    "(aucune autre piste plus large n'est annoncée).",
-                fix = Fix(
-                    file = FILE_SPOKEN,
-                    symbol = "SpokenTrackChoice.pick",
-                    media3 = "TrackSelectionParameters.setPreferredAudioLanguage",
-                    action = "Rien à changer dans le décodeur. Le fournisseur envoie cette piste en mono.",
-                    settingKey = null,
-                ),
-            )
+            val ps = s.source?.implicitCandidate == true || s.source?.explicitPs == true ||
+                s.source?.explicitSbr == true
+            if (ps && s.outChannels >= 2) {
+                out += Finding(
+                    id = "stereo_parametrique",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "L'en-tête AAC est mono, la sortie a ${s.outChannels} voies.",
+                    cause = "C'est la signature d'une stéréo paramétrique reconstruite (HE-AAC v2). " +
+                        "Le lecteur n'a pas réduit la stéréo. On ne change pas le décodeur.",
+                    fix = Fix(
+                        file = FILE_SPOKEN,
+                        symbol = "AacSource.read",
+                        media3 = "Format.initializationData (AudioSpecificConfig), lu, pas modifié",
+                        action = "Rien à changer. La sortie stéréo dit que la reconstruction a eu lieu.",
+                        settingKey = null,
+                    ),
+                )
+            } else {
+                out += Finding(
+                    id = "source_mono",
+                    confidence = if (ps) Confidence.INCERTAINE else Confidence.HAUTE,
+                    kind = Kind.CAUSE,
+                    symptom = "Le flux en cours est mono.",
+                    cause = if (ps) {
+                        "L'en-tête est mono, et la sortie aussi. Ça peut être un vrai mono, " +
+                            "ou un HE-AAC v2 dont la stéréo paramétrique n'a pas été refaite. " +
+                            "On ne tranche pas sur ce seul chiffre."
+                    } else {
+                        "La piste choisie est mono à l'origine. Le lecteur ne l'a pas réduite " +
+                            "(aucune autre piste plus large n'est annoncée)."
+                    },
+                    fix = Fix(
+                        file = FILE_SPOKEN,
+                        symbol = "SpokenTrackChoice.pick",
+                        media3 = "TrackSelectionParameters.setPreferredAudioLanguage",
+                        action = "Rien à changer dans le décodeur. Si l'en-tête est un HE-AAC v2 implicite " +
+                            "(LC, ≤ 24 kHz, mono), comparer le nombre de voies en sortie.",
+                        settingKey = null,
+                    ),
+                )
+            }
         }
 
         if (s.bitrate in 1 until LOW_BITRATE) {
@@ -501,12 +592,19 @@ object AudioDiagnosis {
         clippingFinding(s)?.let { out += it }
         delayFinding(s.avOffsetMs)?.let { out += it }
 
-        if (s.underruns > 0) {
+        val cuts = AudioFormatMeter.underrunCount(s.underruns, s.formatMeter?.trackUnderruns)
+        if (cuts > 0) {
+            val track = s.formatMeter?.trackUnderruns
+            val both = if (track != null && track != s.underruns) {
+                " AudioTrack $track, rappel Media3 ${s.underruns}."
+            } else {
+                ""
+            }
             out += Finding(
                 id = "coupures",
                 confidence = Confidence.HAUTE,
                 kind = Kind.CAUSE,
-                symptom = "${s.underruns} coupure(s) de la sortie son.",
+                symptom = "$cuts coupure(s) de la sortie son.$both",
                 cause = "L'AudioTrack a été affamé (box chargée ou flux en à-coups). Ce n'est pas un passe-bas.",
                 fix = Fix(
                     file = FILE_VIEW,
@@ -558,7 +656,247 @@ object AudioDiagnosis {
         // spectre_absent n'est plus un bloc : la ligne « Spectre > 4 kHz »
         // dit déjà pourquoi il n'y a pas de chiffre. Répété 2 ou 3 fois
         // par chaîne, ce bloc noyait la fiche sans rien décider.
+        val fx = s.effects?.let { AudioSystemEffects.suspect(it) }
+        if (fx != null) {
+            // INFO, pas CAUSE : on n'a pas entendu, et on ne coupe rien.
+            out += Finding(
+                id = "effet_systeme",
+                confidence = Confidence.INCERTAINE,
+                kind = Kind.INFO,
+                symptom = fx.symptom,
+                cause = fx.cause,
+                fix = Fix(
+                    file = FILE_EFFECTS,
+                    symbol = "AudioSystemEffects.suspect / SystemEffectsRead.sheet",
+                    media3 = "aucun effet créé : AudioEffect.queryEffects est une lecture",
+                    action = "Ne pas construire d'Equalizer, de BassBoost, de Virtualizer " +
+                        "ni de LoudnessEnhancer. Ne pas changer USAGE_MEDIA ni le contenu film. " +
+                        "L'essai (couper Dolby, Adapt Sound, le spatialiseur) se fait dans les " +
+                        "réglages de l'appareil, pas dans l'app.",
+                    settingKey = null,
+                ),
+            )
+        }
+        out += formatFindings(s)
         out += phaseFindings(s)
+        out += sourceFindings(s)
+        out += qualityFindings(s)
+        return out
+    }
+
+    /**
+     * Ce que les octets du flux disent, en plus du nom `mp4a.40.x`.
+     * Aucune de ces lignes ne change le décodeur. Elles servent à
+     * trancher, sur l'appareil, entre « parole », « débit trop bas »
+     * et « HE-AAC mal étiqueté ».
+     */
+    private fun sourceFindings(s: AudioSnapshot): List<Finding> {
+        val out = ArrayList<Finding>(4)
+        val src = s.source
+        if (src != null && src.bytes > 0) {
+            when {
+                src.sbrForbidden -> out += Finding(
+                    id = "sbr_absent_ecrit",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "L'extension AAC dit que le SBR n'est pas là (${src.container}, AOT ${src.audioObjectType}).",
+                    cause = "Le décodeur a l'ordre de ne pas chercher le SBR, même si des trames en contiennent. " +
+                        "Ce n'est pas le cas d'un HE-AAC implicite (là, le bit n'est pas écrit).",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "AacSource.read / onAudioInputFormatChanged",
+                        media3 = "Format.initializationData, lecture seule",
+                        action = "Ne pas réécrire l'ASC et ne pas changer le décodeur.",
+                        settingKey = null,
+                    ),
+                )
+                src.explicitSbr -> out += Finding(
+                    id = "sbr_explicite",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "${src.profile}, cœur ${khz(src.headerHz)}" +
+                        (if (src.extensionHz > 0) ", extension ${khz(src.extensionHz)}" else "") + ".",
+                    cause = "Le SBR est écrit dans les octets, pas seulement deviné. " +
+                        "Si la sortie reste à la fréquence du cœur (≤ 24 kHz), le décodeur ne l'a pas appliqué. " +
+                        "Si la sortie est à la fréquence d'extension, il l'a appliqué. " +
+                        "Un pourcentage bas au-dessus de 4 kHz ne contredit pas ça : une musique HE-AAC " +
+                        "bien décodée peut rester sous 12 %.",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "AacSource.read",
+                        media3 = "Format.initializationData (AudioSpecificConfig)",
+                        action = "Comparer la fréquence de sortie à la fréquence d'extension. Ne rien forcer.",
+                        settingKey = null,
+                    ),
+                )
+                src.implicitCandidate -> out += Finding(
+                    id = "sbr_implicite",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "En-tête ${src.profile} à ${khz(src.headerHz)}, ${src.channels} voie(s), transport ${src.container}.",
+                    cause = "C'est la forme d'un HE-AAC implicite : l'ADTS ne peut pas écrire le type 5, " +
+                        "et un ASC de 2 octets non plus. Le SBR, s'il est dans les trames, doit être cherché " +
+                        "parce que la fréquence est ≤ 24 kHz. " +
+                        "Sortie ≥ 32 kHz (et 2 voies si l'en-tête est mono) : il a été fait. " +
+                        "Sortie restée à ${khz(src.headerHz)} : il n'a pas été fait, ou il n'y en avait pas.",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "onAudioInputFormatChanged / onAudioTrackInitialized",
+                        media3 = "Format.sampleRate comparé à AudioTrackConfig.sampleRate",
+                        action = "Lire les deux fréquences sur la fiche. Ne pas changer le décodeur par défaut.",
+                        settingKey = null,
+                    ),
+                )
+                src.audioObjectType == 2 && src.headerHz > AacSource.IMPLICIT_MAX_HZ -> out += Finding(
+                    id = "sbr_non_demande",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "AAC-LC annoncé à ${khz(src.headerHz)}, sans SBR dans les octets.",
+                    cause = "Ni FFmpeg ni le décodeur de la box ne sont obligés de chercher un SBR : " +
+                        "la fréquence dépasse 24 kHz. Un HE-AAC dual-rate (cœur 22 ou 24 kHz) ne s'annonce pas ainsi. " +
+                        "Si les deux décodeurs sonnent pareil, le son est déjà dans les octets " +
+                        "(débit bas, ou transcodage qui a jeté les aigus) ou c'est la parole. " +
+                        "Le pourcentage au-dessus de 4 kHz ne sépare pas ces deux-là.",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "AacSource.read",
+                        media3 = "Format.initializationData + Format.bitrate",
+                        action = "Lire le débit annoncé et, s'il est là, le débit mesuré. " +
+                            "Ne pas changer le décodeur : il n'inventera pas des aigus absents du flux.",
+                        settingKey = null,
+                    ),
+                )
+            }
+            if (src.container == "LOAS/LATM") {
+                out += Finding(
+                    id = "transport_latm",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.INFO,
+                    symptom = "Les octets commencent par le sync LOAS.",
+                    cause = "Le décodeur AAC brut refuse un LOAS non démultiplexé (erreur, pas un son sourd). " +
+                        "Media3 retire le LATM avant le décodeur. Si le son joue, ce transport a été retiré.",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "AacSource.read",
+                        media3 = "Extracteur TS / MP4, avant MediaCodec ou FfmpegAudioRenderer",
+                        action = "Ne pas envoyer le LOAS tel quel au décodeur AAC. Le chemin actuel ne le fait pas.",
+                        settingKey = null,
+                    ),
+                )
+            }
+            val measured = src.measuredBps
+            if (measured in 1 until AacSource.THIN_BPS && s.bitrate <= 0) {
+                out += Finding(
+                    id = "debit_mesure_bas",
+                    confidence = Confidence.HAUTE,
+                    kind = Kind.CAUSE,
+                    symptom = "Débit mesuré sur l'en-tête : ${measured / 1000} kb/s (rien n'était annoncé).",
+                    cause = "Le codeur a peu de bits. Sur un son large bande, 32 kb/s coupe autour de 2 kHz " +
+                        "(essai : énergie > 4 kHz à 1,1 %). Une parole seule donne le même pourcentage " +
+                        "même à 128 kb/s. Le débit, lui, sépare les deux. On ne ré-encode pas.",
+                    fix = Fix(
+                        file = FILE_VIEW,
+                        symbol = "AacSource.bitrateOfFrame",
+                        media3 = "en-tête ADTS (frame_length), pas Format.bitrate qui vaut souvent 0 en .ts",
+                        action = "Ne pas ré-encoder ni gonfler le débit dans le lecteur.",
+                        settingKey = null,
+                    ),
+                )
+            }
+        }
+        if (s.audioTrackCount >= 2) {
+            out += Finding(
+                id = "plusieurs_pistes",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "${s.audioTrackCount} pistes audio annoncées.",
+                cause = "Le lecteur n'en joue qu'une (langue, rôle « principale »). " +
+                    "Deux sons mélangés dans la piste choisie ne se comptent pas ici. " +
+                    "Un commentaire audio est souvent une autre piste, plus comprimée.",
+                fix = Fix(
+                    file = FILE_VIEW,
+                    symbol = "NativeVideoView.onTracksChanged / SpokenTrackChoice.pick",
+                    media3 = "Tracks.Group, une piste sélectionnée",
+                    action = "Noter le nombre. Ne pas mixer les pistes. Le choix de langue reste celui déjà en place.",
+                    settingKey = null,
+                ),
+            )
+        }
+        if (s.ptsJumps > 0) {
+            out += Finding(
+                id = "sauts_horloge",
+                confidence = Confidence.INCERTAINE,
+                kind = Kind.CAUSE,
+                symptom = "${s.ptsJumps} saut(s) d'horloge du direct, le plus grand ${s.ptsMaxAbsMs} ms.",
+                cause = "L'horloge du flux a sauté (ce n'est pas un zap). " +
+                    "Au-dessus d'environ 200 ms, Media3 vide le tampon audio. " +
+                    "En dessous, deux morceaux peuvent se chevaucher une fraction de seconde : " +
+                    "un son « en guerre », pas un passe-bas. On ne recale pas l'horloge tout seul.",
+                fix = Fix(
+                    file = FILE_VIEW,
+                    symbol = "NativeVideoView.onPositionDiscontinuity",
+                    media3 = "AnalyticsListener.onPositionDiscontinuity, raison INTERNAL",
+                    action = "Compter seulement. Ne pas chercher, ne pas changer la vitesse (elle reste 1,0).",
+                    settingKey = null,
+                ),
+            )
+        }
+        return out
+    }
+
+    /**
+     * Fréquences différentes ou rythme qui bouge. INFO : la simulation
+     * montre que ça ne coupe pas les aigus. On le nomme, on ne change
+     * pas le lecteur pour autant.
+     */
+    private fun formatFindings(s: AudioSnapshot): List<Finding> {
+        val meter = s.formatMeter ?: return emptyList()
+        val out = ArrayList<Finding>(2)
+        when (AudioFormatMeter.resample(meter.trackHz, meter.deviceHz)) {
+            AudioFormatMeter.Resample.DEVICE_HIGHER,
+            AudioFormatMeter.Resample.DEVICE_LOWER,
+            -> out += Finding(
+                id = "reechantillonnage_android",
+                confidence = Confidence.INCERTAINE,
+                kind = Kind.INFO,
+                symptom = "Piste ${khz(meter.trackHz)}, mélangeur ${khz(meter.deviceHz ?: 0)}.",
+                cause = "AudioFlinger convertit la fréquence après le dernier PCM de l'app. " +
+                    "Un écart 48 kHz vers 44,1 kHz ne suffit pas, dans la simulation, à faire " +
+                    "un son « vieille radio » (l'énergie au-dessus de 4 kHz reste large). " +
+                    "On ne sait pas si CETTE conversion, sur CET appareil, colore le son.",
+                fix = Fix(
+                    file = FILE_VIEW,
+                    symbol = "NativeVideoView.buildAudioSink",
+                    media3 = "DefaultAudioSink : la piste est à la fréquence du PCM, pas à celle du mélangeur",
+                    action = "Ne pas forcer la fréquence de sortie. Aucun interrupteur : " +
+                        "changer la fréquence changerait le son par défaut.",
+                    settingKey = null,
+                ),
+            )
+            AudioFormatMeter.Resample.SAME,
+            AudioFormatMeter.Resample.UNKNOWN,
+            -> Unit
+        }
+        if (AudioFormatMeter.rhythmMoved(meter)) {
+            out += Finding(
+                id = "rythme_ajuste",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Vitesse ${String.format(Locale.FRANCE, "%.2f", meter.speed)}, " +
+                    "Sonic ${if (meter.sonicActive == true) "actif" else "pas actif à 1,00"}.",
+                cause = "Le rythme n'est pas resté à 1. Un petit écart change la hauteur, " +
+                    "il n'enlève pas la bande au-dessus de 4 kHz. Le direct est pourtant " +
+                    "figé à 1 dans le code : si la fiche le montre, quelque chose l'a bougé.",
+                fix = Fix(
+                    file = FILE_VIEW,
+                    symbol = "NativeVideoView.buildConfiguredPlayer / ZunoAudioChain.applyPlaybackParameters",
+                    media3 = "DefaultLivePlaybackSpeedControl min = max = 1, SonicAudioProcessor",
+                    action = "Ne pas réactiver la vitesse variable du direct (0,97–1,03). " +
+                        "Elle est déjà coupée. Aucun nouvel interrupteur.",
+                    settingKey = null,
+                ),
+            )
+        }
         return out
     }
 
@@ -579,6 +917,18 @@ object AudioDiagnosis {
             append(", ")
             append(if (s.inChannels > 0) "${s.inChannels} voies" else "voies inconnues")
             if (s.bitrate > 0) append(", ${s.bitrate / 1000} kb/s")
+            val src = s.source
+            if (src != null) {
+                append("\n").append(AacSource.describe(src))
+            }
+            if (s.audioTrackCount >= 2) {
+                append("\nPistes audio annoncées : ").append(s.audioTrackCount)
+                append(". Une seule est jouée.")
+            }
+            if (s.ptsJumps > 0) {
+                append("\nHorloge du direct : ").append(s.ptsJumps)
+                append(" saut(s), le plus grand ").append(s.ptsMaxAbsMs).append(" ms.")
+            }
             append("\nDécodeur : ")
             append(
                 when {
@@ -610,7 +960,9 @@ object AudioDiagnosis {
             append(if (s.skipSilence) "sautés" else "non sautés")
             append(", vitesse ")
             append(String.format(Locale.FRANCE, "%.2f", s.playbackSpeed))
-            append(". Pas d'égaliseur, pas de DynamicsProcessing, pas de LoudnessEnhancer.")
+            append(". L'app n'a branché ni égaliseur, ni DynamicsProcessing, ni LoudnessEnhancer.")
+            append("\n").append(AudioFormatMeter.block(s.formatMeter, s.underruns))
+            append("\n").append(Media3Chain.ficheLine(s.stockChain))
             if (!s.routeNote.isNullOrBlank()) {
                 append("\nEssai : ").append(s.routeNote)
             }
@@ -620,6 +972,13 @@ object AudioDiagnosis {
             append("\n").append(VolumeTrace.playbackNote(s.playback, s.playerAudible))
             if (!s.routeLine.isNullOrBlank()) {
                 append("\n").append(s.routeLine)
+            }
+            if (!s.attributeLine.isNullOrBlank()) {
+                append("\n").append(s.attributeLine)
+            }
+            val effects = s.effects
+            if (effects != null) {
+                append("\n").append(AudioSystemEffects.block(effects))
             }
             append("\nSpectre > 4 kHz : ")
             append(
@@ -646,7 +1005,9 @@ object AudioDiagnosis {
             if (phase != null && phase.channels >= 2 && !phase.correlation.isNaN()) {
                 append("\nCorrélation gauche/droite (1 s, copie) : ")
                 append(phase.correlationText())
-                append(" · (G−D)/(G+D) ")
+                append(" · niveau (G−D)/(G+D) ")
+                append(phase.levelText())
+                append(" · énergie (G−D)²/(G+D)² ")
                 append(phase.sideText())
                 if (phase.opposed) append(" → voies opposées (voix centrale annulée)")
             }
@@ -667,6 +1028,27 @@ object AudioDiagnosis {
                 append("\nSaturation : ")
                 append(String.format(Locale.FRANCE, "%.2f %%", spec.clippedFraction * 100.0))
                 append(" des échantillons au plafond")
+            }
+            val forme = spec?.quality
+            if (forme != null && forme.profil != AudioQuality.Profil.COURT) {
+                append("\nForme (copie, le son n'est pas modifié) : grave/milieu ")
+                append(forme.ratioText(forme.graveRatio))
+                append(" · aigu/milieu ")
+                append(forme.ratioText(forme.aiguRatio))
+                append(" · ")
+                append(forme.profilText())
+                if (!forme.echo.isNaN() && forme.profil != AudioQuality.Profil.SILENCE) {
+                    append("\nÉcho 18–40 ms (copie) : ")
+                    append(forme.echoText())
+                    if (!forme.echoMs.isNaN() && forme.echoNet) {
+                        append(" · retard ")
+                        append(String.format(Locale.FRANCE, "%.0f ms", forme.echoMs))
+                    }
+                }
+                if (forme.chuteDb != null && !forme.chuteDb.isNaN()) {
+                    append("\nChute entre secondes actives : ")
+                    append(String.format(Locale.FRANCE, "%.1f dB", forme.chuteDb))
+                }
             }
         }
         val lines = findings(s).joinToString("\n") { f ->
@@ -740,6 +1122,19 @@ object AudioDiagnosis {
                 "voie ${i + 1} " + String.format(Locale.FRANCE, "%.1f %%", ratio * 100.0)
             }.joinToString(", ", prefix = " (", postfix = ")")
         }
+        val formeBit = j.quality?.let { q ->
+            if (q.profil == AudioQuality.Profil.COURT || q.profil == AudioQuality.Profil.SILENCE) {
+                ""
+            } else {
+                " · forme " + when (q.profil) {
+                    AudioQuality.Profil.LARGE -> "large"
+                    AudioQuality.Profil.TELEPHONE -> "téléphone"
+                    AudioQuality.Profil.SOURD -> "sourd"
+                    AudioQuality.Profil.MAIGRE -> "maigre"
+                    else -> q.profil.name.lowercase()
+                }
+            }
+        } ?: ""
         val phaseBit = j.phase?.let { p ->
             if (p.channels < 2 || p.correlation.isNaN()) {
                 ""
@@ -747,7 +1142,7 @@ object AudioDiagnosis {
                 " · G/D ${p.correlationText()}"
             }
         } ?: ""
-        return "${reading.id} : ${j.percent()} $band — $place$channels$phaseBit"
+        return "${reading.id} : ${j.percent()} $band — $place$channels$phaseBit$formeBit"
     }
 
     /**
@@ -766,7 +1161,8 @@ object AudioDiagnosis {
                 confidence = Confidence.HAUTE,
                 kind = Kind.INFO,
                 symptom = "Corrélation gauche/droite ${decoder.correlationText()} sur 1 s, " +
-                    "(G−D)/(G+D) = ${decoder.sideText()}.",
+                    "niveau (G−D)/(G+D) = ${decoder.levelText()}, " +
+                    "énergie (G−D)²/(G+D)² = ${decoder.sideText()}.",
                 cause = "Les deux voies s'opposent déjà au PCM du décodeur : une voix au centre " +
                     "s'annule, le son tombe « dans un trou ». Ce n'est pas un passe-bas. " +
                     "Le son témoin (voix puis bruit, voies ensemble) dit si l'appareil fait pareil.",
@@ -796,6 +1192,126 @@ object AudioDiagnosis {
                     symbol = "AudioStages / ZunoAudioChain",
                     media3 = "AudioProcessorChain entre decodeur et audiotrack",
                     action = "Noter quel étage change la corrélation. Ne pas changer le décodeur.",
+                    settingKey = null,
+                ),
+            )
+        }
+        return out
+    }
+
+    /**
+     * Forme du PCM copié. On dit ce que les seuils du banc ont séparé
+     * sur des signaux connus. On ne nomme pas le coupable sur l'appareil,
+     * et on ne change pas le décodeur : ce ne sont pas des causes sûres.
+     */
+    private fun qualityFindings(s: AudioSnapshot): List<Finding> {
+        val q = s.stages.firstOrNull { it.id == AudioStages.DECODER }?.judgement?.quality
+            ?: s.spectrum?.quality
+            ?: return emptyList()
+        val out = ArrayList<Finding>(4)
+        if (q.profil == AudioQuality.Profil.TELEPHONE) {
+            out += Finding(
+                id = "profil_telephone",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "grave/milieu ${q.ratioText(q.graveRatio)} (seuil " +
+                    "${String.format(Locale.FRANCE, "%.2f", AudioQuality.GRAVE_BAS)}), " +
+                    "aigu/milieu ${q.ratioText(q.aiguRatio)} (seuil " +
+                    "${String.format(Locale.FRANCE, "%.3f", AudioQuality.AIGU_BAS)}).",
+                cause = "Les deux bandes sont coupées ensemble : la forme du PCM copié est celle " +
+                    "d'un passe-bande 300–3400 Hz. Le pourcentage au-dessus de 4 kHz ne le voit pas " +
+                    "(sur les témoins, le téléphone reste autour de 1 %, comme une parole). " +
+                    "Une parole seulement sourde garde le grave : ce n'est pas ce cas. " +
+                    "On ne sait pas qui a filtré (le flux, un traitement, l'appareil).",
+                fix = Fix(
+                    file = FILE_QUALITY,
+                    symbol = "AudioQuality.measure",
+                    media3 = "copie PCM dans AudioProbeProcessor, aucun échantillon modifié",
+                    action = "Ne pas changer le décodeur. Comparer la forme de la sonde décodeur " +
+                        "et de la sonde audiotrack, puis le son témoin.",
+                    settingKey = null,
+                ),
+            )
+        }
+        if (q.profil == AudioQuality.Profil.MAIGRE) {
+            out += Finding(
+                id = "profil_maigre",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "grave/milieu ${q.ratioText(q.graveRatio)}, aigu/milieu ${q.ratioText(q.aiguRatio)}.",
+                cause = "Le grave est coupé et l'aigu est là. C'est un passe-haut, pas la forme " +
+                    "téléphone (qui coupe les deux). Le son peut sembler « dans un trou » " +
+                    "sans être une bande 300–3400 Hz.",
+                fix = Fix(
+                    file = FILE_QUALITY,
+                    symbol = "AudioQuality.measure",
+                    media3 = "copie PCM, aucun échantillon modifié",
+                    action = "Ne pas changer le décodeur sur ce seul chiffre.",
+                    settingKey = null,
+                ),
+            )
+        }
+        if (q.echoNet) {
+            val retard = if (q.echoMs.isNaN()) "" else " (vers ${q.echoMs.toInt()} ms)"
+            out += Finding(
+                id = "echo_double",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Score d'écho ${q.echoText()}$retard, seuil ${AudioQuality.ECHO_MIN.toInt()}.",
+                cause = "Un second exemplaire du même son, décalé de 18 à 40 ms, est dans le PCM copié. " +
+                    "Deux paroles différentes ne font pas ce score (mesuré 12 sur le banc ; " +
+                    "une copie à 30 ms de parole à syllabes fait 28, le témoin long fait 173, seuil 18). " +
+                    "La fondamentale de la voix est retirée du calcul : un pic à 8 ms n'est pas un écho.",
+                fix = Fix(
+                    file = FILE_QUALITY,
+                    symbol = "AudioQuality.measure / echoScore",
+                    media3 = "copie PCM, aucun échantillon modifié",
+                    action = "Ne pas filtrer. Regarder « lectures vivantes » : deux lectures décalées " +
+                        "donnent ce score. On ne change pas le décodeur.",
+                    settingKey = null,
+                ),
+            )
+        }
+        val ecart = q.chuteDb
+        if (ecart != null && q.chuteNette) {
+            out += Finding(
+                id = "chute_niveau",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Écart ${String.format(Locale.FRANCE, "%.1f dB", ecart)} entre les secondes " +
+                    "où il y a du son (seuil ${AudioQuality.CHUTE_DB.toInt()} dB).",
+                cause = "Le niveau fort a baissé et est resté bas. Une pause (seconde presque muette) " +
+                    "est ignorée : sur le banc, 2 s de silence au milieu d'une parole restent à 0,6 dB, " +
+                    "un gain × 0,2 pendant 2,5 s fait 14 dB. Ce n'est pas le volume du lecteur, " +
+                    "déjà noté à part.",
+                fix = Fix(
+                    file = FILE_QUALITY,
+                    symbol = "AudioQuality.chuteDb",
+                    media3 = "copie PCM, aucun échantillon modifié",
+                    action = "Lire la ligne de volume. Si elle reste 1,0, la baisse est dans le PCM, " +
+                        "pas dans le focus. Ne pas changer le décodeur.",
+                    settingKey = null,
+                ),
+            )
+        }
+        val sink = s.stages.firstOrNull { it.id == AudioStages.SINK }?.judgement?.quality
+        if (sink != null && q.profil != sink.profil &&
+            q.profil != AudioQuality.Profil.COURT && q.profil != AudioQuality.Profil.SILENCE &&
+            sink.profil != AudioQuality.Profil.COURT && sink.profil != AudioQuality.Profil.SILENCE &&
+            sink.profil != AudioQuality.Profil.RATE && q.profil != AudioQuality.Profil.RATE
+        ) {
+            out += Finding(
+                id = "forme_etage",
+                confidence = Confidence.HAUTE,
+                kind = Kind.INFO,
+                symptom = "Sonde décodeur : ${q.profilText()}. Sonde audiotrack : ${sink.profilText()}.",
+                cause = "La forme n'est pas la même au début et à la fin de la chaîne de l'app. " +
+                    "Les sondes copient : l'étage entre les deux a changé le grave ou l'aigu.",
+                fix = Fix(
+                    file = FILE_STAGES,
+                    symbol = "AudioStages / ZunoAudioChain",
+                    media3 = "AudioProcessorChain entre decodeur et audiotrack",
+                    action = "Noter quel étage change la forme. Ne pas changer le décodeur.",
                     settingKey = null,
                 ),
             )

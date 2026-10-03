@@ -19,6 +19,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:zuno_voice/zuno_voice.dart';
 
+import '../../player/domain/audio_sources.dart';
+
 /// Pourquoi la reconnaissance s'est arrêtée.
 enum VoiceListenStatus {
   ok,
@@ -45,6 +47,10 @@ abstract final class VoiceCapture {
   static const MethodChannel _channel = MethodChannel(kZunoVoiceChannel);
 
   static bool _handlerInstalled = false;
+
+  /// Dialogue encore compté : le système n'a pas répondu dans le délai.
+  /// La prochaine écoute le solde. On ne ferme pas le dialogue nous-mêmes.
+  static int? _stuckMic;
 
   /// Vrai sur Android. Ailleurs (Windows, test) : pas de micro natif.
   static bool get platformHasVoice {
@@ -94,6 +100,14 @@ abstract final class VoiceCapture {
   /// Ouvre la reconnaissance du système. Ne lève jamais.
   static Future<VoiceListenResult> listen() async {
     if (!platformHasVoice) return VoiceListenResult.unavailable;
+    // Le dialogue du système peut passer l'appareil en mode
+    // communication. On le compte, on ne le ferme pas nous-mêmes
+    // avant la réponse : le fermer changerait le comportement.
+    final int? stuck = _stuckMic;
+    _stuckMic = null;
+    if (stuck != null) AudioSources.release(stuck);
+    final int mic = AudioSources.acquire(AudioSources.voix);
+    AudioSources.setPresence(mic, AudioPresence.mic);
     try {
       final Object? raw = await _channel
           .invokeMethod<Object?>('listen')
@@ -103,10 +117,14 @@ abstract final class VoiceCapture {
       // Le dialogue système n'est pas revenu. On lâche l'écran ;
       // la réponse tardive, si elle arrive, est ignorée côté Kotlin
       // seulement si un nouvel appel a pris la place. Ici on dégrade.
+      // Le compteur RESTE : le micro peut encore tenir le mode audio.
+      _stuckMic = mic;
       return const VoiceListenResult(VoiceListenStatus.failed);
     } catch (e) {
       if (kDebugMode) debugPrint('[Voix] écoute impossible : $e');
       return VoiceListenResult.unavailable;
+    } finally {
+      if (_stuckMic != mic) AudioSources.release(mic);
     }
   }
 

@@ -14,7 +14,11 @@ package com.manzilionellm.native_video_player.logic
  *   • [preferPlatformAac] — au prochain `setUrl`, l'AAC passe par le
  *     décodeur de la box (comme ExoPlayer par défaut), pas par FFmpeg.
  *     Le MP2 ne change pas. Si la box échoue, on revient à FFmpeg
- *     pour cette ouverture seulement.
+ *     pour cette ouverture seulement. La chaîne Zuno (sondes, tampon)
+ *     reste en place.
+ *   • [pureMedia3Chain] — essai plus large : le lecteur entier est un
+ *     `DefaultRenderersFactory` Media3 1.5.1, sans étage Zuno. Voir
+ *     [Media3Chain]. Coupé, le chemin ci-dessus ne bouge pas.
  */
 object AudioFixes {
     const val KEY_PROBE: String = "zuno.audio.diag.probe"
@@ -44,12 +48,52 @@ object AudioFixes {
      */
     const val KEY_IMMEDIATE_HANDOFF: String = "zuno.audio.handoff.immediate"
 
+    /**
+     * Garde du mode Android. Faux par défaut : on n'appelle pas
+     * setMode ni setSpeakerphoneOn. Vrai : avant la lecture, on
+     * demande le mode normal et on coupe le haut-parleur d'appel
+     * (sauf vrai appel, sonnerie, renvoi). Voir [AudioModeGuard].
+     */
+    const val KEY_NORMALIZE_MODE: String = AudioModeGuard.KEY
+
+    /**
+     * Essai « chaîne Media3 par défaut ». Faux : le lecteur Zuno ne change
+     * pas. Vrai : `DefaultRenderersFactory` nu, aucun étage Zuno entre le
+     * décodeur et l'AudioTrack. Voir [Media3Chain].
+     */
+    const val KEY_STOCK: String = Media3Chain.KEY
+
+    /**
+     * Essai « type de contenu inconnu ». Faux par défaut : on annonce
+     * « film » à Android, comme avant. Vrai : on annonce « inconnu »,
+     * le défaut de Media3. La voix claire, si elle est allumée, reste
+     * « parole ». Le PCM ne change pas : seul l'étiquette lue par les
+     * traitements de la box ou du téléphone change.
+     * Si l'essai d'attributs n'est pas « off », c'est lui qui décide.
+     */
+    const val KEY_REFERENCE_UNKNOWN: String = "zuno.audio.ref.content_unknown"
+
     @Volatile
     var androidFocus: Boolean = false
 
     /** Vrai = ancien passage (on n'attend pas l'AudioTrack). Faux par défaut. */
     @Volatile
     var immediateHandoff: Boolean = false
+
+    /**
+     * Vrai = avant la lecture, demander le mode normal. Faux par défaut :
+     * le mode Android n'est pas modifié.
+     */
+    @Volatile
+    var normalizeMode: Boolean = false
+
+    /**
+     * Vrai = annoncer le contenu « inconnu » (défaut Media3) au lieu de
+     * « film ». Faux par défaut : le son annoncé reste « film ».
+     * Ignoré quand l'essai d'attributs n'est pas « off ».
+     */
+    @Volatile
+    var referenceUnknownContent: Boolean = false
 
     @Volatile
     var probe: Boolean = false
@@ -59,6 +103,13 @@ object AudioFixes {
 
     @Volatile
     var preferPlatformAac: Boolean = false
+
+    /**
+     * Essai coupé par défaut. Vrai seulement si la personne l'allume dans
+     * Diagnostic du son. Le prochain lecteur est alors un Media3 nu.
+     */
+    @Volatile
+    var pureMedia3Chain: Boolean = false
 
     /**
      * Faut-il cacher le décodeur AAC de la box pour laisser FFmpeg ?
@@ -88,5 +139,21 @@ object AudioFixes {
      */
     fun forceBoxAfterOpen(keepFfmpeg: Boolean, forceBox: Boolean): Boolean {
         return if (keepFfmpeg) false else forceBox
+    }
+
+    /**
+     * Numéro de type de contenu Android à annoncer.
+     *
+     * Les numéros sont ceux d'[AudioRouteState] (les mêmes que le SDK) :
+     * 0 inconnu, 1 parole, 3 film.
+     *
+     * Défaut (les deux faux) : film. C'est le chemin actuel, inchangé.
+     * Voix claire allumée : parole, même si l'essai « inconnu » est allumé.
+     * Essai seul : inconnu, comme un ExoPlayer qui n'a rien précisé.
+     */
+    fun announcedContentType(clearVoice: Boolean, referenceUnknown: Boolean): Int {
+        if (clearVoice) return AudioRouteState.CONTENT_SPEECH
+        if (referenceUnknown) return AudioRouteState.CONTENT_UNKNOWN
+        return AudioRouteState.CONTENT_MOVIE
     }
 }

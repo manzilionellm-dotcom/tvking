@@ -19,12 +19,17 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../player/domain/audio_sources.dart';
+
 class RecordingService {
   RecordingService._();
   static final RecordingService instance = RecordingService._();
 
   static const MethodChannel _channel =
       MethodChannel('com.manzilionellm.tvking/recording_service');
+
+  /// Verrou compté. Le service télécharge en HTTP : il ne sort pas de son.
+  int? _source;
 
   /// Démarre le ForegroundService natif avec [title] affiché dans
   /// la notification "Enregistrement en cours – $title".
@@ -51,6 +56,10 @@ class RecordingService {
           if (filePath != null) 'file': filePath,
         },
       );
+      if (ok == true && _source == null) {
+        _source = AudioSources.acquire(AudioSources.serviceEnregistrement);
+        AudioSources.setPresence(_source!, AudioPresence.lock);
+      }
       return ok ?? false;
     } on PlatformException catch (e) {
       if (kDebugMode) {
@@ -78,6 +87,9 @@ class RecordingService {
 
   /// Arrête le ForegroundService et retire la notification.
   Future<void> stop() async {
+    final int? src = _source;
+    _source = null;
+    if (src != null) AudioSources.release(src);
     try {
       await _channel.invokeMethod<bool>('stop');
     } on PlatformException catch (e) {

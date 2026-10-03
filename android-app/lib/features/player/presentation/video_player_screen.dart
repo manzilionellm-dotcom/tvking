@@ -48,7 +48,10 @@ import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
+import '../data/audio_mode_guard.dart';
 import '../data/player_settings.dart';
+import '../domain/audio_sources.dart';
+import '../domain/mpv_audio_output.dart';
 import 'widgets/player_settings_sheet.dart';
 import 'widgets/player_stats_overlay.dart';
 import 'widgets/player_tracks_sheet.dart';
@@ -102,6 +105,10 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late final Player _player;
   late final VideoController _videoController;
+
+  /// Compteur seulement. Ce lecteur n'écoute pas le Home : le jeton
+  /// reste « son » tant que libmpv joue. On ne le met pas en pause ici.
+  int? _audioSource;
 
   bool _overlayVisible = true;
   Timer? _hideOverlayTimer;
@@ -213,6 +220,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   /// déjà appliqué (double `_player.open`), on flag pendant l'animation.
   bool _zapAnimating = false;
 
+  /// Vrai seulement après qu'un essai de sortie (`ao`) a été écrit.
+  /// Tant que c'est faux et que l'essai est coupé, on ne touche pas à `ao` :
+  /// media_kit garde OpenSL ES, le son par défaut.
+  bool _aoTrialApplied = false;
+
+  /// Dernier essai annoncé à l'écran. Null = pas encore annoncé.
+  /// Sert à ne pas répéter le message à chaque réglage.
+  String? _announcedAoTrial;
+
+  /// Ce que libmpv dit de sa sortie (ao, fréquences, filtres). Lecture
+  /// seule : ça ne change pas le son. Affiché dans la feuille de réglages.
+  final ValueNotifier<String> _mpvFacts =
+      ValueNotifier<String>('mpv : pas encore lu');
+  bool _mpvFactsClosed = false;
+
   @override
   void initState() {
     super.initState();
@@ -281,6 +303,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         logLevel: MPVLogLevel.warn,
       ),
     );
+    _audioSource = AudioSources.acquire(AudioSources.telephone);
     _videoController = VideoController(_player);
 
     // Applique les options libmpv pour hardware decoding + cache
@@ -300,6 +323,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // une piste française si elle existe (cf. _maybeAutoSubtitle).
     _subs.add(_player.stream.tracks.listen(_maybeAutoSubtitle));
     _subs.add(_player.stream.playing.listen((bool p) {
+      final int? src = _audioSource;
+      if (src != null) {
+        AudioSources.setPresence(
+          src,
+          p ? AudioPresence.sound : AudioPresence.open,
+        );
+      }
       if (mounted) {
         setState(() {
           _isPlaying = p;
@@ -316,6 +346,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           if (p) _playedChannelId = _currentChannel.id;
         });
       }
+      // Relit la sortie réelle une fois que le son a démarré. Avant
+      // l'ouverture, `ao` dit seulement ce qu'on a demandé.
+      if (p) unawaited(_refreshMpvFacts());
       // Signal au natif Android pour le PiP auto : "lecture en
       // cours". Si l'utilisateur appuie HOME pendant que `p == true`,
       // MainActivity.onUserLeaveHint() entrera en mini-fenêtre
@@ -563,6 +596,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _openMedia(String realUrl) async {
+    // Interrupteur coupé : on n'appelle pas Android. Le son ne change pas.
+    if (AudioModeGuardClient.enabled) {
+      await AudioModeGuardClient.applyIfEnabled();
+    }
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
     if (widget.overrideUrl != null) {
       _player.open(Media(realUrl));
@@ -834,6 +871,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _applyMpvOptions() async {
+    // La préférence d'essai peut arriver juste après le boot. On l'attend
+    // pour ne pas appliquer « coupé » alors que l'utilisateur avait allumé
+    // un essai la fois d'avant. Coupé reste la valeur si rien n'est écrit.
+    await PlayerSettings.instance.load();
     final PlayerSettings s = PlayerSettings.instance;
 
     // Décodage hardware si activé.
@@ -955,8 +996,85 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       //    déclarent ne pas être seekable, libmpv peut zapper
       //    dans le cache → permet le rebobinage des 20s.
       await native?.setProperty('force-seekable', 'yes');
+
+      // Essai de sortie (OpenSL ES / AudioTrack / AAudio).
+      // COUPÉ : on n'écrit PAS `ao`. media_kit a déjà mis OpenSL ES à la
+      // création du lecteur, et c'est le son qu'on ne veut pas changer.
+      // Si un essai a déjà été écrit puis coupé, on remet OpenSL ES :
+      // sinon mpv garderait AudioTrack jusqu'à la fermeture de l'écran.
+      final String? trial = MpvAudioOutput.propertyValue(s.mpvAoTrial);
+      if (Platform.isAndroid && trial != null) {
+        await native?.setProperty('ao', trial);
+        _aoTrialApplied = true;
+      } else if (Platform.isAndroid && _aoTrialApplied) {
+        await native?.setProperty('ao', MpvAudioOutput.mediaKitDefault);
+        _aoTrialApplied = false;
+      }
+      if (trial != _announcedAoTrial) {
+        final String? previous = _announcedAoTrial;
+        _announcedAoTrial = trial;
+        final String? message = trial != null
+            ? 'Essai de sortie : $trial. Zap pour l\'entendre. '
+                'Coupé, on ne change pas le son.'
+            : (previous != null
+                ? 'Essai coupé. Zap pour revenir à OpenSL ES, le son d\'origine.'
+                : null);
+        // Après le premier frame : un toast pendant initState n'a pas
+        // encore de Scaffold.
+        if (message != null) {
+          final String text = message;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _toast(text);
+          });
+        }
+      }
     } catch (_) {
       // Pas grave, on continue avec les défauts.
+    }
+    await _refreshMpvFacts();
+  }
+
+  /// Relit les propriétés audio de libmpv. Ne les modifie pas.
+  /// Les adresses sont masquées : ces champs n'ont pas à en contenir.
+  Future<void> _refreshMpvFacts() async {
+    const List<String> keys = <String>[
+      'ao',
+      'audio-params',
+      'audio-out-params',
+      'af',
+      'audio-device',
+      'volume',
+      'volume-max',
+      'audio-channels',
+      'audio-samplerate',
+      'audio-format',
+      'audio-normalize-downmix',
+    ];
+    final List<String> lines = <String>[];
+    for (final String key in keys) {
+      final String? value = await _readMpvProperty(key);
+      if (value == null) continue;
+      lines.add('$key = $value');
+    }
+    final String text = lines.isEmpty
+        ? 'mpv : propriétés non lisibles'
+        : lines.join('\n');
+    if (_mpvFactsClosed || !mounted) return;
+    _mpvFacts.value = text;
+    debugPrint('[mpv-son] $text');
+  }
+
+  Future<String?> _readMpvProperty(String name) async {
+    try {
+      // ignore: invalid_use_of_protected_member
+      final dynamic native = (_player.platform as dynamic);
+      final Object? value = await native?.getProperty(name);
+      if (value == null) return null;
+      final String text = MpvAudioOutput.redact(value.toString());
+      if (text.isEmpty) return '(vide)';
+      return text;
+    } catch (_) {
+      return 'absent';
     }
   }
 
@@ -1040,6 +1158,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       RecordingRepository.instance.finishRecording(rec);
     }
     _zapPageController?.dispose();
+    final int? src = _audioSource;
+    _audioSource = null;
+    if (src != null) AudioSources.release(src);
+    _mpvFactsClosed = true;
+    _mpvFacts.dispose();
     _player.dispose();
     WakelockPlus.disable();
     // À la sortie du lecteur, on dit au natif "plus de playback"
@@ -1271,6 +1394,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       builder: (_) => PlayerSettingsSheet(
         currentSpeed: _player.state.rate,
         onSpeedChange: (double s) => _player.setRate(s),
+        mpvFacts: _mpvFacts,
       ),
     );
     _scheduleHideOverlay();
