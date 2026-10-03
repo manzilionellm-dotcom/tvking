@@ -63,8 +63,9 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if (e is! KeyDownEvent && e is! KeyRepeatEvent)
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
+    }
     final LogicalKeyboardKey k = e.logicalKey;
     if (k == LogicalKeyboardKey.arrowDown) {
       _scrollBy(_kRow * 3);

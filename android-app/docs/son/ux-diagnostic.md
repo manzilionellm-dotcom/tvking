@@ -45,7 +45,13 @@ Les tests sont dans `android-app/test/features/player/sound_full_report_test.dar
 - Une URL et un mot de passe dans la fiche sortent en `[url]` et `[secret]`.
 - Deux angles qui enregistrent un ajout : les deux phrases apparaissent, triées, une seule fois. Le même identifiant une deuxième fois remplace. Un ajout qui plante n'empêche pas le texte. Un ajout qui dit « voies opposées » change le verdict sans qu'on édite la fiche.
 
-La sortie de `flutter test` est collée en bas de ce fichier après exécution.
+Commande (machine de build, pas la box) :
+
+```text
+cd android-app && flutter test test/features/player/sound_full_report_test.dart
+```
+
+Sortie : **21 tests, tous passés** (`All tests passed!`). Les noms : plan sous 30 s, chemin d'appel prioritaire, phrase négative, Bluetooth sans mesure, Bluetooth contredit, corrélation −0,70 et −0,69, voies opposées, source étroite, oreille « clair », les deux étroits, rien côté app, oreille sourd, fiche vide, mono, dédoublonnage, secret, ajouts triés, ajout « voies opposées », capture du journal, écouteur d'appel.
 
 ## Ce que le bouton fait
 

@@ -557,8 +557,9 @@ SoundBand _bandWord(String line) {
       after.contains('sonde coupee')) {
     return SoundBand.unknown;
   }
-  if (after.contains('présent') || after.contains('present'))
+  if (after.contains('présent') || after.contains('present')) {
     return SoundBand.wide;
+  }
   if (after.trimLeft().startsWith('bas')) return SoundBand.low;
   if (after.contains('intermédiaire') || after.contains('intermediaire')) {
     return SoundBand.mid;

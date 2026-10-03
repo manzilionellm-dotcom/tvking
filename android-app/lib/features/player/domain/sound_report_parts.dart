@@ -27,5 +27,9 @@ import 'sound_full_report.dart';
 
 /// Appelé au début du rapport. Ajouter une ligne, pas un bloc.
 void installSoundReportParts() {
-  // son-11 : le verdict est déjà dans SoundFullReport. Rien à ajouter.
+  // son-11 : le verdict est déjà dans SoundFullReport. On ne pose pas
+  // de phrase en plus. L'appel retire un id qui n'est pas utilisé, pour
+  // que ce fichier référence vraiment le registre (sinon l'import
+  // serait « inutilisé » et un angle ne saurait pas où écrire).
+  SoundReportExtensions.unregister('son-11-rapport-unique');
 }
