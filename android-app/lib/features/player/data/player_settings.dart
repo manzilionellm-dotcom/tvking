@@ -11,6 +11,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../domain/mpv_audio_output.dart';
+
 /// Mode d'affichage de la vidéo dans son conteneur.
 enum AspectRatioMode {
   fit('Contenir', 'fit'),
@@ -48,6 +50,8 @@ class PlayerSettings extends ChangeNotifier {
   static const String _kUserAgentKey = 'player.user_agent';
   static const String _kWifiOnlyKey = 'player.wifi_only';
   static const String _kWarnCellKey = 'player.warn_cellular';
+  // Essai de sortie mpv. Vide = coupé : le lecteur ne touche pas à `ao`.
+  static const String _kMpvAoTrialKey = MpvAudioOutput.prefsKey;
 
   /// User-Agent par défaut (façon VLC). Beaucoup de serveurs IPTV
   /// n'acceptent le VRAI flux QUE pour des signatures de lecteurs connus
@@ -113,6 +117,10 @@ class PlayerSettings extends ChangeNotifier {
   /// Avertir avant de lire en données cellulaires (si `wifiOnly` = false).
   bool _warnOnCellular = true;
 
+  /// Essai de sortie audio libmpv. Chaîne vide = coupé (le défaut).
+  /// On ne stocke qu'une valeur déjà filtrée par [MpvAudioOutput].
+  String _mpvAoTrial = '';
+
   bool _loaded = false;
 
   // ----- Getters -----
@@ -124,6 +132,9 @@ class PlayerSettings extends ChangeNotifier {
   double get lastSpeed => _lastSpeed;
   bool get wifiOnly => _wifiOnly;
   bool get warnOnCellular => _warnOnCellular;
+
+  /// `opensles`, `audiotrack`, `aaudio`, ou vide si l'essai est coupé.
+  String get mpvAoTrial => _mpvAoTrial;
 
   /// User-Agent effectif (jamais vide → repli sur le défaut VLC).
   String get userAgent =>
@@ -169,6 +180,8 @@ class PlayerSettings extends ChangeNotifier {
     _userAgent = prefs.getString(_kUserAgentKey) ?? kDefaultUserAgent;
     _wifiOnly = prefs.getBool(_kWifiOnlyKey) ?? false;
     _warnOnCellular = prefs.getBool(_kWarnCellKey) ?? true;
+    _mpvAoTrial =
+        MpvAudioOutput.propertyValue(prefs.getString(_kMpvAoTrialKey)) ?? '';
     _loaded = true;
     notifyListeners();
   }
@@ -249,5 +262,16 @@ class PlayerSettings extends ChangeNotifier {
     notifyListeners();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kWarnCellKey, enabled);
+  }
+
+  /// Allume un essai de sortie mpv, ou le coupe (chaîne vide / inconnue).
+  /// Coupé, le lecteur n'écrit pas `ao` : le son par défaut ne bouge pas.
+  Future<void> setMpvAoTrial(String value) async {
+    final String next = MpvAudioOutput.propertyValue(value) ?? '';
+    if (next == _mpvAoTrial) return;
+    _mpvAoTrial = next;
+    notifyListeners();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kMpvAoTrialKey, next);
   }
 }
