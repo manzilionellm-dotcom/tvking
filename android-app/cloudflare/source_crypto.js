@@ -1,3 +1,8 @@
+// Ancien coffre (préfixe enc1:). Le Worker et l'API utilisent
+// secret_box.js (préfixe enc1., SOURCE_ENCRYPTION_KEY ou SECRETS_KEY).
+// secret_box sait encore lire ce format pour ne pas perdre une ligne
+// déjà écrite. Ne pas rebrancher ce module sur les écritures.
+//
 // Chiffrement au repos des secrets de source (mot de passe Xtream,
 // URL M3U — elle contient souvent des identifiants dans la query).
 // AES-GCM, clé dérivée de env.SECRETS_KEY (SHA-256). Jamais de clé en dur.

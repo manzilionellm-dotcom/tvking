@@ -56,7 +56,7 @@
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1 } from './api_v1.js';
 import { httpUrlError } from './source_url.js';
-import { openSource, sealSource } from './source_crypto.js';
+import { openSource, openSourceList, sealSource } from './secret_box.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
@@ -1237,7 +1237,10 @@ const PRIVACY_HTML = `<!doctype html>
 const HTML_HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
   'Cache-Control': 'public, max-age=300',
-  'Access-Control-Allow-Origin': '*',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "frame-ancestors 'none'",
 };
 
 const JSON_HEADERS = {
@@ -1246,6 +1249,7 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Headers': 'Authorization, X-Admin-Secret, Content-Type',
   'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
 };
 
 const TEXT_HEADERS = {
@@ -1642,6 +1646,7 @@ function tooManyRequests() {
 const JSON_HEADERS_PRIVATE = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
 };
 function jsonPrivate(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS_PRIVATE });
@@ -2688,7 +2693,7 @@ async function handlePublicDeviceSource(env, mac) {
           const { sources_json, updated_at, ...single } = row;
           sources = [single];
         }
-        sources = await Promise.all(sources.map((s) => openSource(s, env.SECRETS_KEY)));
+        sources = await openSourceList(env, sources);
         return jsonPrivate({ mac: MAC, source: sources[0] || null, sources });
       }
     } catch (_) {
@@ -2805,17 +2810,26 @@ async function readDeviceSourceItems(env, MAC) {
   // 'self' (client v1 mono-liste), sinon 'panel' (défaut sûr, protège payants).
   const rowSelf = String(row.origin || '') === 'self';
   let needsPersist = false;
+  let unreadable = false;
   const opened = [];
   for (const s of items) {
-    const it = await openSource({ ...s }, env.SECRETS_KEY);
+    const it = await openSource(env, { ...s });
     if (it.origin !== 'self' && it.origin !== 'panel') {
       it.origin = rowSelf ? 'self' : 'panel';
       needsPersist = true;
     }
     if (it.origin === 'self' && !it.id) { it.id = crypto.randomUUID(); needsPersist = true; }
+    // Ne jamais réécrire une valeur chiffrée qu'on n'a pas pu lire
+    // (clé absente ou mauvaise) : on effacerait le secret en base.
+    for (const field of ['password', 'm3u_url']) {
+      const raw = s && s[field];
+      if (typeof raw === 'string' && (raw.startsWith('enc1.') || raw.startsWith('enc1:')) && !it[field]) {
+        unreadable = true;
+      }
+    }
     opened.push(it);
   }
-  return { items: opened, needsPersist };
+  return { items: opened, needsPersist: needsPersist && !unreadable };
 }
 
 // Écrit la liste complète : colonnes plates = items[0] (compat app/panel), plus
@@ -2826,7 +2840,7 @@ async function writeDeviceSourceItems(env, MAC, items) {
     return;
   }
   const sealed = [];
-  for (const s of items) sealed.push(await sealSource(s, env.SECRETS_KEY));
+  for (const item of items) sealed.push(await sealSource(env, item));
   const first = sealed[0];
   const rowOrigin = items.every((s) => s.origin === 'self') ? 'self' : 'panel';
   const jsonStr = JSON.stringify(sealed);
@@ -2840,7 +2854,7 @@ async function writeDeviceSourceItems(env, MAC, items) {
        epg_url=excluded.epg_url, sources_json=excluded.sources_json,
        origin=excluded.origin, updated_at=excluded.updated_at`,
   ).bind(
-    MAC, first.type, first.label || null, first.server_url || null, first.username || null,
+    MAC, first.type || null, first.label || null, first.server_url || null, first.username || null,
     first.password || null, first.m3u_url || null, first.epg_url || null, jsonStr, rowOrigin, Date.now(),
   ).run();
 }
@@ -2894,7 +2908,7 @@ function buildSourceFromBody(body) {
 
 // GET /api/self-source/:mac — liste des playlists de « Mon espace ».
 async function handleSelfSourceGet(env, mac) {
-  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!env.DB) return jsonPrivate({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
   await ensureDeviceSourcesTable(env);
@@ -2905,7 +2919,7 @@ async function handleSelfSourceGet(env, mac) {
   }
   const view = items.map(publicItemView);
   const selfCount = items.filter((s) => s.origin === 'self').length;
-  return json({
+  return jsonPrivate({
     ok: true, mac: MAC,
     items: view,
     count: view.length,
@@ -2918,7 +2932,7 @@ async function handleSelfSourceGet(env, mac) {
 // existant si `id` est fourni). Ne touche JAMAIS un item 'panel'. « Avale
 // toujours » : jamais bloqué par la présence d'une source panel.
 async function handleSelfSource(env, mac, request) {
-  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!env.DB) return jsonPrivate({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
 
@@ -2937,14 +2951,14 @@ async function handleSelfSource(env, mac, request) {
     // MODIFICATION : uniquement un item 'self' existant (panel = interdit).
     const idx = items.findIndex((s) => s.origin === 'self' && s.id === editId);
     if (idx < 0) {
-      return json({ ok: false, reason: 'not_found', message: "Cette playlist n'existe pas ou est protégée." }, 404);
+      return jsonPrivate({ ok: false, reason: 'not_found', message: "Cette playlist n'existe pas ou est protégée." }, 404);
     }
     items[idx] = { ...source, origin: 'self', id: editId };
   } else {
     // AJOUT : plafond anti-abus sur les items 'self'.
     const selfCount = items.filter((s) => s.origin === 'self').length;
     if (selfCount >= MAX_SELF_SOURCES) {
-      return json({
+      return jsonPrivate({
         ok: false, reason: 'too_many',
         message: 'Limite atteinte (' + MAX_SELF_SOURCES + ' playlists). Supprimez-en une pour en ajouter une autre.',
       }, 409);
@@ -2955,9 +2969,9 @@ async function handleSelfSource(env, mac, request) {
   try {
     await writeDeviceSourceItems(env, MAC, items);
   } catch (_) {
-    return json({ ok: false, error: 'db_write_failed' }, 500);
+    return jsonPrivate({ ok: false, error: 'db_write_failed' }, 500);
   }
-  return json({
+  return jsonPrivate({
     ok: true,
     message: editId
       ? 'Playlist mise à jour ! Ouvrez (ou redémarrez) l\'app.'
@@ -2968,7 +2982,7 @@ async function handleSelfSource(env, mac, request) {
 // DELETE /api/self-source/:mac?id=<id> — supprime UN item 'self' (jamais panel).
 //  Sans `id` : supprime TOUS les items 'self' (garde les 'panel' intacts).
 async function handleSelfSourceDelete(env, mac, request) {
-  if (!env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  if (!env.DB) return jsonPrivate({ ok: false, error: 'db_unavailable' }, 503);
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   const MAC = mac.toUpperCase();
   await ensureDeviceSourcesTable(env);
@@ -2977,14 +2991,14 @@ async function handleSelfSourceDelete(env, mac, request) {
   try { delId = new URL(request.url).searchParams.get('id'); } catch (_) { delId = null; }
 
   const { items } = await readDeviceSourceItems(env, MAC);
-  if (!items.length) return json({ ok: true, message: 'Aucune playlist à supprimer.' });
+  if (!items.length) return jsonPrivate({ ok: true, message: 'Aucune playlist à supprimer.' });
 
   let kept;
   if (delId) {
     const target = items.find((s) => s.id === delId);
-    if (!target) return json({ ok: false, reason: 'not_found', message: 'Playlist introuvable.' }, 404);
+    if (!target) return jsonPrivate({ ok: false, reason: 'not_found', message: 'Playlist introuvable.' }, 404);
     if (target.origin !== 'self') {
-      return json({ ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' }, 409);
+      return jsonPrivate({ ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' }, 409);
     }
     kept = items.filter((s) => s.id !== delId);
   } else {
@@ -2995,9 +3009,9 @@ async function handleSelfSourceDelete(env, mac, request) {
   try {
     await writeDeviceSourceItems(env, MAC, kept);
   } catch (_) {
-    return json({ ok: false, error: 'db_write_failed' }, 500);
+    return jsonPrivate({ ok: false, error: 'db_write_failed' }, 500);
   }
-  return json({ ok: true, message: 'Playlist supprimée.' });
+  return jsonPrivate({ ok: true, message: 'Playlist supprimée.' });
 }
 
 // /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
@@ -3046,19 +3060,22 @@ async function handlePublicFamilyM3u(env, rawToken) {
     if (!fam || !fam.source_json) return new Response('source absente', { status: 404 });
     let src;
     try { src = JSON.parse(fam.source_json); } catch (_) { src = null; }
-    src = await openSource(src, env.SECRETS_KEY);
+    src = await openSource(env, src);
     if (!src) return new Response('source invalide', { status: 404 });
 
     let target = null;
     if (src.type === 'xtream' && src.server_url && src.username && src.password) {
       const base = String(src.server_url).replace(/\/+$/, '');
+      if (!/^https?:\/\//i.test(base)) return new Response('source invalide', { status: 400 });
       const u = encodeURIComponent(src.username);
       const p = encodeURIComponent(src.password);
       target = `${base}/get.php?username=${u}&password=${p}&type=m3u_plus&output=ts`;
     } else if (src.type === 'm3u' && src.m3u_url) {
       target = src.m3u_url;
     }
-    if (!target) return new Response('source incomplète', { status: 404 });
+    if (!target || !/^https?:\/\//i.test(target) || /[\s<>]/.test(target)) {
+      return new Response('source invalide', { status: 400 });
+    }
     return Response.redirect(target, 302);
   } catch (_) {
     return new Response('erreur', { status: 500 });

@@ -253,7 +253,10 @@ async function main() {
     const row = db.prepare('SELECT m3u_url, sources_json FROM device_sources WHERE mac = ?').get(m);
     const token = url2.split('/').pop();
     const stored = `${row && row.m3u_url}|${row && row.sources_json}`;
-    check(!!row && String(row.m3u_url).startsWith('enc1:') && !stored.includes(token),
+    // Format unifié avec le coffre secret_box (enc1.). L'ancien préfixe
+    // enc1: de source_crypto reste lisible au déchiffrement.
+    const sealedUrl = String(row && row.m3u_url || '');
+    check(!!row && (sealedUrl.startsWith('enc1.') || sealedUrl.startsWith('enc1:')) && !stored.includes(token),
       'lien M3U chiffré au repos');
     const pub = await api(env, 'GET', `/api/device-source/${m}`);
     const pubUrl = pub.json && pub.json.source && pub.json.source.m3u_url;
