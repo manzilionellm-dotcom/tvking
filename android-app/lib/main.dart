@@ -52,6 +52,7 @@ import 'features/onboarding/data/onboarding_state.dart';
 // Phase 1+/2026-06-01 : DevicePicker + Onboarding supprimes du
 // flow. Imports retires (les fichiers existent toujours dans
 // features/onboarding/presentation/ pour eventuelle reprise).
+import 'features/player/data/audio_diag_prefs.dart';
 import 'features/player/data/player_settings.dart';
 import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/cloud_backup_repository.dart';
@@ -176,6 +177,9 @@ Future<void> bootApp() async {
         .then((_) {}),
   );
   unawaited(PlayerSettings.instance.load());
+  // Garde mode appel : défaut faux. Sans cette lecture, le téléphone
+  // oublierait un interrupteur laissé allumé. Coupé, aucun setMode.
+  unawaited(AudioDiagPrefs.load());
 
   // Notifications locales (rappels EPG). Init non bloquant ; la permission
   // n'est demandée que lorsque l'utilisateur pose son 1er rappel.

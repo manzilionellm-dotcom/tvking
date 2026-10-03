@@ -1,4 +1,11 @@
 <!-- Le namespace du module est défini dans build.gradle (AGP 8+) : ce
-     manifest reste vide, sans attribut package. -->
+     manifest reste sans attribut package.
+
+     MODIFY_AUDIO_SETTINGS est une permission normale (accordée à
+     l'installation, pas de question à l'écran). Elle ne change pas le
+     son toute seule. Android 16 ignore AudioManager.setMode sans elle
+     (AudioService.checkAudioSettingsPermission). La garde ne l'utilise
+     que si l'interrupteur zuno.audio.mode.normal est allumé. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 </manifest>

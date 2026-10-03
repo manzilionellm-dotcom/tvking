@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:native_video_player/native_video_player.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -46,6 +47,7 @@ import '../../playlists/data/favorites_repository.dart';
 import '../../recordings/data/recording_repository.dart';
 import '../../recordings/data/recording_service.dart';
 import '../../recordings/domain/recording.dart';
+import '../data/audio_diag_prefs.dart';
 import '../data/local_stream_relay.dart';
 import '../data/pip_service.dart';
 import '../data/player_settings.dart';
@@ -563,6 +565,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Future<void> _openMedia(String realUrl) async {
+    // Garde mode appel : seulement si l'interrupteur est allumé.
+    // Coupé, on n'appelle pas le natif, le son mpv ne change pas.
+    if (NativeVideoController.restoreNormalMode) {
+      unawaited(AudioModeGuardClient.ask().then((String? line) {
+        if (line != null) debugPrint('[Mode audio] $line');
+      }));
+    }
     _autoSubtitleApplied = false; // nouvelle vidéo → on réévalue les sous-titres
     if (widget.overrideUrl != null) {
       _player.open(Media(realUrl));
