@@ -655,7 +655,9 @@ object AudioDiagnosis {
             if (phase != null && phase.channels >= 2 && !phase.correlation.isNaN()) {
                 append("\nCorrélation gauche/droite (1 s, copie) : ")
                 append(phase.correlationText())
-                append(" · (G−D)/(G+D) ")
+                append(" · niveau (G−D)/(G+D) ")
+                append(phase.levelText())
+                append(" · énergie (G−D)²/(G+D)² ")
                 append(phase.sideText())
                 if (phase.opposed) append(" → voies opposées (voix centrale annulée)")
             }
@@ -775,7 +777,8 @@ object AudioDiagnosis {
                 confidence = Confidence.HAUTE,
                 kind = Kind.INFO,
                 symptom = "Corrélation gauche/droite ${decoder.correlationText()} sur 1 s, " +
-                    "(G−D)/(G+D) = ${decoder.sideText()}.",
+                    "niveau (G−D)/(G+D) = ${decoder.levelText()}, " +
+                    "énergie (G−D)²/(G+D)² = ${decoder.sideText()}.",
                 cause = "Les deux voies s'opposent déjà au PCM du décodeur : une voix au centre " +
                     "s'annule, le son tombe « dans un trou ». Ce n'est pas un passe-bas. " +
                     "Le son témoin (voix puis bruit, voies ensemble) dit si l'appareil fait pareil.",
