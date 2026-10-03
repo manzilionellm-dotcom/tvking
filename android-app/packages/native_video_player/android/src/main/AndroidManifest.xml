@@ -1,4 +1,12 @@
 <!-- Le namespace du module est défini dans build.gradle (AGP 8+) : ce
-     manifest reste vide, sans attribut package. -->
+     manifest reste sans attribut package.
+
+     MODIFY_AUDIO_SETTINGS est une permission normale (accordée à
+     l'installation, pas de question à l'écran). Elle ne change pas
+     le son toute seule. Le code ne l'utilise que si l'interrupteur
+     « Mode : forcer normal » est allumé (zuno.audio.mode.normal,
+     coupé par défaut) : setMode(MODE_NORMAL) et setSpeakerphoneOn(false).
+     Pas de RECORD_AUDIO : on n'ouvre pas le micro. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 </manifest>

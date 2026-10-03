@@ -31,6 +31,10 @@ class AudioDiagPrefs {
   /// Repli « passage » : vrai = on n'attend pas l'AudioTrack (ancien).
   static const String immediateHandoffKey = 'zuno.audio.handoff.immediate';
 
+  /// Garde du mode Android. Faux = on ne change pas le mode.
+  /// Vrai = avant la lecture, mode normal et haut-parleur d'appel coupé.
+  static const String normalizeModeKey = 'zuno.audio.mode.normal';
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
@@ -39,6 +43,7 @@ class AudioDiagPrefs {
     var androidFocus = false;
     var bgPause = false;
     var immediate = false;
+    var normalize = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -48,6 +53,7 @@ class AudioDiagPrefs {
       androidFocus = prefs.getBool(androidFocusKey) ?? false;
       bgPause = prefs.getBool(bgPauseKey) ?? false;
       immediate = prefs.getBool(immediateHandoffKey) ?? false;
+      normalize = prefs.getBool(normalizeModeKey) ?? false;
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -56,6 +62,7 @@ class AudioDiagPrefs {
       androidFocus = false;
       bgPause = false;
       immediate = false;
+      normalize = false;
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
@@ -64,9 +71,19 @@ class AudioDiagPrefs {
     NativeVideoController.androidAudioFocus = androidFocus;
     NativeVideoController.backgroundPauseOnly = bgPause;
     NativeVideoController.immediateHandoff = immediate;
+    NativeVideoController.normalizeAudioMode = normalize;
     // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
     // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
     NativeVideoController.pushAudioDiagFlags();
+  }
+
+  static Future<void> setNormalizeMode(bool value) async {
+    NativeVideoController.normalizeAudioMode = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(normalizeModeKey, value);
+    } catch (_) {}
   }
 
   static Future<void> setImmediateHandoff(bool value) async {
