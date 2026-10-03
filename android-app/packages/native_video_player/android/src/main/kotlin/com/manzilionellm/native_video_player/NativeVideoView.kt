@@ -2363,7 +2363,9 @@ class NativeVideoView(
             clearVoice = clearVoiceEnabled,
             skipSilence = player.skipSilenceEnabled,
             playbackSpeed = player.playbackParameters.speed,
-            cycle = currentUrl?.let { PlayerCensus.snapshot(AacRoute.key(it), boxFailure) },
+            cycle = currentUrl?.let {
+                PlayerCensus.snapshot(AacRoute.key(it), boxFailure, owners.registeredCount)
+            },
             probeRequested = AudioFixes.probe,
             probeInChain = probeDecoder.lastAccepted,
             probeFrames = probeDecoder.usefulFrames,

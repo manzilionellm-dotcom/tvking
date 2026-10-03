@@ -18,6 +18,8 @@ import 'package:native_video_player/native_video_player.dart';
 import 'core/app/app_platform.dart';
 import 'core/blackbox/black_box.dart';
 import 'features/player/data/audio_diag_prefs.dart';
+import 'features/player/data/audio_sources_bind.dart';
+import 'features/player/domain/audio_sources.dart';
 import 'features/player/data/audio_report_store.dart';
 import 'features/player/domain/audio_report_book.dart';
 import 'core/update/update_service.dart';
@@ -73,7 +75,7 @@ void _wireAudioDiagnostic() {
     // heartbeat (NowPlaying reste la chaîne, ou vide).
     final String channel =
         AudioReportStore.channelOverride ?? NowPlaying.instance.current;
-    final String safe = redactAudioText(diagnostic);
+    final String safe = redactAudioText(AudioSources.attach(diagnostic));
     bool first = true;
     for (final String raw in safe.split('\n')) {
       final String line = raw.trim();
@@ -123,6 +125,8 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // démarrage soit journalisé et que la raison de la DERNIÈRE fermeture soit
   // lue (Android 11+). Best-effort : ne bloque jamais le boot.
   await BlackBox.instance.initialize(flavor: 'Zuno TV');
+  // Compteurs de sources. Ne coupe aucun lecteur.
+  bindAudioSources();
   _wireAudioDiagnostic();
   // Réglages du diagnostic son. Défaut faux : ne change pas le lecteur.
   await AudioDiagPrefs.load();

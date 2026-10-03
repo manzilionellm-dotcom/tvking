@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../player/domain/audio_sources.dart';
 import '../data/startup_ad_repository.dart';
 
 class StartupAdScreen extends StatefulWidget {
@@ -38,11 +39,14 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
   Timer? _safetyTimer;
   bool _canSkip = false;
   bool _done = false;
+  int? _audioSource;
 
   @override
   void initState() {
     super.initState();
     _player = Player();
+    _audioSource = AudioSources.acquire(AudioSources.pub);
+    AudioSources.setPresence(_audioSource!, AudioPresence.sound);
     _controller = VideoController(_player);
     // Lance la vidéo (best-effort).
     unawaited(_player.open(Media(widget.config.url)));
@@ -78,6 +82,9 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
     _safetyTimer?.cancel();
     _completedSub?.cancel();
     _errorSub?.cancel();
+    final int? src = _audioSource;
+    _audioSource = null;
+    if (src != null) AudioSources.release(src);
     _player.dispose();
     super.dispose();
   }
