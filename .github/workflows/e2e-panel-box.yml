@@ -1,0 +1,55 @@
+# Parcours local panel + Worker + box simulée.
+# Ne déploie rien : ni Pages, ni Worker, ni release.
+name: E2E panel et box (local)
+
+on:
+  pull_request:
+    paths:
+      - 'android-app/admin-panel/**'
+      - 'android-app/cloudflare/**'
+      - 'android-app/e2e/panel-box/**'
+      - '.github/workflows/e2e-panel-box.yml'
+  push:
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'android-app/admin-panel/**'
+      - 'android-app/cloudflare/**'
+      - 'android-app/e2e/panel-box/**'
+      - '.github/workflows/e2e-panel-box.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-panel-box-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: wrangler local + panel + box simulée
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Dépendances du panel
+        working-directory: android-app/admin-panel
+        run: npm ci
+
+      - name: Dépendances de la suite
+        working-directory: android-app/e2e/panel-box
+        run: npm ci
+
+      - name: Navigateur de test
+        working-directory: android-app/e2e/panel-box
+        run: npx playwright install --with-deps chromium
+
+      - name: Parcours
+        working-directory: android-app/e2e/panel-box
+        run: npm run e2e
