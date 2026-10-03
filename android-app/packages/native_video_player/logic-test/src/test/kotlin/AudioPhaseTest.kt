@@ -22,6 +22,7 @@ class AudioPhaseTest {
         val reading = measure(pcm, 48_000)
         assertTrue(reading.correlation > 0.95, reading.correlation.toString())
         assertTrue(reading.sideToMid < 0.05, reading.sideToMid.toString())
+        assertTrue(reading.levelRatio < 0.05, reading.levelRatio.toString())
         assertFalse(reading.opposed)
         assertEquals("+", reading.correlationText().take(1))
     }
@@ -35,6 +36,7 @@ class AudioPhaseTest {
         val reading = measure(pcm, 48_000)
         assertTrue(reading.correlation < -0.95, reading.correlation.toString())
         assertTrue(reading.sideToMid.isInfinite() || reading.sideToMid >= AudioPhase.SIDE_MIN)
+        assertTrue(reading.levelRatio.isInfinite() || reading.levelRatio >= 10.0)
         assertTrue(reading.opposed)
         assertEquals("infini", reading.sideText())
         assertTrue(reading.correlationText().startsWith("−") || reading.correlationText().startsWith("-"))

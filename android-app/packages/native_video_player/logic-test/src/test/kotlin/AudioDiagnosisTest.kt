@@ -349,6 +349,7 @@ class AudioDiagnosisTest {
         val report = AudioDiagnosis.report(s)
         assertTrue(report.contains("voies opposées"), report)
         assertTrue(report.contains("Corrélation gauche/droite"), report)
+        assertTrue(report.contains("niveau (G−D)/(G+D)"), report)
         assertTrue(report.contains("Dernière seconde"), report)
         assertTrue(report.contains("Chemin : mode normal"), report)
         assertFalse(report.contains("spectre_absent"), report)
