@@ -69,6 +69,7 @@ import com.manzilionellm.native_video_player.logic.AudioSpectrum
 import com.manzilionellm.native_video_player.logic.AudioStages
 import com.manzilionellm.native_video_player.logic.AudioTrackBuffer
 import com.manzilionellm.native_video_player.logic.AacRoute
+import com.manzilionellm.native_video_player.logic.AacSource
 import com.manzilionellm.native_video_player.logic.CodecOrder
 import com.manzilionellm.native_video_player.logic.DecoderFallback
 import com.manzilionellm.native_video_player.logic.DisplayModeOption
@@ -2308,13 +2309,53 @@ class NativeVideoView(
     ) {
         if (!fresh(eventTime)) return
         fun known(v: Int) = if (v == Format.NO_VALUE || v < 0) 0 else v
+        val rate = known(format.sampleRate)
+        val channels = known(format.channelCount)
+        // Octets déjà démultiplexés par Media3. On les lit, on ne les réécrit pas.
+        // Ça ne choisit pas le décodeur et ça ne filtre pas le PCM.
+        val init = format.initializationData?.firstOrNull()
+        val source = AacSource.read(
+            bytes = init,
+            mime = format.sampleMimeType,
+            announcedBps = known(format.bitrate),
+            averageBps = known(format.averageBitrate),
+            peakBps = known(format.peakBitrate),
+            formatHz = rate,
+            formatChannels = channels,
+        )
         diag = diag.copy(
             mime = format.sampleMimeType,
             codecs = format.codecs,
-            inSampleRate = known(format.sampleRate),
-            inChannels = known(format.channelCount),
+            inSampleRate = rate,
+            inChannels = channels,
             bitrate = known(format.bitrate),
+            source = source,
         )
+    }
+
+    /**
+     * Saut d'horloge à l'intérieur du direct (raison INTERNAL).
+     * Un zap ou une recherche ne comptent pas : la fiche serait
+     * faussée à chaque chaîne. On note le saut, on ne recale rien.
+     */
+    override fun onPositionDiscontinuity(
+        eventTime: AnalyticsListener.EventTime,
+        oldPosition: Player.PositionInfo,
+        newPosition: Player.PositionInfo,
+        reason: Int,
+    ) {
+        if (!fresh(eventTime)) return
+        if (reason != Player.DISCONTINUITY_REASON_INTERNAL) return
+        if (oldPosition.positionMs == C.TIME_UNSET || newPosition.positionMs == C.TIME_UNSET) return
+        val delta = newPosition.positionMs - oldPosition.positionMs
+        val abs = if (delta < 0) -delta else delta
+        // En dessous de la tolérance déjà utilisée pour l'image/son, ce n'est pas un saut.
+        if (abs <= AudioDiagnosis.OFFSET_OK_MS) return
+        diag = diag.copy(
+            ptsJumps = diag.ptsJumps + 1,
+            ptsMaxAbsMs = maxOf(diag.ptsMaxAbsMs, abs),
+        )
+        sendAudioDiag()
     }
 
     /** Ce qui part réellement vers la sortie son : on envoie le bilan. */
