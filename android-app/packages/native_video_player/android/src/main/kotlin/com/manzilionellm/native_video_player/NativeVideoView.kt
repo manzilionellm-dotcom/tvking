@@ -1112,17 +1112,34 @@ class NativeVideoView(
     }
 
     /**
-     * Attributs Media3. Essai coupé : film, ou parole si la voix claire
-     * est allumée — exactement le chemin d'aujourd'hui. On ne pose ni
-     * drapeau, ni politique de capture, ni spatialisation : Media3 met
-     * alors ses défauts (drapeaux 0, capture tous, spatialisation auto).
+     * Attributs Media3. Un seul bouton d'attributs (#75) : coupé, film
+     * (ou parole si la voix claire est allumée). L'essai « contenu
+     * inconnu » (#78) ne parle que quand ce bouton est sur « off ».
+     * On ne pose ni drapeau, ni politique de capture, ni spatialisation.
      */
     private fun movieAudioAttributes(): AudioAttributes {
-        val choice = AudioProfile.resolve(AudioProfile.current, clearVoiceEnabled)
+        val choice = currentAttributeChoice()
         return AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(choice.contentType)
             .build()
+    }
+
+    /**
+     * Chiffres annoncés. L'essai d'attributs, s'il n'est pas « off »,
+     * gagne. Sinon : film, parole (voix claire), ou inconnu si l'essai
+     * de référence est allumé. Les deux coupés = le son d'aujourd'hui.
+     */
+    private fun currentAttributeChoice(): AudioProfile.Choice {
+        if (AudioProfile.current != AudioProfile.OFF) {
+            return AudioProfile.resolve(AudioProfile.current, clearVoiceEnabled)
+        }
+        val wire = when (announcedContent()) {
+            AudioRouteState.CONTENT_UNKNOWN -> AudioProfile.MEDIA3
+            AudioRouteState.CONTENT_SPEECH -> AudioProfile.SPEECH
+            else -> AudioProfile.OFF
+        }
+        return AudioProfile.resolve(wire, clearVoiceEnabled)
     }
 
     /**
@@ -1131,11 +1148,21 @@ class NativeVideoView(
      * sinon l'essai ne départage rien.
      */
     private fun platformAudioAttributes(): android.media.AudioAttributes {
-        val choice = AudioProfile.resolve(AudioProfile.current, clearVoiceEnabled)
+        val choice = currentAttributeChoice()
         return android.media.AudioAttributes.Builder()
             .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
             .setContentType(choice.contentType)
             .build()
+    }
+
+    /** Même choix que [movieAudioAttributes], en constantes du SDK Android. */
+    private fun platformContentType(): Int = currentAttributeChoice().contentType
+
+    private fun announcedContent(): Int {
+        return AudioFixes.announcedContentType(
+            clearVoice = clearVoiceEnabled,
+            referenceUnknown = AudioFixes.referenceUnknownContent,
+        )
     }
 
     /**
@@ -1351,6 +1378,26 @@ class NativeVideoView(
                         )
                     } catch (_: RuntimeException) {
                     }
+                    if (diag.decoder != null || diag.outSampleRate > 0) sendAudioDiag()
+                }
+                result.success(null)
+            }
+            "setReferenceUnknownContent" -> {
+                // Essai coupé par défaut. Allumé : on annonce « inconnu »
+                // au lieu de « film », sauf si le bouton d'attributs n'est
+                // pas sur « off » (celui-là gagne). La voix claire reste
+                // « parole ». On repose les attributs tout de suite.
+                AudioFixes.referenceUnknownContent = call.arguments == true
+                if (!released) {
+                    try {
+                        player.setAudioAttributes(
+                            movieAudioAttributes(),
+                            AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+                        )
+                    } catch (_: RuntimeException) {
+                    }
+                    val word = AudioProfile.contentLabel(platformContentType())
+                    emit("audioDiag", "Type de contenu annoncé : $word.")
                     if (diag.decoder != null || diag.outSampleRate > 0) sendAudioDiag()
                 }
                 result.success(null)
@@ -2696,7 +2743,7 @@ class NativeVideoView(
             playback = ownerNow(),
             routeLine = AudioRouteState.pathLine(currentFacts()),
             attributeLine = AudioProfile.line(
-                AudioProfile.resolve(AudioProfile.current, clearVoiceEnabled),
+                currentAttributeChoice(),
             ),
             playerAudible = audible,
             effects = readSystemEffects(),

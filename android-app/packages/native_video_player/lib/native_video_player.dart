@@ -197,6 +197,12 @@ class NativeVideoController extends ChangeNotifier {
   /// décodeur et l'AudioTrack. On ne l'allume pas tout seul.
   static bool pureMedia3Chain = false;
 
+  /// Essai « type de contenu inconnu ». Faux par défaut : Android
+  /// reçoit « film », comme avant. Vrai : « inconnu », le défaut de
+  /// Media3. Le son PCM ne change pas, seule l'étiquette change.
+  /// Ignoré si [audioAttributeTrial] n'est pas « off ».
+  static bool referenceUnknownContent = false;
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -212,6 +218,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setNormalizeMode', normalizeAudioMode);
       ch.invokeMethod<void>('setAudioProfile', audioAttributeTrial);
       ch.invokeMethod<void>('setPureMedia3Chain', pureMedia3Chain);
+      ch.invokeMethod<void>('setReferenceUnknownContent', referenceUnknownContent);
     }
   }
 
@@ -382,6 +389,7 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setNormalizeMode', normalizeAudioMode);
     ch.invokeMethod<void>('setAudioProfile', audioAttributeTrial);
     ch.invokeMethod<void>('setPureMedia3Chain', pureMedia3Chain);
+    ch.invokeMethod<void>('setReferenceUnknownContent', referenceUnknownContent);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;

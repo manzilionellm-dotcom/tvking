@@ -63,6 +63,16 @@ object AudioFixes {
      */
     const val KEY_STOCK: String = Media3Chain.KEY
 
+    /**
+     * Essai « type de contenu inconnu ». Faux par défaut : on annonce
+     * « film » à Android, comme avant. Vrai : on annonce « inconnu »,
+     * le défaut de Media3. La voix claire, si elle est allumée, reste
+     * « parole ». Le PCM ne change pas : seul l'étiquette lue par les
+     * traitements de la box ou du téléphone change.
+     * Si l'essai d'attributs n'est pas « off », c'est lui qui décide.
+     */
+    const val KEY_REFERENCE_UNKNOWN: String = "zuno.audio.ref.content_unknown"
+
     @Volatile
     var androidFocus: Boolean = false
 
@@ -76,6 +86,14 @@ object AudioFixes {
      */
     @Volatile
     var normalizeMode: Boolean = false
+
+    /**
+     * Vrai = annoncer le contenu « inconnu » (défaut Media3) au lieu de
+     * « film ». Faux par défaut : le son annoncé reste « film ».
+     * Ignoré quand l'essai d'attributs n'est pas « off ».
+     */
+    @Volatile
+    var referenceUnknownContent: Boolean = false
 
     @Volatile
     var probe: Boolean = false
@@ -121,5 +139,21 @@ object AudioFixes {
      */
     fun forceBoxAfterOpen(keepFfmpeg: Boolean, forceBox: Boolean): Boolean {
         return if (keepFfmpeg) false else forceBox
+    }
+
+    /**
+     * Numéro de type de contenu Android à annoncer.
+     *
+     * Les numéros sont ceux d'[AudioRouteState] (les mêmes que le SDK) :
+     * 0 inconnu, 1 parole, 3 film.
+     *
+     * Défaut (les deux faux) : film. C'est le chemin actuel, inchangé.
+     * Voix claire allumée : parole, même si l'essai « inconnu » est allumé.
+     * Essai seul : inconnu, comme un ExoPlayer qui n'a rien précisé.
+     */
+    fun announcedContentType(clearVoice: Boolean, referenceUnknown: Boolean): Int {
+        if (clearVoice) return AudioRouteState.CONTENT_SPEECH
+        if (referenceUnknown) return AudioRouteState.CONTENT_UNKNOWN
+        return AudioRouteState.CONTENT_MOVIE
     }
 }

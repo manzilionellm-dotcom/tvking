@@ -107,6 +107,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _normalize = NativeVideoController.normalizeAudioMode;
     _profile = NativeVideoController.audioAttributeTrial;
     _pureChain = NativeVideoController.pureMedia3Chain;
+    _referenceUnknown = NativeVideoController.referenceUnknownContent;
     // Le libellé vient de la mémoire Dart. On le repousse au lecteur
     // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
     NativeVideoController.pushAudioDiagFlags();
@@ -126,6 +127,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _normalize = false;
   String _profile = AudioAttributeTrial.off;
   bool _pureChain = false;
+  bool _referenceUnknown = false;
   bool _witnessBusy = false;
   NativeVideoController? _witness;
 
@@ -439,6 +441,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     await AudioDiagPrefs.setImmediateHandoff(next);
   }
 
+  Future<void> _toggleReferenceUnknown() async {
+    final bool next = !_referenceUnknown;
+    setState(() => _referenceUnknown = next);
+    await AudioDiagPrefs.setReferenceUnknownContent(next);
+  }
+
   Future<void> _toggleAndroidFocus() async {
     final bool next = !_androidFocus;
     setState(() => _androidFocus = next);
@@ -672,6 +680,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             ),
             const SizedBox(width: 12),
             _Toggle(
+              label: _referenceUnknown ? 'Contenu : inconnu' : 'Contenu : film',
+              on: _referenceUnknown,
+              onSelect: _toggleReferenceUnknown,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
               label: _witness != null
                   ? 'Témoin : stop'
                   : (_witnessBusy
@@ -729,7 +743,13 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'habituel ; « essai » = fabrique Media3 d\'origine, décodeur de la '
           'box, aucun étage Zuno, tampon d\'origine. La vitesse reste à 1. '
           'Recouper pour retrouver le son habituel. Le MP2 peut rester muet '
-          'pendant l\'essai (plus de FFmpeg). Son témoin : 10 s (voix puis bruit), '
+          'pendant l\'essai (plus de FFmpeg). '
+          'Contenu : « film » (défaut) = ce que Zuno '
+          'annonce à Android aujourd\'hui ; « inconnu » = ce que Media3 '
+          'annonce quand on ne précise rien. Ce bouton ne parle que si '
+          'Attributs est sur « coupé ». Le son numérique ne change pas. '
+          'La voix claire, si elle est allumée, reste « parole ». '
+          'Son témoin : 10 s (voix puis bruit), '
           'lu par le même lecteur. Allume la mesure, ne change pas le son. '
           'Bruit sourd → l\'appareil. Bruit clair → la chaîne. '
           'Attributs : « coupé » (défaut) = contenu film, comme aujourd\'hui '
