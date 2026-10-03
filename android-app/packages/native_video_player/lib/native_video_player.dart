@@ -173,6 +173,12 @@ class NativeVideoController extends ChangeNotifier {
   /// chevaucher, l'ancien défaut). Faux par défaut : on attend.
   static bool immediateHandoff = false;
 
+  /// Essai « Type : film / musique / parole ». `off` par défaut :
+  /// le lecteur dit « film » (ou « parole » si la voix claire est
+  /// allumée), comme avant. `movie`, `music` ou `speech` seulement
+  /// quand on tourne le bouton du diagnostic.
+  static String audioContentType = 'off';
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -185,6 +191,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
       ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
       ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+      ch.invokeMethod<void>('setAudioContentType', audioContentType);
     }
   }
 
@@ -327,6 +334,7 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
     ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
     ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+    ch.invokeMethod<void>('setAudioContentType', audioContentType);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;

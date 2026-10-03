@@ -1,3 +1,4 @@
+import com.manzilionellm.native_video_player.logic.AudioContentChoice
 import com.manzilionellm.native_video_player.logic.AudioFixes
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,6 +19,8 @@ class AudioFixesTest {
         assertEquals("zuno.audio.handoff.immediate", AudioFixes.KEY_IMMEDIATE_HANDOFF)
         assertFalse(AudioFixes.androidFocus)
         assertFalse(AudioFixes.immediateHandoff)
+        assertEquals(AudioContentChoice.OFF, AudioFixes.contentChoice)
+        assertEquals("zuno.audio.diag.content_type", AudioFixes.KEY_CONTENT_TYPE)
     }
 
     @Test

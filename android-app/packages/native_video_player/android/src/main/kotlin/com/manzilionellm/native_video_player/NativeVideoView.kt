@@ -57,6 +57,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
+import com.manzilionellm.native_video_player.logic.AudioContentChoice
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
 import com.manzilionellm.native_video_player.logic.AudioGate
 import com.manzilionellm.native_video_player.logic.AudioHandoff
@@ -534,10 +535,7 @@ class NativeVideoView(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val attrs = android.media.AudioAttributes.Builder()
                     .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                    .setContentType(
-                        if (clearVoiceEnabled) android.media.AudioAttributes.CONTENT_TYPE_SPEECH
-                        else android.media.AudioAttributes.CONTENT_TYPE_MOVIE,
-                    )
+                    .setContentType(declaredContentType())
                     .build()
                 val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                     .setAudioAttributes(attrs)
@@ -674,21 +672,17 @@ class NativeVideoView(
     }
 
     /**
-     * Appareils qu'Android choisirait pour un son média « film »
-     * (ou « parole » si voix claire). API 33+. Vide = pas lu.
+     * Appareils qu'Android choisirait pour le type déclaré
+     * (film par défaut, parole si voix claire, ou l'essai). API 33+.
+     * Vide = pas lu.
      */
     private fun plannedTypes(): List<Int> {
         if (Build.VERSION.SDK_INT < 33) return emptyList()
         val am = audioManager ?: return emptyList()
         return try {
-            val content = if (clearVoiceEnabled) {
-                android.media.AudioAttributes.CONTENT_TYPE_SPEECH
-            } else {
-                android.media.AudioAttributes.CONTENT_TYPE_MOVIE
-            }
             val attrs = android.media.AudioAttributes.Builder()
                 .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                .setContentType(content)
+                .setContentType(declaredContentType())
                 .build()
             am.getAudioDevicesForAttributes(attrs).map { it.type }
         } catch (_: Throwable) {
@@ -1022,17 +1016,47 @@ class NativeVideoView(
             .build()
     }
 
-    /** Profil audio : film, ou parole si la voix claire est allumée. */
+    /**
+     * Type dit à Android. Coupé : film, ou parole si la voix claire
+     * est allumée (le chemin d'avant). Essai allumé : film, musique
+     * ou parole, sans changer les échantillons.
+     */
+    private fun declaredContentType(): Int =
+        AudioContentChoice.declared(AudioFixes.contentChoice, clearVoiceEnabled)
+
+    /** Profil audio : usage média, type [declaredContentType]. Pas de drapeau. */
     private fun movieAudioAttributes(): AudioAttributes {
-        val type = if (clearVoiceEnabled) {
-            C.AUDIO_CONTENT_TYPE_SPEECH
-        } else {
-            C.AUDIO_CONTENT_TYPE_MOVIE
+        val type = when (declaredContentType()) {
+            AudioContentChoice.SPEECH -> C.AUDIO_CONTENT_TYPE_SPEECH
+            AudioContentChoice.MUSIC -> C.AUDIO_CONTENT_TYPE_MUSIC
+            else -> C.AUDIO_CONTENT_TYPE_MOVIE
         }
         return AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(type)
             .build()
+    }
+
+    /**
+     * La demande de focus garde ses attributs tant qu'on ne la refait pas.
+     * On ne la refait que quand l'essai de type change : le défaut
+     * (focus déjà tenu) ne lâche rien.
+     */
+    private fun refreshFocusForContentType() {
+        if (!focusHeld) return
+        if (AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus)) return
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                focusRequest?.let { am.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(focusListener)
+            }
+        } catch (_: RuntimeException) {
+        }
+        focusHeld = false
+        requestOwnFocus()
     }
 
     /**
@@ -1285,6 +1309,38 @@ class NativeVideoView(
                 // pas le rendu (ancien comportement, deux pistes possibles).
                 // Pris en compte au prochain zap. On ne rouvre pas.
                 AudioFixes.immediateHandoff = call.arguments == true
+                result.success(null)
+            }
+            "setAudioContentType" -> {
+                // Essai film / musique / parole. « off » (ou n'importe quoi
+                // d'illisible) = le type d'avant. On ne rouvre que si le
+                // mot change vraiment : un rappel au démarrage ne coupe pas
+                // la chaîne.
+                val next = AudioContentChoice.fromWire(call.arguments as? String)
+                if (next == AudioFixes.contentChoice) {
+                    result.success(null)
+                    return
+                }
+                AudioFixes.contentChoice = next
+                if (!released && currentUrl != null &&
+                    player.playbackState != Player.STATE_IDLE
+                ) {
+                    if (vodMode && player.currentPosition > 0) {
+                        lastKnownPos = player.currentPosition
+                    }
+                    openCurrent(if (vodMode) lastKnownPos else null)
+                    refreshFocusForContentType()
+                } else if (!released) {
+                    player.setAudioAttributes(
+                        movieAudioAttributes(),
+                        AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+                    )
+                    refreshFocusForContentType()
+                    emit(
+                        "audioDiag",
+                        AudioContentChoice.diagLine(AudioFixes.contentChoice, clearVoiceEnabled),
+                    )
+                }
                 result.success(null)
             }
             "setSessionWideFallback" -> {
@@ -1727,6 +1783,10 @@ class NativeVideoView(
         player.setAudioAttributes(
             movieAudioAttributes(),
             AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus),
+        )
+        emit(
+            "audioDiag",
+            AudioContentChoice.diagLine(AudioFixes.contentChoice, clearVoiceEnabled),
         )
         if (AudioFocusPolicy.media3HandlesFocus(AudioFixes.androidFocus)) abandonOwnFocus()
         else requestOwnFocus()
