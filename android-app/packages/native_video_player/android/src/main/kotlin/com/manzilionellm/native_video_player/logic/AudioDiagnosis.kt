@@ -117,6 +117,11 @@ data class AudioSnapshot(
     val ptsJumps: Int = 0,
     /** Plus grand saut, en valeur absolue, millisecondes. */
     val ptsMaxAbsMs: Long = 0,
+    /**
+     * Effets du système, lus sans en créer. Null = pas encore relevé
+     * (les rapports d'avant cette mesure).
+     */
+    val effects: AudioSystemEffects.Sheet? = null,
 )
 
 object AudioDiagnosis {
@@ -290,6 +295,10 @@ object AudioDiagnosis {
     private const val FILE_SPOKEN =
         "android-app/packages/native_video_player/android/src/main/kotlin/" +
             "com/manzilionellm/native_video_player/logic/SpokenTrackChoice.kt"
+
+    private const val FILE_EFFECTS =
+        "android-app/packages/native_video_player/android/src/main/kotlin/" +
+            "com/manzilionellm/native_video_player/logic/AudioSystemEffects.kt"
 
     enum class Confidence { HAUTE, INCERTAINE }
 
@@ -613,6 +622,27 @@ object AudioDiagnosis {
         // spectre_absent n'est plus un bloc : la ligne « Spectre > 4 kHz »
         // dit déjà pourquoi il n'y a pas de chiffre. Répété 2 ou 3 fois
         // par chaîne, ce bloc noyait la fiche sans rien décider.
+        val fx = s.effects?.let { AudioSystemEffects.suspect(it) }
+        if (fx != null) {
+            // INFO, pas CAUSE : on n'a pas entendu, et on ne coupe rien.
+            out += Finding(
+                id = "effet_systeme",
+                confidence = Confidence.INCERTAINE,
+                kind = Kind.INFO,
+                symptom = fx.symptom,
+                cause = fx.cause,
+                fix = Fix(
+                    file = FILE_EFFECTS,
+                    symbol = "AudioSystemEffects.suspect / SystemEffectsRead.sheet",
+                    media3 = "aucun effet créé : AudioEffect.queryEffects est une lecture",
+                    action = "Ne pas construire d'Equalizer, de BassBoost, de Virtualizer " +
+                        "ni de LoudnessEnhancer. Ne pas changer USAGE_MEDIA ni le contenu film. " +
+                        "L'essai (couper Dolby, Adapt Sound, le spatialiseur) se fait dans les " +
+                        "réglages de l'appareil, pas dans l'app.",
+                    settingKey = null,
+                ),
+            )
+        }
         out += phaseFindings(s)
         out += sourceFindings(s)
         return out
@@ -838,7 +868,7 @@ object AudioDiagnosis {
             append(if (s.skipSilence) "sautés" else "non sautés")
             append(", vitesse ")
             append(String.format(Locale.FRANCE, "%.2f", s.playbackSpeed))
-            append(". Pas d'égaliseur, pas de DynamicsProcessing, pas de LoudnessEnhancer.")
+            append(". L'app n'a branché ni égaliseur, ni DynamicsProcessing, ni LoudnessEnhancer.")
             if (!s.routeNote.isNullOrBlank()) {
                 append("\nEssai : ").append(s.routeNote)
             }
@@ -851,6 +881,10 @@ object AudioDiagnosis {
             }
             if (!s.attributeLine.isNullOrBlank()) {
                 append("\n").append(s.attributeLine)
+            }
+            val effects = s.effects
+            if (effects != null) {
+                append("\n").append(AudioSystemEffects.block(effects))
             }
             append("\nSpectre > 4 kHz : ")
             append(

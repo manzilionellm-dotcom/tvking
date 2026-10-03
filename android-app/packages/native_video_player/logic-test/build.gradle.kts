@@ -29,6 +29,7 @@ sourceSets {
         kotlin.exclude("**/ClearVoiceProcessor.kt")
         kotlin.exclude("**/AudioProbeProcessor.kt")
         kotlin.exclude("**/ZunoAudioChain.kt")
+        kotlin.exclude("**/SystemEffectsRead.kt")
     }
 }
 
