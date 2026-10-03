@@ -129,6 +129,12 @@ object AudioSpectrum {
          * son qu'on entend maintenant.
          */
         val recentHighRatio: Double? = null,
+        /**
+         * Forme grave/aigu, écho, chute. Null tant qu'une seconde
+         * n'est pas pleine, ou si on n'a pas mesuré. La sonde copie :
+         * ce chiffre ne change aucun échantillon.
+         */
+        val quality: AudioQuality.Reading? = null,
     ) {
         fun percent(): String =
             String.format(Locale.FRANCE, "%.1f %%", highRatio * 100.0)
