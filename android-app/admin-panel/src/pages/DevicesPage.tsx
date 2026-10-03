@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
 import {
-  devicesApi, activateApi, flagEmoji, isAbortError,
+  devicesApi, activateApi, sourcesApi, flagEmoji, isAbortError,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
+import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
 import { formatDateTime } from '@/lib/utils';
 import {
   LIST_PAGE_SIZE, createAbortBag, createGeneration, createSingleFlight,
@@ -35,22 +36,29 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   // (souvent l'ancienne recherche) écrasait la plus récente.
   const gen = useRef(createGeneration());
   const aborts = useRef(createAbortBag());
+  const appliedSeq = useRef(0);
 
-  const load = useCallback(() => {
+  const load = useCallback((opts?: { silent?: boolean }) => {
     const id = gen.current.next();
     const signal = aborts.current.next();
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     devicesApi.list(q, { limit: LIST_PAGE_SIZE, offset }, signal)
       .then((r) => {
-        if (!gen.current.isCurrent(id)) return;
+        if (!gen.current.isCurrent(id) || !shouldApplyPollResult(id, appliedSeq.current)) return;
+        appliedSeq.current = id;
         const page = readListPage<Device>(r);
         setItems(page.items);
         setTotal(page.total);
         setTruncated(page.truncated);
+        setDetailFor((cur) => {
+          if (!cur) return cur;
+          return page.items.find((d) => d.id === cur.id) ?? cur;
+        });
         setErr(null);
       })
       .catch((e) => {
         if (isAbortError(e) || !gen.current.isCurrent(id)) return;
+        if (!shouldApplyPollResult(id, appliedSeq.current)) return;
         if (e instanceof ApiError && e.status === 401) onLogout();
         else setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
@@ -58,8 +66,14 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   }, [q, offset, onLogout]);
 
   useEffect(() => {
-    const id = setTimeout(load, 200); // petit debounce sur la recherche
+    const id = setTimeout(() => load(), 200); // petit debounce sur la recherche
     return () => { clearTimeout(id); aborts.current.abort(); };
+  }, [load]);
+
+  // Dernière vue / statut : au plus 2 s après un heartbeat déjà commis.
+  useEffect(() => {
+    const t = setInterval(() => load({ silent: true }), PANEL_POLL_MS);
+    return () => clearInterval(t);
   }, [load]);
 
   async function setBlock(d: Device, status: 'active' | 'frozen' | 'banned') {
@@ -233,16 +247,54 @@ function DeviceDetailModal({
   const [ov, setOv] = useState<DeviceOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const pollSeq = useRef(0);
+  const appliedSeq = useRef(0);
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    devicesApi.overview(device.id)
-      .then((r) => { if (alive) { setOv(r); setErr(null); } })
-      .catch((e) => { if (alive) setErr(e instanceof ApiError ? e.message : 'Échec.'); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    pollSeq.current = 0;
+    appliedSeq.current = 0;
+    const pull = (first: boolean) => {
+      const my = ++pollSeq.current;
+      if (first) setLoading(true);
+      devicesApi.overview(device.id)
+        .then((r) => {
+          if (!alive || !shouldApplyPollResult(my, appliedSeq.current)) return;
+          appliedSeq.current = my;
+          setOv(r);
+          setErr(null);
+        })
+        .catch((e) => {
+          if (!alive || !shouldApplyPollResult(my, appliedSeq.current)) return;
+          setErr(e instanceof ApiError ? e.message : 'Échec.');
+        })
+        .finally(() => { if (alive && first) setLoading(false); });
+    };
+    pull(true);
+    const t = setInterval(() => pull(false), PANEL_POLL_MS);
+    return () => { alive = false; clearInterval(t); };
   }, [device.id]);
+
+  async function clearPushed() {
+    if (!window.confirm(
+      'Effacer les listes poussées sur le serveur pour cette MAC ? Elles ne seront plus renvoyées à l\'app.',
+    )) return;
+    setClearing(true);
+    setErr(null);
+    try {
+      await sourcesApi.clear(device.mac);
+      const my = ++pollSeq.current;
+      const r = await devicesApi.overview(device.id);
+      if (!shouldApplyPollResult(my, appliedSeq.current)) return;
+      appliedSeq.current = my;
+      setOv(r);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Échec.');
+    } finally {
+      setClearing(false);
+    }
+  }
 
   const st = device.block_status || 'active';
   const sources = ov?.sources ?? [];
@@ -334,6 +386,7 @@ function DeviceDetailModal({
           <div className="flex flex-wrap gap-1.5">
             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/activate?mac=${macUrl}`)} title="Pousser ou modifier le M-Trio de sources">Pousser une source</ActionBtn>
+            <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire les listes poussées. L'app déjà ouverte garde sa copie locale jusqu'à sa prochaine vérification.">Effacer les listes</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
             {st !== 'frozen' && (
               <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>

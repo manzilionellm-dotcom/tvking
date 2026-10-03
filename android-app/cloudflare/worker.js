@@ -57,6 +57,13 @@
 import { apiV1 } from './api_v1.js';
 import { httpUrlError } from './source_url.js';
 import { openSource, openSourceList, sealSource } from './secret_box.js';
+import {
+  selectAnnouncements,
+  resolvePublicSource,
+  readSourceTombstone,
+  markSourcesCleared,
+  clearSourceTombstone,
+} from './linkage.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
 import { runMigration } from './migrate_kv_to_d1.js';
@@ -546,7 +553,7 @@ async function ensureD1Device(env, mac, now = Date.now()) {
     if (dev) {
       await env.DB.prepare('UPDATE devices SET last_seen_at = ? WHERE id = ?')
         .bind(now, dev.id).run();
-      return;
+      return false;
     }
     const cid = 'cus_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
     const did = 'dev_' + crypto.randomUUID().replace(/-/g, '').slice(0, 18);
@@ -558,8 +565,14 @@ async function ensureD1Device(env, mac, now = Date.now()) {
         'INSERT INTO devices (id, customer_id, mac, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)',
       ).bind(did, cid, mac, now, now),
     ]);
+    return true;
   } catch (_) {
-    // Course possible entre 2 heartbeats simultanes (mac UNIQUE) → ignore.
+    // Course entre 2 heartbeats (mac UNIQUE) : on ne perd pas le last_seen.
+    try {
+      await env.DB.prepare('UPDATE devices SET last_seen_at = ? WHERE mac = ?')
+        .bind(now, mac).run();
+    } catch (_) { /* la fiche sera revue au ping suivant */ }
+    return false;
   }
 }
 
@@ -1675,10 +1688,27 @@ async function ensureAnnouncementsTable(env) {
   }
 }
 
+function publicAnnouncement(row) {
+  return {
+    id: row.id,
+    title: row.title || '',
+    body: row.body || '',
+    url: row.url || '',
+    kind: row.kind || '',
+    cta: row.cta || '',
+    country: row.country || '',
+    created_at: row.created_at || 0,
+  };
+}
+
 // GET /api/announcement (public) — dernière annonce CIBLÉE pour le pays
 // de l'app qui demande (Cloudflare fournit le pays), ou globale, ET non
 // expirée. {} si aucune. country='' = tout le monde ; expires_at = 0/NULL
 // = pas d'expiration ; sinon l'annonce disparaît d'elle-même passé ce ms.
+// `pending` liste chaque annonce d'id > ?after, sans doublon. L'app
+// déjà installée ignore ce tableau et lit seulement l'objet du haut
+// (la plus récente). Un client à curseur lit `pending` seul : l'objet
+// du haut répète la dernière, il ne faut pas l'afficher en plus.
 async function handleGetAnnouncement(env, request) {
   if (!env.DB) return json({});
   try {
@@ -1694,27 +1724,44 @@ async function handleGetAnnouncement(env, request) {
     const reqCountry =
         (request && request.headers.get('CF-IPCountry')) || '';
     const nowMs = Date.now();
-    const row = await env.DB
+    // Curseur optionnel : l'app historique ne l'envoie pas et continue
+    // de lire l'objet du haut (la plus récente). Un client qui passe
+    // ?after=<id> reçoit dans `pending` chaque message suivant, une fois.
+    let after = 0;
+    try {
+      after = parseInt(new URL(request.url).searchParams.get('after') || '0', 10) || 0;
+    } catch (_) { after = 0; }
+    const cols =
+      'id, title, body, url, kind, cta, country, created_at, expires_at, active';
+    const where =
+      "WHERE (country IS NULL OR country = '' OR country = ?) " +
+      'AND (expires_at IS NULL OR expires_at = 0 OR expires_at > ?) ' +
+      'AND (active IS NULL OR active = 1) ';
+    const latestRs = await env.DB
       .prepare(
-        'SELECT id, title, body, url, kind, cta, country, created_at ' +
-          'FROM app_broadcasts ' +
-          "WHERE (country IS NULL OR country = '' OR country = ?) " +
-          'AND (expires_at IS NULL OR expires_at = 0 OR expires_at > ?) ' +
-          'AND (active IS NULL OR active = 1) ' +
-          'ORDER BY id DESC LIMIT 1'
+        'SELECT ' + cols + ' FROM app_broadcasts ' + where +
+          'ORDER BY id DESC LIMIT 20',
       )
       .bind(reqCountry, nowMs)
-      .first();
+      .all();
+    const pageRs = await env.DB
+      .prepare(
+        'SELECT ' + cols + ' FROM app_broadcasts ' + where +
+          'AND id > ? ORDER BY id ASC LIMIT 30',
+      )
+      .bind(reqCountry, nowMs, after)
+      .all();
+    const latestPick = selectAnnouncements(latestRs.results || [], {
+      after: 0, now: nowMs, country: reqCountry,
+    });
+    const pagePick = selectAnnouncements(pageRs.results || [], {
+      after, now: nowMs, country: reqCountry,
+    });
+    const row = latestPick.latest;
     if (!row) return json({});
     return json({
-      id: row.id,
-      title: row.title || '',
-      body: row.body || '',
-      url: row.url || '',
-      kind: row.kind || '',
-      cta: row.cta || '',
-      country: row.country || '',
-      created_at: row.created_at || 0,
+      ...publicAnnouncement(row),
+      pending: pagePick.pending.map(publicAnnouncement),
     });
   } catch (_) {
     return json({});
@@ -2220,7 +2267,7 @@ async function handleUpsertClient(request, env, mac) {
 //  Toujours public (pas d'auth) : l'identifiant est le MAC,
 //  comme pour /config/:mac.
 // =========================================================
-async function handleHeartbeat(request, env, ctx) {
+async function handleHeartbeat(request, env, _ctx) {
   let body;
   try {
     body = await request.json();
@@ -2234,25 +2281,19 @@ async function handleHeartbeat(request, env, ctx) {
 
   const now = Date.now();
 
-  // Présence « en ligne » : on mémorise IP + pays (fournis GRATUITEMENT
-  // par Cloudflare) + l'instant. Sert au panel « En ligne » et au ciblage
-  // géographique des annonces. Best-effort, ne bloque jamais le heartbeat.
+  // Présence « en ligne » : IP + pays (fournis par Cloudflare) + l'instant.
+  // Sert au panel « En ligne ». L'écriture est attendue : une erreur reste
+  // avalée dans recordPresence, mais un succès est visible avant la réponse.
   const ip = request.headers.get('CF-Connecting-IP') || '';
   const country = request.headers.get('CF-IPCountry') || '';
   // `channel` = nom de la chaîne en cours de visionnage (envoyé par l'app),
   // ou '' si elle ne regarde rien. Affiché dans le panel « En ligne ».
   const channel = typeof body.channel === 'string' ? body.channel : '';
-  // `defer` = exécute une écriture best-effort EN ARRIÈRE-PLAN (waitUntil) :
-  // la réponse part tout de suite, l'écriture continue après. À 5M, ça
-  // raccourcit le chemin critique et réduit la contention D1. Repli `await`
-  // (renvoie la promesse) si le runtime ne fournit pas `ctx`.
-  const defer = (p) => {
-    if (ctx && typeof ctx.waitUntil === 'function') { ctx.waitUntil(p); return null; }
-    return p;
-  };
 
-  // Présence (panel « En ligne ») = purement best-effort → en fond.
-  defer(recordPresence(env, mac, ip, country, now, channel));
+  // Présence + inventaire : on ATTEND l'écriture avant de répondre.
+  // waitUntil laissait le panel lire « hors ligne » / un vieil inventaire
+  // juste après le ping, et pouvait perdre la ligne si l'isolate s'arrêtait.
+  await recordPresence(env, mac, ip, country, now, channel);
 
   // --- Chemin D1 (par defaut des que la base est branchee) ---
   // On enregistre AUTOMATIQUEMENT la MAC (essai 7 j), puis on renvoie son
@@ -2261,11 +2302,10 @@ async function handleHeartbeat(request, env, ctx) {
     // Prépare colonnes + index UNE fois par isolate (doit précéder
     // updateDeviceInfo qui écrit dans ces colonnes).
     await ensureScaleSchema(env);
-    await ensureD1Device(env, mac, now);
-    // Enrichissement (modèle, build…) pas nécessaire à la réponse → en fond.
-    defer(updateDeviceInfo(env, mac, body));
+    const created = await ensureD1Device(env, mac, now);
+    await updateDeviceInfo(env, mac, body);
     const d1 = await d1StatusForMac(env, mac, now);
-    if (d1) return json({ ok: true, created: true, ...d1 });
+    if (d1) return json({ ok: true, created: !!created, ...d1 });
   }
 
   // --- Repli KV (si D1 pas branchee) ---
@@ -2694,19 +2734,27 @@ async function handlePublicDeviceSource(env, mac) {
           sources = [single];
         }
         sources = await openSourceList(env, sources);
-        return jsonPrivate({ mac: MAC, source: sources[0] || null, sources });
+        const live = resolvePublicSource({
+          d1Sources: sources, kvSource: null, clearedAt: 0,
+        });
+        return jsonPrivate({
+          mac: MAC,
+          source: live.source,
+          sources: live.sources,
+          updated_at: row.updated_at || 0,
+          cleared: false,
+        });
       }
     } catch (_) {
       // Table absente / D1 indisponible → on tente le repli KV ci-dessous.
     }
   }
 
-  // 2) REPLI KV (client.playlists) — CORRECTIF "l'app ne se connecte pas
-  //    avec mon panel" : le PANEL intégré (/admin/panel) enregistre les
-  //    playlists dans le KV, pas dans device_sources. Sans ce repli,
-  //    l'app (qui lit device_sources) ne voyait jamais la source assignée
-  //    via le panel. On convertit la 1ère playlist KV au format `source`
-  //    attendu par l'app → la source est livrée quel que soit l'outil.
+  // 2) REPLI KV — seulement si la liste n'a PAS été effacée depuis le
+  //    panel. Sans tombstone, un DELETE D1 faisait revenir l'ancienne
+  //    playlist KV au prochain GET (liste « effacée » qui ressuscite).
+  const clearedAt = await readSourceTombstone(env, MAC);
+  let kvSource = null;
   try {
     const client = await readClient(env, MAC);
     const pls = client && Array.isArray(client.playlists) ? client.playlists : [];
@@ -2738,13 +2786,22 @@ async function handlePublicDeviceSource(env, mac) {
           updated_at: updatedAt,
         };
       }
-      if (source) return jsonPrivate({ mac: MAC, source });
+      kvSource = source;
     }
   } catch (_) {
-    // KV indisponible → pas de source.
+    // KV indisponible → pas de repli.
   }
 
-  return jsonPrivate({ mac: MAC, source: null });
+  const decided = resolvePublicSource({
+    d1Sources: [], kvSource, clearedAt,
+  });
+  return jsonPrivate({
+    mac: MAC,
+    source: decided.source,
+    sources: decided.sources,
+    cleared: decided.cleared,
+    cleared_at: clearedAt || 0,
+  });
 }
 
 // /api/self-source/:mac — SELF-SERVICE « Mon espace » (façon IBO Player Pro).
@@ -2837,6 +2894,7 @@ async function readDeviceSourceItems(env, MAC) {
 async function writeDeviceSourceItems(env, MAC, items) {
   if (!items.length) {
     await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
+    await markSourcesCleared(env, MAC, Date.now());
     return;
   }
   const sealed = [];
@@ -2857,6 +2915,7 @@ async function writeDeviceSourceItems(env, MAC, items) {
     MAC, first.type || null, first.label || null, first.server_url || null, first.username || null,
     first.password || null, first.m3u_url || null, first.epg_url || null, jsonStr, rowOrigin, Date.now(),
   ).run();
+  await clearSourceTombstone(env, MAC);
 }
 
 // Vue publique d'un item : SANS mot de passe, avec l'info de verrouillage.

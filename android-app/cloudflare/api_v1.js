@@ -1,6 +1,11 @@
 // =========================================================
 //  api_v1.js — App Licensing Platform REST API v1
 // =========================================================
+import {
+  coerceSourceList,
+  markSourcesCleared,
+  clearSourceTombstone,
+} from './linkage.js';
 //  Importe depuis worker.js pour servir le namespace /api/v1/*.
 //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
 //  continuent de fonctionner pour ne pas casser les apps mobiles
@@ -2527,11 +2532,9 @@ async function upsertDeviceSource(env, mac, sources, resellerId = null) {
   await ensureSourcesTable(env);
   // Les sources assignées ICI (payant) sont marquées origin='panel' → VERROUILLÉES
   // côté self-service (le client ne peut ni les modifier ni les supprimer).
-  // password et m3u_url sont chiffrés avant l'écriture si SECRETS_KEY est posée.
-  const panelItems = [];
-  for (const s of sources || []) {
-    panelItems.push({ ...s, origin: 'panel' });
-  }
+  // password et m3u_url sont chiffrés plus bas. Une source seule
+  // (activation) ou un tableau (trio) sont tous les deux acceptés.
+  const panelItems = coerceSourceList(sources).map((s) => ({ ...s, origin: 'panel' }));
   // PRÉSERVE les playlists 'self' que le client a ajoutées via /mon-espace : une
   // (ré)assignation panel NE DOIT PAS effacer les listes personnelles du client
   // (modèle multi-listes). On relit l'existant et on ré-empile les 'self' après.
@@ -2571,6 +2574,7 @@ async function upsertDeviceSource(env, mac, sources, resellerId = null) {
     .bind(mac, first.type, first.label, first.server_url, first.username,
           first.password, first.m3u_url, first.epg_url, json, resellerId, Date.now())
     .run();
+  await clearSourceTombstone(env, mac);
 }
 
 /// Un revendeur ne lit / modifie / efface que les sources de SES appareils.
@@ -2732,7 +2736,9 @@ async function handleSourceDelete(request, env, mac, actor, user) {
   const access = await assertSourceAccess(env, user, m);
   if (access) return access;
   // Retire le lien du panel. Garde les listes perso et la licence.
+  // Le tombstone empêche le repli KV de ressusciter l'ancienne liste.
   await clearPanelSources(env, m);
+  await markSourcesCleared(env, m, Date.now());
   await logAudit(env, request, actor, 'source.clear',
     { type: 'device_source', id: m }, null, null);
   return jsonResp({ ok: true, mac: m });
@@ -2919,7 +2925,10 @@ async function handleFamiliesDelete(env, id, actor, user) {
   // et la licence n'est pas touchée.
   const m = await env.DB.prepare('SELECT mac FROM family_members WHERE family_id = ?').bind(id).all();
   for (const r of (m.results || [])) {
-    try { await clearPanelSources(env, r.mac); } catch (_) {}
+    try {
+      await clearPanelSources(env, r.mac);
+      await markSourcesCleared(env, r.mac, Date.now());
+    } catch (_) {}
   }
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM families WHERE id = ?').bind(id).run();
@@ -2985,7 +2994,11 @@ async function handleFamilyRemoveMember(env, familyId, mac, actor, user) {
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ? AND mac = ?')
     .bind(familyId, m).run();
   // Retire la source panel. Les listes perso et la licence restent.
-  try { await clearPanelSources(env, m); } catch (_) {}
+  // Tombstone : sinon le repli KV réinjecte l'ancienne liste au prochain GET.
+  try {
+    await clearPanelSources(env, m);
+    await markSourcesCleared(env, m, Date.now());
+  } catch (_) {}
   await logAudit(env, { headers: new Headers() }, actor, 'family.member.remove',
     { type: 'family', id: familyId }, null, { mac: m });
   return jsonResp({ ok: true, family_id: familyId, mac: m });
@@ -3986,8 +3999,15 @@ async function handleDeviceTransfer(request, env, user, actor) {
   // remplace par celle de l'ancienne (le client garde SES identifiants).
   try {
     await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(newMac).run();
-    await env.DB.prepare('UPDATE device_sources SET mac = ?, updated_at = ? WHERE mac = ?')
-      .bind(newMac, now, oldMac).run();
+    const moved = await env.DB.prepare(
+      'UPDATE device_sources SET mac = ?, updated_at = ? WHERE mac = ?',
+    ).bind(newMac, now, oldMac).run();
+    await markSourcesCleared(env, oldMac, now);
+    if (moved && moved.meta && moved.meta.changes) {
+      await clearSourceTombstone(env, newMac);
+    } else {
+      await markSourcesCleared(env, newMac, now);
+    }
   } catch (_) { /* pas de source à déplacer */ }
 
   // L'ancien appareil n'a plus de licence → il redevient inactif tout seul.

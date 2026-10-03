@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { onlineApi, flagEmoji, ApiError, isAbortError } from '@/lib/api';
+import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
 import {
   LIST_PAGE_SIZE, agoLabel, createAbortBag, createGeneration, onlineView,
   type OnlineView,
@@ -9,6 +10,8 @@ import {
 /// Page « En ligne » (owner) — qui utilise l'app en ce moment, depuis où.
 /// Données issues de la présence (heartbeat) : IP + pays fournis par
 /// Cloudflare. « En ligne » = vu il y a moins de 15 min.
+/// Rafraîchissement toutes les 2 s. Une réponse lente ne réécrit pas
+/// un état plus récent déjà affiché.
 
 export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   const [data, setData] = useState<OnlineView | null>(null);
@@ -16,13 +19,15 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const gen = useRef(createGeneration());
   const aborts = useRef(createAbortBag());
+  const appliedSeq = useRef(0);
 
   const load = useCallback(() => {
     const id = gen.current.next();
     const signal = aborts.current.next();
     onlineApi.get({ limit: LIST_PAGE_SIZE, offset: 0 }, signal)
       .then((raw) => {
-        if (!gen.current.isCurrent(id)) return;
+        if (!gen.current.isCurrent(id) || !shouldApplyPollResult(id, appliedSeq.current)) return;
+        appliedSeq.current = id;
         // Corps incomplet (sans byCountry / items) : on normalise,
         // on n'explose pas la page, et on efface l'erreur précédente.
         setData(onlineView(raw));
@@ -30,17 +35,16 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
       })
       .catch((e: unknown) => {
         if (isAbortError(e) || !gen.current.isCurrent(id)) return;
+        if (!shouldApplyPollResult(id, appliedSeq.current)) return;
         if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
         setErr(e instanceof ApiError ? e.message : 'Erreur réseau.');
       })
       .finally(() => { if (gen.current.isCurrent(id)) setLoading(false); });
   }, [onLogout]);
 
-  // Rafraîchissement auto toutes les 30 s. La requête précédente
-  // est annulée pour ne pas afficher un instantané périmé.
   useEffect(() => {
     load();
-    const t = setInterval(load, 30000);
+    const t = setInterval(load, PANEL_POLL_MS);
     return () => { clearInterval(t); aborts.current.abort(); };
   }, [load]);
 
@@ -49,7 +53,7 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   return (
     <AppLayout
       title="En ligne"
-      subtitle="Qui utilise l'app en ce moment, et depuis quel pays (mise à jour auto)"
+      subtitle="Qui utilise l'app en ce moment, et depuis quel pays (rafraîchi toutes les 2 s)"
       onLogout={onLogout}
     >
       {err && (
