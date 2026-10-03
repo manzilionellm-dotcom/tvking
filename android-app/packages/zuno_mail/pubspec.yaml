@@ -1,0 +1,32 @@
+# =========================================================
+#  zuno_mail — ouvre l'application e-mail d'Android
+# =========================================================
+#  POURQUOI UN PLUGIN : le build TV régénère `android/` avec
+#  `flutter create`. Un fichier Kotlin posé dans android/app
+#  serait écrasé. Un plugin est recopié à chaque build.
+#
+#  CE QU'IL FAIT : un intent ACTION_SENDTO (mailto) ou, si le
+#  texte est trop long, ACTION_SEND avec un fichier .txt via
+#  FileProvider. Aucun serveur, aucun mot de passe, aucun jeton.
+#  Si la box n'a pas d'application e-mail, on répond « no_app »
+#  et l'écran garde le presse-papiers.
+# =========================================================
+name: zuno_mail
+description: "Ouvre l'application e-mail Android avec le rapport son, sans serveur de courrier."
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.manzilionellm.zuno_mail
+        pluginClass: ZunoMailPlugin
