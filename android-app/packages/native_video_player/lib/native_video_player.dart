@@ -184,6 +184,11 @@ class NativeVideoController extends ChangeNotifier {
   /// Un mot inconnu est traité comme « off » par le natif.
   static String audioAttributeTrial = 'off';
 
+  /// Essai « chaîne Media3 par défaut ». Faux : le lecteur Zuno, son
+  /// habituel. Vrai : fabrique Media3 nue, aucun étage Zuno entre le
+  /// décodeur et l'AudioTrack. On ne l'allume pas tout seul.
+  static bool pureMedia3Chain = false;
+
   static final List<MethodChannel> _audioFlagChannels = <MethodChannel>[];
 
   /// Pousse les réglages audio vers les vues déjà ouvertes. Sans vue,
@@ -198,6 +203,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
       ch.invokeMethod<void>('setNormalizeMode', normalizeAudioMode);
       ch.invokeMethod<void>('setAudioProfile', audioAttributeTrial);
+      ch.invokeMethod<void>('setPureMedia3Chain', pureMedia3Chain);
     }
   }
 
@@ -342,6 +348,7 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
     ch.invokeMethod<void>('setNormalizeMode', normalizeAudioMode);
     ch.invokeMethod<void>('setAudioProfile', audioAttributeTrial);
+    ch.invokeMethod<void>('setPureMedia3Chain', pureMedia3Chain);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;

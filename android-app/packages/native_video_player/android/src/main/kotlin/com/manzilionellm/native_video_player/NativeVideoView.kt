@@ -78,6 +78,7 @@ import com.manzilionellm.native_video_player.logic.DecoderFallback
 import com.manzilionellm.native_video_player.logic.DisplayModeOption
 import com.manzilionellm.native_video_player.logic.ExclusiveAudio
 import com.manzilionellm.native_video_player.logic.FrameRateMatch
+import com.manzilionellm.native_video_player.logic.Media3Chain
 import com.manzilionellm.native_video_player.logic.NamedCodec
 import com.manzilionellm.native_video_player.logic.PictureHealth
 import com.manzilionellm.native_video_player.logic.PictureSignal
@@ -358,6 +359,10 @@ class NativeVideoView(
     // true après le premier choix de piste de cette session.
     // Un second onTracksChanged (le nôtre, ou un choix manuel) ne reforce pas.
     private var audioChosenForSession = false
+
+    // Essai « chaîne Media3 par défaut ». Figé à la construction du lecteur.
+    // Faux = fabrique Zuno (le son habituel). Vrai = DefaultRenderersFactory nu.
+    private var stockChainInstalled = false
 
     // Voix claire. Faux par défaut : le processeur reste inactif.
     private var clearVoiceEnabled = false
@@ -899,7 +904,16 @@ class NativeVideoView(
         // ce qu'elle ne sait pas lire. On l'ajoute nous-mêmes (et pas par le mode
         // « extension » qui passerait AUSSI par la vidéo) pour que R8 ne le
         // retire jamais, et pour que la vidéo reste sur MediaCodec.
-        val renderersFactory = object : TvVideoRenderersFactory(appContext, installFfmpegVideo) {
+        //
+        // Essai « chaîne Media3 par défaut » (coupé) : on ne met AUCUN de ces
+        // choix. DefaultRenderersFactory tel que Media3 1.5.1 le construit :
+        // décodeur de la box seulement, sink par défaut, pas de sonde, pas de
+        // voix claire, tampon AudioTrack d'origine. Le son habituel reste
+        // celui d'en dessous tant que l'essai est coupé.
+        stockChainInstalled = Media3Chain.useStockFactory(AudioFixes.pureMedia3Chain)
+        val renderersFactory = if (stockChainInstalled) {
+            DefaultRenderersFactory(appContext)
+        } else object : TvVideoRenderersFactory(appContext, installFfmpegVideo) {
             override fun buildAudioRenderers(
                 context: Context,
                 extensionRendererMode: Int,
@@ -1396,6 +1410,25 @@ class NativeVideoView(
                 AudioFixes.preferPlatformAac = call.arguments == true
                 result.success(null)
             }
+            "setPureMedia3Chain" -> {
+                // Essai coupé par défaut. Allumé : on reconstruit le lecteur
+                // avec la fabrique Media3 nue. Les rendus sont figés à la
+                // construction, un drapeau seul ne suffit pas. Recouper
+                // revient au lecteur Zuno. On ne change rien si c'est déjà
+                // le lecteur en place.
+                val on = call.arguments == true
+                AudioFixes.pureMedia3Chain = on
+                if (!released && on != stockChainInstalled) {
+                    rebuildPlayer()
+                    emit("audioDiag", Media3Chain.switchLine(on))
+                    if (currentUrl != null) {
+                        emit("reopen", null)
+                        if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+                        openCurrent(if (vodMode) lastKnownPos else null)
+                    }
+                }
+                result.success(null)
+            }
             "setImmediateHandoff" -> {
                 // Repli du passage « un seul AudioTrack » : vrai = on n'attend
                 // pas le rendu (ancien comportement, deux pistes possibles).
@@ -1876,6 +1909,7 @@ class NativeVideoView(
         clearVoiceProcessor.enabled = clearVoiceEnabled
         setProbeEnabled(AudioFixes.probe)
         emit("audioDiag", ProbeAttach.armingLine(AudioFixes.probe))
+        emit("audioDiag", Media3Chain.ficheLine(stockChainInstalled))
         // Nouvelle ouverture : les pourcentages et le décodeur de la
         // chaîne d'avant ne doivent pas rester affichés.
         diag = AudioSnapshot(clearVoice = clearVoiceEnabled)
@@ -2649,9 +2683,14 @@ class NativeVideoView(
             formatMeter = meter,
             cycle = currentUrl?.let { PlayerCensus.snapshot(AacRoute.key(it), boxFailure) },
             probeRequested = AudioFixes.probe,
-            probeInChain = probeDecoder.lastAccepted,
-            probeFrames = probeDecoder.usefulFrames,
-            probeReject = if (AudioFixes.probe) probeDecoder.lastReject else null,
+            probeInChain = !stockChainInstalled && probeDecoder.lastAccepted,
+            probeFrames = if (stockChainInstalled) 0 else probeDecoder.usefulFrames,
+            probeReject = when {
+                stockChainInstalled -> ProbeAttach.REJECT_STOCK
+                AudioFixes.probe -> probeDecoder.lastReject
+                else -> null
+            },
+            stockChain = stockChainInstalled,
             playback = ownerNow(),
             routeLine = AudioRouteState.pathLine(currentFacts()),
             attributeLine = AudioProfile.line(

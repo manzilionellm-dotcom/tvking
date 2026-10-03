@@ -17,9 +17,11 @@ class AudioFixesTest {
         assertEquals("zuno.audio.focus.android", AudioFixes.KEY_ANDROID_FOCUS)
         assertEquals("zuno.audio.handoff.immediate", AudioFixes.KEY_IMMEDIATE_HANDOFF)
         assertEquals("zuno.audio.mode.normal", AudioFixes.KEY_NORMALIZE_MODE)
+        assertEquals("zuno.audio.chain.stock", AudioFixes.KEY_STOCK)
         assertFalse(AudioFixes.androidFocus)
         assertFalse(AudioFixes.immediateHandoff)
         assertFalse(AudioFixes.normalizeMode)
+        assertFalse(AudioFixes.pureMedia3Chain)
     }
 
     @Test

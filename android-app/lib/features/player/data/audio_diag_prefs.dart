@@ -5,6 +5,7 @@
 //  • réessayer FFmpeg à la prochaine chaîne
 //  • essayer le décodeur AAC de la box à la prochaine chaîne
 //  • essai d'attributs (film / musique / parole / défaut Media3)
+//  • essayer la chaîne Media3 d'origine (aucun étage Zuno)
 //  Une préférence absente ou illisible reste FAUSSE, ou « off » pour
 //  les attributs : on ne change pas le chemin audio tout seul.
 // =========================================================
@@ -41,6 +42,9 @@ class AudioDiagPrefs {
   /// Essai d'attributs. Absent ou illisible = « off » (son d'aujourd'hui).
   static const String profileKey = AudioAttributeTrial.key;
 
+  /// Essai « chaîne Media3 par défaut ». Faux : son habituel.
+  static const String pureMedia3ChainKey = 'zuno.audio.chain.stock';
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
@@ -51,6 +55,7 @@ class AudioDiagPrefs {
     var immediate = false;
     var normalize = false;
     var profile = AudioAttributeTrial.off;
+    var pureChain = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -62,6 +67,7 @@ class AudioDiagPrefs {
       immediate = prefs.getBool(immediateHandoffKey) ?? false;
       normalize = prefs.getBool(normalizeModeKey) ?? false;
       profile = AudioAttributeTrial.parse(prefs.getString(profileKey));
+      pureChain = prefs.getBool(pureMedia3ChainKey) ?? false;
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -72,6 +78,7 @@ class AudioDiagPrefs {
       immediate = false;
       normalize = false;
       profile = AudioAttributeTrial.off;
+      pureChain = false;
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
@@ -82,6 +89,7 @@ class AudioDiagPrefs {
     NativeVideoController.immediateHandoff = immediate;
     NativeVideoController.normalizeAudioMode = normalize;
     NativeVideoController.audioAttributeTrial = profile;
+    NativeVideoController.pureMedia3Chain = pureChain;
     // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
     // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
     NativeVideoController.pushAudioDiagFlags();
@@ -156,6 +164,15 @@ class AudioDiagPrefs {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool(ffmpegKey, value);
+    } catch (_) {}
+  }
+
+  static Future<void> setPureMedia3Chain(bool value) async {
+    NativeVideoController.pureMedia3Chain = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(pureMedia3ChainKey, value);
     } catch (_) {}
   }
 

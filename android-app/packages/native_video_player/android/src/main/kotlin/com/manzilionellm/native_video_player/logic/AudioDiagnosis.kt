@@ -127,6 +127,11 @@ data class AudioSnapshot(
      * n'a pas encore lu l'AudioTrack. La lecture ne change pas le son.
      */
     val formatMeter: AudioFormatMeter.Reading? = null,
+    /**
+     * Essai « chaîne Media3 par défaut ». Faux = lecteur Zuno, son habituel.
+     * Vrai = DefaultRenderersFactory, aucun étage Zuno.
+     */
+    val stockChain: Boolean = false,
 )
 
 object AudioDiagnosis {
@@ -957,6 +962,7 @@ object AudioDiagnosis {
             append(String.format(Locale.FRANCE, "%.2f", s.playbackSpeed))
             append(". L'app n'a branché ni égaliseur, ni DynamicsProcessing, ni LoudnessEnhancer.")
             append("\n").append(AudioFormatMeter.block(s.formatMeter, s.underruns))
+            append("\n").append(Media3Chain.ficheLine(s.stockChain))
             if (!s.routeNote.isNullOrBlank()) {
                 append("\nEssai : ").append(s.routeNote)
             }

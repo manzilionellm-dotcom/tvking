@@ -14,7 +14,11 @@ package com.manzilionellm.native_video_player.logic
  *   • [preferPlatformAac] — au prochain `setUrl`, l'AAC passe par le
  *     décodeur de la box (comme ExoPlayer par défaut), pas par FFmpeg.
  *     Le MP2 ne change pas. Si la box échoue, on revient à FFmpeg
- *     pour cette ouverture seulement.
+ *     pour cette ouverture seulement. La chaîne Zuno (sondes, tampon)
+ *     reste en place.
+ *   • [pureMedia3Chain] — essai plus large : le lecteur entier est un
+ *     `DefaultRenderersFactory` Media3 1.5.1, sans étage Zuno. Voir
+ *     [Media3Chain]. Coupé, le chemin ci-dessus ne bouge pas.
  */
 object AudioFixes {
     const val KEY_PROBE: String = "zuno.audio.diag.probe"
@@ -52,6 +56,13 @@ object AudioFixes {
      */
     const val KEY_NORMALIZE_MODE: String = AudioModeGuard.KEY
 
+    /**
+     * Essai « chaîne Media3 par défaut ». Faux : le lecteur Zuno ne change
+     * pas. Vrai : `DefaultRenderersFactory` nu, aucun étage Zuno entre le
+     * décodeur et l'AudioTrack. Voir [Media3Chain].
+     */
+    const val KEY_STOCK: String = Media3Chain.KEY
+
     @Volatile
     var androidFocus: Boolean = false
 
@@ -74,6 +85,13 @@ object AudioFixes {
 
     @Volatile
     var preferPlatformAac: Boolean = false
+
+    /**
+     * Essai coupé par défaut. Vrai seulement si la personne l'allume dans
+     * Diagnostic du son. Le prochain lecteur est alors un Media3 nu.
+     */
+    @Volatile
+    var pureMedia3Chain: Boolean = false
 
     /**
      * Faut-il cacher le décodeur AAC de la box pour laisser FFmpeg ?
