@@ -87,6 +87,15 @@ import {
   enrollDecision,
   acceptableDeviceSecret,
 } from './device_guard.js';
+// Code court du QR d'accueil : la page /mon-espace peut écrire
+// sans le secret long de la box, le temps de la fenêtre.
+import {
+  SOURCE_PAIR_HEADER,
+  SOURCE_PAIR_TTL_MS,
+  sourcePairCodeOk,
+  pairWriteAllowed,
+  pairCodeStillValid,
+} from './source_pair.js';
 import {
   sealSource,
   openSource,
@@ -3092,9 +3101,71 @@ async function handleSelfSourceGet(env, mac) {
 }
 
 /// Une box enrôlée n'accepte plus les modifications « Mon espace »
-/// venant de quelqu'un qui n'a que la MAC. Les box pas encore
-/// enrôlées gardent l'ancien comportement (le site /mon-espace).
+/// venant de quelqu'un qui n'a que la MAC. Deux preuves restent
+/// valables : le secret long de la box, ou le code court du QR
+/// (X-Source-Pair), déclaré par la box et pas encore expiré.
+/// Les box pas encore enrôlées gardent l'ancien comportement.
 async function selfSourceLocked(env, request, mac) {
+  const gate = await deviceSecretGate(env, request, mac);
+  const pairOk = await presentedPairMatches(env, request, mac);
+  if (pairWriteAllowed({
+    enrolled: gate.enrolled,
+    secretOk: gate.ok,
+    pairOk,
+  })) return null;
+  return json({
+    ok: false,
+    error: 'device_secret_required',
+    message: 'Cette box n\'accepte plus les modifications sans son secret.',
+  }, 401);
+}
+
+function presentedPairCode(request) {
+  if (!request || !request.headers) return '';
+  return String(request.headers.get(SOURCE_PAIR_HEADER) || '').trim().toUpperCase();
+}
+
+async function ensureSourcePairsTable(env) {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS source_pairs (
+       mac TEXT PRIMARY KEY,
+       code_hash TEXT NOT NULL,
+       expires_at INTEGER NOT NULL
+     )`,
+  ).run();
+}
+
+/// Le code du QR correspond-il à celui que la box a déclaré, et
+/// n'est-il pas expiré ? On compare les empreintes, jamais le code
+/// en clair stocké.
+async function presentedPairMatches(env, request, mac) {
+  const code = presentedPairCode(request);
+  if (!sourcePairCodeOk(code) || !env || !env.DB) return false;
+  try {
+    await ensureSourcePairsTable(env);
+    const row = await env.DB.prepare(
+      'SELECT code_hash, expires_at FROM source_pairs WHERE mac = ?',
+    ).bind(mac).first();
+    if (!row || !pairCodeStillValid(row.expires_at, Date.now())) return false;
+    return await secretMatches(code, row.code_hash);
+  } catch (_) {
+    return false;
+  }
+}
+
+// POST /api/source-pair — la box affiche un QR. Elle déclare ici
+// le code court qui y figure. Corps : { mac, code }.
+// Si la box est déjà enrôlée, X-Device-Secret est obligatoire :
+// quelqu'un qui n'a vu que la MAC ne peut pas fabriquer un code.
+// Le code n'est pas renvoyé. Durée : SOURCE_PAIR_TTL_MS.
+async function handleSourcePair(request, env) {
+  if (!env || !env.DB) return json({ ok: false, error: 'db_unavailable' }, 503);
+  let body;
+  try { body = await request.json(); } catch (_) { return badRequest('invalid json'); }
+  const mac = String((body && body.mac) || '').trim().toUpperCase();
+  if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+  const code = String((body && body.code) || '').trim().toUpperCase();
+  if (!sourcePairCodeOk(code)) return badRequest('invalid pair code');
   const gate = await deviceSecretGate(env, request, mac);
   if (gate.enrolled && !gate.ok) {
     return json({
@@ -3103,7 +3174,21 @@ async function selfSourceLocked(env, request, mac) {
       message: 'Cette box n\'accepte plus les modifications sans son secret.',
     }, 401);
   }
-  return null;
+  const hash = await hashDeviceSecret(code);
+  const expiresAt = Date.now() + SOURCE_PAIR_TTL_MS;
+  try {
+    await ensureSourcePairsTable(env);
+    await env.DB.prepare(
+      `INSERT INTO source_pairs (mac, code_hash, expires_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(mac) DO UPDATE SET
+         code_hash = excluded.code_hash,
+         expires_at = excluded.expires_at`,
+    ).bind(mac, hash, expiresAt).run();
+  } catch (_) {
+    return json({ ok: false, error: 'db_write_failed' }, 500);
+  }
+  return json({ ok: true, expiresAt });
 }
 
 // POST /api/self-source/:mac — AJOUTE un item 'self' (ou MODIFIE un item 'self'
@@ -3733,7 +3818,8 @@ async function handleRequest(request, env, ctx) {
         if (seg1 === 'ai') rl = ['ai', 30];                        // 30 / min (LLM payant)
         // Routes à codes : rate-limit STRICT (panne D1 = pas de livraison).
         else if (seg1 === 'device-source' || seg1 === 'backup'
-          || seg1 === 'self-source' || seg1 === 'device-proof') rl = ['dev', 120, 'strict'];
+          || seg1 === 'self-source' || seg1 === 'device-proof'
+          || seg1 === 'source-pair') rl = ['dev', 120, 'strict'];
         else if (seg1 === 'status' || seg1 === 'history') rl = ['dev', 120];
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
@@ -3868,6 +3954,16 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only POST supported on /api/device-proof');
       }
       return await handleDeviceProof(request, env);
+    }
+
+    // /api/source-pair — la box déclare le code court de son QR.
+    // Le téléphone ne reçoit jamais le secret long : seulement ce code,
+    // dans le fragment de /mon-espace, pendant quelques minutes.
+    if (segments[0] === 'api' && segments[1] === 'source-pair' && segments.length === 2) {
+      if (request.method !== 'POST') {
+        return badRequest('only POST supported on /api/source-pair');
+      }
+      return await handleSourcePair(request, env);
     }
 
     // /api/backup/:mac — sauvegarde cloud. GET + PUT exigent X-Device-Secret.

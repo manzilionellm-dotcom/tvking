@@ -132,6 +132,7 @@ export function portalHtml() {
     <span class="eyebrow">Mon espace</span>
     <h1>Gérez vos playlists</h1>
     <p class="lead">Entrez l'adresse de votre appareil (elle s'affiche sur l'écran d'accueil de l'app, ou dans « À&nbsp;propos&nbsp;»). Ajoutez autant de playlists que vous voulez — M3U ou Xtream — et elles arrivent toutes seules sur l'appareil.</p>
+    <p class="lead">Cette application ne vend aucune chaîne. Ajoutez votre propre abonnement.</p>
     <div class="card">
       <label for="macIn">Adresse de l'appareil (MAC)</label>
       <input id="macIn" type="text" inputmode="text" autocomplete="off" autocapitalize="characters"
@@ -147,6 +148,7 @@ export function portalHtml() {
   <section id="dash" class="hide">
     <span class="eyebrow">Mon espace</span>
     <h1>Votre appareil</h1>
+    <p class="lead">Cette application ne vend aucune chaîne. Ajoutez votre propre abonnement.</p>
 
     <div class="card">
       <div class="row"><span class="k">Adresse (MAC)</span><span class="v" id="dMac">—</span></div>
@@ -224,7 +226,16 @@ export function portalHtml() {
   // la forme brute — l'encoder en %3A la ferait rejeter.
   var api = function(mac){ return "/api/self-source/" + mac; };
   var $ = function(id){ return document.getElementById(id); };
-  var state = { mac:null, mode:"m3u", editId:null, canAdd:true };
+  var state = { mac:null, mode:"m3u", editId:null, canAdd:true, pair:"", fromQr:false, formOpened:false };
+
+  // Le QR de la télé met le code court dans le fragment. On le renvoie
+  // seulement à l'écriture : la lecture (GET) reste ouverte.
+  function writeHeaders(jsonBody){
+    var h = { "Accept":"application/json" };
+    if(jsonBody) h["Content-Type"] = "application/json";
+    if(state.pair) h["X-Source-Pair"] = state.pair;
+    return h;
+  }
 
   function normMac(v){ return String(v||"").toUpperCase().replace(/\\s+/g,"").replace(/-/g,":"); }
   function showMsg(el, kind, text){ el.className = "msg " + kind + " show"; el.textContent = text; }
@@ -292,6 +303,12 @@ export function portalHtml() {
     $("addHint").textContent = state.canAdd
       ? "Ajoutez-en autant que vous voulez. Elles apparaissent toutes dans l'app."
       : "Limite atteinte (" + (d.maxItems||20) + "). Supprimez-en une pour en ajouter une autre.";
+
+    // Arrivée depuis le QR, et rien encore : le formulaire est déjà ouvert.
+    if(state.fromQr && !state.formOpened && state.canAdd && !items.length){
+      state.formOpened = true;
+      openForm(null);
+    }
   }
 
   function itemRow(it){
@@ -384,7 +401,7 @@ export function portalHtml() {
     var btn = $("saveBtn"), old = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = "<span class='spin'></span> Enregistrement…";
     fetch(api(state.mac), {
-      method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body)
+      method:"POST", headers: writeHeaders(true), body: JSON.stringify(body)
     })
     .then(function(r){ return r.json().then(function(j){ return { ok:r.ok, j:j }; }).catch(function(){ return { ok:false, j:{} }; }); })
     .then(function(res){
@@ -406,7 +423,7 @@ export function portalHtml() {
     if(!item || !item.id) return;
     if(!window.confirm("Supprimer « " + (item.label || "cette playlist") + " » ?")) return;
     fetch(api(state.mac) + "?id=" + encodeURIComponent(item.id), {
-      method:"DELETE", headers:{ "Accept":"application/json" }
+      method:"DELETE", headers: writeHeaders(false)
     })
     .then(function(r){ return r.json().catch(function(){ return {}; }); })
     .then(function(j){
@@ -438,10 +455,15 @@ export function portalHtml() {
   // Pré-remplissage : #mac=... dans l'URL, sinon dernière MAC utilisée.
   (function boot(){
     var fromHash = "";
+    var pair = "";
     if(location.hash){
       var m = location.hash.match(/mac=([^&]+)/i);
       if(m){ fromHash = normMac(decodeURIComponent(m[1])); }
+      var pm = location.hash.match(/pair=([^&]+)/i);
+      if(pm){ pair = decodeURIComponent(pm[1]).replace(/\\s+/g,"").toUpperCase(); }
     }
+    state.pair = pair;
+    state.fromQr = !!pair;
     var saved = "";
     try{ saved = localStorage.getItem("sm_mac") || ""; }catch(e){}
     var mac = fromHash || saved;

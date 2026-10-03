@@ -19,6 +19,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
+import 'tv_phone_source_qr.dart';
 import 'tv_shell.dart';
 
 class TvActivationScreen extends StatefulWidget {
@@ -88,8 +89,11 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                 // ----- Colonne gauche : marque + code + CTA -----
                 SizedBox(width: 600, child: _activationColumn(context)),
                 const SizedBox(width: 56),
-                // ----- Colonne droite : QR « Scanne-moi » → WhatsApp -----
-                TvWhatsAppQr(mac: _mac),
+                // ----- Colonne droite : QR téléphone → page « Mon espace » -----
+                //  Premier lancement (pas encore d'essai, ou essai pas
+                //  encore reçu) : la personne scanne et saisit sa source
+                //  sur son téléphone. Le QR WhatsApp reste sur Direct.
+                TvPhoneSourceQr(mac: _mac),
               ],
             ),
           ),

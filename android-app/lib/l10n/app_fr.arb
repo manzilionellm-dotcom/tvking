@@ -2044,6 +2044,21 @@
   "tvHelloAfternoon": "Bon après-midi",
   "tvHelloEvening": "Bonsoir",
   "tvHomeInvite": "Vos chaînes, films et rappels reviendront ici.",
+  "tvNoChannelsSold": "Cette application ne vend aucune chaîne. Ajoutez votre propre abonnement.",
+  "@tvNoChannelsSold": {
+    "description": "Phrase obligatoire affichée tant qu'aucune source n'est ajoutée : l'application ne vend pas de chaînes."
+  },
+  "tvScanSourceHelp": "Scannez ce code avec l'appareil photo de votre téléphone. Saisissez votre lien M3U ou vos identifiants Xtream : les chaînes arrivent sur cette box.",
+  "@tvScanSourceHelp": {
+    "description": "Sous le QR : scanner avec le téléphone pour saisir un lien M3U ou des identifiants Xtream."
+  },
+  "tvScanSourceCode": "Code : {code}",
+  "@tvScanSourceCode": {
+    "description": "Code court affiché sous le QR, lié à cette box pendant quelques minutes.",
+    "placeholders": {
+      "code": {"type": "String"}
+    }
+  },
   "tvHomeResume": "Reprendre",
   "tvHomeContinue": "Continuer à regarder",
   "tvHomeFavorites": "Favoris",

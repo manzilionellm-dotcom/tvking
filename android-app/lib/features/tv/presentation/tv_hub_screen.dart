@@ -45,6 +45,7 @@ import '../../epg/domain/program_reminder.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
+import 'tv_phone_source_qr.dart';
 import '../../profiles/data/profile_repository.dart';
 import '../../profiles/domain/profile_policies.dart';
 import '../../box_extras/box_text.dart';
@@ -92,6 +93,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
 
   // Barre du bas : MAC + serveur actif (rafraîchi quand les sources changent).
   String _mac = '…';
+  // null tant qu'on n'a pas lu la base : on n'affiche pas le QR
+  // trop tôt (un client qui a déjà une source ne doit pas le voir
+  // le temps du chargement). false = aucune playlist locale.
+  bool? _hasLocalSource;
   StreamSubscription<List<Channel>>? _srcSub;
   String? _refreshNotice;
 
@@ -174,6 +179,14 @@ class _TvHubScreenState extends State<TvHubScreen> {
     // Ce qu'on a DÉJÀ en mémoire (le boot a chargé la playlist). Les dépôts
     // finissent de s'ouvrir dans _prepareEngagement, sans bloquer le 1er cadre.
     _channels = PlaylistRepository.instance.currentChannels;
+    // Déjà des chaînes en mémoire : une source est là, pas de QR.
+    // Sinon on lit les playlists (une source peut exister avant
+    // que ses chaînes soient chargées).
+    if (_channels.isNotEmpty) {
+      _hasLocalSource = true;
+    } else {
+      unawaited(_lookForLocalSource());
+    }
     _favIds = FavoritesRepository.instance.current;
     _recentIds = RecentlyWatchedRepository.instance.current;
     _trending = TrendingRepository.instance.current;
@@ -224,6 +237,14 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final bool has = channels.isNotEmpty;
     final bool firstArrival = has && !_hadChannels;
     _hadChannels = has;
+    if (has) {
+      _hasLocalSource = true;
+    } else if (_hasLocalSource == true) {
+      // La dernière source vient d'être retirée : on revérifie,
+      // et le QR revient si la base est vraiment vide.
+      _hasLocalSource = null;
+      unawaited(_lookForLocalSource());
+    }
     _channels = channels;
     _scheduleShelves();
     _schedulePopular();
@@ -497,6 +518,23 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final String place = temp.isEmpty ? city : '$temp $city';
     final String emoji = g.emoji;
     return emoji.isEmpty ? '$hello · $place' : '$hello · $emoji $place';
+  }
+
+  /// Aucune playlist enregistrée sur la box → le QR téléphone
+  /// a sa place. Une erreur de lecture ne l'affiche pas : on
+  /// préfère se taire plutôt que de le montrer à quelqu'un
+  /// qui a déjà sa source.
+  Future<void> _lookForLocalSource() async {
+    try {
+      final List<Playlist> lists =
+          await PlaylistRepository.instance.getAllPlaylists();
+      if (!mounted) return;
+      final bool has = lists.isNotEmpty ||
+          PlaylistRepository.instance.currentChannels.isNotEmpty;
+      setState(() => _hasLocalSource = has);
+    } catch (_) {
+      if (kDebugMode) debugPrint('[TvHub] lecture des sources impossible');
+    }
   }
 
   Future<void> _initConnectivity() async {
@@ -807,7 +845,28 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                 _tileRow(context, compact: true),
                               ],
                             )
-                          : Center(child: _tileRow(context, compact: false)),
+                          // Aucune playlist sur la box : tuiles un peu plus petites,
+                          // et à droite le QR que le téléphone photographie
+                          // pour ouvrir « Mon espace » (lien M3U ou Xtream).
+                          : _hasLocalSource == false
+                              ? Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: Center(
+                                        child: _tileRow(
+                                          context,
+                                          compact: true,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 24),
+                                    TvPhoneSourceQr(mac: _mac),
+                                  ],
+                                )
+                              : Center(
+                                  child: _tileRow(context, compact: false),
+                                ),
                     ),
                     if (_refreshNotice != null && _refreshNotice!.isNotEmpty)
                       Padding(

@@ -33,7 +33,8 @@ String tvWhatsAppUrl(String mac) {
 }
 
 /// Panneau QR « Scanne-moi » → WhatsApp du revendeur, MAC pré-remplie.
-/// Réutilisé sur l'écran d'activation ET sur l'accueil (quand aucune chaîne).
+/// Resté sur l'écran Direct quand aucune chaîne n'est encore là.
+/// L'accueil vide, lui, montre le QR vers « Mon espace » (tv_phone_source_qr).
 class TvWhatsAppQr extends StatelessWidget {
   const TvWhatsAppQr({super.key, required this.mac, this.size = 220});
   final String mac;
