@@ -13,6 +13,7 @@ import { ServersPage } from '@/pages/ServersPage';
 import { ActivationsPage } from '@/pages/ActivationsPage';
 import { ResellersPage } from '@/pages/ResellersPage';
 import { ActivatePage } from '@/pages/ActivatePage';
+import { ChainesPage } from '@/pages/ChainesPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { HomeManagerPage } from '@/pages/HomeManagerPage';
 import { ControlCenterPage } from '@/pages/ControlCenterPage';
@@ -99,8 +100,9 @@ export default function App() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
       <Route path="/activate"    element={<ActivatePage    onLogout={handleLogout} />} />
-      {/* Fusionné dans « Activer un appareil » — on redirige l'ancienne URL. */}
-      <Route path="/playlists"   element={<Navigate to="/activate" replace />} />
+      {/* Liste de chaînes : écran à part. L'ancienne adresse y mène. */}
+      <Route path="/chaines"    element={<ChainesPage     onLogout={handleLogout} />} />
+      <Route path="/playlists"   element={<Navigate to="/chaines" replace />} />
       <Route path="/notifications" element={<NotificationsPage onLogout={handleLogout} />} />
       <Route path="/control-center" element={<ControlCenterPage onLogout={handleLogout} />} />
       <Route path="/home-manager" element={<HomeManagerPage onLogout={handleLogout} />} />

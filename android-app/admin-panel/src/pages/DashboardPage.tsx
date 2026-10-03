@@ -117,14 +117,14 @@ export function DashboardPage({ onLogout }: { onLogout: () => void }) {
             to="/apps"
           />
           <NextActionCard
-            title="Activer un client"
-            desc="Tape le MAC, choisis l'app et la durée."
+            title="Activer l'application"
+            desc="Choisis la durée. Ça n'ajoute pas de liste de chaînes."
             to="/activate"
           />
           <NextActionCard
-            title="Activer / pousser une source"
-            desc="Assigner ou mettre à jour la source Xtream ou M3U d'une MAC."
-            to="/activate"
+            title="Liste de chaînes"
+            desc="Ajoute ou change le lien, sans toucher à l'activation."
+            to="/chaines"
           />
         </div>
       </div>

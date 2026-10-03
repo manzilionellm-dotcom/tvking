@@ -38,6 +38,7 @@ const OWNER_NAV: NavSection[] = [
   {
     titleKey: 'navsec.channels',
     items: [
+      { key: 'nav.chaines',     to: '/chaines' },
       { key: 'nav.servers',     to: '/servers' },
     ],
   },
@@ -78,6 +79,12 @@ const RESELLER_NAV: NavSection[] = [
       { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },
       { key: 'nav.myActivations', to: '/activations', cap: 'activations' },
       { key: 'nav.references',    to: '/references',  cap: 'activations' },
+    ],
+  },
+  {
+    titleKey: 'navsec.channels',
+    items: [
+      { key: 'nav.chaines', to: '/chaines', cap: 'sources' },
     ],
   },
   {
@@ -125,6 +132,8 @@ function NavIcon({ name }: { name: string }) {
       return <svg {...common}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>;
     case 'nav.servers':
       return <svg {...common}><rect x="3" y="3" width="18" height="6" rx="1.5" /><rect x="3" y="15" width="18" height="6" rx="1.5" /><path d="M7 6h.01M7 18h.01" /></svg>;
+    case 'nav.chaines':
+      return <svg {...common}><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" /></svg>;
     case 'nav.online':
       return <svg {...common}><path d="M2 12h2" /><path d="M20 12h2" /><path d="M12 2v2" /><circle cx="12" cy="12" r="3" /><path d="M5 19a9 9 0 0 1 14 0" /></svg>;
     case 'nav.history':

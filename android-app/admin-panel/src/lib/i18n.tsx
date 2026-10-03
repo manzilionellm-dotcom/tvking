@@ -50,6 +50,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.myDevices': { fr: 'Mes appareils', en: 'My devices', ar: 'أجهزتي' },
   'nav.apps': { fr: 'Applications', en: 'Apps', ar: 'التطبيقات' },
   'nav.servers': { fr: 'Serveurs', en: 'Servers', ar: 'الخوادم' },
+  'nav.chaines': { fr: 'Liste de chaînes', en: 'Channel list', ar: 'قائمة القنوات' },
   'nav.activations': { fr: 'Activations', en: 'Activations', ar: 'التفعيلات' },
   'nav.myActivations': { fr: 'Mes activations', en: 'My activations', ar: 'تفعيلاتي' },
   'nav.history': { fr: 'Historique', en: 'History', ar: 'السجل' },
