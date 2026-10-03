@@ -56,6 +56,7 @@ import 'features/playlists/data/favorites_repository.dart';
 import 'features/playlists/data/cloud_backup_repository.dart';
 import 'features/playlists/data/playlist_repository.dart';
 import 'features/playlists/data/remote_source_repository.dart';
+import 'features/playlists/data/remote_source_sync.dart';
 import 'features/pricing/data/pricing_repository.dart';
 import 'core/flavor/flavor.dart';
 import 'features/security/data/age_gate_settings.dart';
@@ -228,6 +229,17 @@ Future<void> bootApp() async {
     PlaylistRepository.instance.refreshAll();
   });
 
+  // Effacement panel → box en moins de 2 s. Inerte par défaut :
+  // kHonorRemoteListClear vaut false tant qu'on ne compile pas avec
+  // --dart-define=HONOR_REMOTE_LIST_CLEAR=true. Aucun minuteur, aucun
+  // trafic en plus pour les clients actuels.
+  if (kHonorRemoteListClear) {
+    Timer.periodic(kRemoteClearPollInterval, (_) {
+      if (BootGuard.instance.safeMode) return;
+      unawaited(RemoteSourceRepository.sync());
+    });
+  }
+
   // Choix Cinema / Daylight / System — chargé avant runApp pour
   // éviter un flash de mauvais thème au démarrage.
   await ThemeModeRepository.instance.initialize();
@@ -294,8 +306,7 @@ class TvKingApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable:
-          Listenable.merge(<Listenable>[
+      listenable: Listenable.merge(<Listenable>[
         ThemeModeRepository.instance,
         LocaleRepository.instance,
         AccentController.instance,

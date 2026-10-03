@@ -12,8 +12,14 @@
 //    3. Si une source est assignée et qu'elle n'est pas DÉJÀ en base
 //       locale (dédup), on la charge via PlaylistRepository.
 //
-//  Robustesse : ne throw jamais. Si le réseau est down ou qu'aucune
-//  source n'est assignée, on ne fait rien (l'app garde ce qu'elle a).
+//  Robustesse : ne throw jamais. Si le réseau est down, on ne fait
+//  rien (l'app garde ce qu'elle a).
+//
+//  Effacement panel → box : voir remote_source_sync.dart.
+//  `source: null` tout seul ne veut PAS dire « effacé » (jamais
+//  assigné, ou licence bloquée). Seul `cleared: true` le dit, et
+//  seulement si l'interrupteur HONOR_REMOTE_LIST_CLEAR est allumé
+//  (coupé par défaut). Sinon l'app garde la liste, comme avant.
 //
 //  NB conformité AGENTS.md règle n°2 : aucune URL de flux IPTV n'est
 //  en dur ici — tout vient du backend, assigné par l'admin.
@@ -31,6 +37,8 @@ import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../domain/playlist.dart';
 import 'playlist_repository.dart';
+import 'remote_pushed_memory.dart';
+import 'remote_source_sync.dart';
 
 /// Résultat d'une synchro de source distante — sert à afficher un
 /// message PRÉCIS côté UI au lieu d'un vague « pas de chaînes ».
@@ -50,24 +58,44 @@ enum RemoteSyncResult {
 }
 
 abstract final class RemoteSourceRepository {
+  /// Une requête déjà en vol, seulement quand l'interrupteur d'effacement
+  /// est allumé (le sondage à 2 s peut croiser les autres sondages).
+  static Future<RemoteSyncResult>? _clearPoll;
+
   /// Récupère la source assignée à cet appareil et la charge si besoin.
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
-  static Future<RemoteSyncResult> sync() async {
+  static Future<RemoteSyncResult> sync() {
+    // Interrupteur coupé : aucun partage de requête, chaque appel part
+    // comme avant.
+    if (!kHonorRemoteListClear) return _syncOnce();
+    final Future<RemoteSyncResult>? running = _clearPoll;
+    if (running != null) return running;
+    final Future<RemoteSyncResult> run = _syncOnce();
+    _clearPoll = run;
+    return run.whenComplete(() {
+      if (identical(_clearPoll, run)) _clearPoll = null;
+    });
+  }
+
+  static Future<RemoteSyncResult> _syncOnce() async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
 
-      final http.Response resp = await http
-          .get(
-            Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
-            headers: const <String, String>{'Accept': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 8));
+      final http.Response resp = await http.get(
+        Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
+        headers: const <String, String>{'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return RemoteSyncResult.networkError;
 
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+
+      // Effacement explicite (cleared:true) ou remplacement de trio.
+      // Inerte pour l'écran tant que l'interrupteur est coupé : dans ce
+      // cas on note seulement les identités reçues, sans rien supprimer.
+      await _applyClearPlan(body);
 
       // TRIO (jusqu'à 3 sources sur une MAC) : si le serveur renvoie un
       // tableau `sources`, on les charge TOUTES. Le client peut ensuite
@@ -92,7 +120,10 @@ abstract final class RemoteSourceRepository {
 
       final Object? src = body['source'];
       if (src is! Map<String, dynamic>) {
-        return RemoteSyncResult.noSource; // null = rien d'assigné
+        // null sans source exploitable. La suppression éventuelle a déjà
+        // été décidée par _applyClearPlan (et seulement si l'interrupteur
+        // est allumé ET que le serveur a envoyé cleared:true).
+        return RemoteSyncResult.noSource;
       }
       return await _applySource(src);
     } catch (e) {
@@ -110,19 +141,16 @@ abstract final class RemoteSourceRepository {
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return;
-      final http.Response resp = await http
-          .get(
-            Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
-            headers: const <String, String>{'Accept': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 8));
+      final http.Response resp = await http.get(
+        Uri.parse('$kSubscriptionBaseUrl/api/history/$mac'),
+        headers: const <String, String>{'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return;
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
       final Object? rec = body['recent'];
       if (rec is List && rec.isNotEmpty) {
-        final List<String> ids =
-            rec.map((Object? e) => e.toString()).toList();
+        final List<String> ids = rec.map((Object? e) => e.toString()).toList();
         await RecentlyWatchedRepository.instance.seedIfEmpty(ids);
       }
     } catch (e) {
@@ -130,13 +158,83 @@ abstract final class RemoteSourceRepository {
     }
   }
 
+  /// Applique le plan d'effacement. Ne throw jamais : un souci de
+  /// préférences ne doit pas empêcher le chargement d'une source.
+  static Future<void> _applyClearPlan(Map<String, dynamic> body) async {
+    try {
+      final Set<String> liveKeys = payloadIdentityKeys(body);
+      final bool explicitClear = liveKeys.isEmpty && body['cleared'] == true;
+      // source:null sans drapeau d'effacement : jamais assigné, licence
+      // bloquée, ou ancien worker. Aucun accès disque, aucune suppression.
+      if (!explicitClear && liveKeys.isEmpty) return;
+      // Interrupteur coupé : un effacement panel est ignoré. La liste
+      // déjà chargée reste, exactement comme avant ce correctif.
+      if (!kHonorRemoteListClear && explicitClear) return;
+
+      final RemotePushedMemory mem = await RemotePushedMemory.load();
+      final List<LocalSourceRef> local =
+          kHonorRemoteListClear ? await _localRefs() : const <LocalSourceRef>[];
+      final RemoteListSyncPlan plan = planRemoteListSync(
+        honorClear: kHonorRemoteListClear,
+        local: local,
+        rememberedKeys: mem.remembered,
+        blockedRestoreKeys: mem.blocked,
+        body: body,
+      );
+      if (kHonorRemoteListClear) {
+        for (final int id in plan.removeIds) {
+          await PlaylistRepository.instance.deletePlaylist(id);
+        }
+      }
+      if (_sameKeys(mem.remembered, plan.rememberKeys) &&
+          _sameKeys(mem.blocked, plan.blockRestoreKeys)) {
+        return;
+      }
+      await RemotePushedMemory.save(
+        remembered: plan.rememberKeys,
+        blocked: plan.blockRestoreKeys,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('[RemoteSource] plan effacement: $e');
+    }
+  }
+
+  static Future<List<LocalSourceRef>> _localRefs() async {
+    final List<Playlist> local =
+        await PlaylistRepository.instance.getAllPlaylists();
+    final List<LocalSourceRef> refs = <LocalSourceRef>[];
+    for (final Playlist p in local) {
+      final int? id = p.id;
+      if (id == null) continue;
+      refs.add(
+        LocalSourceRef(
+          id: id,
+          key: identityKeyForLocal(
+            type: p.type.name,
+            m3uUrl: p.m3uUrl,
+            xtreamServer: p.xtreamServer,
+            xtreamUsername: p.xtreamUsername,
+          ),
+        ),
+      );
+    }
+    return refs;
+  }
+
+  static bool _sameKeys(Set<String> a, Set<String> b) {
+    if (a.length != b.length) return false;
+    for (final String key in a) {
+      if (!b.contains(key)) return false;
+    }
+    return true;
+  }
+
   /// Charge la source en base locale si elle n'y est pas déjà.
   static Future<RemoteSyncResult> _applySource(Map<String, dynamic> src) async {
     final String type = (src['type'] as String?)?.trim().toLowerCase() ?? '';
-    final String label =
-        (src['label'] as String?)?.trim().isNotEmpty == true
-            ? (src['label'] as String).trim()
-            : 'Mon abonnement';
+    final String label = (src['label'] as String?)?.trim().isNotEmpty == true
+        ? (src['label'] as String).trim()
+        : 'Mon abonnement';
     final String? epg = (src['epg_url'] as String?)?.trim();
 
     // On s'assure que la liste locale est chargée avant la dédup.
@@ -175,8 +273,8 @@ abstract final class RemoteSourceRepository {
       final String m3u = (src['m3u_url'] as String?)?.trim() ?? '';
       if (m3u.isEmpty) return RemoteSyncResult.sourceFailed;
 
-      final bool already = existing.any((Playlist p) =>
-          p.type == PlaylistType.m3u && p.m3uUrl == m3u);
+      final bool already = existing
+          .any((Playlist p) => p.type == PlaylistType.m3u && p.m3uUrl == m3u);
       if (already) return RemoteSyncResult.loaded;
 
       try {
