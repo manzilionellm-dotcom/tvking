@@ -513,10 +513,11 @@ async function main() {
       'le lien de A est intact');
   }
 
-  // --- Famille : un autre revendeur ne supprime pas le lien ---
+  // --- Famille : plus de clonage (activation pro). La création est
+  //     refusée AVANT toute écriture ; la lecture des familles déjà en
+  //     base reste possible. ---
   {
     const a = await makeReseller(env, admin, ['activate'], 2);
-    const b = await makeReseller(env, admin, ['activate'], 2);
     const created = await api(env, 'POST', '/api/v1/families', {
       token: a.token,
       body: {
@@ -524,17 +525,18 @@ async function main() {
         source: { type: 'm3u', m3u_url: fakeM3u() },
       },
     });
-    check(created.status === 201 && created.json && created.json.family, 'famille créée');
-    const fid = created.json && created.json.family && created.json.family.id;
-    const bye = await api(env, 'DELETE', `/api/v1/families/${fid}`, { token: b.token });
-    check(bye.status === 403, 'un autre revendeur ne supprime pas la famille');
-    const still = await api(env, 'GET', `/api/v1/families/${fid}`, { token: a.token });
-    check(still.status === 200, 'la famille de A existe encore');
+    check(created.status === 403 && created.json && created.json.error === 'family_clone_disabled',
+      'création de famille refusée (403 family_clone_disabled)');
+    const list = await api(env, 'GET', '/api/v1/families', { token: a.token });
+    const n = list.json && Array.isArray(list.json.items) ? list.json.items.length : -1;
+    check(list.status === 200 && n === 0, 'aucune famille créée, la lecture répond 200');
     const badFam = await api(env, 'POST', '/api/v1/families', {
       token: a.token,
       body: { name: 'Mauvais lien', source: { type: 'm3u', m3u_url: 'pas-une-url' } },
     });
-    check(badFam.status === 400, 'famille avec lien invalide refusée');
+    check(badFam.status === 403, 'famille avec lien invalide : refusée aussi, sans écriture');
+    const bal = scalar(db, 'SELECT credit_balance AS n FROM resellers WHERE id = ?', a.id);
+    check(bal === 2, 'le refus de famille ne débite aucun crédit');
   }
 
   // Sans SECRETS_KEY : on ne casse pas les lignes déjà en clair.

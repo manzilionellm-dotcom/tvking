@@ -308,12 +308,14 @@ async function parcours(page) {
   );
 
   // ----- Création + activation depuis l'écran, SANS lien M3U -----
+  // Écran court (activation pro) : titre « Activation », deux durées
+  // (1 an par défaut, à vie), bouton « Activer », résultat « Activé jusqu’au … ».
   await page.goto(PANEL_ORIGIN + '/activate');
-  await page.getByRole('heading', { name: "Activer l'application" }).waitFor();
+  await page.getByRole('heading', { name: 'Activation' }).waitFor();
   await page.getByPlaceholder('MK:XX:XX:XX:XX:XX').fill(mac);
   await page.getByPlaceholder('Ex. Salon de Karim').fill(CUSTOMER);
-  await page.getByRole('button', { name: /Activer l.application/ }).click();
-  await page.getByText('Application activée').waitFor();
+  await page.getByRole('button', { name: 'Activer', exact: true }).click();
+  await page.getByText(/Activé jusqu’au/).waitFor();
   check('écran d\'activation : appareil créé sans source', true, mac);
 
   await page.goto(PANEL_ORIGIN + '/customers');
@@ -329,7 +331,7 @@ async function parcours(page) {
     : null;
   check(
     'une licence active est liée à la MAC',
-    licences.status === 200 && lic && lic.status === 'active' && lic.plan === 'monthly' && typeof lic.expires_at === 'number',
+    licences.status === 200 && lic && lic.status === 'active' && lic.plan === 'yearly' && typeof lic.expires_at === 'number',
     lic ? `plan=${lic.plan} status=${lic.status}` : brief(licences.json),
   );
   const expiresBefore = lic ? lic.expires_at : null;

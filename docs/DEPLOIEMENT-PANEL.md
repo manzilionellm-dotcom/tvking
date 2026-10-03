@@ -6,8 +6,12 @@ qu’on n’a pas décidé de mettre en ligne. Ne pas publier d’APK,
 ne pas toucher aux releases `zuno-tv` et `phone-latest`,
 ni au 4K Player.
 
-La branche `claude/essai-7-jours` (brouillon #91) n’est pas dans
-cette livraison.
+Cette livraison (`claude/panel-mise-en-ligne`) réunit `claude/panel-tout-en-un`
+(#92), `claude/essai-7-jours` (#91) et `claude/panel-activation-pro` (#94).
+`TRIAL_ENFORCEMENT` reste **absent** : personne n’est bloqué par l’essai de
+7 jours tant qu’on ne pose pas cette variable. Le clonage familial n’est
+plus proposé (création refusée, 403) ; les familles déjà créées continuent.
+Une licence à vie n’est jamais débitée une seconde fois.
 
 ## Ordre
 
@@ -131,10 +135,13 @@ La box de test est une MAC que l’on crée pour l’occasion.
 
 1. **Connexion.** Un mauvais mot de passe reste sur l’écran de
    login. Le bon mot de passe ouvre le tableau de bord.
-2. **Activation.** Écran « Activer l'application ». Poser la MAC
-   de test, durée 1 mois, sans liste. Le résultat affiche
-   « Application activée » et une date de fin. La licence est
+2. **Activation.** Écran « Activation ». Poser la MAC de test,
+   « Activation 1 an », sans liste. Le résultat affiche « Activé
+   jusqu’au … » avec la date de fin. Refaire avec une seconde MAC de
+   test en « Activation à vie » : « Activé à vie. ». La licence est
    active. La box de test n’a pas encore de lien.
+   Le mot « familial » et le clonage n’apparaissent plus sur cet
+   écran ; un appareil déjà activé en famille reste payé.
 3. **Ajout M3U.** Écran « Liste de chaînes » (pas l’écran
    d’activation). Envoyer un lien de test. La box de test reçoit
    ce lien. Changer le lien ne prolonge pas la date de fin.
@@ -152,7 +159,11 @@ La box de test est une MAC que l’on crée pour l’occasion.
    recharger côté box / côté panel : le changement est visible
    au plus tard au bout d’environ 2 secondes, pas au bout de
    30 secondes.
-9. **Client réel, en lecture seule.** Ouvrir la fiche d’une MAC
+9. **Jours d’essai.** Sur l’écran « Activation », bloc « Ajouter des
+   jours d’essai » (administrateur seulement) : 7 jours sur la MAC de
+   test → « Essai jusqu’au … ». Une MAC inconnue est refusée
+   (`404 not_found`), un nombre hors 1 à 365 aussi (`400`).
+10. **Client réel, en lecture seule.** Ouvrir la fiche d’une MAC
    déjà activée avant le déploiement. La licence est toujours
    active, la date de fin est la même, la liste est la même,
    la box n’est pas gelée. Ne rien enregistrer sur cette fiche.

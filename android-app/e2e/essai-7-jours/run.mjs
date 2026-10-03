@@ -369,8 +369,10 @@ async function main() {
       token, body: { mac: lifeMac, plan: 'lifetime', reseller_id: rid },
     });
     const bal = await balanceOf(off.db, rid);
-    check('coupé : une 2e activation à vie redébite encore (ancien comportement)',
-      bal === 6, 'solde=' + bal);
+    // Garde-fou « déjà à vie » (panel tout-en-un) : la 2e activation à vie
+    // ne débite plus, interrupteur coupé ou allumé. Avant : solde 6.
+    check('coupé : une 2e activation à vie ne redébite plus (déjà à vie)',
+      bal === 8, 'solde=' + bal);
     const st = await beat(off.mf, lifeMac);
     check('coupé : le client à vie reste ouvert',
       st.json.paid === true && st.json.expired === false,
