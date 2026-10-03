@@ -533,8 +533,22 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     });
   }
 
+  bool _bgRefusalNoted = false;
+
+  void _noteBackgroundRefusal() {
+    if (_bgRefusalNoted) return;
+    _bgRefusalNoted = true;
+    BlackBox.instance.info('SON', NativeVideoController.reopenRefusedLine);
+  }
+
   void _recover() {
     if (_fatal || _zapHolding || _recoverArmed) return;
+    // Dehors : pas de second flux. Le natif refuse aussi, au cas où.
+    if (NativeVideoController.blocksReopenInBackground) {
+      _noteBackgroundRefusal();
+      return;
+    }
+    _bgRefusalNoted = false;
     // Le natif attend déjà (1 s, 2 s, 4 s, 8 s). Un setUrl ici
     // annulerait ce délai et préparerait un second flux.
     if (ReconnectPlan.letNativeOwnRetry(_controller.nativeRetrying)) return;
@@ -557,6 +571,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _recoverTimer = null;
       _recoverArmed = false;
       if (!mounted || _fatal || _zapHolding) return;
+      if (NativeVideoController.blocksReopenInBackground) {
+        _noteBackgroundRefusal();
+        return;
+      }
       if (ReconnectPlan.letNativeOwnRetry(_controller.nativeRetrying)) return;
       _reopenAfterFailure();
     });

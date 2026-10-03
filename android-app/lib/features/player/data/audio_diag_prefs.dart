@@ -28,6 +28,10 @@ class AudioDiagPrefs {
   /// Repli « arrière-plan » : vrai = pause (ancien), faux = arrêt propre.
   static const String bgPauseKey = 'zuno.player.bg_pause_only';
 
+  /// Repli « Home » : vrai = on attend Flutter (ancien). Faux = arrêt
+  /// dans onPause, et aucune réouverture tant que l'app est dehors.
+  static const String bgFlutterOnlyKey = 'zuno.player.bg_flutter_only';
+
   /// Repli « passage » : vrai = on n'attend pas l'AudioTrack (ancien).
   static const String immediateHandoffKey = 'zuno.audio.handoff.immediate';
 
@@ -39,6 +43,7 @@ class AudioDiagPrefs {
     var androidFocus = false;
     var bgPause = false;
     var immediate = false;
+    var flutterOnly = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -48,6 +53,7 @@ class AudioDiagPrefs {
       androidFocus = prefs.getBool(androidFocusKey) ?? false;
       bgPause = prefs.getBool(bgPauseKey) ?? false;
       immediate = prefs.getBool(immediateHandoffKey) ?? false;
+      flutterOnly = prefs.getBool(bgFlutterOnlyKey) ?? false;
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -56,6 +62,7 @@ class AudioDiagPrefs {
       androidFocus = false;
       bgPause = false;
       immediate = false;
+      flutterOnly = false;
     }
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
@@ -64,6 +71,7 @@ class AudioDiagPrefs {
     NativeVideoController.androidAudioFocus = androidFocus;
     NativeVideoController.backgroundPauseOnly = bgPause;
     NativeVideoController.immediateHandoff = immediate;
+    NativeVideoController.backgroundFlutterOnly = flutterOnly;
     // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
     // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
     NativeVideoController.pushAudioDiagFlags();
@@ -92,6 +100,15 @@ class AudioDiagPrefs {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool(bgPauseKey, value);
+    } catch (_) {}
+  }
+
+  static Future<void> setBackgroundFlutterOnly(bool value) async {
+    NativeVideoController.backgroundFlutterOnly = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(bgFlutterOnlyKey, value);
     } catch (_) {}
   }
 

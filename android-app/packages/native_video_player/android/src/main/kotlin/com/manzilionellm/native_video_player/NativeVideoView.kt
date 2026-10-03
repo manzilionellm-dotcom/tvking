@@ -57,7 +57,9 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.exoplayer.video.VideoRendererEventListener
+import com.manzilionellm.native_video_player.logic.AppForeground
 import com.manzilionellm.native_video_player.logic.AudioDiagnosis
+import com.manzilionellm.native_video_player.logic.BackgroundGate
 import com.manzilionellm.native_video_player.logic.AudioGate
 import com.manzilionellm.native_video_player.logic.AudioHandoff
 import com.manzilionellm.native_video_player.logic.AudioFocusPolicy
@@ -402,6 +404,10 @@ class NativeVideoView(
     // Identifiant dans [owners]. -1 tant que le lecteur n'est pas inscrit.
     private var playerKey: Int = -1
 
+    // Identifiant dans [AppForeground]. -1 tant que l'activité ne nous
+    // prévient pas (Home / retour).
+    private var foregroundId: Int = -1
+
     // Moteur vidéo. [preferredEngine] est le choix de la personne (matériel
     // par défaut). [videoEngine] est celui de la chaîne en cours : un repli
     // ne change pas le choix, la chaîne suivante repart du choix.
@@ -516,6 +522,13 @@ class NativeVideoView(
         handler.postDelayed(pictureWatch, 2_000)
         handler.post { emitImageCaps() }
         watchOtherPlaybacks()
+        // Home : l'activité coupe CE lecteur dans onPause, sans attendre
+        // Flutter. On se retire à la destruction.
+        foregroundId = AppForeground.watch(
+            onBackground = { inBackground -> emit("appBackground", inBackground) },
+            stop = { suspendForBackground() },
+            resume = { resumeAfterForeground() },
+        )
     }
 
     // ---- focus audio : demande, abandon, décision ----------------------------
@@ -591,6 +604,8 @@ class NativeVideoView(
         when (d.action) {
             AudioFocusPolicy.Action.PAUSE -> try { player.pause() } catch (_: RuntimeException) {}
             AudioFocusPolicy.Action.RESUME -> try {
+                // Dehors : un GAIN ne doit pas relancer le flux.
+                if (refuseReopen()) return
                 // Jamais 0,2 : le volume de lecture est 1, le silence de
                 // passage (holdMute) reste 0 jusqu'à la nouvelle image.
                 if (!reconnect.holdMute) {
@@ -750,6 +765,16 @@ class NativeVideoView(
     }
 
     /**
+     * Vrai = l'app est en arrière-plan et le nouveau comportement est actif.
+     * Écrit une seule ligne [SON] pour tout le séjour dehors.
+     */
+    private fun refuseReopen(): Boolean {
+        if (AppForeground.allowsReopen()) return false
+        AppForeground.noteRefuse()?.let { emit("audioDiag", it) }
+        return true
+    }
+
+    /**
      * Arrière-plan (Home, multitâche) : on ARRÊTE, on ne met pas en pause.
      * Une pause garde le décodeur, l'AudioTrack et le focus vivants pendant
      * que la box fait autre chose ; au retour, c'est ce qui sonnait faux.
@@ -760,7 +785,27 @@ class NativeVideoView(
         if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
         silenceForHandoff()
         abandonOwnFocus()
-        emit("audioDiag", "Arrière-plan : lecture arrêtée, décodeur et sortie son rendus, focus rendu.")
+        // Repli Flutter : la phrase d'avant. Nouveau chemin : la ligne [SON]
+        // demandée quand l'arrêt part de l'activité (onPause / onStop).
+        emit(
+            "audioDiag",
+            if (AppForeground.flutterOnly) {
+                "Arrière-plan : lecture arrêtée, décodeur et sortie son rendus, focus rendu."
+            } else {
+                BackgroundGate.STOP_LINE
+            },
+        )
+    }
+
+    /**
+     * Retour au premier plan. Le direct repart seul, un seul lecteur.
+     * Film, enregistrement et son témoin : on ne relance pas tout seul
+     * (le bouton OK appelle « play », qui rouvre à la position).
+     */
+    private fun resumeAfterForeground() {
+        if (vodMode) return
+        if (playerKey >= 0 && owners.owner != null && owners.owner != playerKey) return
+        resumeFromBackground()
     }
 
     /** Retour au premier plan : on rouvre, comme un zap (direct au bord du direct). */
@@ -1080,6 +1125,19 @@ class NativeVideoView(
                     result.error("no_url", "setUrl appelé sans url", null)
                     return
                 }
+                // Dehors : on garde l'adresse pour le retour, sans prepare.
+                // Un essai déjà armé est annulé, sinon il rouvrirait le flux.
+                if (!AppForeground.allowsReopen()) {
+                    cancelRetry()
+                    currentUrl = url
+                    vodMode = call.argument<Boolean>("vod") ?: false
+                    val startMs = (call.argument<Number>("startMs"))?.toLong() ?: 0L
+                    lastKnownPos = startMs
+                    suspended = true
+                    refuseReopen()
+                    result.success(null)
+                    return
+                }
                 cancelRetry()
                 // Budget remis à zéro SEULEMENT pour une autre adresse.
                 // La même adresse (gel, coupure) garde le compteur : après
@@ -1226,10 +1284,21 @@ class NativeVideoView(
                 result.success(null)
             }
             "suspend" -> {
+                // Flutter « paused » en retard, alors qu'on est déjà revenu :
+                // ne pas recouper une chaîne que l'activité vient de rouvrir.
+                // Repli (flutterOnly) : ce message reste le seul arrêt.
+                if (!AppForeground.flutterOnly && AppForeground.allowsReopen()) {
+                    result.success(null)
+                    return
+                }
                 suspendForBackground()
                 result.success(null)
             }
             "resume" -> {
+                if (refuseReopen()) {
+                    result.success(null)
+                    return
+                }
                 resumeFromBackground()
                 result.success(null)
             }
@@ -1285,6 +1354,11 @@ class NativeVideoView(
                 // pas le rendu (ancien comportement, deux pistes possibles).
                 // Pris en compte au prochain zap. On ne rouvre pas.
                 AudioFixes.immediateHandoff = call.arguments == true
+                result.success(null)
+            }
+            "setBackgroundFlutterOnly" -> {
+                // Vrai = ancien chemin (Flutter seul). Faux = arrêt dans onPause.
+                AppForeground.flutterOnly = call.arguments == true
                 result.success(null)
             }
             "setSessionWideFallback" -> {
@@ -1344,6 +1418,10 @@ class NativeVideoView(
                 result.success(null)
             }
             "play" -> {
+                if (refuseReopen()) {
+                    result.success(null)
+                    return
+                }
                 // Un lecteur déjà coupé par un autre ne reprend pas le son
                 // (sinon le retour au premier plan relancerait l'ancienne chaîne).
                 if (playerKey >= 0 && owners.owner != null && owners.owner != playerKey) {
@@ -1584,6 +1662,8 @@ class NativeVideoView(
 
     override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
         if (!fresh(eventTime)) return
+        // Surface déjà partie : une erreur ne doit pas repréparer le flux.
+        if (refuseReopen()) return
         val token = sessions.generation
         val exo = error as? ExoPlaybackException
         val signal = DecoderFallback.classify(error.errorCode, exo?.rendererName)
@@ -1714,6 +1794,8 @@ class NativeVideoView(
      */
     private fun openCurrent(startPositionMs: Long?) {
         if (currentUrl == null || released) return
+        // Dehors : pas de nouveau décodeur, pas de nouvel AudioTrack.
+        if (refuseReopen()) return
         // Avant stop() : la copie couvre la surface, qui va se vider.
         if (sawFrame && heldBitmap != null) showHeldFrame()
         if (playerKey >= 0) owners.claim(playerKey)
@@ -1952,6 +2034,11 @@ class NativeVideoView(
         cancelRetry(clearGate = false)
         val r = Runnable {
             if (released || token != sessions.generation) return@Runnable
+            // Parti pendant l'attente : on n'ouvre pas dans le dos de l'utilisateur.
+            if (!AppForeground.allowsReopen()) {
+                refuseReopen()
+                return@Runnable
+            }
             // Un seul feu. Un second callback ne prépare pas encore.
             if (!reconnect.onRetryFired()) return@Runnable
             // L'attente est finie : l'écran peut à nouveau surveiller
@@ -2126,6 +2213,10 @@ class NativeVideoView(
      * au milieu de onPlayerError.
      */
     private fun requestBoxAudioFallback(reason: AacRoute.Reason) {
+        if (!AppForeground.allowsReopen()) {
+            refuseReopen()
+            return
+        }
         // Déjà revenu de la box vers FFmpeg : ne pas renvoyer vers la box,
         // les deux se relanceraient.
         if (platformAacGaveUp || forceBoxAacDecoder || released) return
@@ -2212,6 +2303,10 @@ class NativeVideoView(
      * réessaiera la box. On ne boucle pas (voir [platformAacGaveUp]).
      */
     private fun requestFfmpegAfterPlatformFailure() {
+        if (!AppForeground.allowsReopen()) {
+            refuseReopen()
+            return
+        }
         if (!AudioFixes.preferPlatformAac || platformAacGaveUp || released) return
         if (ffmpegAudioActive) return
         platformAacGaveUp = true
@@ -2484,6 +2579,10 @@ class NativeVideoView(
         }
         released = true
         handler.removeCallbacksAndMessages(null)
+        if (foregroundId >= 0) {
+            AppForeground.unwatch(foregroundId)
+            foregroundId = -1
+        }
         if (playerKey >= 0) {
             owners.unregister(playerKey)
             playerKey = -1
@@ -2635,6 +2734,8 @@ class NativeVideoView(
     private fun considerPictureFallback() {
         if (released || videoGaveUp || videoFallbackPosted) return
         if (!::player.isInitialized) return
+        // Dehors, l'image est partie : ce n'est pas un décodeur à changer.
+        if (!AppForeground.allowsReopen()) return
         val now = SystemClock.elapsedRealtime()
         val ready = player.playbackState == Player.STATE_READY
         val buffering = player.playbackState == Player.STATE_BUFFERING
@@ -2661,6 +2762,10 @@ class NativeVideoView(
      * renvoie false.
      */
     private fun takeVideoFallback(signal: PictureSignal): Boolean {
+        if (!AppForeground.allowsReopen()) {
+            refuseReopen()
+            return true
+        }
         if (released || videoGaveUp) return videoGaveUp
         val decision = DecoderFallback.next(
             videoEngine,

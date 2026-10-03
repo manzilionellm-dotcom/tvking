@@ -89,6 +89,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _androidFocus = NativeVideoController.androidAudioFocus;
     _bgPause = NativeVideoController.backgroundPauseOnly;
     _immediate = NativeVideoController.immediateHandoff;
+    _flutterOnly = NativeVideoController.backgroundFlutterOnly;
     // Le libellé vient de la mémoire Dart. On le repousse au lecteur
     // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
     NativeVideoController.pushAudioDiagFlags();
@@ -104,6 +105,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _androidFocus = false;
   bool _bgPause = false;
   bool _immediate = false;
+  bool _flutterOnly = false;
   bool _witnessBusy = false;
   NativeVideoController? _witness;
 
@@ -173,6 +175,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     final bool next = !_bgPause;
     setState(() => _bgPause = next);
     await AudioDiagPrefs.setBackgroundPauseOnly(next);
+  }
+
+  Future<void> _toggleFlutterOnly() async {
+    final bool next = !_flutterOnly;
+    setState(() => _flutterOnly = next);
+    await AudioDiagPrefs.setBackgroundFlutterOnly(next);
   }
 
   Future<void> _load() async {
@@ -281,6 +289,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
         Row(
           children: <Widget>[
             _Toggle(
+              label: _flutterOnly ? 'Home : ancien' : 'Home : arrêt natif',
+              on: _flutterOnly,
+              onSelect: _toggleFlutterOnly,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
               label: _immediate ? 'Passage : tout de suite' : 'Passage : attendre',
               on: _immediate,
               onSelect: _toggleImmediate,
@@ -327,6 +341,8 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           '« Android » = ancien comportement (baisse à 20 %). Hors app : '
           '« arrêt » (défaut) = en quittant l\'app le son est coupé et rendu, la '
           'chaîne est rouverte au retour ; « pause » = ancien comportement. '
+          'Home : « arrêt natif » (défaut) = coupé dès onPause, rien ne rouvre '
+          'tant que l\'app est dehors ; « ancien » = on attend Flutter. '
           'Passage : « attendre » (défaut) = on n\'ouvre la chaîne suivante '
           'que lorsque l\'AudioTrack précédent est vraiment rendu (sinon deux '
           'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '

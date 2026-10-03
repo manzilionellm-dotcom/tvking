@@ -168,6 +168,22 @@ class NativeVideoController extends ChangeNotifier {
   /// au retour.
   static bool backgroundPauseOnly = false;
 
+  /// Repli de l'arrêt natif (onPause). Vrai = on attend Flutter, comme
+  /// avant. Faux par défaut : l'activité coupe le son dès le Home.
+  static bool backgroundFlutterOnly = false;
+
+  /// Vrai tant que l'activité a coupé la lecture (Home). Le natif l'envoie.
+  /// Le repli Flutter ne le met pas : l'ancien chemin reste seul.
+  static bool appInBackground = false;
+
+  /// Même phrase que le natif, pour la boîte noire [SON].
+  static const String reopenRefusedLine =
+      'Réouverture refusée : l\'app est en arrière-plan.';
+
+  /// Vrai = ne pas rouvrir un flux. Faux si le repli Flutter est allumé.
+  static bool get blocksReopenInBackground =>
+      !backgroundFlutterOnly && appInBackground;
+
   /// Passage d'une chaîne à l'autre : vrai = on n'attend pas que
   /// l'AudioTrack précédent soit rendu (deux pistes peuvent se
   /// chevaucher, l'ancien défaut). Faux par défaut : on attend.
@@ -185,6 +201,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
       ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
       ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+      ch.invokeMethod<void>('setBackgroundFlutterOnly', backgroundFlutterOnly);
     }
   }
 
@@ -327,6 +344,7 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setSessionWideFallback', sessionWideFallback);
     ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
     ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
+    ch.invokeMethod<void>('setBackgroundFlutterOnly', backgroundFlutterOnly);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;
@@ -454,6 +472,11 @@ class NativeVideoController extends ChangeNotifier {
         // change rien à l'état du lecteur, on le passe à l'app (boîte noire).
         final String line = (call.arguments as String?) ?? '';
         if (line.isNotEmpty) onAudioDiagnostic?.call(line);
+        return;
+      case 'appBackground':
+        // L'activité a coupé (vrai) ou est revenue (faux). Pas un état
+        // d'image : on ne notifie pas l'écran.
+        appInBackground = call.arguments == true;
         return;
     }
     if (!_disposed) notifyListeners();
