@@ -72,6 +72,8 @@ import {
   loadBlockCopy,
   shapeEnforcedStatus,
   configuredTrialDays,
+  combineTrialUntil,
+  readExtendedUntil,
 } from './trial_access.js';
 // Migration KV → D1 (cf. cloudflare/migrate_kv_to_d1.js) — exposee
 // via POST /admin/migrate-to-d1 et protegee par X-Admin-Secret.
@@ -363,6 +365,27 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     const revoked = !banned && !frozen && lstatus !== 'active';
     const active = lstatus === 'active' && !dateExpired;
     const expired = dateExpired || revoked;
+    // Licence payée dont la date est passée : un ajout de jours d'essai
+    // rouvre l'accès SANS transformer la licence. Une licence désactivée,
+    // gelée ou bannie ne se rouvre pas par cet ajout.
+    if (dateExpired && !revoked && !lifetime && !banned && !frozen) {
+      const ext = await readExtendedUntil(env, mac);
+      if (ext > now) {
+        return finishStatus(env, {
+          exists: true,
+          status: 'active',
+          paid: false,
+          plan: 'trial',
+          paid_until: null,
+          trial_until: ext,
+          days_left: Math.max(0, Math.ceil((ext - now) / DAY_MS)),
+          expired: false,
+          frozen: false,
+          banned: false,
+          source: 'd1-trial-extend',
+        }, now);
+      }
+    }
     return finishStatus(env, {
       exists: true,
       status: banned ? 'banned' : frozen ? 'frozen' : revoked ? 'inactive' : 'active',
@@ -402,18 +425,24 @@ async function d1StatusForMac(env, mac, now = Date.now()) {
     trialDays = ENFORCED_TRIAL_DAYS;
   }
   const win = trialWindow(trialStart, now, trialDays);
+  // Ajout de jours : on prend la date la plus tardive. Sans ajout,
+  // combineTrialUntil rend exactement la fin calculée (comportement
+  // identique, interrupteur coupé ou allumé).
+  const ext = await readExtendedUntil(env, mac);
+  const until = combineTrialUntil(win.trialUntil, ext);
+  const expired = now >= until;
   const base = {
     exists: true,
     status: 'active',
     paid: false,
-    plan: win.expired ? 'expired' : 'trial',
+    plan: expired ? 'expired' : 'trial',
     paid_until: null,
-    trial_until: win.trialUntil,
-    days_left: win.daysLeft,
-    expired: win.expired,
+    trial_until: until,
+    days_left: expired ? 0 : Math.max(0, Math.ceil((until - now) / DAY_MS)),
+    expired,
     frozen: false,
     banned: false,
-    source: 'd1-trial',
+    source: ext > win.trialUntil ? 'd1-trial-extend' : 'd1-trial',
   };
   // Champ utile au panel / à l'app seulement quand le verrou est allumé.
   // Interrupteur coupé : on ne l'ajoute pas (réponse identique à avant).

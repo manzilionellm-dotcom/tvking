@@ -518,10 +518,19 @@ export interface DeviceSource extends DeviceSourceInput {
   updated_at?: number;
 }
 
+export interface TrialExtendResult {
+  ok: boolean;
+  mac: string;
+  days: number;
+  previous_until: number | null;
+  trial_until: number;
+}
+
 export const activateApi = {
-  // Active une MAC (owner ou revendeur). Cree/renouvelle la licence et
-  // debite les credits du revendeur selon le cout du plan. Si `source`
-  // est fourni, on l'assigne a la MAC (l'app la chargera automatiquement).
+  // Active une MAC (owner ou revendeur). Crée ou renouvelle la licence
+  // et débite les crédits du revendeur selon le coût du plan.
+  // Le lien de chaînes n'est pas accepté ici : le Worker répond 400.
+  // Il se pose avec PUT /api/v1/sources/:mac.
   activate: (payload: {
     mac: string;
     plan: string;
@@ -534,6 +543,14 @@ export const activateApi = {
     source?: DeviceSourceInput;
   }) =>
     request<ActivateResult>('/api/v1/activate', { method: 'POST', body: payload }),
+
+  // Prolonge l'essai d'une MAC déjà connue de N jours.
+  // Réservé à l'administrateur (le Worker refuse un revendeur).
+  extendTrial: (mac: string, days: number) =>
+    request<TrialExtendResult>('/api/v1/trial-extend', {
+      method: 'POST',
+      body: { mac, days },
+    }),
 };
 
 // Source assignée par MAC (gérée indépendamment de l'activation).

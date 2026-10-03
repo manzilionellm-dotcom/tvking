@@ -365,12 +365,16 @@ async function main() {
     await api(off.mf, 'POST', '/api/v1/activate', {
       token, body: { mac: lifeMac, plan: 'lifetime', reseller_id: rid },
     });
-    await api(off.mf, 'POST', '/api/v1/activate', {
+    const life2 = await api(off.mf, 'POST', '/api/v1/activate', {
       token, body: { mac: lifeMac, plan: 'lifetime', reseller_id: rid },
     });
     const bal = await balanceOf(off.db, rid);
-    check('coupé : une 2e activation à vie redébite encore (ancien comportement)',
-      bal === 6, 'solde=' + bal);
+    // Le panel refuse déjà un second débit « à vie », interrupteur
+    // coupé ou allumé. On ne retire pas cette protection.
+    check('coupé : une 2e activation à vie ne redébite pas',
+      life2.status === 200 && life2.json && life2.json.already_lifetime === true
+      && life2.json.credits_charged === 0 && bal === 8,
+      `HTTP ${life2.status} charged=${life2.json && life2.json.credits_charged} solde=${bal}`);
     const st = await beat(off.mf, lifeMac);
     check('coupé : le client à vie reste ouvert',
       st.json.paid === true && st.json.expired === false,
