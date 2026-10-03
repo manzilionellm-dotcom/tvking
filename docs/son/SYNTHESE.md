@@ -37,7 +37,15 @@ Déjà écarté par les mesures d'avant, et non rejoué comme cause : le décode
 
 ## Ce qui est prouvé ici (sans appareil)
 
-À compléter avec les nombres exacts des commandes lancées sur cette branche (voir le message du dépôt). En résumé, avant l'écoute :
+Commandes réellement exécutées sur le commit `9051233e` (les nombres viennent de leur sortie, pas d'une estimation) :
+
+- Gradle, `android-app/packages/native_video_player/logic-test` : **227** tests, **0** échec, **0** erreur, **0** ignoré. `BUILD SUCCESSFUL`.
+- Python `android-app/tools/audio_lab/mesure.py --valider` : code de sortie **0**. Seuils embarqués : grave 0,10 · aigu 0,015 · écho 18 · chute 8 dB. Le grave sépare le téléphone du propre et du sourd. L'aigu au-dessus de 4 kHz ne sépare pas le téléphone du propre. L'écho à 30 ms score 173, le propre reste vers 2–7. La corrélation oppose −1 et identique +1.
+- Python `android-app/tools/son/phase_canaux.py` : code de sortie **0**. PCM et AAC hors phase : corrélation −1, creux 1, garde-voix 0. En phase : corrélation +1, creux 0. FFmpeg refuse un 5.1 étiqueté stéréo et un stéréo étiqueté 5.1.
+- Python `android-app/ci/audio/mode_telephone.py` : code de sortie **0**. Énergie au-dessus de 4 kHz : voix 0,003554, voix téléphone 0,002978, bruit blanc 0,814657, bruit 8 kHz remonté 0,102131.
+- Flutter n'est pas installé sur la machine qui a fusionné. Le job CI « flutter analyze + test » du même SHA (`9051233e`, run [37112241391](https://github.com/manzilionellm-dotcom/tvking/actions/runs/37112241391)) a écrit : `00:23 +384 ~2: All tests passed!` — **384** réussis, **2** ignorés, **0** échoué. Ce n'est pas une écoute.
+
+En résumé, avant l'écoute :
 
 - Les interrupteurs nouveaux partent coupés. Une clé absente reste fausse, ou « off » pour les attributs.
 - La garde de mode n'écrit rien tant qu'elle est coupée. Allumée, elle ne coupe pas un vrai appel ni le Bluetooth d'appel.
