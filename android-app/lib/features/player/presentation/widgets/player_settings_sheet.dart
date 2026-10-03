@@ -23,11 +23,15 @@ class PlayerSettingsSheet extends StatefulWidget {
   const PlayerSettingsSheet({
     required this.currentSpeed,
     required this.onSpeedChange,
+    required this.mpvFacts,
     super.key,
   });
 
   final double currentSpeed;
   final ValueChanged<double> onSpeedChange;
+
+  /// Texte relu sur libmpv (sortie, fréquence, filtres). Lecture seule.
+  final ValueNotifier<String> mpvFacts;
 
   static const List<double> kSpeeds = <double>[0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
@@ -62,7 +66,10 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
           child: SafeArea(
             top: false,
             child: ListenableBuilder(
-              listenable: PlayerSettings.instance,
+              listenable: Listenable.merge(<Listenable>[
+                PlayerSettings.instance,
+                widget.mpvFacts,
+              ]),
               builder: (BuildContext context, _) {
                 return SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
@@ -151,6 +158,42 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
                         onChanged: (bool v) =>
                             PlayerSettings.instance.setShowStats(v),
                       ),
+                      const SizedBox(height: 22),
+
+                      // Essai de sortie audio. Coupé = on n'écrit pas `ao`.
+                      // Le son par défaut (OpenSL ES, posé par media_kit)
+                      // ne change pas tant que l'un des trois noms n'est
+                      // pas choisi. Le changement s'entend au zap suivant.
+                      _sectionTitle('Essai de sortie audio'),
+                      Text(
+                        'Coupé par défaut : on n\'écrit pas la sortie, '
+                        'le son ne change pas. OpenSL ES, AudioTrack ou '
+                        'AAudio sont un essai, entendu au zap suivant. '
+                        'AAudio n\'est pas dans le libmpv de cette app : '
+                        'le son peut se taire. Recoupe et zap pour revenir. '
+                        'La ligne du dessous dit ce que mpv utilise vraiment.',
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: <Widget>[
+                          _aoChip('', 'Coupé'),
+                          _aoChip('opensles', 'OpenSL ES'),
+                          _aoChip('audiotrack', 'AudioTrack'),
+                          _aoChip('aaudio', 'AAudio'),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      SelectableText(
+                        widget.mpvFacts.value,
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                     ],
                   ),
                 );
@@ -218,6 +261,30 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _aoChip(String code, String label) {
+    final bool selected = PlayerSettings.instance.mpvAoTrial == code;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      showCheckmark: false,
+      onSelected: (bool v) {
+        if (!v) return;
+        PlayerSettings.instance.setMpvAoTrial(code);
+      },
+      selectedColor: AppColors.accentCyan,
+      backgroundColor: AppColors.surface,
+      labelStyle: AppTextStyles.bodyMedium.copyWith(
+        color: selected ? Colors.black : AppColors.textSecondary,
+        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+      ),
+      side: BorderSide(
+        color: selected
+            ? AppColors.accentCyan
+            : Colors.white.withValues(alpha: 0.06),
+      ),
     );
   }
 
