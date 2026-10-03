@@ -25,6 +25,12 @@
 name: Deploy panel + Worker (Cloudflare)
 
 on:
+  # Le push de CE fichier ne fait qu'enregistrer le workflow auprès de
+  # GitHub (sans ça, « Run workflow » est introuvable depuis une branche).
+  # Les jobs exigent confirme == DEPLOYER : sur un push, ils sont sautés.
+  push:
+    paths:
+      - '.github/workflows/deploy-panel-cloudflare.yml'
   workflow_dispatch:
     inputs:
       confirme:
