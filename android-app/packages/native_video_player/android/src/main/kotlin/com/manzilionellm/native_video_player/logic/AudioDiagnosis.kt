@@ -96,6 +96,12 @@ data class AudioSnapshot(
      * flux réel). Null = pas encore lue.
      */
     val routeLine: String? = null,
+    /**
+     * Ligne « Attributs » : le contenu envoyé à l'AudioTrack (film,
+     * musique, parole, ou le défaut Media3). Null = pas encore posée.
+     * Ce n'est pas une cause : l'essai est coupé par défaut.
+     */
+    val attributeLine: String? = null,
     /** Le lecteur dit qu'il joue (image et son en cours). */
     val playerAudible: Boolean = false,
 )
@@ -620,6 +626,9 @@ object AudioDiagnosis {
             append("\n").append(VolumeTrace.playbackNote(s.playback, s.playerAudible))
             if (!s.routeLine.isNullOrBlank()) {
                 append("\n").append(s.routeLine)
+            }
+            if (!s.attributeLine.isNullOrBlank()) {
+                append("\n").append(s.attributeLine)
             }
             append("\nSpectre > 4 kHz : ")
             append(

@@ -5,7 +5,8 @@
 //  interrupteurs COUPÉS par défaut :
 //    • mesurer le spectre (copie le PCM, ne le filtre pas) ;
 //    • réessayer FFmpeg à la prochaine chaîne ;
-//    • essayer le décodeur AAC de la box à la prochaine chaîne.
+//    • essayer le décodeur AAC de la box à la prochaine chaîne ;
+//    • essai d'attributs (coupé par défaut : le contenu reste « film »).
 //  Rien n'est envoyé au panel : le heartbeat n'a pas de champ pour ça.
 //  Style : les mêmes TvTokens / TvDimens que la boîte noire.
 // =========================================================
@@ -18,6 +19,7 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../features/player/data/audio_diag_prefs.dart';
+import '../../../features/player/domain/audio_attribute_trial.dart';
 import '../../../features/player/data/audio_report_store.dart';
 import '../../../features/player/domain/audio_report_book.dart';
 import '../core/tv_dimens.dart';
@@ -89,6 +91,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _androidFocus = NativeVideoController.androidAudioFocus;
     _bgPause = NativeVideoController.backgroundPauseOnly;
     _immediate = NativeVideoController.immediateHandoff;
+    _profile = NativeVideoController.audioAttributeTrial;
     // Le libellé vient de la mémoire Dart. On le repousse au lecteur
     // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
     NativeVideoController.pushAudioDiagFlags();
@@ -104,6 +107,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
   bool _androidFocus = false;
   bool _bgPause = false;
   bool _immediate = false;
+  String _profile = AudioAttributeTrial.off;
   bool _witnessBusy = false;
   NativeVideoController? _witness;
 
@@ -155,6 +159,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     } finally {
       if (mounted) setState(() => _witnessBusy = false);
     }
+  }
+
+  Future<void> _cycleProfile() async {
+    final String next = AudioAttributeTrial.next(_profile);
+    setState(() => _profile = next);
+    await AudioDiagPrefs.setAudioProfile(next);
   }
 
   Future<void> _toggleImmediate() async {
@@ -287,6 +297,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             ),
             const SizedBox(width: 12),
             _Toggle(
+              label: AudioAttributeTrial.label(_profile),
+              on: AudioAttributeTrial.armed(_profile),
+              onSelect: _cycleProfile,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
               label: _witness != null
                   ? 'Témoin : stop'
                   : (_witnessBusy ? 'Témoin : préparation' : 'Jouer le son témoin'),
@@ -332,7 +348,14 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '
           'ancien comportement. Son témoin : 10 s (voix puis bruit), '
           'lu par le même lecteur. Allume la mesure, ne change pas le son. '
-          'Bruit sourd → l\'appareil. Bruit clair → la chaîne.',
+          'Bruit sourd → l\'appareil. Bruit clair → la chaîne. '
+          'Attributs : « coupé » (défaut) = contenu film, comme aujourd\'hui '
+          '(parole seulement si la voix claire est allumée). Un appui passe à '
+          'film, musique, parole, puis défaut Media3 (contenu inconnu, celui '
+          'd\'ExoPlayer sans réglage et de VLC 3.0). Si une chaîne joue, elle '
+          'est rouverte pour que l\'AudioTrack naisse avec le nouveau contenu. '
+          'Le tampon, le tunneling et l\'offload ne bougent pas. Recouper '
+          'revient au son d\'aujourd\'hui.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),
         ),
         const SizedBox(height: 14),
