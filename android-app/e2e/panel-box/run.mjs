@@ -309,15 +309,15 @@ async function parcours(page) {
 
   // ----- Création + activation depuis l'écran, SANS lien M3U -----
   await page.goto(PANEL_ORIGIN + '/activate');
-  await page.getByRole('heading', { name: 'Activer un appareil' }).waitFor();
-  await page.getByPlaceholder('MK:1A:2B:3C:4D:5E').fill(mac);
+  await page.getByRole('heading', { name: "Activer l'application" }).waitFor();
+  await page.getByPlaceholder('MK:XX:XX:XX:XX:XX').fill(mac);
   await page.getByPlaceholder('Ex. Salon de Karim').fill(CUSTOMER);
-  await page.getByRole('button', { name: 'Activer', exact: true }).click();
-  await page.getByText('Appareil activé').waitFor();
+  await page.getByRole('button', { name: /Activer l.application/ }).click();
+  await page.getByText('Application activée').waitFor();
   check('écran d\'activation : appareil créé sans source', true, mac);
 
   await page.goto(PANEL_ORIGIN + '/customers');
-  await page.getByPlaceholder('Recherche par nom, email, téléphone…').fill(CUSTOMER);
+  await page.getByPlaceholder('Nom, e-mail, téléphone…').fill(CUSTOMER);
   const clientCell = page.getByRole('cell', { name: CUSTOMER, exact: true });
   await clientCell.first().waitFor();
   const clientCount = await clientCell.count();
@@ -451,7 +451,7 @@ async function parcours(page) {
   check('l\'écran En ligne affiche la MAC et la chaîne', true, mac);
 
   await page.goto(PANEL_ORIGIN + '/devices');
-  await page.getByPlaceholder('Recherche par MAC, label, client…').fill(mac);
+  await page.getByPlaceholder('MAC, nom, client…').fill(mac);
   await page.locator('tbody').getByText(mac, { exact: true }).waitFor();
   check('la fiche appareils retrouve la MAC', true);
 
