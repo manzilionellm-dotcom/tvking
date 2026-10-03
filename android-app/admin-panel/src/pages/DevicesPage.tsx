@@ -1,11 +1,12 @@
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import {
-  devicesApi, activateApi, flagEmoji,
+  devicesApi, activateApi, sourcesApi, flagEmoji,
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
+import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
 import { formatDateTime } from '@/lib/utils';
 
 /// Libellés FR lisibles des plans (clé technique → texte).
@@ -24,20 +25,42 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
   // Appareil dont on affiche la « fiche complète » (infos + M-Trio).
   const [detailFor, setDetailFor] = useState<Device | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
+  const pollSeq = useRef(0);
+  const appliedSeq = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+
+  const load = useCallback((opts?: { silent?: boolean }) => {
+    const my = ++pollSeq.current;
+    if (!opts?.silent) setLoading(true);
     devicesApi.list(q)
-      .then((r) => { setItems(r.items); setErr(null); })
+      .then((r) => {
+        if (!mounted.current || !shouldApplyPollResult(my, appliedSeq.current)) return;
+        appliedSeq.current = my;
+        setItems(r.items);
+        setDetailFor((cur) => {
+          if (!cur) return cur;
+          return r.items.find((d) => d.id === cur.id) ?? cur;
+        });
+        setErr(null);
+      })
       .catch((e) => {
+        if (!mounted.current || !shouldApplyPollResult(my, appliedSeq.current)) return;
         if (e instanceof ApiError && e.status === 401) onLogout();
         else setErr(e.message);
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (mounted.current && my === pollSeq.current) setLoading(false); });
   }, [q, onLogout]);
 
   useEffect(() => {
-    const id = setTimeout(load, 200); // petit debounce sur la recherche
+    const id = setTimeout(() => load(), 200); // petit debounce sur la recherche
     return () => clearTimeout(id);
+  }, [load]);
+
+  // Dernière vue / statut : au plus 2 s après un heartbeat déjà commis.
+  useEffect(() => {
+    const t = setInterval(() => load({ silent: true }), PANEL_POLL_MS);
+    return () => clearInterval(t);
   }, [load]);
 
   async function setBlock(d: Device, status: 'active' | 'frozen' | 'banned') {
@@ -201,16 +224,54 @@ function DeviceDetailModal({
   const [ov, setOv] = useState<DeviceOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const pollSeq = useRef(0);
+  const appliedSeq = useRef(0);
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    devicesApi.overview(device.id)
-      .then((r) => { if (alive) { setOv(r); setErr(null); } })
-      .catch((e) => { if (alive) setErr(e instanceof ApiError ? e.message : 'Échec.'); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    pollSeq.current = 0;
+    appliedSeq.current = 0;
+    const pull = (first: boolean) => {
+      const my = ++pollSeq.current;
+      if (first) setLoading(true);
+      devicesApi.overview(device.id)
+        .then((r) => {
+          if (!alive || !shouldApplyPollResult(my, appliedSeq.current)) return;
+          appliedSeq.current = my;
+          setOv(r);
+          setErr(null);
+        })
+        .catch((e) => {
+          if (!alive || !shouldApplyPollResult(my, appliedSeq.current)) return;
+          setErr(e instanceof ApiError ? e.message : 'Échec.');
+        })
+        .finally(() => { if (alive && first) setLoading(false); });
+    };
+    pull(true);
+    const t = setInterval(() => pull(false), PANEL_POLL_MS);
+    return () => { alive = false; clearInterval(t); };
   }, [device.id]);
+
+  async function clearPushed() {
+    if (!window.confirm(
+      'Effacer les listes poussées sur le serveur pour cette MAC ? Elles ne seront plus renvoyées à l\'app.',
+    )) return;
+    setClearing(true);
+    setErr(null);
+    try {
+      await sourcesApi.clear(device.mac);
+      const my = ++pollSeq.current;
+      const r = await devicesApi.overview(device.id);
+      if (!shouldApplyPollResult(my, appliedSeq.current)) return;
+      appliedSeq.current = my;
+      setOv(r);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Échec.');
+    } finally {
+      setClearing(false);
+    }
+  }
 
   const st = device.block_status || 'active';
   const sources = ov?.sources ?? [];
@@ -302,6 +363,7 @@ function DeviceDetailModal({
           <div className="flex flex-wrap gap-1.5">
             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/activate?mac=${macUrl}`)} title="Pousser ou modifier le M-Trio de sources">Pousser une source</ActionBtn>
+            <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire les listes poussées. L'app déjà ouverte garde sa copie locale jusqu'à sa prochaine vérification.">Effacer les listes</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
             {st !== 'frozen' && (
               <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>

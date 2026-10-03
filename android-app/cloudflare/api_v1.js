@@ -1,6 +1,11 @@
 // =========================================================
 //  api_v1.js — App Licensing Platform REST API v1
 // =========================================================
+import {
+  coerceSourceList,
+  markSourcesCleared,
+  clearSourceTombstone,
+} from './linkage.js';
 //  Importe depuis worker.js pour servir le namespace /api/v1/*.
 //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
 //  continuent de fonctionner pour ne pas casser les apps mobiles
@@ -2190,7 +2195,7 @@ async function upsertDeviceSource(env, mac, sources) {
   await ensureSourcesTable(env);
   // Les sources assignées ICI (payant) sont marquées origin='panel' → VERROUILLÉES
   // côté self-service (le client ne peut ni les modifier ni les supprimer).
-  const panelItems = (sources || []).map((s) => ({ ...s, origin: 'panel' }));
+  const panelItems = coerceSourceList(sources).map((s) => ({ ...s, origin: 'panel' }));
   // PRÉSERVE les playlists 'self' que le client a ajoutées via /mon-espace : une
   // (ré)assignation panel NE DOIT PAS effacer les listes personnelles du client
   // (modèle multi-listes). On relit l'existant et on ré-empile les 'self' après.
@@ -2225,6 +2230,7 @@ async function upsertDeviceSource(env, mac, sources) {
     .bind(mac, first.type, first.label, first.server_url, first.username,
           first.password, first.m3u_url, first.epg_url, json, Date.now())
     .run();
+  await clearSourceTombstone(env, mac);
 }
 
 // Décode une MAC reçue dans le PATH : le front encode les « : » en
@@ -2292,6 +2298,7 @@ async function handleSourceDelete(request, env, mac, actor) {
   await ensureSourcesTable(env);
   const m = decodeMac(mac).trim().toUpperCase();
   await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
+  await markSourcesCleared(env, m, Date.now());
   await logAudit(env, request, actor, 'source.clear',
     { type: 'device_source', id: m }, null, null);
   return jsonResp({ ok: true, mac: m });
@@ -2455,7 +2462,10 @@ async function handleFamiliesDelete(env, id, actor) {
   // On retire la source poussée à chaque membre (ils perdent l'accès famille).
   const m = await env.DB.prepare('SELECT mac FROM family_members WHERE family_id = ?').bind(id).all();
   for (const r of (m.results || [])) {
-    try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(r.mac).run(); } catch (_) {}
+    try {
+      await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(r.mac).run();
+      await markSourcesCleared(env, r.mac, Date.now());
+    } catch (_) {}
   }
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM families WHERE id = ?').bind(id).run();
@@ -2518,7 +2528,11 @@ async function handleFamilyRemoveMember(env, familyId, mac, actor) {
   await env.DB.prepare('DELETE FROM family_members WHERE family_id = ? AND mac = ?')
     .bind(familyId, m).run();
   // Retire la source → l'appareil n'a plus l'accès famille.
-  try { await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run(); } catch (_) {}
+  // Tombstone : sinon le repli KV réinjecte l'ancienne liste au prochain GET.
+  try {
+    await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(m).run();
+    await markSourcesCleared(env, m, Date.now());
+  } catch (_) {}
   await logAudit(env, { headers: new Headers() }, actor, 'family.member.remove',
     { type: 'family', id: familyId }, null, { mac: m });
   return jsonResp({ ok: true, family_id: familyId, mac: m });
@@ -3449,8 +3463,15 @@ async function handleDeviceTransfer(request, env, user, actor) {
   // remplace par celle de l'ancienne (le client garde SES identifiants).
   try {
     await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(newMac).run();
-    await env.DB.prepare('UPDATE device_sources SET mac = ?, updated_at = ? WHERE mac = ?')
-      .bind(newMac, now, oldMac).run();
+    const moved = await env.DB.prepare(
+      'UPDATE device_sources SET mac = ?, updated_at = ? WHERE mac = ?',
+    ).bind(newMac, now, oldMac).run();
+    await markSourcesCleared(env, oldMac, now);
+    if (moved && moved.meta && moved.meta.changes) {
+      await clearSourceTombstone(env, newMac);
+    } else {
+      await markSourcesCleared(env, newMac, now);
+    }
   } catch (_) { /* pas de source à déplacer */ }
 
   // L'ancien appareil n'a plus de licence → il redevient inactif tout seul.
