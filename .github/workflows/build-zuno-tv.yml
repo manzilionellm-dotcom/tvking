@@ -644,6 +644,19 @@ jobs:
           fi
           gh release upload "$TEST_TAG" "$APK" --clobber -R "$REPO"
           echo "✓ box de test : https://github.com/$REPO/releases/download/$TEST_TAG/$APK_NAME"
+          # AAB Google Play demandé (play_aab=true) : on l'attache AUSSI à la
+          # release de test, pour un lien direct vers la Play Console (les
+          # artefacts Actions sont zippés et exigent une connexion GitHub).
+          # Même garde-fou que l'APK : clé des box, sinon rien.
+          if [ "${AAB_READY:-}" = "1" ]; then
+            AAB="build/app/outputs/bundle/release/zuno-tv.aab"
+            AAB_CERT=$(keytool -printcert -jarfile "$AAB" | grep -m1 -oE "SHA256: [0-9A-F:]+" | cut -d' ' -f2 | tr -d ':' | tr 'A-F' 'a-f')
+            [ "$AAB_CERT" = "$EXPECTED_CERT" ] \
+              || { echo "::error::AAB signé $AAB_CERT ≠ clé des box → pas attaché"; exit 1; }
+            gh release upload "$TEST_TAG" "$AAB" --clobber -R "$REPO"
+            echo "✓ AAB Google Play (test) : https://github.com/$REPO/releases/download/$TEST_TAG/zuno-tv.aab"
+            echo "   SHA-256 : $(sha256sum "$AAB" | cut -d' ' -f1)"
+          fi
 
       - name: Résumé
         run: |

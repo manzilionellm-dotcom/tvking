@@ -100,6 +100,9 @@ def patch(s: str) -> str:
         "android.hardware.camera",
         "android.hardware.screen.portrait",
         "android.hardware.faketouch",
+        # ACCESS_WIFI_STATE sous-entend « Wi-Fi obligatoire » : les box en
+        # Ethernet seul et certains casques seraient filtrés par Play.
+        "android.hardware.wifi",
     ):
         s = _add_after_manifest_tag(
             s, f'<uses-feature android:name="{feat}" android:required="false"/>'
@@ -142,6 +145,19 @@ def patch(s: str) -> str:
             "    <meta-data\n"
             '            android:name="io.flutter.embedding.android.EnableImpeller"\n'
             '            android:value="false" />\n'
+            "    </application>",
+            1,
+        )
+    # Tablettes et grands écrans sous Android 16 (targetSdk 36) : le système
+    # IGNORE screenOrientation="landscape" au-delà de 600 dp et afficherait
+    # l'interface TV en portrait (largeurs fixes → débordements). Cette
+    # propriété demande à garder le paysage ; sans effet sur une box.
+    if "PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" not in s:
+        s = s.replace(
+            "</application>",
+            "    <property\n"
+            '            android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"\n'
+            '            android:value="true" />\n'
             "    </application>",
             1,
         )
