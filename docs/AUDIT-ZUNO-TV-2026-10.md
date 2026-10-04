@@ -241,8 +241,24 @@ Builds suivants, mêmes inputs, mêmes contrôles (fichier retéléchargé) :
 | #147 | `1050c92` (+ panel instantané, deux QR) | 1791118025 | `f5c990b2ddcb87f505814bd891c01ae3bf7e12439efc9e57a29376c1c3463f08` | `5145b8e0…` ✓ |
 | #148 (`37203790667`) | `e698de2` (+ guide Xtream, EPG isolate, historique 20 s, reprise) | 1791118634 | `23a75f66b7372feb4af1b3fd01aad7135802a780d23adc99266992913eeaa54f` (54 584 479 octets) | `5145b8e0…` ✓ |
 | #149 (`37205096210`) | `8956ae8` (+ cartes du panel : annonce, favori du jour, bannières) | 1791119971 | `3ba4ed02585e961ab0c5d0f85693d29b78daec77b646d3fe7320766ce3365a20` (54 627 855 octets) | `5145b8e0…` ✓ |
+| #150 (`37207214664`) APK | `fb3df3e` (+ manifeste Wi-Fi non requis, paysage tablette Android 16) | 1791122105 | `843ae11e87f73dd6caf1502710b0adab63f29958e5ab357f1e3cae7934da5a47` (54 627 949 octets) | `5145b8e0…` ✓ |
+| #150 AAB Google Play (`play_aab=true`) | `fb3df3e` | même numéro de build (workflow) | `1d0388b32ec49bdcb3b74c9dd2c5f6de7ab7a0d562778fd738ed0432cf9b4c28` (89 140 208 octets) | `keytool` : `51:45:B8:E0…9E:61` ✓ |
 
-Release clients `zuno-tv` relue après #147, #148 et #149 : digests
+Contrôles AAB #150 sur le fichier retéléchargé : ABIs `arm64-v8a`,
+`armeabi-v7a`, `x86_64` ; toutes les `.so` 64 bits alignées 16 Ko (`readelf`,
+0 écart) ; `REQUEST_INSTALL_PACKAGES` absente du manifeste du bundle (0
+occurrence). APK #150 : `android.hardware.wifi` non requis,
+`PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY=true` présent (`aapt2 dump
+xmltree`).
+
+Windows #12 (`build-zuno-windows.yml`, run `37207207680`, push de `fb3df3e`) :
+toutes les étapes vertes, version 106.0.12, `Zuno-Setup.exe` 29 395 652 octets
+SHA-256 `acde7ab216935a502def2134c930f0f18672ace55e92371fb9bcab00651781e7`
+(calculé par le build, artefact non retéléchargeable sans compte GitHub),
+`zuno-windows.zip` 38 587 057 octets ; étape « Publier » **sautée** (branche
+`ccr-`), release `zuno-windows` inchangée (fichiers du 3 octobre).
+
+Release clients `zuno-tv` relue après #147, #148, #149 et #150 : digests
 (`6321fa53…`, `9085457271…`, `b65392bf…`) et `updated_at` (2026-09-30) inchangés.
 
 ## 10. Preuve que la release clients `zuno-tv` n'a pas bougé
