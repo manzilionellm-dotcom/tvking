@@ -395,8 +395,14 @@ suivante, hors lecture).
 | Panel : « AD:A6:98:70:6A », tirets, espaces ou rien → `MK:AD:A6:98:70:6A` (Activer, Liste de chaînes, Transfert) | branche `claude/panel-mise-en-ligne`, **non poussé** : `docs/patches/panel-supprimer-liste-mac-sans-mk.patch` | `mac.test.ts` ; `npm test` 20/20, `tsc -b && vite build` OK |
 | Panel : bouton « Supprimer » par liste. Le Worker en place remplace l'ensemble à chaque envoi : on renvoie les autres intactes, ou on efface la dernière. La box (règle `fingerprintsToDrop`, présente depuis v106) retire seule la liste qui n'est plus envoyée | même patch | `sources.test.ts` (mot de passe conservé, ordre gardé, champs internes retirés) |
 
-Aucune modification du Worker. NON PROUVÉ : le bouton sur le vrai panel (non
-déployé) et l'effacement observé sur une vraie box.
+Mis en ligne le 4 octobre sur ordre du propriétaire (« termine, mon client
+attend ») : commit `0896028c` poussé sur `claude/panel-mise-en-ligne`
+(avance rapide depuis `f7e1fd0a`), workflow « Deploy panel + Worker » run #3
+(`37226181877`), cible **panel-seul** : job Panel vert, job Worker **sauté**.
+Vérifié sur `https://tvking-admin.pages.dev` : le paquet servi
+(`index-D6H2YHc5.js`) contient les nouveaux textes du bouton ; Worker
+`app.7themotion.com` toujours en ligne (200), non redéployé.
+NON PROUVÉ : l'effacement observé sur une vraie box.
 
 ## 12. Bloqueurs de publication
 
