@@ -247,6 +247,15 @@ Builds suivants, mêmes inputs, mêmes contrôles (fichier retéléchargé) :
 | #151 (`6bf1680`) APK | AAB Play en minSdk 24 | 1791125395 | `17086ce8328f518979bee74356c4a54d448adb861ab759a897c79746efb6d012` (54 627 937 octets), minSdk **21** | `5145b8e0…` ✓ |
 | #151 AAB Google Play | minSdk **24** (bundletool) | 1791125395 (bundletool) | `a244d0d60c748d4918ac17bb4593d658b7388d371d3f4ab8fafa8e14bb3880b5` (88 895 212 octets) | `51:45:B8:E0…9E:61` ✓ |
 
+| #152 (`53d5944`) APK, sans AAB | MAC sans « MK: » ; bouton Mise à jour (canal test, 45 s / 20 min, autorisation guidée) ; numéro propre | 1791138617, versionName **107-test.152** | `07cbc8f3ed37ce97139b8a3efe92363999bd4ffa53ff8618b346f5b0b8932f97` (54 634 717 octets), minSdk 21 | `5145b8e0…` ✓ |
+
+Build #152 : journal du run « version visible = 107-test.152 (précédente publiée : 106) »
+et « canal de mise à jour : test (zuno-tv-test + zuno-tv) ». `version.json` de
+`zuno-tv-test` publié : versionCode 1791138617, empreinte et taille identiques à
+l'APK retéléchargé (vérifié). AAB de `zuno-tv-test` inchangé (`a244d0d6…`, celui
+du dépôt Play). Le code natif ajouté (canInstallPackages / openInstallPermission)
+compile (build vert).
+
 AAB #150 refusé par la Play Console (« La protection automatique Play
 nécessite le SDK 24 ») : bundletool sur le fichier donnait minSdk 21. Correctif
 `6bf1680` : l'AAB seul passe à 24 après la construction et la vérification de
