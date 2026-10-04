@@ -12,7 +12,8 @@ import {
   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
   type DeviceLicense, type DevicePresence, ApiError,
 } from '@/lib/api';
-import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
+import { shouldApplyPollResult } from '@/lib/live-sync';
+import { bindPanelRefresh } from '@/lib/box-channel';
 import { formatDateTime } from '@/lib/utils';
 import { planRemoveSource } from '@/lib/sources';
 import {
@@ -79,11 +80,9 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
     return () => { clearTimeout(id); aborts.current.abort(); };
   }, [load]);
 
-  // Dernière vue / statut : au plus 2 s après un heartbeat déjà commis.
-  useEffect(() => {
-    const t = setInterval(() => load({ silent: true }), PANEL_POLL_MS);
-    return () => clearInterval(t);
-  }, [load]);
+  // Dernière vue : 2 s tant que le canal est coupé, filet d'une minute
+  // quand il est ouvert. Un signal (liste, activation) relit tout de suite.
+  useEffect(() => bindPanelRefresh(() => load({ silent: true })), [load]);
 
   const table = useClientTable(items, {
     query: q,
@@ -311,8 +310,8 @@ function DeviceDetailModal({
         .finally(() => { if (alive && first) setLoading(false); });
     };
     pull(true);
-    const t = setInterval(() => pull(false), PANEL_POLL_MS);
-    return () => { alive = false; clearInterval(t); };
+    const stop = bindPanelRefresh(() => { if (alive) pull(false); });
+    return () => { alive = false; stop(); };
   }, [device.id]);
 
   async function clearPushed() {

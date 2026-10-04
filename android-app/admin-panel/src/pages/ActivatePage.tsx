@@ -150,7 +150,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
 
   return (
     <AppLayout
-      title="Activation"
+      title="Grande activation de toutes les applications"
       onLogout={onLogout}
       actions={
         isReseller && balance !== null ? (

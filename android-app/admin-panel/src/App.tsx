@@ -29,6 +29,7 @@ import { HistoryPage } from '@/pages/HistoryPage';
 import { ReferencesPage } from '@/pages/ReferencesPage';
 import { TransferPage } from '@/pages/TransferPage';
 import { FamiliesPage } from '@/pages/FamiliesPage';
+import { startPanelChannel } from '@/lib/box-channel';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -64,6 +65,11 @@ export default function App() {
       .catch(() => {})
       .finally(() => { setStatus('logged_in'); nav('/'); });
   }, [nav]);
+
+  useEffect(() => {
+    if (status !== 'logged_in') return;
+    return startPanelChannel();
+  }, [status]);
 
   const handleLogout = useCallback(() => {
     setToken(null);
