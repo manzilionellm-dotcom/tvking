@@ -489,6 +489,13 @@ jobs:
           open(f, "w", encoding="utf-8").write(s)
           print("REQUEST_INSTALL_PACKAGES retirée pour Google Play")
           PYEOF
+          # minSdk 24 pour Google Play SEULEMENT : la « protection automatique
+          # Play » (activée sur l'app dans la Play Console) refuse un bundle
+          # sous le SDK 24 (Android 7). L'APK des box, déjà construit et
+          # vérifié plus haut, garde minSdk 21 (box Android 5/6, sideload).
+          sed -i 's/^val kBoxMinSdk = 21$/val kBoxMinSdk = 24/' android/app/build.gradle.kts
+          grep -q '^val kBoxMinSdk = 24$' android/app/build.gradle.kts \
+            || { echo "❌ minSdk 24 non posé pour l'AAB Play"; exit 1; }
           flutter build appbundle --release --no-tree-shake-icons \
             --android-skip-build-dependency-validation \
             --build-number="$TV_BUILD_NUMBER" \
@@ -504,6 +511,14 @@ jobs:
           if unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq "REQUEST_INSTALL_PACKAGES"; then
             echo "❌ REQUEST_INSTALL_PACKAGES encore présente dans l'AAB (refusé par Google Play)"; exit 1
           fi
+          # minSdk réellement dans le bundle (bundletool officiel de Google,
+          # version fixée : pas d'appel d'API GitHub, pas de limite de débit).
+          curl -fsSL -o /tmp/bundletool.jar \
+            https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar
+          AAB_MIN=$(java -jar /tmp/bundletool.jar dump manifest --bundle "$AAB" \
+            --xpath /manifest/uses-sdk/@android:minSdkVersion 2>/dev/null | tail -1 | tr -d '[:space:]')
+          echo "minSdk de l'AAB : $AAB_MIN"
+          [ "$AAB_MIN" = "24" ] || { echo "❌ minSdk AAB $AAB_MIN ≠ 24 : refusé par la protection automatique Play"; exit 1; }
           AAB_CERT=$(keytool -printcert -jarfile "$AAB" | grep -m1 -oE "SHA256: [0-9A-F:]+" | cut -d' ' -f2 | tr -d ':' | tr 'A-F' 'a-f')
           echo "certificat de l'AAB : $AAB_CERT"
           if [ "$AAB_CERT" != "$EXPECTED_CERT" ]; then
