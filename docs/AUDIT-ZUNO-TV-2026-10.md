@@ -233,6 +233,15 @@ Vérifié sur le fichier retéléchargé depuis la release (pas sur les intentio
 Non publié aux clients : `publish=false`, et `test_box=true` interdit de toute
 façon l'écriture sur `zuno-tv` (`PUBLIER` est faux).
 
+Builds suivants, mêmes inputs, mêmes contrôles (fichier retéléchargé) :
+
+| Run | Commit | versionCode | SHA-256 | Certificat |
+| --- | --- | --- | --- | --- |
+| #146 | `1b5a855` (écran noir, essai 48 kHz) | remplacé par #147 | — | — |
+| #147 | `1050c92` (+ panel instantané, deux QR) | 1791118025 | `f5c990b2ddcb87f505814bd891c01ae3bf7e12439efc9e57a29376c1c3463f08` | `5145b8e0…` ✓ |
+
+Release clients `zuno-tv` relue après #147 : digests et `updated_at` inchangés.
+
 ## 10. Preuve que la release clients `zuno-tv` n'a pas bougé
 
 Avant toute action (API GitHub, 4 octobre 2026) :
@@ -269,6 +278,30 @@ et les mêmes dates ; `version.json` retéléchargé a le même SHA-256
 | Panel → app instantané (essai, source) | Canal « signal » en attente longue (`BoxSignalClient.wait`) : un ordre `activate` / `source` arrive en quelques secondes ; lecture du statut toutes les 3–4 s ; mais l'import de la source était refusé tant que l'écran Direct ou le lecteur était ouvert (`SourceFetchDecision.playbackBusy`), et l'écran Direct VIDE compte comme occupé | `activation_pace.dart` : une box **sans chaîne** importe tout de suite, même sur l'écran Direct vide (rien ne peut jouer). Test ajouté dans `activation_pace_test.dart` | Une box qui a déjà des chaînes et qui **joue** reçoit une source remplacée au retour à l'accueil (importer 50 000 chaînes pendant la lecture fige l'image). L'activation / l'essai, eux, sont immédiats partout. Le Worker n'a pas été touché |
 | Deux grands QR à l'installation | Activation : QR « Mon espace » seul ; Direct vide : QR WhatsApp seul | Activation : QR **WhatsApp** (code MAC pré-rempli) + QR **« Mon espace »** (ajout de sa propre liste depuis le téléphone), 210 px chacun, mention « Cette application ne vend aucune chaîne » au-dessus du second ; Direct vide : les deux QR aussi | Rendu réel (lisibilité, scan) à vérifier sur la box |
 | Publication aux clients | — | Rien n'est publié : `publish=false` sur tous les builds. La publication ne se fait qu'après validation sur la box, sur demande explicite | — |
+
+## 11 ter. Passe « rendre accro » (4 octobre, après recherche sur les zones non auditées)
+
+Constat central : la plupart des fonctions de fidélisation (« En retard », « Tes
+émissions », rappels, rattrapage, « ce soir », programme sous le nom) lisent le
+guide, et le guide était **vide pour toutes les sources Xtream** (`_syncEpgFor`
+sautait le XMLTV : identifiants jamais appariés) et saccadait la box pour les M3U
+(décodage sur le fil UI).
+
+| Changement | Fichiers | Preuve |
+| --- | --- | --- |
+| Guide Xtream apparié : `epg_channel_id` de chaque chaîne (gardé par `XtreamClient.epgChannelIds`) → XMLTV `xmltv.php` ; une chaîne XMLTV nourrit toutes les chaînes qui la déclarent (« TF1 HD » + « TF1 FHD ») | `xtream_client.dart`, `epg_targets.dart`, `playlist_repository.dart` | `epg_targets_test.dart`, `epg_isolate_import_test.dart` (vrai serveur HTTP local + base SQLite : 3 programmes × 2 chaînes + 3, identifiant inconnu ignoré) |
+| Import du guide dans un **isolate** (téléchargement + décodage), rangées insérées par lots de 500 sur le fil principal ; repli `zuno.epg.inline_parse` | `epg_fetch.dart`, `epg_repository.dart` | même test (chemin isolate), `epg_import_guard_test.dart` (chemin en ligne : délais, dédoublonnage) |
+| Historique « regardé » : après 20 s avec une image, ou en quittant le lecteur sur la chaîne ; une chaîne survolée ne pollue plus « Reprendre », la dernière chaîne au démarrage ni « À cette heure » ; repli `zuno.history.on_open` | `history_policy.dart`, `tv_player_screen.dart` | `history_policy_test.dart` |
+| Reprise au démarrage : Haut/Bas parcourent toute la liste (la dernière chaîne à sa place), plus seulement les 8 « Reprendre » | `resume_zap.dart`, `tv_hub_screen.dart` | `resume_zap_test.dart` |
+
+Non fait, documenté pour la suite (par valeur décroissante) : rappels visibles
+dans l'app (la rangée « Vos rappels » ne se remplit jamais sur la box) ; grille
+du guide pilotable à la télécommande ; rattrapage limité à 1 h de passé
+(`purgeStale`) alors que les chaînes déclarent plusieurs jours ; recherche avec
+classement (exact > préfixe > contenu, favoris en tête), clés précalculées hors
+fil UI, numéro de chaîne, titres du guide ; appariement par nom pour les M3U sans
+tvg-id ; `MediaSession` (lecture/pause HDMI-CEC, Assistant) ; Watch Next /
+chaîne « Zuno » sur l'accueil Google TV.
 
 ## 12. Bloqueurs de publication
 

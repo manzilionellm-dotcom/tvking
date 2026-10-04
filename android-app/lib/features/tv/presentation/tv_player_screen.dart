@@ -38,8 +38,10 @@ import '../../player/domain/image_engine.dart';
 import '../../player/domain/live_bar_slots.dart';
 import '../../player/domain/reconnect_plan.dart';
 
+import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/blackbox/black_box.dart';
+import '../core/history_policy.dart';
 import '../core/tv_activity.dart';
 import '../core/tv_back_guard.dart';
 import '../core/tv_tokens.dart';
@@ -354,6 +356,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void dispose() {
     TvActivity.leave();
     WidgetsBinding.instance.removeObserver(this);
+    // On quitte sur cette chaîne : si une image a été vue, elle compte
+    // (même sans les 20 s), sinon rien n'est écrit.
+    _historyTimer?.cancel();
+    if (!_zapHolding &&
+        HistoryPolicy.recordOnExit(
+          frameShown: _everShownFrame,
+          alreadyRecorded: _historyRecorded == _current.id,
+          immediate: RepairFlags.historyOnOpen,
+        )) {
+      _recordHistory(_current.id);
+    }
     _hideTimer?.cancel();
     _presenceTimer?.cancel();
     _numTimer?.cancel();
@@ -483,13 +496,45 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     } else {
       _loadMissed();
     }
-    // Historique (reprise « Continuer à regarder », favoris, reco).
-    RecentlyWatchedRepository.instance.record(_current.id);
-    // Compteur local « à cette heure ». N'ouvre rien, n'attend pas.
-    unawaited(TimePickLog.instance.note(_current.id));
+    // Historique (« Reprendre », dernière chaîne, « À cette heure ») :
+    // après 20 s avec une image, ou en quittant le lecteur sur cette
+    // chaîne. Une chaîne survolée en zappant ne compte plus.
+    // Repli RepairFlags.historyOnOpen : écriture immédiate, comme avant.
+    _armHistory();
     NowPlaying.instance.set(_current.cleanName);
     SubscriptionState.instance.syncWithBackend();
     _showOverlayTemporarily();
+  }
+
+  // ----- Historique : seulement une chaîne vraiment regardée -----
+  Timer? _historyTimer;
+  String? _historyRecorded; // chaîne déjà inscrite pour cette ouverture
+
+  void _armHistory() {
+    _historyTimer?.cancel();
+    _historyRecorded = null;
+    final String id = _current.id;
+    if (RepairFlags.historyOnOpen) {
+      _recordHistory(id);
+      return;
+    }
+    _historyTimer = Timer(HistoryPolicy.dwell, () {
+      if (!mounted) return;
+      if (HistoryPolicy.recordAfterDwell(
+        frameShown: _everShownFrame,
+        sameChannel: _current.id == id,
+        immediate: RepairFlags.historyOnOpen,
+      )) {
+        _recordHistory(id);
+      }
+    });
+  }
+
+  void _recordHistory(String id) {
+    _historyRecorded = id;
+    RecentlyWatchedRepository.instance.record(id);
+    // Compteur local « à cette heure ». N'ouvre rien, n'attend pas.
+    unawaited(TimePickLog.instance.note(id));
   }
 
   void _zap(int delta) {

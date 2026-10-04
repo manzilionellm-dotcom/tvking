@@ -36,6 +36,7 @@ import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel.dart';
 import '../../channels/domain/channel_genre.dart';
 import '../../epg/data/epg_repository.dart';
+import '../../epg/data/epg_targets.dart';
 import '../domain/playlist.dart';
 import 'playlist_secret.dart';
 import 'm3u_fetcher.dart';
@@ -448,29 +449,36 @@ class PlaylistRepository {
 
   /// Lance l'import EPG en arrière-plan, ignore les erreurs réseau
   /// (l'utilisateur peut toujours retenter manuellement plus tard).
+  /// Guide d'une liste. M3U : le tvg-id est l'identifiant de l'app.
+  /// Xtream : [xtreamEpgIds] (chaîne → `epg_channel_id`) apparie le XMLTV
+  /// du serveur à nos `xtream-<stream_id>` — avant le 4 octobre 2026 ce
+  /// guide était sauté (aucun appariement) et l'import bloquait le fil UI ;
+  /// il tourne maintenant dans un isolate (EpgRepository).
   Future<void> _syncEpgFor(
     List<Channel> channels,
-    String epgUrl,
-  ) async {
+    String epgUrl, {
+    Map<String, String>? xtreamEpgIds,
+  }) async {
     try {
-      final Set<String> ids =
-          channels.map((Channel c) => c.id).toSet();
-      // XTREAM : nos ids sont `xtream-<stream_id>` alors que le XMLTV du
-      // serveur référence les chaînes par leur `epg_channel_id` (nom). Aucune
-      // ligne ne matchait jamais, mais on TÉLÉCHARGEAIT et PARSAIT quand même
-      // tout le XMLTV (souvent 100 Mo+) sur le fil UI juste après l'import →
-      // box figée pendant que le client découvre ses chaînes. Tant que
-      // l'appariement par epg_channel_id n'est pas implémenté, on saute.
-      if (ids.isNotEmpty && ids.every((String id) => id.startsWith('xtream-'))) {
-        if (kDebugMode) debugPrint('[EPG] Xtream : sync XMLTV sautée (ids non appariables).');
+      final bool xtream =
+          channels.isNotEmpty && channels.every((Channel c) => c.id.startsWith('xtream-'));
+      if (xtream) {
+        final Map<String, List<String>> map = buildEpgIdMap(xtreamEpgIds ?? const <String, String>{});
+        if (map.isEmpty) {
+          BlackBox.instance.info('EPG', 'Xtream : aucun epg_channel_id fourni par le serveur, guide sauté');
+          return;
+        }
+        await EpgRepository.instance.downloadAndImport(url: epgUrl, channelIdMap: map);
         return;
       }
+      final Set<String> ids = channels.map((Channel c) => c.id).toSet();
       await EpgRepository.instance.downloadAndImport(
         url: epgUrl,
         knownChannelIds: ids,
       );
-    } catch (_) {
-      // Silencieux — l'EPG est optionnel.
+    } catch (e) {
+      // L'EPG est optionnel : la liste reste utilisable. La trace sert au support.
+      BlackBox.instance.warn('EPG', 'guide non importé : $e');
     }
   }
 
@@ -599,9 +607,14 @@ class PlaylistRepository {
       await setActivePlaylist(playlistId);
       ImportProgressBus.done(channels.length);
 
-      // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV)
+      // EPG auto en arrière-plan (Xtream a sa propre URL XMLTV), apparié
+      // par epg_channel_id. Copie de la table : le client est libéré après.
       if (newPlaylist.epgUrl != null) {
-        unawaited(_syncEpgFor(channels, newPlaylist.epgUrl!));
+        unawaited(_syncEpgFor(
+          channels,
+          newPlaylist.epgUrl!,
+          xtreamEpgIds: Map<String, String>.of(xtream.epgChannelIds),
+        ));
       }
       return saved;
     } catch (_) {
@@ -834,6 +847,16 @@ class PlaylistRepository {
           ),
         );
         await _emitCurrentState();
+        // Le guide Xtream suit la liste, apparié par epg_channel_id.
+        // Repli : RepairFlags.epgRefreshOff.
+        final String? xtreamEpg = playlist.epgUrl;
+        if (!RepairFlags.epgRefreshOff && xtreamEpg != null && xtreamEpg.isNotEmpty) {
+          unawaited(_syncEpgFor(
+            channels,
+            xtreamEpg,
+            xtreamEpgIds: Map<String, String>.of(xtream.epgChannelIds),
+          ));
+        }
         return true;
       } finally {
         xtream.dispose();

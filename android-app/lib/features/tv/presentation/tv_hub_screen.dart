@@ -64,6 +64,7 @@ import '../../time_picks/data/time_pick_flag.dart';
 import '../../time_picks/data/time_pick_log.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
+import '../core/resume_zap.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_content_refresh.dart';
@@ -354,8 +355,15 @@ class _TvHubScreenState extends State<TvHubScreen> {
     }
     final ModalRoute<Object?>? route = ModalRoute.of(context);
     if (route != null && !route.isCurrent) return false;
-    final List<Channel> zap = List<Channel>.from(_shelves.resume);
-    if (zap.isEmpty) return false;
+    // Dernière chaîne, mais Haut/Bas parcourent TOUTE la liste du client
+    // (pas seulement les 8 chaînes « Reprendre »).
+    final ResumeZap? plan = resumeZapList(
+      PlaylistRepository.instance.currentChannels,
+      _shelves.resume,
+    );
+    if (plan == null) return false;
+    final List<Channel> zap = plan.channels;
+    final int startIndex = plan.startIndex;
     _resumedThisVisit = true;
     _autoOpened = true;
     _deferredLiveOpen = false;
@@ -365,7 +373,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => TvPlayerScreen(channels: zap, startIndex: 0),
+          builder: (_) => TvPlayerScreen(channels: zap, startIndex: startIndex),
         ),
       );
     });

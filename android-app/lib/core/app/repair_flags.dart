@@ -54,12 +54,26 @@ abstract final class RepairFlags {
   static const String epgRefreshOffKey = 'zuno.epg.refresh_off';
   static bool epgRefreshOff = false;
 
+  /// Vrai = le guide XMLTV est téléchargé et décodé sur le fil UI (ancien
+  /// comportement : la box saccadait pendant l'import). Faux = dans un
+  /// isolate, les rangées arrivent par lots.
+  static const String epgInlineParseKey = 'zuno.epg.inline_parse';
+  static bool epgInlineParse = false;
+
+  /// Vrai = chaque ouverture de chaîne écrit l'historique tout de suite
+  /// (ancien : 20 chaînes survolées = 20 entrées « Reprendre »). Faux =
+  /// après 20 s avec une image, ou en quittant le lecteur sur la chaîne.
+  static const String historyOnOpenKey = 'zuno.history.on_open';
+  static bool historyOnOpen = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
     bool syncPlayback = false;
     bool epgOff = false;
     bool holdLegacy = false;
+    bool epgInline = false;
+    bool histOpen = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -67,18 +81,24 @@ abstract final class RepairFlags {
       syncPlayback = prefs.getBool(syncDuringPlaybackKey) ?? false;
       epgOff = prefs.getBool(epgRefreshOffKey) ?? false;
       holdLegacy = prefs.getBool(legacyHoldFrameKey) ?? false;
+      epgInline = prefs.getBool(epgInlineParseKey) ?? false;
+      histOpen = prefs.getBool(historyOnOpenKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
       syncPlayback = false;
       epgOff = false;
       holdLegacy = false;
+      epgInline = false;
+      histOpen = false;
     }
     blackBoxRaw = raw;
     blackBoxFsyncAll = fsyncAll;
     syncDuringPlayback = syncPlayback;
     epgRefreshOff = epgOff;
     legacyHoldFrame = holdLegacy;
+    epgInlineParse = epgInline;
+    historyOnOpen = histOpen;
     // Le lecteur natif reçoit le réglage avec les autres (avant l'URL).
     NativeVideoController.legacyHoldFrame = holdLegacy;
     NativeVideoController.pushAudioDiagFlags();
@@ -91,6 +111,8 @@ abstract final class RepairFlags {
     syncDuringPlayback = false;
     epgRefreshOff = false;
     legacyHoldFrame = false;
+    epgInlineParse = false;
+    historyOnOpen = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

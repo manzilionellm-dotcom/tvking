@@ -16,15 +16,17 @@
 // =========================================================
 
 import 'dart:async';
-import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 
+import '../../../core/app/repair_flags.dart';
+import '../../../core/blackbox/black_box.dart';
 import '../../playlists/data/playlist_database.dart';
 import '../domain/epg_program.dart';
-import 'xmltv_parser.dart';
+import 'epg_fetch.dart';
 
 class EpgRepository {
   EpgRepository._();
@@ -78,126 +80,150 @@ class EpgRepository {
   // ============================================================
 
   /// Télécharge un fichier XMLTV depuis [url] (supporte .gz et plain)
-  /// et l'insère en base. Optionnellement filtre par les IDs des
-  /// chaînes actuellement connues pour économiser stockage et CPU.
+  /// et l'insère en base.
   ///
-  /// Délais BORNÉS (audit d'octobre 2026) : avant, ni la connexion ni la
-  /// lecture n'avaient de limite. Un serveur qui acceptait la connexion
-  /// puis ne répondait plus laissait [isSyncing] à vrai jusqu'au
-  /// redémarrage de l'app, et tout import suivant était ignoré en silence.
-  /// [connectTimeout] borne l'attente des en-têtes, [idleTimeout] le
-  /// silence entre deux paquets. Dépassé → exception, [isSyncing] rendu.
+  /// • [knownChannelIds] (M3U) : seuls ces identifiants sont gardés.
+  /// • [channelIdMap] (Xtream) : identifiant XMLTV → chaînes de l'app
+  ///   (voir epg_targets.dart). Avant le 4 octobre 2026 le guide Xtream
+  ///   n'était jamais importé.
+  /// • Le téléchargement et le décodage se font dans un ISOLATE : le fil
+  ///   UI ne lit plus 100 Mo de XML. Les rangées arrivent par lots de 500
+  ///   et sont insérées ici. Repli `zuno.epg.inline_parse` (ou un
+  ///   [httpClient] injecté par les tests) : tout en ligne, comme avant.
+  /// • Délais BORNÉS : [connectTimeout] pour les en-têtes, [idleTimeout]
+  ///   pour le silence entre deux paquets. Dépassés → exception, et le
+  ///   verrou [isSyncing] est rendu (avant, un serveur muet le gardait
+  ///   jusqu'au redémarrage).
+  /// • Un ré-import remplace le guide d'une chaîne au lieu de le doubler.
   Future<int> downloadAndImport({
     required String url,
     Set<String>? knownChannelIds,
+    Map<String, List<String>>? channelIdMap,
     http.Client? httpClient,
     void Function(int progressBytes)? onProgress,
     Duration connectTimeout = const Duration(seconds: 30),
     Duration idleTimeout = const Duration(seconds: 60),
+    bool? inIsolate,
   }) async {
     if (_syncing) return 0;
     _syncing = true;
+    final Stopwatch sw = Stopwatch()..start();
     try {
       await initialize();
-
-      final http.Client client = httpClient ?? http.Client();
-      try {
-        final http.Request req = http.Request('GET', Uri.parse(url));
-        final http.StreamedResponse resp =
-            await client.send(req).timeout(connectTimeout);
-        if (resp.statusCode != 200) {
-          throw Exception('HTTP ${resp.statusCode}');
-        }
-
-        // Source de bytes (gzip décompressé si nécessaire). Le silence
-        // réseau est borné : l'import s'arrête au lieu de rester en
-        // attente pour toujours.
-        Stream<List<int>> bytes = resp.stream.timeout(
-          idleTimeout,
-          onTimeout: (EventSink<List<int>> sink) {
-            sink.addError(TimeoutException(
-                'EPG : aucune donnée reçue depuis ${idleTimeout.inSeconds} s'));
-            sink.close();
-          },
+      // On purge d'abord les vieux programmes pour faire de la place.
+      await purgeStale();
+      final Database db = await PlaylistDatabase.instance.database;
+      final _RowSink sink = _RowSink(db);
+      final bool isolate =
+          inIsolate ?? (httpClient == null && !RepairFlags.epgInlineParse);
+      int total;
+      if (isolate) {
+        total = await _importInIsolate(
+          url: url,
+          knownIds: knownChannelIds,
+          idMap: channelIdMap,
+          connectTimeout: connectTimeout,
+          idleTimeout: idleTimeout,
+          onProgress: onProgress,
+          sink: sink,
         );
-        final String lower = url.toLowerCase();
-        final bool isGzip = lower.endsWith('.gz') ||
-            lower.endsWith('.gzip') ||
-            (resp.headers['content-encoding']?.toLowerCase() == 'gzip') ||
-            (resp.headers['content-type']?.toLowerCase() ?? '')
-                .contains('gzip');
-
-        if (isGzip) {
-          // Décompression streaming via dart:io
-          bytes = bytes.transform<List<int>>(gzip.decoder);
+      } else {
+        final http.Client client = httpClient ?? http.Client();
+        try {
+          total = await fetchXmltvRows(
+            url: url,
+            client: client,
+            knownIds: knownChannelIds,
+            idMap: channelIdMap,
+            connectTimeout: connectTimeout,
+            idleTimeout: idleTimeout,
+            onProgress: onProgress,
+            onRows: sink.addRows,
+          );
+        } finally {
+          if (httpClient == null) client.close();
         }
-
-        // Compteur progression simple
-        if (onProgress != null) {
-          int total = 0;
-          bytes = bytes.map<List<int>>((List<int> chunk) {
-            total += chunk.length;
-            onProgress(total);
-            return chunk;
-          });
-        }
-
-        // On purge d'abord les vieux programmes pour faire de la place
-        await purgeStale();
-
-        // Batch d'insertion : on accumule 500 programmes puis on commit
-        final Database db = await PlaylistDatabase.instance.database;
-        Batch batch = db.batch();
-        int pending = 0;
-        int total = 0;
-        // Chaînes déjà vues dans CET import. À la première apparition
-        // d'une chaîne, ses programmes encore en base sont retirés, dans
-        // le même lot et AVANT ses nouvelles lignes : un ré-import ne
-        // double plus le guide (la table n'a pas de clé unique, et une
-        // chaîne absente du nouveau fichier garde son ancien guide).
-        final Set<String> refreshed = <String>{};
-
-        await XmltvParser.parse(
-          bytes,
-          skipPredicate: knownChannelIds == null
-              ? null
-              : (String id) => !knownChannelIds.contains(id),
-          onProgram: (EpgProgram p) async {
-            if (refreshed.add(p.channelId)) {
-              batch.delete(
-                'epg_programs',
-                where: 'channel_id = ?',
-                whereArgs: <Object>[p.channelId],
-              );
-            }
-            batch.insert('epg_programs', p.toMap());
-            pending++;
-            total++;
-            if (pending >= 500) {
-              await batch.commit(noResult: true);
-              batch = db.batch();
-              pending = 0;
-            }
-          },
-        );
-
-        if (pending > 0) {
-          await batch.commit(noResult: true);
-        }
-
-        if (kDebugMode) {
-          debugPrint('[EpgRepository] $total programmes importés');
-        }
-
-        if (!_changesController.isClosed) {
-          _changesController.add(null);
-        }
-        return total;
-      } finally {
-        if (httpClient == null) client.close();
       }
+      await sink.flush();
+      BlackBox.instance.info(
+        'EPG',
+        'guide : $total programmes pour ${sink.channels} chaîne(s) '
+            'en ${sw.elapsedMilliseconds} ms'
+            '${isolate ? ' (isolate)' : ''}',
+      );
+      if (!_changesController.isClosed) {
+        _changesController.add(null);
+      }
+      return total;
     } finally {
       _syncing = false;
+    }
+  }
+
+  /// Télécharge et décode dans un isolate ; insère ici par lots.
+  /// L'isolate est tué dans tous les cas à la fin (fin, erreur, délai).
+  Future<int> _importInIsolate({
+    required String url,
+    required Set<String>? knownIds,
+    required Map<String, List<String>>? idMap,
+    required Duration connectTimeout,
+    required Duration idleTimeout,
+    required void Function(int progressBytes)? onProgress,
+    required _RowSink sink,
+  }) async {
+    final ReceivePort rx = ReceivePort();
+    Isolate? worker;
+    try {
+      worker = await Isolate.spawn<_EpgJob>(
+        _epgWorker,
+        _EpgJob(
+          url: url,
+          knownIds: knownIds?.toList(growable: false),
+          idMap: idMap,
+          connectTimeoutMs: connectTimeout.inMilliseconds,
+          idleTimeoutMs: idleTimeout.inMilliseconds,
+          port: rx.sendPort,
+        ),
+        onError: rx.sendPort,
+        onExit: rx.sendPort,
+        debugName: 'zuno-epg',
+      );
+      int total = 0;
+      bool done = false;
+      await for (final Object? msg in rx) {
+        if (msg == null) {
+          // onExit. Normal après « done », sinon l'isolate est mort.
+          if (done) break;
+          throw StateError('EPG : décodage interrompu (isolate arrêté)');
+        }
+        if (msg is int) {
+          onProgress?.call(msg);
+          continue;
+        }
+        if (msg is String) {
+          if (msg.startsWith('done:')) {
+            total = int.tryParse(msg.substring(5)) ?? total;
+            done = true;
+            break;
+          }
+          throw Exception(msg.startsWith('error:') ? msg.substring(6) : msg);
+        }
+        if (msg is List) {
+          if (msg.isNotEmpty && msg.first is Map) {
+            await sink.addRows(<Map<String, Object?>>[
+              for (final Object? m in msg)
+                if (m is Map) m.cast<String, Object?>(),
+            ]);
+            continue;
+          }
+          // onError : [erreur, pile].
+          throw Exception('EPG : ${msg.isEmpty ? 'erreur' : msg.first}');
+        }
+      }
+      return total;
+    } finally {
+      rx.close();
+      worker?.kill(priority: Isolate.immediate);
     }
   }
 
@@ -330,5 +356,85 @@ class EpgRepository {
     final List<Map<String, Object?>> rows =
         await db.rawQuery('SELECT COUNT(*) as c FROM epg_programs');
     return (rows.first['c'] as int?) ?? 0;
+  }
+}
+
+/// Insère les rangées par lots de 500. À la première apparition d'une
+/// chaîne dans CET import, ses programmes encore en base sont retirés
+/// dans le même lot, AVANT ses nouvelles lignes (pas de clé unique dans
+/// la table ; une chaîne absente du fichier garde son ancien guide).
+class _RowSink {
+  _RowSink(this.db);
+  final Database db;
+  Batch? _batch;
+  int _pending = 0;
+  final Set<String> _refreshed = <String>{};
+
+  int get channels => _refreshed.length;
+
+  Future<void> addRows(List<Map<String, Object?>> rows) async {
+    for (final Map<String, Object?> row in rows) {
+      final Batch batch = _batch ??= db.batch();
+      final String channelId = row['channel_id'] as String;
+      if (_refreshed.add(channelId)) {
+        batch.delete(
+          'epg_programs',
+          where: 'channel_id = ?',
+          whereArgs: <Object>[channelId],
+        );
+      }
+      batch.insert('epg_programs', row);
+      _pending++;
+      if (_pending >= 500) await flush();
+    }
+  }
+
+  Future<void> flush() async {
+    final Batch? batch = _batch;
+    if (batch == null || _pending == 0) return;
+    _batch = null;
+    _pending = 0;
+    await batch.commit(noResult: true);
+  }
+}
+
+/// Ce que l'isolate reçoit. Tout est copiable entre isolates.
+class _EpgJob {
+  const _EpgJob({
+    required this.url,
+    required this.knownIds,
+    required this.idMap,
+    required this.connectTimeoutMs,
+    required this.idleTimeoutMs,
+    required this.port,
+  });
+  final String url;
+  final List<String>? knownIds;
+  final Map<String, List<String>>? idMap;
+  final int connectTimeoutMs;
+  final int idleTimeoutMs;
+  final SendPort port;
+}
+
+/// Corps de l'isolate : télécharge, décode, envoie les lots, puis
+/// « done:<total> » ou « error:<message> ». Jamais d'accès à la base.
+Future<void> _epgWorker(_EpgJob job) async {
+  final http.Client client = http.Client();
+  try {
+    final int total = await fetchXmltvRows(
+      url: job.url,
+      client: client,
+      knownIds: job.knownIds?.toSet(),
+      idMap: job.idMap,
+      connectTimeout: Duration(milliseconds: job.connectTimeoutMs),
+      idleTimeout: Duration(milliseconds: job.idleTimeoutMs),
+      onProgress: (int bytes) => job.port.send(bytes),
+      onRows: (List<Map<String, Object?>> rows) async => job.port.send(rows),
+    );
+    job.port.send('done:$total');
+  } catch (e) {
+    job.port.send('error:$e');
+  } finally {
+    client.close();
   }
 }

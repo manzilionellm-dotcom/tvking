@@ -67,6 +67,11 @@ class XtreamClient {
   final String serverUrl;
   final String username;
   final String password;
+
+  /// Appariement guide rempli par [fetchLiveChannels] : identifiant de
+  /// chaîne de l'app (`xtream-<stream_id>`) → `epg_channel_id` du serveur
+  /// (l'identifiant utilisé par son XMLTV). Vide si le serveur n'en donne pas.
+  final Map<String, String> epgChannelIds = <String, String>{};
   final http.Client _http;
   final Duration _timeout;
 
@@ -154,6 +159,7 @@ class XtreamClient {
 
     final String host = Uri.tryParse(_baseUrl)?.host ?? _baseUrl;
     final String prefix = '$_baseUrl/$username/$password/';
+    epgChannelIds.clear();
 
     // TOUT EN ISOLATE (performance, 25/09/2026) : décodage JSON directement
     // depuis les OCTETS (décodeur UTF-8+JSON fusionné de dart:convert → aucune
@@ -181,7 +187,7 @@ class XtreamClient {
       BlackBox.instance.info('XTREAM', '$host : $mb Mo reçus (bloc unique) → décodage en isolate');
       BlackBox.instance.breadcrumb('Import Xtream $host : décodage $mb Mo (isolate)');
       ImportProgressBus.decoding(whole.length);
-      channels = await compute(
+      final _LiveStreamsResult mapped = await compute(
         _mapLiveStreamsInIsolate,
         _LiveStreamsJob(
           payload: TransferableTypedData.fromList(<Uint8List>[whole]),
@@ -191,6 +197,8 @@ class XtreamClient {
           maxChannels: kMaxChannelsPerImport,
         ),
       );
+      channels = mapped.channels;
+      epgChannelIds.addAll(mapped.epgIds);
     } else {
       BlackBox.instance.warn('XTREAM',
           '$host : liste > ${kXtreamSingleShotBytes ~/ (1024 * 1024)} Mo → import PAR CATÉGORIE (${cats.length} catégories)');
@@ -211,7 +219,7 @@ class XtreamClient {
             ),
           );
           if (part == null) continue;
-          final List<Channel> mapped = await compute(
+          final _LiveStreamsResult mapped = await compute(
             _mapLiveStreamsInIsolate,
             _LiveStreamsJob(
               payload: TransferableTypedData.fromList(<Uint8List>[part]),
@@ -222,9 +230,10 @@ class XtreamClient {
             ),
           );
           // Une chaîne peut être rangée dans deux catégories : dédup par id.
-          for (final Channel c in mapped) {
+          for (final Channel c in mapped.channels) {
             if (seen.add(c.id)) channels.add(c);
           }
+          epgChannelIds.addAll(mapped.epgIds);
         } catch (e) {
           // Une catégorie en échec n'annule pas l'import : on la note et on continue.
           BlackBox.instance.warn('XTREAM', 'catégorie « ${cat.value} » ignorée : $e');
@@ -518,7 +527,14 @@ class _LiveStreamsJob {
 /// Décode + mappe la réponse `get_live_streams` en objets [Channel], HORS du
 /// fil UI (cf. [XtreamClient.fetchLiveChannels]). Top-level = requis par
 /// `compute`. La logique est celle de l'ancienne boucle synchrone, inchangée.
-List<Channel> _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
+/// Chaînes mappées + appariement guide (chaîne → `epg_channel_id`).
+class _LiveStreamsResult {
+  const _LiveStreamsResult(this.channels, this.epgIds);
+  final List<Channel> channels;
+  final Map<String, String> epgIds;
+}
+
+_LiveStreamsResult _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
   final Uint8List bytes = job.payload.materialize().asUint8List();
   // Décodeur UTF-8 → JSON FUSIONNÉ de dart:convert : parse le JSON directement
   // depuis les octets, sans construire la String intermédiaire (qui pesait
@@ -545,6 +561,9 @@ List<Channel> _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
   }
 
   final List<Channel> channels = <Channel>[];
+  // Appariement guide : `epg_channel_id` du serveur = identifiant du
+  // XMLTV (xmltv.php). Gardé à part : la chaîne reste `xtream-<id>`.
+  final Map<String, String> epgIds = <String, String>{};
   for (final dynamic item in raw) {
     // PLAFOND MÉMOIRE (anti-OOM) : on arrête de matérialiser au-delà du
     // plafond d'import — le reste reste sur le serveur, la source est juste
@@ -568,6 +587,8 @@ List<Channel> _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
         ? tvArchiveDurationRaw
         : int.tryParse(tvArchiveDurationRaw?.toString() ?? '') ?? 0;
 
+    final String epgId = (item['epg_channel_id']?.toString() ?? '').trim();
+    if (epgId.isNotEmpty) epgIds['xtream-$streamId'] = epgId;
     channels.add(
       Channel(
         id: 'xtream-$streamId',
@@ -583,5 +604,5 @@ List<Channel> _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
       ),
     );
   }
-  return channels;
+  return _LiveStreamsResult(channels, epgIds);
 }
