@@ -244,6 +244,16 @@ Builds suivants, mêmes inputs, mêmes contrôles (fichier retéléchargé) :
 | #150 (`37207214664`) APK | `fb3df3e` (+ manifeste Wi-Fi non requis, paysage tablette Android 16) | 1791122105 | `843ae11e87f73dd6caf1502710b0adab63f29958e5ab357f1e3cae7934da5a47` (54 627 949 octets) | `5145b8e0…` ✓ |
 | #150 AAB Google Play (`play_aab=true`) | `fb3df3e` | même numéro de build (workflow) | `1d0388b32ec49bdcb3b74c9dd2c5f6de7ab7a0d562778fd738ed0432cf9b4c28` (89 140 208 octets) | `keytool` : `51:45:B8:E0…9E:61` ✓ |
 
+| #151 (`6bf1680`) APK | AAB Play en minSdk 24 | 1791125395 | `17086ce8328f518979bee74356c4a54d448adb861ab759a897c79746efb6d012` (54 627 937 octets), minSdk **21** | `5145b8e0…` ✓ |
+| #151 AAB Google Play | minSdk **24** (bundletool) | 1791125395 (bundletool) | `a244d0d60c748d4918ac17bb4593d658b7388d371d3f4ab8fafa8e14bb3880b5` (88 895 212 octets) | `51:45:B8:E0…9E:61` ✓ |
+
+AAB #150 refusé par la Play Console (« La protection automatique Play
+nécessite le SDK 24 ») : bundletool sur le fichier donnait minSdk 21. Correctif
+`6bf1680` : l'AAB seul passe à 24 après la construction et la vérification de
+l'APK (21). Contrôle bloquant ajouté dans le workflow (bundletool 1.18.1). AAB
+#151 : minSdk 24, `REQUEST_INSTALL_PACKAGES` absente, 16 bibliothèques 64 bits
+alignées 16 Ko.
+
 Contrôles AAB #150 sur le fichier retéléchargé : ABIs `arm64-v8a`,
 `armeabi-v7a`, `x86_64` ; toutes les `.so` 64 bits alignées 16 Ko (`readelf`,
 0 écart) ; `REQUEST_INSTALL_PACKAGES` absente du manifeste du bundle (0
