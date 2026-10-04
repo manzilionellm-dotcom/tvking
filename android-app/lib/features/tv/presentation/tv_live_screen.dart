@@ -14,6 +14,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
+import '../../device/domain/display_mac.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -726,7 +727,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                                 color: TvTokens.mutedDim,
                                 spacing: 2)),
                         const SizedBox(height: 8),
-                        Text(_mac,
+                        Text(displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
                             style: TvTokens.mono(28,
                                 color: TvTokens.accentBright, spacing: 2)),
                       ],

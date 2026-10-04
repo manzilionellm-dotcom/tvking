@@ -31,6 +31,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
+import '../../device/domain/display_mac.dart';
+import '../../../core/app/repair_flags.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
@@ -1398,7 +1400,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                       children: <Widget>[
                         Text('${context.l10n.tvActivationCodeLabel} : ',
                             style: TvTokens.ui(14, color: TvTokens.mutedDim)),
-                        Text(_mac,
+                        Text(displayMac(_mac, showPrefix: RepairFlags.macShowPrefix),
                             style: TvTokens.mono(16,
                                 color: TvTokens.accentBright)),
                         const Spacer(),

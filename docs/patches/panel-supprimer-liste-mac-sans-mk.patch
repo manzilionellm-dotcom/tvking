@@ -1,0 +1,470 @@
+From 0896028c0aeff22f637df91809fd0d4e5b172658 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 4 Oct 2026 18:09:46 +0000
+Subject: [PATCH] =?UTF-8?q?Panel=20:=20bouton=20=C2=AB=20Supprimer=20?=
+ =?UTF-8?q?=C2=BB=20par=20liste=20(la=20box=20l'efface=20seule)=20et=20MAC?=
+ =?UTF-8?q?=20compl=C3=A9t=C3=A9e=20sans=20=C2=AB=20MK:=20=C2=BB?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Fiche appareil : chaque liste poussée a son bouton « Supprimer ». Le
+  Worker remplace l'ensemble à chaque envoi : on renvoie les autres
+  intactes (planRemoveSource), ou on efface s'il n'en reste aucune. La
+  box (v106+) retire seule la liste qui n'est plus envoyée.
+- MAC : « AD:A6:98:70:6A », tirets, espaces ou rien → MK:AD:A6:98:70:6A
+  (normalizeMac), complétée à la sortie du champ (Activer, Liste de
+  chaînes, Transfert).
+- Aucune modification du Worker. Tests : 20/20 (mac.test, sources.test),
+  tsc + vite build OK.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_016vH1Z4x9YVmS8d5htv537D
+---
+ android-app/admin-panel/package.json          |  2 +-
+ android-app/admin-panel/src/lib/mac.test.ts   | 35 +++++++++++
+ android-app/admin-panel/src/lib/mac.ts        | 40 ++++++++++++
+ .../admin-panel/src/lib/sources.test.ts       | 60 ++++++++++++++++++
+ android-app/admin-panel/src/lib/sources.ts    | 62 +++++++++++++++++++
+ android-app/admin-panel/src/lib/utils.ts      | 11 +---
+ .../admin-panel/src/pages/ActivatePage.tsx    |  1 +
+ .../admin-panel/src/pages/ChainesPage.tsx     |  1 +
+ .../admin-panel/src/pages/DevicesPage.tsx     | 62 ++++++++++++++++++-
+ .../admin-panel/src/pages/TransferPage.tsx    |  8 ++-
+ 10 files changed, 268 insertions(+), 14 deletions(-)
+ create mode 100644 android-app/admin-panel/src/lib/mac.test.ts
+ create mode 100644 android-app/admin-panel/src/lib/mac.ts
+ create mode 100644 android-app/admin-panel/src/lib/sources.test.ts
+ create mode 100644 android-app/admin-panel/src/lib/sources.ts
+
+diff --git a/android-app/admin-panel/package.json b/android-app/admin-panel/package.json
+index 658aafb3..832da0e4 100644
+--- a/android-app/admin-panel/package.json
++++ b/android-app/admin-panel/package.json
+@@ -8,7 +8,7 @@
+     "dev": "vite",
+     "build": "tsc -b && vite build",
+     "preview": "vite preview",
+-    "test": "node --experimental-strip-types --test src/lib/robust.test.ts"
++    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts"
+   },
+   "dependencies": {
+     "react": "^18.3.1",
+diff --git a/android-app/admin-panel/src/lib/mac.test.ts b/android-app/admin-panel/src/lib/mac.test.ts
+new file mode 100644
+index 00000000..27266c8d
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/mac.test.ts
+@@ -0,0 +1,35 @@
++// MAC saisie sans « MK: » : le panel complète tout seul. MAC factices.
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { displayMac, isValidMac, normalizeMac } from './mac.ts';
++
++test('sans MK: ni séparateur, le format serveur est reconstruit', () => {
++  for (const raw of [
++    'AD:A6:98:70:6A',
++    'ad:a6:98:70:6a',
++    'AD-A6-98-70-6A',
++    'ADA698706A',
++    ' ada6 9870 6a ',
++    'MK:AD:A6:98:70:6A',
++    'mk:ad:a6:98:70:6a',
++    'MKADA698706A',
++    'MK AD A6 98 70 6A',
++  ]) {
++    assert.equal(normalizeMac(raw), 'MK:AD:A6:98:70:6A', raw);
++    assert.equal(isValidMac(raw), true, raw);
++  }
++});
++
++test('saisie incomplète, trop longue ou fausse : rien n\'est inventé', () => {
++  assert.equal(normalizeMac('AD:A6:98'), 'AD:A6:98');
++  assert.equal(isValidMac('AD:A6:98'), false);
++  assert.equal(isValidMac('AD:A6:98:70:6A:FF'), false);
++  assert.equal(isValidMac('ZZ:A6:98:70:6A'), false);
++  assert.equal(isValidMac(''), false);
++  assert.equal(normalizeMac('MK:'), 'MK:');
++});
++
++test('ce que voit le client : sans MK:', () => {
++  assert.equal(displayMac('MK:AD:A6:98:70:6A'), 'AD:A6:98:70:6A');
++  assert.equal(displayMac('n\'importe quoi'), 'n\'importe quoi');
++});
+diff --git a/android-app/admin-panel/src/lib/mac.ts b/android-app/admin-panel/src/lib/mac.ts
+new file mode 100644
+index 00000000..11dd6bb0
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/mac.ts
+@@ -0,0 +1,40 @@
++// =========================================================
++//  mac.ts — La MAC d'une box, telle que le serveur l'attend
++// =========================================================
++//  Le serveur range chaque box sous « MK:AD:A6:98:70:6A » (MK + 5 octets).
++//  La box affiche désormais seulement « AD:A6:98:70:6A » au client : le
++//  revendeur peut donc taper ou coller la MAC SANS « MK: », avec des
++//  tirets, des espaces ou rien du tout. On remet le format tout seul.
++//
++//  Fichier pur (aucune dépendance) : testé par mac.test.ts.
++// =========================================================
++
++/// Nombre de chiffres hexadécimaux d'une MAC Zuno (5 octets après « MK »).
++const MAC_HEX_DIGITS = 10;
++
++/// MAC d'appareil telle que le serveur l'attend : MK:XX:XX:XX:XX:XX.
++///
++/// - « AD:A6:98:70:6A », « ad-a6-98-70-6a », « ADA698706A »,
++///   « mk:ad:a6:98:70:6a » ou « MK ADA6 9870 6A » → « MK:AD:A6:98:70:6A » ;
++/// - une saisie incomplète ou trop longue est rendue en majuscules,
++///   sans rien inventer : le contrôle isValidMac la refusera.
++export function normalizeMac(raw: string): string {
++  const upper = String(raw ?? '').trim().toUpperCase();
++  const body = upper.replace(/^MK[:\-\s]?/, '');
++  const hex = body.replace(/[^0-9A-F]/g, '');
++  // Un caractère qui n'est ni hexadécimal ni séparateur : on ne devine pas.
++  const strayChars = body.replace(/[0-9A-F:\-\s.]/g, '');
++  if (hex.length !== MAC_HEX_DIGITS || strayChars.length > 0) return upper;
++  const pairs = hex.match(/.{2}/g) ?? [];
++  return `MK:${pairs.join(':')}`;
++}
++
++export function isValidMac(raw: string): boolean {
++  return /^MK(?::[0-9A-F]{2}){5}$/.test(normalizeMac(raw));
++}
++
++/// Ce que le client voit sur sa box (sans « MK: »).
++export function displayMac(mac: string): string {
++  const n = normalizeMac(mac);
++  return n.startsWith('MK:') && isValidMac(n) ? n.slice(3) : mac;
++}
+diff --git a/android-app/admin-panel/src/lib/sources.test.ts b/android-app/admin-panel/src/lib/sources.test.ts
+new file mode 100644
+index 00000000..bca45e4b
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/sources.test.ts
+@@ -0,0 +1,60 @@
++// Retirer UNE liste : on renvoie les autres, intactes. Adresses factices.
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { planRemoveSource, toSourceInput, type SourceLike } from './sources.ts';
++
++// Champs internes que le serveur renvoie aussi (ils ne doivent pas repartir).
++const xtream = {
++  type: 'xtream',
++  label: 'Principal',
++  server_url: 'http://serveur.example.invalid',
++  username: 'u1',
++  password: 'p1',
++  epg_url: 'http://guide.example.invalid/xmltv.php',
++  mac: 'MK:AA:BB:CC:DD:EE',
++  updated_at: 123,
++  reseller_id: 'r1',
++} as SourceLike;
++const m3u: SourceLike = { type: 'm3u', m3u_url: 'http://liste.example.invalid/l.m3u' };
++const m3u2: SourceLike = { type: 'm3u', label: 'Sport', m3u_url: 'http://liste.example.invalid/s.m3u' };
++
++test('retirer la 2e de 3 : les deux autres repartent, dans l\'ordre, intactes', () => {
++  const plan = planRemoveSource([xtream, m3u, m3u2], 1);
++  assert.equal(plan.kind, 'keep');
++  if (plan.kind !== 'keep') return;
++  assert.deepEqual(plan.sources, [
++    {
++      type: 'xtream',
++      label: 'Principal',
++      server_url: 'http://serveur.example.invalid',
++      username: 'u1',
++      password: 'p1',
++      epg_url: 'http://guide.example.invalid/xmltv.php',
++    },
++    { type: 'm3u', label: 'Sport', m3u_url: 'http://liste.example.invalid/s.m3u' },
++  ]);
++});
++
++test('le mot de passe n\'est jamais perdu en route', () => {
++  const plan = planRemoveSource([m3u, xtream], 0);
++  assert.equal(plan.kind, 'keep');
++  if (plan.kind !== 'keep') return;
++  assert.equal(plan.sources[0].password, 'p1');
++});
++
++test('dernière liste : effacement complet', () => {
++  assert.deepEqual(planRemoveSource([m3u], 0), { kind: 'clear' });
++});
++
++test('index hors limites : on n\'envoie rien', () => {
++  assert.deepEqual(planRemoveSource([m3u], 3), { kind: 'invalid' });
++  assert.deepEqual(planRemoveSource([], 0), { kind: 'invalid' });
++  assert.deepEqual(planRemoveSource([m3u], -1), { kind: 'invalid' });
++});
++
++test('champs internes retirés (mac, date, revendeur)', () => {
++  const input = toSourceInput(xtream) as Record<string, unknown>;
++  assert.equal('mac' in input, false);
++  assert.equal('updated_at' in input, false);
++  assert.equal('reseller_id' in input, false);
++});
+diff --git a/android-app/admin-panel/src/lib/sources.ts b/android-app/admin-panel/src/lib/sources.ts
+new file mode 100644
+index 00000000..04ea64ea
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/sources.ts
+@@ -0,0 +1,62 @@
++// =========================================================
++//  sources.ts — Retirer UNE liste d'une box depuis le panel
++// =========================================================
++//  Le Worker en place remplace l'ensemble des listes d'une MAC à chaque
++//  envoi (PUT /api/v1/sources/:mac, 1 à 3 listes). Pour retirer la liste
++//  n°2, on renvoie donc les AUTRES telles quelles. S'il n'en reste
++//  aucune, on appelle l'effacement (DELETE).
++//
++//  Côté box (v106 et suivantes) : une liste qui était envoyée par le
++//  serveur et qui ne l'est plus est effacée toute seule à la vérification
++//  suivante (chaînes, favoris et récents de cette liste compris).
++//
++//  Fichier pur : testé par sources.test.ts.
++// =========================================================
++
++export interface SourceLike {
++  type: 'xtream' | 'm3u';
++  label?: string | null;
++  server_url?: string | null;
++  username?: string | null;
++  password?: string | null;
++  m3u_url?: string | null;
++  epg_url?: string | null;
++}
++
++export type SourceInput = Pick<
++  SourceLike,
++  'type' | 'label' | 'server_url' | 'username' | 'password' | 'm3u_url' | 'epg_url'
++>;
++
++/// Garde seulement les champs qu'accepte l'envoi (pas de mac, date,
++/// identifiant de revendeur…), sans toucher aux valeurs.
++export function toSourceInput(s: SourceLike): SourceInput {
++  const out: SourceInput = { type: s.type };
++  if (s.label != null && s.label !== '') out.label = s.label;
++  if (s.type === 'xtream') {
++    out.server_url = s.server_url ?? null;
++    out.username = s.username ?? null;
++    out.password = s.password ?? null;
++  } else {
++    out.m3u_url = s.m3u_url ?? null;
++  }
++  if (s.epg_url != null && s.epg_url !== '') out.epg_url = s.epg_url;
++  return out;
++}
++
++export type RemovePlan =
++  | { kind: 'keep'; sources: SourceInput[] }
++  | { kind: 'clear' }
++  | { kind: 'invalid' };
++
++/// Que faut-il envoyer pour retirer la liste [index] ?
++/// - reste au moins une liste → « keep » + les autres, dans le même ordre ;
++/// - c'était la dernière → « clear » ;
++/// - index hors limites → « invalid » (on n'envoie rien).
++export function planRemoveSource(sources: SourceLike[], index: number): RemovePlan {
++  if (!Number.isInteger(index) || index < 0 || index >= sources.length) {
++    return { kind: 'invalid' };
++  }
++  const rest = sources.filter((_, i) => i !== index).map(toSourceInput);
++  return rest.length === 0 ? { kind: 'clear' } : { kind: 'keep', sources: rest };
++}
+diff --git a/android-app/admin-panel/src/lib/utils.ts b/android-app/admin-panel/src/lib/utils.ts
+index 77f07273..79bac1e1 100644
+--- a/android-app/admin-panel/src/lib/utils.ts
++++ b/android-app/admin-panel/src/lib/utils.ts
+@@ -7,14 +7,9 @@ export function cn(...inputs: ClassValue[]) {
+   return twMerge(clsx(inputs));
+ }
+ 
+-/// MAC d'appareil telle que le serveur l'attend : MK:XX:XX:XX:XX:XX.
+-export function normalizeMac(raw: string): string {
+-  return raw.trim().toUpperCase();
+-}
+-
+-export function isValidMac(raw: string): boolean {
+-  return /^MK(?::[0-9A-F]{2}){5}$/i.test(normalizeMac(raw));
+-}
++/// MAC d'appareil : « AD:A6:98:70:6A » (sans MK:, avec tirets, espaces
++/// ou rien) devient MK:AD:A6:98:70:6A. Logique pure dans mac.ts.
++export { normalizeMac, isValidMac, displayMac } from './mac';
+ 
+ /// Date lisible en heure de Paris (robust.ts : secondes ou ms,
+ /// fuseau fixe, valeur vide → « — »).
+diff --git a/android-app/admin-panel/src/pages/ActivatePage.tsx b/android-app/admin-panel/src/pages/ActivatePage.tsx
+index abca25b6..22d1b74e 100644
+--- a/android-app/admin-panel/src/pages/ActivatePage.tsx
++++ b/android-app/admin-panel/src/pages/ActivatePage.tsx
+@@ -169,6 +169,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
+             id="act-mac"
+             value={mac}
+             onChange={(e) => setMac(e.target.value)}
++            onBlur={() => setMac((v) => normalizeMac(v))}
+             autoFocus
+             autoComplete="off"
+             inputMode="text"
+diff --git a/android-app/admin-panel/src/pages/ChainesPage.tsx b/android-app/admin-panel/src/pages/ChainesPage.tsx
+index db68c1d2..239e3e07 100644
+--- a/android-app/admin-panel/src/pages/ChainesPage.tsx
++++ b/android-app/admin-panel/src/pages/ChainesPage.tsx
+@@ -194,6 +194,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+               id="chaines-mac"
+               value={mac}
+               onChange={(e) => { setMac(e.target.value); setOk(null); }}
++              onBlur={() => setMac((v) => normalizeMac(v))}
+               autoFocus
+               autoComplete="off"
+               placeholder="MK:XX:XX:XX:XX:XX"
+diff --git a/android-app/admin-panel/src/pages/DevicesPage.tsx b/android-app/admin-panel/src/pages/DevicesPage.tsx
+index 4ee5dbef..89367991 100644
+--- a/android-app/admin-panel/src/pages/DevicesPage.tsx
++++ b/android-app/admin-panel/src/pages/DevicesPage.tsx
+@@ -14,6 +14,7 @@ import {
+ } from '@/lib/api';
+ import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
+ import { formatDateTime } from '@/lib/utils';
++import { planRemoveSource } from '@/lib/sources';
+ import {
+   LIST_PAGE_SIZE, createAbortBag, createGeneration, createSingleFlight,
+   expiryPhrase, readListPage,
+@@ -334,6 +335,39 @@ function DeviceDetailModal({
+     }
+   }
+ 
++  /// Retire UNE liste. Le serveur remplace l'ensemble à chaque envoi :
++  /// on renvoie les autres telles quelles (planRemoveSource). La box du
++  /// client efface toute seule la liste qui n'est plus envoyée, à sa
++  /// vérification suivante (au retour à l'accueil si une chaîne joue).
++  async function removeOne(index: number) {
++    const list = ov?.sources ?? [];
++    const plan = planRemoveSource(list, index);
++    if (plan.kind === 'invalid') return;
++    const target = list[index];
++    const name = target.type === 'xtream' ? 'Xtream' : 'M3U';
++    if (!window.confirm(
++      `Retirer la liste #${index + 1} (${name}) ? Elle disparaîtra de la TV du client toute seule, sans qu'il fasse rien.`,
++    )) return;
++    setClearing(true);
++    setErr(null);
++    try {
++      if (plan.kind === 'clear') {
++        await sourcesApi.clear(device.mac);
++      } else {
++        await sourcesApi.setMany(device.mac, plan.sources);
++      }
++      const my = ++pollSeq.current;
++      const r = await devicesApi.overview(device.id);
++      if (!shouldApplyPollResult(my, appliedSeq.current)) return;
++      appliedSeq.current = my;
++      setOv(r);
++    } catch (e) {
++      setErr(e instanceof ApiError ? e.message : 'Échec.');
++    } finally {
++      setClearing(false);
++    }
++  }
++
+   const st = device.block_status || 'active';
+   const sources = ov?.sources ?? [];
+   const macUrl = encodeURIComponent(device.mac);
+@@ -397,7 +431,13 @@ function DeviceDetailModal({
+           </div>
+         )}
+         {!loading && !err && sources.map((s, i) => (
+-          <SourceCard key={i} index={i} source={s} />
++          <SourceCard
++            key={i}
++            index={i}
++            source={s}
++            busy={busy || clearing}
++            onRemove={() => removeOne(i)}
++          />
+         ))}
+ 
+         {/* ----- Inventaire RÉEL sur la TV (remonté par l'app) ----- */}
+@@ -425,7 +465,7 @@ function DeviceDetailModal({
+           <div className="flex flex-wrap gap-1.5">
+             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
+             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
+-            <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire les listes poussées. L'app déjà ouverte garde sa copie locale jusqu'à sa prochaine vérification.">Effacer les listes</ActionBtn>
++            <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire toutes les listes poussées. La TV du client les efface toute seule à sa vérification suivante.">Effacer les listes</ActionBtn>
+             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
+             {st !== 'frozen' && (
+               <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
+@@ -501,7 +541,14 @@ function InfoRow({ label, value }: { label: string; value: string }) {
+ }
+ 
+ /// Carte d'une source du M-Trio (avec identifiants Xtream ou URL M3U).
+-function SourceCard({ index, source }: { index: number; source: DeviceSource }) {
++function SourceCard({
++  index, source, busy, onRemove,
++}: {
++  index: number;
++  source: DeviceSource;
++  busy: boolean;
++  onRemove: () => void;
++}) {
+   const isXtream = source.type === 'xtream';
+   return (
+     <div className="mb-2 rounded-lg border border-white/5 bg-obsidian px-3 py-3">
+@@ -517,6 +564,15 @@ function SourceCard({ index, source }: { index: number; source: DeviceSource })
+           {isXtream ? 'XTREAM' : 'M3U'}
+         </span>
+         {source.label && <span className="truncate text-xs text-ink-secondary">{source.label}</span>}
++        <button
++          type="button"
++          disabled={busy}
++          onClick={onRemove}
++          title="Retirer cette liste. La TV du client l'efface toute seule."
++          className="ml-auto rounded-md border border-accent/40 px-2 py-0.5 text-[11px] font-semibold text-accent-bright hover:bg-accent/10 disabled:opacity-40"
++        >
++          Supprimer
++        </button>
+       </div>
+       <div className="grid grid-cols-1 gap-y-1.5 text-xs">
+         {isXtream ? (
+diff --git a/android-app/admin-panel/src/pages/TransferPage.tsx b/android-app/admin-panel/src/pages/TransferPage.tsx
+index 9e932c0b..2bd81b9f 100644
+--- a/android-app/admin-panel/src/pages/TransferPage.tsx
++++ b/android-app/admin-panel/src/pages/TransferPage.tsx
+@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
+ import { AppLayout } from '@/components/AppLayout';
+ import { transferApi, ApiError } from '@/lib/api';
+ import { createSingleFlight } from '@/lib/robust';
++import { normalizeMac } from '@/lib/mac';
+ 
+ // =========================================================
+ //  TransferPage — déplacer un abonnement vers un nouvel appareil
+@@ -29,8 +30,9 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
+     e.preventDefault();
+     await flight.current.run(async () => {
+       setErr(null); setOk(null);
+-      const o = oldMac.trim().toUpperCase();
+-      const n = newMac.trim().toUpperCase();
++      // « AD:A6:98:70:6A » (vu sur la box) devient MK:AD:A6:98:70:6A.
++      const o = normalizeMac(oldMac);
++      const n = normalizeMac(newMac);
+       if (!MAC_RX.test(o)) { setErr('Ancienne MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
+       if (!MAC_RX.test(n)) { setErr('Nouvelle MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
+       if (o === n) { setErr('Les deux MAC sont identiques.'); return; }
+@@ -75,6 +77,7 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
+             <input
+               value={oldMac}
+               onChange={(e) => setOldMac(e.target.value)}
++              onBlur={() => setOldMac((v) => normalizeMac(v))}
+               placeholder="MK:XX:XX:XX:XX:XX"
+               className={inputCls}
+               autoFocus
+@@ -88,6 +91,7 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
+             <input
+               value={newMac}
+               onChange={(e) => setNewMac(e.target.value)}
++              onBlur={() => setNewMac((v) => normalizeMac(v))}
+               placeholder="MK:XX:XX:XX:XX:XX"
+               className={inputCls}
+             />
+-- 
+2.43.0
+

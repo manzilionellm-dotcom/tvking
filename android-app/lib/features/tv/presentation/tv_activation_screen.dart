@@ -9,6 +9,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../device/domain/display_mac.dart';
+import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/activation_hint.dart';
@@ -63,7 +65,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
   }
 
   void _copy() {
-    Clipboard.setData(ClipboardData(text: _mac));
+    Clipboard.setData(ClipboardData(text: displayMac(_mac, showPrefix: RepairFlags.macShowPrefix)));
     setState(() => _copied = true);
     Future<void>.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _copied = false);
@@ -132,7 +134,7 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      Text(_mac, style: TvTokens.mono(38, color: TvTokens.accentBright, spacing: 2)),
+                      Text(displayMac(_mac, showPrefix: RepairFlags.macShowPrefix), style: TvTokens.mono(38, color: TvTokens.accentBright, spacing: 2)),
                       const SizedBox(width: 16),
                       _CopyButton(copied: _copied, onSelect: _copy),
                     ],

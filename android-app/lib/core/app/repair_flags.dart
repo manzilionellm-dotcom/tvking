@@ -66,6 +66,12 @@ abstract final class RepairFlags {
   static const String historyOnOpenKey = 'zuno.history.on_open';
   static bool historyOnOpen = false;
 
+  /// Vrai = la MAC s'affiche avec « MK: » devant (ancien affichage).
+  /// Faux = le client voit « AD:A6:98:70:6A » ; l'identifiant interne
+  /// (serveur, QR, appels réseau) garde toujours « MK: ».
+  static const String macShowPrefixKey = 'zuno.mac.show_prefix';
+  static bool macShowPrefix = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -74,6 +80,7 @@ abstract final class RepairFlags {
     bool holdLegacy = false;
     bool epgInline = false;
     bool histOpen = false;
+    bool macPrefix = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -83,6 +90,7 @@ abstract final class RepairFlags {
       holdLegacy = prefs.getBool(legacyHoldFrameKey) ?? false;
       epgInline = prefs.getBool(epgInlineParseKey) ?? false;
       histOpen = prefs.getBool(historyOnOpenKey) ?? false;
+      macPrefix = prefs.getBool(macShowPrefixKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -91,7 +99,9 @@ abstract final class RepairFlags {
       holdLegacy = false;
       epgInline = false;
       histOpen = false;
+      macPrefix = false;
     }
+    macShowPrefix = macPrefix;
     blackBoxRaw = raw;
     blackBoxFsyncAll = fsyncAll;
     syncDuringPlayback = syncPlayback;
@@ -113,6 +123,7 @@ abstract final class RepairFlags {
     legacyHoldFrame = false;
     epgInlineParse = false;
     historyOnOpen = false;
+    macShowPrefix = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

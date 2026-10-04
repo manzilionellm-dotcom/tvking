@@ -370,6 +370,25 @@ Hors périmètre, à faire par qui a le droit de toucher Worker et panel : table
 « Bannières » (spécification complète dans `docs/PANEL-BOX-CARTES-ACCUEIL.md`).
 Sans cela, la box affichera déjà annonces et favori du jour, pas de bannière.
 
+## 11 quinquies. MAC sans « MK: » et suppression d'une liste depuis le panel (4 octobre)
+
+Mesuré en production (lecture seule, `https://app.7themotion.com`) : le Worker
+en ligne est celui de la branche `claude/panel-mise-en-ligne`.
+`/api/box/wait` → 404, `/api/banners` → 404, `/api/status` sans `revoked` ni
+`source_rev`. Conséquences : le canal « instantané » panel → box et les
+bannières de cette branche ne sont **pas actifs** en production ; la box
+retombe sur la relecture régulière (une liste poussée arrive à la vérification
+suivante, hors lecture).
+
+| Changement | Où | Preuve |
+| --- | --- | --- |
+| La box affiche la MAC sans « MK: » (activation, accueil, Direct vide, bouton Copier, message WhatsApp) ; l'identifiant interne garde « MK: » ; repli `zuno.mac.show_prefix` | `display_mac.dart`, 4 écrans | `display_mac_test.dart` (5 cas) ; suite 410 verts |
+| Panel : « AD:A6:98:70:6A », tirets, espaces ou rien → `MK:AD:A6:98:70:6A` (Activer, Liste de chaînes, Transfert) | branche `claude/panel-mise-en-ligne`, **non poussé** : `docs/patches/panel-supprimer-liste-mac-sans-mk.patch` | `mac.test.ts` ; `npm test` 20/20, `tsc -b && vite build` OK |
+| Panel : bouton « Supprimer » par liste. Le Worker en place remplace l'ensemble à chaque envoi : on renvoie les autres intactes, ou on efface la dernière. La box (règle `fingerprintsToDrop`, présente depuis v106) retire seule la liste qui n'est plus envoyée | même patch | `sources.test.ts` (mot de passe conservé, ordre gardé, champs internes retirés) |
+
+Aucune modification du Worker. NON PROUVÉ : le bouton sur le vrai panel (non
+déployé) et l'effacement observé sur une vraie box.
+
 ## 12. Bloqueurs de publication
 
 Aucun P0 connu dans le code. La publication aux clients (`publish=true`) reste

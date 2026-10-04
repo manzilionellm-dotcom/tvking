@@ -7,6 +7,8 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../device/domain/display_mac.dart';
+import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
@@ -23,9 +25,12 @@ const String _kLogoAsset = 'assets/branding/zuno_logo.png';
 /// Numéro WhatsApp business (format international, sans + ni espaces).
 const String kWhatsAppPhone = '447307410512';
 
-/// Construit le lien wa.me avec un message pré-rempli (code MAC inclus).
+/// Construit le lien wa.me avec un message pré-rempli (code MAC inclus,
+/// sans « MK: » : le panel le remet tout seul, voir display_mac.dart).
 String tvWhatsAppUrl(String mac) {
-  final String code = (mac == '…' || mac.isEmpty) ? '' : mac;
+  final String code = (mac == '…' || mac.isEmpty)
+      ? ''
+      : displayMac(mac, showPrefix: RepairFlags.macShowPrefix);
   final String msg = Uri.encodeComponent('Bonjour, je souhaite activer Zuno.'
       '${code.isEmpty ? '' : ' Mon code : $code'}');
   return 'https://wa.me/$kWhatsAppPhone?text=$msg';
