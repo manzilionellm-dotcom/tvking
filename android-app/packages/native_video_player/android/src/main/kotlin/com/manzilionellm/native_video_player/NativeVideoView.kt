@@ -75,6 +75,7 @@ import com.manzilionellm.native_video_player.logic.DecoderFallback
 import com.manzilionellm.native_video_player.logic.DisplayModeOption
 import com.manzilionellm.native_video_player.logic.ExclusiveAudio
 import com.manzilionellm.native_video_player.logic.FrameRateMatch
+import com.manzilionellm.native_video_player.logic.HeldFrame
 import com.manzilionellm.native_video_player.logic.NamedCodec
 import com.manzilionellm.native_video_player.logic.PictureHealth
 import com.manzilionellm.native_video_player.logic.PictureSignal
@@ -364,6 +365,17 @@ class NativeVideoView(
     private val probeSilence = AudioProbeProcessor(AudioStages.SILENCE, ::onProbe)
     private val probeSink = AudioProbeProcessor(AudioStages.SINK, ::onProbe)
 
+    // Une seule chaîne de processeurs, partagée par les lecteurs successifs
+    // (rebuildPlayer rend l'ancien tout de suite) : l'essai « Sortie :
+    // 48 kHz » se règle dessus avant chaque ouverture.
+    private val audioChain = ZunoAudioChain(
+        probeDecoder,
+        clearVoiceProcessor,
+        probeVoice,
+        probeSilence,
+        probeSink,
+    )
+
     // ---- DIAGNOSTIC DU SON (boîte noire, 01/10/2026) -----------------------
     // Pour chaque chaîne : ce qui ENTRE (format du flux), QUI décode (box ou
     // FFmpeg), ce qui SORT (AudioTrack) et les coupures. Envoyé à Dart
@@ -464,10 +476,26 @@ class NativeVideoView(
                 emit("position", pos)
                 maybeCopyFrame()
             }
+            // Filet : la copie de la dernière image est retirée dès qu'une
+            // trame a été rendue APRÈS son affichage, sans attendre le
+            // signal « première image » (absent sur certaines box quand la
+            // surface est réutilisée : la copie restait collée, le son
+            // continuait). Voir [HeldFrame].
+            if (HeldFrame.shouldHide(
+                    holdVisible = holdView.visibility == View.VISIBLE,
+                    framesSinceShown = renderedFrames.get() - framesWhenHeldShown,
+                )
+            ) {
+                hideHeldFrame()
+                emit("holdFrame", false)
+            }
             sendDurationIfChanged()
             if (!released) handler.postDelayed(this, 500)
         }
     }
+
+    /** Compteur de trames au moment où la copie a été affichée. */
+    private var framesWhenHeldShown = 0
 
     /**
      * Toutes les 2 s : image noire (décodeur prêt, aucune trame) ou image
@@ -913,15 +941,7 @@ class NativeVideoView(
                     // Sondes inactives tant que le réglage est coupé (NOT_SET).
                     // Voix claire coupée, silences non sautés, vitesse 1 :
                     // aucun processeur actif. Le son par défaut ne change pas.
-                    .setAudioProcessorChain(
-                        ZunoAudioChain(
-                            probeDecoder,
-                            clearVoiceProcessor,
-                            probeVoice,
-                            probeSilence,
-                            probeSink,
-                        ),
-                    )
+                    .setAudioProcessorChain(audioChain)
                     .setAudioTrackBufferSizeProvider { min, encoding, mode, frame, rate, bitrate, speed ->
                         val minBytes = base.getBufferSizeInBytes(
                             min, encoding, mode, frame, rate, bitrate, speed,
@@ -1356,6 +1376,33 @@ class NativeVideoView(
                 // pas le rendu (ancien comportement, deux pistes possibles).
                 // Pris en compte au prochain zap. On ne rouvre pas.
                 AudioFixes.immediateHandoff = call.arguments == true
+                result.success(null)
+            }
+            "setOutput48k" -> {
+                // Essai : l'app rééchantillonne à 48 kHz avant l'AudioTrack.
+                // Pris en compte à la configuration suivante du sink : si une
+                // chaîne joue, on la rouvre (même mécanisme que la sonde).
+                val on = call.arguments == true
+                val changed = on != AudioFixes.output48k
+                AudioFixes.output48k = on
+                audioChain.setOutputSampleRateHz(AudioFixes.outputSampleRate(on))
+                if (changed && !released) {
+                    emit(
+                        "audioDiag",
+                        if (on) "Sortie : essai 48 kHz allumé (rééchantillonnage dans l'app avant l'AudioTrack)."
+                        else "Sortie : fréquence du flux (défaut).",
+                    )
+                    if (probeIsPlaying()) {
+                        if (vodMode && player.currentPosition > 0) lastKnownPos = player.currentPosition
+                        openCurrent(if (vodMode) lastKnownPos else null)
+                    }
+                }
+                result.success(null)
+            }
+            "setLegacyHoldFrame" -> {
+                // Repli de la copie de dernière image : vrai = ancien
+                // comportement (copie gardée même noire, retirée au signal).
+                HeldFrame.legacy = call.arguments == true
                 result.success(null)
             }
             "setBackgroundFlutterOnly" -> {
@@ -1817,6 +1864,9 @@ class NativeVideoView(
         suspended = false
         clearVoiceProcessor.enabled = clearVoiceEnabled
         setProbeEnabled(AudioFixes.probe)
+        // Essai « Sortie : 48 kHz » : relu à chaque ouverture, avant le
+        // prepare (Sonic ne lit la fréquence demandée qu'à la configuration).
+        audioChain.setOutputSampleRateHz(AudioFixes.outputSampleRate(AudioFixes.output48k))
         emit("audioDiag", ProbeAttach.armingLine(AudioFixes.probe))
         // Nouvelle ouverture : les pourcentages et le décodeur de la
         // chaîne d'avant ne doivent pas rester affichés.
@@ -2073,6 +2123,29 @@ class NativeVideoView(
         holdView.setImageBitmap(bmp)
         holdView.visibility = View.VISIBLE
         holdView.bringToFront()
+        // Les trames comptées à partir d'ici sont celles de la reprise.
+        framesWhenHeldShown = renderedFrames.get()
+    }
+
+    /**
+     * Vrai si la copie est toute noire : sur beaucoup de box, PixelCopy
+     * d'une SurfaceView vidéo répond SUCCESS avec une image noire (la
+     * vidéo vit dans une couche matérielle). Montrer ce noir pendant une
+     * coupure était pire que le carton de chaîne. 64 échantillons.
+     */
+    private fun copyLooksBlank(bmp: Bitmap): Boolean {
+        val w = bmp.width
+        val h = bmp.height
+        if (w < 8 || h < 8) return HeldFrame.looksBlank(IntArray(0))
+        val lumas = IntArray(64)
+        var i = 0
+        for (y in 0 until 8) {
+            for (x in 0 until 8) {
+                val px = bmp.getPixel((x * w) / 8 + w / 16, (y * h) / 8 + h / 16)
+                lumas[i++] = HeldFrame.luma(px)
+            }
+        }
+        return HeldFrame.looksBlank(lumas)
     }
 
     /** Cache la copie sans la jeter : la prochaine coupure la réutilise. */
@@ -2128,7 +2201,9 @@ class NativeVideoView(
                 copyInFlight = false
                 val keep = !released && code == PixelCopy.SUCCESS && sawFrame &&
                     holdView.visibility != View.VISIBLE
-                if (!keep) {
+                // Une copie noire n'est pas une image : on garde la
+                // précédente (ou rien, et le carton de chaîne prendra la place).
+                if (!keep || copyLooksBlank(bmp)) {
                     bmp.recycle()
                     return@request
                 }

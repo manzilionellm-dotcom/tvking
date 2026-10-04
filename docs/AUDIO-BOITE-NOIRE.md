@@ -353,3 +353,57 @@ Aucun interrupteur nouveau : ces mesures ne changent pas le chemin audio. Le bou
 
 - Le mode réel, la sortie réelle et la corrélation d'une chaîne de Lionel.
 - Que le témoin sonne clair ou sourd dans ses haut-parleurs.
+
+## Fiche France 24 à 44,1 kHz et essai « Sortie : 48 kHz » (4 octobre 2026)
+
+**Terrain** (build 1791115897) : France 24 reçue en **AAC-LC 44,1 kHz 2 voies**,
+décodée par FFmpeg, sortie **PCM 16 bits 44,1 kHz 2 voies**, verdict « Rien
+d'anormal côté app ». Le son est jugé très mauvais. Les fiches du 1er octobre
+disaient 48 kHz : la chaîne (ou son format de secours) n'est pas la même.
+
+**Hypothèses** (aucune prouvée) :
+
+1. La conversion 44,1 → 48 kHz faite par la puce de la box (l'AudioTrack est
+   ouvert à la fréquence du flux ; le HDMI tourne en général à 48 kHz) est de
+   mauvaise qualité sur cette box. C'est la seule hypothèse testable depuis
+   l'app sans changer le décodeur.
+2. Le flux à 44,1 kHz est simplement moins bon chez le fournisseur (débit).
+3. FFmpeg sur cette chaîne : déjà couvert par « Box AAC ».
+
+**Essai, coupé par défaut** : Réglages → Diagnostic du son → **« Sortie : flux »
+/ « Sortie : 48 kHz »**. Allumé, `ZunoAudioChain.setOutputSampleRateHz(48 000)`
+demande à `SonicAudioProcessor` (déjà dans la chaîne, inactif à vitesse 1,0)
+de rééchantillonner avant l'AudioTrack ; si une chaîne joue, elle est rouverte
+pour que le sink se reconfigure. La fiche doit alors montrer « sortie : PCM
+16 bits 48 kHz ». Clé `zuno.audio.out48k` (`AudioFixes.output48k`). Coupé,
+`outputSampleRate(false)` renvoie `SAMPLE_RATE_NO_CHANGE` : rien ne change.
+
+PROUVÉ (machine) : `AudioFixesTest` (défaut coupé, 48 000 demandé seulement si
+allumé) ; l'API `setOutputSampleRateHz` / `SAMPLE_RATE_NO_CHANGE` vérifiée par
+`javap` sur `media3-common-1.5.1.aar`.
+PAS PROUVÉ : que le son de France 24 s'améliore avec l'essai allumé. Si oui,
+la cause est la conversion de la box ; si non, revenir à « flux » et comparer
+la même chaîne dans une autre app.
+
+## Écran noir après environ une minute, le son continue (4 octobre 2026)
+
+**Terrain** : même build. **Cause la plus plausible, lue dans le code** (non
+prouvée faute des lignes de boîte noire du moment) : à une coupure (reconnexion
+ou direct en retard), le lecteur pose la **copie de la dernière image**
+(`holdView`) sur la surface et ne la retire qu'au signal « première image »
+de la nouvelle session. Deux failles : `PixelCopy` d'une SurfaceView vidéo rend
+souvent une image **noire** avec `SUCCESS` (vidéo dans une couche matérielle), et
+certaines box n'envoient pas le signal quand la surface est réutilisée. La copie
+noire reste donc affichée pendant que le nouveau flux joue.
+
+**Correctif** (`logic/HeldFrame.kt`, `NativeVideoView`) : une copie dont les 64
+échantillons sont tous noirs n'est pas gardée (le carton de chaîne prend la
+place) ; la copie affichée est retirée dès qu'une trame a été rendue **après** son
+affichage (`positionPump`, 500 ms), sans attendre le signal. Interrupteur de repli
+`zuno.player.hold_frame_legacy` (vrai = exactement l'ancien comportement).
+
+PROUVÉ (machine) : `HeldFrameTest` (copie noire rejetée, un pixel visible la
+garde, retrait à la première trame rendue, repli inchangé).
+PAS PROUVÉ : que c'était bien ce chemin sur la box. Pour le confirmer : lignes de
+la boîte noire autour de l'écran noir (`[PLAYER] reconnexion…`, `[SON] Zap :`,
+`Retour :`, `Repli :`).

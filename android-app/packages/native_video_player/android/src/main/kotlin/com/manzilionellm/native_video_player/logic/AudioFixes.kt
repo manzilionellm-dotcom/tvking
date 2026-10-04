@@ -44,6 +44,20 @@ object AudioFixes {
      */
     const val KEY_IMMEDIATE_HANDOFF: String = "zuno.audio.handoff.immediate"
 
+    /** Essai « Sortie : 48 kHz » (04/10/2026). Faux = fréquence du flux (défaut). */
+    const val KEY_OUTPUT_48K: String = "zuno.audio.out48k"
+
+    /** Même valeur que SonicAudioProcessor.SAMPLE_RATE_NO_CHANGE. */
+    const val OUTPUT_RATE_NATIVE: Int = -1
+    const val OUTPUT_RATE_48K: Int = 48_000
+
+    @Volatile
+    var output48k: Boolean = false
+
+    /** Fréquence à demander à Sonic : 48 000 si l'essai est allumé, sinon « inchangée ». */
+    fun outputSampleRate(force48k: Boolean): Int =
+        if (force48k) OUTPUT_RATE_48K else OUTPUT_RATE_NATIVE
+
     @Volatile
     var androidFocus: Boolean = false
 

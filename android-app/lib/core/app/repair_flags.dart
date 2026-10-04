@@ -14,9 +14,17 @@
 //  les quelques lignes écrites avant le chargement suivent les défauts.
 // =========================================================
 
+import 'package:native_video_player/native_video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 abstract final class RepairFlags {
+  /// Vrai = copie de la dernière image à l'ancienne (gardée même noire,
+  /// retirée seulement au signal « première image »). Faux = copie noire
+  /// rejetée (PixelCopy d'une surface vidéo rend souvent du noir) et copie
+  /// retirée dès qu'une trame est rendue après son affichage. Correctif de
+  /// l'écran noir « le son continue » après une coupure.
+  static const String legacyHoldFrameKey = 'zuno.player.hold_frame_legacy';
+  static bool legacyHoldFrame = false;
   /// Vrai = la boîte noire écrit les lignes TELLES QUELLES (ancien
   /// comportement). Faux = chaque ligne est expurgée à l'écriture
   /// (adresses de flux, identifiants, mots de passe) : le journal sur la
@@ -51,22 +59,29 @@ abstract final class RepairFlags {
     bool fsyncAll = false;
     bool syncPlayback = false;
     bool epgOff = false;
+    bool holdLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
       fsyncAll = prefs.getBool(blackBoxFsyncAllKey) ?? false;
       syncPlayback = prefs.getBool(syncDuringPlaybackKey) ?? false;
       epgOff = prefs.getBool(epgRefreshOffKey) ?? false;
+      holdLegacy = prefs.getBool(legacyHoldFrameKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
       syncPlayback = false;
       epgOff = false;
+      holdLegacy = false;
     }
     blackBoxRaw = raw;
     blackBoxFsyncAll = fsyncAll;
     syncDuringPlayback = syncPlayback;
     epgRefreshOff = epgOff;
+    legacyHoldFrame = holdLegacy;
+    // Le lecteur natif reçoit le réglage avec les autres (avant l'URL).
+    NativeVideoController.legacyHoldFrame = holdLegacy;
+    NativeVideoController.pushAudioDiagFlags();
   }
 
   /// Remise aux défauts (tests).
@@ -75,5 +90,7 @@ abstract final class RepairFlags {
     blackBoxFsyncAll = false;
     syncDuringPlayback = false;
     epgRefreshOff = false;
+    legacyHoldFrame = false;
+    NativeVideoController.legacyHoldFrame = false;
   }
 }

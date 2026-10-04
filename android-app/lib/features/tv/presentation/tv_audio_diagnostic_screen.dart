@@ -90,6 +90,7 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     _bgPause = NativeVideoController.backgroundPauseOnly;
     _immediate = NativeVideoController.immediateHandoff;
     _flutterOnly = NativeVideoController.backgroundFlutterOnly;
+    _out48k = NativeVideoController.output48k;
     // Le libellé vient de la mémoire Dart. On le repousse au lecteur
     // déjà ouvert, pour que « mesuré » et la sonde native disent la même chose.
     NativeVideoController.pushAudioDiagFlags();
@@ -163,6 +164,17 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
     final bool next = !_immediate;
     setState(() => _immediate = next);
     await AudioDiagPrefs.setImmediateHandoff(next);
+  }
+
+  // Essai « Sortie : 48 kHz » (coupé par défaut). Si une chaîne joue, le
+  // natif la rouvre pour appliquer la fréquence ; la fiche montre ensuite
+  // « sortie : PCM 16 bits 48 kHz ».
+  bool _out48k = false;
+
+  Future<void> _toggleOutput48k() async {
+    final bool next = !_out48k;
+    setState(() => _out48k = next);
+    await AudioDiagPrefs.setOutput48k(next);
   }
 
   Future<void> _toggleAndroidFocus() async {
@@ -301,6 +313,12 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
             ),
             const SizedBox(width: 12),
             _Toggle(
+              label: _out48k ? 'Sortie : 48 kHz' : 'Sortie : flux',
+              on: _out48k,
+              onSelect: _toggleOutput48k,
+            ),
+            const SizedBox(width: 12),
+            _Toggle(
               label: _witness != null
                   ? 'Témoin : stop'
                   : (_witnessBusy ? 'Témoin : préparation' : 'Jouer le son témoin'),
@@ -346,7 +364,11 @@ class _TvAudioDiagnosticScreenState extends State<TvAudioDiagnosticScreen> {
           'Passage : « attendre » (défaut) = on n\'ouvre la chaîne suivante '
           'que lorsque l\'AudioTrack précédent est vraiment rendu (sinon deux '
           'sons se mélangent après beaucoup de zaps) ; « tout de suite » = '
-          'ancien comportement. Son témoin : 10 s (voix puis bruit), '
+          'ancien comportement. Sortie : « flux » (défaut) = l\'AudioTrack '
+          'prend la fréquence du flux (44,1 kHz pour beaucoup de chaînes) et '
+          'la box convertit ; « 48 kHz » = l\'app rééchantillonne avant la '
+          'sortie. À essayer si le son est mauvais avec une fiche à 44,1 kHz. '
+          'Son témoin : 10 s (voix puis bruit), '
           'lu par le même lecteur. Allume la mesure, ne change pas le son. '
           'Bruit sourd → l\'appareil. Bruit clair → la chaîne.',
           style: TextStyle(fontSize: TvDimens.label, color: TvTokens.mutedDim),

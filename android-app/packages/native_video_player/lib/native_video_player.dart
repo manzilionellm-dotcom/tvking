@@ -172,6 +172,18 @@ class NativeVideoController extends ChangeNotifier {
   /// avant. Faux par défaut : l'activité coupe le son dès le Home.
   static bool backgroundFlutterOnly = false;
 
+  /// Essai « Sortie : 48 kHz » : vrai = l'app rééchantillonne le PCM à
+  /// 48 kHz avant l'AudioTrack (Sonic). Faux par défaut : fréquence du
+  /// flux, comme avant. Sert à tester si c'est la conversion de la box
+  /// (44,1 → 48 kHz) qui abîme le son.
+  static bool output48k = false;
+
+  /// Repli de la copie de dernière image (coupure) : vrai = ancien
+  /// comportement (copie gardée même noire, retirée seulement au signal
+  /// « première image »). Faux par défaut : copie noire rejetée, copie
+  /// retirée dès qu'une trame est rendue après son affichage.
+  static bool legacyHoldFrame = false;
+
   /// Vrai tant que l'activité a coupé la lecture (Home). Le natif l'envoie.
   /// Le repli Flutter ne le met pas : l'ancien chemin reste seul.
   static bool appInBackground = false;
@@ -202,6 +214,8 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
       ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
       ch.invokeMethod<void>('setBackgroundFlutterOnly', backgroundFlutterOnly);
+      ch.invokeMethod<void>('setLegacyHoldFrame', legacyHoldFrame);
+      ch.invokeMethod<void>('setOutput48k', output48k);
     }
   }
 
@@ -345,6 +359,8 @@ class NativeVideoController extends ChangeNotifier {
     ch.invokeMethod<void>('setAndroidFocus', androidAudioFocus);
     ch.invokeMethod<void>('setImmediateHandoff', immediateHandoff);
     ch.invokeMethod<void>('setBackgroundFlutterOnly', backgroundFlutterOnly);
+    ch.invokeMethod<void>('setLegacyHoldFrame', legacyHoldFrame);
+    ch.invokeMethod<void>('setOutput48k', output48k);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;

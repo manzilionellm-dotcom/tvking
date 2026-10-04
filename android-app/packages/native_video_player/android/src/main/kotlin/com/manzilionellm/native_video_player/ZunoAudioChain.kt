@@ -41,6 +41,19 @@ class ZunoAudioChain(
 
     override fun getAudioProcessors(): Array<AudioProcessor> = processors
 
+    /**
+     * Fréquence de SORTIE demandée à Sonic (essai « Sortie : 48 kHz »,
+     * 04/10/2026). [SonicAudioProcessor.SAMPLE_RATE_NO_CHANGE] = la
+     * fréquence du flux, comme avant (défaut). Pris en compte à la prochaine
+     * configuration du sink : l'appelant rouvre la chaîne si elle joue.
+     * Pourquoi : la fiche montre un flux AAC 44,1 kHz sorti en 44,1 kHz ;
+     * sur certaines box, c'est la conversion 44,1 → 48 kHz de la puce qui
+     * abîme le son. Ici l'app rééchantillonne elle-même avant la sortie.
+     */
+    fun setOutputSampleRateHz(hz: Int) {
+        sonic.setOutputSampleRateHz(hz)
+    }
+
     override fun applyPlaybackParameters(playbackParameters: PlaybackParameters): PlaybackParameters {
         sonic.setSpeed(playbackParameters.speed)
         sonic.setPitch(playbackParameters.pitch)

@@ -79,6 +79,8 @@ Les dix composants dont la panne casse l'expérience : `NativeVideoView.kt`
 | P3 | `isPlaying` périmé après `setUrl` (Lecture/Pause inversé pendant le chargement) | état non remis | `native_video_player.dart` | `isPlaying = false` au `setUrl` ; la barre Cinéma se ré-arme au vrai départ | **PROUVÉ** : `playback_epoch_test.dart` |
 | P3 | `platformAacGaveUp` lu depuis le fil de lecture sans visibilité | champ non volatile | `NativeVideoView.kt` | `@Volatile` | statique |
 | P3 (sécurité) | `android:allowBackup` absent (vrai par défaut) alors que les préférences portent la clé AES des codes | manifeste modèle | `ci/tv/patch_manifest.py` | `allowBackup="false"` + `tools:replace` | script idempotent vérifié (deux passes identiques) ; fusion manifeste vérifiée par le build CI |
+| P1 (terrain, 2e passe) | Écran noir après ~1 min, le son continue (box de test) | copie de dernière image noire (`PixelCopy` d'une surface vidéo) et jamais retirée si le signal « première image » n'arrive pas après une reprise | `logic/HeldFrame.kt`, `NativeVideoView.kt` | copie noire rejetée ; copie retirée dès qu'une trame est rendue après son affichage ; repli `zuno.player.hold_frame_legacy` | **PROUVÉ** (règles, `HeldFrameTest`) ; cause sur la box **NON VÉRIFIÉE** (lignes de boîte noire à relire) |
+| P1 (terrain, 2e passe) | Son très mauvais, fiche France 24 AAC-LC **44,1 kHz** sortie 44,1 kHz | hypothèse : conversion 44,1 → 48 kHz de la puce | `ZunoAudioChain.kt`, `AudioFixes.kt`, écran Diagnostic du son | essai « Sortie : 48 kHz » (défaut coupé) : rééchantillonnage Sonic avant l'AudioTrack | API vérifiée (`javap` media3-common 1.5.1), `AudioFixesTest` ; effet sur la box **NON VÉRIFIÉ** |
 
 ### Interrupteurs de repli (tous faux par défaut)
 
@@ -90,6 +92,8 @@ Les dix composants dont la panne casse l'expérience : `NativeVideoView.kt`
 | `zuno.blackbox.fsync_all` | un fsync par ligne (ancien) |
 | `zuno.sync.during_playback` | re-vérification lente autorisée sous le lecteur (ancien) |
 | `zuno.epg.refresh_off` | pas de guide re-téléchargé à l'actualisation d'une liste (ancien) |
+| `zuno.player.hold_frame_legacy` | copie de dernière image gardée même noire, retirée seulement au signal (ancien) |
+| `zuno.audio.out48k` (Diagnostic du son → « Sortie ») | **essai** à allumer à la main : rééchantillonnage 48 kHz avant l'AudioTrack (faux = flux, comme avant) |
 
 Les réglages audio existants (`zuno.audio.*`, `zuno.player.bg_*`) n'ont pas changé.
 

@@ -6,6 +6,14 @@ import kotlin.test.assertTrue
 
 class AudioFixesTest {
     @Test
+    fun essaiSortie48kCoupeParDefautEtFrequenceDemandee() {
+        assertFalse(AudioFixes.output48k)
+        // Coupé : « inchangée » (même valeur que SonicAudioProcessor.SAMPLE_RATE_NO_CHANGE).
+        assertEquals(-1, AudioFixes.outputSampleRate(false))
+        assertEquals(48_000, AudioFixes.outputSampleRate(true))
+    }
+
+    @Test
     fun defautsCoupes() {
         assertFalse(AudioFixes.probe)
         assertFalse(AudioFixes.keepFfmpeg)

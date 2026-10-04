@@ -35,6 +35,10 @@ class AudioDiagPrefs {
   /// Repli « passage » : vrai = on n'attend pas l'AudioTrack (ancien).
   static const String immediateHandoffKey = 'zuno.audio.handoff.immediate';
 
+  /// Essai « Sortie : 48 kHz » : vrai = rééchantillonnage dans l'app avant
+  /// l'AudioTrack. Faux par défaut (fréquence du flux, comme avant).
+  static const String output48kKey = 'zuno.audio.out48k';
+
   static Future<void> load() async {
     var probe = false;
     var ffmpeg = false;
@@ -44,6 +48,7 @@ class AudioDiagPrefs {
     var bgPause = false;
     var immediate = false;
     var flutterOnly = false;
+    var out48k = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       probe = prefs.getBool(probeKey) ?? false;
@@ -54,6 +59,7 @@ class AudioDiagPrefs {
       bgPause = prefs.getBool(bgPauseKey) ?? false;
       immediate = prefs.getBool(immediateHandoffKey) ?? false;
       flutterOnly = prefs.getBool(bgFlutterOnlyKey) ?? false;
+      out48k = prefs.getBool(output48kKey) ?? false;
     } catch (_) {
       probe = false;
       ffmpeg = false;
@@ -63,7 +69,9 @@ class AudioDiagPrefs {
       bgPause = false;
       immediate = false;
       flutterOnly = false;
+      out48k = false;
     }
+    NativeVideoController.output48k = out48k;
     NativeVideoController.audioProbeEnabled = probe;
     NativeVideoController.keepFfmpegAudio = ffmpeg;
     NativeVideoController.preferPlatformAac = platform;
@@ -75,6 +83,15 @@ class AudioDiagPrefs {
     // Une vue déjà ouverte doit recevoir le réglage. Sinon l'écran
     // affiche « Spectre : mesuré » et le lecteur natif reste coupé.
     NativeVideoController.pushAudioDiagFlags();
+  }
+
+  static Future<void> setOutput48k(bool value) async {
+    NativeVideoController.output48k = value;
+    NativeVideoController.pushAudioDiagFlags();
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(output48kKey, value);
+    } catch (_) {}
   }
 
   static Future<void> setImmediateHandoff(bool value) async {
