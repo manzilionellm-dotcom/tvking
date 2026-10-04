@@ -18,9 +18,14 @@ export default function CitationFaq({
   return (
     <section id="faq" className={className} aria-labelledby={heading ? "aio-faq-title" : undefined}>
       {heading ? (
-        <h2 id="aio-faq-title" className="text-2xl font-bold text-white">
-          {heading}
-        </h2>
+        <>
+          <h2 id="aio-faq-title" className="text-2xl font-bold text-white">
+            {heading}
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed text-white/60">
+            Réponses reprises des pages du site : accueil, forfaits, téléchargement, activation, revendeur et mentions légales.
+          </p>
+        </>
       ) : null}
       <div className={heading ? "mt-8 space-y-8" : "space-y-8"}>
         {faq.map((item) => (
