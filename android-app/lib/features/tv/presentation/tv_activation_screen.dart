@@ -81,19 +81,26 @@ class _TvActivationScreenState extends State<TvActivationScreen> {
         child: FittedBox(
           fit: BoxFit.contain,
           child: SizedBox(
-            width: 1000,
+            // 540 + 48 + QR WhatsApp (210 + 32) + 40 + QR espace (210 + 112)
+            // = 1192 : tient dans la zone sûre (1184) à l'échelle ~1,0,
+            // les tailles de police dessinées restent celles du design.
+            width: 1192,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
                 // ----- Colonne gauche : marque + code + CTA -----
-                SizedBox(width: 600, child: _activationColumn(context)),
-                const SizedBox(width: 56),
-                // ----- Colonne droite : QR téléphone → page « Mon espace » -----
-                //  Premier lancement (pas encore d'essai, ou essai pas
-                //  encore reçu) : la personne scanne et saisit sa source
-                //  sur son téléphone. Le QR WhatsApp reste sur Direct.
-                TvPhoneSourceQr(mac: _mac),
+                SizedBox(width: 540, child: _activationColumn(context)),
+                const SizedBox(width: 48),
+                // ----- Droite : DEUX grands QR (demande du 04/10/2026) -----
+                //  1. WhatsApp du revendeur, code MAC déjà dans le message :
+                //     la personne qui vient d'installer l'app te contacte.
+                //  2. Page « Mon espace » : elle ajoute SA propre liste
+                //     depuis son téléphone (la mention « ne vend aucune
+                //     chaîne » est au-dessus du QR, dans TvOwnSourceQr).
+                TvWhatsAppQr(mac: _mac, size: 210),
+                const SizedBox(width: 40),
+                TvPhoneSourceQr(mac: _mac, qrSize: 210),
               ],
             ),
           ),

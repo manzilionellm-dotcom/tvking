@@ -46,6 +46,19 @@ void main() {
       ),
       isFalse,
     );
+    // Box SANS chaîne sur l'écran Direct vide (compté « occupé ») :
+    // rien ne joue, la source poussée arrive tout de suite.
+    expect(
+      SourceFetchDecision.shouldFetch(
+        networkOk: true,
+        playbackBusy: true,
+        sourceRevKnown: true,
+        sourceRev: 5,
+        lastFetchedRev: 4,
+        hasChannels: false,
+      ),
+      isTrue,
+    );
     expect(
       SourceFetchDecision.shouldFetch(
         networkOk: true,

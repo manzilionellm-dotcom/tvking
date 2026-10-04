@@ -65,8 +65,11 @@ abstract final class SourceFetchDecision {
     // Coupure : on garde la liste déjà sur la box.
     if (!networkOk) return false;
     // Direct ou lecteur ouvert : importer une grosse liste fige
-    // l'image. On attend le retour à l'accueil.
-    if (playbackBusy) return false;
+    // l'image. On attend le retour à l'accueil. SAUF quand la box n'a
+    // encore aucune chaîne : rien ne peut jouer, et le client attend
+    // justement sa liste sur l'écran Direct vide. Une source posée
+    // dans le panel arrive alors tout de suite (04/10/2026).
+    if (playbackBusy && hasChannels) return false;
     // Ancien Worker (pas de source_rev) : on relit au rythme de la
     // veille, déjà espacé par ActivationPace.
     if (!sourceRevKnown) return true;

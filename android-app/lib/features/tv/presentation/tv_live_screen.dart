@@ -37,6 +37,7 @@ import '../core/tv_focusable.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
 import 'tv_live_preview.dart';
+import 'tv_phone_source_qr.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
 
@@ -760,9 +761,13 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
                 ],
               ),
             ),
-            const SizedBox(width: 44),
-            // ===== Droite : QR WhatsApp pour contacter le revendeur =====
+            const SizedBox(width: 36),
+            // ===== Droite : QR WhatsApp (contacter le revendeur) + QR
+            // « Mon espace » (ajouter sa propre liste depuis le téléphone),
+            // les deux visibles tant qu'aucune chaîne n'est là (04/10/2026).
             TvWhatsAppQr(mac: _mac, size: 190),
+            const SizedBox(width: 24),
+            TvPhoneSourceQr(mac: _mac, qrSize: 150),
           ],
         ),
       );

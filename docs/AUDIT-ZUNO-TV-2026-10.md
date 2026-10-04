@@ -262,6 +262,14 @@ et les mêmes dates ; `version.json` retéléchargé a le même SHA-256
 | Couverture de tests /5 | 4 | 375 Dart + 141 Kotlin ; aucun test d'intégration sur appareil |
 | **Total** | **71/100** | |
 
+## 11 bis. Demandes du 4 octobre (après la première box de test)
+
+| Demande | Ce qui existait | Ce qui change | Limite honnête |
+| --- | --- | --- | --- |
+| Panel → app instantané (essai, source) | Canal « signal » en attente longue (`BoxSignalClient.wait`) : un ordre `activate` / `source` arrive en quelques secondes ; lecture du statut toutes les 3–4 s ; mais l'import de la source était refusé tant que l'écran Direct ou le lecteur était ouvert (`SourceFetchDecision.playbackBusy`), et l'écran Direct VIDE compte comme occupé | `activation_pace.dart` : une box **sans chaîne** importe tout de suite, même sur l'écran Direct vide (rien ne peut jouer). Test ajouté dans `activation_pace_test.dart` | Une box qui a déjà des chaînes et qui **joue** reçoit une source remplacée au retour à l'accueil (importer 50 000 chaînes pendant la lecture fige l'image). L'activation / l'essai, eux, sont immédiats partout. Le Worker n'a pas été touché |
+| Deux grands QR à l'installation | Activation : QR « Mon espace » seul ; Direct vide : QR WhatsApp seul | Activation : QR **WhatsApp** (code MAC pré-rempli) + QR **« Mon espace »** (ajout de sa propre liste depuis le téléphone), 210 px chacun, mention « Cette application ne vend aucune chaîne » au-dessus du second ; Direct vide : les deux QR aussi | Rendu réel (lisibilité, scan) à vérifier sur la box |
+| Publication aux clients | — | Rien n'est publié : `publish=false` sur tous les builds. La publication ne se fait qu'après validation sur la box, sur demande explicite | — |
+
 ## 12. Bloqueurs de publication
 
 Aucun P0 connu dans le code. La publication aux clients (`publish=true`) reste
