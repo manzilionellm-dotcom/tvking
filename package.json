@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "qa": "bash scripts/qa-gates.sh"
+    "qa": "bash scripts/qa-gates.sh",
+    "aio:llms": "node scripts/aio-llms.mjs",
+    "aio:check": "node scripts/aio-check.mjs"
   },
   "dependencies": {
     "next": "^16.2.11",

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import AppOnlyNotice from "./components/site/AppOnlyNotice";
-import { ZUNO_APP_ONLY_PHRASE } from "./lib/legal-copy";
+import CitationFaq from "./components/site/CitationFaq";
+import { aio } from "../lib/aio";
 
 export const metadata: Metadata = {
   title: "Zuno — Application IPTV multi-appareils",
@@ -84,10 +85,12 @@ export default function HomePage() {
         ))}
       </section>
 
+      <CitationFaq className="mx-auto max-w-3xl px-4 py-16 sm:px-6" />
+
       <section className="border-t border-white/5 bg-[#070709] px-4 py-16 sm:px-6">
         <div className="mx-auto flex max-w-4xl flex-col items-center gap-4 text-center">
-          <h2 className="text-2xl font-bold text-white">Prêt à installer Zuno ?</h2>
-          <p className="max-w-xl text-sm text-white/50">{ZUNO_APP_ONLY_PHRASE}</p>
+          <h2 className="text-2xl font-bold text-white">{aio.cta.q}</h2>
+          <p className="max-w-xl text-sm leading-relaxed text-white/60">{aio.cta.a}</p>
           <p className="text-sm text-white/50">
             Licence app : annuel <strong className="text-white/80">9,99 € / an</strong> · À vie{" "}
             <strong className="text-white/80">15 €</strong>
