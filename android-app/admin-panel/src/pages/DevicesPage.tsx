@@ -2,6 +2,7 @@ import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
+import { ClientPowers } from '@/components/ClientPowers';
 import { confirmAction } from '@/components/confirm';
 import {
   Alert, EmptyState, LoadingRows, SearchField, SortTh, StatusBadge,
@@ -479,6 +480,9 @@ function DeviceDetailModal({
             <ActionBtn busy={busy} danger onClick={onRemove} title="Supprimer la MAC">Supprimer</ActionBtn>
           </div>
         </div>
+
+        {/* ----- Pouvoirs client (admin ; masqué si l'interrupteur du Worker est coupé) ----- */}
+        <ClientPowers deviceId={device.id} mac={device.mac} />
 
         <div className="flex justify-end pt-5">
           <button type="button" onClick={onClose} className="rounded-md px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary">Fermer</button>

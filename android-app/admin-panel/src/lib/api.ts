@@ -376,6 +376,67 @@ export const devicesApi = {
     request<{ deleted: number }>(`/api/v1/devices/${id}`, { method: 'DELETE' }),
 };
 
+// =========================================================
+//  POUVOIRS CLIENTS — actions admin par appareil (id = id de l'appareil)
+//  Le Worker répond { enabled:false } tant que son interrupteur
+//  CLIENT_POWERS est coupé : le panel masque alors le bloc.
+// =========================================================
+export interface DevicePowers {
+  enabled: boolean;
+  mac?: string;
+  block_status?: string;
+  suspended?: boolean;
+  lifetime?: boolean;
+  payment_request?: {
+    message: string; amount: string; currency: string; link: string;
+    due_at: number | null; sent_at: number;
+  } | null;
+  message?: {
+    title: string; body: string; expires_at: number | null; sent_at: number;
+  } | null;
+  refresh_rev?: number;
+}
+export interface ClientNote { id: string; body: string; actor_id: string | null; created_at: number }
+export interface ClientAction {
+  id: string;
+  action: string;
+  actor_type: string;
+  actor_id: string | null;
+  created_at: number;
+  detail: Record<string, unknown> | null;
+}
+const dev = (id: string) => `/api/v1/devices/${encodeURIComponent(id)}`;
+export const powersApi = {
+  get: (id: string) => request<DevicePowers>(`${dev(id)}/powers`),
+  block: (id: string, status: 'active' | 'frozen' | 'banned', reason?: string) =>
+    request<{ ok: boolean; block_status: string }>(`${dev(id)}/block`, {
+      method: 'POST', body: { status, reason },
+    }),
+  setPayment: (id: string, payload: { message: string; amount: string; currency: string; link?: string }) =>
+    request<{ ok: boolean; id: string }>(`${dev(id)}/payment-request`, { method: 'PUT', body: payload }),
+  clearPayment: (id: string) =>
+    request<{ ok: boolean }>(`${dev(id)}/payment-request`, { method: 'DELETE' }),
+  sendMessage: (id: string, payload: { title?: string; body: string; expires_in_hours?: number }) =>
+    request<{ ok: boolean; id: string }>(`${dev(id)}/message`, { method: 'POST', body: payload }),
+  clearMessage: (id: string) =>
+    request<{ ok: boolean }>(`${dev(id)}/message`, { method: 'DELETE' }),
+  extend: (id: string, days: number) =>
+    request<{ ok: boolean }>(`${dev(id)}/extend`, { method: 'POST', body: { days } }),
+  suspend: (id: string, suspend: boolean, reason?: string) =>
+    request<{ ok: boolean; suspended: boolean }>(`${dev(id)}/suspend`, {
+      method: 'POST', body: { suspend, reason },
+    }),
+  refresh: (id: string) =>
+    request<{ ok: boolean; refresh_rev: number }>(`${dev(id)}/refresh`, { method: 'POST', body: {} }),
+  notes: (id: string) => request<{ items: ClientNote[] }>(`${dev(id)}/notes`),
+  addNote: (id: string, body: string) =>
+    request<{ ok: boolean; id: string }>(`${dev(id)}/notes`, { method: 'POST', body: { body } }),
+  deleteNote: (id: string, noteId: string) =>
+    request<{ ok: boolean }>(`${dev(id)}/notes/${encodeURIComponent(noteId)}`, { method: 'DELETE' }),
+  actions: (id: string, limit = 50) =>
+    request<{ items: ClientAction[] }>(`${dev(id)}/actions?limit=${limit}`),
+};
+
 export interface License {
   id: string;
   customer_id: string;

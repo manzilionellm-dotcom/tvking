@@ -55,6 +55,7 @@
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1 } from './api_v1.js';
+import { readPublicNotices } from './client_powers.js';
 import { httpUrlError } from './source_url.js';
 import { openSource, openSourceList, sealSource } from './secret_box.js';
 import {
@@ -2433,7 +2434,11 @@ async function handlePublicStatus(env, mac) {
       await touchTrialAnchor(env, mac, '');
       d1 = await d1StatusForMac(env, mac);
     }
-    if (d1) return json(d1);
+    if (d1) {
+      // « Pouvoirs clients » : demande de paiement / message / relecture.
+      // Interrupteur CLIENT_POWERS coupé → {} → réponse identique à avant.
+      return json({ ...d1, ...(await readPublicNotices(env, mac)) });
+    }
   }
   const data = await readClient(env, mac);
   return json(computeStatus(data));

@@ -76,6 +76,7 @@ import {
 //  customers viendront en Phase 3 et 5 respectivement.
 // =========================================================
 import { httpUrlError } from './source_url.js';
+import { handleClientPowers } from './client_powers.js';
 import { openSource, openSourceList, sealSource } from './secret_box.js';
 
 import {
@@ -1126,6 +1127,14 @@ async function apiV1Inner(request, env) {
 
   // /devices
   if (parts[0] === 'devices') {
+    // « Pouvoirs clients » (blocage motivé, demande de paiement, message,
+    // prolonger/suspendre, relecture forcée, notes, journal). Admin seul,
+    // derrière l'interrupteur CLIENT_POWERS (coupé par défaut).
+    const power = await handleClientPowers({
+      request, env, parts, user: a.user, actor,
+      deps: { errResp, jsonResp, logAudit, genId, trialExtend: handleTrialExtend },
+    });
+    if (power) return power;
     if (parts.length === 1) {
       if (request.method === 'GET') return handleDevicesList(request, env, a.user);
       if (request.method === 'POST') {
