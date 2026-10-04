@@ -14,6 +14,7 @@ import {
 } from '@/lib/api';
 import { PANEL_POLL_MS, shouldApplyPollResult } from '@/lib/live-sync';
 import { formatDateTime } from '@/lib/utils';
+import { planRemoveSource } from '@/lib/sources';
 import {
   LIST_PAGE_SIZE, createAbortBag, createGeneration, createSingleFlight,
   expiryPhrase, readListPage,
@@ -334,6 +335,39 @@ function DeviceDetailModal({
     }
   }
 
+  /// Retire UNE liste. Le serveur remplace l'ensemble à chaque envoi :
+  /// on renvoie les autres telles quelles (planRemoveSource). La box du
+  /// client efface toute seule la liste qui n'est plus envoyée, à sa
+  /// vérification suivante (au retour à l'accueil si une chaîne joue).
+  async function removeOne(index: number) {
+    const list = ov?.sources ?? [];
+    const plan = planRemoveSource(list, index);
+    if (plan.kind === 'invalid') return;
+    const target = list[index];
+    const name = target.type === 'xtream' ? 'Xtream' : 'M3U';
+    if (!window.confirm(
+      `Retirer la liste #${index + 1} (${name}) ? Elle disparaîtra de la TV du client toute seule, sans qu'il fasse rien.`,
+    )) return;
+    setClearing(true);
+    setErr(null);
+    try {
+      if (plan.kind === 'clear') {
+        await sourcesApi.clear(device.mac);
+      } else {
+        await sourcesApi.setMany(device.mac, plan.sources);
+      }
+      const my = ++pollSeq.current;
+      const r = await devicesApi.overview(device.id);
+      if (!shouldApplyPollResult(my, appliedSeq.current)) return;
+      appliedSeq.current = my;
+      setOv(r);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Échec.');
+    } finally {
+      setClearing(false);
+    }
+  }
+
   const st = device.block_status || 'active';
   const sources = ov?.sources ?? [];
   const macUrl = encodeURIComponent(device.mac);
@@ -397,7 +431,13 @@ function DeviceDetailModal({
           </div>
         )}
         {!loading && !err && sources.map((s, i) => (
-          <SourceCard key={i} index={i} source={s} />
+          <SourceCard
+            key={i}
+            index={i}
+            source={s}
+            busy={busy || clearing}
+            onRemove={() => removeOne(i)}
+          />
         ))}
 
         {/* ----- Inventaire RÉEL sur la TV (remonté par l'app) ----- */}
@@ -425,7 +465,7 @@ function DeviceDetailModal({
           <div className="flex flex-wrap gap-1.5">
             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
-            <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire les listes poussées. L'app déjà ouverte garde sa copie locale jusqu'à sa prochaine vérification.">Effacer les listes</ActionBtn>
+            <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire toutes les listes poussées. La TV du client les efface toute seule à sa vérification suivante.">Effacer les listes</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
             {st !== 'frozen' && (
               <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
@@ -501,7 +541,14 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 /// Carte d'une source du M-Trio (avec identifiants Xtream ou URL M3U).
-function SourceCard({ index, source }: { index: number; source: DeviceSource }) {
+function SourceCard({
+  index, source, busy, onRemove,
+}: {
+  index: number;
+  source: DeviceSource;
+  busy: boolean;
+  onRemove: () => void;
+}) {
   const isXtream = source.type === 'xtream';
   return (
     <div className="mb-2 rounded-lg border border-white/5 bg-obsidian px-3 py-3">
@@ -517,6 +564,15 @@ function SourceCard({ index, source }: { index: number; source: DeviceSource }) 
           {isXtream ? 'XTREAM' : 'M3U'}
         </span>
         {source.label && <span className="truncate text-xs text-ink-secondary">{source.label}</span>}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onRemove}
+          title="Retirer cette liste. La TV du client l'efface toute seule."
+          className="ml-auto rounded-md border border-accent/40 px-2 py-0.5 text-[11px] font-semibold text-accent-bright hover:bg-accent/10 disabled:opacity-40"
+        >
+          Supprimer
+        </button>
       </div>
       <div className="grid grid-cols-1 gap-y-1.5 text-xs">
         {isXtream ? (

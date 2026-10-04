@@ -194,6 +194,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
               id="chaines-mac"
               value={mac}
               onChange={(e) => { setMac(e.target.value); setOk(null); }}
+              onBlur={() => setMac((v) => normalizeMac(v))}
               autoFocus
               autoComplete="off"
               placeholder="MK:XX:XX:XX:XX:XX"

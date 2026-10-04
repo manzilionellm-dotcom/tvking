@@ -7,14 +7,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/// MAC d'appareil telle que le serveur l'attend : MK:XX:XX:XX:XX:XX.
-export function normalizeMac(raw: string): string {
-  return raw.trim().toUpperCase();
-}
-
-export function isValidMac(raw: string): boolean {
-  return /^MK(?::[0-9A-F]{2}){5}$/i.test(normalizeMac(raw));
-}
+/// MAC d'appareil : « AD:A6:98:70:6A » (sans MK:, avec tirets, espaces
+/// ou rien) devient MK:AD:A6:98:70:6A. Logique pure dans mac.ts.
+export { normalizeMac, isValidMac, displayMac } from './mac';
 
 /// Date lisible en heure de Paris (robust.ts : secondes ou ms,
 /// fuseau fixe, valeur vide → « — »).

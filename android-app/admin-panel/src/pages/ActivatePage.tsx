@@ -169,6 +169,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             id="act-mac"
             value={mac}
             onChange={(e) => setMac(e.target.value)}
+            onBlur={() => setMac((v) => normalizeMac(v))}
             autoFocus
             autoComplete="off"
             inputMode="text"

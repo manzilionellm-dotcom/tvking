@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { transferApi, ApiError } from '@/lib/api';
 import { createSingleFlight } from '@/lib/robust';
+import { normalizeMac } from '@/lib/mac';
 
 // =========================================================
 //  TransferPage — déplacer un abonnement vers un nouvel appareil
@@ -29,8 +30,9 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
     e.preventDefault();
     await flight.current.run(async () => {
       setErr(null); setOk(null);
-      const o = oldMac.trim().toUpperCase();
-      const n = newMac.trim().toUpperCase();
+      // « AD:A6:98:70:6A » (vu sur la box) devient MK:AD:A6:98:70:6A.
+      const o = normalizeMac(oldMac);
+      const n = normalizeMac(newMac);
       if (!MAC_RX.test(o)) { setErr('Ancienne MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
       if (!MAC_RX.test(n)) { setErr('Nouvelle MAC invalide (format MK:XX:XX:XX:XX:XX).'); return; }
       if (o === n) { setErr('Les deux MAC sont identiques.'); return; }
@@ -75,6 +77,7 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
             <input
               value={oldMac}
               onChange={(e) => setOldMac(e.target.value)}
+              onBlur={() => setOldMac((v) => normalizeMac(v))}
               placeholder="MK:XX:XX:XX:XX:XX"
               className={inputCls}
               autoFocus
@@ -88,6 +91,7 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
             <input
               value={newMac}
               onChange={(e) => setNewMac(e.target.value)}
+              onBlur={() => setNewMac((v) => normalizeMac(v))}
               placeholder="MK:XX:XX:XX:XX:XX"
               className={inputCls}
             />
