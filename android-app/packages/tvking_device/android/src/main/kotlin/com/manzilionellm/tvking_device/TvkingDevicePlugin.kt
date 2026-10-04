@@ -204,8 +204,57 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
             // Volume SYSTÈME (barre Android), +1 ou -1. Jamais une valeur
             // absolue, pour qu'une requête ne puisse pas coller le son à fond.
             "remoteVolume" -> adjustRemoteVolume(call, result)
+            // Mise à jour : Zuno a-t-il le droit d'installer un APK ?
+            // Android 8+ (API 26) demande l'autorisation « applications
+            // inconnues » PAR APPLICATION. Avant, c'était un réglage global
+            // que l'installateur système gère lui-même : on répond vrai.
+            "canInstallPackages" -> {
+                val ok = try {
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                        true
+                    } else {
+                        appContext?.packageManager?.canRequestPackageInstalls() ?: false
+                    }
+                } catch (e: Exception) {
+                    // Doute : on laisse l'installateur système décider.
+                    true
+                }
+                result.success(ok)
+            }
+            // Ouvre l'écran où l'on autorise Zuno à installer des applications.
+            // Repli : les réglages de sécurité (anciennes box, Fire TV).
+            "openInstallPermission" -> result.success(openInstallPermission())
             else -> result.notImplemented()
         }
+    }
+
+    /// Vrai si un écran de réglage a pu s'ouvrir.
+    private fun openInstallPermission(): Boolean {
+        val ctx: Context = activity ?: appContext ?: return false
+        val pkg = ctx.packageName
+        val intents = mutableListOf<android.content.Intent>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intents.add(
+                android.content.Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    android.net.Uri.parse("package:$pkg"),
+                ),
+            )
+        }
+        intents.add(android.content.Intent(Settings.ACTION_SECURITY_SETTINGS))
+        intents.add(android.content.Intent(Settings.ACTION_SETTINGS))
+        for (intent in intents) {
+            try {
+                if (activity == null) {
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ctx.startActivity(intent)
+                return true
+            } catch (e: Exception) {
+                // Écran absent sur cette box : on essaie le suivant.
+            }
+        }
+        return false
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {

@@ -72,6 +72,15 @@ abstract final class RepairFlags {
   static const String macShowPrefixKey = 'zuno.mac.show_prefix';
   static bool macShowPrefix = false;
 
+  /// Vrai = mise à jour à l'ancienne : un seul manifeste (release clients),
+  /// 3 minutes maximum pour tout le téléchargement, pas de vérification de
+  /// l'autorisation « applications inconnues » avant l'installateur.
+  /// Faux = box de test : release de test ET clients, le plus récent des
+  /// deux ; abandon après 45 s sans données ou 20 min ; si l'autorisation
+  /// manque, l'écran Android pour la donner s'ouvre.
+  static const String updateLegacyKey = 'zuno.update.legacy';
+  static bool updateLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -81,6 +90,7 @@ abstract final class RepairFlags {
     bool epgInline = false;
     bool histOpen = false;
     bool macPrefix = false;
+    bool updLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -91,6 +101,7 @@ abstract final class RepairFlags {
       epgInline = prefs.getBool(epgInlineParseKey) ?? false;
       histOpen = prefs.getBool(historyOnOpenKey) ?? false;
       macPrefix = prefs.getBool(macShowPrefixKey) ?? false;
+      updLegacy = prefs.getBool(updateLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -100,8 +111,10 @@ abstract final class RepairFlags {
       epgInline = false;
       histOpen = false;
       macPrefix = false;
+      updLegacy = false;
     }
     macShowPrefix = macPrefix;
+    updateLegacy = updLegacy;
     blackBoxRaw = raw;
     blackBoxFsyncAll = fsyncAll;
     syncDuringPlayback = syncPlayback;
@@ -124,6 +137,7 @@ abstract final class RepairFlags {
     epgInlineParse = false;
     historyOnOpen = false;
     macShowPrefix = false;
+    updateLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

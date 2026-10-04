@@ -368,6 +368,16 @@ jobs:
           FLOOR_VN=106
           if [ "$PUBLIER" = "true" ]; then NEW_VN=$((PREV_VN + 1)); else NEW_VN=$PREV_VN; fi
           if [ "$NEW_VN" -lt "$FLOOR_VN" ]; then NEW_VN=$FLOOR_VN; fi
+          # Build de TEST : son propre numéro, lisible sur la box (Réglages,
+          # Boîte noire) et dans le panel. Forme « <prochain>-test.<run> » :
+          # 107-test.152, 107-test.153… La publication client prendra 107.
+          # Le numéro client n'est jamais consommé par un test (il ne lit
+          # que le version.json de zuno-tv).
+          if [ "${{ github.event.inputs.test_box }}" = "true" ]; then
+            NEXT_VN=$((NEW_VN + 1))
+            if [ "$NEXT_VN" -le "$PREV_VN" ]; then NEXT_VN=$((PREV_VN + 1)); fi
+            NEW_VN="${NEXT_VN}-test.${{ github.run_number }}"
+          fi
           echo "version visible = $NEW_VN (précédente publiée : $PREV_VN, publication : $PUBLIER, plancher : $FLOOR_VN)"
           echo "TV_VERSION_NAME=$NEW_VN" >> "$GITHUB_ENV"
 
@@ -392,6 +402,14 @@ jobs:
           if [ -n "$BACKEND_URL_INPUT" ]; then
             EXTRA_DEFINES="--dart-define=BACKEND_URL=$BACKEND_URL_INPUT"
             echo "backend visé : $BACKEND_URL_INPUT"
+          fi
+          # Box de TEST (pas la variante téléphone, autre package) : le
+          # bouton « Mise à jour » lit aussi la release zuno-tv-test et
+          # prend le plus récent (lib/main_tv.dart). Un APK client ne
+          # reçoit jamais ce réglage.
+          if [ "${{ github.event.inputs.test_box }}" = "true" ] && [ "$ESSAI" != "true" ]; then
+            EXTRA_DEFINES="$EXTRA_DEFINES --dart-define=ZUNO_UPDATE_CHANNEL=test"
+            echo "canal de mise à jour : test (zuno-tv-test + zuno-tv)"
           fi
           flutter build apk --release --no-tree-shake-icons \
             --android-skip-build-dependency-validation \
@@ -657,8 +675,25 @@ jobs:
             gh release create "$TEST_TAG" -R "$REPO" --prerelease \
               --title "Zuno — box de TEST" --notes "$NOTES"
           fi
-          gh release upload "$TEST_TAG" "$APK" --clobber -R "$REPO"
+          # version.json de TEST : lu seulement par les APK de test (canal
+          # « test »). Même format que celui des clients. Les box clients
+          # ne lisent jamais cette release.
+          SIZE=$(stat -c%s "$APK")
+          cat > version-test.json <<JSON
+          {
+            "versionCode": ${TV_BUILD_NUMBER:-0},
+            "versionName": "$TV_VERSION_NAME",
+            "url": "https://github.com/$REPO/releases/download/$TEST_TAG/$APK_NAME",
+            "sha256": "$SHA",
+            "size": $SIZE,
+            "mandatory": false
+          }
+          JSON
+          python3 -c "import json; d=json.load(open('version-test.json')); assert d['versionCode']>0 and len(d['sha256'])==64 and d['size']>0, d"
+          mkdir -p test-manifest && cp version-test.json test-manifest/version.json
+          gh release upload "$TEST_TAG" "$APK" test-manifest/version.json --clobber -R "$REPO"
           echo "✓ box de test : https://github.com/$REPO/releases/download/$TEST_TAG/$APK_NAME"
+          echo "✓ manifeste de test : https://github.com/$REPO/releases/download/$TEST_TAG/version.json"
           # AAB Google Play demandé (play_aab=true) : on l'attache AUSSI à la
           # release de test, pour un lien direct vers la Play Console (les
           # artefacts Actions sont zippés et exigent une connexion GitHub).

@@ -125,6 +125,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
       case _UpdState.failed:
         await _checkUpdate(); // re-vérifie à la demande
         return;
+      // Autorisation donnée dans Android : OK relance l'installateur
+      // avec l'APK déjà téléchargé et vérifié.
+      case _UpdState.permission:
       case _UpdState.available:
         final UpdateInfo? u = _updInfo;
         if (u == null) return;
@@ -144,7 +147,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         if (!mounted) return;
         // Si l'installateur s'est ouvert, Android prend la main : l'app sera
         // relancée par le système une fois la mise à jour installée.
-        setState(() => _upd = ok ? _UpdState.available : _UpdState.failed);
+        setState(() => _upd = ok
+            ? _UpdState.available
+            : (UpdateService.instance.needsInstallPermission
+                ? _UpdState.permission
+                : _UpdState.failed));
         return;
     }
   }
@@ -197,6 +204,12 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         return context.l10n.tvUpdateDownloading(_updPct.toString());
       case _UpdState.failed:
         return context.l10n.tvUpdateFailed;
+      case _UpdState.permission:
+        return boxText(
+          context,
+          'Autorise Zuno à installer des applications (écran ouvert par Android : active « Zuno »), puis reviens et appuie OK. La mise à jour est déjà téléchargée.',
+          'Allow Zuno to install apps (Android has opened the screen: turn on "Zuno"), then come back and press OK. The update is already downloaded.',
+        );
     }
   }
 
@@ -386,6 +399,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         return '$_updPct %';
       case _UpdState.failed:
         return '⚠';
+      case _UpdState.permission:
+        return '🔒';
     }
   }
 
@@ -629,4 +644,4 @@ class _SettingCard extends StatelessWidget {
 }
 
 /// États du bouton de mise à jour des Réglages.
-enum _UpdState { checking, upToDate, available, downloading, failed }
+enum _UpdState { checking, upToDate, available, downloading, failed, permission }

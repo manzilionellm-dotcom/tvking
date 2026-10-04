@@ -53,6 +53,40 @@ class UpdateManifest {
   }
 }
 
+/// Plusieurs manifestes (box de test : sa release de test ET celle des
+/// clients). On garde le PLUS RÉCENT qui est complet et plus neuf que
+/// l'app installée. Un manifeste cassé ou absent (`null`) est ignoré,
+/// sans faire tomber les autres. À égalité, le premier de la liste gagne.
+UpdateManifest? pickNewestManifest(
+  List<Object?> decodedList, {
+  required int currentBuild,
+}) {
+  UpdateManifest? best;
+  for (final Object? decoded in decodedList) {
+    final UpdateManifest? m =
+        UpdateManifest.tryParse(decoded, currentBuild: currentBuild);
+    if (m == null) continue;
+    if (best == null || m.versionCode > best.versionCode) best = m;
+  }
+  return best;
+}
+
+/// Limites du téléchargement de l'APK (environ 55 Mo).
+///
+/// Avant : 3 minutes au total, soit au moins 2,5 Mbit/s. Une box en
+/// Wi-Fi faible échouait à chaque essai, sans jamais se mettre à jour.
+/// Maintenant : on abandonne si RIEN n'arrive pendant [idle] (réseau
+/// coupé), ou au-delà de [total] (garde-fou), mais un débit lent et
+/// régulier va jusqu'au bout (1 Mbit/s ≈ 8 minutes).
+abstract final class UpdateDownloadLimits {
+  static const Duration connect = Duration(seconds: 20);
+  static const Duration idle = Duration(seconds: 45);
+  static const Duration total = Duration(minutes: 20);
+
+  /// Ancien comportement (repli `zuno.update.legacy`).
+  static const Duration legacyTotal = Duration(minutes: 3);
+}
+
 /// Le fichier téléchargé est complet seulement si sa taille est
 /// EXACTEMENT celle annoncée. Un Content-Length différent est un
 /// refus. L'absence de Content-Length n'autorise pas un fichier

@@ -52,6 +52,10 @@ import 'features/tv/presentation/tv_app.dart';
 //  dupliqué ici ; on le partage maintenant pour garantir un comportement
 //  IDENTIQUE sur tous les flavors (mobile, Privé, TV).
 // =========================================================
+/// Canal de mise à jour, posé par le CI : vide pour les clients,
+/// « test » pour la box de test (voir build-zuno-tv.yml).
+const String kZunoUpdateChannel = String.fromEnvironment('ZUNO_UPDATE_CHANNEL');
+
 void main() => runGuarded(bootstrapZunoTv);
 
 /// « fr » / « en » / … pour le choix de piste. Suit le réglage de l'app,
@@ -120,6 +124,14 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   UpdateService.manifestUrl =
       'https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv/version.json';
   UpdateService.apkPrefix = 'zuno-tv';
+  // Box de TEST seulement (build test_box, --dart-define=ZUNO_UPDATE_CHANNEL=test) :
+  // le bouton voit aussi la release de test, et prend la plus récente des
+  // deux. Un APK client n'a jamais ce réglage : il ne lit que zuno-tv.
+  if (kZunoUpdateChannel == 'test') {
+    UpdateService.extraManifestUrls = const <String>[
+      'https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv-test/version.json',
+    ];
+  }
 
   // BOÎTE NOIRE (enregistreur de vol) : le plus tôt possible, pour que tout le
   // démarrage soit journalisé et que la raison de la DERNIÈRE fermeture soit

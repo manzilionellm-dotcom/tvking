@@ -26,11 +26,13 @@ import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../app/repair_flags.dart';
 import '../blackbox/black_box.dart';
 import 'build_flags.dart';
 import 'update_manifest.dart';
@@ -71,8 +73,22 @@ class UpdateService {
   static String manifestUrl =
       'https://github.com/manzilionellm-dotcom/tvking/releases/download/latest/version.json';
 
+  /// Manifestes EN PLUS de [manifestUrl]. Vide pour les clients. La box
+  /// de test (build `test_box`) y met sa release de test : son bouton
+  /// « Mise à jour » voit alors le dernier build, test OU client, le plus
+  /// récent des deux (pickNewestManifest).
+  static List<String> extraManifestUrls = const <String>[];
+
   /// Prefixe du fichier APK temporaire (pour un nom lisible dans l'installateur).
   static String apkPrefix = '7motion';
+
+  /// Vrai quand le dernier essai a trouvé que Zuno n'a pas le droit
+  /// d'installer une application, et que l'écran Android pour l'autoriser
+  /// a été ouvert. L'écran Réglages affiche alors la marche à suivre.
+  bool needsInstallPermission = false;
+
+  static const MethodChannel _device =
+      MethodChannel('com.manzilionellm.tvking/device');
 
   /// Retourne les infos de MAJ si une version PLUS RECENTE est dispo,
   /// sinon `null`. Fail-open : toute erreur → `null`.
@@ -85,18 +101,27 @@ class UpdateService {
       final PackageInfo info = await PackageInfo.fromPlatform();
       final int current = int.tryParse(info.buildNumber) ?? 0;
 
-      final http.Response r = await http
-          .get(Uri.parse(manifestUrl))
-          .timeout(const Duration(seconds: 8));
-      if (r.statusCode != 200) return null;
-
-      final Object? decoded = jsonDecode(r.body);
+      // Chaque manifeste est lu séparément : une release injoignable ne
+      // cache pas l'autre. Repli `zuno.update.legacy` : un seul manifeste.
+      final List<String> urls = <String>[
+        manifestUrl,
+        if (!RepairFlags.updateLegacy) ...extraManifestUrls,
+      ];
+      final List<Object?> decodedList = <Object?>[];
+      for (final String url in urls) {
+        decodedList.add(await _readManifest(url));
+      }
       final UpdateManifest? manifest =
-          UpdateManifest.tryParse(decoded, currentBuild: current);
-      final int announced = decoded is Map
-          ? ((decoded['versionCode'] as num?)?.toInt() ?? 0)
-          : 0;
-      BlackBox.instance.info('MAJ', 'installee $current · disponible $announced');
+          pickNewestManifest(decodedList, currentBuild: current);
+      int announced = 0;
+      for (final Object? decoded in decodedList) {
+        final int code = decoded is Map
+            ? ((decoded['versionCode'] as num?)?.toInt() ?? 0)
+            : 0;
+        if (code > announced) announced = code;
+      }
+      BlackBox.instance.info('MAJ',
+          'installee $current · disponible $announced (${urls.length} source(s))');
       if (manifest == null) {
         // Plus récent mais sans empreinte, ou déjà à jour, ou JSON cassé.
         if (announced > current) {
@@ -119,6 +144,20 @@ class UpdateService {
     } catch (e) {
       if (kDebugMode) debugPrint('[Update] check error: $e');
       BlackBox.instance.warn('MAJ', 'verification impossible : $e');
+      return null;
+    }
+  }
+
+  /// Lit un version.json. `null` si injoignable, code HTTP ≠ 200 ou JSON
+  /// cassé : pickNewestManifest l'ignore.
+  Future<Object?> _readManifest(String url) async {
+    try {
+      final http.Response r =
+          await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body);
+    } catch (e) {
+      BlackBox.instance.warn('MAJ', 'manifeste illisible : $e');
       return null;
     }
   }
@@ -194,9 +233,17 @@ class UpdateService {
       progress.value = 0;
 
       client = http.Client();
+      final bool legacy = RepairFlags.updateLegacy;
+      // Nouveau : on abandonne si rien n'arrive pendant 45 s, ou après
+      // 20 min. Un débit lent mais régulier va au bout (box en Wi-Fi
+      // faible). Repli : 3 minutes au total, comme avant.
+      final Duration total =
+          legacy ? UpdateDownloadLimits.legacyTotal : UpdateDownloadLimits.total;
+      final Duration idle =
+          legacy ? UpdateDownloadLimits.legacyTotal : UpdateDownloadLimits.idle;
       final http.StreamedResponse resp = await client
           .send(http.Request('GET', Uri.parse(update.url)))
-          .timeout(UpdateInfo.downloadTimeout);
+          .timeout(legacy ? total : UpdateDownloadLimits.connect);
       if (resp.statusCode != 200) {
         BlackBox.instance.warn('MAJ', 'telechargement HTTP ${resp.statusCode}');
         return null;
@@ -208,10 +255,8 @@ class UpdateService {
       // l'APK entier en mémoire (box à peu de RAM).
       final HashSink hasher = Sha256().newHashSink();
       final Stopwatch watch = Stopwatch()..start();
-      await for (final List<int> chunk in resp.stream.timeout(
-        UpdateInfo.downloadTimeout,
-      )) {
-        if (watch.elapsed > UpdateInfo.downloadTimeout) {
+      await for (final List<int> chunk in resp.stream.timeout(idle)) {
+        if (watch.elapsed > total) {
           throw TimeoutException('téléchargement trop long');
         }
         sink.add(chunk);
@@ -303,9 +348,21 @@ class UpdateService {
     }
 
     progress.addListener(relay);
+    needsInstallPermission = false;
     try {
       final File? file = await prefetch(update);
       if (file == null) return false;
+      // Android 8+ : sans l'autorisation « applications inconnues » pour
+      // Zuno, l'installateur refuse (et certaines box n'offrent même pas
+      // le bouton Paramètres). On ouvre nous-mêmes le bon écran ; l'APK
+      // déjà vérifié reste prêt pour le prochain appui.
+      if (!RepairFlags.updateLegacy && !await _canInstallPackages()) {
+        final bool opened = await _openInstallPermission();
+        needsInstallPermission = true;
+        BlackBox.instance.warn('MAJ',
+            'autorisation « applications inconnues » absente · réglage ${opened ? 'ouvert' : 'introuvable'}');
+        return false;
+      }
       // Lance l'installateur Android (necessite la permission
       // REQUEST_INSTALL_PACKAGES, ajoutee au manifest par le CI).
       BlackBox.instance
@@ -325,6 +382,24 @@ class UpdateService {
       return false;
     } finally {
       progress.removeListener(relay);
+    }
+  }
+
+  Future<bool> _canInstallPackages() async {
+    try {
+      return await _device.invokeMethod<bool>('canInstallPackages') ?? true;
+    } catch (_) {
+      // Ancienne version du plugin ou autre plateforme : on laisse
+      // l'installateur système décider, comme avant.
+      return true;
+    }
+  }
+
+  Future<bool> _openInstallPermission() async {
+    try {
+      return await _device.invokeMethod<bool>('openInstallPermission') ?? false;
+    } catch (_) {
+      return false;
     }
   }
 }
