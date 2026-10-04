@@ -550,6 +550,10 @@ class NativeVideoController extends ChangeNotifier {
     engineRejectedFfmpeg = false;
     isEnded = false;
     nativeRetrying = false;
+    // Le natif coupe l'ancienne lecture avant d'ouvrir : jusqu'au
+    // « je joue » de la nouvelle, rien ne joue. Garder vrai mettait
+    // Lecture/Pause à l'envers pendant le chargement.
+    isPlaying = false;
     // Reconnexion de la MÊME lecture : on ne remet pas firstFrame à
     // false. Sinon l'écran croit qu'il n'y a plus d'image et pose un
     // panneau opaque (noir) le temps du nouveau flux.

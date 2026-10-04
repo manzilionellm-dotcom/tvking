@@ -571,6 +571,9 @@ class _Logo extends StatelessWidget {
             ? CachedNetworkImage(
                 imageUrl: url,
                 fit: BoxFit.contain,
+                // Décodage borné : un logo de 2 000 px coûtait 16 Mo en
+                // RAM pour une case de 56 px. ×3 = net même sur un 4K.
+                memCacheWidth: (TvDimens.channelLogo * 3).round(),
                 placeholder: (_, __) =>
                     _Initials(channel: channel, focused: focused),
                 errorWidget: (_, __, ___) =>
@@ -600,6 +603,8 @@ class _Poster extends StatelessWidget {
             ? CachedNetworkImage(
                 imageUrl: u,
                 fit: BoxFit.cover,
+                // Affiche 52×78 : décodée à ×3 au plus (pas en pleine taille).
+                memCacheWidth: 156,
                 errorWidget: (_, __, ___) => Icon(
                   Icons.movie_rounded,
                   color: focused ? TvTokens.onAccent : TvTokens.accent,

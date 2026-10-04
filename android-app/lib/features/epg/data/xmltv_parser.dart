@@ -77,8 +77,13 @@ class XmltvParser {
     String? activeTag;
     final StringBuffer textBuf = StringBuffer();
 
+    // Tolérant : un guide servi en ISO-8859-1 (fréquent chez les petits
+    // fournisseurs) ne doit pas faire échouer TOUT l'import. Un octet
+    // illisible devient U+FFFD dans le titre concerné, le reste passe.
+    // Avant, le décodeur strict levait et l'import entier était jeté
+    // en silence.
     final Stream<List<XmlEvent>> events = bytes
-        .transform(utf8.decoder)
+        .transform(const Utf8Decoder(allowMalformed: true))
         .transform(XmlEventDecoder());
 
     await for (final List<XmlEvent> chunk in events) {

@@ -24,6 +24,7 @@ import 'features/player/domain/audio_report_book.dart';
 import 'core/update/update_service.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/guarded_main.dart';
+import 'core/app/repair_flags.dart';
 import 'core/flavor/flavor.dart';
 import 'core/i18n/locale_repository.dart';
 import 'features/tv/core/tv_back_guard.dart';
@@ -130,6 +131,8 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   BlackBoxUpload.instance.start();
   // Réglages du diagnostic son. Défaut faux : ne change pas le lecteur.
   await AudioDiagPrefs.load();
+  // Interrupteurs de repli des correctifs de l'audit (défaut faux).
+  await RepairFlags.load();
   if (BootGuard.instance.safeMode) {
     BlackBox.instance.warn('BOOT', 'MODE SANS ÉCHEC : boucle de redémarrage détectée → ré-imports sautés');
   }

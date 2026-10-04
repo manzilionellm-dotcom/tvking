@@ -28,11 +28,15 @@ void main() {
     final NativeVideoController c = NativeVideoController();
     c.setUrl('http://a.example.invalid/live/u/p/1.ts');
     c.applyBackendEvent('ack', 1);
+    c.applyBackendEvent('playing', true);
     c.applyBackendEvent('firstFrame', null);
     expect(c.firstFrame, isTrue);
+    expect(c.isPlaying, isTrue);
 
     c.setUrl('http://a.example.invalid/live/u/p/2.ts');
     expect(c.firstFrame, isFalse, reason: 'le zap remet le logo');
+    expect(c.isPlaying, isFalse,
+        reason: 'rien ne joue entre le silence et le « je joue » de la nouvelle chaîne');
     c.applyBackendEvent('ack', 1); // accusé de la chaîne QU'ON VIENT DE QUITTER
     c.applyBackendEvent('firstFrame', null);
     expect(c.firstFrame, isFalse);

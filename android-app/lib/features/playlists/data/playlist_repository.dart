@@ -30,6 +30,7 @@ import 'package:sqflite/sqflite.dart';
 // ignore: depend_on_referenced_packages — dart:async fournit unawaited
 
 
+import '../../../core/app/repair_flags.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel.dart';
@@ -779,13 +780,11 @@ class PlaylistRepository {
         if (parsed.channels.isEmpty) {
           throw Exception('Aucune chaîne dans la nouvelle version.');
         }
-        // Remplace les chaînes existantes
-        await db.delete(
-          'channels',
-          where: 'playlist_id = ?',
-          whereArgs: <Object>[playlist.id!],
-        );
-        await _insertChannels(parsed.channels);
+        // Remplace les chaînes existantes, ATOMIQUEMENT : si le processus
+        // est tué entre l'effacement et la fin des insertions (box à 1 Go,
+        // import lourd), la base garde l'ancienne liste complète au lieu
+        // d'une liste vide ou tronquée jusqu'à l'actualisation suivante.
+        await _replaceChannelsOf(db, playlist.id!, parsed.channels);
         await _updatePlaylistMetrics(
           playlist.copyWith(
             channelCount: parsed.channels.length,
@@ -793,6 +792,14 @@ class PlaylistRepository {
           ),
         );
         await _emitCurrentState();
+        // Le guide suit la liste : avant, il n'était téléchargé qu'à
+        // l'ajout de la source et ne gardait que 48 h → vide au 3e jour.
+        // Même chemin qu'à l'ajout (ids connus, Xtream sauté). Repli :
+        // RepairFlags.epgRefreshOff.
+        final String? epgUrl = playlist.epgUrl;
+        if (!RepairFlags.epgRefreshOff && epgUrl != null && epgUrl.isNotEmpty) {
+          unawaited(_syncEpgFor(parsed.channels, epgUrl));
+        }
         return true;
       } finally {
         client.close();
@@ -818,12 +825,8 @@ class PlaylistRepository {
         if (channels.isEmpty) {
           throw Exception('Aucune chaîne live disponible.');
         }
-        await db.delete(
-          'channels',
-          where: 'playlist_id = ?',
-          whereArgs: <Object>[playlist.id!],
-        );
-        await _insertChannels(channels);
+        // Atomique, même raison que pour le M3U ci-dessus.
+        await _replaceChannelsOf(db, playlist.id!, channels);
         await _updatePlaylistMetrics(
           playlist.copyWith(
             channelCount: channels.length,
@@ -925,9 +928,40 @@ class PlaylistRepository {
     BlackBox.instance.breadcrumb('');
   }
 
-  Future<void> _insertChannelsImpl(List<Channel> channels) async {
+  /// Efface puis réinsère les chaînes de [playlistId] dans UNE transaction.
+  /// Tout ou rien : une mort du processus au milieu laisse l'ancienne
+  /// liste intacte (SQLite annule la transaction au prochain démarrage).
+  /// Le journal de la boîte noire et la progression restent les mêmes.
+  Future<void> _replaceChannelsOf(
+    Database db,
+    int playlistId,
+    List<Channel> channels,
+  ) async {
+    BlackBox.instance.breadcrumb(
+        'Remplacement en base de ${channels.length} chaînes (liste $playlistId)');
+    final Stopwatch sw = Stopwatch()..start();
+    await db.transaction((Transaction txn) async {
+      await txn.delete(
+        'channels',
+        where: 'playlist_id = ?',
+        whereArgs: <Object>[playlistId],
+      );
+      await _insertChannelsImpl(channels, executor: txn);
+    });
+    BlackBox.instance.info('DB',
+        '${channels.length} chaînes remplacées en ${sw.elapsedMilliseconds} ms');
+    BlackBox.instance.breadcrumb('');
+  }
+
+  Future<void> _insertChannelsImpl(
+    List<Channel> channels, {
+    DatabaseExecutor? executor,
+  }) async {
     const int chunkSize = 1000;
-    final Database db = await PlaylistDatabase.instance.database;
+    // Dans une transaction, les lots DOIVENT passer par la transaction :
+    // un `db.batch()` y resterait bloqué (verrou de sqflite).
+    final DatabaseExecutor db =
+        executor ?? await PlaylistDatabase.instance.database;
     for (int i = 0; i < channels.length; i += chunkSize) {
       final int end = (i + chunkSize > channels.length)
           ? channels.length

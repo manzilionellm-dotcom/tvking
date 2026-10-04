@@ -241,7 +241,10 @@ class _TickerState extends State<_Ticker> {
   void _start() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(milliseconds: 30), (_) {
-      if (!_sc.hasClients) return;
+      if (!mounted || !_sc.hasClients) return;
+      // Sous un autre écran (lecteur plein écran) : rien à faire défiler,
+      // on ne consomme pas le fil UI 33 fois par seconde pour rien.
+      if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
       final double max = _sc.position.maxScrollExtent;
       if (max <= 0) return;
       double next = _sc.offset + 1.2;

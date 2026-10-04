@@ -787,7 +787,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
   Future<void> _initConnectivity() async {
     try {
       _conn = await Connectivity().checkConnectivity();
-      if (mounted) setState(() {});
+      // Écran déjà parti pendant l'attente : ne pas s'abonner (fuite).
+      if (!mounted) return;
+      setState(() {});
       _connSub = Connectivity()
           .onConnectivityChanged
           .listen((List<ConnectivityResult> r) {

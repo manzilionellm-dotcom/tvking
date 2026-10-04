@@ -118,7 +118,11 @@ class _TvFocusableState extends State<TvFocusable> {
       return KeyEventResult.handled;
     }
     if (event is KeyUpEvent) {
-      if (_pressed) setState(() => _pressed = false);
+      // Seulement si l'appui a COMMENCÉ ici. Sinon, l'écran précédent
+      // traite OK à l'appui, ouvre un panneau dont le premier bouton a
+      // le focus, et le relâchement du même appui l'activait aussi.
+      if (!_pressed) return KeyEventResult.ignored;
+      setState(() => _pressed = false);
       widget.onSelect?.call();
       return KeyEventResult.handled;
     }

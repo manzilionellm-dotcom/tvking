@@ -115,6 +115,18 @@ def patch(s: str) -> str:
 
     # --- 4. Compatibilité box ---
     s = _add_application_attr(s, "largeHeap", "true")
+    # Pas de sauvegarde automatique (adb backup / Auto Backup) : les
+    # préférences portent la clé qui chiffre les codes IPTV, la base les
+    # adresses de flux. L'activation ne dépend pas d'une sauvegarde
+    # (identité = ANDROID_ID). tools:replace au cas où un plugin dirait vrai.
+    s = _add_application_attr(s, "allowBackup", "false")
+    if 'tools:replace="android:allowBackup"' not in s:
+        s = s.replace(
+            '<application\n        android:allowBackup="false"',
+            '<application\n        tools:replace="android:allowBackup"'
+            '\n        android:allowBackup="false"',
+            1,
+        )
     if "android:screenOrientation" not in s:
         s = s.replace(
             'android:name=".MainActivity"',
@@ -166,6 +178,7 @@ def main() -> int:
         'android:banner="@drawable/tv_banner"',
         'android:screenOrientation="landscape"',
         "tools:overrideLibrary",
+        'android:allowBackup="false"',
     )
     missing = [r for r in required if r not in after]
     if missing:

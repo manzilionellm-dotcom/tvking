@@ -1341,8 +1341,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       // navigation des boutons se fait à Gauche/Droite + OK.
       // markHandled : le « retour système » du MÊME appui ne doit pas
       // fermer aussi la liste Direct (retour un à un).
-      TvBackGuard.markHandled();
-      Navigator.of(context).maybePop();
+      // Un seul pas par appui : la RÉPÉTITION d'une touche maintenue ne
+      // doit pas dépiler aussi la liste Direct (le lecteur est déjà parti
+      // au premier appui, le second maybePop fermait l'écran du dessous).
+      if (event is KeyDownEvent) {
+        TvBackGuard.markHandled();
+        Navigator.of(context).maybePop();
+      }
       return KeyEventResult.handled;
     }
 

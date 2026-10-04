@@ -24,6 +24,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../blackbox/black_box_redaction.dart';
 import 'crash_reporting.dart';
 
 /// Tente de brancher Crashlytics. Retourne `true` si actif, `false` sinon.
@@ -57,7 +58,15 @@ Future<bool> attachCrashlytics() async {
     // Crashlytics (recordError ajoute le contexte comme « reason »).
     CrashReporting.instance.attachBackend(
       (Object error, StackTrace? stack, {String? context, bool fatal = false}) {
-        fc.recordError(error, stack, reason: context, fatal: fatal);
+        // Expurgé avant de quitter la box : une exception réseau Xtream
+        // recopie l'adresse complète (username=…&password=…). Le texte
+        // suffit à Crashlytics (regroupement par pile d'appels).
+        fc.recordError(
+          redactBlackBox('$error'),
+          stack,
+          reason: context == null ? null : redactBlackBox(context),
+          fatal: fatal,
+        );
       },
     );
 

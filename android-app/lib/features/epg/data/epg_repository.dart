@@ -80,11 +80,20 @@ class EpgRepository {
   /// Télécharge un fichier XMLTV depuis [url] (supporte .gz et plain)
   /// et l'insère en base. Optionnellement filtre par les IDs des
   /// chaînes actuellement connues pour économiser stockage et CPU.
+  ///
+  /// Délais BORNÉS (audit d'octobre 2026) : avant, ni la connexion ni la
+  /// lecture n'avaient de limite. Un serveur qui acceptait la connexion
+  /// puis ne répondait plus laissait [isSyncing] à vrai jusqu'au
+  /// redémarrage de l'app, et tout import suivant était ignoré en silence.
+  /// [connectTimeout] borne l'attente des en-têtes, [idleTimeout] le
+  /// silence entre deux paquets. Dépassé → exception, [isSyncing] rendu.
   Future<int> downloadAndImport({
     required String url,
     Set<String>? knownChannelIds,
     http.Client? httpClient,
     void Function(int progressBytes)? onProgress,
+    Duration connectTimeout = const Duration(seconds: 30),
+    Duration idleTimeout = const Duration(seconds: 60),
   }) async {
     if (_syncing) return 0;
     _syncing = true;
@@ -94,13 +103,23 @@ class EpgRepository {
       final http.Client client = httpClient ?? http.Client();
       try {
         final http.Request req = http.Request('GET', Uri.parse(url));
-        final http.StreamedResponse resp = await client.send(req);
+        final http.StreamedResponse resp =
+            await client.send(req).timeout(connectTimeout);
         if (resp.statusCode != 200) {
           throw Exception('HTTP ${resp.statusCode}');
         }
 
-        // Source de bytes (gzip décompressé si nécessaire)
-        Stream<List<int>> bytes = resp.stream;
+        // Source de bytes (gzip décompressé si nécessaire). Le silence
+        // réseau est borné : l'import s'arrête au lieu de rester en
+        // attente pour toujours.
+        Stream<List<int>> bytes = resp.stream.timeout(
+          idleTimeout,
+          onTimeout: (EventSink<List<int>> sink) {
+            sink.addError(TimeoutException(
+                'EPG : aucune donnée reçue depuis ${idleTimeout.inSeconds} s'));
+            sink.close();
+          },
+        );
         final String lower = url.toLowerCase();
         final bool isGzip = lower.endsWith('.gz') ||
             lower.endsWith('.gzip') ||
@@ -131,6 +150,12 @@ class EpgRepository {
         Batch batch = db.batch();
         int pending = 0;
         int total = 0;
+        // Chaînes déjà vues dans CET import. À la première apparition
+        // d'une chaîne, ses programmes encore en base sont retirés, dans
+        // le même lot et AVANT ses nouvelles lignes : un ré-import ne
+        // double plus le guide (la table n'a pas de clé unique, et une
+        // chaîne absente du nouveau fichier garde son ancien guide).
+        final Set<String> refreshed = <String>{};
 
         await XmltvParser.parse(
           bytes,
@@ -138,6 +163,13 @@ class EpgRepository {
               ? null
               : (String id) => !knownChannelIds.contains(id),
           onProgram: (EpgProgram p) async {
+            if (refreshed.add(p.channelId)) {
+              batch.delete(
+                'epg_programs',
+                where: 'channel_id = ?',
+                whereArgs: <Object>[p.channelId],
+              );
+            }
             batch.insert('epg_programs', p.toMap());
             pending++;
             total++;

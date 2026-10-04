@@ -15,10 +15,12 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../../core/app/boot_guard.dart';
+import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/curation/title_curator.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../core/tv_activity.dart';
+import '../core/tv_sync_policy.dart';
 import '../core/tv_tokens.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
@@ -213,7 +215,19 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
           // de neuf ; ré-import seulement si la source a réellement changé.
           // Invisible : _syncing ne pilote que l'état « écran vide ».
           _slowSyncTicks++;
-          if (_slowSyncTicks >= _kSlowSyncEvery) {
+          // Jamais pendant que le lecteur plein écran joue : un ré-import
+          // complet de la source au milieu d'une chaîne saturait la box.
+          // On garde le compteur plein : la vérification part au premier
+          // tick après la fermeture du lecteur. Repli : RepairFlags.
+          // Un lecteur ouvert depuis l'accueil ou la recherche couvre
+          // aussi cet écran : « pas la route courante » compte comme ouvert.
+          final bool covered =
+              _playerOpen || !(ModalRoute.of(context)?.isCurrent ?? true);
+          if (_slowSyncTicks >= _kSlowSyncEvery &&
+              TvSyncPolicy.allowSlowSync(
+                playerOpen: covered,
+                allowDuringPlayback: RepairFlags.syncDuringPlayback,
+              )) {
             _slowSyncTicks = 0;
             _kickSourceSync();
           }

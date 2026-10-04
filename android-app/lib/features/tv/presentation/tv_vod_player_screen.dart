@@ -104,6 +104,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
   Timer? _toastTimer;
 
   Timer? _saveTimer;
+  // Dernier état « joue » vu : détecte le départ réel de la lecture.
+  bool _wasPlaying = false;
   bool _finishHandled = false;
   bool _endHandled = false;
   bool _fatal = false;
@@ -306,6 +308,12 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
         _vodArmed = false;
       }
     }
+    // La lecture vient de (re)partir : la barre se masque d'elle-même
+    // 5 s plus tard. Le minuteur armé pendant le chargement s'était tu
+    // (rien ne jouait encore) ; sans ce ré-armement, la barre restait
+    // affichée sur l'image jusqu'au prochain appui.
+    if (_c.isPlaying && !_wasPlaying && _overlay && !_tracksOpen) _armHide();
+    _wasPlaying = _c.isPlaying;
     if (_c.hasError && !_fatal && !_vodArmed &&
         !ReconnectPlan.letNativeOwnRetry(_c.nativeRetrying)) {
       _armVodRetry();

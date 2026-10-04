@@ -39,8 +39,11 @@ import 'package:flutter/widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
-/// Niveau d'une ligne du journal.
-enum BbLevel { info, warn, error, fatal }
+import '../app/repair_flags.dart';
+import 'black_box_line.dart';
+import 'black_box_redaction.dart';
+
+export 'black_box_line.dart' show BbLevel;
 
 /// Résumé de la dernière session, calculé au démarrage.
 class BlackBoxLastExit {
@@ -89,6 +92,10 @@ class BlackBox {
   static const Duration _kWatchdogTick = Duration(milliseconds: 500);
   static const Duration _kStallThreshold = Duration(milliseconds: 700);
 
+  /// Délai max entre une ligne d'information et son fsync regroupé
+  /// (voir black_box_line.dart). Les avertissements et erreurs n'attendent pas.
+  static const Duration _kDeferredFlush = Duration(seconds: 1);
+
   Directory? _dir;
   RandomAccessFile? _file;
   int _size = 0;
@@ -97,6 +104,7 @@ class BlackBox {
   BlackBoxLastExit? _lastExit;
   Timer? _memTimer;
   Timer? _watchdog;
+  Timer? _flushTimer;
   DateTime _lastTick = DateTime.now();
   AppLifecycleListener? _lifecycle;
   String _appVersion = '?';
@@ -163,6 +171,8 @@ class BlackBox {
       onPause: () {
         _line(BbLevel.info, 'APP', 'arrière-plan');
         _writeSession(clean: true);
+        // Dehors, Android peut tuer le processus : on synchronise maintenant.
+        _flushNow();
       },
       onResume: () {
         _line(BbLevel.info, 'APP', 'premier plan');
@@ -171,6 +181,7 @@ class BlackBox {
       onDetach: () {
         _line(BbLevel.info, 'APP', 'fermeture normale');
         _writeSession(clean: true);
+        _flushNow();
       },
     );
   }
@@ -254,9 +265,10 @@ class BlackBox {
   /// « Action en cours » : écrite aussi dans un fichier séparé pour survivre
   /// à une mort brutale. Passer une chaîne vide quand l'action est finie.
   void breadcrumb(String action) {
-    _breadcrumb = action;
+    // Même expurgation que le journal : ce fichier est relu au boot suivant.
+    _breadcrumb = RepairFlags.blackBoxRaw ? action : redactBlackBox(action);
     try {
-      _crumbFile?.writeAsStringSync(action, flush: true);
+      _crumbFile?.writeAsStringSync(_breadcrumb, flush: true);
     } catch (_) {}
     if (action.isNotEmpty) _line(BbLevel.info, 'ACTION', action);
   }
@@ -335,26 +347,33 @@ class BlackBox {
   // ---------------------------------------------------------------------
 
   void _line(BbLevel level, String tag, String message) {
-    final DateTime t = DateTime.now();
-    final String hh = t.hour.toString().padLeft(2, '0');
-    final String mm = t.minute.toString().padLeft(2, '0');
-    final String ss = t.second.toString().padLeft(2, '0');
-    final String d = '${t.day.toString().padLeft(2, '0')}/${t.month.toString().padLeft(2, '0')}';
-    final String lv = switch (level) {
-      BbLevel.info => 'I',
-      BbLevel.warn => 'W',
-      BbLevel.error => 'E',
-      BbLevel.fatal => 'F',
-    };
-    final String text = '$d $hh:$mm:$ss $lv [$tag] ${message.replaceAll('\n', ' ')}\n';
+    // Expurgée à l'écriture (sauf repli « brut ») : le journal local ne
+    // garde ni adresse de flux ni identifiant. Voir black_box_line.dart.
+    final String text = formatBlackBoxLine(
+      DateTime.now(),
+      level,
+      tag,
+      message,
+      redact: !RepairFlags.blackBoxRaw,
+    );
     if (kDebugMode) debugPrint('[BlackBox] $text');
     if (!_ready || _file == null) return;
     try {
-      // SYNCHRONE + flush : si le process meurt juste après, la ligne est là.
+      // SYNCHRONE : la ligne est dans le noyau avant de rendre la main,
+      // elle survit à une mort du processus. Le fsync (coupure de
+      // courant) est immédiat pour un avertissement ou une erreur, et
+      // regroupé (≤ 1 s) pour l'information : avant, chaque ligne [SON]
+      // du zap bloquait le fil UI le temps d'un fsync.
       _file!.writeStringSync(text);
-      _file!.flushSync();
+      if (blackBoxFlushNow(level, fsyncAll: RepairFlags.blackBoxFsyncAll)) {
+        _flushNow();
+      } else {
+        _scheduleFlush();
+      }
       _size += text.length;
       if (_size > _kMaxBytes) {
+        _flushTimer?.cancel();
+        _flushTimer = null;
         _file!.closeSync();
         _file = null;
         _rotateNow();
@@ -362,6 +381,26 @@ class BlackBox {
         _size = 0;
       }
     } catch (_) {}
+  }
+
+  /// fsync tout de suite (ligne importante, mise en arrière-plan).
+  void _flushNow() {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    try {
+      _file?.flushSync();
+    } catch (_) {}
+  }
+
+  /// fsync regroupé : un seul pour toutes les lignes de la seconde.
+  void _scheduleFlush() {
+    if (_flushTimer != null) return;
+    _flushTimer = Timer(_kDeferredFlush, () {
+      _flushTimer = null;
+      try {
+        _file?.flushSync();
+      } catch (_) {}
+    });
   }
 
   void _writeSession({required bool clean}) {

@@ -250,7 +250,9 @@ class NativeVideoView(
      * L'essai « décodeur de la box » a échoué sur CETTE ouverture.
      * On reste sur FFmpeg jusqu'au prochain setUrl. Faux par défaut :
      * le chemin v106 ne le consulte que si le réglage est allumé.
+     * Relu par le sélecteur de décodeurs depuis le fil de lecture : @Volatile.
      */
+    @Volatile
     private var platformAacGaveUp = false
 
     /**
