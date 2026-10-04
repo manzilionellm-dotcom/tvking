@@ -1,15 +1,17 @@
 // =========================================================
 //  remote_activation_watch.dart — Veille unique panel → box
 // =========================================================
-//  Deux chemins, un seul effet :
-//    1. Canal long (GET /api/box/wait). L'ordre du panel arrive
-//       dès qu'il est écrit, souvent en moins d'une seconde en
-//       local. On accuse réception. Un numéro déjà vu n'est pas
-//       rejoué.
-//    2. Si le canal ne peut pas s'ouvrir (ancien Worker, 401,
-//       429, Wi-Fi coupé) : lecture courte de /api/status,
-//       3 s pendant l'attente, 4 s ensuite, jusqu'à 45 s si le
-//       réseau ne répond plus. C'est le rythme de la version 103.
+//  Trois chemins, un seul effet :
+//    1. WebSocket (GET /api/box/ws). Le panel prévient tout de
+//       suite. On relit les listes. Reconnexion toute seule.
+//    2. Si la prise ne tient pas : canal long (GET /api/box/wait).
+//       On accuse réception. Un numéro déjà vu n'est pas rejoué.
+//    3. Si ce canal non plus (ancien Worker, 401, 429, Wi-Fi
+//       coupé) : lecture courte de /api/status, 3 s pendant
+//       l'attente, 4 s ensuite, jusqu'à 45 s si le réseau ne
+//       répond plus. C'est le rythme de la version 103.
+//    L'interrupteur zuno.channel.legacy (coupé par défaut) saute
+//    l'étape 1 et revient au comportement d'avant.
 //
 //  Quand le canal tient, on ne relit le statut qu'en filet
 //  (25 s) pour ne pas doubler le trafic. Une coupure : on
@@ -23,6 +25,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/repair_flags.dart';
 import '../../about/data/force_update_checker.dart';
 import '../../ads/data/startup_ad_repository.dart';
 import '../../country_home/data/featured_repository.dart';
@@ -39,7 +42,9 @@ import '../../simple_home/data/home_layout_repository.dart';
 import '../../theme/data/remote_theme_repository.dart';
 import '../../tv/core/tv_activity.dart';
 import '../domain/activation_pace.dart';
+import '../domain/box_channel.dart';
 import '../domain/box_signal.dart';
+import 'box_channel_session.dart';
 import 'box_signal_client.dart';
 import 'signal_inbox.dart';
 import 'subscription_backend.dart';
@@ -62,6 +67,7 @@ class RemoteActivationWatch {
   int _boxCursor = 0;
   int _fleetCursor = 0;
   http.Client? _signalHttp;
+  BoxChannelSession? _session;
   DateTime _lastHeartbeat = DateTime.fromMillisecondsSinceEpoch(0);
   String _appVersion = '';
   bool _versionTried = false;
@@ -92,6 +98,10 @@ class RemoteActivationWatch {
     _generation++;
     final int generation = _generation;
     unawaited(_signalLoop(generation));
+    // WebSocket d'abord. S'il ne tient pas, l'attente longue
+    // (déjà dans _signalLoop) prend le relais. L'interrupteur
+    // de repli, coupé par défaut, saute cette prise.
+    unawaited(_socketLoop(generation));
   }
 
   /// « J'ai payé — Vérifier », ou juste après un changement de
@@ -115,6 +125,8 @@ class RemoteActivationWatch {
     _signalFailures = 0;
     _channelUp = false;
     _lastSourceRev = null;
+    _session?.stop();
+    _session = null;
     _signalHttp?.close();
     _signalHttp = null;
   }
@@ -200,12 +212,53 @@ class RemoteActivationWatch {
     if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
   }
 
+  /// Prise WebSocket. Tant qu'elle est ouverte, [_signalLoop]
+  /// n'ouvre pas l'attente longue. Si le repli est allumé, on
+  /// ne tente même pas la prise.
+  Future<void> _socketLoop(int generation) async {
+    if (RepairFlags.realtimeLegacy) return;
+    while (_run && generation == _generation) {
+      final String mac = await DeviceIdentity.instance.mac;
+      if (!mac.startsWith('MK:')) {
+        await _pause(const Duration(seconds: 5), generation);
+        continue;
+      }
+      if (!_run || generation != _generation) return;
+      final BoxChannelSession session = BoxChannelSession(
+        mac: mac,
+        alive: () => _run && generation == _generation,
+        onFrame: (BoxChannelFrame frame) async {
+          // Le statut, l'annonce, le thème : la veille les connaît
+          // déjà par le nom d'ordre. Les listes, on les relit
+          // explicitement : le numéro de source du statut peut
+          // ne pas bouger sur le Worker de production.
+          await _applyOrders(<BoxOrder>[
+            BoxOrder(id: frame.seq, kind: frame.type, fleet: false),
+          ]);
+          if (channelRefreshesSources(frame.type) && _allowSourceImport) {
+            await RemoteSourceRepository.sync();
+          }
+        },
+      );
+      _session = session;
+      await session.run();
+      if (identical(_session, session)) _session = null;
+    }
+  }
+
   Future<void> _signalLoop(int generation) async {
     final http.Client client = http.Client();
     _signalHttp = client;
     try {
       await _loadCursors();
       while (_run && generation == _generation) {
+        // Prise ouverte : on ne double pas avec l'attente longue.
+        // Elle reprend toute seule dès que la prise tombe.
+        if (_session?.open == true) {
+          _channelUp = true;
+          await _pause(const Duration(seconds: 2), generation);
+          continue;
+        }
         final String mac = await DeviceIdentity.instance.mac;
         if (!mac.startsWith('MK:')) {
           await _pause(const Duration(seconds: 5), generation);
