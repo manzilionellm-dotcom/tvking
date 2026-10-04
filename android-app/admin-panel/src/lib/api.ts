@@ -291,14 +291,31 @@ export interface Customer {
   email: string | null;
   name: string | null;
   phone: string | null;
+  notes?: string | null;
   reseller_id: string | null;
   created_at: number;
+}
+export interface CustomerDevice {
+  id: string;
+  mac: string;
+  label: string | null;
+  first_seen_at?: number;
+  last_seen_at?: number;
 }
 export const customersApi = {
   list: (q?: string, page?: { limit?: number; offset?: number }, signal?: AbortSignal) =>
     request<{ items: Customer[] }>(listQuery('/api/v1/customers', q, page), { signal }),
   create: (payload: Partial<Customer>) =>
     request<{ id: string }>('/api/v1/customers', { method: 'POST', body: payload }),
+  get: (id: string) =>
+    request<Customer>(`/api/v1/customers/${encodeURIComponent(id)}`),
+  update: (id: string, payload: Partial<Pick<Customer, 'name' | 'email' | 'phone' | 'notes'>>) =>
+    request<{ updated: number }>(`/api/v1/customers/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: payload,
+    }),
+  devices: (id: string) =>
+    request<{ items: CustomerDevice[] }>(`/api/v1/customers/${encodeURIComponent(id)}/devices`),
 };
 
 export interface Device {

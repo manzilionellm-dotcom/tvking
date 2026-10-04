@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { OuvrirFicheBox, ZoneFiche } from '@/components/fiches/EntityLink';
 import { Alert } from '@/components/ui';
 import {
   activateApi, appsApi, planCostsApi, meApi,
@@ -176,6 +177,9 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
             placeholder="MK:XX:XX:XX:XX:XX"
             className={inputCls + ' font-mono'}
           />
+          <ZoneFiche className="mt-2">
+            <OuvrirFicheBox mac={mac}>Ouvrir la fiche de cette box</OuvrirFicheBox>
+          </ZoneFiche>
         </div>
 
         <div>

@@ -29,6 +29,7 @@ import { HistoryPage } from '@/pages/HistoryPage';
 import { ReferencesPage } from '@/pages/ReferencesPage';
 import { TransferPage } from '@/pages/TransferPage';
 import { FamiliesPage } from '@/pages/FamiliesPage';
+import { FicheHost } from '@/components/fiches/FicheHost';
 
 /// Etats possibles de l'app :
 ///   - bootstrapping : on verifie si le token est encore valide
@@ -96,6 +97,7 @@ export default function App() {
 
   // Logged in
   return (
+    <FicheHost onLogout={handleLogout}>
     <Routes>
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
@@ -128,5 +130,6 @@ export default function App() {
       <Route path="/families" element={<FamiliesPage onLogout={handleLogout} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </FicheHost>
   );
 }

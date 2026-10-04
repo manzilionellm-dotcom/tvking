@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
+import { EntityLink } from '@/components/fiches/EntityLink';
+import { cibleDepuisAudit } from '@/lib/fiches';
 import {
   Alert, EmptyState, LoadingRows, SearchField, SortTh, TableFrame, useClientTable,
 } from '@/components/ui';
@@ -115,7 +117,9 @@ export function HistoryPage({ onLogout }: { onLogout: () => void }) {
                   {it.actor_type === 'admin' ? 'Admin' : 'Revendeur'}
                 </td>
                 <td className="px-4 py-3 text-xs text-ink-secondary">
-                  {it.target_type || '—'}{it.target_id ? ` · ${it.target_id}` : ''}
+                  <EntityLink cible={cibleDepuisAudit(it)}>
+                    {it.target_type || '—'}{it.target_id ? ` · ${it.target_id}` : ''}
+                  </EntityLink>
                 </td>
               </tr>
             ))}

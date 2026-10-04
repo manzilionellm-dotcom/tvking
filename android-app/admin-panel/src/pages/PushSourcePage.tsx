@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { OuvrirFicheBox, ZoneFiche } from '@/components/fiches/EntityLink';
 import {
   sourcesApi, serversApi,
   type DefaultServer, type DeviceSourceInput, ApiError,
@@ -139,6 +140,9 @@ export function PushSourcePage({ onLogout }: { onLogout: () => void }) {
             placeholder="MK:1A:2B:3C:4D:5E"
             className={inputCls + ' font-mono'}
           />
+          <ZoneFiche className="mt-2">
+            <OuvrirFicheBox mac={mac}>Ouvrir la fiche de cette box</OuvrirFicheBox>
+          </ZoneFiche>
         </div>
 
         {/* Blocs de sources (1 à 3) */}

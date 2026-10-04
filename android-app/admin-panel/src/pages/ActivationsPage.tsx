@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
+import { EntityLink } from '@/components/fiches/EntityLink';
+import { useFicheOpener } from '@/components/fiches/fiche-context';
+import { usePanelFlag } from '@/components/fiches/usePanelFlag';
+import { FLAG_FICHES } from '@/lib/flags';
+import { cibleAppareil, cibleClient } from '@/lib/fiches';
 import {
   Alert, EmptyState, LoadingRows, SearchField, SortTh, StatusBadge,
   TableFrame, useClientTable,
@@ -16,6 +21,8 @@ const PLAN_FR: Record<string, string> = {
 
 export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
   const navigate = useNavigate();
+  const [fichesOn] = usePanelFlag(FLAG_FICHES);
+  const openFiche = useFicheOpener();
   const [items, setItems] = useState<License[]>([]);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
@@ -116,10 +123,26 @@ export function ActivationsPage({ onLogout }: { onLogout: () => void }) {
               </tr>
             )}
             {!loading && table.rows.map((l) => (
-              <tr key={l.id} className="transition duration-150 hover:bg-midnight">
-                <td className="px-4 py-3 font-medium">{l.customer_name || l.customer_email || '—'}</td>
+              <tr
+                key={l.id}
+                className={'transition duration-150 hover:bg-midnight' + (fichesOn ? ' cursor-pointer' : '')}
+                onClick={() => {
+                  if (!fichesOn) return;
+                  const cible = cibleAppareil({ deviceId: l.device_id, mac: l.device_mac });
+                  if (cible) openFiche(cible);
+                }}
+              >
+                <td className="px-4 py-3 font-medium">
+                  <EntityLink cible={cibleClient(l.customer_id)}>
+                    {l.customer_name || l.customer_email || '—'}
+                  </EntityLink>
+                </td>
                 <td className="px-4 py-3">{l.app_name || '—'}</td>
-                <td className="px-4 py-3 font-mono text-xs text-accent">{l.device_mac}</td>
+                <td className="px-4 py-3 font-mono text-xs text-accent">
+                  <EntityLink cible={cibleAppareil({ deviceId: l.device_id, mac: l.device_mac })}>
+                    {l.device_mac}
+                  </EntityLink>
+                </td>
                 <td className="px-4 py-3 text-ink-secondary">{PLAN_FR[l.plan] || l.plan}</td>
                 <td className="px-4 py-3"><StatusBadge status={l.status} /></td>
                 <td className="px-4 py-3 text-ink-secondary">{expiryPhrase(l.expires_at)}</td>

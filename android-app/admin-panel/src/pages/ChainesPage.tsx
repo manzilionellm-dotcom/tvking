@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { confirmAction } from '@/components/confirm';
+import { OuvrirFicheBox, ZoneFiche } from '@/components/fiches/EntityLink';
 import { Alert } from '@/components/ui';
 import {
   sourcesApi, userCan, getCurrentUser,
@@ -210,6 +211,14 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
             )}
             {!looking && macOk && !hasLink && (
               <p className="text-ink-secondary">Aucun lien enregistré pour cette box.</p>
+            )}
+            {macOk && (
+              <ZoneFiche className="mt-2 flex flex-wrap gap-3">
+                <OuvrirFicheBox mac={mac}>Ouvrir la fiche de cette box</OuvrirFicheBox>
+                {hasLink && (
+                  <OuvrirFicheBox mac={mac} index={0}>Ouvrir la fiche de la liste</OuvrirFicheBox>
+                )}
+              </ZoneFiche>
             )}
             {!looking && otherCount > 0 && (
               <p className="mt-1 text-ink-secondary">

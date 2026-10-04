@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
+import { useFicheOpener } from '@/components/fiches/fiche-context';
+import { usePanelFlag } from '@/components/fiches/usePanelFlag';
 import { referencesApi, type ActivationReference, ApiError, isAbortError } from '@/lib/api';
+import { FLAG_FICHES } from '@/lib/flags';
+import { cibleAppareil } from '@/lib/fiches';
 import { formatDateTime } from '@/lib/utils';
 import {
   LIST_PAGE_SIZE, createAbortBag, createGeneration, readListPage, referenceMatches,
@@ -37,6 +41,8 @@ function RefStatus({ status }: { status: string }) {
 }
 
 export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
+  const [fichesOn] = usePanelFlag(FLAG_FICHES);
+  const openFiche = useFicheOpener();
   const [items, setItems] = useState<ActivationReference[]>([]);
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
@@ -133,11 +139,18 @@ export function ReferencesPage({ onLogout }: { onLogout: () => void }) {
               <tr key={it.mac} className="bg-obsidian hover:bg-midnight">
                 <td className="px-4 py-3">
                   <button
-                    onClick={() => copy(it.mac)}
-                    title="Copier la MAC"
+                    onClick={() => {
+                      if (fichesOn) {
+                        const cible = cibleAppareil({ mac: it.mac });
+                        if (cible) openFiche(cible);
+                        return;
+                      }
+                      copy(it.mac);
+                    }}
+                    title={fichesOn ? 'Ouvrir la fiche appareil' : 'Copier la MAC'}
                     className="font-mono text-[12px] text-ink-secondary hover:text-accent-bright"
                   >
-                    {copied === it.mac ? '✓ copié' : it.mac}
+                    {copied === it.mac && !fichesOn ? '✓ copié' : it.mac}
                   </button>
                 </td>
                 <td className="px-4 py-3 text-ink-secondary">{it.customer_name || '—'}</td>

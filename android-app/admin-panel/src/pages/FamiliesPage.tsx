@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { EntityLink } from '@/components/fiches/EntityLink';
 import { familiesApi, ApiError, type Family, type FamilyMember } from '@/lib/api';
+import { cibleAppareil } from '@/lib/fiches';
 
 // Lecture seule. On ne crée plus de famille ni de membre.
 // Les appareils déjà enregistrés restent visibles ici, et leur
@@ -81,7 +83,10 @@ export function FamiliesPage({ onLogout }: { onLogout: () => void }) {
               )}
               {members.map((m) => (
                 <p key={m.mac} className="font-mono text-sm text-ink-primary">
-                  {m.mac}{m.label ? ` · ${m.label}` : ''}
+                  <EntityLink cible={cibleAppareil({ mac: m.mac })} className="font-mono text-sm text-ink-primary">
+                    {m.mac}
+                  </EntityLink>
+                  {m.label ? ` · ${m.label}` : ''}
                 </p>
               ))}
             </div>
