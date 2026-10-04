@@ -54,7 +54,13 @@
 
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
-import { apiV1 } from './api_v1.js';
+import { apiV1, panelActorFromToken } from './api_v1.js';
+import {
+  RealtimeHub,
+  handleBoxRoute,
+  openPanelSocket,
+} from './box_channel.js';
+export { RealtimeHub };
 import { httpUrlError } from './source_url.js';
 import { openSource, openSourceList, sealSource } from './secret_box.js';
 import {
@@ -3615,6 +3621,17 @@ async function handleRequest(request, env, ctx) {
     // Tout le namespace /api/v1/* part dans le module api_v1.js.
     // Coexiste avec les anciens /admin/* et /api/* qui restent
     // intacts (compat ascendante apps mobiles deployees).
+    // WebSocket du panel. Traité ici, avant apiV1 : la réponse 101
+    // ne doit pas être reconstruite (sinon le socket est perdu).
+    // Le jeton passe en query : le navigateur ne peut pas poser
+    // Authorization sur un WebSocket. On ne journalise pas l'URL.
+    if (url.pathname === '/api/v1/rt/ws') {
+      const token = url.searchParams.get('token') || '';
+      const user = await panelActorFromToken(env, token);
+      if (!user) return json({ error: 'no_auth' }, 401);
+      return openPanelSocket(request, env, { id: user.sub, role: user.role });
+    }
+
     if (url.pathname.startsWith('/api/v1/')) {
       return apiV1(request, env);
     }
@@ -3680,6 +3697,19 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /api/servers');
       }
       return await handlePublicServers(env);
+    }
+
+    // /api/box/ws, /api/box/wait/:mac, /api/box/ack/:mac
+    // Canal temps réel. Si l'interrupteur de repli est allumé,
+    // ou si le Durable Object n'est pas lié, handleBoxRoute
+    // répond 404 : la box retombe sur sa lecture régulière.
+    if (segments[0] === 'api' && segments[1] === 'box'
+        && (segments[2] === 'ws' || segments[2] === 'wait' || segments[2] === 'ack')) {
+      if (!(await rateLimitOk(env, request, 'box', 60, 60 * 1000))) {
+        return tooManyRequests();
+      }
+      const boxed = await handleBoxRoute(request, env, segments);
+      if (boxed) return boxed;
     }
 
     // /api/device-source/:mac — public, l'app récupère sa source assignée

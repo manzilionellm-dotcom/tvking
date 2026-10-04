@@ -182,7 +182,7 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
           <p className="text-sm leading-relaxed text-ink-secondary">
             Pour activer ou désactiver l’application, ou changer la durée, va sur{' '}
             <Link to="/activate" className="font-medium text-accent-bright underline-offset-2 hover:underline">
-              Activer l’application
+              Grande activation de toutes les applications
             </Link>.
           </p>
 

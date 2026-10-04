@@ -31,7 +31,11 @@ const STR: Record<string, Record<Lang, string>> = {
 
   // --- Navigation ---
   'nav.dashboard': { fr: 'Tableau de bord', en: 'Dashboard', ar: 'لوحة التحكم' },
-  'nav.activate': { fr: 'Activer un appareil', en: 'Activate a device', ar: 'تفعيل جهاز' },
+  'nav.activate': {
+    fr: 'Grande activation de toutes les applications',
+    en: 'Grande activation de toutes les applications',
+    ar: 'Grande activation de toutes les applications',
+  },
   'nav.pushSource': { fr: 'Pousser une playlist', en: 'Push a playlist', ar: 'إرسال قائمة تشغيل' },
   'nav.controlCenter': { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
   'nav.forceUpdate': { fr: 'Mise à jour forcée', en: 'Force update', ar: 'تحديث إجباري' },

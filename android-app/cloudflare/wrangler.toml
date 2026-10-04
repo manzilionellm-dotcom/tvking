@@ -99,6 +99,30 @@ database_id = "67303737-a50b-4258-86de-662fb9aba6e7"
 #  que si D1 est vide.
 [vars]
 DEFAULT_SERVERS = '[]'
+# Interrupteur de repli du canal temps réel. Absent : le canal est
+# ouvert (WebSocket + attente longue). « 1 » : les routes /api/box/*
+# et /api/v1/rt/ws répondent 404, aucune notification n'est envoyée,
+# la box et le panel gardent leur lecture régulière.
+# REALTIME_PUSH_OFF = "1"
+
+# =========================================================
+#  Temps réel — Durable Object « RealtimeHub »
+# =========================================================
+#  La classe existe DÉJÀ en production (migration v1-rt-hub, binding
+#  RT_HUB, commit 089bdcde). Le déploiement du 3 octobre 2026 a été
+#  refusé (API Cloudflare, code 10064) parce que ce script ne
+#  l'exportait plus : « New version of script does not export class
+#  RealtimeHub which is depended on by existing Durable Objects ».
+#  On réexporte la classe. On ne recrée PAS la classe (le tag
+#  v1-rt-hub est déjà appliqué ; wrangler l'ignore au déploiement
+#  suivant). Ne pas retirer ce bloc : le prochain déploiement du
+#  Worker échouerait de nouveau avec 10064.
+[durable_objects]
+bindings = [{ name = "RT_HUB", class_name = "RealtimeHub" }]
+
+[[migrations]]
+tag = "v1-rt-hub"
+new_sqlite_classes = ["RealtimeHub"]
 
 # Le secret admin n'est PAS dans ce fichier — il se met via
 # `wrangler secret put ADMIN_SECRET` pour ne JAMAIS être commité.

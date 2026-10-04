@@ -19,6 +19,7 @@ import {
   markSourcesCleared,
   clearSourceTombstone,
 } from './linkage.js';
+import { notifyBox } from './box_channel.js';
 //  Importe depuis worker.js pour servir le namespace /api/v1/*.
 //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
 //  continuent de fonctionner pour ne pas casser les apps mobiles
@@ -428,6 +429,16 @@ async function hydrateActor(env, claims) {
     role: row.role,
     name: row.name,
   };
+}
+
+/// Jeton brut (query du WebSocket : le navigateur ne pose pas
+/// Authorization). Même vérifications que requireAuth.
+export async function panelActorFromToken(env, token) {
+  const secret = authSecret(env);
+  if (!secret || !token) return null;
+  const claims = await verifyJwt(String(token), secret);
+  if (!claims) return null;
+  return hydrateActor(env, claims);
 }
 
 async function requireAuth(request, env) {
@@ -2824,6 +2835,7 @@ async function handleSourcePut(request, env, mac, actor, user) {
   await logAudit(env, request, actor, 'source.set',
     { type: 'device_source', id: m }, null,
     { count: sources.length, types: sources.map((s) => s.type) });
+  await notifyBox(env, m, 'source');
   return jsonResp({ ok: true, mac: m, count: sources.length });
 }
 
@@ -2843,6 +2855,7 @@ async function handleSourceDelete(request, env, mac, actor, user) {
   await markSourcesCleared(env, m, Date.now());
   await logAudit(env, request, actor, 'source.clear',
     { type: 'device_source', id: m }, null, null);
+  await notifyBox(env, m, 'source_clear');
   return jsonResp({ ok: true, mac: m });
 }
 
@@ -3363,6 +3376,12 @@ async function handleDeviceUpdate(request, env, id, actor, user) {
     .bind(next ?? null, id).run();
   await logAudit(env, request, actor, 'device.block',
     { type: 'device', id }, { block_status: r.dev.block_status }, { block_status: next });
+  const blockKind = body.block_status === 'frozen'
+    ? 'suspend'
+    : body.block_status === 'banned'
+      ? 'block'
+      : 'resume';
+  await notifyBox(env, r.dev.mac, blockKind);
   return jsonResp({ updated: 1, block_status: next });
 }
 
@@ -3375,6 +3394,7 @@ async function handleDeviceDelete(env, id, actor, user) {
   await env.DB.prepare('DELETE FROM devices WHERE id = ?').bind(id).run();
   await logAudit(env, null, actor, 'device.delete',
     { type: 'device', id }, { mac: r.dev.mac }, null);
+  await notifyBox(env, r.dev.mac, 'device_delete');
   return jsonResp({ deleted: 1 });
 }
 
@@ -4270,6 +4290,7 @@ async function handleTrialExtend(request, env, actor) {
   await logAudit(env, request, actor, 'trial.extend',
     { type: 'device', id: dev.id }, null,
     { mac, days: parsed.days, previous_until: previous, trial_until: trialUntil });
+  await notifyBox(env, mac, 'license');
 
   return jsonResp({
     ok: true,
@@ -4367,6 +4388,7 @@ async function handleActivate(request, env, user, actor) {
       }
       await logAudit(env, request, actor, 'activate.keep_lifetime',
         { type: 'license', id: earlyLic.id }, null, { mac, plan: 'lifetime', cost: 0 });
+      await notifyBox(env, mac, 'activate');
       return jsonResp({
         ok: true,
         license_id: earlyLic.id,
@@ -4449,6 +4471,7 @@ async function handleActivate(request, env, user, actor) {
       && early.status === 'active'
       && (early.expires_at === null || early.expires_at === undefined);
     if (alreadyLife) {
+      await notifyBox(env, mac, 'activate');
       return jsonResp({
         ok: true,
         already_lifetime: true,
@@ -4559,6 +4582,7 @@ async function handleActivate(request, env, user, actor) {
   await logAudit(env, request, actor, renewed ? 'activate.renew' : 'activate.create',
     { type: 'license', id: licenseId }, null,
     { mac, plan, app_id: appId, cost, reseller_id: chargeResellerId });
+  await notifyBox(env, mac, renewed ? 'renew' : 'activate');
 
   return jsonResp({
     ok: true,
