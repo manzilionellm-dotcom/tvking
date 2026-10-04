@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
 import { confirmAction } from '@/components/confirm';
+import { EntityLink } from '@/components/fiches/EntityLink';
+import { useFicheOpener } from '@/components/fiches/fiche-context';
+import { usePanelFlag } from '@/components/fiches/usePanelFlag';
+import { FLAG_FICHES } from '@/lib/flags';
+import { cibleAppareil, cibleClient } from '@/lib/fiches';
 import {
   Alert, EmptyState, LoadingRows, SearchField, SortTh, StatusBadge,
   TableFrame, useClientTable,
@@ -27,6 +32,8 @@ const PLAN_LABELS: Record<string, string> = {
 };
 
 export function DevicesPage({ onLogout }: { onLogout: () => void }) {
+  const [fichesOn] = usePanelFlag(FLAG_FICHES);
+  const openFiche = useFicheOpener();
   const [items, setItems] = useState<Device[]>([]);
   const [trialEnforced, setTrialEnforced] = useState(false);
   const [q, setQ] = useState('');
@@ -179,23 +186,51 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
               const st = d.block_status || 'active';
               const busy = busyId === d.id;
               return (
-                <tr key={d.id} className="bg-obsidian hover:bg-midnight">
+                <tr
+                  key={d.id}
+                  className={'bg-obsidian hover:bg-midnight' + (fichesOn ? ' cursor-pointer' : '')}
+                  onClick={() => {
+                    if (!fichesOn) return;
+                    const cible = cibleAppareil({ deviceId: d.id, mac: d.mac });
+                    if (cible) openFiche(cible);
+                  }}
+                >
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => setDetailFor(d)}
-                      title="Voir la fiche complète (M-Trio + infos appareil)"
-                      className="font-mono text-xs text-accent underline-offset-2 hover:underline"
-                    >
-                      {d.mac}
-                    </button>
+                    {fichesOn ? (
+                      <EntityLink
+                        cible={cibleAppareil({ deviceId: d.id, mac: d.mac })}
+                        className="font-mono text-xs text-accent"
+                        title="Ouvrir la fiche appareil"
+                      >
+                        {d.mac}
+                      </EntityLink>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDetailFor(d)}
+                        title="Voir la fiche complète (M-Trio + infos appareil)"
+                        className="font-mono text-xs text-accent underline-offset-2 hover:underline"
+                      >
+                        {d.mac}
+                      </button>
+                    )}
                   </td>
-                  <td className="px-4 py-3">{d.customer_name || d.customer_email || '—'}</td>
+                  <td className="px-4 py-3">
+                    <EntityLink cible={d.customer_id ? cibleClient(d.customer_id) : null}>
+                      {d.customer_name || d.customer_email || '—'}
+                    </EntityLink>
+                  </td>
                   <td className="px-4 py-3">
                     <PlatformChip device={d} />
                     {d.device_model ? (
                       <div className="mt-1">
-                        <div className="text-xs text-ink-secondary">{d.device_model}</div>
+                        <EntityLink
+                          cible={cibleAppareil({ deviceId: d.id, mac: d.mac })}
+                          className="text-xs text-ink-secondary"
+                          title="Ouvrir la fiche appareil"
+                        >
+                          {d.device_model}
+                        </EntityLink>
                         <div className="text-[10px] text-ink-tertiary">
                           {d.android_release ? `Android ${d.android_release}` : ''}
                           {d.android_build ? ` · ${d.android_build}` : ''}
@@ -209,9 +244,19 @@ export function DevicesPage({ onLogout }: { onLogout: () => void }) {
                   {/* Pastille d'accès : essai en cours / expiré / activé / à vie. */}
                   <td className="px-4 py-3 text-xs text-ink-secondary">{d.access_label || '—'}</td>
                   <td className="px-4 py-3 text-ink-tertiary">{formatDateTime(d.last_seen_at)}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex flex-wrap justify-end gap-1.5">
-                      <ActionBtn busy={busy} onClick={() => setDetailFor(d)} title="Fiche complète : M-Trio + infos appareil">Détails</ActionBtn>
+                      <ActionBtn
+                        busy={busy}
+                        onClick={() => {
+                          if (!fichesOn) { setDetailFor(d); return; }
+                          const cible = cibleAppareil({ deviceId: d.id, mac: d.mac });
+                          if (cible) openFiche(cible);
+                        }}
+                        title="Fiche complète : M-Trio + infos appareil"
+                      >
+                        Détails
+                      </ActionBtn>
                       <ActionBtn busy={busy} primary onClick={() => setActivateFor(d)} title="Activer / prolonger (le client a payé)">Activer</ActionBtn>
                       {st !== 'frozen' && (
                         <ActionBtn busy={busy} onClick={() => setBlock(d, 'frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>

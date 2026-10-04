@@ -1,6 +1,7 @@
 import { FormEvent, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
+import { OuvrirFicheBox, ZoneFiche } from '@/components/fiches/EntityLink';
 import { transferApi, ApiError } from '@/lib/api';
 import { createSingleFlight } from '@/lib/robust';
 import { normalizeMac } from '@/lib/mac';
@@ -82,6 +83,9 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
               className={inputCls}
               autoFocus
             />
+            <ZoneFiche className="mt-2">
+              <OuvrirFicheBox mac={oldMac}>Ouvrir la fiche de cette box</OuvrirFicheBox>
+            </ZoneFiche>
           </div>
           <div className="flex justify-center text-ink-tertiary">↓</div>
           <div>
@@ -95,6 +99,9 @@ export function TransferPage({ onLogout }: { onLogout: () => void }) {
               placeholder="MK:XX:XX:XX:XX:XX"
               className={inputCls}
             />
+            <ZoneFiche className="mt-2">
+              <OuvrirFicheBox mac={newMac}>Ouvrir la fiche de cette box</OuvrirFicheBox>
+            </ZoneFiche>
             <p className="mt-1 text-[10px] text-ink-tertiary">
               Le client trouve sa nouvelle MAC dans l'app (écran « À propos »).
             </p>

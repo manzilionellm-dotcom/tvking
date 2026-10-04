@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts"
+    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/fiches.test.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

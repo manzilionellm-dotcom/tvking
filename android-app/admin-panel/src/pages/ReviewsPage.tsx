@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { EntityLink } from '@/components/fiches/EntityLink';
 import { feedbackApi, flagEmoji, type FeedbackItem, ApiError } from '@/lib/api';
+import { cibleAppareil } from '@/lib/fiches';
 
 // =========================================================
 //  ReviewsPage — Avis clients (owner)
@@ -143,7 +145,11 @@ export function ReviewsPage({ onLogout }: { onLogout: () => void }) {
                         </span>
                       )}
                       {it.country && <span>{flagEmoji(it.country)} {it.country}</span>}
-                      {it.mac && <span className="font-mono">{it.mac}</span>}
+                      {it.mac && (
+                        <EntityLink cible={cibleAppareil({ mac: it.mac })} className="font-mono">
+                          {it.mac}
+                        </EntityLink>
+                      )}
                       <span className="ml-auto">{fmtDate(it.created_at)}</span>
                     </div>
                     <p className="whitespace-pre-wrap text-sm text-ink-secondary">{it.message}</p>

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { EntityLink } from '@/components/fiches/EntityLink';
+import { useFicheOpener } from '@/components/fiches/fiche-context';
+import { usePanelFlag } from '@/components/fiches/usePanelFlag';
+import { FLAG_FICHES } from '@/lib/flags';
+import { cibleAppareil } from '@/lib/fiches';
 import {
   Alert, EmptyState, Pager, SearchField, SortTh, StatusBadge,
   TableFrame, useClientTable,
@@ -18,6 +23,8 @@ import {
 /// un état plus récent déjà affiché.
 
 export function OnlinePage({ onLogout }: { onLogout: () => void }) {
+  const [fichesOn] = usePanelFlag(FLAG_FICHES);
+  const openFiche = useFicheOpener();
   const [data, setData] = useState<OnlineView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -149,14 +156,24 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
               </thead>
               <tbody>
                 {table.rows.map((d) => (
-                  <tr key={d.mac} className="border-t border-white/5">
+                  <tr
+                    key={d.mac}
+                    className={'border-t border-white/5' + (fichesOn ? ' cursor-pointer' : '')}
+                    onClick={() => {
+                      if (!fichesOn) return;
+                      const cible = cibleAppareil({ mac: d.mac });
+                      if (cible) openFiche(cible);
+                    }}
+                  >
                     <td className="px-4 py-2.5"><StatusBadge status="online" /></td>
                     <td className="px-4 py-2.5">
                       <span className="mr-1.5">{flagEmoji(d.country)}</span>
                       {d.country || '—'}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{d.ip || '—'}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{d.mac}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">
+                      <EntityLink cible={cibleAppareil({ mac: d.mac })}>{d.mac}</EntityLink>
+                    </td>
                     <td className="px-4 py-2.5 text-xs">
                       {d.channel
                         ? <span className="inline-flex items-center gap-1 text-accent-bright">▶ {d.channel}</span>

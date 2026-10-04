@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { ListPager } from '@/components/ListPager';
+import { EntityLink } from '@/components/fiches/EntityLink';
+import { useFicheOpener } from '@/components/fiches/fiche-context';
+import { usePanelFlag } from '@/components/fiches/usePanelFlag';
+import { FLAG_FICHES } from '@/lib/flags';
+import { cibleClient } from '@/lib/fiches';
 import {
   Alert, EmptyState, LoadingRows, SearchField, SortTh, TableFrame, useClientTable,
 } from '@/components/ui';
@@ -11,6 +16,8 @@ import { LIST_PAGE_SIZE, createAbortBag, createGeneration, readListPage } from '
 
 export function CustomersPage({ onLogout }: { onLogout: () => void }) {
   const navigate = useNavigate();
+  const [fichesOn] = usePanelFlag(FLAG_FICHES);
+  const openFiche = useFicheOpener();
   const [items, setItems] = useState<Customer[]>([]);
   const [q, setQ] = useState('');
   const [offset, setOffset] = useState(0);
@@ -112,8 +119,18 @@ export function CustomersPage({ onLogout }: { onLogout: () => void }) {
               </tr>
             )}
             {!loading && table.rows.map((c) => (
-              <tr key={c.id} className="transition duration-150 hover:bg-midnight">
-                <td className="px-4 py-3 font-medium">{c.name || '—'}</td>
+              <tr
+                key={c.id}
+                className={'transition duration-150 hover:bg-midnight' + (fichesOn ? ' cursor-pointer' : '')}
+                onClick={() => {
+                  if (!fichesOn) return;
+                  const cible = cibleClient(c.id);
+                  if (cible) openFiche(cible);
+                }}
+              >
+                <td className="px-4 py-3 font-medium">
+                  <EntityLink cible={cibleClient(c.id)}>{c.name || '—'}</EntityLink>
+                </td>
                 <td className="px-4 py-3 text-ink-secondary">{c.email || '—'}</td>
                 <td className="px-4 py-3 text-ink-secondary">{c.phone || '—'}</td>
                 <td className="px-4 py-3 text-ink-secondary">{formatDateTime(c.created_at)}</td>

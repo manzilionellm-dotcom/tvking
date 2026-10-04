@@ -1,6 +1,8 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { usePanelFlag } from '@/components/fiches/usePanelFlag';
 import { meApi, getCurrentUser, isOwnerRole, type MeUser, ApiError } from '@/lib/api';
+import { FLAG_FICHES, FLAG_LISTE_MASQUEE } from '@/lib/flags';
 import { useT, LangSelect } from '@/lib/i18n';
 
 /// Page « Mon compte » — accessible a TOUS (admin + revendeurs).
@@ -33,6 +35,8 @@ export function AccountPage({ onLogout }: { onLogout: () => void }) {
           )}
         </div>
 
+        <InterrupteursFiches />
+
         {/* ===== Langue ===== */}
         <div className="flex items-center justify-between rounded-xl border border-white/5 bg-midnight p-5">
           <span className="text-sm font-semibold tracking-tight">{t('common.language')}</span>
@@ -43,6 +47,31 @@ export function AccountPage({ onLogout }: { onLogout: () => void }) {
         <PasswordForm />
       </div>
     </AppLayout>
+  );
+}
+
+function InterrupteursFiches() {
+  const [fiches, setFiches] = usePanelFlag(FLAG_FICHES);
+  const [masquee, setMasquee] = usePanelFlag(FLAG_LISTE_MASQUEE);
+  return (
+    <div className="space-y-4 rounded-xl border border-white/5 bg-midnight p-5">
+      <h2 className="text-sm font-semibold tracking-tight">Fiches cliquables</h2>
+      <p className="text-sm leading-relaxed text-ink-secondary">
+        Coupé par défaut. Allumé, une MAC, un client, une liste ou un appareil ouvre sa fiche.
+        Les actions sans route serveur restent marquées « bientôt ».
+      </p>
+      <label className="flex items-start gap-2 text-sm text-ink-primary">
+        <input type="checkbox" className="mt-1" checked={fiches} onChange={(e) => setFiches(e.target.checked)} />
+        <span>{fiches ? 'Fiches allumées' : 'Fiches coupées'}</span>
+      </label>
+      <label className="flex items-start gap-2 text-sm text-ink-primary">
+        <input type="checkbox" className="mt-1" checked={masquee} onChange={(e) => setMasquee(e.target.checked)} />
+        <span>
+          {masquee ? 'Masquer une liste : interrupteur allumé' : 'Masquer une liste : coupé'}
+          . Même allumé, aucun envoi : le serveur ne garde pas le drapeau hidden.
+        </span>
+      </label>
+    </div>
   );
 }
 
