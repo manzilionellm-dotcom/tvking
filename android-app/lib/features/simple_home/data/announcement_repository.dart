@@ -86,6 +86,15 @@ abstract final class AnnouncementRepository {
   /// Clé SharedPreferences : id de la dernière annonce fermée par l'user.
   static const String _kDismissedIdKey = 'announcement_dismissed_id';
 
+  /// Dernière annonce VALIDE lue (ou `null` = le serveur dit « aucune »).
+  /// Mise à jour par [fetchLatest], donc aussi par le canal « signal »
+  /// quand le panel publie : l'accueil box écoute ici et se redessine
+  /// sans relire le réseau lui-même. Une erreur réseau ne l'efface pas.
+  static final ValueNotifier<Announcement?> latest =
+      ValueNotifier<Announcement?>(null);
+
+  static int _lastFetchMs = 0;
+
   /// Récupère la dernière annonce publiée, ou `null` si aucune / erreur
   /// réseau. On reste SILENCIEUX en cas d'échec : une annonce est un
   /// bonus, jamais bloquant.
@@ -97,11 +106,29 @@ abstract final class AnnouncementRepository {
       if (resp.statusCode != 200) return null;
       final Object? decoded = jsonDecode(resp.body);
       if (decoded is! Map<String, dynamic>) return null;
-      return Announcement.fromJson(decoded);
+      final Announcement? parsed = Announcement.fromJson(decoded);
+      _lastFetchMs = DateTime.now().millisecondsSinceEpoch;
+      if (parsed?.id != latest.value?.id ||
+          parsed?.title != latest.value?.title ||
+          parsed?.body != latest.value?.body) {
+        latest.value = parsed;
+      }
+      return parsed;
     } catch (e) {
       if (kDebugMode) debugPrint('[Announcement] fetch: $e');
       return null;
     }
+  }
+
+  /// Comme [fetchLatest], mais pas plus d'une fois par [maxAge] : l'accueil
+  /// box revient souvent (retour du lecteur), le canal « signal » fait
+  /// déjà le travail quand le panel publie.
+  static Future<void> fetchIfStale({
+    Duration maxAge = const Duration(minutes: 10),
+  }) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastFetchMs < maxAge.inMilliseconds) return;
+    await fetchLatest();
   }
 
   /// `true` si l'utilisateur a déjà fermé cette annonce précise.

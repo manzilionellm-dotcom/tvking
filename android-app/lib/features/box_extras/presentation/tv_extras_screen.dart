@@ -10,11 +10,13 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/blackbox/black_box_upload_flag.dart';
+import '../box_flag.dart';
 import '../../followed/data/followed_flag.dart';
 import '../../followed/data/followed_lead.dart';
 import '../../followed/domain/show_clock.dart';
 import '../../followed/domain/show_lines.dart';
 import '../../missed_show/data/missed_flag.dart';
+import '../../panel_board/data/panel_board_flags.dart';
 import '../../time_picks/data/time_pick_flag.dart';
 import '../../player/data/clear_voice_flag.dart';
 import '../../player/data/image_prefs.dart';
@@ -62,6 +64,24 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     FollowedLead.load().then((int minutes) {
       if (mounted) setState(() => _lead = minutes);
     });
+    for (final BoxFlag flag in <BoxFlag>[
+      panelNoticeFlag,
+      featuredFlag,
+      promoBannerFlag,
+    ]) {
+      flag.load().then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  /// Les trois cartes du panel (annonce, favori du jour, bannières) :
+  /// chacune se coupe seule. Coupée, elle disparaît de l'accueil, rien
+  /// d'autre ne change.
+  Future<void> _togglePanel(BoxFlag flag) async {
+    await flag.load();
+    await flag.set(!flag.value);
+    if (mounted) setState(() {});
   }
 
   Future<void> _toggleMissed() async {
@@ -200,6 +220,51 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
           title: leadLine(code, _lead),
           subtitle: leadHint(code),
           onSelect: _cycleLead,
+        ),
+        ExtrasRow(
+          title: boxText(context, 'Annonces du service', 'Service notices'),
+          subtitle: panelNoticeFlag.value
+              ? boxText(
+                  context,
+                  'Une carte sur l\'accueil quand ton revendeur publie une info (maintenance, nouveauté). OK pour couper. Jamais sur l\'image.',
+                  'A card on the home screen when your provider posts a notice (maintenance, news). OK to turn off. Never over the picture.',
+                )
+              : boxText(
+                  context,
+                  'Coupé. OK pour rallumer. Les annonces ne s\'affichent plus.',
+                  'Off. OK to turn on. Notices are no longer shown.',
+                ),
+          onSelect: () => _togglePanel(panelNoticeFlag),
+        ),
+        ExtrasRow(
+          title: boxText(context, 'Favori du jour', 'Pick of the day'),
+          subtitle: featuredFlag.value
+              ? boxText(
+                  context,
+                  'La chaîne mise en avant par ton revendeur, si elle est dans ta liste. OK pour couper. Rien ne se lance tout seul.',
+                  'The channel your provider highlights, if it is in your list. OK to turn off. Nothing starts on its own.',
+                )
+              : boxText(
+                  context,
+                  'Coupé. OK pour rallumer. La carte disparaît de l\'accueil.',
+                  'Off. OK to turn on. The card leaves the home screen.',
+                ),
+          onSelect: () => _togglePanel(featuredFlag),
+        ),
+        ExtrasRow(
+          title: boxText(context, 'Bannières', 'Banners'),
+          subtitle: promoBannerFlag.value
+              ? boxText(
+                  context,
+                  'Une image à la fois sur l\'accueil, toujours marquée « Publicité ». Fermer = 7 jours sans elle. OK pour couper. Jamais de son, jamais sur l\'image.',
+                  'One picture at a time on the home screen, always labelled "Ad". Close = 7 days without it. OK to turn off. Never sound, never over the picture.',
+                )
+              : boxText(
+                  context,
+                  'Coupé. OK pour rallumer. Plus aucune bannière.',
+                  'Off. OK to turn on. No more banners.',
+                ),
+          onSelect: () => _togglePanel(promoBannerFlag),
         ),
         ExtrasRow(
           title: boxText(context, 'Sous-titres', 'Subtitles'),

@@ -52,6 +52,14 @@ import '../../followed/domain/show_clock.dart';
 import '../../followed/domain/show_lines.dart';
 import '../../followed/domain/show_taste.dart';
 import '../../followed/presentation/show_banner.dart';
+import '../../country_home/data/featured_repository.dart';
+import '../../panel_board/data/panel_board_flags.dart';
+import '../../panel_board/data/promo_banner_repository.dart';
+import '../../panel_board/domain/panel_board.dart';
+import '../../panel_board/presentation/tv_featured_card.dart';
+import '../../panel_board/presentation/tv_panel_notice.dart';
+import '../../panel_board/presentation/tv_promo_banner.dart';
+import '../../simple_home/data/announcement_repository.dart';
 import '../../playlists/data/favorites_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
@@ -156,6 +164,25 @@ class _TvHubScreenState extends State<TvHubScreen> {
   bool _showsOn = true;
   int _leadMin = kLeadDefault;
   Greeting? _greeting;
+  // ----- Cartes venues du PANEL (voir panel_board.dart) -----
+  // Une seule à la fois en tête des rangées ; l'émission suivie par la
+  // personne (_banner) passe toujours devant. Rien ne se lance tout seul.
+  Announcement? _notice;
+  bool _noticeDismissed = false;
+  Channel? _featuredChannel;
+  String _featuredNote = '';
+  PromoBanner? _promo;
+  Channel? _promoChannel;
+  String? _promoCounted; // dernière bannière comptée « montrée »
+  int _panelTick = 0;
+  // Deux compteurs séparés : une recherche de bannière ne doit pas
+  // annuler la réponse en vol du favori du jour (et inversement).
+  int _featuredGen = 0;
+  int _promoGen = 0;
+  Timer? _panelDebounce;
+  bool _noticeOn = true;
+  bool _featuredOn = true;
+  bool _promoOn = true;
   HomeShelfModel _shelves = const HomeShelfModel();
   HomeShelfKind? _initialShelf;
   bool _prefsReady = false;
@@ -181,6 +208,9 @@ class _TvHubScreenState extends State<TvHubScreen> {
       // Le texte « dans 4 minutes » se met à jour sans relire
       // le guide. La lecture du guide, elle, attend une minute.
       _replanShows();
+      // Les cartes du panel tournent au même rythme (20 s).
+      _panelTick++;
+      _replanPanel();
       setState(() {});
       final int nowMs = _now.millisecondsSinceEpoch;
       if (_guideAtMs == 0 || nowMs - _guideAtMs >= 60000) {
@@ -242,7 +272,200 @@ class _TvHubScreenState extends State<TvHubScreen> {
     timePicksFlag.changes.addListener(_onTimeFlag);
     FollowedLog.instance.listenable.addListener(_onFollowed);
     followedFlag.changes.addListener(_onFollowedFlag);
+    AnnouncementRepository.latest.addListener(_onNotice);
+    FeaturedRepository.instance.addListener(_onFeatured);
+    PromoBannerRepository.instance.addListener(_replanPanel);
+    ParentalControls.instance.kidsMode.addListener(_replanPanel);
+    panelNoticeFlag.changes.addListener(_onPanelFlags);
+    featuredFlag.changes.addListener(_onPanelFlags);
+    promoBannerFlag.changes.addListener(_onPanelFlags);
     unawaited(_prepareEngagement());
+    unawaited(_preparePanelBoard());
+  }
+
+  // ---------------------------------------------------------------------
+  //  Cartes du panel : annonce, favori du jour, bannières
+  // ---------------------------------------------------------------------
+
+  /// Lit les trois interrupteurs puis ouvre les dépôts (cache d'abord,
+  /// réseau ensuite). Le canal « signal » les rafraîchira quand le panel
+  /// publie ; l'accueil n'a qu'à écouter.
+  Future<void> _preparePanelBoard() async {
+    try {
+      await Future.wait(<Future<void>>[
+        panelNoticeFlag.load(),
+        featuredFlag.load(),
+        promoBannerFlag.load(),
+      ]);
+    } catch (_) {}
+    if (!mounted) return;
+    _readPanelFlags();
+    if (_featuredOn) unawaited(FeaturedRepository.instance.initialize());
+    if (_promoOn) unawaited(PromoBannerRepository.instance.initialize());
+    if (_noticeOn) unawaited(AnnouncementRepository.fetchIfStale());
+    unawaited(_onNotice());
+    _onFeatured();
+    _replanPanel();
+  }
+
+  void _readPanelFlags() {
+    _noticeOn = panelNoticeFlag.value;
+    _featuredOn = featuredFlag.value;
+    _promoOn = promoBannerFlag.value;
+  }
+
+  void _onPanelFlags() {
+    if (!mounted) return;
+    _readPanelFlags();
+    _onFeatured();
+    _replanPanel();
+  }
+
+  /// L'annonce a changé (canal « signal » ou relecture) : on regarde si
+  /// la personne l'a déjà fermée AVANT de l'afficher.
+  Future<void> _onNotice() async {
+    final Announcement? a = AnnouncementRepository.latest.value;
+    bool dismissed = false;
+    if (a != null) dismissed = await AnnouncementRepository.isDismissed(a.id);
+    if (!mounted || a != AnnouncementRepository.latest.value) return;
+    setState(() {
+      _notice = a;
+      _noticeDismissed = dismissed;
+    });
+  }
+
+  bool get _noticeVisible =>
+      _noticeOn &&
+      _notice != null &&
+      !_noticeDismissed &&
+      noticeAllowed(
+        kind: _notice!.kind,
+        kidsMode: ParentalControls.instance.kidsMode.value,
+      );
+
+  Future<void> _seenNotice() async {
+    final Announcement? a = _notice;
+    if (a == null) return;
+    BlackBox.instance.info('PANEL', 'annonce ${a.id} vue');
+    setState(() => _noticeDismissed = true);
+    await AnnouncementRepository.dismiss(a.id);
+  }
+
+  /// Le favori du jour est un NOM : on cherche la chaîne dans la liste
+  /// (hors fil UI si elle est grosse). Liste changée → on recherche.
+  void _onFeatured() {
+    if (!mounted) return;
+    final FeaturedRepository f = FeaturedRepository.instance;
+    final int gen = ++_featuredGen;
+    _featuredNote = f.note;
+    if (!_featuredOn || !f.hasFeatured) {
+      if (_featuredChannel != null) setState(() => _featuredChannel = null);
+      return;
+    }
+    unawaited(findChannelByName(f.name, _channels).then((Channel? c) {
+      if (!mounted || gen != _featuredGen) return;
+      if (c?.id != _featuredChannel?.id) setState(() => _featuredChannel = c);
+    }));
+  }
+
+  /// Quelle bannière maintenant (fenêtre, mode enfants, fermée, plafond
+  /// du jour, rotation), et on la compte « montrée » si c'est bien elle
+  /// qui est à l'écran (pas si l'émission suivie passe devant).
+  void _replanPanel() {
+    if (!mounted) return;
+    final int nowMs = _now.millisecondsSinceEpoch;
+    final PromoBannerRepository repo = PromoBannerRepository.instance;
+    final List<PromoBanner> eligible = _promoOn
+        ? eligiblePromos(
+            banners: repo.banners,
+            nowMs: nowMs,
+            kidsMode: ParentalControls.instance.kidsMode.value,
+            shownToday: repo.shownToday(_now),
+            dismissed: repo.dismissedAt(nowMs),
+          )
+        : const <PromoBanner>[];
+    final PromoBanner? next = rotatePromo(eligible, _panelTick);
+    if (next?.id != _promo?.id) {
+      _promo = next;
+      _promoChannel = null;
+      if (next != null && next.channel.isNotEmpty) {
+        final int gen = ++_promoGen;
+        unawaited(findChannelByName(next.channel, _channels).then((Channel? c) {
+          if (!mounted || gen != _promoGen || _promo?.id != next.id) return;
+          setState(() => _promoChannel = c);
+        }));
+      }
+    }
+    final HeaderCard card = _headerCard;
+    if (card == HeaderCard.promo && next != null && next.id != _promoCounted) {
+      _promoCounted = next.id;
+      unawaited(repo.noteShown(next.id, now: _now));
+    }
+    setState(() {});
+  }
+
+  HeaderCard get _headerCard => pickHeaderCard(
+        hasShow: _banner != null,
+        hasNotice: _noticeVisible,
+        hasPromo: _promo != null,
+        hasFeatured: _featuredOn && _featuredChannel != null,
+        tick: _panelTick,
+      );
+
+  void _closePromo() {
+    final PromoBanner? b = _promo;
+    if (b == null) return;
+    BlackBox.instance.info('PANEL', 'bannière ${b.id} fermée');
+    unawaited(PromoBannerRepository.instance.dismiss(b.id, now: _now));
+  }
+
+  void _watchPromo() {
+    final Channel? c = _promoChannel;
+    if (c == null) return;
+    BlackBox.instance.info('PANEL', 'bannière ${_promo?.id} → chaîne');
+    _playShelf(<Channel>[c], 0);
+  }
+
+  void _watchFeatured() {
+    final Channel? c = _featuredChannel;
+    if (c == null) return;
+    BlackBox.instance.info('PANEL', 'favori du jour → chaîne');
+    _playShelf(<Channel>[c], 0);
+  }
+
+  /// La carte en tête des rangées : une seule, choisie par
+  /// [pickHeaderCard]. `null` = rien.
+  Widget? _panelHeader(String lang) {
+    switch (_headerCard) {
+      case HeaderCard.show:
+        return ShowBanner(
+          cue: _banner!,
+          languageCode: lang,
+          canRewind: _bannerRewind,
+          onWatch: () => _openShow(_banner!),
+          onLive: () => _openShow(_banner!),
+          onRewind: () => _openShow(_banner!, fromStart: true),
+          onReplay: () => _openShow(_banner!, replay: true),
+          onLater: _dismissBanner,
+        );
+      case HeaderCard.notice:
+        return TvPanelNotice(notice: _notice!, onSeen: _seenNotice);
+      case HeaderCard.promo:
+        return TvPromoBanner(
+          banner: _promo!,
+          channelFound: _promoChannel != null,
+          onWatch: _watchPromo,
+          onClose: _closePromo,
+        );
+      case HeaderCard.featured:
+        return TvFeaturedCard(
+          channel: _featuredChannel!,
+          note: _featuredNote,
+          onWatch: _watchFeatured,
+        );
+      case HeaderCard.none:
+        return null;
+    }
   }
 
   static bool _isActive(SubscriptionStatus s) =>
@@ -278,6 +501,19 @@ class _TvHubScreenState extends State<TvHubScreen> {
     _channels = channels;
     _scheduleShelves();
     _schedulePopular();
+    // Le favori du jour et la chaîne d'une bannière se cherchent par nom
+    // dans la liste : liste changée, on recherche — après une courte
+    // pause, car un import émet souvent (même idée que _scheduleShelves).
+    _panelDebounce?.cancel();
+    _panelDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _onFeatured();
+      final PromoBanner? promo = _promo;
+      if (promo != null && promo.channel.isNotEmpty) {
+        _promo = null;
+        _replanPanel();
+      }
+    });
     _onChange();
     if (!firstArrival || _autoOpened || !mounted) return;
     final ModalRoute<Object?>? route = ModalRoute.of(context);
@@ -830,6 +1066,16 @@ class _TvHubScreenState extends State<TvHubScreen> {
     timePicksFlag.changes.removeListener(_onTimeFlag);
     FollowedLog.instance.listenable.removeListener(_onFollowed);
     followedFlag.changes.removeListener(_onFollowedFlag);
+    _featuredGen++;
+    _promoGen++;
+    _panelDebounce?.cancel();
+    AnnouncementRepository.latest.removeListener(_onNotice);
+    FeaturedRepository.instance.removeListener(_onFeatured);
+    PromoBannerRepository.instance.removeListener(_replanPanel);
+    ParentalControls.instance.kidsMode.removeListener(_replanPanel);
+    panelNoticeFlag.changes.removeListener(_onPanelFlags);
+    featuredFlag.changes.removeListener(_onPanelFlags);
+    promoBannerFlag.changes.removeListener(_onPanelFlags);
     SubscriptionState.instance.removeListener(_onLicenseChange);
     TvContentRefresh.notice.removeListener(_onRefreshNotice);
     ProfileRepository.instance.removeListener(_onProfileCatalog);
@@ -999,11 +1245,12 @@ class _TvHubScreenState extends State<TvHubScreen> {
     final String date = DateFormat('EEE d MMM', localeName).format(_now);
     final ({String label, Color color}) lic = _license(context);
     final String src = _activeSource;
+    final String lang = Localizations.localeOf(context).languageCode;
+    final Widget? header = _panelHeader(lang);
     final bool hasPersonal = _shelves.hasAny ||
         _timePicks.isNotEmpty ||
         _showCards.isNotEmpty ||
-        _banner != null;
-    final String lang = Localizations.localeOf(context).languageCode;
+        header != null;
 
     return PopScope(
       canPop: false,
@@ -1104,24 +1351,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                     shows: _showCards,
                                     showsLabel: followedWord(lang, 'row'),
                                     onPlayShow: _openShow,
-                                    header: _banner == null
-                                        ? null
-                                        : ShowBanner(
-                                            cue: _banner!,
-                                            languageCode: lang,
-                                            canRewind: _bannerRewind,
-                                            onWatch: () => _openShow(_banner!),
-                                            onLive: () => _openShow(_banner!),
-                                            onRewind: () => _openShow(
-                                              _banner!,
-                                              fromStart: true,
-                                            ),
-                                            onReplay: () => _openShow(
-                                              _banner!,
-                                              replay: true,
-                                            ),
-                                            onLater: _dismissBanner,
-                                          ),
+                                    header: header,
                                     onPlayChannel: _playShelf,
                                     onPlayContinue: _playContinue,
                                     onPlayReminder: _playReminder,

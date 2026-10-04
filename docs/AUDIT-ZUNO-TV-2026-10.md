@@ -239,8 +239,10 @@ Builds suivants, mêmes inputs, mêmes contrôles (fichier retéléchargé) :
 | --- | --- | --- | --- | --- |
 | #146 | `1b5a855` (écran noir, essai 48 kHz) | remplacé par #147 | — | — |
 | #147 | `1050c92` (+ panel instantané, deux QR) | 1791118025 | `f5c990b2ddcb87f505814bd891c01ae3bf7e12439efc9e57a29376c1c3463f08` | `5145b8e0…` ✓ |
+| #148 (`37203790667`) | `e698de2` (+ guide Xtream, EPG isolate, historique 20 s, reprise) | 1791118634 | `23a75f66b7372feb4af1b3fd01aad7135802a780d23adc99266992913eeaa54f` (54 584 479 octets) | `5145b8e0…` ✓ |
 
-Release clients `zuno-tv` relue après #147 : digests et `updated_at` inchangés.
+Release clients `zuno-tv` relue après #147 et après #148 : digests
+(`6321fa53…`, `9085457271…`, `b65392bf…`) et `updated_at` (2026-09-30) inchangés.
 
 ## 10. Preuve que la release clients `zuno-tv` n'a pas bougé
 
@@ -302,6 +304,44 @@ classement (exact > préfixe > contenu, favoris en tête), clés précalculées 
 fil UI, numéro de chaîne, titres du guide ; appariement par nom pour les M3U sans
 tvg-id ; `MediaSession` (lecture/pause HDMI-CEC, Assistant) ; Watch Next /
 chaîne « Zuno » sur l'accueil Google TV.
+
+## 11 quater. Cartes du panel sur l'accueil box (4 octobre, demande « notifications naturelles + publicités comme les box Android »)
+
+Constat (mesuré par lecture du code, pas supposé) : le panel sait déjà publier
+des **annonces** (`/api/announcement`, ordre signal `message`), un **favori du
+jour** (`/api/featured`, ordre `featured`) et une **pub vidéo de démarrage**
+(`/api/ad`) ; l'app téléphone les affiche, **l'app box les ignorait toutes**
+(aucune référence dans `lib/features/tv/`). Le module « Bannières » du Centre de
+contrôle est marqué *Bientôt (Phase 2)* : il n'existe pas côté Worker ni panel.
+
+Fait côté box uniquement (`lib/features/panel_board/`, Worker et panel non
+touchés, conformément aux interdits) :
+
+| Carte | Source | Preuve |
+| --- | --- | --- |
+| Annonce du revendeur : carte en tête de l'accueil, icône selon `kind`, « Vu » mémorisé par id, QR du lien pour le téléphone ; arrive **instantanément** par le canal signal (`AnnouncementRepository.latest`, nouveau `ValueNotifier` alimenté par `fetchLatest`) ; relecture au plus toutes les 10 min sinon | `tv_panel_notice.dart`, `announcement_repository.dart` | `panel_board_test.dart` (`noticeAllowed`, `pickHeaderCard`) |
+| Favori du jour : la chaîne nommée par le panel, **si** elle est dans la liste (repli accents/casse, direct d'abord, préfixe « TF1 » → « TF1 HD ») ; recherche hors fil UI au-delà de 2 000 chaînes (`Isolate.run`) | `panel_board.dart`, `tv_featured_card.dart` | `panel_board_test.dart` (6 cas dont liste de 2 050 chaînes) |
+| Bannières images : lecteur de `GET /api/banners` (contrat dans `docs/PANEL-BOX-CARTES-ACCUEIL.md`), 404 = rien ; une image à la fois, libellé « Publicité » obligatoire, 6 apparitions/jour/bannière, « Fermer » = 7 jours, fenêtre `from`/`until`, mode enfants = `kids: true` seulement, rotation au tic de 20 s ; ordre signal `banner` relit la liste | `promo_banner_repository.dart`, `tv_promo_banner.dart`, `box_signal.dart`, `remote_activation_watch.dart` | `promo_banner_repository_test.dart` (404, 200, panne, cache, compteurs persistants), `box_signal_test.dart` |
+| Une seule carte à la fois : émission suivie > annonce > bannière/favori en alternance | `pickHeaderCard` | `panel_board_test.dart` |
+| Trois interrupteurs Réglages → En plus (« Annonces du service », « Favori du jour », « Bannières »), défaut allumé comme les autres `BoxFlag` ; coupé = la carte disparaît, rien d'autre | `panel_board_flags.dart`, `tv_extras_screen.dart` | — (réglage) |
+
+Choix délibérés, appuyés par la recherche (brief du 4 octobre, sources datées) :
+pas de pub vidéo au démarrage sur la box (le recul d'Amazon en 2024 sur
+l'autoplay sonore du Fire TV, et media_kit n'est pas chargé sur la TV) ; pas de
+notification système (Android TV n'affiche pas de bandeau ; la carte d'accueil
+est la seule « notification » légitime, jamais sur l'image) ; pas de « streaks »
+(aucune preuve d'efficacité sur TV, contraire au lean-back) ; libellé publicitaire
+toujours visible (LCEN art. 20 ; L121-2 Code conso) ; Impeller reste coupé
+(déjà le cas, confirmé par les retours RK3399/Mali).
+
+NON PROUVÉ (seulement sur la box) : rendu des trois cartes à 1080p avec la vraie
+police, focus télécommande Haut depuis les rangées vers « Vu » / « Fermer »,
+image de bannière réelle (aucun serveur ne la sert encore).
+
+Hors périmètre, à faire par qui a le droit de toucher Worker et panel : table +
+`GET /api/banners`, écriture owner avec `signalFleet(env, 'banner')`, page
+« Bannières » (spécification complète dans `docs/PANEL-BOX-CARTES-ACCUEIL.md`).
+Sans cela, la box affichera déjà annonces et favori du jour, pas de bannière.
 
 ## 12. Bloqueurs de publication
 

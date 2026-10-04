@@ -33,6 +33,7 @@ import '../../playlists/data/default_servers.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../pricing/data/pricing_repository.dart';
+import '../../panel_board/data/promo_banner_repository.dart';
 import '../../simple_home/data/announcement_repository.dart';
 import '../../simple_home/data/home_layout_repository.dart';
 import '../../theme/data/remote_theme_repository.dart';
@@ -361,6 +362,9 @@ class RemoteActivationWatch {
       }
       if (plan.contains(SignalRefresh.servers)) {
         await DefaultServersApi.fetch(forceRefresh: true);
+      }
+      if (plan.contains(SignalRefresh.banner)) {
+        await PromoBannerRepository.instance.refresh();
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Signal] effet $kind : $e');

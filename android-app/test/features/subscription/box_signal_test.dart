@@ -49,6 +49,13 @@ void main() {
     expect(refreshesFor('message'), {SignalRefresh.announcement});
     expect(refreshesFor('force_update'), {SignalRefresh.forceUpdate});
     expect(refreshesFor('theme'), {SignalRefresh.theme});
+    expect(refreshesFor('featured'), {SignalRefresh.featured});
+    // Module « Bannières » du panel : l'ordre relit la liste des bannières,
+    // rien d'autre (pas de licence, pas de source).
+    expect(refreshesFor('banner'), {SignalRefresh.banner});
+    expect(refreshesFor('banners'), {SignalRefresh.banner});
+    expect(kindNeedsStatus('banner'), isFalse);
+    expect(kindNeedsStatus('featured'), isFalse);
     expect(kindNeedsStatus('message'), isFalse);
     expect(kindNeedsStatus('activate'), isTrue);
   });

@@ -26,6 +26,7 @@ enum SignalRefresh {
   pricing,
   feedback,
   servers,
+  banner,
 }
 
 /// Ordres déjà connus : on ne les rejoue pas.
@@ -79,6 +80,9 @@ Set<SignalRefresh> refreshesFor(String kind) {
       return <SignalRefresh>{SignalRefresh.feedback};
     case 'servers':
       return <SignalRefresh>{SignalRefresh.servers};
+    case 'banner':
+    case 'banners':
+      return <SignalRefresh>{SignalRefresh.banner};
     default:
       return <SignalRefresh>{SignalRefresh.status};
   }
