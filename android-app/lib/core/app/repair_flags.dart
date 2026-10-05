@@ -193,6 +193,20 @@ abstract final class RepairFlags {
   static const String refreshPendingLegacyKey = 'zuno.refresh.pending_legacy';
   static bool refreshPendingLegacy = false;
 
+  /// Vrai = la box ignore la remise à neuf demandée depuis le panel
+  /// (`reset_at` du statut). Faux = elle efface listes, chaînes, favoris,
+  /// historique et guide, puis relit ses listes (bouton « Réinitialiser la
+  /// box », 06/10/2026).
+  static const String remoteResetOffKey = 'zuno.reset.off';
+  static bool remoteResetOff = false;
+
+  /// Vrai = un build de test vérifie une nouvelle version toutes les 30 min
+  /// comme un build client. Faux = toutes les 60 s (mesuré le 06/10/2026 :
+  /// « la mise à jour met 3 à 5 minutes à arriver »). Sans effet sur les
+  /// builds clients, qui gardent 30 min + l'ordre « force_update » du panel.
+  static const String testUpdatePollLegacyKey = 'zuno.update.test_poll_legacy';
+  static bool testUpdatePollLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -217,6 +231,8 @@ abstract final class RepairFlags {
     bool retryAlways = false;
     bool reinsertOff = false;
     bool pendingLegacy = false;
+    bool resetOff = false;
+    bool testPollLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -242,6 +258,8 @@ abstract final class RepairFlags {
       retryAlways = prefs.getBool(sourceRetryAlwaysKey) ?? false;
       reinsertOff = prefs.getBool(importReinsertOffKey) ?? false;
       pendingLegacy = prefs.getBool(refreshPendingLegacyKey) ?? false;
+      resetOff = prefs.getBool(remoteResetOffKey) ?? false;
+      testPollLegacy = prefs.getBool(testUpdatePollLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -266,7 +284,11 @@ abstract final class RepairFlags {
       retryAlways = false;
       reinsertOff = false;
       pendingLegacy = false;
+      resetOff = false;
+      testPollLegacy = false;
     }
+    remoteResetOff = resetOff;
+    testUpdatePollLegacy = testPollLegacy;
     importReinsertOff = reinsertOff;
     refreshPendingLegacy = pendingLegacy;
     sourceRetryAlways = retryAlways;
@@ -320,6 +342,8 @@ abstract final class RepairFlags {
     sourceRetryAlways = false;
     importReinsertOff = false;
     refreshPendingLegacy = false;
+    remoteResetOff = false;
+    testUpdatePollLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

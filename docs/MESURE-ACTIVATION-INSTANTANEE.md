@@ -428,6 +428,60 @@ SHA-256 `f26c876a8d3b7e09a0f8633d8c70f2097c022bb259358f8f85e46e41882cd9dd`,
 54 759 145 octets, `mandatory: false`. Suite Flutter avant commit : 476 verts,
 2 ignorés.
 
+## 7 undecies. « Réinitialiser la box », « listes à part », « la mise à jour met 3 à 5 minutes » (6 octobre, 00:54)
+
+Trois demandes du propriétaire, photo du panel à l'appui (fiche appareil de
+la box de test : 1/3 liste, « Ajoutée par le client », version app
+1791239332 = #164).
+
+**1. Un bouton qui remet l'application à neuf, pour tout renvoyer à distance.**
+- Worker (5e patch) : `POST /api/v1/sources/:mac/reset` (jeton du panel,
+  revendeur propriétaire ou admin) retire **toutes** les listes de la MAC,
+  panel et client, écrit `devices.reset_at` (colonne ajoutée, additive),
+  prévient la box (« reset » puis « source » pour les builds antérieurs à
+  165). `GET /api/status/:mac` renvoie `reset_at`. Test
+  `reset_box_panel.test.mjs` : 17 (401, 403, 404 MAC inconnue, 200, plus
+  aucune liste servie, aucun secret, `reset_at` dans le statut, licence
+  intacte, second clic plus récent, nouvelle liste posée ensuite).
+- Panel : fiche appareil → bouton **Réinitialiser la box** (confirmation
+  explicite : serveur + TV + licence intacte).
+- Box (#165) : `BoxReset` lit `reset_at` dans le statut à chaque tour ; plus
+  récent que la dernière remise à neuf appliquée → efface listes (chaînes,
+  favoris, récents de chaque liste, journalisés « réinitialisation par le
+  panel »), historique, guide, recherches, mémoire des listes servies et
+  des refus, puis relit ses listes (vides). Idempotent (heure mémorisée
+  avant d'effacer) ; une box éteinte l'applique au réveil ; ordre « reset »
+  = relecture immédiate. Ligne boîte noire : « box remise à neuf sur ordre
+  du panel : N liste(s)… ». Repli `zuno.reset.off`. Tests : règle pure,
+  lecture du statut, ordre, effacement réel sur deux listes puis rejeu
+  refusé (`box_reset_test.dart`, 5).
+
+**2. « Listes à part, applications à part. »**
+- Activation à distance n'active plus que la licence ; un encart renvoie
+  vers **Listes** avec la MAC pré-remplie (`LISTS_IN_ACTIVATION = false`,
+  le code d'envoi reste).
+- La page `/chaines` s'appelle **Listes** (menu compris) : envoie, remplace
+  (par défaut) ou ajoute (case à décocher, 3 au maximum), retire. Les listes
+  du client restent dans tous les cas ; pour tout effacer : Réinitialiser.
+- Panel : 47 tests, build OK.
+
+**3. « La mise à jour met 3 à 5 minutes, avant c'était instantané. »**
+- Cause (code lu) : personne ne prévient la box qu'un nouvel APK existe.
+  Elle lit `version.json` 1 min après l'ouverture puis **toutes les
+  30 min** ; le build de test publie sur GitHub sans signal. Le « avant » :
+  NON VÉRIFIÉ (aucune trace d'un autre mécanisme dans le dépôt).
+- Build de test (#165) : vérification **toutes les 60 s** quand la box
+  porte la release de test (`extraManifestUrls`), 30 min inchangées pour les
+  clients. Repli `zuno.update.test_poll_legacy`. Reste la confirmation
+  d'installation Android (hors Play Store), incontournable.
+- Instantané pour les clients, déjà possible : le panel → Mise à jour
+  forcée envoie l'ordre `force_update`, la box télécharge et installe tout de
+  suite (#158). Pour que le **build** lui-même prévienne la box, il faudrait
+  que `build-zuno-tv.yml` appelle le Worker après publication (jeton admin
+  en secret GitHub) : ce secret n'existe pas aujourd'hui
+  (`ANDROID_*`, `CLOUDFLARE_*`, `GITHUB_TOKEN` seulement). Décrit dans
+  `docs/PROMPT-MISSION-STABILITE.md`, P1.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

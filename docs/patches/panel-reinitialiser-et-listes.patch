@@ -1,0 +1,489 @@
+diff --git a/android-app/admin-panel/src/lib/api.ts b/android-app/admin-panel/src/lib/api.ts
+index be4c591..897a888 100644
+--- a/android-app/admin-panel/src/lib/api.ts
++++ b/android-app/admin-panel/src/lib/api.ts
+@@ -587,6 +587,15 @@ export const sourcesApi = {
+       `/api/v1/sources/${encodeURIComponent(mac)}`,
+       { method: 'DELETE' },
+     ),
++  // REMISE À NEUF : retire toutes les listes (panel et client) et ordonne à
++  // la box d'effacer listes, chaînes, favoris, historique et guide. La
++  // licence reste. La box relit ensuite ses listes (vides) : le revendeur
++  // en renvoie une avec « Activation à distance » ou « Liste de chaînes ».
++  reset: (mac: string) =>
++    request<{ ok: boolean; mac: string; reset_at: number }>(
++      `/api/v1/sources/${encodeURIComponent(mac)}/reset`,
++      { method: 'POST' },
++    ),
+ };
+ 
+ // =========================================================
+diff --git a/android-app/admin-panel/src/lib/i18n.tsx b/android-app/admin-panel/src/lib/i18n.tsx
+index b575b86..dd75f9f 100644
+--- a/android-app/admin-panel/src/lib/i18n.tsx
++++ b/android-app/admin-panel/src/lib/i18n.tsx
+@@ -56,7 +56,7 @@ const STR: Record<string, Record<Lang, string>> = {
+   'nav.blackbox': { fr: 'Boîte noire', en: 'Black box', ar: 'الصندوق الأسود' },
+   'nav.apps': { fr: 'Applications', en: 'Apps', ar: 'التطبيقات' },
+   'nav.servers': { fr: 'Serveurs', en: 'Servers', ar: 'الخوادم' },
+-  'nav.chaines': { fr: 'Liste de chaînes', en: 'Channel list', ar: 'قائمة القنوات' },
++  'nav.chaines': { fr: 'Listes', en: 'Lists', ar: 'القوائم' },
+   'nav.activations': { fr: 'Activations', en: 'Activations', ar: 'التفعيلات' },
+   'nav.myActivations': { fr: 'Mes activations', en: 'My activations', ar: 'تفعيلاتي' },
+   'nav.history': { fr: 'Historique', en: 'History', ar: 'السجل' },
+diff --git a/android-app/admin-panel/src/pages/ChainesPage.tsx b/android-app/admin-panel/src/pages/ChainesPage.tsx
+index bb4d82b..30fdf6f 100644
+--- a/android-app/admin-panel/src/pages/ChainesPage.tsx
++++ b/android-app/admin-panel/src/pages/ChainesPage.tsx
+@@ -50,6 +50,10 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+   const [busy, setBusy] = useState(false);
+   const [err, setErr] = useState<string | null>(null);
+   const [ok, setOk] = useState<string | null>(null);
++  // Par défaut (06/10/2026, « listes à part ») : la liste envoyée REMPLACE
++  // les listes du panel déjà sur la box ; celles du client restent. Décoché
++  // = on l'ajoute aux autres (3 au maximum).
++  const [replaceOthers, setReplaceOthers] = useState(true);
+   // Sources déjà poussées, hors lien. Gardées en mémoire seulement pour
+   // les renvoyer telles quelles. Jamais affichées, jamais journalisées.
+   const keptRef = useRef<DeviceSourceInput[]>([]);
+@@ -114,9 +118,10 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+       setErr('Colle le lien de la liste avant d’enregistrer.');
+       return;
+     }
+-    const next = [...keptRef.current, { type: 'm3u' as const, m3u_url: url }];
++    const fresh = { type: 'm3u' as const, m3u_url: url };
++    const next = replaceOthers ? [fresh] : [...keptRef.current, fresh];
+     if (next.length > 3) {
+-      setErr('Cette box a déjà 3 listes. Retire-en une sur la fiche appareil avant d’en ajouter une.');
++      setErr('Cette box a déjà 3 listes. Coche « remplacer » ou retire-en une sur la fiche appareil.');
+       return;
+     }
+     setBusy(true);
+@@ -124,7 +129,12 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+       await sourcesApi.setMany(m, next);
+       setLink('');
+       setHasLink(true);
+-      setOk('Lien enregistré. L’activation de l’application n’a pas été modifiée.');
++      if (replaceOthers) keptRef.current = [];
++      setOk(
++        replaceOthers
++          ? 'Liste envoyée : elle remplace les listes du panel sur cette box, la box est prévenue à l’instant. L’activation n’a pas été modifiée.'
++          : 'Liste ajoutée aux autres, la box est prévenue à l’instant. L’activation n’a pas été modifiée.',
++      );
+     } catch (e: unknown) {
+       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+       setErr(e instanceof ApiError ? e.message : 'Enregistrement impossible.');
+@@ -168,8 +178,8 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+ 
+   return (
+     <AppLayout
+-      title="Liste de chaînes"
+-      subtitle="Ajoute ou change le lien. Ça n’active pas l’application, et ça ne change pas la durée."
++      title="Listes"
++      subtitle="Envoie, remplace ou retire la liste d’une box. Ça n’active pas l’application, et ça ne change pas la durée."
+       onLogout={onLogout}
+     >
+       {!canPush && (
+@@ -202,6 +212,22 @@ export function ChainesPage({ onLogout }: { onLogout: () => void }) {
+             />
+           </div>
+ 
++          <label className="flex cursor-pointer items-start gap-2 text-sm text-ink-secondary">
++            <input
++              type="checkbox"
++              checked={replaceOthers}
++              onChange={(e) => setReplaceOthers(e.target.checked)}
++              className="mt-0.5"
++            />
++            <span>
++              Remplacer les listes du panel déjà sur la box par celle-ci
++              <span className="block text-xs text-ink-tertiary">
++                Décoché : elle s’ajoute aux autres (3 au maximum). Les listes ajoutées par le client restent dans les deux cas ;
++                pour tout effacer, fiche appareil → Réinitialiser la box.
++              </span>
++            </span>
++          </label>
++
+           <div className="rounded-lg border border-white/10 bg-obsidian px-4 py-3 text-sm">
+             {looking && <p className="text-ink-secondary">Recherche…</p>}
+             {!looking && !macOk && <p className="text-ink-secondary">Entre une MAC complète pour voir si un lien est déjà là.</p>}
+diff --git a/android-app/admin-panel/src/pages/DevicesPage.tsx b/android-app/admin-panel/src/pages/DevicesPage.tsx
+index 4a020b9..fe396f5 100644
+--- a/android-app/admin-panel/src/pages/DevicesPage.tsx
++++ b/android-app/admin-panel/src/pages/DevicesPage.tsx
+@@ -287,6 +287,7 @@ function DeviceDetailModal({
+   const [loading, setLoading] = useState(true);
+   const [err, setErr] = useState<string | null>(null);
+   const [clearing, setClearing] = useState(false);
++  const [resetting, setResetting] = useState(false);
+   const pollSeq = useRef(0);
+   const appliedSeq = useRef(0);
+ 
+@@ -371,6 +372,33 @@ function DeviceDetailModal({
+     return () => { alive = false; stop(); };
+   }, [device.id]);
+ 
++  /// Remise à neuf (06/10/2026) : toutes les listes, panel ET client, sont
++  /// retirées du serveur, et la box efface chez elle listes, chaînes,
++  /// favoris, historique et guide. La licence reste. On renvoie ensuite une
++  /// liste avec « Activation à distance » ou « Liste de chaînes ».
++  async function resetBox() {
++    if (!window.confirm(
++      'Remettre cette box à neuf ?\n\n'
++      + 'Sur le serveur : toutes les listes de cette MAC sont retirées, y compris celles ajoutées par le client.\n'
++      + 'Sur la TV : listes, chaînes, favoris, historique et guide sont effacés (en quelques secondes si la box est allumée, sinon à son prochain démarrage).\n'
++      + 'La licence n’est pas touchée. Tu pourras renvoyer une liste juste après.',
++    )) return;
++    setResetting(true);
++    setErr(null);
++    try {
++      await sourcesApi.reset(device.mac);
++      const my = ++pollSeq.current;
++      const r = await devicesApi.overview(device.id);
++      if (!shouldApplyPollResult(my, appliedSeq.current)) return;
++      appliedSeq.current = my;
++      setOv(r);
++    } catch (e) {
++      setErr(e instanceof ApiError ? e.message : 'Échec.');
++    } finally {
++      setResetting(false);
++    }
++  }
++
+   async function clearPushed() {
+     if (!window.confirm(
+       'Effacer les listes poussées sur le serveur pour cette MAC ? Elles ne seront plus renvoyées à l\'app.',
+@@ -578,6 +606,7 @@ function DeviceDetailModal({
+             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
+             <ActionBtn busy={busy} onClick={() => navigate(`/blackbox?mac=${macUrl}`)} title="Journal technique de cette box : ordre du panel reçu, liste chargée en N s, liste refusée">Boîte noire</ActionBtn>
+             <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire toutes les listes poussées. La TV du client les efface toute seule à sa vérification suivante.">Effacer les listes</ActionBtn>
++            <ActionBtn busy={busy || resetting} danger onClick={resetBox} title="Remet la box à neuf : toutes les listes (panel et client) sont retirées, la TV efface chaînes, favoris, historique et guide. La licence reste.">Réinitialiser la box</ActionBtn>
+             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
+             {st !== 'frozen' && (
+               <ActionBtn busy={busy} onClick={() => onBlock('frozen')} title="Geler (rappel de paiement)">Geler</ActionBtn>
+diff --git a/android-app/admin-panel/src/pages/RemoteActivatePage.tsx b/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
+index b4d9e29..36b703e 100644
+--- a/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
++++ b/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
+@@ -1,5 +1,5 @@
+ import { FormEvent, useEffect, useRef, useState } from 'react';
+-import { useSearchParams } from 'react-router-dom';
++import { Link, useSearchParams } from 'react-router-dom';
+ import { AppLayout } from '@/components/AppLayout';
+ import { Alert } from '@/components/ui';
+ import {
+@@ -51,6 +51,13 @@ export function isTrialPlan(plan: string): boolean {
+ }
+ 
+ type ListKind = 'm3u' | 'xtream' | 'none';
++
++/// Décision du propriétaire (06/10/2026) : « listes à part, applications à
++/// part ». Cette page n'active que la licence ; les listes se gèrent dans
++/// Listes (/chaines). Faux = plus de champ de liste ici. Le code de l'envoi
++/// reste (vrai le rallume) : le suivi « liste sur la TV après N s » est le
++/// même que dans la fiche appareil.
++const LISTS_IN_ACTIVATION = false;
+ type Step = 'idle' | 'busy' | 'ok' | 'skip' | 'err';
+ 
+ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+@@ -63,7 +70,7 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+   // Défaut : 7 jours d'essai. Un oubli ne coûte aucun crédit.
+   const [plan, setPlan] = useState('trial_7d');
+   const [customerName, setCustomerName] = useState('');
+-  const [kind, setKind] = useState<ListKind>(canPush ? 'm3u' : 'none');
++  const [kind, setKind] = useState<ListKind>(LISTS_IN_ACTIVATION && canPush ? 'm3u' : 'none');
+   const [m3uUrl, setM3uUrl] = useState('');
+   const [server, setServer] = useState('');
+   const [username, setUsername] = useState('');
+@@ -358,7 +365,22 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+           })}
+         </div>
+ 
+-        {canPush && (
++        {!LISTS_IN_ACTIVATION && canPush && (
++          <div className="rounded-xl border border-white/10 bg-midnight/60 p-4 text-sm">
++            <p className="font-medium text-ink-primary">Les listes se gèrent à part.</p>
++            <p className="mt-1 text-ink-secondary">
++              Ici on active l’application. Pour envoyer, remplacer ou retirer la liste de cette box :{' '}
++              <Link
++                to={`/chaines${isValidMac(normalizeMac(mac)) ? `?mac=${encodeURIComponent(normalizeMac(mac))}` : ''}`}
++                className="font-medium text-accent-bright underline-offset-2 hover:underline"
++              >
++                Listes
++              </Link>.
++            </p>
++          </div>
++        )}
++
++        {LISTS_IN_ACTIVATION && canPush && (
+           <div className="space-y-3 rounded-xl border border-white/10 bg-midnight/60 p-4">
+             <p className="text-sm font-medium text-ink-primary">Liste de chaînes du client</p>
+             <div className="grid grid-cols-3 gap-2" role="group" aria-label="Type de liste">
+diff --git a/android-app/cloudflare/box_channel.js b/android-app/cloudflare/box_channel.js
+index 9dcc0ca..1359acd 100644
+--- a/android-app/cloudflare/box_channel.js
++++ b/android-app/cloudflare/box_channel.js
+@@ -49,6 +49,9 @@ export const CHANNEL_KINDS = Object.freeze([
+   'feedback',
+   'servers',
+   'banner',
++  // Remise à neuf de la box depuis le panel (06/10/2026) : la box relit
++  // son statut, y lit `reset_at`, efface tout, puis relit ses listes.
++  'reset',
+ ]);
+ 
+ const KIND_SET = new Set(CHANNEL_KINDS);
+diff --git a/android-app/cloudflare/reset_box_panel.test.mjs b/android-app/cloudflare/reset_box_panel.test.mjs
+new file mode 100644
+index 0000000..646c7e4
+--- /dev/null
++++ b/android-app/cloudflare/reset_box_panel.test.mjs
+@@ -0,0 +1,152 @@
++// =========================================================
++//  reset_box_panel.test.mjs — Remise à neuf d'une box depuis le panel
++// =========================================================
++//  node --experimental-sqlite cloudflare/reset_box_panel.test.mjs
++//  Demande du propriétaire (06/10/2026) : un bouton qui rend l'application
++//  vierge, y compris la liste ajoutée par le client, pour tout renvoyer à
++//  distance. Route : POST /api/v1/sources/:mac/reset. Base SQLite en
++//  mémoire, mêmes comptes que self_source_panel.test.mjs, adresses en
++//  example.test.
++// =========================================================
++import { DatabaseSync } from 'node:sqlite';
++import { readFileSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import worker from './worker.js';
++
++const ctx = { waitUntil() {}, passThroughOnException() {} };
++const here = dirname(fileURLToPath(import.meta.url));
++let pass = 0;
++let fail = 0;
++const ok = (c, m) => {
++  if (c) { pass += 1; console.log('PASS', m); }
++  else { fail += 1; console.log('FAIL', m); }
++};
++
++function makeDb() {
++  const db = new DatabaseSync(':memory:');
++  db.exec('PRAGMA foreign_keys = ON');
++  db.exec(readFileSync(join(here, 'schema.sql'), 'utf8'));
++  for (const sql of [
++    'ALTER TABLE resellers ADD COLUMN parent_reseller_id TEXT',
++    'ALTER TABLE devices ADD COLUMN block_status TEXT',
++  ]) {
++    try { db.exec(sql); } catch (_) { /* déjà dans le schéma */ }
++  }
++  const DB = {
++    prepare(sql) {
++      const runWith = (args) => {
++        const params = args.map((v) => (v === undefined ? null : v));
++        return {
++          async first() { const row = db.prepare(sql).get(...params); return row === undefined ? null : row; },
++          async all() { return { results: db.prepare(sql).all(...params) }; },
++          async run() { const info = db.prepare(sql).run(...params); return { success: true, meta: { changes: info.changes } }; },
++        };
++      };
++      return {
++        bind(...args) { return runWith(args); },
++        first() { return runWith([]).first(); },
++        all() { return runWith([]).all(); },
++        run() { return runWith([]).run(); },
++      };
++    },
++    async batch(stmts) {
++      db.exec('BEGIN');
++      try { const out = []; for (const s of stmts) out.push(await s.run()); db.exec('COMMIT'); return out; }
++      catch (e) { try { db.exec('ROLLBACK'); } catch (_) { /* déjà annulé */ } throw e; }
++    },
++  };
++  return { db, env: { DB, ADMIN_SECRET: crypto.randomUUID(), SECRETS_KEY: crypto.randomUUID() } };
++}
++
++async function api(env, method, path, { token, body } = {}) {
++  const headers = { 'content-type': 'application/json' };
++  if (token) headers.authorization = `Bearer ${token}`;
++  const res = await worker.fetch(new Request(`https://app.test${path}`, {
++    method, headers, body: body === undefined ? undefined : JSON.stringify(body),
++  }), env, ctx);
++  const text = await res.text();
++  let json = null;
++  try { json = text ? JSON.parse(text) : null; } catch (_) { json = null; }
++  return { status: res.status, json, text };
++}
++
++async function login(env) {
++  const r = await api(env, 'POST', '/api/v1/auth/login', { body: { email: 'admin', password: env.ADMIN_SECRET } });
++  return r.json && r.json.token;
++}
++
++async function makeReseller(env, admin) {
++  const email = `r-${crypto.randomUUID()}@example.test`;
++  const password = crypto.randomUUID();
++  const created = await api(env, 'POST', '/api/v1/resellers', {
++    token: admin, body: { email, password, name: 'Revendeur test', credit_balance: 5 },
++  });
++  const id = created.json && created.json.id;
++  await api(env, 'PATCH', `/api/v1/resellers/${id}`, { token: admin, body: { permissions: ['activate', 'devices', 'sources'] } });
++  const logged = await api(env, 'POST', '/api/v1/auth/reseller/login', { body: { email, password } });
++  return { token: logged.json && logged.json.token, id };
++}
++
++async function main() {
++  const { env } = makeDb();
++  const admin = await login(env);
++  ok(!!admin, 'login admin');
++  const MAC = 'MK:AA:BB:CC:DD:31';
++  const a = await makeReseller(env, admin);
++  const b = await makeReseller(env, admin);
++  await api(env, 'GET', `/api/status/${MAC}`);
++  const claim = await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: MAC, plan: 'trial_7d', reseller_id: a.id } });
++  ok(claim.status === 200 || claim.status === 201, 'MAC rattachée au revendeur A');
++
++  // Avant : une liste du panel + une liste du client.
++  const put = await api(env, 'PUT', `/api/v1/sources/${MAC}`, {
++    token: admin, body: { sources: [{ type: 'm3u', m3u_url: 'http://panel.example.test/get.php?username=u&password=p', label: 'Panel' }] },
++  });
++  ok(put.status === 200, 'liste du panel posée');
++  const self = await api(env, 'POST', `/api/self-source/${MAC}`, {
++    body: { type: 'm3u', m3u_url: 'http://perso.example.test/get.php?username=c&password=s', label: 'Perso' },
++  });
++  ok(self.status === 200, 'liste du client ajoutée');
++  let served = await api(env, 'GET', `/api/device-source/${MAC}`);
++  ok((served.json.sources || []).length === 2, 'la box reçoit 2 listes avant la remise à neuf');
++  let status = await api(env, 'GET', `/api/status/${MAC}`);
++  ok(status.json && (status.json.reset_at || 0) === 0, 'statut : reset_at absent ou 0 avant');
++
++  // Refus : sans jeton, autre revendeur, MAC inconnue.
++  let r = await api(env, 'POST', `/api/v1/sources/${MAC}/reset`);
++  ok(r.status === 401, 'sans jeton : 401');
++  r = await api(env, 'POST', `/api/v1/sources/${MAC}/reset`, { token: b.token });
++  ok(r.status === 403, 'autre revendeur : 403');
++  r = await api(env, 'POST', `/api/v1/sources/MK:00:00:00:00:99/reset`, { token: admin });
++  ok(r.status === 404, `MAC jamais vue : 404 (${r.status})`);
++
++  // Le revendeur propriétaire remet la box à neuf.
++  const before = Date.now();
++  r = await api(env, 'POST', `/api/v1/sources/${MAC}/reset`, { token: a.token });
++  ok(r.status === 200 && r.json && r.json.ok === true && r.json.reset_at >= before, `remise à neuf par le revendeur (${r.status} ${r.text.slice(0, 160)})`);
++  served = await api(env, 'GET', `/api/device-source/${MAC}`);
++  ok((served.json && served.json.sources ? served.json.sources : []).length === 0, 'la box ne reçoit plus aucune liste, celle du client comprise');
++  ok(!served.text.includes('password=s') && !served.text.includes('password=p'), 'aucun secret ne reste dans la réponse');
++  status = await api(env, 'GET', `/api/status/${MAC}`);
++  ok(status.json && status.json.reset_at === r.json.reset_at, 'statut : reset_at = heure du clic (la box l’applique à son prochain tour)');
++  ok(status.json.status === 'active', 'la licence n’est pas touchée');
++
++  // Deuxième clic : reset_at avance (la box rejoue l’effacement).
++  await new Promise((res) => setTimeout(res, 5));
++  const again = await api(env, 'POST', `/api/v1/sources/${MAC}/reset`, { token: admin });
++  ok(again.status === 200 && again.json.reset_at > r.json.reset_at, 'second clic : reset_at plus récent');
++
++  // Le revendeur renvoie ensuite une liste : elle repart normalement.
++  const after = await api(env, 'PUT', `/api/v1/sources/${MAC}`, {
++    token: a.token, body: { sources: [{ type: 'm3u', m3u_url: 'http://neuf.example.test/get.php?username=n&password=q', label: 'Neuf' }] },
++  });
++  ok(after.status === 200, 'une nouvelle liste se pose après la remise à neuf');
++  served = await api(env, 'GET', `/api/device-source/${MAC}`);
++  ok((served.json.sources || []).length === 1, 'la box reçoit la nouvelle liste seule');
++
++  console.log(`\n${pass} passed, ${fail} failed`);
++  process.exit(fail ? 1 : 0);
++}
++
++main().catch((e) => { console.error('TEST CRASH', e && e.message ? e.message : e); process.exit(1); });
+diff --git a/android-app/cloudflare/worker.js b/android-app/cloudflare/worker.js
+index 1ffdce7..961af6e 100644
+--- a/android-app/cloudflare/worker.js
++++ b/android-app/cloudflare/worker.js
+@@ -2481,7 +2481,10 @@ async function handlePublicStatus(env, mac) {
+       await touchTrialAnchor(env, mac, '');
+       d1 = await d1StatusForMac(env, mac);
+     }
+-    if (d1) return json(await attachBlackboxPull(env, mac, d1));
++    if (d1) {
++      d1.reset_at = await resetAtFor(env, mac);
++      return json(await attachBlackboxPull(env, mac, d1));
++    }
+   }
+   const data = await readClient(env, mac);
+   return json(await attachBlackboxPull(env, mac, computeStatus(data)));
+@@ -3249,6 +3252,67 @@ async function handlePanelRemoveSelfSource(request, env, mac, id) {
+   return json(out.body, out.status);
+ }
+ 
++// POST /api/v1/sources/:mac/reset — REMISE À NEUF de la box depuis le panel
++// (demande du propriétaire, 06/10/2026 : « un bouton, l'application doit
++// être comme neuve, et j'ajoute à distance »). Côté serveur : toutes les
++// listes de la MAC sont retirées, celles du panel ET celles ajoutées par le
++// client (Mon espace / TV) ; `devices.reset_at` prend l'heure du clic ; la
++// box est prévenue (« reset » puis « source »). Côté box (build ≥ 165) :
++// elle lit `reset_at` dans /api/status, efface listes, chaînes, favoris,
++// historique et guide, puis relit ses listes (vides). Une box éteinte
++// l'applique à son prochain démarrage : l'horodatage reste dans le statut.
++// La licence n'est pas touchée : activation et listes sont séparées.
++async function handlePanelResetBox(request, env, mac) {
++  const auth = request.headers.get('Authorization') || '';
++  const m = auth.match(/^Bearer\s+(.+)$/i);
++  const user = m ? await panelActorFromToken(env, m[1]) : null;
++  if (!user) return json({ error: 'no_auth', message: 'Missing Authorization header' }, 401);
++  const MAC = String(mac || '').toUpperCase();
++  if (!MAC_RX.test(MAC)) return badRequest('invalid mac');
++  if (!env.DB) return json({ error: 'no_db' }, 503);
++  if (user.role === 'reseller') {
++    const dev = await env.DB.prepare('SELECT reseller_id FROM devices WHERE mac = ?').bind(MAC).first();
++    if (!dev || dev.reseller_id !== user.sub) {
++      return json({ error: 'forbidden', message: 'Cet appareil ne vous appartient pas' }, 403);
++    }
++  }
++  await ensureDeviceSourcesTable(env);
++  await ensureResetColumn(env);
++  const now = Date.now();
++  await env.DB.prepare('DELETE FROM device_sources WHERE mac = ?').bind(MAC).run();
++  const upd = await env.DB
++    .prepare('UPDATE devices SET reset_at = ? WHERE mac = ?')
++    .bind(now, MAC).run();
++  if (!upd || !upd.meta || !upd.meta.changes) {
++    return json({ error: 'not_found', message: 'Appareil inconnu' }, 404);
++  }
++  await notifyBox(env, MAC, 'reset');
++  // Les builds antérieurs à 165 ignorent « reset » : « source » leur fait
++  // relire des listes vides, donc effacer celles du panel.
++  await notifyBox(env, MAC, 'source');
++  return json({ ok: true, mac: MAC, reset_at: now });
++}
++
++let _resetColumnReady = false;
++async function ensureResetColumn(env) {
++  if (_resetColumnReady || !env.DB) return;
++  try { await env.DB.prepare('ALTER TABLE devices ADD COLUMN reset_at INTEGER').run(); } catch (_) { /* déjà là */ }
++  _resetColumnReady = true;
++}
++
++/// Heure de la dernière remise à neuf demandée par le panel (0 = jamais).
++/// Lue par la box dans /api/status/:mac. Colonne absente → 0.
++async function resetAtFor(env, mac) {
++  if (!env.DB) return 0;
++  try {
++    const row = await env.DB.prepare('SELECT reset_at FROM devices WHERE mac = ?').bind(mac).first();
++    const v = row && row.reset_at;
++    return typeof v === 'number' && v > 0 ? v : 0;
++  } catch (_) {
++    return 0;
++  }
++}
++
+ // /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
+ // stocké pour cette MAC (rempli par le heartbeat). L'app le lit au démarrage
+ // pour restaurer « Récemment » / « Pour vous » sur une 2e box. Lecture seule,
+@@ -3717,6 +3781,11 @@ async function handleRequest(request, env, ctx) {
+           request, env, decodeURIComponent(selfRemove[1]), decodeURIComponent(selfRemove[2]),
+         );
+       }
++      // POST /api/v1/sources/:mac/reset — remise à neuf de la box.
++      const resetBox = url.pathname.match(/^\/api\/v1\/sources\/([^/]+)\/reset$/);
++      if (resetBox && request.method === 'POST') {
++        return handlePanelResetBox(request, env, decodeURIComponent(resetBox[1]));
++      }
+     }
+ 
+     if (url.pathname.startsWith('/api/v1/')) {

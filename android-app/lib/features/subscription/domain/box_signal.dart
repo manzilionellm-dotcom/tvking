@@ -62,6 +62,10 @@ Set<SignalRefresh> refreshesFor(String kind) {
     case 'source':
     case 'source_clear':
       return <SignalRefresh>{SignalRefresh.status, SignalRefresh.source};
+    // Remise à neuf depuis le panel : le statut porte `reset_at`, la box
+    // efface tout dans _tick, puis relit ses listes (vides).
+    case 'reset':
+      return <SignalRefresh>{SignalRefresh.status, SignalRefresh.source};
     case 'message':
       return <SignalRefresh>{SignalRefresh.announcement};
     case 'theme':

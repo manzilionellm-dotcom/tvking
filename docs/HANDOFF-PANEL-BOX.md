@@ -300,6 +300,20 @@ demande (ce que font IBO / TiviMate / Smarters).
   (empreintes calculées sur l'artefact téléchargé). La release publique
   `zuno-windows` date toujours du 3 octobre (run #11, commit 2471156).
 
+## 5 quaterdecies. Réinitialiser la box, listes à part, mise à jour de test en 60 s (6 octobre, 00:54)
+
+- 5e patch `docs/patches/panel-reinitialiser-et-listes.patch` (après les
+  quatre autres) : Worker `POST /api/v1/sources/:mac/reset` + `reset_at`
+  dans `/api/status` + ordre « reset » ; panel : bouton **Réinitialiser la
+  box** (fiche appareil), Activation = licence seule, page **Listes**
+  (remplace par défaut, ajoute si décoché). 17 tests Worker, 47 panel.
+- Box #165 : `BoxReset` (efface tout sur `reset_at`, repli `zuno.reset.off`),
+  box de test vérifie une mise à jour toutes les 60 s (repli
+  `zuno.update.test_poll_legacy`). Rapport § 7 undecies.
+- Pourquoi la mise à jour prenait 3 à 5 min : aucun signal du build vers la
+  box, lecture de `version.json` toutes les 30 min. Pour les clients, le
+  bouton Mise à jour forcée du panel est déjà immédiat.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.

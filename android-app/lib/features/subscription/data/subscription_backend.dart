@@ -74,7 +74,15 @@ class RemoteSubscriptionStatus {
     required this.trialUntil,
     this.sourceRev,
     this.revoked = const <String>[],
+    this.resetAt = 0,
   });
+
+  /// Heure (ms) de la dernière remise à neuf demandée depuis le panel
+  /// (bouton « Réinitialiser la box », 06/10/2026). `0` = jamais, ou Worker
+  /// pas encore mis à jour. Plus récent que la dernière appliquée → la box
+  /// efface listes, chaînes, favoris, historique et guide, puis relit ses
+  /// listes. Lue dans le statut : une box éteinte l'applique au réveil.
+  final int resetAt;
 
   /// `true` si le serveur connaît ce MAC (= il a déjà fait un
   /// heartbeat). `false` la 1ère fois (création en cours).
@@ -150,6 +158,7 @@ class RemoteSubscriptionStatus {
           ? (json['source_rev'] as num?)?.toInt() ?? 0
           : null,
       revoked: SourceFingerprint.revokedFromBody(json),
+      resetAt: (json['reset_at'] as num?)?.toInt() ?? 0,
     );
   }
 

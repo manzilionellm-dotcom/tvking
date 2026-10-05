@@ -34,6 +34,7 @@ import '../../country_home/data/featured_repository.dart';
 import '../../device/data/device_identity.dart';
 import '../../device/data/device_secret.dart';
 import '../../feedback/data/feedback_repository.dart';
+import '../../playlists/data/box_reset.dart';
 import '../../playlists/data/default_servers.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -183,6 +184,12 @@ class RemoteActivationWatch {
         return;
       }
       _failures = 0;
+      // Remise à neuf demandée depuis le panel (« Réinitialiser la box ») :
+      // tout est effacé AVANT de relire les listes, qui sont alors vides.
+      if (await BoxReset.maybeApply(snapOf().resetAt)) {
+        _lastSourceRev = null;
+        sourceOrdered = true;
+      }
       // Tombstones du statut : on efface même si le lecteur est
       // ouvert (on n'importe pas une grosse liste à ce moment-là).
       if (snapOf().revoked.isNotEmpty) {

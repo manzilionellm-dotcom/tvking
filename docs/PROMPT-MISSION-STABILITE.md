@@ -41,6 +41,81 @@ noire ou le test qui le prouve. Si tu n'as pas la preuve, tu écris
    comportement a son interrupteur de repli, défaut OFF.
 5. `android-app/AGENTS.md` — conventions Flutter du projet.
 
+## Carte complète du projet (tout ce qui existe, pour ne rien chercher)
+
+- **Dépôt** `manzilionellm-dotcom/tvking`. Racine : site web Next.js (ne pas
+  y toucher pour cette mission). Tout le reste est sous `android-app/`.
+- **App box / PC** (`android-app/lib/`) : entrées `main_tv.dart` (box),
+  `main_windows.dart` (PC, même code), `main.dart` (téléphone).
+  `core/` : app (interrupteurs `repair_flags.dart`), blackbox (journal),
+  branding, crash, curation, flavor, i18n (`lib/l10n/*.arb`, fr = modèle),
+  network, notifications, observability, support, theme, update
+  (`update_service.dart` : `version.json` GitHub, installation automatique),
+  widgets. `features/` : about, admin, ads, box_extras, carousel, cast,
+  channels, cinema, country_home, device (identité MAC), epg, feedback,
+  followed, missed_show, onboarding, panel_board, player (lecteur natif
+  Media3 dans `packages/native_video_player/`), playlists (import M3U/Xtream,
+  `remote_source_repository.dart` = listes du panel, `box_reset.dart` =
+  remise à neuf, `source_retry.dart`, `m3u_link.dart`), pricing, profile(s),
+  recordings, remote, security, settings, simple_home, sports, subscription
+  (`remote_activation_watch.dart` = boucle panel → box, `box_channel_session`
+  = WebSocket, `box_signal_client` = attente longue, `domain/box_signal.dart`
+  = table des ordres), subtitles, theme, time_picks, tv (écrans TV,
+  `tv_content_refresh.dart`), vod, voice.
+- **Interrupteurs de repli** (tous défaut OFF, `repair_flags.dart`) :
+  zuno.player.hold_frame_legacy, zuno.blackbox.raw, zuno.blackbox.fsync_all,
+  zuno.sync.during_playback, zuno.epg.refresh_off, zuno.epg.inline_parse,
+  zuno.history.on_open, zuno.mac.show_prefix, zuno.update.legacy,
+  zuno.channel.legacy, zuno.sync.pill_off, zuno.panel.visibility_off,
+  zuno.source.order_waits_idle, zuno.refresh.auto_full,
+  zuno.import.first_batch_off, zuno.heartbeat.after_import_off,
+  zuno.sync.pill_show, zuno.update.auto_install_off, zuno.m3u.timeout_legacy,
+  zuno.source.m3u_link_as_m3u, zuno.source.retry_always,
+  zuno.import.reinsert_off, zuno.refresh.pending_legacy, zuno.reset.off,
+  zuno.update.test_poll_legacy.
+- **Worker** (`android-app/cloudflare/`, prod = `claude/panel-mise-en-ligne`) :
+  `worker.js` routes publiques (`/api/` ad, ai, announcement, app-version,
+  backup, blackbox, box (ws/wait/ack), clients, device-source, featured,
+  feedback, feedback-prompt, greeting, heartbeat, history, home-layout,
+  panel, pricing, release, screen, self-source, servers, sports, status,
+  theme, trending) ; `api_v1.js` routes du panel (`/api/v1/` activate, ad,
+  announcements, apps, audit-logs, auth, backup, blackbox, customers,
+  devices, families, featured, feedback, feedback-prompt, force-update,
+  grant-trial-all, home-layout, licenses, me, online, plan-costs, pricing,
+  references, resellers, servers, sources (+ `/self/:id`, `/reset`), stats,
+  theme, transfer, trial-extend) ; `box_channel.js` (ordres, Durable Object
+  `RealtimeHub`, `CHANNEL_KINDS`) ; `blackbox_journal.js` ; `schema.sql` ;
+  tests `*.test.mjs` (activation_m3u 95, blackbox 34, box_channel 8,
+  linkage_sim, reset_box_panel 17, self_source_panel 13), lancés par
+  `node --experimental-sqlite cloudflare/<fichier>`.
+- **Panel** (`android-app/admin-panel/`, React + Vite, prod =
+  https://tvking-admin.pages.dev) : pages Account, Activate (grande
+  activation), Activations, Ad, Apps, BlackBox, ControlCenter, Customers,
+  Dashboard, Devices (fiche appareil : ⚡ Envoi instantané, Liste de chaînes,
+  Boîte noire, Effacer les listes, Réinitialiser la box, Transférer, Geler,
+  Bannir, Supprimer), Families, Featured, ForceUpdate, History, HomeManager,
+  Login, Notifications, Online, PushSource (= Listes, `/chaines`), References,
+  RemoteActivate (licence seule), Resellers, Reviews, Tarifs, Theme,
+  Transfer. `src/lib/` : api.ts, sources.ts (plans purs), instant.ts,
+  blackbox.ts, i18n.tsx, robust.ts, mac.ts, plans.ts. Tests `npm test`
+  (47), build `npm ci && npm run build`.
+- **Workflows GitHub** (`.github/workflows/`) : `build-zuno-tv.yml` (box,
+  `test_box` / `publish`), `build-zuno-windows.yml` (PC, `publish`),
+  `deploy-panel-cloudflare.yml` (panel + Worker, `confirme=DEPLOYER`),
+  `deploy-pages.yml`, `publish-*.yml` (téléphone, TV, cinéma, maître),
+  `cleanup-old-apks.yml`, `qa-gates.yml`, `quality-zuno.yml`,
+  `set-admin-password.yml`, `worker-prod-snapshot.yml`,
+  `dns-zuno-subdomain.yml`. Secrets disponibles : `ANDROID_*` (signature),
+  `CLOUDFLARE_*`, `GITHUB_TOKEN`. Aucun jeton d'API du Worker en secret.
+- **Releases GitHub** : `zuno-tv` (clients, `version.json`), `zuno-tv-test`
+  (box de test), `zuno-windows` (PC), `latest` (téléphone).
+- **Docs** (`docs/`) : HANDOFF-PANEL-BOX (passation), MESURE-ACTIVATION-
+  INSTANTANEE (mesures), PROMPT-MISSION-STABILITE (ce fichier),
+  CANAL-TEMPS-REEL, PANEL-INSTANTANE, PANEL-BOX-CARTES-ACCUEIL,
+  AUDIO-BOITE-NOIRE, SECURITE-ZUNO, AUDIT-ZUNO(-TV-2026-10), CATALOGUE,
+  INTELLIGENT, RESEARCH-TV-UX, RELEASE-103/104/106, `patches/` (5 patchs
+  panel/Worker à appliquer dans l'ordre).
+
 ## Contexte minimal
 
 - Un dépôt. App box : `android-app/` (Flutter, entrée `lib/main_tv.dart`).
@@ -107,11 +182,17 @@ Prouvé et corrigé côté box (builds #156 → #164, tous `107-test.N`) :
 - Chaque suppression de liste est journalisée avec sa raison et le nombre de
   lignes réellement effacées.
 
-Écrit, testé, **pas encore en production** (panel/Worker, `docs/patches/`) :
-boîte noire lisible dans le panel ; ⚡ Envoi instantané avec « liste sur la
-TV après N s » ; retrait d'une liste ajoutée par le client ; « Activer »
-remplace les listes du panel au lieu d'en ajouter (c'était « il me donne
-toujours l'ancien serveur »).
+- Remise à neuf depuis le panel (`reset_at` du statut → `BoxReset` efface
+  tout, puis relit les listes) ; repli `zuno.reset.off`.
+- Box de test : vérification de mise à jour toutes les 60 s (clients :
+  30 min + ordre `force_update` immédiat) ; repli `zuno.update.test_poll_legacy`.
+
+Écrit, testé, **pas encore en production** (panel/Worker, `docs/patches/`,
+5 patchs dans l'ordre) : boîte noire lisible dans le panel ; ⚡ Envoi
+instantané avec « liste sur la TV après N s » ; retrait d'une liste ajoutée
+par le client ; « Activer » remplace au lieu d'ajouter ; **Réinitialiser la
+box** (`POST /api/v1/sources/:mac/reset`) ; Activation = licence seule et
+page **Listes** à part (remplace par défaut, ajoute si décoché).
 
 Mesuré, pas élucidé :
 - **Qui efface la ligne de la liste pendant un import de 130 s ?** Reproduit
@@ -136,6 +217,18 @@ Mesuré, pas élucidé :
    chaînes (échec d'écriture = pas un problème de fournisseur) ni quand le
    serveur a répondu un statut hors 2xx/404 sur `player_api.php`. Test Dart
    pur sur la décision, ligne boîte noire explicite.
+
+**P1 — Mise à jour de l'app instantanée (demande du 6 octobre).**
+Aujourd'hui la box apprend qu'un APK existe en lisant `version.json` sur
+GitHub (60 s box de test, 30 min clients) ; le panel → Mise à jour forcée
+envoie l'ordre `force_update`, immédiat. Pour que le **build** prévienne la
+box lui-même : ajouter un secret GitHub (jeton admin ou jeton dédié
+« build ») et, dans `build-zuno-tv.yml` après la publication, un appel au
+Worker (`POST /api/v1/force-update` pour les clients après `publish=true`,
+ou un ordre `force_update` à la seule MAC de test pour `test_box=true`,
+route à créer `POST /api/v1/devices/:mac/force-update`). Mesure de
+succès : ligne `[MAJ] installee <versionCode>` moins de 90 s après la fin
+du workflow, confirmation Android comprise. Jamais de jeton dans le dépôt.
 
 **P1 — Tenir 3 à 5 s sur les gros fournisseurs, comme les grandes applications.**
 3. Import en deux temps : catégories + première catégorie affichées tout de

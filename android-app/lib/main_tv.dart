@@ -247,9 +247,19 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
     unawaited(Future<void>.delayed(const Duration(minutes: 1), () {
       UpdateService.instance.autoUpdate(busy: () => TvActivity.isBusy);
     }));
-    Timer.periodic(const Duration(minutes: 30), (_) {
-      UpdateService.instance.autoUpdate(busy: () => TvActivity.isBusy);
-    });
+    // Box de TEST (release zuno-tv-test dans extraManifestUrls) : vérification
+    // toutes les 60 s, pour qu'un build arrive dans la minute (mesuré le
+    // 06/10/2026 : « 3 à 5 minutes avant que la mise à jour arrive »). Les
+    // clients gardent 30 min + l'ordre « force_update » du panel, qui est
+    // immédiat. Repli : zuno.update.test_poll_legacy.
+    final bool testBox = UpdateService.extraManifestUrls.isNotEmpty &&
+        !RepairFlags.testUpdatePollLegacy;
+    Timer.periodic(
+      testBox ? const Duration(minutes: 1) : const Duration(minutes: 30),
+      (_) {
+        UpdateService.instance.autoUpdate(busy: () => TvActivity.isBusy);
+      },
+    );
   } else {
     debugPrint('[main_tv] mode sans échec → ré-import de la source distante sauté.');
   }
