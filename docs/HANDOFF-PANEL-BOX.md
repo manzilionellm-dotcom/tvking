@@ -205,6 +205,11 @@ Demandes écrites du propriétaire, détail dans `docs/MESURE-ACTIVATION-INSTANT
   « Liste sur la TV après N s ». La box ≥ #158 renvoie son inventaire tout
   de suite après un import du panel (repli `zuno.heartbeat.after_import_off`).
 
+- Build de test **#159** = `107-test.159`, versionCode 1791229916, SHA-256
+  `46166a48…dfacf`, signé `5145b8e0…`, contient tout (#156 + #157 + ci-dessus).
+  Le #158 (même commit) : binaire `sqlite3` corrompu côté runner, puis relance
+  annulée en file d'attente ; aucun changement de code entre les deux.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.

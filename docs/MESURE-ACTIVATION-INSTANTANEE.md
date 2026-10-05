@@ -151,6 +151,27 @@ Build #157 (`107-test.157`, run 37362062690, commit `56c6f63`) : vert, SHA-256
 et versionCode dans `zuno-tv-test/version.json` au moment du run ; remplacé
 par le #158 ci-dessous, qui contient tout.
 
+## 7 quater. Build #159 = tout ce qui précède (vérifié)
+
+Le #158 (même commit `7cbdca3`) a échoué sur un binaire `sqlite3` téléchargé
+corrompu par le runner (empreinte différente, hors de notre code ; analyse +
+tests verts), et sa relance a été annulée après 15 min de file d'attente sans
+tourner. Run neuf #159 : https://github.com/manzilionellm-dotcom/tvking/actions/runs/37365911230
+(`test_box=true`, `publish=false`), conclusion **success**.
+
+| Champ | Valeur |
+| --- | --- |
+| Version visible | `107-test.159` |
+| versionCode | `1791229916` |
+| SHA-256 de l'APK | `46166a48efbc19d83ce71dd529be46d6950999a283edc391e85039a7e5cdfacf` |
+| Taille | 54 735 842 octets |
+| Signature | `5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61` (clé des box clients) |
+| Contenu | #156 (ordre du panel = import immédiat) + #157 (passe auto 6 h, premier lot, chiffres) + pastille cachée, mise à jour auto de l'app, inventaire renvoyé après import |
+| Release clients `zuno-tv` | non touchée |
+| Lien | https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv-test/zuno-tv.apk |
+
+Suite Flutter sur ce commit : 443 verts, 2 ignorés (`flutter test`, 05/10 19:25 UTC).
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).
