@@ -272,6 +272,10 @@ demande (ce que font IBO / TiviMate / Smarters).
 - Box (ce commit) : « Mes sources » prévient qu'une liste du panel revient si
   on la supprime sur la télé ; la boîte noire nomme la raison. Pas de flag.
 - ANR 23:47 (330 Mo) : non élucidé, il faut les lignes `GEL` 23:44–23:47.
+- Build #163 = `107-test.163`, versionCode 1791237816, SHA-256
+  `dbc30ee9f72734d81360dc09aada2cc1030b8208ebda0308a510c004cb9a012e`
+  (54 755 742 octets, run 37379758296, commit dab884b) : #162 + avertissement
+  « Mes sources » et raison de suppression dans la boîte noire.
 
 ## 6. Règles du propriétaire (non négociables)
 

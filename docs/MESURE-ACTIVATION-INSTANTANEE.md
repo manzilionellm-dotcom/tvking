@@ -370,6 +370,12 @@ affirmée. Hypothèse la plus probable, non prouvée : import M3U de plus de
   `RemoteSourceRepository.servedByPanel`, 3 tests. Aucun interrupteur : seul le
   texte et la raison changent, pas le comportement.
 
+**Build #163 vérifié** (`build-zuno-tv.yml`, `test_box=true`, `publish=false`,
+run 37379758296, commit dab884b) : `107-test.163`, versionCode 1791237816,
+SHA-256 `dbc30ee9f72734d81360dc09aada2cc1030b8208ebda0308a510c004cb9a012e`,
+54 755 742 octets, `mandatory: false`. Suite Flutter avant commit : 469 verts,
+2 ignorés.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).
