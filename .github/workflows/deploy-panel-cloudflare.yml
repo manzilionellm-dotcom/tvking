@@ -225,6 +225,14 @@ jobs:
           done
           echo "avant : $(cat avant_bundle.txt)"; echo "après : $(cat apres_bundle.txt)"
           diff -q avant_bundle.txt apres_bundle.txt >/dev/null && { echo "::error::le site sert encore l ancien bundle"; exit 1; }
-          curl -sS -m 30 "$PAGES_URL/$(cat apres_bundle.txt)" | grep -q "Activation 1 an" || { echo "::error::le bundle servi n a pas le nouvel écran"; exit 1; }
+          # Le cache de Cloudflare peut servir le nouveau nom de fichier
+          # quelques secondes avant son contenu (faux rouge du 5/10, run #6).
+          # On réessaie jusqu'à 6 fois, 10 s d'écart, avant de conclure.
+          ok=0
+          for i in 1 2 3 4 5 6; do
+            if curl -sS -m 30 "$PAGES_URL/$(cat apres_bundle.txt)" | grep -q "Activation 1 an"; then ok=1; break; fi
+            echo "bundle pas encore propagé (essai $i/6)"; sleep 10
+          done
+          [ "$ok" = 1 ] || { echo "::error::le bundle servi n a pas le nouvel écran"; exit 1; }
           curl -sS -m 30 -o /dev/null -w "login HTTP %{http_code}\n" "$PAGES_URL/login"
           echo "✓ panel en ligne avec le nouvel écran"
