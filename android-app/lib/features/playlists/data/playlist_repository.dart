@@ -541,11 +541,16 @@ class PlaylistRepository {
     return '$base/xmltv.php?username=$username&password=$password';
   }
 
+  /// [originM3uUrl] : le lien get.php d'où vient ce compte quand le panel
+  /// a envoyé un lien M3U lu par l'API Xtream (m3u_link.dart). Gardé dans
+  /// la ligne pour que l'empreinte M3U du panel (effacement, interrupteur
+  /// allumé / éteint) retrouve cette liste.
   Future<Playlist> addXtreamPlaylist({
     required String name,
     required String serverUrl,
     required String username,
     required String password,
+    String? originM3uUrl,
     http.Client? httpClient,
   }) async {
     // 1) Vérifie d'abord les credentials, avant de polluer la base
@@ -566,6 +571,7 @@ class PlaylistRepository {
         id: null,
         name: name,
         type: PlaylistType.xtream,
+        m3uUrl: originM3uUrl,
         xtreamServer: serverUrl,
         xtreamUsername: username,
         xtreamPassword: password,

@@ -158,6 +158,15 @@ abstract final class RepairFlags {
   static const String m3uTimeoutLegacyKey = 'zuno.m3u.timeout_legacy';
   static bool m3uTimeoutLegacy = false;
 
+  /// Vrai = un lien « get.php?username=…&password=… » envoyé par le panel
+  /// est téléchargé comme un fichier M3U complet (ancien comportement :
+  /// des dizaines de Mo, parfois plus de 90 s à générer). Faux = il est
+  /// lu par l'API Xtream du même serveur (chaînes TV seules, JSON léger,
+  /// quelques secondes), comme le font les grandes applications ; si
+  /// l'API refuse, repli automatique sur le fichier M3U.
+  static const String m3uLinkAsM3uKey = 'zuno.source.m3u_link_as_m3u';
+  static bool m3uLinkAsM3u = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -178,6 +187,7 @@ abstract final class RepairFlags {
     bool pillShow = false;
     bool autoInstOff = false;
     bool m3uLegacy = false;
+    bool linkAsM3u = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -199,6 +209,7 @@ abstract final class RepairFlags {
       pillShow = prefs.getBool(updatingPillShownKey) ?? false;
       autoInstOff = prefs.getBool(autoInstallOffKey) ?? false;
       m3uLegacy = prefs.getBool(m3uTimeoutLegacyKey) ?? false;
+      linkAsM3u = prefs.getBool(m3uLinkAsM3uKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -219,7 +230,9 @@ abstract final class RepairFlags {
       pillShow = false;
       autoInstOff = false;
       m3uLegacy = false;
+      linkAsM3u = false;
     }
+    m3uLinkAsM3u = linkAsM3u;
     m3uTimeoutLegacy = m3uLegacy;
     updatingPillShown = pillShow;
     autoInstallOff = autoInstOff;
@@ -265,6 +278,7 @@ abstract final class RepairFlags {
     updatingPillShown = false;
     autoInstallOff = false;
     m3uTimeoutLegacy = false;
+    m3uLinkAsM3u = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

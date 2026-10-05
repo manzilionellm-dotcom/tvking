@@ -219,6 +219,16 @@ livre pas en 90 s. Correctif #160 : en-têtes 120 s, puis on continue tant
 que des octets arrivent (silence 60 s max, 10 min total), raison précise
 dans la boîte noire ; repli `zuno.m3u.timeout_legacy`. Rapport § 7 quinquies.
 
+## 5 nonies. Lien get.php lu par l'API Xtream (5 octobre, 22:40)
+
+« Instantané comme les grandes marques » : un lien `get.php?username&password`
+envoyé par le panel est importé par l'API Xtream (chaînes TV seules, JSON
+léger, quelques secondes), repli automatique sur le fichier M3U si l'API
+refuse. Empreintes doubles (Xtream + lien) pour l'effacement et
+l'interrupteur. Repli `zuno.source.m3u_link_as_m3u`. Patch panel
+`panel-envoi-instantane.patch` régénéré (reconnaît la liste en Xtream).
+Rapport § 7 sexies. Build #160.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.

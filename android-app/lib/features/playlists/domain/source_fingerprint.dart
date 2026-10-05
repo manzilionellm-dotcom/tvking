@@ -6,8 +6,26 @@
 //  panel vient de retirer, sans jamais comparer les mots de passe.
 // =========================================================
 
+import 'playlist.dart';
+
 /// Empreinte stable d'une source IPTV.
 abstract final class SourceFingerprint {
+  /// Toutes les empreintes sous lesquelles une liste LOCALE peut être
+  /// reconnue. Une liste Xtream venue d'un lien get.php du panel
+  /// (m3u_link.dart) en a deux : la sienne (`xtream|…`) et celle du lien
+  /// que le panel connaît (`m3u|…`). L'effacement et l'interrupteur
+  /// allumé / éteint la retrouvent par l'une ou l'autre.
+  static List<String> ofPlaylist(Playlist playlist) {
+    final List<String> out = <String>[];
+    if (playlist.type == PlaylistType.xtream) {
+      final String? fp = xtream(playlist.xtreamServer, playlist.xtreamUsername);
+      if (fp != null) out.add(fp);
+    }
+    final String? link = m3u(playlist.m3uUrl);
+    if (link != null && !out.contains(link)) out.add(link);
+    return out;
+  }
+
   static String? xtream(String? server, String? username) {
     final String host = (server ?? '').trim().replaceAll(RegExp(r'/+$'), '').toLowerCase();
     final String user = (username ?? '').trim();

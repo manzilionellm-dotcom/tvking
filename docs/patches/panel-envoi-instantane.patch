@@ -13,10 +13,10 @@ index 39d69ca..4ea9a66 100644
      "react": "^18.3.1",
 diff --git a/android-app/admin-panel/src/lib/instant.test.ts b/android-app/admin-panel/src/lib/instant.test.ts
 new file mode 100644
-index 0000000..2850c38
+index 0000000..12d1612
 --- /dev/null
 +++ b/android-app/admin-panel/src/lib/instant.test.ts
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,92 @@
 +// =========================================================
 +//  instant.test.ts — « Envoi instantané » : la liste est-elle sur la TV ?
 +//  node --experimental-strip-types --test src/lib/instant.test.ts
@@ -32,6 +32,7 @@ index 0000000..2850c38
 +  hostKey,
 +  instantLabel,
 +  listOnTv,
++  userFromGetPhp,
 +} from './instant.ts';
 +
 +test('hôte comme la box : minuscules, port seulement s’il est écrit', () => {
@@ -59,6 +60,19 @@ index 0000000..2850c38
 +  assert.ok(listOnTv(inv, { type: 'xtream', server_url: 'http://srv.example.test:25461', username: 'client1' }));
 +  assert.equal(listOnTv(inv, { type: 'xtream', server_url: 'http://srv.example.test:25461', username: 'client2' }), null);
 +  assert.equal(listOnTv(null, { type: 'xtream', server_url: 'http://srv.example.test:25461', username: 'client1' }), null);
++});
++
++test('lien get.php envoyé en M3U, lu par la box comme compte Xtream', () => {
++  assert.equal(userFromGetPhp('http://srv.example.test:80/get.php?username=u9&password=p9&type=m3u_plus'), 'u9');
++  assert.equal(userFromGetPhp('http://srv.example.test/liste.m3u'), '');
++  assert.equal(userFromGetPhp('http://srv.example.test/get.php?username=u9'), '');
++  const inv = [{ type: 'xtream' as const, server: 'srv.example.test:80', username: 'u9', channels: 3100 }];
++  const hit = listOnTv(inv, { type: 'm3u', m3u_url: 'http://srv.example.test:80/get.php?username=u9&password=p9' });
++  assert.ok(hit && hit.channels === 3100);
++  // Autre identifiant sur le même serveur : pas la même liste.
++  assert.equal(listOnTv(inv, { type: 'm3u', m3u_url: 'http://srv.example.test:80/get.php?username=u8&password=p8' }), null);
++  // Un vrai fichier .m3u n'est jamais pris pour un compte Xtream.
++  assert.equal(listOnTv(inv, { type: 'm3u', m3u_url: 'http://srv.example.test:80/liste.m3u' }), null);
 +});
 +
 +test('plusieurs listes : vues et manquantes', () => {
@@ -97,10 +111,10 @@ index 0000000..2850c38
 +});
 diff --git a/android-app/admin-panel/src/lib/instant.ts b/android-app/admin-panel/src/lib/instant.ts
 new file mode 100644
-index 0000000..e78e90d
+index 0000000..28d3c64
 --- /dev/null
 +++ b/android-app/admin-panel/src/lib/instant.ts
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,167 @@
 +// =========================================================
 +//  instant.ts — « Envoi instantané » : la liste est-elle SUR la TV ?
 +// =========================================================
@@ -172,13 +186,39 @@ index 0000000..e78e90d
 +  const wantHost = hostKey(sent.type === 'xtream' ? sent.server_url : sent.m3u_url);
 +  if (!wantHost) return null;
 +  const wantUser = String(sent.username ?? '').trim();
++  // Un lien get.php envoyé en M3U est lu par la box (107-test.160+) comme
++  // un compte Xtream du même serveur : l'inventaire le décrit alors en
++  // « xtream », avec l'identifiant du lien.
++  const linkUser = sent.type === 'm3u' ? userFromGetPhp(sent.m3u_url) : '';
 +  for (const item of inventory) {
-+    if (!item || item.type !== sent.type) continue;
++    if (!item) continue;
 +    if (!sameHost(hostKey(item.server), wantHost)) continue;
-+    if (sent.type === 'xtream' && String(item.username ?? '').trim() !== wantUser) continue;
-+    return item;
++    const itemUser = String(item.username ?? '').trim();
++    if (item.type === sent.type) {
++      if (sent.type === 'xtream' && itemUser !== wantUser) continue;
++      return item;
++    }
++    if (sent.type === 'm3u' && item.type === 'xtream' && linkUser && itemUser === linkUser) {
++      return item;
++    }
 +  }
 +  return null;
++}
++
++/// Identifiant d'un lien `get.php?username=…&password=…`, sinon ''.
++export function userFromGetPhp(raw: string | null | undefined): string {
++  const text = String(raw ?? '').trim();
++  if (!text) return '';
++  try {
++    const u = new URL(text);
++    const last = u.pathname.split('/').pop() ?? '';
++    if (last.toLowerCase() !== 'get.php') return '';
++    const user = (u.searchParams.get('username') ?? '').trim();
++    const pass = (u.searchParams.get('password') ?? '').trim();
++    return user && pass ? user : '';
++  } catch {
++    return '';
++  }
 +}
 +
 +/// Toutes les listes envoyées sont-elles sur la TV ? (bouton de la fiche

@@ -48,6 +48,8 @@ void main() {
     expect(RepairFlags.autoInstallOffKey, 'zuno.update.auto_install_off');
     expect(RepairFlags.m3uTimeoutLegacy, isFalse);
     expect(RepairFlags.m3uTimeoutLegacyKey, 'zuno.m3u.timeout_legacy');
+    expect(RepairFlags.m3uLinkAsM3u, isFalse);
+    expect(RepairFlags.m3uLinkAsM3uKey, 'zuno.source.m3u_link_as_m3u');
 
     SharedPreferences.setMockInitialValues(<String, Object>{
       RepairFlags.autoRefreshFullKey: true,

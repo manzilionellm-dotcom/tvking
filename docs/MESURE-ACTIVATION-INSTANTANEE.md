@@ -202,6 +202,34 @@ Limite vraie : si le fournisseur met plus de 2 minutes à répondre ou coupe
 lui-même, aucun délai côté box ne l'arrangera ; il faut alors un lien plus
 léger (sans films/séries) ou un autre fournisseur. La boîte noire le dira.
 
+## 7 sexies. « Instantané comme les grandes marques » : le lien get.php lu par l'API Xtream
+
+Ce que font réellement les grandes applications avec un lien
+`get.php?username=…&password=…` : elles ne téléchargent pas le fichier M3U
+(chaînes + films + séries, des dizaines de Mo, parfois plus de 90 s à
+générer). Elles lisent les **mêmes identifiants par l'API Xtream**
+(`player_api.php`), qui renvoie la liste des chaînes TV seule en JSON léger,
+en quelques secondes ; films et séries viennent ensuite, à la demande.
+
+Build #160 : quand le panel envoie un lien get.php, la box en extrait le
+compte (`m3u_link.dart`, pur, testé), importe les chaînes TV par l'API
+(chemin Xtream déjà en place, par catégorie si la liste est grande), et ne
+retombe sur le téléchargement du fichier M3U que si l'API refuse. La liste
+garde les deux empreintes (Xtream et lien) pour que l'effacement et
+l'interrupteur allumé / éteint du panel la retrouvent
+(`SourceFingerprint.ofPlaylist`, testé). Le panel (patch « envoi instantané »)
+reconnaît la liste dans l'inventaire sous sa forme Xtream.
+
+Repli : `zuno.source.m3u_link_as_m3u` (ancien comportement : fichier M3U).
+Boîte noire : `nouvelle liste Xtream (lien) reçue du panel : chargement`,
+`liste Xtream (lien) du panel chargée en N s (X chaînes)` ; en cas de refus
+de l'API : `API Xtream refusée pour ce lien : repli sur le fichier M3U`.
+
+Limite vraie : un lien vers un fichier `.m3u` statique, ou un fournisseur
+qui n'a pas d'API Xtream, suit le chemin M3U (avec les délais de § 7
+quinquies). Un fournisseur qui limite le nombre de connexions compte
+l'appel API comme une connexion, comme le téléchargement M3U.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

@@ -35,6 +35,7 @@ import '../../device/data/device_identity.dart';
 import '../../device/data/device_secret.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
+import '../domain/m3u_link.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
 import 'favorites_repository.dart';
@@ -284,9 +285,40 @@ abstract final class RemoteSourceRepository {
       final String m3u = (src['m3u_url'] as String?)?.trim() ?? '';
       if (m3u.isEmpty) return RemoteSyncResult.sourceFailed;
 
-      final bool already = existing.any((Playlist p) =>
-          p.type == PlaylistType.m3u && p.m3uUrl == m3u);
+      // Déjà là, sous forme M3U ou sous forme Xtream issue de ce lien.
+      final bool already = existing.any((Playlist p) => p.m3uUrl == m3u);
       if (already) return RemoteSyncResult.loaded;
+
+      // « Comme les grandes applications » (05/10/2026) : un lien get.php
+      // porte un compte Xtream. On lit les chaînes TV par l'API (JSON
+      // léger, quelques secondes) au lieu de faire générer et télécharger
+      // tout le fichier M3U (mesuré : refusé après 90 s chez un
+      // fournisseur lent). Si l'API refuse (fournisseur sans player_api,
+      // identifiants limités au M3U…), repli sur le fichier, comme avant.
+      final XtreamAccount? account =
+          RepairFlags.m3uLinkAsM3u ? null : xtreamFromM3uLink(m3u);
+      if (account != null) {
+        final bool sameAccount = existing.any((Playlist p) =>
+            p.type == PlaylistType.xtream &&
+            p.xtreamServer == account.serverUrl &&
+            p.xtreamUsername == account.username);
+        if (sameAccount) return RemoteSyncResult.loaded;
+        final RemoteSyncResult viaApi = await _timedImport('Xtream (lien)', () async {
+          final Playlist saved = await PlaylistRepository.instance.addXtreamPlaylist(
+            name: label,
+            serverUrl: account.serverUrl,
+            username: account.username,
+            password: account.password,
+            originM3uUrl: m3u,
+          );
+          return saved.channelCount;
+        });
+        if (viaApi == RemoteSyncResult.loaded) return viaApi;
+        BlackBox.instance.warn(
+          'SOURCE',
+          'API Xtream refusée pour ce lien : repli sur le fichier M3U',
+        );
+      }
 
       return _timedImport('M3U', () async {
         final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
@@ -369,11 +401,14 @@ abstract final class RemoteSourceRepository {
       for (final Playlist playlist in playlists) {
         final int? id = playlist.id;
         if (id == null) continue;
-        final String? fp = playlist.type == PlaylistType.xtream
-            ? SourceFingerprint.xtream(
-                playlist.xtreamServer, playlist.xtreamUsername)
-            : SourceFingerprint.m3u(playlist.m3uUrl);
-        final bool? enabled = fp == null ? null : plan.apply[fp];
+        // Une liste peut être connue du panel sous son lien M3U alors
+        // qu'elle est Xtream sur la box (lien get.php) : on regarde
+        // toutes ses empreintes.
+        bool? enabled;
+        for (final String fp in SourceFingerprint.ofPlaylist(playlist)) {
+          enabled = plan.apply[fp];
+          if (enabled != null) break;
+        }
         if (enabled == null) continue;
         await PlaylistRepository.instance.setPlaylistHidden(id, !enabled);
         BlackBox.instance.info(
@@ -400,11 +435,10 @@ abstract final class RemoteSourceRepository {
     for (final Playlist playlist in playlists) {
       final int? id = playlist.id;
       if (id == null) continue;
-      final String? fp = playlist.type == PlaylistType.xtream
-          ? SourceFingerprint.xtream(
-              playlist.xtreamServer, playlist.xtreamUsername)
-          : SourceFingerprint.m3u(playlist.m3uUrl);
-      if (fp == null || !drop.contains(fp)) continue;
+      // Empreinte Xtream ET empreinte du lien get.php d'origine : le
+      // panel retire par le lien, la box retrouve la liste quand même.
+      final bool hit = SourceFingerprint.ofPlaylist(playlist).any(drop.contains);
+      if (!hit) continue;
       channelIds.addAll(await _channelIdsOf(id));
       await PlaylistRepository.instance.deletePlaylist(id);
       removed++;
