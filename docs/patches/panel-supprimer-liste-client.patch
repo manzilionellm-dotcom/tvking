@@ -1,0 +1,400 @@
+diff --git a/android-app/admin-panel/src/lib/api.ts b/android-app/admin-panel/src/lib/api.ts
+index c360161..be4c591 100644
+--- a/android-app/admin-panel/src/lib/api.ts
++++ b/android-app/admin-panel/src/lib/api.ts
+@@ -516,6 +516,8 @@ export interface DeviceSource extends DeviceSourceInput {
+   updated_at?: number;
+   /// « panel » = poussée ici ; « self » = ajoutée par le client sur sa TV.
+   origin?: string | null;
++  /// Identifiant serveur d'une liste du client (sert à la retirer).
++  id?: string | null;
+ }
+ 
+ export interface TrialExtendResult {
+@@ -554,6 +556,13 @@ export const activateApi = {
+ 
+ // Source assignée par MAC (gérée indépendamment de l'activation).
+ export const sourcesApi = {
++  /// Retire une liste ajoutée par le client lui-même (origin « self »).
++  /// La box est prévenue : elle l'efface à la seconde.
++  removeClientList: (mac: string, id: string) =>
++    request<{ ok: boolean; remaining?: number }>(
++      `/api/v1/sources/${encodeURIComponent(mac)}/self/${encodeURIComponent(id)}`,
++      { method: 'DELETE' },
++    ),
+   // Le worker renvoie le TRIO complet (`sources`) + la 1re source (`source`,
+   // rétro-compat). On expose les deux : `sources` sert au panel pour montrer
+   // « tout ce que le client a dans le ventre » à partir de sa MAC.
+diff --git a/android-app/admin-panel/src/lib/sources.test.ts b/android-app/admin-panel/src/lib/sources.test.ts
+index f9ea0c0..b2c0070 100644
+--- a/android-app/admin-panel/src/lib/sources.test.ts
++++ b/android-app/admin-panel/src/lib/sources.test.ts
+@@ -83,7 +83,10 @@ test('dernière liste du panel, il reste celle du client : effacement panel seul
+ });
+ 
+ test('liste du client visée : rien n\'est envoyé', () => {
+-  assert.deepEqual(planRemoveSource([panelList, clientList], 1), { kind: 'client' });
++  assert.deepEqual(planRemoveSource([panelList, clientList], 1), { kind: 'client', id: null });
++  // Avec son identifiant serveur, le panel peut la retirer (05/10/2026).
++  const clientWithId = { ...clientList, id: 'c-123' } as SourceLike;
++  assert.deepEqual(planRemoveSource([panelList, clientWithId], 1), { kind: 'client', id: 'c-123' });
+   assert.equal(isClientList(clientList), true);
+   assert.equal(isClientList(panelList), false);
+ });
+diff --git a/android-app/admin-panel/src/lib/sources.ts b/android-app/admin-panel/src/lib/sources.ts
+index 75037c9..80111a1 100644
+--- a/android-app/admin-panel/src/lib/sources.ts
++++ b/android-app/admin-panel/src/lib/sources.ts
+@@ -28,6 +28,9 @@ export interface SourceLike {
+   /// `false` = liste ÉTEINTE par le panel (la box la masque sans l'effacer).
+   /// Absent ou `true` = allumée.
+   enabled?: boolean | null;
++  /// Identifiant serveur d'une liste du client (`origin: 'self'`), celui
++  /// que le Worker attend pour la retirer.
++  id?: string | null;
+ }
+ 
+ export type SourceInput = Pick<
+@@ -93,21 +96,25 @@ export function isClientList(s: SourceLike): boolean {
+ export type RemovePlan =
+   | { kind: 'keep'; sources: SourceInput[] }
+   | { kind: 'clear' }
+-  | { kind: 'client' }
++  | { kind: 'client'; id: string | null }
+   | { kind: 'invalid' };
+ 
+ /// Que faut-il envoyer pour retirer la liste [index] ?
+ /// - reste au moins une liste du PANEL → « keep » + les autres listes du
+ ///   panel, dans le même ordre (le serveur remet lui-même celles du client) ;
+ /// - plus aucune liste du panel → « clear » (le serveur garde celles du client) ;
+-/// - la liste visée a été ajoutée par le client → « client » : le Worker
+-///   actuel ne sait pas la retirer depuis le panel, on n'envoie rien ;
++/// - la liste visée a été ajoutée par le client → « client » avec son `id` :
++///   depuis le 05/10/2026 le Worker la retire par
++///   `DELETE /api/v1/sources/:mac/self/:id` (sans `id`, on n'envoie rien) ;
+ /// - index hors limites → « invalid » (on n'envoie rien).
+ export function planRemoveSource(sources: SourceLike[], index: number): RemovePlan {
+   if (!Number.isInteger(index) || index < 0 || index >= sources.length) {
+     return { kind: 'invalid' };
+   }
+-  if (isClientList(sources[index])) return { kind: 'client' };
++  if (isClientList(sources[index])) {
++    const id = sources[index].id;
++    return { kind: 'client', id: typeof id === 'string' && id ? id : null };
++  }
+   const rest = sources
+     .filter((s, i) => i !== index && !isClientList(s))
+     .map(toSourceInput);
+diff --git a/android-app/admin-panel/src/pages/DevicesPage.tsx b/android-app/admin-panel/src/pages/DevicesPage.tsx
+index e3f9e0b..4a020b9 100644
+--- a/android-app/admin-panel/src/pages/DevicesPage.tsx
++++ b/android-app/admin-panel/src/pages/DevicesPage.tsx
+@@ -398,16 +398,24 @@ function DeviceDetailModal({
+   async function removeOne(index: number) {
+     const list = ov?.sources ?? [];
+     const plan = planRemoveSource(list, index);
+-    if (plan.kind === 'invalid' || plan.kind === 'client') return;
++    if (plan.kind === 'invalid') return;
++    if (plan.kind === 'client' && !plan.id) {
++      setErr('Cette liste du client n\'a pas encore d\'identifiant serveur : relis la fiche puis réessaie.');
++      return;
++    }
+     const target = list[index];
+     const name = target.type === 'xtream' ? 'Xtream' : 'M3U';
+     if (!window.confirm(
+-      `Retirer la liste #${index + 1} (${name}) ? Elle disparaîtra de la TV du client toute seule, sans qu'il fasse rien.`,
++      plan.kind === 'client'
++        ? `Retirer la liste #${index + 1} (${name}) ajoutée par le client ? Elle disparaîtra de sa TV toute seule.`
++        : `Retirer la liste #${index + 1} (${name}) ? Elle disparaîtra de la TV du client toute seule, sans qu'il fasse rien.`,
+     )) return;
+     setClearing(true);
+     setErr(null);
+     try {
+-      if (plan.kind === 'clear') {
++      if (plan.kind === 'client') {
++        await sourcesApi.removeClientList(device.mac, plan.id!);
++      } else if (plan.kind === 'clear') {
+         await sourcesApi.clear(device.mac);
+       } else {
+         await sourcesApi.setMany(device.mac, plan.sources);
+@@ -671,13 +679,25 @@ function SourceCard({
+         </span>
+         {source.label && <span className="truncate text-xs text-ink-secondary">{source.label}</span>}
+         {isClientList(source) ? (
+-          // Ajoutée par le client sur sa TV : le serveur actuel ne sait pas
+-          // la retirer depuis le panel. Pas de bouton qui ne ferait rien.
+-          <span
+-            className="ml-auto rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-ink-tertiary"
+-            title="Liste ajoutée par le client lui-même. Elle ne se retire pas depuis le panel."
+-          >
+-            Ajoutée par le client
++          // Ajoutée par le client (TV ou Mon espace). Depuis le 05/10/2026
++          // le panel peut la retirer : avant, elle « revenait » sur la fiche
++          // après chaque effacement des listes du panel.
++          <span className="ml-auto flex items-center gap-1.5">
++            <span
++              className="rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-ink-tertiary"
++              title="Liste ajoutée par le client lui-même, sur sa TV ou dans Mon espace."
++            >
++              Ajoutée par le client
++            </span>
++            <button
++              type="button"
++              disabled={busy}
++              onClick={onRemove}
++              title="Retirer cette liste du client. Sa TV l'efface toute seule."
++              className="rounded-md border border-accent/40 px-2 py-0.5 text-[11px] text-accent-bright hover:bg-accent/10 disabled:opacity-40"
++            >
++              Supprimer
++            </button>
+           </span>
+         ) : (
+           <>
+diff --git a/android-app/cloudflare/self_source_panel.test.mjs b/android-app/cloudflare/self_source_panel.test.mjs
+new file mode 100644
+index 0000000..19c7eaf
+--- /dev/null
++++ b/android-app/cloudflare/self_source_panel.test.mjs
+@@ -0,0 +1,146 @@
++// =========================================================
++//  self_source_panel.test.mjs — Le panel retire une liste du client
++// =========================================================
++//  node --experimental-sqlite cloudflare/self_source_panel.test.mjs
++//  Mesuré le 05/10/2026 : le revendeur effaçait les listes du panel,
++//  la liste ajoutée par le client (Mon espace) restait et « revenait »
++//  sur la fiche. Route : DELETE /api/v1/sources/:mac/self/:id.
++//  Base SQLite en mémoire, mêmes comptes que activation_m3u.test.mjs,
++//  adresses en example.test.
++// =========================================================
++import { DatabaseSync } from 'node:sqlite';
++import { readFileSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import worker from './worker.js';
++
++const ctx = { waitUntil() {}, passThroughOnException() {} };
++const here = dirname(fileURLToPath(import.meta.url));
++let pass = 0;
++let fail = 0;
++const ok = (c, m) => {
++  if (c) { pass += 1; console.log('PASS', m); }
++  else { fail += 1; console.log('FAIL', m); }
++};
++
++function makeDb() {
++  const db = new DatabaseSync(':memory:');
++  db.exec('PRAGMA foreign_keys = ON');
++  db.exec(readFileSync(join(here, 'schema.sql'), 'utf8'));
++  for (const sql of [
++    'ALTER TABLE resellers ADD COLUMN parent_reseller_id TEXT',
++    'ALTER TABLE devices ADD COLUMN block_status TEXT',
++  ]) {
++    try { db.exec(sql); } catch (_) { /* déjà dans le schéma */ }
++  }
++  const DB = {
++    prepare(sql) {
++      const runWith = (args) => {
++        const params = args.map((v) => (v === undefined ? null : v));
++        return {
++          async first() { const row = db.prepare(sql).get(...params); return row === undefined ? null : row; },
++          async all() { return { results: db.prepare(sql).all(...params) }; },
++          async run() { const info = db.prepare(sql).run(...params); return { success: true, meta: { changes: info.changes } }; },
++        };
++      };
++      return {
++        bind(...args) { return runWith(args); },
++        first() { return runWith([]).first(); },
++        all() { return runWith([]).all(); },
++        run() { return runWith([]).run(); },
++      };
++    },
++    async batch(stmts) {
++      db.exec('BEGIN');
++      try { const out = []; for (const s of stmts) out.push(await s.run()); db.exec('COMMIT'); return out; }
++      catch (e) { try { db.exec('ROLLBACK'); } catch (_) { /* déjà annulé */ } throw e; }
++    },
++  };
++  return { db, env: { DB, ADMIN_SECRET: crypto.randomUUID(), SECRETS_KEY: crypto.randomUUID() } };
++}
++
++async function api(env, method, path, { token, body } = {}) {
++  const headers = { 'content-type': 'application/json' };
++  if (token) headers.authorization = `Bearer ${token}`;
++  const res = await worker.fetch(new Request(`https://app.test${path}`, {
++    method, headers, body: body === undefined ? undefined : JSON.stringify(body),
++  }), env, ctx);
++  const text = await res.text();
++  let json = null;
++  try { json = text ? JSON.parse(text) : null; } catch (_) { json = null; }
++  return { status: res.status, json, text };
++}
++
++async function login(env) {
++  const r = await api(env, 'POST', '/api/v1/auth/login', { body: { email: 'admin', password: env.ADMIN_SECRET } });
++  return r.json && r.json.token;
++}
++
++async function makeReseller(env, admin) {
++  const email = `r-${crypto.randomUUID()}@example.test`;
++  const password = crypto.randomUUID();
++  const created = await api(env, 'POST', '/api/v1/resellers', {
++    token: admin, body: { email, password, name: 'Revendeur test', credit_balance: 5 },
++  });
++  const id = created.json && created.json.id;
++  await api(env, 'PATCH', `/api/v1/resellers/${id}`, { token: admin, body: { permissions: ['activate', 'devices', 'sources'] } });
++  const logged = await api(env, 'POST', '/api/v1/auth/reseller/login', { body: { email, password } });
++  return { token: logged.json && logged.json.token, id };
++}
++
++async function main() {
++  const { env } = makeDb();
++  const admin = await login(env);
++  ok(!!admin, 'login admin');
++  const MAC = 'MK:AA:BB:CC:DD:21';
++  const a = await makeReseller(env, admin);
++  const b = await makeReseller(env, admin);
++  await api(env, 'GET', `/api/status/${MAC}`);
++  const claim = await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: MAC, plan: 'trial_7d', reseller_id: a.id } });
++  ok(claim.status === 200 || claim.status === 201, 'MAC rattachée au revendeur A');
++
++  // Le panel pousse une liste ; le client en ajoute une autre dans Mon espace.
++  const put = await api(env, 'PUT', `/api/v1/sources/${encodeURIComponent(MAC)}`, {
++    token: admin, body: { sources: [{ type: 'm3u', m3u_url: 'http://panel.example.test/get.php?username=u&password=p', label: 'Panel' }] },
++  });
++  ok(put.status === 200, 'liste du panel posée');
++  const self = await api(env, 'POST', `/api/self-source/${MAC}`, {
++    body: { type: 'm3u', m3u_url: 'http://perso.example.test/get.php?username=c&password=s', label: 'Perso' },
++  });
++  ok(self.status === 200 && self.json && self.json.ok === true, `liste du client ajoutée (${self.status})`);
++
++  let served = await api(env, 'GET', `/api/device-source/${MAC}`);
++  const selfItem = (served.json.sources || []).find((s) => s.origin === 'self');
++  ok(!!selfItem && typeof selfItem.id === 'string', 'la liste du client a un id serveur');
++
++  // Avant le correctif : effacer les listes du panel laissait celle du client.
++  const panelView = await api(env, 'GET', `/api/v1/sources/${encodeURIComponent(MAC)}`, { token: admin });
++  const panelSelf = (panelView.json.sources || []).find((s) => s.origin === 'self');
++  ok(!!panelSelf && panelSelf.id === selfItem.id, 'le panel voit la liste du client avec son id');
++
++  // Sans jeton : refusé.
++  let r = await api(env, 'DELETE', `/api/v1/sources/${encodeURIComponent(MAC)}/self/${selfItem.id}`);
++  ok(r.status === 401, 'retrait sans jeton : 401');
++  // Un autre revendeur : refusé.
++  r = await api(env, 'DELETE', `/api/v1/sources/${encodeURIComponent(MAC)}/self/${selfItem.id}`, { token: b.token });
++  ok(r.status === 403, 'un autre revendeur : 403');
++  // Une liste du panel par cette route : refusé (verrouillée).
++  r = await api(env, 'DELETE', `/api/v1/sources/${encodeURIComponent(MAC)}/self/pas-un-id`, { token: admin });
++  ok(r.status === 404, 'id inconnu : 404');
++
++  // Le revendeur propriétaire retire la liste du client.
++  r = await api(env, 'DELETE', `/api/v1/sources/${encodeURIComponent(MAC)}/self/${selfItem.id}`, { token: a.token });
++  ok(r.status === 200 && r.json && r.json.ok === true && r.json.remaining === 1, `retrait par le revendeur (${r.status} ${r.text.slice(0, 200)})`);
++  served = await api(env, 'GET', `/api/device-source/${MAC}`);
++  ok((served.json.sources || []).every((s) => s.origin !== 'self'), 'la box ne reçoit plus la liste du client');
++  ok((served.json.sources || []).length === 1, 'la liste du panel est toujours là');
++  ok(!served.text.includes('password=s'), 'aucun secret du client dans la réponse'); // la liste est partie
++
++  // La notification de la box (notifyBox → Durable Object) est couverte
++  // par box_channel.test.mjs ; ce banc n'a pas de RT_HUB.
++
++  console.log(`\n${pass} passed, ${fail} failed`);
++  process.exit(fail ? 1 : 0);
++}
++
++main().catch((e) => { console.error('TEST CRASH', e && e.message ? e.message : e); process.exit(1); });
+diff --git a/android-app/cloudflare/worker.js b/android-app/cloudflare/worker.js
+index 38a6c58..1ffdce7 100644
+--- a/android-app/cloudflare/worker.js
++++ b/android-app/cloudflare/worker.js
+@@ -59,6 +59,7 @@ import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
+ import {
+   RealtimeHub,
+   handleBoxRoute,
++  notifyBox,
+   openPanelSocket,
+ } from './box_channel.js';
+ export { RealtimeHub };
+@@ -3189,16 +3190,26 @@ async function handleSelfSourceDelete(env, mac, request) {
+ 
+   let delId = null;
+   try { delId = new URL(request.url).searchParams.get('id'); } catch (_) { delId = null; }
++  const out = await removeSelfSourceItem(env, MAC, delId);
++  return jsonPrivate(out.body, out.status);
++}
+ 
++/// Retire une liste ajoutée par le client (`origin: 'self'`) : par son
++/// `id`, ou toutes si `delId` est vide. Partagé entre la route publique
++/// (le client, depuis sa TV ou Mon espace) et la route panel
++/// (`DELETE /api/v1/sources/:mac/self/:id`) : depuis le 05/10/2026 le
++/// revendeur peut retirer une liste du client, sinon elle « revenait »
++/// sur la fiche après chaque effacement des listes du panel.
++async function removeSelfSourceItem(env, MAC, delId) {
+   const { items } = await readDeviceSourceItems(env, MAC);
+-  if (!items.length) return jsonPrivate({ ok: true, message: 'Aucune playlist à supprimer.' });
++  if (!items.length) return { status: 200, body: { ok: true, message: 'Aucune playlist à supprimer.' } };
+ 
+   let kept;
+   if (delId) {
+     const target = items.find((s) => s.id === delId);
+-    if (!target) return jsonPrivate({ ok: false, reason: 'not_found', message: 'Playlist introuvable.' }, 404);
++    if (!target) return { status: 404, body: { ok: false, reason: 'not_found', message: 'Playlist introuvable.' } };
+     if (target.origin !== 'self') {
+-      return jsonPrivate({ ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' }, 409);
++      return { status: 409, body: { ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' } };
+     }
+     kept = items.filter((s) => s.id !== delId);
+   } else {
+@@ -3209,9 +3220,33 @@ async function handleSelfSourceDelete(env, mac, request) {
+   try {
+     await writeDeviceSourceItems(env, MAC, kept);
+   } catch (_) {
+-    return jsonPrivate({ ok: false, error: 'db_write_failed' }, 500);
++    return { status: 500, body: { ok: false, error: 'db_write_failed' } };
++  }
++  return { status: 200, body: { ok: true, message: 'Playlist supprimée.', remaining: kept.length } };
++}
++
++/// DELETE /api/v1/sources/:mac/self/:id — le panel retire une liste
++/// ajoutée par le client. Jeton du panel obligatoire ; un revendeur ne
++/// touche qu'à ses appareils. La box est prévenue (« source ») : elle
++/// efface la liste à la seconde.
++async function handlePanelRemoveSelfSource(request, env, mac, id) {
++  const auth = request.headers.get('Authorization') || '';
++  const m = auth.match(/^Bearer\s+(.+)$/i);
++  const user = m ? await panelActorFromToken(env, m[1]) : null;
++  if (!user) return json({ error: 'no_auth', message: 'Missing Authorization header' }, 401);
++  const MAC = String(mac || '').toUpperCase();
++  if (!MAC_RX.test(MAC)) return badRequest('invalid mac');
++  if (!env.DB) return json({ error: 'no_db' }, 503);
++  if (user.role === 'reseller') {
++    const dev = await env.DB.prepare('SELECT reseller_id FROM devices WHERE mac = ?').bind(MAC).first();
++    if (!dev || dev.reseller_id !== user.sub) {
++      return json({ error: 'forbidden', message: 'Cet appareil ne vous appartient pas' }, 403);
++    }
+   }
+-  return jsonPrivate({ ok: true, message: 'Playlist supprimée.' });
++  await ensureDeviceSourcesTable(env);
++  const out = await removeSelfSourceItem(env, MAC, String(id || ''));
++  if (out.status === 200) await notifyBox(env, MAC, 'source');
++  return json(out.body, out.status);
+ }
+ 
+ // /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
+@@ -3673,6 +3708,17 @@ async function handleRequest(request, env, ctx) {
+       return openPanelSocket(request, env, { id: user.sub, role: user.role });
+     }
+ 
++    // DELETE /api/v1/sources/:mac/self/:id — traité ici (les lecteurs
++    // de listes vivent dans ce fichier), avant le routeur v1.
++    {
++      const selfRemove = url.pathname.match(/^\/api\/v1\/sources\/([^/]+)\/self\/([^/]+)$/);
++      if (selfRemove && request.method === 'DELETE') {
++        return handlePanelRemoveSelfSource(
++          request, env, decodeURIComponent(selfRemove[1]), decodeURIComponent(selfRemove[2]),
++        );
++      }
++    }
++
+     if (url.pathname.startsWith('/api/v1/')) {
+       return apiV1(request, env);
+     }

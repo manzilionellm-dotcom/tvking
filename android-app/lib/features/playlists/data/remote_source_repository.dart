@@ -38,6 +38,7 @@ import '../../subscription/data/subscription_backend.dart'
 import '../domain/m3u_link.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
+import '../domain/source_retry.dart';
 import 'favorites_repository.dart';
 import 'import_progress.dart';
 import 'playlist_database.dart';
@@ -153,8 +154,50 @@ abstract final class RemoteSourceRepository {
   /// Récupère la source assignée à cet appareil et la charge si besoin.
   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
-  static Future<RemoteSyncResult> sync() {
-    return _serial(_syncBody);
+  /// [force] : ordre explicite du panel ou passe manuelle → les listes
+  /// mises de côté après un refus sont retentées tout de suite (en
+  /// dernier). Sinon, une liste refusée attend son délai (source_retry.dart).
+  static Future<RemoteSyncResult> sync({bool force = false}) {
+    return _serial(() => _syncBody(force: force));
+  }
+
+  /// Mémoire des listes refusées (empreinte → dernier refus, compte).
+  static const String failuresKey = 'zuno.source.failures.v1';
+
+  static Future<Map<String, SourceFailure>> _readFailures(
+    SharedPreferences prefs,
+  ) async {
+    try {
+      final String? raw = prefs.getString(failuresKey);
+      if (raw == null || raw.isEmpty) return <String, SourceFailure>{};
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is! Map) return <String, SourceFailure>{};
+      final Map<String, SourceFailure> out = <String, SourceFailure>{};
+      for (final MapEntry<Object?, Object?> e in decoded.entries) {
+        final SourceFailure? f = SourceFailure.fromJson(e.value);
+        if (f != null) out['${e.key}'] = f;
+      }
+      return out;
+    } catch (_) {
+      return <String, SourceFailure>{};
+    }
+  }
+
+  static Future<void> _writeFailures(
+    SharedPreferences prefs,
+    Map<String, SourceFailure> failures,
+  ) async {
+    try {
+      await prefs.setString(
+        failuresKey,
+        jsonEncode(<String, Object?>{
+          for (final MapEntry<String, SourceFailure> e in failures.entries)
+            e.key: e.value.toJson(),
+        }),
+      );
+    } catch (_) {
+      // La mémoire reste celle du tour précédent.
+    }
   }
 
   /// Efface tout de suite les listes dont le panel a publié
@@ -165,7 +208,7 @@ abstract final class RemoteSourceRepository {
     return _serial(() => _wipeFingerprints(revoked.toSet()));
   }
 
-  static Future<RemoteSyncResult> _syncBody() async {
+  static Future<RemoteSyncResult> _syncBody({bool force = false}) async {
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
@@ -199,17 +242,60 @@ abstract final class RemoteSourceRepository {
       // Repli sur la source unique historique si le tableau est absent.
       final Object? list = body['sources'];
       if (list is List && list.isNotEmpty) {
+        final List<Map<String, dynamic>> items = <Map<String, dynamic>>[
+          for (final Object? item in list)
+            if (item is Map<String, dynamic>) item,
+        ];
+        // Une liste refusée (mot de passe faux, serveur muet) ne bloque
+        // plus les autres : jamais refusées d'abord, refusées après leur
+        // délai, les autres mises de côté. Mesuré le 05/10/2026 : les
+        // listes envoyées à 19 h s'installaient à 23 h, la box
+        // réessayant la mauvaise avant la bonne à chaque tour.
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        Map<String, SourceFailure> failures = await _readFailures(prefs);
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        final SourceRetryPlan plan = planSourceRetry(
+          fingerprints: <String?>[
+            for (final Map<String, dynamic> item in items)
+              SourceFingerprint.fromMap(item),
+          ],
+          failures: failures,
+          nowMs: now,
+          force: force,
+          retryAlways: RepairFlags.sourceRetryAlways,
+        );
+        if (plan.skipped.isNotEmpty) {
+          BlackBox.instance.info(
+            'SOURCE',
+            '${plan.skipped.length} liste(s) refusée(s) récemment mise(s) de côté '
+            '(${plan.tryNow.length} à tenter)',
+          );
+        }
         RemoteSyncResult agg = RemoteSyncResult.noSource;
-        for (final Object? item in list) {
-          if (item is Map<String, dynamic>) {
-            final RemoteSyncResult r = await _applySource(item);
-            if (r == RemoteSyncResult.loaded) {
-              agg = RemoteSyncResult.loaded;
-            } else if (agg != RemoteSyncResult.loaded &&
-                r == RemoteSyncResult.sourceFailed) {
-              agg = RemoteSyncResult.sourceFailed;
-            }
+        for (final int index in plan.tryNow) {
+          final Map<String, dynamic> item = items[index];
+          final RemoteSyncResult r = await _applySource(item);
+          final String? fp = SourceFingerprint.fromMap(item);
+          if (fp != null && r != RemoteSyncResult.networkError) {
+            failures = noteSourceOutcome(
+              failures,
+              fingerprint: fp,
+              succeeded: r == RemoteSyncResult.loaded,
+              nowMs: DateTime.now().millisecondsSinceEpoch,
+            );
           }
+          if (r == RemoteSyncResult.loaded) {
+            agg = RemoteSyncResult.loaded;
+          } else if (agg != RemoteSyncResult.loaded &&
+              r == RemoteSyncResult.sourceFailed) {
+            agg = RemoteSyncResult.sourceFailed;
+          }
+        }
+        await _writeFailures(prefs, failures);
+        if (plan.skipped.isNotEmpty && agg == RemoteSyncResult.noSource) {
+          // Seules des listes mises de côté restaient : pour l'écran,
+          // c'est un échec de liste, pas « rien d'assigné ».
+          agg = RemoteSyncResult.sourceFailed;
         }
         return agg;
       }

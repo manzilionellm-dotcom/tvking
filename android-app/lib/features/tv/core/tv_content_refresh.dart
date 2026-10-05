@@ -97,8 +97,9 @@ abstract final class TvContentRefresh {
     running.value = true;
     final Stopwatch sw = Stopwatch()..start();
     try {
-      // 1) Nouvelle source posée dans le panel ?
-      await RemoteSourceRepository.sync();
+      // 1) Nouvelle source posée dans le panel ? Le bouton Redémarrer
+      //    retente aussi les listes mises de côté après un refus.
+      await RemoteSourceRepository.sync(force: !auto);
       // 2) Nouvelles chaînes chez le fournisseur ? Une source installée à
       //    l'instant par l'étape 1 n'est pas re-téléchargée une 2e fois ;
       //    en passe automatique, une liste à jour depuis moins de 6 h non

@@ -231,7 +231,11 @@ class RemoteActivationWatch {
         'ordre liste reçu pendant la lecture : import tout de suite',
       );
     }
-    final RemoteSyncResult result = await RemoteSourceRepository.sync();
+    // Ordre du panel : les listes mises de côté après un refus sont
+    // retentées tout de suite (le revendeur vient peut-être de corriger
+    // le mot de passe).
+    final RemoteSyncResult result =
+        await RemoteSourceRepository.sync(force: ordered);
     if (result == RemoteSyncResult.networkError) return;
     if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
     // Ordre du panel appliqué : on remonte l'inventaire tout de suite

@@ -167,6 +167,15 @@ abstract final class RepairFlags {
   static const String m3uLinkAsM3uKey = 'zuno.source.m3u_link_as_m3u';
   static bool m3uLinkAsM3u = false;
 
+  /// Vrai = à chaque tour, la box réessaie TOUTES les listes du panel dans
+  /// l'ordre du serveur, même celles qui viennent d'être refusées (ancien
+  /// comportement : une liste au mot de passe faux bloquait la bonne
+  /// pendant des heures). Faux = une liste refusée attend 5, 15, 45 min,
+  /// 2 h puis 6 h, et passe après les listes saines ; un ordre du panel
+  /// remet tout le monde en course.
+  static const String sourceRetryAlwaysKey = 'zuno.source.retry_always';
+  static bool sourceRetryAlways = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -188,6 +197,7 @@ abstract final class RepairFlags {
     bool autoInstOff = false;
     bool m3uLegacy = false;
     bool linkAsM3u = false;
+    bool retryAlways = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -210,6 +220,7 @@ abstract final class RepairFlags {
       autoInstOff = prefs.getBool(autoInstallOffKey) ?? false;
       m3uLegacy = prefs.getBool(m3uTimeoutLegacyKey) ?? false;
       linkAsM3u = prefs.getBool(m3uLinkAsM3uKey) ?? false;
+      retryAlways = prefs.getBool(sourceRetryAlwaysKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -231,7 +242,9 @@ abstract final class RepairFlags {
       autoInstOff = false;
       m3uLegacy = false;
       linkAsM3u = false;
+      retryAlways = false;
     }
+    sourceRetryAlways = retryAlways;
     m3uLinkAsM3u = linkAsM3u;
     m3uTimeoutLegacy = m3uLegacy;
     updatingPillShown = pillShow;
@@ -279,6 +292,7 @@ abstract final class RepairFlags {
     autoInstallOff = false;
     m3uTimeoutLegacy = false;
     m3uLinkAsM3u = false;
+    sourceRetryAlways = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

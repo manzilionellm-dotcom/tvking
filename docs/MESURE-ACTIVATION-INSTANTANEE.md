@@ -272,6 +272,33 @@ chaînes. C'est la seule façon de tenir 3 à 5 s sur un fournisseur à 50 000
 chaînes, et c'est la prochaine étape structurelle une fois l'écriture
 corrigée.
 
+## 7 octies. « Les listes envoyées à 19 h s'installent à 23 h » et « la liste que j'efface revient »
+
+Deux constats du propriétaire le 5 octobre vers 23 h, deux causes lues dans
+le code, deux correctifs.
+
+**1. La box réessayait la mauvaise liste avant la bonne, à chaque tour.**
+Trois listes servies à la box de test, dont deux avec le mot de passe
+déformé. À chaque tour (toutes les 25 s tant que la box n'a pas de chaîne),
+la box reprenait les listes dans l'ordre du serveur : la mauvaise (jusqu'à
+2 minutes de silence), puis la bonne, puis l'autre mauvaise. Build #162 :
+une liste refusée est mise de côté 5 min, puis 15, 45 min, 2 h, 6 h au plus,
+et passe **après** les listes jamais refusées ; un ordre du panel ou le
+bouton Redémarrer remet tout le monde en course (`source_retry.dart`, pur,
+9 tests). Boîte noire : `N liste(s) refusée(s) récemment mise(s) de côté`.
+Repli `zuno.source.retry_always`.
+
+**2. Le panel ne savait pas retirer une liste ajoutée par le client.** Le
+panel en ligne affiche « Ajoutée par le client. Elle ne se retire pas depuis
+le panel. » : effacer les listes du panel laisse celle du client (Mon espace
+ou TV), qui réapparaît sur la fiche. Patch `docs/patches/panel-supprimer-liste-client.patch`
+(à appliquer après les deux précédents) : Worker `DELETE
+/api/v1/sources/:mac/self/:id` (jeton du panel, revendeur propriétaire
+seulement, box prévenue « source »), bouton **Supprimer** sur les listes du
+client dans la fiche appareil. Test Worker `self_source_panel.test.mjs`
+(13 : 401 sans jeton, 403 autre revendeur, 404 id inconnu, retrait, la box
+ne reçoit plus la liste, la liste du panel reste). Panel : 44 tests, build.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

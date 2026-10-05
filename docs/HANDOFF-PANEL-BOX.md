@@ -240,6 +240,19 @@ M3U (`XtreamAuthException`). Rapport § 7 septies. Prochaine étape pour
 3-5 s sur 50 000 chaînes : catégories d'abord, chaînes par catégorie à la
 demande (ce que font IBO / TiviMate / Smarters).
 
+## 5 undecies. Listes refusées mises de côté ; le panel retire une liste du client (5 octobre, 23 h)
+
+- Box #162 : une liste refusée (mot de passe faux, serveur muet) ne bloque
+  plus les autres : mise de côté 5 min → 6 h, retentée après les listes
+  saines ; un ordre du panel ou Redémarrer retente tout. Repli
+  `zuno.source.retry_always`. Rapport § 7 octies.
+- Panel/Worker : `docs/patches/panel-supprimer-liste-client.patch` (après
+  les deux autres) : `DELETE /api/v1/sources/:mac/self/:id` + bouton
+  Supprimer sur « Ajoutée par le client ». C'est la liste qui « revenait ».
+- Build #161 = `107-test.161`, versionCode 1791234986, SHA-256
+  `454d26b8…a963a` : refus d'identifiants sans repli M3U, suppressions de
+  listes journalisées.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
