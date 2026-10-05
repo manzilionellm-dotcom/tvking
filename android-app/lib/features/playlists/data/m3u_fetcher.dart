@@ -30,6 +30,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../player/data/player_settings.dart';
+import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import 'm3u_parser.dart' show M3uParser;
 import 'import_progress.dart';
@@ -44,7 +45,41 @@ abstract final class M3uFetcher {
       'AppleWebKit/537.36 (KHTML, like Gecko) '
       'Chrome/124.0.0.0 Mobile Safari/537.36 7MOTION/1.0';
 
-  static const Duration _timeout = Duration(seconds: 90);
+  /// Ancien délai unique (builds ≤ 107-test.159) : 90 s pour les en-têtes
+  /// ET 90 s pour tout le corps. Mesuré le 05/10/2026 sur la box de test :
+  /// « liste M3U du panel refusée après 90,0 s : Impossible de récupérer la
+  /// playlist » — le fournisseur (derrière Cloudflare) met plus de 90 s à
+  /// générer la liste, ou le corps (plusieurs Mo) ne finit pas en 90 s sur
+  /// le Wi-Fi de la box. Repli : `zuno.m3u.timeout_legacy`.
+  static const Duration legacyTimeout = Duration(seconds: 90);
+
+  /// En-têtes : 120 s. Cloudflare coupe lui-même une origine muette à
+  /// ~100 s, donc attendre plus n'apporte rien.
+  static const Duration headersTimeout = Duration(seconds: 120);
+
+  /// Corps : on ne mesure plus la durée totale mais le SILENCE. Tant que
+  /// des octets arrivent, on continue ; 60 s sans rien = serveur parti.
+  static const Duration idleTimeout = Duration(seconds: 60);
+
+  /// Plafond absolu du corps, pour ne jamais rester bloqué sur un flux
+  /// qui goutte à l'infini.
+  static const Duration totalTimeout = Duration(minutes: 10);
+
+  /// Délais effectifs. Pur, testé : `legacy` = ancien comportement.
+  static FetchTimeouts fetchTimeouts({required bool legacy}) {
+    if (legacy) {
+      return const FetchTimeouts(
+        headers: legacyTimeout,
+        idle: legacyTimeout,
+        total: legacyTimeout,
+      );
+    }
+    return const FetchTimeouts(
+      headers: headersTimeout,
+      idle: idleTimeout,
+      total: totalTimeout,
+    );
+  }
 
   /// Construit la liste ORDONNÉE des signatures (User-Agent) à essayer,
   /// sans doublon. Ordre : d'abord la signature CONFIGURÉE par
@@ -100,10 +135,13 @@ abstract final class M3uFetcher {
     String url, {
     http.Client? httpClient,
     String? preferredUserAgent,
+    FetchTimeouts? timeouts,
   }) async {
     final http.Client client = httpClient ?? http.Client();
     final bool owns = httpClient == null;
     final String host = Uri.tryParse(url)?.host ?? '?';
+    final FetchTimeouts t =
+        timeouts ?? fetchTimeouts(legacy: RepairFlags.m3uTimeoutLegacy);
     BlackBox.instance.breadcrumb('Téléchargement M3U $host');
     ImportProgressBus.connecting();
 
@@ -114,6 +152,12 @@ abstract final class M3uFetcher {
 
       for (int i = 0; i < userAgents.length; i++) {
         final String ua = userAgents[i];
+        // Où en était-on quand le délai a été dépassé ? Pour la boîte
+        // noire : « en-têtes » (le serveur n'a rien dit) ou « corps,
+        // N octets » (il a commencé puis s'est tu).
+        bool headersSeen = false;
+        int received = 0;
+        final Stopwatch sw = Stopwatch()..start();
         try {
           // Requête STREAMÉE (pas client.get) pour lire le corps par morceaux
           // et COUPER au plafond mémoire — cf. _readCapped. En-têtes « complets »
@@ -131,7 +175,8 @@ abstract final class M3uFetcher {
               'Connection': 'keep-alive',
             });
           final http.StreamedResponse resp =
-              await client.send(req).timeout(_timeout);
+              await client.send(req).timeout(t.headers);
+          headersSeen = true;
 
           if (resp.statusCode != 200) {
             // Serveur qui refuse cette signature (souvent 403 / 401 /
@@ -143,8 +188,12 @@ abstract final class M3uFetcher {
           // Lecture BORNÉE : on accumule les octets mais on COUPE le flux dès
           // kMaxM3uBytes → on ne charge JAMAIS une source géante d'un bloc en
           // RAM (cause racine OOM box faibles). Dépassement → PlaylistImportTooLarge.
-          final Uint8List bytes =
-              await _readCapped(resp.stream, kMaxM3uBytes).timeout(_timeout);
+          final Uint8List bytes = await _readCapped(
+            resp.stream,
+            kMaxM3uBytes,
+            idle: t.idle,
+            onBytes: (int n) => received = n,
+          ).timeout(t.total);
           // Sniff sur les 64 premiers Ko (Latin-1 : ne lève jamais) — assez
           // pour voir #EXTM3U / #EXTINF / une URL, sans décoder 60 Mo ici.
           final int sniffLen = bytes.length < 65536 ? bytes.length : 65536;
@@ -195,11 +244,23 @@ abstract final class M3uFetcher {
           // Source trop volumineuse : la taille ne dépend PAS de la signature
           // → inutile de retenter d'autres UA. On remonte l'erreur claire à l'UI.
           rethrow;
-        } on TimeoutException catch (e) {
+        } on TimeoutException {
           // Hôte trop lent / injoignable : ce n'est PAS un problème de
           // signature → inutile de retenter les autres UA (on cumulerait
-          // des timeouts de 90 s). On s'arrête là.
-          lastError = e;
+          // des délais). On s'arrête là, en disant OÙ ça a coincé.
+          final String phase = headersSeen
+              ? 'corps, ${(received / (1024 * 1024)).toStringAsFixed(1)} Mo reçus'
+              : 'aucune réponse du serveur (en-têtes)';
+          BlackBox.instance.warn(
+            'M3U',
+            '$host : délai dépassé après ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(0)} s ($phase)',
+          );
+          lastError = Exception(
+            headersSeen
+                ? 'Le serveur a commencé à envoyer la liste puis s\'est tu '
+                    '(${(received / (1024 * 1024)).toStringAsFixed(1)} Mo reçus).'
+                : 'Le serveur n\'a pas répondu en ${t.headers.inSeconds} s.',
+          );
           break;
         } on Exception catch (e) {
           // Connexion coupée / reset : peut dépendre de l'UA (certains
@@ -236,12 +297,31 @@ abstract final class M3uFetcher {
   /// Lit [stream] en accumulant les octets, mais COUPE à [maxBytes] : au-delà,
   /// on lève [PlaylistImportTooLarge] (le `for await` s'arrête, l'abonnement est
   /// annulé) → on ne matérialise JAMAIS une source géante d'un bloc. Anti-OOM.
+  /// [idle] : silence maximal entre deux paquets (le serveur a commencé
+  /// puis s'est tu). [onBytes] : total reçu, pour la boîte noire.
   static Future<Uint8List> _readCapped(
-      Stream<List<int>> stream, int maxBytes) async {
+    Stream<List<int>> stream,
+    int maxBytes, {
+    Duration? idle,
+    void Function(int received)? onBytes,
+  }) async {
     final BytesBuilder builder = BytesBuilder(copy: false);
     int total = 0;
-    await for (final List<int> chunk in stream) {
+    final Stream<List<int>> guarded = idle == null
+        ? stream
+        : stream.timeout(
+            idle,
+            onTimeout: (EventSink<List<int>> sink) {
+              sink.addError(TimeoutException(
+                'aucune donnée depuis ${idle.inSeconds} s',
+                idle,
+              ));
+              sink.close();
+            },
+          );
+    await for (final List<int> chunk in guarded) {
       total += chunk.length;
+      onBytes?.call(total);
       ImportProgressBus.downloading(total);
       if (total > maxBytes) {
         throw PlaylistImportTooLarge(
@@ -254,4 +334,23 @@ abstract final class M3uFetcher {
     return builder.takeBytes();
   }
 
+}
+
+/// Trois délais d'un téléchargement M3U (voir [M3uFetcher.fetchTimeouts]).
+@immutable
+class FetchTimeouts {
+  const FetchTimeouts({
+    required this.headers,
+    required this.idle,
+    required this.total,
+  });
+
+  /// Attente de la première réponse du serveur (en-têtes).
+  final Duration headers;
+
+  /// Silence maximal entre deux paquets du corps.
+  final Duration idle;
+
+  /// Durée maximale du corps, tout compris.
+  final Duration total;
 }

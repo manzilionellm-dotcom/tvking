@@ -210,6 +210,15 @@ Demandes écrites du propriétaire, détail dans `docs/MESURE-ACTIVATION-INSTANT
   Le #158 (même commit) : binaire `sqlite3` corrompu côté runner, puis relance
   annulée en file d'attente ; aucun changement de code entre les deux.
 
+## 5 octies. Mesure réelle sur la box de test : H4 prouvée, délais M3U (5 octobre, 22:20)
+
+Boîte noire de la box `107-test.159` : `nouvelle liste M3U reçue du panel :
+chargement` puis `refusée après 90,0 s : Impossible de récupérer la
+playlist`. L'ordre arrive, l'import part à la seconde, le fournisseur ne
+livre pas en 90 s. Correctif #160 : en-têtes 120 s, puis on continue tant
+que des octets arrivent (silence 60 s max, 10 min total), raison précise
+dans la boîte noire ; repli `zuno.m3u.timeout_legacy`. Rapport § 7 quinquies.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.

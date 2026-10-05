@@ -172,6 +172,36 @@ tourner. Run neuf #159 : https://github.com/manzilionellm-dotcom/tvking/actions/
 
 Suite Flutter sur ce commit : 443 verts, 2 ignorés (`flutter test`, 05/10 19:25 UTC).
 
+## 7 quinquies. Première mesure complète sur la box de test (5 octobre, 22:19) : H4 prouvée
+
+Le propriétaire a activé une box `107-test.159` depuis le panel en ligne avec
+un lien M3U (`thekung.801802.com:80`, derrière Cloudflare). Photos : panel,
+« Mes sources » vide, boîte noire.
+
+| Maillon | Observé | Preuve |
+| --- | --- | --- |
+| Panel | « Cette liste était déjà sur la box : rien à renvoyer » : le panel en ligne n'a **pas** envoyé la liste (déjà sur le serveur), seul le signal d'activation est parti | capture panel |
+| Box, réception | la box a quand même relu la liste du serveur à son tour suivant : `22:21:31 [SOURCE] nouvelle liste M3U reçue du panel : chargement` | boîte noire |
+| Box, import | `22:21:31 W [SOURCE] liste M3U du panel refusée après 90,0 s : Impossible de récupérer la playlist` — le fournisseur n'a rien livré en 90 s (délai unique en-têtes 90 s / corps 90 s) | boîte noire |
+| Fournisseur | depuis Internet, l'hôte répond en 0,4 s sur `/` (Cloudflare) ; la génération de la liste avec identifiants, elle, dépasse 90 s ou le corps n'arrive pas en 90 s sur le Wi-Fi de la box | `curl` racine, sans identifiants |
+
+**H4 PROUVÉE** pour cette liste : l'ordre arrive, l'import démarre à la
+seconde, c'est la livraison de la liste par le fournisseur qui échoue au
+délai de 90 s. « Mes sources » reste vide parce qu'une liste refusée n'est
+pas gardée (volontaire : pas de source morte).
+
+Correctif (build #160) : `M3uFetcher` attend 120 s la première réponse,
+puis continue **tant que des octets arrivent** (60 s de silence maximum,
+10 min au total) au lieu d'un délai total de 90 s. La boîte noire dit où ça
+coince : `délai dépassé après N s (aucune réponse du serveur)` ou `(corps,
+X Mo reçus)`. Repli `zuno.m3u.timeout_legacy`. Tests
+`m3u_fetch_timeouts_test.dart` (4 : lent mais régulier passe ; muet au milieu
+coupé avec la raison ; sourd coupé aux en-têtes ; repli 90/90/90).
+
+Limite vraie : si le fournisseur met plus de 2 minutes à répondre ou coupe
+lui-même, aucun délai côté box ne l'arrangera ; il faut alors un lien plus
+léger (sans films/séries) ou un autre fournisseur. La boîte noire le dira.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

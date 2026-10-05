@@ -150,6 +150,14 @@ abstract final class RepairFlags {
   static const String autoInstallOffKey = 'zuno.update.auto_install_off';
   static bool autoInstallOff = false;
 
+  /// Vrai = téléchargement M3U à l'ancienne : 90 s pour les en-têtes et
+  /// 90 s pour tout le corps (mesuré le 05/10/2026 : « refusée après
+  /// 90,0 s » sur un fournisseur lent derrière Cloudflare). Faux = 120 s
+  /// pour la première réponse, puis on continue tant que des octets
+  /// arrivent (60 s de silence maximum, 10 min au total).
+  static const String m3uTimeoutLegacyKey = 'zuno.m3u.timeout_legacy';
+  static bool m3uTimeoutLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -169,6 +177,7 @@ abstract final class RepairFlags {
     bool hbOff = false;
     bool pillShow = false;
     bool autoInstOff = false;
+    bool m3uLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -189,6 +198,7 @@ abstract final class RepairFlags {
       hbOff = prefs.getBool(heartbeatAfterImportOffKey) ?? false;
       pillShow = prefs.getBool(updatingPillShownKey) ?? false;
       autoInstOff = prefs.getBool(autoInstallOffKey) ?? false;
+      m3uLegacy = prefs.getBool(m3uTimeoutLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -208,7 +218,9 @@ abstract final class RepairFlags {
       hbOff = false;
       pillShow = false;
       autoInstOff = false;
+      m3uLegacy = false;
     }
+    m3uTimeoutLegacy = m3uLegacy;
     updatingPillShown = pillShow;
     autoInstallOff = autoInstOff;
     heartbeatAfterImportOff = hbOff;
@@ -252,6 +264,7 @@ abstract final class RepairFlags {
     heartbeatAfterImportOff = false;
     updatingPillShown = false;
     autoInstallOff = false;
+    m3uTimeoutLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }
