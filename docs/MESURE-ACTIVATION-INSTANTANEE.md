@@ -299,6 +299,12 @@ client dans la fiche appareil. Test Worker `self_source_panel.test.mjs`
 (13 : 401 sans jeton, 403 autre revendeur, 404 id inconnu, retrait, la box
 ne reçoit plus la liste, la liste du panel reste). Panel : 44 tests, build.
 
+**Build #162 vérifié** (`build-zuno-tv.yml`, `test_box=true`, `publish=false`,
+run 37375978821, commit 510964a) : `107-test.162`, versionCode 1791235805,
+SHA-256 `8a776baa2603eb61042757aa5103da739bcaa3b0a84e90ab36c0f3cca304a7bd`,
+54 754 170 octets, `mandatory: false`. Contient tout ce qui précède (§ 7 bis
+→ 7 octies). Suite Flutter avant commit : 466 verts, 2 ignorés.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

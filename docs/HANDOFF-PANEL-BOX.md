@@ -252,6 +252,11 @@ demande (ce que font IBO / TiviMate / Smarters).
 - Build #161 = `107-test.161`, versionCode 1791234986, SHA-256
   `454d26b8…a963a` : refus d'identifiants sans repli M3U, suppressions de
   listes journalisées.
+- Build #162 = `107-test.162`, versionCode 1791235805, SHA-256
+  `8a776baa2603eb61042757aa5103da739bcaa3b0a84e90ab36c0f3cca304a7bd`
+  (54 754 170 octets, run 37375978821, commit 510964a) : #161 + listes
+  refusées mises de côté. Même adresse APK (`zuno-tv-test`), même signature
+  attendue `5145b8e0…9e61` (workflow inchangé).
 
 ## 6. Règles du propriétaire (non négociables)
 
