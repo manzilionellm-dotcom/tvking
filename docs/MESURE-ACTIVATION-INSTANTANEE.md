@@ -230,6 +230,48 @@ qui n'a pas d'API Xtream, suit le chemin M3U (avec les délais de § 7
 quinquies). Un fournisseur qui limite le nombre de connexions compte
 l'appel API comme une connexion, comme le téléchargement M3U.
 
+## 7 septies. Mesure du #160 sur la box de test (22:59) : l'API répond, l'écriture échoue
+
+Boîte noire `107-test.160`, MAC `MK:80:78:60:07:4F` (licence à vie, 3 listes
+servies : thekung ×2 avec un mot de passe déformé par le clavier du
+téléphone — apostrophe typographique `%E2%80%99` et accent `%CC%81` —, et
+business-cloud-8 propre) :
+
+```
+22:59:41 I [XTREAM] pro.business-cloud-8.ru : 50000 chaînes live récupérées
+22:59:41 I [ACTION] Insertion en base de 50000 chaînes
+22:59:41 W [SOURCE] liste Xtream (lien) du panel refusée après 145.6 s :
+                    DatabaseException(FOREIGN KEY constraint failed (code 787 …
+22:59:41 W [SOURCE] API Xtream refusée pour ce lien : repli sur le fichier M3U
+```
+
+Lecture :
+
+- **L'API Xtream marche** avec ce lien : 50 000 chaînes TV (plafond
+  `kMaxChannelsPerImport`) ramenées en 145 s, par catégorie (liste > 10 Mo).
+  Le fournisseur n'est plus le bloqueur pour cette liste.
+- **L'écriture en base a échoué** : « FOREIGN KEY constraint failed » à
+  l'insertion des chaînes = la ligne de la liste (`playlists.id`) n'existait
+  plus au moment d'écrire ses chaînes. Quelque chose a supprimé la liste
+  pendant les 145 s de téléchargement. Les suppressions de listes ne
+  laissaient **aucune trace** dans la boîte noire : impossible de dire qui.
+  Corrigé dans le #161 : chaque suppression écrit `liste N supprimée
+  (raison)` (client, plus envoyée par le panel, import échoué, vide après
+  synchro). La prochaine occurrence nommera le coupable.
+- Le repli M3U après un refus de l'API était inutile quand le serveur a
+  **répondu** « identifiants refusés » : mêmes identifiants, même refus,
+  plus jusqu'à 2 minutes de silence. #161 : `XtreamAuthException` → pas de
+  repli, ligne `identifiants refusés par le fournisseur : vérifier le mot de
+  passe dans le panel`. Un serveur muet ou sans API garde le repli.
+
+Ce que font les grandes applications (IBO, TiviMate, Smarters) avec un
+compte Xtream, et que la box ne fait pas encore : afficher les
+**catégories** dès `get_live_categories` (quelques Ko, < 1 s), puis charger
+les chaînes **par catégorie à la demande**, au lieu d'attendre les 50 000
+chaînes. C'est la seule façon de tenir 3 à 5 s sur un fournisseur à 50 000
+chaînes, et c'est la prochaine étape structurelle une fois l'écriture
+corrigée.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

@@ -54,6 +54,13 @@ class XtreamException implements Exception {
   String toString() => 'XtreamException: $message';
 }
 
+/// Le serveur a répondu et a REFUSÉ les identifiants (auth ≠ 1). À
+/// distinguer d'un serveur muet ou sans API : avec un lien get.php, on
+/// ne retente pas le fichier M3U (mêmes identifiants, même refus).
+class XtreamAuthException extends XtreamException {
+  XtreamAuthException(super.message);
+}
+
 class XtreamClient {
   XtreamClient({
     required this.serverUrl,
@@ -114,7 +121,7 @@ class XtreamClient {
     }
     final String auth = (userInfo['auth']?.toString() ?? '0');
     if (auth != '1') {
-      throw XtreamException(
+      throw XtreamAuthException(
         'Identifiants refusés (auth=$auth). Vérifie ton login/mot de passe.',
       );
     }

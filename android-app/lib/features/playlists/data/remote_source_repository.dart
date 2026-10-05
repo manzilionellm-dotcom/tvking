@@ -43,6 +43,7 @@ import 'import_progress.dart';
 import 'playlist_database.dart';
 import 'playlist_repository.dart';
 import 'removed_list_notice.dart';
+import 'xtream_client.dart' show XtreamAuthException;
 
 /// Résultat d'une synchro de source distante — sert à afficher un
 /// message PRÉCIS côté UI au lieu d'un vague « pas de chaînes ».
@@ -111,6 +112,16 @@ abstract final class RemoteSourceRepository {
     } finally {
       importing.value = false;
     }
+  }
+
+  /// Après un échec de l'API Xtream sur un lien get.php : faut-il tenter
+  /// le fichier M3U ? Oui pour tout ce qui ressemble à « pas d'API ici »
+  /// (404, HTML, délai dépassé, serveur injoignable). Non quand le serveur
+  /// a explicitement refusé les identifiants : le fichier M3U les
+  /// refuserait pareil. Pur, testé.
+  @visibleForTesting
+  static bool shouldFallbackToM3u(Object? apiError) {
+    return apiError is! XtreamAuthException;
   }
 
   /// Première ligne du message d'erreur, 120 caractères au plus.
@@ -303,20 +314,37 @@ abstract final class RemoteSourceRepository {
             p.xtreamServer == account.serverUrl &&
             p.xtreamUsername == account.username);
         if (sameAccount) return RemoteSyncResult.loaded;
+        Object? apiError;
         final RemoteSyncResult viaApi = await _timedImport('Xtream (lien)', () async {
-          final Playlist saved = await PlaylistRepository.instance.addXtreamPlaylist(
-            name: label,
-            serverUrl: account.serverUrl,
-            username: account.username,
-            password: account.password,
-            originM3uUrl: m3u,
-          );
-          return saved.channelCount;
+          try {
+            final Playlist saved = await PlaylistRepository.instance.addXtreamPlaylist(
+              name: label,
+              serverUrl: account.serverUrl,
+              username: account.username,
+              password: account.password,
+              originM3uUrl: m3u,
+            );
+            return saved.channelCount;
+          } catch (e) {
+            apiError = e;
+            rethrow;
+          }
         });
         if (viaApi == RemoteSyncResult.loaded) return viaApi;
+        if (!shouldFallbackToM3u(apiError)) {
+          // Le serveur a répondu « identifiants refusés » : le fichier M3U
+          // utilise les mêmes identifiants, il serait refusé aussi (ou,
+          // pire, le serveur resterait muet 2 minutes). On s'arrête là,
+          // tout de suite, et la boîte noire dit quoi corriger.
+          BlackBox.instance.warn(
+            'SOURCE',
+            'identifiants refusés par le fournisseur : vérifier le mot de passe dans le panel (pas de repli M3U)',
+          );
+          return RemoteSyncResult.sourceFailed;
+        }
         BlackBox.instance.warn(
           'SOURCE',
-          'API Xtream refusée pour ce lien : repli sur le fichier M3U',
+          'API Xtream indisponible pour ce lien : repli sur le fichier M3U',
         );
       }
 
@@ -440,7 +468,10 @@ abstract final class RemoteSourceRepository {
       final bool hit = SourceFingerprint.ofPlaylist(playlist).any(drop.contains);
       if (!hit) continue;
       channelIds.addAll(await _channelIdsOf(id));
-      await PlaylistRepository.instance.deletePlaylist(id);
+      await PlaylistRepository.instance.deletePlaylist(
+        id,
+        reason: 'plus envoyée par le panel',
+      );
       removed++;
     }
     if (channelIds.isNotEmpty) {

@@ -229,6 +229,17 @@ l'interrupteur. Repli `zuno.source.m3u_link_as_m3u`. Patch panel
 `panel-envoi-instantane.patch` régénéré (reconnaît la liste en Xtream).
 Rapport § 7 sexies. Build #160.
 
+## 5 decies. #160 mesuré : l'API Xtream ramène 50 000 chaînes, l'écriture échoue (22:59)
+
+Boîte noire de la box de test : `50000 chaînes live récupérées` en 145 s,
+puis `refusée : FOREIGN KEY constraint failed` = la ligne de la liste a
+disparu pendant le téléchargement ; aucune ligne ne disait qui l'avait
+supprimée. #161 : chaque suppression de liste est journalisée avec sa
+raison ; un refus explicite des identifiants ne déclenche plus le repli
+M3U (`XtreamAuthException`). Rapport § 7 septies. Prochaine étape pour
+3-5 s sur 50 000 chaînes : catégories d'abord, chaînes par catégorie à la
+demande (ce que font IBO / TiviMate / Smarters).
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.

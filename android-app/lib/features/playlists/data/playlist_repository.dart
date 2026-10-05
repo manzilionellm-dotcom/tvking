@@ -439,6 +439,7 @@ class PlaylistRepository {
       // ÉCHEC après insertion (download, parse, 0 chaîne) → on retire la
       // playlist orpheline pour ne garder QUE les sources valides.
       if (playlistId != null) {
+        BlackBox.instance.info('DB', 'liste $playlistId supprimée (import M3U échoué)');
         await _deletePlaylist(playlistId);
       }
       rethrow;
@@ -627,6 +628,7 @@ class PlaylistRepository {
       // ÉCHEC après insertion (fetch catégories/chaînes, 0 chaîne) → on
       // retire la playlist orpheline : on ne garde QUE le valide.
       if (playlistId != null) {
+        BlackBox.instance.info('DB', 'liste $playlistId supprimée (import Xtream échoué)');
         await _deletePlaylist(playlistId);
       }
       rethrow;
@@ -639,7 +641,12 @@ class PlaylistRepository {
   //  SUPPRESSION
   // ============================================================
 
-  Future<void> deletePlaylist(int playlistId) async {
+  /// [reason] : qui retire la liste (« client », « retirée par le panel »…).
+  /// Écrit dans la boîte noire : le 05/10/2026, une liste a disparu
+  /// PENDANT son import (« FOREIGN KEY constraint failed ») sans qu'aucune
+  /// ligne ne dise qui l'avait supprimée.
+  Future<void> deletePlaylist(int playlistId, {String reason = 'client'}) async {
+    BlackBox.instance.info('DB', 'liste $playlistId supprimée ($reason)');
     // Vidage SYNCHRONE du cache mémoire + émission immédiate d'une
     // liste vide AVANT le DELETE SQL. Sur grosses playlists (20k+
     // chaînes), le delete cascade prend 10-30s — sans ce vidage,
@@ -751,6 +758,7 @@ class PlaylistRepository {
     );
     if (rows.isEmpty) return 0;
     for (final Map<String, Object?> r in rows) {
+      BlackBox.instance.info('DB', 'liste ${r['id']} supprimée (vide après synchro)');
       await _deletePlaylist(r['id'] as int);
     }
     await _emitCurrentState();
@@ -901,6 +909,7 @@ class PlaylistRepository {
   }
 
   Future<void> _deletePlaylist(int id) async {
+    BlackBox.instance.breadcrumb('Suppression de la liste $id');
     final Database db = await PlaylistDatabase.instance.database;
     // Phase 1+/Multi-serveurs : si on delete l'active, on promeut la
     // plus ancienne playlist restante comme nouvelle active. Comme ca
