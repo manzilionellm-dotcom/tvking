@@ -277,6 +277,18 @@ demande (ce que font IBO / TiviMate / Smarters).
   (54 755 742 octets, run 37379758296, commit dab884b) : #162 + avertissement
   « Mes sources » et raison de suppression dans la boîte noire.
 
+## 5 terdecies. Ligne de liste disparue pendant l'import : filet et preuve (6 octobre, 00:16)
+
+- Reproduit sur #163 (130,9 s, 50 000 chaînes, `FOREIGN KEY constraint
+  failed`). Qui efface la ligne : NON VÉRIFIÉ, tous les chemins sont
+  journalisés, lire les lignes avant 00:16:07. Rapport § 7 decies.
+- Box #164 : ligne remise avant l'écriture (`zuno.import.reinsert_off`),
+  `[DB] liste N : X ligne(s), Y chaîne(s) effacée(s)`, plus de
+  re-téléchargement d'une liste en cours d'ajout (`zuno.refresh.pending_legacy`).
+- `docs/PROMPT-MISSION-STABILITE.md` : prompt de mission complet à donner à
+  un agent pour continuer (critères mesurables, règles, état, ordre des
+  travaux, pièges).
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.

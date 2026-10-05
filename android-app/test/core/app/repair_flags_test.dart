@@ -52,6 +52,11 @@ void main() {
     expect(RepairFlags.m3uLinkAsM3uKey, 'zuno.source.m3u_link_as_m3u');
     expect(RepairFlags.sourceRetryAlways, isFalse);
     expect(RepairFlags.sourceRetryAlwaysKey, 'zuno.source.retry_always');
+    // Ligne de liste disparue pendant l'import, passe de 2 min : défauts du 06/10/2026.
+    expect(RepairFlags.importReinsertOff, isFalse);
+    expect(RepairFlags.importReinsertOffKey, 'zuno.import.reinsert_off');
+    expect(RepairFlags.refreshPendingLegacy, isFalse);
+    expect(RepairFlags.refreshPendingLegacyKey, 'zuno.refresh.pending_legacy');
 
     SharedPreferences.setMockInitialValues(<String, Object>{
       RepairFlags.autoRefreshFullKey: true,

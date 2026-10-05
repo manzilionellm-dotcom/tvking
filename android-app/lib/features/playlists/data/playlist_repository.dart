@@ -374,6 +374,7 @@ class PlaylistRepository {
     // (download KO, 0 chaîne…), on SUPPRIME cette entrée orpheline dans
     // le `catch` → on ne garde QUE les sources valides (demande client).
     int? playlistId;
+    final Stopwatch sw = Stopwatch()..start();
     try {
       // 1) Insère la playlist (sans channelCount/lastSync)
       final Playlist newPlaylist = Playlist(
@@ -410,6 +411,7 @@ class PlaylistRepository {
         );
       }
 
+      await _ensurePlaylistRow(playlistId, newPlaylist, sw);
       await _insertChannels(parsed.channels);
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -564,6 +566,7 @@ class PlaylistRepository {
     // Orpheline : si une étape échoue APRÈS insertion, on la supprime
     // (cf. `catch`) → on ne stocke QUE les comptes valides.
     int? playlistId;
+    final Stopwatch sw = Stopwatch()..start();
     try {
       await xtream.verifyCredentials();
 
@@ -599,6 +602,7 @@ class PlaylistRepository {
         );
       }
 
+      await _ensurePlaylistRow(playlistId, newPlaylist, sw);
       await _insertChannels(channels);
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -714,9 +718,13 @@ class PlaylistRepository {
       int ok = 0;
       int failed = 0;
       for (final Playlist p in all) {
-        if (p.hidden) continue;
-        final int? last = p.lastSyncedAt;
-        if (freshAfter != null && last != null && last > freshAfter) continue;
+        if (!shouldRefreshPlaylist(
+          p,
+          freshAfter: freshAfter,
+          pendingLegacy: RepairFlags.refreshPendingLegacy,
+        )) {
+          continue;
+        }
         try {
           final bool result = await refreshPlaylist(p);
           if (result) {
@@ -928,8 +936,15 @@ class PlaylistRepository {
     // cf. PlaylistDatabase._onConfigure), mais ce delete direct garantit
     // le nettoyage même sur d'anciennes bases et purge toute chaîne déjà
     // orpheline. Sans ça, les chaînes réapparaissaient après suppression.
-    await db.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
-    await db.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
+    final int channelsGone =
+        await db.delete('channels', where: 'playlist_id = ?', whereArgs: <Object>[id]);
+    final int rowsGone =
+        await db.delete('playlists', where: 'id = ?', whereArgs: <Object>[id]);
+    // Preuve pour la boîte noire : « 0 liste » = la ligne avait DÉJÀ disparu
+    // (mesuré le 06/10/2026 : « FOREIGN KEY constraint failed » à l'écriture
+    // des chaînes, puis suppression d'une liste qui n'existait plus).
+    BlackBox.instance.info(
+        'DB', 'liste $id : $rowsGone ligne(s), $channelsGone chaîne(s) effacée(s)');
     if (wasActive.isNotEmpty) {
       final List<Map<String, Object?>> next = await db.query(
         'playlists',
@@ -946,6 +961,60 @@ class PlaylistRepository {
         );
       }
     }
+  }
+
+  /// Juste avant d'écrire les chaînes de [playlistId] : la ligne de la liste
+  /// existe-t-elle encore ? Mesuré les 5 et 6 octobre 2026 sur la box de
+  /// test : après 145 s puis 131 s de téléchargement (50 000 chaînes), la
+  /// première écriture échouait « FOREIGN KEY constraint failed » : la ligne
+  /// insérée avant le téléchargement n'était plus là. Ici on le constate, on
+  /// l'écrit dans la boîte noire avec la durée écoulée, et on remet la ligne
+  /// (même id) pour que l'import aboutisse. Repli `zuno.import.reinsert_off`.
+  Future<void> _ensurePlaylistRow(
+    int playlistId,
+    Playlist playlist,
+    Stopwatch sinceStart,
+  ) async {
+    if (RepairFlags.importReinsertOff) return;
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> row = await db.query(
+      'playlists',
+      columns: <String>['id'],
+      where: 'id = ?',
+      whereArgs: <Object>[playlistId],
+      limit: 1,
+    );
+    if (row.isNotEmpty) return;
+    final double seconds = sinceStart.elapsedMilliseconds / 1000;
+    BlackBox.instance.warn(
+      'DB',
+      'liste $playlistId disparue pendant le téléchargement '
+      '(${seconds.toStringAsFixed(1)} s) : ligne remise avant l\'écriture des chaînes',
+    );
+    final Map<String, Object?> map = playlist.toMap();
+    map['id'] = playlistId;
+    map['xtream_password'] =
+        await PlaylistSecret.seal(map['xtream_password'] as String?);
+    map['m3u_url'] = await PlaylistSecret.seal(map['m3u_url'] as String?);
+    await db.insert('playlists', map);
+  }
+
+  /// La passe « nouvelles chaînes » doit-elle re-télécharger [playlist] ?
+  /// Règle pure (testée) : jamais une liste cachée ; jamais une liste
+  /// à jour depuis moins que la fenêtre ([freshAfter]) ; et jamais une liste
+  /// JAMAIS synchronisée (`lastSyncedAt` nul = ajout en cours : la
+  /// re-télécharger en parallèle doublait la mémoire sur une box 1 Go),
+  /// sauf repli `zuno.refresh.pending_legacy`.
+  static bool shouldRefreshPlaylist(
+    Playlist playlist, {
+    required int? freshAfter,
+    required bool pendingLegacy,
+  }) {
+    if (playlist.hidden) return false;
+    final int? last = playlist.lastSyncedAt;
+    if (last == null) return pendingLegacy;
+    if (freshAfter != null && last > freshAfter) return false;
+    return true;
   }
 
   /// Insert toutes les chaînes en CHUNKS de 1000 + ré-émet l'état

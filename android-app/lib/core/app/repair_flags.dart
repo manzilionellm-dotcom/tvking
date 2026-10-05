@@ -176,6 +176,23 @@ abstract final class RepairFlags {
   static const String sourceRetryAlwaysKey = 'zuno.source.retry_always';
   static bool sourceRetryAlways = false;
 
+  /// Vrai = ancien comportement : si la ligne d'une liste a disparu de la
+  /// base pendant le téléchargement de ses chaînes, l'écriture échoue
+  /// (« FOREIGN KEY constraint failed », mesuré les 5 et 6 octobre 2026 après
+  /// 145 s puis 131 s de téléchargement) et tout est perdu. Faux = la box
+  /// le constate juste avant d'écrire, le note dans la boîte noire avec la
+  /// durée, remet la ligne et termine l'import.
+  static const String importReinsertOffKey = 'zuno.import.reinsert_off';
+  static bool importReinsertOff = false;
+
+  /// Vrai = ancien comportement : la passe « nouvelles chaînes » (2 min
+  /// après l'ouverture, puis toutes les 6 h) re-télécharge aussi une liste
+  /// dont l'ajout est encore en cours (jamais synchronisée) : deux
+  /// téléchargements de la même liste en même temps sur une box 1 Go.
+  /// Faux = une liste jamais synchronisée est laissée à son import.
+  static const String refreshPendingLegacyKey = 'zuno.refresh.pending_legacy';
+  static bool refreshPendingLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -198,6 +215,8 @@ abstract final class RepairFlags {
     bool m3uLegacy = false;
     bool linkAsM3u = false;
     bool retryAlways = false;
+    bool reinsertOff = false;
+    bool pendingLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -221,6 +240,8 @@ abstract final class RepairFlags {
       m3uLegacy = prefs.getBool(m3uTimeoutLegacyKey) ?? false;
       linkAsM3u = prefs.getBool(m3uLinkAsM3uKey) ?? false;
       retryAlways = prefs.getBool(sourceRetryAlwaysKey) ?? false;
+      reinsertOff = prefs.getBool(importReinsertOffKey) ?? false;
+      pendingLegacy = prefs.getBool(refreshPendingLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -243,7 +264,11 @@ abstract final class RepairFlags {
       m3uLegacy = false;
       linkAsM3u = false;
       retryAlways = false;
+      reinsertOff = false;
+      pendingLegacy = false;
     }
+    importReinsertOff = reinsertOff;
+    refreshPendingLegacy = pendingLegacy;
     sourceRetryAlways = retryAlways;
     m3uLinkAsM3u = linkAsM3u;
     m3uTimeoutLegacy = m3uLegacy;
@@ -293,6 +318,8 @@ abstract final class RepairFlags {
     m3uTimeoutLegacy = false;
     m3uLinkAsM3u = false;
     sourceRetryAlways = false;
+    importReinsertOff = false;
+    refreshPendingLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

@@ -376,6 +376,52 @@ SHA-256 `dbc30ee9f72734d81360dc09aada2cc1030b8208ebda0308a510c004cb9a012e`,
 54 755 742 octets, `mandatory: false`. Suite Flutter avant commit : 469 verts,
 2 ignorés.
 
+## 7 decies. La ligne de la liste disparaît pendant le téléchargement (6 octobre, 00:16) : filet, preuve, et plus de double import
+
+Boîte noire `107-test.163` (photo du propriétaire) :
+
+```
+00:16:07 I [ACTION] Insertion en base de 50000 chaînes
+00:16:07 I [DB] liste 74 supprimée (import Xtream échoué)
+00:16:07 W [SOURCE] liste Xtream (lien) du panel refusée après 130.9 s : DatabaseException(FOREIGN KEY constraint failed (code 787…
+00:16:07 W [SOURCE] API Xtream indisponible pour ce lien : repli sur le fichier M3U
+00:16:07 I [ACTION] Téléchargement M3U pro.business-cloud-8.ru
+```
+
+Même panne que le #160 (22:59:41, après 145 s) : la ligne `playlists` insérée
+avant le téléchargement n'existe plus quand la première écriture de chaînes
+arrive. **Qui l'efface : NON VÉRIFIÉ.** Lecture du code : tous les chemins de
+suppression passent par `_deletePlaylist`, et tous sont journalisés depuis
+#161 (`deletePlaylist(reason)`, les `catch` d'import, `pruneEmptyPlaylists`).
+La réponse est donc dans les lignes qui précèdent 00:16:07 (non
+photographiées). Candidats examinés et écartés par le code : restauration
+cloud (`restoreIfNeeded`, mobile seulement), passe « nouvelles chaînes »
+(`refreshAll` ne supprime que les listes synchronisées et vides), guide EPG
+(même base, ne touche ni `playlists` ni `channels`).
+
+Trois changements (build #164), tous avec repli :
+1. **Filet** : juste avant d'écrire les chaînes, `_ensurePlaylistRow` vérifie
+   la ligne ; absente → `W [DB] liste N disparue pendant le téléchargement
+   (N s) : ligne remise avant l'écriture des chaînes`, ligne remise avec le
+   même id, import terminé. Rejoué sur le vrai code avec un serveur Xtream
+   simulé qui efface la ligne avant de rendre les chaînes
+   (`import_row_vanished_test.dart`, 3 tests : import aboutit ; avec le repli
+   `zuno.import.reinsert_off`, échec comme avant ; ligne intacte, rien ne
+   change).
+2. **Preuve** : `_deletePlaylist` écrit `[DB] liste N : X ligne(s), Y
+   chaîne(s) effacée(s)`. « 0 ligne(s) » = la ligne avait déjà disparu.
+3. **Plus de double import** : `refreshAll` ignore une liste jamais
+   synchronisée (`lastSyncedAt` nul = ajout en cours). Avant, la passe de
+   2 min après l'ouverture pouvait re-télécharger les 50 000 chaînes d'une
+   liste en cours d'ajout, en parallèle (mémoire ×2 sur une box 1 Go).
+   Règle pure `shouldRefreshPlaylist`, 4 tests ; repli
+   `zuno.refresh.pending_legacy`.
+
+Aussi dans la photo : le repli M3U vers `pro.business-cloud-8.ru` après une
+erreur d'**écriture** est inutile (l'API avait rendu 50 000 chaînes ; le
+`get.php` de ce fournisseur refuse, § 7 nonies). À traiter : pas de repli
+M3U quand l'API a déjà rendu des chaînes (voir `docs/PROMPT-MISSION-STABILITE.md`, P0-2).
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).
