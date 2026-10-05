@@ -1,0 +1,958 @@
+diff --git a/android-app/admin-panel/package.json b/android-app/admin-panel/package.json
+index 4ea9a66..e00cf05 100644
+--- a/android-app/admin-panel/package.json
++++ b/android-app/admin-panel/package.json
+@@ -8,7 +8,7 @@
+     "dev": "vite",
+     "build": "tsc -b && vite build",
+     "preview": "vite preview",
+-    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts src/lib/instant.test.ts"
++    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts src/lib/instant.test.ts src/lib/idempotency.test.ts"
+   },
+   "dependencies": {
+     "react": "^18.3.1",
+diff --git a/android-app/admin-panel/src/components/Sidebar.tsx b/android-app/admin-panel/src/components/Sidebar.tsx
+index 40eb393..446098e 100644
+--- a/android-app/admin-panel/src/components/Sidebar.tsx
++++ b/android-app/admin-panel/src/components/Sidebar.tsx
+@@ -20,51 +20,72 @@ type NavItem = { key: string; to: string; cap?: string };
+ // aucune logique d'activation/abonnement n'est touchée ici.
+ type NavSection = { titleKey: string; items: NavItem[] };
+ 
++// Organisation « centre de contrôle » (06/10/2026) : chaque page existante
++// est rangée dans un groupe métier, sans en renommer aucune ni en ajouter.
++// Centre de contrôle (vue d'ensemble, en direct), Clients (abonnés,
++// appareils, activations), Applications (versions, mise à jour forcée,
++// avis), Revendeurs, Contenu (listes, serveurs, publicité, annonces, mise
++// en avant, accueil, thème), Boîte noire, Système (journal, compte).
+ const OWNER_NAV: NavSection[] = [
+   {
+-    titleKey: 'navsec.activation',
++    titleKey: 'navsec.control',
++    items: [
++      { key: 'nav.dashboard',     to: '/' },
++      { key: 'nav.online',        to: '/online' },
++      { key: 'nav.controlCenter', to: '/control-center' },
++    ],
++  },
++  {
++    titleKey: 'navsec.customers',
+     items: [
++      { key: 'nav.customers',      to: '/customers' },
++      { key: 'nav.devices',        to: '/devices' },
++      { key: 'nav.activations',    to: '/activations' },
+       { key: 'nav.remoteActivate', to: '/activation-distance' },
+-      { key: 'nav.activate',    to: '/activate' },
+-      { key: 'nav.activations', to: '/activations' },
+-      { key: 'nav.customers',   to: '/customers' },
+-      { key: 'nav.devices',     to: '/devices' },
+-      { key: 'nav.blackbox',    to: '/blackbox' },
+-      { key: 'nav.resellers',   to: '/resellers' },
+-      { key: 'nav.families',    to: '/families' },
+-      { key: 'nav.transfer',    to: '/transfer' },
+-      { key: 'nav.pricing',     to: '/tarifs' },
+-      { key: 'nav.references',  to: '/references' },
++      { key: 'nav.activate',       to: '/activate' },
++      { key: 'nav.transfer',       to: '/transfer' },
++      { key: 'nav.families',       to: '/families' },
+     ],
+   },
+   {
+-    titleKey: 'navsec.channels',
++    titleKey: 'navsec.apps',
++    items: [
++      { key: 'nav.apps',        to: '/apps' },
++      { key: 'nav.forceUpdate', to: '/force-update' },
++      { key: 'nav.reviews',     to: '/reviews' },
++    ],
++  },
++  {
++    titleKey: 'navsec.resellers',
+     items: [
+-      { key: 'nav.chaines',     to: '/chaines' },
+-      { key: 'nav.servers',     to: '/servers' },
++      { key: 'nav.resellers',  to: '/resellers' },
++      { key: 'nav.pricing',    to: '/tarifs' },
++      { key: 'nav.references', to: '/references' },
+     ],
+   },
+   {
+     titleKey: 'navsec.content',
+     items: [
+-      { key: 'nav.controlCenter', to: '/control-center' },
+-      { key: 'nav.homeManager',   to: '/home-manager' },
+-      { key: 'nav.featured',      to: '/featured' },
+-      { key: 'nav.theme',         to: '/theme' },
++      { key: 'nav.chaines',       to: '/chaines' },
++      { key: 'nav.servers',       to: '/servers' },
+       { key: 'nav.ad',            to: '/ad' },
+       { key: 'nav.notifications', to: '/notifications' },
+-      { key: 'nav.forceUpdate',   to: '/force-update' },
+-      { key: 'nav.reviews',       to: '/reviews' },
++      { key: 'nav.featured',      to: '/featured' },
++      { key: 'nav.homeManager',   to: '/home-manager' },
++      { key: 'nav.theme',         to: '/theme' },
++    ],
++  },
++  {
++    titleKey: 'navsec.blackbox',
++    items: [
++      { key: 'nav.blackbox', to: '/blackbox' },
+     ],
+   },
+   {
+     titleKey: 'navsec.system',
+     items: [
+-      { key: 'nav.dashboard', to: '/' },
+-      { key: 'nav.online',    to: '/online' },
+-      { key: 'nav.apps',      to: '/apps' },
+-      { key: 'nav.history',   to: '/history' },
+-      { key: 'nav.account',   to: '/account' },
++      { key: 'nav.history', to: '/history' },
++      { key: 'nav.account', to: '/account' },
+     ],
+   },
+ ];
+diff --git a/android-app/admin-panel/src/lib/api.ts b/android-app/admin-panel/src/lib/api.ts
+index 897a888..8109525 100644
+--- a/android-app/admin-panel/src/lib/api.ts
++++ b/android-app/admin-panel/src/lib/api.ts
+@@ -83,14 +83,20 @@ interface RequestOpts {
+   noAuth?: boolean;
+   /// Annule la requête précédente (recherche, rafraîchissement).
+   signal?: AbortSignal;
++  /// En-têtes en plus (ex. `Idempotency-Key` sur une écriture critique).
++  headers?: Record<string, string>;
+ }
+ 
++// Clé d'idempotence des écritures critiques : module pur (testé sous node).
++export { newIdempotencyKey, keepIdempotencyKeyAfter } from './idempotency';
++
+ async function request<T = unknown>(
+   path: string,
+   opts: RequestOpts = {},
+ ): Promise<T> {
+   const headers: Record<string, string> = {
+     'Content-Type': 'application/json',
++    ...(opts.headers || {}),
+   };
+   if (!opts.noAuth) {
+     const token = getToken();
+@@ -542,8 +548,12 @@ export const activateApi = {
+     custom_days?: number;
+     reseller_id?: string;
+     source?: DeviceSourceInput;
+-  }) =>
+-    request<ActivateResult>('/api/v1/activate', { method: 'POST', body: payload }),
++  }, idempotencyKey?: string) =>
++    request<ActivateResult>('/api/v1/activate', {
++      method: 'POST',
++      body: payload,
++      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
++    }),
+ 
+   // Prolonge l'essai d'une MAC déjà connue de N jours.
+   // Réservé à l'administrateur (le Worker refuse un revendeur).
+diff --git a/android-app/admin-panel/src/lib/i18n.tsx b/android-app/admin-panel/src/lib/i18n.tsx
+index dd75f9f..a7b7a9c 100644
+--- a/android-app/admin-panel/src/lib/i18n.tsx
++++ b/android-app/admin-panel/src/lib/i18n.tsx
+@@ -67,6 +67,11 @@ const STR: Record<string, Record<Lang, string>> = {
+ 
+   // --- Sections du menu (regroupement Sidebar) ---
+   'navsec.activation': { fr: 'Activation & abonnés', en: 'Activation & subscribers', ar: 'التفعيل والمشتركون' },
++  'navsec.control':   { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
++  'navsec.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },
++  'navsec.apps':      { fr: 'Applications', en: 'Applications', ar: 'التطبيقات' },
++  'navsec.resellers': { fr: 'Revendeurs', en: 'Resellers', ar: 'الموزعون' },
++  'navsec.blackbox':  { fr: 'Boîte noire', en: 'Black box', ar: 'الصندوق الأسود' },
+   'navsec.channels': { fr: 'Chaînes & sources', en: 'Channels & sources', ar: 'القنوات والمصادر' },
+   'navsec.content': { fr: 'App & contenu', en: 'App & content', ar: 'التطبيق والمحتوى' },
+   'navsec.system': { fr: 'Système', en: 'System', ar: 'النظام' },
+diff --git a/android-app/admin-panel/src/lib/idempotency.test.ts b/android-app/admin-panel/src/lib/idempotency.test.ts
+new file mode 100644
+index 0000000..dde65aa
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/idempotency.test.ts
+@@ -0,0 +1,25 @@
++// idempotency.test.ts — vie de la clé d'idempotence (voir idempotency.ts).
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { keepIdempotencyKeyAfter, newIdempotencyKey } from './idempotency.ts';
++
++test('clé : 8 à 128 caractères [A-Za-z0-9_-], comme l’exige le Worker', () => {
++  for (let i = 0; i < 20; i++) {
++    const k = newIdempotencyKey();
++    assert.match(k, /^[A-Za-z0-9_-]{8,128}$/);
++  }
++  assert.notEqual(newIdempotencyKey(), newIdempotencyKey());
++});
++
++test('coupure réseau ou 5xx : on garde la clé (la requête a pu passer)', () => {
++  assert.equal(keepIdempotencyKeyAfter({ status: 0 }), true);
++  assert.equal(keepIdempotencyKeyAfter({ status: 500 }), true);
++  assert.equal(keepIdempotencyKeyAfter({ status: 503 }), true);
++  assert.equal(keepIdempotencyKeyAfter(new TypeError('Failed to fetch')), true);
++});
++
++test('refus métier 4xx : nouvelle clé au prochain clic', () => {
++  for (const status of [400, 401, 402, 403, 404, 409]) {
++    assert.equal(keepIdempotencyKeyAfter({ status }), false, `status ${status}`);
++  }
++});
+diff --git a/android-app/admin-panel/src/lib/idempotency.ts b/android-app/admin-panel/src/lib/idempotency.ts
+new file mode 100644
+index 0000000..d0c981f
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/idempotency.ts
+@@ -0,0 +1,32 @@
++// =========================================================
++//  idempotency.ts — Clé d'idempotence des écritures critiques
++// =========================================================
++//  Une clé par INTENTION (clic sur « Activer »). Le Worker garde la
++//  réponse de la première exécution 24 h : la même clé renvoyée rejoue
++//  cette réponse au lieu de réactiver et de redébiter.
++//
++//  Règle de vie de la clé (testée par idempotency.test.ts) :
++//    • réponse reçue (succès, ou refus métier 4xx) → clé abandonnée, le
++//      clic suivant est une nouvelle intention ;
++//    • pas de réponse (coupure réseau, status 0) ou erreur serveur (5xx)
++//      → la requête a PU s'exécuter : on garde la clé, le prochain envoi
++//      rejoue au lieu de doubler.
++//  Module pur : aucune dépendance au navigateur ni à `import.meta`.
++// =========================================================
++
++export function newIdempotencyKey(): string {
++  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
++    return crypto.randomUUID();
++  }
++  return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
++}
++
++/// Garde-t-on la même clé pour la prochaine tentative après [e] ?
++/// Toute erreur sans statut HTTP lisible est traitée comme une coupure.
++export function keepIdempotencyKeyAfter(e: unknown): boolean {
++  const status = typeof e === 'object' && e !== null && 'status' in e
++    ? Number((e as { status: unknown }).status)
++    : NaN;
++  if (!Number.isFinite(status)) return true;
++  return status === 0 || status >= 500;
++}
+diff --git a/android-app/admin-panel/src/pages/ActivatePage.tsx b/android-app/admin-panel/src/pages/ActivatePage.tsx
+index b57d5a9..727a2ee 100644
+--- a/android-app/admin-panel/src/pages/ActivatePage.tsx
++++ b/android-app/admin-panel/src/pages/ActivatePage.tsx
+@@ -7,6 +7,7 @@ import {
+   getCurrentUser, isOwnerRole,
+   DOWNLOAD_URL, DOWNLOADER_CODE, DOWNLOAD_URL_TV, DOWNLOADER_CODE_TV,
+   type App, type PlanCost, type ActivateResult, type TrialExtendResult, ApiError,
++  newIdempotencyKey, keepIdempotencyKeyAfter,
+ } from '@/lib/api';
+ import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
+ import { createSingleFlight } from '@/lib/robust';
+@@ -41,6 +42,7 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
+   const [err, setErr] = useState<string | null>(null);
+   const [result, setResult] = useState<ActivateResult | null>(null);
+   const flight = useRef(createSingleFlight());
++  const idem = useRef<string | null>(null);
+ 
+   const [daysChoice, setDaysChoice] = useState('7');
+   const [daysBusy, setDaysBusy] = useState(false);
+@@ -94,14 +96,19 @@ export function ActivatePage({ onLogout }: { onLogout: () => void }) {
+         return;
+       }
+       try {
+-        // Licence seulement. Pas de lien dans cet appel.
++        // Licence seulement. Pas de lien dans cet appel. La clé
++        // d'idempotence survit à une coupure : un second envoi de la même
++        // intention rejoue la réponse au lieu de réactiver et redébiter.
++        const key = idem.current ?? (idem.current = newIdempotencyKey());
+         const res = await activateApi.activate({
+           mac: m, plan, app_id: appId,
+           customer_name: customerName.trim() || undefined,
+-        });
++        }, key);
++        idem.current = null;
+         setResult(res);
+         if (res.credit_balance !== null) setBalance(res.credit_balance);
+       } catch (e: unknown) {
++        if (!keepIdempotencyKeyAfter(e)) idem.current = null;
+         if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+         setErr(e instanceof ApiError ? e.message : 'Activation impossible. Réessayez.');
+       } finally {
+diff --git a/android-app/admin-panel/src/pages/DevicesPage.tsx b/android-app/admin-panel/src/pages/DevicesPage.tsx
+index fe396f5..f21acc6 100644
+--- a/android-app/admin-panel/src/pages/DevicesPage.tsx
++++ b/android-app/admin-panel/src/pages/DevicesPage.tsx
+@@ -11,6 +11,7 @@ import {
+   devicesApi, activateApi, sourcesApi, flagEmoji, isAbortError,
+   type Device, type DeviceSource, type DeviceOverview, type DeviceLocalSource,
+   type DeviceLicense, type DevicePresence, ApiError,
++  newIdempotencyKey, keepIdempotencyKeyAfter,
+ } from '@/lib/api';
+ import { shouldApplyPollResult } from '@/lib/live-sync';
+ import { bindPanelRefresh } from '@/lib/box-channel';
+@@ -845,6 +846,7 @@ function ActivatePlanModal({
+   // Verrou synchrone : deux clics avant le re-render partaient deux fois
+   // et débitaient deux fois les crédits.
+   const flight = useRef(createSingleFlight());
++  const idem = useRef<string | null>(null);
+ 
+   const PLANS = [
+     { id: 'monthly', label: '1 mois' },
+@@ -858,10 +860,13 @@ function ActivatePlanModal({
+     await flight.current.run(async () => {
+       setBusy(true); setErr(null);
+       try {
+-        await activateApi.activate({ mac: device.mac, plan });
++        const key = idem.current ?? (idem.current = newIdempotencyKey());
++        await activateApi.activate({ mac: device.mac, plan }, key);
++        idem.current = null;
+         setDone(true);
+         setTimeout(onDone, 900);
+       } catch (e: any) {
++        if (!keepIdempotencyKeyAfter(e)) idem.current = null;
+         setErr(e instanceof ApiError ? e.message : 'Échec.');
+       } finally { setBusy(false); }
+     });
+diff --git a/android-app/admin-panel/src/pages/RemoteActivatePage.tsx b/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
+index 36b703e..1240f75 100644
+--- a/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
++++ b/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
+@@ -6,6 +6,7 @@ import {
+   activateApi, appsApi, devicesApi, planCostsApi, meApi, sourcesApi,
+   getCurrentUser, isOwnerRole, userCan,
+   type App, type PlanCost, type ActivateResult, type DeviceSource, ApiError,
++  newIdempotencyKey, keepIdempotencyKeyAfter,
+ } from '@/lib/api';
+ import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
+ import { createSingleFlight } from '@/lib/robust';
+@@ -86,6 +87,9 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+   const [listNote, setListNote] = useState<string | null>(null);
+   const [result, setResult] = useState<ActivateResult | null>(null);
+   const flight = useRef(createSingleFlight());
++  // Une clé par intention d'activation ; gardée si la réponse n'est pas
++  // arrivée (coupure, 5xx), pour qu'un nouvel envoi rejoue au lieu de redébiter.
++  const idem = useRef<string | null>(null);
+ 
+   // ----- « Sur la TV » : preuve que la liste est arrivée -----
+   // Dès que la liste est envoyée, on relit l'inventaire réel de la box
+@@ -234,14 +238,17 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+       setMac(m);
+       setLicenceStep('busy');
+       try {
++        const key = idem.current ?? (idem.current = newIdempotencyKey());
+         const res = await activateApi.activate({
+           mac: m, plan, app_id: appId,
+           customer_name: customerName.trim() || undefined,
+-        });
++        }, key);
++        idem.current = null;
+         setResult(res);
+         if (res.credit_balance !== null) setBalance(res.credit_balance);
+         setLicenceStep('ok');
+       } catch (e2: unknown) {
++        if (!keepIdempotencyKeyAfter(e2)) idem.current = null;
+         if (e2 instanceof ApiError && e2.status === 401) { onLogout(); return; }
+         setLicenceStep('err');
+         setErr((e2 instanceof ApiError ? e2.message : 'Activation impossible.') + ' Aucune liste envoyée.');
+diff --git a/android-app/cloudflare/activation_idempotency.test.mjs b/android-app/cloudflare/activation_idempotency.test.mjs
+new file mode 100644
+index 0000000..1a4e27c
+--- /dev/null
++++ b/android-app/cloudflare/activation_idempotency.test.mjs
+@@ -0,0 +1,194 @@
++// =========================================================
++//  activation_idempotency.test.mjs — Activation sûre au double clic
++// =========================================================
++//  node --experimental-sqlite cloudflare/activation_idempotency.test.mjs
++//  Preuves attendues (06/10/2026) :
++//    • même Idempotency-Key, même corps → même réponse, une seule licence,
++//      un seul débit, en-tête Idempotent-Replayed ;
++//    • même clé, corps différent → 409 ;
++//    • deux requêtes jumelles en même temps → une seule s'exécute, l'autre
++//      reçoit 409 in_progress ;
++//    • sans clé : comportement d'avant (le second appel renouvelle) ;
++//    • X-Request-Id renvoyé et écrit dans l'audit avec l'état d'avant/après
++//      et la latence mesurée (took_ms).
++//  Base SQLite en mémoire, comptes de test, aucune adresse réelle.
++// =========================================================
++import { DatabaseSync } from 'node:sqlite';
++import { readFileSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import worker from './worker.js';
++
++const ctx = { waitUntil() {}, passThroughOnException() {} };
++const here = dirname(fileURLToPath(import.meta.url));
++let pass = 0;
++let fail = 0;
++const ok = (c, m) => {
++  if (c) { pass += 1; console.log('PASS', m); }
++  else { fail += 1; console.log('FAIL', m); }
++};
++
++function makeDb() {
++  const db = new DatabaseSync(':memory:');
++  db.exec('PRAGMA foreign_keys = ON');
++  db.exec(readFileSync(join(here, 'schema.sql'), 'utf8'));
++  for (const sql of [
++    'ALTER TABLE resellers ADD COLUMN parent_reseller_id TEXT',
++    'ALTER TABLE devices ADD COLUMN block_status TEXT',
++  ]) {
++    try { db.exec(sql); } catch (_) { /* déjà dans le schéma */ }
++  }
++  const DB = {
++    prepare(sql) {
++      const runWith = (args) => {
++        const params = args.map((v) => (v === undefined ? null : v));
++        return {
++          async first() { const row = db.prepare(sql).get(...params); return row === undefined ? null : row; },
++          async all() { return { results: db.prepare(sql).all(...params) }; },
++          async run() { const info = db.prepare(sql).run(...params); return { success: true, meta: { changes: info.changes } }; },
++        };
++      };
++      return {
++        bind(...args) { return runWith(args); },
++        first() { return runWith([]).first(); },
++        all() { return runWith([]).all(); },
++        run() { return runWith([]).run(); },
++      };
++    },
++    async batch(stmts) {
++      db.exec('BEGIN');
++      try { const out = []; for (const s of stmts) out.push(await s.run()); db.exec('COMMIT'); return out; }
++      catch (e) { try { db.exec('ROLLBACK'); } catch (_) { /* déjà annulé */ } throw e; }
++    },
++  };
++  return { db, env: { DB, ADMIN_SECRET: crypto.randomUUID(), SECRETS_KEY: crypto.randomUUID() } };
++}
++
++async function api(env, method, path, { token, body, headers: extra } = {}) {
++  const headers = { 'content-type': 'application/json', ...(extra || {}) };
++  if (token) headers.authorization = `Bearer ${token}`;
++  const res = await worker.fetch(new Request(`https://app.test${path}`, {
++    method, headers, body: body === undefined ? undefined : JSON.stringify(body),
++  }), env, ctx);
++  const text = await res.text();
++  let json = null;
++  try { json = text ? JSON.parse(text) : null; } catch (_) { json = null; }
++  return { status: res.status, json, text, headers: res.headers };
++}
++
++async function login(env) {
++  const r = await api(env, 'POST', '/api/v1/auth/login', { body: { email: 'admin', password: env.ADMIN_SECRET } });
++  return r.json && r.json.token;
++}
++
++async function makeReseller(env, admin, credits) {
++  const email = `r-${crypto.randomUUID()}@example.test`;
++  const password = crypto.randomUUID();
++  const created = await api(env, 'POST', '/api/v1/resellers', {
++    token: admin, body: { email, password, name: 'Revendeur test', credit_balance: credits },
++  });
++  const id = created.json && created.json.id;
++  await api(env, 'PATCH', `/api/v1/resellers/${id}`, { token: admin, body: { permissions: ['activate', 'devices', 'sources'] } });
++  const logged = await api(env, 'POST', '/api/v1/auth/reseller/login', { body: { email, password } });
++  return { token: logged.json && logged.json.token, id };
++}
++
++async function main() {
++  const { db, env } = makeDb();
++  const admin = await login(env);
++  ok(!!admin, 'login admin');
++  const reseller = await makeReseller(env, admin, 5);
++  const MAC = 'MK:AA:BB:CC:DD:41';
++  const key = crypto.randomUUID();
++  const body = { mac: MAC, plan: 'yearly' };
++
++  // 1) Première activation avec clé.
++  const first = await api(env, 'POST', '/api/v1/activate', {
++    token: reseller.token, body, headers: { 'Idempotency-Key': key, 'X-Request-Id': 'req-test-0001' },
++  });
++  ok(first.status === 201 && first.json && first.json.ok === true, `activation 201 (${first.status} ${first.text.slice(0, 120)})`);
++  ok(first.headers.get('x-request-id') === 'req-test-0001', 'X-Request-Id du panel renvoyé tel quel');
++  ok(first.json.credits_charged === 1 && first.json.credit_balance === 4, 'un crédit débité, solde 4');
++
++  // 2) Rejeu : même clé, même corps.
++  const replay = await api(env, 'POST', '/api/v1/activate', {
++    token: reseller.token, body, headers: { 'Idempotency-Key': key },
++  });
++  ok(replay.status === 201 && replay.headers.get('idempotent-replayed') === 'true', 'rejeu : même statut, Idempotent-Replayed');
++  ok(replay.json.license_id === first.json.license_id && replay.json.expires_at === first.json.expires_at, 'rejeu : même licence, même date de fin');
++  const lic = db.prepare('SELECT COUNT(*) AS n FROM licenses').get();
++  // La création du revendeur écrit déjà une ligne « issue » (+5) : on ne
++  // compte que les débits d'activation.
++  const ledger = db.prepare("SELECT COUNT(*) AS n FROM credit_ledger WHERE reason IN ('activation', 'renew')").get();
++  const bal = db.prepare('SELECT credit_balance FROM resellers WHERE id = ?').get(reseller.id);
++  ok(lic.n === 1 && ledger.n === 1 && bal.credit_balance === 4, `une licence, un débit, solde 4 (licences ${lic.n}, ledger ${ledger.n}, solde ${bal.credit_balance})`);
++
++  // 3) Même clé, corps différent.
++  const mismatch = await api(env, 'POST', '/api/v1/activate', {
++    token: reseller.token, body: { mac: MAC, plan: 'lifetime' }, headers: { 'Idempotency-Key': key },
++  });
++  ok(mismatch.status === 409 && mismatch.json.error === 'idempotency_mismatch', 'même clé, autre corps : 409');
++
++  // 4) Clé invalide.
++  const badKey = await api(env, 'POST', '/api/v1/activate', {
++    token: reseller.token, body, headers: { 'Idempotency-Key': 'x' },
++  });
++  ok(badKey.status === 400, 'clé trop courte : 400');
++
++  // 5) Deux requêtes jumelles en même temps : une seule passe.
++  const key2 = crypto.randomUUID();
++  const MAC2 = 'MK:AA:BB:CC:DD:42';
++  const twins = await Promise.all([0, 1].map(() => api(env, 'POST', '/api/v1/activate', {
++    token: reseller.token, body: { mac: MAC2, plan: 'yearly' }, headers: { 'Idempotency-Key': key2 },
++  })));
++  const statuses = twins.map((t) => t.status).sort();
++  ok(statuses[0] === 201 && (statuses[1] === 409 || statuses[1] === 201),
++    `jumelles : une 201, l'autre 409 ou rejeu (${statuses.join(',')})`);
++  const bal2 = db.prepare('SELECT credit_balance FROM resellers WHERE id = ?').get(reseller.id);
++  ok(bal2.credit_balance === 3, `un seul débit pour les jumelles (solde ${bal2.credit_balance})`);
++
++  // 5b) Branche « en cours » prouvée directement : une ligne réservée sans
++  //     réponse (requête jumelle encore en vol) → 409, rien n'est exécuté.
++  //     (Le banc Node exécute les requêtes l'une après l'autre : la course
++  //     réelle n'y est pas reproductible, on pose donc l'état intermédiaire.)
++  const key3 = crypto.randomUUID();
++  const MAC4 = 'MK:AA:BB:CC:DD:44';
++  const bodyText = JSON.stringify({ mac: MAC4, plan: 'yearly' });
++  const enc = new TextEncoder().encode(`activate\n${bodyText}`);
++  const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', enc)))
++    .map((b) => b.toString(16).padStart(2, '0')).join('');
++  db.prepare('INSERT INTO idempotency_keys (k, actor_id, request_hash, status, body_json, created_at) VALUES (?, ?, ?, NULL, NULL, ?)')
++    .run(`reseller:${reseller.id}:${key3}`, reseller.id, digest, Date.now());
++  const inflight = await worker.fetch(new Request('https://app.test/api/v1/activate', {
++    method: 'POST',
++    headers: { 'content-type': 'application/json', authorization: `Bearer ${reseller.token}`, 'Idempotency-Key': key3 },
++    body: bodyText,
++  }), env, ctx);
++  const inflightJson = await inflight.json();
++  ok(inflight.status === 409 && inflightJson.error === 'idempotency_in_progress', 'clé réservée, réponse pas encore écrite : 409 in_progress');
++  const dev4 = db.prepare('SELECT COUNT(*) AS n FROM devices WHERE mac = ?').get(MAC4);
++  ok(dev4.n === 0, 'rien n’a été exécuté pendant que la jumelle est en vol');
++
++  // 6) Sans clé : le second appel renouvelle (comportement d'avant, documenté).
++  const MAC3 = 'MK:AA:BB:CC:DD:43';
++  const a = await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: MAC3, plan: 'yearly' } });
++  const b = await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: MAC3, plan: 'yearly' } });
++  ok(a.status === 201 && a.json.renewed === false && b.status === 201 && b.json.renewed === true, 'sans clé : création puis renouvellement');
++  ok(b.json.expires_at > a.json.expires_at, 'le renouvellement prolonge à partir de la date précédente');
++
++  // 7) Audit : état d'avant / d'après, latence mesurée, corrélation.
++  const rows = db.prepare("SELECT action, before_json, after_json, correlation_id FROM audit_logs WHERE action LIKE 'activate.%' ORDER BY created_at ASC").all();
++  ok(rows.length >= 3, `audit : ${rows.length} événements d'activation`);
++  const firstRow = rows.find((r) => r.correlation_id === 'req-test-0001');
++  ok(!!firstRow && firstRow.before_json === null, 'création : état d’avant nul, corrélation = X-Request-Id');
++  const after0 = firstRow ? JSON.parse(firstRow.after_json) : {};
++  ok(typeof after0.took_ms === 'number' && after0.took_ms >= 0 && after0.status === 'active', `after_json : status active, took_ms mesuré (${after0.took_ms} ms)`);
++  const renewRow = rows.find((r) => r.action === 'activate.renew' && r.before_json);
++  ok(!!renewRow && JSON.parse(renewRow.before_json).expires_at === a.json.expires_at, 'renouvellement : état d’avant = ancienne date de fin');
++  ok(!JSON.stringify(rows).includes(env.ADMIN_SECRET), 'aucun secret dans l’audit');
++
++  console.log(`\n${pass} passed, ${fail} failed`);
++  process.exit(fail ? 1 : 0);
++}
++
++main().catch((e) => { console.error('TEST CRASH', e && e.message ? e.message : e); process.exit(1); });
+diff --git a/android-app/cloudflare/api_v1.js b/android-app/cloudflare/api_v1.js
+index f4b5837..3f4a441 100644
+--- a/android-app/cloudflare/api_v1.js
++++ b/android-app/cloudflare/api_v1.js
+@@ -625,14 +625,110 @@ async function bootstrapSuperAdminIfNeeded(env) {
+ // ---------------------------------------------------------
+ //  Audit log helper
+ // ---------------------------------------------------------
+-async function logAudit(env, request, actor, action, target, before, after) {
++// ---------------------------------------------------------
++//  Idempotence des écritures critiques (activation)
++// ---------------------------------------------------------
++//  Le panel envoie `Idempotency-Key: <uuid>` (un par clic). La première
++//  requête s'exécute et sa réponse est gardée 24 h ; toute requête qui
++//  rejoue la même clé avec le même corps reçoit la MÊME réponse
++//  (`Idempotent-Replayed: true`), sans réactiver ni redébiter. Même clé,
++//  corps différent → 409. Clé en cours (deux onglets, double clic
++//  simultané) → 409 `idempotency_in_progress`, à réessayer. Sans clé :
++//  comportement d'avant (compatibilité des anciens panels).
++const IDEMPOTENCY_TTL_MS = 24 * 3600 * 1000;
++let _idempotencyReady = false;
++async function ensureIdempotencyTable(env) {
++  if (_idempotencyReady) return;
++  await env.DB.prepare(
++    'CREATE TABLE IF NOT EXISTS idempotency_keys ('
++    + 'k TEXT PRIMARY KEY, actor_id TEXT, request_hash TEXT NOT NULL, '
++    + 'status INTEGER, body_json TEXT, created_at INTEGER NOT NULL)',
++  ).run();
++  _idempotencyReady = true;
++}
++
++async function sha256Hex(text) {
++  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
++  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
++}
++
++async function withIdempotency(request, env, actor, route, run) {
++  const key = (request.headers.get('Idempotency-Key') || '').trim();
++  if (!key) return run(request);
++  if (!/^[A-Za-z0-9_-]{8,128}$/.test(key)) {
++    return errResp('bad_idempotency_key', 'Idempotency-Key : 8 à 128 caractères [A-Za-z0-9_-].', 400);
++  }
++  await ensureIdempotencyTable(env);
++  const bodyText = await request.text();
++  // La clé est propre à l'acteur : deux comptes ne partagent jamais une réponse.
++  const k = `${actor.type}:${actor.id}:${key}`;
++  const hash = await sha256Hex(`${route}\n${bodyText}`);
++  const now = Date.now();
++  const prev = await env.DB
++    .prepare('SELECT request_hash, status, body_json FROM idempotency_keys WHERE k = ?')
++    .bind(k).first();
++  if (prev) {
++    if (prev.request_hash !== hash) {
++      return errResp('idempotency_mismatch',
++        'Cette clé a déjà servi pour une autre requête. Génère une nouvelle clé.', 409);
++    }
++    if (prev.status == null) {
++      return errResp('idempotency_in_progress',
++        'La même activation est déjà en cours. Réessaie dans quelques secondes.', 409);
++    }
++    const res = jsonResp(JSON.parse(prev.body_json || 'null'), prev.status);
++    return withResponseHeader(res, 'Idempotent-Replayed', 'true');
++  }
+   try {
++    await env.DB.prepare(
++      'INSERT INTO idempotency_keys (k, actor_id, request_hash, status, body_json, created_at) '
++      + 'VALUES (?, ?, ?, NULL, NULL, ?)',
++    ).bind(k, actor.id, hash, now).run();
++  } catch (_) {
++    // Clé primaire déjà prise : une requête jumelle vient de passer.
++    return errResp('idempotency_in_progress',
++      'La même activation est déjà en cours. Réessaie dans quelques secondes.', 409);
++  }
++  let res;
++  try {
++    res = await run(new Request(request, { body: bodyText }));
++  } catch (e) {
++    // L'exécution a échoué sans réponse : on libère la clé pour qu'une
++    // nouvelle tentative puisse s'exécuter.
++    try { await env.DB.prepare('DELETE FROM idempotency_keys WHERE k = ?').bind(k).run(); } catch (_) { /* best-effort */ }
++    throw e;
++  }
++  const text = await res.clone().text();
++  await env.DB.prepare('UPDATE idempotency_keys SET status = ?, body_json = ? WHERE k = ?')
++    .bind(res.status, text, k).run();
++  if (Math.random() < 0.05) {
++    try {
++      await env.DB.prepare('DELETE FROM idempotency_keys WHERE created_at < ?')
++        .bind(now - IDEMPOTENCY_TTL_MS).run();
++    } catch (_) { /* nettoyage best-effort */ }
++  }
++  return res;
++}
++
++// Colonne de corrélation du journal d'audit (ajout additif, une fois par
++// isolate) : `X-Request-Id` de la requête → l'action du panel, l'écriture
++// en base et la réponse portent le même identifiant.
++let _auditCorrelationReady = false;
++async function ensureAuditCorrelationColumn(env) {
++  if (_auditCorrelationReady || !env.DB) return;
++  try { await env.DB.prepare('ALTER TABLE audit_logs ADD COLUMN correlation_id TEXT').run(); } catch (_) { /* déjà là */ }
++  _auditCorrelationReady = true;
++}
++
++export async function logAudit(env, request, actor, action, target, before, after) {
++  try {
++    await ensureAuditCorrelationColumn(env);
+     await env.DB
+       .prepare(
+         `INSERT INTO audit_logs
+           (id, actor_type, actor_id, action, target_type, target_id,
+-           before_json, after_json, ip, user_agent, created_at)
+-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
++           before_json, after_json, ip, user_agent, created_at, correlation_id)
++         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       )
+       .bind(
+         genId('aud'),
+@@ -646,6 +742,7 @@ async function logAudit(env, request, actor, action, target, before, after) {
+         request && request.headers ? request.headers.get('CF-Connecting-IP') : null,
+         request && request.headers ? request.headers.get('User-Agent') : null,
+         Date.now(),
++        request && request.headers ? (request.headers.get('X-Request-Id') || null) : null,
+       )
+       .run();
+   } catch (e) {
+@@ -673,17 +770,40 @@ async function logAudit(env, request, actor, action, target, before, after) {
+ // le navigateur le voit comme une panne réseau et le panel affiche
+ // "Connexion impossible" au lieu du vrai message. Avec ce filet, on voit
+ // l'erreur réelle (ex. "no such table: admin_users") et on peut la régler.
++/// Identifiant de corrélation accepté du client (panel) : court, sans
++/// caractère de contrôle. Sinon on en fabrique un.
++function requestIdFrom(request) {
++  const given = (request.headers.get('X-Request-Id') || '').trim();
++  return /^[A-Za-z0-9_.:-]{8,64}$/.test(given) ? given : crypto.randomUUID();
++}
++
++/// Même requête, avec l'identifiant de corrélation posé en en-tête : les
++/// gestionnaires (audit, événement d'activation) le lisent là.
++function withRequestId(request, requestId) {
++  const headers = new Headers(request.headers);
++  headers.set('X-Request-Id', requestId);
++  return new Request(request, { headers });
++}
++
++function withResponseHeader(res, name, value) {
++  const headers = new Headers(res.headers);
++  headers.set(name, value);
++  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
++}
++
+ export async function apiV1(request, env) {
+   let res;
+-  // Identifiant de corrélation : le panel affiche une erreur stable,
+-  // le journal Worker porte la cause réelle, redactée.
+-  const requestId = crypto.randomUUID();
++  // Identifiant de corrélation : le panel l'envoie (ou on le fabrique), il
++  // suit la requête jusqu'au journal d'audit et revient dans la réponse
++  // (`X-Request-Id`). Le journal Worker porte la cause réelle, redactée.
++  const requestId = requestIdFrom(request);
+   try {
+     if (request.method === 'OPTIONS') {
+       res = new Response(null, { status: 204, headers: JSON_HEADERS });
+     } else {
+-      res = await apiV1Inner(request, env);
++      res = await apiV1Inner(withRequestId(request, requestId), env);
+     }
++    res = withResponseHeader(res, 'X-Request-Id', requestId);
+   } catch (e) {
+     const raw = (e && e.message) ? String(e.message) : String(e);
+     console.error(JSON.stringify({
+@@ -842,7 +962,11 @@ async function apiV1Inner(request, env) {
+     if (!resellerCan(a.user, 'activate')) {
+       return errResp('forbidden', 'Ton compte n\'a pas le droit d\'activer des appareils.', 403);
+     }
+-    return handleActivate(request, env, a.user, actor);
++    // Double clic, nouvelle tentative après un délai dépassé, deux onglets :
++    // la même `Idempotency-Key` rejoue la réponse déjà engagée au lieu de
++    // réactiver (et redébiter). Sans clé : comportement d'avant.
++    return withIdempotency(request, env, actor, 'activate',
++      (req) => handleActivate(req, env, a.user, actor));
+   }
+ 
+   // /transfer — déplacer un abonnement d'une ancienne MAC vers une
+@@ -4332,6 +4456,10 @@ async function handleTrialExtend(request, env, actor) {
+ //  la licence pour l'app, et DEBITE les credits du revendeur selon le
+ //  cout du plan. C'est l'endpoint que le portail revendeur appelle.
+ async function handleActivate(request, env, user, actor) {
++  // Mesure réelle de la latence serveur (écrite dans l'audit, `took_ms`) et
++  // identifiant de corrélation de bout en bout (`X-Request-Id`).
++  const t0 = Date.now();
++  const correlationId = request.headers.get('X-Request-Id') || null;
+   let body;
+   try { body = await request.json(); } catch (_) {
+     return errResp('bad_json', 'Invalid JSON body', 400);
+@@ -4540,21 +4668,51 @@ async function handleActivate(request, env, user, actor) {
+   }
+ 
+   // 2) Licence (device, app) : renouvelle si elle existe, sinon cree.
+-  const existing = await env.DB
+-    .prepare('SELECT id, expires_at FROM licenses WHERE device_id = ? AND app_id = ?')
++  //    L'état d'AVANT est gardé pour le journal d'audit (événement
++  //    d'activation : état précédent → nouvel état).
++  let existing = await env.DB
++    .prepare('SELECT id, expires_at, status, plan FROM licenses WHERE device_id = ? AND app_id = ?')
+     .bind(deviceId, appId).first();
++  const before = existing
++    ? { status: existing.status, plan: existing.plan, expires_at: existing.expires_at }
++    : null;
+   let licenseId; let finalExpiry; let renewed = false;
++  const ledgerStmt = () => env.DB.prepare(
++    `INSERT INTO credit_ledger
++      (id, reseller_id, delta, reason, balance_after, ref_license_id,
++       ref_device_mac, actor_type, actor_id, note, created_at)
++     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
++  );
+ 
+   if (existing) {
+     renewed = true;
+     licenseId = existing.id;
+-    const base = existing.expires_at && existing.expires_at > now ? existing.expires_at : now;
+-    finalExpiry = days === null ? null : base + days * 24 * 60 * 60 * 1000;
+-    await env.DB.prepare(
+-      `UPDATE licenses
+-       SET status='active', plan=?, expires_at=?, reseller_id=COALESCE(reseller_id, ?), updated_at=?
+-       WHERE id=?`,
+-    ).bind(plan, finalExpiry, chargeResellerId, now, licenseId).run();
++    // Deux renouvellements en même temps (deux onglets, deux admins) lisaient
++    // la même date de fin et l'écrivaient tous les deux : un seul prolongement
++    // pour deux débits. Écriture CONDITIONNELLE à la date lue ; si elle a
++    // changé entre-temps, on relit une fois et on prolonge à partir de la
++    // nouvelle date (chaque activation payée prolonge vraiment).
++    let applied = false;
++    for (let attempt = 0; attempt < 2 && !applied; attempt++) {
++      const base = existing.expires_at && existing.expires_at > now ? existing.expires_at : now;
++      finalExpiry = days === null ? null : base + days * 24 * 60 * 60 * 1000;
++      const upd = await env.DB.prepare(
++        `UPDATE licenses
++         SET status='active', plan=?, expires_at=?, reseller_id=COALESCE(reseller_id, ?), updated_at=?
++         WHERE id=? AND expires_at IS ?`,
++      ).bind(plan, finalExpiry, chargeResellerId, now, licenseId, existing.expires_at).run();
++      applied = !!(upd && upd.meta && upd.meta.changes);
++      if (!applied) {
++        existing = await env.DB
++          .prepare('SELECT id, expires_at, status, plan FROM licenses WHERE id = ?')
++          .bind(licenseId).first();
++        if (!existing) break;
++      }
++    }
++    if (!applied) {
++      return errResp('activation_conflict',
++        'Une autre activation vient de modifier cette licence. Relis la fiche puis réessaie.', 409);
++    }
+   } else {
+     licenseId = genId('lic');
+     finalExpiry = days === null ? null : now + days * 24 * 60 * 60 * 1000;
+@@ -4566,48 +4724,38 @@ async function handleActivate(request, env, user, actor) {
+     ).bind(licenseId, customerId, deviceId, appId, plan, now, finalExpiry, chargeResellerId, now, now).run();
+   }
+ 
+-  // 2b) Activer = degeler : si l'appareil etait gele/banni, l'activation
+-  // (le client a paye) le remet en service. Sinon le block_status
+-  // primerait sur la licence et l'app resterait bloquee.
+-  await env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?')
+-    .bind(deviceId).run();
+-
++  // 2b + 3) Dégel de l'appareil (le client a payé) ET journal de crédits,
++  // dans UN seul lot D1 (transactionnel) : jamais une licence prolongée
++  // sans sa ligne de ledger, ni l'inverse.
++  const tail = [
++    env.DB.prepare('UPDATE devices SET block_status = NULL WHERE id = ?').bind(deviceId),
++  ];
+   // Le lien M3U n'est PAS écrit ici. Voir PUT /api/v1/sources/:mac.
+   // (Une activation qui contient encore `source` est refusée plus haut, 400.)
+-
+-  // 3) Debit credits (revendeur) + ecriture au ledger, atomiquement.
+-  // Interrupteur allumé : le solde a DÉJÀ été décrémenté (debitedEarly).
+-  // On n'écrit que le journal. On ne débite pas une seconde fois.
+   if (debitedEarly) {
++    // Interrupteur allumé : le solde a DÉJÀ été décrémenté (RETURNING).
+     const fresh = await env.DB
+       .prepare('SELECT credit_balance FROM resellers WHERE id = ?')
+       .bind(chargeResellerId)
+       .first();
+     balanceAfter = fresh ? fresh.credit_balance : balanceAfter;
+-    await env.DB.prepare(
+-      `INSERT INTO credit_ledger
+-        (id, reseller_id, delta, reason, balance_after, ref_license_id,
+-         ref_device_mac, actor_type, actor_id, note, created_at)
+-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+-    ).bind(genId('cl'), chargeResellerId, -cost, renewed ? 'renew' : 'activation',
+-           balanceAfter, licenseId, mac, actor.type, actor.id, plan, now).run();
++    tail.push(ledgerStmt().bind(genId('cl'), chargeResellerId, -cost, renewed ? 'renew' : 'activation',
++      balanceAfter, licenseId, mac, actor.type, actor.id, plan, now));
+   } else if (!enforceCredits && chargeResellerId && cost > 0) {
+     balanceAfter = resellerRow.credit_balance - cost;
+-    await env.DB.batch([
+-      env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(balanceAfter, chargeResellerId),
+-      env.DB.prepare(
+-        `INSERT INTO credit_ledger
+-          (id, reseller_id, delta, reason, balance_after, ref_license_id,
+-           ref_device_mac, actor_type, actor_id, note, created_at)
+-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+-      ).bind(genId('cl'), chargeResellerId, -cost, renewed ? 'renew' : 'activation',
+-             balanceAfter, licenseId, mac, actor.type, actor.id, plan, now),
+-    ]);
++    tail.push(env.DB.prepare('UPDATE resellers SET credit_balance = ? WHERE id = ?').bind(balanceAfter, chargeResellerId));
++    tail.push(ledgerStmt().bind(genId('cl'), chargeResellerId, -cost, renewed ? 'renew' : 'activation',
++      balanceAfter, licenseId, mac, actor.type, actor.id, plan, now));
+   }
++  await env.DB.batch(tail);
+ 
+   await logAudit(env, request, actor, renewed ? 'activate.renew' : 'activate.create',
+-    { type: 'license', id: licenseId }, null,
+-    { mac, plan, app_id: appId, cost, reseller_id: chargeResellerId });
++    { type: 'license', id: licenseId }, before,
++    {
++      mac, plan, app_id: appId, cost, reseller_id: chargeResellerId,
++      status: 'active', expires_at: finalExpiry, device_id: deviceId,
++      customer_id: customerId, took_ms: Date.now() - t0, request_id: correlationId,
++    });
+   await notifyBox(env, mac, renewed ? 'renew' : 'activate');
+ 
+   return jsonResp({
+diff --git a/android-app/cloudflare/reset_box_panel.test.mjs b/android-app/cloudflare/reset_box_panel.test.mjs
+index 646c7e4..6b30cb5 100644
+--- a/android-app/cloudflare/reset_box_panel.test.mjs
++++ b/android-app/cloudflare/reset_box_panel.test.mjs
+@@ -145,6 +145,18 @@ async function main() {
+   served = await api(env, 'GET', `/api/device-source/${MAC}`);
+   ok((served.json.sources || []).length === 1, 'la box reçoit la nouvelle liste seule');
+ 
++  // Sécurité : lecture des codes par MAC limitée à 120 / minute / IP.
++  const ipHeaders = { 'CF-Connecting-IP': '203.0.113.7' };
++  let last = 0; let firstLimited = 0;
++  for (let i = 1; i <= 121; i++) {
++    const res = await worker.fetch(new Request(`https://app.test/api/device-source/${MAC}`, { headers: ipHeaders }), env, ctx);
++    last = res.status;
++    if (res.status === 429 && !firstLimited) firstLimited = i;
++  }
++  ok(firstLimited === 121 && last === 429, `device-source : 120 lectures passent, la 121e reçoit 429 (première 429 au n°${firstLimited})`);
++  const other = await worker.fetch(new Request(`https://app.test/api/device-source/${MAC}`, { headers: { 'CF-Connecting-IP': '203.0.113.8' } }), env, ctx);
++  ok(other.status === 200, 'une autre IP n’est pas touchée');
++
+   console.log(`\n${pass} passed, ${fail} failed`);
+   process.exit(fail ? 1 : 0);
+ }
+diff --git a/android-app/cloudflare/worker.js b/android-app/cloudflare/worker.js
+index 961af6e..3fd3739 100644
+--- a/android-app/cloudflare/worker.js
++++ b/android-app/cloudflare/worker.js
+@@ -54,7 +54,7 @@
+ 
+ // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
+ // Routee depuis le bas du fetch() en haut de la chaine de match.
+-import { apiV1, panelActorFromToken } from './api_v1.js';
++import { apiV1, logAudit, panelActorFromToken } from './api_v1.js';
+ import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
+ import {
+   RealtimeHub,
+@@ -3248,7 +3248,11 @@ async function handlePanelRemoveSelfSource(request, env, mac, id) {
+   }
+   await ensureDeviceSourcesTable(env);
+   const out = await removeSelfSourceItem(env, MAC, String(id || ''));
+-  if (out.status === 200) await notifyBox(env, MAC, 'source');
++  if (out.status === 200) {
++    await notifyBox(env, MAC, 'source');
++    await logAudit(env, request, { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub },
++      'source.self_remove', { type: 'device', id: MAC }, null, { source_id: String(id || '') });
++  }
+   return json(out.body, out.status);
+ }
+ 
+@@ -3290,6 +3294,9 @@ async function handlePanelResetBox(request, env, mac) {
+   // Les builds antérieurs à 165 ignorent « reset » : « source » leur fait
+   // relire des listes vides, donc effacer celles du panel.
+   await notifyBox(env, MAC, 'source');
++  // Action destructive : journalisée (acteur, cible, moment, corrélation).
++  await logAudit(env, request, { type: user.role === 'reseller' ? 'reseller' : 'admin', id: user.sub },
++    'device.reset', { type: 'device', id: MAC }, null, { reset_at: now });
+   return json({ ok: true, mac: MAC, reset_at: now });
+ }
+ 
+@@ -3883,6 +3890,16 @@ async function handleRequest(request, env, ctx) {
+       if (request.method !== 'GET') {
+         return badRequest('only GET supported on /api/device-source/:mac');
+       }
++      // SÉCURITÉ (06/10/2026) : cette route rend les codes IPTV déchiffrés
++      // à quiconque connaît la MAC, sans authentification (mesuré en lecture
++      // seule sur la box de test). Mitigation immédiate et compatible : au
++      // plus 120 lectures par minute et par IP (une box en attente en fait
++      // ~2,4 ; 120 couvre une salle de 40 box derrière la même IP). Le vrai
++      // correctif est le secret d'appareil (device_guard.js de la branche
++      // app) : voir docs/PROMPT-MISSION-STABILITE.md, P0.
++      if (!(await rateLimitOk(env, request, 'devsrc', 120, 60 * 1000))) {
++        return tooManyRequests();
++      }
+       return await handlePublicDeviceSource(env, segments[2]);
+     }
+ 

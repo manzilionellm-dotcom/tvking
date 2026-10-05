@@ -317,6 +317,18 @@ demande (ce que font IBO / TiviMate / Smarters).
   `c0d5edd5b18d0e352c7200e25c14047d9d55c1310c407f1ca51653f345ee89f8`
   (54 767 130 octets, commit 67d0a85).
 
+## 5 quindecies. Activation idempotente, audit corrélé, sécurité des codes (6 octobre)
+
+- 6e patch `docs/patches/panel-activation-idempotente-et-securite.patch`
+  (après les cinq autres, vérifié : s'applique proprement) : `Idempotency-Key`
+  sur l'activation, renouvellement conditionnel, débit + ledger atomiques,
+  `X-Request-Id` jusqu'à l'audit, état avant/après et `took_ms`, audit de la
+  remise à neuf, limite 120/min/IP sur `/api/device-source`, menu regroupé.
+- Box : import avant effacement (repli `zuno.source.drop_first_legacy`).
+- **Critique** : codes IPTV lisibles par la seule MAC en production ; le
+  correctif `device_guard.js` n'existe que sur la branche app.
+- Rapport complet : `docs/RAPPORT-CONTROL-CENTER.md`.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.

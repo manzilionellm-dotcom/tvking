@@ -62,6 +62,8 @@ void main() {
     expect(RepairFlags.remoteResetOffKey, 'zuno.reset.off');
     expect(RepairFlags.testUpdatePollLegacy, isFalse);
     expect(RepairFlags.testUpdatePollLegacyKey, 'zuno.update.test_poll_legacy');
+    expect(RepairFlags.sourceDropFirstLegacy, isFalse);
+    expect(RepairFlags.sourceDropFirstLegacyKey, 'zuno.source.drop_first_legacy');
 
     SharedPreferences.setMockInitialValues(<String, Object>{
       RepairFlags.autoRefreshFullKey: true,

@@ -72,7 +72,7 @@ noire ou le test qui le prouve. Si tu n'as pas la preuve, tu écris
   zuno.sync.pill_show, zuno.update.auto_install_off, zuno.m3u.timeout_legacy,
   zuno.source.m3u_link_as_m3u, zuno.source.retry_always,
   zuno.import.reinsert_off, zuno.refresh.pending_legacy, zuno.reset.off,
-  zuno.update.test_poll_legacy.
+  zuno.update.test_poll_legacy, zuno.source.drop_first_legacy.
 - **Worker** (`android-app/cloudflare/`, prod = `claude/panel-mise-en-ligne`) :
   `worker.js` routes publiques (`/api/` ad, ai, announcement, app-version,
   backup, blackbox, box (ws/wait/ack), clients, device-source, featured,
@@ -114,7 +114,7 @@ noire ou le test qui le prouve. Si tu n'as pas la preuve, tu écris
   CANAL-TEMPS-REEL, PANEL-INSTANTANE, PANEL-BOX-CARTES-ACCUEIL,
   AUDIO-BOITE-NOIRE, SECURITE-ZUNO, AUDIT-ZUNO(-TV-2026-10), CATALOGUE,
   INTELLIGENT, RESEARCH-TV-UX, RELEASE-103/104/106, `patches/` (5 patchs
-  panel/Worker à appliquer dans l'ordre).
+  panel/Worker à appliquer dans l'ordre), RAPPORT-CONTROL-CENTER (état d'ingénierie au 6 octobre).
 
 ## Contexte minimal
 
@@ -188,7 +188,7 @@ Prouvé et corrigé côté box (builds #156 → #164, tous `107-test.N`) :
   30 min + ordre `force_update` immédiat) ; repli `zuno.update.test_poll_legacy`.
 
 Écrit, testé, **pas encore en production** (panel/Worker, `docs/patches/`,
-5 patchs dans l'ordre) : boîte noire lisible dans le panel ; ⚡ Envoi
+6 patchs dans l'ordre) : boîte noire lisible dans le panel ; ⚡ Envoi
 instantané avec « liste sur la TV après N s » ; retrait d'une liste ajoutée
 par le client ; « Activer » remplace au lieu d'ajouter ; **Réinitialiser la
 box** (`POST /api/v1/sources/:mac/reset`) ; Activation = licence seule et
@@ -206,6 +206,16 @@ Mesuré, pas élucidé :
   depuis la box, muet 120 s → le repli M3U y coûte 120 s pour rien.
 
 ## Travail à faire, dans cet ordre
+
+**P0 — Sécurité : les codes IPTV se lisent avec la seule MAC.**
+`GET /api/device-source/:mac` (production) rend les identifiants
+fournisseur déchiffrés sans authentification (vérifié le 5 octobre en
+lecture seule ; patch 6 n'ajoute qu'une limite de 120 / min / IP). Porter
+`cloudflare/device_guard.js` (commit 3f1c841, branche app) sur
+`claude/panel-mise-en-ligne` : secret exigé dès qu'une box est enrôlée,
+route `POST /api/device-proof`, lecture par MAC seule conservée pour les
+box jamais enrôlées. Succès : sans en-tête sur une box enrôlée → 401 ; la
+box de test reçoit toujours ses listes. Détail : `docs/RAPPORT-CONTROL-CENTER.md`.
 
 **P0 — Fermer les deux inconnues avec des preuves.**
 1. Demander au propriétaire (ou lire dans le panel une fois le patch boîte

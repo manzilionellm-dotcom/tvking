@@ -258,9 +258,18 @@ abstract final class RemoteSourceRepository {
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
 
-      // D'abord ce que le panel a RETIRÉ. On ne le fait qu'après
-      // un HTTP 200 : une coupure ne vide pas la box.
-      await _reconcileFromBody(body);
+      // Ce que le panel a RETIRÉ est calculé maintenant (après un HTTP 200 :
+      // une coupure ne vide pas la box) mais effacé APRÈS l'import des
+      // nouvelles listes : VALIDER → PRÉPARER → PUBLIER, jamais « effacer
+      // l'ancienne puis espérer ». Si toutes les nouvelles listes sont
+      // refusées, l'ancienne reste jusqu'au tour suivant. Repli
+      // `zuno.source.drop_first_legacy` : ancien ordre.
+      final _ReconcilePlan reconcile = await _planReconcile(body);
+      final bool dropFirst = RepairFlags.sourceDropFirstLegacy;
+      if (dropFirst) await _finishReconcile(reconcile, keepOld: false);
+      bool newTried = false;
+      bool anyLoaded = false;
+      RemoteSyncResult outcome = RemoteSyncResult.noSource;
 
       // MULTI-SOURCES (jusqu'à 6 par MAC côté panel, aucune limite ici) : si le
       // serveur renvoie un tableau `sources`, on les charge TOUTES ; sur TV
@@ -323,14 +332,31 @@ abstract final class RemoteSourceRepository {
           // c'est un échec de liste, pas « rien d'assigné ».
           agg = RemoteSyncResult.sourceFailed;
         }
-        return agg;
+        newTried = plan.tryNow.isNotEmpty;
+        anyLoaded = agg == RemoteSyncResult.loaded;
+        outcome = agg;
+      } else {
+        final Object? src = body['source'];
+        if (src is Map<String, dynamic>) {
+          newTried = true;
+          outcome = await _applySource(src);
+          anyLoaded = outcome == RemoteSyncResult.loaded;
+        }
+        // Sinon : rien d'assigné (noSource) ; les anciennes listes partent.
       }
 
-      final Object? src = body['source'];
-      if (src is! Map<String, dynamic>) {
-        return RemoteSyncResult.noSource; // null = rien d'assigné
+      if (!dropFirst) {
+        await _finishReconcile(
+          reconcile,
+          keepOld: keepOldLists(
+            dropCount: reconcile.drop.length,
+            newTried: newTried,
+            anyLoaded: anyLoaded,
+            legacy: false,
+          ),
+        );
       }
-      return await _applySource(src);
+      return outcome;
     } catch (e) {
       if (kDebugMode) debugPrint('[RemoteSource] sync error: $e');
       BlackBox.instance.warn('PANEL', 'device-source injoignable : $e');
@@ -473,9 +499,25 @@ abstract final class RemoteSourceRepository {
     return RemoteSyncResult.noSource;
   }
 
-  /// Compare les listes encore assignées, celles déjà vues, et
-  /// les tombstones. Met à jour la mémoire locale.
-  static Future<void> _reconcileFromBody(Map<String, dynamic> body) async {
+  /// Règle pure (testée) : garde-t-on les anciennes listes ce tour-ci ?
+  /// Oui seulement si le panel en a retiré ([dropCount] > 0), qu'il en a
+  /// servi de nouvelles qu'on a essayées ([newTried]) et qu'AUCUNE n'a été
+  /// chargée ([anyLoaded] faux) : le client garde ce qui marchait, la box
+  /// réessaie au tour suivant. Panel vidé (rien de nouveau à essayer) :
+  /// on efface, c'est l'intention du revendeur. [legacy] = ancien ordre.
+  static bool keepOldLists({
+    required int dropCount,
+    required bool newTried,
+    required bool anyLoaded,
+    required bool legacy,
+  }) {
+    if (legacy) return false;
+    return dropCount > 0 && newTried && !anyLoaded;
+  }
+
+  /// Compare les listes encore assignées, celles déjà vues, et les
+  /// tombstones. Ne touche à rien : l'effacement est dans [_finishReconcile].
+  static Future<_ReconcilePlan> _planReconcile(Map<String, dynamic> body) async {
     final List<Map<String, dynamic>> currentMaps = <Map<String, dynamic>>[];
     final Object? list = body['sources'];
     if (list is List) {
@@ -496,14 +538,38 @@ abstract final class RemoteSourceRepository {
         (prefs.getStringList(rememberedKey) ?? const <String>[]).toSet();
     final Set<String> revoked =
         SourceFingerprint.revokedFromBody(body).toSet();
-    await _wipeFingerprints(fingerprintsToDrop(
-      remembered: remembered,
+    return _ReconcilePlan(
+      prefs: prefs,
+      currentMaps: currentMaps,
       current: current,
-      revoked: revoked,
-    ));
-    await prefs.setStringList(rememberedKey, current.toList());
+      drop: fingerprintsToDrop(
+        remembered: remembered,
+        current: current,
+        revoked: revoked,
+      ),
+    );
+  }
+
+  /// Efface ce que le panel a retiré et mémorise les listes servies ; ou,
+  /// si [keepOld], garde tout ce tour-ci (la mémoire n'est pas avancée :
+  /// le tour suivant recalcule le même retrait). L'interrupteur du panel
+  /// (listes éteintes) s'applique dans les deux cas.
+  static Future<void> _finishReconcile(
+    _ReconcilePlan plan, {
+    required bool keepOld,
+  }) async {
+    if (keepOld) {
+      BlackBox.instance.warn(
+        'SOURCE',
+        '${plan.drop.length} ancienne(s) liste(s) gardée(s) : la nouvelle a été '
+        'refusée, nouvel essai au tour suivant',
+      );
+    } else {
+      await _wipeFingerprints(plan.drop);
+      await plan.prefs.setStringList(rememberedKey, plan.current.toList());
+    }
     if (!RepairFlags.panelVisibilityOff) {
-      await _applyPanelVisibility(prefs, currentMaps);
+      await _applyPanelVisibility(plan.prefs, plan.currentMaps);
     }
   }
 
@@ -632,4 +698,21 @@ abstract final class RemoteSourceRepository {
       );
     }
   }
+}
+
+/// Ce que la vérification des listes a décidé AVANT l'import : les listes
+/// servies maintenant ([currentMaps], [current]) et celles à effacer
+/// ([drop]). L'effacement attend la fin de l'import (voir `_finishReconcile`).
+class _ReconcilePlan {
+  const _ReconcilePlan({
+    required this.prefs,
+    required this.currentMaps,
+    required this.current,
+    required this.drop,
+  });
+
+  final SharedPreferences prefs;
+  final List<Map<String, dynamic>> currentMaps;
+  final Set<String> current;
+  final Set<String> drop;
 }

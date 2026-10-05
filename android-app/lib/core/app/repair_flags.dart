@@ -207,6 +207,14 @@ abstract final class RepairFlags {
   static const String testUpdatePollLegacyKey = 'zuno.update.test_poll_legacy';
   static bool testUpdatePollLegacy = false;
 
+  /// Vrai = ancien ordre : les listes que le panel ne sert plus sont
+  /// effacées AVANT d'importer les nouvelles (« effacer l'ancienne puis
+  /// espérer »). Faux = on importe d'abord, on efface ensuite ; et si
+  /// toutes les nouvelles listes sont refusées, l'ancienne reste à l'écran
+  /// jusqu'au tour suivant (dernière configuration qui marchait).
+  static const String sourceDropFirstLegacyKey = 'zuno.source.drop_first_legacy';
+  static bool sourceDropFirstLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -233,6 +241,7 @@ abstract final class RepairFlags {
     bool pendingLegacy = false;
     bool resetOff = false;
     bool testPollLegacy = false;
+    bool dropFirst = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -260,6 +269,7 @@ abstract final class RepairFlags {
       pendingLegacy = prefs.getBool(refreshPendingLegacyKey) ?? false;
       resetOff = prefs.getBool(remoteResetOffKey) ?? false;
       testPollLegacy = prefs.getBool(testUpdatePollLegacyKey) ?? false;
+      dropFirst = prefs.getBool(sourceDropFirstLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -286,7 +296,9 @@ abstract final class RepairFlags {
       pendingLegacy = false;
       resetOff = false;
       testPollLegacy = false;
+      dropFirst = false;
     }
+    sourceDropFirstLegacy = dropFirst;
     remoteResetOff = resetOff;
     testUpdatePollLegacy = testPollLegacy;
     importReinsertOff = reinsertOff;
@@ -344,6 +356,7 @@ abstract final class RepairFlags {
     refreshPendingLegacy = false;
     remoteResetOff = false;
     testUpdatePollLegacy = false;
+    sourceDropFirstLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }
