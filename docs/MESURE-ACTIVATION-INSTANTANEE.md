@@ -482,6 +482,12 @@ la box de test : 1/3 liste, « Ajoutée par le client », version app
   (`ANDROID_*`, `CLOUDFLARE_*`, `GITHUB_TOKEN` seulement). Décrit dans
   `docs/PROMPT-MISSION-STABILITE.md`, P1.
 
+**Build #165 vérifié** (`build-zuno-tv.yml`, `test_box=true`, `publish=false`,
+commit 67d0a85) : `107-test.165`, versionCode 1791241671, SHA-256
+`c0d5edd5b18d0e352c7200e25c14047d9d55c1310c407f1ca51653f345ee89f8`,
+54 767 130 octets, `mandatory: false`. Suite Flutter avant commit : 481 verts,
+2 ignorés.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

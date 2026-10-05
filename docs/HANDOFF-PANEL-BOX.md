@@ -313,6 +313,9 @@ demande (ce que font IBO / TiviMate / Smarters).
 - Pourquoi la mise à jour prenait 3 à 5 min : aucun signal du build vers la
   box, lecture de `version.json` toutes les 30 min. Pour les clients, le
   bouton Mise à jour forcée du panel est déjà immédiat.
+- Build #165 = `107-test.165`, versionCode 1791241671, SHA-256
+  `c0d5edd5b18d0e352c7200e25c14047d9d55c1310c407f1ca51653f345ee89f8`
+  (54 767 130 octets, commit 67d0a85).
 
 ## 6. Règles du propriétaire (non négociables)
 
