@@ -1,0 +1,904 @@
+diff --git a/android-app/admin-panel/package.json b/android-app/admin-panel/package.json
+index 7a3f8e4..39d69ca 100644
+--- a/android-app/admin-panel/package.json
++++ b/android-app/admin-panel/package.json
+@@ -8,7 +8,7 @@
+     "dev": "vite",
+     "build": "tsc -b && vite build",
+     "preview": "vite preview",
+-    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts"
++    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts"
+   },
+   "dependencies": {
+     "react": "^18.3.1",
+diff --git a/android-app/admin-panel/src/App.tsx b/android-app/admin-panel/src/App.tsx
+index 1cbc7a4..829290b 100644
+--- a/android-app/admin-panel/src/App.tsx
++++ b/android-app/admin-panel/src/App.tsx
+@@ -30,6 +30,7 @@ import { HistoryPage } from '@/pages/HistoryPage';
+ import { ReferencesPage } from '@/pages/ReferencesPage';
+ import { TransferPage } from '@/pages/TransferPage';
+ import { FamiliesPage } from '@/pages/FamiliesPage';
++import { BlackBoxPage } from '@/pages/BlackBoxPage';
+ import { startPanelChannel } from '@/lib/box-channel';
+ 
+ /// Etats possibles de l'app :
+@@ -135,6 +136,7 @@ export default function App() {
+       <Route path="/references" element={<ReferencesPage onLogout={handleLogout} />} />
+       <Route path="/transfer" element={<TransferPage onLogout={handleLogout} />} />
+       <Route path="/families" element={<FamiliesPage onLogout={handleLogout} />} />
++      <Route path="/blackbox" element={<BlackBoxPage onLogout={handleLogout} />} />
+       <Route path="*" element={<Navigate to="/" replace />} />
+     </Routes>
+   );
+diff --git a/android-app/admin-panel/src/components/Sidebar.tsx b/android-app/admin-panel/src/components/Sidebar.tsx
+index f6b8f46..40eb393 100644
+--- a/android-app/admin-panel/src/components/Sidebar.tsx
++++ b/android-app/admin-panel/src/components/Sidebar.tsx
+@@ -29,6 +29,7 @@ const OWNER_NAV: NavSection[] = [
+       { key: 'nav.activations', to: '/activations' },
+       { key: 'nav.customers',   to: '/customers' },
+       { key: 'nav.devices',     to: '/devices' },
++      { key: 'nav.blackbox',    to: '/blackbox' },
+       { key: 'nav.resellers',   to: '/resellers' },
+       { key: 'nav.families',    to: '/families' },
+       { key: 'nav.transfer',    to: '/transfer' },
+@@ -79,6 +80,7 @@ const RESELLER_NAV: NavSection[] = [
+       { key: 'nav.transfer',      to: '/transfer',    cap: 'activate' },
+       { key: 'nav.myResellers',   to: '/resellers',   cap: 'resellers' },
+       { key: 'nav.myDevices',     to: '/devices',     cap: 'devices' },
++      { key: 'nav.blackbox',      to: '/blackbox',    cap: 'devices' },
+       { key: 'nav.myActivations', to: '/activations', cap: 'activations' },
+       { key: 'nav.references',    to: '/references',  cap: 'activations' },
+     ],
+diff --git a/android-app/admin-panel/src/lib/api.ts b/android-app/admin-panel/src/lib/api.ts
+index c5db75f..c360161 100644
+--- a/android-app/admin-panel/src/lib/api.ts
++++ b/android-app/admin-panel/src/lib/api.ts
+@@ -600,6 +600,24 @@ export interface Announcement {
+   active?: number; // 1 = active (affichée), 0 = désactivée
+   created_at: number;
+ }
++export interface BlackBoxJournal {
++  mac: string;
++  text: string;
++  updated_at: number;
++}
++
++/// Journal technique d'une box (boîte noire), déjà filtré côté app
++/// et côté Worker. `ask` demande à la box d'en renvoyer un.
++export const blackboxApi = {
++  get: (mac: string) =>
++    request<BlackBoxJournal>(`/api/v1/blackbox/${encodeURIComponent(mac)}`),
++  ask: (mac: string) =>
++    request<{ ok: boolean; requested_at: number }>(
++      `/api/v1/blackbox/${encodeURIComponent(mac)}/ask`,
++      { method: 'POST' },
++    ),
++};
++
+ export const announcementsApi = {
+   list: () => request<{ items: Announcement[] }>('/api/v1/announcements'),
+   create: (payload: {
+diff --git a/android-app/admin-panel/src/lib/blackbox.test.ts b/android-app/admin-panel/src/lib/blackbox.test.ts
+new file mode 100644
+index 0000000..e79b647
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/blackbox.test.ts
+@@ -0,0 +1,32 @@
++// =========================================================
++//  La page ne parle qu'à une MAC valide, et elle relit le
++//  journal assez souvent pour l'afficher 1 à 2 s après l'envoi.
++//  Lancer : node --experimental-strip-types --test src/lib/blackbox.test.ts
++// =========================================================
++
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++
++import {
++  BLACKBOX_POLL_MS,
++  formatBlackBoxUpdated,
++  normalizePanelMac,
++} from './blackbox.ts';
++
++test('relecture entre 1 et 2 secondes', () => {
++  assert.equal(BLACKBOX_POLL_MS, 1500);
++  assert.ok(BLACKBOX_POLL_MS >= 1000 && BLACKBOX_POLL_MS <= 2000);
++});
++
++test('une MAC de box est reconnue, le reste non', () => {
++  assert.equal(normalizePanelMac(' mk:aa:bb:cc:dd:01 '), 'MK:AA:BB:CC:DD:01');
++  assert.equal(normalizePanelMac('AA:BB:CC:DD:EE:FF'), null);
++  assert.equal(normalizePanelMac(''), null);
++  assert.equal(normalizePanelMac('MK:ZZ:00:00:00:01'), null);
++});
++
++test('pas d\'heure tant que rien n\'est arrivé', () => {
++  assert.equal(formatBlackBoxUpdated(0), '');
++  const label = formatBlackBoxUpdated(1_700_000_000_000);
++  assert.ok(label.length > 8);
++});
+diff --git a/android-app/admin-panel/src/lib/blackbox.ts b/android-app/admin-panel/src/lib/blackbox.ts
+new file mode 100644
+index 0000000..07f848a
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/blackbox.ts
+@@ -0,0 +1,38 @@
++// =========================================================
++//  blackbox.ts — Affichage du journal dans le panel
++// =========================================================
++//  La box envoie son journal au Worker (même MAC que
++//  l'activation). Cette page le relit. Le délai de 1,5 s est
++//  le temps max entre « le Worker a le texte » et « Lionel le
++//  voit », tant que la page est ouverte.
++// =========================================================
++
++/// Entre 1 et 2 secondes : la consigne du revendeur.
++export const BLACKBOX_POLL_MS = 1500;
++
++const MAC_RX = /^MK(?::[0-9A-F]{2}){5}$/i;
++
++/// `null` si ce n'est pas une MAC de box. Sinon la forme
++/// canonique (majuscules), celle que la base utilise.
++export function normalizePanelMac(raw: string): string | null {
++  const mac = raw.trim().toUpperCase();
++  return MAC_RX.test(mac) ? mac : null;
++}
++
++/// Heure de la dernière réception. Chaîne vide tant que la
++/// box n'a rien envoyé (updated_at = 0).
++export function formatBlackBoxUpdated(ms: number): string {
++  if (!ms || ms <= 0) return '';
++  try {
++    return new Date(ms).toLocaleString('fr-FR', {
++      day: '2-digit',
++      month: 'short',
++      year: 'numeric',
++      hour: '2-digit',
++      minute: '2-digit',
++      second: '2-digit',
++    });
++  } catch {
++    return '';
++  }
++}
+diff --git a/android-app/admin-panel/src/lib/i18n.tsx b/android-app/admin-panel/src/lib/i18n.tsx
+index df9d7b9..b575b86 100644
+--- a/android-app/admin-panel/src/lib/i18n.tsx
++++ b/android-app/admin-panel/src/lib/i18n.tsx
+@@ -53,6 +53,7 @@ const STR: Record<string, Record<Lang, string>> = {
+   'nav.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },
+   'nav.devices': { fr: 'Appareils', en: 'Devices', ar: 'الأجهزة' },
+   'nav.myDevices': { fr: 'Mes appareils', en: 'My devices', ar: 'أجهزتي' },
++  'nav.blackbox': { fr: 'Boîte noire', en: 'Black box', ar: 'الصندوق الأسود' },
+   'nav.apps': { fr: 'Applications', en: 'Apps', ar: 'التطبيقات' },
+   'nav.servers': { fr: 'Serveurs', en: 'Servers', ar: 'الخوادم' },
+   'nav.chaines': { fr: 'Liste de chaînes', en: 'Channel list', ar: 'قائمة القنوات' },
+diff --git a/android-app/admin-panel/src/pages/BlackBoxPage.tsx b/android-app/admin-panel/src/pages/BlackBoxPage.tsx
+new file mode 100644
+index 0000000..d853c1e
+--- /dev/null
++++ b/android-app/admin-panel/src/pages/BlackBoxPage.tsx
+@@ -0,0 +1,191 @@
++// =========================================================
++//  BlackBoxPage — Boîte noire d'une box, par son adresse MAC
++// =========================================================
++//  Lionel colle la MAC. Le panel affiche le même journal que
++//  Réglages → Boîte noire (lignes [SON], etc.), déjà filtré.
++//  Bouton Copier. Heure de la dernière réception.
++//  Tant que la page est ouverte, on relit toutes les 1,5 s :
++//  le texte apparaît 1 à 2 secondes après que l'app l'a envoyé.
++// =========================================================
++
++import { FormEvent, useEffect, useState } from 'react';
++import { useSearchParams } from 'react-router-dom';
++import { AppLayout } from '@/components/AppLayout';
++import { ApiError, blackboxApi } from '@/lib/api';
++import {
++  BLACKBOX_POLL_MS,
++  formatBlackBoxUpdated,
++  normalizePanelMac,
++} from '@/lib/blackbox';
++
++export function BlackBoxPage({ onLogout }: { onLogout: () => void }) {
++  const [sp] = useSearchParams();
++  const [mac, setMac] = useState(sp.get('mac') || 'MK:');
++  const [active, setActive] = useState<string | null>(null);
++  const [text, setText] = useState('');
++  const [updatedAt, setUpdatedAt] = useState(0);
++  const [err, setErr] = useState<string | null>(null);
++  const [copied, setCopied] = useState(false);
++  const [asking, setAsking] = useState(false);
++
++  // Une MAC déjà dans l'adresse (?mac=) : on l'affiche tout de suite.
++  useEffect(() => {
++    const fromUrl = normalizePanelMac(sp.get('mac') || '');
++    if (fromUrl) {
++      setMac(fromUrl);
++      setActive(fromUrl);
++    }
++  }, [sp]);
++
++  useEffect(() => {
++    if (!active) return;
++    let alive = true;
++
++    async function load() {
++      try {
++        const row = await blackboxApi.get(active!);
++        if (!alive) return;
++        setText(row.text || '');
++        setUpdatedAt(row.updated_at || 0);
++        setErr(null);
++      } catch (e) {
++        if (!alive) return;
++        if (e instanceof ApiError && e.status === 401) {
++          onLogout();
++          return;
++        }
++        const msg = e instanceof ApiError ? e.message : 'Lecture impossible.';
++        setErr(msg);
++      }
++    }
++
++    // Première demande : la box renverra son journal à sa prochaine
++    // lecture du statut (quelques secondes). Ensuite on ne fait que lire.
++    blackboxApi.ask(active).catch(() => {});
++    load();
++    const timer = window.setInterval(load, BLACKBOX_POLL_MS);
++    return () => {
++      alive = false;
++      window.clearInterval(timer);
++    };
++  }, [active, onLogout]);
++
++  function submit(e: FormEvent) {
++    e.preventDefault();
++    const next = normalizePanelMac(mac);
++    if (!next) {
++      setErr('Adresse MAC attendue : MK:XX:XX:XX:XX:XX');
++      setActive(null);
++      setText('');
++      setUpdatedAt(0);
++      return;
++    }
++    setErr(null);
++    setMac(next);
++    setActive(next);
++  }
++
++  async function askAgain() {
++    if (!active) return;
++    setAsking(true);
++    try {
++      await blackboxApi.ask(active);
++    } catch (e) {
++      if (e instanceof ApiError && e.status === 401) onLogout();
++      else setErr(e instanceof ApiError ? e.message : 'Demande impossible.');
++    } finally {
++      setAsking(false);
++    }
++  }
++
++  async function copy() {
++    try {
++      await navigator.clipboard.writeText(text);
++      setCopied(true);
++      window.setTimeout(() => setCopied(false), 1500);
++    } catch {
++      setErr('Copie impossible depuis ce navigateur. Sélectionne le texte à la main.');
++    }
++  }
++
++  const when = formatBlackBoxUpdated(updatedAt);
++  const inputCls =
++    'w-full rounded-md border border-white/5 bg-slate px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent';
++
++  return (
++    <AppLayout
++      title="Boîte noire"
++      subtitle="Colle l'adresse MAC. Le journal technique de la box s'affiche ici, le même que dans Réglages."
++      onLogout={onLogout}
++    >
++      <form onSubmit={submit} className="mb-4 flex max-w-3xl flex-wrap items-end gap-3">
++        <div className="min-w-[240px] flex-1">
++          <label className="mb-1.5 block text-[10px] uppercase tracking-widest text-ink-tertiary">
++            Adresse MAC de la box
++          </label>
++          <input
++            value={mac}
++            onChange={(e) => setMac(e.target.value)}
++            autoFocus
++            placeholder="MK:1A:2B:3C:4D:5E"
++            className={inputCls + ' font-mono'}
++          />
++        </div>
++        <button
++          type="submit"
++          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright"
++        >
++          Afficher
++        </button>
++      </form>
++
++      {err && (
++        <div className="mb-4 max-w-3xl rounded-lg border border-accent/30 bg-accent/10 px-4 py-3 text-sm">
++          {err}
++        </div>
++      )}
++
++      {active && (
++        <div className="max-w-5xl">
++          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
++            <p className="font-mono text-xs text-accent">{active}</p>
++            <p className="text-xs text-ink-tertiary">
++              {when
++                ? `Dernière mise à jour : ${when}`
++                : 'Pas encore de journal reçu pour cette box.'}
++            </p>
++          </div>
++          <textarea
++            readOnly
++            value={text}
++            spellCheck={false}
++            placeholder="En attente du journal. L'application l'envoie à l'ouverture, puis régulièrement. Tu peux aussi le redemander."
++            className="h-[60vh] w-full resize-y rounded-xl border border-white/10 bg-midnight p-4 font-mono text-xs leading-5 text-ink-primary outline-none"
++          />
++          <div className="mt-3 flex flex-wrap gap-2">
++            <button
++              type="button"
++              onClick={copy}
++              disabled={!text}
++              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-black hover:bg-accent-bright disabled:opacity-40"
++            >
++              {copied ? 'Copié' : 'Copier'}
++            </button>
++            <button
++              type="button"
++              onClick={askAgain}
++              disabled={asking}
++              className="rounded-md border border-white/10 px-4 py-2 text-sm text-ink-secondary hover:text-ink-primary"
++            >
++              {asking ? 'Demande envoyée…' : 'Redemander à la box'}
++            </button>
++          </div>
++          <p className="mt-3 text-xs text-ink-tertiary">
++            Les adresses de flux, les mots de passe et les identifiants sont
++            retirés avant l'envoi. La page se met à jour toute seule.
++          </p>
++        </div>
++      )}
++    </AppLayout>
++  );
++}
+diff --git a/android-app/admin-panel/src/pages/DevicesPage.tsx b/android-app/admin-panel/src/pages/DevicesPage.tsx
+index 40216fc..3981a1b 100644
+--- a/android-app/admin-panel/src/pages/DevicesPage.tsx
++++ b/android-app/admin-panel/src/pages/DevicesPage.tsx
+@@ -489,6 +489,7 @@ function DeviceDetailModal({
+             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
+             <ActionBtn busy={busy} primary onClick={() => navigate(`/activation-distance?mac=${macUrl}`)} title="Activer et envoyer une liste en un seul geste. La box est prévenue tout de suite.">Activation à distance</ActionBtn>
+             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
++            <ActionBtn busy={busy} onClick={() => navigate(`/blackbox?mac=${macUrl}`)} title="Journal technique de cette box : ordre du panel reçu, liste chargée en N s, liste refusée">Boîte noire</ActionBtn>
+             <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire toutes les listes poussées. La TV du client les efface toute seule à sa vérification suivante.">Effacer les listes</ActionBtn>
+             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
+             {st !== 'frozen' && (
+diff --git a/android-app/cloudflare/api_v1.js b/android-app/cloudflare/api_v1.js
+index 45b89cd..f4b5837 100644
+--- a/android-app/cloudflare/api_v1.js
++++ b/android-app/cloudflare/api_v1.js
+@@ -20,6 +20,7 @@ import {
+   clearSourceTombstone,
+ } from './linkage.js';
+ import { notifyBox } from './box_channel.js';
++import { isBlackboxMac, markBlackBoxAsked, readBlackBox } from './blackbox_journal.js';
+ //  Importe depuis worker.js pour servir le namespace /api/v1/*.
+ //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
+ //  continuent de fonctionner pour ne pas casser les apps mobiles
+@@ -1102,6 +1103,27 @@ async function apiV1Inner(request, env) {
+     }
+   }
+ 
++  // /blackbox/:mac — journal technique de la box (boîte noire).
++  // Même MAC que l'activation. Lecture seule + « demander un envoi ».
++  // Le texte stocké est déjà filtré (pas de lien, pas de mot de passe).
++  // Un revendeur ne lit que ses propres appareils (sourceMacForActor).
++  if (parts[0] === 'blackbox' && parts.length >= 2 && parts.length <= 3) {
++    const gate = await sourceMacForActor(env, parts[1], a.user);
++    if (gate.error) return gate.error;
++    const mac = gate.mac;
++    if (!isBlackboxMac(mac)) {
++      return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
++    }
++    if (parts.length === 2 && request.method === 'GET') {
++      const row = await readBlackBox(env, mac);
++      return jsonResp({ mac, text: row.body, updated_at: row.updated_at });
++    }
++    if (parts.length === 3 && parts[2] === 'ask' && request.method === 'POST') {
++      const requestedAt = await markBlackBoxAsked(env, mac, Date.now());
++      return jsonResp({ ok: true, requested_at: requestedAt });
++    }
++  }
++
+   // /sources/:mac — source IPTV (Xtream/M3U) assignée à un appareil
+   // par sa MAC, poussée à l'app. Admin ET revendeurs (chacun provisionne
+   // ses clients). GET pour relire, PUT pour (ré)assigner, DELETE pour
+diff --git a/android-app/cloudflare/blackbox.test.mjs b/android-app/cloudflare/blackbox.test.mjs
+new file mode 100644
+index 0000000..0f60de5
+--- /dev/null
++++ b/android-app/cloudflare/blackbox.test.mjs
+@@ -0,0 +1,226 @@
++// =========================================================
++//  blackbox.test.mjs — Journal boîte noire (Worker de production)
++// =========================================================
++//  node --experimental-sqlite cloudflare/blackbox.test.mjs
++//  Même base SQLite en mémoire et mêmes comptes (admin + revendeurs
++//  créés par l'API) que activation_m3u.test.mjs : les routes passent
++//  par la vraie authentification du panel (requireAuth, hydrateActor).
++//  Les phrases du filtre sont celles du test Dart
++//  (test/core/blackbox/black_box_redaction_test.dart).
++//  Aucun vrai lien de flux, aucun vrai mot de passe.
++// =========================================================
++import { DatabaseSync } from 'node:sqlite';
++import { readFileSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import worker from './worker.js';
++import {
++  BLACKBOX_MAX_BYTES,
++  blackboxRequestedAt,
++  prepareBlackBoxText,
++  redactBlackBox,
++} from './blackbox_journal.js';
++
++const ctx = { waitUntil() {}, passThroughOnException() {} };
++const here = dirname(fileURLToPath(import.meta.url));
++let pass = 0;
++let fail = 0;
++const ok = (c, m) => {
++  if (c) { pass += 1; console.log('PASS', m); }
++  else { fail += 1; console.log('FAIL', m); }
++};
++
++const SON = '03/10 18:26:01 I [SON] [TF1] reçu : HE-AAC 48 kHz 2 voies 128 kb/s · '
++  + 'décodé par : box (c2.android.aac.decoder) · sortie : PCM 16 bits 48 kHz '
++  + '2 voies passthrough';
++const FIXTURE = `${SON}\n`
++  + '03/10 18:26:02 I [ACTION] Ajout liste Xtream exemple.test (utilisateur COMPTE)\n'
++  + '03/10 18:26:03 E [SOURCE] echec http://COMPTE:JETON@exemple.test:8080/get.php?username=COMPTE&password=JETON\n'
++  + '03/10 18:26:04 I [SOURCE] chemin /live/COMPTE/JETON/1.ts\n'
++  + '03/10 18:26:05 W [SOURCE] recu password=JETON username=COMPTE\n'
++  + '03/10 18:26:06 I [SOURCE] note COMPTE@exemple.test\n'
++  + '05/10 18:35:09 I [PANEL] ordre source n°7 reçu (attente)\n'
++  + '05/10 18:35:21 I [SOURCE] liste M3U du panel chargée en 12,4 s (18230 chaînes)\n';
++
++const MAC = 'MK:AA:BB:CC:DD:11';
++
++// ----- Base D1 simulée (SQLite en mémoire, même schéma que la prod) -----
++function makeDb() {
++  const db = new DatabaseSync(':memory:');
++  db.exec('PRAGMA foreign_keys = ON');
++  db.exec(readFileSync(join(here, 'schema.sql'), 'utf8'));
++  for (const sql of [
++    'ALTER TABLE resellers ADD COLUMN parent_reseller_id TEXT',
++    'ALTER TABLE devices ADD COLUMN block_status TEXT',
++  ]) {
++    try { db.exec(sql); } catch (_) { /* déjà dans le schéma */ }
++  }
++  const DB = {
++    prepare(sql) {
++      const runWith = (args) => {
++        const params = args.map((v) => (v === undefined ? null : v));
++        return {
++          async first() {
++            const row = db.prepare(sql).get(...params);
++            return row === undefined ? null : row;
++          },
++          async all() {
++            return { results: db.prepare(sql).all(...params) };
++          },
++          async run() {
++            const info = db.prepare(sql).run(...params);
++            return { success: true, meta: { changes: info.changes } };
++          },
++        };
++      };
++      return {
++        bind(...args) { return runWith(args); },
++        first() { return runWith([]).first(); },
++        all() { return runWith([]).all(); },
++        run() { return runWith([]).run(); },
++      };
++    },
++    async batch(stmts) {
++      db.exec('BEGIN');
++      try {
++        const out = [];
++        for (const s of stmts) out.push(await s.run());
++        db.exec('COMMIT');
++        return out;
++      } catch (e) {
++        try { db.exec('ROLLBACK'); } catch (_) { /* déjà annulé */ }
++        throw e;
++      }
++    },
++  };
++  return { db, env: { DB, ADMIN_SECRET: crypto.randomUUID(), SECRETS_KEY: crypto.randomUUID() } };
++}
++
++async function api(env, method, path, { token, body } = {}) {
++  const headers = { 'content-type': 'application/json' };
++  if (token) headers.authorization = `Bearer ${token}`;
++  const res = await worker.fetch(new Request(`https://app.test${path}`, {
++    method,
++    headers,
++    body: body === undefined ? undefined : JSON.stringify(body),
++  }), env, ctx);
++  const text = await res.text();
++  let json = null;
++  try { json = text ? JSON.parse(text) : null; } catch (_) { json = null; }
++  return { status: res.status, json, text };
++}
++
++async function login(env) {
++  const res = await api(env, 'POST', '/api/v1/auth/login', {
++    body: { email: 'admin', password: env.ADMIN_SECRET },
++  });
++  return res.json && res.json.token;
++}
++
++async function makeReseller(env, admin, perms) {
++  const email = `r-${crypto.randomUUID()}@example.test`;
++  const password = crypto.randomUUID();
++  const created = await api(env, 'POST', '/api/v1/resellers', {
++    token: admin,
++    body: { email, password, name: 'Revendeur test', credit_balance: 5 },
++  });
++  ok(created.status === 201 && created.json && created.json.id, 'création revendeur');
++  const id = created.json && created.json.id;
++  await api(env, 'PATCH', `/api/v1/resellers/${id}`, { token: admin, body: { permissions: perms } });
++  const logged = await api(env, 'POST', '/api/v1/auth/reseller/login', { body: { email, password } });
++  ok(logged.status === 200 && logged.json && logged.json.token, 'login revendeur');
++  return { token: logged.json && logged.json.token, id };
++}
++
++async function main() {
++  // ----- Filtre (pur) -----
++  const sonOnly = redactBlackBox(SON);
++  ok(sonOnly === SON, 'ligne [SON] inchangée');
++  ok(sonOnly.includes('passthrough') && sonOnly.includes('HE-AAC'), 'détail son conservé');
++
++  const cleaned = prepareBlackBoxText(FIXTURE, { enabled: true });
++  ok(cleaned && !cleaned.includes('JETON') && !cleaned.includes('COMPTE'), 'jeton et compte absents');
++  ok(cleaned && !cleaned.includes('http://') && cleaned.includes('[lien]'), 'adresse remplacée');
++  ok(cleaned && cleaned.includes('[masqué]') && cleaned.includes('[identifiant]'), 'marques de masque');
++  ok(cleaned && cleaned.includes('[SON]'), 'la ligne son est toujours là');
++  ok(cleaned && cleaned.includes('ordre source n°7 reçu (attente)')
++    && cleaned.includes('chargée en 12,4 s (18230 chaînes)'),
++  'les lignes de mesure panel → box passent telles quelles');
++  ok(prepareBlackBoxText(cleaned, { enabled: true }) === cleaned, 'deuxième passage identique');
++  ok(prepareBlackBoxText(FIXTURE, { enabled: false }) === null, 'interrupteur coupé : rien');
++  ok(prepareBlackBoxText('  \n', { enabled: true }) === null, 'texte vide : rien');
++
++  const huge = `${'B'.repeat(200000)}\n${SON}`;
++  const tail = prepareBlackBoxText(huge, { enabled: true });
++  ok(tail && new TextEncoder().encode(tail).length <= BLACKBOX_MAX_BYTES, 'plafond 32 Ko');
++  ok(tail && tail.includes('[SON]') && tail.includes('HE-AAC'), 'la fin du journal est gardée');
++  ok(BLACKBOX_MAX_BYTES === 32 * 1024, 'constante 32 Ko');
++
++  // ----- Worker : écriture app, lecture panel -----
++  const { db, env } = makeDb();
++  const admin = await login(env);
++  ok(!!admin, 'login admin');
++
++  // La MAC appartient au revendeur A (activation d'essai par l'admin).
++  const a = await makeReseller(env, admin, ['activate', 'devices', 'sources']);
++  const b = await makeReseller(env, admin, ['activate', 'devices', 'sources']);
++  await api(env, 'GET', `/api/status/${MAC}`);
++  const claim = await api(env, 'POST', '/api/v1/activate', {
++    token: admin, body: { mac: MAC, plan: 'trial_7d', reseller_id: a.id },
++  });
++  ok(claim.status === 200 || claim.status === 201, `MAC rattachée au revendeur A (${claim.status})`);
++
++  let r = await api(env, 'POST', '/api/blackbox', { body: { mac: MAC, text: FIXTURE } });
++  ok(r.status === 200 && r.json && r.json.ok === true && typeof r.json.updated_at === 'number',
++    'POST /api/blackbox accepte le journal');
++  ok(!r.text.includes('JETON'), 'la réponse POST ne renvoie pas le jeton');
++
++  r = await api(env, 'GET', `/api/blackbox/${MAC}`);
++  ok(r.status === 400 && !r.text.includes('JETON'),
++    'GET public refusé : le journal ne se lit pas sans le panel');
++
++  r = await api(env, 'POST', '/api/blackbox', { body: { mac: 'PAS-UNE-MAC', text: FIXTURE } });
++  ok(r.status === 400, 'MAC invalide refusée');
++
++  r = await api(env, 'GET', `/api/v1/blackbox/${encodeURIComponent(MAC)}`);
++  ok(r.status === 401, 'lecture panel sans jeton : 401');
++
++  r = await api(env, 'GET', `/api/v1/blackbox/${encodeURIComponent(MAC)}`, { token: admin });
++  ok(r.status === 200 && r.json && typeof r.json.text === 'string' && r.json.updated_at > 0,
++    `le panel lit le texte et l'heure (${r.status})`);
++  ok(r.json && r.json.text.includes('[SON]') && r.json.text.includes('passthrough'),
++    'le texte panel contient la ligne [SON]');
++  ok(r.json && !r.json.text.includes('JETON') && !r.json.text.includes('COMPTE')
++    && !r.json.text.includes('http://'),
++  'le texte stocké ne contient ni jeton, ni compte, ni adresse');
++
++  r = await api(env, 'GET', `/api/v1/blackbox/${encodeURIComponent(MAC)}`, { token: a.token });
++  ok(r.status === 200 && r.json && r.json.text.includes('[SON]'), 'le revendeur lit SA box');
++
++  r = await api(env, 'GET', `/api/v1/blackbox/${encodeURIComponent(MAC)}`, { token: b.token });
++  ok(r.status === 403 && !r.text.includes('[SON]'), 'un autre revendeur ne voit pas le journal');
++
++  r = await api(env, 'POST', `/api/v1/blackbox/${encodeURIComponent(MAC)}/ask`, { token: admin });
++  ok(r.status === 200 && r.json && r.json.requested_at > 0, 'demande panel enregistrée');
++  const requestedAt = r.json && r.json.requested_at;
++
++  const stored = db.prepare('SELECT body, requested_at FROM device_blackbox WHERE mac = ?').get(MAC);
++  ok(stored && stored.body.includes('[SON]') && stored.requested_at === requestedAt,
++    'la demande n\'efface pas le journal');
++  const pull = await blackboxRequestedAt(env, MAC);
++  ok(pull === requestedAt && pull > 0, 'le statut peut lire la demande (blackbox_pull)');
++
++  // Le statut public (que la box lit déjà) porte la demande.
++  r = await api(env, 'GET', `/api/status/${MAC}`);
++  ok(r.status === 200 && r.json && r.json.blackbox_pull === requestedAt,
++    'GET /api/status renvoie blackbox_pull');
++  ok(!r.text.includes('JETON') && !r.text.includes('[SON]'), 'le statut ne contient pas le journal');
++
++  console.log(`\n${pass} passed, ${fail} failed`);
++  process.exit(fail ? 1 : 0);
++}
++
++main().catch((e) => {
++  console.error('TEST CRASH', e && e.message ? e.message : e);
++  process.exit(1);
++});
+diff --git a/android-app/cloudflare/blackbox_journal.js b/android-app/cloudflare/blackbox_journal.js
+new file mode 100644
+index 0000000..52d5ce0
+--- /dev/null
++++ b/android-app/cloudflare/blackbox_journal.js
+@@ -0,0 +1,143 @@
++// =========================================================
++//  blackbox_journal.js — Journal « Boîte noire » par MAC
++// =========================================================
++//  Même lien que le heartbeat et le statut : la MAC virtuelle,
++//  le Worker, la base D1. L'app envoie les dernières lignes
++//  (POST /api/blackbox). Le panel les relit (GET /api/v1/blackbox).
++//
++//  On masque AVANT d'écrire, même si l'app l'a déjà fait : une
++//  vieille version, ou un envoi bricolé, ne doit pas poser une
++//  adresse de flux, un mot de passe ou un identifiant en base.
++//  Les lignes [SON] ne sont pas des secrets.
++//
++//  Mêmes règles que lib/core/blackbox/black_box_redaction.dart.
++// =========================================================
++
++/// 32 Ko : assez pour les dernières lignes de l'écran (400),
++/// sous la limite d'une requête D1 (~100 Ko).
++export const BLACKBOX_MAX_BYTES = 32 * 1024;
++
++const MAC_RX = /^MK(?::[0-9A-F]{2}){5}$/i;
++
++export function isBlackboxMac(mac) {
++  return typeof mac === 'string' && MAC_RX.test(mac.trim());
++}
++
++/// `null` si coupé ou vide. Sinon texte masqué, fin seulement.
++export function prepareBlackBoxText(raw, opts = {}) {
++  const enabled = opts.enabled !== false;
++  if (!enabled) return null;
++  if (typeof raw !== 'string') return null;
++  const capped = raw.length > 256 * 1024 ? raw.slice(-256 * 1024) : raw;
++  const max = opts.maxBytes || BLACKBOX_MAX_BYTES;
++  const clean = truncateBlackBoxTail(redactBlackBox(capped), max);
++  if (!clean.trim()) return null;
++  return clean;
++}
++
++export function redactBlackBox(input) {
++  let text = String(input ?? '');
++  const urlRe = /\b(?:https?|rtsps?|rtmps?|udp|rtp|mms|mmsh):\/\/[^\s<>"'()]+/gi;
++  const userInfoRe = /\b[^:\s/@]{1,80}:[^:\s/@]{1,80}@[\w.-]+(?::\d+)?/g;
++  const pathRe = /\/(live|movie|series)\/[^/\s]+\/[^/\s]+\//gi;
++  const fieldRe = /\b(password|passwd|pwd|username|user|login|token|auth|pass)\b\s*[:=]\s*[^\s&,;]+/gi;
++  const labelRe = /\b(utilisateur|identifiant)\b\s*[:=]?\s+\S+/gi;
++  const emailRe = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
++  text = text.replace(urlRe, '[lien]');
++  text = text.replace(userInfoRe, '[identifiants]');
++  text = text.replace(pathRe, (_, kind) => `/${kind}/[masqué]/[masqué]/`);
++  text = text.replace(fieldRe, (_, key) => `${key}=[masqué]`);
++  text = text.replace(labelRe, (_, word) => `${word} [masqué]`);
++  text = text.replace(emailRe, '[identifiant]');
++  return text;
++}
++
++export function truncateBlackBoxTail(text, maxBytes) {
++  if (maxBytes <= 0) return '';
++  const enc = new TextEncoder();
++  const dec = new TextDecoder('utf-8', { fatal: false });
++  const bytes = enc.encode(text);
++  if (bytes.length <= maxBytes) return text;
++  let slice = bytes.subarray(bytes.length - maxBytes);
++  let i = 0;
++  while (i < slice.length && (slice[i] & 0xc0) === 0x80) i += 1;
++  if (i > 0) slice = slice.subarray(i);
++  let s = dec.decode(slice);
++  const nl = s.indexOf('\n');
++  if (nl >= 0 && nl < s.length - 1) s = s.slice(nl + 1);
++  return s;
++}
++
++let tableReady = false;
++
++export async function ensureBlackboxTable(env) {
++  if (tableReady || !env || !env.DB) return;
++  await env.DB.prepare(
++    'CREATE TABLE IF NOT EXISTS device_blackbox ('
++    + 'mac TEXT PRIMARY KEY, '
++    + 'body TEXT NOT NULL, '
++    + 'updated_at INTEGER NOT NULL, '
++    + 'requested_at INTEGER NOT NULL DEFAULT 0)',
++  ).run();
++  tableReady = true;
++}
++
++/// Écrit le journal déjà filtré. Ne touche pas à `requested_at`
++/// (la demande du panel reste en place).
++export async function saveBlackBox(env, mac, text, now = Date.now()) {
++  if (!env || !env.DB) return { error: 'no_db' };
++  const clean = prepareBlackBoxText(text, { enabled: true });
++  if (clean == null) return { error: 'empty' };
++  await ensureBlackboxTable(env);
++  await env.DB.prepare(
++    'INSERT INTO device_blackbox (mac, body, updated_at, requested_at) '
++    + 'VALUES (?, ?, ?, 0) '
++    + 'ON CONFLICT(mac) DO UPDATE SET '
++    + 'body = excluded.body, updated_at = excluded.updated_at',
++  ).bind(mac, clean, now).run();
++  return { updated_at: now };
++}
++
++export async function readBlackBox(env, mac) {
++  if (!env || !env.DB) return { body: '', updated_at: 0 };
++  try {
++    await ensureBlackboxTable(env);
++    const row = await env.DB.prepare(
++      'SELECT body, updated_at FROM device_blackbox WHERE mac = ?',
++    ).bind(mac).first();
++    if (!row) return { body: '', updated_at: 0 };
++    return {
++      body: typeof row.body === 'string' ? row.body : '',
++      updated_at: Number(row.updated_at) || 0,
++    };
++  } catch (_) {
++    return { body: '', updated_at: 0 };
++  }
++}
++
++/// Horodatage de la demande panel (0 = personne ne regarde).
++/// Le statut public le renvoie : la box l'a déjà dans sa veille.
++export async function blackboxRequestedAt(env, mac) {
++  if (!env || !env.DB || !mac) return 0;
++  try {
++    await ensureBlackboxTable(env);
++    const row = await env.DB.prepare(
++      'SELECT requested_at FROM device_blackbox WHERE mac = ?',
++    ).bind(mac).first();
++    return row && row.requested_at ? Number(row.requested_at) : 0;
++  } catch (_) {
++    return 0;
++  }
++}
++
++/// Le panel veut un journal frais. N'efface pas le texte déjà reçu.
++export async function markBlackBoxAsked(env, mac, now = Date.now()) {
++  if (!env || !env.DB) return 0;
++  await ensureBlackboxTable(env);
++  await env.DB.prepare(
++    'INSERT INTO device_blackbox (mac, body, updated_at, requested_at) '
++    + "VALUES (?, '', 0, ?) "
++    + 'ON CONFLICT(mac) DO UPDATE SET requested_at = excluded.requested_at',
++  ).bind(mac, now).run();
++  return now;
++}
+diff --git a/android-app/cloudflare/worker.js b/android-app/cloudflare/worker.js
+index 3d0c472..38a6c58 100644
+--- a/android-app/cloudflare/worker.js
++++ b/android-app/cloudflare/worker.js
+@@ -55,6 +55,7 @@
+ // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
+ // Routee depuis le bas du fetch() en haut de la chaine de match.
+ import { apiV1, panelActorFromToken } from './api_v1.js';
++import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
+ import {
+   RealtimeHub,
+   handleBoxRoute,
+@@ -2428,6 +2429,46 @@ async function handleHeartbeat(request, env, _ctx) {
+ //  après le heartbeat, pour savoir si elle doit afficher
+ //  l'écran 'essai expiré' ou 'compte gelé'.
+ // =========================================================
++// =========================================================
++//  BOÎTE NOIRE — l'app envoie son journal (POST /api/blackbox)
++// =========================================================
++//  Même contrat que le heartbeat : public, l'identifiant est la
++//  MAC. On ne renvoie PAS le texte (il peut être long). Le panel
++//  le lit par /api/v1/blackbox/:mac, avec le jeton du revendeur.
++//  Le filtre est refait ici : la base ne stocke pas de secret.
++//  Porté depuis la branche de l'app (ccr-1d45eb8b-x46ieg) le
++//  05/10/2026 : en production, la box envoyait son journal dans
++//  le vide (404) et personne ne pouvait lire « liste chargée en N s ».
++// =========================================================
++async function handleBlackboxPost(request, env) {
++  let body;
++  try {
++    body = await request.json();
++  } catch (_) {
++    return badRequest('invalid JSON body');
++  }
++  const mac = String(body?.mac || '').trim().toUpperCase();
++  if (!MAC_RX.test(mac)) {
++    return badRequest('invalid mac, expected MK:XX:XX:XX:XX:XX');
++  }
++  if (typeof body?.text !== 'string') return badRequest('text required');
++  if (!env.DB) {
++    return json({ error: 'no_db', message: 'Base indisponible.' }, 503);
++  }
++  const saved = await saveBlackBox(env, mac, body.text, Date.now());
++  if (saved.error === 'empty') return json({ ok: true, skipped: true });
++  if (saved.error) return json({ error: 'store_failed' }, 500);
++  return json({ ok: true, updated_at: saved.updated_at });
++}
++
++/// Le panel a-t-il demandé le journal ? La box le voit dans le
++/// statut qu'elle lit déjà (pas une nouvelle veille). 0 = personne.
++async function attachBlackboxPull(env, mac, payload) {
++  const out = payload && typeof payload === 'object' ? { ...payload } : {};
++  out.blackbox_pull = await blackboxRequestedAt(env, String(mac || '').toUpperCase());
++  return out;
++}
++
+ async function handlePublicStatus(env, mac) {
+   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
+   // D1 en priorite. Si la MAC n'est pas encore connue (status appele
+@@ -2439,10 +2480,10 @@ async function handlePublicStatus(env, mac) {
+       await touchTrialAnchor(env, mac, '');
+       d1 = await d1StatusForMac(env, mac);
+     }
+-    if (d1) return json(d1);
++    if (d1) return json(await attachBlackboxPull(env, mac, d1));
+   }
+   const data = await readClient(env, mac);
+-  return json(computeStatus(data));
++  return json(await attachBlackboxPull(env, mac, computeStatus(data)));
+ }
+ 
+ // =========================================================
+@@ -3654,7 +3695,8 @@ async function handleRequest(request, env, ctx) {
+           || seg1 === 'self-source') rl = ['dev', 120]; // anti-énumération MAC
+         else if (seg1 === 'heartbeat' || seg1 === 'trending'
+           || seg1 === 'announcement' || seg1 === 'sports'
+-          || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
++          || seg1 === 'feedback' || seg1 === 'm3u'
++          || seg1 === 'blackbox') rl = ['pub', 240];
+         // L'écran récepteur poll ~40×/min ; on laisse large (TV + téléphone).
+         else if (seg1 === 'screen') rl = ['scr', 600];
+       } else if (seg0 === 'config') {
+@@ -3675,6 +3717,15 @@ async function handleRequest(request, env, ctx) {
+       return handlePublicConfig(env, segments[1]);
+     }
+ 
++    // /api/blackbox — public, l'app envoie son journal (filtré).
++    // Lecture : /api/v1/blackbox/:mac (jeton panel), pas ici.
++    if (segments[0] === 'api' && segments[1] === 'blackbox') {
++      if (request.method !== 'POST' || segments.length !== 2) {
++        return badRequest('only POST supported on /api/blackbox');
++      }
++      return handleBlackboxPost(request, env);
++    }
++
+     // /api/heartbeat — public, l'app pingue à chaque démarrage
+     if (segments[0] === 'api' && segments[1] === 'heartbeat' && segments.length === 2) {
+       if (request.method !== 'POST') {

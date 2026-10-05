@@ -144,6 +144,34 @@ Mots de passe et URL M3U sont chiffrés en base (`SOURCE_ENCRYPTION_KEY`).
   Windows #13 vert (artefact seulement, non publié). Box #155 = `107-test.155`,
   versionCode 1791218094, SHA-256 `9cd1bee0…942d46`, signé `5145b8e0…`.
 
+## 5 quinquies. « L'activation ne marche pas » : mesure et cause (5 octobre, nuit)
+
+Rapport complet : `docs/MESURE-ACTIVATION-INSTANTANEE.md`.
+
+- **Serveur hors de cause, mesuré** : Worker → Durable Object en 193 ms en
+  production (ring de `MK:5C:E5:43:35:1F`), WebSocket ouvert en 1,1 s et
+  signal rejoué en 4 ms, attente longue en 0,8 s ; en local sur le Worker
+  de production, le signal atteint la box simulée 15 à 35 ms après le clic.
+- **Cause prouvée dans la v106 des clients (`7b904c7d`)** : la box refuse
+  d'importer la liste du panel tant que Direct ou le lecteur est ouvert
+  (`if (playbackBusy) return false;`, et l'écran Direct compte comme occupé).
+  La liste n'arrive qu'au retour à l'accueil ou ~5 min plus tard. Le #155 ne
+  corrigeait que le chemin WebSocket.
+- **Correctif app** (branche `ccr-b93e1afd-gwirw0`, issue de
+  `ccr-1d45eb8b-x46ieg`) : un ordre `source` du panel importe tout de suite
+  sur les deux chemins ; repli `zuno.source.order_waits_idle` (coupé) ;
+  boîte noire : `[PANEL] ordre source n°N reçu (ws|attente)`,
+  `[SOURCE] liste M3U du panel chargée en N s (X chaînes)` / `refusée après
+  N s : raison`. 428 tests verts.
+- **La boîte noire n'est PAS en production** : `POST /api/blackbox` → 404,
+  pas d'écran dans le panel en ligne. Patch prêt et vérifié (Worker + panel) :
+  `docs/patches/panel-worker-boite-noire.patch`, à appliquer sur
+  `claude/panel-mise-en-ligne` puis déployer avec `confirme=DEPLOYER`
+  (décision du propriétaire).
+- Sur `MK:5C:E5:43:35:1F` : 3 listes différentes (2 du panel, 1 tapée sur la
+  TV, libellé « Tv ») = 3 imports, pas un triple envoi.
+- Build de test : voir le rapport (section « Build #156 »).
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
