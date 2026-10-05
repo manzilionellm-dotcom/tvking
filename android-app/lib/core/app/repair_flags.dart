@@ -88,6 +88,12 @@ abstract final class RepairFlags {
   static const String realtimeLegacyKey = 'zuno.channel.legacy';
   static bool realtimeLegacy = false;
 
+  /// Vrai = pas de pastille « Mise à jour… » pendant le chargement d'une
+  /// liste envoyée par le panel (ancien comportement : écran immobile).
+  /// La durée de chargement reste notée dans la boîte noire.
+  static const String syncPillOffKey = 'zuno.sync.pill_off';
+  static bool syncPillOff = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -99,6 +105,7 @@ abstract final class RepairFlags {
     bool macPrefix = false;
     bool updLegacy = false;
     bool channelLegacy = false;
+    bool pillOff = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -111,6 +118,7 @@ abstract final class RepairFlags {
       macPrefix = prefs.getBool(macShowPrefixKey) ?? false;
       updLegacy = prefs.getBool(updateLegacyKey) ?? false;
       channelLegacy = prefs.getBool(realtimeLegacyKey) ?? false;
+      pillOff = prefs.getBool(syncPillOffKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -122,7 +130,9 @@ abstract final class RepairFlags {
       macPrefix = false;
       updLegacy = false;
       channelLegacy = false;
+      pillOff = false;
     }
+    syncPillOff = pillOff;
     macShowPrefix = macPrefix;
     updateLegacy = updLegacy;
     realtimeLegacy = channelLegacy;
@@ -150,6 +160,7 @@ abstract final class RepairFlags {
     macShowPrefix = false;
     updateLegacy = false;
     realtimeLegacy = false;
+    syncPillOff = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../playlists/data/remote_source_repository.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
 import '../../../l10n/generated/app_localizations.dart';
@@ -188,11 +189,19 @@ class _RestartWidgetState extends State<RestartWidget> {
             top: TvDimens.safeV,
             right: TvDimens.safeH,
             child: IgnorePointer(
-              child: ValueListenableBuilder<bool>(
-                valueListenable: TvContentRefresh.running,
-                builder: (BuildContext context, bool on, _) =>
+              // Aussi pendant le chargement d'une liste envoyée par le
+              // panel : le client voit que ça arrive, à la seconde même.
+              child: ListenableBuilder(
+                listenable: Listenable.merge(<Listenable>[
+                  TvContentRefresh.running,
+                  RemoteSourceRepository.importing,
+                ]),
+                builder: (BuildContext context, _) =>
                     AnimatedOpacity(
-                  opacity: on ? 1 : 0,
+                  opacity: (TvContentRefresh.running.value ||
+                          RemoteSourceRepository.importing.value)
+                      ? 1
+                      : 0,
                   duration: const Duration(milliseconds: 250),
                   child: const _UpdatingPill(),
                 ),
