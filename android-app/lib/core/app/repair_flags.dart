@@ -81,6 +81,13 @@ abstract final class RepairFlags {
   static const String updateLegacyKey = 'zuno.update.legacy';
   static bool updateLegacy = false;
 
+  /// Vrai = pas de WebSocket vers le panel. La box garde l'attente
+  /// longue, puis la lecture courte (ancien rythme). Faux = on ouvre
+  /// le WebSocket et on ne retombe sur l'attente longue que s'il
+  /// ne tient pas. Défaut faux : le repli est coupé.
+  static const String realtimeLegacyKey = 'zuno.channel.legacy';
+  static bool realtimeLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -91,6 +98,7 @@ abstract final class RepairFlags {
     bool histOpen = false;
     bool macPrefix = false;
     bool updLegacy = false;
+    bool channelLegacy = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -102,6 +110,7 @@ abstract final class RepairFlags {
       histOpen = prefs.getBool(historyOnOpenKey) ?? false;
       macPrefix = prefs.getBool(macShowPrefixKey) ?? false;
       updLegacy = prefs.getBool(updateLegacyKey) ?? false;
+      channelLegacy = prefs.getBool(realtimeLegacyKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -112,9 +121,11 @@ abstract final class RepairFlags {
       histOpen = false;
       macPrefix = false;
       updLegacy = false;
+      channelLegacy = false;
     }
     macShowPrefix = macPrefix;
     updateLegacy = updLegacy;
+    realtimeLegacy = channelLegacy;
     blackBoxRaw = raw;
     blackBoxFsyncAll = fsyncAll;
     syncDuringPlayback = syncPlayback;
@@ -138,6 +149,7 @@ abstract final class RepairFlags {
     historyOnOpen = false;
     macShowPrefix = false;
     updateLegacy = false;
+    realtimeLegacy = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }
