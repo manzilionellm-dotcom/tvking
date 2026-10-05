@@ -94,6 +94,12 @@ abstract final class RepairFlags {
   static const String syncPillOffKey = 'zuno.sync.pill_off';
   static bool syncPillOff = false;
 
+  /// Vrai = la box ignore l'interrupteur allumé / éteint du panel (ancien
+  /// comportement : une liste envoyée est toujours visible). Faux = une
+  /// liste éteinte dans le panel est masquée, rallumée elle revient.
+  static const String panelVisibilityOffKey = 'zuno.panel.visibility_off';
+  static bool panelVisibilityOff = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -106,6 +112,7 @@ abstract final class RepairFlags {
     bool updLegacy = false;
     bool channelLegacy = false;
     bool pillOff = false;
+    bool visOff = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -119,6 +126,7 @@ abstract final class RepairFlags {
       updLegacy = prefs.getBool(updateLegacyKey) ?? false;
       channelLegacy = prefs.getBool(realtimeLegacyKey) ?? false;
       pillOff = prefs.getBool(syncPillOffKey) ?? false;
+      visOff = prefs.getBool(panelVisibilityOffKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -131,7 +139,9 @@ abstract final class RepairFlags {
       updLegacy = false;
       channelLegacy = false;
       pillOff = false;
+      visOff = false;
     }
+    panelVisibilityOff = visOff;
     syncPillOff = pillOff;
     macShowPrefix = macPrefix;
     updateLegacy = updLegacy;
@@ -161,6 +171,7 @@ abstract final class RepairFlags {
     updateLegacy = false;
     realtimeLegacy = false;
     syncPillOff = false;
+    panelVisibilityOff = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

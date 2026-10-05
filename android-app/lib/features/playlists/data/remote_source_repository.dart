@@ -313,6 +313,61 @@ abstract final class RemoteSourceRepository {
       revoked: revoked,
     ));
     await prefs.setStringList(rememberedKey, current.toList());
+    if (!RepairFlags.panelVisibilityOff) {
+      await _applyPanelVisibility(prefs, currentMaps);
+    }
+  }
+
+  /// Listes éteintes par le panel (empreinte → false). Sert à ne rallumer
+  /// QUE ce que le panel a éteint, jamais ce que le client a masqué.
+  static const String panelOffKey = 'zuno.panel_off.v1';
+
+  /// Interrupteur du panel : masque / réaffiche les listes locales, sans
+  /// rien effacer ni retélécharger (setPlaylistHidden). Voir
+  /// planPanelVisibility pour les règles.
+  static Future<void> _applyPanelVisibility(
+    SharedPreferences prefs,
+    List<Map<String, dynamic>> served,
+  ) async {
+    Map<String, bool> applied = <String, bool>{};
+    try {
+      final String? raw = prefs.getString(panelOffKey);
+      if (raw != null && raw.isNotEmpty) {
+        final Object? d = jsonDecode(raw);
+        if (d is Map) {
+          applied = <String, bool>{
+            for (final MapEntry<Object?, Object?> e in d.entries)
+              if (e.value == false) '${e.key}': false,
+          };
+        }
+      }
+    } catch (_) {
+      applied = <String, bool>{};
+    }
+    final PanelVisibilityPlan plan =
+        planPanelVisibility(served: served, applied: applied);
+    if (plan.apply.isNotEmpty) {
+      final List<Playlist> playlists =
+          await PlaylistRepository.instance.getAllPlaylists();
+      for (final Playlist playlist in playlists) {
+        final int? id = playlist.id;
+        if (id == null) continue;
+        final String? fp = playlist.type == PlaylistType.xtream
+            ? SourceFingerprint.xtream(
+                playlist.xtreamServer, playlist.xtreamUsername)
+            : SourceFingerprint.m3u(playlist.m3uUrl);
+        final bool? enabled = fp == null ? null : plan.apply[fp];
+        if (enabled == null) continue;
+        await PlaylistRepository.instance.setPlaylistHidden(id, !enabled);
+        BlackBox.instance.info(
+          'SOURCE',
+          enabled ? 'liste rallumée depuis le panel' : 'liste éteinte depuis le panel',
+        );
+      }
+    }
+    try {
+      await prefs.setString(panelOffKey, jsonEncode(plan.nextApplied));
+    } catch (_) {}
   }
 
   /// Supprime les playlists locales dont l'empreinte est dans [drop].

@@ -60,3 +60,48 @@ Set<String> fingerprintsToDrop({
   drop.removeAll(current);
   return drop;
 }
+
+// ---------------------------------------------------------------------------
+//  Interrupteur du panel : liste « allumée » / « éteinte »
+// ---------------------------------------------------------------------------
+
+/// Ce que la box doit faire après avoir relu les listes du panel.
+class PanelVisibilityPlan {
+  const PanelVisibilityPlan({required this.apply, required this.nextApplied});
+
+  /// Empreinte → `true` (réafficher) ou `false` (masquer). Seulement ce
+  /// qui CHANGE : une liste déjà dans le bon état n'est pas retouchée.
+  final Map<String, bool> apply;
+
+  /// Mémoire à garder sur la box : les listes que le PANEL a éteintes.
+  final Map<String, bool> nextApplied;
+}
+
+/// Le panel envoie `enabled: false` sur une liste éteinte (champ absent =
+/// allumée). La box :
+/// - masque une liste que le panel vient d'éteindre ;
+/// - réaffiche une liste que le panel avait éteinte et rallume ;
+/// - ne touche JAMAIS une liste que le panel n'a jamais éteinte : si le
+///   client l'a masquée lui-même sur sa TV, son choix est respecté ;
+/// - oublie une liste qui n'est plus envoyée (elle est effacée ailleurs).
+///
+/// [applied] = empreintes que le panel avait éteintes au tour précédent.
+PanelVisibilityPlan planPanelVisibility({
+  required Iterable<Map<String, dynamic>> served,
+  required Map<String, bool> applied,
+}) {
+  final Map<String, bool> apply = <String, bool>{};
+  final Map<String, bool> next = <String, bool>{};
+  for (final Map<String, dynamic> item in served) {
+    final String? fp = SourceFingerprint.fromMap(item);
+    if (fp == null) continue;
+    final bool off = item['enabled'] == false;
+    if (off) {
+      next[fp] = false;
+      if (applied[fp] != false) apply[fp] = false;
+    } else if (applied[fp] == false) {
+      apply[fp] = true;
+    }
+  }
+  return PanelVisibilityPlan(apply: apply, nextApplied: next);
+}
