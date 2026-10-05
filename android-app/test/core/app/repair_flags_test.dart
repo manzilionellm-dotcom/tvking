@@ -30,4 +30,25 @@ void main() {
     RepairFlags.debugReset();
     expect(RepairFlags.sourceOrderWaitsIdle, isFalse);
   });
+
+  test('passe automatique 6 h et premier lot affiché : replis coupés par défaut',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await RepairFlags.load();
+    expect(RepairFlags.autoRefreshFull, isFalse);
+    expect(RepairFlags.importFirstBatchOff, isFalse);
+    expect(RepairFlags.autoRefreshFullKey, 'zuno.refresh.auto_full');
+    expect(RepairFlags.importFirstBatchOffKey, 'zuno.import.first_batch_off');
+
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      RepairFlags.autoRefreshFullKey: true,
+      RepairFlags.importFirstBatchOffKey: true,
+    });
+    await RepairFlags.load();
+    expect(RepairFlags.autoRefreshFull, isTrue);
+    expect(RepairFlags.importFirstBatchOff, isTrue);
+    RepairFlags.debugReset();
+    expect(RepairFlags.autoRefreshFull, isFalse);
+    expect(RepairFlags.importFirstBatchOff, isFalse);
+  });
 }

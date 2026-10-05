@@ -108,6 +108,24 @@ abstract final class RepairFlags {
   static const String sourceOrderWaitsIdleKey = 'zuno.source.order_waits_idle';
   static bool sourceOrderWaitsIdle = false;
 
+  /// Vrai = la passe automatique (2 min après l'ouverture, puis toutes les
+  /// 6 h) retélécharge TOUTES les listes synchronisées il y a plus de
+  /// 2 minutes (ancien comportement : « Mise à jour… » pendant de longues
+  /// minutes à chaque ouverture, 3 listes retéléchargées d'un coup).
+  /// Faux = elle ne retélécharge que les listes synchronisées il y a plus
+  /// de 6 h. Le bouton Redémarrer garde la passe complète.
+  static const String autoRefreshFullKey = 'zuno.refresh.auto_full';
+  static bool autoRefreshFull = false;
+
+  /// Vrai = les chaînes d'une NOUVELLE liste n'apparaissent qu'à la fin de
+  /// l'insertion (ancien comportement). Faux = sur une box encore sans
+  /// chaîne, le premier lot (1 000 chaînes) est affiché dès qu'il est en
+  /// base, le reste suit : le client voit sa liste arriver à la seconde.
+  /// Une box qui a déjà des chaînes n'est pas concernée (relire toute la
+  /// base pendant un import faisait planter les box à 1 Go, audit P1-3).
+  static const String importFirstBatchOffKey = 'zuno.import.first_batch_off';
+  static bool importFirstBatchOff = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -122,6 +140,8 @@ abstract final class RepairFlags {
     bool pillOff = false;
     bool visOff = false;
     bool orderIdle = false;
+    bool autoFull = false;
+    bool firstBatchOff = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -137,6 +157,8 @@ abstract final class RepairFlags {
       pillOff = prefs.getBool(syncPillOffKey) ?? false;
       visOff = prefs.getBool(panelVisibilityOffKey) ?? false;
       orderIdle = prefs.getBool(sourceOrderWaitsIdleKey) ?? false;
+      autoFull = prefs.getBool(autoRefreshFullKey) ?? false;
+      firstBatchOff = prefs.getBool(importFirstBatchOffKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -151,7 +173,11 @@ abstract final class RepairFlags {
       pillOff = false;
       visOff = false;
       orderIdle = false;
+      autoFull = false;
+      firstBatchOff = false;
     }
+    autoRefreshFull = autoFull;
+    importFirstBatchOff = firstBatchOff;
     sourceOrderWaitsIdle = orderIdle;
     panelVisibilityOff = visOff;
     syncPillOff = pillOff;
@@ -185,6 +211,8 @@ abstract final class RepairFlags {
     syncPillOff = false;
     panelVisibilityOff = false;
     sourceOrderWaitsIdle = false;
+    autoRefreshFull = false;
+    importFirstBatchOff = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

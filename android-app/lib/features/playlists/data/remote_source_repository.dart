@@ -38,6 +38,7 @@ import '../../subscription/data/subscription_backend.dart'
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
 import 'favorites_repository.dart';
+import 'import_progress.dart';
 import 'playlist_database.dart';
 import 'playlist_repository.dart';
 import 'removed_list_notice.dart';
@@ -82,6 +83,9 @@ abstract final class RemoteSourceRepository {
     Future<int> Function() job,
   ) async {
     final Stopwatch watch = Stopwatch()..start();
+    // La pastille affiche le détail chiffré du bus de progression : on
+    // repart de zéro pour ne pas montrer le compte d'un import précédent.
+    ImportProgressBus.clear();
     if (!RepairFlags.syncPillOff) importing.value = true;
     BlackBox.instance.info('SOURCE', 'nouvelle liste $kind reçue du panel : chargement');
     try {

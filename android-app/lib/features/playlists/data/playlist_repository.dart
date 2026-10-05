@@ -946,7 +946,13 @@ class PlaylistRepository {
   Future<void> _insertChannels(List<Channel> channels) async {
     BlackBox.instance.breadcrumb('Insertion en base de ${channels.length} chaînes');
     final Stopwatch sw = Stopwatch()..start();
-    await _insertChannelsImpl(channels);
+    // Premier lot affiché tout de suite, SEULEMENT si la box n'a encore
+    // aucune chaîne : la relecture ne ramène alors que ce lot (≤ 1 000
+    // lignes), pas toute la base. Une box déjà garnie garde la règle
+    // anti-OOM (une seule lecture, à la fin). Repli : RepairFlags.
+    final bool firstBatch =
+        !RepairFlags.importFirstBatchOff && _channelsCache.isEmpty;
+    await _insertChannelsImpl(channels, emitFirstChunk: firstBatch);
     BlackBox.instance.info('DB', '${channels.length} chaînes insérées en ${sw.elapsedMilliseconds} ms');
     BlackBox.instance.breadcrumb('');
   }
@@ -979,6 +985,7 @@ class PlaylistRepository {
   Future<void> _insertChannelsImpl(
     List<Channel> channels, {
     DatabaseExecutor? executor,
+    bool emitFirstChunk = false,
   }) async {
     const int chunkSize = 1000;
     // Dans une transaction, les lots DOIVENT passer par la transaction :
@@ -995,6 +1002,13 @@ class PlaylistRepository {
       }
       await batch.commit(noResult: true);
       ImportProgressBus.saving(end, channels.length);
+      // Première liste de la box : ses 1 000 premières chaînes s'affichent
+      // pendant que les suivantes s'enregistrent (hors transaction : la
+      // lecture verrait une base vide). Un seul lot, pas un par tranche :
+      // la relecture reste bornée à 1 000 lignes (voir ci-dessous).
+      if (emitFirstChunk && i == 0 && end < channels.length && executor == null) {
+        await _emitCurrentState();
+      }
     }
     // ANTI-OOM (P1-3) : on N'ÉMET PLUS d'état ICI — ni par tranche, ni à la
     // fin. Chaque appelant ré-émet l'état UNE seule fois APRÈS l'insertion
@@ -1003,6 +1017,8 @@ class PlaylistRepository {
     // (jusqu'à 50k Channel) pendant l'import → une matérialisation complète
     // supplémentaire EN PLUS de `parsed.channels` déjà en RAM = pic mémoire qui
     // faisait planter les box faibles. On lit la base une seule fois, à la fin.
+    // Seule exception, bornée : le premier lot d'une box encore vide
+    // (emitFirstChunk), où la relecture ne peut ramener que ce lot.
   }
 
   Future<void> _updatePlaylistMetrics(Playlist playlist) async {

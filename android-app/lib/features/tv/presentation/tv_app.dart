@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
@@ -212,7 +213,34 @@ class _RestartWidgetState extends State<RestartWidget> {
       );
 }
 
+/// Détail chiffré de l'import en cours, sans mot à traduire : « 12,4 Mo »
+/// pendant le téléchargement, « 18 000 » chaînes trouvées, « 12 000 / 18 000 »
+/// pendant l'enregistrement. Vide hors import. Pur, testé sans écran.
+String updatingPillDetail(ImportProgress? p) {
+  if (p == null) return '';
+  switch (p.stage) {
+    case ImportStage.downloading:
+    case ImportStage.decoding:
+      return p.bytes > 0 ? '${p.mb} Mo' : '';
+    case ImportStage.category:
+      return p.total > 0 ? '${p.index} / ${p.total}' : '';
+    case ImportStage.found:
+    case ImportStage.done:
+      return p.count > 0 ? ImportProgressBus.n(p.count) : '';
+    case ImportStage.saving:
+      return p.total > 0
+          ? '${ImportProgressBus.n(p.index)} / ${ImportProgressBus.n(p.total)}'
+          : '';
+    case ImportStage.connecting:
+    case ImportStage.categories:
+      return '';
+  }
+}
+
 /// « Mise à jour… » : pastille sombre, liseré or, petit indicateur.
+/// Depuis le 05/10/2026 elle dit aussi OÙ en est l'import (Mo reçus,
+/// chaînes trouvées, chaînes enregistrées) : « Mise à jour… » muet
+/// pendant 10 minutes faisait croire que la liste du panel n'arrivait pas.
 class _UpdatingPill extends StatelessWidget {
   const _UpdatingPill();
 
@@ -235,9 +263,19 @@ class _UpdatingPill extends StatelessWidget {
                 strokeWidth: 2, color: TvTokens.accentBright),
           ),
           const SizedBox(width: 10),
-          Text(context.l10n.tvUpdatingContent,
-              style: TvTokens.ui(TvDimens.caption,
-                  weight: FontWeight.w600, color: TvTokens.text)),
+          ValueListenableBuilder<ImportProgress?>(
+            valueListenable: ImportProgressBus.current,
+            builder: (BuildContext context, ImportProgress? p, _) {
+              final String detail = updatingPillDetail(p);
+              return Text(
+                detail.isEmpty
+                    ? context.l10n.tvUpdatingContent
+                    : '${context.l10n.tvUpdatingContent} · $detail',
+                style: TvTokens.ui(TvDimens.caption,
+                    weight: FontWeight.w600, color: TvTokens.text),
+              );
+            },
+          ),
         ],
       ),
     );

@@ -109,6 +109,27 @@ conclusion **success**, commit `70c95a39a7815e0cd5764a709ee79520a8fba9ac`.
 | Release clients `zuno-tv` | **non touchée** (étape « Publier sur la release zuno-tv » sautée, `PUBLIER=false`) | journal du job, release inchangée depuis le 30/09 |
 | Lien | https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv-test/zuno-tv.apk | release `zuno-tv-test` |
 
+## 7 bis. Première mesure sur la box de test (5 octobre, 21:04) et deuxième correctif
+
+Le propriétaire a installé `107-test.156` : la pastille « Mise à jour… »
+est restée affichée **10 minutes** (photo). C'est le maillon 4c (import)
+mesuré en vrai. La boîte noire n'a pas encore été lue, donc deux causes
+restent possibles, toutes deux dans ce maillon :
+
+| Cause | Mécanisme (code) | Correctif (branche `ccr-b93e1afd-gwirw0`) | Repli |
+| --- | --- | --- | --- |
+| Passe automatique 2 min après l'ouverture | `TvContentRefresh.run` → `refreshAll(skipSyncedWithin: 2 min)` : **toutes** les listes synchronisées il y a plus de 2 minutes sont retéléchargées, l'une après l'autre (3 ici) | la passe automatique (2 min / 6 h) ne retélécharge que les listes à jour depuis plus de **6 h** ; le bouton Redémarrer garde 2 min (`TvContentRefresh.skipWindow`) | `zuno.refresh.auto_full` |
+| Import d'une nouvelle liste : rien à l'écran avant la fin | `_insertChannelsImpl` n'émet jamais pendant l'insertion (règle anti-OOM P1-3) | sur une box **sans chaîne**, le premier lot (1 000 chaînes) est affiché dès qu'il est en base ; une box déjà garnie garde la règle anti-OOM | `zuno.import.first_batch_off` |
+| Pastille muette | « Mise à jour… » sans chiffre | « Mise à jour… · 12.4 Mo » / « · 18 230 » / « · 12 000 / 18 230 » (chiffres seulement, rien à traduire) | aucun (affichage) |
+
+Ce qui ne change pas : le téléchargement dépend du fournisseur. Le
+téléchargeur n'enchaîne PAS dix signatures de 90 s (un délai dépassé arrête
+la boucle) ; seules les réponses rapides refusées font essayer la suivante.
+
+Tests : `tv_content_refresh_window_test.dart` (3), `updating_pill_detail_test.dart`
+(3), `first_batch_display_test.dart` (3, SQLite réel : premier lot émis sur
+box vide, jamais sur box garnie, jamais avec le repli), `repair_flags_test.dart`.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

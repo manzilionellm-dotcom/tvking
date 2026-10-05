@@ -174,6 +174,21 @@ Rapport complet : `docs/MESURE-ACTIVATION-INSTANTANEE.md`.
   `bcc1cbee…95c96`, signé `5145b8e0…` (release `zuno-tv-test` seule,
   `zuno-tv` non touchée). Détail : rapport, section 7.
 
+## 5 sexies. « Mise à jour… » pendant 10 minutes sur la box de test (5 octobre, 21:04)
+
+Première mesure réelle du maillon import : après l'installation du #156, la
+pastille est restée 10 min. Deuxième correctif sur `ccr-b93e1afd-gwirw0`,
+détail dans `docs/MESURE-ACTIVATION-INSTANTANEE.md` § 7 bis :
+
+- passe automatique (2 min après l'ouverture, puis 6 h) : ne retélécharge
+  plus une liste à jour depuis moins de 6 h (avant : 2 min, donc les 3
+  listes à chaque ouverture) ; Redémarrer garde la passe complète ;
+  repli `zuno.refresh.auto_full` ;
+- nouvelle liste sur une box vide : les 1 000 premières chaînes s'affichent
+  pendant que le reste s'enregistre ; repli `zuno.import.first_batch_off` ;
+  box déjà garnie : inchangé (anti-OOM P1-3) ;
+- pastille « Mise à jour… · 12.4 Mo / · 18 230 / · 12 000 / 18 230 ».
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
