@@ -422,6 +422,12 @@ erreur d'**écriture** est inutile (l'API avait rendu 50 000 chaînes ; le
 `get.php` de ce fournisseur refuse, § 7 nonies). À traiter : pas de repli
 M3U quand l'API a déjà rendu des chaînes (voir `docs/PROMPT-MISSION-STABILITE.md`, P0-2).
 
+**Build #164 vérifié** (`build-zuno-tv.yml`, `test_box=true`, `publish=false`,
+run 37382518913, commit 11ad567) : `107-test.164`, versionCode 1791239332,
+SHA-256 `f26c876a8d3b7e09a0f8633d8c70f2097c022bb259358f8f85e46e41882cd9dd`,
+54 759 145 octets, `mandatory: false`. Suite Flutter avant commit : 476 verts,
+2 ignorés.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

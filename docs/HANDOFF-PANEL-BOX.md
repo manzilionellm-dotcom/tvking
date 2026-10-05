@@ -288,6 +288,9 @@ demande (ce que font IBO / TiviMate / Smarters).
 - `docs/PROMPT-MISSION-STABILITE.md` : prompt de mission complet à donner à
   un agent pour continuer (critères mesurables, règles, état, ordre des
   travaux, pièges).
+- Build #164 = `107-test.164`, versionCode 1791239332, SHA-256
+  `f26c876a8d3b7e09a0f8633d8c70f2097c022bb259358f8f85e46e41882cd9dd`
+  (54 759 145 octets, run 37382518913, commit 11ad567).
 
 ## 6. Règles du propriétaire (non négociables)
 
