@@ -236,12 +236,20 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
     Timer.periodic(const Duration(hours: 6), (_) {
       TvContentRefresh.run(waitIdle: true);
     });
-    unawaited(Future<void>.delayed(const Duration(minutes: 3), () async {
-      for (int i = 0; i < 30 && TvActivity.isBusy; i++) {
-        await Future<void>.delayed(const Duration(minutes: 1));
-      }
-      await UpdateService.instance.checkAndPrefetch();
+    // MISE À JOUR DE L'APP SANS BOUTON (demande du propriétaire, 05/10/2026) :
+    //   • 1 minute après l'ouverture, puis toutes les 30 minutes, et dès
+    //     qu'un ordre « force_update » arrive du panel : la box vérifie,
+    //     télécharge et contrôle l'APK en silence, puis ouvre elle-même
+    //     l'installateur Android quand elle est à l'accueil (une fois par
+    //     version). Il reste la confirmation « Installer » d'Android, que
+    //     toute app hors Play Store doit obtenir. Repli :
+    //     zuno.update.auto_install_off (l'APK attend Réglages → Mise à jour).
+    unawaited(Future<void>.delayed(const Duration(minutes: 1), () {
+      UpdateService.instance.autoUpdate(busy: () => TvActivity.isBusy);
     }));
+    Timer.periodic(const Duration(minutes: 30), (_) {
+      UpdateService.instance.autoUpdate(busy: () => TvActivity.isBusy);
+    });
   } else {
     debugPrint('[main_tv] mode sans échec → ré-import de la source distante sauté.');
   }

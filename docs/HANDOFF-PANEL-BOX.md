@@ -189,6 +189,22 @@ détail dans `docs/MESURE-ACTIVATION-INSTANTANEE.md` § 7 bis :
   box déjà garnie : inchangé (anti-OOM P1-3) ;
 - pastille « Mise à jour… · 12.4 Mo / · 18 230 / · 12 000 / 18 230 ».
 
+## 5 septies. Plus de pastille, mise à jour de l'app sans bouton, ⚡ Envoi instantané (5 octobre, 21:30)
+
+Demandes écrites du propriétaire, détail dans `docs/MESURE-ACTIVATION-INSTANTANEE.md` § 7 ter :
+
+- **Pastille « Mise à jour… » cachée** par défaut (`zuno.sync.pill_show` la réaffiche).
+- **Mise à jour de l'app sans bouton** : 1 min après l'ouverture, puis
+  toutes les 30 min, et dès l'ordre `force_update` du panel : APK vérifié
+  puis installateur Android ouvert tout seul à l'accueil, une fois par
+  version (`UpdateService.autoUpdate`). Repli `zuno.update.auto_install_off`.
+  **Android garde sa confirmation « Installer »** (hors Play Store, aucune
+  app ne peut l'éviter) ; le build Play Store se met à jour sans rien.
+- **⚡ Envoi instantané** (panel, patch `docs/patches/panel-envoi-instantane.patch`,
+  à appliquer après le patch boîte noire) : renvoi des listes + suivi
+  « Liste sur la TV après N s ». La box ≥ #158 renvoie son inventaire tout
+  de suite après un import du panel (repli `zuno.heartbeat.after_import_off`).
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.

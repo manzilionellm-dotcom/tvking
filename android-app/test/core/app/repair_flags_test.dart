@@ -39,6 +39,13 @@ void main() {
     expect(RepairFlags.importFirstBatchOff, isFalse);
     expect(RepairFlags.autoRefreshFullKey, 'zuno.refresh.auto_full');
     expect(RepairFlags.importFirstBatchOffKey, 'zuno.import.first_batch_off');
+    expect(RepairFlags.heartbeatAfterImportOff, isFalse);
+    expect(RepairFlags.heartbeatAfterImportOffKey, 'zuno.heartbeat.after_import_off');
+    // Pastille cachée et installation automatique : défauts du 05/10/2026.
+    expect(RepairFlags.updatingPillShown, isFalse);
+    expect(RepairFlags.updatingPillShownKey, 'zuno.sync.pill_show');
+    expect(RepairFlags.autoInstallOff, isFalse);
+    expect(RepairFlags.autoInstallOffKey, 'zuno.update.auto_install_off');
 
     SharedPreferences.setMockInitialValues(<String, Object>{
       RepairFlags.autoRefreshFullKey: true,

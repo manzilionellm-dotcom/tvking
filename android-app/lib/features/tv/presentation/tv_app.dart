@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/app/repair_flags.dart';
 import '../../playlists/data/import_progress.dart';
 import '../../playlists/data/remote_source_repository.dart';
 import '../../../core/i18n/l10n_extension.dart';
@@ -184,31 +185,33 @@ class _RestartWidgetState extends State<RestartWidget> {
               );
             },
           ),
-          // Pastille discrète « Mise à jour… » pendant la passe : le client
-          // VOIT que le redémarrage travaille (puis elle disparaît seule).
-          Positioned(
-            top: TvDimens.safeV,
-            right: TvDimens.safeH,
-            child: IgnorePointer(
-              // Aussi pendant le chargement d'une liste envoyée par le
-              // panel : le client voit que ça arrive, à la seconde même.
-              child: ListenableBuilder(
-                listenable: Listenable.merge(<Listenable>[
-                  TvContentRefresh.running,
-                  RemoteSourceRepository.importing,
-                ]),
-                builder: (BuildContext context, _) =>
-                    AnimatedOpacity(
-                  opacity: (TvContentRefresh.running.value ||
-                          RemoteSourceRepository.importing.value)
-                      ? 1
-                      : 0,
-                  duration: const Duration(milliseconds: 250),
-                  child: const _UpdatingPill(),
+          // Pastille « Mise à jour… » pendant une passe ou un import du
+          // panel. CACHÉE par défaut depuis le 05/10/2026 (demande du
+          // propriétaire : rien ne doit se voir, l'import est silencieux ;
+          // la mesure est dans la boîte noire). `zuno.sync.pill_show`
+          // la réaffiche pour un diagnostic sur une box.
+          if (RepairFlags.updatingPillShown)
+            Positioned(
+              top: TvDimens.safeV,
+              right: TvDimens.safeH,
+              child: IgnorePointer(
+                child: ListenableBuilder(
+                  listenable: Listenable.merge(<Listenable>[
+                    TvContentRefresh.running,
+                    RemoteSourceRepository.importing,
+                  ]),
+                  builder: (BuildContext context, _) =>
+                      AnimatedOpacity(
+                    opacity: (TvContentRefresh.running.value ||
+                            RemoteSourceRepository.importing.value)
+                        ? 1
+                        : 0,
+                    duration: const Duration(milliseconds: 250),
+                    child: const _UpdatingPill(),
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       );
 }

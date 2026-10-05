@@ -27,6 +27,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
+import '../../../core/update/update_service.dart';
 import '../../about/data/force_update_checker.dart';
 import '../../ads/data/startup_ad_repository.dart';
 import '../../country_home/data/featured_repository.dart';
@@ -233,6 +234,21 @@ class RemoteActivationWatch {
     final RemoteSyncResult result = await RemoteSourceRepository.sync();
     if (result == RemoteSyncResult.networkError) return;
     if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
+    // Ordre du panel appliqué : on remonte l'inventaire tout de suite
+    // (heartbeat), au lieu d'attendre le prochain heartbeat régulier. Le
+    // panel (bouton « Envoi instantané ») voit alors « Liste sur la TV
+    // après N s » à la seconde. Repli : zuno.heartbeat.after_import_off.
+    if (ordered &&
+        result == RemoteSyncResult.loaded &&
+        !RepairFlags.heartbeatAfterImportOff) {
+      final RemoteSyncOutcome hb =
+          await SubscriptionState.instance.syncWithBackend();
+      if (hb == RemoteSyncOutcome.applied) _lastHeartbeat = DateTime.now();
+      BlackBox.instance.info(
+        'PANEL',
+        'inventaire envoyé au panel après la liste (${hb.name})',
+      );
+    }
   }
 
   /// Prise WebSocket. Tant qu'elle est ouverte, [_signalLoop]
@@ -433,6 +449,11 @@ class RemoteActivationWatch {
       if (plan.contains(SignalRefresh.forceUpdate)) {
         final bool must = await ForceUpdateChecker.instance.mustUpdate();
         SignalInbox.instance.setForceBlocked(must);
+        // Le panel vient de publier une version : la box la télécharge
+        // et ouvre l'installateur sans attendre le prochain tour (30 min).
+        unawaited(
+          UpdateService.instance.autoUpdate(busy: () => TvActivity.isBusy),
+        );
       }
       if (plan.contains(SignalRefresh.featured)) {
         await FeaturedRepository.instance.refresh();

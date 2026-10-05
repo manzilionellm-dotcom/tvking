@@ -1,0 +1,505 @@
+diff --git a/android-app/admin-panel/package.json b/android-app/admin-panel/package.json
+index 39d69ca..4ea9a66 100644
+--- a/android-app/admin-panel/package.json
++++ b/android-app/admin-panel/package.json
+@@ -8,7 +8,7 @@
+     "dev": "vite",
+     "build": "tsc -b && vite build",
+     "preview": "vite preview",
+-    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts"
++    "test": "node --experimental-strip-types --test src/lib/robust.test.ts src/lib/mac.test.ts src/lib/sources.test.ts src/lib/box-channel.test.ts src/lib/plans.test.ts src/lib/blackbox.test.ts src/lib/instant.test.ts"
+   },
+   "dependencies": {
+     "react": "^18.3.1",
+diff --git a/android-app/admin-panel/src/lib/instant.test.ts b/android-app/admin-panel/src/lib/instant.test.ts
+new file mode 100644
+index 0000000..2850c38
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/instant.test.ts
+@@ -0,0 +1,78 @@
++// =========================================================
++//  instant.test.ts — « Envoi instantané » : la liste est-elle sur la TV ?
++//  node --experimental-strip-types --test src/lib/instant.test.ts
++//  Adresses en example.test, identifiants fictifs.
++// =========================================================
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++
++import {
++  INSTANT_GIVE_UP_MS,
++  INSTANT_POLL_MS,
++  allOnTv,
++  hostKey,
++  instantLabel,
++  listOnTv,
++} from './instant.ts';
++
++test('hôte comme la box : minuscules, port seulement s’il est écrit', () => {
++  assert.equal(hostKey('http://Serveur.Example.test:8080/get.php?username=a&password=b'), 'serveur.example.test:8080');
++  assert.equal(hostKey('http://serveur.example.test/get.php'), 'serveur.example.test');
++  assert.equal(hostKey('serveur.example.test:25461'), 'serveur.example.test:25461');
++  assert.equal(hostKey(''), '');
++  assert.equal(hostKey('pas une adresse'), 'pas une adresse'.includes(' ') ? hostKey('pas une adresse') : '');
++});
++
++test('M3U : même hôte = sur la TV ; autre hôte = pas vue', () => {
++  const inv = [
++    { type: 'm3u' as const, server: 'serveur.example.test:8080', username: '', channels: 18230 },
++    { type: 'xtream' as const, server: 'autre.example.test', username: 'u1', channels: 900 },
++  ];
++  const hit = listOnTv(inv, { type: 'm3u', m3u_url: 'http://serveur.example.test:8080/get.php?username=x&password=y' });
++  assert.ok(hit && hit.channels === 18230);
++  assert.equal(listOnTv(inv, { type: 'm3u', m3u_url: 'http://inconnu.example.test/get.php' }), null);
++  // Un type différent sur le même hôte n’est pas la même liste.
++  assert.equal(listOnTv(inv, { type: 'xtream', server_url: 'http://serveur.example.test:8080', username: 'u1' }), null);
++});
++
++test('Xtream : hôte ET identifiant', () => {
++  const inv = [{ type: 'xtream' as const, server: 'srv.example.test:25461', username: 'client1', channels: 4200 }];
++  assert.ok(listOnTv(inv, { type: 'xtream', server_url: 'http://srv.example.test:25461', username: 'client1' }));
++  assert.equal(listOnTv(inv, { type: 'xtream', server_url: 'http://srv.example.test:25461', username: 'client2' }), null);
++  assert.equal(listOnTv(null, { type: 'xtream', server_url: 'http://srv.example.test:25461', username: 'client1' }), null);
++});
++
++test('plusieurs listes : vues et manquantes', () => {
++  const inv = [{ type: 'm3u' as const, server: 'a.example.test', channels: 10 }];
++  const r = allOnTv(inv, [
++    { type: 'm3u', m3u_url: 'http://a.example.test/l.m3u' },
++    { type: 'm3u', m3u_url: 'http://b.example.test/l.m3u' },
++  ]);
++  assert.equal(r.seen.length, 1);
++  assert.equal(r.missing, 1);
++});
++
++test('phrases : vue, en attente, abandon avec la raison', () => {
++  const ok = instantLabel({ elapsedMs: 14_300, seen: [{ type: 'm3u', server: 'a', channels: 18230 }], missing: 0, lastSeen: 0, now: 0 });
++  assert.equal(ok.kind, 'ok');
++  assert.match(ok.text, /après 14 s/);
++  assert.match(ok.text, /18 230 chaînes|18 230 chaînes/);
++
++  const wait = instantLabel({ elapsedMs: 3_400, seen: [], missing: 1, lastSeen: 0, now: 0 });
++  assert.equal(wait.kind, 'wait');
++  assert.match(wait.text, /3,4 s/);
++
++  const now = 1_700_000_000_000;
++  const never = instantLabel({ elapsedMs: INSTANT_GIVE_UP_MS, seen: [], missing: 1, lastSeen: 0, now });
++  assert.equal(never.kind, 'late');
++  assert.match(never.text, /jamais connectée/);
++  const off = instantLabel({ elapsedMs: INSTANT_GIVE_UP_MS, seen: [], missing: 1, lastSeen: now - 20 * 60_000, now });
++  assert.match(off.text, /il y a 20 min/);
++  const online = instantLabel({ elapsedMs: INSTANT_GIVE_UP_MS, seen: [], missing: 1, lastSeen: now - 30_000, now });
++  assert.match(online.text, /en ligne/);
++});
++
++test('cadence : relecture 2 s, abandon 2 min', () => {
++  assert.equal(INSTANT_POLL_MS, 2000);
++  assert.equal(INSTANT_GIVE_UP_MS, 120_000);
++});
+diff --git a/android-app/admin-panel/src/lib/instant.ts b/android-app/admin-panel/src/lib/instant.ts
+new file mode 100644
+index 0000000..e78e90d
+--- /dev/null
++++ b/android-app/admin-panel/src/lib/instant.ts
+@@ -0,0 +1,141 @@
++// =========================================================
++//  instant.ts — « Envoi instantané » : la liste est-elle SUR la TV ?
++// =========================================================
++//  Le Worker prévient la box en moins d'une seconde (mesuré le
++//  05/10/2026). Ce qui manquait au revendeur, c'est la PREUVE que la
++//  liste est arrivée sur la TV. La box remonte son inventaire réel
++//  (type, hôte du serveur, identifiant, nombre de chaînes) par le
++//  heartbeat ; depuis le build 107-test.158 elle le fait tout de suite
++//  après un import demandé par le panel. Ce fichier compare la liste
++//  envoyée à cet inventaire, et formule ce qu'on affiche.
++//
++//  Aucun mot de passe ne transite : l'inventaire ne contient que l'hôte.
++//  Fichier pur : testé par instant.test.ts.
++// =========================================================
++
++import type { SourceLike } from './sources';
++
++/// Une source telle que la TV la décrit (inventaire heartbeat).
++export interface InventoryLike {
++  type: 'xtream' | 'm3u';
++  server: string;
++  username?: string | null;
++  channels?: number | null;
++}
++
++/// Relecture de l'inventaire toutes les 2 s : la box envoie son heartbeat
++/// 1 à 2 s après l'import, le revendeur voit la confirmation sans attendre.
++export const INSTANT_POLL_MS = 2000;
++
++/// Au-delà de 2 minutes sans voir la liste, on arrête de relire et on
++/// dit pourquoi (box éteinte, liste refusée…), au lieu de tourner sans fin.
++export const INSTANT_GIVE_UP_MS = 120_000;
++
++/// `hôte[:port]` en minuscules, comme la box (source_privacy.dart :
++/// `uri.host` + port seulement s'il est écrit dans l'adresse).
++export function hostKey(raw: string | null | undefined): string {
++  const text = String(raw ?? '').trim();
++  if (!text) return '';
++  const withScheme = text.includes('://') ? text : `http://${text}`;
++  try {
++    const u = new URL(withScheme);
++    if (!u.hostname) return '';
++    // `u.port` est vide pour un port par défaut (80/443) ; la box, elle,
++    // garde le port s'il est écrit. On compare sans le port par défaut.
++    const explicit = /:\d+(\/|$|\?)/.test(withScheme.replace(/^[a-z]+:\/\//i, ''));
++    const port = explicit ? (u.port || (u.protocol === 'https:' ? '443' : '80')) : '';
++    return port ? `${u.hostname.toLowerCase()}:${port}` : u.hostname.toLowerCase();
++  } catch {
++    return '';
++  }
++}
++
++function sameHost(a: string, b: string): boolean {
++  if (!a || !b) return false;
++  if (a === b) return true;
++  // L'un avec port par défaut explicite, l'autre sans : même serveur.
++  const strip = (v: string) => v.replace(/:(80|443)$/, '');
++  return strip(a) === strip(b);
++}
++
++/// La liste envoyée est-elle dans l'inventaire de la TV ? Renvoie
++/// l'entrée trouvée (avec son nombre de chaînes), sinon `null`.
++/// M3U : même hôte. Xtream : même hôte ET même identifiant.
++export function listOnTv(
++  inventory: InventoryLike[] | null | undefined,
++  sent: Pick<SourceLike, 'type' | 'server_url' | 'username' | 'm3u_url'>,
++): InventoryLike | null {
++  if (!inventory || inventory.length === 0) return null;
++  const wantHost = hostKey(sent.type === 'xtream' ? sent.server_url : sent.m3u_url);
++  if (!wantHost) return null;
++  const wantUser = String(sent.username ?? '').trim();
++  for (const item of inventory) {
++    if (!item || item.type !== sent.type) continue;
++    if (!sameHost(hostKey(item.server), wantHost)) continue;
++    if (sent.type === 'xtream' && String(item.username ?? '').trim() !== wantUser) continue;
++    return item;
++  }
++  return null;
++}
++
++/// Toutes les listes envoyées sont-elles sur la TV ? (bouton de la fiche
++/// appareil, qui renvoie 1 à 3 listes d'un coup).
++export function allOnTv(
++  inventory: InventoryLike[] | null | undefined,
++  sent: Pick<SourceLike, 'type' | 'server_url' | 'username' | 'm3u_url'>[],
++): { seen: InventoryLike[]; missing: number } {
++  const seen: InventoryLike[] = [];
++  let missing = 0;
++  for (const s of sent) {
++    const hit = listOnTv(inventory, s);
++    if (hit) seen.push(hit);
++    else missing += 1;
++  }
++  return { seen, missing };
++}
++
++export interface InstantState {
++  /// Millisecondes écoulées depuis l'envoi.
++  elapsedMs: number;
++  /// Entrées de l'inventaire qui correspondent aux listes envoyées.
++  seen: InventoryLike[];
++  /// Listes envoyées pas encore vues.
++  missing: number;
++  /// Dernière présence connue de la box (ms epoch), 0 = jamais.
++  lastSeen: number;
++  /// Heure courante (ms epoch), pour juger « box vue il y a longtemps ».
++  now: number;
++}
++
++function seconds(ms: number): string {
++  return (Math.max(0, ms) / 1000).toFixed(ms >= 10_000 ? 0 : 1).replace('.', ',');
++}
++
++function channels(items: InventoryLike[]): string {
++  const total = items.reduce((n, i) => n + (Number(i.channels) || 0), 0);
++  return total > 0 ? ` · ${total.toLocaleString('fr-FR')} chaînes` : '';
++}
++
++/// Phrase affichée sous le bouton. Trois états : vue, en attente, abandon.
++export function instantLabel(s: InstantState): { kind: 'ok' | 'wait' | 'late'; text: string } {
++  if (s.missing === 0 && s.seen.length > 0) {
++    return {
++      kind: 'ok',
++      text: `Liste sur la TV après ${seconds(s.elapsedMs)} s${channels(s.seen)}`,
++    };
++  }
++  if (s.elapsedMs < INSTANT_GIVE_UP_MS) {
++    const part = s.seen.length > 0 ? ` (${s.seen.length} déjà vue${s.seen.length > 1 ? 's' : ''})` : '';
++    return {
++      kind: 'wait',
++      text: `Box prévenue. En attente de la TV… ${seconds(s.elapsedMs)} s${part}`,
++    };
++  }
++  const idle = s.lastSeen > 0 ? s.now - s.lastSeen : -1;
++  const why = idle < 0
++    ? 'La box ne s’est jamais connectée : l’application est-elle ouverte ?'
++    : idle > 3 * 60_000
++      ? `Dernière connexion de la box il y a ${Math.round(idle / 60_000)} min : est-elle allumée, l’application ouverte ?`
++      : 'La box est en ligne mais n’a pas encore chargé la liste : lien ou identifiants à vérifier (Boîte noire).';
++  return { kind: 'late', text: `Pas vue sur la TV après 2 min. ${why}` };
++}
+diff --git a/android-app/admin-panel/src/pages/DevicesPage.tsx b/android-app/admin-panel/src/pages/DevicesPage.tsx
+index 3981a1b..e3f9e0b 100644
+--- a/android-app/admin-panel/src/pages/DevicesPage.tsx
++++ b/android-app/admin-panel/src/pages/DevicesPage.tsx
+@@ -15,7 +15,8 @@ import {
+ import { shouldApplyPollResult } from '@/lib/live-sync';
+ import { bindPanelRefresh } from '@/lib/box-channel';
+ import { formatDateTime } from '@/lib/utils';
+-import { isClientList, isListOn, planRemoveSource, planToggleSource } from '@/lib/sources';
++import { isClientList, isListOn, planRemoveSource, planToggleSource, toSourceInput } from '@/lib/sources';
++import { INSTANT_GIVE_UP_MS, INSTANT_POLL_MS, allOnTv, instantLabel, type InventoryLike } from '@/lib/instant';
+ import {
+   LIST_PAGE_SIZE, createAbortBag, createGeneration, createSingleFlight,
+   expiryPhrase, readListPage,
+@@ -289,6 +290,62 @@ function DeviceDetailModal({
+   const pollSeq = useRef(0);
+   const appliedSeq = useRef(0);
+ 
++  // ----- « ⚡ Envoi instantané » : renvoie les listes du panel à la box
++  // (elle est prévenue à la seconde) et prouve leur arrivée sur la TV en
++  // relisant l'inventaire réel toutes les 2 s, pendant 2 min au plus.
++  const [instant, setInstant] = useState<{
++    startedAt: number; sent: DeviceSource[]; elapsedMs: number;
++    seen: InventoryLike[]; missing: number; lastSeen: number; now: number;
++  } | null>(null);
++  const [sending, setSending] = useState(false);
++
++  useEffect(() => {
++    if (!instant || instant.missing === 0 || instant.elapsedMs >= INSTANT_GIVE_UP_MS) return;
++    let alive = true;
++    const tick = async () => {
++      try {
++        const r = await devicesApi.overview(device.id);
++        if (!alive) return;
++        const { seen, missing } = allOnTv(r.localSources ?? [], instant.sent);
++        const now = Date.now();
++        setInstant((cur) => cur && cur.startedAt === instant.startedAt
++          ? { ...cur, elapsedMs: now - cur.startedAt, seen, missing, lastSeen: r.presence?.last_seen ?? 0, now }
++          : cur);
++        setOv(r);
++      } catch {
++        if (!alive) return;
++        const now = Date.now();
++        setInstant((cur) => cur && cur.startedAt === instant.startedAt
++          ? { ...cur, elapsedMs: now - cur.startedAt, now }
++          : cur);
++      }
++    };
++    tick();
++    const timer = window.setInterval(tick, INSTANT_POLL_MS);
++    return () => { alive = false; window.clearInterval(timer); };
++    // Relance seulement pour un nouvel envoi, ou quand tout est vu / abandonné.
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [instant?.startedAt, instant?.missing === 0, instant && instant.elapsedMs >= INSTANT_GIVE_UP_MS, device.id]);
++
++  async function instantPush() {
++    const panelLists = (ov?.sources ?? []).filter((s) => !isClientList(s));
++    if (panelLists.length === 0) {
++      setErr('Aucune liste du panel sur cette box : passe par « Activation à distance » pour en envoyer une.');
++      return;
++    }
++    setSending(true);
++    setErr(null);
++    try {
++      await sourcesApi.setMany(device.mac, panelLists.map(toSourceInput));
++      const now = Date.now();
++      setInstant({ startedAt: now, sent: panelLists, elapsedMs: 0, seen: [], missing: panelLists.length, lastSeen: 0, now });
++    } catch (e) {
++      setErr(e instanceof ApiError ? e.message : 'Envoi impossible.');
++    } finally {
++      setSending(false);
++    }
++  }
++
+   useEffect(() => {
+     let alive = true;
+     pollSeq.current = 0;
+@@ -482,12 +539,34 @@ function DeviceDetailModal({
+           </div>
+         )}
+ 
++        {/* ----- Suivi « Envoi instantané » : la TV a-t-elle reçu les listes ? ----- */}
++        {instant && (() => {
++          const l = instantLabel(instant);
++          return (
++            <div
++              aria-live="polite"
++              className={
++                'mt-4 flex gap-2 rounded-lg border px-3 py-2.5 text-sm '
++                + (l.kind === 'ok'
++                  ? 'border-success/40 bg-success/10 text-success'
++                  : l.kind === 'late'
++                    ? 'border-accent/40 bg-accent/10 text-accent-bright'
++                    : 'border-white/10 bg-midnight text-ink-secondary')
++              }
++            >
++              <span className="shrink-0 font-semibold">{l.kind === 'ok' ? '✓' : l.kind === 'late' ? '!' : '⚡'}</span>
++              <span>{l.text}</span>
++            </div>
++          );
++        })()}
++
+         {/* ----- Actions : tout piloter depuis ici (gauche/droite/nord/sud) ----- */}
+         <div className="mt-5 border-t border-white/5 pt-4">
+           <div className="mb-2 text-[10px] uppercase tracking-widest text-ink-tertiary">Actions</div>
+           <div className="flex flex-wrap gap-1.5">
+             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
+             <ActionBtn busy={busy} primary onClick={() => navigate(`/activation-distance?mac=${macUrl}`)} title="Activer et envoyer une liste en un seul geste. La box est prévenue tout de suite.">Activation à distance</ActionBtn>
++            <ActionBtn busy={busy || sending} primary onClick={instantPush} title="Renvoie les listes du panel à la box à l'instant, puis affiche ici le moment où la TV les a vraiment reçues.">⚡ Envoi instantané</ActionBtn>
+             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
+             <ActionBtn busy={busy} onClick={() => navigate(`/blackbox?mac=${macUrl}`)} title="Journal technique de cette box : ordre du panel reçu, liste chargée en N s, liste refusée">Boîte noire</ActionBtn>
+             <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire toutes les listes poussées. La TV du client les efface toute seule à sa vérification suivante.">Effacer les listes</ActionBtn>
+diff --git a/android-app/admin-panel/src/pages/RemoteActivatePage.tsx b/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
+index 782ad64..255af0b 100644
+--- a/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
++++ b/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
+@@ -3,15 +3,18 @@ import { useSearchParams } from 'react-router-dom';
+ import { AppLayout } from '@/components/AppLayout';
+ import { Alert } from '@/components/ui';
+ import {
+-  activateApi, appsApi, planCostsApi, meApi, sourcesApi,
++  activateApi, appsApi, devicesApi, planCostsApi, meApi, sourcesApi,
+   getCurrentUser, isOwnerRole, userCan,
+   type App, type PlanCost, type ActivateResult, type DeviceSource, ApiError,
+ } from '@/lib/api';
+ import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
+ import { createSingleFlight } from '@/lib/robust';
+ import {
+-  planActivationList, validateListInput, type SourceInput,
++  isClientList, planActivationList, toSourceInput, validateListInput, type SourceInput,
+ } from '@/lib/sources';
++import {
++  INSTANT_GIVE_UP_MS, INSTANT_POLL_MS, instantLabel, listOnTv, type InventoryLike,
++} from '@/lib/instant';
+ 
+ // =========================================================
+ //  Activation à distance — UN bouton : licence + liste.
+@@ -77,6 +80,56 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+   const [result, setResult] = useState<ActivateResult | null>(null);
+   const flight = useRef(createSingleFlight());
+ 
++  // ----- « Sur la TV » : preuve que la liste est arrivée -----
++  // Dès que la liste est envoyée, on relit l'inventaire réel de la box
++  // (heartbeat) toutes les 2 s, jusqu'à la voir ou pendant 2 min. La box
++  // (107-test.158+) remonte son inventaire tout de suite après l'import.
++  const [tv, setTv] = useState<{
++    startedAt: number; sent: SourceInput; elapsedMs: number;
++    seen: InventoryLike | null; lastSeen: number; now: number;
++  } | null>(null);
++
++  useEffect(() => {
++    if (!tv || tv.seen || tv.elapsedMs >= INSTANT_GIVE_UP_MS) return;
++    let alive = true;
++    const m = normalizeMac(mac);
++    let deviceId: string | null = null;
++    const tick = async () => {
++      try {
++        if (!deviceId) {
++          const r = await devicesApi.list(m, { limit: 5 });
++          const hit = r.items.find((d) => d.mac.toUpperCase() === m.toUpperCase());
++          deviceId = hit ? hit.id : null;
++        }
++        let seen: InventoryLike | null = null;
++        let lastSeen = 0;
++        if (deviceId) {
++          const ov = await devicesApi.overview(deviceId);
++          seen = listOnTv(ov.localSources ?? [], tv.sent);
++          lastSeen = ov.presence?.last_seen ?? 0;
++        }
++        if (!alive) return;
++        const now = Date.now();
++        setTv((cur) => cur && cur.startedAt === tv.startedAt
++          ? { ...cur, elapsedMs: now - cur.startedAt, seen, lastSeen, now }
++          : cur);
++      } catch (e) {
++        if (e instanceof ApiError && e.status === 401) onLogout();
++        if (!alive) return;
++        const now = Date.now();
++        setTv((cur) => cur && cur.startedAt === tv.startedAt
++          ? { ...cur, elapsedMs: now - cur.startedAt, now }
++          : cur);
++      }
++    };
++    tick();
++    const timer = window.setInterval(tick, INSTANT_POLL_MS);
++    return () => { alive = false; window.clearInterval(timer); };
++    // `tv.seen` / `tv.elapsedMs` changent à chaque relecture : on ne
++    // relance la boucle que pour un nouvel envoi (startedAt).
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [tv?.startedAt, tv?.seen, (tv?.elapsedMs ?? 0) >= INSTANT_GIVE_UP_MS]);
++
+   const primaryApp =
+     apps.find((a) => !/red\s*room|nova|\btv\b/i.test(a.name)) ?? apps[0];
+   const appId = primaryApp?.id ?? 'app_7motion';
+@@ -127,8 +180,14 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+       }
+       const planList = planActivationList(existing, input);
+       if (planList.kind === 'already') {
++        // Déjà sur le serveur : on renvoie quand même l'ensemble, pour que
++        // la box soit prévenue à l'instant (si elle était éteinte au
++        // premier envoi, c'est ce renvoi qui la réveille).
++        await sourcesApi.setMany(m, existing.filter((s) => !isClientList(s)).map(toSourceInput));
+         setListStep('ok');
+-        setListNote('Cette liste était déjà sur la box : rien à renvoyer.');
++        setListNote('Cette liste était déjà sur le serveur : la box est prévenue à nouveau.');
++        const now = Date.now();
++        setTv({ startedAt: now, sent: input, elapsedMs: 0, seen: null, lastSeen: 0, now });
+         return;
+       }
+       if (planList.kind === 'full') {
+@@ -139,6 +198,8 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+       await sourcesApi.setMany(m, planList.sources);
+       setListStep('ok');
+       setListNote(null);
++      const now = Date.now();
++      setTv({ startedAt: now, sent: input, elapsedMs: 0, seen: null, lastSeen: 0, now });
+     } catch (e: unknown) {
+       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
+       setListStep('err');
+@@ -380,10 +441,30 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+             {listStep !== 'skip' && (
+               <StepRow step={listStep} label={listNote ?? 'Liste envoyée à la box'} />
+             )}
+-            {done && (
++            {done && tv && (() => {
++              const l = instantLabel({
++                elapsedMs: tv.elapsedMs,
++                seen: tv.seen ? [tv.seen] : [],
++                missing: tv.seen ? 0 : 1,
++                lastSeen: tv.lastSeen,
++                now: tv.now,
++              });
++              return (
++                <li className="flex gap-2 pt-1" aria-live="polite">
++                  <span className={
++                    (l.kind === 'ok' ? 'text-emerald-400' : l.kind === 'late' ? 'text-accent-bright' : 'text-ink-tertiary')
++                    + ' w-4 shrink-0 font-semibold'
++                  }>
++                    {l.kind === 'ok' ? '✓' : l.kind === 'late' ? '!' : '⚡'}
++                  </span>
++                  <span className="text-ink-primary">{l.text}</span>
++                </li>
++              );
++            })()}
++            {done && !tv && (
+               <li className="pt-1 text-ink-secondary">
+                 La box est prévenue à l’instant. Sur l’accueil, la liste apparaît en
+-                quelques secondes ; si une chaîne joue, au retour à l’accueil.
++                quelques secondes.
+               </li>
+             )}
+           </ul>
+@@ -396,7 +477,7 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+         >
+           {busy
+             ? 'En cours…'
+-            : (kind === 'none' || !canPush ? 'Activer' : 'Activer et envoyer la liste')
++            : (kind === 'none' || !canPush ? 'Activer' : '⚡ Activer et envoyer la liste · instantané')
+               + (isTrialPlan(plan)
+                 ? ' · essai gratuit'
+                 : isReseller && credit !== null ? ` · ${credit} crédit${credit > 1 ? 's' : ''}` : '')}

@@ -130,6 +130,27 @@ Tests : `tv_content_refresh_window_test.dart` (3), `updating_pill_detail_test.da
 (3), `first_batch_display_test.dart` (3, SQLite réel : premier lot émis sur
 box vide, jamais sur box garnie, jamais avec le repli), `repair_flags_test.dart`.
 
+## 7 ter. Demandes du propriétaire (5 octobre, 21:30) : plus rien à l'écran, mise à jour de l'app sans bouton, bouton instantané
+
+Trois demandes, trois réponses, chacune avec son repli coupé par défaut.
+
+| Demande | Ce qui est fait | Repli | Limite vraie |
+| --- | --- | --- | --- |
+| « Je ne veux plus voir le bouton Mise à jour sur la télévision » | La pastille « Mise à jour… » de l'accueil (builds #154 à #157) est **cachée** : l'import se fait en silence, la mesure reste dans la boîte noire | `zuno.sync.pill_show` = true la réaffiche (diagnostic) | aucune |
+| « L'app doit se mettre à jour toute seule, 1 minute après, personne ne voit » | 1 min après l'ouverture, puis toutes les 30 min, et **à la seconde** quand le panel envoie `force_update` : la box vérifie, télécharge, contrôle l'APK (SHA-256 + taille), puis **ouvre elle-même l'installateur Android** dès qu'elle est à l'accueil, une seule fois par version (`UpdateService.autoUpdate`, `shouldAutoInstall`) | `zuno.update.auto_install_off` (l'APK attend Réglages → Mise à jour) | **FACT** : Android impose à toute app installée hors Play Store une confirmation « Installer » (boîte système, une touche). Aucun code de l'app ne peut la supprimer. La seule mise à jour vraiment invisible est celle du Play Store (le test fermé Google) : ce build-là se met à jour sans rien demander. Sans l'autorisation « applications inconnues », l'app n'ouvre pas les réglages dans le dos du client : l'APK reste prêt dans Réglages. |
+| « Crée un nouveau bouton qui est instantané » | Panel : **⚡ Envoi instantané** sur la fiche appareil (renvoie les listes du panel, la box est prévenue à la seconde) et suivi « Liste sur la TV après N s · X chaînes » sous le bouton d'Activation à distance, en relisant l'inventaire réel de la box toutes les 2 s. Box : après un import ordonné par le panel, l'inventaire est renvoyé tout de suite (heartbeat) | `zuno.heartbeat.after_import_off` | Le suivi ne prouve l'arrivée que pour une box ≥ 107-test.158 (les v106 remontent l'inventaire au prochain heartbeat, jusqu'à 60 s) |
+
+Patch panel : `docs/patches/panel-envoi-instantane.patch`, à appliquer **après**
+`panel-worker-boite-noire.patch` sur `claude/panel-mise-en-ligne`
+(`npm test` 43/43, `tsc` propre, `npm run build` OK).
+
+Tests app : `auto_install_policy_test.dart` (5), `repair_flags_test.dart`
+(nouvelles clés), suite complète : voir § 7 quater.
+
+Build #157 (`107-test.157`, run 37362062690, commit `56c6f63`) : vert, SHA-256
+et versionCode dans `zuno-tv-test/version.json` au moment du run ; remplacé
+par le #158 ci-dessous, qui contient tout.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

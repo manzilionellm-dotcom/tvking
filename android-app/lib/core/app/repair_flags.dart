@@ -126,6 +126,30 @@ abstract final class RepairFlags {
   static const String importFirstBatchOffKey = 'zuno.import.first_batch_off';
   static bool importFirstBatchOff = false;
 
+  /// Vrai = après une liste chargée sur ordre du panel, la box attend le
+  /// prochain heartbeat régulier (jusqu'à 60 s, ou le prochain démarrage)
+  /// pour remonter son inventaire (ancien comportement). Faux = elle
+  /// l'envoie tout de suite : le panel affiche « Liste sur la TV après
+  /// N s » (bouton Envoi instantané) dès que l'import est fini.
+  static const String heartbeatAfterImportOffKey = 'zuno.heartbeat.after_import_off';
+  static bool heartbeatAfterImportOff = false;
+
+  /// Vrai = la pastille « Mise à jour… » s'affiche sur l'accueil pendant un
+  /// import (comportement des builds #154 à #157). Faux (défaut depuis le
+  /// 05/10/2026, demande du propriétaire : « je ne veux plus voir le bouton
+  /// mise à jour sur la télévision ») = rien à l'écran, l'import se fait en
+  /// silence ; la mesure reste dans la boîte noire.
+  static const String updatingPillShownKey = 'zuno.sync.pill_show';
+  static bool updatingPillShown = false;
+
+  /// Vrai = l'APK vérifié attend que le client ouvre Réglages → Mise à
+  /// jour (ancien comportement). Faux = dès que l'APK est téléchargé et
+  /// vérifié, la box ouvre elle-même l'installateur Android quand elle
+  /// est à l'accueil (une seule confirmation système « Installer », que
+  /// Android exige pour toute app hors Play Store), une fois par version.
+  static const String autoInstallOffKey = 'zuno.update.auto_install_off';
+  static bool autoInstallOff = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -142,6 +166,9 @@ abstract final class RepairFlags {
     bool orderIdle = false;
     bool autoFull = false;
     bool firstBatchOff = false;
+    bool hbOff = false;
+    bool pillShow = false;
+    bool autoInstOff = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -159,6 +186,9 @@ abstract final class RepairFlags {
       orderIdle = prefs.getBool(sourceOrderWaitsIdleKey) ?? false;
       autoFull = prefs.getBool(autoRefreshFullKey) ?? false;
       firstBatchOff = prefs.getBool(importFirstBatchOffKey) ?? false;
+      hbOff = prefs.getBool(heartbeatAfterImportOffKey) ?? false;
+      pillShow = prefs.getBool(updatingPillShownKey) ?? false;
+      autoInstOff = prefs.getBool(autoInstallOffKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -175,7 +205,13 @@ abstract final class RepairFlags {
       orderIdle = false;
       autoFull = false;
       firstBatchOff = false;
+      hbOff = false;
+      pillShow = false;
+      autoInstOff = false;
     }
+    updatingPillShown = pillShow;
+    autoInstallOff = autoInstOff;
+    heartbeatAfterImportOff = hbOff;
     autoRefreshFull = autoFull;
     importFirstBatchOff = firstBatchOff;
     sourceOrderWaitsIdle = orderIdle;
@@ -213,6 +249,9 @@ abstract final class RepairFlags {
     sourceOrderWaitsIdle = false;
     autoRefreshFull = false;
     importFirstBatchOff = false;
+    heartbeatAfterImportOff = false;
+    updatingPillShown = false;
+    autoInstallOff = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

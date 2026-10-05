@@ -31,6 +31,7 @@ import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/repair_flags.dart';
 import '../blackbox/black_box.dart';
@@ -360,6 +361,104 @@ class UpdateService {
   Future<void> checkAndPrefetch() async {
     final UpdateInfo? u = await check();
     if (u != null) await prefetch(u);
+  }
+
+  /// Versions pour lesquelles l'installateur a déjà été ouvert tout seul.
+  /// Une fois par version et par box : si le client a refusé, on ne
+  /// rouvre pas la fenêtre toutes les 30 min ; Réglages → Mise à jour
+  /// reste là, et le prochain démarrage réessaie.
+  static const String autoPromptedKey = 'zuno.update.auto_prompted.v1';
+
+  /// Faut-il ouvrir l'installateur tout seul ? Décision pure, testée.
+  /// [off] : repli `zuno.update.auto_install_off`. [busy] : une chaîne
+  /// joue (on attend l'accueil). [canInstall] : autorisation Android
+  /// « applications inconnues » présente (sans elle, on n'ouvre pas les
+  /// réglages dans le dos du client : l'APK reste prêt pour Réglages).
+  /// [alreadyPrompted] : déjà proposé pour cette version sur cette box.
+  static bool shouldAutoInstall({
+    required bool off,
+    required bool busy,
+    required bool canInstall,
+    required bool alreadyPrompted,
+  }) {
+    if (off) return false;
+    if (busy) return false;
+    if (!canInstall) return false;
+    return !alreadyPrompted;
+  }
+
+  bool _autoBusy = false;
+
+  /// Mise à jour « sans bouton » (demande du propriétaire, 05/10/2026) :
+  /// vérifie, télécharge et vérifie l'APK en silence, puis, dès que la box
+  /// est à l'accueil, ouvre l'installateur Android. Il reste la seule
+  /// chose qu'Android impose à toute app hors Play Store : la confirmation
+  /// « Installer ». (Le build Play Store, lui, se met à jour sans rien.)
+  /// [busy] dit si une chaîne joue ; on attend au plus [waitIdle].
+  /// Jamais d'exception : une erreur laisse l'app comme elle est.
+  Future<void> autoUpdate({
+    required bool Function() busy,
+    Duration waitIdle = const Duration(minutes: 30),
+    Duration idlePoll = const Duration(seconds: 30),
+  }) async {
+    if (_autoBusy) return;
+    _autoBusy = true;
+    try {
+      final UpdateInfo? u = await check();
+      if (u == null) return;
+      final File? file = await prefetch(u);
+      if (file == null) return;
+      if (RepairFlags.autoInstallOff) {
+        BlackBox.instance.info('MAJ', 'APK prêt, installation auto coupée (repli)');
+        return;
+      }
+      // Attend l'accueil : on n'ouvre pas une fenêtre sur une chaîne.
+      final DateTime deadline = DateTime.now().add(waitIdle);
+      while (busy() && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(idlePoll);
+      }
+      bool prompted = false;
+      SharedPreferences? prefs;
+      try {
+        prefs = await SharedPreferences.getInstance();
+        prompted = (prefs.getStringList(autoPromptedKey) ?? const <String>[])
+            .contains('${u.versionCode}');
+      } catch (_) {
+        prompted = false;
+      }
+      final bool canInstall =
+          Platform.isAndroid ? await _canInstallPackages() : true;
+      final bool go = shouldAutoInstall(
+        off: RepairFlags.autoInstallOff,
+        busy: busy(),
+        canInstall: canInstall,
+        alreadyPrompted: prompted,
+      );
+      if (!go) {
+        BlackBox.instance.info(
+          'MAJ',
+          'APK ${u.versionCode} prêt, installateur non ouvert '
+          '(${busy() ? 'lecture en cours' : !canInstall ? 'autorisation absente' : 'déjà proposé'})',
+        );
+        return;
+      }
+      try {
+        final List<String> done =
+            prefs?.getStringList(autoPromptedKey) ?? <String>[];
+        await prefs?.setStringList(
+          autoPromptedKey,
+          <String>[...done.where((String v) => v != '${u.versionCode}'), '${u.versionCode}']
+              .take(5)
+              .toList(),
+        );
+      } catch (_) {}
+      BlackBox.instance.info('MAJ', 'installation automatique → build ${u.versionCode}');
+      await downloadAndInstall(u);
+    } catch (e) {
+      BlackBox.instance.warn('MAJ', 'mise à jour automatique interrompue : $e');
+    } finally {
+      _autoBusy = false;
+    }
   }
 
   /// Télécharge l'APK si besoin (ou utilise celui déjà pré-téléchargé) puis
