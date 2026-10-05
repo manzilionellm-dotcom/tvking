@@ -102,3 +102,24 @@ bool apkSizeMatches({
   }
   return true;
 }
+
+/// Nom du fichier téléchargé : `.apk` sur Android, `.exe` (installeur
+/// Zuno-Setup) sur PC Windows. Le numéro de version est dans le nom : un
+/// fichier d'une autre version n'est jamais pris pour celui-ci.
+String updateFileName({
+  required bool windows,
+  required String prefix,
+  required int versionCode,
+}) =>
+    '$prefix-$versionCode.${windows ? 'exe' : 'apk'}';
+
+/// Options de l'installeur Windows (Inno Setup) lancé par la mise à jour :
+/// barre de progression seule, aucune question, Zuno fermé proprement puis
+/// relancé par l'installeur (section [Run] « WizardSilent » de zuno.iss).
+const List<String> kWindowsInstallerArgs = <String>[
+  '/SILENT',
+  '/SP-',
+  '/SUPPRESSMSGBOXES',
+  '/NORESTART',
+  '/CLOSEAPPLICATIONS',
+];

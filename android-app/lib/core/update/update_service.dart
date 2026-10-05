@@ -82,6 +82,18 @@ class UpdateService {
   /// Prefixe du fichier APK temporaire (pour un nom lisible dans l'installateur).
   static String apkPrefix = '7motion';
 
+  /// PC Windows : manifeste de la release `zuno-windows` (écrit par
+  /// build-zuno-windows.yml à chaque publication), installeur Zuno-Setup.exe.
+  static String windowsManifestUrl =
+      'https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-windows/version.json';
+
+  /// Numéro du build PC, posé par le CI (--dart-define=ZUNO_WIN_BUILD=<run>).
+  /// 0 = build local ou ancien : on ne propose aucune mise à jour.
+  static const int _winBuild = int.fromEnvironment('ZUNO_WIN_BUILD');
+
+  static bool get _isWindowsUpdater =>
+      Platform.isWindows && !RepairFlags.updateLegacy && _winBuild > 0;
+
   /// Vrai quand le dernier essai a trouvé que Zuno n'a pas le droit
   /// d'installer une application, et que l'écran Android pour l'autoriser
   /// a été ouvert. L'écran Réglages affiche alors la marche à suivre.
@@ -95,18 +107,25 @@ class UpdateService {
   Future<UpdateInfo?> check() async {
     // Play Store : les MAJ viennent du Store, jamais du sideload GitHub.
     if (kIsPlayBuild) return null;
-    // PC (Zuno Windows) : un .apk ne s'installe pas sur Windows.
-    if (!Platform.isAndroid) return null;
+    // PC (Zuno Windows) : sa propre release (installeur .exe), sinon rien.
+    if (!Platform.isAndroid && !_isWindowsUpdater) return null;
     try {
-      final PackageInfo info = await PackageInfo.fromPlatform();
-      final int current = int.tryParse(info.buildNumber) ?? 0;
+      final int current;
+      if (Platform.isWindows) {
+        current = _winBuild;
+      } else {
+        final PackageInfo info = await PackageInfo.fromPlatform();
+        current = int.tryParse(info.buildNumber) ?? 0;
+      }
 
       // Chaque manifeste est lu séparément : une release injoignable ne
       // cache pas l'autre. Repli `zuno.update.legacy` : un seul manifeste.
-      final List<String> urls = <String>[
-        manifestUrl,
-        if (!RepairFlags.updateLegacy) ...extraManifestUrls,
-      ];
+      final List<String> urls = Platform.isWindows
+          ? <String>[windowsManifestUrl]
+          : <String>[
+              manifestUrl,
+              if (!RepairFlags.updateLegacy) ...extraManifestUrls,
+            ];
       final List<Object?> decodedList = <Object?>[];
       for (final String url in urls) {
         decodedList.add(await _readManifest(url));
@@ -187,7 +206,12 @@ class UpdateService {
 
   Future<File> _apkFile(int versionCode) async {
     final Directory dir = await getTemporaryDirectory();
-    return File('${dir.path}/$apkPrefix-$versionCode.apk');
+    final bool win = Platform.isWindows;
+    return File('${dir.path}/${updateFileName(
+      windows: win,
+      prefix: win ? 'zuno-setup' : apkPrefix,
+      versionCode: versionCode,
+    )}');
   }
 
   /// APK déjà complet pour [update] (pré-téléchargé), sinon `null`.
@@ -207,7 +231,9 @@ class UpdateService {
   /// fichier complet, ou `null` en cas d'échec. Ne lance jamais deux
   /// téléchargements en parallèle.
   Future<File?> prefetch(UpdateInfo update) {
-    if (!Platform.isAndroid || kIsPlayBuild) return Future<File?>.value(null);
+    final bool allowed =
+        (Platform.isAndroid && !kIsPlayBuild) || _isWindowsUpdater;
+    if (!allowed) return Future<File?>.value(null);
     final Future<File?>? cur = _inflight;
     if (cur != null && _inflightCode == update.versionCode) return cur;
     final Future<File?> f = _download(update).whenComplete(() {
@@ -318,7 +344,9 @@ class UpdateService {
       await for (final FileSystemEntity e in dir.list()) {
         final String name =
             e.uri.pathSegments.isEmpty ? '' : e.uri.pathSegments.last;
-        if (!name.startsWith('$apkPrefix-')) continue;
+        if (!name.startsWith('$apkPrefix-') && !name.startsWith('zuno-setup-')) {
+          continue;
+        }
         if (e.path == keep.path || e.path == '${keep.path}.part') continue;
         try {
           await e.delete();
@@ -352,6 +380,20 @@ class UpdateService {
     try {
       final File? file = await prefetch(update);
       if (file == null) return false;
+      // PC : l'installeur vérifié remplace Zuno puis le relance. Windows
+      // demande la confirmation administrateur (comme Android demande
+      // « Installer ? »). On ferme l'app pour libérer ses fichiers.
+      if (Platform.isWindows) {
+        BlackBox.instance
+            .info('MAJ', 'installeur Windows → build ${update.versionCode}');
+        await Process.start(
+          file.path,
+          kWindowsInstallerArgs,
+          mode: ProcessStartMode.detached,
+        );
+        unawaited(Future<void>.delayed(const Duration(seconds: 1), () => exit(0)));
+        return true;
+      }
       // Android 8+ : sans l'autorisation « applications inconnues » pour
       // Zuno, l'installateur refuse (et certaines box n'offrent même pas
       // le bouton Paramètres). On ouvre nous-mêmes le bon écran ; l'APK
