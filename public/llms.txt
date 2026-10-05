@@ -1,0 +1,13 @@
+# Zuno
+
+Lecteur multi-appareils. TV en direct, films et séries. Application lecteur uniquement : aucun contenu ni chaîne n'est fourni avec l'app. Pas de liste M3U publique. Pas de note agrégée.
+
+- Accueil: https://zuno.7themotion.com/
+- Télécharger: https://zuno.7themotion.com/telecharger
+- Activer: https://zuno.7themotion.com/activer
+- Démarrer: https://zuno.7themotion.com/start
+- TV en direct: https://zuno.7themotion.com/tv
+- Films: https://zuno.7themotion.com/films
+- Sport: https://zuno.7themotion.com/sport
+- Formation: https://zuno.7themotion.com/formation
+- WhatsApp: https://wa.me/447307410512
