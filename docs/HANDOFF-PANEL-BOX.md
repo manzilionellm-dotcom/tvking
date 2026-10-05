@@ -103,6 +103,20 @@ Mots de passe et URL M3U sont chiffrés en base (`SOURCE_ENCRYPTION_KEY`).
 - **AAB Google Play** : `play_aab=true` → minSdk 24, permission d'installation
   retirée. Package `com.sevenmotion.tv.seven_tv`, test fermé en cours.
 
+## 5 bis. Mises à jour du 5 octobre
+
+- Un autre ingénieur a fusionné la PR #97 (`cursor/canal-temps-reel-worker-c1d5`)
+  dans `claude/panel-mise-en-ligne` et l'a déployée (run #4, Worker + panel).
+  En production : `/api/box/wait` répond 200, le Worker prévient la box à
+  chaque `activate`/`renew`/`source`/`source_clear` (voir `docs/CANAL-TEMPS-REEL.md`
+  sur cette branche).
+- Commit `ef3b387d` par-dessus (run #5, `panel-seul`, Worker non touché) :
+  écran **« Activation à distance »** (`/activation-distance`,
+  `admin-panel/src/pages/RemoteActivatePage.tsx`) = licence + liste en un
+  bouton, liste vérifiée avant l'activation, listes existantes gardées ;
+  correctif du bouton « Supprimer » : une liste ajoutée par le client
+  (`origin = self`) n'est plus renvoyée comme liste du panel.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
