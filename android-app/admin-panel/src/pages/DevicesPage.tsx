@@ -15,7 +15,7 @@ import {
 import { shouldApplyPollResult } from '@/lib/live-sync';
 import { bindPanelRefresh } from '@/lib/box-channel';
 import { formatDateTime } from '@/lib/utils';
-import { planRemoveSource } from '@/lib/sources';
+import { isClientList, planRemoveSource } from '@/lib/sources';
 import {
   LIST_PAGE_SIZE, createAbortBag, createGeneration, createSingleFlight,
   expiryPhrase, readListPage,
@@ -341,7 +341,7 @@ function DeviceDetailModal({
   async function removeOne(index: number) {
     const list = ov?.sources ?? [];
     const plan = planRemoveSource(list, index);
-    if (plan.kind === 'invalid') return;
+    if (plan.kind === 'invalid' || plan.kind === 'client') return;
     const target = list[index];
     const name = target.type === 'xtream' ? 'Xtream' : 'M3U';
     if (!window.confirm(
@@ -463,6 +463,7 @@ function DeviceDetailModal({
           <div className="mb-2 text-[10px] uppercase tracking-widest text-ink-tertiary">Actions</div>
           <div className="flex flex-wrap gap-1.5">
             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
+            <ActionBtn busy={busy} primary onClick={() => navigate(`/activation-distance?mac=${macUrl}`)} title="Activer et envoyer une liste en un seul geste. La box est prévenue tout de suite.">Activation à distance</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
             <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire toutes les listes poussées. La TV du client les efface toute seule à sa vérification suivante.">Effacer les listes</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
@@ -563,15 +564,26 @@ function SourceCard({
           {isXtream ? 'XTREAM' : 'M3U'}
         </span>
         {source.label && <span className="truncate text-xs text-ink-secondary">{source.label}</span>}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onRemove}
-          title="Retirer cette liste. La TV du client l'efface toute seule."
-          className="ml-auto rounded-md border border-accent/40 px-2 py-0.5 text-[11px] font-semibold text-accent-bright hover:bg-accent/10 disabled:opacity-40"
-        >
-          Supprimer
-        </button>
+        {isClientList(source) ? (
+          // Ajoutée par le client sur sa TV : le serveur actuel ne sait pas
+          // la retirer depuis le panel. Pas de bouton qui ne ferait rien.
+          <span
+            className="ml-auto rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-ink-tertiary"
+            title="Liste ajoutée par le client lui-même. Elle ne se retire pas depuis le panel."
+          >
+            Ajoutée par le client
+          </span>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onRemove}
+            title="Retirer cette liste. La TV du client l'efface toute seule."
+            className="ml-auto rounded-md border border-accent/40 px-2 py-0.5 text-[11px] font-semibold text-accent-bright hover:bg-accent/10 disabled:opacity-40"
+          >
+            Supprimer
+          </button>
+        )}
       </div>
       <div className="grid grid-cols-1 gap-y-1.5 text-xs">
         {isXtream ? (

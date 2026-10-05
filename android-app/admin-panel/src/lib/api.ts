@@ -514,6 +514,8 @@ export interface DeviceSourceInput {
 export interface DeviceSource extends DeviceSourceInput {
   mac?: string;
   updated_at?: number;
+  /// « panel » = poussée ici ; « self » = ajoutée par le client sur sa TV.
+  origin?: string | null;
 }
 
 export interface TrialExtendResult {

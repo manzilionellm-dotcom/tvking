@@ -14,6 +14,7 @@ import { ActivationsPage } from '@/pages/ActivationsPage';
 import { ResellersPage } from '@/pages/ResellersPage';
 import { ActivatePage } from '@/pages/ActivatePage';
 import { ChainesPage } from '@/pages/ChainesPage';
+import { RemoteActivatePage } from '@/pages/RemoteActivatePage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { HomeManagerPage } from '@/pages/HomeManagerPage';
 import { ControlCenterPage } from '@/pages/ControlCenterPage';
@@ -106,6 +107,8 @@ export default function App() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route path="/"            element={<DashboardPage   onLogout={handleLogout} />} />
       <Route path="/activate"    element={<ActivatePage    onLogout={handleLogout} />} />
+      {/* Activation à distance : licence + liste en un seul bouton. */}
+      <Route path="/activation-distance" element={<RemoteActivatePage onLogout={handleLogout} />} />
       {/* Liste de chaînes : écran à part. L'ancienne adresse y mène. */}
       <Route path="/chaines"    element={<ChainesPage     onLogout={handleLogout} />} />
       <Route path="/playlists"   element={<Navigate to="/chaines" replace />} />

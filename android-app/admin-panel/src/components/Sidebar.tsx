@@ -24,6 +24,7 @@ const OWNER_NAV: NavSection[] = [
   {
     titleKey: 'navsec.activation',
     items: [
+      { key: 'nav.remoteActivate', to: '/activation-distance' },
       { key: 'nav.activate',    to: '/activate' },
       { key: 'nav.activations', to: '/activations' },
       { key: 'nav.customers',   to: '/customers' },
@@ -72,6 +73,7 @@ const RESELLER_NAV: NavSection[] = [
     titleKey: 'navsec.activation',
     // Chaque entrée n'apparaît que si l'admin a coché le droit correspondant.
     items: [
+      { key: 'nav.remoteActivate', to: '/activation-distance', cap: 'activate' },
       { key: 'nav.activate',      to: '/activate',    cap: 'activate' },
       { key: 'nav.families',      to: '/families',    cap: 'activate' },
       { key: 'nav.transfer',      to: '/transfer',    cap: 'activate' },

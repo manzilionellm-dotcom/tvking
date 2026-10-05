@@ -36,6 +36,7 @@ const STR: Record<string, Record<Lang, string>> = {
     en: 'Grande activation de toutes les applications',
     ar: 'Grande activation de toutes les applications',
   },
+  'nav.remoteActivate': { fr: 'Activation à distance', en: 'Remote activation', ar: 'تفعيل عن بُعد' },
   'nav.pushSource': { fr: 'Pousser une playlist', en: 'Push a playlist', ar: 'إرسال قائمة تشغيل' },
   'nav.controlCenter': { fr: 'Centre de contrôle', en: 'Control center', ar: 'مركز التحكم' },
   'nav.forceUpdate': { fr: 'Mise à jour forcée', en: 'Force update', ar: 'تحديث إجباري' },
