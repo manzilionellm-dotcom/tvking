@@ -67,6 +67,32 @@ abstract final class RemoteSourceRepository {
   /// Empreintes déjà vues sur CETTE box (listes venues du panel).
   static const String rememberedKey = 'zuno.panel_sources.v1';
 
+  /// Vrai si [playlist] est (encore) envoyée par le panel du revendeur :
+  /// son empreinte figure dans les listes servies à la dernière vérification.
+  /// Sert à « Mes sources » : supprimer une telle liste sur la télé ne la
+  /// retire pas du serveur, elle revient à la vérification suivante (mesuré
+  /// le 05/10/2026 : « j'efface, il revient après cinq minutes »). Le retrait
+  /// définitif se fait depuis le panel.
+  static Future<bool> isServedByPanel(Playlist playlist) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String> remembered =
+        prefs.getStringList(rememberedKey) ?? const <String>[];
+    if (remembered.isEmpty) return false;
+    return servedByPanel(
+      remembered: remembered.toSet(),
+      fingerprints: SourceFingerprint.ofPlaylist(playlist),
+    );
+  }
+
+  /// Règle pure (testée) : une liste est « du panel » si l'une de ses
+  /// empreintes (compte Xtream ou lien M3U d'origine) est servie.
+  static bool servedByPanel({
+    required Set<String> remembered,
+    required List<String> fingerprints,
+  }) {
+    return fingerprints.any(remembered.contains);
+  }
+
   /// Vrai pendant qu'une NOUVELLE liste venue du panel se charge sur la
   /// box. L'écran l'écoute pour afficher « Mise à jour… » à l'instant où
   /// l'ordre arrive, au lieu d'un écran qui ne bouge pas pendant le

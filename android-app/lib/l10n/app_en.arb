@@ -703,6 +703,8 @@
   "tvAddM3u": "Add M3U",
   "tvDeleteSourceConfirm": "Delete the source “{name}”?",
   "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "tvDeletePanelSourceConfirm": "“{name}” is sent by your reseller: deleted here, it comes back at the next check. To remove it for good, ask your reseller (panel).",
+  "@tvDeletePanelSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
   "tvActivate": "Activate",
   "tvMyTeams": "My teams",
   "tvAdd": "Add",

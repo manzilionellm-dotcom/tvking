@@ -305,6 +305,71 @@ SHA-256 `8a776baa2603eb61042757aa5103da739bcaa3b0a84e90ab36c0f3cca304a7bd`,
 54 754 170 octets, `mandatory: false`. Contient tout ce qui précède (§ 7 bis
 → 7 octies). Suite Flutter avant commit : 466 verts, 2 ignorés.
 
+## 7 nonies. « Il me donne toujours l'ancien serveur » et « si j'efface, il efface réellement ? » (5 octobre, 23:50)
+
+Boîte noire `107-test.162` photographiée par le propriétaire, plus trois
+mesures faites depuis le serveur de session (lecture seule, aucun identifiant
+affiché, scripts dans le bloc-notes de session, non versionnés).
+
+**Ce que dit le serveur (`GET /api/device-source/<mac>`, `GET /api/box/wait`)**
+- Listes servies à `MK:80:78:60:07:4F` : 4 (thekung panel, pro.business-cloud-8
+  panel, tv.business-cloud-8 panel, thekung « 6 » ajoutée par le client, dont le
+  lien est **collé deux fois** : `…output=tshttp://thekung…`).
+- `updated_at` des listes : **21:10:12 UTC = 23:10:12 heure de la box**.
+- Dernier signal `activate` : **21:49:24 UTC (23:49:24)**, sans aucun signal
+  `source` derrière. Le clic « Activer » de 23:49 n'a donc écrit aucune liste.
+- Cause (code du panel en ligne, `RemoteActivatePage.sendList` sur
+  `claude/panel-mise-en-ligne`) : la liste saisie est **ajoutée** aux listes du
+  panel, « maximum 3 » ; la box en ayant déjà 3, le plan répond `full` et le
+  panel refuse (« Cette box a déjà 3 listes du panel »). Résultat : la box garde
+  l'ancien serveur. **PROUVÉ** (données serveur + code).
+- Correctif : `docs/patches/panel-activation-remplace.patch` (4e patch, après
+  les trois autres) : « Activer avec une liste » = **cette liste remplace les
+  listes du panel** ; les listes du client restent (le Worker les garde
+  d'office) ; même liste déjà seule → renvoyée quand même (c'est ce renvoi qui
+  prévient la box). Texte du panel : « L'ancienne liste du panel est
+  remplacée ; la liste ajoutée par le client reste. » Pour ajouter sans
+  remplacer : fiche appareil → Liste de chaînes (inchangé). Tests panel : 47
+  verts, build OK (TypeScript 5.9.3 du `package-lock`).
+
+**Les fournisseurs, mesurés depuis le serveur (21:52–21:54 UTC)**
+
+| Liste | API Xtream (`player_api.php`) | Lien M3U (`get.php`) |
+|---|---|---|
+| thekung (panel) | compte 0,58 s `auth=1` ; 92 catégories 0,38 s ; **11 857 chaînes TV, 3,33 Mo en 0,72 s** | en-têtes après **14,6 s**, corps **> 50 Mo** (sondage coupé à 50 Mo ; le M3U contient aussi films et séries) |
+| pro.business-cloud-8 (panel) | compte 0,32 s `auth=1`, `status=Active` | **HTTP 884** + HTML en 0,36 s (refus du serveur) ; depuis la box : aucun en-tête en 120 s (boîte noire 23:50:06) |
+| tv.business-cloud-8 (panel) | compte 0,37 s `auth=1`, `status=Active` | HTTP 884 + HTML en 0,43 s |
+
+Lecture : avec le #162 (lien get.php lu comme compte Xtream), thekung se charge
+en secondes (c'est la ligne « nouvelle liste Xtream (lien) reçue du panel :
+chargement » de 23:50:06). Le lien M3U du même compte, lui, met 14,6 s avant le
+premier octet et pèse plus de 50 Mo : c'est la voie qui remplissait la mémoire.
+Les deux comptes business-cloud-8 sont valides à l'API mais leur `get.php`
+refuse (884) ou ne répond pas à la box : le repli M3U y coûte 120 s pour rien.
+
+**Fermeture brutale 23:47 (ANR, 330 Mo)** : **NON VÉRIFIÉ**. Les lignes
+photographiées commencent à 23:49:28, après le redémarrage. Les lignes `GEL`
+(« fil UI bloqué ~N ms pendant : … ») et le fil d'Ariane entre 23:44 et 23:47
+nomment l'action en cours au moment du gel ; sans elles, aucune cause n'est
+affirmée. Hypothèse la plus probable, non prouvée : import M3U de plus de
+50 Mo (thekung par le lien, avant le passage par l'API) sur une box 1 Go.
+
+**« Si j'efface, il efface réellement ? »** (code lu, pas supposé)
+- Depuis le **panel**, une liste du panel : oui, le serveur ne la sert plus à
+  l'instant, la box l'efface à la vérification suivante (tout de suite si la
+  WebSocket est ouverte, sinon ≤ 5 min). Une liste **ajoutée par le client** :
+  non, impossible depuis le panel en ligne tant que le 3e patch n'est pas en
+  ligne.
+- Depuis la **télé** (« Mes sources » → Supprimer), une liste envoyée par le
+  panel : elle est effacée localement puis **revient** à la vérification
+  suivante, parce que le serveur la sert toujours. C'est le « j'efface, il
+  revient après cinq minutes ». Correctif box (ce commit) : la télé le dit
+  avant de supprimer (« … envoyée par ton revendeur : supprimée ici, elle
+  revient à la prochaine vérification ») et la boîte noire note « liste N
+  supprimée (client, liste encore servie par le panel) ». Règle pure
+  `RemoteSourceRepository.servedByPanel`, 3 tests. Aucun interrupteur : seul le
+  texte et la raison changent, pas le comportement.
+
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
 1. Installer `107-test.156` sur la box de test (release `zuno-tv-test`).

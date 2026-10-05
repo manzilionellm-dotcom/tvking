@@ -2151,6 +2151,8 @@
   "tvAddM3u": "Ajouter M3U",
   "tvDeleteSourceConfirm": "Supprimer la source « {name} » ?",
   "@tvDeleteSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
+  "tvDeletePanelSourceConfirm": "« {name} » est envoyée par ton revendeur : supprimée ici, elle revient à la prochaine vérification. Pour la retirer pour de bon, demande-le au revendeur (panel).",
+  "@tvDeletePanelSourceConfirm": {"placeholders": {"name": {"type": "String"}}},
   "tvActivate": "Activer",
   "tvMyTeams": "Mes équipes",
   "tvAdd": "Ajouter",

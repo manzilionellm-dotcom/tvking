@@ -258,6 +258,21 @@ demande (ce que font IBO / TiviMate / Smarters).
   refusées mises de côté. Même adresse APK (`zuno-tv-test`), même signature
   attendue `5145b8e0…9e61` (workflow inchangé).
 
+## 5 duodecies. « Toujours l'ancien serveur » : le panel remplace désormais (5 octobre, 23:50)
+
+- Prouvé par le serveur : listes servies datées 23:10:12, clic « Activer » à
+  23:49:24 sans écriture de liste. Le panel en ligne ajoutait (max 3) et
+  refusait : la box gardait l'ancien serveur. Rapport § 7 nonies.
+- 4e patch `docs/patches/panel-activation-remplace.patch` (après les trois
+  autres) : « Activer avec une liste » remplace les listes du panel, garde
+  celles du client, renvoie même si identique. 47 tests panel, build OK.
+- Mesuré : thekung par l'API Xtream = 11 857 chaînes en 0,7 s ; par le lien
+  M3U = 14,6 s avant en-têtes et > 50 Mo. business-cloud-8 : API `auth=1`,
+  `get.php` HTTP 884 (refus) ; depuis la box, muet 120 s.
+- Box (ce commit) : « Mes sources » prévient qu'une liste du panel revient si
+  on la supprime sur la télé ; la boîte noire nomme la raison. Pas de flag.
+- ANR 23:47 (330 Mo) : non élucidé, il faut les lignes `GEL` 23:44–23:47.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.

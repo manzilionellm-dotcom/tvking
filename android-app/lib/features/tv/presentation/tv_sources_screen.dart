@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 
 import '../../playlists/data/playlist_repository.dart';
+import '../../playlists/data/remote_source_repository.dart';
 import '../../playlists/domain/open_source_input.dart';
 import '../../playlists/domain/playlist.dart';
 import '../core/tv_dimens.dart';
@@ -118,13 +119,21 @@ class _SourceRow extends StatelessWidget {
   bool get _on => _merge ? !playlist.hidden : playlist.isActive;
 
   Future<void> _delete(BuildContext context) async {
+    // Une liste envoyée par le panel revient à la vérification suivante :
+    // on le dit AVANT de supprimer (mesuré le 05/10/2026, « j'efface, il
+    // revient après cinq minutes »). Le retrait définitif = panel.
+    final bool fromPanel = await RemoteSourceRepository.isServedByPanel(playlist);
+    if (!context.mounted) return;
     final bool? ok = await showDialog<bool>(
       context: context,
       builder: (BuildContext ctx) => AlertDialog(
         backgroundColor: TvTokens.card,
         title: Text(context.l10n.tvDeleteQuestion,
             style: TextStyle(color: TvTokens.text)),
-        content: Text(context.l10n.tvDeleteSourceConfirm(playlist.name),
+        content: Text(
+            fromPanel
+                ? context.l10n.tvDeletePanelSourceConfirm(playlist.name)
+                : context.l10n.tvDeleteSourceConfirm(playlist.name),
             style: TextStyle(color: TvTokens.muted)),
         actions: <Widget>[
           TextButton(
@@ -140,7 +149,12 @@ class _SourceRow extends StatelessWidget {
     );
     if (ok != true || playlist.id == null) return;
     try {
-      await PlaylistRepository.instance.deletePlaylist(playlist.id!);
+      // La raison va dans la boîte noire : on sait ensuite que le retour de
+      // la liste vient du panel qui la sert toujours, pas d'un bug.
+      await PlaylistRepository.instance.deletePlaylist(
+        playlist.id!,
+        reason: fromPanel ? 'client, liste encore servie par le panel' : 'client',
+      );
     } catch (_) {}
   }
 

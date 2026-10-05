@@ -1,0 +1,190 @@
+diff --git a/android-app/admin-panel/src/lib/sources.test.ts b/android-app/admin-panel/src/lib/sources.test.ts
+index b2c0070..efffa7a 100644
+--- a/android-app/admin-panel/src/lib/sources.test.ts
++++ b/android-app/admin-panel/src/lib/sources.test.ts
+@@ -109,27 +109,44 @@ test('saisie vérifiée AVANT d\'activer', () => {
+   assert.match(validateListInput({ type: 'xtream', server_url: 's.example', username: 'u', password: 'p' })!, /http/);
+ });
+ 
+-test('activation + liste : ajoutée aux listes du panel, sans renvoyer celle du client', () => {
++test('activation + liste : la liste saisie remplace celles du panel, celle du client reste', () => {
+   const add = { type: 'xtream' as const, server_url: 'http://s.example.invalid', username: 'u9', password: 'p9' };
+   const plan = planActivationList([panelList, clientList], add);
+   assert.equal(plan.kind, 'send');
+-  if (plan.kind !== 'send') return;
+-  assert.equal(plan.sources.length, 2);
+-  assert.equal(plan.sources[0].m3u_url, 'http://liste.example.invalid/a.m3u');
+-  assert.equal(plan.sources[1].password, 'p9');
++  assert.deepEqual(plan.sources, [add]);
++  assert.equal(plan.replaced, 1);
++  assert.equal(plan.clientKept, 1);
++  assert.equal(plan.unchanged, false);
+ });
+ 
+-test('activation + liste : déjà présente, ou 3 listes du panel', () => {
+-  assert.deepEqual(
+-    planActivationList([clientList], { type: 'm3u', m3u_url: 'http://perso.example.invalid/p.m3u' }),
+-    { kind: 'already' },
+-  );
++test('activation + liste : 3 listes du panel déjà posées → remplacées, jamais « full » (mesuré 05/10/2026)', () => {
+   const three = [panelList, m3u, m3u2];
+-  assert.deepEqual(
+-    planActivationList(three, { type: 'm3u', m3u_url: 'http://neuf.example.invalid/n.m3u' }),
+-    { kind: 'full' },
+-  );
+-  assert.equal(planActivationList([], { type: 'm3u', m3u_url: 'http://neuf.example.invalid/n.m3u' }).kind, 'send');
++  const plan = planActivationList(three, { type: 'm3u', m3u_url: 'http://neuf.example.invalid/n.m3u' });
++  assert.equal(plan.sources.length, 1);
++  assert.equal(plan.sources[0].m3u_url, 'http://neuf.example.invalid/n.m3u');
++  assert.equal(plan.replaced, 3);
++  assert.equal(plan.clientKept, 0);
++});
++
++test('activation + liste : déjà la seule liste du panel → renvoyée telle quelle (la box est prévenue)', () => {
++  const plan = planActivationList([panelList, clientList], { type: 'm3u', m3u_url: 'http://liste.example.invalid/a.m3u' });
++  assert.equal(plan.unchanged, true);
++  assert.equal(plan.replaced, 0);
++  assert.deepEqual(plan.sources, [{ type: 'm3u', m3u_url: 'http://liste.example.invalid/a.m3u' }]);
++});
++
++test('activation + liste : déjà présente parmi d\'autres listes du panel → les autres sont remplacées', () => {
++  const plan = planActivationList([panelList, m3u], { type: 'm3u', m3u_url: 'http://liste.example.invalid/a.m3u' });
++  assert.equal(plan.unchanged, false);
++  assert.equal(plan.replaced, 1);
++  assert.equal(plan.sources.length, 1);
++});
++
++test('activation + liste : box sans liste → envoi simple', () => {
++  const plan = planActivationList([], { type: 'm3u', m3u_url: 'http://neuf.example.invalid/n.m3u' });
++  assert.equal(plan.replaced, 0);
++  assert.equal(plan.clientKept, 0);
++  assert.equal(plan.sources.length, 1);
+ });
+ 
+ // ---------------------------------------------------------------
+diff --git a/android-app/admin-panel/src/lib/sources.ts b/android-app/admin-panel/src/lib/sources.ts
+index 80111a1..8918b4f 100644
+--- a/android-app/admin-panel/src/lib/sources.ts
++++ b/android-app/admin-panel/src/lib/sources.ts
+@@ -162,20 +162,37 @@ export function validateListInput(s: SourceInput): string | null {
+   return null;
+ }
+ 
+-export type ActivationListPlan =
+-  | { kind: 'send'; sources: SourceInput[] }
+-  | { kind: 'already' }
+-  | { kind: 'full' };
++export type ActivationListPlan = {
++  kind: 'send';
++  /// Ce que le panel envoie : la liste saisie, seule (les listes du client
++  /// restent : le serveur les garde d'office, cf. `origin: 'self'`).
++  sources: SourceInput[];
++  /// Nombre d'anciennes listes du panel que cet envoi remplace.
++  replaced: number;
++  /// Nombre de listes du client qui restent sur la box.
++  clientKept: number;
++  /// Vrai si la liste saisie était déjà la seule liste du panel : l'envoi
++  /// sert alors seulement à prévenir la box à l'instant.
++  unchanged: boolean;
++};
+ 
+-/// Ajoute [add] aux listes déjà posées sur la box, sans rien perdre.
+-/// - déjà présente (panel ou client) → « already » : rien à envoyer ;
+-/// - 3 listes du panel déjà en place → « full » (limite du serveur) ;
+-/// - sinon → « send » : listes du panel existantes + la nouvelle.
++/// « Activer avec une liste » = CETTE liste, maintenant. Mesuré le 05/10/2026
++/// (box de test, 3 listes du panel déjà posées) : l'ancienne règle « on ajoute,
++/// maximum 3 » refusait l'envoi (« full ») et la box gardait l'ancien serveur ;
++/// le revendeur voyait « il me donne toujours l'ancien serveur ». Désormais
++/// la liste saisie REMPLACE les listes du panel ; celles du client restent.
++/// Pour ajouter une liste sans remplacer : fiche appareil.
+ export function planActivationList(existing: SourceLike[], add: SourceInput): ActivationListPlan {
+   const fp = sourceFingerprint(add);
+-  if (fp && existing.some((s) => sourceFingerprint(s) === fp)) return { kind: 'already' };
+   const panel = existing.filter((s) => !isClientList(s));
+-  if (panel.length >= 3) return { kind: 'full' };
++  const clientKept = existing.length - panel.length;
++  const unchanged = panel.length === 1 && fp !== null && sourceFingerprint(panel[0]) === fp;
+   const clean: SourceInput = { ...toSourceInput(add as SourceLike) };
+-  return { kind: 'send', sources: [...panel.map(toSourceInput), clean] };
++  return {
++    kind: 'send',
++    sources: [clean],
++    replaced: unchanged ? 0 : panel.filter((s) => sourceFingerprint(s) !== fp).length,
++    clientKept,
++    unchanged,
++  };
+ }
+diff --git a/android-app/admin-panel/src/pages/RemoteActivatePage.tsx b/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
+index 255af0b..b4d9e29 100644
+--- a/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
++++ b/android-app/admin-panel/src/pages/RemoteActivatePage.tsx
+@@ -10,7 +10,7 @@ import {
+ import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
+ import { createSingleFlight } from '@/lib/robust';
+ import {
+-  isClientList, planActivationList, toSourceInput, validateListInput, type SourceInput,
++  planActivationList, validateListInput, type SourceInput,
+ } from '@/lib/sources';
+ import {
+   INSTANT_GIVE_UP_MS, INSTANT_POLL_MS, instantLabel, listOnTv, type InventoryLike,
+@@ -165,7 +165,8 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+     };
+   }
+ 
+-  /// Étape 3 seule : ajoute la liste aux listes déjà posées par le panel.
++  /// Étape 3 seule : envoie la liste saisie à la box (elle remplace les
++  /// listes du panel ; celles du client restent).
+   async function sendList(m: string, input: SourceInput): Promise<void> {
+     setListStep('busy');
+     setListNote(null);
+@@ -178,26 +179,22 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+         // 404 = aucune liste encore : on part de zéro.
+         if (!(e instanceof ApiError && e.status === 404)) throw e;
+       }
++      // La liste saisie REMPLACE les listes du panel (mesuré le 05/10/2026 :
++      // l'ancienne règle « ajouter, maximum 3 » refusait l'envoi et la box
++      // gardait l'ancien serveur). Les listes du client restent : le
++      // serveur les garde d'office. Même liste déjà seule sur le serveur :
++      // on renvoie quand même, c'est ce renvoi qui prévient la box.
+       const planList = planActivationList(existing, input);
+-      if (planList.kind === 'already') {
+-        // Déjà sur le serveur : on renvoie quand même l'ensemble, pour que
+-        // la box soit prévenue à l'instant (si elle était éteinte au
+-        // premier envoi, c'est ce renvoi qui la réveille).
+-        await sourcesApi.setMany(m, existing.filter((s) => !isClientList(s)).map(toSourceInput));
+-        setListStep('ok');
+-        setListNote('Cette liste était déjà sur le serveur : la box est prévenue à nouveau.');
+-        const now = Date.now();
+-        setTv({ startedAt: now, sent: input, elapsedMs: 0, seen: null, lastSeen: 0, now });
+-        return;
+-      }
+-      if (planList.kind === 'full') {
+-        setListStep('err');
+-        setListNote('Cette box a déjà 3 listes du panel. Retire-en une sur la fiche appareil, puis « Renvoyer la liste ».');
+-        return;
+-      }
+       await sourcesApi.setMany(m, planList.sources);
+       setListStep('ok');
+-      setListNote(null);
++      setListNote(
++        planList.unchanged
++          ? 'Cette liste était déjà sur le serveur : la box est prévenue à nouveau.'
++          : planList.replaced > 0
++            ? `Liste envoyée. ${planList.replaced === 1 ? 'L’ancienne liste du panel est remplacée' : `Les ${planList.replaced} anciennes listes du panel sont remplacées`}`
++              + (planList.clientKept > 0 ? ` ; ${planList.clientKept === 1 ? 'la liste ajoutée par le client reste' : `les ${planList.clientKept} listes ajoutées par le client restent`}.` : '.')
++            : null,
++      );
+       const now = Date.now();
+       setTv({ startedAt: now, sent: input, elapsedMs: 0, seen: null, lastSeen: 0, now });
+     } catch (e: unknown) {
+@@ -420,7 +417,8 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
+               </div>
+             )}
+             <p className="text-xs text-ink-tertiary">
+-              Les listes déjà sur la box sont gardées. Maximum 3 listes poussées par le panel.
++              Cette liste remplace les listes du panel déjà sur la box. Les listes ajoutées par le
++              client restent. Pour en ajouter une sans remplacer : fiche appareil → Liste de chaînes.
+             </p>
+           </div>
+         )}
