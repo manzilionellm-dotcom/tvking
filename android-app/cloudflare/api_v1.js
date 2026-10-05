@@ -2606,6 +2606,10 @@ function normalizeSource(raw) {
   if (!raw || typeof raw !== 'object') {
     return { error: 'source object required' };
   }
+  // Interrupteur du panel : une liste « éteinte » garde ses identifiants,
+  // la box la masque sans l'effacer. On ne stocke le champ QUE s'il vaut
+  // false (absent = allumée), pour ne rien changer aux listes existantes.
+  const off = raw.enabled === false ? { enabled: false } : {};
   const type = (raw.type || '').trim().toLowerCase();
   const label = (raw.label || '').trim() || null;
   // httpUrlError refuse javascript:, ftp:, un hôte vide et les URL trop longues.
@@ -2625,14 +2629,14 @@ function normalizeSource(raw) {
     }
     const serverErr = httpUrlError(server, 'server_url');
     if (serverErr) return { error: serverErr };
-    return { source: { type, label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg } };
+    return { source: { type, label, server_url: server, username: user, password: pass, m3u_url: null, epg_url: epg, ...off } };
   }
   if (type === 'm3u') {
     const m3u = (raw.m3u_url || '').trim();
     if (!m3u) return { error: 'm3u requires m3u_url' };
     const m3uErr = httpUrlError(m3u, 'm3u_url');
     if (m3uErr) return { error: m3uErr };
-    return { source: { type, label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg } };
+    return { source: { type, label, server_url: null, username: null, password: null, m3u_url: m3u, epg_url: epg, ...off } };
   }
   return { error: "type must be 'xtream' or 'm3u'" };
 }

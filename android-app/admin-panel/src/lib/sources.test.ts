@@ -128,3 +128,45 @@ test('activation + liste : déjà présente, ou 3 listes du panel', () => {
   );
   assert.equal(planActivationList([], { type: 'm3u', m3u_url: 'http://neuf.example.invalid/n.m3u' }).kind, 'send');
 });
+
+// ---------------------------------------------------------------
+//  Interrupteur allumé / éteint
+// ---------------------------------------------------------------
+import { isListOn, planToggleSource } from './sources.ts';
+
+test('éteindre la 2e liste : toutes les listes du panel repartent, la 2e avec enabled:false', () => {
+  const plan = planToggleSource([panelList, m3u2, clientList], 1);
+  assert.equal(plan.kind, 'send');
+  if (plan.kind !== 'send') return;
+  assert.equal(plan.nowOn, false);
+  assert.equal(plan.sources.length, 2, 'la liste du client ne repart pas');
+  assert.equal(plan.sources[0].enabled, undefined);
+  assert.equal(plan.sources[1].enabled, false);
+  assert.equal(plan.sources[1].m3u_url, 'http://liste.example.invalid/s.m3u');
+});
+
+test('rallumer : le champ disparaît, les autres listes éteintes le restent', () => {
+  const offA = { ...panelList, enabled: false } as SourceLike;
+  const offB = { ...m3u2, enabled: false } as SourceLike;
+  const plan = planToggleSource([offA, offB], 0);
+  assert.equal(plan.kind, 'send');
+  if (plan.kind !== 'send') return;
+  assert.equal(plan.nowOn, true);
+  assert.equal(plan.sources[0].enabled, undefined);
+  assert.equal(plan.sources[1].enabled, false);
+  assert.equal(isListOn(offA), false);
+  assert.equal(isListOn(panelList), true);
+});
+
+test('interrupteur sur une liste du client ou hors limites : rien', () => {
+  assert.deepEqual(planToggleSource([panelList, clientList], 1), { kind: 'client' });
+  assert.deepEqual(planToggleSource([panelList], 5), { kind: 'invalid' });
+});
+
+test('supprimer une liste garde l\'état éteint des autres', () => {
+  const offB = { ...m3u2, enabled: false } as SourceLike;
+  const plan = planRemoveSource([panelList, offB], 0);
+  assert.equal(plan.kind, 'keep');
+  if (plan.kind !== 'keep') return;
+  assert.equal(plan.sources[0].enabled, false);
+});

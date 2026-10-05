@@ -559,6 +559,43 @@ async function main() {
       'sans clé de chiffrement le lien reste lisible');
   }
 
+  // --- Interrupteur allumé / éteint d'une liste (panel → box) ---
+  {
+    const m = mac();
+    const a = fakeM3u();
+    const b = fakeM3u();
+    await api(env, 'POST', '/api/v1/activate', { token: admin, body: { mac: m, plan: 'yearly' } });
+    const off = await api(env, 'PUT', `/api/v1/sources/${encodeURIComponent(m)}`, {
+      token: admin,
+      body: { sources: [{ type: 'm3u', m3u_url: a }, { type: 'm3u', m3u_url: b, enabled: false }] },
+    });
+    check(off.status === 200, 'interrupteur : envoi avec une liste éteinte');
+    const pub = await api(env, 'GET', `/api/device-source/${m}`);
+    const list = (pub.json && pub.json.sources) || [];
+    check(list.length === 2 && list[0].enabled === undefined && list[1].enabled === false,
+      'interrupteur : la box reçoit enabled:false sur la liste éteinte, rien sur l autre');
+    check(list[1] && list[1].m3u_url === b, 'interrupteur : la liste éteinte garde son lien (rallumage sans ressaisie)');
+    const panel = await api(env, 'GET', `/api/v1/sources/${encodeURIComponent(m)}`, { token: admin });
+    const pl = (panel.json && panel.json.sources) || [];
+    check(pl.length === 2 && pl[1].enabled === false, 'interrupteur : le panel relit l état éteint');
+    const on = await api(env, 'PUT', `/api/v1/sources/${encodeURIComponent(m)}`, {
+      token: admin,
+      body: { sources: [{ type: 'm3u', m3u_url: a }, { type: 'm3u', m3u_url: b, enabled: true }] },
+    });
+    const pub2 = await api(env, 'GET', `/api/device-source/${m}`);
+    const list2 = (pub2.json && pub2.json.sources) || [];
+    check(on.status === 200 && list2.length === 2 && list2[1].enabled === undefined,
+      'interrupteur : rallumée, le champ disparaît (= allumée)');
+    const junk = await api(env, 'PUT', `/api/v1/sources/${encodeURIComponent(m)}`, {
+      token: admin,
+      body: { sources: [{ type: 'm3u', m3u_url: a, enabled: 'non' }] },
+    });
+    const pub3 = await api(env, 'GET', `/api/device-source/${m}`);
+    const l3 = (pub3.json && pub3.json.sources) || [];
+    check(junk.status === 200 && l3[0] && l3[0].enabled === undefined,
+      'interrupteur : une valeur autre que false ne masque rien');
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 }

@@ -25,11 +25,14 @@ export interface SourceLike {
   /// garde d'office à chaque envoi : le panel ne doit jamais la renvoyer
   /// (elle deviendrait une liste « panel », verrouillée, et en double).
   origin?: string | null;
+  /// `false` = liste ÉTEINTE par le panel (la box la masque sans l'effacer).
+  /// Absent ou `true` = allumée.
+  enabled?: boolean | null;
 }
 
 export type SourceInput = Pick<
   SourceLike,
-  'type' | 'label' | 'server_url' | 'username' | 'password' | 'm3u_url' | 'epg_url'
+  'type' | 'label' | 'server_url' | 'username' | 'password' | 'm3u_url' | 'epg_url' | 'enabled'
 >;
 
 /// Garde seulement les champs qu'accepte l'envoi (pas de mac, date,
@@ -45,7 +48,41 @@ export function toSourceInput(s: SourceLike): SourceInput {
     out.m3u_url = s.m3u_url ?? null;
   }
   if (s.epg_url != null && s.epg_url !== '') out.epg_url = s.epg_url;
+  // Une liste éteinte le reste quand on renvoie les autres.
+  if (s.enabled === false) out.enabled = false;
   return out;
+}
+
+/// Liste allumée ? (absent = oui)
+export function isListOn(s: SourceLike): boolean {
+  return s.enabled !== false;
+}
+
+export type TogglePlan =
+  | { kind: 'send'; sources: SourceInput[]; nowOn: boolean }
+  | { kind: 'client' }
+  | { kind: 'invalid' };
+
+/// Allumer / éteindre la liste [index] : on renvoie toutes les listes du
+/// panel, celle-ci avec l'état inverse. Le Worker prévient la box
+/// (ordre « source ») et elle masque ou réaffiche la liste à l'instant.
+export function planToggleSource(sources: SourceLike[], index: number): TogglePlan {
+  if (!Number.isInteger(index) || index < 0 || index >= sources.length) {
+    return { kind: 'invalid' };
+  }
+  if (isClientList(sources[index])) return { kind: 'client' };
+  const nowOn = !isListOn(sources[index]);
+  const out: SourceInput[] = [];
+  sources.forEach((s, i) => {
+    if (isClientList(s)) return;
+    const input = toSourceInput(s);
+    if (i === index) {
+      if (nowOn) delete input.enabled;
+      else input.enabled = false;
+    }
+    out.push(input);
+  });
+  return { kind: 'send', sources: out, nowOn };
 }
 
 /// Liste ajoutée par le client lui-même (pas par le panel).

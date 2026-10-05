@@ -15,7 +15,7 @@ import {
 import { shouldApplyPollResult } from '@/lib/live-sync';
 import { bindPanelRefresh } from '@/lib/box-channel';
 import { formatDateTime } from '@/lib/utils';
-import { isClientList, planRemoveSource } from '@/lib/sources';
+import { isClientList, isListOn, planRemoveSource, planToggleSource } from '@/lib/sources';
 import {
   LIST_PAGE_SIZE, createAbortBag, createGeneration, createSingleFlight,
   expiryPhrase, readListPage,
@@ -367,6 +367,29 @@ function DeviceDetailModal({
     }
   }
 
+  /// Interrupteur allumé / éteint : renvoie les listes du panel avec
+  /// l'état inversé pour celle-ci. Le Worker prévient la box (« source »),
+  /// qui masque ou réaffiche la liste à l'instant, sans rien retélécharger.
+  async function toggleOne(index: number) {
+    const list = ov?.sources ?? [];
+    const plan = planToggleSource(list, index);
+    if (plan.kind !== 'send') return;
+    setClearing(true);
+    setErr(null);
+    try {
+      await sourcesApi.setMany(device.mac, plan.sources);
+      const my = ++pollSeq.current;
+      const r = await devicesApi.overview(device.id);
+      if (!shouldApplyPollResult(my, appliedSeq.current)) return;
+      appliedSeq.current = my;
+      setOv(r);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Échec.');
+    } finally {
+      setClearing(false);
+    }
+  }
+
   const st = device.block_status || 'active';
   const sources = ov?.sources ?? [];
   const macUrl = encodeURIComponent(device.mac);
@@ -436,6 +459,7 @@ function DeviceDetailModal({
             source={s}
             busy={busy || clearing}
             onRemove={() => removeOne(i)}
+            onToggle={() => toggleOne(i)}
           />
         ))}
 
@@ -542,16 +566,18 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 /// Carte d'une source du M-Trio (avec identifiants Xtream ou URL M3U).
 function SourceCard({
-  index, source, busy, onRemove,
+  index, source, busy, onRemove, onToggle,
 }: {
   index: number;
   source: DeviceSource;
   busy: boolean;
   onRemove: () => void;
+  onToggle: () => void;
 }) {
   const isXtream = source.type === 'xtream';
+  const on = isListOn(source);
   return (
-    <div className="mb-2 rounded-lg border border-white/5 bg-obsidian px-3 py-3">
+    <div className={'mb-2 rounded-lg border border-white/5 bg-obsidian px-3 py-3' + (on ? '' : ' opacity-60')}>
       <div className="mb-2 flex items-center gap-2">
         <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] font-bold text-ink-tertiary">#{index + 1}</span>
         <span
@@ -574,15 +600,36 @@ function SourceCard({
             Ajoutée par le client
           </span>
         ) : (
+          <>
+          {/* Interrupteur : comme une lampe. Allumée = la box l'affiche ;
+              éteinte = la box la masque à l'instant, sans l'effacer. */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={on}
+            disabled={busy}
+            onClick={onToggle}
+            title={on ? 'Éteindre : la box masque cette liste tout de suite.' : 'Allumer : la box réaffiche cette liste tout de suite.'}
+            className={
+              'ml-auto flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold disabled:opacity-40 '
+              + (on
+                ? 'border-emerald-400/50 text-emerald-300 hover:bg-emerald-400/10'
+                : 'border-white/15 text-ink-tertiary hover:bg-white/5')
+            }
+          >
+            <span className={'inline-block h-2 w-2 rounded-full ' + (on ? 'bg-emerald-400' : 'bg-white/30')} />
+            {on ? 'Allumée' : 'Éteinte'}
+          </button>
           <button
             type="button"
             disabled={busy}
             onClick={onRemove}
             title="Retirer cette liste. La TV du client l'efface toute seule."
-            className="ml-auto rounded-md border border-accent/40 px-2 py-0.5 text-[11px] font-semibold text-accent-bright hover:bg-accent/10 disabled:opacity-40"
+            className="rounded-md border border-accent/40 px-2 py-0.5 text-[11px] font-semibold text-accent-bright hover:bg-accent/10 disabled:opacity-40"
           >
             Supprimer
           </button>
+          </>
         )}
       </div>
       <div className="grid grid-cols-1 gap-y-1.5 text-xs">
