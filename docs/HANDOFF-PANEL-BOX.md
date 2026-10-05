@@ -170,7 +170,9 @@ Rapport complet : `docs/MESURE-ACTIVATION-INSTANTANEE.md`.
   (décision du propriétaire).
 - Sur `MK:5C:E5:43:35:1F` : 3 listes différentes (2 du panel, 1 tapée sur la
   TV, libellé « Tv ») = 3 imports, pas un triple envoi.
-- Build de test : voir le rapport (section « Build #156 »).
+- Build de test **#156** = `107-test.156`, versionCode 1791226009, SHA-256
+  `bcc1cbee…95c96`, signé `5145b8e0…` (release `zuno-tv-test` seule,
+  `zuno-tv` non touchée). Détail : rapport, section 7.
 
 ## 6. Règles du propriétaire (non négociables)
 

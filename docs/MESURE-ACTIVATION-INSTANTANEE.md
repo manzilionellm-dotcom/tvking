@@ -91,9 +91,23 @@ Mise en ligne = **décision du propriétaire** : appliquer le patch sur
 et après). Le Worker garde `RealtimeHub` et le binding `RT_HUB` : rien ne
 change pour le canal.
 
-## 7. Build de test
+## 7. Build de test #156 (vérifié)
 
-Voir la section « Build #156 » ci-dessous (remplie à la fin du run).
+Run `build-zuno-tv.yml` n° 156 : https://github.com/manzilionellm-dotcom/tvking/actions/runs/37358140257
+(`workflow_dispatch`, `test_box=true`, `publish=false`, `play_aab=false`),
+conclusion **success**, commit `70c95a39a7815e0cd5764a709ee79520a8fba9ac`.
+
+| Champ | Valeur | Preuve |
+| --- | --- | --- |
+| Version visible | `107-test.156` | journal du job, `version.json` de `zuno-tv-test` |
+| versionCode | `1791226009` | idem |
+| SHA-256 de l'APK | `bcc1cbeef5ef10f6c6da707e8cd4ffa6fbef0b129704b00c76c49f30e2a95c96` | `version.json` de `zuno-tv-test` + digest de l'actif GitHub |
+| Taille | 54 722 595 octets | idem |
+| Signature | `5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61` — « ✓ signature = clé des box clients » | journal du job (`apksigner verify --print-certs`) |
+| Contrôle qualité du run | `flutter analyze` + `flutter test` : étape verte (18:45:34 → 18:46:48 UTC) | journal du job |
+| Backend compilé | `https://app.7themotion.com` (vérifié dans `libapp.so`) | journal du job |
+| Release clients `zuno-tv` | **non touchée** (étape « Publier sur la release zuno-tv » sautée, `PUBLIER=false`) | journal du job, release inchangée depuis le 30/09 |
+| Lien | https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv-test/zuno-tv.apk | release `zuno-tv-test` |
 
 ## 8. Remesure après correctif (à faire par le propriétaire, box de test)
 
