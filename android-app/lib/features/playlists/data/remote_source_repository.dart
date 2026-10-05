@@ -70,27 +70,52 @@ abstract final class RemoteSourceRepository {
   static final ValueNotifier<bool> importing = ValueNotifier<bool>(false);
 
   /// Entoure le chargement d'une nouvelle liste : pastille à l'écran et
-  /// durée réelle dans la boîte noire (« liste du panel chargée en 12,4 s »).
+  /// durée réelle dans la boîte noire (« liste du panel chargée en 12,4 s
+  /// (18 230 chaînes) »). [job] rend le nombre de chaînes importées et
+  /// lève si le dépôt a refusé la liste (lien mort, identifiants faux,
+  /// 0 chaîne) : la raison, expurgée, suit la durée. C'est la ligne que
+  /// le propriétaire lit pour départager « ordre jamais arrivé »,
+  /// « import lent » et « import refusé ».
   /// Repli `zuno.sync.pill_off` : pas de pastille, la mesure reste.
   static Future<RemoteSyncResult> _timedImport(
     String kind,
-    Future<RemoteSyncResult> Function() job,
+    Future<int> Function() job,
   ) async {
     final Stopwatch watch = Stopwatch()..start();
     if (!RepairFlags.syncPillOff) importing.value = true;
     BlackBox.instance.info('SOURCE', 'nouvelle liste $kind reçue du panel : chargement');
     try {
-      final RemoteSyncResult r = await job();
+      final int channels = await job();
       final String secs = (watch.elapsedMilliseconds / 1000).toStringAsFixed(1);
-      if (r == RemoteSyncResult.loaded) {
-        BlackBox.instance.info('SOURCE', 'liste $kind du panel chargée en $secs s');
-      } else {
-        BlackBox.instance.warn('SOURCE', 'liste $kind du panel refusée après $secs s');
-      }
-      return r;
+      BlackBox.instance.info(
+        'SOURCE',
+        'liste $kind du panel chargée en $secs s ($channels chaînes)',
+      );
+      return RemoteSyncResult.loaded;
+    } catch (e) {
+      // Identifiants/serveur invalides, lien mort, 0 chaîne… → le dépôt a
+      // rejeté. La boîte noire expurge les liens et mots de passe à
+      // l'écriture ; on coupe quand même la raison pour rester lisible.
+      final String secs = (watch.elapsedMilliseconds / 1000).toStringAsFixed(1);
+      BlackBox.instance.warn(
+        'SOURCE',
+        'liste $kind du panel refusée après $secs s : ${shortReason(e)}',
+      );
+      if (kDebugMode) debugPrint('[RemoteSource] $kind KO: $e');
+      return RemoteSyncResult.sourceFailed;
     } finally {
       importing.value = false;
     }
+  }
+
+  /// Première ligne du message d'erreur, 120 caractères au plus.
+  @visibleForTesting
+  static String shortReason(Object error) {
+    final String first = error.toString().split('\n').first.trim();
+    final String noPrefix = first.startsWith('Exception: ')
+        ? first.substring('Exception: '.length)
+        : first;
+    return noPrefix.length > 120 ? '${noPrefix.substring(0, 117)}…' : noPrefix;
   }
 
   static Future<void> _queue = Future<void>.value();
@@ -242,20 +267,14 @@ abstract final class RemoteSourceRepository {
       if (already) return RemoteSyncResult.loaded;
 
       return _timedImport('Xtream', () async {
-        try {
-          await PlaylistRepository.instance.addXtreamPlaylist(
-            name: label,
-            serverUrl: server,
-            username: user,
-            password: pass,
-          );
-          if (kDebugMode) debugPrint('[RemoteSource] Xtream chargé');
-          return RemoteSyncResult.loaded;
-        } catch (e) {
-          // Identifiants/serveur invalides, 0 chaîne… → le repo a rejeté.
-          if (kDebugMode) debugPrint('[RemoteSource] Xtream KO: $e');
-          return RemoteSyncResult.sourceFailed;
-        }
+        final Playlist saved = await PlaylistRepository.instance.addXtreamPlaylist(
+          name: label,
+          serverUrl: server,
+          username: user,
+          password: pass,
+        );
+        if (kDebugMode) debugPrint('[RemoteSource] Xtream chargé');
+        return saved.channelCount;
       });
     } else if (type == 'm3u') {
       final String m3u = (src['m3u_url'] as String?)?.trim() ?? '';
@@ -266,19 +285,13 @@ abstract final class RemoteSourceRepository {
       if (already) return RemoteSyncResult.loaded;
 
       return _timedImport('M3U', () async {
-        try {
-          await PlaylistRepository.instance.addM3uPlaylist(
-            name: label,
-            url: m3u,
-            epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
-          );
-          if (kDebugMode) debugPrint('[RemoteSource] M3U chargé');
-          return RemoteSyncResult.loaded;
-        } catch (e) {
-          // URL M3U incomplète / provider injoignable / 0 chaîne.
-          if (kDebugMode) debugPrint('[RemoteSource] M3U KO: $e');
-          return RemoteSyncResult.sourceFailed;
-        }
+        final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
+          name: label,
+          url: m3u,
+          epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
+        );
+        if (kDebugMode) debugPrint('[RemoteSource] M3U chargé');
+        return saved.channelCount;
       });
     }
     return RemoteSyncResult.noSource;

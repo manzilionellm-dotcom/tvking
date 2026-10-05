@@ -26,6 +26,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/app/repair_flags.dart';
+import '../../../core/blackbox/black_box.dart';
 import '../../about/data/force_update_checker.dart';
 import '../../ads/data/startup_ad_repository.dart';
 import '../../country_home/data/featured_repository.dart';
@@ -159,7 +160,10 @@ class RemoteActivationWatch {
     return !open || !has;
   }
 
-  Future<void> _tick() async {
+  /// [sourceOrdered] : un ordre « source » / « source_clear » vient
+  /// d'arriver du panel. Les listes sont relues tout de suite, même
+  /// si une chaîne joue (sauf repli `zuno.source.order_waits_idle`).
+  Future<void> _tick({bool sourceOrdered = false}) async {
     if (_tickBusy) return;
     _tickBusy = true;
     try {
@@ -183,7 +187,7 @@ class RemoteActivationWatch {
       if (snapOf().revoked.isNotEmpty) {
         await RemoteSourceRepository.applyRevocations(snapOf().revoked);
       }
-      await _maybeImportSource();
+      await _maybeImportSource(ordered: sourceOrdered);
     } finally {
       _tickBusy = false;
     }
@@ -194,19 +198,38 @@ class RemoteActivationWatch {
   /// Télécharge la source si la décision pure dit oui. Un échec
   /// réseau ne mémorise pas le numéro : on réessaiera au prochain
   /// tour, sans couper ce qui joue déjà.
-  Future<void> _maybeImportSource() async {
+  Future<void> _maybeImportSource({bool ordered = false}) async {
     if (!_allowSourceImport) return;
     final RemoteSubscriptionStatus snap = SubscriptionState.instance.remote;
     final bool has = PlaylistRepository.instance.currentChannels.isNotEmpty;
+    final bool busy = TvActivity.isBusy;
     final bool fetch = SourceFetchDecision.shouldFetch(
       networkOk: true,
-      playbackBusy: TvActivity.isBusy,
+      playbackBusy: busy,
       sourceRevKnown: snap.sourceRev != null,
       sourceRev: snap.sourceRev,
       lastFetchedRev: _lastSourceRev,
       hasChannels: has,
+      ordered: ordered,
+      orderWaitsIdle: RepairFlags.sourceOrderWaitsIdle,
     );
-    if (!fetch) return;
+    if (!fetch) {
+      if (ordered) {
+        // Repli allumé : on le dit, pour que la boîte noire explique
+        // pourquoi la liste n'arrive qu'au retour à l'accueil.
+        BlackBox.instance.info(
+          'PANEL',
+          'ordre liste reçu, import différé : lecture en cours, repli allumé',
+        );
+      }
+      return;
+    }
+    if (ordered && busy && has) {
+      BlackBox.instance.info(
+        'PANEL',
+        'ordre liste reçu pendant la lecture : import tout de suite',
+      );
+    }
     final RemoteSyncResult result = await RemoteSourceRepository.sync();
     if (result == RemoteSyncResult.networkError) return;
     if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
@@ -229,15 +252,14 @@ class RemoteActivationWatch {
         alive: () => _run && generation == _generation,
         onFrame: (BoxChannelFrame frame) async {
           // Le statut, l'annonce, le thème : la veille les connaît
-          // déjà par le nom d'ordre. Les listes, on les relit
-          // explicitement : le numéro de source du statut peut
-          // ne pas bouger sur le Worker de production.
+          // déjà par le nom d'ordre. Un ordre de liste relit les
+          // listes tout de suite dans _applyOrders (le numéro de
+          // source du statut peut ne pas bouger sur le Worker de
+          // production) : même chemin que l'attente longue, une
+          // seule lecture de /api/device-source par ordre.
           await _applyOrders(<BoxOrder>[
             BoxOrder(id: frame.seq, kind: frame.type, fleet: false),
-          ]);
-          if (channelRefreshesSources(frame.type) && _allowSourceImport) {
-            await RemoteSourceRepository.sync();
-          }
+          ], via: 'ws');
         },
       );
       _session = session;
@@ -300,7 +322,7 @@ class RemoteActivationWatch {
         _signalFailures = 0;
         lastSignalBody = result.raw;
         if (result.orders.isEmpty) continue;
-        final bool applied = await _applyOrders(result.orders);
+        final bool applied = await _applyOrders(result.orders, via: 'attente');
         if (!applied) {
           await _pause(const Duration(seconds: 2), generation);
           continue;
@@ -343,7 +365,10 @@ class RemoteActivationWatch {
 
   /// Applique les ordres nouveaux. `false` = le statut n'a pas pu
   /// être lu : on n'accuse pas, on réessaiera les mêmes numéros.
-  Future<bool> _applyOrders(List<BoxOrder> orders) async {
+  /// [via] dit par quel chemin l'ordre est arrivé (« ws » ou
+  /// « attente ») : la boîte noire horodate la réception, ce qui
+  /// permet de mesurer le délai clic du panel → box.
+  Future<bool> _applyOrders(List<BoxOrder> orders, {String via = ''}) async {
     final List<Map<String, Object?>> boxMaps = <Map<String, Object?>>[
       for (final BoxOrder o in orders)
         if (!o.fleet) <String, Object?>{'id': o.id, 'kind': o.kind},
@@ -360,7 +385,15 @@ class RemoteActivationWatch {
       for (final Map<String, Object?> m in freshBox) m['kind']! as String,
       for (final Map<String, Object?> m in freshFleet) m['kind']! as String,
     ];
+    for (final Map<String, Object?> m in freshBox) {
+      BlackBox.instance.info(
+        'PANEL',
+        'ordre ${m['kind']} n°${m['id']} reçu'
+        '${via.isEmpty ? '' : ' ($via)'}',
+      );
+    }
     final bool needStatus = kinds.any(kindNeedsStatus);
+    final bool sourceOrdered = kinds.any(channelRefreshesSources);
     if (needStatus) {
       // Une lecture déjà en vol a pu partir AVANT l'ordre. On la
       // laisse finir, puis on relit : l'accusé ne part qu'avec
@@ -369,7 +402,7 @@ class RemoteActivationWatch {
         await Future<void>.delayed(const Duration(milliseconds: 40));
       }
       _timer?.cancel();
-      await _tick();
+      await _tick(sourceOrdered: sourceOrdered);
       if (SubscriptionState.instance.syncHint == 'offline') return false;
     }
     for (final String kind in kinds) {

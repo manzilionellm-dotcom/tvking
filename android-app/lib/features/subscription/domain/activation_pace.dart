@@ -54,6 +54,11 @@ abstract final class ActivationPace {
 /// contient les mots de passe : on ne le redemande QUE si le panel a
 /// changé quelque chose, et JAMAIS pendant qu'une chaîne joue.
 abstract final class SourceFetchDecision {
+  /// [ordered] : le panel vient d'envoyer un ORDRE « source » ou
+  /// « source_clear » (attente longue ou WebSocket). Ce n'est plus une
+  /// relecture de routine : le revendeur attend la liste sur la TV.
+  /// [orderWaitsIdle] : interrupteur de repli (ancien comportement) —
+  /// même sur un ordre, on attend le retour à l'accueil.
   static bool shouldFetch({
     required bool networkOk,
     required bool playbackBusy,
@@ -61,9 +66,18 @@ abstract final class SourceFetchDecision {
     required int? sourceRev,
     required int? lastFetchedRev,
     required bool hasChannels,
+    bool ordered = false,
+    bool orderWaitsIdle = false,
   }) {
     // Coupure : on garde la liste déjà sur la box.
     if (!networkOk) return false;
+    // Ordre explicite du panel (05/10/2026) : on relit les listes TOUT DE
+    // SUITE, même si une chaîne joue. C'était déjà la règle du chemin
+    // WebSocket ; l'attente longue (v106 des clients, repli des builds
+    // de test) attendait le retour à l'accueil, donc « ça ne marche
+    // pas » tant que le client regarde la télé. Le téléchargement et
+    // l'analyse tournent hors du fil d'image (isolate, lots SQLite).
+    if (ordered && !orderWaitsIdle) return true;
     // Direct ou lecteur ouvert : importer une grosse liste fige
     // l'image. On attend le retour à l'accueil. SAUF quand la box n'a
     // encore aucune chaîne : rien ne peut jouer, et le client attend

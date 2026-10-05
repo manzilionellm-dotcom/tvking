@@ -100,6 +100,14 @@ abstract final class RepairFlags {
   static const String panelVisibilityOffKey = 'zuno.panel.visibility_off';
   static bool panelVisibilityOff = false;
 
+  /// Vrai = un ordre « source » reçu par l'attente longue attend le retour
+  /// à l'accueil avant d'importer la liste (ancien comportement : la liste
+  /// envoyée depuis le panel n'arrivait pas tant que le client regardait
+  /// une chaîne). Faux = l'ordre du panel importe tout de suite, comme
+  /// sur le chemin WebSocket.
+  static const String sourceOrderWaitsIdleKey = 'zuno.source.order_waits_idle';
+  static bool sourceOrderWaitsIdle = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -113,6 +121,7 @@ abstract final class RepairFlags {
     bool channelLegacy = false;
     bool pillOff = false;
     bool visOff = false;
+    bool orderIdle = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -127,6 +136,7 @@ abstract final class RepairFlags {
       channelLegacy = prefs.getBool(realtimeLegacyKey) ?? false;
       pillOff = prefs.getBool(syncPillOffKey) ?? false;
       visOff = prefs.getBool(panelVisibilityOffKey) ?? false;
+      orderIdle = prefs.getBool(sourceOrderWaitsIdleKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -140,7 +150,9 @@ abstract final class RepairFlags {
       channelLegacy = false;
       pillOff = false;
       visOff = false;
+      orderIdle = false;
     }
+    sourceOrderWaitsIdle = orderIdle;
     panelVisibilityOff = visOff;
     syncPillOff = pillOff;
     macShowPrefix = macPrefix;
@@ -172,6 +184,7 @@ abstract final class RepairFlags {
     realtimeLegacy = false;
     syncPillOff = false;
     panelVisibilityOff = false;
+    sourceOrderWaitsIdle = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

@@ -105,6 +105,92 @@ void main() {
     );
   });
 
+  test('un ordre du panel importe tout de suite, même pendant la lecture', () {
+    // Cause mesurée le 05/10/2026 : la v106 attendait le retour à
+    // l'accueil (lecteur ou Direct ouvert = occupé) avant d'importer la
+    // liste envoyée par le panel. Un ordre explicite passe devant.
+    expect(
+      SourceFetchDecision.shouldFetch(
+        networkOk: true,
+        playbackBusy: true,
+        sourceRevKnown: false,
+        sourceRev: null,
+        lastFetchedRev: null,
+        hasChannels: true,
+        ordered: true,
+      ),
+      isTrue,
+    );
+    // Sans ordre (relecture de routine), la règle d'avant reste.
+    expect(
+      SourceFetchDecision.shouldFetch(
+        networkOk: true,
+        playbackBusy: true,
+        sourceRevKnown: false,
+        sourceRev: null,
+        lastFetchedRev: null,
+        hasChannels: true,
+      ),
+      isFalse,
+    );
+    // Repli allumé : l'ordre attend le retour à l'accueil (ancien
+    // comportement), mais une box sans chaîne importe quand même.
+    expect(
+      SourceFetchDecision.shouldFetch(
+        networkOk: true,
+        playbackBusy: true,
+        sourceRevKnown: false,
+        sourceRev: null,
+        lastFetchedRev: null,
+        hasChannels: true,
+        ordered: true,
+        orderWaitsIdle: true,
+      ),
+      isFalse,
+    );
+    expect(
+      SourceFetchDecision.shouldFetch(
+        networkOk: true,
+        playbackBusy: true,
+        sourceRevKnown: false,
+        sourceRev: null,
+        lastFetchedRev: null,
+        hasChannels: false,
+        ordered: true,
+        orderWaitsIdle: true,
+      ),
+      isTrue,
+    );
+    // Un ordre passe aussi devant « même numéro de source » : le Worker
+    // de production ne publie pas source_rev, et un ordre veut dire
+    // qu'il y a du neuf.
+    expect(
+      SourceFetchDecision.shouldFetch(
+        networkOk: true,
+        playbackBusy: false,
+        sourceRevKnown: true,
+        sourceRev: 7,
+        lastFetchedRev: 7,
+        hasChannels: true,
+        ordered: true,
+      ),
+      isTrue,
+    );
+    // Réseau coupé : rien, ordre ou pas.
+    expect(
+      SourceFetchDecision.shouldFetch(
+        networkOk: false,
+        playbackBusy: false,
+        sourceRevKnown: false,
+        sourceRev: null,
+        lastFetchedRev: null,
+        hasChannels: false,
+        ordered: true,
+      ),
+      isFalse,
+    );
+  });
+
   test('une lecture ratée ne remplace pas le dernier statut', () {
     expect(keepLastStatusOnFailure(reached: false), isTrue);
     expect(keepLastStatusOnFailure(reached: true), isFalse);
