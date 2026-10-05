@@ -117,6 +117,23 @@ Mots de passe et URL M3U sont chiffrés en base (`SOURCE_ENCRYPTION_KEY`).
   correctif du bouton « Supprimer » : une liste ajoutée par le client
   (`origin = self`) n'est plus renvoyée comme liste du panel.
 
+## 5 ter. Interrupteur allumé / éteint et box réunie (5 octobre, fin d'après-midi)
+
+- Branche app `ccr-1d45eb8b-x46ieg` : fusion de `cursor/canal-temps-reel-box-c1d5`
+  (WebSocket de l'autre ingénieur) + pastille « Mise à jour… » pendant le
+  chargement d'une liste du panel (durée dans la boîte noire) + interrupteur :
+  `enabled:false` → `setPlaylistHidden`, rallumage sans retéléchargement, liste
+  masquée par le client jamais rallumée. Tests 422 verts.
+  Build de test **#154** = `107-test.154`, versionCode 1791217147, SHA-256
+  `8593179837f9890b2e5d819f183a5f6136806ada7d1468c074c248621e6c0a00`, signé `5145b8e0…`.
+- Branche panel `claude/panel-mise-en-ligne` : `211f228b` (Worker garde
+  `enabled:false`, interrupteur « Allumée / Éteinte » dans la fiche appareil),
+  Worker **et** panel déployés (run #6). Job Worker vert ; le contrôle final du
+  panel a été un faux rouge (propagation Cloudflare), repassé vert à la main,
+  corrigé par des nouvelles tentatives (`39b1b842`).
+- Les box clients v106 ignorent `enabled` : la liste reste visible chez elles
+  jusqu'à la publication de la 107.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
