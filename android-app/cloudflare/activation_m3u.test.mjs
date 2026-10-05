@@ -596,6 +596,24 @@ async function main() {
       'interrupteur : une valeur autre que false ne masque rien');
   }
 
+  // --- Essais gratuits de l'activation à distance (3 j, 7 j, 1 mois) ---
+  {
+    const r = await makeReseller(env, admin, ['activate', 'sources'], 0);
+    for (const [plan, days] of [['trial_3d', 3], ['trial_7d', 7], ['trial_30d', 30]]) {
+      const m = mac();
+      const before = Date.now();
+      const res = await api(env, 'POST', '/api/v1/activate', { token: r.token, body: { mac: m, plan } });
+      const exp = res.json && res.json.expires_at;
+      const okDays = typeof exp === 'number'
+        && Math.abs(exp - before - days * DAY) < 5 * 60 * 1000;
+      check(res.status === 201 && okDays, `essai ${plan} : ${days} jours, accepté pour un revendeur à 0 crédit`);
+    }
+    const bal = scalar(db, 'SELECT credit_balance AS n FROM resellers WHERE id = ?', r.id);
+    check(bal === 0, 'essais gratuits : aucun crédit débité');
+    const paid = await api(env, 'POST', '/api/v1/activate', { token: r.token, body: { mac: mac(), plan: 'yearly' } });
+    check(paid.status === 402, 'abonnement payé refusé à 0 crédit (402)');
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 }

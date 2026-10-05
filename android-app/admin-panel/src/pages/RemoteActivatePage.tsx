@@ -28,10 +28,24 @@ import {
 //  seulement la liste. Rien n'est journalisé ici (mot de passe compris).
 // =========================================================
 
+// Essais GRATUITS (0 crédit, même pour un revendeur : planCreditCost du
+// Worker rend 0 pour tout plan « trial… »). La licence expire seule à la
+// date, la box se bloque alors comme pour un abonnement fini.
+const TRIALS = [
+  { id: 'trial_3d', label: '3 jours' },
+  { id: 'trial_7d', label: '7 jours' },
+  { id: 'trial_30d', label: '1 mois' },
+];
+
+// Abonnements PAYÉS (crédits débités pour un revendeur).
 const PLANS = [
   { id: 'yearly', label: '1 an' },
   { id: 'lifetime', label: 'À vie' },
 ];
+
+export function isTrialPlan(plan: string): boolean {
+  return plan.startsWith('trial');
+}
 
 type ListKind = 'm3u' | 'xtream' | 'none';
 type Step = 'idle' | 'busy' | 'ok' | 'skip' | 'err';
@@ -43,7 +57,8 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
 
   const [sp] = useSearchParams();
   const [mac, setMac] = useState(sp.get('mac') || '');
-  const [plan, setPlan] = useState('yearly');
+  // Défaut : 7 jours d'essai. Un oubli ne coûte aucun crédit.
+  const [plan, setPlan] = useState('trial_7d');
   const [customerName, setCustomerName] = useState('');
   const [kind, setKind] = useState<ListKind>(canPush ? 'm3u' : 'none');
   const [m3uUrl, setM3uUrl] = useState('');
@@ -80,6 +95,7 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
   }, [onLogout]);
 
   const costFor = (p: string): number | null => {
+    if (isTrialPlan(p)) return 0;
     const row = costs.find((c) => c.plan === p);
     return row ? row.credits : null;
   };
@@ -235,7 +251,31 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3" role="group" aria-label="Durée">
+        <p className="-mb-2 text-xs font-medium uppercase tracking-wide text-ink-secondary">Essai gratuit</p>
+        <div className="grid grid-cols-3 gap-3" role="group" aria-label="Essai gratuit">
+          {TRIALS.map((p) => {
+            const selected = plan === p.id;
+            return (
+              <button
+                type="button"
+                key={p.id}
+                onClick={() => setPlan(p.id)}
+                className={
+                  'rounded-xl border px-3 py-3 text-left transition ' +
+                  (selected
+                    ? 'border-accent bg-accent/15 text-ink-primary'
+                    : 'border-white/10 bg-midnight text-ink-secondary hover:border-white/25')
+                }
+              >
+                <span className="block text-base font-semibold leading-tight">{p.label}</span>
+                <span className="mt-1 block text-xs text-ink-tertiary">Gratuit</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="-mb-2 text-xs font-medium uppercase tracking-wide text-ink-secondary">Abonnement payé</p>
+        <div className="grid grid-cols-2 gap-3" role="group" aria-label="Abonnement payé">
           {PLANS.map((p) => {
             const selected = plan === p.id;
             const c = costFor(p.id);
@@ -332,7 +372,9 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
               licenceStep === 'ok' && result
                 ? (result.plan === 'lifetime' || result.expires_at == null
                   ? 'Licence activée à vie'
-                  : `Licence activée jusqu’au ${formatDateTime(result.expires_at)}`)
+                  : isTrialPlan(plan)
+                    ? `Essai gratuit jusqu’au ${formatDateTime(result.expires_at)}`
+                    : `Licence activée jusqu’au ${formatDateTime(result.expires_at)}`)
                 : 'Licence'
             } />
             {listStep !== 'skip' && (
@@ -355,7 +397,9 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
           {busy
             ? 'En cours…'
             : (kind === 'none' || !canPush ? 'Activer' : 'Activer et envoyer la liste')
-              + (isReseller && credit !== null ? ` · ${credit} crédit${credit > 1 ? 's' : ''}` : '')}
+              + (isTrialPlan(plan)
+                ? ' · essai gratuit'
+                : isReseller && credit !== null ? ` · ${credit} crédit${credit > 1 ? 's' : ''}` : '')}
         </button>
 
         {licenceStep === 'ok' && listStep === 'err' && (
