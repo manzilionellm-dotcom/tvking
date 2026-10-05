@@ -291,6 +291,14 @@ demande (ce que font IBO / TiviMate / Smarters).
 - Build #164 = `107-test.164`, versionCode 1791239332, SHA-256
   `f26c876a8d3b7e09a0f8633d8c70f2097c022bb259358f8f85e46e41882cd9dd`
   (54 759 145 octets, run 37382518913, commit 11ad567).
+- Windows #14 (même code que #164, commit 8699205, `publish=false`, artefact
+  de run seulement, expire le 4 novembre) : run 37384540506, artefact
+  `zuno-windows-8699205…`. `Zuno-Setup.exe` 29 439 413 octets, SHA-256
+  `387ef85bbfac67286447d1a8d8c4bee1281a87a434e67c5fa3a78dba73cc90ad` ;
+  `zuno-windows.zip` 38 652 654 octets, SHA-256
+  `35989483b59195576e4b11c221ad4f7fdf9c4b10c9e24a49b0459f5198ad8b2d`
+  (empreintes calculées sur l'artefact téléchargé). La release publique
+  `zuno-windows` date toujours du 3 octobre (run #11, commit 2471156).
 
 ## 6. Règles du propriétaire (non négociables)
 
