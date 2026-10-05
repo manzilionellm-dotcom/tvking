@@ -134,6 +134,16 @@ Mots de passe et URL M3U sont chiffrés en base (`SOURCE_ENCRYPTION_KEY`).
 - Les box clients v106 ignorent `enabled` : la liste reste visible chez elles
   jusqu'à la publication de la 107.
 
+## 5 quater. Essais gratuits, Windows qui se met à jour, box #155 (5 octobre, soir)
+
+- Panel `636aad6c` (run #8, panel seul, vert) : Activation à distance propose
+  Essai gratuit 3 j / 7 j / 1 mois (`trial_3d`, `trial_7d`, `trial_30d`, 0 crédit,
+  défaut 7 j) et Abonnement payé 1 an / à vie. Preuve sur le vrai Worker : 95/95.
+- App `f5971b7` : Zuno PC se met à jour depuis l'app (`zuno-windows/version.json`,
+  installeur vérifié SHA-256 + taille, `/SILENT`, relance par Inno Setup).
+  Windows #13 vert (artefact seulement, non publié). Box #155 = `107-test.155`,
+  versionCode 1791218094, SHA-256 `9cd1bee0…942d46`, signé `5145b8e0…`.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
