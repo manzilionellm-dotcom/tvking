@@ -20,6 +20,7 @@ import {
   clearSourceTombstone,
 } from './linkage.js';
 import { notifyBox } from './box_channel.js';
+import { isBlackboxMac, markBlackBoxAsked, readBlackBox } from './blackbox_journal.js';
 //  Importe depuis worker.js pour servir le namespace /api/v1/*.
 //  Coexiste avec les anciens endpoints /admin/* et /api/* qui
 //  continuent de fonctionner pour ne pas casser les apps mobiles
@@ -1099,6 +1100,27 @@ async function apiV1Inner(request, env) {
     }
     if (parts.length === 1 && request.method === 'GET') {
       return handleFeedbackList(env);
+    }
+  }
+
+  // /blackbox/:mac — journal technique de la box (boîte noire).
+  // Même MAC que l'activation. Lecture seule + « demander un envoi ».
+  // Le texte stocké est déjà filtré (pas de lien, pas de mot de passe).
+  // Un revendeur ne lit que ses propres appareils (sourceMacForActor).
+  if (parts[0] === 'blackbox' && parts.length >= 2 && parts.length <= 3) {
+    const gate = await sourceMacForActor(env, parts[1], a.user);
+    if (gate.error) return gate.error;
+    const mac = gate.mac;
+    if (!isBlackboxMac(mac)) {
+      return errResp('bad_mac', 'mac must be MK:XX:XX:XX:XX:XX', 400);
+    }
+    if (parts.length === 2 && request.method === 'GET') {
+      const row = await readBlackBox(env, mac);
+      return jsonResp({ mac, text: row.body, updated_at: row.updated_at });
+    }
+    if (parts.length === 3 && parts[2] === 'ask' && request.method === 'POST') {
+      const requestedAt = await markBlackBoxAsked(env, mac, Date.now());
+      return jsonResp({ ok: true, requested_at: requestedAt });
     }
   }
 

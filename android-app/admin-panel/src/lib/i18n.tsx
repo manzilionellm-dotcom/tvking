@@ -53,6 +53,7 @@ const STR: Record<string, Record<Lang, string>> = {
   'nav.customers': { fr: 'Clients', en: 'Customers', ar: 'العملاء' },
   'nav.devices': { fr: 'Appareils', en: 'Devices', ar: 'الأجهزة' },
   'nav.myDevices': { fr: 'Mes appareils', en: 'My devices', ar: 'أجهزتي' },
+  'nav.blackbox': { fr: 'Boîte noire', en: 'Black box', ar: 'الصندوق الأسود' },
   'nav.apps': { fr: 'Applications', en: 'Apps', ar: 'التطبيقات' },
   'nav.servers': { fr: 'Serveurs', en: 'Servers', ar: 'الخوادم' },
   'nav.chaines': { fr: 'Liste de chaînes', en: 'Channel list', ar: 'قائمة القنوات' },

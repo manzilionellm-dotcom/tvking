@@ -55,6 +55,7 @@
 // API v1 — App Licensing Platform (cf. cloudflare/api_v1.js)
 // Routee depuis le bas du fetch() en haut de la chaine de match.
 import { apiV1, panelActorFromToken } from './api_v1.js';
+import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
 import {
   RealtimeHub,
   handleBoxRoute,
@@ -2428,6 +2429,46 @@ async function handleHeartbeat(request, env, _ctx) {
 //  après le heartbeat, pour savoir si elle doit afficher
 //  l'écran 'essai expiré' ou 'compte gelé'.
 // =========================================================
+// =========================================================
+//  BOÎTE NOIRE — l'app envoie son journal (POST /api/blackbox)
+// =========================================================
+//  Même contrat que le heartbeat : public, l'identifiant est la
+//  MAC. On ne renvoie PAS le texte (il peut être long). Le panel
+//  le lit par /api/v1/blackbox/:mac, avec le jeton du revendeur.
+//  Le filtre est refait ici : la base ne stocke pas de secret.
+//  Porté depuis la branche de l'app (ccr-1d45eb8b-x46ieg) le
+//  05/10/2026 : en production, la box envoyait son journal dans
+//  le vide (404) et personne ne pouvait lire « liste chargée en N s ».
+// =========================================================
+async function handleBlackboxPost(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return badRequest('invalid JSON body');
+  }
+  const mac = String(body?.mac || '').trim().toUpperCase();
+  if (!MAC_RX.test(mac)) {
+    return badRequest('invalid mac, expected MK:XX:XX:XX:XX:XX');
+  }
+  if (typeof body?.text !== 'string') return badRequest('text required');
+  if (!env.DB) {
+    return json({ error: 'no_db', message: 'Base indisponible.' }, 503);
+  }
+  const saved = await saveBlackBox(env, mac, body.text, Date.now());
+  if (saved.error === 'empty') return json({ ok: true, skipped: true });
+  if (saved.error) return json({ error: 'store_failed' }, 500);
+  return json({ ok: true, updated_at: saved.updated_at });
+}
+
+/// Le panel a-t-il demandé le journal ? La box le voit dans le
+/// statut qu'elle lit déjà (pas une nouvelle veille). 0 = personne.
+async function attachBlackboxPull(env, mac, payload) {
+  const out = payload && typeof payload === 'object' ? { ...payload } : {};
+  out.blackbox_pull = await blackboxRequestedAt(env, String(mac || '').toUpperCase());
+  return out;
+}
+
 async function handlePublicStatus(env, mac) {
   if (!MAC_RX.test(mac)) return badRequest('invalid mac');
   // D1 en priorite. Si la MAC n'est pas encore connue (status appele
@@ -2439,10 +2480,10 @@ async function handlePublicStatus(env, mac) {
       await touchTrialAnchor(env, mac, '');
       d1 = await d1StatusForMac(env, mac);
     }
-    if (d1) return json(d1);
+    if (d1) return json(await attachBlackboxPull(env, mac, d1));
   }
   const data = await readClient(env, mac);
-  return json(computeStatus(data));
+  return json(await attachBlackboxPull(env, mac, computeStatus(data)));
 }
 
 // =========================================================
@@ -3654,7 +3695,8 @@ async function handleRequest(request, env, ctx) {
           || seg1 === 'self-source') rl = ['dev', 120]; // anti-énumération MAC
         else if (seg1 === 'heartbeat' || seg1 === 'trending'
           || seg1 === 'announcement' || seg1 === 'sports'
-          || seg1 === 'feedback' || seg1 === 'm3u') rl = ['pub', 240];
+          || seg1 === 'feedback' || seg1 === 'm3u'
+          || seg1 === 'blackbox') rl = ['pub', 240];
         // L'écran récepteur poll ~40×/min ; on laisse large (TV + téléphone).
         else if (seg1 === 'screen') rl = ['scr', 600];
       } else if (seg0 === 'config') {
@@ -3673,6 +3715,15 @@ async function handleRequest(request, env, ctx) {
         return badRequest('only GET supported on /config/:mac');
       }
       return handlePublicConfig(env, segments[1]);
+    }
+
+    // /api/blackbox — public, l'app envoie son journal (filtré).
+    // Lecture : /api/v1/blackbox/:mac (jeton panel), pas ici.
+    if (segments[0] === 'api' && segments[1] === 'blackbox') {
+      if (request.method !== 'POST' || segments.length !== 2) {
+        return badRequest('only POST supported on /api/blackbox');
+      }
+      return handleBlackboxPost(request, env);
     }
 
     // /api/heartbeat — public, l'app pingue à chaque démarrage

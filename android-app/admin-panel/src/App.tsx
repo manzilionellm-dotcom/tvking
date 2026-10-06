@@ -30,6 +30,7 @@ import { HistoryPage } from '@/pages/HistoryPage';
 import { ReferencesPage } from '@/pages/ReferencesPage';
 import { TransferPage } from '@/pages/TransferPage';
 import { FamiliesPage } from '@/pages/FamiliesPage';
+import { BlackBoxPage } from '@/pages/BlackBoxPage';
 import { startPanelChannel } from '@/lib/box-channel';
 
 /// Etats possibles de l'app :
@@ -135,6 +136,7 @@ export default function App() {
       <Route path="/references" element={<ReferencesPage onLogout={handleLogout} />} />
       <Route path="/transfer" element={<TransferPage onLogout={handleLogout} />} />
       <Route path="/families" element={<FamiliesPage onLogout={handleLogout} />} />
+      <Route path="/blackbox" element={<BlackBoxPage onLogout={handleLogout} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

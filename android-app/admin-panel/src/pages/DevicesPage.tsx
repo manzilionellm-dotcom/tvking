@@ -489,6 +489,7 @@ function DeviceDetailModal({
             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
             <ActionBtn busy={busy} primary onClick={() => navigate(`/activation-distance?mac=${macUrl}`)} title="Activer et envoyer une liste en un seul geste. La box est prévenue tout de suite.">Activation à distance</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
+            <ActionBtn busy={busy} onClick={() => navigate(`/blackbox?mac=${macUrl}`)} title="Journal technique de cette box : ordre du panel reçu, liste chargée en N s, liste refusée">Boîte noire</ActionBtn>
             <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire toutes les listes poussées. La TV du client les efface toute seule à sa vérification suivante.">Effacer les listes</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/transfer?mac=${macUrl}`)} title="Transférer l'abonnement vers une nouvelle MAC">Transférer</ActionBtn>
             {st !== 'frozen' && (
