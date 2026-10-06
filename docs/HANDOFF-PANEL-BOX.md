@@ -381,6 +381,21 @@ demande (ce que font IBO / TiviMate / Smarters).
 - Tests : `activation.test.ts` (8), panel 60/60, build OK ; 3 de ces tests
   échouent sur le panel en ligne (contre-preuve).
 
+## 5 octodecies. MIS EN LIGNE (6 octobre, 04:23 heure de la box)
+
+- Sur ordre écrit du propriétaire (« termine le travail »), les 8 patchs
+  sont sur `claude/panel-mise-en-ligne` (un commit par patch, avance
+  rapide, rien réécrit), tête `7f2813e`. Le repère du workflow est passé de
+  « Activation 1 an » à « Activer une box ».
+- `deploy-panel-cloudflare.yml` run #10 (37403717544) : Worker puis panel,
+  les deux verts ; MAC de référence `MK:24:2A:D0:0E:F3` identique avant et
+  après.
+- Relu en direct : le panel sert `index-5rb0at2A.js` (même nom que le build
+  testé) avec « Activer une box » ; Worker : `/api/box/ack` répond,
+  `/api/v1/metrics/latency` et `/api/v1/timeline` → 401 sans jeton.
+- Retour arrière : versions du Worker listées par le run (étape AVANT) ;
+  déploiements Pages précédents dans Cloudflare.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.

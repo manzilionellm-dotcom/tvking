@@ -7,7 +7,7 @@ présentée comme une mesure de production.
 
 Code concerné : production `claude/panel-mise-en-ligne` (`636aad6`) +
 `docs/patches/` 1 à 7, et la box sur `ccr-b93e1afd-gwirw0`.
-Rien n'est déployé : la production n'a aucune des protections ci-dessous.
+Mis en ligne le 6 octobre (run #10 de `deploy-panel-cloudflare.yml`, branche `claude/panel-mise-en-ligne` à `7f2813e`) : patchs 1 à 8.
 
 ## 1. Bugs racines
 
@@ -149,7 +149,7 @@ Box (`android-app/lib/`) : `features/subscription/domain/order_ack.dart` et
 
 1. **Codes IPTV lisibles par la seule MAC** (`GET /api/device-source/:mac`),
    freinés seulement par 120 lectures/min/IP une fois le patch 6 déployé.
-2. **Sept patchs non déployés.**
+2. Patchs 1 à 8 en ligne depuis le 6 octobre ; la latence de production se lit maintenant dans `GET /api/v1/metrics/latency` (pas encore relevée).
 3. **Fusion à l'aveugle** des branches : 18 fichiers en conflit, et 10 pages
    du site supprimées côté app (`docs/DIVERGENCE-BRANCHES.md`).
 4. Au-delà d'environ 50 écrivains simultanés sur **la même box**, les
