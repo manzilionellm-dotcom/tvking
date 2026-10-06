@@ -398,16 +398,24 @@ function DeviceDetailModal({
   async function removeOne(index: number) {
     const list = ov?.sources ?? [];
     const plan = planRemoveSource(list, index);
-    if (plan.kind === 'invalid' || plan.kind === 'client') return;
+    if (plan.kind === 'invalid') return;
+    if (plan.kind === 'client' && !plan.id) {
+      setErr('Cette liste du client n\'a pas encore d\'identifiant serveur : relis la fiche puis réessaie.');
+      return;
+    }
     const target = list[index];
     const name = target.type === 'xtream' ? 'Xtream' : 'M3U';
     if (!window.confirm(
-      `Retirer la liste #${index + 1} (${name}) ? Elle disparaîtra de la TV du client toute seule, sans qu'il fasse rien.`,
+      plan.kind === 'client'
+        ? `Retirer la liste #${index + 1} (${name}) ajoutée par le client ? Elle disparaîtra de sa TV toute seule.`
+        : `Retirer la liste #${index + 1} (${name}) ? Elle disparaîtra de la TV du client toute seule, sans qu'il fasse rien.`,
     )) return;
     setClearing(true);
     setErr(null);
     try {
-      if (plan.kind === 'clear') {
+      if (plan.kind === 'client') {
+        await sourcesApi.removeClientList(device.mac, plan.id!);
+      } else if (plan.kind === 'clear') {
         await sourcesApi.clear(device.mac);
       } else {
         await sourcesApi.setMany(device.mac, plan.sources);
@@ -671,13 +679,25 @@ function SourceCard({
         </span>
         {source.label && <span className="truncate text-xs text-ink-secondary">{source.label}</span>}
         {isClientList(source) ? (
-          // Ajoutée par le client sur sa TV : le serveur actuel ne sait pas
-          // la retirer depuis le panel. Pas de bouton qui ne ferait rien.
-          <span
-            className="ml-auto rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-ink-tertiary"
-            title="Liste ajoutée par le client lui-même. Elle ne se retire pas depuis le panel."
-          >
-            Ajoutée par le client
+          // Ajoutée par le client (TV ou Mon espace). Depuis le 05/10/2026
+          // le panel peut la retirer : avant, elle « revenait » sur la fiche
+          // après chaque effacement des listes du panel.
+          <span className="ml-auto flex items-center gap-1.5">
+            <span
+              className="rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-ink-tertiary"
+              title="Liste ajoutée par le client lui-même, sur sa TV ou dans Mon espace."
+            >
+              Ajoutée par le client
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onRemove}
+              title="Retirer cette liste du client. Sa TV l'efface toute seule."
+              className="rounded-md border border-accent/40 px-2 py-0.5 text-[11px] text-accent-bright hover:bg-accent/10 disabled:opacity-40"
+            >
+              Supprimer
+            </button>
           </span>
         ) : (
           <>

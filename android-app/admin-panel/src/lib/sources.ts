@@ -28,6 +28,9 @@ export interface SourceLike {
   /// `false` = liste ÉTEINTE par le panel (la box la masque sans l'effacer).
   /// Absent ou `true` = allumée.
   enabled?: boolean | null;
+  /// Identifiant serveur d'une liste du client (`origin: 'self'`), celui
+  /// que le Worker attend pour la retirer.
+  id?: string | null;
 }
 
 export type SourceInput = Pick<
@@ -93,21 +96,25 @@ export function isClientList(s: SourceLike): boolean {
 export type RemovePlan =
   | { kind: 'keep'; sources: SourceInput[] }
   | { kind: 'clear' }
-  | { kind: 'client' }
+  | { kind: 'client'; id: string | null }
   | { kind: 'invalid' };
 
 /// Que faut-il envoyer pour retirer la liste [index] ?
 /// - reste au moins une liste du PANEL → « keep » + les autres listes du
 ///   panel, dans le même ordre (le serveur remet lui-même celles du client) ;
 /// - plus aucune liste du panel → « clear » (le serveur garde celles du client) ;
-/// - la liste visée a été ajoutée par le client → « client » : le Worker
-///   actuel ne sait pas la retirer depuis le panel, on n'envoie rien ;
+/// - la liste visée a été ajoutée par le client → « client » avec son `id` :
+///   depuis le 05/10/2026 le Worker la retire par
+///   `DELETE /api/v1/sources/:mac/self/:id` (sans `id`, on n'envoie rien) ;
 /// - index hors limites → « invalid » (on n'envoie rien).
 export function planRemoveSource(sources: SourceLike[], index: number): RemovePlan {
   if (!Number.isInteger(index) || index < 0 || index >= sources.length) {
     return { kind: 'invalid' };
   }
-  if (isClientList(sources[index])) return { kind: 'client' };
+  if (isClientList(sources[index])) {
+    const id = sources[index].id;
+    return { kind: 'client', id: typeof id === 'string' && id ? id : null };
+  }
   const rest = sources
     .filter((s, i) => i !== index && !isClientList(s))
     .map(toSourceInput);

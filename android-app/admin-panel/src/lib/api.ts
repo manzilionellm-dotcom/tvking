@@ -516,6 +516,8 @@ export interface DeviceSource extends DeviceSourceInput {
   updated_at?: number;
   /// « panel » = poussée ici ; « self » = ajoutée par le client sur sa TV.
   origin?: string | null;
+  /// Identifiant serveur d'une liste du client (sert à la retirer).
+  id?: string | null;
 }
 
 export interface TrialExtendResult {
@@ -554,6 +556,13 @@ export const activateApi = {
 
 // Source assignée par MAC (gérée indépendamment de l'activation).
 export const sourcesApi = {
+  /// Retire une liste ajoutée par le client lui-même (origin « self »).
+  /// La box est prévenue : elle l'efface à la seconde.
+  removeClientList: (mac: string, id: string) =>
+    request<{ ok: boolean; remaining?: number }>(
+      `/api/v1/sources/${encodeURIComponent(mac)}/self/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    ),
   // Le worker renvoie le TRIO complet (`sources`) + la 1re source (`source`,
   // rétro-compat). On expose les deux : `sources` sert au panel pour montrer
   // « tout ce que le client a dans le ventre » à partir de sa MAC.

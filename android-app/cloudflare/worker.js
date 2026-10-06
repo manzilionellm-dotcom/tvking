@@ -59,6 +59,7 @@ import { blackboxRequestedAt, saveBlackBox } from './blackbox_journal.js';
 import {
   RealtimeHub,
   handleBoxRoute,
+  notifyBox,
   openPanelSocket,
 } from './box_channel.js';
 export { RealtimeHub };
@@ -3189,16 +3190,26 @@ async function handleSelfSourceDelete(env, mac, request) {
 
   let delId = null;
   try { delId = new URL(request.url).searchParams.get('id'); } catch (_) { delId = null; }
+  const out = await removeSelfSourceItem(env, MAC, delId);
+  return jsonPrivate(out.body, out.status);
+}
 
+/// Retire une liste ajoutée par le client (`origin: 'self'`) : par son
+/// `id`, ou toutes si `delId` est vide. Partagé entre la route publique
+/// (le client, depuis sa TV ou Mon espace) et la route panel
+/// (`DELETE /api/v1/sources/:mac/self/:id`) : depuis le 05/10/2026 le
+/// revendeur peut retirer une liste du client, sinon elle « revenait »
+/// sur la fiche après chaque effacement des listes du panel.
+async function removeSelfSourceItem(env, MAC, delId) {
   const { items } = await readDeviceSourceItems(env, MAC);
-  if (!items.length) return jsonPrivate({ ok: true, message: 'Aucune playlist à supprimer.' });
+  if (!items.length) return { status: 200, body: { ok: true, message: 'Aucune playlist à supprimer.' } };
 
   let kept;
   if (delId) {
     const target = items.find((s) => s.id === delId);
-    if (!target) return jsonPrivate({ ok: false, reason: 'not_found', message: 'Playlist introuvable.' }, 404);
+    if (!target) return { status: 404, body: { ok: false, reason: 'not_found', message: 'Playlist introuvable.' } };
     if (target.origin !== 'self') {
-      return jsonPrivate({ ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' }, 409);
+      return { status: 409, body: { ok: false, reason: 'locked', message: 'Cette playlist est gérée par votre conseiller.' } };
     }
     kept = items.filter((s) => s.id !== delId);
   } else {
@@ -3209,9 +3220,33 @@ async function handleSelfSourceDelete(env, mac, request) {
   try {
     await writeDeviceSourceItems(env, MAC, kept);
   } catch (_) {
-    return jsonPrivate({ ok: false, error: 'db_write_failed' }, 500);
+    return { status: 500, body: { ok: false, error: 'db_write_failed' } };
   }
-  return jsonPrivate({ ok: true, message: 'Playlist supprimée.' });
+  return { status: 200, body: { ok: true, message: 'Playlist supprimée.', remaining: kept.length } };
+}
+
+/// DELETE /api/v1/sources/:mac/self/:id — le panel retire une liste
+/// ajoutée par le client. Jeton du panel obligatoire ; un revendeur ne
+/// touche qu'à ses appareils. La box est prévenue (« source ») : elle
+/// efface la liste à la seconde.
+async function handlePanelRemoveSelfSource(request, env, mac, id) {
+  const auth = request.headers.get('Authorization') || '';
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  const user = m ? await panelActorFromToken(env, m[1]) : null;
+  if (!user) return json({ error: 'no_auth', message: 'Missing Authorization header' }, 401);
+  const MAC = String(mac || '').toUpperCase();
+  if (!MAC_RX.test(MAC)) return badRequest('invalid mac');
+  if (!env.DB) return json({ error: 'no_db' }, 503);
+  if (user.role === 'reseller') {
+    const dev = await env.DB.prepare('SELECT reseller_id FROM devices WHERE mac = ?').bind(MAC).first();
+    if (!dev || dev.reseller_id !== user.sub) {
+      return json({ error: 'forbidden', message: 'Cet appareil ne vous appartient pas' }, 403);
+    }
+  }
+  await ensureDeviceSourcesTable(env);
+  const out = await removeSelfSourceItem(env, MAC, String(id || ''));
+  if (out.status === 200) await notifyBox(env, MAC, 'source');
+  return json(out.body, out.status);
 }
 
 // /api/history/:mac — renvoie l'historique de visionnage (ids de chaînes)
@@ -3671,6 +3706,17 @@ async function handleRequest(request, env, ctx) {
       const user = await panelActorFromToken(env, token);
       if (!user) return json({ error: 'no_auth' }, 401);
       return openPanelSocket(request, env, { id: user.sub, role: user.role });
+    }
+
+    // DELETE /api/v1/sources/:mac/self/:id — traité ici (les lecteurs
+    // de listes vivent dans ce fichier), avant le routeur v1.
+    {
+      const selfRemove = url.pathname.match(/^\/api\/v1\/sources\/([^/]+)\/self\/([^/]+)$/);
+      if (selfRemove && request.method === 'DELETE') {
+        return handlePanelRemoveSelfSource(
+          request, env, decodeURIComponent(selfRemove[1]), decodeURIComponent(selfRemove[2]),
+        );
+      }
     }
 
     if (url.pathname.startsWith('/api/v1/')) {

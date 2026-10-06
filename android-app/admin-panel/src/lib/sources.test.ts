@@ -83,7 +83,10 @@ test('dernière liste du panel, il reste celle du client : effacement panel seul
 });
 
 test('liste du client visée : rien n\'est envoyé', () => {
-  assert.deepEqual(planRemoveSource([panelList, clientList], 1), { kind: 'client' });
+  assert.deepEqual(planRemoveSource([panelList, clientList], 1), { kind: 'client', id: null });
+  // Avec son identifiant serveur, le panel peut la retirer (05/10/2026).
+  const clientWithId = { ...clientList, id: 'c-123' } as SourceLike;
+  assert.deepEqual(planRemoveSource([panelList, clientWithId], 1), { kind: 'client', id: 'c-123' });
   assert.equal(isClientList(clientList), true);
   assert.equal(isClientList(panelList), false);
 });
