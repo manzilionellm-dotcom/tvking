@@ -590,6 +590,29 @@ demande (ce que font IBO / TiviMate / Smarters).
   (`device_guard`), P3 (qui efface la ligne de liste), P4 (lecture 2,2 s,
   aucune mesure de gel sur la box), P6 (latence de production).
 
+## 5 suite quater. Téléphone : panel en direct, liens get.php (6 octobre, fin d'après-midi)
+
+- **PROUVÉ sur les vraies apps (propriétaire, 06/10 ~17:00) : « les 2 apps
+  fonctionnent »** avec le panel — box SHIELD (v107-test.171) et téléphone
+  (7motion-test, build #1734, versionCode 3734, SHA-256
+  `2483dad212a9dc0c2553feca4b1acdf154f7ae6cc50c4c9d6990a842f57cbe3c`, signé
+  `5145b8e0…9e61`).
+- L'app téléphone est une AUTRE lignée de code que la box : branche
+  `claude/phone-panel-direct`, partie de `claude/motion-mobile-106`.
+  Le correctif téléphone `db317b7` de cette branche (code Zuno) ne la
+  concerne pas.
+- Commits téléphone : `c1c2056` + `20b3907` (écoute du panel par
+  `GET /api/box/wait`, premier plan, repli `zuno.mobile.live_wait_off`) ;
+  `37fdf33` (lien get.php du panel → API Xtream, repli M3U ; liste retirée
+  ou éteinte au panel → enlevée ; replis `zuno.mobile.getphp_as_m3u`,
+  `zuno.mobile.panel_reconcile_off`). Tests : 6 + 7 nouveaux,
+  `test/features/playlists` 168/168.
+- Mesuré sur le fournisseur du propriétaire : get.php en fichier M3U
+  > 200 Mo (744 000 entrées, 49 s avant le premier octet) ; par l'API
+  Xtream : 28 490 chaînes TV, 8 Mo, 1 s.
+- Canal clients `phone-latest` inchangé (1729) ; `zuno-tv` inchangé.
+  **Publication clients : NON FAITE, attend l'ordre écrit du propriétaire.**
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
