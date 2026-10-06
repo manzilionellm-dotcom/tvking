@@ -35,6 +35,7 @@ import '../../device/data/device_identity.dart';
 import '../../device/data/device_secret.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
+import '../../subscription/domain/order_ack.dart' show SourceSyncReport;
 import '../domain/m3u_link.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
@@ -130,6 +131,7 @@ abstract final class RemoteSourceRepository {
       // rejeté. La boîte noire expurge les liens et mots de passe à
       // l'écriture ; on coupe quand même la raison pour rester lisible.
       final String secs = (watch.elapsedMilliseconds / 1000).toStringAsFixed(1);
+      _lastError = 'liste $kind refusée après $secs s : ${shortReason(e)}';
       BlackBox.instance.warn(
         'SOURCE',
         'liste $kind du panel refusée après $secs s : ${shortReason(e)}',
@@ -184,8 +186,29 @@ abstract final class RemoteSourceRepository {
   /// mises de côté après un refus sont retentées tout de suite (en
   /// dernier). Sinon, une liste refusée attend son délai (source_retry.dart).
   static Future<RemoteSyncResult> sync({bool force = false}) {
-    return _serial(() => _syncBody(force: force));
+    return _serial(() async {
+      _lastConfigRev = null;
+      _lastError = null;
+      _lastKeptPrevious = false;
+      final RemoteSyncResult r = await _syncBody(force: force);
+      // Rapport de CETTE lecture, lu par l'accusé de l'ordre (order_ack.dart).
+      lastReport = SourceSyncReport(
+        result: r.name,
+        atMs: DateTime.now().millisecondsSinceEpoch,
+        configRev: _lastConfigRev,
+        error: _lastError,
+        keptPrevious: _lastKeptPrevious,
+      );
+      return r;
+    });
   }
+
+  /// Dernière lecture des listes : résultat, révision servie, raison du
+  /// refus, ancienne liste gardée. `null` tant qu'aucune lecture n'a eu lieu.
+  static SourceSyncReport? lastReport;
+  static int? _lastConfigRev;
+  static String? _lastError;
+  static bool _lastKeptPrevious = false;
 
   /// Mémoire des listes refusées (empreinte → dernier refus, compte).
   static const String failuresKey = 'zuno.source.failures.v1';
@@ -257,6 +280,7 @@ abstract final class RemoteSourceRepository {
 
       final Map<String, dynamic> body =
           jsonDecode(resp.body) as Map<String, dynamic>;
+      _lastConfigRev = (body['rev'] as num?)?.toInt() ?? (body['updated_at'] as num?)?.toInt();
 
       // Ce que le panel a RETIRÉ est calculé maintenant (après un HTTP 200 :
       // une coupure ne vide pas la box) mais effacé APRÈS l'import des
@@ -267,7 +291,7 @@ abstract final class RemoteSourceRepository {
       final _ReconcilePlan reconcile = await _planReconcile(body);
       final bool dropFirst = RepairFlags.sourceDropFirstLegacy;
       if (dropFirst) await _finishReconcile(reconcile, keepOld: false);
-      bool newTried = false;
+      int servedCount = 0;
       bool anyLoaded = false;
       RemoteSyncResult outcome = RemoteSyncResult.noSource;
 
@@ -332,13 +356,13 @@ abstract final class RemoteSourceRepository {
           // c'est un échec de liste, pas « rien d'assigné ».
           agg = RemoteSyncResult.sourceFailed;
         }
-        newTried = plan.tryNow.isNotEmpty;
+        servedCount = items.length;
         anyLoaded = agg == RemoteSyncResult.loaded;
         outcome = agg;
       } else {
         final Object? src = body['source'];
         if (src is Map<String, dynamic>) {
-          newTried = true;
+          servedCount = 1;
           outcome = await _applySource(src);
           anyLoaded = outcome == RemoteSyncResult.loaded;
         }
@@ -350,7 +374,7 @@ abstract final class RemoteSourceRepository {
           reconcile,
           keepOld: keepOldLists(
             dropCount: reconcile.drop.length,
-            newTried: newTried,
+            servedCount: servedCount,
             anyLoaded: anyLoaded,
             legacy: false,
           ),
@@ -500,19 +524,23 @@ abstract final class RemoteSourceRepository {
   }
 
   /// Règle pure (testée) : garde-t-on les anciennes listes ce tour-ci ?
-  /// Oui seulement si le panel en a retiré ([dropCount] > 0), qu'il en a
-  /// servi de nouvelles qu'on a essayées ([newTried]) et qu'AUCUNE n'a été
-  /// chargée ([anyLoaded] faux) : le client garde ce qui marchait, la box
-  /// réessaie au tour suivant. Panel vidé (rien de nouveau à essayer) :
-  /// on efface, c'est l'intention du revendeur. [legacy] = ancien ordre.
+  /// Oui si le panel en a retiré ([dropCount] > 0), qu'il SERT au moins une
+  /// liste ([servedCount] > 0) et qu'AUCUNE liste servie n'est chargée
+  /// ([anyLoaded] faux) — refusée maintenant OU mise de côté par le délai de
+  /// réessai : la dernière configuration qui marchait reste active.
+  /// Corrigé le 06/10/2026 : la version précédente regardait « essayée ce
+  /// tour-ci » ; au tour suivant, la nouvelle liste étant mise de côté
+  /// (non essayée), l'ancienne était effacée quand même.
+  /// Panel vidé (rien servi) : on efface, c'est l'intention du revendeur.
+  /// [legacy] = ancien ordre (effacer d'abord).
   static bool keepOldLists({
     required int dropCount,
-    required bool newTried,
+    required int servedCount,
     required bool anyLoaded,
     required bool legacy,
   }) {
     if (legacy) return false;
-    return dropCount > 0 && newTried && !anyLoaded;
+    return dropCount > 0 && servedCount > 0 && !anyLoaded;
   }
 
   /// Compare les listes encore assignées, celles déjà vues, et les
@@ -559,6 +587,7 @@ abstract final class RemoteSourceRepository {
     required bool keepOld,
   }) async {
     if (keepOld) {
+      _lastKeptPrevious = true;
       BlackBox.instance.warn(
         'SOURCE',
         '${plan.drop.length} ancienne(s) liste(s) gardée(s) : la nouvelle a été '

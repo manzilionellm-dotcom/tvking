@@ -18,11 +18,26 @@ class BoxChannelFrame {
     required this.seq,
     required this.type,
     required this.mac,
+    this.orderId = '',
+    this.traceId = '',
   });
 
   final int seq;
   final String type;
   final String mac;
+
+  /// Ordre suivi par le serveur (06/10/2026) : la box l'accuse RECEIVED
+  /// puis APPLIED / FAILED. Vide = ancien Worker (pas d'accusé).
+  final String orderId;
+
+  /// Trace de l'action du panel, recopiée dans la boîte noire et l'accusé.
+  final String traceId;
+}
+
+/// Identifiant d'ordre ou de trace acceptable (aléatoire, jamais un secret).
+String safeOrderToken(Object? v) {
+  if (v is! String) return '';
+  return RegExp(r'^[A-Za-z0-9_.:-]{8,80}$').hasMatch(v) ? v : '';
 }
 
 const Set<String> _secretKeys = <String>{
@@ -67,7 +82,13 @@ BoxChannelFrame? parseBoxChannelFrame(String raw) {
   final String type = typeRaw is String ? typeRaw : '';
   final String mac = decoded['mac'] is String ? decoded['mac'] as String : '';
   if (seq <= 0 || type.isEmpty || !mac.startsWith('MK:')) return null;
-  return BoxChannelFrame(seq: seq, type: type, mac: mac);
+  return BoxChannelFrame(
+    seq: seq,
+    type: type,
+    mac: mac,
+    orderId: safeOrderToken(decoded['order_id']),
+    traceId: safeOrderToken(decoded['trace_id']),
+  );
 }
 
 /// Relire les listes pour ces noms. Les autres noms relisent

@@ -18,15 +18,26 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../device/data/device_secret.dart';
+import '../domain/box_channel.dart' show safeOrderToken;
 import 'subscription_backend.dart';
 
 /// Un ordre, sans secret dedans.
 @immutable
 class BoxOrder {
-  const BoxOrder({required this.id, required this.kind, required this.fleet});
+  const BoxOrder({
+    required this.id,
+    required this.kind,
+    required this.fleet,
+    this.orderId = '',
+    this.traceId = '',
+  });
 
   final int id;
   final String kind;
+
+  /// Ordre suivi côté serveur (vide = ancien Worker) et trace du panel.
+  final String orderId;
+  final String traceId;
 
   /// Vrai si l'ordre s'adresse à tout le parc (message, thème…).
   final bool fleet;
@@ -124,6 +135,10 @@ abstract final class BoxSignalClient {
     }
   }
 
+  /// Lecture d'une réponse d'attente longue (exposée pour les tests).
+  @visibleForTesting
+  static BoxWaitResult readForTest(int status, String body) => _read(status, body);
+
   static BoxWaitResult _read(int status, String body) {
     if (status == 401) {
       return BoxWaitResult(
@@ -174,7 +189,13 @@ abstract final class BoxSignalClient {
       final int id = (item['id'] as num?)?.toInt() ?? 0;
       final String kind = (item['kind'] ?? '').toString();
       if (id <= 0 || kind.isEmpty) continue;
-      out.add(BoxOrder(id: id, kind: kind, fleet: fleet));
+      out.add(BoxOrder(
+        id: id,
+        kind: kind,
+        fleet: fleet,
+        orderId: safeOrderToken(item['order_id']),
+        traceId: safeOrderToken(item['trace_id']),
+      ));
     }
     return out;
   }

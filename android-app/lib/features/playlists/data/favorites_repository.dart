@@ -34,18 +34,21 @@ class FavoritesRepository {
       StreamController<Set<String>>.broadcast();
 
   Set<String> _cache = <String>{};
-  bool _initialized = false;
+  /// Base pour laquelle le schéma est prêt (06/10/2026 : le drapeau était
+  /// global au processus ; une base rouverte — tests — restait sans table).
+  Database? _initializedFor;
+  bool get _initialized => _initializedFor != null;
   bool _listening = false;
 
   Stream<Set<String>> get favoritesStream => _controller.stream;
   Set<String> get current => _cache;
 
   Future<void> initialize() async {
-    if (_initialized) return;
     final Database db = await PlaylistDatabase.instance.database;
+    if (identical(_initializedFor, db)) return;
     await _ensureSchema(db);
     await _migrateLegacyOnce(db);
-    _initialized = true;
+    _initializedFor = db;
     _listenProfile();
     await _reload();
   }

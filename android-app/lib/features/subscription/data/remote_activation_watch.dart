@@ -47,8 +47,10 @@ import '../../tv/core/tv_activity.dart';
 import '../domain/activation_pace.dart';
 import '../domain/box_channel.dart';
 import '../domain/box_signal.dart';
+import '../domain/order_ack.dart';
 import 'box_channel_session.dart';
 import 'box_signal_client.dart';
+import 'order_ack_client.dart';
 import 'signal_inbox.dart';
 import 'subscription_backend.dart';
 import 'subscription_state.dart';
@@ -285,7 +287,13 @@ class RemoteActivationWatch {
           // production) : même chemin que l'attente longue, une
           // seule lecture de /api/device-source par ordre.
           await _applyOrders(<BoxOrder>[
-            BoxOrder(id: frame.seq, kind: frame.type, fleet: false),
+            BoxOrder(
+              id: frame.seq,
+              kind: frame.type,
+              fleet: false,
+              orderId: frame.orderId,
+              traceId: frame.traceId,
+            ),
           ], via: 'ws');
         },
       );
@@ -412,12 +420,37 @@ class RemoteActivationWatch {
       for (final Map<String, Object?> m in freshBox) m['kind']! as String,
       for (final Map<String, Object?> m in freshFleet) m['kind']! as String,
     ];
-    for (final Map<String, Object?> m in freshBox) {
+    // Accusé RECEIVED dès la réception (avant tout travail) : le serveur
+    // distingue « envoyé » de « reçu ». La trace du panel suit dans la
+    // boîte noire et dans l'accusé.
+    final int receivedAt = DateTime.now().millisecondsSinceEpoch;
+    final Set<int> freshIds = <int>{for (final Map<String, Object?> m in freshBox) m['id']! as int};
+    final List<BoxOrder> tracked = <BoxOrder>[
+      for (final BoxOrder o in orders)
+        if (!o.fleet && o.orderId.isNotEmpty && freshIds.contains(o.id)) o,
+    ];
+    for (final BoxOrder o in orders) {
+      if (o.fleet || !freshIds.contains(o.id)) continue;
       BlackBox.instance.info(
         'PANEL',
-        'ordre ${m['kind']} n°${m['id']} reçu'
-        '${via.isEmpty ? '' : ' ($via)'}',
+        'ordre ${o.kind} n°${o.id} reçu'
+        '${via.isEmpty ? '' : ' ($via)'}'
+        '${o.traceId.isEmpty ? '' : ' trace=${o.traceId}'}',
       );
+    }
+    final String appVersion = await _version();
+    final String ackMac = await DeviceIdentity.instance.mac;
+    if (tracked.isNotEmpty) {
+      unawaited(OrderAckClient.send(ackMac, <Map<String, Object?>>[
+        for (final BoxOrder o in tracked)
+          ackPayload(
+            orderId: o.orderId,
+            state: 'received',
+            traceId: o.traceId,
+            appVersion: appVersion,
+            receivedAtMs: receivedAt,
+          ),
+      ]));
     }
     final bool needStatus = kinds.any(kindNeedsStatus);
     final bool sourceOrdered = kinds.any(channelRefreshesSources);
@@ -432,9 +465,42 @@ class RemoteActivationWatch {
       await _tick(sourceOrdered: sourceOrdered);
       if (SubscriptionState.instance.syncHint == 'offline') return false;
     }
+    final Map<String, bool> sideOk = <String, bool>{};
     for (final String kind in kinds) {
-      await _sideEffect(kind);
+      sideOk[kind] = await _sideEffect(kind);
       SignalInbox.instance.note(kind);
+    }
+    // Issue RÉELLE de chaque ordre suivi : APPLIED ou FAILED, avec le
+    // résultat, l'erreur et la révision de listes effectivement appliquée.
+    if (tracked.isNotEmpty) {
+      final bool statusRead = SubscriptionState.instance.syncHint != 'offline';
+      final int doneAt = DateTime.now().millisecondsSinceEpoch;
+      final List<Map<String, Object?>> finals = <Map<String, Object?>>[];
+      for (final BoxOrder o in tracked) {
+        final OrderOutcome out = orderOutcome(
+          kind: o.kind,
+          receivedAtMs: receivedAt,
+          statusRead: statusRead,
+          sideEffectOk: sideOk[o.kind] ?? true,
+          report: RemoteSourceRepository.lastReport,
+        );
+        BlackBox.instance.info(
+          'PANEL',
+          'ordre ${o.kind} n°${o.id} ${out.applied ? 'appliqué' : 'en échec'} : ${out.result}'
+          '${out.configRev == null ? '' : ' (révision ${out.configRev})'}'
+          '${o.traceId.isEmpty ? '' : ' trace=${o.traceId}'}',
+        );
+        finals.add(ackPayload(
+          orderId: o.orderId,
+          state: out.state,
+          traceId: o.traceId,
+          appVersion: appVersion,
+          receivedAtMs: receivedAt,
+          appliedAtMs: doneAt,
+          outcome: out,
+        ));
+      }
+      unawaited(OrderAckClient.send(ackMac, finals));
     }
     for (final Map<String, Object?> m in freshBox) {
       _seenBox.add(m['id']! as int);
@@ -445,7 +511,8 @@ class RemoteActivationWatch {
     return true;
   }
 
-  Future<void> _sideEffect(String kind) async {
+  /// Rend faux si la relecture a échoué (l'accusé de l'ordre le dira).
+  Future<bool> _sideEffect(String kind) async {
     final Set<SignalRefresh> plan = refreshesFor(kind);
     try {
       if (plan.contains(SignalRefresh.announcement)) {
@@ -484,8 +551,11 @@ class RemoteActivationWatch {
       if (plan.contains(SignalRefresh.banner)) {
         await PromoBannerRepository.instance.refresh();
       }
+      return true;
     } catch (e) {
       if (kDebugMode) debugPrint('[Signal] effet $kind : $e');
+      BlackBox.instance.warn('PANEL', 'ordre $kind : relecture en échec');
+      return false;
     }
   }
 

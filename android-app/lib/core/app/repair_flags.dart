@@ -215,6 +215,13 @@ abstract final class RepairFlags {
   static const String sourceDropFirstLegacyKey = 'zuno.source.drop_first_legacy';
   static bool sourceDropFirstLegacy = false;
 
+  /// Vrai = la box n'envoie aucun accusé d'ordre (ancien comportement :
+  /// le serveur ne savait pas si un ordre avait été reçu ou appliqué).
+  /// Faux = accusé RECEIVED dès la réception, puis APPLIED ou FAILED avec
+  /// le résultat réel et la révision de listes appliquée.
+  static const String orderAckOffKey = 'zuno.ack.off';
+  static bool orderAckOff = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool fsyncAll = false;
@@ -242,6 +249,7 @@ abstract final class RepairFlags {
     bool resetOff = false;
     bool testPollLegacy = false;
     bool dropFirst = false;
+    bool ackOff = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -270,6 +278,7 @@ abstract final class RepairFlags {
       resetOff = prefs.getBool(remoteResetOffKey) ?? false;
       testPollLegacy = prefs.getBool(testUpdatePollLegacyKey) ?? false;
       dropFirst = prefs.getBool(sourceDropFirstLegacyKey) ?? false;
+      ackOff = prefs.getBool(orderAckOffKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -297,7 +306,9 @@ abstract final class RepairFlags {
       resetOff = false;
       testPollLegacy = false;
       dropFirst = false;
+      ackOff = false;
     }
+    orderAckOff = ackOff;
     sourceDropFirstLegacy = dropFirst;
     remoteResetOff = resetOff;
     testUpdatePollLegacy = testPollLegacy;
@@ -357,6 +368,7 @@ abstract final class RepairFlags {
     remoteResetOff = false;
     testUpdatePollLegacy = false;
     sourceDropFirstLegacy = false;
+    orderAckOff = false;
     NativeVideoController.legacyHoldFrame = false;
   }
 }

@@ -38,17 +38,20 @@ class RecentlyWatchedRepository {
   Stream<List<String>> get stream => _controller.stream;
 
   List<String> _cache = <String>[];
-  bool _initialized = false;
+  /// Base pour laquelle le schéma est prêt (06/10/2026 : drapeau global
+  /// au processus → une base rouverte restait sans table).
+  Database? _initializedFor;
+  bool get _initialized => _initializedFor != null;
   bool _listening = false;
 
   List<String> get current => List<String>.unmodifiable(_cache);
 
   Future<void> initialize() async {
-    if (_initialized) return;
     final Database db = await PlaylistDatabase.instance.database;
+    if (identical(_initializedFor, db)) return;
     await _ensureSchema(db);
     await _migrateLegacyOnce(db);
-    _initialized = true;
+    _initializedFor = db;
     _listenProfile();
     await _reload();
   }
