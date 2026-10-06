@@ -317,6 +317,15 @@ Pour **chaque** point, dans cet ordre :
 - **Réussi si** : le guide se charge, et la boîte noire montre
   `[EPG] … N programmes` sans `Filter error`.
 
+### P2 bis — Le test E2E du panel doit rester vert
+
+- **Fait** : `e2e-panel-box.yml` (« E2E panel et box (local) ») se lance à
+  chaque push sur la branche de production. Les runs #21 et #22 ont
+  échoué : le parcours attendait l'ancien écran « Activation », remplacé
+  par « Activer une box ». Le commit `afc108b` corrige le parcours.
+- **Règle** : après chaque push sur `claude/panel-mise-en-ligne`, lis le
+  résultat de ce workflow. Un run rouge bloque le déploiement suivant.
+
 ### P3 — La ligne de la liste disparaît pendant un long import (`FOREIGN KEY constraint failed`)
 
 - **Fait** : boîte noire `107-test.163`, 00:16:07. L'import a échoué après
