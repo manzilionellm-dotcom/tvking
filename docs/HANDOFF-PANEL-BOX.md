@@ -564,6 +564,32 @@ demande (ce que font IBO / TiviMate / Smarters).
   écriture produit pendant la lecture du panel est une demande de journal
   technique à la MAC de référence ; aucune licence ni liste n'a été modifiée.
 
+## 5 suite ter. Ajout instantané, guide, Xtream (6 octobre, après-midi)
+
+- **PROUVÉ — « Ajouter » dans l'écran Listes n'efface plus les autres
+  listes.** Cause : l'écran ne renvoyait que les listes Xtream du panel ;
+  ajouter un M3U effaçait les autres M3U et rallumait les listes éteintes.
+  Commit `719928d` (branche de production) : `planAddList`, liste de la box
+  avec Allumer/Éteindre et Retirer, « Suivi de l'envoi » qui lit l'état réel
+  de l'ordre (accusés de la box) au lieu d'annoncer « box prévenue ».
+  Preuves : panel 70/70 ; E2E local complet vert, puis [run #25](https://github.com/manzilionellm-dotcom/tvking/actions/runs/37468941723)
+  vert ; contre-preuve : ancien écran → `ECHEC Ajouter conserve les deux M3U`
+  (et run #24 rouge sur l'ancien écran).
+- **PROUVÉ — guide `FormatException: Filter error`.** Cause : le client HTTP
+  de dart:io décompresse déjà `Content-Encoding: gzip` en laissant l'en-tête ;
+  le code redécompressait. Même erreur pour une adresse `.gz` servie en
+  clair. Commit `da651cf` : décision sur les octets `1f 8b`. Vrai serveur
+  HTTP local + vrai client : 3 cas → 4 programmes ; repli
+  `zuno.epg.gzip_by_header` allumé → `FormatException`.
+- **PROUVÉ (machine de test) — import Xtream par catégorie, 4 à la fois.**
+  Commit `c2d1bef` : même résultat qu'en série, ≤ 4 appels simultanés ;
+  40 catégories à 40 ms : 1 032 ms contre 2 183 ms. Repli
+  `zuno.xtream.per_category_serial`. **NON PROUVÉ sur la SHIELD.**
+- `flutter test` : 523 réussis, 2 ignorés.
+- **NON PROUVÉ** : P0 (grosse liste dans Direct sur la SHIELD), P1
+  (`device_guard`), P3 (qui efface la ligne de liste), P4 (lecture 2,2 s,
+  aucune mesure de gel sur la box), P6 (latence de production).
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
