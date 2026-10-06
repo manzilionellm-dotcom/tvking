@@ -613,6 +613,46 @@ demande (ce que font IBO / TiviMate / Smarters).
 - Canal clients `phone-latest` inchangé (1729) ; `zuno-tv` inchangé.
   **Publication clients : NON FAITE, attend l'ordre écrit du propriétaire.**
 
+## 5 suite quinquies. Signalement « à distance ne marche plus » (6 octobre, 19 h)
+
+- **PROUVÉ — photo SHIELD reçue à 19:11, build installé 170.**
+  `107-test.170+1791275287` ; `06/10 19:10:11 I [DIRECT] 0 chaînes · 0 catégories`.
+  `[MAJ] installée 1791275287 · disponible 1791292678 (2 source(s))`
+  compte les adresses de mise à jour, pas les listes de chaînes.
+- **PROUVÉ — relecture du panel, connexion owner, vers 19:17–19:18
+  Europe/Stockholm.** Fiche `MK:80:78:60:07:4F` : active, abonnement
+  à vie, échéance à vie, en ligne, version app `1791275287`,
+  **0/3 source poussée**. Aucune licence ni liste modifiée.
+- **PROUVÉ — chronologie serveur relue pour cette MAC.**
+  34 événements sur 7 jours ; dernier changement de listes : retrait du
+  06/10 à 09:35, révision 2. Ordre créé, publié, reçu puis appliqué par la
+  box : `no_source`. Aucun nouvel envoi enregistré ensuite dans cette
+  chronologie au moment de la lecture.
+- **PROUVÉ — journal relu dans le panel (335 lignes).**
+  `06/10 19:07:16 I [DB] lecture : 0 chaînes, 0 liste(s) en 16 ms` ;
+  `06/10 19:07:17 I [PANEL] ordre source_clear n°22 déjà traité : ignoré (renvoyé à la reconnexion)`.
+  Le repli de séquence n'est donc pas mis en cause par cette trame : cet
+  ordre avait déjà été appliqué à 09:35.
+  `06/10 19:18:17 I [MAJ] installateur Android → build 1791292678`
+  prouve l'ouverture de l'installateur, **pas** l'installation.
+- **NON PROUVÉ — panne actuelle du canal panel → Worker → SHIELD.**
+  L'état observé est vide côté panel et côté TV ; aucun nouvel ordre de
+  liste n'est disponible pour mesurer sa livraison. La photo seule ne
+  prouve ni un import tenté ni son échec. Il faut envoyer la liste depuis
+  **Listes** vers `80:78:60:07:4F`, puis relever le suivi Reçu/Appliqué
+  (ou l'erreur réelle) et la fin d'import dans la boîte noire.
+- **PROUVÉ — journal actuel reçu, nouvelle lecture vers 19:23.** Le panel
+  contient des lignes de la SHIELD jusqu’à `06/10 19:22:46` ; la réception
+  du journal est active. La chronologie relue reste à 34 événements, dernier
+  ordre de listes appliqué à 09:35. Une tentative de préparer un test de retrait
+  sur l’état vide a été interrompue par une restriction du navigateur avant
+  confirmation ; aucun nouvel ordre de retrait n’apparaît dans la chronologie.
+  Ce n’est **pas** une preuve de livraison d’un nouvel ajout.
+- Aucun correctif du canal ni nouveau build effectué pour ce signalement :
+  la cause d'un éventuel clic d'ajout non enregistré reste **NON PROUVÉE**.
+  Le Studio TV et le verrouillage restent en cours ; les modifications
+  publicités sont locales et ne sont pas déployées.
+
 ## 6. Règles du propriétaire (non négociables)
 
 - Jamais `publish=true` sans son ordre écrit ; jamais de push sur `main`.
