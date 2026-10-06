@@ -191,7 +191,7 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
           ls -la dist/assets
-          grep -l "Activation 1 an" dist/assets/*.js >/dev/null || { echo "::error::le bundle ne contient pas le nouvel écran"; exit 1; }
+          grep -l "Activer une box" dist/assets/*.js >/dev/null || { echo "::error::le bundle ne contient pas le nouvel écran"; exit 1; }
           grep -l "app.7themotion.com" dist/assets/*.js >/dev/null || { echo "::error::le bundle ne vise pas app.7themotion.com"; exit 1; }
           echo "✓ bundle : nouvel écran + bonne API"
 
@@ -230,7 +230,7 @@ jobs:
           # On réessaie jusqu'à 6 fois, 10 s d'écart, avant de conclure.
           ok=0
           for i in 1 2 3 4 5 6; do
-            if curl -sS -m 30 "$PAGES_URL/$(cat apres_bundle.txt)" | grep -q "Activation 1 an"; then ok=1; break; fi
+            if curl -sS -m 30 "$PAGES_URL/$(cat apres_bundle.txt)" | grep -q "Activer une box"; then ok=1; break; fi
             echo "bundle pas encore propagé (essai $i/6)"; sleep 10
           done
           [ "$ok" = 1 ] || { echo "::error::le bundle servi n a pas le nouvel écran"; exit 1; }
