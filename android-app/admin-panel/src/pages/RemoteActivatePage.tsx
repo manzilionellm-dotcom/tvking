@@ -3,15 +3,18 @@ import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { Alert } from '@/components/ui';
 import {
-  activateApi, appsApi, planCostsApi, meApi, sourcesApi,
+  activateApi, appsApi, devicesApi, planCostsApi, meApi, sourcesApi,
   getCurrentUser, isOwnerRole, userCan,
   type App, type PlanCost, type ActivateResult, type DeviceSource, ApiError,
 } from '@/lib/api';
 import { formatDateTime, isValidMac, normalizeMac } from '@/lib/utils';
 import { createSingleFlight } from '@/lib/robust';
 import {
-  planActivationList, validateListInput, type SourceInput,
+  isClientList, planActivationList, toSourceInput, validateListInput, type SourceInput,
 } from '@/lib/sources';
+import {
+  INSTANT_GIVE_UP_MS, INSTANT_POLL_MS, instantLabel, listOnTv, type InventoryLike,
+} from '@/lib/instant';
 
 // =========================================================
 //  Activation à distance — UN bouton : licence + liste.
@@ -77,6 +80,56 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
   const [result, setResult] = useState<ActivateResult | null>(null);
   const flight = useRef(createSingleFlight());
 
+  // ----- « Sur la TV » : preuve que la liste est arrivée -----
+  // Dès que la liste est envoyée, on relit l'inventaire réel de la box
+  // (heartbeat) toutes les 2 s, jusqu'à la voir ou pendant 2 min. La box
+  // (107-test.158+) remonte son inventaire tout de suite après l'import.
+  const [tv, setTv] = useState<{
+    startedAt: number; sent: SourceInput; elapsedMs: number;
+    seen: InventoryLike | null; lastSeen: number; now: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!tv || tv.seen || tv.elapsedMs >= INSTANT_GIVE_UP_MS) return;
+    let alive = true;
+    const m = normalizeMac(mac);
+    let deviceId: string | null = null;
+    const tick = async () => {
+      try {
+        if (!deviceId) {
+          const r = await devicesApi.list(m, { limit: 5 });
+          const hit = r.items.find((d) => d.mac.toUpperCase() === m.toUpperCase());
+          deviceId = hit ? hit.id : null;
+        }
+        let seen: InventoryLike | null = null;
+        let lastSeen = 0;
+        if (deviceId) {
+          const ov = await devicesApi.overview(deviceId);
+          seen = listOnTv(ov.localSources ?? [], tv.sent);
+          lastSeen = ov.presence?.last_seen ?? 0;
+        }
+        if (!alive) return;
+        const now = Date.now();
+        setTv((cur) => cur && cur.startedAt === tv.startedAt
+          ? { ...cur, elapsedMs: now - cur.startedAt, seen, lastSeen, now }
+          : cur);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) onLogout();
+        if (!alive) return;
+        const now = Date.now();
+        setTv((cur) => cur && cur.startedAt === tv.startedAt
+          ? { ...cur, elapsedMs: now - cur.startedAt, now }
+          : cur);
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, INSTANT_POLL_MS);
+    return () => { alive = false; window.clearInterval(timer); };
+    // `tv.seen` / `tv.elapsedMs` changent à chaque relecture : on ne
+    // relance la boucle que pour un nouvel envoi (startedAt).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tv?.startedAt, tv?.seen, (tv?.elapsedMs ?? 0) >= INSTANT_GIVE_UP_MS]);
+
   const primaryApp =
     apps.find((a) => !/red\s*room|nova|\btv\b/i.test(a.name)) ?? apps[0];
   const appId = primaryApp?.id ?? 'app_7motion';
@@ -127,8 +180,14 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
       }
       const planList = planActivationList(existing, input);
       if (planList.kind === 'already') {
+        // Déjà sur le serveur : on renvoie quand même l'ensemble, pour que
+        // la box soit prévenue à l'instant (si elle était éteinte au
+        // premier envoi, c'est ce renvoi qui la réveille).
+        await sourcesApi.setMany(m, existing.filter((s) => !isClientList(s)).map(toSourceInput));
         setListStep('ok');
-        setListNote('Cette liste était déjà sur la box : rien à renvoyer.');
+        setListNote('Cette liste était déjà sur le serveur : la box est prévenue à nouveau.');
+        const now = Date.now();
+        setTv({ startedAt: now, sent: input, elapsedMs: 0, seen: null, lastSeen: 0, now });
         return;
       }
       if (planList.kind === 'full') {
@@ -139,6 +198,8 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
       await sourcesApi.setMany(m, planList.sources);
       setListStep('ok');
       setListNote(null);
+      const now = Date.now();
+      setTv({ startedAt: now, sent: input, elapsedMs: 0, seen: null, lastSeen: 0, now });
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 401) { onLogout(); return; }
       setListStep('err');
@@ -380,10 +441,30 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
             {listStep !== 'skip' && (
               <StepRow step={listStep} label={listNote ?? 'Liste envoyée à la box'} />
             )}
-            {done && (
+            {done && tv && (() => {
+              const l = instantLabel({
+                elapsedMs: tv.elapsedMs,
+                seen: tv.seen ? [tv.seen] : [],
+                missing: tv.seen ? 0 : 1,
+                lastSeen: tv.lastSeen,
+                now: tv.now,
+              });
+              return (
+                <li className="flex gap-2 pt-1" aria-live="polite">
+                  <span className={
+                    (l.kind === 'ok' ? 'text-emerald-400' : l.kind === 'late' ? 'text-accent-bright' : 'text-ink-tertiary')
+                    + ' w-4 shrink-0 font-semibold'
+                  }>
+                    {l.kind === 'ok' ? '✓' : l.kind === 'late' ? '!' : '⚡'}
+                  </span>
+                  <span className="text-ink-primary">{l.text}</span>
+                </li>
+              );
+            })()}
+            {done && !tv && (
               <li className="pt-1 text-ink-secondary">
                 La box est prévenue à l’instant. Sur l’accueil, la liste apparaît en
-                quelques secondes ; si une chaîne joue, au retour à l’accueil.
+                quelques secondes.
               </li>
             )}
           </ul>
@@ -396,7 +477,7 @@ export function RemoteActivatePage({ onLogout }: { onLogout: () => void }) {
         >
           {busy
             ? 'En cours…'
-            : (kind === 'none' || !canPush ? 'Activer' : 'Activer et envoyer la liste')
+            : (kind === 'none' || !canPush ? 'Activer' : '⚡ Activer et envoyer la liste · instantané')
               + (isTrialPlan(plan)
                 ? ' · essai gratuit'
                 : isReseller && credit !== null ? ` · ${credit} crédit${credit > 1 ? 's' : ''}` : '')}

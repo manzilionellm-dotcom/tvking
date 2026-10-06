@@ -15,7 +15,8 @@ import {
 import { shouldApplyPollResult } from '@/lib/live-sync';
 import { bindPanelRefresh } from '@/lib/box-channel';
 import { formatDateTime } from '@/lib/utils';
-import { isClientList, isListOn, planRemoveSource, planToggleSource } from '@/lib/sources';
+import { isClientList, isListOn, planRemoveSource, planToggleSource, toSourceInput } from '@/lib/sources';
+import { INSTANT_GIVE_UP_MS, INSTANT_POLL_MS, allOnTv, instantLabel, type InventoryLike } from '@/lib/instant';
 import {
   LIST_PAGE_SIZE, createAbortBag, createGeneration, createSingleFlight,
   expiryPhrase, readListPage,
@@ -289,6 +290,62 @@ function DeviceDetailModal({
   const pollSeq = useRef(0);
   const appliedSeq = useRef(0);
 
+  // ----- « ⚡ Envoi instantané » : renvoie les listes du panel à la box
+  // (elle est prévenue à la seconde) et prouve leur arrivée sur la TV en
+  // relisant l'inventaire réel toutes les 2 s, pendant 2 min au plus.
+  const [instant, setInstant] = useState<{
+    startedAt: number; sent: DeviceSource[]; elapsedMs: number;
+    seen: InventoryLike[]; missing: number; lastSeen: number; now: number;
+  } | null>(null);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (!instant || instant.missing === 0 || instant.elapsedMs >= INSTANT_GIVE_UP_MS) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const r = await devicesApi.overview(device.id);
+        if (!alive) return;
+        const { seen, missing } = allOnTv(r.localSources ?? [], instant.sent);
+        const now = Date.now();
+        setInstant((cur) => cur && cur.startedAt === instant.startedAt
+          ? { ...cur, elapsedMs: now - cur.startedAt, seen, missing, lastSeen: r.presence?.last_seen ?? 0, now }
+          : cur);
+        setOv(r);
+      } catch {
+        if (!alive) return;
+        const now = Date.now();
+        setInstant((cur) => cur && cur.startedAt === instant.startedAt
+          ? { ...cur, elapsedMs: now - cur.startedAt, now }
+          : cur);
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, INSTANT_POLL_MS);
+    return () => { alive = false; window.clearInterval(timer); };
+    // Relance seulement pour un nouvel envoi, ou quand tout est vu / abandonné.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instant?.startedAt, instant?.missing === 0, instant && instant.elapsedMs >= INSTANT_GIVE_UP_MS, device.id]);
+
+  async function instantPush() {
+    const panelLists = (ov?.sources ?? []).filter((s) => !isClientList(s));
+    if (panelLists.length === 0) {
+      setErr('Aucune liste du panel sur cette box : passe par « Activation à distance » pour en envoyer une.');
+      return;
+    }
+    setSending(true);
+    setErr(null);
+    try {
+      await sourcesApi.setMany(device.mac, panelLists.map(toSourceInput));
+      const now = Date.now();
+      setInstant({ startedAt: now, sent: panelLists, elapsedMs: 0, seen: [], missing: panelLists.length, lastSeen: 0, now });
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Envoi impossible.');
+    } finally {
+      setSending(false);
+    }
+  }
+
   useEffect(() => {
     let alive = true;
     pollSeq.current = 0;
@@ -482,12 +539,34 @@ function DeviceDetailModal({
           </div>
         )}
 
+        {/* ----- Suivi « Envoi instantané » : la TV a-t-elle reçu les listes ? ----- */}
+        {instant && (() => {
+          const l = instantLabel(instant);
+          return (
+            <div
+              aria-live="polite"
+              className={
+                'mt-4 flex gap-2 rounded-lg border px-3 py-2.5 text-sm '
+                + (l.kind === 'ok'
+                  ? 'border-success/40 bg-success/10 text-success'
+                  : l.kind === 'late'
+                    ? 'border-accent/40 bg-accent/10 text-accent-bright'
+                    : 'border-white/10 bg-midnight text-ink-secondary')
+              }
+            >
+              <span className="shrink-0 font-semibold">{l.kind === 'ok' ? '✓' : l.kind === 'late' ? '!' : '⚡'}</span>
+              <span>{l.text}</span>
+            </div>
+          );
+        })()}
+
         {/* ----- Actions : tout piloter depuis ici (gauche/droite/nord/sud) ----- */}
         <div className="mt-5 border-t border-white/5 pt-4">
           <div className="mb-2 text-[10px] uppercase tracking-widest text-ink-tertiary">Actions</div>
           <div className="flex flex-wrap gap-1.5">
             <ActionBtn busy={busy} primary onClick={onActivate} title="Activer / prolonger l'abonnement">Activer / prolonger</ActionBtn>
             <ActionBtn busy={busy} primary onClick={() => navigate(`/activation-distance?mac=${macUrl}`)} title="Activer et envoyer une liste en un seul geste. La box est prévenue tout de suite.">Activation à distance</ActionBtn>
+            <ActionBtn busy={busy || sending} primary onClick={instantPush} title="Renvoie les listes du panel à la box à l'instant, puis affiche ici le moment où la TV les a vraiment reçues.">⚡ Envoi instantané</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/chaines?mac=${macUrl}`)} title="Ajouter ou changer la liste de chaînes, sans modifier l'activation">Liste de chaînes</ActionBtn>
             <ActionBtn busy={busy} onClick={() => navigate(`/blackbox?mac=${macUrl}`)} title="Journal technique de cette box : ordre du panel reçu, liste chargée en N s, liste refusée">Boîte noire</ActionBtn>
             <ActionBtn busy={busy || clearing} danger onClick={clearPushed} title="Retire toutes les listes poussées. La TV du client les efface toute seule à sa vérification suivante.">Effacer les listes</ActionBtn>
